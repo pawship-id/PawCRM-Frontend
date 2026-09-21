@@ -3,7 +3,9 @@
 import { Fragment, useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 
-import { Alert, Breadcrumb } from "@/components";
+import { Alert, Breadcrumb, Spinner } from "@/components";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 // The shadcn button directly, for `size="sm"` — the app-facing wrapper in
 // @/components does not carry a size prop. Same import JournalEntriesScreen makes.
 import { Button } from "@/components/ui/button";
@@ -17,22 +19,19 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { absDecimal, formatMoney } from "@/utils/decimal";
+import type { AccountCategory } from "@/types/accounting";
 
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import {
+  currentMonthRange,
   formatPercent,
   marginPct,
   reportPresets,
   type FinanceQuery,
 } from "../financeSummary";
-import {
-  profitLossMatrix,
-  FIXTURE_BRANCHES,
-  FIXTURE_LINES,
-  FIXTURE_PERIOD_LABEL,
-  type MatrixRow,
-  type ProfitLossGroupKey,
-} from "../reportSummary";
+import { useFinanceReport } from "../hooks/useFinanceReport";
+import { profitLossMatrix, type MatrixRow } from "../reportSummary";
+import { formatDate } from "../labels";
 import { FinanceReportToolbar } from "./FinanceReportToolbar";
 
 /**
@@ -44,19 +43,30 @@ import { FinanceReportToolbar } from "./FinanceReportToolbar";
  * the shop makes money — and that is a comparison, so the lines have to sit side
  * by side on one row. Grooming's margin is only interesting next to retail's.
  *
- * THE FIGURES ARE CONTOH. `GET /journal-entries/summary` groups by
- * (businessLineId × accountType), which produces the three group TOTALS and
- * nothing under them: there is no per-account breakdown, and no way to tell HPP
- * from beban operasional, because the chart of accounts has one `expense` class.
- * So Pendapatan, Beban and Laba Bersih could be real today; the detail rows and
- * the Laba Kotor line could not. Rather than ship half a report and leave the
- * shape to be argued about later, the whole thing renders from a fixture and says
- * so on the page. See ../data/reportFixtures.ts for what replaces what.
+ * THE FIGURES ARE REAL as of 18 September 2026 — `GET /journal-entries/profit-loss`.
+ * It used to render a fixture, and the note here used to explain why: `summary`
+ * groups by (line × account CLASS), which could give the group totals and
+ * nothing under them, and could not tell HPP from beban operasional because both
+ * are `expense`. The chart of accounts grew CATEGORIES, the endpoint groups by
+ * them, and the whole report follows.
  *
- * TWO OF THE THREE FILTERS ARE LIVE over that fixture — cabang and lini bisnis
- * really do narrow it, because both are questions the fixture can answer. The
- * period cannot, since the fixture is one month, and the banner says which is
- * which. A control that silently does nothing is the thing worth avoiding here.
+ * FIVE GROUPS AND THREE SUBTOTALS, which is BO's own formula:
+ *
+ *   Pendapatan − HPP = Laba Kotor − Biaya = Laba Usaha
+ *   + Pendapatan Lainnya − Biaya Lainnya = Laba Bersih
+ *
+ * Pendapatan Lainnya sits BELOW laba usaha rather than in laba kotor — decided
+ * 18 September, so gross margin is not shifted by delivery income or an opname
+ * gain, and so it mirrors Biaya Lainnya. Laba bersih is the same either way.
+ *
+ * ALL THREE FILTERS ARE LIVE NOW. The period and the cabang go to the API; the
+ * lini bisnis does NOT — it drops COLUMNS from a matrix that still totals across
+ * all of them, which is a different act from narrowing the ledger. See
+ * `profitLossMatrix`.
+ *
+ * NOTHING ON THIS SCREEN ADDS UP MONEY. Every figure including the three
+ * subtotals is computed server-side and derived from the others there, so two
+ * numbers on this page cannot disagree.
  *
  * `now` COMES FROM THE SERVER, like the dashboard's: the presets are dates, and a
  * client component that read the clock while rendering would disagree with the
@@ -64,33 +74,44 @@ import { FinanceReportToolbar } from "./FinanceReportToolbar";
  */
 export function ProfitLossScreen({ now }: { now: string }) {
   const today = useMemo(() => new Date(now), [now]);
+  const presets = useMemo(() => reportPresets(today), [today]);
 
-  const [query, setQuery] = useState<FinanceQuery>(() => ({
-    dateFrom: "",
-    dateTo: "",
-    branchId: "",
-    businessLineId: "",
-  }));
+  // The current month, so the screen opens on a period rather than on the whole
+  // history of the ledger — which is a legal answer from the API and never the
+  // one somebody came for. A laba rugi is read by the month.
+  const [query, setQuery] = useState<FinanceQuery>(() => {
+    const month = currentMonthRange(today);
+    return {
+      dateFrom: month.dateFrom,
+      dateTo: month.dateTo,
+      branchId: "",
+      businessLineId: "",
+      // OFF. The undivided report is what every previous month was read as, so
+      // it stays what the screen opens on — the toggle is how somebody asks the
+      // other question, side by side with the answer they already know.
+      allocation: false,
+    };
+  });
 
   /** Open group keys. Pendapatan leads open — it is the row people came for. */
-  const [expanded, setExpanded] = useState<Set<ProfitLossGroupKey>>(
-    () => new Set<ProfitLossGroupKey>(["revenue"]),
+  const [expanded, setExpanded] = useState<Set<AccountCategory>>(
+    () => new Set<AccountCategory>(["pendapatan"]),
   );
 
-  const presets = useMemo(() => reportPresets(today), [today]);
+  const { branches, businessLines, profitLoss, loading, error } =
+    useFinanceReport("profitLoss", query);
 
   const matrix = useMemo(
     () =>
-      profitLossMatrix({
-        branchId: query.branchId,
-        businessLineId: query.businessLineId,
-      }),
-    [query.branchId, query.businessLineId],
+      profitLoss
+        ? profitLossMatrix(profitLoss, businessLines, query.businessLineId)
+        : null,
+    [profitLoss, businessLines, query.businessLineId],
   );
 
-  const allOpen = expanded.size === matrix.groups.length;
+  const allOpen = matrix !== null && expanded.size === matrix.groups.length;
 
-  function toggle(key: ProfitLossGroupKey) {
+  function toggle(key: AccountCategory) {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -100,7 +121,13 @@ export function ProfitLossScreen({ now }: { now: string }) {
   }
 
   // +2: the sticky account column and the consolidated one, which are not lini.
-  const columnCount = matrix.columns.length + 2;
+  const columnCount = (matrix?.columns.length ?? 0) + 2;
+
+  /** The period as it reads on the card, taken from what was asked for. */
+  const periodLabel =
+    query.dateFrom && query.dateTo
+      ? `${formatDate(query.dateFrom)} – ${formatDate(query.dateTo)}`
+      : "Seluruh periode";
 
   return (
     <div className="flex flex-col gap-6">
@@ -116,34 +143,71 @@ export function ProfitLossScreen({ now }: { now: string }) {
         </p>
       </div>
 
-      <Alert variant="info">
-        <p className="font-semibold">Angka di halaman ini masih contoh.</p>
-        <p className="mt-0.5">
-          Belum terhubung ke jurnal umum. Filter cabang dan lini bisnis sudah
-          bekerja di data contoh ini; filter periode belum, karena datanya baru
-          satu periode ({FIXTURE_PERIOD_LABEL}).
-        </p>
-      </Alert>
+      {error && <Alert variant="error">{error}</Alert>}
+
+      {/*
+        THE ONE CONTROL ON THIS SCREEN THAT IS NOT A FILTER, which is why it does
+        not live in the toolbar (§8 is about narrowing a list). It does not change
+        WHICH entries are read — it changes what the same entries are reported as,
+        and the two answers are meant to be compared. Applying on the switch, with
+        no Terapkan, is what makes the comparison a flick back and forth.
+      */}
+      <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-surface p-4">
+        <Switch
+          id="pl-allocation"
+          checked={query.allocation === true}
+          disabled={loading}
+          onCheckedChange={(allocation) =>
+            setQuery((prev) => ({ ...prev, allocation }))
+          }
+        />
+        <div className="min-w-0 flex-1">
+          <Label htmlFor="pl-allocation">Bagikan beban bersama ke tiap lini</Label>
+          <p className="mt-1 text-xs text-muted">
+            {query.allocation
+              ? "Sewa, marketing dan gaji kantor dibagi ke tiap lini mengikuti Aturan Alokasi di Daftar Akun, sesuai porsi pendapatan periode ini. Kolom Bersama menyisakan akun yang belum dipetakan."
+              : "Beban yang tidak terikat satu lini tetap utuh di kolom Bersama — sama seperti laporan bulan-bulan sebelumnya."}
+          </p>
+        </div>
+      </div>
+
+      {/*
+        A figure that rests on an equal split rather than on trade. Said here, on
+        the report, rather than only in a tooltip: somebody who prints this page
+        has to be able to see that one of its numbers is an estimate.
+      */}
+      {profitLoss?.allocation?.estimated && (
+        <Alert variant="warning">
+          Sebagian pembagian dibagi rata, bukan sesuai porsi pendapatan — ada
+          segmen yang belum membukukan pendapatan apa pun di periode ini.
+        </Alert>
+      )}
 
       <FinanceReportToolbar
         query={query}
-        branches={FIXTURE_BRANCHES}
-        businessLines={FIXTURE_LINES}
+        branches={branches}
+        businessLines={businessLines}
         presets={presets}
+        disabled={loading}
         onChange={(patch) => setQuery((prev) => ({ ...prev, ...patch }))}
       />
 
-      {/* The table container is written out rather than wrapped in <Card>: Card
-          pads its content, and a matrix has to run edge to edge so the sticky
-          first column has an edge to stick to. Same shape JournalEntriesScreen
-          uses for the same reason. */}
+      {matrix === null ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+          <Spinner /> Memuat laba rugi…
+        </div>
+      ) : (
+      /* The table container is written out rather than wrapped in <Card>: Card
+         pads its content, and a matrix has to run edge to edge so the sticky
+         first column has an edge to stick to. Same shape JournalEntriesScreen
+         uses for the same reason. */
       <div className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-hover px-4 py-3">
           <h2 className="text-base font-bold">Laporan Laba Rugi</h2>
           <span className="text-xs tabular-nums text-muted">
-            {FIXTURE_PERIOD_LABEL} ·{" "}
+            {periodLabel} ·{" "}
             {query.branchId
-              ? (FIXTURE_BRANCHES.find((b) => b._id === query.branchId)?.name ??
+              ? (branches.find((b) => b._id === query.branchId)?.name ??
                 "Cabang terpilih")
               : "Semua cabang"}
           </span>
@@ -163,7 +227,7 @@ export function ProfitLossScreen({ now }: { now: string }) {
           </Button>
         </div>
 
-        <Table>
+        <Table className={loading ? "opacity-60" : undefined}>
           <TableHeader>
             <TableRow>
               {/* Sticky, because the whole point of the table is reading one
@@ -189,11 +253,12 @@ export function ProfitLossScreen({ now }: { now: string }) {
           <TableBody>
             {matrix.groups.map((group) => {
               const open = expanded.has(group.key);
-              // Pendapatan adds; the two beban groups are subtracted from it, so
-              // they print with a leading minus. The stored amounts stay positive
-              // — see the fixture — because a report prints "Beban Sewa
-              // 15.000.000", not "−15.000.000", until it is being subtracted.
-              const negative = group.key !== "revenue";
+              // Which side of the formula the group is on, decided in
+              // `reportSummary` rather than here: the two income groups add, the
+              // three cost groups are subtracted and so print with a leading
+              // minus. The amounts themselves stay positive, because a report
+              // prints "Beban Sewa 15.000.000" until it is being taken away.
+              const negative = group.negative;
 
               return (
                 <Fragment key={group.key}>
@@ -262,15 +327,26 @@ export function ProfitLossScreen({ now }: { now: string }) {
                     </TableRow>
                   )}
 
-                  {/* Laba kotor sits directly under HPP, which is what makes it
-                      laba kotor rather than a second net figure. */}
-                  {group.key === "cogs" && (
+                  {/* Each subtotal sits directly under the group it closes —
+                      that placement IS what makes it that subtotal rather than
+                      a second net figure. Laba kotor after HPP, laba usaha
+                      after Biaya. */}
+                  {group.key === "hpp" && (
                     <ResultRow
                       label="Laba Kotor"
                       row={matrix.grossProfit}
                       base={matrix.revenue}
                       columns={matrix.columns}
                       pctLabel="margin"
+                    />
+                  )}
+                  {group.key === "biaya" && (
+                    <ResultRow
+                      label="Laba Usaha"
+                      row={matrix.operatingProfit}
+                      base={matrix.revenue}
+                      columns={matrix.columns}
+                      pctLabel="margin usaha"
                     />
                   )}
                 </Fragment>
@@ -288,6 +364,7 @@ export function ProfitLossScreen({ now }: { now: string }) {
           </TableBody>
         </Table>
       </div>
+      )}
 
       <p className="text-xs text-muted">
         Persentase dihitung terhadap pendapatan kolom yang sama, jadi sebuah lini

@@ -30,14 +30,14 @@ function thisMonth(): string {
  * ─── TWO NUMBERS, AND THEY ANSWER DIFFERENT QUESTIONS ─────────────────────
  *
  * EARNED is one month's work — what a payslip for September is about.
- * OUTSTANDING is everything closed and still unpaid, which may span several
+ * OUTSTANDING is everything APPROVED and still unpaid, which may span several
  * months and is the number somebody actually wants when they ask "kapan saya
  * dibayar". Showing only the first would answer the question nobody asked.
  *
- * WORK THAT IS EARNED BUT NOT YET CLOSED IS IN NEITHER. It is in `earned` if it
- * falls in the month on screen, and not in `outstanding` until the month is
- * closed — because the shop has not yet accepted it as a debt. Said on screen
- * rather than left as a discrepancy somebody has to ask about.
+ * WORK THAT IS EARNED BUT NOT YET APPROVED IS IN `earned` ONLY (21 September
+ * 2026 — the monthly close was replaced by approval). It is not in
+ * `outstanding` until somebody approves it, because the shop has not yet
+ * accepted it as owed. Said on screen rather than left as a discrepancy.
  */
 export function MyCommissionScreen() {
   const [period, setPeriod] = useState(thisMonth);
@@ -145,16 +145,16 @@ export function MyCommissionScreen() {
       {/*
         THE GAP BETWEEN THE TWO NUMBERS, EXPLAINED BEFORE IT IS NOTICED.
 
-        Work finishes, and it earns immediately. It becomes a DEBT only when the
-        month is closed — and somebody looking at "Bulan ini: Rp 300.000" beside
+        Work that is done and billed earns immediately. It is OWED only once it
+        is approved — and somebody looking at "Bulan ini: Rp 300.000" beside
         "Belum dibayar: Rp 0" would otherwise reasonably conclude they had been
         paid. Saying it here costs nothing and prevents a conversation that
         starts badly.
       */}
       <Alert variant="info">
-        Komisi dihitung saat booking <strong>selesai</strong>, bukan saat
-        pelanggan membayar. Angka <strong>Belum dibayar</strong> baru terisi
-        setelah pemilik menutup bulannya.
+        Komisi dihitung saat booking <strong>selesai</strong> dan fakturnya{" "}
+        <strong>terbit</strong>. Angka <strong>Belum dibayar</strong> baru
+        terisi setelah komisinya disetujui.
       </Alert>
     </div>
   );

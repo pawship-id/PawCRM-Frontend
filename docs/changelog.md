@@ -7,6 +7,257 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Jurnal mengikuti mockup
+
+21 September 2026, dari `Buloo - jurnal (2).html`. Akses tidak berubah (mockup menandai
+Jurnal khusus Owner; itu sengaja belum diikuti).
+
+- **Daftar:** bar konteks modul (Cabang, Periode) di atas; satu kartu "Jurnal umum" berisi
+  pencarian (no. jurnal, keterangan, **no. sumber, cabang**), filter Sumber, tabel yang
+  diurut dari **header kolom** (Tanggal, No. jurnal, Keterangan, Cabang, Nilai), dan
+  `ListFooter` 25/50/100. Kelompok per bulan dan kotak Entri/Total debit dihapus; kolom
+  Status tetap. Baris bisa diklik. Tombol "Tambah jurnal manual" pindah ke kepala halaman.
+- **Tambah jurnal manual:** `FormActionBar`, callout "Untuk penyesuaian non-kas saja",
+  Tanggal · Cabang (baru, dikirim sebagai `branchId`), Keterangan, lalu tabel baris
+  Akun · Detil · Keterangan · Debit · Kredit dengan baris Total dan catatan seimbang.
+  Akun Kas & Bank tidak ditawarkan; pilihan akun dikelompokkan per kategori.
+- **Detail:** judul "Jurnal — <no>", tombol "Kembali ke Jurnal", callout dokumen sumber
+  dengan tautan "Buka <no> →" (dari `source.document`).
+- Label sumber `manual` sekarang **"Jurnal manual"**; crumb `Jurnal Umum` → **`Jurnal`**.
+
+---
+
+## [Unreleased] — Channel Pembayaran pindah ke Pengaturan, Kas & Bank jadi tabel akun
+
+20 September 2026, atas permintaan. Empat hari sebelumnya Channel Pembayaran diserap
+jadi badan layar Kas & Bank (lihat entri 16 September); ini mengembalikannya jadi layar
+pengaturan tersendiri — tapi **kolom uangnya tidak ikut kembali**.
+
+### Channel Pembayaran
+
+- Rutenya jadi **`/dashboard/pengaturan/channel-pembayaran`** (`/new` dan `/[id]` ikut),
+  di sidebar persis di bawah Daftar Akun yang pindah lebih dulu hari itu. Itu memang
+  pasangannya: channel adalah tempat uang masuk, baris di atasnya adalah akun yang
+  menampungnya, dan tidak ada yang mengubah satu tanpa melihat yang lain.
+- **Rute lama `redirect()`** — `/keuangan/kas-bank/new` dan `/keuangan/kas-bank/[id]`,
+  dengan id dibawa menyeberang. Bookmark ke satu channel harus mendarat di form channel
+  itu, bukan di daftar berisi enam baris tanpa petunjuk mana yang dimaksud.
+- **Tanpa kolom Masuk, Keluar dan Saldo.** Hilangnya justru intinya: beberapa channel
+  bisa menunjuk satu akun, jadi kolom saldo per channel tidak pernah boleh dijumlahkan —
+  dulu diakali dengan menulis saldo sekali lalu "ikut <channel pembawa>" di baris
+  sisanya. Layar pengaturan juga tidak punya periode, jadi angka pergerakan tidak punya
+  rentang untuk dibicarakan.
+- Yang tersisa adalah yang memang diedit orang: nama yang dibaca kasir, tab tempatnya
+  duduk, cabang pemiliknya, dan akun yang didebit. **MDR tetap di bawah nama**, bukan
+  kolom — hanya QRIS dan EDC yang boleh punya, dan kolom yang isinya kebanyakan strip
+  adalah kolom yang lebih baik tidak ada.
+- Bar filternya **quick bar** (ui-rules §8): pencarian + satu toggle "Tampilkan
+  terhapus", keduanya berlaku di tempat. Toggle itu satu-satunya jalan pulih bagi
+  channel yang sudah dihapus, jadi ia kontrol yang terlihat — bukan query parameter yang
+  harus diketahui orang.
+- Hook baru **`usePaymentChannelList`** (`useCashAccounts` dihapus). File
+  `hooks/usePaymentChannels.ts` sudah lama tidak berisi hook apa pun, jadi sekalian jadi
+  **`labels.ts`**; isinya tetap `CHANNEL_TYPE_LABELS` dan `CHANNEL_TYPE_ORDER` yang
+  dipinjam panel pembayaran POS.
+
+### Kas & Bank menjawab per akun
+
+- Tabelnya sekarang berisi **akun buku besar** berkategori `cash_bank`, bukan channel —
+  `features/accounting/CashBankAccountsTable`, disuapi `useCashBankAccounts`. Masuk dan
+  keluar dari `journalEntryService.movement`, saldo dari `balances`. Baris yang isinya
+  akun punya saldo masing-masing, jadi **kolomnya boleh dijumlahkan**, dan aturan "ikut
+  channel pembawa" hilang bersama masalah yang melahirkannya.
+- Akun yang sebulan itu tidak dilewati uang **tetap dapat baris**, terbaca nol. Akun yang
+  tidak disebut `movement` artinya diam, bukan hilang.
+- **Gerbangnya ikut pindah:** tabel itu dibuka `chartOfAccounts:read`, bukan
+  `paymentChannels:read`. Peran yang hanya bisa membaca transaksi tetap dapat daftarnya,
+  dan reads milik tabel tidak ikut jalan untuknya.
+- `KasBankScreen` pindah rumah ke `features/accounting` — ia layar akuntansi sekarang —
+  dan menyimpan **satu pointer** ke Pengaturan › Channel Pembayaran untuk orang yang
+  datang mencari layar lama. Pointer, bukan form.
+- **`GET /api/cash-transactions/summary` jadi tanpa pemanggil di frontend.** Endpoint-nya
+  tetap hidup dan tetap ada tesnya; wrapper-nya di `cashTransaction.service.ts` sengaja
+  disimpan dengan catatan kenapa, supaya tidak terbaca sebagai sisa yang lupa dihapus.
+
+### Tes
+
+- **`PaymentChannelsScreen.test.tsx` baru (10 tes)** — perilaku channel yang dulu diuji di
+  `KasBankScreen.test.tsx` dan ikut terhapus waktu tabelnya berganti isi: label akun per
+  baris, `branchId: null` terbaca "Semua cabang", baris tetap hidup dengan strip waktu
+  bagan akun gagal dibaca, "Tidak aktif" vs "Terhapus" beserta tombol Pulihkan,
+  pencarian yang menunggu ketikan berhenti, toggle yang justru tidak menunggu, retry, dan
+  tombol "Channel baru" yang hilang untuk peran read-only. Satu tes menjaga agar kolom
+  Masuk/Keluar/Saldo tidak kembali.
+- `KasBankScreen.test.tsx` ditulis ulang di bagian tabelnya; `CashTransactionsScreen` dan
+  `PaymentChannelForm` menyesuaikan mock dan alamat barunya.
+
+---
+
+## [Unreleased] — Daftar Akun pindah ke Pengaturan, dan sorting pindah ke header
+
+20 September 2026, atas permintaan. Dua hal yang sebelumnya ditandai "tidak diambil"
+karena bentrok aturan, sekarang diputuskan diambil.
+
+### Pindah ke Pengaturan
+
+- Rutenya jadi **`/dashboard/pengaturan/daftar-akun`** (`/new` dan `/[id]/edit` ikut).
+  Segmennya Bahasa, mengikuti tetangganya `pengaturan/umum` dan `pengaturan/data-awal`.
+- **Rute lama `redirect()`, tidak dihapus** — alamat itu dipakai tab Keuangan, panel
+  impor inventori, dan apa pun yang dibookmark orang sejak layarnya rilis. 404 akan
+  menghukum mereka atas perpindahan yang bukan mereka lakukan. Redirect `[id]/edit`
+  membawa id-nya: link ke satu akun adalah yang paling mungkin dibookmark.
+- **Bukan tab Keuangan lagi.** Komentar di `AccountingModuleHeader` sejak 12 September
+  memang sudah menulis bahwa mockup menaruhnya di Pengaturan dan tab itu cuma sementara
+  sampai seksinya ada. Ringkasan Keuangan tetap punya kartunya, sama seperti tiga layar
+  non-tab yang lain.
+- **Sidebar:** baris "Daftar Akun" di grup Pengaturan, gated `chartOfAccounts:read` —
+  dan grant itu **keluar** dari `permissionAny` baris Keuangan. Tidak ada lagi yang bisa
+  dibaca di bawah `/keuangan` dengan grant itu saja, dan baris yang menuju hub berisi
+  kartu yang tidak boleh dibuka pembacanya cuma bikin kecewa.
+- **Judulnya h1 polos tanpa breadcrumb**, seperti Umum dan Data Awal: `/dashboard/
+  pengaturan` tidak punya halaman sendiri, jadi satu-satunya leluhur yang bisa disebut
+  breadcrumb adalah halaman yang tidak bisa dibuka siapa pun. Form `/new` dan `/[id]/
+  edit` tetap punya breadcrumb, dengan "Pengaturan" sebagai label — bukan link.
+
+### Sorting dari header kolom
+
+- **Kolom "Tipe akun" baru**, di sebelah Kategori: Aset · Kewajiban · Ekuitas ·
+  Pendapatan · Beban. Teks polos, bukan badge — dua badge dalam satu baris terbaca
+  sebagai dua status setara, padahal kategorinya yang dipilih tenant dan kelasnya cuma
+  turunan. Urutannya abjad — Aset, Beban, Ekuitas, Kewajiban, Pendapatan.
+  Pembungkus tabelnya ikut jadi `overflow-x-auto` — tujuh kolom tidak muat di layar
+  ponsel, dan `overflow-hidden` akan memotongnya tanpa cara mencapainya.
+- **Kode, Nama akun, Kategori dan Tipe akun bisa diklik.** Klik pertama menaik, klik kedua membalik.
+  Panahnya ada di setiap header yang bisa diurutkan — pudar kalau kolom itu bukan yang
+  aktif — supaya barisnya mengatakan kolom mana yang bisa diklik, bukan cuma mana yang
+  sedang aktif. `aria-sort` membawa fakta yang sama ke pembaca layar.
+- **Kategori dan Tipe akun sama-sama diurutkan ABJAD, dari kata yang tampil** — bukan
+  dari key yang disimpan, dan bukan dari nomor kategorinya. Key-nya berbeda urutan di
+  beberapa tempat (`hpp` jatuh di antara `hutang_lainnya` dan `investasi…`, padahal
+  labelnya "Harga Pokok Penjualan" ada di depan), dan nomor kategori adalah logika yang
+  tidak kelihatan: kolomnya menampilkan kata, nomornya tidak ada di baris itu. Di dalam
+  satu kategori atau satu tipe, urutannya jatuh ke kode — dan tie-break itu tetap menaik
+  di kedua arah, jadi kelompoknya yang terbalik, bukan isinya.
+- **Filter "Tipe akun"** di panel, di atas Kategori: coarse dulu, baru fine. **Picker
+  kategorinya menyempit mengikuti tipe yang dipilih** — keduanya bukan filter bebas
+  (setiap kategori milik tepat satu tipe), jadi menawarkan "Cash & Bank" di bawah tipe
+  "Beban" berarti menawarkan pasangan yang tidak akan pernah cocok dengan satu baris pun,
+  dan pembacanya akan menyalahkan daftarnya, bukan kombinasinya. Kategori yang tidak lagi
+  muat dengan tipe barunya ikut dikosongkan, bukan dibiarkan terpasang tapi tidak
+  ditawarkan. Isinya urutan persamaan akuntansi — sama seperti judul grup di picker form
+  akun, dan sengaja beda dari kolom tabelnya yang abjad: yang satu daftar tetap berisi
+  lima pilihan, yang satu mengurutkan baris yang sedang dipindai orang.
+- **Field "Urutkan" dihapus dari panel filter**, dan `Reset` tidak lagi menyentuh
+  urutan: tombol Reset di dalam panel filter tidak boleh diam-diam mengurutkan ulang
+  tabel yang diurutkan orang dari header yang kelihatan.
+- **`docs/ui-rules.md` §8 ikut diperbarui.** Aturannya berbunyi "sorting adalah field di
+  panel, bukan kontrol tersendiri" — sekarang dengan satu pengecualian tercatat, lengkap
+  dengan alasannya dan larangan menyebarkannya ke layar lain sebagai rapi-rapi. Tanpa
+  itu, sesi berikutnya akan "memperbaikinya" kembali.
+
+---
+
+## [Unreleased] — Kategori akun punya nomor
+
+20 September 2026, atas permintaan, mengikuti chart of accounts Jubelio.
+
+- **`CATEGORY_CODE`** — nomor rujukan per kategori: `110` Cash & Bank, `111` Piutang
+  Dagang, `112` Persediaan, `113` Aset Lancar Lainnya, `120` Aset Tetap, `121` Investasi
+  Jangka Panjang, `220` Hutang Dagang, `221` Hutang Lainnya, `222` Hutang Jangka Panjang,
+  `330` Modal, `440` Pendapatan, `550` Harga Pokok Penjualan, `660` Biaya,
+  `770` Pendapatan Lainnya, `880` Biaya Lainnya.
+- **Picker Kategori akun di form akun sekarang berbunyi `110 - Cash & Bank`**, nomornya
+  di depan: orang yang mengisi akun biasanya sedang membaca chart di kertas dan memindai
+  ke bawah kolom angka, dan nomornya juga yang membuat "Hutang Lainnya" dan "Hutang
+  Jangka Panjang" bisa dibedakan sekilas. Berlaku di `/new` dan `/[id]/edit` sekaligus —
+  keduanya `ChartOfAccountForm`.
+- **Bukan awalan kode akun, dan tidak akan pernah jadi itu.** Digit depan sebuah AKUN
+  menamai kelasnya (1 aset, 2 kewajiban, 3 modal, 4 pendapatan, 5/6 beban) — itu sebabnya
+  `1101 Kas`, `1201 Persediaan` dan `1301 PPN Masukan` sama-sama mulai dari 1 padahal
+  kategorinya berbeda. Dua penomoran yang sengaja berdiri sendiri: tenant yang menomori
+  ulang chart-nya tidak boleh bisa menomori ulang seksi laporan tanpa sengaja.
+- **Tidak disimpan di mana pun.** `accountCategory` tetap menyimpan key-nya (`cash_bank`);
+  nomornya dibaca dari key itu di tempat yang menampilkannya, jadi mengoreksinya nanti
+  adalah perubahan kode, bukan migrasi atas setiap dokumen akun.
+- Urutannya menaik mengikuti `ACCOUNT_CATEGORIES` — yang memang urutan baca laporan — jadi
+  setiap picker yang menyusuri array itu sudah urut nomor tanpa menyortir. Ada tesnya,
+  supaya kategori yang ditambah di posisi salah ketahuan.
+- Badge kategori di tabel dan filter panel **tetap nama polos**, tanpa nomor: di badge
+  nomor jadi noise, dan di kalimat prosa terbaca seperti salah ketik.
+
+---
+
+## [Unreleased] — Daftar Akun: Aturan Alokasi
+
+19 September 2026, dari mockup BO `buloo-daftar-akun-v1`.
+
+- **Daftar Akun jadi tabel datar berhalaman**, bukan pohon bergrup 15 kategori.
+  Alasannya satu: baris sekarang bisa dibuka untuk mengedit Detil Akun-nya, dan chevron
+  kedua yang melipat sub-akun akan jadi dua kontrol yang bentuknya identik dan kerjanya
+  tidak berhubungan. Hirarkinya bertahan sebagai **indentasi** kolom Kode — satu-satunya
+  hal yang pohon itu tunjukkan. Judul kategori ikut hilang karena grup yang terpotong
+  batas halaman lebih membingungkan daripada tidak ada grup; kategorinya tetap sebagai
+  kolom dan filter.
+- **Kolom Aturan Alokasi** dengan panel edit di dalam barisnya — nama detil, tipe
+  alokasi, lini, cabang, dan switch Aktif.
+  - **Panelnya draf, ada Simpan dan Batal** — ini satu-satunya tempat yang sengaja beda
+    dari mockup, yang menulis tiap ketikan. Aturannya divalidasi satu sama lain (tidak
+    boleh dua yang menuju segmen sama, tidak boleh dua yang senama), jadi daftar yang
+    setengah diketik adalah daftar yang memang ditolak server.
+  - **Satu baris terbuka pada satu waktu**: dua draf terbuka adalah dua draf yang bisa
+    dilupakan, dan Simpan yang kedua akan terlihat seperti menyimpan keduanya.
+  - Tiga keadaan yang sengaja dibedakan: **Tidak berlaku** (akun neraca), **Tidak perlu
+    alokasi** (tenant 1 lini 1 cabang), dan **Belum dipetakan** — badge oranye, satu-
+    satunya hal oranye di layar ini, karena §4: oranye berarti ada yang harus dikerjakan.
+- **Pilihannya menyusut mengikuti bentuk tenant**, dengan kalimat penjelas: 1 lini →
+  Direct disembunyikan; 1 cabang → Shared-Lokasi & Shared-Overall digabung jadi
+  "Shared"; 1 lini + 1 cabang → kolomnya berbunyi "Tidak perlu alokasi". Satu jalur
+  kode, cuma daftar pilihannya yang lebih pendek (`allocationLabels.ts`).
+- **"Nonaktifkan akun" / "Aktifkan akun" jadi baris di menu Aksi.** Menonaktifkan akun
+  adalah edit yang paling sering dilakukan di layar ini dan dulu perlu satu page load,
+  satu form dan satu save. Tidak ada yang hilang saat dinonaktifkan, jadi tidak pakai
+  dialog konfirmasi — baris menu yang sama membatalkannya.
+  - **Bukan di badge statusnya**, walau itu satu klik lebih cepat. Badge yang bisa
+    ditekan tidak bisa dibedakan dari badge yang cuma melaporkan, jadi membaca kolom
+    Status jadi sesuatu yang bisa merusak kalau salah pencet. Baris menu bernama
+    mengatakan apa yang akan terjadi sebelum terjadi.
+  - **Menonaktifkan ikut menyalakan filter "Tampilkan akun nonaktif" kalau sedang mati.**
+    Tanpa itu baris yang baru saja diubah lenyap persis saat diubah — membawa serta
+    satu-satunya cara membatalkannya, tanpa ada yang memberi tahu bahwa filternya
+    penyebabnya. Badge `Filter (n)` ikut naik dan toast-nya menyebutkannya.
+- **Filter Tipe Alokasi** di panel, dengan "Belum dipetakan" memimpin daftarnya — itu
+  satu-satunya nilai yang menjawab pertanyaan dengan pekerjaan di belakangnya.
+- **Field "Lini bisnis" hilang dari form akun.** Pemetaannya pindah ke daftar; akun
+  Pendapatan/Beban baru lahir Belum Dipetakan.
+- **Jurnal Umum manual: field Detil akun** per baris, muncul hanya kalau akun yang
+  dipilih punya aturan aktif. Ditambahkan 20 September setelah ketahuan tertinggal:
+  backend sudah menerima `allocationId`, formnya tidak pernah mengirimnya — jadi setiap
+  beban yang diposting lewat jurnal manual mendarat di kolom Bersama tanpa cara menyebut
+  lini mana yang menanggungnya, padahal jurnal manual adalah jalan keluar untuk setiap
+  biaya yang tidak muat di form lain. Detail jurnal ikut menampilkan kolomnya.
+- **Transaksi Keuangan: kolom Detil akun** di baris beban/pendapatan. Terpilih otomatis
+  kalau akunnya cuma punya satu; **Lini bisnis tidak lagi diisi otomatis dari akun** —
+  baris yang menyebut lininya sendiri dianggap final oleh laporan dan mendarat utuh di
+  cabang jurnalnya, sementara aturan `direct` tanpa cabang justru dibagi. Mengisinya
+  otomatis akan diam-diam membatalkan aturan yang jadi sumbernya.
+- **Lini Bisnis: checklist cabang** — dipakai `shared_lokasi`. Kosongkan semua berarti
+  lini ini ada di semua cabang, dan itu dikatakan di layar.
+- **Laba Rugi: switch "Bagikan beban bersama ke tiap lini".** Bukan filter — tidak
+  mengubah entri mana yang dibaca, tapi entri yang sama dilaporkan sebagai apa — jadi
+  tempatnya di luar toolbar dan berlaku saat diklik, supaya dua jawabannya bisa
+  dibandingkan bolak-balik. Default mati. Ada peringatan di laporan kalau sebagian
+  pembagian jatuh ke bagi-rata.
+
+**Dua hal dari mockup yang tidak diambil, karena `docs/ui-rules.md` mengikat:** sort
+dengan klik header (§8: "Sorting is a field in the panel, not a control of its own") —
+tetap di panel filter; dan modal Tambah/Edit akun (§16 menyebut Akun sebagai Form
+Entitas, satu halaman dengan FormActionBar) — tetap halaman `/new` dan `/[id]/edit`.
+Kolom **Sumber** ("Bawaan sistem") dipadatkan jadi ikon gembok di sebelah kode, bukan
+dibuang: tabelnya tetap lima kolom seperti mockup, tapi tetap ada yang memberi tahu akun
+mana yang kodenya terkunci sebelum server menolak mengubahnya.
+
+---
+
 ## [Unreleased] — Hari Ini: papan harian semua layanan
 
 16 September 2026, atas permintaan. Dari mockup `buloo-hari-ini-v1.html`.

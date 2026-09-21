@@ -23,6 +23,22 @@ export interface BusinessLine {
   name: string;
   /** A 6-digit hex colour with a leading `#`. Required by the API. */
   color: string;
+  /**
+   * WHICH BRANCHES RUN THIS LINE.
+   *
+   * Exists for one question nothing could previously answer: when a shared cost
+   * is split across "the lines active at this branch", something has to know
+   * which those are.
+   *
+   * **EMPTY MEANS EVERY BRANCH**, not "none" — which is what every line written
+   * before the field existed reads as, and the safest default for one written
+   * after. A picker that renders `[]` as nothing selected is therefore lying;
+   * see BusinessLineFormDialog for how it is said out loud.
+   *
+   * Optional because absent and empty mean the same thing here, and a line
+   * stored before the field existed sends neither.
+   */
+  branchIds?: string[];
 }
 
 /** The API's hard page-size cap — see chartOfAccounts.service.ts. */
@@ -39,6 +55,8 @@ export interface CreateBusinessLineInput {
   name: string;
   /** `#RRGGBB`. Three-digit shorthand and named colours are refused. */
   color: string;
+  /** Omit, or `[]`, for a line that runs everywhere. */
+  branchIds?: string[];
 }
 
 /** What PATCH takes: any subset, but never an empty body. */

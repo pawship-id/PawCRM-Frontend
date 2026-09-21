@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDownLeft,
@@ -26,18 +26,17 @@ import { Button as SlotButton } from "@/components/ui/button";
 import { usePermissions } from "@/features/permissions";
 import { PURCHASING_CRUMBS } from "@/features/purchasing";
 import { cn } from "@/lib/utils";
+import { reportService } from "@/services/report.service";
 import { absDecimal, formatMoney, subtractDecimals } from "@/utils/decimal";
 
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import { AccountingModuleHeader } from "./AccountingModuleHeader";
 import {
-  balanceOf,
   cashPosition,
   formatPercent,
   lineFigures,
   marginPct,
   reportPresets,
-  COMMISSION_PAYABLE_CODE,
   SHARED_LINE_NONE,
   type FinanceQuery,
   type LineFigures,
@@ -189,7 +188,11 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
             </Alert>
           ) : (
             <>
-              <CashRow data={data} periodTo={query.dateTo} />
+              <CashRow
+                data={data}
+                periodTo={query.dateTo}
+                branchId={apiQuery.branchId}
+              />
               <BooksRow data={data} />
               <MarginInsights lines={figures} />
 
@@ -252,14 +255,20 @@ type DashboardData = ReturnType<typeof useFinanceDashboard>;
 function CashRow({
   data,
   periodTo,
+  branchId,
 }: {
   data: DashboardData;
   periodTo: string;
+  branchId: string;
 }) {
   const { can } = usePermissions();
   const movement = data.cashMovement;
-  const commission = balanceOf(data.balances, COMMISSION_PAYABLE_CODE);
-  const owesCommission = !commission.startsWith("-") && commission !== "0";
+  const readsPayroll = can("users", "read");
+  const commission = useCommissionOwed(branchId, readsPayroll);
+  const owesCommission =
+    commission.amount !== null &&
+    !commission.amount.startsWith("-") &&
+    !/^0(\.0+)?$/.test(commission.amount);
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -307,22 +316,63 @@ function CashRow({
         </>
       )}
 
-      <SummaryCard
-        icon={HandCoins}
-        label="Komisi belum dibayar"
-        value={money(commission)}
-        /*
-          THE LEDGER'S ANSWER, NOT PAYROLL'S — the balance of 2102 Utang Komisi,
-          which is what has been accrued and not yet paid across every month
-          still open. The recap screen answers what a MONTH earned, which is a
-          different number and a different question.
-        */
-        valueClassName={owesCommission ? "text-warning" : undefined}
-        hint="Saldo Utang Komisi — rekap per bulan ada di tab Komisi"
-        loading={data.loading}
-      />
+      {/*
+        FROM THE KOMISI LIST, NOT FROM 2102 (21 September 2026). Commission is
+        no longer accrued, so the ledger's payable only ever holds what a monthly
+        close took to it before then; what is owed now is the list's Pending —
+        everything not yet paid, approved or not — the same figure the Komisi
+        tab's third card shows. A POSITION, like Saldo: it ignores the period.
+
+        LEFT OUT for a reader without `users:read`, like the tab itself — it is
+        payroll.
+      */}
+      {readsPayroll && (
+        <SummaryCard
+          icon={HandCoins}
+          label="Komisi belum dibayar"
+          value={commission.amount !== null ? money(commission.amount) : null}
+          valueClassName={owesCommission ? "text-warning" : undefined}
+          hint="Menunggu persetujuan & disetujui — kelola di tab Komisi"
+          loading={commission.loading}
+        />
+      )}
     </div>
   );
+}
+
+/**
+ * What the shop still owes its groomers — the Komisi list's Pending card, for
+ * one branch or all of them. One row asked for; only the cards are read.
+ */
+function useCommissionOwed(branchId: string, enabled: boolean) {
+  const [amount, setAmount] = useState<string | null>(null);
+  const [loading, setLoading] = useState(enabled);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+
+    reportService
+      .commissionRecords({ branchId: branchId || undefined, limit: 1 })
+      .then((result) => {
+        if (active) setAmount(result.cards.pending);
+      })
+      .catch(() => {
+        if (active) setAmount(null);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [branchId, enabled]);
+
+  return { amount, loading };
 }
 
 /**
@@ -693,6 +743,13 @@ const MODULES = [
     title: "Laba Rugi",
     description:
       "Pendapatan dikurangi beban untuk satu periode, dipecah per lini bisnis.",
+    feature: "journalEntries",
+  },
+  {
+    href: ACCOUNTING_CRUMBS.balanceSheet.href,
+    title: "Neraca",
+    description:
+      "Posisi pada satu tanggal: yang dimiliki, yang masih jadi kewajiban, dan sisanya milik pemilik.",
     feature: "journalEntries",
   },
   {

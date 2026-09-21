@@ -632,7 +632,7 @@ export function SupplierFormFields({
               error={errors.payableAccountId}
               disabled={disabled}
               emptyLabel="Belum ada akun kewajiban"
-              defaultLabel="2101 — Utang Supplier (default)"
+              defaultLabel="2101 — Utang Usaha (default)"
               hint="Hanya akun bertipe kewajiban. Dipakai saat penerimaan barang, retur, dan pembayaran faktur."
               onChange={(next) => onChange({ payableAccountId: next })}
             />

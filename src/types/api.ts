@@ -2653,25 +2653,155 @@ export interface CommissionRecapQuery {
   groomerUserId?: string;
 }
 
-/** Query parameters accepted by GET /api/bookings. All optional. */
 /**
- * The result of taking a month's commission to the ledger.
+ * Where one row of the Komisi screen stands (21 September 2026).
  *
- * `posted: false` IS A SUCCESS, not a failure — "nothing to close" is a true and
- * useful answer to "close September". The other fields are absent when it is
- * false, because nothing was written to describe.
+ *   pending  — Menunggu Persetujuan: billed and done, nobody approved it yet
+ *   approved — Disetujui: may be paid
+ *   paid     — Dibayar: settled by one cash transaction
+ *   reversed — Dibatalkan: its invoice (or booking) was cancelled
+ *   mixed    — the row's turns disagree; shown as such, never picked for payment
  */
-export interface CommissionCloseResult {
-  posted: boolean;
-  period: string;
+export type CommissionStatus =
+  | "pending"
+  | "approved"
+  | "paid"
+  | "reversed"
+  | "mixed";
+
+/** A row's address — one booking × one groomer. */
+export interface CommissionRowKey {
+  bookingId: string;
+  groomerUserId: string;
+}
+
+/**
+ * ONE ROW OF THE KOMISI SCREEN — a booking × groomer, which may be several turns
+ * (tahapan) of that booking. `amount` is what will be paid: the hand-set figure
+ * when `overridden`, otherwise what the rule computed (`computedAmount`).
+ */
+export interface CommissionRow extends CommissionRowKey {
+  /** `bookingId:groomerUserId` — stable across pages, used for selection. */
+  key: string;
+  groomerName: string | null;
+  branchId: string | null;
+  branchName: string | null;
+  bookingNumber: string | null;
+  bookingDate: string | null;
+  petName: string | null;
+  serviceName: string | null;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  /** The service's price — the mockup's "Nilai Layanan". */
+  basisAmount: string;
+  amount: string;
+  computedAmount: string;
+  overridden: boolean;
+  status: CommissionStatus;
+}
+
+/** GET /api/reports/commissions/records. */
+export interface CommissionRowsResult {
+  rows: CommissionRow[];
+  page: number;
+  limit: number;
+  total: number;
+  /** Over the context bar's scope, ignoring status and search. */
+  cards: { total: string; paid: string; pending: string };
+}
+
+export type CommissionSort =
+  | "bookingDate"
+  | "groomer"
+  | "branch"
+  | "basisAmount"
+  | "amount"
+  | "status";
+
+export interface CommissionRowsQuery {
   branchId?: string;
-  reason?: string;
-  closeId?: string;
-  journalEntryId?: string;
-  entryNumber?: string;
-  amount?: string;
-  recordCount?: number;
-  groomerCount?: number;
+  /** `"__none__"` for "no line of business". */
+  businessLineId?: string;
+  /** `YYYY-MM-DD`, the booking's date in the shop's zone. */
+  dateFrom?: string;
+  dateTo?: string;
+  status?: CommissionStatus | "";
+  q?: string;
+  sort?: CommissionSort;
+  dir?: "asc" | "desc";
+  page?: number;
+  limit?: number;
+}
+
+/** One turn of the row — the mockup's "Rincian per Tahapan". */
+export interface CommissionStage {
+  recordId: string;
+  sessionName: string | null;
+  /** The tahapan's share of the service, per cent. */
+  sharePercent: number | null;
+  crewSize: number | null;
+  crewSharePercent: number | null;
+  /**
+   * This tahapan's part of the commission pool — pool × `sharePercent`, before
+   * the crew split. Null on records from before the pool was stored.
+   */
+  stagePool: string | null;
+  rateType: "percentage" | "fixed" | "matrix" | "size_nominal";
+  rateValue: number;
+  amount: string;
+  status: Exclude<CommissionStatus, "mixed">;
+}
+
+/** GET /api/reports/commissions/records/:bookingId/:groomerUserId. */
+export interface CommissionDetail extends CommissionRow {
+  /**
+   * The pool the tahapan share: the service's commission (`rateType`/`rateValue`
+   * of the service price) plus the add-ons'. Null on pre-rule records.
+   */
+  pool: {
+    /** The booked service — "Basic Grooming". */
+    serviceName: string | null;
+    rateType: CommissionStage["rateType"];
+    rateValue: number;
+    service: string;
+    addon: string;
+    /**
+     * One line per earning add-on. EMPTY when an older record's add-ons cannot
+     * be named any more — `addon` then stands alone.
+     */
+    addons: {
+      name: string | null;
+      price: string;
+      rateType: "percentage" | "fixed";
+      rateValue: number;
+      commission: string;
+    }[];
+    total: string;
+  } | null;
+  stages: CommissionStage[];
+  override: { reason: string | null; at: string | null } | null;
+  approvedAt: string | null;
+  reversal: { at: string | null; reason: string | null } | null;
+  payment: {
+    id: string;
+    number: string | null;
+    at: string;
+    cashAccountName: string | null;
+    journalEntryId: string | null;
+    entryNumber: string | null;
+  } | null;
+}
+
+/** One payment written by POST /api/reports/commissions/pay. */
+export interface CommissionPayment extends CommissionRowKey {
+  groomerName: string;
+  bookingNumber: string | null;
+  branchId: string;
+  paymentId: string;
+  number: string | null;
+  journalEntryId: string;
+  entryNumber: string | null;
+  amount: string;
 }
 
 /**
@@ -2704,24 +2834,7 @@ export interface MyCommission {
   outstanding: CommissionOutstanding;
 }
 
-/** The result of paying one groomer what the books say is owed. */
-export interface CommissionPaymentResult {
-  /** The cash transaction's id — `/dashboard/keuangan/transaksi/:paymentId`. */
-  paymentId: string;
-  /**
-   * The bukti kas/bank number (`BKK/CBS/2609/0003`) — what the person paid can
-   * write on the slip. Optional only because an older backend did not send it.
-   */
-  number?: string | null;
-  journalEntryId: string;
-  entryNumber: string;
-  groomerUserId: string;
-  groomerName: string | null;
-  periods: string[];
-  amount: string;
-  recordCount: number;
-}
-
+/** Query parameters accepted by GET /api/bookings. All optional. */
 export interface BookingListQuery {
   page?: number;
   limit?: number;
@@ -4556,7 +4669,7 @@ export interface GoodsReceiptDetailItem {
  *
  * `invoiceId` IS NULL UNTIL THE SUPPLIER'S BILL IS FILED through
  * POST /api/purchase-invoices, and permanently null for consignment. It is NOT
- * the debt: a `beli_putus` receipt credits `2101 Utang Supplier` the moment it
+ * the debt: a `beli_putus` receipt credits `2101 Utang Usaha` the moment it
  * posts. What the invoice adds is the vendor's own document number and a due
  * date. A screen that reads a null here as "nothing is owed" is wrong.
  */
@@ -6280,7 +6393,10 @@ export type CashTransactionSort =
   | "newest"
   | "oldest"
   | "amountHighest"
-  | "amountLowest";
+  | "amountLowest"
+  /** By the branch's NAME — the server joins the branch in for these two only. */
+  | "branchAsc"
+  | "branchDesc";
 
 export type CashTransactionDocumentType =
   | "customer_invoice"
@@ -6298,6 +6414,15 @@ export interface CashTransactionLine {
   amount: string;
   businessLineId: string | null;
   businessLineName: string | null;
+  /**
+   * Which Detil Akun of `accountId` this line was booked to, and its name.
+   *
+   * Null whenever the account carries no rules to choose from, which is every
+   * line written before allocation existed — the laba rugi reads those as the
+   * shared bucket they always were.
+   */
+  allocationId: string | null;
+  allocationName: string | null;
   memo: string | null;
 }
 
@@ -6314,6 +6439,9 @@ export interface CashTransactionRevision {
   before: {
     at: string;
     amount: string;
+    /** Absent on revisions recorded before 20 September 2026. */
+    cashAccountId?: string | null;
+    cashAccountName?: string | null;
     channelId: string | null;
     channelName: string | null;
     ref: string | null;
@@ -6357,6 +6485,27 @@ export interface CashTransaction {
    */
   tenderedAmount?: string | null;
   changeAmount?: string | null;
+  /**
+   * WHERE THE MONEY SAT — the ledger account, on every row that has one.
+   *
+   * Since 20 September 2026 a back-office transaction names an ACCOUNT and has
+   * no channel at all; a till payment fills this in from its channel's account,
+   * so the Akun Kas/Bank column is about the same thing on every row.
+   * `cashAccountName` falls back to the channel's name for history written
+   * before the field existed.
+   */
+  cashAccountId: string | null;
+  cashAccountCode: string | null;
+  cashAccountName: string | null;
+  /**
+   * THE OTHER SIDE — what the money was for, opposite the kas/bank account.
+   *
+   * An array because one transaction can name several: an expense typed by hand
+   * carries a line per account. A document payment has exactly one entry, and a
+   * row whose accounts have since been deleted has none.
+   */
+  counterAccounts: Array<{ id: string; code: string; name: string }>;
+  /** The till's button, where there was one. Null on anything typed by hand. */
   channelId: string | null;
   channelType: PaymentChannelType | null;
   channelName: string | null;
@@ -6369,12 +6518,17 @@ export interface CashTransaction {
     number: string | null;
   } | null;
   party: {
-    type: "customer" | "supplier" | "user" | null;
+    type: CashTransactionPartyType | null;
     id: string | null;
     name: string | null;
   } | null;
   commission: {
     groomerUserId: string;
+    /**
+     * The booking this payment settled — one commission, one payment, since
+     * 21 September 2026. Null on the per-groomer payouts written before.
+     */
+    bookingId?: string | null;
     periods: string[];
     recordCount: number;
   } | null;
@@ -6428,6 +6582,13 @@ export interface CashTransactionChannelSummary {
   channels: CashTransactionChannelTotals[];
 }
 
+/**
+ * WHICH REGISTER A TRANSACTION'S OTHER SIDE CAME FROM — `PARTY_TYPES` on the
+ * server. A party with no type is a name somebody typed: a landlord, PLN, an
+ * advertiser, none of which a shop keeps a record of.
+ */
+export type CashTransactionPartyType = "customer" | "supplier" | "user";
+
 /** GET /api/cash-transactions. `kind` goes out comma-joined. */
 export interface CashTransactionListQuery {
   page?: number;
@@ -6440,6 +6601,8 @@ export interface CashTransactionListQuery {
   kind?: CashTransactionKind | CashTransactionKind[];
   branchId?: string;
   channelId?: string;
+  /** The kas/bank account the money moved through — matches `cashAccountId`. */
+  accountId?: string;
   status?: CashTransactionStatus;
   partyId?: string;
   documentType?: CashTransactionDocumentType;
@@ -6454,6 +6617,8 @@ export interface CashTransactionLineInput {
   accountId: string;
   amount: string;
   businessLineId?: string | null;
+  /** Must name a live rule OF `accountId` — the server checks the pairing. */
+  allocationId?: string | null;
   memo?: string;
 }
 
@@ -6462,9 +6627,25 @@ export interface CreateCashTransactionInput {
   kind: "expense" | "other_income";
   branchId: string;
   at?: string;
-  channelId: string;
+  /**
+   * The Kas & Bank ACCOUNT the money moves through — active, and filed under
+   * `accountCategory: "cash_bank"`. Replaced `channelId` on 20 September 2026:
+   * a channel is the button a cashier presses, and this form is the back
+   * office's. Its `cashType` decides the BKM/BKK or BBM/BBK series.
+   */
+  accountId: string;
   ref?: string;
   note?: string;
+  /**
+   * WHO THE MONEY CAME FROM OR WENT TO, in one of two shapes.
+   *
+   * `partyType` + `partyId` name a row in one of the three registers, and the
+   * server snapshots its name — that is the pair the picker sends, and the two
+   * must arrive together or not at all. `partyName` alone is the escape hatch
+   * for somebody no register holds: PLN, the landlord, an ad platform.
+   */
+  partyType?: CashTransactionPartyType;
+  partyId?: string;
   partyName?: string;
   cashflowType?: CashflowType;
   /** 1–20 lines; their sum is the amount. */
@@ -6472,13 +6653,17 @@ export interface CreateCashTransactionInput {
 }
 
 /**
- * PATCH /api/cash-transactions/:id — at least one of at/amount/channelId/ref/
- * note/lines. `amount` is refused on expense/other_income (send `lines`), and
- * `lines` on every other kind.
+ * PATCH /api/cash-transactions/:id — at least one of at/amount/accountId/
+ * channelId/ref/note/lines, and never `accountId` and `channelId` together.
+ * `amount` is refused on expense/other_income (send `lines`), and `lines` on
+ * every other kind.
  */
 export interface UpdateCashTransactionInput {
   at?: string;
   amount?: string;
+  /** Moves the cash side to another Kas & Bank account. Refused on a till row. */
+  accountId?: string;
+  /** Re-points a row that HAS a channel at a different one. */
   channelId?: string;
   ref?: string;
   note?: string;

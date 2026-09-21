@@ -31,7 +31,7 @@ const entry = (overrides: Partial<InvoiceJournalEntry> = {}): InvoiceJournalEntr
     {
       accountId: "a2",
       code: "4101",
-      name: "Penjualan",
+      name: "Pendapatan Penjualan",
       debit: "0.0000",
       credit: "1119130.0000",
       memo: null,

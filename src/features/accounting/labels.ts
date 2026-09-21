@@ -1,4 +1,10 @@
-import type { AccountType, CashflowType, JournalSourceType } from "@/types/accounting";
+import type {
+  AccountCategory,
+  AccountType,
+  CashflowType,
+  JournalSourceType,
+} from "@/types/accounting";
+import { accountTypeOf, CATEGORY_CODE } from "@/types/accounting";
 
 /**
  * The words and colours the accounting screens share.
@@ -28,6 +34,114 @@ export const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
 };
 
 /**
+ * THE CATEGORIES, in the order the reports read them: the neraca top to bottom
+ * (what the business owns, what it owes, what is left), then the laba rugi top
+ * to bottom (revenue, cost of sales, operating cost, and the two non-operating
+ * buckets that land below laba usaha).
+ *
+ * THE ORDER IS THE REPORTS' GRAMMAR, not a preference — the same reason
+ * ACCOUNT_TYPES above is in accounting-equation order. Every screen that lists
+ * categories walks this array, so a category added on the server lands in the
+ * right place everywhere at once.
+ *
+ * Mirrors ACCOUNT_CATEGORIES in the backend model. `Record<AccountCategory, …>`
+ * below is what keeps the two honest: adding a value to the union in
+ * types/accounting.ts fails to compile until it is named here too.
+ */
+export const ACCOUNT_CATEGORIES: AccountCategory[] = [
+  "cash_bank",
+  "piutang_dagang",
+  "persediaan",
+  "aset_lancar_lainnya",
+  "aset_tetap",
+  "investasi_jangka_panjang",
+  "hutang_dagang",
+  "hutang_lainnya",
+  "hutang_jangka_panjang",
+  "modal",
+  "pendapatan",
+  "hpp",
+  "biaya",
+  "pendapatan_lainnya",
+  "biaya_lainnya",
+];
+
+/**
+ * BO's own wording, kept verbatim — "Cash & Bank" is English in a list that is
+ * otherwise Indonesian because that is what the tenant's accountant asked for
+ * and what the reference chart says. Renaming it to "Kas & Bank" here would make
+ * the screen and the specification disagree about the same row.
+ */
+export const ACCOUNT_CATEGORY_LABEL: Record<AccountCategory, string> = {
+  cash_bank: "Cash & Bank",
+  piutang_dagang: "Piutang Dagang",
+  persediaan: "Persediaan",
+  aset_lancar_lainnya: "Aset Lancar Lainnya",
+  aset_tetap: "Aset Tetap",
+  investasi_jangka_panjang: "Investasi Jangka Panjang",
+  hutang_dagang: "Hutang Dagang",
+  hutang_lainnya: "Hutang Lainnya",
+  hutang_jangka_panjang: "Hutang Jangka Panjang",
+  modal: "Modal",
+  pendapatan: "Pendapatan",
+  hpp: "Harga Pokok Penjualan",
+  biaya: "Biaya",
+  pendapatan_lainnya: "Pendapatan Lainnya",
+  biaya_lainnya: "Biaya Lainnya",
+};
+
+/**
+ * A category as it reads in a picker: `"110 - Cash & Bank"`.
+ *
+ * THE NUMBER LEADS, which is the whole point of showing it: somebody holding a
+ * chart of accounts on paper — BO's, or one exported from Jubelio — is looking
+ * DOWN a column of numbers, and a label that puts its number last cannot be
+ * scanned that way.
+ *
+ * A FUNCTION RATHER THAN A SECOND MAP, so the number and the label cannot drift
+ * into two spellings of one row. `ACCOUNT_CATEGORY_LABEL` stays the plain name
+ * for the places that show a category as a badge or a heading, where a leading
+ * number would be noise.
+ */
+export function accountCategoryOption(category: AccountCategory): string {
+  return `${CATEGORY_CODE[category]} - ${ACCOUNT_CATEGORY_LABEL[category]}`;
+}
+
+/**
+ * One line saying what lands in a category, shown under the picker once a
+ * choice is made.
+ *
+ * WHY THE FORM NEEDS IT AT ALL: the whole point of categories is that somebody
+ * who is not an accountant can file an account correctly, and "Biaya Lainnya"
+ * alone does not tell them it means the non-operating ones. The two "Lainnya"
+ * pairs are the ones people actually get wrong, so their hints name the examples
+ * BO gave rather than restating the label.
+ */
+export const ACCOUNT_CATEGORY_HINT: Record<AccountCategory, string> = {
+  cash_bank: "Kas di laci, rekening bank, dan saldo yang menunggu diteruskan.",
+  piutang_dagang: "Tagihan ke pelanggan yang belum dibayar.",
+  persediaan: "Barang dagangan yang masih di gudang.",
+  aset_lancar_lainnya:
+    "Aset lancar di luar tiga di atas — misalnya PPN Masukan atau uang muka.",
+  aset_tetap:
+    "Barang pakai jangka panjang: kendaraan, peralatan, renovasi. Penyusutan belum dihitung sistem.",
+  investasi_jangka_panjang: "Penempatan dana jangka panjang di luar usaha.",
+  hutang_dagang: "Utang ke supplier atas barang yang dibeli.",
+  hutang_lainnya:
+    "Kewajiban jangka pendek lain — utang gaji, PPN Keluaran, utang komisi.",
+  hutang_jangka_panjang: "Pinjaman yang jatuh temponya lebih dari setahun.",
+  modal: "Modal disetor pemilik. Laba berjalan masuk sendiri, tidak perlu akun.",
+  pendapatan:
+    "Penjualan utama — barang dan jasa. Diskon dan retur ikut di sini sebagai pengurang.",
+  hpp: "Harga pokok barang atau jasa yang terjual. Dipotong dari pendapatan jadi laba kotor.",
+  biaya: "Biaya operasional harian: gaji, sewa, listrik, pemasaran, komisi.",
+  pendapatan_lainnya:
+    "Pemasukan di luar penjualan utama — ongkos kirim yang ditagih di faktur, selisih opname yang plus.",
+  biaya_lainnya:
+    "Biaya di luar operasional — biaya bank, biaya lain di faktur, selisih opname yang minus.",
+};
+
+/**
  * Tones follow the balance sheet, not decoration: what the business owns reads
  * one way, what it owes another, and the two P&L classes are the pair a shop
  * owner compares — income against expense.
@@ -40,6 +154,18 @@ export const ACCOUNT_TYPE_TONE: Record<AccountType, string> = {
   income: "bg-tint-success text-success",
   expense: "bg-tint-neutral text-muted",
 };
+
+/**
+ * A category's badge tone INHERITS ITS CLASS's, deliberately.
+ *
+ * Fifteen distinct colours would make the chart a paint chart: nobody can hold
+ * fifteen hues in mind, and the distinction people actually read off a colour is
+ * the one below — what the business owns, what it owes, what it earned, what it
+ * spent. The category is already spelled out in the badge's own text.
+ */
+export function accountCategoryTone(category: AccountCategory): string {
+  return ACCOUNT_TYPE_TONE[accountTypeOf(category)];
+}
 
 /**
  * Where an entry came from. `manual` is the only one a person typed; the rest
@@ -65,7 +191,10 @@ export const SOURCE_LABEL: Record<JournalSourceType, string> = {
   commission_payment: "Bayar komisi",
   expense: "Pengeluaran",
   other_income: "Pemasukan lain",
-  manual: "Manual",
+  // "Jurnal manual", the mockup's word — and not bare "Manual", which the
+  // Kas & Bank list already uses for a hand-typed TRANSACTION. A journal list
+  // that said "Manual" too would put one word on two different things.
+  manual: "Jurnal manual",
 };
 
 /**

@@ -331,14 +331,27 @@ describe("filterNavItems", () => {
     ).toBeDefined();
   });
 
-  it("shows Keuangan on the chart-of-accounts grant alone", () => {
-    // Daftar Akun is a tab, so the role that may read it needs the way in.
+  /**
+   * THE CHART OF ACCOUNTS LEFT KEUANGAN on 20 September 2026 — it is a
+   * Pengaturan row now, per the BO mockup.
+   *
+   * So the grant that opens it stopped opening Keuangan: nothing under
+   * /keuangan is readable with it any more, and a row leading to a hub of cards
+   * the reader may not open is a row that only disappoints. The two halves are
+   * asserted together, because the point is the MOVE and not either fact alone.
+   */
+  it("moves the chart-of-accounts grant from Keuangan to Pengaturan", () => {
     const onlyAccounts: CanFn = (feature, action) =>
       feature === "chartOfAccounts" && action === "read";
 
+    const items = itemsOf(onlyAccounts);
+
+    expect(items.find((i) => i.label === "Keuangan")).toBeUndefined();
+
+    const settings = items.find((i) => i.label === "Pengaturan");
     expect(
-      itemsOf(onlyAccounts).find((i) => i.label === "Keuangan"),
-    ).toBeDefined();
+      settings?.children?.find((child) => child.label === "Daftar Akun")?.href,
+    ).toBe("/dashboard/pengaturan/daftar-akun");
   });
 
   it("does not offer Keuangan on the payroll grant alone", () => {

@@ -1,16 +1,22 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { Fragment, useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Ban,
   ChevronDown,
   ChevronRight,
+  CircleCheck,
   EllipsisVertical,
+  Lock,
   Pencil,
   RotateCcw,
 } from "lucide-react";
 
-import { Alert, HighlightText, Spinner } from "@/components";
+import { Alert, HighlightText, Pagination, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -28,36 +34,62 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import type { AccountType, ChartOfAccount } from "@/types/accounting";
-import { normalBalanceOf } from "@/types/accounting";
+import { ApiError } from "@/services/api-error";
+import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import { swalToast } from "@/lib/swal";
+import type {
+  AccountCategory,
+  AccountType,
+  AllocationType,
+  ChartOfAccount,
+} from "@/types/accounting";
 
 import {
   compareAccounts,
   DEFAULT_ACCOUNT_SORT,
+  SORT_BY_COLUMN,
+  sortState,
   type AccountSort,
+  type SortColumn,
 } from "../accountSort";
-import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
-import { useBusinessLines } from "../hooks/useBusinessLines";
 import {
-  ACCOUNT_TYPES,
+  ALLOCATION_TYPE_LABEL,
+  allocationState,
+  canEditAllocations,
+  countByType,
+  describeAllocation,
+  needsNoAllocation,
+  shapeNote,
+  tenantShape,
+} from "../allocationLabels";
+import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
+import { useAllocationTargets } from "../hooks/useAllocationTargets";
+import {
+  accountCategoryTone,
+  ACCOUNT_CATEGORY_LABEL,
   ACCOUNT_TYPE_LABEL,
-  ACCOUNT_TYPE_TONE,
 } from "../labels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
-import { AccountingModuleHeader } from "./AccountingModuleHeader";
+import { AccountAllocationPanel } from "./AccountAllocationPanel";
 import { ChartOfAccountsToolbar } from "./ChartOfAccountsToolbar";
 
 /**
- * Everything the toolbar and the tile row set between them.
- *
- * ONE OBJECT rather than four `useState`s, so the toolbar takes a value and a
- * patch setter exactly as ProductsToolbar does — and so a control added later
- * lands in one place instead of three.
+ * Everything the toolbar sets. ONE OBJECT rather than five `useState`s, so the
+ * toolbar takes a value and a patch setter exactly as ProductsToolbar does — and
+ * so a control added later lands in one place instead of three.
  */
 export interface ChartOfAccountsQuery {
   search: string;
-  /** "" is "semua tipe" — the unset convention the filter layer uses. */
+  /**
+   * "" is "semua tipe". COARSER THAN THE CATEGORY and kept as its own filter
+   * anyway: five groups is how somebody reads a long chart when they do not yet
+   * know which of the fifteen they want ("show me everything that is a Beban").
+   */
   accountType: AccountType | "";
+  /** "" is "semua kategori" — the unset convention the filter layer uses. */
+  accountCategory: AccountCategory | "";
+  /** "" is any; `"unmapped"` is the one state somebody has to act on. */
+  allocation: AllocationType | "unmapped" | "";
   showInactive: boolean;
   sort: AccountSort;
 }
@@ -65,80 +97,147 @@ export interface ChartOfAccountsQuery {
 const DEFAULT_QUERY: ChartOfAccountsQuery = {
   search: "",
   accountType: "",
+  accountCategory: "",
+  allocation: "",
   showInactive: false,
   sort: DEFAULT_ACCOUNT_SORT,
 };
 
+const PAGE_SIZE = 25;
+
 /**
- * The tenant's chart of accounts, as a tree, read from
- * GET /chart-of-accounts/tree through `useChartOfAccounts`.
+ * The tenant's chart of accounts, and the screen where Pendapatan and Beban are
+ * mapped to the lines that will carry them in the laba rugi.
  *
- * A TREE AND NOT A FLAT TABLE, because the numbering IS the structure: 1201 is
- * only meaningful under 1200 Persediaan, which is only meaningful under 1000
- * Aset. Rendering the same rows sorted by code loses the one relationship a COA
- * exists to express, and it is the relationship the backend spends a depth check
- * and a cycle check protecting.
+ * A FLAT, PAGED TABLE — it used to be a tree grouped under the fifteen category
+ * headings. Both changes came from the BO mockup, and both are worth stating
+ * because the tree was deliberate:
  *
- * THE TOP LEVEL IS THE ACCOUNT CLASS, and it is a GROUPING RATHER THAN AN
- * ACCOUNT. The seeded chart (backend seeds/defaultAccounts.js) is deliberately
- * flat — twelve root accounts, no 1000 Aset above them — so a tenant that has
- * not built its own hierarchy would otherwise read as twelve unrelated rows in
- * which 1101 Kas and 5101 HPP sit at the same level. Grouping by `accountType`
- * is the one division that is true of every chart, seeded or hand-built.
+ *   THE CHEVRON HAD TO MEAN ONE THING. A row now opens to reveal its Detil Akun,
+ *   which is the point of the screen. A second chevron on the same row, folding
+ *   sub-accounts, would be two controls that look identical and do unrelated
+ *   things. The hierarchy survives as INDENTATION on the code column — the one
+ *   thing it was there to show — and the seeded chart is flat anyway (26 root
+ *   accounts, no 1000 Aset above them).
  *
- * The class row is deliberately NOT rendered as an account: no code, no status,
- * no source. Drawing "1000 Aset" there would invent a record that does not
- * exist, cannot be edited, and would collide the day a tenant creates a real
- * 1000. Whatever hierarchy the tenant HAS built — `parentAccountId`, which the
- * API already nests — is rendered underneath it, unchanged.
+ *   PAGING AND CATEGORY HEADINGS CANNOT BOTH BE RIGHT. A group cut in half by a
+ *   page boundary is worse than no grouping, so the heading went and the
+ *   category stayed as a column and a filter — which is what people were reading
+ *   it for.
  *
- * EVERY FILTER IS LOCAL. The request is made once and asks for the whole live
- * chart — see the hook for why narrowing it server-side would break both the
- * per-class counts and the tree itself.
+ * EVERY FILTER IS LOCAL, including the paging. The request is made once and asks
+ * for the whole live chart — see the hook for why narrowing it server-side would
+ * break the per-category counts. A chart is tens to low hundreds of rows, so
+ * slicing a page out of one already in hand costs nothing a round trip would not
+ * cost more.
  *
- * THE NORMAL BALANCE COLUMN IS DERIVED, never stored — assets and expenses grow
- * on the debit side, everything else on the credit side. It is here because it
- * is the fact somebody needs when they are staring at a journal form wondering
- * which column an amount belongs in, and it is not obvious from the name.
- *
- * SEARCH KEEPS ANCESTORS. Matching "PPN" and rendering the two matches alone
- * would show them floating at the root, implying they are top-level accounts. So
- * a match drags its parents along, greyed out via `matched=false`, and the tree
- * stays readable as a tree.
+ * ALLOCATION IS NOT OFFERED TO EVERY ACCOUNT, and the three ways it is withheld
+ * are three different facts, kept apart by `allocationState`: an asset can never
+ * have a line (Tidak berlaku), a tenant with one line and one branch has nothing
+ * to divide (Tidak perlu alokasi), and a Pendapatan or Beban account nobody has
+ * mapped is the one case somebody must act on (Belum Dipetakan, in orange —
+ * §4's "a human must act").
  */
 export function ChartOfAccountsScreen() {
   const { accounts, byId, loading, error, refetch } = useChartOfAccounts();
-  // Names for the ids the accounts carry. Fails softly — `businessLines:read`
-  // is its own grant, and a column of em dashes is a better answer than a screen
-  // that refuses to render the chart over a label.
-  const { lines: businessLines } = useBusinessLines();
+  /**
+   * The lines and branches a rule can point at, and — before that — how many of
+   * each this tenant has, which decides whether the feature is shown at all.
+   *
+   * Fails softly: `businessLines:read` and `branches:read` are their own grants,
+   * and a chart of accounts that refused to render over a missing label would be
+   * a screen broken by a permission it does not need.
+   */
+  const { businessLines, branches } = useAllocationTargets();
+
+  const shape = useMemo(
+    () => tenantShape(businessLines.length, branches.length),
+    [businessLines.length, branches.length],
+  );
+
   const lineNames = useMemo(
     () => new Map(businessLines.map((line) => [line._id, line.name])),
     [businessLines],
   );
+  const branchNames = useMemo(
+    () => new Map(branches.map((branch) => [branch._id, branch.name])),
+    [branches],
+  );
 
   const [query, setQuery] = useState<ChartOfAccountsQuery>(DEFAULT_QUERY);
-  /**
-   * What is folded shut — account ids, plus a `groupKey()` per class. One set
-   * rather than two because both answer the same question at render time, and a
-   * class key ("tipe:asset") cannot collide with a 24-character ObjectId.
-   */
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
+  /** Which row is open. ONE AT A TIME — see `toggleRow`. */
+  const [openAccountId, setOpenAccountId] = useState<string | null>(null);
+  /** The account whose status is mid-flight, so its badge can be disabled. */
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const { can } = usePermissions();
 
-  const patchQuery = useCallback(
-    (patch: Partial<ChartOfAccountsQuery>) =>
-      setQuery((prev) => ({ ...prev, ...patch })),
-    [],
-  );
+  /**
+   * Re-order on a header click: a new column opens ascending, the current one
+   * flips.
+   *
+   * ASCENDING FIRST because every column here reads that way — 1101 upward, A to
+   * Z, category 110 upward — so the first click gives the ordering somebody
+   * meant and the second gives the other one. Paging returns to 1: the rows on
+   * page 3 of one ordering have nothing to do with page 3 of another.
+   */
+  const sortBy = useCallback((column: SortColumn) => {
+    setQuery((previous) => {
+      const current = sortState(previous.sort);
+      const pair = SORT_BY_COLUMN[column];
+
+      return {
+        ...previous,
+        sort:
+          current.column === column && current.ascending ? pair.desc : pair.asc,
+      };
+    });
+    setPage(1);
+  }, []);
+
+  const patchQuery = useCallback((patch: Partial<ChartOfAccountsQuery>) => {
+    setQuery((previous) => ({ ...previous, ...patch }));
+    // Any narrowing returns to page 1 — otherwise a filter that shrinks the list
+    // strands somebody on a page that no longer exists.
+    setPage(1);
+  }, []);
 
   const term = query.search.trim().toLowerCase();
-  const { accountType: type, showInactive, sort } = query;
 
-  const { rows, matchCount, shownCount } = useMemo(
-    () => buildRows({ accounts, byId, term, type, showInactive, sort, collapsed }),
-    [accounts, byId, term, type, showInactive, sort, collapsed],
-  );
+  const filtered = useMemo(() => {
+    const matches = accounts.filter((account) => {
+      if (query.accountType !== "" && account.accountType !== query.accountType) {
+        return false;
+      }
+      if (
+        query.accountCategory !== "" &&
+        account.accountCategory !== query.accountCategory
+      ) {
+        return false;
+      }
+      if (!query.showInactive && !account.isActive) return false;
+      if (!matchesAllocation(account, query.allocation, shape)) return false;
+      if (!term) return true;
+      return (
+        account.code.toLowerCase().includes(term) ||
+        account.name.toLowerCase().includes(term)
+      );
+    });
+
+    return matches.sort(compareAccounts(query.sort));
+  }, [accounts, query, term, shape]);
+
+  const countsByCategory = useMemo(() => {
+    const counts = new Map<AccountCategory, number>();
+    for (const account of accounts) {
+      counts.set(
+        account.accountCategory,
+        (counts.get(account.accountCategory) ?? 0) + 1,
+      );
+    }
+    return counts;
+  }, [accounts]);
 
   const countsByType = useMemo(() => {
     const counts = new Map<AccountType, number>();
@@ -148,32 +247,141 @@ export function ChartOfAccountsScreen() {
     return counts;
   }, [accounts]);
 
+  const unmappedCount = useMemo(
+    () =>
+      accounts.filter(
+        (account) => allocationState(account, shape).kind === "unmapped",
+      ).length,
+    [accounts, shape],
+  );
+
   const inactiveCount = accounts.filter((account) => !account.isActive).length;
 
-  // The column exists only when somebody could act in it — a read-only role
-  // gets no empty column, the same per-row reasoning CategoriesTable applies.
-  const showActions = can("chartOfAccounts", "update");
-  const columnCount = showActions ? 8 : 7;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const visible = filtered.slice(
+    (safePage - 1) * PAGE_SIZE,
+    safePage * PAGE_SIZE,
+  );
+
+  /**
+   * ONE ROW OPEN AT A TIME. Each panel holds an unsaved draft, so two open rows
+   * are two drafts somebody can forget about — and the second Simpan would look
+   * like it saved both.
+   */
+  const toggleRow = (accountId: string) =>
+    setOpenAccountId((current) => (current === accountId ? null : accountId));
+
+  /**
+   * Flip an account between active and inactive, from the row's kebab.
+   *
+   * IN THE ROW RATHER THAN INSIDE THE EDIT FORM: retiring an account is the
+   * single most common edit anybody makes here, and it needed a page load, a
+   * form and a save.
+   *
+   * IN THE MENU RATHER THAN ON THE BADGE. The first cut made the status badge
+   * itself the button, which is one click and was the wrong one click: a badge
+   * that acts cannot be told apart from a badge that only reports, so reading
+   * down the Status column became something you could do damage with. A named
+   * menu row ("Nonaktifkan akun") says what will happen before it happens, and
+   * costs a deliberate second click.
+   *
+   * NO CONFIRM DIALOG, though. Nothing is destroyed — an inactive account still
+   * explains every journal line that names it — and the same menu row undoes it.
+   *
+   * DEACTIVATING TURNS ON "Tampilkan akun nonaktif" WHEN IT WAS OFF, and that
+   * is not a convenience — without it the control is a trap. The list hides
+   * inactive accounts by default, so the row a person just pressed vanishes at
+   * the moment they press it, taking the only way to undo it with it: the badge
+   * they would press again is no longer on screen, and nothing tells them the
+   * filter is why. An action must not hide its own undo.
+   *
+   * It widens the list to every inactive account, not just this one — the same
+   * thing the panel's toggle does, because it IS the panel's toggle. The `Filter
+   * (n)` badge goes up with it, which is what keeps the change honest, and the
+   * toast says it happened so it does not read as the list misbehaving.
+   */
+  async function toggleStatus(account: ChartOfAccount) {
+    setTogglingId(account._id);
+    setActionError(null);
+
+    try {
+      await chartOfAccountsService.update(account._id, {
+        isActive: !account.isActive,
+      });
+
+      const deactivated = account.isActive;
+      const wouldVanish = deactivated && !query.showInactive;
+
+      if (wouldVanish) {
+        // Not through `patchQuery`: that resets to page 1, and somebody on page
+        // 3 pressed a badge, not a filter. `safePage` clamps if the list shrinks.
+        setQuery((previous) => ({ ...previous, showInactive: true }));
+      }
+
+      swalToast(
+        !deactivated
+          ? `${account.code} diaktifkan.`
+          : wouldVanish
+            ? `${account.code} dinonaktifkan. Akun nonaktif ikut ditampilkan supaya bisa diaktifkan lagi.`
+            : `${account.code} dinonaktifkan.`,
+      );
+      refetch();
+    } catch (caught) {
+      setActionError(
+        caught instanceof ApiError
+          ? caught.message
+          : "Gagal mengubah status akun. Coba lagi.",
+      );
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
+  const canUpdate = can("chartOfAccounts", "update");
+  const columnCount = canUpdate ? 7 : 6;
+  const note = shapeNote(shape);
 
   return (
     <div className="flex flex-col gap-6">
-      <AccountingModuleHeader />
+      {/*
+        ITS OWN HEADING, not the Keuangan module's tab row — the screen moved to
+        Pengaturan on 20 September 2026 and now sits beside Umum and Data Awal,
+        which each carry a plain h1 and no breadcrumb.
 
-      {/* What the module header cannot say, because it is on every tab: what
-          THIS list is. */}
-      <p className="max-w-2xl text-[15px] text-muted">
-        Fondasi pembukuan: setiap baris jurnal — penjualan, HPP, pembelian,
-        selisih opname — menunjuk salah satu akun di sini. Kode akun adalah
-        identitas yang dipakai modul lain, jadi kode akun bawaan tidak bisa
-        diubah.
-      </p>
+        NO BREADCRUMB, for the reason those two have none: /dashboard/pengaturan
+        has no page of its own, so the only ancestor a crumb could name is one
+        nobody can open. The nav's own highlight is what says where this is.
+      */}
+      <div>
+        <h1 className="text-2xl font-extrabold text-foreground">Daftar Akun</h1>
+      </div>
+
+      {/* What the Aturan Alokasi column is for, before anybody clicks a row.
+          Only where it applies: a tenant with one line and one branch gets the
+          note below instead, which says why the column is empty. */}
+      {!needsNoAllocation(shape) && (
+        <div className="rounded-xl border border-border bg-navy-100 p-4 text-sm">
+          <p className="font-bold text-foreground">
+            Cara kerja Aturan Alokasi
+          </p>
+          <p className="mt-1 text-foreground">
+            Hanya akun Pendapatan dan Beban yang perlu dipetakan, dan satu akun
+            bisa punya beberapa aturan sekaligus — klik barisnya untuk membuka
+            rinciannya. Contohnya Beban Gaji: staf grooming bisa Direct ke satu
+            lini, sekaligus staf admin yang Shared-Overall.
+          </p>
+        </div>
+      )}
+
+      {note && (
+        <Alert variant="info">
+          <span className="font-medium">Pilihannya menyesuaikan tenant ini.</span>{" "}
+          {note}
+        </Alert>
+      )}
 
       {error && (
-        // The retry lives HERE rather than on the toolbar: a chart of accounts
-        // is read once and only changes when somebody edits it, so a standing
-        // reload button would do nothing visible almost every time. A failed
-        // request is the one moment it is worth offering, and it is worth
-        // offering next to the sentence that says what went wrong.
         <Alert variant="error">
           <span className="flex flex-wrap items-center gap-3">
             {error}
@@ -185,10 +393,15 @@ export function ChartOfAccountsScreen() {
         </Alert>
       )}
 
+      {actionError && <Alert variant="error">{actionError}</Alert>}
+
       <ChartOfAccountsToolbar
         query={query}
         countsByType={countsByType}
+        countsByCategory={countsByCategory}
         inactiveCount={inactiveCount}
+        unmappedCount={unmappedCount}
+        shape={shape}
         onChange={patchQuery}
       />
 
@@ -208,22 +421,46 @@ export function ChartOfAccountsScreen() {
           </p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border bg-surface">
+        // `overflow-x-auto`, not `overflow-hidden`: seven columns do not fit a
+        // phone, and clipping them would hide the ones on the right with no way
+        // to reach them. The rounded corners survive either way.
+        <div className="overflow-x-auto rounded-xl border border-border bg-surface">
           <Table className={loading ? "opacity-60" : undefined}>
             <TableHeader>
               <TableRow>
-                <TableHead>Kode</TableHead>
-                <TableHead>Nama akun</TableHead>
-                <TableHead>Tipe</TableHead>
-                <TableHead>Saldo normal</TableHead>
-                <TableHead>Lini bisnis</TableHead>
-                <TableHead>Sumber</TableHead>
+                <SortableHead
+                  column="code"
+                  label="Kode"
+                  sort={query.sort}
+                  onSort={sortBy}
+                />
+                <SortableHead
+                  column="name"
+                  label="Nama akun"
+                  sort={query.sort}
+                  onSort={sortBy}
+                />
+                <SortableHead
+                  column="category"
+                  label="Kategori"
+                  sort={query.sort}
+                  onSort={sortBy}
+                />
+                <SortableHead
+                  column="type"
+                  label="Tipe akun"
+                  sort={query.sort}
+                  onSort={sortBy}
+                />
+                {/* Not sortable: a cell that is a badge, a phrase or a count of
+                    rules has no ordering anybody would ask for. */}
+                <TableHead>Aturan alokasi</TableHead>
                 <TableHead>Status</TableHead>
-                {showActions && <TableHead className="text-right">Aksi</TableHead>}
+                {canUpdate && <TableHead className="text-right">Aksi</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.length === 0 && (
+              {visible.length === 0 && (
                 <TableRow>
                   <TableCell
                     colSpan={columnCount}
@@ -233,229 +470,231 @@ export function ChartOfAccountsScreen() {
                       Tidak ada akun yang cocok
                     </p>
                     <p className="mt-1 text-sm text-muted">
-                      Coba kata kunci lain, atau ubah filter tipe akun.
+                      Coba kata kunci lain, atau ubah filternya.
                     </p>
                   </TableCell>
                 </TableRow>
               )}
 
-              {rows.map((row) => {
-                if (row.kind === "group") {
-                  const key = groupKey(row.accountType);
-                  const isCollapsed = collapsed.has(key);
-
-                  return (
-                    // One cell across the table: a class is not an account, so
-                    // it fills no account column. See the header.
-                    //
-                    // NO FILL, and both of ui/table's own fills switched off to
-                    // get there. `has-aria-expanded:bg-muted/50` (table.tsx) is
-                    // the one that matters: this row holds the chevron button,
-                    // so that rule matched, and a `:has()` selector outranks a
-                    // plain `bg-*` class — which is why every background set
-                    // here before this was painted over and never seen.
-                    //
-                    // Hover goes too. Without a fill, the stock row hover would
-                    // be the only tint the heading ever shows, which is exactly
-                    // backwards: it would light up as though it were clickable
-                    // when only its chevron is.
-                    <TableRow
-                      key={key}
-                      className="hover:bg-transparent has-aria-expanded:bg-transparent"
-                    >
-                      <TableCell colSpan={columnCount} className="px-4 py-2">
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => toggle(setCollapsed, key)}
-                            aria-expanded={!isCollapsed}
-                            aria-label={
-                              isCollapsed
-                                ? `Buka kelompok ${ACCOUNT_TYPE_LABEL[row.accountType]}`
-                                : `Tutup kelompok ${ACCOUNT_TYPE_LABEL[row.accountType]}`
-                            }
-                            className="rounded-md text-muted transition-colors hover:text-foreground focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-                          >
-                            {isCollapsed ? (
-                              <ChevronRight className="size-4" />
-                            ) : (
-                              <ChevronDown className="size-4" />
-                            )}
-                          </button>
-                          <span className="text-sm font-bold text-foreground">
-                            {ACCOUNT_TYPE_LABEL[row.accountType]}
-                          </span>
-                          <span className="text-xs text-muted tabular-nums">
-                            · {row.count} akun · saldo normal{" "}
-                            {normalBalanceOf(row.accountType) === "debit"
-                              ? "debit"
-                              : "kredit"}
-                          </span>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                }
-
-                const { account, depth, hasChildren, matched } = row;
-                const isCollapsed = collapsed.has(account._id);
+              {visible.map((account) => {
+                const state = allocationState(account, shape);
+                const expandable = canEditAllocations(state);
+                const open = openAccountId === account._id;
 
                 return (
-                  <TableRow
-                    key={account._id}
-                    className={cn(
-                      // A parent dragged in only to keep a match in place is
-                      // context, not a result — it reads quieter than its child.
-                      !matched && "text-muted",
-                      // An account with sub-accounts carries a chevron, so
-                      // ui/table's `has-aria-expanded:bg-muted/50` would tint it
-                      // grey for no reason a reader could name — and would
-                      // outrank the deactivated tint next to it, since a
-                      // `:has()` selector beats a plain class. Both cases
-                      // therefore restate what the row's fill should be under
-                      // the same variant. Not reachable with the seeded chart,
-                      // which is flat, but it is one tenant-made parent account
-                      // away.
-                      account.isActive
-                        ? "has-aria-expanded:bg-transparent"
-                        : "bg-surface-hover has-aria-expanded:bg-surface-hover",
-                    )}
-                  >
-                    <TableCell className="px-4 py-2.5">
-                      <div
-                        className="flex items-center gap-1.5"
-                        style={{ paddingLeft: `${depth * 18}px` }}
-                      >
-                        {hasChildren ? (
-                          <button
-                            type="button"
-                            onClick={() => toggle(setCollapsed, account._id)}
-                            aria-expanded={!isCollapsed}
-                            aria-label={
-                              isCollapsed
-                                ? `Buka sub-akun ${account.code}`
-                                : `Tutup sub-akun ${account.code}`
-                            }
-                            className="rounded-md text-muted transition-colors hover:text-foreground focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-                          >
-                            {isCollapsed ? (
-                              <ChevronRight className="size-4" />
-                            ) : (
-                              <ChevronDown className="size-4" />
-                            )}
-                          </button>
-                        ) : (
-                          <span className="size-4" aria-hidden="true" />
-                        )}
-                        <span
-                          className={cn(
-                            "text-sm tabular-nums",
-                            hasChildren && "font-semibold text-foreground",
-                          )}
-                        >
-                          <HighlightText text={account.code} query={term} />
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell
+                  // The row and its panel are two <tr>s, so they need a wrapper
+                  // that renders no element of its own — a <div> between <tbody>
+                  // and <tr> is invalid HTML and browsers hoist it out.
+                  <Fragment key={account._id}>
+                    <TableRow
                       className={cn(
-                        "px-4 py-2.5 text-sm",
-                        hasChildren ? "font-semibold" : "font-medium",
+                        // A chevron in the row makes ui/table's
+                        // `has-aria-expanded:bg-muted/50` match, which would
+                        // tint every mappable row grey for no reason a reader
+                        // could name — and would outrank the deactivated tint
+                        // beside it, since a `:has()` selector beats a plain
+                        // class. Both cases therefore restate the fill.
+                        account.isActive
+                          ? "has-aria-expanded:bg-transparent"
+                          : "bg-surface-hover has-aria-expanded:bg-surface-hover",
+                        open && "bg-navy-100 has-aria-expanded:bg-navy-100",
                       )}
                     >
-                      <HighlightText text={account.name} query={term} />
-                    </TableCell>
-                    <TableCell className="px-4 py-2.5">
-                      <span
-                        className={cn(
-                          "rounded-full px-2 py-0.5 text-xs font-medium",
-                          ACCOUNT_TYPE_TONE[account.accountType],
-                        )}
-                      >
-                        {ACCOUNT_TYPE_LABEL[account.accountType]}
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-4 py-2.5 text-xs text-muted">
-                      {normalBalanceOf(account.accountType) === "debit"
-                        ? "Debit"
-                        : "Kredit"}
-                    </TableCell>
-                    {/*
-                      Shown in the list because this is where a missing mapping
-                      becomes visible: a column of em dashes is the usual answer
-                      to "kenapa laporan per lini kosong".
-                    */}
-                    <TableCell className="px-4 py-2.5 text-xs text-muted">
-                      {lineNames.get(account.businessLineId ?? "") ?? "—"}
-                    </TableCell>
-                    <TableCell className="px-4 py-2.5 text-xs text-muted">
-                      {account.isDefault ? (
-                        <span title="Akun bawaan tenant — kode dan tipenya tidak bisa diubah, dan tidak bisa dihapus.">
-                          Bawaan sistem
-                        </span>
-                      ) : (
-                        "Dibuat manual"
-                      )}
-                    </TableCell>
-                    <TableCell className="px-4 py-2.5">
-                      {account.isActive ? (
-                        <span className="rounded-full bg-tint-success px-2 py-0.5 text-xs font-medium text-success">
-                          Aktif
-                        </span>
-                      ) : (
-                        <span
-                          className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted"
-                          title="Masih menjelaskan jurnal lama, tapi tidak ditawarkan untuk posting baru."
-                        >
-                          Nonaktif
-                        </span>
-                      )}
-                    </TableCell>
-                    {showActions && (
                       <TableCell className="px-4 py-2.5">
-                        <div className="flex justify-end">
+                        <div
+                          className="flex items-center gap-1.5"
+                          style={{ paddingLeft: `${depthOf(account, byId) * 18}px` }}
+                        >
+                          <span className="text-sm tabular-nums">
+                            <HighlightText text={account.code} query={term} />
+                          </span>
                           {/*
-                            The same kebab every other list uses — SuppliersTable
-                            and CategoriesTable — so a row means the same thing
-                            wherever it is read. It holds one item today: Edit.
-                            Deleting an account is refused for every seeded one
-                            and for any account a live journal line still points
-                            at, so what people actually want is to retire it,
-                            which is the Aktif switch inside the form.
+                            THE "SUMBER" COLUMN, COMPRESSED TO AN ICON. The BO
+                            mockup has five columns and no such column, but
+                            dropping the fact outright would mean somebody only
+                            learns a code is frozen when the server refuses to
+                            change it. A seeded account cannot be renumbered,
+                            recategorised or deleted, so it is a property of the
+                            CODE and belongs beside it.
 
-                            The trigger's icon carries no name of its own, so the
-                            label says which row this menu belongs to — twenty
-                            identical "Aksi" buttons tell a screen-reader user
-                            nothing.
+                            The icon carries a title rather than standing alone —
+                            §1.3's rule about colour is the same rule about shape:
+                            a mark nobody can name is not a status.
                           */}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                aria-label={`Aksi untuk ${account.code} ${account.name}`}
-                              >
-                                <EllipsisVertical className="size-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-
-                            <DropdownMenuContent>
-                              <Can feature="chartOfAccounts" action="update">
-                                <DropdownMenuItem asChild>
-                                  <Link
-                                    href={`${ACCOUNTING_CRUMBS.accounts.href}/${account._id}/edit`}
-                                  >
-                                    <Pencil />
-                                    Edit
-                                  </Link>
-                                </DropdownMenuItem>
-                              </Can>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {account.isDefault && (
+                            <Lock
+                              className="size-3.5 shrink-0 text-muted"
+                              aria-label="Akun bawaan sistem"
+                            >
+                              <title>
+                                Akun bawaan sistem — kode dan kategorinya tidak
+                                bisa diubah, dan tidak bisa dihapus.
+                              </title>
+                            </Lock>
+                          )}
                         </div>
                       </TableCell>
+
+                      <TableCell className="px-4 py-2.5 text-sm font-medium">
+                        <HighlightText text={account.name} query={term} />
+                      </TableCell>
+
+                      <TableCell className="px-4 py-2.5">
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-xs font-medium",
+                            accountCategoryTone(account.accountCategory),
+                          )}
+                        >
+                          {ACCOUNT_CATEGORY_LABEL[account.accountCategory]}
+                        </span>
+                      </TableCell>
+
+                      {/*
+                        THE CLASS, AS PLAIN TEXT BESIDE THE BADGE. Two badges on
+                        one row would read as two statuses of equal weight, and
+                        they are not: the category is what the tenant chose and
+                        what the reports group by, the class is derived from it.
+                        Its own column because it is now sortable — five groups
+                        is the coarsest useful way to read a long chart.
+                      */}
+                      <TableCell className="px-4 py-2.5 text-sm text-muted">
+                        {ACCOUNT_TYPE_LABEL[account.accountType]}
+                      </TableCell>
+
+                      <TableCell className="px-4 py-2.5">
+                        {expandable ? (
+                          <button
+                            type="button"
+                            onClick={() => toggleRow(account._id)}
+                            aria-expanded={open}
+                            className="flex items-center gap-1.5 rounded-md text-left text-sm text-foreground transition-colors hover:text-primary focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                          >
+                            {open ? (
+                              <ChevronDown className="size-4 shrink-0 text-muted" />
+                            ) : (
+                              <ChevronRight className="size-4 shrink-0 text-muted" />
+                            )}
+                            <AllocationSummary
+                              account={account}
+                              shape={shape}
+                              lineNames={lineNames}
+                              branchNames={branchNames}
+                            />
+                          </button>
+                        ) : (
+                          <span className="text-sm text-muted">
+                            {state.kind === "notApplicable"
+                              ? "Tidak berlaku"
+                              : "Tidak perlu alokasi"}
+                          </span>
+                        )}
+                      </TableCell>
+
+                      {/*
+                        A STATUS, NOT A BUTTON. It was briefly clickable — the
+                        fastest possible route to the commonest edit here — and
+                        that was wrong for the reason §9 gives about badges
+                        generally: a badge that acts is indistinguishable from
+                        one that only reports, so a column of them turns a glance
+                        down the chart into a minefield. Retiring an account is
+                        now a named row in the kebab, where it takes a deliberate
+                        second click and says what it will do first.
+                      */}
+                      <TableCell className="px-4 py-2.5">
+                        <span
+                          title={
+                            account.isActive
+                              ? undefined
+                              : "Masih menjelaskan jurnal lama, tapi tidak ditawarkan untuk posting baru."
+                          }
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-xs font-medium",
+                            account.isActive
+                              ? "bg-tint-success text-success"
+                              : "bg-tint-neutral text-muted",
+                          )}
+                        >
+                          {account.isActive ? "Aktif" : "Nonaktif"}
+                        </span>
+                      </TableCell>
+
+                      {canUpdate && (
+                        <TableCell className="px-4 py-2.5">
+                          <div className="flex justify-end">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  aria-label={`Aksi untuk ${account.code} ${account.name}`}
+                                >
+                                  <EllipsisVertical className="size-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+
+                              <DropdownMenuContent>
+                                <Can feature="chartOfAccounts" action="update">
+                                  <DropdownMenuItem asChild>
+                                    <Link
+                                      href={`${ACCOUNTING_CRUMBS.accounts.href}/${account._id}/edit`}
+                                    >
+                                      <Pencil />
+                                      Edit akun
+                                    </Link>
+                                  </DropdownMenuItem>
+                                </Can>
+                                <Can feature="chartOfAccounts" action="update">
+                                  {/*
+                                    NOT `destructive`, though it is the row that
+                                    changes something: nothing is destroyed. The
+                                    account keeps explaining every journal line
+                                    that names it; it simply stops being offered
+                                    for new ones, and pressing this again undoes
+                                    it. Danger styling here would cry wolf on the
+                                    one screen where a real refusal (deleting an
+                                    account with history) has to stand out.
+                                  */}
+                                  <DropdownMenuItem
+                                    disabled={togglingId === account._id}
+                                    onSelect={() => toggleStatus(account)}
+                                  >
+                                    {account.isActive ? (
+                                      <>
+                                        <Ban />
+                                        Nonaktifkan akun
+                                      </>
+                                    ) : (
+                                      <>
+                                        <CircleCheck />
+                                        Aktifkan akun
+                                      </>
+                                    )}
+                                  </DropdownMenuItem>
+                                </Can>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </TableCell>
+                      )}
+                    </TableRow>
+
+                    {open && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={columnCount} className="p-3">
+                          <AccountAllocationPanel
+                            account={account}
+                            shape={shape}
+                            businessLines={businessLines}
+                            branches={branches}
+                            editable={canUpdate}
+                            onSaved={refetch}
+                            onClose={() => setOpenAccountId(null)}
+                          />
+                        </TableCell>
+                      </TableRow>
                     )}
-                  </TableRow>
+                  </Fragment>
                 );
               })}
             </TableBody>
@@ -464,176 +703,163 @@ export function ChartOfAccountsScreen() {
       )}
 
       {accounts.length > 0 && (
-        <p className="text-xs text-muted">
-          {term
-            ? `${matchCount} akun cocok dengan "${query.search.trim()}"`
-            : `${shownCount} akun ditampilkan dari ${accounts.length} akun`}
-        </p>
+        <Pagination
+          page={safePage}
+          totalPages={totalPages}
+          total={filtered.length}
+          unit="akun"
+          onPageChange={setPage}
+        />
       )}
-
     </div>
   );
 }
 
-/** One rendered line of the tree: an account, or the class heading above it. */
-type Row =
-  | {
-      kind: "group";
-      accountType: AccountType;
-      /** Every account of this class in the current filter, folded or not. */
-      count: number;
-    }
-  | {
-      kind: "account";
-      account: ChartOfAccount;
-      /** Nesting level under the class heading — drives the indent only. */
-      depth: number;
-      hasChildren: boolean;
-      /** False for an ancestor kept only so a matching child stays in place. */
-      matched: boolean;
-    };
+/**
+ * A column header that re-orders the table.
+ *
+ * THE ARROW IS ALWAYS THERE, greyed when the column is not the active one. An
+ * arrow that appears only on the sorted column says which ordering is on but not
+ * which columns could be clicked — and a control nobody can see is a control
+ * nobody uses. `aria-sort` carries the same fact to a screen reader, which the
+ * arrow alone cannot.
+ */
+function SortableHead({
+  column,
+  label,
+  sort,
+  onSort,
+}: {
+  column: SortColumn;
+  label: string;
+  sort: AccountSort;
+  onSort: (column: SortColumn) => void;
+}) {
+  const current = sortState(sort);
+  const active = current.column === column;
+  const Arrow = !active ? ArrowUpDown : current.ascending ? ArrowUp : ArrowDown;
 
-/** The collapsed-set key for a class heading. Cannot collide with an ObjectId. */
-function groupKey(accountType: AccountType): string {
-  return `tipe:${accountType}`;
+  return (
+    <TableHead
+      aria-sort={
+        active ? (current.ascending ? "ascending" : "descending") : "none"
+      }
+    >
+      <button
+        type="button"
+        onClick={() => onSort(column)}
+        className={cn(
+          "-mx-1 flex items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:text-foreground focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+          active && "text-foreground",
+        )}
+      >
+        {label}
+        <Arrow className={cn("size-3.5", !active && "opacity-40")} />
+      </button>
+    </TableHead>
+  );
 }
 
 /**
- * Flattens the chart into the rows the table renders, applying the filters.
+ * The Aturan Alokasi cell's text — one rule spelled out, or a count with a chip
+ * per kind.
  *
- * TWO LEVELS OF GROUPING, from two different places: the class heading is
- * derived here from `accountType`, and everything below it is the tenant's own
- * `parentAccountId` hierarchy exactly as the API nested it. A class with nothing
- * in it after filtering renders no heading at all — a heading over an empty
- * group reads as data that failed to load.
- *
- * COLLAPSE IS IGNORED WHILE SEARCHING, for a class heading as much as for a
- * branch. A hit hidden inside a folded group is a search that answers "nothing
- * found" while the thing is right there — so a search expands whatever it needs
- * to.
+ * "Belum Dipetakan" IS THE ONLY ORANGE THING ON THIS SCREEN, which is §4's rule
+ * working as intended: orange means a human must act, and this is the one state
+ * where one must. Every other cell here is a fact, not a task.
  */
-function buildRows({
-  accounts,
-  byId,
-  term,
-  type,
-  showInactive,
-  sort,
-  collapsed,
+function AllocationSummary({
+  account,
+  shape,
+  lineNames,
+  branchNames,
 }: {
-  accounts: ChartOfAccount[];
-  byId: Map<string, ChartOfAccount>;
-  term: string;
-  type: AccountType | "";
-  showInactive: boolean;
-  sort: AccountSort;
-  collapsed: Set<string>;
-}): { rows: Row[]; matchCount: number; shownCount: number } {
-  const matches = accounts.filter((account) => {
-    if (type !== "" && account.accountType !== type) return false;
-    if (!showInactive && !account.isActive) return false;
-    if (!term) return true;
+  account: ChartOfAccount;
+  shape: ReturnType<typeof tenantShape>;
+  lineNames: Map<string, string>;
+  branchNames: Map<string, string>;
+}) {
+  const state = allocationState(account, shape);
+
+  if (state.kind === "unmapped") {
     return (
-      account.code.toLowerCase().includes(term) ||
-      account.name.toLowerCase().includes(term)
+      <span className="rounded-full bg-tint-warning px-2 py-0.5 text-xs font-medium text-warning">
+        Belum dipetakan
+      </span>
     );
-  });
-
-  const matchedIds = new Set(matches.map((account) => account._id));
-
-  // Ancestors of every match come along, so a hit is never rendered as though it
-  // were a root account. They are marked `matched: false` and styled quieter.
-  const visible = new Set(matchedIds);
-  for (const account of matches) {
-    let parentId = account.parentAccountId;
-    while (parentId && !visible.has(parentId)) {
-      visible.add(parentId);
-      parentId = byId.get(parentId)?.parentAccountId ?? null;
-    }
   }
 
-  const childrenOf = new Map<string | null, ChartOfAccount[]>();
-  for (const account of accounts) {
-    if (!visible.has(account._id)) continue;
-    // An account whose parent was filtered out hangs from the root rather than
-    // vanishing — the same choice the backend's tree builder makes, and for the
-    // same reason: a missing account reads as a deleted one.
-    const parentId =
-      account.parentAccountId && visible.has(account.parentAccountId)
-        ? account.parentAccountId
-        : null;
-    const siblings = childrenOf.get(parentId) ?? [];
-    siblings.push(account);
-    childrenOf.set(parentId, siblings);
-  }
-
-  // The ordering lands HERE, on each set of siblings, and nowhere else — see
-  // compareAccounts for why sorting the chart flat would take every sub-account
-  // away from the account it belongs to. Applied even for the default by-code
-  // order, so what is on screen does not depend on the order the server happened
-  // to send.
-  const bySort = compareAccounts(sort);
-  for (const siblings of childrenOf.values()) siblings.sort(bySort);
-
-  const rows: Row[] = [];
-  let shownCount = 0;
-
-  // Takes the siblings rather than their parent's id, so the class headings can
-  // hand it one class's roots without the roots of the other four coming along.
-  const walk = (siblings: ChartOfAccount[], depth: number) => {
-    for (const account of siblings) {
-      const children = childrenOf.get(account._id) ?? [];
-      rows.push({
-        kind: "account",
-        account,
-        depth,
-        hasChildren: children.length > 0,
-        matched: matchedIds.has(account._id),
-      });
-      shownCount += 1;
-      // While searching, a folded branch still opens — see the header.
-      if (children.length > 0 && (term !== "" || !collapsed.has(account._id))) {
-        walk(children, depth + 1);
-      }
-    }
-  };
-
-  // ACCOUNT_TYPES is in the order the accounting equation reads — assets,
-  // liabilities, equity, then the two P&L classes — which is also the order the
-  // leading digit of every code puts them in.
-  const roots = childrenOf.get(null) ?? [];
-  for (const accountType of ACCOUNT_TYPES) {
-    const classRoots = roots.filter(
-      (account) => account.accountType === accountType,
+  if (state.kind === "single") {
+    return (
+      <span className="text-sm">
+        {describeAllocation(state.rule, lineNames, branchNames, shape)}
+      </span>
     );
-    if (classRoots.length === 0) continue;
-
-    // Counted over the whole class, not just its roots: the heading has to keep
-    // saying "5 akun" while the branches under it are folded shut.
-    const count = accounts.filter(
-      (account) =>
-        account.accountType === accountType && visible.has(account._id),
-    ).length;
-
-    rows.push({ kind: "group", accountType, count });
-
-    // A class heading is depth 0, so its accounts start one level in.
-    if (term !== "" || !collapsed.has(groupKey(accountType))) {
-      walk(classRoots, 1);
-    }
   }
 
-  return { rows, matchCount: matches.length, shownCount };
+  if (state.kind === "several") {
+    return (
+      <span className="flex flex-wrap items-center gap-1.5">
+        <span className="text-sm">{state.allocations.length} aturan</span>
+        {countByType(state.allocations).map(({ type, count }) => (
+          <span
+            key={type}
+            className="rounded-full bg-tint-info px-2 py-0.5 text-xs font-medium text-info"
+          >
+            {shape.branchCount > 1 || type === "direct"
+              ? ALLOCATION_TYPE_LABEL[type]
+              : "Shared"}{" "}
+            ×{count}
+          </span>
+        ))}
+      </span>
+    );
+  }
+
+  return null;
 }
 
-/** Adds or removes one id from the collapsed set, without mutating it. */
-function toggle(
-  setCollapsed: (updater: (previous: Set<string>) => Set<string>) => void,
-  id: string,
-) {
-  setCollapsed((previous) => {
-    const next = new Set(previous);
-    if (!next.delete(id)) next.add(id);
-    return next;
-  });
+/**
+ * How deep an account sits under its root, for the indent on the code column.
+ *
+ * Walks `parentAccountId` rather than being carried on the row, because the list
+ * is flat and a filter can remove an ancestor without removing its child. The
+ * walk is bounded by the backend's MAX_DEPTH of 4, and the extra guard is
+ * against a cycle the server refuses to write but a stale response could still
+ * describe.
+ */
+function depthOf(
+  account: ChartOfAccount,
+  byId: Map<string, ChartOfAccount>,
+): number {
+  let depth = 0;
+  let parentId = account.parentAccountId;
+
+  while (parentId && depth < 4) {
+    depth += 1;
+    parentId = byId.get(parentId)?.parentAccountId ?? null;
+  }
+
+  return depth;
+}
+
+/** Whether an account passes the Tipe Alokasi filter. */
+function matchesAllocation(
+  account: ChartOfAccount,
+  wanted: ChartOfAccountsQuery["allocation"],
+  shape: ReturnType<typeof tenantShape>,
+): boolean {
+  if (wanted === "") return true;
+
+  const state = allocationState(account, shape);
+
+  // Both filters are about accounts that CAN be mapped, so an asset never
+  // matches either — "unmapped" on a bank account would be a row nobody can act
+  // on, which is the opposite of what that filter is for.
+  if (wanted === "unmapped") return state.kind === "unmapped";
+  if (state.kind !== "single" && state.kind !== "several") return false;
+
+  return (account.allocations ?? []).some(
+    (rule) => rule.allocationType === wanted,
+  );
 }

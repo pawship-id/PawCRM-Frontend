@@ -6,27 +6,48 @@ import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { ApiError } from "@/services/api-error";
 import { branchService } from "@/services/branch.service";
 import { cashTransactionService } from "@/services/cashTransaction.service";
-import { paymentChannelService } from "@/services/paymentChannel.service";
+import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import type { ChartOfAccount } from "@/types/accounting";
 import type {
   Branch,
   CashTransaction,
   CashTransactionTotals,
   PageResult,
-  PaymentChannel,
 } from "@/types/api";
 
+import { CASH_ACCOUNT_CATEGORY } from "@/features/accounting";
+
+import { sourceKinds } from "../labels";
 import {
   DEFAULT_CASH_TRANSACTIONS_QUERY,
   type CashTransactionsQuery,
 } from "../query";
 
-const PAGE_SIZE = 20;
+/**
+ * What the rows-per-page control offers.
+ *
+ * STARTS AT 25, like Faktur Penjualan (20 September 2026, on request) — the two
+ * lists with a page size are read by the same person in the same sitting, and
+ * 10 rows of a cash book is half a screen.
+ *
+ * IT STOPS AT 100 WHERE FAKTUR GOES TO 200, and that is the server's rule, not a
+ * taste: `LIST_MAX_LIMIT` is 100 on `cashTransaction.model.js` and 200 on
+ * `customerInvoice.model.js`, so a 200 here would be rejected by Joi before the
+ * query ran. Raise it there first if it ever needs to match.
+ */
+export const CASH_TRANSACTION_PAGE_SIZES = [25, 50, 100];
 
 const EMPTY_PAGE: PageResult<CashTransaction>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_CASH_TRANSACTIONS_QUERY.limit,
   total: 0,
   totalPages: 0,
+};
+
+/** Σ 0 in and Σ 0 out — a real answer, for a filter nothing can match. */
+const EMPTY_TOTALS: CashTransactionTotals = {
+  in: { amount: "0.0000", count: 0 },
+  out: { amount: "0.0000", count: 0 },
 };
 
 export interface UseCashTransactionsResult {
@@ -41,7 +62,8 @@ export interface UseCashTransactionsResult {
   query: CashTransactionsQuery;
   /** Filter options. Empty when the user cannot read them — never an error. */
   branches: Branch[];
-  channels: PaymentChannel[];
+  /** For labelling the Akun Kas/Bank filter — inactive ones included. */
+  cashAccounts: ChartOfAccount[];
   loading: boolean;
   error: string | null;
   /** Merge a change; anything but `page` returns to page 1. */
@@ -59,7 +81,7 @@ export interface UseCashTransactionsResult {
  * THE TOTALS CLEAR ON A FILTER CHANGE, not on a page turn: they do not depend on
  * the page, and a stale figure under a new filter looks exactly like a right one.
  *
- * Branches and channels only label filters, so they are fetched once and fail
+ * Branches and kas/bank accounts only label filters, so they are fetched once and fail
  * quietly — a user may read transactions without `branches:read`.
  */
 export function useCashTransactions(
@@ -73,7 +95,7 @@ export function useCashTransactions(
   const [pagination, setPagination] = useState(EMPTY_PAGE);
   const [totals, setTotals] = useState<CashTransactionTotals | null>(null);
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [channels, setChannels] = useState<PaymentChannel[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<ChartOfAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -101,11 +123,11 @@ export function useCashTransactions(
       })
       .catch(() => undefined);
 
-    // Inactive channels included: last year's rows still name them.
-    paymentChannelService
-      .list({ limit: 100 })
+    // Inactive accounts included: last year's rows still name them.
+    chartOfAccountsService
+      .list({ accountCategory: CASH_ACCOUNT_CATEGORY, limit: 100 })
       .then((result) => {
-        if (active) setChannels(result.items);
+        if (active) setCashAccounts(result.items);
       })
       .catch(() => undefined);
 
@@ -118,11 +140,27 @@ export function useCashTransactions(
     let active = true;
     const search = settled.search.trim();
 
-    // Everything that narrows the set — the page and the ordering do not.
+    /*
+      SUMBER IS EXPANDED HERE, because the server filters by `kind` and Sumber
+      is a group of kinds ("Manual" is expense + other_income).
+
+      A SOURCE WITH NO KINDS MATCHES NOTHING, and the request is not made at all.
+      `transfer` is the only one today — the mockup draws it and this system has
+      no such transaction. Sending no `kind` would ask for EVERY kind, which is
+      the opposite answer; sending `kind: []` would do the same, since the API
+      reads an absent filter and an empty one alike. Short-circuiting also keeps
+      a dead option from costing a round trip.
+    */
+    const kinds = settled.source ? sourceKinds(settled.source) : undefined;
+    const matchesNothing = kinds !== undefined && kinds.length === 0;
+
+    // Everything that narrows the set — the page, its size and the ordering do
+    // not. `totals` are Σ over the whole filtered set, so they survive all three.
     const filterKey = JSON.stringify({
       ...settled,
       search,
       page: undefined,
+      limit: undefined,
       sort: undefined,
     });
 
@@ -134,18 +172,28 @@ export function useCashTransactions(
     if (filterKey !== lastFilterKey.current) setTotals(null);
     lastFilterKey.current = filterKey;
 
+    if (matchesNothing) {
+      setTransactions([]);
+      setPagination({ ...EMPTY_PAGE, limit: settled.limit });
+      setTotals(EMPTY_TOTALS);
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
     cashTransactionService
       .list({
         page: settled.page,
-        limit: PAGE_SIZE,
+        limit: settled.limit,
         sort: settled.sort,
         search: search || undefined,
         direction: settled.direction || undefined,
-        kind: settled.kinds.length > 0 ? settled.kinds : undefined,
+        kind: kinds ? [...kinds] : undefined,
         dateFrom: settled.dateFrom || undefined,
         dateTo: settled.dateTo || undefined,
         branchId: settled.branchId || undefined,
-        channelId: settled.channelId || undefined,
+        accountId: settled.accountId || undefined,
         status: settled.status || undefined,
         documentId: settled.documentId || undefined,
       })
@@ -181,7 +229,7 @@ export function useCashTransactions(
     totals,
     query,
     branches,
-    channels,
+    cashAccounts,
     loading,
     error,
     setQuery,

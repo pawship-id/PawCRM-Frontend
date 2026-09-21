@@ -61,6 +61,102 @@ export function kindLabel(kind: CashTransactionKind): string {
   return KIND_LABEL[kind] ?? kind;
 }
 
+/**
+ * SUMBER — what produced the transaction. The Kas & Bank table's last column and
+ * its filter are BOTH built from this one table (BO mockup,
+ * `buloo-keuangan-v1.html`), so a column and a filter option can never drift
+ * into naming the same thing differently.
+ *
+ * NOT A SECOND SPELLING OF `KIND_LABEL`. Jenis answers "what kind of money is
+ * this" from the books' point of view — penerimaan piutang, pembayaran komisi.
+ * Sumber answers "where did this row come from", which is what somebody
+ * scanning a cash book for the thing they typed last Tuesday is actually asking:
+ * Manual is the one they can still edit, and every other value names a document
+ * elsewhere in the app that owns it.
+ *
+ * SUMBER IS COARSER THAN JENIS, which is the point and the reason the filter is
+ * a single select: `expense` and `other_income` are one Sumber ("Manual") because
+ * the question is "did I type this, or did a document make it", and the answer
+ * is the same for both.
+ *
+ * `transfer` HAS NO KINDS, and that is not an oversight. Money moved between two
+ * of the shop's own accounts is drawn in the mockup and DOES NOT EXIST in this
+ * system — nothing creates such a transaction. It is carried here on request
+ * (20 September 2026) so the filter matches the mockup, and an empty `kinds` is
+ * how the list knows to answer "none" rather than "all"; see the transfer
+ * short-circuit in `useCashTransactions`. Give it its kinds when the feature is
+ * built and everything below starts working on its own.
+ */
+const SOURCES = {
+  manual: { label: "Manual", kinds: ["expense", "other_income"] },
+  payment: { label: "Pembayaran", kinds: ["customer_payment"] },
+  purchase: { label: "Pembelian", kinds: ["supplier_payment"] },
+  return: { label: "Retur", kinds: ["pos_refund"] },
+  commission: { label: "Komisi", kinds: ["commission_payment"] },
+  transfer: { label: "Transfer", kinds: [] },
+} as const satisfies Record<
+  string,
+  { label: string; kinds: readonly CashTransactionKind[] }
+>;
+
+export type CashTransactionSource = keyof typeof SOURCES;
+
+/** The filter's options, in the order the mockup lists them. */
+export const CASH_TRANSACTION_SOURCES = Object.keys(
+  SOURCES,
+) as CashTransactionSource[];
+
+export function sourceFilterLabel(source: CashTransactionSource): string {
+  return SOURCES[source].label;
+}
+
+/** What `?source=` expands to on the wire. Empty means "nothing can match". */
+export function sourceKinds(
+  source: CashTransactionSource,
+): readonly CashTransactionKind[] {
+  return SOURCES[source].kinds;
+}
+
+/**
+ * Which Sumber a kind belongs to — how a legacy `?kind=commission_payment` deep
+ * link (the komisi recap's "Riwayat pembayaran komisi") still lands on a filter
+ * the control can show.
+ */
+export function sourceOfKind(
+  kind: CashTransactionKind,
+): CashTransactionSource | undefined {
+  return CASH_TRANSACTION_SOURCES.find((source) =>
+    (SOURCES[source].kinds as readonly string[]).includes(kind),
+  );
+}
+
+/** The table column: the Sumber a ROW belongs to, named. */
+export function sourceLabel(kind: CashTransactionKind): string {
+  const source = sourceOfKind(kind);
+  return source ? SOURCES[source].label : kindLabel(kind);
+}
+
+/**
+ * WHAT A TRANSACTION IS CALLED AT THE TOP OF ITS OWN PAGE — "Uang keluar", the
+ * same two words the toggle on the form and the cards above the list use.
+ *
+ * Not `KIND_LABEL`: a heading answers "what am I looking at" before it answers
+ * "how is it filed", and every one of the six kinds is one of these two.
+ */
+export const DIRECTION_TITLE: Record<CashTransactionDirection, string> = {
+  in: "Uang masuk",
+  out: "Uang keluar",
+};
+
+export function directionTitle(
+  transaction: Pick<CashTransaction, "direction" | "number" | "kind" | "amount">,
+): string {
+  const name = DIRECTION_TITLE[transaction.direction];
+  return transaction.number
+    ? `${name} – ${transaction.number}`
+    : `${name} – ${cashTransactionTitle(transaction)}`;
+}
+
 export const DIRECTION_LABEL: Record<CashTransactionDirection, string> = {
   in: "Masuk",
   out: "Keluar",
@@ -125,14 +221,30 @@ export function channelClassOf(
   return type === "cash" ? "cash" : "bank";
 }
 
-/** The series prefix a new transaction will draw — for the form's meta line. */
+/**
+ * The series prefix a transaction draws, from the kas/bank class itself.
+ *
+ * TWO THINGS DECIDE THAT CLASS and they are asked in different places: a till
+ * payment reads it off its CHANNEL's type, and a back-office transaction off the
+ * ACCOUNT's own `cashType` (20 September 2026, when Transaksi Keuangan stopped
+ * going through a channel). Both land here, so the two paths cannot come to
+ * disagree about what a BKM is.
+ */
+export function numberPrefixForClass(
+  direction: CashTransactionDirection,
+  ledgerClass: ChannelClass,
+): string {
+  const cash = ledgerClass === "cash";
+  if (direction === "in") return cash ? "BKM" : "BBM";
+  return cash ? "BKK" : "BBK";
+}
+
+/** The prefix a payment through this CHANNEL will draw. */
 export function numberPrefix(
   direction: CashTransactionDirection,
   type: PaymentChannelType | null | undefined,
 ): string {
-  const cash = channelClassOf(type) === "cash";
-  if (direction === "in") return cash ? "BKM" : "BBM";
-  return cash ? "BKK" : "BBK";
+  return numberPrefixForClass(direction, channelClassOf(type));
 }
 
 /**

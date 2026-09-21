@@ -197,11 +197,119 @@ Supplier is the one entry here decided by viewport rather than by field count: i
 
 **A quick bar is one line, and a phone has no line.** Below ~600 px every trigger collapses into a single `Filter` button opening a `FilterPanel` — the panel arrangement reached by viewport rather than by field count, and the fields inside it wait for Terapkan like any other panel's. Both arrangements are the same controls (`FilterSelect`'s `layout` prop), so render **one** list of fields and hand it a layout. Do not render both and hide one with `hidden md:flex`: two triggers named "Kategori" is one control to look at and two to a screen reader. Branch on `useMediaQuery`, whose fallback is the wide bar so the server never prerenders the collapsed one. **If the wide layout is already a panel, drop the branch** — the media query would only be choosing between one tree and itself, which is what Produk & Varian and Kategori both do now.
 
-**Sorting is a field in the panel, not a control of its own.** `Urutkan` leads the stack — it is the one field always set, and the only one that changes what the top of the list is rather than what is in it. It is **not counted** in the trigger's `Filter (n)` badge, and nor is any other field the screen is never without — Batch & Expired excludes its expiry horizon on the same grounds. Every list has an ordering, and that screen always has a horizon; counting either would put a standing number over an unnarrowed list and teach people to ignore it. Reset returns it to the default rather than clearing it — a list with no ordering is not a thing. Offer only orderings the API names: a closed list on the server (`PRODUCT_SORTS`) is what stops a client asking for one with no index behind it, and it keeps the picker from offering a column that is empty for half the rows (price on a parent, stock summed on the page).
+**Sorting is a field in the panel, not a control of its own** — with one
+recorded exception, below. `Urutkan` leads the stack — it is the one field always set, and the only one that changes what the top of the list is rather than what is in it. It is **not counted** in the trigger's `Filter (n)` badge, and nor is any other field the screen is never without — Batch & Expired excludes its expiry horizon on the same grounds. Every list has an ordering, and that screen always has a horizon; counting either would put a standing number over an unnarrowed list and teach people to ignore it. Reset returns it to the default rather than clearing it — a list with no ordering is not a thing. Offer only orderings the API names: a closed list on the server (`PRODUCT_SORTS`) is what stops a client asking for one with no index behind it, and it keeps the picker from offering a column that is empty for half the rows (price on a parent, stock summed on the page).
+
+**THE ONE SORTING EXCEPTION: Daftar Akun sorts from its column headers.**
+Decided 20 September 2026 on request, against the BO mockup
+(`buloo-daftar-akun-v1.html`). Kode, Nama akun and Kategori are clickable; the
+first click orders ascending, the second flips it, and the arrow sits on every
+sortable header — greyed when that column is not the active one — so the row
+says which columns can be clicked and not merely which one is on. `Urutkan` is
+gone from that screen's panel, and its `Reset` no longer touches the ordering:
+a button inside a filter panel must not silently re-sort a table somebody
+ordered from the headers it can see.
+
+Why this screen and not the others: a chart of accounts is a REFERENCE TABLE
+people re-sort while reading, not a stream they filter once and read down, and
+its three sortable columns are all visible at once. **Do not spread this to the
+other lists as a tidy-up**, and do not put `Urutkan` back into this one. If a
+second screen ever earns it, add it here first.
+
+**THE SECOND SCREEN: Transaksi, in Kas & Bank.** Decided 20 September 2026 on
+request, with the BO mockup (`buloo-keuangan-v1.html`), which draws the header
+row sortable. Same shape as Daftar Akun — arrow on every sortable header, greyed
+when that column is not the active one, first click takes the column's natural
+direction — `Urutkan` is out of its filter panel, and that panel's `Reset` no
+longer touches the ordering.
+
+**ONLY THREE OF ITS EIGHT COLUMNS ARE CLICKABLE**, and that is the interesting
+part. Tanggal, Cabang and Jumlah are in `CASH_TRANSACTION_SORTS` on the server,
+each with an index; Cabang joins the branch collection in for those two orderings
+and for no others. **Deskripsi and Akun are deliberately plain.** What those two
+cells show is assembled at render time — a note, or the document number, or the
+kind; one account name, or a count of several — so any field the server could
+actually sort would order the rows by something other than the text somebody is
+reading. A header that sorts by what it does not display is worse than one that
+does not invite the click.
+
+**THE THIRD SCREEN: Komisi, in Keuangan.** Decided 21 September 2026 with the
+BO mockup (`buloo-keuangan-komisi.html`), which draws the header row sortable.
+Same shape as the two above. **All six data columns are clickable** — Tanggal,
+Staf, Cabang, Nilai layanan, Komisi, Status — because unlike Transaksi every one
+of them shows a single stored or grouped value the server orders by
+(`SORT_FIELDS` in `commissionRecord.repository.js`), so no header sorts by
+something other than what it displays. First click: newest date and largest
+amount first, A first for a name or a status.
+
+Its only filter, Status, **stands on the bar** and applies on click, where the
+mockup put it behind a Filter button: one field is below the floor (a button
+that hides one thing is worse than showing it — Transfer Stok's reasoning).
+Cabang, Lini Usaha and Periode are the module's context bar above it.
+
+**THE FOURTH SCREEN: Jurnal, in Keuangan.** Decided 21 September 2026 with the
+BO mockup (`Buloo - jurnal (2).html`). Tanggal, No. jurnal, Keterangan, Cabang
+and Nilai are clickable — Nilai sorts on the stored `total` the server keeps for
+exactly this. **Sumber is deliberately plain**: the cell shows a label ("Faktur",
+"Jurnal manual") and the server could only order by the code behind it —
+Transaksi's rule. First click: newest date and largest amount first, A first for
+a number, a name or a keterangan.
+
+Its one filter, Sumber, **stays behind `Filter (n)`** although that is one field
+below the floor — a recorded exception: the mockup draws the button, and the
+panel is where the next ledger filter lands. Cabang and Periode are the module's
+context bar; **there is no Lini Usaha there**, as on Kas & Bank and Arus Kas — an
+entry is not in a line, its lines are, and a shared cost is split by the laba
+rugi rather than stamped with one. **The Status column stays** though the mockup
+has none: its data never reverses an entry, the ledger does.
 
 **A collapsed bar owes you its count.** A quick bar shows its values on its triggers; a panel hides them behind a button, and a hidden filter is one people forget is on and then read the wrong numbers from. `Filter (2)` is not decoration — it is what makes the collapsed form safe, and a panel button without it is a bug.
 
 Applied filters render as removable chips below the bar or panel. Anatomy and props: [`docs/ui-component-specs.md`](./ui-component-specs.md).
+
+### The foot of a list
+
+**Four lists in the app let somebody choose how many rows a page holds — Transaksi
+(Kas & Bank), Faktur Penjualan, Komisi and Jurnal — and they share one `ListFooter`.**
+Decided 20 September 2026 on request, from a mockup; Komisi joined on
+21 September and opens at 10 with 10/25/50/100, the mockup's own numbers (the
+server caps it at 100). Jurnal joined the same day with Transaksi's 25/50/100,
+not its mockup's 10 — the two lists of one module offer one choice. Everywhere else, `Pagination` is still correct and has
+no page size.
+
+```
+Menampilkan 1–10 dari 14 transaksi · Tampilkan [10 ⌄] / halaman    ‹ Sebelumnya · 1 · 2 · 3 · Berikutnya ›
+```
+
+- **The left-hand side never hides.** "Menampilkan 1–14 dari 14" and the size
+  control are exactly what is still worth saying when everything fits — and the
+  old Transaksi footer put a bare `Pagination` beside its size control, which
+  draws nothing at one page, so both vanished precisely when somebody wanted to
+  ask for MORE rows.
+- **The pager hides at one page**, and it is NUMBERED. Sebelumnya and Berikutnya
+  alone make somebody press a button five times to reach page six.
+- **"Tampilkan" and "/ halaman" are the FOOTER's words**, not the control's:
+  `FilterSelect layout="bar"` draws the value alone so a caption can sit either
+  side of it, which is what makes the row read as a sentence. `active={false}` —
+  a page size is a choice, not a filter, and a navy trigger would announce an
+  applied filter nobody set.
+- **The current size is folded into the options** even when the caller's list
+  omits it. Without it the trigger can read a number the popover cannot offer
+  back, and picking anything is a one-way door out of the size the list started
+  in — which is how Transaksi shipped for months, opening on 20 rows with
+  10/25/50/100 on the menu.
+
+**BOTH LISTS START AT 25** (20 September 2026, on request): Transaksi was on 20
+by default and offered 10, and a cash book at 10 rows is half a screen. Its menu
+is **25/50/100 and stops there** where Faktur goes to 200 — that is the server's
+rule, not a taste. `LIST_MAX_LIMIT` is 100 on `cashTransaction.model.js` and 200
+on `customerInvoice.model.js`, and Joi rejects anything above it before the query
+runs, so raise it there first if the two ever need to match.
+
+It replaced `InvoiceListFooter`, which is deleted. The two footers had agreed on
+nothing — "Tampilkan" vs "Per halaman", options reading "25 / halaman" vs "25",
+the control on opposite sides, different page sizes — and they are read by the
+same person in the same sitting.
 
 ---
 
@@ -355,7 +463,7 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 - 15 forms with their buttons at the foot of the page → `<FormActionBar>` at the head (§16). `ReceiptForm` also still has Simpan to the LEFT of Batal.
 - 2 buttons still reading `Simpan perubahan` — `SupplierEditForm`, `PurchaseReturnDetail`. That names the act, not the object; §16 wants `Simpan supplier`, `Simpan retur`.
 - 23 files still using the banned `text-[10px]` (§1.6). `OpnameSheet` is done; the rest are opportunistic.
-- 2 form headers still on `layout="field"` with a hand-written `role="alert"` beneath — `ReceiptForm`, `JournalEntryCreateForm` — → `layout="form"` + its `error` prop. (`OpnameStartCard` stays on `"field"`; it is a bar, see §16.) (`WarehouseProductPicker` and the per-row batch picker inside `StockAdjustmentForm` stay on `"field"`: a control in a table cell sits among `h-9` inputs, and 44 would tower over them.)
+- 1 form header still on `layout="field"` with a hand-written `role="alert"` beneath — `ReceiptForm` — → `layout="form"` + its `error` prop. (`JournalEntryCreateForm` is done: rebuilt on 21 September 2026 as a Form Transaksi with a row table, per §16.) (`OpnameStartCard` stays on `"field"`; it is a bar, see §16.) (`WarehouseProductPicker` and the per-row batch picker inside `StockAdjustmentForm` stay on `"field"`: a control in a table cell sits among `h-9` inputs, and 44 would tower over them.)
 - ~25 hand-rolled page headings → promoted `PageHeading`
 - 52 hand-written `rounded-xl border border-border bg-surface` → `<Card>`
 - 15 feature status badges with 3 tinting conventions → `StatusBadge`
@@ -439,11 +547,280 @@ What the bar is *for* survives the change: a document says what it is, what its
 number is, and what can be done with it **at its head** — not in a strip of
 buttons discovered after everything else has been read.
 
-**The one form whose bar has no card: Faktur baru** (`InvoiceCreateForm`).
-Decided 11 September 2026 on request: the page heading already says *Faktur
-baru* and `No. [auto]` added nothing, so the bar there is only Batal and Simpan
-faktur — `FormActionBar` with no `title`. Do not put the card back as a tidy-up,
-and do not drop it from other forms without being asked.
+**TAMBAH TRANSAKSI AND TAMBAH BIAYA TETAP ARE ONE FORM**, decided 21 September
+2026 on request, from the mockup's own `btnAddRecur`. A fixed cost IS a
+transaction somebody also means to repeat, so a second form was a second place
+for the party rules, the account rules and the line editor to drift.
+
+**ONE URL, AND THE SWITCH IS THE ONLY DIFFERENCE.** Both tabs' buttons open
+`/kas-bank/transaksi/new`, the switch starts OFF for everybody, and
+`/kas-bank/biaya-tetap/new` is **deleted**. A first pass kept that second route
+opening the same form with the switch pre-answered; it was a second name for one
+screen, and — worse — a page titled "Tambah biaya tetap" that wrote a plain
+transaction whenever somebody turned the switch off. One URL cannot disagree
+with what it saves.
+
+The switch reveals exactly two fields — **Nama biaya tetap** and
+**Pengulangan**. The name is the one thing a schedule needs that a transaction
+does not: a transaction is identified by its number, a template recurs, so the
+name is the only stable handle anybody has on it.
+
+**SAVING WITH IT ON WRITES THE SCHEDULE AND THEN POSTS THROUGH IT** —
+`POST /fixed-costs` followed by `POST /fixed-costs/:id/post` — never a
+transaction written beside a template. Posting through the schedule is what sets
+`postedCount` and moves `nextDueAt` on, so the row lands in Biaya Tetap showing
+next month rather than a month in arrears for a rent that was just paid. The two
+calls are not atomic and the failure they can leave is benign: a schedule whose
+first occurrence is still outstanding, which the list draws with a Catat button.
+The message says so rather than reporting the save as failed.
+
+It is also TWO GRANTS (`fixedCosts:create` + `fixedCosts:post`), checked in
+`blockedReason` **ahead of every empty field**: a reason somebody cannot fix by
+typing belongs above the ones they can.
+
+**UBAH BIAYA TETAP KEEPS ITS OWN FORM** (`FixedCostForm`, edit only), and that is
+not an oversight. A revision moves no money, and a form that recorded a payment
+every time a rent went up would post one nobody asked for. The create form's
+switch has no meaning on an edit either: the document already exists and its
+kind is settled, so there is nothing for the switch to decide.
+
+**THE EDIT URL IS ALSO ONE** — `/kas-bank/transaksi/:id/edit` serves both, and
+`/kas-bank/biaya-tetap/:id/edit` is deleted. **It has to TRY rather than know**:
+the two live in different collections and their ids are both opaque 24-hex
+strings, so nothing in the URL says which one `:id` belongs to. The route renders
+`CashTransactionEditScreen` first and swaps to `FixedCostEditScreen` when that
+screen reports `onNotFound`. The transaction is tried first because editing one
+is by far the common case and **its own fetch is the probe** — that path costs
+nothing extra; only a fixed cost pays a second request, and the first was going
+to be made anyway. While a handler is present the screen suppresses its "tidak
+ditemukan" panel, because a flash of it before a fixed cost renders would be a
+lie.
+
+**AND THE GRANT MOVED OFF THAT ROUTE, which is not optional.** Which grant
+applies is unknown until one of the two fetches answers, so `RequirePermission`
+on the route would lock out whoever holds the other one. **Each screen now checks
+its own** — `cashTransactions:update` and `fixedCosts:update` — and in
+`CashTransactionEditScreen` the check sits AFTER `notFound`, or a fixed cost's
+owner would be refused a document that is not a transaction.
+
+**Two forms have a bar with no card: Faktur baru** (`InvoiceCreateForm`) **and
+Tambah transaksi** (`CashTransactionCreateForm`). Decided 11 September 2026 on
+request for the first, and 20 September 2026 for the second: in both the page
+heading already names the document and `No. [auto]` added nothing, so the bar is
+only Batal and Simpan — `FormActionBar` with no `title`. Do not put the card
+back as a tidy-up, and do not drop it from the remaining forms without being
+asked.
+
+**Tambah transaksi drops Arus kas and No. referensi from its header.** Decided
+20 September 2026 on request, to match the BO mockup (`buloo-keuangan-v1.html`,
+Keuangan / Kas & Bank / Transaksi / Tambah Transaksi) — neither field is drawn
+there. `cashflowType` is still SENT, hardcoded to `operating`: left out, the
+journal entry lands with no cash flow section and the transaction drops out of
+Arus Kas altogether. A transaction that belongs under Investasi or Pendanaan is
+re-filed from Jurnal Umum. Do not put either field back as a tidy-up.
+
+**Transaksi Keuangan names an ACCOUNT, and a channel is the cashier's.** Decided
+20 September 2026 on request, and it went all the way through: `POST
+/cash-transactions` takes `accountId`, not `channelId`. Every screen in the
+module — the form, the Ubah dialog, the list's column and its filter — is about
+the Kas & Bank account now, and every picker offers **every active account filed
+under `accountCategory: cash_bank`**, in code order, the same list the Akun Kas &
+Bank table is built from.
+
+ONE EXCEPTION, AND IT IS NOT COSMETIC: a row recorded at the till
+(`recordedVia: "pos"`) still moves by its CHANNEL, in the Ubah dialog and on the
+server. A shift is reconciled against the buttons a cashier pressed, so re-filing
+such a row onto a bare account leaves the shift's total unexplainable.
+
+**`cashType` on the account is what decides the bukti kas series** — BKM/BKK for
+a till, BBM/BBK for a bank account — because `cash_bank` cannot tell "1101 Kas"
+from "1102 Bank". It is a field in Daftar Akun, shown only for that category,
+defaulting to `bank` and never guessed from the name. Existing charts are filled
+in by `seeds/backfillCashAccountTypes.js`, which reads it off the channels that
+already point at each account.
+
+Tambah transaksi's Lini Usaha sits in the header as a DEFAULT for the rows, which
+keep their own column.
+
+**The Transaksi table follows the mockup's columns** — Tanggal · Deskripsi ·
+Akun · Cabang · Jumlah · Akun Kas/Bank · Sumber — with one signed Jumlah column
+rather than separate Masuk and Keluar, the bukti kas number and the party on a
+second line under Deskripsi, and a pencil on the rows that were typed by hand,
+opening the same Ubah dialog the detail page opens.
+
+**THE TRANSAKSI FILTERS ARE TIPE · SUMBER · AKUN KAS & BANK · STATUS**, decided
+20 September 2026 on request, from a mockup. **All four are single selects inside
+the one `Filter (n)` panel** — nothing sits outside it — and Periode and Cabang
+stay on the page's context bar.
+
+- **Tipe** reads **"Uang masuk" / "Uang keluar"**, not the bare "Masuk"/"Keluar"
+  it used to, and the labels come from `DIRECTION_TITLE` rather than a second
+  spelling: they are the same two words as the cards directly above the table,
+  the toggle on Tambah transaksi and the heading on a transaction's own page.
+- **TIPE WENT INTO THE PANEL**, later the same day and on request, and this is
+  a **recorded exception to the pill-row rule above**. §8 says a lens with small
+  cardinality stays outside as a pill row, and Transaksi is where that lost:
+  `FilterPills` draws NO VISIBLE CAPTION — its name reaches a screen reader
+  only — so three unlabelled pills sat above the table with nothing saying they
+  were "Tipe", and the person who asked for the filter could not find it. A
+  labelled field in a panel says what it is.
+
+  **Two things follow, and neither is optional.** Tipe is **counted** on
+  `Filter (n)` now — the pill-row exemption exists because a row of pills with
+  one filled in conceals nothing, and behind a button it conceals everything —
+  and the panel's **Reset clears it**, because Reset clears what its own control
+  conceals.
+
+  **This does not repeal the pill row elsewhere.** Utang Supplier's urgency lens
+  keeps its row and its two exemptions. What is repealed is using one where the
+  dimension's NAME is not otherwise on screen. If a pill row ever needs a visible
+  caption, add the prop to `FilterPills` once and decide for every screen at the
+  same time — do not grow a second arrangement one screen at a time.
+- **Sumber REPLACED Jenis**, and with it the panel's only multi-select. Jenis
+  offered the six accounting kinds; Sumber offers what the table's own Sumber
+  COLUMN shows, so the filter and the column speak one vocabulary. It is coarser
+  on purpose: `expense` and `other_income` are one option ("Manual"), because
+  "did I type this, or did a document make it" has the same answer for both.
+  The server still filters by `kind`; `SOURCES` in `features/cash-transactions/labels.ts`
+  is the one table the column, the options and that expansion are all built from.
+- **`Transfer` IS IN THE LIST AND MATCHES NOTHING.** Money moved between two of
+  the shop's own accounts is drawn in the mockup and does not exist here —
+  nothing creates such a transaction. It is carried on request so the filter
+  matches the mockup, and `useCashTransactions` SHORT-CIRCUITS it: an empty
+  expansion answers "none" without a request, because sending no `kind` would
+  ask for every kind, which is the opposite answer. Give it its kinds when the
+  feature is built and the rest starts working on its own. **This is the one
+  sanctioned exception to "an option that can never match anything is a filter
+  people stop trusting" — do not copy it to another screen.**
+
+**ONE CARD, "DAFTAR TRANSAKSI", HOLDS THE WHOLE LIST** — the caption, the
+search row with `Filter (n)` and Tambah transaksi, the table and the footer
+(20 September 2026, on request, from a mockup). They were loose siblings on the
+page, which left the table's own bordered box floating under an unattached
+search bar.
+
+The caption is an **`h2` styled as this module's small letter-spaced label**
+(`text-xs font-semibold tracking-widest text-muted uppercase`), not the Card's
+`title` prop — that renders `text-lg` semibold, which the mockup does not draw.
+A heading element and not a `<p>`, because `PageHeading` owns the `h1` and the
+tab row sits between: somebody navigating by headings should land on the list
+rather than in a run of untitled boxes. The stack lives in an inner
+`flex flex-col gap-4` div, since `Card` hands every child to one padded
+`CardContent` and a gap on its root is the space around a header slot this card
+does not use.
+
+**THE PANEL STAYS, although §8's table leans quick bar.** Four single selects
+and a search is near the boundary, and the multi-select that forced a panel is
+gone. It keeps the panel because the `Filter (n)` button is load-bearing on this
+screen: **Tambah transaksi** is aligned to it, on request, and Tipe moved behind
+it for the caption it gains there. A quick bar would undo both. Revisit them
+together or not at all.
+
+**THERE IS NO STATUS COLUMN.** It was added because the BO mockup's data has no
+cancelled transactions and this system's does, and it was **removed on request on
+20 September 2026**, the same day the list stopped showing those rows by default.
+Once "Dibatalkan" is the exception you have to ask for, a column whose every
+visible cell reads "Tercatat" is a column of one repeated word — the noise the
+default was set to be rid of, paid for in width on a table that already carries
+seven columns.
+
+THE TWO BADGES SURVIVED IT, in the Deskripsi cell and **only when they have
+something to say** (`CashTransactionStatusBadge showPosted={false}`, which
+returns `null` when neither applies):
+
+- **Dibatalkan**, on a cancelled row. Non-negotiable: the row is muted and struck
+  through, and §1.3 does not let styling carry a status on its own.
+- **Kasir**, on a row recorded at the till. Nothing else in the row says so —
+  `SOURCE_LABEL` is keyed on the transaction's KIND, so a `customer_payment`
+  reads "Pembayaran" whether a cashier took the money or the back office typed
+  it in — and a shift is reconciled against what the cashier pressed.
+
+**"Tercatat" is gone from the list and stays on the DETAIL page**, where a single
+transaction is being read and its status is a question somebody actually has.
+
+**CANCELLED ROWS ARE OUT OF THAT TABLE BY DEFAULT.** Decided 20 September 2026
+on request: `status` starts at `posted`, so the list opens on money that actually
+moved — which is what a drawer and a bank statement are reconciled against, and
+a row for money that never moved is one more thing to think past on every pass.
+The two cards were already posted-only on the server, so the table and the
+figures above it now answer the same question.
+
+They are HIDDEN, NOT DROPPED. The Status field in the filter panel carries
+**Dibatalkan** and **Termasuk dibatalkan** (the "semua" option, renamed — the
+label should say what pressing it does), either one brings them back still muted
+and struck through, and the detail page they link to is untouched. The filter is
+SERVER-SIDE like every other one here; never sift the rows in the client, or the
+pager will count rows the table does not show.
+
+`DEFAULT_CASH_TRANSACTION_STATUS` is what "not filtering by status" means on this
+screen — **not `""`**. The chip, the `Filter (n)` badge, the panel's Reset and
+the table's empty state all compare against it; a comparison left on the empty
+string answers "yes, narrowed" for ever.
+
+**The transaction DETAIL follows the mockup too** (20 September 2026): the
+heading is "Uang keluar – BKK/…", an **Ubah** button sits beside a **≡** menu,
+and the first card is the mockup's eight fields — No. transaksi · Tipe, Tanggal ·
+Penerima/Pengirim, Akun Kas/Bank · Cabang, Lini usaha · Biaya tetap, then
+Deskripsi across the width. Everything else a transaction knows (Jenis, No.
+referensi, Dokumen, MDR, Diserahkan/Kembalian, who recorded it) moved to a second
+card, **Informasi lain** — kept, not dropped.
+
+**"Lihat jurnal terkait" opens a DIALOG**, not the ledger page: four lines and a
+total answer "did this land on the right accounts", and navigating away costs the
+page being checked against. **The entry number inside it is the link** to the
+full entry — the one thing in that dialog with more to say. The entry is fetched
+when the dialog opens and not before, because most visits never ask. Disabled
+rather than hidden for a reader without `journalEntries:read`.
+
+**Ubah is a PAGE**, `…/transaksi/:id/edit`, since 20 September 2026 on request.
+An expense's editor is a document — eight header fields and a row table that can
+run to twenty accounts — and a form somebody scrolls inside a scrolling overlay
+is a form whose buttons are never where the eye expects them. The form itself is
+the same component either way (`chrome="page"` swaps the dialog's header and
+footer for a `FormActionBar` at the head, per §16); **the dialog survives for the
+invoice's payment page**, where the edit is a step inside another document's
+journey and bouncing out to Kas & Bank would lose the invoice being read. Saving
+returns to the transaction, not to the list.
+
+**The page has no Jurnal card**, removed on request once that dialog existed:
+its two links were the same entry the ≡ menu now opens, and a reversal is still
+named where it belongs — inside the cancelled banner, and per revision under
+Riwayat perubahan.
+
+THREE THINGS THE MOCKUP DOES NOT GET. **"Hapus transaksi" is never built**: a
+posted transaction has a journal entry, deleting the row would leave that entry
+pointing at nothing and every closed period would change its answer silently, so
+the ≡ menu carries **Batalkan transaksi** in that slot and the row is reversed
+and kept. The **status badge stays in the heading**, where the mockup has none,
+because a reversed transaction whose page looks ordinary is the one mistake this
+screen cannot afford. And the **amount is in the heading**, because the mockup's
+detail card leaves it to the Rincian Akun total — and a payment against an
+invoice has no Rincian Akun card at all.
+
+**Lini usaha on that card is READ OFF THE ROWS**, which is the only place one is
+recorded: one name when every row agrees, "Bersama (HQ)" when they agree none
+applies, and a count ("2 lini") when they do not. Never the first row's — a
+transaction that paid for grooming and retail has no single line.
+
+**Penerima / Pengirim is a grouped picker, not free text.** Decided 20 September
+2026 on request, to match the BO mockup: the three registers a shop already keeps
+— Pelanggan, Supplier, Staf — under their own headings, which is exactly
+`partyType` (`customer | supplier | user`) on the transaction, so picking one
+stores a real id and the list can filter by party instead of by however the name
+was spelled that day. The last row is **"Nama lain…"**, which reveals a text
+field: most of what a shop pays is nobody it keeps a record of (PLN, the
+landlord, an ad platform), and forcing those into the supplier register to
+record a payment would fill it with vendors nobody buys from. The server takes
+`partyType` + `partyId` as a pair and snapshots the name itself, or `partyName`
+alone — never both.
+
+**`FilterOption.group` is what draws those headings**, and it is new on the
+shared filter layer: options render IN THE ORDER GIVEN and a heading appears
+wherever the group changes, so the caller sorts and the list does not regroup
+behind it. A grouped list nests each run in a `role="group"`; a list whose
+options carry no group renders exactly the flat markup it always did. Reach for
+it when one picker draws on several sources and which source a row came from
+changes what it means — not to decorate a long list.
 
 **Faktur baru's header also leaves §16's field order.** Decided 12 September 2026
 on request, to match the BO mockup (`buloo-invoice-create-v4.html`): Pelanggan

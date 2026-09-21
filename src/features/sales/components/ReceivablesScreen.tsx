@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import { Alert, Spinner } from "@/components";
+import { Alert, ListFooter, Spinner } from "@/components";
 import { Button as UIButton } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
@@ -16,9 +16,8 @@ import type {
   CustomerInvoiceStatusFilter,
 } from "@/types/api";
 
-import { useCustomerInvoices } from "../hooks/useCustomerInvoices";
+import { PAGE_SIZES, useCustomerInvoices } from "../hooks/useCustomerInvoices";
 import { useReceivableFilterOptions } from "../hooks/useReceivableFilterOptions";
-import { InvoiceListFooter } from "./InvoiceListFooter";
 import { InvoiceScopeCard } from "./InvoiceScopeCard";
 import { InvoiceStatCards } from "./InvoiceStatCards";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
@@ -174,13 +173,21 @@ export function ReceivablesScreen() {
                 onPay={(row) => openAction("pay", row)}
                 onVoid={(row) => openAction("void", row)}
               />
-              <InvoiceListFooter
+              {/*
+                THE SHARED FOOTER since 20 September 2026 — the same one
+                Transaksi carries. It sits INSIDE the table's card, so it keeps
+                the rule the card's own border drew.
+              */}
+              <ListFooter
                 page={pagination.page}
                 pageSize={query.pageSize}
+                pageSizes={PAGE_SIZES}
                 total={pagination.total}
                 totalPages={pagination.totalPages}
+                unit="faktur"
                 onPageChange={(page) => setQuery({ page })}
                 onPageSizeChange={(pageSize) => setQuery({ pageSize })}
+                className="border-t border-border px-4 py-3"
               />
             </>
           )}

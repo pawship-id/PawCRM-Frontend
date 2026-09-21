@@ -5,8 +5,15 @@ import { ACCOUNTING_CRUMBS } from "@/features/accounting";
 import { CashTransactionCreateForm } from "@/features/cash-transactions";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Catat transaksi · Buloo" };
+export const metadata: Metadata = { title: "Tambah transaksi · Buloo" };
 
+/**
+ * KEUANGAN / KAS & BANK / TRANSAKSI / TAMBAH TRANSAKSI — the mockup's trail, and
+ * four levels rather than three on purpose: Transaksi is the sub-tab the form
+ * returns to, and a trail that skipped it would leave Kas & Bank looking like
+ * the form's parent when the page has two halves. Both crumbs point at the same
+ * route because the sub-tab IS that route (`PageTabs`, `exact: true`).
+ */
 export default function NewCashTransactionPage() {
   return (
     <RequirePermission feature="cashTransactions" action="create">
@@ -16,11 +23,12 @@ export default function NewCashTransactionPage() {
             items={[
               ACCOUNTING_CRUMBS.hub,
               ACCOUNTING_CRUMBS.cashBank,
-              { label: "Catat transaksi" },
+              { label: "Transaksi", href: ACCOUNTING_CRUMBS.cashBank.href },
+              { label: "Tambah transaksi" },
             ]}
           />
           <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-            Catat transaksi
+            Tambah transaksi
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
             Untuk uang yang tidak punya faktur di belakangnya — sewa, listrik,

@@ -1,5 +1,6 @@
 import { apiClient } from "./api-client";
 import type {
+  AccountCategory,
   AccountType,
   CashflowType,
   JournalEntry,
@@ -12,15 +13,19 @@ import type { PageResult } from "@/types/api";
 /**
  * General-ledger calls against /api/journal-entries.
  *
- * FOUR SHAPES, NOT ONE, and that is the point of the module. The ledger answers
- * four different questions and each has its own endpoint:
+ * FIVE SHAPES, NOT ONE, and that is the point of the module. The ledger answers
+ * five different questions and each has its own endpoint:
  *
  *   `list`     — rows, paginated. What happened, newest first.
  *   `summary`  — the period folded: revenue, expense, net profit, per line.
  *   `trend`    — the same fold, one calendar day at a time. A chart, not a card.
  *   `balances` — a trial balance as of a date. What we have, not what we earned.
+ *   `movement` — Σ per account WITHIN a period. What moved, not what is there.
  *
- * The dashboard needs all four, and the alternative to the last three is paging
+ * The last two are a pair and Kas & Bank reads both: Masuk and Keluar are the
+ * movement, Saldo is the balance at the period's end.
+ *
+ * The dashboard needs all of them, and the alternative to the folds is paging
  * the whole period and summing it here: thirty-odd requests for a busy month,
  * arithmetic on money in a browser, and an answer that is wrong the moment one
  * page fails.
@@ -53,7 +58,7 @@ export interface LedgerPeriodQuery {
 export interface JournalEntryListQuery extends LedgerPeriodQuery {
   page?: number;
   limit?: number;
-  /** Substring over `entryNumber` and `description`. */
+  /** Substring over the entry number, description, source document number and branch name. */
   search?: string;
   sourceType?: JournalSourceType;
   sourceId?: string;
@@ -191,6 +196,12 @@ export interface AccountBalance {
   code: string;
   name: string;
   accountType: AccountType;
+  /**
+   * Which section of the neraca the row belongs to, and what Arus Kas picks its
+   * cash accounts out by. `accountType: "asset"` answers neither — it cannot
+   * tell a bank account from a vehicle.
+   */
+  accountCategory: AccountCategory;
   normalBalance: NormalBalance;
   debit: string;
   credit: string;
@@ -214,14 +225,156 @@ export interface AccountBalancesResult {
  *
  * A balance is cumulative from inception; a `dateFrom` would return a period
  * MOVEMENT wearing the word "balance", which is the one thing a cash figure must
- * never be mistaken for. For movement, use `list` with a date range.
+ * never be mistaken for. For movement, use `movement` below.
  */
 export interface AccountBalancesQuery {
   asOf?: string;
   branchId?: string;
   accountType?: AccountType;
+  /** The finer filter — one neraca section, or every cash and bank account. */
+  accountCategory?: AccountCategory;
   /** Repeated on the wire. The API caps this at 20. */
   accountIds?: string[];
+}
+
+/**
+ * One account's movement WITHIN a period — `AccountBalance`'s other half.
+ *
+ * `masuk`/`keluar` RATHER THAN THINKING IN DEBIT AND CREDIT. Money arriving in a
+ * cash account is a debit and money leaving is a credit, but that holds only for
+ * a debit-normal account; the server maps the sides by each account's normal
+ * balance so a revenue account's credits are not labelled "keluar". `debit` and
+ * `credit` are carried too, for a reader who wants the bookkeeping words.
+ */
+export interface AccountMovement {
+  accountId: string;
+  code: string;
+  name: string;
+  accountType: AccountType;
+  accountCategory: AccountCategory;
+  normalBalance: NormalBalance;
+  debit: string;
+  credit: string;
+  /** Σ on the account's normal side — money in, for cash and bank. */
+  masuk: string;
+  keluar: string;
+}
+
+export interface AccountMovementResult {
+  period: {
+    dateFrom: string | null;
+    dateTo: string | null;
+    timezone: string;
+  };
+  /**
+   * ACCOUNTS THAT DID NOT MOVE DO NOT APPEAR. This folds journal lines, and an
+   * account with none in the period has nothing to fold — join the result onto
+   * the chart of accounts rather than the other way round if a quiet account
+   * still needs a row.
+   */
+  accounts: AccountMovement[];
+}
+
+/**
+ * BOTH BOUNDS, where `AccountBalancesQuery` takes neither.
+ *
+ * That is the whole difference between the two endpoints, and it is in the URL
+ * rather than in an optional parameter on one of them — a movement mistaken for
+ * a balance is the most expensive misreading a finance screen can invite.
+ */
+export interface AccountMovementQuery {
+  dateFrom?: string;
+  dateTo?: string;
+  branchId?: string;
+  accountType?: AccountType;
+  accountCategory?: AccountCategory;
+  /** Repeated on the wire. The API caps this at 20. */
+  accountIds?: string[];
+}
+
+/**
+ * ONE CELL of the laba rugi: what a row came to on one lini bisnis.
+ *
+ * `businessLineId: null` is the unattributed column — rent, office payroll, the
+ * electricity bill. A real answer, never an omission.
+ */
+export interface ProfitLossCell {
+  businessLineId: string | null;
+  /** Signed in the account's NORMAL direction, so ordinary figures are positive. */
+  amount: string;
+}
+
+/** A row of the report — every row has the same cells, in the same order. */
+export interface ProfitLossRow {
+  lines: ProfitLossCell[];
+  /** The consolidated column: the row summed across every lini. */
+  total: string;
+}
+
+export interface ProfitLossAccount extends ProfitLossRow {
+  accountId: string;
+  code: string;
+  name: string;
+  accountCategory: AccountCategory;
+  accountType: AccountType;
+}
+
+export interface ProfitLossGroup extends ProfitLossRow {
+  accountCategory: AccountCategory;
+}
+
+/**
+ * GET /journal-entries/profit-loss — BO's laba rugi, computed server-side.
+ *
+ * `categories` always carries all five, empty or not; `accounts` carries only
+ * what moved. The three `results` are DERIVED FROM the categories on the server
+ * rather than summed independently, so nothing on the page can disagree with
+ * anything else on it:
+ *
+ *   grossProfit     = pendapatan − hpp
+ *   operatingProfit = laba kotor − biaya
+ *   netProfit       = laba usaha + pendapatan lainnya − biaya lainnya
+ */
+export interface ProfitLossResult {
+  period: { dateFrom: string | null; dateTo: string | null; timezone: string };
+  /**
+   * Whether the shared costs were divided across the lines, and whether any of
+   * that division was a guess.
+   *
+   * REPORTED RATHER THAN IMPLIED: the same period answers differently with
+   * `applied` on, and a reader who cannot tell which one is on screen cannot
+   * reconcile either against anything. `estimated` is true when at least one
+   * figure rests on an EQUAL split because the segments it was divided across
+   * earned nothing in the period — the split had to land somewhere, and saying
+   * so is the difference between a measurement and a guess presented as one.
+   *
+   * Optional so a response from a server that predates allocation still parses.
+   */
+  allocation?: { applied: boolean; estimated: boolean };
+  accounts: ProfitLossAccount[];
+  categories: ProfitLossGroup[];
+  results: {
+    grossProfit: ProfitLossRow;
+    operatingProfit: ProfitLossRow;
+    netProfit: ProfitLossRow;
+  };
+}
+
+/**
+ * NEITHER END IS REQUIRED, like the summary's: "everything since we opened, as
+ * one laba rugi" is a question a shop owner genuinely asks.
+ *
+ * `businessLineId` NARROWS THE LEDGER rather than picking a column — sending one
+ * returns that line's P&L alone, where the unfiltered response carries every
+ * line as its own column.
+ */
+export interface ProfitLossQuery {
+  /** Divide the shared costs across the lines. Defaults to false on the server. */
+  allocation?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
+  branchId?: string;
+  businessLineId?: string;
 }
 
 /** The writable half of a manual entry — the only kind the HTTP API creates. */
@@ -232,6 +385,13 @@ export interface JournalEntryInput {
   lines: Array<{
     accountId: string;
     businessLineId?: string | null;
+    /**
+     * Which Detil Akun of `accountId` this line is posted to.
+     *
+     * Checked against THAT account's rules on the server — an id belonging to
+     * another account is a 400, not a silently misfiled cost.
+     */
+    allocationId?: string | null;
     debit?: string;
     credit?: string;
     memo?: string | null;
@@ -344,6 +504,8 @@ export const journalEntryService = {
     if (query.asOf) params.append("asOf", query.asOf);
     if (query.branchId) params.append("branchId", query.branchId);
     if (query.accountType) params.append("accountType", query.accountType);
+    if (query.accountCategory)
+      params.append("accountCategory", query.accountCategory);
     for (const id of query.accountIds ?? []) {
       params.append("accountIds", id);
     }
@@ -354,6 +516,59 @@ export const journalEntryService = {
       search ? `/journal-entries/balances?${search}` : "/journal-entries/balances",
     );
   },
+
+  /**
+   * GET /journal-entries/movement — what moved, per account, within a period.
+   *
+   * READ WITH `balances`, never instead of it: Kas & Bank prints this period's
+   * Masuk and Keluar beside the Saldo at its end, and passing the two calls the
+   * same `branchId` and `accountCategory` is what keeps a row's three figures
+   * about one account.
+   *
+   * `accountIds` is repeated on the wire, same as `balances` — hence the manual
+   * URLSearchParams rather than apiClient's `query`.
+   */
+  movement: (query: AccountMovementQuery = {}) => {
+    const params = new URLSearchParams();
+    if (query.dateFrom) params.append("dateFrom", query.dateFrom);
+    if (query.dateTo) params.append("dateTo", query.dateTo);
+    if (query.branchId) params.append("branchId", query.branchId);
+    if (query.accountType) params.append("accountType", query.accountType);
+    if (query.accountCategory)
+      params.append("accountCategory", query.accountCategory);
+    for (const id of query.accountIds ?? []) {
+      params.append("accountIds", id);
+    }
+
+    const search = params.toString();
+
+    return apiClient.get<AccountMovementResult>(
+      search ? `/journal-entries/movement?${search}` : "/journal-entries/movement",
+    );
+  },
+
+  /**
+   * GET /journal-entries/profit-loss — the laba rugi as a table.
+   *
+   * NOT `summary`, which folds the same period. That one answers "did we make
+   * money" as two numbers and a split per line; this one is every account that
+   * moved, grouped into the five report categories, with the subtotals between
+   * them. `summary` cannot produce it — it groups by account CLASS, and `biaya`
+   * and `biaya_lainnya` are both `expense` while sitting on opposite sides of
+   * laba usaha.
+   */
+  profitLoss: (query: ProfitLossQuery = {}) =>
+    apiClient.get<ProfitLossResult>("/journal-entries/profit-loss", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchId: query.branchId,
+        businessLineId: query.businessLineId,
+        // Sent only when ON: the server defaults it to false, and a `false` on
+        // the URL of every read would be a parameter that never means anything.
+        allocation: query.allocation ? true : undefined,
+      },
+    }),
 
   /** GET /journal-entries/:id — one entry, with its labels resolved. */
   getById: (id: string) => apiClient.get<JournalEntry>(`/journal-entries/${id}`),

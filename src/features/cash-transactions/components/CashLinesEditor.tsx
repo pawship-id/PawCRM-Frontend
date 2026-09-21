@@ -9,11 +9,12 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SHARED_LINE_LABEL } from "@/features/accounting";
+import { allocationOptionsFor, SHARED_LINE_LABEL } from "@/features/accounting";
 import type { BusinessLine } from "@/services/businessLine.service";
 import type { ChartOfAccount } from "@/types/accounting";
 import type {
@@ -39,6 +40,8 @@ export interface DraftLine {
   accountId: string;
   amount: string;
   businessLineId: string;
+  /** The Detil Akun picked for this line. `""` when the account has none. */
+  allocationId: string;
   memo: string;
 }
 
@@ -50,6 +53,7 @@ export function blankLine(): DraftLine {
     accountId: "",
     amount: "",
     businessLineId: "",
+    allocationId: "",
     memo: "",
   };
 }
@@ -64,6 +68,7 @@ export function draftLinesFrom(
     accountId: line.accountId,
     amount: trimDecimal(line.amount),
     businessLineId: line.businessLineId ?? "",
+    allocationId: line.allocationId ?? "",
     memo: line.memo ?? "",
   }));
 }
@@ -98,6 +103,7 @@ export function toLineInputs(lines: DraftLine[]): CashTransactionLineInput[] {
     accountId: line.accountId,
     amount: line.amount.trim(),
     businessLineId: line.businessLineId || null,
+    allocationId: line.allocationId || null,
     ...(line.memo.trim() ? { memo: line.memo.trim() } : {}),
   }));
 }
@@ -112,6 +118,7 @@ export function linesSignature(
     accountId: string;
     amount: string;
     businessLineId?: string | null;
+    allocationId?: string | null;
     memo?: string | null;
   }>,
 ): string {
@@ -120,6 +127,10 @@ export function linesSignature(
       line.accountId,
       String(toMinor(line.amount.trim()) ?? line.amount),
       line.businessLineId || null,
+      // In the fingerprint because changing ONLY the detil is a real edit — it
+      // moves the cost to a different segment of the laba rugi — and a Simpan
+      // that decided nothing had changed would silently discard it.
+      line.allocationId || null,
       (line.memo ?? "").trim(),
     ]),
   );
@@ -142,6 +153,7 @@ export function CashLinesEditor({
   accounts,
   businessLines,
   disabled = false,
+  showAddButton = true,
 }: {
   kind: "expense" | "other_income";
   lines: DraftLine[];
@@ -149,6 +161,12 @@ export function CashLinesEditor({
   accounts: ChartOfAccount[];
   businessLines: BusinessLine[];
   disabled?: boolean;
+  /**
+   * Off when the CALLER hosts "+ Tambah baris" — the create form puts it in the
+   * card header, where the mockup draws it. The dialog, which has no card header
+   * to put it in, keeps it under the table.
+   */
+  showAddButton?: boolean;
 }) {
   const accountOptions = accounts.map((account) => ({
     value: account._id,
@@ -158,6 +176,10 @@ export function CashLinesEditor({
     { value: "", label: SHARED_LINE_LABEL },
     ...namedOptions(businessLines),
   ];
+  const accountById = new Map(accounts.map((account) => [account._id, account]));
+  const anyAccountMapped = accounts.some((account) =>
+    (account.allocations ?? []).some((rule) => rule.isActive),
+  );
   const total = linesTotal(lines);
 
   function patch(key: string, change: Partial<DraftLine>) {
@@ -175,6 +197,13 @@ export function CashLinesEditor({
               <TableHead className="min-w-60">
                 {kind === "expense" ? "Akun beban" : "Akun pendapatan"}
               </TableHead>
+              {/* Only when SOMETHING on this screen can be mapped. A column of
+                  em dashes over every row teaches people to ignore the column,
+                  and a tenant that has not set up any Detil Akun yet would see
+                  nothing else. */}
+              {anyAccountMapped && (
+                <TableHead className="min-w-44">Detil akun</TableHead>
+              )}
               <TableHead className="min-w-44">Lini bisnis</TableHead>
               <TableHead className="min-w-36 text-right">Jumlah</TableHead>
               <TableHead className="min-w-44">Memo</TableHead>
@@ -203,18 +232,73 @@ export function CashLinesEditor({
                       disabled={disabled}
                       options={accountOptions}
                       onChange={(accountId) => {
-                        // The chart already knows which line "5102 HPP Grooming"
-                        // belongs to — take it, unless one was picked by hand.
-                        const account = accounts.find((a) => a._id === accountId);
+                        /*
+                          THE DETIL IS RESET WITH THE ACCOUNT, always: a rule id
+                          belongs to one account, and carrying it across would be
+                          a pairing the server rejects.
+
+                          It is then PRE-PICKED WHEN THERE IS EXACTLY ONE — a
+                          choice with one option is not a choice, and leaving it
+                          empty would send an unmapped cost for no reason anybody
+                          decided. Two or more, and the person picks.
+
+                          THE BUSINESS LINE IS NOT PRE-FILLED from a direct rule,
+                          which the old code did from the account's own field. It
+                          would look equivalent and is not: a line that names its
+                          own `businessLineId` is taken as settled by the report
+                          and lands whole at the entry's branch, where a `direct`
+                          rule with no branch is SPLIT across the branches that
+                          run the line. Filling it in would quietly cancel the
+                          rule it came from.
+                        */
+                        const options = allocationOptionsFor(
+                          accountById.get(accountId),
+                        );
+
                         patch(line.key, {
                           accountId,
-                          ...(line.businessLineId === "" && account?.businessLineId
-                            ? { businessLineId: account.businessLineId }
-                            : {}),
+                          allocationId:
+                            options.length === 1 ? options[0].value : "",
                         });
                       }}
                     />
                   </TableCell>
+                  {anyAccountMapped && (
+                    <TableCell>
+                      {(() => {
+                        const options = allocationOptionsFor(
+                          accountById.get(line.accountId),
+                        );
+
+                        if (options.length === 0) {
+                          // Said rather than left blank, and it says WHICH of the
+                          // two reasons: an account with no rules is not a field
+                          // somebody forgot to fill in.
+                          return (
+                            <span className="text-sm text-muted">
+                              {line.accountId ? "Belum dipetakan" : "—"}
+                            </span>
+                          );
+                        }
+
+                        return (
+                          <FilterSelect
+                            layout="field"
+                            label=""
+                            ariaLabel={`Detil akun baris ${row}`}
+                            value={line.allocationId}
+                            active={false}
+                            placeholder="Pilih detil"
+                            disabled={disabled}
+                            options={options}
+                            onChange={(allocationId) =>
+                              patch(line.key, { allocationId })
+                            }
+                          />
+                        );
+                      })()}
+                    </TableCell>
+                  )}
                   <TableCell>
                     <FilterSelect
                       layout="field"
@@ -282,11 +366,31 @@ export function CashLinesEditor({
               );
             })}
           </TableBody>
+          {/*
+            THE TOTAL IS THE TABLE'S LAST ROW, not a line under it (mockup,
+            Rincian Akun). It is the sum of the column it sits in, and a figure
+            that is a column's sum belongs in that column — floated to the right
+            of a toolbar it read as a second, unrelated number.
+          */}
+          <TableFooter>
+            <TableRow className="hover:bg-transparent">
+              <TableCell
+                colSpan={anyAccountMapped ? 3 : 2}
+                className="text-right text-xs font-bold tracking-wide text-muted uppercase"
+              >
+                Total
+              </TableCell>
+              <TableCell className="text-right text-base font-bold tabular-nums">
+                {formatMoney(toDecimalString(total))}
+              </TableCell>
+              <TableCell colSpan={2} />
+            </TableRow>
+          </TableFooter>
         </Table>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        {lines.length < MAX_LINES && (
+      {showAddButton && canAddLine(lines) && (
+        <div>
           <Button
             type="button"
             variant="secondary"
@@ -296,14 +400,13 @@ export function CashLinesEditor({
             <Plus className="size-4" />
             Tambah baris
           </Button>
-        )}
-        <p className="ml-auto text-sm text-muted">
-          Total{" "}
-          <b className="text-base font-bold text-foreground tabular-nums">
-            {formatMoney(toDecimalString(total))}
-          </b>
-        </p>
-      </div>
+        </div>
+      )}
     </div>
   );
+}
+
+/** Whether another line may be added — the caller's button asks this too. */
+export function canAddLine(lines: DraftLine[]): boolean {
+  return lines.length < MAX_LINES;
 }

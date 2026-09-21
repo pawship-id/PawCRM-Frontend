@@ -65,7 +65,10 @@ export function FilterOptionList<T>({
     return options.filter(
       (o) =>
         o.label.toLowerCase().includes(q) ||
-        Boolean(o.meta?.toLowerCase().includes(q)),
+        Boolean(o.meta?.toLowerCase().includes(q)) ||
+        // "staf" narrows to one heading's worth — the group is a fact about the
+        // option, and a search that ignored it would hide the obvious query.
+        Boolean(o.group?.toLowerCase().includes(q)),
     );
   }, [options, term]);
 
@@ -77,6 +80,27 @@ export function FilterOptionList<T>({
 
   const isSelected = (option: FilterOption<T>) =>
     selected.some((value) => Object.is(value, option.value));
+
+  /**
+   * The visible options cut into consecutive runs of one group — `undefined` for
+   * the ungrouped ones, which keeps a plain list a single run and its markup
+   * unchanged. Consecutive, NOT collected: the caller's order is the list's
+   * order, and re-sorting it here would move rows somebody deliberately placed.
+   */
+  const runs = React.useMemo(() => {
+    const out: Array<{
+      group: string | undefined;
+      items: Array<{ option: FilterOption<T>; index: number }>;
+    }> = [];
+
+    visible.forEach((option, index) => {
+      const last = out[out.length - 1];
+      if (last && last.group === option.group) last.items.push({ option, index });
+      else out.push({ group: option.group, items: [{ option, index }] });
+    });
+
+    return out;
+  }, [visible]);
 
   function move(delta: number) {
     if (!visible.length) return;
@@ -106,6 +130,59 @@ export function FilterOptionList<T>({
         onPick(option.value);
       }
     }
+  }
+
+  /** One option row. Shared by the flat and the grouped arrangement. */
+  function renderOption({
+    option,
+    index,
+  }: {
+    option: FilterOption<T>;
+    index: number;
+  }) {
+    const active = isSelected(option);
+
+    return (
+      <li
+        key={String(option.value)}
+        id={`${listId}-opt-${index}`}
+        role="option"
+        aria-selected={active}
+        aria-disabled={option.disabled || undefined}
+        data-cursor={index === activeIndex}
+        onClick={() => !option.disabled && onPick(option.value)}
+        className={cn(
+          "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm",
+          "hover:bg-surface-hover data-[cursor=true]:bg-surface-hover",
+          option.disabled && "pointer-events-none opacity-50",
+        )}
+      >
+        <span
+          className={cn(
+            "flex size-4 shrink-0 items-center justify-center border-[1.5px] border-border",
+            multiple ? "rounded-[5px]" : "rounded-full",
+            active && "border-primary bg-primary",
+          )}
+        >
+          <Check
+            className={cn(
+              "size-2.5 text-primary-foreground",
+              !active && "opacity-0",
+            )}
+            strokeWidth={3}
+          />
+        </span>
+        <span className="truncate">{option.label}</span>
+        {option.meta && (
+          <span className="ml-auto shrink-0 pl-3 text-xs text-muted tabular-nums">
+            {option.meta}
+          </span>
+        )}
+        {option.count !== undefined && (
+          <span className="ml-auto text-xs text-muted">{option.count}</span>
+        )}
+      </li>
+    );
   }
 
   return (
@@ -142,52 +219,44 @@ export function FilterOptionList<T>({
         tabIndex={searchable ? undefined : -1}
         className="max-h-70 overflow-y-auto p-1.5 outline-none"
       >
-        {visible.map((option, index) => {
-          const active = isSelected(option);
-          return (
-            <li
-              key={String(option.value)}
-              id={`${listId}-opt-${index}`}
-              role="option"
-              aria-selected={active}
-              aria-disabled={option.disabled || undefined}
-              data-cursor={index === activeIndex}
-              onClick={() => !option.disabled && onPick(option.value)}
-              className={cn(
-                "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-sm",
-                "hover:bg-surface-hover data-[cursor=true]:bg-surface-hover",
-                option.disabled && "pointer-events-none opacity-50",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex size-4 shrink-0 items-center justify-center border-[1.5px] border-border",
-                  multiple ? "rounded-[5px]" : "rounded-full",
-                  active && "border-primary bg-primary",
-                )}
+        {/*
+          GROUPED ONLY WHEN THE OPTIONS ARE. A flat list renders exactly the
+          markup it always did — every existing caller is byte-identical — and a
+          grouped one wraps each run in a nested `ul[role="group"]`, which is the
+          ARIA shape for a sectioned listbox: the `li[role="presentation"]`
+          around it drops out of the tree, so the options stay children of a
+          group and the group a child of the listbox. The heading itself is
+          `aria-hidden`; the group's `aria-label` is what a screen reader
+          announces, once, on entering it.
+
+          The cursor index is still the position in the FLAT `visible` list, so
+          keyboard navigation and `aria-activedescendant` are untouched by the
+          nesting.
+        */}
+        {runs.map((run) =>
+          run.group === undefined ? (
+            run.items.map(renderOption)
+          ) : (
+            <li key={`group-${run.group}-${run.items[0].index}`} role="presentation">
+              <div
+                aria-hidden="true"
+                className="px-2.5 pt-2 pb-1 text-xs font-semibold text-muted"
               >
-                <Check
-                  className={cn(
-                    "size-2.5 text-primary-foreground",
-                    !active && "opacity-0",
-                  )}
-                  strokeWidth={3}
-                />
-              </span>
-              <span className="truncate">{option.label}</span>
-              {option.meta && (
-                <span className="ml-auto shrink-0 pl-3 text-xs text-muted tabular-nums">
-                  {option.meta}
-                </span>
-              )}
-              {option.count !== undefined && (
-                <span className="ml-auto text-xs text-muted">
-                  {option.count}
-                </span>
-              )}
+                {run.group}
+              </div>
+              {/*
+                A `<ul>`, NOT A `<div role="group">`. An `li[role="option"]` has
+                to be the child of a list element — nesting one directly inside
+                another `<li>` is invalid HTML and React refuses to hydrate it.
+                A nested list inside an `<li>` is the one shape that is both
+                valid markup and the right ARIA.
+              */}
+              <ul role="group" aria-label={run.group}>
+                {run.items.map(renderOption)}
+              </ul>
             </li>
-          );
-        })}
+          ),
+        )}
 
         {!visible.length && (
           <li className="px-2.5 py-6 text-center text-sm text-muted">

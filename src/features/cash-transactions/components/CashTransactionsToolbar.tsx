@@ -1,126 +1,186 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ListFilter } from "lucide-react";
 
-import { cn } from "@/lib/utils";
 import {
   FilterBar,
-  FilterField,
   FilterPanel,
-  FilterPills,
   FilterSearch,
   FilterSelect,
   FilterTrigger,
-  namedOptions,
   withAll,
   type AppliedFilter,
   type FilterOption,
-  type PillOption,
 } from "@/components";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import type { ChartOfAccount } from "@/types/accounting";
 import type {
   CashTransactionDirection,
-  CashTransactionKind,
-  CashTransactionSort,
   CashTransactionStatus,
-  PaymentChannel,
 } from "@/types/api";
 
-import type { CashTransactionsQuery } from "../query";
-import { CASH_TRANSACTION_KINDS, KIND_LABEL } from "../labels";
+import {
+  DEFAULT_CASH_TRANSACTION_STATUS,
+  type CashTransactionsQuery,
+} from "../query";
+import {
+  CASH_TRANSACTION_SOURCES,
+  DIRECTION_TITLE,
+  sourceFilterLabel,
+  type CashTransactionSource,
+} from "../labels";
 
-/** The lens: which way the money went. Outside the panel, applies on click. */
-const DIRECTIONS: PillOption<CashTransactionDirection | "">[] = [
-  { value: "", label: "Semua" },
-  { value: "in", label: "Masuk" },
-  { value: "out", label: "Keluar" },
-];
+/**
+ * TIPE — which way the money went.
+ *
+ * IT WAS A PILL ROW ABOVE THE TABLE and moved INTO the panel on 20 September
+ * 2026, on request, so the toolbar is one line. §8 calls a pill row the page's
+ * lens and keeps it outside a panel; the reason it lost that argument here is
+ * that the row carried no visible caption — `FilterPills` announces its name
+ * only to a screen reader — so three unlabelled pills sat above the table and
+ * nothing on screen said they were "Tipe". A labelled field in the panel says
+ * what it is.
+ *
+ * TWO CONSEQUENCES, both load-bearing. It is COUNTED on `Filter (n)` now: §8
+ * exempts a pill row because a row of pills with one filled in conceals
+ * nothing, and the moment it went behind a button that stopped being true. And
+ * Reset clears it, for the same reason — Reset clears what the control it
+ * belongs to conceals.
+ *
+ * The labels come from `DIRECTION_TITLE`, the same two words as the cards above
+ * this table, the toggle on Tambah transaksi and a transaction's own heading —
+ * not a third spelling written out here.
+ */
+const DIRECTION_OPTIONS: FilterOption<CashTransactionDirection | "">[] =
+  withAll(
+    (["in", "out"] as const).map((direction) => ({
+      value: direction,
+      label: DIRECTION_TITLE[direction],
+    })),
+    "Semua tipe",
+  );
 
-/** The orderings the API names (`CASH_TRANSACTION_SORTS`), nothing more. */
-const SORTS: FilterOption<CashTransactionSort>[] = [
-  { value: "newest", label: "Tanggal terbaru" },
-  { value: "oldest", label: "Tanggal terlama" },
-  { value: "amountHighest", label: "Jumlah terbesar" },
-  { value: "amountLowest", label: "Jumlah terkecil" },
-];
+/** SUMBER — one at a time, and the same vocabulary as the table's column. */
+const SOURCE_OPTIONS: FilterOption<CashTransactionSource | "">[] = withAll(
+  CASH_TRANSACTION_SOURCES.map((source) => ({
+    value: source,
+    label: sourceFilterLabel(source),
+  })),
+  "Semua sumber",
+);
 
 const STATUS_OPTIONS: FilterOption<CashTransactionStatus | "">[] = withAll(
   [
     { value: "posted", label: "Tercatat" },
     { value: "void", label: "Dibatalkan" },
   ],
-  "Semua status",
+  // "Termasuk dibatalkan", not "Semua status": this option is the one that puts
+  // cancelled rows back on the screen, and the label should say what it does.
+  "Termasuk dibatalkan",
 );
 
 type PanelFilters = Pick<
   CashTransactionsQuery,
-  "sort" | "dateFrom" | "dateTo" | "kinds" | "branchId" | "channelId" | "status"
+  | "dateFrom"
+  | "dateTo"
+  | "direction"
+  | "source"
+  | "branchId"
+  | "accountId"
+  | "status"
 >;
 
 /**
- * What the panel's Reset returns to. The ordering is RESTORED, not cleared; the
- * direction pill and a deep-linked document are not the panel's to touch.
+ * What the panel's Reset returns to.
+ *
+ * THE ORDERING IS NOT IN HERE ANY MORE. It moved onto the column headers on
+ * 20 September 2026, and a Reset inside a filter panel must not silently
+ * re-sort a table somebody ordered from the headers they can see — the same
+ * rule Daftar Akun's Reset follows (§8). A deep-linked document is likewise not
+ * the panel's to touch — it has no control here, and its chip is how it comes
+ * off. TIPE IS IN HERE, unlike the pill row it replaced: a field the panel
+ * conceals is a field the panel's Reset owns.
  */
 const CLEARED: PanelFilters = {
-  sort: "newest",
   dateFrom: "",
   dateTo: "",
-  kinds: [],
+  direction: "",
+  source: "",
   branchId: "",
-  channelId: "",
-  status: "",
+  accountId: "",
+  // BACK TO "TERCATAT", not to "". Reset returns the panel to the state it
+  // opens the screen in, and hiding the cancelled rows IS that state.
+  status: DEFAULT_CASH_TRANSACTION_STATUS,
 };
 
 /**
- * The Transaksi controls (§8): the Arah pill row on its own line, then search and
- * one `Filter (n)` button over Urutkan · Periode · Jenis · Cabang · Channel ·
- * Status.
+ * The Transaksi controls (§8): ONE LINE — search, then a single `Filter (n)`
+ * button over Tipe · Sumber · Akun Kas & Bank · Status, then the actions.
+ * Periode and Cabang are the page's context bar, and the ORDERING is on the
+ * column headers.
  *
- * A PANEL, on both counts — six fields, and a date range and a multi-select that
- * each hold a draft. Arah stays outside as the page's lens, is not in the count,
- * and Reset leaves it alone: it is the one choice here nobody makes by accident.
+ * NOTHING SITS OUTSIDE THE BUTTON ANY MORE. Tipe was a pill row above the table
+ * until 20 September 2026; see `DIRECTION_OPTIONS` for why it moved and what
+ * followed from it. Every one of the four is counted on the trigger, which is
+ * what makes a collapsed bar safe (§8): a filter somebody forgot is on is a
+ * table they read the wrong numbers off.
  */
 export function CashTransactionsToolbar({
   query,
-  channels,
+  cashAccounts,
   onChange,
+  actions,
   className,
 }: {
   query: CashTransactionsQuery;
-  channels: PaymentChannel[];
+  cashAccounts: ChartOfAccount[];
   onChange: (patch: Partial<CashTransactionsQuery>) => void;
+  /**
+   * "Tambah transaksi", already permission-wrapped by the caller — it rides the
+   * bar's own `actions` slot so it lands on the SEARCH ROW, level with
+   * `Filter (n)`, rather than on the Tipe pills above it (20 September 2026, on
+   * request). A `ReactNode` and not a `{label, href}` for `FilterBar`'s own
+   * reason: the node is inside a `<Can>`, and permissions stay with the caller.
+   */
+  actions?: ReactNode;
   className?: string;
 }) {
   const chips: AppliedFilter[] = [];
 
-  if (query.kinds.length > 0) {
+  if (query.direction) {
     chips.push({
-      key: "kinds",
-      label: query.kinds.map((kind) => KIND_LABEL[kind] ?? kind).join(", "),
-      onRemove: () => onChange({ kinds: [] }),
+      key: "direction",
+      label: DIRECTION_TITLE[query.direction],
+      onRemove: () => onChange({ direction: "" }),
     });
   }
-  if (query.channelId) {
+  if (query.source) {
     chips.push({
-      key: "channel",
-      label:
-        channels.find((channel) => channel._id === query.channelId)?.name ??
-        "Channel terpilih",
-      onRemove: () => onChange({ channelId: "" }),
+      key: "source",
+      label: sourceFilterLabel(query.source),
+      onRemove: () => onChange({ source: "" }),
     });
   }
-  if (query.status) {
+  if (query.accountId) {
+    const account = cashAccounts.find((row) => row._id === query.accountId);
+    chips.push({
+      key: "account",
+      label: account
+        ? `${account.code} · ${account.name}`
+        : "Akun kas/bank terpilih",
+      onRemove: () => onChange({ accountId: "" }),
+    });
+  }
+  /*
+    ONLY WHEN IT IS NOT THE DEFAULT. "Tercatat" is how the list always opens, and
+    a chip that never comes off says nothing — but "Dibatalkan" and "Semua
+    status" both put cancelled rows on screen, which is worth a chip saying so.
+  */
+  if (query.status !== DEFAULT_CASH_TRANSACTION_STATUS) {
     chips.push({
       key: "status",
-      label: query.status === "void" ? "Dibatalkan" : "Tercatat",
-      onRemove: () => onChange({ status: "" }),
+      label: query.status === "void" ? "Dibatalkan" : "Termasuk dibatalkan",
+      onRemove: () => onChange({ status: DEFAULT_CASH_TRANSACTION_STATUS }),
     });
   }
   if (query.documentId) {
@@ -133,94 +193,95 @@ export function CashTransactionsToolbar({
   }
 
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
-      <FilterPills
-        ariaLabel="Arah uang"
-        value={query.direction}
-        options={DIRECTIONS}
-        onChange={(direction) => onChange({ direction })}
-      />
-
-      <FilterBar
-        searchPlacement="leading"
-        searchClassName="min-w-[12rem] flex-1"
-        chips={chips}
-        /*
+    <FilterBar
+      className={className}
+      searchPlacement="leading"
+      searchClassName="min-w-[12rem] flex-1"
+      actions={actions}
+      chips={chips}
+      /*
           CLEARS WHAT THIS BAR OWNS, and not the context bar's period or branch.
           Reset clears what the control it belongs to conceals (§8); reaching up
           and throwing the whole page back to "Semua" would undo a choice this
           button does not appear to be about.
         */
-        onClearAll={() =>
-          onChange({
-            kinds: [],
-            channelId: "",
-            status: "",
-            documentId: "",
-          })
-        }
-        search={
-          <FilterSearch
-            value={query.search}
-            onChange={(search) => onChange({ search })}
-            placeholder="Cari nomor, pihak, referensi atau catatan…"
-            ariaLabel="Cari transaksi"
-            fill
-          />
-        }
-      >
-        <TransactionsFilterPanel
-          applied={{
-            sort: query.sort,
-            dateFrom: query.dateFrom,
-            dateTo: query.dateTo,
-            kinds: query.kinds,
-            branchId: query.branchId,
-            channelId: query.channelId,
-            status: query.status,
-          }}
-          channels={channels}
-          onApply={(next) => {
-            // Only what moved — setQuery re-queries on any new object.
-            const patch: Partial<CashTransactionsQuery> = {};
-            if (next.sort !== query.sort) patch.sort = next.sort;
-            if (next.dateFrom !== query.dateFrom) patch.dateFrom = next.dateFrom;
-            if (next.dateTo !== query.dateTo) patch.dateTo = next.dateTo;
-            if (next.kinds.join(",") !== query.kinds.join(","))
-              patch.kinds = next.kinds;
-            if (next.branchId !== query.branchId) patch.branchId = next.branchId;
-            if (next.channelId !== query.channelId)
-              patch.channelId = next.channelId;
-            if (next.status !== query.status) patch.status = next.status;
-            if (Object.keys(patch).length > 0) onChange(patch);
-          }}
+      onClearAll={() =>
+        onChange({
+          direction: "",
+          source: "",
+          accountId: "",
+          status: DEFAULT_CASH_TRANSACTION_STATUS,
+          documentId: "",
+        })
+      }
+      search={
+        <FilterSearch
+          value={query.search}
+          onChange={(search) => onChange({ search })}
+          placeholder="Cari nomor, pihak, referensi atau catatan…"
+          ariaLabel="Cari transaksi"
+          fill
         />
-      </FilterBar>
-    </div>
+      }
+    >
+      <TransactionsFilterPanel
+        applied={{
+          dateFrom: query.dateFrom,
+          dateTo: query.dateTo,
+          direction: query.direction,
+          source: query.source,
+          branchId: query.branchId,
+          accountId: query.accountId,
+          status: query.status,
+        }}
+        cashAccounts={cashAccounts}
+        onApply={(next) => {
+          // Only what moved — setQuery re-queries on any new object.
+          const patch: Partial<CashTransactionsQuery> = {};
+          if (next.dateFrom !== query.dateFrom) patch.dateFrom = next.dateFrom;
+          if (next.dateTo !== query.dateTo) patch.dateTo = next.dateTo;
+          if (next.direction !== query.direction)
+            patch.direction = next.direction;
+          if (next.source !== query.source) patch.source = next.source;
+          if (next.branchId !== query.branchId) patch.branchId = next.branchId;
+          if (next.accountId !== query.accountId)
+            patch.accountId = next.accountId;
+          if (next.status !== query.status) patch.status = next.status;
+          if (Object.keys(patch).length > 0) onChange(patch);
+        }}
+      />
+    </FilterBar>
   );
 }
 
 function TransactionsFilterPanel({
   applied,
-  channels,
+  cashAccounts,
   onApply,
 }: {
   applied: PanelFilters;
-  channels: PaymentChannel[];
+  cashAccounts: ChartOfAccount[];
   onApply: (next: PanelFilters) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(applied);
 
   /*
-    Urutkan is never unset, so it is not counted (§8). NEITHER ARE PERIODE AND
-    CABANG any more: they moved to the context bar above, where they are visible
-    on the row — and the badge exists to pay back what a panel CONCEALS.
+    PERIODE AND CABANG are not counted: they moved to the context bar above,
+    where they are visible on the row — and the badge exists to pay back what a
+    panel CONCEALS. The ordering is not counted either, and is no longer even
+    here: it is on the column headers.
+
+    TIPE IS COUNTED, and was not while it was a pill row: §8 exempts a pill row
+    because a row of pills with one filled in, sitting in plain sight, conceals
+    nothing. Behind this button it conceals everything, and a Tipe somebody
+    forgot is on is half a cash book quietly missing.
   */
   const count = [
-    applied.kinds.length > 0,
-    applied.channelId !== "",
-    applied.status !== "",
+    applied.direction !== "",
+    applied.source !== "",
+    applied.accountId !== "",
+    applied.status !== DEFAULT_CASH_TRANSACTION_STATUS,
   ].filter(Boolean).length;
 
   function onOpenChange(next: boolean) {
@@ -228,18 +289,18 @@ function TransactionsFilterPanel({
     setOpen(next);
   }
 
-  // A picked branch narrows the channels to its own and the tenant-wide ones —
-  // the same rule the server uses to decide which channels a branch may use.
-  const channelOptions = withAll(
-    namedOptions(
-      channels.filter(
-        (channel) =>
-          !draft.branchId ||
-          !channel.branchId ||
-          channel.branchId === draft.branchId,
-      ),
-    ),
-    "Semua channel",
+  /*
+    NOT NARROWED BY THE BRANCH, unlike the channel list it replaced. A channel
+    belongs to a till and a branch may be barred from it; an ACCOUNT belongs to
+    the company — the same bank account pays the landlord whichever branch signed
+    the lease — so filtering it by branch would hide rows that genuinely exist.
+  */
+  const accountOptions = withAll(
+    cashAccounts.map((account) => ({
+      value: account._id,
+      label: `${account.code} · ${account.name}`,
+    })),
+    "Semua akun",
   );
 
   return (
@@ -264,26 +325,37 @@ function TransactionsFilterPanel({
           setOpen(false);
         }}
       >
+        {/*
+          TIPE FIRST, then SUMBER. Coarsest question first: "which way did the
+          money go" halves the list before "what produced it" narrows it, and
+          that is the order somebody scanning a cash book asks them in. Sumber
+          leads over Akun and Status because it is the one of the three the
+          table already shows a column for.
+        */}
         <FilterSelect
           layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="newest"
-          onChange={(sort) => setDraft((prev) => ({ ...prev, sort }))}
-        />
-        <KindField
-          selected={draft.kinds}
-          onChange={(kinds) => setDraft((prev) => ({ ...prev, kinds }))}
+          label="Tipe"
+          ariaLabel="Filter tipe"
+          value={draft.direction}
+          options={DIRECTION_OPTIONS}
+          onChange={(direction) => setDraft((prev) => ({ ...prev, direction }))}
         />
         <FilterSelect
           layout="field"
-          label="Channel"
-          ariaLabel="Filter channel"
-          value={draft.channelId}
-          options={channelOptions}
-          onChange={(channelId) => setDraft((prev) => ({ ...prev, channelId }))}
+          label="Sumber"
+          ariaLabel="Filter sumber"
+          value={draft.source}
+          options={SOURCE_OPTIONS}
+          onChange={(source) => setDraft((prev) => ({ ...prev, source }))}
+        />
+        <FilterSelect
+          layout="field"
+          label="Akun Kas & Bank"
+          ariaLabel="Filter akun kas/bank"
+          value={draft.accountId}
+          options={accountOptions}
+          searchable
+          onChange={(accountId) => setDraft((prev) => ({ ...prev, accountId }))}
         />
         <FilterSelect
           layout="field"
@@ -295,74 +367,5 @@ function TransactionsFilterPanel({
         />
       </FilterPanel>
     </>
-  );
-}
-
-/**
- * Jenis — several at once ("penerimaan piutang and pemasukan lain").
- *
- * NOT A FilterMultiSelect, for the reason ProductsToolbar's warehouse field
- * gives: that control carries its own Terapkan, and inside a panel that already
- * has one it would ask the same question twice. Same shell (FilterField +
- * FilterTrigger), so it sits in the panel like the selects around it. Nothing
- * ticked means every kind.
- */
-function KindField({
-  selected,
-  onChange,
-}: {
-  selected: CashTransactionKind[];
-  onChange: (kinds: CashTransactionKind[]) => void;
-}) {
-  const label =
-    selected.length === 0
-      ? "Semua jenis"
-      : selected.length === 1
-        ? KIND_LABEL[selected[0]]
-        : `${selected.length} jenis`;
-
-  function toggle(kind: CashTransactionKind) {
-    onChange(
-      selected.includes(kind)
-        ? selected.filter((current) => current !== kind)
-        : // Kept in the canonical order, so the chip reads the same every time.
-          CASH_TRANSACTION_KINDS.filter(
-            (current) => current === kind || selected.includes(current),
-          ),
-    );
-  }
-
-  return (
-    <FilterField label="Jenis">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <FilterTrigger
-            layout="field"
-            label="Jenis"
-            value={label}
-            active={selected.length > 0}
-            aria-label={`Jenis ${label}`}
-          />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuCheckboxItem
-            checked={selected.length === 0}
-            onCheckedChange={() => onChange([])}
-          >
-            Semua jenis
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuSeparator />
-          {CASH_TRANSACTION_KINDS.map((kind) => (
-            <DropdownMenuCheckboxItem
-              key={kind}
-              checked={selected.includes(kind)}
-              onCheckedChange={() => toggle(kind)}
-            >
-              {KIND_LABEL[kind]}
-            </DropdownMenuCheckboxItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </FilterField>
   );
 }

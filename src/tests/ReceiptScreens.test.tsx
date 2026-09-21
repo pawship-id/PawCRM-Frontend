@@ -196,14 +196,14 @@ function preview(
       {
         accountId: "acc-inventory",
         accountCode: "1201",
-        accountName: "Persediaan Barang Dagangan",
+        accountName: "Persediaan Barang",
         debit: "150000.0000",
         credit: "0",
       },
       {
         accountId: "acc-payable",
         accountCode: "2101",
-        accountName: "Utang Supplier",
+        accountName: "Utang Usaha",
         debit: "0",
         credit: "150000.0000",
       },
@@ -1336,7 +1336,7 @@ describe("filing the supplier's invoice with the delivery", () => {
   /**
    * THE UNTICKED HALF IS THE ONE THAT HAS TO BE SPELLED OUT. An empty box reads
    * as "nothing happens", where what actually happens is a debt: a beli-putus
-   * receipt credits 2101 Utang Supplier whether or not a faktur is filed. A
+   * receipt credits 2101 Utang Usaha whether or not a faktur is filed. A
    * clerk who read the box as "belum ada utang" would leave a payable nobody is
    * watching.
    */

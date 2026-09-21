@@ -98,7 +98,7 @@ function formatDimensions(product: Product): string {
   return `${length} × ${width} × ${height} cm`;
 }
 
-/** "1201 — Persediaan Barang Dagangan", or an em dash rather than a bare id. */
+/** "1201 — Persediaan Barang", or an em dash rather than a bare id. */
 function accountLabel(
   accounts: Array<{ _id: string; code: string; name: string }>,
   accountId: string | null | undefined,

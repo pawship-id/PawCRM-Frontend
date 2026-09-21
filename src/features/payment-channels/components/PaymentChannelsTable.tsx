@@ -21,10 +21,9 @@ import {
 import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import type { PaymentChannel } from "@/types/api";
-import { formatMoney } from "@/utils/decimal";
 
-import { CHANNEL_TYPE_LABELS } from "../hooks/usePaymentChannels";
-import type { CashAccountRow } from "../hooks/useCashAccounts";
+import { CHANNEL_TYPE_LABELS } from "../labels";
+import type { PaymentChannelRow } from "../hooks/usePaymentChannelList";
 
 type PendingAction = {
   kind: "delete" | "restore";
@@ -32,20 +31,27 @@ type PendingAction = {
 } | null;
 
 /**
- * Akun Kas & Bank — every channel money can arrive through, what moved through
- * it this period, and what its ledger account holds.
+ * Channel Pembayaran — every named place money can arrive, and the account it
+ * lands in.
+ *
+ * NO MONEY COLUMNS (20 September 2026). This table carried Masuk, Keluar and
+ * Saldo while it was the body of Kas & Bank; it lost them when it moved to
+ * Pengaturan, and the loss is the point. A saldo per channel could never be
+ * summed — several channels share one account — and a settings screen has no
+ * period for a movement to be about. Both figures are on Kas & Bank now, filed
+ * by account, where a column of them adds up.
+ *
+ * WHAT IS LEFT IS WHAT A PERSON EDITS: the name a cashier reads, the tab it sits
+ * under, the branch it belongs to, and the account it debits. That is the whole
+ * of a channel.
  *
  * ONE FLAT TABLE, not four grouped sections. The server already returns them
  * ordered by tab, so the Tipe column reads as a grouping without the markup —
  * and six rows do not need four headings to scan.
  *
- * MASUK AND KELUAR ARE THE PERIOD; SALDO IS A POSITION as of its end. Two kinds
- * of number in one row, which is why the caption under the table says so rather
- * than leaving it to be worked out from the column names.
- *
- * MDR MOVED UNDER THE NAME to make room for them. It is a property of the
- * channel rather than a figure anybody scans a column of, and it is blank on
- * most rows — a column that is mostly dashes is a column worth not having.
+ * MDR SITS UNDER THE NAME rather than in a column. It is blank on most rows —
+ * only QRIS and EDC may carry a rate — and a column that is mostly dashes is a
+ * column worth not having.
  */
 export function PaymentChannelsTable({
   rows,
@@ -53,8 +59,8 @@ export function PaymentChannelsTable({
   onChanged,
   search,
 }: {
-  /** Channel, its labels, and what moved through it — see `useCashAccounts`. */
-  rows: CashAccountRow[];
+  /** Channel and its labels — see `usePaymentChannelList`. */
+  rows: PaymentChannelRow[];
   loading: boolean;
   onChanged: () => void;
   search?: string;
@@ -116,13 +122,10 @@ export function PaymentChannelsTable({
         <Table className={loading ? "opacity-60" : undefined}>
           <TableHeader>
             <TableRow>
-              <TableHead>Akun</TableHead>
               <TableHead>Nama</TableHead>
               <TableHead>Tipe</TableHead>
               <TableHead>Cabang</TableHead>
-              <TableHead className="text-right">Masuk</TableHead>
-              <TableHead className="text-right">Keluar</TableHead>
-              <TableHead className="text-right">Saldo</TableHead>
+              <TableHead>Akun</TableHead>
               <TableHead>Status</TableHead>
               {showActions && <TableHead className="text-right">Aksi</TableHead>}
             </TableRow>
@@ -134,10 +137,6 @@ export function PaymentChannelsTable({
 
               return (
                 <TableRow key={channel._id}>
-                  {/* tabular-nums so the codes line up — ui-rules §5. */}
-                  <TableCell className="tabular-nums whitespace-nowrap text-muted">
-                    {row.accountLabel ?? "—"}
-                  </TableCell>
                   <TableCell>
                     <div className="font-medium text-foreground">
                       <HighlightText text={channel.name} query={search} />
@@ -166,27 +165,9 @@ export function PaymentChannelsTable({
                         and a dash there would read as unset. */}
                     {row.branchName ?? "Semua cabang"}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums text-success">
-                    {formatMoney(row.masuk)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-foreground">
-                    {formatMoney(row.keluar)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {/*
-                      ONCE PER ACCOUNT. Two channels can point at one account,
-                      and a balance repeated on both invites somebody to add the
-                      column up and get twice the money the shop has.
-                    */}
-                    {row.saldo !== null ? (
-                      <b className="font-semibold text-foreground">
-                        {formatMoney(row.saldo)}
-                      </b>
-                    ) : (
-                      <span className="text-xs text-muted">
-                        ikut {row.saldoSharedWith ?? "akun yang sama"}
-                      </span>
-                    )}
+                  {/* tabular-nums so the codes line up — ui-rules §5. */}
+                  <TableCell className="tabular-nums whitespace-nowrap text-muted">
+                    {row.accountLabel ?? "—"}
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -226,7 +207,7 @@ export function PaymentChannelsTable({
                             <Can feature="paymentChannels" action="update">
                               <Button variant="ghost" size="sm" asChild>
                                 <Link
-                                  href={`/dashboard/keuangan/kas-bank/${channel._id}`}
+                                  href={`/dashboard/pengaturan/channel-pembayaran/${channel._id}`}
                                 >
                                   <Pencil className="size-4" />
                                   Ubah

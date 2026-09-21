@@ -76,7 +76,7 @@ export const stockEntryService = {
   /**
    * POST /stock-entries/opening-stock — day-one stock (201).
    *
-   * Posts `opening_balance`, which credits 3101 Modal / Saldo Awal. Refused for
+   * Posts `opening_balance`, which credits 3101 Modal Disetor. Refused for
    * any product that has ever moved in that warehouse, by SKU, in one answer —
    * the server owns that rule because the answer lives in the ledger.
    */

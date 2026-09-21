@@ -1,10 +1,17 @@
 "use client";
 
-import { Fragment } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
-import { RotateCcw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  ArrowDown,
+  ArrowUp,
+  ChevronsUpDown,
+  Plus,
+  RotateCcw,
+} from "lucide-react";
 
-import { Alert, Pagination, Spinner } from "@/components";
+import { Alert, Card, ListFooter, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -14,55 +21,81 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Can } from "@/features/permissions";
 import { cn } from "@/lib/utils";
-import type { JournalEntry } from "@/types/accounting";
+import type { JournalEntry, JournalEntrySort } from "@/types/accounting";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
 
 import { ACCOUNTING_CRUMBS } from "../crumbs";
+import { reportPresets, type FinanceQuery } from "../financeSummary";
+import {
+  JOURNAL_PAGE_SIZES,
+  useJournalEntries,
+} from "../hooks/useJournalEntries";
+import { formatDate, sourceLabel, SOURCE_TONE } from "../labels";
 import { AccountingModuleHeader } from "./AccountingModuleHeader";
-import { useJournalEntries } from "../hooks/useJournalEntries";
-import { formatDate, formatMonth, sourceLabel, SOURCE_TONE } from "../labels";
+import { FinanceReportToolbar } from "./FinanceReportToolbar";
 import { JournalEntriesToolbar } from "./JournalEntriesToolbar";
 
-/** Tanggal, No. jurnal, Keterangan, Sumber, Cabang, Total debit, Status. */
+/** Tanggal, No. jurnal, Keterangan, Sumber, Cabang, Nilai, Status. */
 const COLUMN_COUNT = 7;
 
 /**
- * The general ledger — every financial fact in the tenant, newest transaction
- * first unless the toolbar says otherwise, read from GET /api/journal-entries
- * through `useJournalEntries`.
+ * The column headers that order the list, and which way each goes FIRST.
  *
- * ROWS ARE GROUPED BY MONTH, because that is the unit a ledger is read and
- * closed in. A flat list of 500 entries answers "what happened" but never "what
- * happened in July", and the subtotal on each month header is the number
- * somebody is actually scrolling for.
- *
- * EVERY SUBTOTAL ON THIS SCREEN IS SCOPED TO THE PAGE, and it says so in three
- * places — the tile label, the month header's caption, and the note under the
- * table. That is the one thing the move off fixtures changed here: the old screen
- * held the whole book in memory, so a month header could add up the month. The
- * API pages at 20, a busy month spans several pages, and a header that summed
- * only the rows in front of it while reading "Agustus 2026" would be a wrong
- * number wearing a right label — the most expensive kind on a finance screen.
- * The period's real totals come from GET /journal-entries/summary, which is what
- * the Keuangan dashboard renders.
- *
- * THE TOTAL COLUMN IS THE DEBIT SIDE, and saying so in the header matters: an
- * entry's "amount" is not a stored field — Σdebit equals Σcredit by definition,
- * so either side is the total and neither is the row's own property. A column
- * that silently picked one would invite the question of which.
- *
- * NO EDIT ACTION ANYWHERE, on purpose. A posted entry is immutable and there is
- * no delete route: a wrong entry is corrected by REVERSING it, which leaves both
- * the error and the correction in the list. That is why the status column exists
- * — "dibalik" and "pembalik" are the two halves of a correction, and hiding them
- * would make the same transaction look like it was recorded twice.
+ * Newest and largest first on a date and an amount — what somebody opening a
+ * ledger is looking for — and A first on a name or a number, where the top of
+ * the alphabet is the top of the list. Every ordering here is one the server
+ * sorts by the same text the cell shows; SUMBER IS NOT SORTABLE because the cell
+ * shows a label ("Faktur", "Jurnal manual") while the server could only order by
+ * the code behind it, and a header that sorts by something other than what it
+ * displays is worse than one that does not invite the click (the rule Kas &
+ * Bank's list set on 20 September).
  */
-export function JournalEntriesScreen() {
+const SORTABLE = {
+  tanggal: { first: "newest", then: "oldest" },
+  nomor: { first: "numberAsc", then: "numberDesc" },
+  keterangan: { first: "descriptionAsc", then: "descriptionDesc" },
+  cabang: { first: "branchAsc", then: "branchDesc" },
+  nilai: { first: "totalDesc", then: "totalAsc" },
+} as const satisfies Record<
+  string,
+  { first: JournalEntrySort; then: JournalEntrySort }
+>;
+
+/**
+ * JURNAL — every financial fact in the tenant, as the mockup lays it out
+ * (21 September 2026): the module's context bar (Cabang, Periode), then one card
+ * holding the search, a Sumber filter, a table whose headers order it, and the
+ * shared footer with its page-size control.
+ *
+ * WHAT WENT, AND WHY IT COULD: the month group headers and the Entri / Total
+ * debit tiles. The month headers carried a subtotal that could only ever cover
+ * the page, and the tiles restated a total the dashboard already owns; the
+ * mockup has neither. The Nilai column is now sortable instead, off the stored
+ * `total`.
+ *
+ * WHAT STAYED THOUGH THE MOCKUP LACKS IT: the Status column. The mockup's data
+ * never reverses an entry; the ledger does, and "dibalik" on a row whose amounts
+ * no longer reach any report is the most important thing on it. Hiding it would
+ * make one transaction look recorded twice. Same call Kas & Bank made.
+ *
+ * NO LINI USAHA ON THE BAR. An entry is not IN a line of business — its lines
+ * are, and a shared cost is split across several by the laba rugi rather than
+ * stamped with one. Filtering entries by lini would show some of what a line
+ * carried and hide the rest, so the control is left out rather than offered
+ * half-true, as it is on Kas & Bank and Arus Kas.
+ *
+ * NO EDIT ACTION ANYWHERE. A posted entry is immutable; a wrong one is reversed.
+ */
+export function JournalEntriesScreen({ now }: { now: string }) {
+  const router = useRouter();
+  const today = useMemo(() => new Date(now), [now]);
+  const presets = useMemo(() => reportPresets(today), [today]);
+
   const {
     entries,
     pagination,
-    totals,
     query,
     branches,
     loading,
@@ -71,13 +104,6 @@ export function JournalEntriesScreen() {
     refetch,
   } = useJournalEntries();
 
-  /**
-   * Σdebit === Σcredit is the invariant the backend refuses a posting over, so
-   * the two agreeing is not news — but if they ever do not, that is the most
-   * important thing on the screen and it must not be silent.
-   */
-  const unbalanced = totals !== null && totals.debit !== totals.credit;
-
   const filtered =
     query.search.trim() !== "" ||
     query.sourceType !== "" ||
@@ -85,134 +111,147 @@ export function JournalEntriesScreen() {
     query.dateTo !== "" ||
     query.branchId !== "";
 
+  // The bar speaks `FinanceQuery`; this page's state carries three of its
+  // fields. Translated here so the bar stays one component across Keuangan.
+  const contextQuery: FinanceQuery = {
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo,
+    branchId: query.branchId,
+    businessLineId: "",
+  };
+
+  const sortHead = (
+    column: keyof typeof SORTABLE,
+    label: string,
+    align?: "right",
+  ) => (
+    <SortHead
+      column={column}
+      label={label}
+      align={align}
+      sort={query.sort}
+      onSort={(sort) => setQuery({ sort })}
+    />
+  );
+
   return (
     <div className="flex flex-col gap-6">
-      <AccountingModuleHeader />
-
-      {/* What the module header cannot say, because it is on every tab: what
-          THIS list is. */}
-      <p className="max-w-2xl text-[15px] text-muted">
-        Buku besar tenant. Semua modul — POS, faktur, pembelian, opname —
-        mencatat ke sini, dan laporan laba rugi, neraca serta arus kas dibaca
-        dari daftar ini. Entri yang sudah diposting tidak bisa diubah; koreksi
-        dilakukan dengan jurnal pembalik.
-      </p>
-
-      {error && (
-        <Alert variant="error">
-          <span className="flex flex-wrap items-center gap-3">
-            {error}
-            <Button variant="secondary" size="sm" onClick={refetch}>
-              <RotateCcw className="size-4" />
-              Coba lagi
+      <AccountingModuleHeader
+        action={
+          /*
+            THE ONE WRITABLE ACTION, in the page head where the mockup puts it.
+            POST /journal-entries only ever produces a MANUAL entry — every other
+            source posts service-to-service — so this is the only "new" that
+            means anything on the ledger, and it is named for what it makes.
+          */
+          <Can feature="journalEntries" action="create">
+            <Button asChild>
+              <Link href={`${ACCOUNTING_CRUMBS.journal.href}/new`}>
+                <Plus className="size-4" />
+                Tambah jurnal manual
+              </Link>
             </Button>
-          </span>
-        </Alert>
-      )}
-
-      <JournalEntriesToolbar
-        query={query}
-        branches={branches}
-        onChange={setQuery}
+          </Can>
+        }
       />
 
-      {/* BOTH FIGURES COVER THE WHOLE FILTER, not the page — the count from the
-          list's own `pagination.total`, the amount from
-          GET /journal-entries/totals. Neither moves as somebody pages, which is
-          what makes them safe to quote. */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <SummaryTile
-          label="Entri"
-          value={`${pagination.total}`}
-          hint={scopeHint(filtered)}
-        />
-        <SummaryTile
-          label="Total debit"
-          // "—" while it is in flight or after it failed. Rendering 0 would be
-          // stating a fact about somebody's books that was never checked.
-          value={totals === null ? "—" : formatMoney(totals.debit)}
-          hint={
-            unbalanced
-              ? `Tidak seimbang — total kredit ${formatMoney(totals.credit)}`
-              : scopeHint(filtered)
-          }
-          tone={unbalanced ? "danger" : undefined}
-        />
-      </div>
+      <FinanceReportToolbar
+        query={contextQuery}
+        branches={branches}
+        presets={presets}
+        disabled={loading}
+        onChange={(patch: Partial<FinanceQuery>) =>
+          setQuery({
+            ...(patch.dateFrom !== undefined && { dateFrom: patch.dateFrom }),
+            ...(patch.dateTo !== undefined && { dateTo: patch.dateTo }),
+            ...(patch.branchId !== undefined && { branchId: patch.branchId }),
+          })
+        }
+      />
 
-      {loading && entries.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Memuat jurnal…
-        </div>
-      ) : (
-        <>
-          <div className="overflow-hidden rounded-xl border border-border bg-surface">
-            <Table className={loading ? "opacity-60" : undefined}>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tanggal</TableHead>
-                  <TableHead>No. jurnal</TableHead>
-                  <TableHead>Keterangan</TableHead>
-                  <TableHead>Sumber</TableHead>
-                  <TableHead>Cabang</TableHead>
-                  <TableHead className="text-right">Total debit</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {entries.length === 0 && (
-                  <TableRow className="hover:bg-transparent">
-                    <TableCell
-                      colSpan={COLUMN_COUNT}
-                      className="px-4 py-16 text-center"
-                    >
-                      <p className="font-medium text-foreground">
-                        {filtered
-                          ? "Tidak ada entri di filter ini."
-                          : "Belum ada entri di buku besar."}
-                      </p>
-                      <p className="mt-1 text-sm text-muted">
-                        {filtered
-                          ? "Coba longgarkan tanggal atau sumbernya, atau hapus kata kuncinya."
-                          : "Entri muncul begitu ada transaksi yang diposting — penjualan, penerimaan barang, atau opname."}
-                      </p>
-                    </TableCell>
-                  </TableRow>
-                )}
+      <Card>
+        <div className="flex flex-col gap-4">
+          {/* The module's small caption rather than the Card's `title` — the
+              mockup's "JURNAL UMUM", and Kas & Bank's "Daftar transaksi". */}
+          <h2 className="text-xs font-semibold tracking-widest text-muted uppercase">
+            Jurnal umum
+          </h2>
 
-                {groupByMonth(entries).map(([month, monthEntries], index) => (
-                  // Keyed on the position, not the label: the groups are what
-                  // this page renders, and a label is only unique while the
-                  // ordering keeps each month in one run. See groupByMonth.
-                  <Fragment key={`${index}-${month}`}>
-                    {/* A month heading is not an entry, so it fills no entry
-                        column — the same choice ChartOfAccountsScreen makes for
-                        its class headings, including switching off ui/table's
-                        own hover so the row never reads as clickable. */}
-                    <TableRow className="bg-surface-hover hover:bg-surface-hover">
-                      <TableCell
-                        colSpan={5}
-                        className="px-4 py-1.5 text-xs font-semibold tracking-widest text-muted uppercase"
-                      >
-                        {month}
-                      </TableCell>
-                      <TableCell className="px-4 py-1.5 text-right text-xs font-semibold tabular-nums">
-                        {formatMoney(sumDecimals(monthEntries.map(entryTotal)))}
-                      </TableCell>
-                      <TableCell className="px-4 py-1.5 text-xs tabular-nums text-muted">
-                        {monthEntries.length} entri di halaman ini
-                      </TableCell>
+          {error && (
+            <Alert variant="error">
+              <span className="flex flex-wrap items-center gap-3">
+                {error}
+                <Button variant="secondary" size="sm" onClick={refetch}>
+                  <RotateCcw className="size-4" />
+                  Coba lagi
+                </Button>
+              </span>
+            </Alert>
+          )}
+
+          <JournalEntriesToolbar query={query} onChange={setQuery} />
+
+          {loading && entries.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+              <Spinner /> Memuat jurnal…
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+                <Table className={loading ? "opacity-60" : undefined}>
+                  <TableHeader>
+                    <TableRow>
+                      {sortHead("tanggal", "Tanggal")}
+                      {sortHead("nomor", "No. jurnal")}
+                      {sortHead("keterangan", "Keterangan")}
+                      <TableHead>Sumber</TableHead>
+                      {sortHead("cabang", "Cabang")}
+                      {sortHead("nilai", "Nilai", "right")}
+                      <TableHead>Status</TableHead>
                     </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {entries.length === 0 && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell
+                          colSpan={COLUMN_COUNT}
+                          className="px-4 py-16 text-center"
+                        >
+                          <p className="font-medium text-foreground">
+                            {filtered
+                              ? "Tidak ada entri di filter ini."
+                              : "Belum ada entri jurnal."}
+                          </p>
+                          <p className="mt-1 text-sm text-muted">
+                            {filtered
+                              ? "Coba longgarkan periode, cabang atau sumbernya, atau hapus kata kuncinya."
+                              : "Entri muncul begitu ada transaksi yang diposting — penjualan, penerimaan barang, atau opname."}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    )}
 
-                    {monthEntries.map((entry) => (
-                      <TableRow key={entry._id}>
+                    {entries.map((entry) => (
+                      <TableRow
+                        key={entry._id}
+                        // The whole row opens the entry, as the mockup's does;
+                        // the number stays a real link for the keyboard and for
+                        // opening in a new tab.
+                        className="cursor-pointer"
+                        onClick={() =>
+                          router.push(
+                            `${ACCOUNTING_CRUMBS.journal.href}/${entry._id}`,
+                          )
+                        }
+                      >
                         <TableCell className="px-4 py-2.5 text-sm tabular-nums whitespace-nowrap">
                           {formatDate(entry.date)}
                         </TableCell>
                         <TableCell className="px-4 py-2.5">
                           <Link
                             href={`${ACCOUNTING_CRUMBS.journal.href}/${entry._id}`}
-                            className="rounded-md text-sm tabular-nums underline-offset-4 hover:text-primary-hover hover:underline focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                            onClick={(event) => event.stopPropagation()}
+                            className="rounded-md text-sm font-semibold tabular-nums text-primary underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                           >
                             {entry.entryNumber}
                           </Link>
@@ -221,19 +260,16 @@ export function JournalEntriesScreen() {
                           <p className="truncate text-sm font-medium">
                             {entry.description}
                           </p>
-                          <p className="truncate text-xs tabular-nums text-muted">
-                            {/* The source document's number when the server could
-                                resolve one — `pos`, `invoice`, `receipt` and
-                                `commission` have no collection to read it from
-                                yet, so those fall back to the line count. */}
-                            {entry.source.reference ??
-                              `${entry.lines.length} baris`}
-                          </p>
+                          {entry.source.reference && (
+                            <p className="truncate text-xs tabular-nums text-muted">
+                              {entry.source.reference}
+                            </p>
+                          )}
                         </TableCell>
                         <TableCell className="px-4 py-2.5">
                           <span
                             className={cn(
-                              "inline-block rounded-full px-2 py-0.5 text-xs font-medium",
+                              "inline-block rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
                               SOURCE_TONE[entry.source.type],
                             )}
                           >
@@ -251,51 +287,92 @@ export function JournalEntriesScreen() {
                         </TableCell>
                       </TableRow>
                     ))}
-                  </Fragment>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                  </TableBody>
+                </Table>
+              </div>
 
-          <Pagination
-            page={pagination.page}
-            totalPages={pagination.totalPages}
-            total={pagination.total}
-            unit="entri"
-            unitPlural="entri"
-            onPageChange={(page) => setQuery({ page })}
-          />
-        </>
-      )}
-
-      <p className="text-xs text-muted">
-        Total debit di atas mencakup seluruh filter. Subtotal di setiap baris
-        bulan hanya menjumlahkan entri di halaman ini — untuk laba rugi per
-        periode, buka{" "}
-        <Link
-          href={ACCOUNTING_CRUMBS.hub.href}
-          className="text-primary-hover underline-offset-4 hover:underline"
-        >
-          ringkasan Keuangan
-        </Link>
-        .
-      </p>
+              <ListFooter
+                page={pagination.page}
+                pageSize={query.limit}
+                pageSizes={JOURNAL_PAGE_SIZES}
+                total={pagination.total}
+                totalPages={pagination.totalPages}
+                unit="entri"
+                onPageChange={(page) => setQuery({ page })}
+                onPageSizeChange={(limit) => setQuery({ limit })}
+              />
+            </>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }
 
-/** Σdebit — equal to Σcredit by definition, so either side is "the amount". */
+/**
+ * The entry's amount — Σdebit, equal to Σcredit by definition.
+ *
+ * The stored `total` when the server has one (it is what the Nilai column
+ * sorts by, so showing it keeps the order and the figures in agreement), and
+ * the lines' own sum for an entry the backfill has not reached.
+ */
 export function entryTotal(entry: JournalEntry): string {
-  return sumDecimals(entry.lines.map((line) => line.debit));
+  return entry.total ?? sumDecimals(entry.lines.map((line) => line.debit));
+}
+
+/**
+ * A COLUMN HEADER THAT ORDERS THE LIST — first click takes the column's natural
+ * direction (SORTABLE above), a second flips it. The arrow is on every sortable
+ * header, greyed when that column is not the active one, so the row says which
+ * columns can be clicked — the rule Daftar Akun and Kas & Bank follow.
+ */
+function SortHead({
+  column,
+  label,
+  align,
+  sort,
+  onSort,
+}: {
+  column: keyof typeof SORTABLE;
+  label: string;
+  align?: "right";
+  sort: JournalEntrySort;
+  onSort: (next: JournalEntrySort) => void;
+}) {
+  const { first, then } = SORTABLE[column];
+  const active = sort === first ? "first" : sort === then ? "then" : null;
+  // Which way the active ordering runs, for the arrow and for aria-sort.
+  const ascending = sort === "oldest" || sort.endsWith("Asc");
+  const Icon = !active ? ChevronsUpDown : ascending ? ArrowUp : ArrowDown;
+
+  return (
+    <TableHead
+      className={align === "right" ? "text-right" : undefined}
+      aria-sort={!active ? "none" : ascending ? "ascending" : "descending"}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(active === "first" ? then : first)}
+        className={cn(
+          "inline-flex items-center gap-1 rounded-md hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+          active && "text-foreground",
+          align === "right" && "flex-row-reverse",
+        )}
+      >
+        {label}
+        <Icon
+          className={cn("size-3.5", active ? "text-primary" : "text-muted/60")}
+          aria-hidden
+        />
+      </button>
+    </TableHead>
+  );
 }
 
 /**
  * Where an entry sits in the correction story: an ordinary posting, one that has
- * been undone, or the entry that undid one.
- *
- * Pale tint, saturated ink, no border, and always a word (§9) — never the colour
- * alone. "dibalik" on a row whose amounts no longer reach any report is the most
- * important thing on it.
+ * been undone, or the entry that undid one. Always a word, never the colour
+ * alone (§9).
  */
 function StatusBadge({ entry }: { entry: JournalEntry }) {
   if (entry.reversedByEntryId) {
@@ -325,82 +402,4 @@ function StatusBadge({ entry }: { entry: JournalEntry }) {
       diposting
     </span>
   );
-}
-
-/** What a figure is scoped by, said under it rather than left to be assumed. */
-function scopeHint(filtered: boolean): string {
-  return filtered ? "seluruh filter, bukan halaman ini" : "seluruh buku besar";
-}
-
-function SummaryTile({
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  /** `danger` for a figure that is itself the problem — see `unbalanced`. */
-  tone?: "danger";
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-surface px-4 py-3">
-      <p className="text-xs font-medium tracking-widest text-muted uppercase">
-        {label}
-      </p>
-      <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
-        {value}
-      </p>
-      {hint && (
-        // §13: danger text is under the 4.5:1 floor, so where it appears it is
-        // ≥14px and semibold, and it always carries a word rather than relying
-        // on the colour.
-        <p
-          className={cn(
-            "mt-0.5 text-xs text-muted",
-            tone === "danger" && "text-sm font-semibold text-danger",
-          )}
-        >
-          {hint}
-        </p>
-      )}
-    </div>
-  );
-}
-
-/**
- * Splits the page's rows into [month label, entries] pairs.
- *
- * TAKES THE ORDER THE API GAVE, whichever of the four the toolbar asked for, and
- * re-sorts nothing — sorting a second time in the client is how a list starts
- * disagreeing with its own pagination.
- *
- * A month stays a CONTIGUOUS RUN under every one of those orderings, which is
- * what lets this walk the list once and start a new group whenever the label
- * changes. The two date orderings give it by construction; the two number
- * orderings give it because an entry number is drawn against the entry's own
- * date — "JE-2026-07-0001" is a July transaction whenever it was typed — so
- * ordering by number never interleaves two months.
- *
- * It does not DEPEND on that, though: a run that reappeared would simply get a
- * second header, which is why the caller keys on the group's position rather
- * than on the month label.
- */
-function groupByMonth(
-  entries: JournalEntry[],
-): Array<[string, JournalEntry[]]> {
-  const groups: Array<[string, JournalEntry[]]> = [];
-
-  for (const entry of entries) {
-    const month = formatMonth(entry.date);
-    const current = groups.at(-1);
-    if (current && current[0] === month) {
-      current[1].push(entry);
-    } else {
-      groups.push([month, [entry]]);
-    }
-  }
-
-  return groups;
 }

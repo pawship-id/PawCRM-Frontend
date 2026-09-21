@@ -70,7 +70,7 @@ export const goodsReceiptService = {
    * POST /goods-receipts — receive a delivery (201). THE IRREVERSIBLE ONE.
    *
    * Moves the stock, recomputes the weighted average cost, and — for a
-   * `beli_putus` purchase — credits `2101 Utang Supplier`. All of it in one
+   * `beli_putus` purchase — credits `2101 Utang Usaha`. All of it in one
    * transaction with the document itself.
    *
    * NOT IDEMPOTENT ACROSS REQUESTS, and callers must handle that themselves: a

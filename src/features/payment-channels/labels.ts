@@ -3,11 +3,11 @@ import type { PaymentChannelType } from "@/types/api";
 /**
  * The words the four channel types wear, and the order they are read in.
  *
- * THE LIST HOOK THAT USED TO LIVE HERE IS GONE (16 September 2026). Kas & Bank
- * stopped being a settings list with its own search and type filter and became
- * the mockup's table — channels beside what moved through them — which
- * `useCashAccounts` fetches in one go along with the summary and the balances.
- * What is left is the vocabulary, which was always the half other modules
+ * NO HOOK LIVES HERE ANY MORE, which is why the file is no longer called
+ * `hooks/usePaymentChannels.ts`. The list hook it was named for went when Kas &
+ * Bank absorbed the screen (16 September 2026); the screen came back to
+ * Pengaturan on 20 September with a hook of its own, `usePaymentChannelList`,
+ * and left the vocabulary here — which was always the half other modules
  * borrowed.
  *
  * No `"use client"`: two constants need no runtime, and the POS panel imports

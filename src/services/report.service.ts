@@ -1,10 +1,13 @@
 import { apiClient } from "./api-client";
 import type { StockOnHandQuery, StockOnHandResult } from "@/types/report";
 import type {
-  CommissionCloseResult,
+  CommissionDetail,
   CommissionOutstanding,
-  CommissionPaymentResult,
+  CommissionPayment,
   CommissionRecap,
+  CommissionRowKey,
+  CommissionRowsQuery,
+  CommissionRowsResult,
   MyCommission,
   CommissionRecapQuery,
 } from "@/types/api";
@@ -74,28 +77,59 @@ export const reportService = {
     }),
 
   /**
-   * GET /reports/commissions — Rekap Komisi.
+   * GET /reports/commissions/records — the Komisi screen: one row per booking ×
+   * groomer, the context bar's scope, and the three cards.
    *
-   * GATED ON `users:read` SERVER-SIDE, not on a reports grant: this IS payroll
-   * data — it names every groomer and what they are owed. Whoever may read the
-   * staff register may read it.
+   * GATED ON `users:read` SERVER-SIDE, not on a finance grant: this IS payroll —
+   * it names every groomer and what they earned.
    */
-  /**
-   * POST /reports/commissions/close — TUTUP BULAN KOMISI.
-   *
-   * Posts `Dr 5302 Beban Komisi Groomer / Cr 2102 Utang Komisi`, dated the last
-   * day of the month rather than today: grooming done in September is a cost of
-   * September even when payday falls in October.
-   *
-   * SAFE TO RUN AGAIN. It claims only the rows no close has taken, so a second
-   * run picks up stragglers — a booking completed late — and nothing twice.
-   * Gated on `journalEntries:create`, not on the recap's `users:read`.
-   */
-  closeCommissions: (input: { period: string; branchId: string }) =>
-    apiClient.post<CommissionCloseResult>(
-      "/reports/commissions/close",
-      input,
+  commissionRecords: (query: CommissionRowsQuery = {}) =>
+    apiClient.get<CommissionRowsResult>("/reports/commissions/records", {
+      query: {
+        branchId: query.branchId || undefined,
+        businessLineId: query.businessLineId || undefined,
+        dateFrom: query.dateFrom || undefined,
+        dateTo: query.dateTo || undefined,
+        status: query.status || undefined,
+        q: query.q?.trim() || undefined,
+        sort: query.sort,
+        dir: query.dir,
+        page: query.page,
+        limit: query.limit,
+      },
+    }),
+
+  /** GET /reports/commissions/records/:bookingId/:groomerUserId — one row, whole. */
+  commissionDetail: ({ bookingId, groomerUserId }: CommissionRowKey) =>
+    apiClient.get<CommissionDetail>(
+      `/reports/commissions/records/${bookingId}/${groomerUserId}`,
     ),
+
+  /**
+   * POST /reports/commissions/approve — Menunggu Persetujuan → Disetujui. Rows
+   * that are not pending are skipped, and counted in `skipped`.
+   */
+  approveCommissions: (rows: CommissionRowKey[]) =>
+    apiClient.post<{ approved: number; skipped: number }>(
+      "/reports/commissions/approve",
+      { rows },
+    ),
+
+  /** POST /reports/commissions/unapprove — Disetujui → Menunggu Persetujuan. */
+  unapproveCommissions: (rows: CommissionRowKey[]) =>
+    apiClient.post<{ unapproved: number; skipped: number }>(
+      "/reports/commissions/unapprove",
+      { rows },
+    ),
+
+  /**
+   * POST /reports/commissions/override — Nilai Komisi Final. `amount: null`
+   * goes back to the computed figure; a different figure needs a reason.
+   */
+  overrideCommission: (
+    input: CommissionRowKey & { amount: string | null; reason?: string | null },
+  ) =>
+    apiClient.post<CommissionDetail>("/reports/commissions/override", input),
 
   /**
    * GET /reports/commissions/outstanding — what one person is still owed.
@@ -124,24 +158,26 @@ export const reportService = {
     }),
 
   /**
-   * POST /reports/commissions/pay — settles what the books say is owed.
-   *
-   * `Dr 2102 Utang Komisi / Cr <the channel's account>`. NO AMOUNT IS SENT: the
-   * server pays exactly what its own books say is outstanding, because a
-   * caller-supplied figure would let a typo leave a liability matching nothing.
+   * POST /reports/commissions/pay — ONE COMMISSION, ONE PAYMENT, ONE JOURNAL
+   * ENTRY. Every row must be approved; all of them are paid out of one Kas &
+   * Bank account, or none are. NO AMOUNT IS SENT: each row pays its own
+   * effective commission.
    */
   payCommissions: (input: {
-    groomerUserId: string;
-    branchId: string;
-    paymentChannelId: string;
+    rows: CommissionRowKey[];
+    accountId: string;
     paidAt?: string;
     note?: string | null;
   }) =>
-    apiClient.post<CommissionPaymentResult>(
+    apiClient.post<{ payments: CommissionPayment[] }>(
       "/reports/commissions/pay",
       input,
     ),
 
+  /**
+   * GET /reports/commissions — per-groomer recap. Only Komisi Saya reads it now,
+   * through `/mine`; kept for the reports that may want a monthly total.
+   */
   commissions: (query: CommissionRecapQuery = {}) =>
     apiClient.get<CommissionRecap>("/reports/commissions", {
       query: {

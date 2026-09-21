@@ -22,27 +22,19 @@ import { toDecimalString, toMinor } from "@/utils/decimal";
  */
 
 /**
- * Kas and Bank — the two account codes the cash card sums.
+ * Kas and Bank — the CATEGORY the cash card sums.
  *
- * Codes, not ids: these are the seeded accounts every tenant gets, and a code
- * survives the account being renamed. The backend knows the same two.
+ * IT WAS TWO HARDCODED CODES until 18 September 2026 (`["1101", "1102"]`), and
+ * that was wrong in a way nobody could see from the card: a tenant that added
+ * "1105 Bank Mandiri" — an ordinary thing to do the day you open a second
+ * account — had its money silently left out of the figure the shop reads first.
+ *
+ * A category is the honest question. The chart of accounts knows which accounts
+ * are cash because somebody said so when they created them, and that answer
+ * follows the tenant's own chart instead of a pair of numbers in this file.
  */
-export const CASH_ACCOUNT_CODES = ["1101", "1102"];
+export const CASH_ACCOUNT_CATEGORY = "cash_bank" as const;
 
-/**
- * Utang Komisi — the account "Komisi Belum Dibayar" reads.
- *
- * THE LEDGER'S ANSWER, NOT PAYROLL'S. The commission recap
- * (`/reports/commissions`) says what a month EARNED; this balance is what has
- * been accrued and not yet paid out, across every month still open. They are
- * different questions, and the card asks this one — a shop owner wanting to know
- * what is owed does not want it reset on the first of the month.
- *
- * A code rather than an id, for the reason the cash codes give: it is seeded for
- * every tenant and survives the account being renamed. `commission.service.js`
- * resolves the same "2102".
- */
-export const COMMISSION_PAYABLE_CODE = "2102";
 
 /** The bucket a P&L line with no business line falls into. */
 export const SHARED_LINE_LABEL = "Bersama (HQ)";
@@ -81,6 +73,15 @@ export interface FinanceQuery {
   branchId: string;
   /** `""` = every line, which is when `byBusinessLine` is worth reading. */
   businessLineId: string;
+  /**
+   * Laba rugi only: divide the shared costs across the lines using the
+   * allocation rules on each account.
+   *
+   * OFF BY DEFAULT. The undivided report is the one every previous month was
+   * read as, so it stays the thing the screen opens on and the toggle is how
+   * somebody asks the other question.
+   */
+  allocation?: boolean;
 }
 
 /* ------------------------------------------------------------------ helpers */

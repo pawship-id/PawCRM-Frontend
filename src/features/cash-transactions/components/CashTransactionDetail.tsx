@@ -2,10 +2,18 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Pencil, Undo2 } from "lucide-react";
+import { BookOpenText, MoreHorizontal, Pencil, Undo2 } from "lucide-react";
 
 import { Alert, Breadcrumb, Card, JournalLink, Spinner } from "@/components";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -23,10 +31,12 @@ import { formatMoney, toMinor } from "@/utils/decimal";
 import { useCashTransaction } from "../hooks/useCashTransaction";
 import {
   CASH_TRANSACTIONS_HREF,
-  DIRECTION_LABEL,
+  DIRECTION_TITLE,
+  cashTransactionHref,
   DOCUMENT_TYPE_LABEL,
   RECORDED_VIA_LABEL,
   cashTransactionTitle,
+  directionTitle,
   documentHref,
   formatDate,
   formatDateTime,
@@ -35,7 +45,7 @@ import {
   lockedReason,
 } from "../labels";
 import { CancelCashTransactionDialog } from "./CancelCashTransactionDialog";
-import { CashTransactionEditDialog } from "./CashTransactionEditDialog";
+import { CashTransactionJournalDialog } from "./CashTransactionJournalDialog";
 import { CashTransactionStatusBadge } from "./CashTransactionStatusBadge";
 
 /**
@@ -59,8 +69,8 @@ export function CashTransactionDetail({
   const { transaction, loading, error, notFound, apply, refetch } =
     useCashTransaction(transactionId);
   const { can } = usePermissions();
-  const [editOpen, setEditOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [journalOpen, setJournalOpen] = useState(false);
   const mayReadLedger = can("journalEntries", "read");
 
   if (loading) {
@@ -107,6 +117,14 @@ export function CashTransactionDetail({
     disputed receipt against. Only a cash line can give change, and only the till
     records the notes handed across — a back-office receipt has neither.
   */
+  /*
+    WHETHER THE ≡ MENU'S FIRST ITEM CAN DO ANYTHING. Off when the transaction has
+    no entry of its own (migrated history) or when the reader may not open the
+    ledger — the item is then DISABLED rather than absent, because a menu that
+    changes shape per row is a menu people have to read every time.
+  */
+  const canReadJournal = mayReadLedger && Boolean(transaction.journalEntryId);
+
   const hasTender =
     transaction.recordedVia === "pos" &&
     transaction.channelType === "cash" &&
@@ -126,127 +144,167 @@ export function CashTransactionDetail({
           />
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             <h1 className="text-2xl font-extrabold text-foreground tabular-nums">
-              {title}
+              {directionTitle(transaction)}
             </h1>
+            {/*
+              THE BADGE STAYS AT THE TOP, where the mockup has nothing — that
+              data has no cancelled transactions and this system does. A page
+              whose heading looks ordinary on a reversed transaction is the one
+              mistake this screen cannot afford.
+            */}
             <CashTransactionStatusBadge transaction={transaction} />
           </div>
-          <p className="mt-1 text-sm text-muted">
-            {kindLabel(transaction.kind)} ·{" "}
-            {DIRECTION_LABEL[transaction.direction]}{" "}
-            <span className="tabular-nums">
-              {formatMoney(transaction.amount)}
-            </span>{" "}
-            · <span className="tabular-nums">{formatDate(transaction.at)}</span>
+          {/*
+            THE AMOUNT, ONCE, IN THE HEADING. The mockup's detail card has no
+            Jumlah because its Rincian Akun total carries it — but a payment
+            against an invoice has no Rincian Akun card at all, and the figure
+            cannot be the one thing a money document does not say out loud.
+          */}
+          <p
+            className={cn(
+              "mt-1 text-base font-bold tabular-nums",
+              voided && "text-muted line-through",
+            )}
+          >
+            {formatMoney(transaction.amount)}
           </p>
         </div>
 
         {!locked && (
           <div className="flex flex-wrap items-center gap-2">
+            {/* A PAGE, NOT A DIALOG (20 September 2026, on request) — see
+                CashTransactionEditScreen for why this form outgrew an overlay. */}
             <Can feature="cashTransactions" action="update">
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={() => setEditOpen(true)}
-              >
-                <Pencil className="size-4" />
-                Ubah
+              <Button variant="secondary" size="sm" asChild>
+                <Link href={`${cashTransactionHref(transaction._id)}/edit`}>
+                  <Pencil className="size-4" />
+                  Ubah
+                </Link>
               </Button>
             </Can>
-            <Can feature="cashTransactions" action="void">
-              <Button
-                type="button"
-                variant="destructive"
-                size="sm"
-                onClick={() => setCancelOpen(true)}
-              >
-                <Undo2 className="size-4" />
-                Batalkan transaksi
-              </Button>
-            </Can>
+
+            {/*
+              THE MOCKUP'S ≡ MENU, with the words this system can honour.
+              "Hapus Transaksi" is not one of them: a posted transaction has a
+              journal entry, and deleting the row would leave that entry pointing
+              at nothing while every closed period quietly changed its answer.
+              Cancelling posts a REVERSAL and keeps both halves readable, which
+              is the same act somebody reaches for and the only one that is safe.
+            */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  aria-label="Tindakan lain"
+                >
+                  <MoreHorizontal className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                {/*
+                  A DIALOG, NOT A NAVIGATION. "Did this land on the right
+                  accounts" is answered by four lines and a total, and leaving
+                  the page to read them costs the thing being checked against.
+                  The full entry is one more click away, on the number.
+                */}
+                <DropdownMenuItem
+                  disabled={!canReadJournal}
+                  onSelect={() => setJournalOpen(true)}
+                >
+                  <BookOpenText className="size-4" />
+                  Lihat jurnal terkait
+                </DropdownMenuItem>
+                <Can feature="cashTransactions" action="void">
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => setCancelOpen(true)}
+                  >
+                    <Undo2 className="size-4" />
+                    Batalkan transaksi
+                  </DropdownMenuItem>
+                </Can>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         )}
       </div>
 
       {locked && !voided && <Alert variant="info">{locked}</Alert>}
 
-      <Card title="Rincian transaksi">
+      {/*
+        THE MOCKUP'S CARD, in its order and with its eight fields. Everything
+        else a transaction knows about itself moved to Informasi lain below —
+        nothing was dropped, and the first thing on the page is now the eight
+        facts somebody opens it to check.
+      */}
+      <Card title="Detail transaksi">
         <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+          <Field label="No. transaksi">
+            <span className="font-semibold tabular-nums">
+              {transaction.number ?? "Tanpa nomor"}
+            </span>
+          </Field>
+          <Field label="Tipe">
+            <Badge variant="outline">
+              {DIRECTION_TITLE[transaction.direction]}
+            </Badge>
+          </Field>
+
           <Field label="Tanggal">
             <span className="tabular-nums">{formatDate(transaction.at)}</span>
           </Field>
-          <Field label="Jenis">{kindLabel(transaction.kind)}</Field>
-          <Field label="Arah">{DIRECTION_LABEL[transaction.direction]}</Field>
+          <Field label={transaction.direction === "in" ? "Pengirim" : "Penerima"}>
+            {transaction.party?.name ?? "—"}
+          </Field>
+
+          {/*
+            AKUN KAS/BANK IS THE FACT; the channel is how it got there and only
+            some rows have one. Naming both where both exist keeps a till payment
+            explicable — "1101 Kas, lewat QRIS Xendit" — without a second field
+            that reads as empty on every transaction typed by hand.
+          */}
+          <Field label="Akun Kas/Bank">
+            {transaction.cashAccountName ? (
+              <>
+                {transaction.cashAccountCode ? (
+                  <span className="tabular-nums">
+                    {transaction.cashAccountCode}{" "}
+                  </span>
+                ) : null}
+                {transaction.cashAccountName}
+                {transaction.channelName ? (
+                  <span className="text-muted">
+                    {" "}
+                    · lewat {transaction.channelName}
+                  </span>
+                ) : null}
+              </>
+            ) : (
+              "—"
+            )}
+          </Field>
           <Field label="Cabang">{transaction.branchName ?? "—"}</Field>
-          <Field label="Channel">{transaction.channelName ?? "—"}</Field>
-          <Field label="Jumlah">
-            <span
-              className={cn(
-                "text-base font-bold tabular-nums",
-                voided && "text-muted line-through",
-              )}
-            >
-              {formatMoney(transaction.amount)}
-            </span>
-          </Field>
-          {hasMdr && (
-            <>
-              <Field label="MDR">
-                <span className="tabular-nums">
-                  {formatMoney(transaction.mdrAmount)}
-                </span>
-              </Field>
-              <Field label="Masuk bersih">
-                <span className="tabular-nums">
-                  {formatMoney(transaction.netAmount)}
-                </span>
-              </Field>
-            </>
-          )}
-          {hasTender && (
-            <>
-              <Field label="Diserahkan">
-                <span className="tabular-nums">
-                  {formatMoney(transaction.tenderedAmount ?? "0")}
-                </span>
-              </Field>
-              <Field label="Kembalian">
-                <span className="tabular-nums">
-                  {formatMoney(transaction.changeAmount ?? "0")}
-                </span>
-              </Field>
-            </>
-          )}
-          <Field label="Pihak">{transaction.party?.name ?? "—"}</Field>
-          {transaction.document && (
-            <Field label="Dokumen">
-              <DocumentLink document={transaction.document} />
-            </Field>
-          )}
-          {transaction.commission && (
-            <Field label="Periode komisi">
-              <span className="tabular-nums">
-                {transaction.commission.periods.join(", ") || "—"}
-              </span>{" "}
+
+          {/*
+            READ OFF THE ROWS, because that is the only place it is recorded: a
+            line names its own business line, and one transaction can serve
+            several. Summarised rather than invented — "Beberapa lini" is the
+            honest answer where a single name would be a wrong one.
+          */}
+          <Field label="Lini usaha">{businessLineSummary(transaction)}</Field>
+          <Field label="Biaya tetap">
+            <span className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">Segera</Badge>
               <span className="text-muted">
-                ({transaction.commission.recordCount} layanan)
+                Penjadwal biaya berulang belum ada.
               </span>
-            </Field>
-          )}
-          <Field label="No. referensi">
-            <span className="tabular-nums">{transaction.ref ?? "—"}</span>
-          </Field>
-          <Field label="Dicatat oleh">
-            {transaction.createdByName ?? "—"}{" "}
-            <span className="text-muted tabular-nums">
-              · {formatDateTime(transaction.createdAt)}
             </span>
           </Field>
-          <Field label="Dicatat lewat">
-            {RECORDED_VIA_LABEL[transaction.recordedVia] ??
-              transaction.recordedVia}
-          </Field>
-          <Field label="Catatan" className="sm:col-span-2">
+
+          <Field label="Deskripsi" className="sm:col-span-2">
             <span className="whitespace-pre-line">{transaction.note ?? "—"}</span>
           </Field>
         </dl>
@@ -277,47 +335,86 @@ export function CashTransactionDetail({
         )}
       </Card>
 
+      {/*
+        WHAT THE MOCKUP DOES NOT DRAW, kept rather than dropped. A reference
+        number, the document a payment settled, the acquirer's cut, the notes
+        handed across a counter and who recorded the thing are all facts
+        somebody comes to this page for — just not the first eight.
+      */}
+      <Card title="Informasi lain">
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
+          <Field label="Jenis">{kindLabel(transaction.kind)}</Field>
+          <Field label="No. referensi">
+            <span className="tabular-nums">{transaction.ref ?? "—"}</span>
+          </Field>
+          {transaction.document && (
+            <Field label="Dokumen">
+              <DocumentLink document={transaction.document} />
+            </Field>
+          )}
+          {transaction.commission && (
+            <Field label="Periode komisi">
+              <span className="tabular-nums">
+                {transaction.commission.periods.join(", ") || "—"}
+              </span>{" "}
+              <span className="text-muted">
+                ({transaction.commission.recordCount} layanan)
+              </span>
+            </Field>
+          )}
+          {hasMdr && (
+            <>
+              <Field label="MDR">
+                <span className="tabular-nums">
+                  {formatMoney(transaction.mdrAmount)}
+                </span>
+              </Field>
+              <Field label="Masuk bersih">
+                <span className="tabular-nums">
+                  {formatMoney(transaction.netAmount)}
+                </span>
+              </Field>
+            </>
+          )}
+          {hasTender && (
+            <>
+              <Field label="Diserahkan">
+                <span className="tabular-nums">
+                  {formatMoney(transaction.tenderedAmount ?? "0")}
+                </span>
+              </Field>
+              <Field label="Kembalian">
+                <span className="tabular-nums">
+                  {formatMoney(transaction.changeAmount ?? "0")}
+                </span>
+              </Field>
+            </>
+          )}
+          <Field label="Dicatat oleh">
+            {transaction.createdByName ?? "—"}{" "}
+            <span className="text-muted tabular-nums">
+              · {formatDateTime(transaction.createdAt)}
+            </span>
+          </Field>
+          <Field label="Dicatat lewat">
+            {RECORDED_VIA_LABEL[transaction.recordedVia] ??
+              transaction.recordedVia}
+          </Field>
+        </dl>
+      </Card>
+
       {hasLines(transaction.kind) && (transaction.lines?.length ?? 0) > 0 && (
         <LinesCard transaction={transaction} />
       )}
-
-      <Card
-        title="Jurnal"
-        description="Mengubah atau membatalkan transaksi membalik jurnalnya — jurnal lama tidak pernah disunting."
-      >
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
-          <Field label={voided ? "Jurnal" : "Jurnal berlaku"}>
-            {transaction.journalEntryId ? (
-              <JournalLink
-                id={transaction.journalEntryId}
-                number={transaction.journalEntryNumber}
-                linked={mayReadLedger}
-              />
-            ) : (
-              "—"
-            )}
-          </Field>
-          {transaction.reversalJournalEntryId && (
-            <Field label="Jurnal pembalik">
-              <JournalLink
-                id={transaction.reversalJournalEntryId}
-                number={transaction.reversalJournalEntryNumber}
-                linked={mayReadLedger}
-              />
-            </Field>
-          )}
-        </dl>
-      </Card>
 
       {transaction.revisions.length > 0 && (
         <RevisionsCard transaction={transaction} mayReadLedger={mayReadLedger} />
       )}
 
-      <CashTransactionEditDialog
-        open={editOpen}
+      <CashTransactionJournalDialog
+        open={journalOpen}
         transaction={transaction}
-        onClose={() => setEditOpen(false)}
-        onSaved={apply}
+        onClose={() => setJournalOpen(false)}
       />
 
       <CancelCashTransactionDialog
@@ -327,6 +424,31 @@ export function CashTransactionDetail({
       />
     </div>
   );
+}
+
+/**
+ * THE TRANSACTION'S LINE OF BUSINESS, read off its rows — the only place one is
+ * recorded.
+ *
+ * Three answers and they are genuinely different. One name when every row
+ * agrees; "Bersama (HQ)" when they agree that none applies, which is a decision
+ * somebody made and not a blank; and a count when they disagree, because a
+ * transaction that paid for grooming AND retail has no single line and naming
+ * the first of them would be a wrong answer wearing a right shape.
+ */
+function businessLineSummary(transaction: CashTransaction): string {
+  const lines = transaction.lines ?? [];
+
+  if (lines.length === 0) return "—";
+
+  const ids = new Set(lines.map((line) => line.businessLineId ?? ""));
+
+  if (ids.size > 1) return `${ids.size} lini`;
+
+  const [line] = lines;
+  return line.businessLineId
+    ? (line.businessLineName ?? "—")
+    : SHARED_LINE_LABEL;
 }
 
 function DocumentLink({
@@ -358,14 +480,25 @@ function DocumentLink({
 /** What an expense became, or where other income came from — one row per account. */
 function LinesCard({ transaction }: { transaction: CashTransaction }) {
   const lines = transaction.lines ?? [];
+  /*
+    The Detil Akun column appears only when something on THIS transaction has
+    one. A column of em dashes over every row of every old transaction would
+    teach people to ignore the column, and nothing posted before allocation
+    existed carries a detil.
+  */
+  const anyAllocation = lines.some((line) => line.allocationId);
 
   return (
-    <Card title={transaction.kind === "expense" ? "Akun beban" : "Akun pendapatan"}>
+    // "Rincian Akun", the mockup's name, rather than one that changes with the
+    // direction: the card is the same table either way, and a heading that moves
+    // between two words is one more thing to read before the rows.
+    <Card title="Rincian akun">
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Akun</TableHead>
+              {anyAllocation && <TableHead>Detil akun</TableHead>}
               <TableHead>Lini bisnis</TableHead>
               <TableHead>Memo</TableHead>
               <TableHead className="text-right">Jumlah</TableHead>
@@ -378,6 +511,16 @@ function LinesCard({ transaction }: { transaction: CashTransaction }) {
                   <span className="tabular-nums">{line.accountCode ?? ""}</span>{" "}
                   {line.accountName ?? "Akun tidak aktif"}
                 </TableCell>
+                {anyAllocation && (
+                  <TableCell className="text-sm">
+                    {/* The id rather than nothing when the rule cannot be named:
+                        it is unreachable through the API (the chart refuses to
+                        delete a rule an entry names) but it is what a direct
+                        database edit would look like, and silence there would
+                        read as "no detil". */}
+                    {line.allocationName ?? (line.allocationId ? "—" : "")}
+                  </TableCell>
+                )}
                 <TableCell className="text-sm">
                   {line.businessLineName ??
                     (line.businessLineId ? "—" : SHARED_LINE_LABEL)}
@@ -391,7 +534,10 @@ function LinesCard({ transaction }: { transaction: CashTransaction }) {
               </TableRow>
             ))}
             <TableRow className="hover:bg-transparent">
-              <TableCell colSpan={3} className="text-sm font-semibold">
+              <TableCell
+                colSpan={anyAllocation ? 4 : 3}
+                className="text-sm font-semibold"
+              >
                 Total
               </TableCell>
               <TableCell className="text-right text-sm font-bold tabular-nums">
@@ -441,7 +587,10 @@ function RevisionsCard({
                 {formatDate(revision.before.at)} ·{" "}
                 {formatMoney(revision.before.amount)}
               </span>{" "}
-              · {revision.before.channelName ?? "—"}
+              ·{" "}
+              {revision.before.cashAccountName ??
+                revision.before.channelName ??
+                "—"}
               {revision.before.ref ? (
                 <>
                   {" "}

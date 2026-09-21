@@ -18,6 +18,7 @@ import { cashTransactionService } from "@/services/cashTransaction.service";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { journalEntryService } from "@/services/journalEntry.service";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
+import { reportService } from "@/services/report.service";
 import { ApiError } from "@/services/api-error";
 
 jest.mock("@/services/journalEntry.service");
@@ -26,6 +27,8 @@ jest.mock("@/services/businessLine.service");
 jest.mock("@/services/cashTransaction.service");
 jest.mock("@/services/customerInvoice.service");
 jest.mock("@/services/purchaseInvoice.service");
+/* Komisi belum dibayar reads the Komisi list since 21 September 2026. */
+jest.mock("@/services/report.service");
 
 /**
  * The Keuangan Ringkasan tab, and the pure module behind it.
@@ -82,6 +85,9 @@ const BALANCES = [
     code: "1101",
     name: "Kas",
     accountType: "asset",
+    // The cash card sums by CATEGORY now, not by a pair of hardcoded codes —
+    // so a tenant's own "1105 Bank Mandiri" is counted the day it is created.
+    accountCategory: "cash_bank",
     normalBalance: "debit",
     debit: "90000000.0000",
     credit: "10612500.0000",
@@ -92,6 +98,7 @@ const BALANCES = [
     code: "2102",
     name: "Utang Komisi",
     accountType: "liability",
+    accountCategory: "hutang_lainnya",
     normalBalance: "credit",
     debit: "1000000.0000",
     credit: "4318000.0000",
@@ -157,6 +164,13 @@ beforeEach(() => {
     totalDueSoonOutstanding: "0.0000",
     totalDueSoonInvoices: 0,
     horizonDays: 7,
+  });
+  (reportService.commissionRecords as jest.Mock).mockResolvedValue({
+    rows: [],
+    page: 1,
+    limit: 1,
+    total: 0,
+    cards: { total: "5000000.0000", paid: "1682000.0000", pending: "3318000.0000" },
   });
   (branchService.list as jest.Mock).mockResolvedValue({
     items: [{ _id: "branch-kemang", name: "Cabang Kemang" }],
@@ -284,7 +298,20 @@ describe("FinanceDashboardScreen", () => {
     expect(journalEntryService.balances).not.toHaveBeenCalledWith(
       expect.objectContaining({ accountType: expect.anything() }),
     );
-    expect(screen.getByText("Rp 3.318.000")).toBeInTheDocument();
+  });
+
+  /*
+    KOMISI BELUM DIBAYAR IS THE KOMISI LIST'S PENDING, not 2102 (21 September
+    2026): nothing is accrued any more, so the payable only holds what a monthly
+    close put there before then.
+  */
+  it("reads what is owed to groomers from the Komisi list", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+
+    expect(await screen.findByText("Rp 3.318.000")).toBeInTheDocument();
+    expect(reportService.commissionRecords).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 1 }),
+    );
   });
 
   /**

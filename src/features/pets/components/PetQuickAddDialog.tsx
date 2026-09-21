@@ -45,10 +45,11 @@ const NAME_MAX_LENGTH = 80;
  * fields that remove that dead end are cheaper on this dialog than the trip they
  * replace.
  *
- * BOTH OPTIONAL, because a shop whose services are flat-priced never needs
- * either, and a required field with nothing to say is a field that gets filled
- * in wrong. The screen that DOES need them says so at the moment it needs them —
- * see `PetFixLink`.
+ * OPTIONAL BY DEFAULT, because a shop whose services are flat-priced never
+ * needs either, and a required field with nothing to say is a field that gets
+ * filled in wrong. The screen that DOES need them says so at the moment it
+ * needs them — either by asking here (`requireTraits`, which grooming booking
+ * passes) or by sending somebody back for them later (`PetFixLink`).
  *
  * NOTHING ELSE JOINS THEM without the same argument: a quick-add that asked for
  * a birth date would be the full form wearing a dialog.
@@ -75,6 +76,7 @@ export function PetQuickAddDialog({
   open,
   onOpenChange,
   onCreated,
+  requireTraits = false,
 }: {
   customerId: string;
   /** Shown in the dialog so nobody has to trust that the right owner is implied. */
@@ -82,6 +84,18 @@ export function PetQuickAddDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (pet: Pet) => void;
+  /**
+   * Demands Ukuran and Jenis bulu instead of merely offering them.
+   *
+   * FOR THE SCREEN THAT CANNOT PROCEED WITHOUT THEM — grooming booking, where
+   * the variant price IS size and coat, so a pet added blank is a pet that has
+   * to be fixed before the row it was added for can be quoted. Asking here
+   * costs two taps; the `PetFixLink` round trip it replaces costs a screen.
+   *
+   * OFF EVERYWHERE ELSE, for the reason the fields were optional to begin
+   * with: a flat-priced shop has nothing to say in either.
+   */
+  requireTraits?: boolean;
 }) {
   const [name, setName] = useState("");
   const [species, setSpecies] = useState<PetSpecies | "">("");
@@ -89,6 +103,8 @@ export function PetQuickAddDialog({
   const [furType, setFurType] = useState<PetFurType | "">("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [speciesError, setSpeciesError] = useState<string | null>(null);
+  const [sizeError, setSizeError] = useState<string | null>(null);
+  const [furTypeError, setFurTypeError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -99,6 +115,8 @@ export function PetQuickAddDialog({
     setFurType("");
     setNameError(null);
     setSpeciesError(null);
+    setSizeError(null);
+    setFurTypeError(null);
     setFormError(null);
   }
 
@@ -126,6 +144,14 @@ export function PetQuickAddDialog({
     }
     if (species === "") {
       setSpeciesError("Pilih jenis hewannya.");
+      invalid = true;
+    }
+    if (requireTraits && size === "") {
+      setSizeError("Pilih ukurannya.");
+      invalid = true;
+    }
+    if (requireTraits && furType === "") {
+      setFurTypeError("Pilih jenis bulunya.");
       invalid = true;
     }
 
@@ -198,9 +224,18 @@ export function PetQuickAddDialog({
             }}
             speciesError={speciesError}
             size={size}
-            onSizeChange={setSize}
+            onSizeChange={(next) => {
+              setSize(next);
+              setSizeError(null);
+            }}
+            sizeError={sizeError}
             furType={furType}
-            onFurTypeChange={setFurType}
+            onFurTypeChange={(next) => {
+              setFurType(next);
+              setFurTypeError(null);
+            }}
+            furTypeError={furTypeError}
+            required={requireTraits}
             disabled={saving}
           />
 
@@ -237,8 +272,11 @@ function QuickAddPickers({
   speciesError,
   size,
   onSizeChange,
+  sizeError,
   furType,
   onFurTypeChange,
+  furTypeError,
+  required,
   disabled,
 }: {
   species: PetSpecies | "";
@@ -246,8 +284,12 @@ function QuickAddPickers({
   speciesError: string | null;
   size: PetSize | "";
   onSizeChange: (next: PetSize) => void;
+  sizeError: string | null;
   furType: PetFurType | "";
   onFurTypeChange: (next: PetFurType) => void;
+  furTypeError: string | null;
+  /** Ukuran and Jenis bulu are answers, not offers — see `requireTraits`. */
+  required: boolean;
   disabled: boolean;
 }) {
   const { pickerOptions, loading, error } = usePetPickers();
@@ -267,10 +309,11 @@ function QuickAddPickers({
       />
 
       {/*
-        SIDE BY SIDE, AND OPTIONAL. They sit under the two required fields
-        because that is the order somebody answers them in — what is it
-        called, what is it, then what is it like — and they are the two the
-        price may depend on. A shop with flat prices leaves both alone.
+        SIDE BY SIDE. They sit under the two required fields because that is the
+        order somebody answers them in — what is it called, what is it, then
+        what is it like — and they are the two the price may depend on. A shop
+        with flat prices leaves both alone; a grooming booking cannot, which is
+        what `required` is for.
       */}
       <div className="grid gap-4 sm:grid-cols-2">
         <SelectField
@@ -279,7 +322,9 @@ function QuickAddPickers({
           onChange={onSizeChange}
           options={pickerOptions("size")}
           placeholder={loading ? "Memuat…" : "Pilih ukuran"}
+          error={sizeError ?? undefined}
           disabled={disabled || loading}
+          required={required}
         />
         <SelectField
           label="Jenis bulu"
@@ -287,7 +332,9 @@ function QuickAddPickers({
           onChange={onFurTypeChange}
           options={pickerOptions("furType")}
           placeholder={loading ? "Memuat…" : "Pilih jenis bulu"}
+          error={furTypeError ?? undefined}
           disabled={disabled || loading}
+          required={required}
         />
       </div>
     </>

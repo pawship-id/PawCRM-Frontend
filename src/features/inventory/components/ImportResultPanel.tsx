@@ -163,7 +163,7 @@ export function ImportResultPanel({
 
           <div className="mt-4 flex flex-wrap gap-2">
             <Button variant="secondary" asChild>
-              <Link href="/dashboard/keuangan/chart-of-accounts">
+              <Link href="/dashboard/pengaturan/daftar-akun">
                 Cek Chart of Accounts
               </Link>
             </Button>

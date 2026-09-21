@@ -15,15 +15,18 @@ import { usePermissions } from "@/features/permissions";
  * Bisnis, `Laporan` for the other two). A tab row that matched the mockup while
  * quietly stranding three screens would be the wrong kind of faithful.
  *
- * DAFTAR AKUN IS A TAB, added 12 September 2026 on request. The mockup files it
- * under `Pengaturan › Keuangan`, which is not built, and a card at the foot of
- * Ringkasan was too far down for the screen every journal line depends on.
+ * DAFTAR AKUN IS NO LONGER A TAB. It was one from 12 September 2026, as a
+ * stopgap: the mockup files it under Pengaturan, that section did not exist yet,
+ * and a card at the foot of Ringkasan was too far down for the screen every
+ * journal line depends on. It moved on 20 September, on request, to
+ * /dashboard/pengaturan/daftar-akun — the old address redirects, and Ringkasan's
+ * card list still reaches it, which is how the other three non-tab screens are
+ * reached too.
  *
- * KOMISI IS THE ONE TAB THAT MOVED HOUSE. The recap already existed as a card on
- * the reports hub; the mockup files it under Keuangan, so its route moved to
- * /dashboard/keuangan/komisi and the old one redirects. The screen itself is
- * unchanged, and the reports hub still links to it — from a report's point of
- * view nothing happened but an address change.
+ * KOMISI MOVED HOUSE, AND THEN WAS REBUILT. The per-groomer recap moved here
+ * from the reports hub (its old route still redirects); on 21 September 2026 it
+ * was replaced by the mockup's screen — one row per booking × groomer, with
+ * approval and payment — which lives in `features/commissions`.
  *
  * NO TILE ROW. The Ringkasan tab IS the module's tile row — SummaryCards, margin
  * insights and recent transactions, all scoped by its own period picker. A
@@ -61,17 +64,12 @@ export function AccountingModuleHeader({
       : []),
     /*
       GATED ON `users:read`, not on a finance grant, and that is the screen's own
-      rule rather than this row's: the recap IS payroll — it names every groomer
+      rule rather than this row's: Komisi IS payroll — it names every groomer
       and what they are owed — so whoever may read the staff register may read
       it, and a bookkeeper who may not is not shown the door.
     */
     ...(can("users", "read")
       ? [{ label: "Komisi", href: "/dashboard/keuangan/komisi" }]
-      : []),
-    // Before Jurnal, the order the sidebar's comment gives: a journal line has
-    // nowhere to land without an account.
-    ...(can("chartOfAccounts", "read")
-      ? [{ label: "Daftar Akun", href: "/dashboard/keuangan/chart-of-accounts" }]
       : []),
     ...(can("journalEntries", "read")
       ? [{ label: "Jurnal", href: "/dashboard/keuangan/journal-entries" }]

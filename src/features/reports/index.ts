@@ -12,4 +12,3 @@ export { StockOnHandScreen } from "./components/StockOnHandScreen";
 export { LowStockScreen } from "./components/LowStockScreen";
 export { ConsignmentScreen } from "./components/ConsignmentScreen";
 export { MyCommissionScreen } from "./components/MyCommissionScreen";
-export { CommissionRecapScreen } from "./components/CommissionRecapScreen";

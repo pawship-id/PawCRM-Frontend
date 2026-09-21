@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { RotateCcw } from "lucide-react";
+import { ChevronLeft, RotateCcw } from "lucide-react";
 
 import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import type { ChartOfAccount, JournalEntry } from "@/types/accounting";
+import type {
+  ChartOfAccount,
+  JournalEntry,
+  JournalSourceDocument,
+} from "@/types/accounting";
 import { normalBalanceOf } from "@/types/accounting";
 import { formatMoney, isPositive, sumDecimals } from "@/utils/decimal";
 
@@ -80,7 +84,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
         </p>
         <Button variant="secondary" size="sm" asChild className="mt-4">
           <Link href={ACCOUNTING_CRUMBS.journal.href}>
-            Kembali ke jurnal umum
+            Kembali ke Jurnal
           </Link>
         </Button>
       </div>
@@ -101,12 +105,31 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
     );
   }
 
+  /** Whether any line on this entry names a Detil Akun — see the column below. */
+  const anyAllocation = entry.lines.some((line) => line.allocationId);
+
   const totalDebit = sumDecimals(entry.lines.map((line) => line.debit));
   const totalCredit = sumDecimals(entry.lines.map((line) => line.credit));
   const balanced = totalDebit === totalCredit;
 
+  const sourceHref = documentHref(entry.source.document);
+
   return (
     <div className="flex flex-col gap-6">
+      {/* The mockup's head: the entry named in the title, and the way back to
+          the list beside it. */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <h1 className="text-2xl font-extrabold text-foreground">
+          Jurnal — <span className="tabular-nums">{entry.entryNumber}</span>
+        </h1>
+        <Button variant="secondary" asChild>
+          <Link href={ACCOUNTING_CRUMBS.journal.href}>
+            <ChevronLeft className="size-4" />
+            Kembali ke Jurnal
+          </Link>
+        </Button>
+      </div>
+
       {error && (
         // The entry itself is on screen — this only reports that a refresh
         // failed, so it sits above the data rather than replacing it.
@@ -147,6 +170,45 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
           . Debit dan kreditnya adalah kebalikan dari entri asli.
         </div>
       )}
+
+      {/* WHERE THIS ENTRY CAME FROM, and the way there (mockup). Three cases:
+          a document that can be opened, a machine posting whose document has
+          no page yet, and a manual entry that has none at all. */}
+      <div className="rounded-lg border border-primary/20 bg-accent/60 px-4 py-3 text-sm">
+        {entry.source.type === "manual" ? (
+          <>
+            <b className="mb-0.5 block text-primary">
+              Tidak ada dokumen sumber
+            </b>
+            Dibuat langsung lewat Tambah jurnal manual — tidak ada transaksi kas
+            atau bank di baliknya.
+          </>
+        ) : (
+          <>
+            <b className="mb-0.5 block text-primary">Ada dokumen sumber</b>
+            {sourceLabel(entry.source.type)}
+            {entry.source.reference && (
+              <>
+                {" · "}
+                <span className="tabular-nums">{entry.source.reference}</span>
+              </>
+            )}
+            .{" "}
+            {sourceHref ? (
+              <Link
+                href={sourceHref}
+                className="rounded-md font-semibold text-primary-hover underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+              >
+                Buka {entry.source.reference ?? "dokumennya"} →
+              </Link>
+            ) : (
+              <span className="text-muted">
+                Dokumennya belum punya halaman yang bisa dibuka dari sini.
+              </span>
+            )}
+          </>
+        )}
+      </div>
 
       <div className="flex flex-col gap-4 rounded-xl border border-border bg-surface p-5">
         <div className="flex flex-wrap items-start gap-3">
@@ -287,6 +349,10 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
               <TableHead>Akun</TableHead>
               <TableHead>Tipe</TableHead>
               <TableHead>Lini bisnis</TableHead>
+              {/* Only when a line on THIS entry names one — a column of em
+                  dashes over every entry posted before allocation existed is a
+                  column people learn to skip. */}
+              {anyAllocation && <TableHead>Detil akun</TableHead>}
               <TableHead>Memo</TableHead>
               <TableHead className="text-right">Debit</TableHead>
               <TableHead className="text-right">Kredit</TableHead>
@@ -333,6 +399,23 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
                         line.businessLineId)
                       : "—"}
                   </TableCell>
+                  {anyAllocation && (
+                    <TableCell className="px-4 py-2.5 text-xs text-muted">
+                      {/*
+                        Resolved against the account's CURRENT rules, which may
+                        since have been renamed — the entry is immutable, the
+                        chart is not. A rule that cannot be found at all falls
+                        back to a dash rather than an ObjectId; the chart refuses
+                        to delete one a live line names, so this is only reachable
+                        through a direct database edit.
+                      */}
+                      {line.allocationId
+                        ? ((account?.allocations ?? []).find(
+                            (rule) => rule._id === line.allocationId,
+                          )?.name ?? "—")
+                        : "—"}
+                    </TableCell>
+                  )}
                   <TableCell className="px-4 py-2.5 text-xs text-muted">
                     {line.memo ?? "—"}
                   </TableCell>
@@ -365,6 +448,33 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
       </div>
     </div>
   );
+}
+
+/**
+ * Where a source document's own page is, by the kind the server names.
+ *
+ * NULL FOR A KIND WITH NO PAGE — a till return is only ever seen inside the
+ * kasir — and the callout then says so instead of drawing a dead link. The
+ * paths are written out rather than imported from the modules that own them,
+ * so the ledger does not pull four features into its bundle for five strings.
+ */
+function documentHref(document: JournalSourceDocument | null): string | null {
+  if (!document) return null;
+
+  switch (document.kind) {
+    case "goods_receipt":
+      return `/dashboard/purchasing/receipts/${document.id}`;
+    case "purchase_return":
+      return `/dashboard/purchasing/returns/${document.id}`;
+    case "stock_opname":
+      return `/dashboard/inventory/opname/${document.id}`;
+    case "cash_transaction":
+      return `/dashboard/keuangan/kas-bank/transaksi/${document.id}`;
+    case "customer_invoice":
+      return `/dashboard/sales/${document.id}`;
+    default:
+      return null;
+  }
 }
 
 const RECURRING_LABEL: Record<

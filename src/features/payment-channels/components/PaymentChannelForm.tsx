@@ -31,7 +31,7 @@ import { CheckRow } from "@/components";
 import {
   CHANNEL_TYPE_LABELS,
   CHANNEL_TYPE_ORDER,
-} from "../hooks/usePaymentChannels";
+} from "../labels";
 
 const NAME_MAX_LENGTH = 120;
 const MAX_MDR_PERCENT = 100;
@@ -39,7 +39,8 @@ const MAX_MDR_PERCENT = 100;
 /** The API's page cap. Asking for more is a 400, not a bigger page. */
 const FETCH_LIMIT = 100;
 
-const LIST_PATH = "/dashboard/keuangan/kas-bank";
+/** Moved out of Keuangan on 20 September 2026 — see PaymentChannelsScreen. */
+const LIST_PATH = "/dashboard/pengaturan/channel-pembayaran";
 
 /** The two types a processor actually deducts a fee from. Mirrors MDR_TYPES. */
 const MDR_TYPES: PaymentChannelType[] = ["qris", "edc"];

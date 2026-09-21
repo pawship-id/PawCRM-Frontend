@@ -741,7 +741,8 @@ describe("SalesInvoiceList — the table", () => {
       await screen.findByText("Menampilkan 1–25 dari 87 faktur"),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Faktur per halaman" }));
+    // One footer for both lists since 20 September 2026, so one aria-label.
+    await user.click(screen.getByRole("button", { name: "Baris per halaman" }));
     await user.click(await screen.findByRole("option", { name: "100" }));
 
     await waitFor(() =>
