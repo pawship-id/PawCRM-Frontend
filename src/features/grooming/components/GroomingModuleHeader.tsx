@@ -5,11 +5,7 @@ import type { ReactNode } from "react";
 import { Breadcrumb, PageTabs, type PageTab } from "@/components";
 import { usePermissions } from "@/features/permissions";
 
-import {
-  GROOMING_CATALOG_PATH,
-  GROOMING_PATH,
-  GROOMING_SETTINGS_PATH,
-} from "../paths";
+import { GROOMING_LINE, type ServiceLine } from "../line";
 
 /**
  * The head of the Grooming module, shared by its three tabs — from
@@ -25,8 +21,11 @@ import {
 export function GroomingModuleHeader({
   /** The create button for the tab you are on. */
   action,
+  /** Which line's module — Grooming unless said (see `ServiceLine`). */
+  line = GROOMING_LINE,
 }: {
   action?: ReactNode;
+  line?: ServiceLine;
 }) {
   const { can } = usePermissions();
 
@@ -35,31 +34,31 @@ export function GroomingModuleHeader({
       ? [
           {
             label: "Booking",
-            href: GROOMING_PATH,
+            href: line.paths.root,
             // EXACT: the other two tabs are routes under this one.
             exact: true,
           },
         ]
       : []),
     ...(can("services", "read")
-      ? [{ label: "Layanan & Harga", href: GROOMING_CATALOG_PATH }]
+      ? [{ label: "Layanan & Harga", href: line.paths.catalog }]
       : []),
-    { label: "Pengaturan", href: GROOMING_SETTINGS_PATH },
+    { label: "Pengaturan", href: line.paths.settings },
   ];
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start gap-4">
         <div>
-          <Breadcrumb items={[{ label: "Layanan" }, { label: "Grooming" }]} />
+          <Breadcrumb items={[{ label: "Layanan" }, { label: line.title }]} />
           <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-            Grooming
+            {line.title}
           </h1>
         </div>
         {action && <div className="ml-auto flex flex-none gap-2">{action}</div>}
       </div>
 
-      <PageTabs tabs={tabs} ariaLabel="Bagian grooming" />
+      <PageTabs tabs={tabs} ariaLabel={`Bagian ${line.noun}`} />
     </div>
   );
 }

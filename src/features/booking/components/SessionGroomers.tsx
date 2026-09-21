@@ -143,7 +143,10 @@ export function SessionCrew({
   session,
   groomers,
   onChanged,
+  crewWord = "groomer",
 }: {
+  /** "groomer", or "driver" on a ride (21 September 2026) — the words only. */
+  crewWord?: "groomer" | "driver";
   bookingId: string;
   session: BookingSession;
   /** Who may be booked that day — `disabled` carries the reason (FR-4). */
@@ -359,10 +362,10 @@ export function SessionCrew({
             >
               <SelectTrigger
                 size="lg"
-                aria-label={`Tambah groomer ke ${session.sessionName}`}
+                aria-label={`Tambah ${crewWord} ke ${session.sessionName}`}
                 className="w-full"
               >
-                <SelectValue placeholder="+ Tambah groomer…" />
+                <SelectValue placeholder={`+ Tambah ${crewWord}…`} />
               </SelectTrigger>
               <SelectContent>
                 {free.map((option) => (

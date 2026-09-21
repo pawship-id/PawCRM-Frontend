@@ -83,7 +83,10 @@ const ITEMS: SharedItem[] = [
 
 export function GroomingSharedSettingsCard({
   mayOpenCatalog,
+  noun = "grooming",
 }: {
+  /** Which line's page it sits on, in a sentence — see `ServiceLine`. */
+  noun?: string;
   /**
    * `services:read` — without it the catalogue tab, Data hewan AND Tahapan are
    * closed doors: both settings pages are gated on the same grant, since they
@@ -95,7 +98,7 @@ export function GroomingSharedSettingsCard({
   return (
     <Card
       title="Diatur bersama semua layanan"
-      description="Daftar yang dipakai semua layanan grooming."
+      description={`Daftar yang dipakai semua layanan ${noun}.`}
     >
       <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {ITEMS.map((item) => (

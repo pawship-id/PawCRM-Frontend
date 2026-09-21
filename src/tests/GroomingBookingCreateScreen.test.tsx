@@ -455,4 +455,65 @@ describe("GroomingBookingCreateScreen", () => {
       );
     });
   });
+
+  /*
+    BO's NOTE 4 (21 September 2026): a service switched to "Bisa antar-jemput"
+    offers the van on this form, and the ride is saved into the grooming's visit.
+  */
+  describe("antar-jemput for this visit", () => {
+    const vanService = {
+      ...grooming,
+      _id: "svc-aj",
+      name: "Antar-Jemput",
+      price: "45000.0000",
+      businessLineId: "line-aj",
+      billingUnit: "per_visit",
+      serviceLocations: ["in_home"],
+    } as unknown as Service;
+
+    beforeEach(() => {
+      services.list.mockResolvedValue(
+        page([{ ...grooming, pickupDeliveryAvailable: true } as Service, vanService]),
+      );
+      businessLines.list.mockResolvedValue(
+        page([
+          { _id: "line-groom", name: "Grooming" },
+          { _id: "line-aj", name: "Antar-Jemput" },
+        ]) as never,
+      );
+    });
+
+    it("saves the pickup after the grooming, into its visit", async () => {
+      bookings.create.mockResolvedValueOnce(created).mockResolvedValueOnce({
+        groupId: "grp-1",
+        bookings: [{ _id: "bk-aj", bookingNumber: "BK-260916-002" } as Booking],
+      } as CreateBookingResult);
+      renderWithAuth(<GroomingBookingCreateScreen />);
+
+      await fillIn();
+      await userEvent.click(await screen.findByRole("checkbox", { name: /^jemput/i }));
+      await userEvent.click(screen.getByRole("button", { name: "Layanan antar-jemput" }));
+      await userEvent.click(await screen.findByRole("option", { name: "Antar-Jemput" }));
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+      await waitFor(() => expect(bookings.create).toHaveBeenCalledTimes(2));
+      expect(bookings.create.mock.calls[1][0]).toMatchObject({
+        customerId: "cust-1",
+        groupId: "grp-1",
+        location: "in_home",
+        /* Half an hour before the 10.30 grooming. */
+        scheduledAt: new Date("2026-09-16T10:00").toISOString(),
+        bookings: [{ petId: "pet-1", serviceId: "svc-aj", tripLeg: "pickup", passengerPetIds: [] }],
+      });
+    });
+
+    it("is not offered for a service without the switch", async () => {
+      services.list.mockResolvedValue(page([grooming, vanService]));
+      renderWithAuth(<GroomingBookingCreateScreen />);
+
+      await fillIn();
+
+      expect(screen.queryByRole("checkbox", { name: /^jemput/i })).not.toBeInTheDocument();
+    });
+  });
 });

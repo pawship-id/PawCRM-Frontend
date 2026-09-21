@@ -8,6 +8,7 @@ import type {
   BookingMainService,
   BookingSession,
   BookingStatus,
+  TripLeg,
 } from "@/types/api";
 import {
   divideRound,
@@ -59,6 +60,12 @@ export interface GroomingScope {
    * the catalogue gets no ids at all, and the snapshot is still on every booking.
    */
   lineName: string;
+  /**
+   * A booking that belongs to the board whatever its service says — on
+   * Antar-Jemput, any ride (`tripLeg` set), so one sold from a service since
+   * moved to another line still shows where its van is (21 September 2026).
+   */
+  includes?: (booking: Booking) => boolean;
 }
 
 /** The tenant's grooming line — named "Grooming" exactly, else the nearest. */
@@ -155,7 +162,8 @@ export function toGroomingRows(
   return bookings.flatMap((booking): GroomingRow[] => {
     const service = booking.service;
     /* Absent only on a response from before the service became required. */
-    if (!service || !isGroomingService(service, scope)) return [];
+    if (!service) return [];
+    if (!isGroomingService(service, scope) && !scope.includes?.(booking)) return [];
 
     const addons = service.addons ?? [];
     const sessions = service.sessions ?? [];
@@ -306,9 +314,15 @@ export type GroomingSort = "schedule_asc" | "schedule_desc" | "value_desc";
 export interface GroomingFilters {
   sort: GroomingSort;
   statuses: BookingStatus[];
+  /** Whoever is on a turn — the groomers, or on Antar-Jemput the drivers. */
   groomerIds: string[];
   serviceIds: string[];
   locations: BookingLocation[];
+  /**
+   * Antar-Jemput's Arah, where Grooming has Tempat (21 September 2026). Each
+   * board draws one of the two; the other stays empty and narrows nothing.
+   */
+  legs: TripLeg[];
 }
 
 export const DEFAULT_FILTERS: GroomingFilters = {
@@ -317,6 +331,7 @@ export const DEFAULT_FILTERS: GroomingFilters = {
   groomerIds: [],
   serviceIds: [],
   locations: [],
+  legs: [],
 };
 
 export function countFilters(filters: GroomingFilters): number {
@@ -325,6 +340,7 @@ export function countFilters(filters: GroomingFilters): number {
     filters.groomerIds,
     filters.serviceIds,
     filters.locations,
+    filters.legs,
   ].filter((values) => values.length > 0).length;
 }
 
@@ -341,6 +357,12 @@ export function matchesFilters(
   if (
     filters.locations.length &&
     !filters.locations.includes(row.booking.location ?? "in_store")
+  ) {
+    return false;
+  }
+  if (
+    filters.legs.length &&
+    !(row.booking.tripLeg && filters.legs.includes(row.booking.tripLeg))
   ) {
     return false;
   }
@@ -378,6 +400,8 @@ export function matchesSearch(row: GroomingRow, search: string): boolean {
     row.booking.petName,
     row.booking.customerName,
     row.booking.bookingNumber,
+    /* The other animals in the van, on a ride (21 September 2026). */
+    ...(row.booking.passengers ?? []).map((pet) => pet.name),
   ]
     .filter(Boolean)
     .some((text) => (text as string).toLowerCase().includes(needle));
@@ -405,8 +429,6 @@ export function sortRows(rows: GroomingRow[], sort: GroomingSort): GroomingRow[]
     return (sort === "schedule_desc" ? -diff : diff) || tieBreak(a, b);
   });
 }
-
-/* ─── Reading ─────────────────────────────────────────────────────────────── */
 
 /* ─── Reading ─────────────────────────────────────────────────────────────── */
 

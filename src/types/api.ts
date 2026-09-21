@@ -207,6 +207,11 @@ export interface User {
    */
   isGroomer: boolean;
   /**
+   * Drives the antar-jemput van (21 September 2026) — the roster a ride's PIC
+   * is picked from, as `isGroomer` is for a bath. Optional for older responses.
+   */
+  isDriver?: boolean;
+  /**
    * How senior this groomer is — shown beside the name on a session's crew
    * ("Sinta · Senior"). A label only; `null` when nobody has set it.
    */
@@ -380,6 +385,8 @@ export interface UpdateUserInput {
    */
   /** See `User.isGroomer` — what they do in the shop, not what they may do here. */
   isGroomer?: boolean;
+  /** See `User.isDriver`. */
+  isDriver?: boolean;
   /** `null` clears it. See `User.groomerLevel`. */
   groomerLevel?: GroomerLevel | null;
   /** Ignored by the server since 13 September 2026 — see `User.commissionRate`. */
@@ -559,6 +566,32 @@ export interface TenantSettings {
    * a 400, so every key goes back every time.
    */
   grooming?: GroomingSettings;
+
+  /**
+   * Layanan › Antar-Jemput › Pengaturan — what a ride pays its driver (21
+   * September 2026). Absent until saved once; WRITTEN WHOLE like `grooming`.
+   */
+  antarJemput?: AntarJemputSettings;
+}
+
+/** One rule of a ride's commission — a percentage, or a flat rupiah amount. */
+export interface AntarJemputCommissionRule {
+  mode: "percentage" | "fixed";
+  /** 0–100, up to 2 decimals. */
+  percent: number;
+  /** Whole rupiah. */
+  fixed: number;
+}
+
+/**
+ * The ride's rule — split across its tahapan by the service's weights, exactly
+ * as grooming's is. A rate of 0 is "no commission": there is no switch.
+ */
+export interface AntarJemputSettings {
+  commission: {
+    service: AntarJemputCommissionRule;
+    addon: AntarJemputCommissionRule;
+  };
 }
 
 /** An add-on's or a trip's commission — a percentage, or a flat amount. */
@@ -2197,6 +2230,23 @@ export interface Booking {
   deliveryRequested: boolean;
   /** Null means the customer's stored address, not "no address". */
   tripAddress: string | null;
+  /**
+   * ─── ANTAR-JEMPUT (21 September 2026) ─────────────────────────────────────
+   *
+   * `tripLeg` is set only on a booking whose main service IS the ride, and a
+   * null here is what "not an antar-jemput booking" means. On one,
+   * `tripAddress` is the customer's end; the other end is the branch.
+   * Optional only because older fixtures lack them.
+   */
+  tripLeg?: TripLeg | null;
+  /** The other animals on this ride — the same customer's, never `petId`. */
+  passengerPetIds?: string[];
+  passengers?: { _id: string; name: string | null }[];
+  /**
+   * The OTHER live rides of this booking's visit — on a grooming booking, the
+   * van that brings it and takes it home. Read, never stored on the grooming.
+   */
+  trips?: BookingTrip[];
   /** The one main service, with its add-ons and sessions under it. */
   service: BookingMainService;
   /**
@@ -2277,6 +2327,23 @@ export interface Booking {
    * group. Absent on a list row, empty on a booking made on its own.
    */
   group?: BookingGroupMember[];
+  /**
+   * ONLY ON `GET /bookings/:id` — bookings BILLED WITH this one (one invoice,
+   * one till basket) that are not in its group (21 September 2026).
+   */
+  related?: BookingRelated[];
+}
+
+/** An antar-jemput booking's direction: the door to the branch, or back. */
+export type TripLeg = "pickup" | "delivery";
+
+/** Another ride of the same visit, as `Booking.trips` carries it. */
+export interface BookingTrip {
+  _id: string;
+  bookingNumber: string | null;
+  tripLeg: TripLeg;
+  status: BookingStatus;
+  scheduledAt: string;
 }
 
 /**
@@ -2398,6 +2465,11 @@ export interface BookingMainService {
    */
   serviceType: string | null;
   /**
+   * The catalogue's `billingUnit` when booked (21 September 2026) — on a ride,
+   * `per_pet` prices it for every animal in the van. Null on older bookings.
+   */
+  billingUnit?: ServiceBillingUnit | null;
+  /**
    * What this line BILLS AT — the catalogue's quote, unless somebody holding
    * `bookings:setPrice` typed another (15 September 2026). Commission reads it.
    */
@@ -2474,10 +2546,21 @@ export interface BookingGroupMember {
   petId: string;
   petName: string | null;
   serviceName: string;
+  /** The line of business, as the booking snapshotted it. */
+  serviceType?: string | null;
   status: BookingStatus;
   scheduledAt: string;
   pickupRequested: boolean;
   deliveryRequested: boolean;
+  /** Set when that booking is a ride. */
+  tripLeg?: TripLeg | null;
+}
+
+/** A booking billed together with this one — see `Booking.related`. */
+export interface BookingRelated extends BookingGroupMember {
+  via: "invoice" | "pos";
+  /** The invoice or sale number, when it has one. */
+  documentNumber: string | null;
 }
 
 /**
@@ -2991,6 +3074,10 @@ export interface CreateBookingEntry {
   durationMin?: number | null;
   /** Null is FR-3's "Belum ditentukan" — a real state, not a gap. */
   groomerUserId?: string | null;
+  /** Only on a ride — see `Booking.tripLeg`. */
+  tripLeg?: TripLeg | null;
+  /** The other animals on the ride; refused without `tripLeg`. */
+  passengerPetIds?: string[];
   internalNotes?: string | null;
   customerNotes?: string | null;
   belongings?: { name: string; checkedInAt?: string | null }[];
@@ -3073,6 +3160,9 @@ export interface UpdateBookingInput {
   pickupRequested?: boolean;
   deliveryRequested?: boolean;
   tripAddress?: string | null;
+  tripLeg?: TripLeg | null;
+  /** Re-quotes a `per_pet` ride. */
+  passengerPetIds?: string[];
   forceClash?: boolean;
 }
 /**

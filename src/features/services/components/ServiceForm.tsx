@@ -167,8 +167,18 @@ function durationProblem(value: string): string | null {
 export function ServiceForm({
   serviceId,
   fixedServiceType,
+  listPath = LIST_PATH,
+  defaultBusinessLineId = "",
 }: {
   serviceId?: string;
+  /**
+   * The Layanan & Harga list this form was opened from — a create lands on it,
+   * an edit on the service under it. Grooming's unless a caller says otherwise
+   * (`?dari=antar-jemput`, 21 September 2026).
+   */
+  listPath?: string;
+  /** A NEW service's line, already answered — `?lini=` from a line's catalogue. */
+  defaultBusinessLineId?: string;
   /**
    * A NEW service whose type is already decided — `addon` when opened from
    * Pengaturan › Layanan › Add-on's "Tambah add-on" (`?jenis=addon`). The
@@ -198,7 +208,9 @@ export function ServiceForm({
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
-  const [businessLineId, setBusinessLineId] = useState("");
+  const [businessLineId, setBusinessLineId] = useState(
+    editing ? "" : defaultBusinessLineId,
+  );
   const [image, setImage] = useState<MediaAsset | null>(null);
   const [serviceType, setServiceType] = useState<ServiceType>(
     fixedServiceType ?? "main",
@@ -470,7 +482,7 @@ export function ServiceForm({
     go looking for the row they came from.
   */
   function goBack() {
-    router.push(editing ? `${LIST_PATH}/${serviceId}` : LIST_PATH);
+    router.push(editing ? `${listPath}/${serviceId}` : listPath);
   }
 
   /**

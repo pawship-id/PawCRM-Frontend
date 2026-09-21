@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Cat, Dog, MessageCircle, Pencil, Printer } from "lucide-react";
 
@@ -34,11 +34,14 @@ import type {
   VariantChoiceSnapshot,
 } from "@/types/api";
 
+import { antarJemputEditPath } from "@/features/antar-jemput/paths";
+
 import { bookingActorLabel, finishClock } from "../format";
 import { canStartWork, hasCompletedWork, ladderFor } from "../statusFlow";
 import { BookingBelongingsCard } from "./BookingBelongingsCard";
 import { BookingHistoryCard } from "./BookingHistoryCard";
 import { BookingNotesCard } from "./BookingNotesCard";
+import { BookingRelatedCard } from "./BookingRelatedCard";
 import { BookingStatusActions } from "./BookingStatusActions";
 import {
   BOOKING_STATUS_LABELS,
@@ -51,6 +54,7 @@ import {
   sharesOf,
 } from "./SessionGroomers";
 import { SessionAlbum } from "./SessionAlbum";
+import { crewWord } from "./BookingSessionSteps";
 import { SessionRecord } from "./SessionRecord";
 
 const BILLING_LABELS: Record<Booking["billingState"], string> = {
@@ -159,6 +163,19 @@ function elapsed(session: BookingSession): number | null {
 export function BookingDetailScreen({ id }: { id: string }) {
   const [booking, setBooking] = useState<Booking | null>(null);
   /*
+    WHAT EVERY WRITER ON THIS PAGE HANDS BACK. A mutation answers with the
+    booking but not its `group[]` and `related[]` — only `GET /bookings/:id`
+    carries those — so they are kept from the booking already on screen rather
+    than vanishing from "Booking terkait" the moment a status moves.
+  */
+  const replaceBooking = useCallback((next: Booking) => {
+    setBooking((prev) => ({
+      ...next,
+      group: next.group ?? prev?.group,
+      related: next.related ?? prev?.related,
+    }));
+  }, []);
+  /*
     WHO MAY BE BOOKED ON THE DAY THIS BOOKING IS FOR — the same read the booking
     form makes: somebody who is off on Thursday must not be offered for a
     Thursday session. Best effort and silent; without it the crew editor simply
@@ -255,7 +272,8 @@ export function BookingDetailScreen({ id }: { id: string }) {
     ].join("-");
 
     bookingService
-      .availability(date)
+      /* A ride's crew is its driver (21 September 2026). */
+      .availability(date, booking.tripLeg ? "driver" : "groomer")
       .then((rows) => {
         if (!active) return;
         setGroomers(
@@ -280,7 +298,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
     return () => {
       active = false;
     };
-  }, [booking?.scheduledAt]);
+  }, [booking?.scheduledAt, booking?.tripLeg]);
 
   async function move(session: BookingSession, name: string, to: BookingWorkStatus) {
     if (busy) return;
@@ -293,7 +311,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
         the three neighbouring records cannot have changed because a bath
         started.
       */
-      setBooking(
+      replaceBooking(
         await bookingService.advanceSessionWork(id, session.sessionId, to),
       );
 
@@ -416,7 +434,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
   const editable = !finished && booking.status !== "cancelled";
 
   const whatsapp = waLink(customer?.phone);
-  const group = booking.group ?? [];
+  /* A ride is corrected in its own form — the direction, the address, the van. */
+  const editHref = booking.tripLeg
+    ? antarJemputEditPath(booking._id)
+    : `/dashboard/booking/${booking._id}/edit`;
+  const trips = booking.trips ?? [];
+  const passengerNames = (booking.passengers ?? [])
+    .map((one) => one.name)
+    .filter(Boolean)
+    .join(", ");
 
   return (
     <div className="flex flex-col gap-4">
@@ -479,7 +505,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
             {editable && (
               <Can feature="bookings" action="update">
                 <Button asChild variant="secondary" size="sm">
-                  <Link href={`/dashboard/booking/${booking._id}/edit`}>
+                  <Link href={editHref}>
                     <Pencil className="size-4" aria-hidden />
                     Ubah
                   </Link>
@@ -578,7 +604,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
           */}
           <BookingStatusActions
             booking={booking}
-            onChanged={setBooking}
+            onChanged={replaceBooking}
             variant="prominent"
           />
         </div>
@@ -608,7 +634,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
               editable ? (
                 <Can feature="bookings" action="update">
                   <Button asChild variant="ghost" size="sm">
-                    <Link href={`/dashboard/booking/${booking._id}/edit`}>
+                    <Link href={editHref}>
                       <Pencil className="size-4" aria-hidden />
                       Edit layanan &amp; harga
                     </Link>
@@ -636,30 +662,59 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 }
               />
               <Field label="Cabang" value={branchName ?? "—"} />
-              <Field
-                label="Lokasi"
-                value={
-                  booking.location === "in_home"
-                    ? "Di rumah pelanggan"
-                    : "Di toko"
-                }
-              />
-              {/*
-                SPELLED OUT RATHER THAN TICKED. "Tidak ada" is a real answer a
-                driver needs; an empty field reads as nobody having decided.
-              */}
-              <Field
-                label="Antar-jemput"
-                value={
-                  booking.pickupRequested && booking.deliveryRequested
-                    ? "Jemput & antar pulang"
-                    : booking.pickupRequested
-                      ? "Jemput saja"
-                      : booking.deliveryRequested
-                        ? "Antar pulang saja"
-                        : "Tidak ada"
-                }
-              />
+              {booking.tripLeg ? (
+                /*
+                  A RIDE (21 September 2026): its direction and who else is in
+                  the van, where a booking of anything else has its place and
+                  its trip. The two ends are under the grid.
+                */
+                <>
+                  <Field
+                    label="Arah"
+                    value={booking.tripLeg === "pickup" ? "Jemput" : "Antar"}
+                  />
+                  <Field
+                    label="Hewan ikut"
+                    value={passengerNames || "Tidak ada"}
+                  />
+                </>
+              ) : (
+                <>
+                  <Field
+                    label="Lokasi"
+                    value={
+                      booking.location === "in_home"
+                        ? "Di rumah pelanggan"
+                        : "Di toko"
+                    }
+                  />
+                  {/*
+                    SPELLED OUT RATHER THAN TICKED. "Tidak ada" is a real answer
+                    a driver needs; an empty field reads as nobody having
+                    decided. A RIDE BOOKED FOR THIS VISIT answers it too, by its
+                    number (21 September 2026).
+                  */}
+                  <Field
+                    label="Antar-jemput"
+                    value={
+                      trips.length > 0
+                        ? trips
+                            .map(
+                              (trip) =>
+                                `${trip.tripLeg === "pickup" ? "Jemput" : "Antar"} ${trip.bookingNumber ?? "(draf)"}`,
+                            )
+                            .join(" · ")
+                        : booking.pickupRequested && booking.deliveryRequested
+                          ? "Jemput & antar pulang"
+                          : booking.pickupRequested
+                            ? "Jemput saja"
+                            : booking.deliveryRequested
+                              ? "Antar pulang saja"
+                              : "Tidak ada"
+                    }
+                  />
+                </>
+              )}
               <Field
                 label="Durasi aktual"
                 value={
@@ -673,13 +728,34 @@ export function BookingDetailScreen({ id }: { id: string }) {
               />
             </dl>
 
-            {(booking.pickupRequested || booking.deliveryRequested) && (
-              <p className="mt-3 text-sm text-muted">
-                Alamat jemput/antar:{" "}
-                <span className="text-foreground">
-                  {booking.tripAddress ?? "alamat pelanggan yang tersimpan"}
-                </span>
-              </p>
+            {booking.tripLeg ? (
+              <dl className="mt-3 grid gap-1 text-sm">
+                <div className="flex gap-3">
+                  <dt className="w-16 flex-none text-muted">Asal</dt>
+                  <dd className="text-foreground">
+                    {booking.tripLeg === "pickup"
+                      ? (booking.tripAddress ?? customer?.address ?? "Alamat pelanggan yang tersimpan")
+                      : (branchName ?? "Cabang")}
+                  </dd>
+                </div>
+                <div className="flex gap-3">
+                  <dt className="w-16 flex-none text-muted">Tujuan</dt>
+                  <dd className="text-foreground">
+                    {booking.tripLeg === "pickup"
+                      ? (branchName ?? "Cabang")
+                      : (booking.tripAddress ?? customer?.address ?? "Alamat pelanggan yang tersimpan")}
+                  </dd>
+                </div>
+              </dl>
+            ) : (
+              (booking.pickupRequested || booking.deliveryRequested) && (
+                <p className="mt-3 text-sm text-muted">
+                  Alamat jemput/antar:{" "}
+                  <span className="text-foreground">
+                    {booking.tripAddress ?? "alamat pelanggan yang tersimpan"}
+                  </span>
+                </p>
+              )
             )}
 
             {/*
@@ -919,7 +995,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
             the work — arrival and collection — and the sessions are the longest
             card on the page.
           */}
-          <BookingBelongingsCard booking={booking} onChanged={setBooking} />
+          <BookingBelongingsCard booking={booking} onChanged={replaceBooking} />
 
           {/* ─── Sesi ───────────────────────────────────────────────────── */}
           <Card
@@ -934,7 +1010,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
             */}
             {sessions.length === 0 ? (
               <p className="text-sm text-muted">
-                Belum ada sesi — tambahkan satu untuk menugaskan groomer.
+                {`Belum ada sesi — tambahkan satu untuk menugaskan ${crewWord(booking)}.`}
               </p>
             ) : (
               <ul className="flex flex-col gap-2">
@@ -1048,8 +1124,8 @@ export function BookingDetailScreen({ id }: { id: string }) {
                               role="alert"
                               className="mb-3 rounded-md bg-tint-danger px-2 py-1 text-sm font-semibold text-danger"
                             >
-                              {crew} {offReason.toLowerCase()} — ganti groomer
-                              atau hubungi pelanggan.
+                              {crew} {offReason.toLowerCase()} — ganti{" "}
+                              {crewWord(booking)} atau hubungi pelanggan.
                             </p>
                           )}
 
@@ -1057,10 +1133,11 @@ export function BookingDetailScreen({ id }: { id: string }) {
                               under the name it acts on. */}
                           <div className="mb-3">
                             <SessionCrew
+                              crewWord={crewWord(booking)}
                               bookingId={booking._id}
                               session={session}
                               groomers={groomers}
-                              onChanged={setBooking}
+                              onChanged={replaceBooking}
                             />
                           </div>
 
@@ -1107,7 +1184,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                             <SessionRecord
                               bookingId={booking._id}
                               session={session}
-                              onChanged={setBooking}
+                              onChanged={replaceBooking}
                             />
                           </div>
 
@@ -1150,8 +1227,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                               ) : (
                                 !assigned && (
                                   <p className="text-xs text-muted">
-                                    Tentukan groomernya dulu — sesi tanpa
-                                    groomer tidak bisa dimulai.
+                                    {`Tentukan ${crewWord(booking)}nya dulu — sesi tanpa ${crewWord(booking)} tidak bisa dimulai.`}
                                   </p>
                                 )
                               )}
@@ -1162,7 +1238,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                             <RemoveSessionButton
                               bookingId={booking._id}
                               session={session}
-                              onChanged={setBooking}
+                              onChanged={replaceBooking}
                             />
                           </div>
                         </div>
@@ -1184,7 +1260,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 <AddSessionButton
                   bookingId={booking._id}
                   service={service}
-                  onChanged={setBooking}
+                  onChanged={replaceBooking}
                 />
               </div>
             )}
@@ -1193,7 +1269,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
           {/* ─── Album ──────────────────────────────────────────────────────
               What the dog came in like and what it left like — `booking.media`,
               a different array from a turn's own photos. */}
-          <SessionAlbum booking={booking} onChanged={setBooking} />
+          <SessionAlbum booking={booking} onChanged={replaceBooking} />
         </div>
 
         {/* ─── The rail ────────────────────────────────────────────────── */}
@@ -1203,52 +1279,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
             capture what was known when the appointment was taken; what is learned
             at the table is written here, where it stays in view beside the work.
           */}
-          <BookingNotesCard booking={booking} onChanged={setBooking} />
+          <BookingNotesCard booking={booking} onChanged={replaceBooking} />
 
           {/*
-            ─── SATU KUNJUNGAN ─────────────────────────────────────────────────
-
-            The other bookings saved in the same group — Coco's grooming beside
-            Mochi's, or Mochi's hotel stay beside her bath. Each is a booking of
-            its own, with its own status and bill, so this is a list of links,
-            not a summary. ABSENT when the booking was made on its own.
+            ─── BOOKING TERKAIT (21 September 2026) ──────────────────────────
+            "Satu kunjungan" grown into BO's "Relevant bookings": the visit's
+            other bookings, the ones billed with this one, and the two ways to
+            add one — "+ Antar-jemput" and "Tautkan booking".
           */}
-          {group.length > 0 && (
-            <Card
-              title="Satu kunjungan"
-              action={
-                <span className="text-sm text-muted">
-                  {group.length} booking lain
-                </span>
-              }
-            >
-              <ul className="flex flex-col">
-                {group.map((member) => (
-                  <li
-                    key={member._id}
-                    className="border-t border-border py-2.5 first:border-t-0 first:pt-0 last:pb-0"
-                  >
-                    <Link
-                      href={`/dashboard/booking/${member._id}`}
-                      className="group flex flex-col gap-1 rounded-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                    >
-                      <span className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-foreground group-hover:underline">
-                          {member.petName ?? "Hewan terhapus"}
-                        </span>
-                        <BookingStatusBadge status={member.status} />
-                      </span>
-                      <span className="text-xs tabular-nums text-muted">
-                        {member.serviceName} ·{" "}
-                        {member.bookingNumber ?? "Draf"} ·{" "}
-                        {clock(member.scheduledAt)}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
+          <BookingRelatedCard booking={booking} onChanged={replaceBooking} />
 
           <BookingHistoryCard booking={booking} />
 

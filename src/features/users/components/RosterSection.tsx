@@ -128,6 +128,8 @@ export function RosterSection({
     two groomers picked from ten names.
   */
   const [isGroomer, setIsGroomer] = useState(user.isGroomer === true);
+  /* The antar-jemput PIC roster — the same kind of shop fact (21 Sep 2026). */
+  const [isDriver, setIsDriver] = useState(user.isDriver === true);
   /* The label beside the name on a booking's crew — "Sinta · Senior". */
   const [groomerLevel, setGroomerLevel] = useState<GroomerLevel | null>(
     user.groomerLevel ?? null,
@@ -267,6 +269,7 @@ export function RosterSection({
           stored one back would keep alive a number that means nothing.
         */
         isGroomer,
+        isDriver,
         groomerLevel,
         availability: { weeklyOff, leaveDates },
       });
@@ -316,6 +319,22 @@ export function RosterSection({
         </p>
         <p className="text-xs text-muted">
           Komisi diatur untuk seluruh toko di Layanan › Grooming › Pengaturan.
+        </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+          <Checkbox
+            checked={isDriver}
+            onCheckedChange={() => setIsDriver((prev) => !prev)}
+            disabled={saving}
+            aria-label="Driver"
+          />
+          Driver — bisa ditugaskan antar-jemput
+        </label>
+        <p className="text-xs text-muted">
+          Hanya yang ditandai di sini yang muncul di pilihan driver booking
+          antar-jemput. Libur dan cuti di bawah berlaku juga untuk driver.
         </p>
       </div>
 

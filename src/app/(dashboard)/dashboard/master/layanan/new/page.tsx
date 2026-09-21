@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ServiceForm } from "@/features/services";
 import { RequirePermission } from "@/features/permissions";
 import type { ServiceType } from "@/types/api";
+import { serviceListPathFor } from "@/features/antar-jemput/serviceFormOrigin";
 
 export const metadata: Metadata = {
   title: "Layanan baru · Master Data · Buloo",
@@ -25,11 +26,20 @@ export default async function NewServicePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { jenis } = await searchParams;
+  const { jenis, dari, lini } = await searchParams;
 
+  /*
+    `?dari=` and `?lini=` — a line's own Layanan & Harga opened this form
+    (Antar-Jemput, 21 September 2026): come back to that list, and start on that
+    line. Anything unrecognised is Grooming's list, as before.
+  */
   return (
     <RequirePermission feature="services" action="create">
-      <ServiceForm fixedServiceType={fixedTypeOf(jenis)} />
+      <ServiceForm
+        fixedServiceType={fixedTypeOf(jenis)}
+        listPath={serviceListPathFor(dari)}
+        defaultBusinessLineId={typeof lini === "string" ? lini : undefined}
+      />
     </RequirePermission>
   );
 }

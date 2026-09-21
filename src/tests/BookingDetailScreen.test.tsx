@@ -822,11 +822,13 @@ describe("BookingDetailScreen — the rail and the cards beside the work", () =>
 
     show();
 
-    const card = (await screen.findByText("Satu kunjungan")).closest(
+    /* "Satu kunjungan" grew into "Booking terkait" (21 September 2026). */
+    const card = (await screen.findByText("Booking terkait")).closest(
       "section, div[class*='rounded']",
     ) as HTMLElement;
 
-    expect(screen.getByText("2 booking lain")).toBeInTheDocument();
+    expect(screen.getByText("2 booking")).toBeInTheDocument();
+    expect(within(card).getAllByText("Satu kunjungan")).toHaveLength(2);
     expect(screen.getByRole("link", { name: /coco/i })).toHaveAttribute(
       "href",
       "/dashboard/booking/bk-2",
@@ -841,13 +843,78 @@ describe("BookingDetailScreen — the rail and the cards beside the work", () =>
   it.each([
     ["an empty group", []],
     ["no group at all", undefined],
-  ])("leaves the Satu kunjungan card out for %s", async (_label, group) => {
+  ])("says nothing is related for %s, and offers the two ways to relate one", async (_label, group) => {
     bookings.getById.mockResolvedValue(booking({ group }));
 
     show();
 
     await screen.findByText("BK-260903-001");
     expect(screen.queryByText("Satu kunjungan")).not.toBeInTheDocument();
+    expect(screen.getByText(/Belum terkait dengan booking lain/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /antar-jemput/i })).toHaveAttribute(
+      "href",
+      "/dashboard/layanan/antar-jemput/new?bookingId=bk-1",
+    );
+    expect(screen.getByRole("button", { name: /tautkan booking/i })).toBeInTheDocument();
+  });
+
+  it("lets a booking of the visit go, and re-reads this one", async () => {
+    const member = {
+      _id: "bk-2",
+      bookingNumber: "BK-260903-002",
+      petId: "pet-1",
+      petName: "Mochi",
+      serviceName: "Antar-Jemput",
+      status: "confirmed" as const,
+      scheduledAt: "2026-09-03T01:30:00.000Z",
+      pickupRequested: false,
+      deliveryRequested: false,
+      tripLeg: "pickup" as const,
+    };
+    bookings.getById
+      .mockResolvedValueOnce(booking({ group: [member] }))
+      .mockResolvedValueOnce(booking({ group: [] }));
+    bookings.setGroup.mockResolvedValue(booking({ _id: "bk-2" }));
+
+    show();
+
+    expect(await screen.findByText("Jemput · Mochi")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: /lepas BK-260903-002 dari kunjungan ini/i }),
+    );
+
+    await waitFor(() => expect(bookings.setGroup).toHaveBeenCalledWith("bk-2", null));
+    await waitFor(() =>
+      expect(screen.queryByText("Jemput · Mochi")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("names what one invoice billed beside it, which cannot be let go", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        related: [
+          {
+            _id: "bk-9",
+            bookingNumber: "BK-260903-009",
+            petId: "pet-1",
+            petName: "Mochi",
+            serviceName: "Antar-Jemput",
+            status: "completed",
+            scheduledAt: "2026-09-03T08:00:00.000Z",
+            pickupRequested: false,
+            deliveryRequested: false,
+            tripLeg: "delivery",
+            via: "invoice",
+            documentNumber: "INV-100381",
+          },
+        ],
+      }),
+    );
+
+    show();
+
+    expect(await screen.findByText("Satu faktur · INV-100381")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /lepas/i })).not.toBeInTheDocument();
   });
 
   it("points at the commission report rather than showing the money", async () => {

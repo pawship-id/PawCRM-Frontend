@@ -140,7 +140,7 @@ export function useGroomingServices(lineId: string | null) {
     loading: lineId !== null && !current,
     error:
       current && loaded.failed
-        ? "Daftar layanan grooming tidak bisa dimuat. Coba lagi."
+        ? "Daftar layanan tidak bisa dimuat. Coba lagi."
         : null,
   };
 }

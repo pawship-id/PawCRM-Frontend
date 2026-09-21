@@ -159,6 +159,8 @@ describe("RosterSection", () => {
     await waitFor(() => expect(users.update).toHaveBeenCalled());
     expect(users.update.mock.calls[0][1]).toEqual({
       isGroomer: false,
+      /* The antar-jemput roster, sent with the groomer flag (21 Sep 2026). */
+      isDriver: false,
       groomerLevel: null,
       availability: { weeklyOff: [], leaveDates: [] },
     });

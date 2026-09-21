@@ -191,10 +191,11 @@ describe("GroomingServicesScreen", () => {
   it("opens the new-service form as a main service from Layanan baru", async () => {
     renderWithAuth(<GroomingServicesScreen />);
 
-    // `?jenis=utama` hides Jenis layanan on the form and files it as main.
+    // `?jenis=utama` hides Jenis layanan on the form and files it as main;
+    // `?lini=` starts it on this module's line (21 September 2026).
     expect(await screen.findByRole("link", { name: /Layanan baru/ })).toHaveAttribute(
       "href",
-      "/dashboard/master/layanan/new?jenis=utama",
+      "/dashboard/master/layanan/new?jenis=utama&lini=bl-grooming",
     );
   });
 

@@ -39,11 +39,11 @@ import {
  * and Tahapan & Add-on (`GroomingServiceStepsEditor`).
  */
 
-function EditLink({ serviceId, label = "Ubah" }: { serviceId: string; label?: string }) {
+function EditLink({ href, label = "Ubah" }: { href: string; label?: string }) {
   return (
     <Can feature="services" action="update">
       <Button asChild variant="secondary" size="sm">
-        <Link href={serviceEditPath(serviceId)}>
+        <Link href={href}>
           <Pencil className="size-4" />
           {label}
         </Link>
@@ -290,7 +290,14 @@ export function ServiceSummaryPanel({
  * `description`, `included` are stored on the service); publishing it is not,
  * because there is no portal yet, and the panel says so first.
  */
-export function ServicePortalPanel({ service }: { service: Service }) {
+export function ServicePortalPanel({
+  service,
+  editHref = serviceEditPath(service._id),
+}: {
+  service: Service;
+  /** The service form, told which list to return to — see `ServiceLine`. */
+  editHref?: string;
+}) {
   const bounds = servicePriceBounds(service);
   const included = service.included ?? [];
 
@@ -305,7 +312,7 @@ export function ServicePortalPanel({ service }: { service: Service }) {
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
         <Card
           title="Konten untuk pelanggan"
-          action={<EditLink serviceId={service._id} />}
+          action={<EditLink href={editHref} />}
         >
           <dl className="flex flex-col gap-4">
             <div>

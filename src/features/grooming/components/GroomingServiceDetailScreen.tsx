@@ -25,8 +25,13 @@ import {
   useServiceAddons,
 } from "../hooks/useGroomingServiceDetail";
 import { useServiceBookingCounts } from "../hooks/useServiceBookingCounts";
-import { GROOMING_CATALOG_PATH, groomingServicePath } from "../paths";
-import { branchesText, serviceEditPath, statusOf } from "../serviceDisplay";
+import {
+  GROOMING_LINE,
+  lineServiceEditPath,
+  lineServicePath,
+  type ServiceLine,
+} from "../line";
+import { branchesText, statusOf } from "../serviceDisplay";
 import {
   ServicePortalPanel,
   ServiceSummaryPanel,
@@ -140,8 +145,16 @@ function copyBlockedBy(service: Service): string | null {
  * THE SUB-TABS ARE STATE, NOT ROUTES: they are four readings of one record, and
  * nobody links to the Portal tab of a service.
  */
-export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }) {
+export function GroomingServiceDetailScreen({
+  serviceId,
+  serviceLine = GROOMING_LINE,
+}: {
+  serviceId: string;
+  /** Which line's module the page sits under — see `ServiceLine`. */
+  serviceLine?: ServiceLine;
+}) {
   const router = useRouter();
+  const catalogPath = serviceLine.paths.catalog;
   const { can } = usePermissions();
   const mayUpdate = can("services", "update");
   const mayReadBookings = can("bookings", "read");
@@ -222,7 +235,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
           swalToast(
             "Disalin sebagai nonaktif. Harga, varian, dan tahapan ikut; fotonya tidak.",
           );
-          router.push(groomingServicePath(created._id));
+          router.push(lineServicePath(serviceLine, created._id));
           return;
         } catch (err) {
           // The only 409 a create raises is a code already in use.
@@ -244,7 +257,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
     }
   }
 
-  const header = <GroomingModuleHeader />;
+  const header = <GroomingModuleHeader line={serviceLine} />;
 
   if (error) {
     return (
@@ -253,7 +266,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
         <Alert variant="error">{error}</Alert>
         <div>
           <Button asChild variant="secondary">
-            <Link href={GROOMING_CATALOG_PATH}>Kembali ke Layanan & Harga</Link>
+            <Link href={catalogPath}>Kembali ke Layanan & Harga</Link>
           </Button>
         </div>
       </div>
@@ -295,7 +308,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
 
       <div className="flex flex-wrap items-start gap-4">
         <Link
-          href={GROOMING_CATALOG_PATH}
+          href={catalogPath}
           aria-label="Kembali ke Layanan & Harga"
           className="flex size-11 flex-none items-center justify-center rounded-full border border-border bg-surface text-muted transition hover:bg-surface-hover hover:text-foreground focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
         >
@@ -352,7 +365,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
               {service.isActive ? "Nonaktifkan" : "Aktifkan"}
             </Button>
             <Button asChild>
-              <Link href={serviceEditPath(service._id)}>
+              <Link href={lineServiceEditPath(serviceLine, service._id)}>
                 <Pencil className="size-4" />
                 Ubah
               </Link>
@@ -420,7 +433,10 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
             onSetActive={(active) => void setActive(active)}
           />
         ) : tab === "portal" ? (
-          <ServicePortalPanel service={service} />
+          <ServicePortalPanel
+            service={service}
+            editHref={lineServiceEditPath(serviceLine, service._id)}
+          />
         ) : null}
 
         {/* Tahapan & Add-on is edited in place too — mounted and hidden, as below. */}
@@ -459,7 +475,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
         onCancel={() => setPending(null)}
         onDone={() => {
           setPending(null);
-          router.push(GROOMING_CATALOG_PATH);
+          router.push(catalogPath);
         }}
       />
     </div>

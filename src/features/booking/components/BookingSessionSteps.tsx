@@ -40,6 +40,14 @@ const WORK: Record<BookingWorkStatus, { label: string; className: string }> = {
   done: { label: "Selesai", className: "bg-tint-success text-success" },
 };
 
+/**
+ * WHO STANDS AT A TURN, IN THE SHOP'S WORD — a ride's PIC is its driver (21
+ * September 2026). Only the words change; the crew is the same field.
+ */
+export function crewWord(booking: Pick<Booking, "tripLeg">): "driver" | "groomer" {
+  return booking.tripLeg ? "driver" : "groomer";
+}
+
 /** The move offered next, and nothing else — see BookingDetailScreen. */
 const NEXT: Partial<
   Record<BookingWorkStatus, { to: BookingWorkStatus; label: string }>
@@ -78,6 +86,7 @@ export function BookingSessionSteps({
   const [busy, setBusy] = useState<string | null>(null);
   /* Absent only on a response from before the service became required. */
   const sessions = booking.service?.sessions ?? [];
+  const who = crewWord(booking);
 
   const startable = canStartWork(booking);
   /* Re-crewing touches money once the work is completed — statusFlow. */
@@ -129,7 +138,7 @@ export function BookingSessionSteps({
 
       {sessions.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface px-4 py-3 text-sm text-muted">
-          Belum ada tahapan. Tahapan dan groomernya diatur di halaman detail
+          Belum ada tahapan. Tahapan dan {who}nya diatur di halaman detail
           booking ini.
         </p>
       ) : (
@@ -161,7 +170,7 @@ export function BookingSessionSteps({
                   </p>
                   <p className="text-xs text-muted">
                     {unassigned
-                      ? "Belum ada groomer"
+                      ? `Belum ada ${who}`
                       : session.groomers
                           .map((who) =>
                             who.offReason
@@ -241,13 +250,16 @@ function CrewPicker({
   const [busy, setBusy] = useState(false);
 
   const crew = session.groomers.map((who) => who._id);
+  const word = crewWord(booking);
+  const title = word === "driver" ? "Driver" : "Groomer";
 
   function load(open: boolean) {
     if (!open || groomers !== null) return;
 
     setFailed(false);
     bookingService
-      .availability(isoDate(new Date(booking.scheduledAt)))
+      /* A ride's crew is its driver (21 September 2026). */
+      .availability(isoDate(new Date(booking.scheduledAt)), word)
       .then(setGroomers)
       .catch(() => setFailed(true));
   }
@@ -269,7 +281,7 @@ function CrewPicker({
       swalToast(
         error instanceof ApiError
           ? (error.reason ?? error.message)
-          : "Groomer tidak bisa disimpan. Coba lagi.",
+          : `${title} tidak bisa disimpan. Coba lagi.`,
         "error",
         6000,
       );
@@ -293,18 +305,20 @@ function CrewPicker({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="min-w-56">
-        <DropdownMenuLabel>Groomer {session.sessionName}</DropdownMenuLabel>
+        <DropdownMenuLabel>
+          {title} {session.sessionName}
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         {failed ? (
           <p className="px-2 py-1.5 text-sm font-semibold text-danger">
-            Daftar groomer tidak bisa dimuat.
+            Daftar {word} tidak bisa dimuat.
           </p>
         ) : groomers === null ? (
           <p className="px-2 py-1.5 text-sm text-muted">Memuat…</p>
         ) : groomers.length === 0 ? (
           <p className="px-2 py-1.5 text-sm text-muted">
-            Belum ada staf yang ditandai Groomer.
+            Belum ada staf yang ditandai {title}.
           </p>
         ) : (
           groomers.map((groomer) => {

@@ -7,7 +7,7 @@ import {
   type BusinessLine,
 } from "@/services/businessLine.service";
 
-import { pickGroomingLine } from "../board";
+import { GROOMING_LINE, type ServiceLine } from "../line";
 
 /**
  * The name a booking row snapshots when the line list cannot be read — see
@@ -25,12 +25,13 @@ export interface GroomingLineState {
 }
 
 /**
- * The tenant's Grooming business line.
+ * The tenant's Grooming business line — or, given another module's `line`,
+ * that one's (Antar-Jemput, 21 September 2026).
  *
  * A LINE IS A FREE LABEL THE TENANT NAMES, not an enum (businessLine.service),
  * so "which services are grooming" starts by finding it by name.
  */
-export function useGroomingLine(): GroomingLineState {
+export function useGroomingLine(line: ServiceLine = GROOMING_LINE): GroomingLineState {
   const [state, setState] = useState<GroomingLineState>({
     line: null,
     loading: true,
@@ -45,8 +46,8 @@ export function useGroomingLine(): GroomingLineState {
       .list({ limit: 100 })
       .then((result) => {
         if (!active) return;
-        const line = pickGroomingLine(result.items);
-        setState({ line, loading: false, missing: line === null, failed: false });
+        const found = line.pick(result.items);
+        setState({ line: found, loading: false, missing: found === null, failed: false });
       })
       .catch(() => {
         if (active) {
@@ -57,6 +58,8 @@ export function useGroomingLine(): GroomingLineState {
     return () => {
       active = false;
     };
+    /* `line` is a module constant; its identity never changes under a screen. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return state;

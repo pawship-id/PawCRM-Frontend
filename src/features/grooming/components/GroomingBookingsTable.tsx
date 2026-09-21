@@ -178,7 +178,8 @@ export function GroomingBookingsTable({
 
                     {(booking.location === "in_home" ||
                       booking.pickupRequested ||
-                      booking.deliveryRequested) && (
+                      booking.deliveryRequested ||
+                      (booking.trips?.length ?? 0) > 0) && (
                       <span className="mt-1 flex flex-wrap gap-1">
                         {booking.location === "in_home" && (
                           <Badge
@@ -188,7 +189,13 @@ export function GroomingBookingsTable({
                             Di rumah
                           </Badge>
                         )}
-                        {(booking.pickupRequested || booking.deliveryRequested) && (
+                        {/*
+                          THE VAN, from either side: the booking's own trip
+                          flags, or a ride booked in its visit (21 Sep 2026).
+                        */}
+                        {(booking.pickupRequested ||
+                          booking.deliveryRequested ||
+                          (booking.trips?.length ?? 0) > 0) && (
                           <Badge
                             variant="outline"
                             className="border-transparent bg-tint-info text-info"
@@ -312,8 +319,11 @@ function DiscountLine({ amount }: { amount?: string | null }) {
   );
 }
 
-/** What this booking's grooming comes to, line by line, and where to go next. */
-function RowBreakdown({ row }: { row: GroomingRow }) {
+/**
+ * What this booking comes to, line by line, and where to go next. Shared with
+ * Antar-Jemput's board, whose opened row is the same two halves.
+ */
+export function RowBreakdown({ row }: { row: GroomingRow }) {
   const { booking, service } = row;
   const discounted = Boolean(
     booking.discountAmount && isPositive(booking.discountAmount),
