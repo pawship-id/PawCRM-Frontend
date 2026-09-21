@@ -233,16 +233,32 @@ actually sort would order the rows by something other than the text somebody is
 reading. A header that sorts by what it does not display is worse than one that
 does not invite the click.
 
+**THE THIRD SCREEN: Komisi, in Keuangan.** Decided 21 September 2026 with the
+BO mockup (`buloo-keuangan-komisi.html`), which draws the header row sortable.
+Same shape as the two above. **All six data columns are clickable** — Tanggal,
+Staf, Cabang, Nilai layanan, Komisi, Status — because unlike Transaksi every one
+of them shows a single stored or grouped value the server orders by
+(`SORT_FIELDS` in `commissionRecord.repository.js`), so no header sorts by
+something other than what it displays. First click: newest date and largest
+amount first, A first for a name or a status.
+
+Its only filter, Status, **stands on the bar** and applies on click, where the
+mockup put it behind a Filter button: one field is below the floor (a button
+that hides one thing is worse than showing it — Transfer Stok's reasoning).
+Cabang, Lini Usaha and Periode are the module's context bar above it.
+
 **A collapsed bar owes you its count.** A quick bar shows its values on its triggers; a panel hides them behind a button, and a hidden filter is one people forget is on and then read the wrong numbers from. `Filter (2)` is not decoration — it is what makes the collapsed form safe, and a panel button without it is a bug.
 
 Applied filters render as removable chips below the bar or panel. Anatomy and props: [`docs/ui-component-specs.md`](./ui-component-specs.md).
 
 ### The foot of a list
 
-**Two lists in the app let somebody choose how many rows a page holds — Transaksi
-(Kas & Bank) and Faktur Penjualan — and they share one `ListFooter`.** Decided
-20 September 2026 on request, from a mockup. Everywhere else, `Pagination` is
-still correct and has no page size.
+**Three lists in the app let somebody choose how many rows a page holds — Transaksi
+(Kas & Bank), Faktur Penjualan and Komisi — and they share one `ListFooter`.**
+Decided 20 September 2026 on request, from a mockup; Komisi joined on
+21 September and opens at 10 with 10/25/50/100, the mockup's own numbers (the
+server caps it at 100). Everywhere else, `Pagination` is still correct and has
+no page size.
 
 ```
 Menampilkan 1–10 dari 14 transaksi · Tampilkan [10 ⌄] / halaman    ‹ Sebelumnya · 1 · 2 · 3 · Berikutnya ›

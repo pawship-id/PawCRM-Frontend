@@ -23,11 +23,10 @@ import { usePermissions } from "@/features/permissions";
  * card list still reaches it, which is how the other three non-tab screens are
  * reached too.
  *
- * KOMISI IS THE ONE TAB THAT MOVED HOUSE. The recap already existed as a card on
- * the reports hub; the mockup files it under Keuangan, so its route moved to
- * /dashboard/keuangan/komisi and the old one redirects. The screen itself is
- * unchanged, and the reports hub still links to it — from a report's point of
- * view nothing happened but an address change.
+ * KOMISI MOVED HOUSE, AND THEN WAS REBUILT. The per-groomer recap moved here
+ * from the reports hub (its old route still redirects); on 21 September 2026 it
+ * was replaced by the mockup's screen — one row per booking × groomer, with
+ * approval and payment — which lives in `features/commissions`.
  *
  * NO TILE ROW. The Ringkasan tab IS the module's tile row — SummaryCards, margin
  * insights and recent transactions, all scoped by its own period picker. A
@@ -65,7 +64,7 @@ export function AccountingModuleHeader({
       : []),
     /*
       GATED ON `users:read`, not on a finance grant, and that is the screen's own
-      rule rather than this row's: the recap IS payroll — it names every groomer
+      rule rather than this row's: Komisi IS payroll — it names every groomer
       and what they are owed — so whoever may read the staff register may read
       it, and a bookkeeper who may not is not shown the door.
     */

@@ -35,20 +35,6 @@ import { toDecimalString, toMinor } from "@/utils/decimal";
  */
 export const CASH_ACCOUNT_CATEGORY = "cash_bank" as const;
 
-/**
- * Utang Komisi — the account "Komisi Belum Dibayar" reads.
- *
- * THE LEDGER'S ANSWER, NOT PAYROLL'S. The commission recap
- * (`/reports/commissions`) says what a month EARNED; this balance is what has
- * been accrued and not yet paid out, across every month still open. They are
- * different questions, and the card asks this one — a shop owner wanting to know
- * what is owed does not want it reset on the first of the month.
- *
- * A code rather than an id, for the reason the cash codes give: it is seeded for
- * every tenant and survives the account being renamed. `commission.service.js`
- * resolves the same "2102".
- */
-export const COMMISSION_PAYABLE_CODE = "2102";
 
 /** The bucket a P&L line with no business line falls into. */
 export const SHARED_LINE_LABEL = "Bersama (HQ)";

@@ -2653,25 +2653,155 @@ export interface CommissionRecapQuery {
   groomerUserId?: string;
 }
 
-/** Query parameters accepted by GET /api/bookings. All optional. */
 /**
- * The result of taking a month's commission to the ledger.
+ * Where one row of the Komisi screen stands (21 September 2026).
  *
- * `posted: false` IS A SUCCESS, not a failure — "nothing to close" is a true and
- * useful answer to "close September". The other fields are absent when it is
- * false, because nothing was written to describe.
+ *   pending  — Menunggu Persetujuan: billed and done, nobody approved it yet
+ *   approved — Disetujui: may be paid
+ *   paid     — Dibayar: settled by one cash transaction
+ *   reversed — Dibatalkan: its invoice (or booking) was cancelled
+ *   mixed    — the row's turns disagree; shown as such, never picked for payment
  */
-export interface CommissionCloseResult {
-  posted: boolean;
-  period: string;
+export type CommissionStatus =
+  | "pending"
+  | "approved"
+  | "paid"
+  | "reversed"
+  | "mixed";
+
+/** A row's address — one booking × one groomer. */
+export interface CommissionRowKey {
+  bookingId: string;
+  groomerUserId: string;
+}
+
+/**
+ * ONE ROW OF THE KOMISI SCREEN — a booking × groomer, which may be several turns
+ * (tahapan) of that booking. `amount` is what will be paid: the hand-set figure
+ * when `overridden`, otherwise what the rule computed (`computedAmount`).
+ */
+export interface CommissionRow extends CommissionRowKey {
+  /** `bookingId:groomerUserId` — stable across pages, used for selection. */
+  key: string;
+  groomerName: string | null;
+  branchId: string | null;
+  branchName: string | null;
+  bookingNumber: string | null;
+  bookingDate: string | null;
+  petName: string | null;
+  serviceName: string | null;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  /** The service's price — the mockup's "Nilai Layanan". */
+  basisAmount: string;
+  amount: string;
+  computedAmount: string;
+  overridden: boolean;
+  status: CommissionStatus;
+}
+
+/** GET /api/reports/commissions/records. */
+export interface CommissionRowsResult {
+  rows: CommissionRow[];
+  page: number;
+  limit: number;
+  total: number;
+  /** Over the context bar's scope, ignoring status and search. */
+  cards: { total: string; paid: string; pending: string };
+}
+
+export type CommissionSort =
+  | "bookingDate"
+  | "groomer"
+  | "branch"
+  | "basisAmount"
+  | "amount"
+  | "status";
+
+export interface CommissionRowsQuery {
   branchId?: string;
-  reason?: string;
-  closeId?: string;
-  journalEntryId?: string;
-  entryNumber?: string;
-  amount?: string;
-  recordCount?: number;
-  groomerCount?: number;
+  /** `"__none__"` for "no line of business". */
+  businessLineId?: string;
+  /** `YYYY-MM-DD`, the booking's date in the shop's zone. */
+  dateFrom?: string;
+  dateTo?: string;
+  status?: CommissionStatus | "";
+  q?: string;
+  sort?: CommissionSort;
+  dir?: "asc" | "desc";
+  page?: number;
+  limit?: number;
+}
+
+/** One turn of the row — the mockup's "Rincian per Tahapan". */
+export interface CommissionStage {
+  recordId: string;
+  sessionName: string | null;
+  /** The tahapan's share of the service, per cent. */
+  sharePercent: number | null;
+  crewSize: number | null;
+  crewSharePercent: number | null;
+  /**
+   * This tahapan's part of the commission pool — pool × `sharePercent`, before
+   * the crew split. Null on records from before the pool was stored.
+   */
+  stagePool: string | null;
+  rateType: "percentage" | "fixed" | "matrix" | "size_nominal";
+  rateValue: number;
+  amount: string;
+  status: Exclude<CommissionStatus, "mixed">;
+}
+
+/** GET /api/reports/commissions/records/:bookingId/:groomerUserId. */
+export interface CommissionDetail extends CommissionRow {
+  /**
+   * The pool the tahapan share: the service's commission (`rateType`/`rateValue`
+   * of the service price) plus the add-ons'. Null on pre-rule records.
+   */
+  pool: {
+    /** The booked service — "Basic Grooming". */
+    serviceName: string | null;
+    rateType: CommissionStage["rateType"];
+    rateValue: number;
+    service: string;
+    addon: string;
+    /**
+     * One line per earning add-on. EMPTY when an older record's add-ons cannot
+     * be named any more — `addon` then stands alone.
+     */
+    addons: {
+      name: string | null;
+      price: string;
+      rateType: "percentage" | "fixed";
+      rateValue: number;
+      commission: string;
+    }[];
+    total: string;
+  } | null;
+  stages: CommissionStage[];
+  override: { reason: string | null; at: string | null } | null;
+  approvedAt: string | null;
+  reversal: { at: string | null; reason: string | null } | null;
+  payment: {
+    id: string;
+    number: string | null;
+    at: string;
+    cashAccountName: string | null;
+    journalEntryId: string | null;
+    entryNumber: string | null;
+  } | null;
+}
+
+/** One payment written by POST /api/reports/commissions/pay. */
+export interface CommissionPayment extends CommissionRowKey {
+  groomerName: string;
+  bookingNumber: string | null;
+  branchId: string;
+  paymentId: string;
+  number: string | null;
+  journalEntryId: string;
+  entryNumber: string | null;
+  amount: string;
 }
 
 /**
@@ -2704,24 +2834,7 @@ export interface MyCommission {
   outstanding: CommissionOutstanding;
 }
 
-/** The result of paying one groomer what the books say is owed. */
-export interface CommissionPaymentResult {
-  /** The cash transaction's id — `/dashboard/keuangan/transaksi/:paymentId`. */
-  paymentId: string;
-  /**
-   * The bukti kas/bank number (`BKK/CBS/2609/0003`) — what the person paid can
-   * write on the slip. Optional only because an older backend did not send it.
-   */
-  number?: string | null;
-  journalEntryId: string;
-  entryNumber: string;
-  groomerUserId: string;
-  groomerName: string | null;
-  periods: string[];
-  amount: string;
-  recordCount: number;
-}
-
+/** Query parameters accepted by GET /api/bookings. All optional. */
 export interface BookingListQuery {
   page?: number;
   limit?: number;
@@ -6411,6 +6524,11 @@ export interface CashTransaction {
   } | null;
   commission: {
     groomerUserId: string;
+    /**
+     * The booking this payment settled — one commission, one payment, since
+     * 21 September 2026. Null on the per-groomer payouts written before.
+     */
+    bookingId?: string | null;
     periods: string[];
     recordCount: number;
   } | null;

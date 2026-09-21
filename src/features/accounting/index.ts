@@ -98,7 +98,6 @@ export {
   reportPresets,
   trendWindow,
   CASH_ACCOUNT_CATEGORY,
-  COMMISSION_PAYABLE_CODE,
   TREND_DAYS,
   SHARED_LINE_LABEL,
   SHARED_LINE_NONE,
