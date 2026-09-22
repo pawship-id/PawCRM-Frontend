@@ -220,7 +220,6 @@ describe("ServiceSettingsScreen", () => {
       serviceType: "main",
       addonServiceIds: [],
       businessLineId: "bl-grooming",
-      addonStepId: null,
       commissionable: true,
       soldSeparately: false,
       isActive: true,
@@ -236,7 +235,7 @@ describe("ServiceSettingsScreen", () => {
       _id: "kutu",
       name: "Obat Kutu",
       serviceType: "addon",
-      addonStepId: "step-mandi",
+      sessions: ["Mandi"],
     }),
     service({ _id: "kuku", name: "Potong Kuku", serviceType: "addon", isActive: false }),
   ];
@@ -485,12 +484,10 @@ describe("ServiceSettingsScreen", () => {
     );
     expect(within(kutu).getByLabelText("Harga Obat Kutu")).toHaveValue("35.000");
     expect(within(kutu).getByLabelText("Durasi Obat Kutu dalam menit")).toHaveValue(15);
-    // The tahapan is stored by id and shown by the line's own name.
-    await waitFor(() =>
-      expect(within(kutu).getByRole("combobox", { name: "Tahapan Obat Kutu" })).toHaveTextContent(
-        "Mandi",
-      ),
-    );
+    // Its tahapan, by name — several may be ticked (22 September 2026).
+    expect(
+      within(kutu).getByRole("button", { name: "Tahapan Obat Kutu: Mandi" }),
+    ).toBeInTheDocument();
     expect(within(kutu).getByRole("switch", { name: "Komisi Obat Kutu" })).toBeChecked();
     expect(
       within(kutu).getByRole("switch", { name: "Dijual terpisah Obat Kutu" }),
@@ -536,6 +533,29 @@ describe("ServiceSettingsScreen", () => {
     expect(serviceService.update).toHaveBeenCalledWith("kuku", {
       soldSeparately: true,
     });
+  });
+
+  it("ticks several tahapan on a row and saves them as its sessions (22 September 2026)", async () => {
+    jest.mocked(serviceService.update).mockResolvedValue(SERVICES[2]);
+    renderWithAuth(<ServiceSettingsScreen initialSection="addon" />);
+
+    const kutu = (await screen.findByRole("link", { name: "Obat Kutu" })).closest("tr")!;
+    await userEvent.click(
+      within(kutu).getByRole("button", { name: "Tahapan Obat Kutu: Mandi" }),
+    );
+    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Blow dry" }));
+    await userEvent.keyboard("{Escape}");
+
+    expect(
+      within(kutu).getByRole("button", { name: "Tahapan Obat Kutu: Mandi, Blow dry" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Simpan add-on" }));
+
+    await waitFor(() =>
+      expect(serviceService.update).toHaveBeenCalledWith("kutu", {
+        sessions: ["Mandi", "Blow dry"],
+      }),
+    );
   });
 
   it("edits Dipakai di layanan from the row and sends only that (22 September 2026)", async () => {

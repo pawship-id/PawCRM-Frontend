@@ -137,7 +137,7 @@ describe("CommissionDetailScreen", () => {
           addons: [
             {
               name: "Extra Handling",
-              sessionName: "Potong & Styling",
+              sessionNames: ["Potong & Styling"],
               price: "20000.0000",
               rateType: "percentage",
               rateValue: 10,

@@ -2860,11 +2860,8 @@ export interface CommissionDetail extends CommissionRow {
      */
     addons: {
       name: string | null;
-      /**
-       * The tahapan it was paid to WHOLE (22 September 2026) — or null when it
-       * was in the pool the tahapan share by bobot.
-       */
-      sessionName?: string | null;
+      /** The tahapan it was paid to (22 September 2026) — empty when it was in the shared pool. */
+      sessionNames?: string[];
       price: string;
       rateType: "percentage" | "fixed";
       rateValue: number;
@@ -3493,14 +3490,14 @@ export interface Service {
   addonServiceIds: string[];
   /**
    * ─── AN ADD-ON'S OWN SETTINGS (17 September 2026) ─────────────────────────
-   * Only an `addon` carries values; the server resets all three on a `main`
-   * service. Edited on Pengaturan › Layanan › Add-on.
+   * Only an `addon` carries values; the server resets them on a `main`
+   * service. Edited on Master › Layanan › Add-on.
    *
-   * The tahapan the add-on's work belongs to — a `ServiceStep` id of the
-   * service's own business line, or null.
+   * An add-on's TAHAPAN are its `sessions` since 22 September 2026, several
+   * allowed — it was one `addonStepId`.
+   *
+   * Whether selling it earns commission. Copied onto a booking when booked.
    */
-  addonStepId: string | null;
-  /** Whether selling it earns commission. Copied onto a booking when booked. */
   commissionable: boolean;
   /** Whether it may be chosen without a main service. Pickers do not read it yet. */
   soldSeparately: boolean;
@@ -3638,8 +3635,6 @@ export interface UpdateServiceInput {
   branchIds?: string[];
   serviceType?: ServiceType;
   addonServiceIds?: string[];
-  /** Add-on only — see `Service.addonStepId`. */
-  addonStepId?: string | null;
   commissionable?: boolean;
   soldSeparately?: boolean;
   included?: string[];

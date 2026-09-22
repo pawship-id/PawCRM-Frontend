@@ -639,10 +639,10 @@ function PoolTable({
             <TableRow key={`${addon.name ?? "addon"}-${index}`}>
               <TableCell className="px-4 py-2.5 text-sm">
                 {addon.name ?? "Add-on"}
-                {/* Paid whole to its tahapan, not split by bobot (22 Sep 2026). */}
+                {/* Paid to its tahapan, not split by the service's bobot (22 Sep 2026). */}
                 <p className="text-xs text-muted">
-                  {addon.sessionName
-                    ? `Add-on · untuk tahapan ${addon.sessionName}`
+                  {addon.sessionNames?.length
+                    ? `Add-on · untuk tahapan ${addon.sessionNames.join(", ")}`
                     : "Add-on"}
                 </p>
               </TableCell>

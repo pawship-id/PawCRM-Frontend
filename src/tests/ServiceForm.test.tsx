@@ -111,7 +111,6 @@ const serviceFixture: Service = {
   branchIds: [],
   serviceType: "main",
   addonServiceIds: [],
-  addonStepId: null,
   commissionable: true,
   soldSeparately: false,
   included: [],
