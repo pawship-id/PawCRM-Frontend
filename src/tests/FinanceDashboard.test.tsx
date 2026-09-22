@@ -696,6 +696,36 @@ describe("FinanceDashboardScreen", () => {
     expect(screen.getByText(/terendah dari 2 lini bisnis/)).toBeInTheDocument();
   });
 
+  /** One earning lini still gets its margin said — as itself, not "thinnest of 1". */
+  it("names the margin of the only lini that earned", async () => {
+    (journalEntryService.profitLoss as jest.Mock).mockResolvedValue({
+      ...PROFIT_LOSS,
+      categories: PROFIT_LOSS.categories.map((row) =>
+        row.accountCategory === "pendapatan"
+          ? { ...row, lines: cells("58000000.0000", "0", "0") }
+          : row,
+      ),
+      results: {
+        ...PROFIT_LOSS.results,
+        netProfit: {
+          lines: [
+            { businessLineId: GROOMING, amount: "33000000.0000" },
+            { businessLineId: null, amount: "-20000000.0000" },
+          ],
+          total: "13000000.0000",
+        },
+      },
+    });
+
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+
+    expect(await screen.findByText("Margin Grooming 56,8%")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Satu-satunya lini bisnis yang punya pendapatan/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/paling tipis/)).not.toBeInTheDocument();
+  });
+
   it("tables each lini, thinnest first, with the word beside the margin", async () => {
     renderWithAuth(<FinanceDashboardScreen now={NOW} />);
     await loaded();

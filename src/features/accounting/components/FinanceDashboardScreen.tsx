@@ -703,28 +703,45 @@ function marginBand(pct: number) {
 /**
  * The mockup's callout: the lini with the thinnest margin, and what eats it.
  *
- * ONLY WHEN THERE IS A COMPARISON TO MAKE — two or more lini that sold
- * something. With one, "thinnest of one" is not a finding.
+ * SHOWN FROM ONE LINI, not two (22 September 2026, on request). A tenant whose
+ * only earning lini is Grooming still wants its margin said out loud — but
+ * "paling tipis, terendah dari 1 lini" is a comparison with nothing, so with
+ * one the title names the margin and the body says it is the only one earning.
+ *
+ * Nothing at all when no named lini sold anything: there is no margin to talk
+ * about, and the shared bucket never has one.
  */
 function ThinnestLine({ lines }: { lines: LineProfit[] }) {
   const ranked = lines.filter(
     (line) => line.businessLineId !== null && line.marginPct !== null,
   );
-  if (ranked.length < 2) return null;
+  if (!ranked.length) return null;
 
   // `lineProfits` already sorts thinnest first.
   const worst = ranked[0];
   const margin = worst.marginPct as number;
+  const alone = ranked.length === 1;
 
   return (
     <div className="rounded-xl border border-border border-l-4 border-l-warning bg-tint-warning px-5 py-4">
       <p className="font-semibold text-foreground">
-        {worst.label} marginnya paling tipis
+        {alone
+          ? `Margin ${worst.label} ${formatPercent(margin)}`
+          : `${worst.label} marginnya paling tipis`}
       </p>
       <p className="mt-1 text-sm text-warning">
-        Margin bersihnya {formatPercent(margin)}, terendah dari {ranked.length}{" "}
-        lini bisnis. HPP dan biaya menyerap {formatPercent(100 - margin)} dari
-        pendapatan lini ini.
+        {alone ? (
+          <>
+            Satu-satunya lini bisnis yang punya pendapatan di periode ini.
+          </>
+        ) : (
+          <>
+            Margin bersihnya {formatPercent(margin)}, terendah dari{" "}
+            {ranked.length} lini bisnis.
+          </>
+        )}{" "}
+        HPP dan biaya menyerap {formatPercent(100 - margin)} dari pendapatan
+        lini ini.
       </p>
     </div>
   );
