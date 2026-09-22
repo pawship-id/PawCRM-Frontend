@@ -484,12 +484,11 @@ export const NAV_SECTIONS: NavSection[] = [
          * Komisi, Daftar Akun, Jurnal (see AccountingModuleHeader).
          *
          * THREE OF THE SEVEN OLD ROWS ARE NOT TABS, and their screens are NOT
-         * deleted: Lini Bisnis, Laba Rugi and Arus Kas keep their routes and
-         * move to the module's landing page as cards (FinanceDashboardScreen's
-         * ModuleLinks), which is the Ringkasan tab. In the mockup the first
-         * belongs to `Pengaturan › Keuangan` and the other two to `Laporan`;
-         * neither home is built, so the hub holds them until one is. Daftar Akun
-         * was among them until it became a tab on 12 September 2026.
+         * deleted. Laba Rugi, Neraca and Arus Kas are cards in the Laporan hub
+         * (ReportsHub) since 22 September 2026, when the v3 mockup took the link
+         * cards off Ringkasan. Lini Bisnis is reached from Ringkasan's "Laba per
+         * lini bisnis" panel ("Kelola lini bisnis"); the mockup files it under
+         * `Pengaturan › Keuangan`, which is not built yet.
          *
          * NO `match` NEEDED. Komisi moved to /dashboard/keuangan/komisi, inside
          * this href's own prefix; its old address under /dashboard/reports

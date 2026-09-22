@@ -64,6 +64,8 @@ Colour tokens available: `background`, `foreground`, `surface`, `surface-hover`,
 
 **`chart-gross` and `chart-net` are for chart MARKS and nothing else** — two series that have to stay tellable apart, added for the Keuangan trend chart. They are deliberately not `primary` and `secondary`: those two carry meaning (navy is the working colour, orange means a human must act), and a line on a chart means neither. They are also one step off the brand values because the brand values fail a categorical palette's checks — `navy-700` is too dark and too grey to be a mark, `orange-500` is 2.27:1 on white. Do not use them for text, fills, or anything that is not a data mark, and re-run the validator before changing either. Rationale in `globals.css`.
 
+**`chart-line-1` … `chart-line-5` and `chart-other` are the categorical series** (22 September 2026), for Ringkasan's stacked "Pendapatan 7 hari per lini bisnis". Slot n belongs to the tenant's n-th business line — colour follows the lini, never its rank — and a sixth line folds into `chart-other` rather than getting a generated hue. Same restriction: data marks only. Three of the five are under 3:1 on white, so any chart using them carries a legend and a table view. Validated order and numbers in `globals.css`.
+
 **Raw scale steps (`navy-700`, `orange-500`, …) are for composing tokens in `globals.css`, not for components.** In a component, reach for the semantic name. The one sanctioned exception is `bg-navy-100` for a selected row, because "selected" has no better semantic name yet.
 
 ---
