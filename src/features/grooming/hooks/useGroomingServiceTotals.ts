@@ -11,8 +11,8 @@ interface Loaded {
 }
 
 /**
- * "6 aktif dari 6" — the Grooming line's whole catalogue, whatever the filters
- * say. Two one-row queries read off `pagination.total`, the trick every header
+ * "6 aktif dari 6" — the line's whole catalogue of MAIN services (add-ons live
+ * on Master › Layanan › Add-on), whatever the filters say. Two one-row queries read off `pagination.total`, the trick every header
  * hook here plays.
  *
  * `version` IS BUMPED BY THE SCREEN after a delete or restore, the only things on
@@ -31,8 +31,13 @@ export function useGroomingServiceTotals(lineId: string | null, version: number)
     let active = true;
 
     Promise.all([
-      serviceService.list({ businessLineId: lineId, limit: 1 }),
-      serviceService.list({ businessLineId: lineId, isActive: true, limit: 1 }),
+      serviceService.list({ businessLineId: lineId, serviceType: "main", limit: 1 }),
+      serviceService.list({
+        businessLineId: lineId,
+        serviceType: "main",
+        isActive: true,
+        limit: 1,
+      }),
     ])
       .then(([all, live]) => {
         if (active) {

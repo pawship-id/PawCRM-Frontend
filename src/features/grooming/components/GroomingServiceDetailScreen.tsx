@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy, Pencil, Trash2 } from "lucide-react";
@@ -176,6 +176,16 @@ export function GroomingServiceDetailScreen({
     service?.serviceType === "main",
   );
 
+  /*
+    AN ADD-ON HAS NO PAGE IN A MODULE (22 September 2026, on request): it is
+    listed and edited on Master › Layanan › Add-on. An old link or bookmark
+    lands on its edit form there instead.
+  */
+  const isAddon = service?.serviceType === "addon";
+  useEffect(() => {
+    if (isAddon) router.replace(lineServiceEditPath(serviceId));
+  }, [isAddon, router, serviceId]);
+
   const [tab, setTab] = useState<DetailTab>("ringkasan");
   const [pending, setPending] = useState<ServiceLifecycleAction | null>(null);
   const [busy, setBusy] = useState(false);
@@ -276,7 +286,7 @@ export function GroomingServiceDetailScreen({
     );
   }
 
-  if (loading || !service) {
+  if (loading || !service || isAddon) {
     return (
       <div className="flex flex-col gap-6">
         {header}

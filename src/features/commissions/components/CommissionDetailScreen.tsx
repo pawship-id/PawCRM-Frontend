@@ -260,7 +260,12 @@ export function CommissionDetailScreen({ bookingId, groomerUserId }: CommissionR
                       detail.pool &&
                       stage.sharePercent !== null && (
                         <p className="text-xs text-muted">
-                          {formatMoney(detail.pool.total)} × {formatPercent(stage.sharePercent)}
+                          {/* Its bobot share of what the tahapan share, plus any
+                              add-on paid to it whole (22 Sep 2026). */}
+                          {formatMoney(detail.pool.shared ?? detail.pool.total)} ×{" "}
+                          {formatPercent(stage.sharePercent)}
+                          {stage.directAddon && !isZeroMoney(stage.directAddon) &&
+                            ` + ${formatMoney(stage.directAddon)} add-on`}
                         </p>
                       )}
                   </TableCell>
@@ -634,7 +639,12 @@ function PoolTable({
             <TableRow key={`${addon.name ?? "addon"}-${index}`}>
               <TableCell className="px-4 py-2.5 text-sm">
                 {addon.name ?? "Add-on"}
-                <p className="text-xs text-muted">Add-on</p>
+                {/* Paid whole to its tahapan, not split by bobot (22 Sep 2026). */}
+                <p className="text-xs text-muted">
+                  {addon.sessionName
+                    ? `Add-on · untuk tahapan ${addon.sessionName}`
+                    : "Add-on"}
+                </p>
               </TableCell>
               <TableCell className="px-4 py-2.5 text-right text-sm tabular-nums">
                 {addon.rateType === "percentage"

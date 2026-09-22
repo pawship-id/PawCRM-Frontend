@@ -18,7 +18,7 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { variantOptionService } from "@/services/variantOption.service";
 
-import { ServiceKindsField } from "./ServiceKindsField";
+import { ServiceKindsField } from "@/features/services/components/ServiceKindsField";
 import type { ServiceKind } from "@/types/api";
 
 const NAME_MAX_LENGTH = 60;

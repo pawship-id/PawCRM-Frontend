@@ -2,17 +2,16 @@ import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
 import type { ServiceStep } from "@/types/api";
 
 /**
- * Tahapan lists for a suite — what `useServiceSteps(kind)` loads from
- * GET /api/service-steps.
+ * The tahapan list for a suite — what `useServiceSteps()` loads from
+ * GET /api/service-steps (one list per tenant since 22 September 2026).
  *
  * Usage:
  *
  *   jest.mock("@/services/serviceStep.service");
  *   beforeEach(() => primeServiceSteps(serviceStepService.list, [makeServiceStep(…)]));
  *
- * The mock answers every kind with the steps whose `serviceKind` matches
- * the one asked for, and the shared cache is dropped so the previous test's
- * list is not what renders.
+ * The mock answers with every step, and the shared cache is dropped so the
+ * previous test's list is not what renders.
  */
 
 export function makeServiceStep(
@@ -23,7 +22,6 @@ export function makeServiceStep(
   return {
     _id: `step-${nameKey.replace(/\s+/g, "-")}`,
     tenantId: "t1",
-    serviceKind: "grooming",
     nameKey,
     sortOrder: 0,
     isActive: true,
@@ -36,7 +34,7 @@ export function makeServiceStep(
   };
 }
 
-/** Mandi → Gunting → Blow dry, Grooming's list. */
+/** Mandi → Gunting → Blow dry. */
 export const SERVICE_STEP_FIXTURES: ServiceStep[] = ["Mandi", "Gunting", "Blow dry"].map(
   (name, sortOrder) => makeServiceStep({ name, sortOrder }),
 );
@@ -45,16 +43,9 @@ export function primeServiceSteps(
   list: unknown,
   steps: ServiceStep[] = SERVICE_STEP_FIXTURES,
 ) {
-  (list as jest.Mock).mockImplementation(
-    async (query: { serviceKind?: string } = {}) => {
-      const items = steps.filter(
-        (step) => !query.serviceKind || step.serviceKind === query.serviceKind,
-      );
-      return {
-        items,
-        pagination: { page: 1, limit: 100, total: items.length, totalPages: 1 },
-      };
-    },
-  );
+  (list as jest.Mock).mockImplementation(async () => ({
+    items: steps,
+    pagination: { page: 1, limit: 100, total: steps.length, totalPages: 1 },
+  }));
   invalidateServiceSteps();
 }

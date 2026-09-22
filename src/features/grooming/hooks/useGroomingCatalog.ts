@@ -17,6 +17,8 @@ async function listAll(businessLineId: string): Promise<Service[]> {
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const result = await serviceService.list({
       businessLineId,
+      /* A booking is for a main service; add-ons are not the board's (22 Sep 2026). */
+      serviceType: "main",
       /* Deleted too: an old booking still names a retired service. */
       includeDeleted: true,
       page,
@@ -30,7 +32,7 @@ async function listAll(businessLineId: string): Promise<Service[]> {
 }
 
 /**
- * EVERY service on the Grooming line, unpaged — what the board uses to tell a
+ * EVERY main service on the line, unpaged — what the board uses to tell a
  * grooming row from a hotel night, and what its Layanan filter offers.
  *
  * A FAILURE IS NOT FATAL. The board falls back to the line name each booking

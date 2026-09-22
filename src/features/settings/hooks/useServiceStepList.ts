@@ -10,7 +10,7 @@ import type { ServiceStep } from "@/types/api";
 const LIMIT = 100;
 
 export interface UseServiceStepListResult {
-  /** Every step of every Kelompok layanan, soft-deleted ones included, unsorted. */
+  /** Every step, soft-deleted ones included, unsorted. */
   steps: ServiceStep[];
   loading: boolean;
   error: string | null;
@@ -19,20 +19,16 @@ export interface UseServiceStepListResult {
 }
 
 /**
- * The Tahapan screen's own copy of every kind's list.
+ * The Tahapan screen's own copy of the list.
  *
- * NOT `useServiceSteps(kind)`. That store is what a service's Tahapan card
- * reads, one kind at a time, without deleted rows — it answers what may be
- * CHOSEN. This screen shows the bin and must draw the server's answer after a
- * write, so it keeps its own list and re-reads it; the screen then drops the
- * shared cache too (`invalidateServiceSteps`) so the card follows.
+ * NOT `useServiceSteps()`. That store is what a service's Tahapan card reads,
+ * without deleted rows — it answers what may be CHOSEN. This screen shows the
+ * bin and must draw the server's answer after a write, so it keeps its own list
+ * and re-reads it; the screen then drops the shared cache too
+ * (`invalidateServiceSteps`) so the card follows.
  *
- * ONE LOAD FOR EVERY KIND, deleted included, narrowed on the client — the pills
- * count every kind at once, and a kind's list is a handful of words. Paged to
+ * ONE LIST PER TENANT (22 September 2026), deleted included. Paged to
  * `totalPages` because nothing promises a tenant stays under one page.
- *
- * NO BUSINESS LINES (22 September 2026): steps are grouped by the product's own
- * three kinds, so neither the lines nor the grant to read them are needed.
  */
 export function useServiceStepList(): UseServiceStepListResult {
   const [steps, setSteps] = useState<ServiceStep[]>([]);

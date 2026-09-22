@@ -429,25 +429,18 @@ export function StringListField({
 }
 
 /**
- * The service's tahapan, picked from its KELOMPOK LAYANAN's list (14 September
- * 2026; by business line until 22 September) — they were free text before.
- *
- * NO KIND, NO LIST: the picker stays off and says "Pilih kelompok layanan dulu"
- * until the Identitas card has one. An add-on has no kind of its own; its step
- * is set in Pengaturan › Layanan › Add-on.
+ * The service's tahapan, picked from the tenant's ONE LIST (14 September 2026;
+ * not scoped by business line or Kelompok layanan since 22 September) — they
+ * were free text before. Main services and add-ons pick alike.
  *
  * A ROW THAT CANNOT BE ADDED AGAIN — retired on the list, or not on it — says
  * so beside its name and can still be removed.
  *
  * WHAT THE SERVER WILL REFUSE is warned about before Simpan. It keeps a name
- * the service already stored on this same line (`kept`), retired or not; any
- * other name must be an active step of the chosen line. So after the line is
- * changed, every row not on the new line's list is named in a warning — the
- * save would fail on them otherwise.
+ * the service already stored (`kept`), retired or not; any other name must be
+ * an active step of the list.
  */
 export function ServiceStepsField({
-  serviceKind,
-  addon = false,
   sessions,
   kept,
   maxItems,
@@ -456,11 +449,8 @@ export function ServiceStepsField({
   disabled,
   onChange,
 }: {
-  serviceKind: ServiceKind | "";
-  /** An add-on — no Kelompok layanan, so no list to pick from here. */
-  addon?: boolean;
   sessions: string[];
-  /** Names the server keeps whatever the list says — stored, same kind. */
+  /** Names the server keeps whatever the list says — what the service stored. */
   kept: string[];
   maxItems: number;
   mayAddToList: boolean;
@@ -469,7 +459,7 @@ export function ServiceStepsField({
   /** A functional update: the quick add answers after an await. */
   onChange: (update: (current: string[]) => string[]) => void;
 }) {
-  const list = useServiceSteps(serviceKind || null);
+  const list = useServiceSteps();
   const keptKeys = new Set(kept.map((name) => name.trim().toLowerCase()));
   const flags = sessions.map((name) => serviceStepFlag(name, list));
   const refused = sessions.filter(
@@ -483,8 +473,8 @@ export function ServiceStepsField({
       <div>
         <p className="text-sm font-medium">Tahapan</p>
         <p className="mt-1 text-xs text-muted">
-          Urutan pengerjaannya, dipilih dari daftar tahapan kelompok layanannya —
-          mis. Mandi → Gunting → Blow dry.
+          Urutan pengerjaannya, dipilih dari daftar tahapan — mis. Mandi →
+          Gunting → Blow dry.
         </p>
       </div>
 
@@ -518,25 +508,16 @@ export function ServiceStepsField({
       {refused.length > 0 && (
         <Alert variant="warning">
           {refused.map((name) => `“${name}”`).join(", ")} tidak ada di daftar
-          tahapan aktif kelompok layanan ini. Hapus, lalu pilih penggantinya dari
+          tahapan aktif. Hapus, lalu pilih penggantinya dari
           daftar — kalau tidak, layanan ini ditolak saat disimpan.
         </Alert>
       )}
 
       <ServiceStepPicker
-        serviceKind={serviceKind}
         taken={sessions}
         mayAddToList={mayAddToList}
         disabled={disabled}
-        disabledReason={
-          addon
-            ? "Tahapan add-on diatur di Pengaturan › Layanan › Add-on."
-            : !serviceKind
-              ? "Pilih kelompok layanan dulu."
-            : full
-              ? `Maksimal ${maxItems} tahapan.`
-              : null
-        }
+        disabledReason={full ? `Maksimal ${maxItems} tahapan.` : null}
         onPick={(name) =>
           onChange((current) =>
             current.length >= maxItems ||

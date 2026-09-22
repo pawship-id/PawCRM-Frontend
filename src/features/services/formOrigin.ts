@@ -16,12 +16,22 @@ import { SERVICE_KINDS, type ServiceKind } from "@/types/api";
  *
  * KEPT FOR THE TAB until then, so a refresh of the form keeps its module; a new
  * click from another module replaces it.
+ *
+ * OR "TAMBAH ADD-ON" (22 September 2026, on request — the address was
+ * `/new?jenis=addon`): the new service is an add-on, and Jenis layanan is not
+ * asked. Where an add-on's form goes back to is not stored: always
+ * Master › Layanan › Add-on.
  */
-export interface ServiceFormOrigin {
-  serviceKind: ServiceKind;
-  /** The Layanan & Harga list the form was opened from. */
-  listPath: string;
-}
+export type ServiceFormOrigin =
+  | {
+      serviceKind: ServiceKind;
+      /** The Layanan & Harga list the form was opened from. */
+      listPath: string;
+    }
+  | { addon: true };
+
+/** "Tambah add-on" on Master › Layanan › Add-on. */
+export const ADDON_FORM_ORIGIN: ServiceFormOrigin = { addon: true };
 
 const KEY = "buloo.serviceFormOrigin";
 
@@ -51,7 +61,12 @@ export function readServiceFormOrigin(): ServiceFormOrigin | null {
     const raw = window.sessionStorage.getItem(KEY);
     if (!raw) return null;
 
-    const parsed = JSON.parse(raw) as Partial<ServiceFormOrigin>;
+    const parsed = JSON.parse(raw) as {
+      addon?: unknown;
+      serviceKind?: ServiceKind;
+      listPath?: unknown;
+    };
+    if (parsed.addon === true) return ADDON_FORM_ORIGIN;
     if (
       !parsed.serviceKind ||
       !(SERVICE_KINDS as readonly string[]).includes(parsed.serviceKind) ||

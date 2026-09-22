@@ -1,9 +1,8 @@
 "use client";
 
-import { SERVICE_KIND_LABELS, SERVICE_KINDS } from "@/types/api";
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Plus, X } from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 
 import { Alert, ConfirmDialog, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -15,6 +14,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -32,6 +39,9 @@ import {
   priceText,
 } from "@/features/grooming/serviceVariantDraft";
 import { Can, usePermissions } from "@/features/permissions";
+// Deep, not the barrel — the same reason VariantOptionFormDialog gives.
+import { ServiceFormLink } from "@/features/services/components/ServiceFormLink";
+import { ADDON_FORM_ORIGIN } from "@/features/services/formOrigin";
 import {
   formatDurationRange,
   serviceDurationBounds,
@@ -39,13 +49,18 @@ import {
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
-import type { Service, ServiceStep, UpdateServiceInput } from "@/types/api";
+import { SERVICE_KIND_LABELS, SERVICE_KINDS } from "@/types/api";
+import type { Service, ServiceKind, ServiceStep, UpdateServiceInput } from "@/types/api";
 
 import type { UseAddonServiceListResult } from "../hooks/useAddonServiceList";
 import { byStepOrder } from "../serviceSteps";
 
 /** The service form for an add-on — no Jenis layanan field, saved as `addon`. */
-const NEW_SERVICE_PATH = "/dashboard/master/layanan/new?jenis=addon";
+/*
+  The form's one plain address (22 September 2026 — it was `?jenis=addon`);
+  that the new service is an add-on travels in the tab (`ADDON_FORM_ORIGIN`).
+*/
+const NEW_SERVICE_PATH = "/dashboard/master/layanan/new";
 
 /** Radix Select forbids `value=""`, so "no tahapan" needs a word of its own. */
 const NO_STEP = "none";
@@ -57,6 +72,21 @@ interface RowDraft {
   stepId: string;
   commissionable: boolean;
   soldSeparately: boolean;
+  /** "Dipakai di layanan" — empty is every kind (22 September 2026). */
+  kinds: ServiceKind[];
+}
+
+/** "Semua layanan", or the kinds ticked, in the product's order. */
+function kindsText(kinds: ServiceKind[]): string {
+  return kinds.length === 0
+    ? "Semua layanan"
+    : SERVICE_KINDS.filter((kind) => kinds.includes(kind))
+        .map((kind) => SERVICE_KIND_LABELS[kind])
+        .join(", ");
+}
+
+function sameKinds(a: ServiceKind[], b: ServiceKind[]): boolean {
+  return a.length === b.length && a.every((kind) => b.includes(kind));
 }
 
 function seedRow(addon: Service): RowDraft {
@@ -69,6 +99,7 @@ function seedRow(addon: Service): RowDraft {
     stepId: addon.addonStepId ?? NO_STEP,
     commissionable: addon.commissionable,
     soldSeparately: addon.soldSeparately,
+    kinds: addon.serviceKinds ?? [],
   };
 }
 
@@ -91,6 +122,9 @@ function rowPatch(addon: Service, row: RowDraft): UpdateServiceInput {
   }
   if (row.soldSeparately !== seed.soldSeparately) {
     patch.soldSeparately = row.soldSeparately;
+  }
+  if (!sameKinds(row.kinds, seed.kinds)) {
+    patch.serviceKinds = row.kinds;
   }
 
   return patch;
@@ -231,12 +265,7 @@ export function AddonServicesPanel({
     }
   }
 
-  /**
-   * The step choices for one add-on: EVERY kind's live steps, plus what it
-   * holds (22 September 2026). An add-on has no Kelompok layanan of its own —
-   * "Parfum" goes with a grooming and a stay alike — so the choice is not
-   * narrowed; each option names its kind instead.
-   */
+  /** The step choices for one add-on: the live list, plus what it holds. */
   function stepChoices(addon: Service) {
     return steps
       .filter(
@@ -244,11 +273,7 @@ export function AddonServicesPanel({
           step.deletedAt === null &&
           (step.isActive || step._id === addon.addonStepId),
       )
-      .sort(
-        (a, b) =>
-          SERVICE_KINDS.indexOf(a.serviceKind) - SERVICE_KINDS.indexOf(b.serviceKind) ||
-          byStepOrder(a, b),
-      );
+      .sort(byStepOrder);
   }
 
   const disabled = !mayUpdate || saving;
@@ -263,10 +288,10 @@ export function AddonServicesPanel({
         </p>
         <Can feature="services" action="create">
           <Button asChild>
-            <Link href={NEW_SERVICE_PATH}>
+            <ServiceFormLink href={NEW_SERVICE_PATH} origin={ADDON_FORM_ORIGIN}>
               <Plus className="size-4" aria-hidden />
               Tambah add-on
-            </Link>
+            </ServiceFormLink>
           </Button>
         </Can>
       </div>
@@ -296,7 +321,9 @@ export function AddonServicesPanel({
           </p>
           <Can feature="services" action="create">
             <Button asChild variant="ghost" className="mt-2">
-              <Link href={NEW_SERVICE_PATH}>Tambah yang pertama →</Link>
+              <ServiceFormLink href={NEW_SERVICE_PATH} origin={ADDON_FORM_ORIGIN}>
+                Tambah yang pertama →
+              </ServiceFormLink>
             </Button>
           </Can>
         </div>
@@ -305,13 +332,14 @@ export function AddonServicesPanel({
           <Table className={loading ? "min-w-215 opacity-60" : "min-w-215"}>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[24%]">Nama</TableHead>
-                <TableHead className="w-[14%]">Harga</TableHead>
-                <TableHead className="w-[10%]">Durasi Menit</TableHead>
-                <TableHead className="w-[22%]">Tahapan</TableHead>
-                <TableHead className="w-[9%]">Komisi</TableHead>
-                <TableHead className="w-[14%]">Dijual terpisah</TableHead>
-                <TableHead className="w-[7%]">
+                <TableHead className="w-[20%]">Nama</TableHead>
+                <TableHead className="w-[12%]">Harga</TableHead>
+                <TableHead className="w-[9%]">Durasi Menit</TableHead>
+                <TableHead className="w-[18%]">Tahapan</TableHead>
+                <TableHead className="w-[15%]">Dipakai di layanan</TableHead>
+                <TableHead className="w-[8%]">Komisi</TableHead>
+                <TableHead className="w-[12%]">Dijual terpisah</TableHead>
+                <TableHead className="w-[6%]">
                   <span className="sr-only">Hapus</span>
                 </TableHead>
               </TableRow>
@@ -409,7 +437,7 @@ export function AddonServicesPanel({
                           <SelectItem value={NO_STEP}>— tidak ada —</SelectItem>
                           {choices.map((step) => (
                             <SelectItem key={step._id} value={step._id}>
-                              {step.name} · {SERVICE_KIND_LABELS[step.serviceKind]}
+                              {step.name}
                               {!step.isActive && " (nonaktif)"}
                             </SelectItem>
                           ))}
@@ -420,6 +448,53 @@ export function AddonServicesPanel({
                           )}
                         </SelectContent>
                       </Select>
+                    </TableCell>
+
+                    <TableCell>
+                      {/*
+                        WHICH MAIN SERVICES OFFER IT (22 September 2026) — only
+                        the kinds ticked see it in their Add-on list; none is
+                        every kind. A menu, not three switches: the row is dense.
+                      */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={disabled}
+                            aria-label={`Dipakai di layanan ${addon.name}: ${kindsText(row.kinds)}`}
+                            className="max-w-44 justify-between"
+                          >
+                            <span className="truncate">{kindsText(row.kinds)}</span>
+                            <ChevronDown className="size-4" aria-hidden />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="min-w-52">
+                          <DropdownMenuLabel>Dipakai di layanan</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {SERVICE_KINDS.map((kind) => (
+                            <DropdownMenuCheckboxItem
+                              key={kind}
+                              checked={row.kinds.includes(kind)}
+                              // Stays open, so two kinds can be ticked in one visit.
+                              onSelect={(event) => event.preventDefault()}
+                              onCheckedChange={(on) =>
+                                change(addon, {
+                                  kinds: on
+                                    ? [...row.kinds, kind]
+                                    : row.kinds.filter((one) => one !== kind),
+                                })
+                              }
+                            >
+                              {SERVICE_KIND_LABELS[kind]}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                          <p className="px-2 py-1.5 text-xs text-muted">
+                            Kosongkan untuk semua layanan.
+                          </p>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
 
                     <TableCell>

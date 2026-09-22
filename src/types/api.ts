@@ -2829,6 +2829,12 @@ export interface CommissionStage {
    * the crew split. Null on records from before the pool was stored.
    */
   stagePool: string | null;
+  /**
+   * Add-ons paid to this tahapan whole (22 September 2026) — part of
+   * `stagePool`, on top of its bobot share of `pool.shared`. Absent on an
+   * older server.
+   */
+  directAddon?: string;
   rateType: "percentage" | "fixed" | "matrix" | "size_nominal";
   rateValue: number;
   amount: string;
@@ -2854,12 +2860,22 @@ export interface CommissionDetail extends CommissionRow {
      */
     addons: {
       name: string | null;
+      /**
+       * The tahapan it was paid to WHOLE (22 September 2026) — or null when it
+       * was in the pool the tahapan share by bobot.
+       */
+      sessionName?: string | null;
       price: string;
       rateType: "percentage" | "fixed";
       rateValue: number;
       commission: string;
     }[];
     total: string;
+    /**
+     * What the tahapan share by bobot: `total` less the add-ons paid to one
+     * tahapan whole (22 September 2026). Absent on an older server.
+     */
+    shared?: string;
   } | null;
   stages: CommissionStage[];
   override: { reason: string | null; at: string | null } | null;
@@ -3451,6 +3467,11 @@ export interface Service {
    * before the field until it is answered.
    */
   serviceKind?: ServiceKind | null;
+  /**
+   * AN ADD-ON's kinds — which main services offer it (22 September 2026).
+   * Empty is every kind. Always empty on a main service.
+   */
+  serviceKinds?: ServiceKind[];
   description: string | null;
   /** Whether the price depends on the pet — see `variants`. */
   hasVariants: boolean;
@@ -3556,6 +3577,8 @@ export interface CreateServiceInput {
   durationMin?: number;
   billingUnit?: ServiceBillingUnit;
   serviceKind?: ServiceKind | null;
+  /** An add-on's kinds — empty is every kind. */
+  serviceKinds?: ServiceKind[];
   serviceLocations: ServiceLocation[];
   price?: string;
   image?: MediaAsset | null;
@@ -3602,6 +3625,8 @@ export interface UpdateServiceInput {
   durationMin?: number;
   billingUnit?: ServiceBillingUnit;
   serviceKind?: ServiceKind | null;
+  /** An add-on's kinds — empty is every kind. */
+  serviceKinds?: ServiceKind[];
   description?: string | null;
   hasVariants?: boolean;
   variantAxes?: VariantAxisKey[];
@@ -3706,7 +3731,7 @@ export interface UpdatePetOptionInput {
 }
 
 /**
- * One TAHAPAN on a business line's list, as GET /api/service-steps returns it
+ * One TAHAPAN on the tenant's list, as GET /api/service-steps returns it
  * (14 September 2026) — what a service's `sessions` pick from.
  *
  * SERVICES STORE THE NAME, not this id: `Service.sessions` is still `string[]`
@@ -3716,11 +3741,7 @@ export interface UpdatePetOptionInput {
 export interface ServiceStep {
   _id: string;
   tenantId: string;
-  /**
-   * The Kelompok layanan it belongs to — fixed for life; each kind keeps its own
-   * list (22 September 2026; it was the business line before).
-   */
-  serviceKind: ServiceKind;
+  /* No kind: ONE LIST PER TENANT, every service picks from it (22 Sep 2026). */
   name: string;
   /** The lowercased name the list is unique on — "Mandi" and "mandi" are one step. */
   nameKey: string;
@@ -3732,7 +3753,7 @@ export interface ServiceStep {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  /** Live services of the kind listing this step. Present on list reads. */
+  /** Live services listing this step. Present on list reads. */
   serviceCount?: number;
   /** On a PATCH that renamed it: how many services were rewritten. */
   renamedServiceCount?: number;
@@ -3783,7 +3804,6 @@ export type UpdateZoneInput = Partial<CreateZoneInput>;
 export interface ServiceStepListQuery {
   page?: number;
   limit?: number;
-  serviceKind?: ServiceKind;
   isActive?: boolean;
   search?: string;
   includeDeleted?: boolean;
@@ -3791,10 +3811,9 @@ export interface ServiceStepListQuery {
 
 /**
  * Body of POST /api/service-steps (`services:update` — so the Tahapan card can
- * add a missing step on the spot). 409 when the line already has the name.
+ * add a missing step on the spot). 409 when the list already has the name.
  */
 export interface CreateServiceStepInput {
-  serviceKind: ServiceKind;
   /** ≤ 60 characters — what a booking turn can hold. */
   name: string;
   sortOrder?: number;

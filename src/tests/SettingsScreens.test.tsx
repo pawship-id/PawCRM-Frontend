@@ -500,10 +500,13 @@ describe("ServiceSettingsScreen", () => {
     expect(within(kuku).getByText(/dipakai 1 layanan · nonaktif/)).toBeInTheDocument();
 
     expect(screen.queryByText("Basic Grooming")).not.toBeInTheDocument();
-    // Opens the service form with Jenis layanan already on Add-on.
-    expect(screen.getByRole("link", { name: /Tambah add-on/ })).toHaveAttribute(
-      "href",
-      "/dashboard/master/layanan/new?jenis=addon",
+    // The form's plain address; "an add-on" is left in the tab on the click.
+    const add = screen.getByRole("link", { name: /Tambah add-on/ });
+    expect(add).toHaveAttribute("href", "/dashboard/master/layanan/new");
+    add.addEventListener("click", (event) => event.preventDefault());
+    await userEvent.click(add);
+    expect(window.sessionStorage.getItem("buloo.serviceFormOrigin")).toBe(
+      JSON.stringify({ addon: true }),
     );
   });
 
@@ -535,6 +538,29 @@ describe("ServiceSettingsScreen", () => {
     });
   });
 
+  it("edits Dipakai di layanan from the row and sends only that (22 September 2026)", async () => {
+    jest.mocked(serviceService.update).mockResolvedValue(SERVICES[2]);
+    renderWithAuth(<ServiceSettingsScreen initialSection="addon" />);
+
+    const kutu = (await screen.findByRole("link", { name: "Obat Kutu" })).closest("tr")!;
+    const trigger = within(kutu).getByRole("button", {
+      name: "Dipakai di layanan Obat Kutu: Semua layanan",
+    });
+    await userEvent.click(trigger);
+    await userEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Grooming" }));
+    await userEvent.keyboard("{Escape}");
+
+    expect(
+      within(kutu).getByRole("button", { name: "Dipakai di layanan Obat Kutu: Grooming" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Simpan add-on" }));
+
+    await waitFor(() =>
+      expect(serviceService.update).toHaveBeenCalledWith("kutu", { serviceKinds: ["grooming"] }),
+    );
+    expect(serviceService.update).toHaveBeenCalledTimes(1);
+  });
+
   it("blocks Simpan and says which box is wrong", async () => {
     renderWithAuth(<ServiceSettingsScreen initialSection="addon" />);
 
@@ -545,15 +571,14 @@ describe("ServiceSettingsScreen", () => {
     expect(screen.getByRole("button", { name: "Simpan add-on" })).toBeDisabled();
   });
 
-  it("shows Tahapan by Kelompok layanan without asking for business lines (22 September 2026)", async () => {
+  it("shows Tahapan as one list, without asking for business lines (22 September 2026)", async () => {
     renderWithAuth(<ServiceSettingsScreen initialSection="tahapan" />, {
       isSuperAdmin: false,
       permissions: [{ feature: "services", actions: ["read"] }],
     });
 
-    expect(
-      await screen.findByRole("group", { name: "Kelompok layanan" }),
-    ).toBeInTheDocument();
+    await waitFor(() => expect(serviceStepService.list).toHaveBeenCalled());
+    expect(screen.queryByRole("group", { name: "Kelompok layanan" })).not.toBeInTheDocument();
     expect(businessLineService.list).not.toHaveBeenCalled();
     // Nothing to press without the grants.
     expect(screen.queryByRole("button", { name: /Tambah/ })).toBeNull();

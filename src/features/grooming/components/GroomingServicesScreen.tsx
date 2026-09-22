@@ -332,7 +332,6 @@ export function GroomingServicesScreen({
                         )}
                         <span className="block text-xs tabular-nums text-muted">
                           <HighlightText text={service.code ?? ""} query={query.search} />
-                          {service.serviceType === "addon" && " · add-on"}
                           {used !== undefined && ` · ${used} booking`}
                         </span>
                       </TableCell>

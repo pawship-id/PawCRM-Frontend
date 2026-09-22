@@ -5,9 +5,9 @@ import { Label } from "@/components/ui/label";
 import { SERVICE_KIND_LABELS, SERVICE_KINDS, type ServiceKind } from "@/types/api";
 
 /**
- * "Dipakai di layanan" on an Opsi Varian card (22 September 2026) — which kind
- * of service the card is offered for in the service form: Ukuran, Jenis Hewan
- * and Jenis Bulu for Grooming; Zona and Arah for Antar-Jemput.
+ * "Dipakai di layanan" (22 September 2026) — which kinds of service something
+ * is offered for in the service form: an Opsi Varian card (Ukuran for
+ * Grooming, Zona and Arah for Antar-Jemput) or an add-on (Parfum for Grooming).
  *
  * FIXED KINDS, NOT BUSINESS LINES: every tenant names its lines its own way,
  * while these three are what the product sells (hardcoded on request).
@@ -18,7 +18,10 @@ export function ServiceKindsField({
   value,
   onChange,
   disabled,
+  what = "Opsi",
 }: {
+  /** What is being offered, in the hint — "Opsi", "Add-on". */
+  what?: string;
   value: ServiceKind[];
   onChange: (next: ServiceKind[]) => void;
   disabled?: boolean;
@@ -40,7 +43,7 @@ export function ServiceKindsField({
         ))}
       </CheckRowGroup>
       <p className="text-xs text-muted">
-        Opsi hanya ditawarkan di form layanan yang dicentang. Kosongkan kalau
+        {what} hanya ditawarkan di form layanan yang dicentang. Kosongkan kalau
         dipakai semua layanan.
       </p>
     </div>

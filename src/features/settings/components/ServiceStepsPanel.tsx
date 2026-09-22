@@ -3,37 +3,29 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 
-import {
-  Alert,
-  FilterBar,
-  FilterPills,
-  FilterToggle,
-  Spinner,
-} from "@/components";
+import { Alert, FilterBar, FilterToggle, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can, usePermissions } from "@/features/permissions";
 import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
-import type { ServiceKind, ServiceStep } from "@/types/api";
+import type { ServiceStep } from "@/types/api";
 
 import type { UseServiceStepListResult } from "../hooks/useServiceStepList";
-import { byStepOrder, STEP_GROUPS } from "../serviceSteps";
+import { byStepOrder } from "../serviceSteps";
 import { ServiceStepFormDialog } from "./ServiceStepFormDialog";
 import { ServiceStepsTable } from "./ServiceStepsTable";
 
-/** Which dialog is open: none, add to the current line, or rename that step. */
+/** Which dialog is open: none, add to the list, or rename that step. */
 type DialogState =
   { mode: "create" } | { mode: "rename"; step: ServiceStep } | null;
 
 /**
- * Tahapan — one section of Pengaturan › Layanan: the steps a line's services
- * pick from, Mandi, Gunting, Blow dry. A screen of its own until 17 September
- * 2026.
+ * Tahapan — one section of Pengaturan › Layanan: the steps services pick
+ * from, Mandi, Gunting, Blow dry, Perjalanan. A screen of its own until
+ * 17 September 2026.
  *
- * A LIST PER KELOMPOK LAYANAN — Grooming, Hotel, Antar-Jemput (22 September
- * 2026; per business line from 14 September until then). A grooming's steps
- * are not a hotel's, so the kind is the panel's main lens — a pill row with
- * counts (§8), opening on Grooming. The kinds are the product's own, so the
- * panel no longer needs the tenant's business lines, or the grant to read them.
+ * ONE LIST PER TENANT (22 September 2026, on request — "biar ga ribet"). It
+ * was per business line, then briefly per Kelompok layanan with a pill row;
+ * every service now picks from the whole list, so the panel shows all of it.
  *
  * THE BOBOT IS NOT HERE. A step's commission weight belongs to its place in a
  * service (`sessionWeights[i]`) and is filled in there; this panel is only the
@@ -44,7 +36,7 @@ type DialogState =
  *
  * THE LIST IS THE HUB'S, passed in, so the rail can count it (see
  * `useServiceStepList`). After every write, two re-reads: that list, and the
- * kind's shared store (`invalidateServiceSteps(kind)`), so a step added here
+ * shared store (`invalidateServiceSteps()`), so a step added here
  * is on a service's Tahapan card without a reload.
  */
 export function ServiceStepsPanel({
@@ -57,31 +49,12 @@ export function ServiceStepsPanel({
   const { can } = usePermissions();
   const { steps, loading, error, refetch } = list;
 
-  const [kind, setKind] = useState<ServiceKind>("grooming");
   const [showDeleted, setShowDeleted] = useState(false);
   const [dialog, setDialog] = useState<DialogState>(null);
 
-  const line =
-    STEP_GROUPS.find((group) => group.serviceKind === kind) ?? STEP_GROUPS[0];
-
   const firstLoad = loading && steps.length === 0;
 
-  const pills = STEP_GROUPS.map((group) => ({
-    value: group.serviceKind,
-    label: group.name,
-    // No number until there is one: "0" while loading is a claim.
-    count: firstLoad
-      ? undefined
-      : steps.filter(
-          (step) =>
-            step.serviceKind === group.serviceKind && step.deletedAt === null,
-        ).length,
-  }));
-
-  const ofLine = useMemo(
-    () => steps.filter((step) => step.serviceKind === kind).sort(byStepOrder),
-    [steps, kind],
-  );
+  const ofLine = useMemo(() => [...steps].sort(byStepOrder), [steps]);
   const rows = showDeleted
     ? ofLine
     : ofLine.filter((step) => step.deletedAt === null);
@@ -89,7 +62,7 @@ export function ServiceStepsPanel({
 
   function afterWrite() {
     refetch();
-    invalidateServiceSteps(kind);
+    invalidateServiceSteps();
   }
 
   return (
@@ -97,13 +70,6 @@ export function ServiceStepsPanel({
       {intro}
 
       <>
-        <FilterPills
-          ariaLabel="Kelompok layanan"
-          value={kind}
-          options={pills}
-          onChange={setKind}
-        />
-
         <FilterBar
           actions={
             <Can feature="services" action="update">
@@ -132,7 +98,7 @@ export function ServiceStepsPanel({
         ) : error && steps.length === 0 ? null : rows.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-12 text-center">
             <p className="font-semibold text-foreground">
-              Belum ada tahapan di {line.name}.
+              Belum ada tahapan.
             </p>
             {hiddenDeleted > 0 && (
               <p className="mt-1 text-sm text-muted">
@@ -152,11 +118,7 @@ export function ServiceStepsPanel({
           </div>
         ) : (
           <>
-            {/* Keyed by line so a refusal shown on one list does not follow
-                  the reader onto the next. */}
             <ServiceStepsTable
-              key={kind}
-              line={line}
               rows={rows}
               loading={loading}
               onRename={(step) => setDialog({ mode: "rename", step })}
@@ -168,7 +130,7 @@ export function ServiceStepsPanel({
               tapi layanan yang sudah memakainya tetap.{" "}
               <b className="font-semibold text-foreground">Hapus</b> hanya bisa
               selama belum dipakai layanan mana pun. Ganti nama di sini, semua
-              layanan {line.name} ikut; booking yang sudah dibuat tetap memakai
+              layanan yang memakainya ikut; booking yang sudah dibuat tetap memakai
               nama lama.
             </p>
           </>
@@ -177,8 +139,7 @@ export function ServiceStepsPanel({
 
       {dialog && (
         <ServiceStepFormDialog
-          key={dialog.mode === "rename" ? dialog.step._id : `create-${kind}`}
-          line={line}
+          key={dialog.mode === "rename" ? dialog.step._id : "create"}
           step={dialog.mode === "rename" ? dialog.step : undefined}
           onClose={() => setDialog(null)}
           onSaved={afterWrite}

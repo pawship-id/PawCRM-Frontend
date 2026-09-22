@@ -188,6 +188,18 @@ describe("GroomingServicesScreen", () => {
     ).toBeInTheDocument();
   });
 
+  it("asks for main services only — add-ons live on Master › Layanan (22 September 2026)", async () => {
+    jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
+
+    renderWithAuth(<GroomingServicesScreen />);
+    await screen.findByRole("link", { name: "Express Wash" });
+
+    // The table, and both "aktif dari" totals.
+    const calls = jest.mocked(serviceService.list).mock.calls.map(([query]) => query);
+    expect(calls.length).toBeGreaterThanOrEqual(3);
+    expect(calls.every((query) => query?.serviceType === "main")).toBe(true);
+  });
+
   it("opens the new-service form as a main service from Layanan baru", async () => {
     renderWithAuth(<GroomingServicesScreen />);
 

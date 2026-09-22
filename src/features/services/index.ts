@@ -9,7 +9,9 @@
  */
 export { ServiceForm } from "./components/ServiceForm";
 export { ServiceFormLink } from "./components/ServiceFormLink";
+export { ServiceKindsField } from "./components/ServiceKindsField";
 export {
+  ADDON_FORM_ORIGIN,
   clearServiceFormOrigin,
   readServiceFormOrigin,
   rememberServiceFormOrigin,
@@ -51,7 +53,7 @@ export { useVariantAxisValues } from "./hooks/useVariantAxisValues";
 // customer's zone for the branch, and the "Dipilih staf" selects.
 export { useVariantQuote } from "./hooks/useVariantQuote";
 export { VariantChoicePicker } from "./components/VariantChoicePicker";
-// The one tahapan picker — the line's list plus a quick add — and the word a
+// The one tahapan picker — the tenant's list plus a quick add — and the word a
 // row carries when its name cannot be added again. The form and the grooming
 // detail page's Tahapan card both draw it (14 September 2026).
 export {

@@ -30,9 +30,11 @@ import {
 } from "./helpers/serviceSteps";
 
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
+const mockRouter = { push: mockPush, replace: mockReplace };
 
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => mockRouter,
   usePathname: () => "/dashboard/layanan/grooming/katalog/svc-1",
   useSearchParams: () => new URLSearchParams(),
 }));
@@ -84,6 +86,7 @@ const SERVICE = {
   code: "GRM-01",
   image: null,
   businessLineId: "bl-grooming",
+  serviceKind: "grooming",
   salesAccountId: null,
   categoryId: null,
   price: null,
@@ -139,6 +142,7 @@ const ADDON = {
   price: "70000.0000",
   durationMin: 20,
   serviceType: "addon",
+  serviceKind: null,
   addonServiceIds: [],
   sessions: [],
   sessionWeights: [],
@@ -153,6 +157,7 @@ function page<T>(items: T[]): PageResult<T> {
 
 beforeEach(() => {
   mockPush.mockReset();
+  mockReplace.mockReset();
   primePetOptions(petOptionService.list);
   primeVariantOptions(variantOptionService.list, zoneService.list);
   // Mandi → Gunting → Blow dry, on the grooming line.
@@ -530,25 +535,24 @@ describe("GroomingServiceDetailScreen", () => {
     return screen.findByLabelText("Cari tahapan");
   };
 
-  it("offers only the kind's active steps the service does not list yet, and removes one", async () => {
+  it("offers the list's active steps the service does not list yet, and removes one", async () => {
     primeServiceSteps(serviceStepService.list, [
       ...SERVICE_STEP_FIXTURES,
       makeServiceStep({ name: "Spa", sortOrder: 3, isActive: false }),
-      makeServiceStep({ name: "Kandang", serviceKind: "hotel" }),
+      makeServiceStep({ name: "Perjalanan", sortOrder: 4 }),
     ]);
 
     renderDetail();
     await openSteps();
 
     await openPicker();
-    // Mandi and Blow dry are on the service; Spa is retired; Kandang is Hotel's.
-    for (const name of ["Mandi", "Blow dry", "Spa", "Kandang"]) {
+    // Mandi and Blow dry are on the service; Spa is retired. One list: a step
+    // an Antar-Jemput service uses is offered to a grooming too (22 Sep 2026).
+    for (const name of ["Mandi", "Blow dry", "Spa"]) {
       expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
     }
+    expect(await screen.findByRole("button", { name: "Perjalanan" })).toBeInTheDocument();
     await userEvent.click(await screen.findByRole("button", { name: "Gunting" }));
-    expect(serviceStepService.list).toHaveBeenCalledWith(
-      expect.objectContaining({ serviceKind: "grooming" }),
-    );
     expect(screen.getByLabelText("Bobot Gunting (%)")).toHaveValue("");
     expect(
       screen.getByText(
@@ -571,7 +575,7 @@ describe("GroomingServiceDetailScreen", () => {
     expect(stepOrder()).toEqual(["Bobot Mandi (%)", "Bobot Blow dry (%)"]);
   });
 
-  it("adds a name missing from the list to the line's list, and saves it as the list spells it", async () => {
+  it("adds a name missing from the list to the list, and saves it as the list spells it", async () => {
     const steps = [...SERVICE_STEP_FIXTURES];
     primeServiceSteps(serviceStepService.list, steps);
     jest.mocked(serviceStepService.create).mockImplementation(async () => {
@@ -594,10 +598,7 @@ describe("GroomingServiceDetailScreen", () => {
     );
 
     await waitFor(() =>
-      expect(serviceStepService.create).toHaveBeenCalledWith({
-        serviceKind: "grooming",
-        name: "potong kuku",
-      }),
+      expect(serviceStepService.create).toHaveBeenCalledWith({ name: "potong kuku" }),
     );
     expect(
       await screen.findByLabelText("Bobot Potong kuku (%)"),
@@ -680,6 +681,17 @@ describe("GroomingServiceDetailScreen", () => {
     ).not.toBeInTheDocument();
     // A refusal means the list moved on; it is read again.
     await waitFor(() => expect(serviceStepService.list).toHaveBeenCalledTimes(2));
+  });
+
+  it("sends an add-on to its edit form on Master › Layanan (22 September 2026)", async () => {
+    // An add-on has no page in a module — only Master › Layanan › Add-on.
+    jest.mocked(serviceService.getById).mockResolvedValue(ADDON);
+    renderDetail();
+
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenCalledWith("/dashboard/master/layanan/svc-1"),
+    );
+    expect(screen.queryByRole("tab", { name: "Tahapan & Add-on" })).not.toBeInTheDocument();
   });
 
   it("lets a role that may only read see the tahapan but change nothing", async () => {
