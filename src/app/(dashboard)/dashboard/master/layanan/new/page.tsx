@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { ServiceForm } from "@/features/services";
 import { RequirePermission } from "@/features/permissions";
 import type { ServiceType } from "@/types/api";
-import { serviceListPathFor } from "@/features/antar-jemput/serviceFormOrigin";
 
 export const metadata: Metadata = {
   title: "Layanan baru · Master Data · Buloo",
@@ -26,20 +25,16 @@ export default async function NewServicePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { jenis, dari, lini } = await searchParams;
+  const { jenis } = await searchParams;
 
   /*
-    `?dari=` and `?lini=` — a line's own Layanan & Harga opened this form
-    (Antar-Jemput, 21 September 2026): come back to that list, and start on that
-    line. Anything unrecognised is Grooming's list, as before.
+    THE SAME ADDRESS FROM EVERY MODULE (22 September 2026). Which module opened
+    it — the Kelompok layanan to start on, the list to return to — is left in the
+    tab by `ServiceFormLink`, not in the query.
   */
   return (
     <RequirePermission feature="services" action="create">
-      <ServiceForm
-        fixedServiceType={fixedTypeOf(jenis)}
-        listPath={serviceListPathFor(dari)}
-        defaultBusinessLineId={typeof lini === "string" ? lini : undefined}
-      />
+      <ServiceForm fixedServiceType={fixedTypeOf(jenis)} />
     </RequirePermission>
   );
 }

@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { ServiceForm } from "@/features/services";
+import { rememberServiceFormOrigin, ServiceForm } from "@/features/services";
 import { serviceService } from "@/services/service.service";
 import { businessLineService } from "@/services/businessLine.service";
 import { branchService } from "@/services/branch.service";
@@ -10,7 +10,7 @@ import { petOptionService } from "@/services/petOption.service";
 import { serviceStepService } from "@/services/serviceStep.service";
 import { variantOptionService } from "@/services/variantOption.service";
 import { zoneService } from "@/services/zone.service";
-import type { Service } from "@/types/api";
+import type { Service, ServiceKind } from "@/types/api";
 
 import {
   makePetOption,
@@ -96,6 +96,7 @@ const serviceFixture: Service = {
   price: "150000.0000",
   durationMin: 90,
   billingUnit: "per_pet",
+  serviceKind: "grooming",
   description: null,
   hasVariants: false,
   variantAxes: [],
@@ -130,6 +131,7 @@ const addonFixture: Service = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  window.sessionStorage.clear();
   primePetOptions(petOptionService.list);
   primeVariantOptions(variantOptionService.list, zoneService.list);
   // Mandi → Gunting → Blow dry, on this suite's line.
@@ -181,8 +183,23 @@ beforeEach(() => {
  */
 const priceBox = () => screen.getByRole("textbox", { name: /^harga \*/i });
 
-/** Renders create mode and waits for the option fetches to settle. */
+/** What a module's "Layanan baru" / "Ubah" leaves in the tab — see formOrigin.ts. */
+function openedFrom(serviceKind: ServiceKind) {
+  rememberServiceFormOrigin({
+    serviceKind,
+    listPath:
+      serviceKind === "pickup-delivery"
+        ? "/dashboard/layanan/antar-jemput/katalog"
+        : "/dashboard/layanan/grooming/katalog",
+  });
+}
+
+/**
+ * Renders create mode, opened from Grooming › Layanan & Harga — so Kelompok
+ * layanan starts on Grooming — and waits for the option fetches to settle.
+ */
 async function renderNew() {
+  openedFrom("grooming");
   renderWithAuth(<ServiceForm />);
   await waitFor(() =>
     expect(mockedBusinessLineService.list).toHaveBeenCalled(),
@@ -467,20 +484,20 @@ describe("ServiceForm — variant pricing", () => {
     expect(screen.getByText(/harga dibedakan berdasarkan/i)).toBeVisible();
   });
 
-  it("asks for an option first when the chosen line has none (22 September 2026)", async () => {
-    /* Every card belongs to another line. */
+  it("asks for an option first when this kind of service has none (22 September 2026)", async () => {
+    /* Every card is for another kind of service. */
     primeVariantOptions(variantOptionService.list, zoneService.list, {
       cards: BUILT_IN_VARIANT_OPTIONS.map((card) => ({
         ...card,
-        businessLineIds: ["5a7f1f77bcf86cd7994390ee"],
+        serviceKinds: ["grooming" as const],
       })),
     });
-    await renderNew();
-    await pickLine();
-    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+    openedFrom("pickup-delivery");
+    renderWithAuth(<ServiceForm />);
+    await userEvent.click(await screen.findByLabelText(/harga beda per varian/i));
 
     expect(
-      await screen.findByText(/lini grooming belum punya opsi varian/i),
+      await screen.findByText(/layanan antar-jemput belum punya opsi varian/i),
     ).toBeInTheDocument();
     expect(screen.queryByText(/pilih minimal satu/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /buka opsi varian/i })).toHaveAttribute(
@@ -488,6 +505,80 @@ describe("ServiceForm — variant pricing", () => {
       /* Opsi Varian is the page's default section. */
       "/dashboard/master/layanan",
     );
+  });
+
+  it("offers the kind's own options, and every option without a kind", async () => {
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: BUILT_IN_VARIANT_OPTIONS.map((card, index) => ({
+        ...card,
+        serviceKinds: index === 0 ? [] : ["grooming" as const],
+      })),
+    });
+    openedFrom("hotel");
+    renderWithAuth(<ServiceForm />);
+    await userEvent.click(await screen.findByLabelText(/harga beda per varian/i));
+
+    expect(await screen.findByText(BUILT_IN_VARIANT_OPTIONS[0].name)).toBeInTheDocument();
+    expect(screen.queryByText(BUILT_IN_VARIANT_OPTIONS[1].name)).not.toBeInTheDocument();
+  });
+
+  it("follows the Kelompok layanan chosen, not the page the form came from", async () => {
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: BUILT_IN_VARIANT_OPTIONS.map((card, index) => ({
+        ...card,
+        serviceKinds: index === 0 ? ["pickup-delivery" as const] : ["grooming" as const],
+      })),
+    });
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    await renderNew();
+    await userEvent.click(await screen.findByLabelText(/harga beda per varian/i));
+
+    /* Opened from Grooming — Grooming's cards. */
+    expect(screen.queryByText(BUILT_IN_VARIANT_OPTIONS[0].name)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("combobox", { name: /kelompok layanan/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Antar-Jemput" }));
+
+    expect(await screen.findByText(BUILT_IN_VARIANT_OPTIONS[0].name)).toBeInTheDocument();
+    expect(screen.queryByText(BUILT_IN_VARIANT_OPTIONS[1].name)).not.toBeInTheDocument();
+  });
+
+  it("returns to the module it was opened from, with the address left plain", async () => {
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
+    openedFrom("pickup-delivery");
+    renderWithAuth(<ServiceForm />);
+    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "45000");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() =>
+      expect(mockedServiceService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ serviceKind: "pickup-delivery" }),
+      ),
+    );
+    await waitFor(() =>
+      expect(push).toHaveBeenCalledWith("/dashboard/layanan/antar-jemput/katalog"),
+    );
+  });
+
+  it("starts with no business line, whichever module opened it", async () => {
+    await renderNew();
+
+    expect(screen.getByRole("button", { name: /pilih lini bisnis/i })).toHaveTextContent(
+      /pilih lini bisnis/i,
+    );
+  });
+
+  it("asks for a Kelompok layanan when nothing pre-chose one", async () => {
+    renderWithAuth(<ServiceForm />);
+    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    expect(await screen.findByText(/pilih kelompok layanannya dulu/i)).toBeVisible();
+    expect(mockedServiceService.create).not.toHaveBeenCalled();
   });
 
   it("generates one priced row per combination of the ticked axes", async () => {
@@ -921,6 +1012,7 @@ describe("ServiceForm — add-ons", () => {
 
   it("hides Jenis layanan when opened from Layanan baru, and creates a main service", async () => {
     mockedServiceService.create.mockResolvedValue(serviceFixture);
+    openedFrom("grooming");
     renderWithAuth(<ServiceForm fixedServiceType="main" />);
     await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
 

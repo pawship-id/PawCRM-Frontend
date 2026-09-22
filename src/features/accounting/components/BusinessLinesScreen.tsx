@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
 import { ApiError } from "@/services/api-error";
-import { invalidateBusinessLines } from "@/hooks/useBusinessLines";
 import { businessLineService } from "@/services/businessLine.service";
 import type { BusinessLine } from "@/services/businessLine.service";
 import { swalToast } from "@/lib/swal";
@@ -71,7 +70,6 @@ export function BusinessLinesScreen() {
     setActionError(null);
     try {
       await businessLineService.remove(pendingDelete._id);
-      invalidateBusinessLines();
       setPendingDelete(null);
       refetch();
       swalToast("Lini bisnis dihapus.");

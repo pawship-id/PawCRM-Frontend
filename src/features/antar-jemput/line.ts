@@ -2,7 +2,6 @@ import { pickLineByName, type ServiceLine } from "@/features/grooming/line";
 
 import {
   ANTAR_JEMPUT_CATALOG_PATH,
-  ANTAR_JEMPUT_FORM_ORIGIN,
   ANTAR_JEMPUT_NEW_PATH,
   ANTAR_JEMPUT_PATH,
   ANTAR_JEMPUT_SETTINGS_PATH,
@@ -14,7 +13,7 @@ import {
  * "Antar-Jemput" and "Pickup & Delivery" are all this one.
  */
 export const ANTAR_JEMPUT_LINE: ServiceLine = {
-  formOrigin: ANTAR_JEMPUT_FORM_ORIGIN,
+  serviceKind: "pickup-delivery",
   title: "Antar-Jemput",
   noun: "antar-jemput",
   fallbackName: "Antar-Jemput",

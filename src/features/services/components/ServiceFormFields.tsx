@@ -114,15 +114,15 @@ export function ServiceVariantEditor({
   onPriceChange,
   onDurationChange,
   onActiveChange,
-  lineName = null,
+  kindName = null,
   onReloadOptions,
 }: {
   /**
-   * The chosen line's name — said when it has no options yet (22 September
-   * 2026), so the empty list reads as "set this line up" rather than as a
-   * checklist with nothing in it.
+   * The kind of service's name — said when it has no options yet (22 September
+   * 2026), so the empty list reads as "set this up" rather than as a checklist
+   * with nothing in it.
    */
-  lineName?: string | null;
+  kindName?: string | null;
   /** Re-reads the Opsi Varian cards, after one was made in another tab. */
   onReloadOptions?: () => void;
   axes: VariantAxisKey[];
@@ -149,15 +149,16 @@ export function ServiceVariantEditor({
         <p className="text-sm font-medium">Harga dibedakan berdasarkan</p>
         {axisDefs.length === 0 ? (
           /*
-            THE LINE HAS NO OPTIONS YET — every card is for other lines. Say
+            THIS KIND HAS NO OPTIONS YET — every card is for other kinds. Say
             where they are made rather than drawing an empty checklist, and
             open that page in a new tab so this form is not lost.
           */
           <div className="mt-1">
             <p className="text-xs text-muted">
-              {lineName ? `Lini ${lineName}` : "Lini bisnis ini"} belum punya opsi
-              varian. Buat dulu di Layanan › Pengaturan › Opsi Varian dan centang
-              lini ini — atau matikan harga bervariasi dan pakai satu harga.
+              {kindName ? `Layanan ${kindName}` : "Layanan ini"} belum punya opsi
+              varian. Buat dulu di Layanan › Pengaturan › Opsi Varian dan centang{" "}
+              {kindName ?? "jenis layanannya"} — atau matikan harga bervariasi dan
+              pakai satu harga.
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               <Button asChild variant="secondary" size="sm">

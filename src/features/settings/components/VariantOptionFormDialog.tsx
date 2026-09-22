@@ -18,7 +18,8 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { variantOptionService } from "@/services/variantOption.service";
 
-import { BusinessLinesField } from "./BusinessLinesField";
+import { ServiceKindsField } from "./ServiceKindsField";
+import type { ServiceKind } from "@/types/api";
 
 const NAME_MAX_LENGTH = 60;
 const DESCRIPTION_MAX_LENGTH = 200;
@@ -44,7 +45,7 @@ export function VariantOptionFormDialog({
   const [description, setDescription] = useState("");
   const [source, setSource] = useState<"staff" | "zone">("staff");
   const [valuesText, setValuesText] = useState("");
-  const [businessLineIds, setBusinessLineIds] = useState<string[]>([]);
+  const [serviceKinds, setServiceKinds] = useState<ServiceKind[]>([]);
   const [nameError, setNameError] = useState<string | null>(null);
   const [valuesError, setValuesError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -83,7 +84,7 @@ export function VariantOptionFormDialog({
         name: cleaned,
         description: description.trim() || null,
         source,
-        businessLineIds,
+        serviceKinds,
         ...(source === "staff" ? { values } : {}),
       });
       swalToast(`Opsi ${cleaned} ditambahkan.`);
@@ -173,9 +174,9 @@ export function VariantOptionFormDialog({
             </p>
           )}
 
-          <BusinessLinesField
-            value={businessLineIds}
-            onChange={setBusinessLineIds}
+          <ServiceKindsField
+            value={serviceKinds}
+            onChange={setServiceKinds}
             disabled={busy}
           />
 
@@ -309,15 +310,15 @@ export function VariantOptionEditDialog({
     name: string;
     description: string | null;
     serviceCount: number;
-    businessLineIds?: string[];
+    serviceKinds?: ServiceKind[];
   };
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [name, setName] = useState(option.name);
   const [description, setDescription] = useState(option.description ?? "");
-  const [businessLineIds, setBusinessLineIds] = useState<string[]>(
-    option.businessLineIds ?? [],
+  const [serviceKinds, setServiceKinds] = useState<ServiceKind[]>(
+    option.serviceKinds ?? [],
   );
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -331,13 +332,13 @@ export function VariantOptionEditDialog({
       return;
     }
 
-    const stored = option.businessLineIds ?? [];
-    const linesChanged =
-      stored.length !== businessLineIds.length ||
-      stored.some((id) => !businessLineIds.includes(id));
+    const stored = option.serviceKinds ?? [];
+    const kindsChanged =
+      stored.length !== serviceKinds.length ||
+      stored.some((kind) => !serviceKinds.includes(kind));
 
     const patch = {
-      ...(linesChanged ? { businessLineIds } : {}),
+      ...(kindsChanged ? { serviceKinds } : {}),
       ...(cleaned !== option.name ? { name: cleaned } : {}),
       ...((description.trim() || null) !== option.description
         ? { description: description.trim() || null }
@@ -409,9 +410,9 @@ export function VariantOptionEditDialog({
             disabled={busy}
           />
 
-          <BusinessLinesField
-            value={businessLineIds}
-            onChange={setBusinessLineIds}
+          <ServiceKindsField
+            value={serviceKinds}
+            onChange={setServiceKinds}
             disabled={busy}
           />
 

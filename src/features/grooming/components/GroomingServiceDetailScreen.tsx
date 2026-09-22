@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Can, usePermissions } from "@/features/permissions";
 import {
+  ServiceFormLink,
   ServiceLifecycleDialog,
   type ServiceLifecycleAction,
 } from "@/features/services";
@@ -27,6 +28,7 @@ import {
 import { useServiceBookingCounts } from "../hooks/useServiceBookingCounts";
 import {
   GROOMING_LINE,
+  lineFormOrigin,
   lineServiceEditPath,
   lineServicePath,
   type ServiceLine,
@@ -72,6 +74,7 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
     code: `${service.code.slice(0, CODE_MAX_LENGTH - suffix.length)}${suffix}`,
     businessLineId: service.businessLineId,
     billingUnit: service.billingUnit ?? "per_pet",
+    serviceKind: service.serviceKind ?? null,
     serviceLocations: service.serviceLocations?.length
       ? service.serviceLocations
       : ["in_store"],
@@ -365,10 +368,13 @@ export function GroomingServiceDetailScreen({
               {service.isActive ? "Nonaktifkan" : "Aktifkan"}
             </Button>
             <Button asChild>
-              <Link href={lineServiceEditPath(serviceLine, service._id)}>
+              <ServiceFormLink
+                href={lineServiceEditPath(service._id)}
+                origin={lineFormOrigin(serviceLine)}
+              >
                 <Pencil className="size-4" />
                 Ubah
-              </Link>
+              </ServiceFormLink>
             </Button>
           </Can>
         </div>
@@ -435,7 +441,7 @@ export function GroomingServiceDetailScreen({
         ) : tab === "portal" ? (
           <ServicePortalPanel
             service={service}
-            editHref={lineServiceEditPath(serviceLine, service._id)}
+            origin={lineFormOrigin(serviceLine)}
           />
         ) : null}
 
@@ -462,6 +468,7 @@ export function GroomingServiceDetailScreen({
             key={`${service._id}:${variantsVersion}`}
             service={service}
             mayUpdate={mayUpdate}
+            serviceKind={serviceLine.serviceKind}
             onSaved={(updated) => {
               replace(updated);
               setVariantsVersion((current) => current + 1);

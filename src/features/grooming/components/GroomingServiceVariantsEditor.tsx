@@ -17,7 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  axisDefsForLine,
+  axisDefsForKind,
   buildVariantCombos,
   MAX_VARIANTS,
   useVariantAxisValues,
@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
 import { formatMoney } from "@/utils/decimal";
-import type { Service, VariantAxisKey } from "@/types/api";
+import type { Service, ServiceKind, VariantAxisKey } from "@/types/api";
 
 import { type ServicePlace } from "../serviceDisplay";
 import {
@@ -128,7 +128,10 @@ export function GroomingServiceVariantsEditor({
   service,
   mayUpdate,
   onSaved,
+  serviceKind,
 }: {
+  /** The module's kind — used only for an old service that has none of its own. */
+  serviceKind?: ServiceKind;
   service: Service;
   /** `services:update` — without it everything is shown and nothing is editable. */
   mayUpdate: boolean;
@@ -152,8 +155,15 @@ export function GroomingServiceVariantsEditor({
     loading: optionsLoading,
     error: optionsError,
   } = useVariantAxisValues();
-  /* This line's options, plus the ones the draft already prices on (22 Sep 2026). */
-  const axisDefs = axisDefsForLine(allAxisDefs, service.businessLineId, draft.axes);
+  /*
+    The service's own kind's options — the module's for an old service with none
+    — plus the ones the draft already prices on (22 September 2026).
+  */
+  const axisDefs = axisDefsForKind(
+    allAxisDefs,
+    service.serviceKind ?? serviceKind,
+    draft.axes,
+  );
   const axisValues = useMemo(
     () => valuesFor(service.variants),
     [valuesFor, service.variants],

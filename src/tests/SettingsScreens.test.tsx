@@ -447,29 +447,29 @@ describe("ServiceSettingsScreen", () => {
         name: "Tier Groomer",
         description: null,
         source: "staff",
-        /* None ticked — offered for every line. */
-        businessLineIds: [],
+        /* None ticked — offered for every kind of service. */
+        serviceKinds: [],
         values: ["Junior", "Senior"],
       }),
     );
   });
 
-  it("creates a card for the lines ticked (22 September 2026)", async () => {
+  it("creates a card for the kinds of service ticked (22 September 2026)", async () => {
     jest.mocked(variantOptionService.create).mockResolvedValue(LOKASI_CARD);
     renderWithAuth(<ServiceSettingsScreen />);
 
     await screen.findByRole("listitem", { name: "Opsi Ukuran" });
-    expect(screen.getAllByText("Semua lini").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Semua layanan").length).toBeGreaterThan(0);
     await userEvent.click(screen.getByRole("button", { name: "Tambah opsi" }));
     const dialog = screen.getByRole("dialog");
     await userEvent.type(within(dialog).getByLabelText(/^Nama opsi/), "Arah");
     await userEvent.type(within(dialog).getByRole("textbox", { name: /^Nilai/ }), "Jemput{enter}Antar");
-    await userEvent.click(await within(dialog).findByRole("checkbox", { name: LINES[0].name }));
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: "Antar-Jemput" }));
     await userEvent.click(within(dialog).getByRole("button", { name: "Tambah opsi" }));
 
     await waitFor(() =>
       expect(variantOptionService.create).toHaveBeenCalledWith(
-        expect.objectContaining({ name: "Arah", businessLineIds: [LINES[0]._id] }),
+        expect.objectContaining({ name: "Arah", serviceKinds: ["pickup-delivery"] }),
       ),
     );
   });

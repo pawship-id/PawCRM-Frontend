@@ -1,4 +1,6 @@
 import type { BusinessLine } from "@/services/businessLine.service";
+import type { ServiceFormOrigin } from "@/features/services/formOrigin";
+import type { ServiceKind } from "@/types/api";
 
 import {
   GROOMING_CATALOG_PATH,
@@ -23,10 +25,10 @@ import {
  */
 export interface ServiceLine {
   /**
-   * `?dari=` on the service form, so a save lands back on this line's list.
-   * Null for Grooming, the form's own default.
+   * WHAT THIS MODULE SELLS (22 September 2026) — which Opsi Varian cards its
+   * services are offered. Fixed words, not the tenant's line names.
    */
-  formOrigin: string | null;
+  serviceKind: ServiceKind;
   /** "Grooming" — the title and the crumb. */
   title: string;
   /** In a sentence: "Belum ada layanan grooming." */
@@ -60,7 +62,7 @@ export function pickLineByName(
 }
 
 export const GROOMING_LINE: ServiceLine = {
-  formOrigin: null,
+  serviceKind: "grooming",
   title: "Grooming",
   noun: "grooming",
   fallbackName: "Grooming",
@@ -78,19 +80,18 @@ export function lineServicePath(line: ServiceLine, serviceId: string): string {
   return `${line.paths.catalog}/${serviceId}`;
 }
 
-/** The service form, told which list to come back to. */
-export function lineServiceEditPath(line: ServiceLine, serviceId: string): string {
-  const base = `/dashboard/master/layanan/${serviceId}`;
-  return line.formOrigin ? `${base}?dari=${line.formOrigin}` : base;
+/**
+ * What the service form is told when opened from this module — the Kelompok
+ * layanan a new service starts on, and the list a save returns to. Carried by
+ * `ServiceFormLink`, never in the URL.
+ */
+export function lineFormOrigin(line: ServiceLine): ServiceFormOrigin {
+  return { serviceKind: line.serviceKind, listPath: line.paths.catalog };
 }
 
-/**
- * A new MAIN service for this line — its line already chosen when the tenant
- * has one, and the save coming back to this list.
- */
-export function lineNewServicePath(line: ServiceLine, lineId: string | null): string {
-  const query = new URLSearchParams({ jenis: "utama" });
-  if (lineId) query.set("lini", lineId);
-  if (line.formOrigin) query.set("dari", line.formOrigin);
-  return `/dashboard/master/layanan/new?${query.toString()}`;
+/** The service form — the same plain address from every module. */
+export const NEW_MAIN_SERVICE_PATH = "/dashboard/master/layanan/new";
+
+export function lineServiceEditPath(serviceId: string): string {
+  return `/dashboard/master/layanan/${serviceId}`;
 }

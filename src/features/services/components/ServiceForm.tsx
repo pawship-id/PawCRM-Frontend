@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -30,20 +30,27 @@ import type {
   Service,
   ServiceBillingUnit,
   ServiceLocation,
+  ServiceKind,
   ServiceType,
   VariantAxisKey,
   ServiceVariantInput,
 } from "@/types/api";
+import { SERVICE_KIND_LABELS, SERVICE_KINDS } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
 
 import { invalidateVariantOptions } from "@/hooks/useVariantOptions";
 import { useVariantAxisValues } from "../hooks/useVariantAxisValues";
 import {
-  axisDefsForLine,
+  axisDefsForKind,
   buildVariantCombos,
   comboKey,
   MAX_VARIANTS,
 } from "../variantAxes";
+import {
+  clearServiceFormOrigin,
+  readServiceFormOrigin,
+  type ServiceFormOrigin,
+} from "../formOrigin";
 import {
   LOCATION_LABELS,
   ServiceAddonPicker,
@@ -172,18 +179,8 @@ function durationProblem(value: string): string | null {
 export function ServiceForm({
   serviceId,
   fixedServiceType,
-  listPath = LIST_PATH,
-  defaultBusinessLineId = "",
 }: {
   serviceId?: string;
-  /**
-   * The Layanan & Harga list this form was opened from — a create lands on it,
-   * an edit on the service under it. Grooming's unless a caller says otherwise
-   * (`?dari=antar-jemput`, 21 September 2026).
-   */
-  listPath?: string;
-  /** A NEW service's line, already answered — `?lini=` from a line's catalogue. */
-  defaultBusinessLineId?: string;
   /**
    * A NEW service whose type is already decided — `addon` when opened from
    * Pengaturan › Layanan › Add-on's "Tambah add-on" (`?jenis=addon`). The
@@ -213,9 +210,8 @@ export function ServiceForm({
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
-  const [businessLineId, setBusinessLineId] = useState(
-    editing ? "" : defaultBusinessLineId,
-  );
+  /* NO DEFAULT, from any module (22 September 2026) — the owner's choice every time. */
+  const [businessLineId, setBusinessLineId] = useState("");
   const [image, setImage] = useState<MediaAsset | null>(null);
   const [serviceType, setServiceType] = useState<ServiceType>(
     fixedServiceType ?? "main",
@@ -223,6 +219,24 @@ export function ServiceForm({
   const serviceTypeFixed = !editing && fixedServiceType !== undefined;
   const [durationMin, setDurationMin] = useState("");
   const [billingUnit, setBillingUnit] = useState<ServiceBillingUnit>("per_pet");
+  /*
+    KELOMPOK LAYANAN (22 September 2026) — Grooming, Hotel, Antar-Jemput. Saved
+    on the service, so its Opsi Varian list no longer depends on which page the
+    form was opened from. Only a MAIN service has one; an add-on is shared.
+  */
+  const [serviceKind, setServiceKind] = useState<ServiceKind | "">("");
+  /*
+    WHICH MODULE OPENED THE FORM — left in the tab by `ServiceFormLink`, read
+    once (formOrigin.ts). A ref for the load below, which answers after mount;
+    state for the list a save returns to.
+  */
+  const originRef = useRef<ServiceFormOrigin | null | undefined>(undefined);
+  const [listPath, setListPath] = useState(LIST_PATH);
+  const originOf = () => {
+    if (originRef.current === undefined) originRef.current = readServiceFormOrigin();
+    return originRef.current;
+  };
+  const [kindError, setKindError] = useState<string | null>(null);
   const [description, setDescription] = useState("");
 
   const [hasVariants, setHasVariants] = useState(false);
@@ -306,6 +320,20 @@ export function ServiceForm({
         : combos.length > MAX_VARIANTS
           ? `${combos.length} varian, maksimal ${MAX_VARIANTS} per layanan`
           : null;
+
+  /*
+    THE MODULE'S ANSWER, ON MOUNT: the list to return to and — for a new
+    service — the Kelompok layanan to start on. An edit takes its kind from the
+    loaded service instead (below), falling back to this.
+  */
+  useEffect(() => {
+    const origin = originOf();
+    if (!origin) return;
+    setListPath(origin.listPath);
+    if (!editing) setServiceKind((current) => current || origin.serviceKind);
+    // Read once — `originOf` caches, and `editing` never changes under a form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -401,6 +429,8 @@ export function ServiceForm({
             : String(result.durationMin),
         );
         setBillingUnit(result.billingUnit ?? "per_pet");
+        /* An old service has none — it starts on the module's, for the owner to confirm. */
+        setServiceKind(result.serviceKind ?? originOf()?.serviceKind ?? "");
         setDescription(result.description ?? "");
         const axes = result.variantAxes ?? [];
         const storedVariants = result.variants ?? [];
@@ -487,6 +517,8 @@ export function ServiceForm({
     go looking for the row they came from.
   */
   function goBack() {
+    /* The form's journey ends here, saved or not — its origin is used up. */
+    clearServiceFormOrigin();
     router.push(editing ? `${listPath}/${serviceId}` : listPath);
   }
 
@@ -540,6 +572,10 @@ export function ServiceForm({
     }
     if (!businessLineId) {
       setLineError("Pilih lini bisnisnya dulu.");
+      invalid = true;
+    }
+    if (serviceType === "main" && !serviceKind) {
+      setKindError("Pilih kelompok layanannya dulu.");
       invalid = true;
     }
 
@@ -687,6 +723,8 @@ export function ServiceForm({
       ...(image || editing ? { image } : {}),
       description: description.trim() || null,
       billingUnit,
+      /* An add-on belongs to no one kind; a main service to exactly one. */
+      serviceKind: serviceType === "main" ? serviceKind || null : null,
       hasVariants,
       /*
         EXACTLY ONE HALF OF THE PRICING IS SENT, and the unused half is OMITTED
@@ -885,6 +923,37 @@ export function ServiceForm({
             </p>
           </div>
 
+          {/*
+            NOT "Jenis layanan" — that is Layanan utama / Add-on, below. This is
+            which part of the product sells it, and it decides which Opsi Varian
+            cards are offered under Harga & durasi.
+          */}
+          {serviceType === "main" && (
+            <SelectField
+              label="Kelompok layanan"
+              value={serviceKind}
+              onChange={(next) => {
+                /*
+                  RADIX HANDS BACK "" when the value arrives after mount (the
+                  module's answer, read from the tab) — there is no empty
+                  choice here, so an empty one is never somebody's pick.
+                */
+                if (!next) return;
+                setServiceKind(next as ServiceKind);
+                setKindError(null);
+              }}
+              options={SERVICE_KINDS.map((kind) => ({
+                value: kind,
+                label: SERVICE_KIND_LABELS[kind],
+              }))}
+              placeholder="Pilih kelompok layanan"
+              hint="Menentukan opsi varian yang ditawarkan di bagian harga."
+              error={kindError ?? undefined}
+              disabled={saving}
+              required
+            />
+          )}
+
           {!serviceTypeFixed && (
             <SelectField
               label="Jenis layanan"
@@ -962,11 +1031,15 @@ export function ServiceForm({
             <ServiceVariantEditor
               axes={variantAxes}
               /*
-                ONLY THIS LINE'S OPTIONS (22 September 2026): Ukuran for a
+                ONLY THIS KIND'S OPTIONS (22 September 2026): Ukuran for a
                 grooming, Zona and Arah for a ride — plus whatever is ticked.
               */
-              axisDefs={axisDefsForLine(axisDefs, businessLineId, variantAxes)}
-              lineName={lines.find((line) => line.value === businessLineId)?.label ?? null}
+              axisDefs={axisDefsForKind(
+                axisDefs,
+                serviceType === "main" ? serviceKind || null : null,
+                variantAxes,
+              )}
+              kindName={serviceKind ? SERVICE_KIND_LABELS[serviceKind] : null}
               onReloadOptions={invalidateVariantOptions}
               prices={variantPrices}
               durations={variantDurations}

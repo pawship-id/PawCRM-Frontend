@@ -191,12 +191,17 @@ describe("GroomingServicesScreen", () => {
   it("opens the new-service form as a main service from Layanan baru", async () => {
     renderWithAuth(<GroomingServicesScreen />);
 
-    // `?jenis=utama` hides Jenis layanan on the form and files it as main;
-    // `?lini=` starts it on this module's line (21 September 2026).
-    expect(await screen.findByRole("link", { name: /Layanan baru/ })).toHaveAttribute(
-      "href",
-      "/dashboard/master/layanan/new?jenis=utama&lini=bl-grooming",
-    );
+    // One plain address from every module (22 September 2026); the module is
+    // left in the tab as the link is clicked.
+    const link = await screen.findByRole("link", { name: /Layanan baru/ });
+    expect(link).toHaveAttribute("href", "/dashboard/master/layanan/new");
+
+    link.addEventListener("click", (event) => event.preventDefault());
+    await userEvent.click(link);
+    expect(JSON.parse(window.sessionStorage.getItem("buloo.serviceFormOrigin")!)).toEqual({
+      serviceKind: "grooming",
+      listPath: "/dashboard/layanan/grooming/katalog",
+    });
   });
 
   it("asks for no booking count for a role that may not read bookings", async () => {

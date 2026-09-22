@@ -1,7 +1,8 @@
 "use client";
 
+import { ServiceFormLink, type ServiceFormOrigin } from "@/features/services";
+import { SERVICE_KIND_LABELS } from "@/types/api";
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { Pencil } from "lucide-react";
 
 import { Alert, Card, StatTile } from "@/components";
@@ -28,6 +29,10 @@ import {
   sessionShares,
   variantCounts,
 } from "../serviceDisplay";
+import { GROOMING_LINE, lineFormOrigin } from "../line";
+
+/** Grooming's answer, for a caller that names no module. */
+const GROOMING_ORIGIN: ServiceFormOrigin = lineFormOrigin(GROOMING_LINE);
 
 /**
  * The read-only tabs of a service's detail page — from `buloo-grooming-v3.html`:
@@ -39,14 +44,23 @@ import {
  * and Tahapan & Add-on (`GroomingServiceStepsEditor`).
  */
 
-function EditLink({ href, label = "Ubah" }: { href: string; label?: string }) {
+function EditLink({
+  href,
+  origin,
+  label = "Ubah",
+}: {
+  href: string;
+  /** The module the page sits in — see `ServiceFormLink`. */
+  origin?: ServiceFormOrigin;
+  label?: string;
+}) {
   return (
     <Can feature="services" action="update">
       <Button asChild variant="secondary" size="sm">
-        <Link href={href}>
+        <ServiceFormLink href={href} origin={origin ?? GROOMING_ORIGIN}>
           <Pencil className="size-4" />
           {label}
-        </Link>
+        </ServiceFormLink>
       </Button>
     </Can>
   );
@@ -249,6 +263,15 @@ export function ServiceSummaryPanel({
           <Fact label="Satuan tagihan">
             {BILLING_UNIT_LABELS[service.billingUnit ?? "per_pet"]}
           </Fact>
+          {service.serviceType !== "addon" && (
+            <Fact label="Kelompok layanan">
+              {service.serviceKind ? (
+                SERVICE_KIND_LABELS[service.serviceKind]
+              ) : (
+                <span className="font-semibold text-danger">Belum diisi</span>
+              )}
+            </Fact>
+          )}
           <Fact label="Jenis">
             {service.serviceType === "addon" ? "Add-on" : "Layanan utama"}
           </Fact>
@@ -292,11 +315,11 @@ export function ServiceSummaryPanel({
  */
 export function ServicePortalPanel({
   service,
-  editHref = serviceEditPath(service._id),
+  origin,
 }: {
   service: Service;
-  /** The service form, told which list to return to — see `ServiceLine`. */
-  editHref?: string;
+  /** The module the page sits in — told to the form by `ServiceFormLink`. */
+  origin?: ServiceFormOrigin;
 }) {
   const bounds = servicePriceBounds(service);
   const included = service.included ?? [];
@@ -312,7 +335,7 @@ export function ServicePortalPanel({
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
         <Card
           title="Konten untuk pelanggan"
-          action={<EditLink href={editHref} />}
+          action={<EditLink href={serviceEditPath(service._id)} origin={origin} />}
         >
           <dl className="flex flex-col gap-4">
             <div>

@@ -20,6 +20,7 @@ import { Can, usePermissions } from "@/features/permissions";
 import {
   formatDurationRange,
   serviceDurationBounds,
+  ServiceFormLink,
   ServiceLifecycleDialog,
   type ServiceLifecycleAction,
   useVariantAxisValues,
@@ -33,8 +34,9 @@ import { useGroomingServiceTotals } from "../hooks/useGroomingServiceTotals";
 import { useServiceBookingCounts } from "../hooks/useServiceBookingCounts";
 import {
   GROOMING_LINE,
-  lineNewServicePath,
+  lineFormOrigin,
   lineServicePath,
+  NEW_MAIN_SERVICE_PATH,
   type ServiceLine,
 } from "../line";
 import {
@@ -112,11 +114,11 @@ export function GroomingServicesScreen({
   const line = useGroomingLine(serviceLine);
   const lineId = line.line?._id ?? null;
   /*
-    The service form for a MAIN service — Jenis layanan is not drawn and the
-    save files it as `main`, on this line. Add-ons are made from Pengaturan ›
-    Layanan › Add-on.
+    The service form, at its one plain address — told this module's Kelompok
+    layanan and list through `ServiceFormLink`, never the URL (22 September
+    2026). Add-ons are made from Pengaturan › Layanan › Add-on.
   */
-  const newServicePath = lineNewServicePath(serviceLine, lineId);
+  const formOrigin = lineFormOrigin(serviceLine);
   const noun = serviceLine.noun;
   const { services, pagination, query, setQuery, refetch, loading, error } =
     useGroomingServices(lineId);
@@ -173,10 +175,10 @@ export function GroomingServicesScreen({
         action={
           <Can feature="services" action="create">
             <Button asChild>
-              <Link href={newServicePath}>
+              <ServiceFormLink href={NEW_MAIN_SERVICE_PATH} origin={formOrigin}>
                 <Plus className="size-4" />
                 Layanan baru
-              </Link>
+              </ServiceFormLink>
             </Button>
           </Can>
         }
@@ -259,12 +261,13 @@ export function GroomingServicesScreen({
             <>
               Belum ada layanan {noun}.{" "}
               <Can feature="services" action="create">
-                <Link
-                  href={newServicePath}
+                <ServiceFormLink
+                  href={NEW_MAIN_SERVICE_PATH}
+                  origin={formOrigin}
                   className="font-semibold text-primary underline-offset-2 hover:underline"
                 >
                   Tambah yang pertama →
-                </Link>
+                </ServiceFormLink>
               </Can>
             </>
           )}

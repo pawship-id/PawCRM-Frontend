@@ -19,6 +19,3 @@ export function antarJemputForBookingPath(bookingId: string): string {
 export function antarJemputEditPath(bookingId: string): string {
   return `${ANTAR_JEMPUT_PATH}/${bookingId}/edit`;
 }
-
-/** `?dari=` the service form takes to come back to this module's catalogue. */
-export const ANTAR_JEMPUT_FORM_ORIGIN = "antar-jemput";

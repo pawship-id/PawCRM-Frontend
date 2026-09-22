@@ -28,7 +28,7 @@ import {
   VariantValueEditDialog,
 } from "./VariantOptionFormDialog";
 import { ZoneFormDialog } from "./ZoneFormDialog";
-import { useBusinessLines } from "@/hooks/useBusinessLines";
+import { SERVICE_KIND_LABELS, type ServiceKind } from "@/types/api";
 
 /** One chip on a card: what it says, how it is changed, and how it is removed. */
 interface Chip {
@@ -109,14 +109,9 @@ export function VariantOptionsPanel({
 }) {
   const { can } = usePermissions();
   const cards = useVariantOptions();
-  const businessLines = useBusinessLines();
-  /* "Semua lini", or the names — a line since deleted is simply not named. */
-  const linesText = (ids: string[] | undefined) => {
-    const names = (ids ?? [])
-      .map((id) => businessLines.items.find((line) => line._id === id)?.name)
-      .filter(Boolean);
-    return names.length === 0 ? "Semua lini" : names.join(", ");
-  };
+  /* "Semua layanan", or the kinds it is for. */
+  const kindsText = (kinds: ServiceKind[] | undefined) =>
+    kinds?.length ? kinds.map((kind) => SERVICE_KIND_LABELS[kind]).join(", ") : "Semua layanan";
 
   const [adding, setAdding] = useState<Adding>(null);
   const [editing, setEditing] = useState<Editing>(null);
@@ -269,9 +264,9 @@ export function VariantOptionsPanel({
                     >
                       {staff ? "Dipilih staf" : "Otomatis"}
                     </span>
-                    {/* WHICH LINES IT IS OFFERED FOR — a word, not a colour (§1.3). */}
+                    {/* WHICH SERVICES IT IS OFFERED FOR — a word, not a colour (§1.3). */}
                     <span className="rounded-full bg-tint-info px-2 py-0.5 text-xs font-medium text-info">
-                      {linesText(card.businessLineIds)}
+                      {kindsText(card.serviceKinds)}
                     </span>
                     <span className="rounded-full border border-border bg-background px-2 py-0.5 text-xs font-medium text-muted tabular-nums">
                       {card.serviceCount} layanan

@@ -8,6 +8,13 @@
  * catalogue-wide list since 13 September 2026.
  */
 export { ServiceForm } from "./components/ServiceForm";
+export { ServiceFormLink } from "./components/ServiceFormLink";
+export {
+  clearServiceFormOrigin,
+  readServiceFormOrigin,
+  rememberServiceFormOrigin,
+  type ServiceFormOrigin,
+} from "./formOrigin";
 export {
   ServiceLifecycleDialog,
   type ServiceLifecycleAction,
@@ -30,7 +37,7 @@ export {
   orderedAxes,
   VARIANT_AXES,
   variantAxisDefs,
-  axisDefsForLine,
+  axisDefsForKind,
   variantAxisValues,
   variantComboCount,
   type StoredVariantValues,

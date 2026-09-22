@@ -1,5 +1,5 @@
 import { apiClient } from "./api-client";
-import type { VariantOption } from "@/types/api";
+import type { ServiceKind, VariantOption } from "@/types/api";
 
 /**
  * Opsi Varian calls against /api/variant-options — the cards a service's price
@@ -19,8 +19,8 @@ export const variantOptionService = {
     description?: string | null;
     source: "staff" | "zone";
     values?: string[];
-    /** Empty = every line. */
-    businessLineIds?: string[];
+    /** Empty = every kind of service. */
+    serviceKinds?: ServiceKind[];
   }) => apiClient.post<VariantOption>("/variant-options", input),
 
   update: (
@@ -29,7 +29,7 @@ export const variantOptionService = {
       name?: string;
       description?: string | null;
       sortOrder?: number;
-      businessLineIds?: string[];
+      serviceKinds?: ServiceKind[];
     },
   ) =>
     apiClient.patch<VariantOption>(`/variant-options/${id}`, patch),

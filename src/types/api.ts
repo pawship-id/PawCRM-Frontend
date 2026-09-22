@@ -3354,17 +3354,32 @@ export interface VariantOption {
   /** What a service's `variantAxes` uses for this card. */
   axisKey: VariantAxisKey;
   /**
-   * The lines of business this card is offered for (22 September 2026) — EMPTY
-   * MEANS EVERY LINE. A filter for the service form, not a rule the server
+   * The kinds of service this card is offered for (22 September 2026) — EMPTY
+   * MEANS EVERY KIND. A filter for the service form, not a rule the server
    * enforces. Optional for older responses.
    */
-  businessLineIds?: string[];
+  serviceKinds?: ServiceKind[];
   /** Live services declaring this axis. */
   serviceCount: number;
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * What the product itself sells — Grooming, Hotel, Antar-Jemput — fixed words,
+ * unlike the tenant's own business lines (22 September 2026, hardcoded on
+ * request). Mirrors SERVICE_KINDS in variantOption.model.js.
+ */
+export const SERVICE_KINDS = ["grooming", "hotel", "pickup-delivery"] as const;
+
+export type ServiceKind = (typeof SERVICE_KINDS)[number];
+
+export const SERVICE_KIND_LABELS: Record<ServiceKind, string> = {
+  grooming: "Grooming",
+  hotel: "Hotel",
+  "pickup-delivery": "Antar-Jemput",
+};
 
 /** Where a service is performed. Mirrors SERVICE_LOCATIONS. */
 export type ServiceLocation = "in_home" | "in_store";
@@ -3430,6 +3445,12 @@ export interface Service {
   durationMin: number | null;
   /** Per animal or per visit — see `ServiceBillingUnit`. */
   billingUnit: ServiceBillingUnit;
+  /**
+   * Grooming, Hotel or Antar-Jemput (22 September 2026) — which Opsi Varian
+   * cards the service is offered. Null on an add-on, and on a service saved
+   * before the field until it is answered.
+   */
+  serviceKind?: ServiceKind | null;
   description: string | null;
   /** Whether the price depends on the pet — see `variants`. */
   hasVariants: boolean;
@@ -3534,6 +3555,7 @@ export interface CreateServiceInput {
   businessLineId: string;
   durationMin?: number;
   billingUnit?: ServiceBillingUnit;
+  serviceKind?: ServiceKind | null;
   serviceLocations: ServiceLocation[];
   price?: string;
   image?: MediaAsset | null;
@@ -3579,6 +3601,7 @@ export interface UpdateServiceInput {
   /** A flat service's minutes. Refused beside `hasVariants: true`. */
   durationMin?: number;
   billingUnit?: ServiceBillingUnit;
+  serviceKind?: ServiceKind | null;
   description?: string | null;
   hasVariants?: boolean;
   variantAxes?: VariantAxisKey[];
