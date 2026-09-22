@@ -8,7 +8,10 @@ import type { CustomerInvoicePayment } from "@/types/api";
  * invoice, the payment's own page, the activity log. Three copies is how one
  * screen ends up saying "tunai" and another "cash" about the same money.
  */
-export const PAYMENT_METHOD_LABEL: Record<CustomerInvoicePayment["method"], string> =
+export const PAYMENT_METHOD_LABEL: Record<
+  NonNullable<CustomerInvoicePayment["method"]>,
+  string
+> =
   {
     transfer: "Transfer",
     cash: "Tunai",
@@ -16,10 +19,16 @@ export const PAYMENT_METHOD_LABEL: Record<CustomerInvoicePayment["method"], stri
     edc: "EDC",
   };
 
-/** "Transfer — BCA Operasional", or the method alone when the channel is gone. */
+/**
+ * "Transfer — BCA Operasional", the method alone when the channel is gone, or
+ * the account alone on a payment booked straight to one — which has no method.
+ */
 export function paymentChannelLabel(payment: CustomerInvoicePayment): string {
-  const method = PAYMENT_METHOD_LABEL[payment.method] ?? payment.method;
-  return payment.channelName ? `${method} — ${payment.channelName}` : method;
+  const method = payment.method
+    ? (PAYMENT_METHOD_LABEL[payment.method] ?? payment.method)
+    : null;
+  if (method && payment.channelName) return `${method} — ${payment.channelName}`;
+  return method ?? payment.channelName ?? "—";
 }
 
 /**

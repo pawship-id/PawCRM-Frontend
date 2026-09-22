@@ -5635,10 +5635,18 @@ export interface CustomerInvoicePayment {
   /** The day the money MOVED, which is what dates the journal entry. */
   at: string;
   amount: string;
-  method: CustomerPaymentMethod;
-  channelId: string;
-  /** Null when the channel was retired since; the payment still arrived there. */
+  /** Null on a payment booked straight to a Kas & Bank account. */
+  method: CustomerPaymentMethod | null;
+  channelId: string | null;
+  /**
+   * Where the money landed, by name: the channel's, or — on a payment booked
+   * straight to an account — the account's. Null when the channel was retired
+   * since; the payment still arrived there.
+   */
   channelName: string | null;
+  /** The Kas & Bank account the entry debited. */
+  cashAccountId?: string | null;
+  cashAccountName?: string | null;
   ref: string | null;
   byUserId: string | null;
   byUserName: string | null;
@@ -6485,12 +6493,17 @@ export interface RecordCustomerPaymentInput {
   /** Strictly positive, and never more than `outstandingAmount`. */
   amount: string;
   /**
-   * What KIND of payment this is. Distinct from `channelId`, which says which
-   * ACCOUNT it landed in; the server checks the two agree.
+   * The Kas & Bank account the money landed in — what the back office sends
+   * (BO, 22 Sep 2026). Kas or bank, and so BKM or BBM, comes from the account.
+   * No method: outside the till there is no method to pick.
    */
-  method: CustomerPaymentMethod;
-  /** The account the money arrived in — must be usable `in`. */
-  channelId: string;
+  accountId?: string;
+  /**
+   * THE OLDER SHAPE, still accepted: a payment channel and the method it must
+   * agree with. Exactly one of `accountId` or `channelId` is sent.
+   */
+  method?: CustomerPaymentMethod;
+  channelId?: string;
   /** Defaults to now. The day the money MOVED, which dates the ledger entry. */
   at?: string;
   ref?: string;

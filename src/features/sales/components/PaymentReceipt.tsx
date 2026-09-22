@@ -7,7 +7,10 @@ import type {
   Tenant,
 } from "@/types/api";
 
-const METHOD_LABEL: Record<CustomerInvoicePayment["method"], string> = {
+const METHOD_LABEL: Record<
+  NonNullable<CustomerInvoicePayment["method"]>,
+  string
+> = {
   transfer: "Transfer bank",
   cash: "Tunai",
   qris: "QRIS",
@@ -101,10 +104,16 @@ export function PaymentReceipt({
         <Row label="Untuk pembayaran faktur">
           <span className="tabular-nums">{invoice.invoiceNumber}</span>
         </Row>
-        <Row label="Metode">
-          {METHOD_LABEL[payment.method]}
-          {payment.channelName ? ` — ${payment.channelName}` : ""}
-        </Row>
+        {/* A payment booked straight to an account has no method; the row
+            then names the account the money landed in. */}
+        {payment.method ? (
+          <Row label="Metode">
+            {METHOD_LABEL[payment.method]}
+            {payment.channelName ? ` — ${payment.channelName}` : ""}
+          </Row>
+        ) : (
+          <Row label="Masuk ke">{payment.channelName ?? "—"}</Row>
+        )}
         {payment.ref && (
           <Row label="No. referensi">
             <span className="tabular-nums">{payment.ref}</span>

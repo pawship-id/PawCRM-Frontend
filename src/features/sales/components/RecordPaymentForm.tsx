@@ -16,7 +16,9 @@ import {
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
-import { paymentChannelService } from "@/services/paymentChannel.service";
+import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import { CASH_ACCOUNT_CATEGORY } from "@/features/accounting";
+import { cashBankAccounts } from "@/features/cash-transactions/hooks/useCashBankAccountOptions";
 import {
   divideRound,
   formatMoney,
@@ -25,34 +27,8 @@ import {
   toMinor,
   trimDecimal,
 } from "@/utils/decimal";
-import type {
-  CustomerInvoiceDetail,
-  CustomerPaymentMethod,
-  PaymentChannel,
-} from "@/types/api";
-
-/** The method's own word, for the sentence shown when no channel matches it. */
-const METHOD_LABEL: Record<CustomerPaymentMethod, string> = {
-  cash: "tunai",
-  transfer: "transfer",
-  qris: "QRIS",
-  edc: "EDC",
-};
-
-/**
- * The four rails money can arrive on.
- *
- * `edc` WHERE THE PAYABLE HAS `giro`, and the difference is real rather than
- * cosmetic: a shop is handed a card at the counter and hands a post-dated cheque
- * to a vendor. Transfer leads because it is how a B2B customer settles a
- * receivable — cash is what the till already took.
- */
-const METHODS: Array<{ value: CustomerPaymentMethod; label: string }> = [
-  { value: "transfer", label: "Transfer bank" },
-  { value: "cash", label: "Tunai" },
-  { value: "qris", label: "QRIS" },
-  { value: "edc", label: "EDC / kartu" },
-];
+import type { CustomerInvoiceDetail } from "@/types/api";
+import type { ChartOfAccount } from "@/types/accounting";
 
 /** `yyyy-mm-dd` for today, as a date input holds it. */
 function today(): string {
@@ -110,43 +86,43 @@ export function RecordPaymentForm({
   onCancel?: () => void;
 }) {
   const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<CustomerPaymentMethod>("transfer");
-  const [channels, setChannels] = useState<PaymentChannel[]>([]);
-  const [channelId, setChannelId] = useState("");
+  const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
+  const [accountId, setAccountId] = useState("");
   const [at, setAt] = useState(today());
   const [ref, setRef] = useState("");
   const [saving, setSaving] = useState(false);
 
   /*
-    Re-read whenever the METHOD changes, and filtered to channels that can
-    RECEIVE — `usableFor: "in"`, the mirror of the payable form's `"out"`. That
-    one letter is the whole difference: a drawer a shop only ever pays out of is
-    the wrong place to book a customer's transfer, and the server refuses it.
+    THE KAS & BANK ACCOUNTS, straight off the chart — no method, no channel
+    (BO, 22 Sep 2026). Outside the till the person recording a receivable knows
+    which account the money landed in, and that is all the journal needs: the
+    account is what it debits, and whether it is kas or bank decides BKM or BBM.
+    Channels are the cashier's buttons and stay at the till.
 
-    Fetching every channel once and filtering here would work until a tenant had
-    more than a page of them — and would put the direction rule in two places,
-    where the browser's copy is the one that drifts.
+    `accountCategory: "cash_bank"` is the same definition the Kas & Bank page and
+    the manual transaction form use, so the three can never disagree.
   */
   useEffect(() => {
     let active = true;
 
-    paymentChannelService
-      .list({ isActive: true, type: method, usableFor: "in", limit: 100 })
+    chartOfAccountsService
+      .list({ accountCategory: CASH_ACCOUNT_CATEGORY, isActive: true, limit: 100 })
       .then((result) => {
         if (!active) return;
-        setChannels(result.items);
-        // One account per method is the ordinary case; pre-selecting it removes
-        // a tap from every payment.
-        setChannelId(result.items.length === 1 ? result.items[0]._id : "");
+        const usable = cashBankAccounts(result.items);
+        setAccounts(usable);
+        // A tenant with a single cash-or-bank account has nothing to choose;
+        // pre-selecting it removes a tap from every payment.
+        setAccountId(usable.length === 1 ? usable[0]._id : "");
       })
       .catch(() => {
-        if (active) setChannels([]);
+        if (active) setAccounts([]);
       });
 
     return () => {
       active = false;
     };
-  }, [method]);
+  }, []);
 
   const outstandingMinor = toMinor(invoice.outstandingAmount) ?? 0n;
 
@@ -183,8 +159,8 @@ export function RecordPaymentForm({
       );
       return;
     }
-    if (!channelId) {
-      swalToast("Pilih rekening tujuan uang masuknya.", "error");
+    if (!accountId) {
+      swalToast("Pilih akun kas atau bank tujuan uang masuknya.", "error");
       return;
     }
 
@@ -192,8 +168,7 @@ export function RecordPaymentForm({
     try {
       const updated = await customerInvoiceService.recordPayment(invoice._id, {
         amount,
-        method,
-        channelId,
+        accountId,
         at,
         // Empty means "no reference", which the API models as null/absent — an
         // empty string would be stored as one and shown as a blank bank ref.
@@ -303,83 +278,46 @@ export function RecordPaymentForm({
         />
       </div>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="payment-method">Metode</Label>
-        <Select
-          value={method}
-          disabled={saving}
-          onValueChange={(value) =>
-            setMethod(value as CustomerPaymentMethod)
-          }
-        >
-          {/*
-            FULL WIDTH AND 44px. `SelectTrigger` is vendored shadcn and defaults
-            to `w-fit`, which sizes it to the longest option — so "Kas" and
-            "Transfer" produced two different boxes in one column. The default is
-            right for a filter on a toolbar and wrong for a field in a form.
-
-            `FIELD_HEIGHT` because ui-rules §16 sets form controls at 44px, not
-            the 36 the vendored default carries: filling in a form is a considered
-            act where a mistake is expensive. Applied HERE rather than in
-            `ui/select.tsx`, which is also the control behind every filter.
-          */}
-          <SelectTrigger
-            id="payment-method"
-            aria-label="Metode"
-            className={cn("w-full", FIELD_HEIGHT)}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {METHODS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted">
-          Menentukan jenis pembayaran. Rekeningnya dipilih di bawah.
-        </p>
-      </div>
-
       {/*
         WHICH ACCOUNT THE MONEY LANDED IN — the account the journal entry debits.
-        The list is filtered to channels that can RECEIVE and that match the
-        chosen method, so it can only ever offer something the server accepts.
+        "1102 · Bank BCA", the same label the manual transaction form uses.
+
+        FULL WIDTH AND 44px: `SelectTrigger` is vendored shadcn and defaults to
+        `w-fit`; ui-rules §16 sets form controls at 44px. Applied here rather than
+        in `ui/select.tsx`, which is also the control behind every filter.
       */}
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="payment-channel">Masuk ke</Label>
-        {channels.length === 0 ? (
+        <Label htmlFor="payment-account">Masuk ke</Label>
+        {accounts.length === 0 ? (
           <p className="text-sm text-danger">
-            Belum ada rekening {METHOD_LABEL[method]} untuk penerimaan. Tambah
-            dulu di Kas &amp; Bank.
+            Belum ada akun berkategori Kas &amp; Bank. Tambah dulu di Daftar
+            Akun.
           </p>
         ) : (
           <Select
-            value={channelId}
+            value={accountId}
             disabled={saving}
-            onValueChange={setChannelId}
+            onValueChange={setAccountId}
           >
             <SelectTrigger
-              id="payment-channel"
+              id="payment-account"
               aria-label="Masuk ke"
               className={cn("w-full", FIELD_HEIGHT)}
             >
-              <SelectValue placeholder="Pilih rekening" />
+              <SelectValue placeholder="Pilih akun kas atau bank" />
             </SelectTrigger>
             <SelectContent>
-              {channels.map((channel) => (
-                <SelectItem key={channel._id} value={channel._id}>
-                  {channel.name}
+              {accounts.map((account) => (
+                <SelectItem key={account._id} value={account._id}>
+                  {account.code} · {account.name}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         )}
         <p className="text-xs text-muted">
-          Rekening ini yang didebit di jurnal, jadi rekonsiliasinya bisa
-          ditelusuri per rekening.
+          Akun ini yang didebit di jurnal, jadi rekonsiliasinya bisa ditelusuri
+          per akun.
         </p>
       </div>
 
