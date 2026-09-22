@@ -1,20 +1,9 @@
-import type { Metadata } from "next";
-import { ServiceForm } from "@/features/services";
-import { RequirePermission } from "@/features/permissions";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Layanan baru · Master Data · Buloo",
-};
-
-/*
-  THE SAME ADDRESS FROM EVERYWHERE (22 September 2026), no query. Which module
-  opened it — the Kelompok layanan to start on, the list to return to — or that
-  it is "Tambah add-on", is left in the tab by `ServiceFormLink`.
-*/
-export default function NewServicePage() {
-  return (
-    <RequirePermission feature="services" action="create">
-      <ServiceForm />
-    </RequirePermission>
-  );
+/**
+ * Moved to Pengaturan on 22 September 2026, when the settings rail became one
+ * row with four tabs (mockup `buloo-navigation-v3`). Kept so old links land.
+ */
+export default function MovedNewServicePage() {
+  redirect("/dashboard/pengaturan/layanan/new");
 }

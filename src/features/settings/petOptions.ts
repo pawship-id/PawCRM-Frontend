@@ -1,11 +1,14 @@
 import type { PetOption, PetOptionType } from "@/types/api";
 
+import { SETTINGS_TABS } from "./paths";
+
 /**
  * Pengaturan › Layanan › Data hewan — the words, paths and ordering rule the
  * screen and its hub card share.
  */
 
-export const SERVICE_SETTINGS_PATH = "/dashboard/master/layanan";
+/** /dashboard/master/layanan until 22 September 2026; that address redirects. */
+export const SERVICE_SETTINGS_PATH = SETTINGS_TABS.layanan;
 /**
  * Jenis hewan, ukuran and jenis bulu open on the hub's first section, Opsi
  * Varian; ras has a section of its own (`?bagian=ras`). A route until 17

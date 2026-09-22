@@ -194,7 +194,7 @@ export function GroomingBookingsToolbar({
           }))}
           values={draft.groomerIds}
           onChange={(groomerIds) => patch({ groomerIds })}
-          empty={`Belum ada staf yang ditandai ${rides ? "Driver" : "Groomer"} di Master Data › Staf.`}
+          empty={`Belum ada staf yang ditandai ${rides ? "Driver" : "Groomer"} di Pengaturan › Pengguna.`}
         />
         <FilterCheckList
           label="Layanan"

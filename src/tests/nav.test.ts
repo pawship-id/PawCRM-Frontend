@@ -61,21 +61,26 @@ describe("filterNavItems", () => {
     ]);
   });
 
-  it("hides the Pengaturan group when no child is permitted", () => {
+  it("hides Pengaturan from a role holding none of its grants", () => {
     expect(itemsOf(denyAll).find((i) => i.label === "Pengaturan")).toBeUndefined();
   });
 
-  it("shows Pengaturan with only the permitted children", () => {
+  /*
+    ONE ROW WITH FOUR TABS since 22 September 2026 (mockup
+    `buloo-navigation-v3`). Any one grant a Pengaturan page reads opens it — the
+    href is Umum, which gates its own sections — and every page under
+    /dashboard/pengaturan keeps it lit.
+  */
+  it("carries Pengaturan as one row, lit on every page under it", () => {
     const onlyUsers: CanFn = (feature, action) =>
       feature === "users" && action === "read";
-    // Umum and Data Awal are ungated — each is a hub whose every card gates
-    // itself on the grant its own destination enforces — so they come along;
-    // everything else in the group needs its own grant.
-    expect(groupChildren(onlyUsers, "Pengaturan")).toEqual([
-      "Umum",
-      "Pengguna",
-      "Data Awal",
-    ]);
+    const settings = itemsOf(onlyUsers).find((i) => i.label === "Pengaturan");
+
+    expect(settings?.children).toBeUndefined();
+    expect(settings?.href).toBe("/dashboard/pengaturan/umum");
+    expect(isActive(settings!, "/dashboard/pengaturan/pengguna/u-1")).toBe(true);
+    expect(isActive(settings!, "/dashboard/pengaturan/layanan")).toBe(true);
+    expect(isActive(settings!, "/dashboard/keuangan")).toBe(false);
   });
 
   /*
@@ -332,8 +337,8 @@ describe("filterNavItems", () => {
   });
 
   /**
-   * THE CHART OF ACCOUNTS LEFT KEUANGAN on 20 September 2026 — it is a
-   * Pengaturan row now, per the BO mockup.
+   * THE CHART OF ACCOUNTS LEFT KEUANGAN on 20 September 2026 — it is under
+   * Pengaturan now, per the BO mockup.
    *
    * So the grant that opens it stopped opening Keuangan: nothing under
    * /keuangan is readable with it any more, and a row leading to a hub of cards
@@ -348,10 +353,7 @@ describe("filterNavItems", () => {
 
     expect(items.find((i) => i.label === "Keuangan")).toBeUndefined();
 
-    const settings = items.find((i) => i.label === "Pengaturan");
-    expect(
-      settings?.children?.find((child) => child.label === "Daftar Akun")?.href,
-    ).toBe("/dashboard/pengaturan/daftar-akun");
+    expect(items.find((i) => i.label === "Pengaturan")).toBeDefined();
   });
 
   it("does not offer Keuangan on the payroll grant alone", () => {
@@ -369,9 +371,9 @@ describe("filterNavItems", () => {
   });
 
   it("does not mutate the source NAV_SECTIONS", () => {
-    const before = groupOf("Pengaturan")?.children?.length;
+    const before = groupOf("Inventori")?.children?.length;
     filterNavSections(NAV_SECTIONS, denyAll);
-    const after = groupOf("Pengaturan")?.children?.length;
+    const after = groupOf("Inventori")?.children?.length;
     expect(after).toBe(before);
   });
 });

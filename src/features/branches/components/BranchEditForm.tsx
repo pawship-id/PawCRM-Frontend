@@ -318,7 +318,7 @@ function DetailsSection({
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/master/branches")}
+          onClick={() => router.push("/dashboard/pengaturan/cabang")}
         >
           Cancel
         </Button>
@@ -366,7 +366,7 @@ function DangerSection({
     try {
       if (pending === "delete") {
         await branchService.remove(branch._id);
-        router.push("/dashboard/master/branches");
+        router.push("/dashboard/pengaturan/cabang");
         swalToast("Branch deleted.");
         return;
       }

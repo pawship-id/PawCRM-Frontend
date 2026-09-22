@@ -1070,7 +1070,7 @@ export function AntarJemputBookingForm({
                         placeholder="Belum ditugaskan"
                         hint={
                           drivers.length === 0
-                            ? "Belum ada staf yang ditandai Driver di Master Data › Staf."
+                            ? "Belum ada staf yang ditandai Driver di Pengaturan › Pengguna."
                             : "Diisikan ke semua tahapan. Bisa diganti per tahapan di halaman booking."
                         }
                         closeOnScroll

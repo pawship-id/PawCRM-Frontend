@@ -307,7 +307,7 @@ function DetailsSection({
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/master/warehouses")}
+          onClick={() => router.push("/dashboard/pengaturan/gudang")}
         >
           Cancel
         </Button>
@@ -355,7 +355,7 @@ function DangerSection({
     try {
       if (pending === "delete") {
         await warehouseService.remove(warehouse._id);
-        router.push("/dashboard/master/warehouses");
+        router.push("/dashboard/pengaturan/gudang");
         swalToast("Warehouse deleted.");
         return;
       }

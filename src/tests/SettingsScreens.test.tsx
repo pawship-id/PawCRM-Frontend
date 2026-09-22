@@ -2,9 +2,11 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
+  FinanceSettingsScreen,
   GeneralSettingsScreen,
   InitialDataScreen,
   ServiceSettingsScreen,
+  SystemSettingsScreen,
 } from "@/features/settings";
 import { branchService } from "@/services/branch.service";
 import {
@@ -24,9 +26,10 @@ import { invalidateZones } from "@/hooks/useZones";
 import { BUILT_IN_VARIANT_OPTIONS, makeVariantOption } from "./helpers/variantOptions";
 import { stockEntryService } from "@/services/stockEntry.service";
 import { supplierService } from "@/services/supplier.service";
+import { tenantService } from "@/services/tenant.service";
 import { warehouseService } from "@/services/warehouse.service";
 
-import type { Service, Zone } from "@/types/api";
+import type { Branch, Service, Tenant, Warehouse, Zone } from "@/types/api";
 
 import { PET_OPTION_FIXTURES, makePetOption } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
@@ -35,6 +38,7 @@ import { primeServiceSteps } from "./helpers/serviceSteps";
 const replace = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace, push: jest.fn() }),
+  usePathname: () => "/dashboard/pengaturan/umum",
 }));
 
 jest.mock("@/lib/swal", () => ({
@@ -86,61 +90,209 @@ beforeEach(() => {
   everythingCounts();
 });
 
+function makeTenant(overrides: Partial<Tenant> = {}): Tenant {
+  return {
+    _id: "6a5f6c916bc053bb21280a5e",
+    name: "Klinik Hewan Sehat",
+    slug: "klinik-hewan-sehat",
+    logoUrl: null,
+    timezone: "Asia/Jakarta",
+    currency: "IDR",
+    subscription: { status: "active", plan: "pro", trialEndsAt: null },
+    settings: { hotelMode: "zone" },
+    sv: 1,
+    deletedAt: null,
+    createdAt: "2024-03-10T00:00:00.000Z",
+    updatedAt: "2026-02-01T00:00:00.000Z",
+    ...overrides,
+  } as Tenant;
+}
+
+function page<T>(items: T[]) {
+  return {
+    items,
+    pagination: { page: 1, limit: 100, total: items.length, totalPages: 1 },
+  };
+}
+
+const BRANCHES = [
+  { _id: "br-1", name: "Pusat", address: "Jl. Raya Darmo 121", phone: "031-5551200", isActive: true },
+  { _id: "br-2", name: "Pawship Barat", address: null, phone: null, isActive: false },
+] as Branch[];
+
+const WAREHOUSES = [
+  { _id: "wh-1", name: "Gudang Utama", defaultBranchId: "br-1" },
+  { _id: "wh-2", name: "Etalase Pusat", defaultBranchId: "br-1" },
+  { _id: "wh-3", name: "Gudang Barat", defaultBranchId: "br-2" },
+] as Warehouse[];
+
+/**
+ * Pengaturan › Umum is the tenant's profile since 22 September 2026 (mockup
+ * `buloo-navigation-v3`). What is worth pinning: each section asks only for
+ * what the role may read, a branch is listed with its own warehouses, and
+ * there is no way to create a branch from here.
+ */
 describe("GeneralSettingsScreen", () => {
-  it("links the three settings that exist and badges the four that do not", async () => {
+  beforeEach(() => {
+    jest.spyOn(tenantService, "me").mockResolvedValue(makeTenant());
+    jest.mocked(branchService.list).mockResolvedValue(page(BRANCHES));
+    jest.mocked(warehouseService.list).mockResolvedValue(page(WAREHOUSES));
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it("draws the profile, the identity rows still to come, and the tabs", async () => {
     renderWithAuth(<GeneralSettingsScreen />);
 
-    expect(screen.getByRole("link", { name: /Profil tenant/ })).toHaveAttribute(
-      "href",
-      "/dashboard/business",
-    );
-    expect(screen.getByRole("link", { name: /Cabang/ })).toHaveAttribute(
-      "href",
-      "/dashboard/master/branches",
-    );
-    expect(screen.getByRole("link", { name: /Gudang/ })).toHaveAttribute(
-      "href",
-      "/dashboard/master/warehouses",
-    );
-
-    // Drawn, so the shape of the module is visible — but they go nowhere.
-    expect(screen.getAllByText("Segera")).toHaveLength(4);
     expect(
-      screen.queryByRole("link", { name: /Notifikasi/ }),
-    ).not.toBeInTheDocument();
+      await screen.findByRole("heading", { name: "Klinik Hewan Sehat" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Paket Pro")).toBeInTheDocument();
+    expect(screen.getByText("Asia/Jakarta")).toBeInTheDocument();
+    expect(screen.getByText("KH")).toBeInTheDocument();
+    expect(await screen.findByText("2 cabang · 3 gudang")).toBeInTheDocument();
 
-    await waitFor(() =>
-      expect(screen.getByText("4 cabang")).toBeInTheDocument(),
-    );
-    expect(screen.getByText("6 gudang")).toBeInTheDocument();
+    const tabs = screen.getByRole("navigation", { name: "Bagian pengaturan" });
+    expect(
+      within(tabs)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["Umum", "Layanan", "Keuangan", "Pengguna & Sistem"]);
+
+    // Four identity fields the tenant does not hold yet, and four cards.
+    expect(screen.getAllByText("Segera")).toHaveLength(8);
   });
 
-  it("costs two queries, not six", async () => {
+  it("lists each branch with its own warehouses, and offers no way to create one", async () => {
     renderWithAuth(<GeneralSettingsScreen />);
 
-    await waitFor(() =>
-      expect(screen.getByText("4 cabang")).toBeInTheDocument(),
-    );
-    // The hook serves both screens; this one renders two figures and must ask
-    // for exactly those.
-    expect(productService.list).not.toHaveBeenCalled();
-    expect(customerService.list).not.toHaveBeenCalled();
-    expect(stockEntryService.list).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("2 gudang · Gudang Utama, Etalase Pusat"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1 gudang · Gudang Barat")).toBeInTheDocument();
+    expect(screen.getByText("Nonaktif")).toBeInTheDocument();
+    expect(screen.getByText("Alamat belum diisi")).toBeInTheDocument();
+
+    const manage = screen.getAllByRole("link", { name: "Kelola" });
+    expect(manage[0]).toHaveAttribute("href", "/dashboard/pengaturan/cabang/br-1");
+    expect(
+      screen.queryByRole("link", { name: /cabang baru/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/diaktifkan oleh tim Buloo/)).toBeInTheDocument();
   });
 
-  it("drops a card, and its query, for a role without the grant", async () => {
+  it("links the two tenant switches that have a page", async () => {
+    renderWithAuth(<GeneralSettingsScreen />);
+
+    expect(
+      screen.getByRole("link", { name: /Faktur & dokumen/ }),
+    ).toHaveAttribute("href", "/dashboard/pengaturan/faktur-dokumen");
+    expect(screen.getByRole("link", { name: /Stok & kasir/ })).toHaveAttribute(
+      "href",
+      "/dashboard/pengaturan/stok-kasir",
+    );
+    expect(
+      screen.queryByRole("link", { name: /Langganan/ }),
+    ).not.toBeInTheDocument();
+    await screen.findByText("2 cabang · 3 gudang");
+  });
+
+  it("counts down a trial rather than hiding it", async () => {
+    const inTenDays = new Date(Date.now() + 10 * 86_400_000).toISOString();
+    jest.spyOn(tenantService, "me").mockResolvedValue(
+      makeTenant({
+        subscription: { status: "trialing", plan: "free", trialEndsAt: inTenDays },
+      }),
+    );
+
+    renderWithAuth(<GeneralSettingsScreen />);
+
+    expect(await screen.findByText("Trial sisa 10 hari")).toBeInTheDocument();
+  });
+
+  it("asks for nothing a branches-only role may not read", async () => {
     renderWithAuth(<GeneralSettingsScreen />, {
       isSuperAdmin: false,
       permissions: [{ feature: "branches", actions: ["read"] }],
     });
 
-    await waitFor(() =>
-      expect(screen.getByText("4 cabang")).toBeInTheDocument(),
+    expect(await screen.findByText("Pusat")).toBeInTheDocument();
+    expect(tenantService.me).not.toHaveBeenCalled();
+    expect(warehouseService.list).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("link", { name: /Faktur & dokumen/ }),
+    ).not.toBeInTheDocument();
+    // No grant to edit a branch, no Kelola.
+    expect(screen.queryByRole("link", { name: "Kelola" })).not.toBeInTheDocument();
+
+    const tabs = screen.getByRole("navigation", { name: "Bagian pengaturan" });
+    expect(
+      within(tabs)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(["Umum", "Pengguna & Sistem"]);
+  });
+
+  it("shows the API message when the profile fails, and retries on demand", async () => {
+    const me = jest
+      .spyOn(tenantService, "me")
+      .mockRejectedValueOnce(new ApiError("Profil tidak bisa dibaca", 500))
+      .mockResolvedValueOnce(makeTenant());
+
+    renderWithAuth(<GeneralSettingsScreen />);
+
+    expect(await screen.findByText(/Profil tidak bisa dibaca/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Coba lagi" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Klinik Hewan Sehat" }),
+    ).toBeInTheDocument();
+    expect(me).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * Keuangan and Pengguna & Sistem are nothing but cards, and each card gates
+ * itself on the grant its destination enforces — a role sees exactly the pages
+ * it may open, and Data Awal (ungated by design) always.
+ */
+describe("the card tabs", () => {
+  it("lists the four finance settings for a full-reach role", () => {
+    renderWithAuth(<FinanceSettingsScreen />);
+
+    expect(screen.getByRole("link", { name: /Daftar akun/ })).toHaveAttribute(
+      "href",
+      "/dashboard/pengaturan/daftar-akun",
     );
     expect(
-      screen.queryByRole("link", { name: /Profil tenant/ }),
-    ).not.toBeInTheDocument();
-    expect(warehouseService.list).not.toHaveBeenCalled();
+      screen.getByRole("link", { name: /Channel pembayaran/ }),
+    ).toHaveAttribute("href", "/dashboard/pengaturan/channel-pembayaran");
+    expect(screen.getByRole("link", { name: /Lini bisnis/ })).toHaveAttribute(
+      "href",
+      "/dashboard/pengaturan/lini-bisnis",
+    );
+    expect(screen.getByRole("link", { name: /Pajak/ })).toHaveAttribute(
+      "href",
+      "/dashboard/pengaturan/pajak",
+    );
+  });
+
+  it("keeps only the cards a users-only role may open, and Data Awal", () => {
+    renderWithAuth(<SystemSettingsScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "users", actions: ["read"] }],
+    });
+
+    const cards = screen
+      .getAllByRole("link")
+      .filter((link) => link.getAttribute("href") !== null)
+      .map((link) => link.getAttribute("href"))
+      .filter((href) => !href?.match(/\/pengaturan\/(umum|layanan|keuangan|sistem)$/));
+
+    expect(cards).toEqual([
+      "/dashboard/pengaturan/data-awal",
+      "/dashboard/pengaturan/pengguna",
+      "/dashboard/pengaturan/akses-cabang",
+    ]);
   });
 });
 
@@ -316,7 +468,7 @@ describe("ServiceSettingsScreen", () => {
     await waitFor(() => expect(rail("Zona")).toHaveTextContent("2"));
 
     await userEvent.click(rail("Ras"));
-    expect(replace).toHaveBeenCalledWith("/dashboard/master/layanan?bagian=ras", {
+    expect(replace).toHaveBeenCalledWith("/dashboard/pengaturan/layanan?bagian=ras", {
       scroll: false,
     });
     expect(screen.getByText("Poodle")).toBeInTheDocument();
@@ -480,7 +632,7 @@ describe("ServiceSettingsScreen", () => {
     expect(within(kutu).getByText(/dipakai 2 layanan/)).toBeInTheDocument();
     expect(within(kutu).getByRole("link", { name: "Obat Kutu" })).toHaveAttribute(
       "href",
-      "/dashboard/master/layanan/kutu",
+      "/dashboard/pengaturan/layanan/kutu",
     );
     expect(within(kutu).getByLabelText("Harga Obat Kutu")).toHaveValue("35.000");
     expect(within(kutu).getByLabelText("Durasi Obat Kutu dalam menit")).toHaveValue(15);
@@ -499,7 +651,7 @@ describe("ServiceSettingsScreen", () => {
     expect(screen.queryByText("Basic Grooming")).not.toBeInTheDocument();
     // The form's plain address; "an add-on" is left in the tab on the click.
     const add = screen.getByRole("link", { name: /Tambah add-on/ });
-    expect(add).toHaveAttribute("href", "/dashboard/master/layanan/new");
+    expect(add).toHaveAttribute("href", "/dashboard/pengaturan/layanan/new");
     add.addEventListener("click", (event) => event.preventDefault());
     await userEvent.click(add);
     expect(window.sessionStorage.getItem("buloo.serviceFormOrigin")).toBe(

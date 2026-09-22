@@ -206,7 +206,7 @@ describe("GroomingServicesScreen", () => {
     // One plain address from every module (22 September 2026); the module is
     // left in the tab as the link is clicked.
     const link = await screen.findByRole("link", { name: /Layanan baru/ });
-    expect(link).toHaveAttribute("href", "/dashboard/master/layanan/new");
+    expect(link).toHaveAttribute("href", "/dashboard/pengaturan/layanan/new");
 
     link.addEventListener("click", (event) => event.preventDefault());
     await userEvent.click(link);

@@ -30,7 +30,7 @@ import { WarehouseBranchSelect } from "./WarehouseBranchSelect";
 /**
  * Create a warehouse via POST /warehouses, then return to the list.
  *
- * Follows the app's hand-rolled form pattern (see BranchCreateForm): local
+ * Follows the app's hand-rolled form pattern (see BranchEditForm): local
  * state, client validation as a UX nicety, and ApiError.fieldErrors mapped onto
  * the matching inputs so backend validation (duplicate name, bad phone)
  * surfaces inline. Only the name is required — a tenant may register its
@@ -88,7 +88,7 @@ export function WarehouseCreateForm() {
         isActive,
       });
       // Redirect first, then fire the toast so it rides along on the list screen.
-      router.push("/dashboard/master/warehouses");
+      router.push("/dashboard/pengaturan/gudang");
       swalToast(`${created.name} has been created.`);
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
@@ -182,7 +182,7 @@ export function WarehouseCreateForm() {
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/master/warehouses")}
+          onClick={() => router.push("/dashboard/pengaturan/gudang")}
         >
           Cancel
         </Button>

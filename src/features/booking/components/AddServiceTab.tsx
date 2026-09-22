@@ -467,8 +467,8 @@ export function AddServiceTab({
         </Label>
         {services.length === 0 ? (
           <p className="text-sm text-muted">
-            Belum ada layanan yang bisa dijual. Tambahkan dulu di Master Data →
-            Layanan.
+            Belum ada layanan yang bisa dijual. Tambahkan dulu di Layanan ›
+            Grooming › Layanan &amp; Harga.
           </p>
         ) : (
           <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">

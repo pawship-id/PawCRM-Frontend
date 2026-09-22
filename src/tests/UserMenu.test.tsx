@@ -34,7 +34,7 @@ describe("UserMenu", () => {
     ).toHaveAttribute("href", "/dashboard/profile");
     expect(
       screen.getByRole("menuitem", { name: "Business information" }),
-    ).toHaveAttribute("href", "/dashboard/business");
+    ).toHaveAttribute("href", "/dashboard/pengaturan/umum");
   });
 
   it("hides Business information from a role without the grant", async () => {

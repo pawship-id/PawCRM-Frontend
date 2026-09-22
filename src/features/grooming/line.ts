@@ -1,5 +1,6 @@
 import type { BusinessLine } from "@/services/businessLine.service";
 import type { ServiceFormOrigin } from "@/features/services/formOrigin";
+import { SETTINGS_PATHS, serviceFormPath } from "@/features/settings/paths";
 import type { ServiceKind } from "@/types/api";
 
 import {
@@ -90,8 +91,8 @@ export function lineFormOrigin(line: ServiceLine): ServiceFormOrigin {
 }
 
 /** The service form — the same plain address from every module. */
-export const NEW_MAIN_SERVICE_PATH = "/dashboard/master/layanan/new";
+export const NEW_MAIN_SERVICE_PATH = SETTINGS_PATHS.layananBaru;
 
 export function lineServiceEditPath(serviceId: string): string {
-  return `/dashboard/master/layanan/${serviceId}`;
+  return serviceFormPath(serviceId);
 }

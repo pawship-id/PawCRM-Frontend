@@ -194,7 +194,7 @@ describe("GroomingServiceDetailScreen", () => {
 
     expect(screen.getByRole("link", { name: /Ubah/ })).toHaveAttribute(
       "href",
-      "/dashboard/master/layanan/svc-1",
+      "/dashboard/pengaturan/layanan/svc-1",
     );
 
     expect(screen.getByText("Rp 89 rb")).toBeInTheDocument();
@@ -689,7 +689,7 @@ describe("GroomingServiceDetailScreen", () => {
     renderDetail();
 
     await waitFor(() =>
-      expect(mockReplace).toHaveBeenCalledWith("/dashboard/master/layanan/svc-1"),
+      expect(mockReplace).toHaveBeenCalledWith("/dashboard/pengaturan/layanan/svc-1"),
     );
     expect(screen.queryByRole("tab", { name: "Tahapan & Add-on" })).not.toBeInTheDocument();
   });

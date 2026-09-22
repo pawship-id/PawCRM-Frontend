@@ -2,7 +2,7 @@ import { SERVICE_KINDS, type ServiceKind } from "@/types/api";
 
 /**
  * WHERE THE SERVICE FORM WAS OPENED FROM — kept in the tab, not in the URL
- * (22 September 2026, on request: `/dashboard/master/layanan/new` reads the
+ * (22 September 2026, on request: `/dashboard/pengaturan/layanan/new` reads the
  * same from every module).
  *
  * A module's "Layanan baru" and "Ubah" leave this behind as they are clicked

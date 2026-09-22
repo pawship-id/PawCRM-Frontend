@@ -1,26 +1,9 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { Card } from "@/components";
-import { UserCreateForm } from "@/features/users";
-import { RequirePermission } from "@/features/permissions";
-
-export const metadata: Metadata = { title: "New user · Master Data · Buloo" };
-
-export default function NewUserPage() {
-  return (
-    <RequirePermission feature="users" action="create">
-      <div className="flex flex-col gap-6">
-        <div>
-          <h1 className="text-2xl font-extrabold text-foreground">Create User</h1>
-          <p className="mt-1 text-sm text-muted">
-            Add a new staff account with its role and branch access.
-          </p>
-        </div>
-
-        <Card>
-          <UserCreateForm />
-        </Card>
-      </div>
-    </RequirePermission>
-  );
+/**
+ * Moved to Pengaturan on 22 September 2026, when the settings rail became one
+ * row with four tabs (mockup `buloo-navigation-v3`). Kept so old links land.
+ */
+export default function MovedNewUserPage() {
+  redirect("/dashboard/pengaturan/pengguna/new");
 }

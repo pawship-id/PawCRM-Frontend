@@ -1013,7 +1013,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
         {!loadingServices && groomers.length === 0 && (
           <Alert variant="warning">
             Belum ada staf yang ditandai sebagai <strong>groomer</strong>. Buka
-            Master Data › Staf, buka orangnya, lalu centang &ldquo;Groomer&rdquo;.
+            Pengaturan › Pengguna, buka orangnya, lalu centang &ldquo;Groomer&rdquo;.
             Bookingnya tetap bisa dibuat dengan groomer &ldquo;Belum
             ditentukan&rdquo;.
           </Alert>

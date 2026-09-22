@@ -30,14 +30,6 @@ export default function NewChartOfAccountPage() {
           <h1 className="mt-1 text-2xl font-extrabold text-foreground">
             Akun baru
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted">
-            Akun baru bisa langsung dipakai sebagai tujuan posting begitu
-            disimpan. Kodenya yang dipakai modul lain untuk menemukannya, jadi
-            pilih nomor yang mengikuti pola daftar akun yang sudah ada.
-            Kategorinya sudah ditentukan Buloo — itu yang menentukan di baris
-            mana akun ini muncul di Laba Rugi atau Neraca, dan tipe akunnya
-            mengikuti kategori itu.
-          </p>
         </div>
 
         <ChartOfAccountCreateForm />

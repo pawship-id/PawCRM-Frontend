@@ -1,30 +1,9 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { Card } from "@/components";
-import { WarehouseCreateForm } from "@/features/warehouses";
-import { RequirePermission } from "@/features/permissions";
-
-export const metadata: Metadata = {
-  title: "New warehouse · Master Data · Buloo",
-};
-
-export default function NewWarehousePage() {
-  return (
-    <RequirePermission feature="warehouses" action="create">
-      <div className="flex flex-col gap-6">
-        <div>
-          <h1 className="text-2xl font-extrabold text-foreground">
-            Create Warehouse
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Add a physical location stock is held at.
-          </p>
-        </div>
-
-        <Card>
-          <WarehouseCreateForm />
-        </Card>
-      </div>
-    </RequirePermission>
-  );
+/**
+ * Moved to Pengaturan on 22 September 2026, when the settings rail became one
+ * row with four tabs (mockup `buloo-navigation-v3`). Kept so old links land.
+ */
+export default function MovedNewWarehousePage() {
+  redirect("/dashboard/pengaturan/gudang/new");
 }

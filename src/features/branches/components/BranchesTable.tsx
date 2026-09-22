@@ -162,7 +162,7 @@ export function BranchesTable({
                           <Can feature="branches" action="update">
                             <Button variant="ghost" size="sm" asChild>
                               <Link
-                                href={`/dashboard/master/branches/${branch._id}`}
+                                href={`/dashboard/pengaturan/cabang/${branch._id}`}
                               >
                                 <Pencil className="size-4" />
                                 Edit

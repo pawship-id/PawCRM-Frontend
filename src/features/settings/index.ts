@@ -1,15 +1,36 @@
 /**
  * Public surface of the settings feature (Pengaturan).
  *
- * Three screens, all from the mockup: the Umum hub of cards, the Data Awal
- * checklist of opening figures, and Layanan — one page with a rail whose
- * sections (Opsi Varian, Ras, Tahapan, Add-on, Zona) are opened by `?bagian=`.
- * Pages import from here, never from deep component paths.
+ * Four tabs (mockup `buloo-navigation-v3`, 22 September 2026): Umum — the
+ * tenant's profile — Layanan, the shared-vocabulary hub whose sections (Opsi
+ * Varian, Ras, Tahapan, Add-on, Zona) are opened by `?bagian=`, and Keuangan and
+ * Pengguna & Sistem, which are cards. Plus the pages those tabs open that belong
+ * to no other feature. Pages import from here, never from deep component paths.
  */
 export { GeneralSettingsScreen } from "./components/GeneralSettingsScreen";
 export { InitialDataScreen } from "./components/InitialDataScreen";
 export { ServiceSettingsScreen } from "./components/ServiceSettingsScreen";
 export {
+  FinanceSettingsScreen,
+  SystemSettingsScreen,
+} from "./components/SettingsCardTabs";
+export {
+  SettingsPageHeader,
+  SettingsTabsHeader,
+} from "./components/SettingsHeader";
+export {
+  DocumentSettingsScreen,
+  StockCashierSettingsScreen,
+  TaxSettingsScreen,
+} from "./components/TenantSettingsScreens";
+export {
   serviceSettingsPath,
   serviceSettingsSectionOf,
 } from "./serviceSettingsSections";
+export {
+  SETTINGS_PATHS,
+  SETTINGS_ROOT,
+  SETTINGS_TABS,
+  serviceFormPath,
+  type SettingsTab,
+} from "./paths";

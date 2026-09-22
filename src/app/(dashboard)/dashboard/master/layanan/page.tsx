@@ -1,34 +1,20 @@
-import type { Metadata } from "next";
-
-import { RequirePermission } from "@/features/permissions";
-import {
-  ServiceSettingsScreen,
-  serviceSettingsSectionOf,
-} from "@/features/settings";
-
-export const metadata: Metadata = {
-  title: "Layanan · Pengaturan · Buloo",
-};
+import { redirect } from "next/navigation";
 
 /**
- * Pengaturan › Layanan — one page with a rail (Opsi Varian, Ras, Tahapan,
- * Add-on, Zona), from mockup `buloo-pengaturan-v3`. `?bagian=` opens a section;
- * anything unknown opens the first.
- *
- * GATED on `services:read`: every section is either the service catalogue or
- * the vocabulary its services are priced by, and it is the grant the rail row
- * in the sidebar already asks for. Writes are gated per action inside.
+ * Moved to Pengaturan on 22 September 2026, when the settings rail became one
+ * row with four tabs (mockup `buloo-navigation-v3`). Kept so old links land.
  */
-export default async function ServiceSettingsPage({
+export default async function MovedServiceSettingsPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { bagian } = await searchParams;
+  const section = Array.isArray(bagian) ? bagian[0] : bagian;
 
-  return (
-    <RequirePermission feature="services">
-      <ServiceSettingsScreen initialSection={serviceSettingsSectionOf(bagian)} />
-    </RequirePermission>
+  redirect(
+    section
+      ? `/dashboard/pengaturan/layanan?bagian=${encodeURIComponent(section)}`
+      : "/dashboard/pengaturan/layanan",
   );
 }

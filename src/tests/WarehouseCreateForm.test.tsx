@@ -104,7 +104,7 @@ describe("WarehouseCreateForm", () => {
         isActive: true,
       }),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/master/warehouses");
+    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/gudang");
   });
 
   it("surfaces a duplicate-name conflict as an alert", async () => {

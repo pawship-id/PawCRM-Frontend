@@ -527,7 +527,7 @@ describe("ServiceForm — variant pricing", () => {
     expect(screen.getByRole("link", { name: /buka opsi varian/i })).toHaveAttribute(
       "href",
       /* Opsi Varian is the page's default section. */
-      "/dashboard/master/layanan",
+      "/dashboard/pengaturan/layanan",
     );
   });
 
@@ -1161,7 +1161,7 @@ describe("ServiceForm — add-ons", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Batal" }));
 
-    expect(push).toHaveBeenCalledWith("/dashboard/master/layanan?bagian=addon");
+    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/layanan?bagian=addon");
   });
 
   it("sends an edited add-on back to Master › Layanan › Add-on, not to a module (22 September 2026)", async () => {
@@ -1173,7 +1173,7 @@ describe("ServiceForm — add-ons", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Batal" }));
 
-    expect(push).toHaveBeenCalledWith("/dashboard/master/layanan?bagian=addon");
+    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/layanan?bagian=addon");
   });
 
   it("keeps Batal going to Layanan & Harga on the ordinary new-service form", async () => {

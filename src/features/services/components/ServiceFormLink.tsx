@@ -7,8 +7,8 @@ import { rememberServiceFormOrigin, type ServiceFormOrigin } from "../formOrigin
 
 /**
  * A link into the service form that leaves its origin behind — see
- * `formOrigin.ts`. The address stays plain (`/dashboard/master/layanan/new`,
- * `/dashboard/master/layanan/:id`); the module is remembered for the tab.
+ * `formOrigin.ts`. The address stays plain (`/dashboard/pengaturan/layanan/new`,
+ * `/dashboard/pengaturan/layanan/:id`); the module is remembered for the tab.
  */
 export function ServiceFormLink({
   origin,

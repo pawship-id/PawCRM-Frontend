@@ -21,6 +21,7 @@ import { AddonServicesPanel } from "./AddonServicesPanel";
 import { PetOptionsPanel } from "./PetOptionsPanel";
 import { ServiceStepsPanel } from "./ServiceStepsPanel";
 import { VariantOptionsPanel } from "./VariantOptionsPanel";
+import { SettingsTabsHeader } from "./SettingsHeader";
 import { ZonesPanel } from "./ZonesPanel";
 
 const BREED_TYPES: readonly PetOptionType[] = ["breed"];
@@ -139,13 +140,7 @@ export function ServiceSettingsScreen({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Layanan</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Yang dipakai lebih dari satu layanan diatur di sini. Yang cuma dipakai
-          satu layanan tinggal di rumahnya.
-        </p>
-      </div>
+      <SettingsTabsHeader />
 
       <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-md">
         <div className="border-b border-border px-6 py-4">

@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/table";
 import { DraftSaveBar } from "@/features/grooming/components/DraftSaveBar";
 import { serviceEditPath } from "@/features/grooming/serviceDisplay";
+import { SETTINGS_PATHS } from "../paths";
 import {
   durationValue,
   priceDigits,
@@ -53,7 +54,7 @@ import { byStepOrder } from "../serviceSteps";
   The form's one plain address (22 September 2026 — it was `?jenis=addon`);
   that the new service is an add-on travels in the tab (`ADDON_FORM_ORIGIN`).
 */
-const NEW_SERVICE_PATH = "/dashboard/master/layanan/new";
+const NEW_SERVICE_PATH = SETTINGS_PATHS.layananBaru;
 
 /** One row as the boxes hold it. Price and duration are the text typed. */
 interface RowDraft {

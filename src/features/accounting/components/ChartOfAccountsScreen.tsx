@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Can, usePermissions } from "@/features/permissions";
+import { SettingsPageHeader } from "@/features/settings/components/SettingsHeader";
 import {
   Table,
   TableBody,
@@ -346,16 +347,10 @@ export function ChartOfAccountsScreen() {
     <div className="flex flex-col gap-6">
       {/*
         ITS OWN HEADING, not the Keuangan module's tab row — the screen moved to
-        Pengaturan on 20 September 2026 and now sits beside Umum and Data Awal,
-        which each carry a plain h1 and no breadcrumb.
-
-        NO BREADCRUMB, for the reason those two have none: /dashboard/pengaturan
-        has no page of its own, so the only ancestor a crumb could name is one
-        nobody can open. The nav's own highlight is what says where this is.
+        Pengaturan on 20 September 2026. Its trail leads back to Pengaturan ›
+        Keuangan, the tab that lists it (22 September 2026).
       */}
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Daftar Akun</h1>
-      </div>
+      <SettingsPageHeader tab="keuangan" title="Daftar Akun" />
 
       {/* What the Aturan Alokasi column is for, before anybody clicks a row.
           Only where it applies: a tenant with one line and one branch gets the
