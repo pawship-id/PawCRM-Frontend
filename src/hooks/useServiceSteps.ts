@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { ApiError } from "@/services/api-error";
 import { serviceStepService } from "@/services/serviceStep.service";
-import type { ServiceStep } from "@/types/api";
+import type { ServiceKind, ServiceStep } from "@/types/api";
 
 /** One entry a tahapan picker or a tahapan row can render. */
 export interface ServiceStepChoice {
@@ -30,10 +30,11 @@ interface Snapshot {
 const EMPTY: Snapshot = { steps: [], loaded: false, loading: false, error: null };
 
 /*
-  ONE CACHE PER BUSINESS LINE, shared by every consumer — the same bargain
+  ONE CACHE PER KELOMPOK LAYANAN (per business line until 22 September 2026),
+  shared by every consumer — the same bargain
   `usePetOptions` makes. A service's detail page draws the Tahapan card and the
-  form may be a click away; neither should fetch its line's list twice. Writes
-  call `invalidateServiceSteps(lineId)`.
+  form may be a click away; neither should fetch its kind's list twice. Writes
+  call `invalidateServiceSteps(kind)`.
 */
 const cache = new Map<string, Snapshot>();
 const generations = new Map<string, number>();
@@ -56,7 +57,7 @@ async function fetchLine(lineId: string): Promise<ServiceStep[]> {
 
   for (let page = 1; ; page += 1) {
     const result = await serviceStepService.list({
-      businessLineId: lineId,
+      serviceKind: lineId as ServiceKind,
       page,
       limit: 100,
     });
@@ -99,7 +100,7 @@ function load(lineId: string, force = false) {
  * Drops a line's cached list — or every line's — after a create, rename,
  * reorder, retire, delete or restore. Mounted consumers refetch at once.
  */
-export function invalidateServiceSteps(lineId?: string) {
+export function invalidateServiceSteps(lineId?: ServiceKind | null) {
   const lines = lineId ? [lineId] : [...cache.keys()];
 
   lines.forEach((line) => {
@@ -129,8 +130,9 @@ const keyOf = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
  * `businessLineId` null or empty asks for nothing — a new service with no line
  * chosen has no list yet.
  */
-export function useServiceSteps(businessLineId: string | null | undefined) {
-  const lineId = businessLineId ?? "";
+/** The tahapan list of one Kelompok layanan — none asked for, an empty list. */
+export function useServiceSteps(serviceKind: ServiceKind | "" | null | undefined) {
+  const lineId = serviceKind ?? "";
 
   const snapshot = useSyncExternalStore(
     subscribe,

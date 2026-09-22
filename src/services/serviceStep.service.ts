@@ -21,7 +21,7 @@ export const serviceStepService = {
       query: {
         page: query.page,
         limit: query.limit ?? 100,
-        businessLineId: query.businessLineId,
+        serviceKind: query.serviceKind,
         isActive: query.isActive,
         search: query.search,
         includeDeleted: query.includeDeleted,

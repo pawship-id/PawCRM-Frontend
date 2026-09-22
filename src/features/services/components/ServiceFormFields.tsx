@@ -18,7 +18,12 @@ import { Label } from "@/components/ui/label";
 import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
 import { useServiceSteps } from "@/hooks/useServiceSteps";
 import { cn } from "@/lib/utils";
-import type { ServiceLocation, ServiceVariantAxis, VariantAxisKey } from "@/types/api";
+import type {
+  ServiceKind,
+  ServiceLocation,
+  ServiceVariantAxis,
+  VariantAxisKey,
+} from "@/types/api";
 
 import { MAX_VARIANTS, type VariantAxisDef, type VariantCombo } from "../variantAxes";
 import {
@@ -424,11 +429,12 @@ export function StringListField({
 }
 
 /**
- * The service's tahapan, picked from its business line's list (14 September
- * 2026) — they were free text before.
+ * The service's tahapan, picked from its KELOMPOK LAYANAN's list (14 September
+ * 2026; by business line until 22 September) — they were free text before.
  *
- * NO LINE, NO LIST: the picker stays off and says "Pilih lini bisnis dulu"
- * until the Identitas card has one.
+ * NO KIND, NO LIST: the picker stays off and says "Pilih kelompok layanan dulu"
+ * until the Identitas card has one. An add-on has no kind of its own; its step
+ * is set in Pengaturan › Layanan › Add-on.
  *
  * A ROW THAT CANNOT BE ADDED AGAIN — retired on the list, or not on it — says
  * so beside its name and can still be removed.
@@ -440,7 +446,8 @@ export function StringListField({
  * save would fail on them otherwise.
  */
 export function ServiceStepsField({
-  businessLineId,
+  serviceKind,
+  addon = false,
   sessions,
   kept,
   maxItems,
@@ -449,9 +456,11 @@ export function ServiceStepsField({
   disabled,
   onChange,
 }: {
-  businessLineId: string;
+  serviceKind: ServiceKind | "";
+  /** An add-on — no Kelompok layanan, so no list to pick from here. */
+  addon?: boolean;
   sessions: string[];
-  /** Names the server keeps whatever the list says — stored, same line. */
+  /** Names the server keeps whatever the list says — stored, same kind. */
   kept: string[];
   maxItems: number;
   mayAddToList: boolean;
@@ -460,7 +469,7 @@ export function ServiceStepsField({
   /** A functional update: the quick add answers after an await. */
   onChange: (update: (current: string[]) => string[]) => void;
 }) {
-  const list = useServiceSteps(businessLineId || null);
+  const list = useServiceSteps(serviceKind || null);
   const keptKeys = new Set(kept.map((name) => name.trim().toLowerCase()));
   const flags = sessions.map((name) => serviceStepFlag(name, list));
   const refused = sessions.filter(
@@ -474,8 +483,8 @@ export function ServiceStepsField({
       <div>
         <p className="text-sm font-medium">Tahapan</p>
         <p className="mt-1 text-xs text-muted">
-          Urutan pengerjaannya, dipilih dari daftar tahapan lini bisnisnya — mis.
-          Mandi → Gunting → Blow dry.
+          Urutan pengerjaannya, dipilih dari daftar tahapan kelompok layanannya —
+          mis. Mandi → Gunting → Blow dry.
         </p>
       </div>
 
@@ -509,19 +518,21 @@ export function ServiceStepsField({
       {refused.length > 0 && (
         <Alert variant="warning">
           {refused.map((name) => `“${name}”`).join(", ")} tidak ada di daftar
-          tahapan aktif lini bisnis ini. Hapus, lalu pilih penggantinya dari
+          tahapan aktif kelompok layanan ini. Hapus, lalu pilih penggantinya dari
           daftar — kalau tidak, layanan ini ditolak saat disimpan.
         </Alert>
       )}
 
       <ServiceStepPicker
-        businessLineId={businessLineId}
+        serviceKind={serviceKind}
         taken={sessions}
         mayAddToList={mayAddToList}
         disabled={disabled}
         disabledReason={
-          !businessLineId
-            ? "Pilih lini bisnis dulu."
+          addon
+            ? "Tahapan add-on diatur di Pengaturan › Layanan › Add-on."
+            : !serviceKind
+              ? "Pilih kelompok layanan dulu."
             : full
               ? `Maksimal ${maxItems} tahapan.`
               : null

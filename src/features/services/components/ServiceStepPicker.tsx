@@ -15,7 +15,7 @@ import { invalidateServiceSteps, useServiceSteps } from "@/hooks/useServiceSteps
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { serviceStepService } from "@/services/serviceStep.service";
-import type { ServiceStep } from "@/types/api";
+import type { ServiceKind, ServiceStep } from "@/types/api";
 
 /** `NAME_MAX_LENGTH` in serviceStep.model.js — what a booking turn can hold. */
 export const SERVICE_STEP_NAME_MAX_LENGTH = 60;
@@ -54,7 +54,7 @@ export function serviceStepFlag(
 
 /**
  * The server's sentence(s) for a refused `sessions` — "'Spa' belum ada di
- * daftar tahapan lini ini", "Tahapan 'Blow dry' sudah dinonaktifkan" — or null
+ * daftar tahapan kelompok layanan ini", "Tahapan 'Blow dry' sudah dinonaktifkan" — or null
  * when the error is about something else. Already in Bahasa, so shown as sent.
  */
 export function sessionsRefusal(error: unknown): string | null {
@@ -95,13 +95,13 @@ const ROW =
  * chosen: the service form and the Tahapan card on a grooming service's detail
  * page (decided 14 September 2026).
  *
- * WHAT IT OFFERS is the business line's tahapan list (`useServiceSteps`):
+ * WHAT IT OFFERS is the Kelompok layanan's tahapan list (`useServiceSteps`):
  * ACTIVE steps, in the list's order, minus the ones the service already has —
  * matched case-insensitively, so "mandi" hides "Mandi". The server refuses any
  * other name on save, so offering one would be a list that lies.
  *
  * A NAME NOT ON THE LIST can be put on it from here — "Tambah “X” ke daftar
- * tahapan" saves it to the line's list at once (`POST /service-steps`, which
+ * tahapan" saves it to the kind's list at once (`POST /service-steps`, which
  * needs `services:update`), and the service gets the name as the list returned
  * it. Only when `mayAddToList`: a role without the grant is told the name is not
  * on the list instead of being offered a button the API refuses.
@@ -114,7 +114,7 @@ const ROW =
  * draft they rendered with.
  */
 export function ServiceStepPicker({
-  businessLineId,
+  serviceKind,
   taken,
   onPick,
   mayAddToList,
@@ -122,8 +122,8 @@ export function ServiceStepPicker({
   disabledReason = null,
   className,
 }: {
-  /** The service's line. Empty asks for nothing — see `disabledReason`. */
-  businessLineId: string | null | undefined;
+  /** The service's Kelompok layanan. Empty asks for nothing — see `disabledReason`. */
+  serviceKind: ServiceKind | "" | null | undefined;
   /** What the service already lists; hidden from the options. */
   taken: string[];
   onPick: (name: string) => void;
@@ -131,11 +131,11 @@ export function ServiceStepPicker({
   mayAddToList: boolean;
   /** Off without saying why — a save in flight. */
   disabled?: boolean;
-  /** Off, and this sentence beside the trigger — "Pilih lini bisnis dulu." */
+  /** Off, and this sentence beside the trigger — "Pilih kelompok layanan dulu." */
   disabledReason?: string | null;
   className?: string;
 }) {
-  const lineId = businessLineId ?? "";
+  const lineId = serviceKind || null;
   const { steps, loading, error, stepFor, reload } = useServiceSteps(lineId);
 
   const [open, setOpen] = useState(false);
@@ -143,7 +143,7 @@ export function ServiceStepPicker({
   const [adding, setAdding] = useState<string | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
 
-  const off = disabled || Boolean(disabledReason) || lineId === "";
+  const off = disabled || Boolean(disabledReason) || lineId === null;
   const takenKeys = new Set(taken.map(keyOf));
 
   const typed = query.trim().replace(/\s+/g, " ");
@@ -180,7 +180,7 @@ export function ServiceStepPicker({
     setAddError(null);
     try {
       const step = await serviceStepService.create({
-        businessLineId: lineId,
+        serviceKind: lineId,
         name,
       });
       invalidateServiceSteps(lineId);
@@ -293,7 +293,7 @@ export function ServiceStepPicker({
                 )}
                 {typedMissing && !mayAddToList && (
                   <p className="px-2 py-1.5 text-sm text-muted">
-                    “{typed}” belum ada di daftar tahapan lini ini.
+                    “{typed}” belum ada di daftar tahapan kelompok layanan ini.
                   </p>
                 )}
                 {addError && (
@@ -305,7 +305,7 @@ export function ServiceStepPicker({
                 {matches.length > 0 ? (
                   <>
                     <p className="px-2 pt-1.5 pb-1 text-xs text-muted">
-                      Daftar tahapan lini ini
+                      Daftar tahapan kelompok layanan ini
                     </p>
                     {matches.map((step) => (
                       <button
@@ -324,7 +324,7 @@ export function ServiceStepPicker({
                     <p className="px-2 py-1.5 text-sm text-muted">
                       {available.length === 0 && steps.some((step) => step.isActive)
                         ? "Semua tahapan di daftar sudah dipakai layanan ini."
-                        : "Belum ada tahapan di daftar lini ini."}
+                        : "Belum ada tahapan di daftar kelompok layanan ini."}
                       {mayAddToList && " Ketik nama untuk menambahkannya."}
                     </p>
                   )

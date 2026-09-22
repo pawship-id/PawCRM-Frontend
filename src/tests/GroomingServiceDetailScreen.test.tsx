@@ -530,11 +530,11 @@ describe("GroomingServiceDetailScreen", () => {
     return screen.findByLabelText("Cari tahapan");
   };
 
-  it("offers only the line's active steps the service does not list yet, and removes one", async () => {
+  it("offers only the kind's active steps the service does not list yet, and removes one", async () => {
     primeServiceSteps(serviceStepService.list, [
       ...SERVICE_STEP_FIXTURES,
       makeServiceStep({ name: "Spa", sortOrder: 3, isActive: false }),
-      makeServiceStep({ name: "Kandang", businessLineId: "bl-hotel" }),
+      makeServiceStep({ name: "Kandang", serviceKind: "hotel" }),
     ]);
 
     renderDetail();
@@ -547,7 +547,7 @@ describe("GroomingServiceDetailScreen", () => {
     }
     await userEvent.click(await screen.findByRole("button", { name: "Gunting" }));
     expect(serviceStepService.list).toHaveBeenCalledWith(
-      expect.objectContaining({ businessLineId: "bl-grooming" }),
+      expect.objectContaining({ serviceKind: "grooming" }),
     );
     expect(screen.getByLabelText("Bobot Gunting (%)")).toHaveValue("");
     expect(
@@ -595,7 +595,7 @@ describe("GroomingServiceDetailScreen", () => {
 
     await waitFor(() =>
       expect(serviceStepService.create).toHaveBeenCalledWith({
-        businessLineId: "bl-grooming",
+        serviceKind: "grooming",
         name: "potong kuku",
       }),
     );

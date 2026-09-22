@@ -3716,8 +3716,11 @@ export interface UpdatePetOptionInput {
 export interface ServiceStep {
   _id: string;
   tenantId: string;
-  /** Fixed for life — each line keeps its own list. */
-  businessLineId: string;
+  /**
+   * The Kelompok layanan it belongs to — fixed for life; each kind keeps its own
+   * list (22 September 2026; it was the business line before).
+   */
+  serviceKind: ServiceKind;
   name: string;
   /** The lowercased name the list is unique on — "Mandi" and "mandi" are one step. */
   nameKey: string;
@@ -3729,7 +3732,7 @@ export interface ServiceStep {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
-  /** Live services of the line listing this step. Present on list reads. */
+  /** Live services of the kind listing this step. Present on list reads. */
   serviceCount?: number;
   /** On a PATCH that renamed it: how many services were rewritten. */
   renamedServiceCount?: number;
@@ -3780,7 +3783,7 @@ export type UpdateZoneInput = Partial<CreateZoneInput>;
 export interface ServiceStepListQuery {
   page?: number;
   limit?: number;
-  businessLineId?: string;
+  serviceKind?: ServiceKind;
   isActive?: boolean;
   search?: string;
   includeDeleted?: boolean;
@@ -3791,7 +3794,7 @@ export interface ServiceStepListQuery {
  * add a missing step on the spot). 409 when the line already has the name.
  */
 export interface CreateServiceStepInput {
-  businessLineId: string;
+  serviceKind: ServiceKind;
   /** ≤ 60 characters — what a booking turn can hold. */
   name: string;
   sortOrder?: number;

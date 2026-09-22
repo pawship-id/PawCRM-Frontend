@@ -22,7 +22,7 @@ import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
-import type { Service, UpdateServiceInput } from "@/types/api";
+import type { ServiceKind, Service, UpdateServiceInput } from "@/types/api";
 
 import { statusOf } from "../serviceDisplay";
 import {
@@ -96,7 +96,10 @@ export function GroomingServiceStepsEditor({
   mayUpdate,
   addons,
   onSaved,
+  serviceKind: moduleKind,
 }: {
+  /** The module's kind — only for an old service that has none of its own. */
+  serviceKind?: ServiceKind;
   service: Service;
   /** `services:update` — without it everything is shown and nothing is editable. */
   mayUpdate: boolean;
@@ -118,7 +121,9 @@ export function GroomingServiceStepsEditor({
     daftar" words on a row are worth knowing to a reader too, and the list is
     `services:read`. Shared with the picker below — one fetch per line.
   */
-  const stepList = useServiceSteps(service.businessLineId);
+  /* The service's own Kelompok layanan's list (22 September 2026). */
+  const kind = service.serviceKind ?? moduleKind ?? null;
+  const stepList = useServiceSteps(kind);
 
   const disabled = !mayUpdate || saving;
   const storedAddonIds = service.addonServiceIds ?? [];
@@ -185,11 +190,11 @@ export function GroomingServiceStepsEditor({
     } catch (err) {
       /*
         A REFUSED TAHAPAN says which one and why, in Bahasa, in `details` —
-        "'Spa' belum ada di daftar tahapan lini ini". The list changed since it
+        "'Spa' belum ada di daftar tahapan kelompok layanan ini". The list changed since it
         was read, so it is read again and the rows' words follow.
       */
       const refusal = sessionsRefusal(err);
-      if (refusal) invalidateServiceSteps(service.businessLineId);
+      if (refusal) invalidateServiceSteps(kind);
       setSaveError(
         refusal ??
           (err instanceof ApiError
@@ -342,7 +347,7 @@ export function GroomingServiceStepsEditor({
         {mayUpdate && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <ServiceStepPicker
-              businessLineId={service.businessLineId}
+              serviceKind={kind}
               taken={draft.sessions}
               mayAddToList={mayUpdate}
               disabled={saving}

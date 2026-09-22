@@ -545,19 +545,18 @@ describe("ServiceSettingsScreen", () => {
     expect(screen.getByRole("button", { name: "Simpan add-on" })).toBeDisabled();
   });
 
-  it("sends no request for lines, and says why, for a role without businessLines:read", async () => {
+  it("shows Tahapan by Kelompok layanan without asking for business lines (22 September 2026)", async () => {
     renderWithAuth(<ServiceSettingsScreen initialSection="tahapan" />, {
       isSuperAdmin: false,
       permissions: [{ feature: "services", actions: ["read"] }],
     });
 
     expect(
-      await screen.findByText(/belum bisa melihat daftar lini bisnis/),
+      await screen.findByRole("group", { name: "Kelompok layanan" }),
     ).toBeInTheDocument();
     expect(businessLineService.list).not.toHaveBeenCalled();
-    // No figure it could not have known.
-    expect(rail("Tahapan")).toHaveTextContent(/^Tahapan$/);
     // Nothing to press without the grants.
     expect(screen.queryByRole("button", { name: /Tambah/ })).toBeNull();
   });
+
 });

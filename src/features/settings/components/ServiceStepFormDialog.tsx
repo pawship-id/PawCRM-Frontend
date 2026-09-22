@@ -1,5 +1,6 @@
 "use client";
 
+import type { StepGroup } from "../serviceSteps";
 import { useState } from "react";
 
 import { Alert, Spinner, TextField } from "@/components";
@@ -13,7 +14,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiError } from "@/services/api-error";
-import type { BusinessLine } from "@/services/businessLine.service";
 import { serviceStepService } from "@/services/serviceStep.service";
 import { swalToast } from "@/lib/swal";
 import type { ServiceStep } from "@/types/api";
@@ -21,7 +21,7 @@ import type { ServiceStep } from "@/types/api";
 import { SERVICE_STEP_NAME_MAX_LENGTH, stepNameOf } from "../serviceSteps";
 
 /**
- * Add a tahapan to one line's list, or rename one.
+ * Add a tahapan to one Kelompok layanan's list, or rename one.
  *
  * A DIALOG, NOT A ROUTE, on PetOptionFormDialog's grounds: one field, the
  * common case is adding three in a row, and the list staying on screen is what
@@ -46,8 +46,8 @@ export function ServiceStepFormDialog({
   onClose,
   onSaved,
 }: {
-  /** The line a new step goes into — the pill that was on. */
-  line: BusinessLine;
+  /** The Kelompok layanan a new step goes into — the pill that was on. */
+  line: StepGroup;
   /** Present to rename that step; absent to add one. */
   step?: ServiceStep;
   onClose: () => void;
@@ -100,7 +100,7 @@ export function ServiceStepFormDialog({
         );
       } else {
         await serviceStepService.create({
-          businessLineId: line._id,
+          serviceKind: line.serviceKind,
           name: cleaned,
         });
         onSaved();

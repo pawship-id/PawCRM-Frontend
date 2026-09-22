@@ -451,6 +451,7 @@ export function GroomingServiceDetailScreen({
             key={service._id}
             service={service}
             mayUpdate={mayUpdate}
+            serviceKind={serviceLine.serviceKind}
             addons={addons}
             onSaved={replace}
           />

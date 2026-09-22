@@ -2,7 +2,7 @@ import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
 import type { ServiceStep } from "@/types/api";
 
 /**
- * Tahapan lists for a suite — what `useServiceSteps(lineId)` loads from
+ * Tahapan lists for a suite — what `useServiceSteps(kind)` loads from
  * GET /api/service-steps.
  *
  * Usage:
@@ -10,7 +10,7 @@ import type { ServiceStep } from "@/types/api";
  *   jest.mock("@/services/serviceStep.service");
  *   beforeEach(() => primeServiceSteps(serviceStepService.list, [makeServiceStep(…)]));
  *
- * The mock answers every line with the steps whose `businessLineId` matches
+ * The mock answers every kind with the steps whose `serviceKind` matches
  * the one asked for, and the shared cache is dropped so the previous test's
  * list is not what renders.
  */
@@ -23,7 +23,7 @@ export function makeServiceStep(
   return {
     _id: `step-${nameKey.replace(/\s+/g, "-")}`,
     tenantId: "t1",
-    businessLineId: "bl-grooming",
+    serviceKind: "grooming",
     nameKey,
     sortOrder: 0,
     isActive: true,
@@ -36,7 +36,7 @@ export function makeServiceStep(
   };
 }
 
-/** Mandi → Gunting → Blow dry on the grooming line. */
+/** Mandi → Gunting → Blow dry, Grooming's list. */
 export const SERVICE_STEP_FIXTURES: ServiceStep[] = ["Mandi", "Gunting", "Blow dry"].map(
   (name, sortOrder) => makeServiceStep({ name, sortOrder }),
 );
@@ -46,10 +46,9 @@ export function primeServiceSteps(
   steps: ServiceStep[] = SERVICE_STEP_FIXTURES,
 ) {
   (list as jest.Mock).mockImplementation(
-    async (query: { businessLineId?: string } = {}) => {
+    async (query: { serviceKind?: string } = {}) => {
       const items = steps.filter(
-        (step) =>
-          !query.businessLineId || step.businessLineId === query.businessLineId,
+        (step) => !query.serviceKind || step.serviceKind === query.serviceKind,
       );
       return {
         items,

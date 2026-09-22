@@ -1,5 +1,6 @@
 "use client";
 
+import type { StepGroup } from "../serviceSteps";
 import { useState } from "react";
 import {
   ArrowDown,
@@ -31,7 +32,6 @@ import {
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
 import { ApiError } from "@/services/api-error";
-import type { BusinessLine } from "@/services/businessLine.service";
 import { serviceStepService } from "@/services/serviceStep.service";
 import { swalToast } from "@/lib/swal";
 import type { ServiceStep } from "@/types/api";
@@ -40,7 +40,7 @@ import { reorderPatches } from "../sortOrder";
 import { ListItemStatus } from "./ListItemStatus";
 
 /**
- * One business line's tahapan and their row actions.
+ * One Kelompok layanan's tahapan and their row actions.
  *
  * PetOptionsTable's shape, kept on purpose — the two screens sit one card apart
  * and are used by the same person: rows arrive sorted and narrowed to one line,
@@ -83,8 +83,8 @@ export function ServiceStepsTable({
   onRename,
   onChanged,
 }: {
-  line: BusinessLine;
-  /** One line's steps in display order — deleted ones only when shown. */
+  line: StepGroup;
+  /** One kind's steps in display order — deleted ones only when shown. */
   rows: ServiceStep[];
   loading: boolean;
   onRename: (step: ServiceStep) => void;

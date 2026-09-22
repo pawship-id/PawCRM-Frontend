@@ -1,4 +1,5 @@
 import type { ServiceStep } from "@/types/api";
+import { SERVICE_KIND_LABELS, SERVICE_KINDS, type ServiceKind } from "@/types/api";
 
 import { SERVICE_SETTINGS_PATH } from "./petOptions";
 
@@ -25,3 +26,18 @@ export function byStepOrder(a: ServiceStep, b: ServiceStep) {
 export function stepNameOf(raw: string) {
   return raw.trim().replace(/\s+/g, " ");
 }
+
+/**
+ * The list a step belongs to, as the Tahapan screen shows it — one Kelompok
+ * layanan and its name (22 September 2026; it was a business line before).
+ */
+export interface StepGroup {
+  serviceKind: ServiceKind;
+  name: string;
+}
+
+/** Grooming, Hotel, Antar-Jemput — the Tahapan screen's pills, in this order. */
+export const STEP_GROUPS: StepGroup[] = SERVICE_KINDS.map((serviceKind) => ({
+  serviceKind,
+  name: SERVICE_KIND_LABELS[serviceKind],
+}));

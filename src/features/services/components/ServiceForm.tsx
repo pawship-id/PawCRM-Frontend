@@ -790,7 +790,7 @@ export function ServiceForm({
         const refusal = sessionsRefusal(error);
         if (refusal) {
           setSessionsError(refusal);
-          invalidateServiceSteps(businessLineId);
+          invalidateServiceSteps(serviceKind || null);
         } else if (detail?.field === "businessLineId") {
           setLineError("Lini bisnis ini tidak ditemukan lagi. Pilih yang lain.");
         } else if (detail?.field === "branchIds") {
@@ -1110,12 +1110,14 @@ export function ServiceForm({
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
             <ServiceStepsField
-              businessLineId={businessLineId}
+              serviceKind={serviceType === "main" ? serviceKind : ""}
+              addon={serviceType === "addon"}
               sessions={sessions}
-              // The server keeps what this service stored on this same line,
-              // retired or not; a moved service keeps nothing for free.
+              // The server keeps what this service stored under this same kind
+              // (or under none yet), retired or not; a moved one keeps nothing.
               kept={
-                service && businessLineId === service.businessLineId
+                service &&
+                (!service.serviceKind || serviceKind === service.serviceKind)
                   ? (service.sessions ?? [])
                   : []
               }

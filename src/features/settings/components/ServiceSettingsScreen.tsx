@@ -4,7 +4,6 @@ import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components";
-import { usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import type { PetOptionType } from "@/types/api";
 
@@ -71,11 +70,9 @@ export function ServiceSettingsScreen({
   initialSection?: ServiceSettingsSection;
 }) {
   const router = useRouter();
-  const { can } = usePermissions();
-  const mayReadLines = can("businessLines", "read");
 
   const petOptions = usePetOptionList();
-  const serviceSteps = useServiceStepList(mayReadLines);
+  const serviceSteps = useServiceStepList();
   const addons = useAddonServiceList();
   const zones = useZoneList();
   const variantOptions = useVariantOptions();
@@ -107,7 +104,6 @@ export function ServiceSettingsScreen({
         );
       }
       case "tahapan":
-        if (!mayReadLines) return;
         if (serviceSteps.loading && serviceSteps.steps.length === 0) return;
         return String(live(serviceSteps.steps));
       case "addon":
@@ -249,7 +245,6 @@ export function ServiceSettingsScreen({
             {section === "tahapan" && (
               <ServiceStepsPanel
                 list={serviceSteps}
-                mayReadLines={mayReadLines}
                 intro={
                   <Intro title="Bobot tidak di sini">
                     Yang dibuat di sini hanya nama tahapan. Porsi komisinya

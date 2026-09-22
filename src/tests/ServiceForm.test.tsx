@@ -137,7 +137,7 @@ beforeEach(() => {
   // Mandi → Gunting → Blow dry, on this suite's line.
   primeServiceSteps(
     serviceStepService.list,
-    SERVICE_STEP_FIXTURES.map((step) => ({ ...step, businessLineId: LINE_ID })),
+    SERVICE_STEP_FIXTURES,
   );
   mockedBusinessLineService.list.mockResolvedValue({
     items: [
@@ -1097,36 +1097,41 @@ describe("ServiceForm — add-ons", () => {
   filled must be every box and exactly 100 — the server answers 400 otherwise.
 */
 /*
-  ─── TAHAPAN COME FROM THE LINE'S LIST — 14 September 2026 ────────────────────
+  ─── TAHAPAN COME FROM THE KIND'S LIST — 14 September 2026 ────────────────────
 
-  Free text until then. The server now refuses a name that is not an active step
-  of the service's line (keeping only what the service already stored there), so
-  the form offers the list, and a missing name is added to the list on the spot.
+  Free text until then. The server refuses a name that is not an active step of
+  the service's Kelompok layanan (keeping only what the service already stored
+  there), so the form offers the list, and a missing name is added to the list
+  on the spot. (Per business line until 22 September 2026.)
 */
-describe("ServiceForm — tahapan from the line's list", () => {
-  const OTHER_LINE_ID = "5a7f1f77bcf86cd7994390cc";
+describe("ServiceForm — tahapan from the kind's list", () => {
 
   const tahapanButton = () =>
     screen.getByRole("button", { name: /tambah tahapan/i });
 
-  it("keeps the picker off until a business line is chosen", async () => {
-    await renderNew();
+  it("keeps the picker off until a Kelompok layanan is chosen", async () => {
+    renderWithAuth(<ServiceForm />);
+    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
 
     expect(tahapanButton()).toBeDisabled();
-    expect(screen.getByText("Pilih lini bisnis dulu.")).toBeVisible();
+    expect(screen.getByText("Pilih kelompok layanan dulu.")).toBeVisible();
     expect(serviceStepService.list).not.toHaveBeenCalled();
 
-    await pickLine();
+    await userEvent.click(screen.getByRole("combobox", { name: /kelompok layanan/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Grooming" }));
 
     expect(tahapanButton()).toBeEnabled();
-    expect(screen.queryByText("Pilih lini bisnis dulu.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pilih kelompok layanan dulu.")).not.toBeInTheDocument();
+    expect(serviceStepService.list).toHaveBeenCalledWith(
+      expect.objectContaining({ serviceKind: "grooming" }),
+    );
   });
 
-  it("offers only the line's active steps not already chosen, and sends the list's spelling", async () => {
+  it("offers only the kind's active steps not already chosen, and sends the list's spelling", async () => {
     primeServiceSteps(serviceStepService.list, [
-      ...SERVICE_STEP_FIXTURES.map((step) => ({ ...step, businessLineId: LINE_ID })),
-      makeServiceStep({ name: "Spa", businessLineId: LINE_ID, isActive: false, sortOrder: 3 }),
-      makeServiceStep({ name: "Kandang", businessLineId: OTHER_LINE_ID }),
+      ...SERVICE_STEP_FIXTURES,
+      makeServiceStep({ name: "Spa", isActive: false, sortOrder: 3 }),
+      makeServiceStep({ name: "Kandang", serviceKind: "hotel" }),
     ]);
     mockedServiceService.create.mockResolvedValue(serviceFixture);
     await renderNew();
@@ -1170,11 +1175,11 @@ describe("ServiceForm — tahapan from the line's list", () => {
     ]);
   });
 
-  it("adds a name missing from the list to the line's list, and takes the name it was stored as", async () => {
+  it("adds a name missing from the list to the kind's list, and takes the name it was stored as", async () => {
     jest
       .mocked(serviceStepService.create)
       .mockResolvedValue(
-        makeServiceStep({ name: "Potong kuku", businessLineId: LINE_ID, sortOrder: 3 }),
+        makeServiceStep({ name: "Potong kuku", sortOrder: 3 }),
       );
     await renderNew();
 
@@ -1187,7 +1192,7 @@ describe("ServiceForm — tahapan from the line's list", () => {
 
     await waitFor(() =>
       expect(serviceStepService.create).toHaveBeenCalledWith({
-        businessLineId: LINE_ID,
+        serviceKind: "grooming",
         name: "potong kuku",
       }),
     );
@@ -1222,6 +1227,7 @@ describe("ServiceForm — tahapan from the line's list", () => {
   });
 
   it("does not offer the quick add to a role that may not change services", async () => {
+    openedFrom("grooming");
     renderWithAuth(<ServiceForm />, {
       isSuperAdmin: false,
       permissions: [{ feature: "services", actions: ["read", "create"] }],
@@ -1233,7 +1239,7 @@ describe("ServiceForm — tahapan from the line's list", () => {
     await userEvent.type(await screen.findByLabelText("Cari tahapan"), "Spa");
 
     expect(
-      screen.getByText("“Spa” belum ada di daftar tahapan lini ini."),
+      screen.getByText("“Spa” belum ada di daftar tahapan kelompok layanan ini."),
     ).toBeVisible();
     expect(
       screen.queryByRole("button", { name: /ke daftar tahapan/ }),
@@ -1242,9 +1248,9 @@ describe("ServiceForm — tahapan from the line's list", () => {
 
   it("marks a stored tahapan that is retired or not on the list, and does not offer it again", async () => {
     primeServiceSteps(serviceStepService.list, [
-      makeServiceStep({ name: "Mandi", businessLineId: LINE_ID, sortOrder: 0 }),
-      makeServiceStep({ name: "Gunting", businessLineId: LINE_ID, sortOrder: 1 }),
-      makeServiceStep({ name: "Blow dry", businessLineId: LINE_ID, sortOrder: 2, isActive: false }),
+      makeServiceStep({ name: "Mandi", sortOrder: 0 }),
+      makeServiceStep({ name: "Gunting", sortOrder: 1 }),
+      makeServiceStep({ name: "Blow dry", sortOrder: 2, isActive: false }),
     ]);
     mockedServiceService.getById.mockResolvedValue({
       ...serviceFixture,
@@ -1276,30 +1282,22 @@ describe("ServiceForm — tahapan from the line's list", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("warns when the chosen line's list does not have the tahapan already picked", async () => {
-    mockedBusinessLineService.list.mockResolvedValue({
-      items: [
-        { _id: LINE_ID, name: "Grooming" },
-        { _id: OTHER_LINE_ID, name: "Hotel" },
-      ],
-      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
+  it("warns when the chosen kind's list does not have the tahapan already picked", async () => {
     primeServiceSteps(serviceStepService.list, [
-      ...SERVICE_STEP_FIXTURES.map((step) => ({ ...step, businessLineId: LINE_ID })),
-      makeServiceStep({ name: "Kandang", businessLineId: OTHER_LINE_ID }),
+      ...SERVICE_STEP_FIXTURES,
+      makeServiceStep({ name: "Kandang", serviceKind: "hotel" }),
     ]);
     await renderNew();
 
-    await pickLine("Grooming");
     await addSessions("Mandi");
     expect(screen.queryByText(/ditolak saat disimpan/)).not.toBeInTheDocument();
 
-    await pickLine("Hotel");
+    await userEvent.click(screen.getByRole("combobox", { name: /kelompok layanan/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Hotel" }));
 
     expect(
       await screen.findByText(
-        /“Mandi” tidak ada di daftar tahapan aktif lini bisnis ini/,
+        /“Mandi” tidak ada di daftar tahapan aktif kelompok layanan ini/,
       ),
     ).toBeVisible();
     expect(screen.getByText("belum di daftar")).toBeVisible();

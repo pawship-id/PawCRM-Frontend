@@ -1,5 +1,6 @@
 "use client";
 
+import { SERVICE_KIND_LABELS, SERVICE_KINDS } from "@/types/api";
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Plus, X } from "lucide-react";
@@ -230,16 +231,24 @@ export function AddonServicesPanel({
     }
   }
 
-  /** The step choices for one add-on: its line's live steps, plus what it holds. */
+  /**
+   * The step choices for one add-on: EVERY kind's live steps, plus what it
+   * holds (22 September 2026). An add-on has no Kelompok layanan of its own —
+   * "Parfum" goes with a grooming and a stay alike — so the choice is not
+   * narrowed; each option names its kind instead.
+   */
   function stepChoices(addon: Service) {
     return steps
       .filter(
         (step) =>
-          step.businessLineId === addon.businessLineId &&
           step.deletedAt === null &&
           (step.isActive || step._id === addon.addonStepId),
       )
-      .sort(byStepOrder);
+      .sort(
+        (a, b) =>
+          SERVICE_KINDS.indexOf(a.serviceKind) - SERVICE_KINDS.indexOf(b.serviceKind) ||
+          byStepOrder(a, b),
+      );
   }
 
   const disabled = !mayUpdate || saving;
@@ -400,7 +409,7 @@ export function AddonServicesPanel({
                           <SelectItem value={NO_STEP}>— tidak ada —</SelectItem>
                           {choices.map((step) => (
                             <SelectItem key={step._id} value={step._id}>
-                              {step.name}
+                              {step.name} · {SERVICE_KIND_LABELS[step.serviceKind]}
                               {!step.isActive && " (nonaktif)"}
                             </SelectItem>
                           ))}
