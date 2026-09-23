@@ -41,6 +41,7 @@ function clock(iso: string): string {
 
 type Row =
   | { kind: "visit"; member: BookingGroupMember }
+  | { kind: "ride"; member: BookingGroupMember }
   | { kind: "billed"; member: BookingRelated };
 
 /**
@@ -49,9 +50,12 @@ type Row =
  *
  * TWO WAYS TO BE RELATED, both listed and each said:
  *
- *   - SATU KUNJUNGAN — the same `groupId`: saved together, linked from the
- *     antar-jemput form, or with "Tautkan booking" here. These can be let go
- *     ("Lepas"), which moves THAT booking out into a visit of its own.
+ *   - SATU KUNJUNGAN — the same `groupId`: saved together or linked with
+ *     "Tautkan booking" here. These can be let go ("Lepas"), which moves THAT
+ *     booking out into a visit of its own.
+ *   - SATU ANTAR-JEMPUT — on a ride, the bookings it serves (23 September
+ *     2026). One van may serve bookings from several visits, so this is its own
+ *     list and not the group's. Let go of it in the ride's own form, not here.
  *   - SATU FAKTUR / SATU KERANJANG — billed together without anybody linking
  *     them. BO: a ride pulled onto the grooming's invoice belongs with it. Read
  *     off the bill, so there is nothing here to undo — the bill is the fact.
@@ -73,6 +77,7 @@ export function BookingRelatedCard({
 
   const rows: Row[] = [
     ...(booking.group ?? []).map((member) => ({ kind: "visit" as const, member })),
+    ...(booking.linked ?? []).map((member) => ({ kind: "ride" as const, member })),
     ...(booking.related ?? []).map((member) => ({ kind: "billed" as const, member })),
   ];
   const cancelled = booking.status === "cancelled";
@@ -141,14 +146,20 @@ export function BookingRelatedCard({
                   <span
                     className={cn(
                       "w-fit rounded-full px-2 py-0.5 text-xs font-medium",
-                      kind === "visit" ? "bg-tint-neutral text-muted" : "bg-tint-info text-info",
+                      kind === "visit"
+                        ? "bg-tint-neutral text-muted"
+                        : kind === "ride"
+                          ? "bg-tint-brand text-primary"
+                          : "bg-tint-info text-info",
                     )}
                   >
                     {kind === "visit"
                       ? "Satu kunjungan"
-                      : member.via === "invoice"
-                        ? `Satu faktur${member.documentNumber ? ` · ${member.documentNumber}` : ""}`
-                        : `Satu keranjang${member.documentNumber ? ` · ${member.documentNumber}` : ""}`}
+                      : kind === "ride"
+                        ? "Satu antar-jemput"
+                        : member.via === "invoice"
+                          ? `Satu faktur${member.documentNumber ? ` · ${member.documentNumber}` : ""}`
+                          : `Satu keranjang${member.documentNumber ? ` · ${member.documentNumber}` : ""}`}
                   </span>
                 </Link>
                 {kind === "visit" && (

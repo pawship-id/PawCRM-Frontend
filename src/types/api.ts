@@ -2476,8 +2476,19 @@ export interface Booking {
   passengerPetIds?: string[];
   passengers?: { _id: string; name: string | null }[];
   /**
-   * The OTHER live rides of this booking's visit — on a grooming booking, the
-   * van that brings it and takes it home. Read, never stored on the grooming.
+   * THE BOOKINGS THIS RIDE SERVES (23 September 2026) — set only on a ride, and
+   * what a `per_pet` fare is multiplied by, since one booking is one animal.
+   * An animal riding along with no booking of its own is in `passengers` and
+   * costs nothing here.
+   */
+  linkedBookingIds?: string[];
+  /** Those bookings in full — `GET /bookings/:id` only, like `group`. */
+  linked?: BookingGroupMember[];
+  /**
+   * EVERY LIVE RIDE THIS BOOKING HAS — on a grooming booking, the van that
+   * brings it and takes it home. Read, never stored on the grooming: a ride of
+   * the same visit, or one that names this booking in `linkedBookingIds`, which
+   * is how two bookings from different visits share one van.
    */
   trips?: BookingTrip[];
   /** The one main service, with its add-ons and sessions under it. */
@@ -3324,6 +3335,12 @@ export interface CreateBookingEntry {
   tripLeg?: TripLeg | null;
   /** The other animals on the ride; refused without `tripLeg`. */
   passengerPetIds?: string[];
+  /**
+   * The bookings this ride serves; refused without `tripLeg`. The same
+   * customer's, still live, and never another ride. A `per_pet` fare is the
+   * catalogue's price once per booking here.
+   */
+  linkedBookingIds?: string[];
   internalNotes?: string | null;
   customerNotes?: string | null;
   belongings?: { name: string; checkedInAt?: string | null }[];
@@ -3407,8 +3424,10 @@ export interface UpdateBookingInput {
   deliveryRequested?: boolean;
   tripAddress?: string | null;
   tripLeg?: TripLeg | null;
-  /** Re-quotes a `per_pet` ride. */
+  /** Who else is in the van. Does NOT re-quote — see `linkedBookingIds`. */
   passengerPetIds?: string[];
+  /** The bookings the ride serves. Re-quotes a `per_pet` ride. */
+  linkedBookingIds?: string[];
   forceClash?: boolean;
 }
 /**

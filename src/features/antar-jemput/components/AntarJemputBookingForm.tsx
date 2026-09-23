@@ -130,6 +130,13 @@ function choicesKey(choices: readonly VariantChoice[]): string {
  * animal as two bookings would). "Pulang-pergi" saves TWO rides, the pickup
  * then the delivery, in one visit.
  *
+ * ─── AND ONE RIDE SERVES MANY (23 September 2026) ──────────────────────────
+ *
+ * Two dogs fetched together for two separate grooming bookings are ONE ride
+ * that both of them point at. "Tautkan ke booking" is therefore a list, not a
+ * choice, and it is what a `per_pet` fare is multiplied by — one booking is one
+ * animal, so an animal riding along without one is not billed for the seat.
+ *
  * ─── WHAT IT DOES THAT GROOMING'S FORM DOES THE SAME WAY ────────────────────
  *
  * The customer picker, the price rows (`BookingPriceControls`), the variant
@@ -140,11 +147,13 @@ function choicesKey(choices: readonly VariantChoice[]): string {
  *
  * ─── WHAT IS ITS OWN ────────────────────────────────────────────────────────
  *
- * "Tautkan ke booking" (note 2) joins the ride to another booking of the same
- * customer — `groupId` on the save — so each shows the other under Booking
- * terkait. `?bookingId=` arrives from that booking's own "+ Antar-jemput" and
- * fills the customer, the animal, the branch, the day and the link. The time is
- * picked every half hour (note 8).
+ * "Tautkan ke booking" (note 2) names the bookings this ride serves —
+ * `linkedBookingIds` on the save, written on the ride alone, so nobody else's
+ * visit moves and bookings made days apart can share one van. THE ANIMALS ARE
+ * PICKED FIRST and the list offers only their bookings, never another ride.
+ * `?bookingId=` arrives from that booking's own "+ Antar-jemput" and fills the
+ * customer, the animal, the branch, the day and the link. The time is picked
+ * every half hour (note 8).
  *
  * ─── EDITING ────────────────────────────────────────────────────────────────
  *
@@ -191,8 +200,8 @@ export function AntarJemputBookingForm({
     delivery: { date: todayValue(), time: slotAtOrAfter(new Date(Date.now() + 3 * 3_600_000)) },
   }));
   const [address, setAddress] = useState("");
-  /** The booking this ride joins — its `_id`; "" is a visit of its own. */
-  const [linkId, setLinkId] = useState("");
+  /** The bookings this ride serves — empty is a visit of its own. */
+  const [linkIds, setLinkIds] = useState<string[]>([]);
 
   const [serviceId, setServiceId] = useState("");
   const [addonIds, setAddonIds] = useState<string[]>([]);
@@ -220,7 +229,14 @@ export function AntarJemputBookingForm({
     branchPin: branch?.location,
     customerPin: customer?.location,
   });
-  const visits = useVisitBookings(editing ? null : (customer?._id ?? null), bookingId);
+  /*
+    THE ANIMALS DECIDE WHAT MAY BE LINKED (23 September 2026): only bookings of
+    the animals in the van, and never another ride — a ride cannot serve a ride.
+  */
+  const visits = useVisitBookings(editing ? null : (customer?._id ?? null), bookingId, {
+    petIds: riders,
+    excludeRides: true,
+  });
 
   const legs: TripLeg[] = editing
     ? [legChoice === "both" ? "pickup" : legChoice]
@@ -319,6 +335,8 @@ export function AntarJemputBookingForm({
           setOriginal(source);
           setLegChoice(leg);
           setRiders([source.petId, ...(source.passengerPetIds ?? [])]);
+          /* Not editable here, but the price preview is multiplied by them. */
+          setLinkIds(source.linkedBookingIds ?? []);
           setSchedules((prev) => ({
             ...prev,
             [leg]: { date: dateOf(at), time: slotAtOrBefore(at) },
@@ -341,7 +359,8 @@ export function AntarJemputBookingForm({
           */
           const end = new Date(at.getTime() + (source.totalDurationMin ?? 60) * 60_000);
           setRiders([source.petId]);
-          setLinkId(source._id);
+          /* A ride cannot serve a ride — "+ Antar-jemput" on one only copies its ends. */
+          setLinkIds(source.tripLeg ? [] : [source._id]);
           setAddress(owner.address ?? "");
           if (source.tripLeg) {
             const leg = otherLeg(source.tripLeg);
@@ -408,14 +427,19 @@ export function AntarJemputBookingForm({
   /* Arah is answered by the direction — it is not asked as a select. */
   const askedCards = cards.filter((card) => card.axisKey !== arah?.card.axisKey);
   const perAnimal = service?.billingUnit === "per_pet";
-  const riderCount = Math.max(1, riders.length);
+  /*
+    WHAT A per_pet FARE IS MULTIPLIED BY — the bookings this ride serves, since
+    one booking is one animal. Mirrors `chargedRidersOf` on the server; an
+    animal riding along with no booking of its own is not counted here.
+  */
+  const chargedPets = Math.max(1, linkIds.length);
 
   const priced = legs.map((leg) => {
     const choices = choicesForLeg(service, cards, leg, variantChoices);
     const quote = variant.quote(service, primary, choices);
     const unit = quote.price === null ? null : toMinor(quote.price);
     const quoted =
-      unit === null ? null : toDecimalString(perAnimal ? unit * BigInt(riderCount) : unit);
+      unit === null ? null : toDecimalString(perAnimal ? unit * BigInt(chargedPets) : unit);
     const main = priceLine(quoted, mayPrice ? mainDrafts[leg] : BLANK_PRICE);
     const addonLines = addons.map((addon) => {
       const addonQuote = variant.quote(addon, primary, choices);
@@ -483,15 +507,31 @@ export function AntarJemputBookingForm({
     setCustomer(next);
     setPets([]);
     setRiders([]);
-    setLinkId("");
+    setLinkIds([]);
     setAddress(next.address ?? "");
     setClash(null);
     setRefusal(null);
   }
 
   function toggleRider(petId: string) {
-    setRiders((prev) =>
-      prev.includes(petId) ? prev.filter((id) => id !== petId) : [...prev, petId],
+    const next = riders.includes(petId)
+      ? riders.filter((id) => id !== petId)
+      : [...riders, petId];
+
+    setRiders(next);
+    /* A booking of an animal that left the van cannot be served by it. */
+    setLinkIds((prev) =>
+      prev.filter((id) => {
+        const booking = visits.bookings.find((one) => one._id === id);
+        return !booking || next.includes(booking.petId);
+      }),
+    );
+    setClash(null);
+  }
+
+  function toggleLink(id: string) {
+    setLinkIds((prev) =>
+      prev.includes(id) ? prev.filter((one) => one !== id) : [...prev, id],
     );
     setClash(null);
   }
@@ -524,7 +564,12 @@ export function AntarJemputBookingForm({
       variantChoices: choicesForLeg(service, cards, leg, variantChoices),
     };
 
-    return { ...toEntry(draft, serviceOf), tripLeg: leg, passengerPetIds: passengers };
+    return {
+      ...toEntry(draft, serviceOf),
+      tripLeg: leg,
+      passengerPetIds: passengers,
+      linkedBookingIds: linkIds,
+    };
   }
 
   /** Null — the customer's stored address — when it was left as it is. */
@@ -548,8 +593,12 @@ export function AntarJemputBookingForm({
 
   async function create() {
     if (!customer) return;
-    const link = visits.bookings.find((one) => one._id === linkId);
-    let groupId = link?.groupId;
+    /*
+      ONLY THE SECOND LEG OF A PULANG-PERGI JOINS A GROUP — the first one's.
+      Serving a booking no longer moves anybody's visit: that is
+      `linkedBookingIds`, written on the ride alone (23 September 2026).
+    */
+    let groupId: string | undefined;
     const made: Booking[] = [];
 
     for (const leg of legs) {
@@ -861,7 +910,9 @@ export function AntarJemputBookingForm({
                   <p className="text-xs text-muted">
                     Hewan pertama yang dipilih jadi hewan utama booking. Yang lain
                     ikut di perjalanan yang sama
-                    {perAnimal ? " — tarif layanan ini dihitung per hewan." : "."}
+                    {perAnimal
+                      ? " — yang ditagih tarif per hewan adalah booking yang ditautkan di bawah."
+                      : "."}
                   </p>
                   {primary && !primary.size && (
                     <Alert variant="warning">
@@ -887,33 +938,60 @@ export function AntarJemputBookingForm({
 
             {/* ─── TAUTKAN ─── */}
             {!editing && (
-              <Card title="Tautkan ke booking">
-                <FilterSelect
-                  layout="form"
-                  label="Booking"
-                  ariaLabel="Tautkan ke booking"
-                  value={linkId}
-                  onChange={setLinkId}
-                  options={[
-                    { value: "", label: "Tidak ditautkan — kunjungan sendiri" },
-                    ...visits.bookings.map((booking) => ({
-                      value: booking._id,
-                      label: visitLabel(booking),
-                    })),
-                  ]}
-                  active={false}
-                  placeholder="Tidak ditautkan"
-                  searchable
-                  closeOnScroll
-                  disabled={saving || !customer || visits.loading}
-                  hint={
-                    !customer
-                      ? "Pilih pelanggannya dulu."
-                      : visits.failed
-                        ? "Daftar booking pelanggan ini tidak bisa dimuat."
-                        : "Antar-jemput ini jadi satu kunjungan dengan booking itu — keduanya saling muncul di Booking terkait."
-                  }
-                />
+              <Card
+                title="Tautkan ke booking"
+                action={
+                  linkIds.length > 0 ? (
+                    <span className={`${badge} bg-tint-neutral text-muted tabular-nums`}>
+                      {linkIds.length} booking
+                    </span>
+                  ) : null
+                }
+              >
+                {!customer ? (
+                  <p className="text-sm text-muted">
+                    Pilih pelanggannya dulu — daftar booking mengikuti pemiliknya.
+                  </p>
+                ) : riders.length === 0 ? (
+                  <p className="text-sm text-muted">
+                    Pilih hewannya dulu — yang muncul di sini cuma booking hewan
+                    yang ikut.
+                  </p>
+                ) : visits.loading ? (
+                  <p className="flex items-center gap-2 text-sm text-muted">
+                    <Spinner /> Memuat booking…
+                  </p>
+                ) : visits.failed ? (
+                  <Alert variant="error">
+                    Daftar booking pelanggan ini tidak bisa dimuat.
+                  </Alert>
+                ) : visits.bookings.length === 0 ? (
+                  <p className="text-sm text-muted">
+                    Belum ada booking untuk hewan yang dipilih. Antar-jemput ini
+                    jalan sebagai kunjungan sendiri.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    <CheckRowGroup>
+                      {visits.bookings.map((booking) => (
+                        <CheckRow
+                          key={booking._id}
+                          label={visitLabel(booking)}
+                          checked={linkIds.includes(booking._id)}
+                          disabled={saving}
+                          onCheckedChange={() => toggleLink(booking._id)}
+                        />
+                      ))}
+                    </CheckRowGroup>
+                    <p className="text-xs text-muted">
+                      Satu antar-jemput bisa menangani beberapa booking sekaligus
+                      — semuanya menunjuk ke perjalanan yang sama
+                      {perAnimal
+                        ? ", dan tarifnya dihitung per booking yang ditautkan."
+                        : ", dan tarifnya tetap sekali per perjalanan."}
+                    </p>
+                  </div>
+                )}
               </Card>
             )}
 
@@ -1112,7 +1190,7 @@ export function AntarJemputBookingForm({
                       {priced.map((row) => (
                         <PriceRow
                           key={row.leg}
-                          name={`${service.name} · ${LEG_LABEL[row.leg]}${perAnimal && riderCount > 1 ? ` · ${riderCount} hewan` : ""}`}
+                          name={`${service.name} · ${LEG_LABEL[row.leg]}${perAnimal && chargedPets > 1 ? ` · ${chargedPets} hewan` : ""}`}
                           line={row.main}
                           draft={mainDrafts[row.leg]}
                           missing={
@@ -1235,7 +1313,7 @@ export function AntarJemputBookingForm({
                       <li key={row.leg} className="flex flex-col">
                         <SummaryLine
                           label={`${LEG_LABEL[row.leg]} · ${service.name}`}
-                          detail={`${schedules[row.leg].date || "—"} · ${schedules[row.leg].time.replace(":", ".") || "—"}${perAnimal && riderCount > 1 ? ` · ${riderCount} hewan` : ""}`}
+                          detail={`${schedules[row.leg].date || "—"} · ${schedules[row.leg].time.replace(":", ".") || "—"}${perAnimal && chargedPets > 1 ? ` · ${chargedPets} hewan` : ""}`}
                           value={row.main.price === null ? "—" : money(row.main.price)}
                         />
                         {row.main.discount > 0n && (

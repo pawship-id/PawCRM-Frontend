@@ -108,13 +108,23 @@ async function pickSlot(label: string, slot: string) {
   await userEvent.click(await screen.findByRole("option", { name: slot }));
 }
 
+async function pickCustomer() {
+  await userEvent.click(
+    screen.getByRole("button", { name: /cari nama atau nomor whatsapp/i }),
+  );
+  await userEvent.click(await screen.findByRole("button", { name: /ibu rina/i }));
+}
+
 /**
- * Layanan › Antar-Jemput › Booking baru — BO's notes of 21 September 2026.
+ * Layanan › Antar-Jemput › Booking baru — BO's notes of 21 September 2026,
+ * reopened 23 September.
  *
  * WHAT IS PINNED HERE:
  *  - one ride is one booking: the first animal is its own, the rest passengers;
  *  - Pulang-pergi is TWO saves, the second into the visit the first made;
- *  - "+ Antar-jemput" from a grooming joins that grooming's visit.
+ *  - "+ Antar-jemput" from a grooming SERVES that grooming — `linkedBookingIds`
+ *    on the ride — and leaves its visit alone;
+ *  - the animals are picked before any booking is offered to link.
  */
 describe("AntarJemputBookingForm", () => {
   it("saves Pulang-pergi as two rides in one visit, the other animals riding along", async () => {
@@ -164,7 +174,7 @@ describe("AntarJemputBookingForm", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard/booking/bk-1"));
   });
 
-  it("starts from a grooming's page — its customer, animal and day — and joins its visit", async () => {
+  it("starts from a grooming's page — its customer, animal and day — and serves it", async () => {
     const groomingBooking = {
       _id: "bk-groom",
       groupId: "grp-groom",
@@ -196,15 +206,88 @@ describe("AntarJemputBookingForm", () => {
     await userEvent.click(screen.getByRole("button", { name: /simpan 2 booking/i }));
 
     await waitFor(() => expect(bookings.create).toHaveBeenCalledTimes(2));
+
+    /*
+      IT SERVES THE GROOMING, IT DOES NOT JOIN ITS VISIT (23 September 2026).
+      The ride names the booking; the grooming's own `groupId` is left alone.
+      Only the delivery joins a group — the pickup's, so pulang-pergi is one
+      visit.
+    */
+    expect(bookings.create.mock.calls[0][0]).not.toHaveProperty("groupId");
     expect(bookings.create.mock.calls[0][0]).toMatchObject({
-      groupId: "grp-groom",
       /* Half an hour before the grooming, and once its 90 minutes are done. */
       scheduledAt: new Date("2026-09-22T09:30").toISOString(),
+      bookings: [{ linkedBookingIds: ["bk-groom"] }],
     });
     expect(bookings.create.mock.calls[1][0]).toMatchObject({
       groupId: "grp-1",
       scheduledAt: new Date("2026-09-22T11:30").toISOString(),
+      bookings: [{ linkedBookingIds: ["bk-groom"] }],
     });
+  });
+
+  /*
+    NOTE 2 REOPENED (23 September 2026): the animals are picked first, and the
+    list offers only their bookings — never the other dog's, never a ride.
+  */
+  it("offers no booking to link until an animal is picked, then only that animal's", async () => {
+    bookings.list.mockResolvedValue(
+      page([
+        {
+          _id: "bk-bruno",
+          groupId: "grp-a",
+          customerId: "cust-1",
+          petId: "pet-1",
+          petName: "Bruno",
+          status: "confirmed",
+          bookingNumber: "BK-260922-001",
+          scheduledAt: new Date("2026-09-22T10:00").toISOString(),
+          tripLeg: null,
+          service: { serviceId: "svc-groom", name: "Basic Grooming", addons: [] },
+        },
+        {
+          _id: "bk-momo",
+          groupId: "grp-b",
+          customerId: "cust-1",
+          petId: "pet-2",
+          petName: "Coco",
+          status: "confirmed",
+          bookingNumber: "BK-260922-002",
+          scheduledAt: new Date("2026-09-22T10:00").toISOString(),
+          tripLeg: null,
+          service: { serviceId: "svc-groom", name: "Basic Grooming", addons: [] },
+        },
+        {
+          _id: "bk-ride",
+          groupId: "grp-c",
+          customerId: "cust-1",
+          petId: "pet-1",
+          petName: "Bruno",
+          status: "confirmed",
+          bookingNumber: "BK-260922-003",
+          scheduledAt: new Date("2026-09-22T08:00").toISOString(),
+          tripLeg: "pickup",
+          service: { serviceId: "svc-ride", name: "Antar-Jemput", addons: [] },
+        },
+      ]) as never,
+    );
+
+    renderWithAuth(<AntarJemputBookingForm />);
+
+    await pickCustomer();
+
+    expect(
+      await screen.findByText(/pilih hewannya dulu/i),
+    ).toBeInTheDocument();
+
+    await userEvent.click(await screen.findByRole("button", { name: /bruno/i }));
+
+    expect(
+      await screen.findByRole("checkbox", { name: /BK-260922-001/ }),
+    ).toBeInTheDocument();
+    /* Coco is not in the van; a ride cannot serve a ride. */
+    expect(screen.queryByRole("checkbox", { name: /BK-260922-002/ })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /BK-260922-003/ })).toBeNull();
   });
 
   it("offers the time every half hour, not as free text (BO's note 8)", async () => {

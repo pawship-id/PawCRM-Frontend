@@ -19,10 +19,24 @@ const DAYS_AHEAD = 90;
  * theirs. Cancelled ones are left out: a visit that will not happen has nothing
  * to be driven to. `excludeId` is the booking doing the linking.
  *
+ * `petIds` NARROWS IT TO THE ANIMALS CHOSEN (23 September 2026): the ride form
+ * asks which animals are in the van first, so the bookings it then offers are
+ * theirs and nobody scrolls past the other dog's. Leave it out — as the
+ * "Tautkan booking" dialog does — and every animal's bookings are offered.
+ *
+ * `excludeRides` drops antar-jemput bookings, which a ride may not serve.
+ *
  * Best effort: without `bookings:read` or on a failed read the list is empty,
  * and the field that offers it says so.
  */
-export function useVisitBookings(customerId: string | null, excludeId?: string | null) {
+export function useVisitBookings(
+  customerId: string | null,
+  excludeId?: string | null,
+  {
+    petIds = null,
+    excludeRides = false,
+  }: { petIds?: readonly string[] | null; excludeRides?: boolean } = {},
+) {
   const [state, setState] = useState<{
     key: string;
     items: Booking[];
@@ -61,10 +75,16 @@ export function useVisitBookings(customerId: string | null, excludeId?: string |
 
   const current = state.key === key && key !== "";
 
+  const wanted = petIds === null ? null : new Set(petIds);
+
   return {
     bookings: current
       ? state.items.filter(
-          (booking) => booking.status !== "cancelled" && booking._id !== excludeId,
+          (booking) =>
+            booking.status !== "cancelled" &&
+            booking._id !== excludeId &&
+            (!excludeRides || !booking.tripLeg) &&
+            (wanted === null || wanted.has(booking.petId)),
         )
       : [],
     loading: key !== "" && !current,
