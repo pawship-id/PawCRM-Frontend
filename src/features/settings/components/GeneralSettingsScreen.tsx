@@ -2,15 +2,25 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { Building2 } from "lucide-react";
 
 import { Alert, Card, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { branchHoursSummary } from "@/features/branches/hours";
 import { usePermissions } from "@/features/permissions";
-import { TenantSubscriptionBadge, useTenant } from "@/features/tenant";
+import {
+  currencyLabel,
+  fiscalYearLabel,
+  TenantSubscriptionBadge,
+  timezoneLabel,
+  useTenant,
+} from "@/features/tenant";
 import type { Branch, Tenant, Warehouse } from "@/types/api";
+import { env } from "@/utils/env";
 
 import { useBranchDirectory } from "../hooks/useBranchDirectory";
+import { useUserCount } from "../hooks/useUserCount";
 import { SETTINGS_PATHS } from "../paths";
 import {
   HubLinkCard,
@@ -30,9 +40,11 @@ import { SettingsTabsHeader } from "./SettingsHeader";
  * invoice footer — went to the tabs the mockup gives them: Pajak under Keuangan,
  * the other two behind cards below.
  *
- * NOTHING HERE IS EDITABLE IN PLACE, and not by choice: `PATCH /tenants/me`
- * accepts `settings` only, so the name, logo and timezone are set by the Buloo
- * team. The mockup's "Ubah" buttons wait on that endpoint (Fase 2).
+ * IDENTITY AND LOCALE ARE EDITABLE from the "Ubah" button on the Identitas
+ * section: name, legal name, NPWP, timezone, currency, date format and fiscal
+ * year all go through `PATCH /tenants/me` (Fase 2–3). What stays platform
+ * administration is the slug — a public URL other links depend on — and the
+ * subscription plan, which is what the business is billed on.
  *
  * CABANG BARU COMES FROM THE BULOO TEAM, per the mockup and the 22 September
  * decision: each branch is its own subscription, so the list has no create
@@ -47,29 +59,39 @@ const PLAN_LABELS: Record<Tenant["subscription"]["plan"], string> = {
 };
 
 /**
- * Identity fields the mockup draws that the tenant document still does not hold.
+ * "Hubungi kami" for a new branch — Buloo's own WhatsApp, the same number and
+ * `wa.me` shape the landing page's CTAs use (`env.whatsappNumber`), so a second
+ * hand-typed number here never drifts from the real one.
  *
- * The legal name and the NPWP left this list on 22 September 2026, when
- * `PATCH /tenants/me` learned identity. These two stayed: nothing reads a date
- * format or a fiscal year yet, and a setting that changes no screen is a control
- * that teaches people to ignore controls. They arrive with the reports.
+ * BLANK FIELDS, not a fixed sentence: whoever answers needs the shop's name and
+ * which branch is wanted, and asking the tenant to type both from scratch loses
+ * people. Matches the landing page's own "konsultasi" message shape.
+ *
+ * THE HREF IS BUILT ONCE, at module scope: `env.whatsappNumber` is resolved
+ * from `NEXT_PUBLIC_PHONE_NUMBER` at build time and never changes at runtime,
+ * so recomputing it per render would buy nothing.
  */
-const PENDING_IDENTITY = ["Format tanggal", "Tahun buku"] as const;
+const NEW_BRANCH_WHATSAPP_MESSAGE = `Halo Buloo, saya mau tambah cabang baru.
 
-const PENDING_CARDS: PendingHubCard[] = [
-  {
-    title: "Tipe pelanggan",
-    description:
-      "Umum, Member, Grosir, Klinik — mengisi harga dan tempo bawaan tiap pelanggan.",
-    blockedBy: "Menunggu keputusan; yang ada baru tier VIP",
-  },
-  {
-    title: "Langganan & tagihan",
-    description:
-      "Paket, kuota POS dan pengguna, serta tagihan berikutnya. Hanya untuk Owner.",
-    blockedBy: "Paket dan kuotanya belum diputuskan",
-  },
-];
+Nama toko:
+Cabang yang diminta:`;
+
+const NEW_BRANCH_WHATSAPP_HREF = `https://wa.me/${env.whatsappNumber}?text=${encodeURIComponent(
+  NEW_BRANCH_WHATSAPP_MESSAGE,
+)}`;
+
+/*
+  ONLY LANGGANAN IS STILL A PENDING CONSTANT. Tipe pelanggan left this list on
+  24 September 2026, on request — built as a real link now (its own row of
+  cards, below), the same order Nomor dokumen and Notifikasi arrived in the
+  day before.
+*/
+const LANGGANAN_CARD: PendingHubCard = {
+  title: "Langganan & tagihan",
+  description:
+    "Paket, kuota POS dan pengguna, serta tagihan berikutnya. Hanya untuk Owner.",
+  blockedBy: "Paket dan kuotanya belum diputuskan",
+};
 
 export function GeneralSettingsScreen() {
   const { can } = usePermissions();
@@ -77,12 +99,15 @@ export function GeneralSettingsScreen() {
   const mayReadTenant = can("tenants", "read");
   const mayReadBranches = can("branches", "read");
   const mayReadWarehouses = can("warehouses", "read");
+  const mayReadUsers = can("users", "read");
+  const mayReadCustomerTypes = can("customerTypes", "read");
 
   const { tenant, loading, error, refetch } = useTenant(mayReadTenant);
   const directory = useBranchDirectory({
     branches: mayReadBranches,
     warehouses: mayReadWarehouses,
   });
+  const userCount = useUserCount(mayReadUsers);
 
   return (
     <div className="flex flex-col gap-6">
@@ -121,6 +146,7 @@ export function GeneralSettingsScreen() {
                 ? directory.warehouses
                 : null
             }
+            userCount={userCount}
           />
           <IdentitySection tenant={tenant} />
         </>
@@ -139,32 +165,15 @@ export function GeneralSettingsScreen() {
         hint="Diatur sekali lalu ditinggal"
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          {mayReadTenant && (
-            <>
-              <HubLinkCard
-                title="Faktur & dokumen"
-                description="Catatan kaki faktur — rekening tujuan dan syarat bayar."
-                href={SETTINGS_PATHS.fakturDokumen}
-              />
-              <HubLinkCard
-                title="Nomor dokumen"
-                description="Awalan, kapan nomor mengulang, dan jumlah digit tiap jenis dokumen."
-                href={SETTINGS_PATHS.nomorDokumen}
-              />
-              <HubLinkCard
-                title="Stok & kasir"
-                description="Boleh tidaknya kasir menjual barang yang stoknya sudah habis."
-                href={SETTINGS_PATHS.stokKasir}
-              />
-              <HubLinkCard
-                title="Notifikasi"
-                description="Pengingat otomatis yang ingin dikirim. Belum ada yang mengirim — pilihannya tersimpan saja."
-                href={SETTINGS_PATHS.notifikasi}
-              />
-            </>
+          {mayReadCustomerTypes && (
+            <HubLinkCard
+              title="Tipe pelanggan"
+              description="Reguler, Reseller, Grosir — menempel di profil pelanggan dan jadi dasar aturan harga khusus nanti."
+              href={SETTINGS_PATHS.tipePelanggan}
+            />
           )}
           {/*
-            NOT GATED ON `tenants:read` like the cards above it: this one reads
+            NOT GATED ON `tenants:read` like the cards below it: this one reads
             no tenant setting at all — it explains what `beli_putus` and
             `konsinyasi` do to the books, which is the same answer for everybody.
           */}
@@ -173,9 +182,31 @@ export function GeneralSettingsScreen() {
             description="Beli putus, konsinyasi, perusahaan, perorangan — apa artinya, dan di mana diatur."
             href={SETTINGS_PATHS.tipeSupplier}
           />
-          {PENDING_CARDS.map((card) => (
-            <HubPendingCard key={card.title} {...card} />
-          ))}
+          {mayReadTenant && (
+            <>
+              <HubLinkCard
+                title="Nomor dokumen"
+                description="Awalan, kapan nomor mengulang, dan jumlah digit tiap jenis dokumen."
+                href={SETTINGS_PATHS.nomorDokumen}
+              />
+              <HubLinkCard
+                title="Notifikasi"
+                description="Pengingat otomatis yang ingin dikirim. Belum ada yang mengirim — pilihannya tersimpan saja."
+                href={SETTINGS_PATHS.notifikasi}
+              />
+              <HubLinkCard
+                title="Faktur & dokumen"
+                description="Catatan kaki faktur — rekening tujuan dan syarat bayar."
+                href={SETTINGS_PATHS.fakturDokumen}
+              />
+              <HubLinkCard
+                title="Stok & kasir"
+                description="Boleh tidaknya kasir menjual barang yang stoknya sudah habis."
+                href={SETTINGS_PATHS.stokKasir}
+              />
+            </>
+          )}
+          <HubPendingCard {...LANGGANAN_CARD} />
         </div>
       </Section>
     </div>
@@ -205,11 +236,13 @@ function TenantHero({
   tenant,
   branchCount,
   warehouses,
+  userCount,
 }: {
   tenant: Tenant;
   /** Null while unknown or not readable — the chip is then left out. */
   branchCount: number | null;
   warehouses: Warehouse[] | null;
+  userCount: number | null;
 }) {
   const { subscription } = tenant;
   const joined = monthYear(tenant.createdAt);
@@ -229,22 +262,45 @@ function TenantHero({
   */
   const tills = warehouses?.filter((warehouse) => warehouse.hasPos).length;
 
+  /*
+    ONLY ON THE FREE PLAN, on request (24 September 2026). Trial is a Free-plan
+    concept in this app — a tenant upgrades out of it — so a paid plan showing
+    "Trial" would be a data anomaly, not something to surface here. Grouped as
+    one unit because both read the same status: the badge names it, the chip
+    counts the days.
+  */
+  const showTrial = subscription.plan === "free";
+
   return (
     <Card>
       <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
         <TenantLogo tenant={tenant} />
         <div className="min-w-0 flex-1">
-          <h2 className="truncate text-2xl font-extrabold text-foreground">
-            {tenant.name}
-          </h2>
-          <p className="text-sm text-muted">/{tenant.slug}</p>
+          {/*
+            THE TRIAL GROUP SITS ON THE NAME'S OWN ROW, right-aligned, rather
+            than in the chip row below — it is a status about the account
+            itself, not one more fact about the business, and putting it beside
+            the name is what makes it read as a callout rather than a chip
+            among chips.
+          */}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 className="min-w-0 truncate text-2xl font-extrabold text-foreground">
+              {tenant.name}
+            </h2>
+            {showTrial && (
+              <div className="flex flex-none flex-wrap items-center gap-2">
+                <TenantSubscriptionBadge status={subscription.status} />
+                {trial && <Chip>{trial}</Chip>}
+              </div>
+            )}
+          </div>
+          <p className="text-sm text-muted">{identitySubtitle(tenant)}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Chip>
               Paket {PLAN_LABELS[subscription.plan] ?? subscription.plan}
             </Chip>
-            <TenantSubscriptionBadge status={subscription.status} />
-            {trial && <Chip>{trial}</Chip>}
             {places && <Chip>{places}</Chip>}
+            {userCount !== null && <Chip>{`${userCount} pengguna`}</Chip>}
             {tills !== undefined && <Chip>{`${tills} kasir aktif`}</Chip>}
             {joined && <Chip>Bergabung {joined}</Chip>}
           </div>
@@ -252,6 +308,24 @@ function TenantHero({
       </div>
     </Card>
   );
+}
+
+/**
+ * The hero's subtitle: "PT Anabul Sejahtera Bersama · NPWP 01.234.567.8-901.000",
+ * matching the mockup's identity line (23 September 2026, on request).
+ *
+ * EITHER HALF MAY BE MISSING, and the join drops the one that is: a shop with a
+ * legal name but no NPWP yet reads just the name, not "· NPWP —". Falls back to
+ * the slug when NEITHER is set, so the line is never empty before a shop has
+ * filled in Identitas.
+ */
+function identitySubtitle(tenant: Tenant): string {
+  const parts = [
+    tenant.legalName || null,
+    tenant.taxId ? `NPWP ${tenant.taxId}` : null,
+  ].filter((part): part is string => Boolean(part));
+
+  return parts.length > 0 ? parts.join(" · ") : `/${tenant.slug}`;
 }
 
 function IdentitySection({ tenant }: { tenant: Tenant }) {
@@ -290,16 +364,19 @@ function IdentitySection({ tenant }: { tenant: Tenant }) {
         </IdentityRow>
         <IdentityRow
           label="Zona waktu"
-          note="Menentukan batas hari untuk tutup shift dan laporan harian. Diubah oleh tim Buloo."
+          note="Menentukan batas hari untuk tutup shift dan laporan harian."
         >
-          {tenant.timezone}
+          {timezoneLabel(tenant.timezone)}
         </IdentityRow>
-        <IdentityRow label="Mata uang">{tenant.currency}</IdentityRow>
-        {PENDING_IDENTITY.map((label) => (
-          <IdentityRow key={label} label={label}>
-            <Badge variant="outline">Segera</Badge>
-          </IdentityRow>
-        ))}
+        <IdentityRow label="Mata uang">
+          {currencyLabel(tenant.currency)}
+        </IdentityRow>
+        <IdentityRow label="Format tanggal">
+          {tenant.dateFormat ?? "DD MMM YYYY"}
+        </IdentityRow>
+        <IdentityRow label="Tahun buku">
+          {fiscalYearLabel(tenant.fiscalYearStartMonth ?? 1)}
+        </IdentityRow>
       </dl>
     </Section>
   );
@@ -349,27 +426,13 @@ function BranchesSection({
   }
 
   return (
+    // NO "Daftar cabang" / "Kelola gudang" LINKS HERE, on request: a tenant
+    // cannot add a branch itself (see the note below the list), so a link to
+    // the bare list invited a click that led nowhere new. Each row's own
+    // "Kelola" is still the way in when editing is allowed.
     <Section
       title="Cabang & gudang"
       hint="Alamat cabang yang tercetak di struk, bukan alamat usaha"
-      action={
-        <>
-          <Link
-            href={SETTINGS_PATHS.cabang}
-            className="text-sm font-semibold text-primary underline-offset-2 hover:underline"
-          >
-            Daftar cabang
-          </Link>
-          {showWarehouses && (
-            <Link
-              href={SETTINGS_PATHS.gudang}
-              className="text-sm font-semibold text-primary underline-offset-2 hover:underline"
-            >
-              Kelola gudang
-            </Link>
-          )}
-        </>
-      }
     >
       {loading ? (
         <div className="flex items-center gap-2 py-4 text-sm text-muted">
@@ -392,10 +455,21 @@ function BranchesSection({
         </ul>
       )}
 
-      <p className="mt-3 border-t border-border pt-3 text-xs text-muted">
-        Butuh cabang baru? Tiap cabang punya langganan sendiri dan diaktifkan
-        oleh tim Buloo — hubungi kami.
-      </p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+        <p className="text-xs text-muted">
+          Butuh cabang baru? Tiap cabang punya langganan sendiri dan
+          diaktifkan oleh tim Buloo.
+        </p>
+        <Button asChild variant="secondary" size="sm" className="flex-none">
+          <a
+            href={NEW_BRANCH_WHATSAPP_HREF}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Hubungi kami
+          </a>
+        </Button>
+      </div>
     </Section>
   );
 }
@@ -417,6 +491,10 @@ function BranchRow({
 
   return (
     <li className="flex flex-wrap items-center gap-3 py-3">
+      {/* The mockup's `.bic` — a small badge naming the row as a place. */}
+      <span className="flex size-10 flex-none items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <Building2 className="size-5" aria-hidden />
+      </span>
       <div className="min-w-0 flex-1">
         <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-foreground">
           {branch.name}

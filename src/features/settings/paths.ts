@@ -41,6 +41,7 @@ export const SETTINGS_PATHS = {
   nomorDokumen: `${ROOT}/nomor-dokumen`,
   notifikasi: `${ROOT}/notifikasi`,
   tipeSupplier: `${ROOT}/tipe-supplier`,
+  tipePelanggan: `${ROOT}/tipe-pelanggan`,
   // Layanan — the service form lives under the hub it is reached from.
   layananBaru: `${ROOT}/layanan/new`,
   // Keuangan

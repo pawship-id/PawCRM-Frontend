@@ -27,6 +27,7 @@ import { BUILT_IN_VARIANT_OPTIONS, makeVariantOption } from "./helpers/variantOp
 import { stockEntryService } from "@/services/stockEntry.service";
 import { supplierService } from "@/services/supplier.service";
 import { tenantService } from "@/services/tenant.service";
+import { userService } from "@/services/user.service";
 import { warehouseService } from "@/services/warehouse.service";
 
 import type { Branch, Service, Tenant, Warehouse, Zone } from "@/types/api";
@@ -57,6 +58,7 @@ jest.mock("@/services/product.service");
 jest.mock("@/services/service.service");
 jest.mock("@/services/stockEntry.service");
 jest.mock("@/services/supplier.service");
+jest.mock("@/services/user.service");
 jest.mock("@/services/warehouse.service");
 
 /**
@@ -149,6 +151,7 @@ describe("GeneralSettingsScreen", () => {
     jest.spyOn(tenantService, "me").mockResolvedValue(makeTenant());
     jest.mocked(branchService.list).mockResolvedValue(page(BRANCHES));
     jest.mocked(warehouseService.list).mockResolvedValue(page(WAREHOUSES));
+    jest.mocked(userService.list).mockResolvedValue(totalling(14));
   });
   afterEach(() => jest.restoreAllMocks());
 
@@ -159,18 +162,41 @@ describe("GeneralSettingsScreen", () => {
       await screen.findByRole("heading", { name: "Klinik Hewan Sehat" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Paket Pro")).toBeInTheDocument();
-    expect(screen.getByText("Asia/Jakarta")).toBeInTheDocument();
+    /*
+      THE FRIENDLY LABEL, not the raw IANA string — matching what the identity
+      form's own picker offers, so the summary and the picker never disagree.
+    */
+    expect(screen.getByText("Asia/Jakarta (WIB)")).toBeInTheDocument();
+    expect(screen.getByText("Rupiah (IDR)")).toBeInTheDocument();
+    /*
+      NEITHER WAS EVER SAVED ON THIS TENANT, so both read the schema's own
+      default rather than "—" — the same default `PATCH /tenants/me` would
+      apply if the form saved nothing else.
+    */
+    expect(screen.getByText("DD MMM YYYY")).toBeInTheDocument();
+    expect(screen.getByText("Januari – Desember")).toBeInTheDocument();
     expect(screen.getByText("KH")).toBeInTheDocument();
     /* The name on the paper and the tax number, printed on every invoice. */
     expect(
       screen.getByText("PT Anabul Sejahtera Bersama"),
     ).toBeInTheDocument();
     expect(screen.getByText("01.234.567.8-901.000")).toBeInTheDocument();
+    /*
+      THE HERO'S SUBTITLE, matching the mockup (23 September 2026, on request):
+      legal name and NPWP joined with " · ", not the slug — the slug is only a
+      fallback for a tenant that filled in neither.
+    */
+    expect(
+      screen.getByText(
+        "PT Anabul Sejahtera Bersama · NPWP 01.234.567.8-901.000",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ubah" })).toHaveAttribute(
       "href",
       "/dashboard/pengaturan/identitas",
     );
     expect(await screen.findByText("2 cabang · 3 gudang")).toBeInTheDocument();
+    expect(await screen.findByText("14 pengguna")).toBeInTheDocument();
     /*
       ONE TILL, AND NO "dari 5": the quota is a subscription figure and no plan
       carries one yet, so the chip counts what is on and claims no limit.
@@ -185,12 +211,12 @@ describe("GeneralSettingsScreen", () => {
     ).toEqual(["Umum", "Layanan", "Keuangan", "Pengguna & Sistem"]);
 
     /*
-      Two identity fields the tenant still does not hold (format tanggal, tahun
-      buku), and two cards: tipe pelanggan, which waits on a decision, and
-      langganan, which waits on a plan. Nomor dokumen, Notifikasi and Tipe
-      supplier stopped being "Segera" on 23 September 2026.
+      One card left: langganan, which waits on a plan. Format tanggal and
+      Tahun buku stopped being "Segera" on 23 September 2026, alongside Nomor
+      dokumen, Notifikasi and Tipe supplier the day before — and Tipe
+      pelanggan stopped being one on the 24th.
     */
-    expect(screen.getAllByText("Segera")).toHaveLength(4);
+    expect(screen.getAllByText("Segera")).toHaveLength(1);
   });
 
   it("lists each branch with its own warehouses, and offers no way to create one", async () => {
@@ -217,6 +243,16 @@ describe("GeneralSettingsScreen", () => {
       screen.queryByRole("link", { name: /cabang baru/i }),
     ).not.toBeInTheDocument();
     expect(screen.getByText(/diaktifkan oleh tim Buloo/)).toBeInTheDocument();
+
+    /*
+      "Hubungi kami" IS A REAL wa.me LINK (24 September 2026, on request), not
+      plain text — opened in its own tab so the profile page stays put, and
+      `rel="noopener"` so the opened tab holds no live handle back to it.
+    */
+    const contact = screen.getByRole("link", { name: "Hubungi kami" });
+    expect(contact.getAttribute("href")).toMatch(/^https:\/\/wa\.me\/\d+\?text=/);
+    expect(contact).toHaveAttribute("target", "_blank");
+    expect(contact.getAttribute("rel")).toContain("noopener");
   });
 
   it("links the two tenant switches that have a page", async () => {
@@ -242,13 +278,100 @@ describe("GeneralSettingsScreen", () => {
       "href",
       "/dashboard/pengaturan/tipe-supplier",
     );
+    /* Gated on its own `customerTypes:read`, built 24 September 2026. */
+    expect(
+      screen.getByRole("link", { name: /Tipe pelanggan/ }),
+    ).toHaveAttribute("href", "/dashboard/pengaturan/tipe-pelanggan");
     expect(
       screen.queryByRole("link", { name: /Langganan/ }),
     ).not.toBeInTheDocument();
     await screen.findByText("2 cabang · 3 gudang");
   });
 
-  it("counts down a trial rather than hiding it", async () => {
+  it("drops Tipe pelanggan for a role without customerTypes:read", async () => {
+    renderWithAuth(<GeneralSettingsScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "tenants", actions: ["read"] }],
+    });
+
+    await screen.findByRole("heading", { name: "Klinik Hewan Sehat" });
+    expect(
+      screen.queryByRole("link", { name: /Tipe pelanggan/ }),
+    ).not.toBeInTheDocument();
+    // Tipe supplier stays — it is ungated, unlike Tipe pelanggan.
+    expect(
+      screen.getByRole("link", { name: /Tipe supplier/ }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * THE CARD ORDER (24 September 2026, on request): Tipe pelanggan and
+   * Langganan & tagihan bookend the grid rather than sitting side by side,
+   * which is only visible by DOM order — every card's href/label assertion
+   * above would still pass if the grid were shuffled.
+   */
+  it("draws the cards in the order asked for", async () => {
+    const { container } = renderWithAuth(<GeneralSettingsScreen />);
+    await screen.findByText("2 cabang · 3 gudang");
+
+    // Not a bare `.grid` query: shadcn's own CardHeader is `display: grid`
+    // too, and sits before CardContent in document order, so an unscoped
+    // query would find that empty grid first.
+    const grid = screen
+      .getByText("Diatur sekali lalu ditinggal")
+      .closest("[data-slot='card']")!
+      .querySelector("[data-slot='card-content'] .grid")!;
+    const titles = Array.from(
+      grid.querySelectorAll(".font-semibold.text-foreground"),
+    ).map((node) => node.textContent);
+
+    expect(titles).toEqual([
+      "Tipe pelanggan",
+      "Tipe supplier",
+      "Nomor dokumen",
+      "Notifikasi",
+      "Faktur & dokumen",
+      "Stok & kasir",
+      "Langganan & tagihan",
+    ]);
+    // Sanity check the query itself found the real grid, not an empty one.
+    expect(container.querySelectorAll(".font-semibold.text-foreground").length)
+      .toBeGreaterThanOrEqual(titles.length);
+  });
+
+  it("falls back to the slug when neither the legal name nor the NPWP is set", async () => {
+    jest
+      .spyOn(tenantService, "me")
+      .mockResolvedValue(makeTenant({ legalName: null, taxId: null }));
+
+    renderWithAuth(<GeneralSettingsScreen />);
+
+    expect(
+      await screen.findByText("/klinik-hewan-sehat"),
+    ).toBeInTheDocument();
+  });
+
+  it("drops the pengguna chip, and asks for nothing, for a role that may not read users", async () => {
+    renderWithAuth(<GeneralSettingsScreen />, {
+      isSuperAdmin: false,
+      permissions: [
+        { feature: "tenants", actions: ["read"] },
+        { feature: "branches", actions: ["read"] },
+      ],
+    });
+
+    await screen.findByRole("heading", { name: "Klinik Hewan Sehat" });
+    expect(userService.list).not.toHaveBeenCalled();
+    expect(screen.queryByText(/pengguna$/)).not.toBeInTheDocument();
+  });
+
+  /*
+    TRIAL IS A FREE-PLAN CONCEPT (24 September 2026, on request): a tenant
+    upgrades out of it, so the badge and its countdown are grouped and shown
+    only on the free plan — and moved onto the business name's own row, right
+    of it, rather than sitting among the metric chips below.
+  */
+  it("counts down a trial on the free plan, beside the business name", async () => {
     const inTenDays = new Date(Date.now() + 10 * 86_400_000).toISOString();
     jest.spyOn(tenantService, "me").mockResolvedValue(
       makeTenant({
@@ -258,7 +381,32 @@ describe("GeneralSettingsScreen", () => {
 
     renderWithAuth(<GeneralSettingsScreen />);
 
-    expect(await screen.findByText("Trial sisa 10 hari")).toBeInTheDocument();
+    const heading = await screen.findByRole("heading", {
+      name: "Klinik Hewan Sehat",
+    });
+    const trialBadge = screen.getByText("Trial");
+    const countdown = await screen.findByText("Trial sisa 10 hari");
+
+    // Same row as the name, not the "Paket / cabang / pengguna" chip row.
+    expect(heading.parentElement).toContainElement(trialBadge);
+    expect(heading.parentElement).toContainElement(countdown);
+  });
+
+  it("hides the trial badge and countdown on anything but the free plan", async () => {
+    // A paid plan still marked "trialing" is a data anomaly, not something to
+    // surface — the group is gated on the plan, not only on the status.
+    const soon = new Date(Date.now() + 5 * 86_400_000).toISOString();
+    jest.spyOn(tenantService, "me").mockResolvedValue(
+      makeTenant({
+        subscription: { status: "trialing", plan: "pro", trialEndsAt: soon },
+      }),
+    );
+
+    renderWithAuth(<GeneralSettingsScreen />);
+
+    await screen.findByRole("heading", { name: "Klinik Hewan Sehat" });
+    expect(screen.queryByText("Trial")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Trial sisa/)).not.toBeInTheDocument();
   });
 
   it("asks for nothing a branches-only role may not read", async () => {

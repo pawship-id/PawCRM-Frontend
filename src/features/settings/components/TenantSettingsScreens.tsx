@@ -10,6 +10,7 @@ import {
   TenantIdentityForm,
   useTenant,
 } from "@/features/tenant";
+import { cn } from "@/lib/utils";
 import type { Tenant } from "@/types/api";
 
 import type { SettingsTab } from "../paths";
@@ -29,11 +30,20 @@ export function TenantSettingsPage({
   tab,
   title,
   description,
+  /**
+   * Pajak, Stok & kasir and Faktur & dokumen are one switch or one short field
+   * each, and `max-w-3xl` is what keeps a lone control from stretching across
+   * a laptop screen. Identitas usaha outgrew that the day it gained a
+   * two-column row of pickers (23 September 2026, on request) — a grid that
+   * wants the width the page actually has.
+   */
+  fullWidth = false,
   children,
 }: {
   tab: SettingsTab;
   title: string;
   description: string;
+  fullWidth?: boolean;
   children: (tenant: Tenant, refetch: () => void) => ReactNode;
 }) {
   const { tenant, loading, error, refetch } = useTenant();
@@ -56,7 +66,9 @@ export function TenantSettingsPage({
           </Button>
         </div>
       ) : (
-        <div className="flex max-w-3xl flex-col gap-6">
+        <div
+          className={cn("flex flex-col gap-6", !fullWidth && "max-w-3xl")}
+        >
           {children(tenant, refetch)}
         </div>
       )}
@@ -69,7 +81,8 @@ export function IdentitySettingsScreen() {
     <TenantSettingsPage
       tab="umum"
       title="Identitas usaha"
-      description="Nama usaha, nama badan hukum, dan NPWP. Zona waktu dan mata uang diubah oleh tim Buloo."
+      description="Berlaku untuk seluruh cabang. Alamat yang tercetak di struk diatur per cabang, bukan di sini."
+      fullWidth
     >
       {(tenant, refetch) => (
         <TenantIdentityForm tenant={tenant} onSaved={refetch} />

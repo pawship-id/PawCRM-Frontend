@@ -746,10 +746,39 @@ export interface Tenant {
   taxId?: string | null;
   slug: string;
   logoUrl: string | null;
-  /** IANA zone (e.g. "Asia/Jakarta") — the zone the tenant's day is measured in. */
+  /**
+   * The zone the tenant's day is measured in — one of the three official
+   * Indonesian zones (see `TIMEZONES`). Typed as `string` rather than the
+   * closed union: the enum only started being enforced on 23 September 2026,
+   * so a tenant written earlier could in principle carry something else, and a
+   * value display must not throw on it.
+   */
   timezone: string;
-  /** ISO 4217. Only "IDR" exists today; typed as a string for the next one. */
+  /**
+   * ISO 4217. Only "IDR" exists today — see `CURRENCIES`. `string`, like
+   * `timezone`, for the same reason: the enum is enforced going forward, not
+   * retrofitted onto history.
+   */
   currency: string;
+  /**
+   * How this tenant's dates are written back to it — a format token a date
+   * library reads, not a label (23 September 2026). See `DATE_FORMATS`.
+   *
+   * ⚠️ NOTHING RENDERS DATES WITH THIS YET. Stored because the choice is the
+   * shop's own and does not change with whichever screen reads it first — the
+   * same reasoning `settings.notifications` was stored on before any sender
+   * existed. OPTIONAL: `.lean()` reads skip Mongoose defaults, so a tenant
+   * written before this field existed comes back without the key.
+   */
+  dateFormat?: string;
+  /**
+   * Which month this tenant's fiscal (book) year starts in — 1, 4 or 7. See
+   * `FISCAL_YEAR_START_MONTHS`.
+   *
+   * ⚠️ NOTHING READS THIS YET, for the same reason as `dateFormat`. OPTIONAL
+   * for the same reason too.
+   */
+  fiscalYearStartMonth?: number;
   subscription: TenantSubscription;
   settings: TenantSettings;
   /** Schema version, stamped on write so a migration can find older shapes. */
@@ -855,16 +884,59 @@ export interface Branch {
 }
 
 /**
- * Body of PATCH /tenants/me when a business edits WHO IT IS (22 September 2026).
- * Every field optional, at least one required. `""` clears the nullable ones.
+ * Body of PATCH /tenants/me when a business edits WHO IT IS (22 September
+ * 2026), joined by its locale preferences on 23 September 2026 — timezone,
+ * currency, date format and fiscal year start are the shop's own choice, not
+ * something Buloo sets on its behalf. Every field optional, at least one
+ * required. `""` clears the nullable ones.
  */
 export interface TenantIdentityInput {
   name?: string;
   legalName?: string | null;
   taxId?: string | null;
   logoUrl?: string | null;
-  timezone?: string;
+  timezone?: Timezone;
+  currency?: string;
+  dateFormat?: DateFormat;
+  fiscalYearStartMonth?: FiscalYearStartMonth;
 }
+
+/**
+ * The three official Indonesian time zones — the whole list this product
+ * offers (23 September 2026). A closed enum, not a free IANA string: a tenant
+ * cannot mistype "Asia/Jakart" into a picker that only names three zones.
+ */
+export const TIMEZONES = [
+  "Asia/Jakarta",
+  "Asia/Makassar",
+  "Asia/Jayapura",
+] as const;
+
+export type Timezone = (typeof TIMEZONES)[number];
+
+/** ISO 4217. Only "IDR" exists today. */
+export const CURRENCIES = ["IDR"] as const;
+
+/**
+ * How a date is written back to the reader — a format token a date library
+ * reads, not a label. ⚠️ Nothing renders dates with this yet; see
+ * `Tenant.dateFormat`.
+ */
+export const DATE_FORMATS = [
+  "DD MMM YYYY",
+  "DD/MM/YYYY",
+  "YYYY-MM-DD",
+] as const;
+
+export type DateFormat = (typeof DATE_FORMATS)[number];
+
+/**
+ * Which month a fiscal year may start in. ⚠️ Nothing reads this yet; see
+ * `Tenant.fiscalYearStartMonth`.
+ */
+export const FISCAL_YEAR_START_MONTHS = [1, 4, 7] as const;
+
+export type FiscalYearStartMonth = (typeof FISCAL_YEAR_START_MONTHS)[number];
 
 /** The seven day codes a branch's `operatingDays` is drawn from, Monday first. */
 export const OPERATING_DAYS = [

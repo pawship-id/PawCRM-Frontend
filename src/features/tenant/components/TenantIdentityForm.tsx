@@ -2,25 +2,44 @@
 
 import { useState } from "react";
 
-import { Card, TextField } from "@/components";
+import { Alert, Card, SelectField, TextField } from "@/components";
 import { Button as UIButton } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { tenantService } from "@/services/tenant.service";
-import type { Tenant, TenantIdentityInput } from "@/types/api";
+import type {
+  DateFormat,
+  FiscalYearStartMonth,
+  Tenant,
+  TenantIdentityInput,
+  Timezone,
+} from "@/types/api";
+import { DATE_FORMATS } from "@/types/api";
+
+import {
+  CURRENCY_OPTIONS,
+  FISCAL_YEAR_OPTIONS,
+  TIMEZONE_OPTIONS,
+  currencyLabel,
+  fiscalYearLabel,
+  timezoneLabel,
+} from "../locale";
 
 /**
- * WHO THIS BUSINESS IS — the name on the sign, the name on the paper, and the
- * NPWP (22 September 2026).
+ * WHO THIS BUSINESS IS, AND HOW IT READS ITS OWN NUMBERS — the name on the
+ * sign, the name on the paper, the NPWP (22 September 2026), and its timezone,
+ * currency, date format and fiscal year (23 September 2026).
  *
  * IT USED TO BE UNEDITABLE, and not on principle: `PATCH /tenants/me` accepted
  * `settings` only, and the route that could rename a business is platform
- * administration this dashboard must not touch. The route learned identity, so
- * the screen stopped being read-only.
+ * administration this dashboard must not touch. The route learned identity,
+ * then it learned locale — timezone, currency, date format and fiscal year are
+ * the shop's own choice, not something Buloo sets on its behalf.
  *
- * WHAT IS STILL NOT HERE: the slug, which is a public URL other links depend on,
- * and the plan and currency, which are what the business is billed on.
+ * WHAT IS STILL NOT HERE: the slug, a public URL other links depend on, and the
+ * plan, which is what the business is billed on. Those stay platform
+ * administration.
  *
  * THE LEGAL NAME IS OPTIONAL AND THE INVOICE FALLS BACK TO THE TRADING NAME. A
  * sole trader has no second name to give, and a required field would put an
@@ -30,6 +49,10 @@ import type { Tenant, TenantIdentityInput } from "@/types/api";
  * then a sixteen-digit NIK-based one — and shops write it with dots and dashes
  * or without. A validator that refused a number somebody is holding in their
  * hand would be wrong more often than the typo it caught.
+ *
+ * DATE FORMAT AND FISCAL YEAR ARE STORED WITH NOTHING READING THEM YET — the
+ * same shape `NotificationSettingsForm` uses, and the form says so under both
+ * fields rather than implying they already change something.
  */
 export function TenantIdentityForm({
   tenant,
@@ -43,12 +66,23 @@ export function TenantIdentityForm({
     name: tenant.name,
     legalName: tenant.legalName ?? "",
     taxId: tenant.taxId ?? "",
-    timezone: tenant.timezone,
+    timezone: tenant.timezone as Timezone,
+    currency: tenant.currency,
+    // Defaults mirror the schema's own — a tenant written before either field
+    // existed reads back without the key at all (`.lean()` skips defaults).
+    dateFormat: (tenant.dateFormat ?? "DD MMM YYYY") as DateFormat,
+    fiscalYearStartMonth: String(tenant.fiscalYearStartMonth ?? 1),
   };
 
   const [name, setName] = useState(stored.name);
   const [legalName, setLegalName] = useState(stored.legalName);
   const [taxId, setTaxId] = useState(stored.taxId);
+  const [timezone, setTimezone] = useState(stored.timezone);
+  const [currency, setCurrency] = useState(stored.currency);
+  const [dateFormat, setDateFormat] = useState(stored.dateFormat);
+  const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState(
+    stored.fiscalYearStartMonth,
+  );
   const [saving, setSaving] = useState(false);
 
   const nameError = name.trim() === "" ? "Nama usaha tidak boleh kosong" : undefined;
@@ -56,7 +90,11 @@ export function TenantIdentityForm({
   const changed =
     name !== stored.name ||
     legalName !== stored.legalName ||
-    taxId !== stored.taxId;
+    taxId !== stored.taxId ||
+    timezone !== stored.timezone ||
+    currency !== stored.currency ||
+    dateFormat !== stored.dateFormat ||
+    fiscalYearStartMonth !== stored.fiscalYearStartMonth;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -74,6 +112,14 @@ export function TenantIdentityForm({
       if (name !== stored.name) patch.name = name.trim();
       if (legalName !== stored.legalName) patch.legalName = legalName.trim();
       if (taxId !== stored.taxId) patch.taxId = taxId.trim();
+      if (timezone !== stored.timezone) patch.timezone = timezone;
+      if (currency !== stored.currency) patch.currency = currency;
+      if (dateFormat !== stored.dateFormat) patch.dateFormat = dateFormat;
+      if (fiscalYearStartMonth !== stored.fiscalYearStartMonth) {
+        patch.fiscalYearStartMonth = Number(
+          fiscalYearStartMonth,
+        ) as FiscalYearStartMonth;
+      }
 
       await tenantService.updateIdentity(patch);
       // Released before the parent re-renders — see TaxSettingsForm.
@@ -93,10 +139,9 @@ export function TenantIdentityForm({
   }
 
   return (
-    <Card
-      title="Identitas usaha"
-      description="Yang tercetak di faktur dan dipakai di seluruh cabang."
-    >
+    // NO title/description HERE: the page header above already says
+    // "Identitas usaha" — this Card would only repeat it.
+    <Card>
       <Can
         feature="tenants"
         action="update"
@@ -105,6 +150,19 @@ export function TenantIdentityForm({
             <IdentityRow label="Nama usaha" value={stored.name} />
             <IdentityRow label="Nama badan hukum" value={stored.legalName} />
             <IdentityRow label="NPWP" value={stored.taxId} />
+            <IdentityRow
+              label="Zona waktu"
+              value={timezoneLabel(stored.timezone)}
+            />
+            <IdentityRow
+              label="Mata uang"
+              value={currencyLabel(stored.currency)}
+            />
+            <IdentityRow label="Format tanggal" value={stored.dateFormat} />
+            <IdentityRow
+              label="Tahun buku"
+              value={fiscalYearLabel(Number(stored.fiscalYearStartMonth))}
+            />
             <p className="mt-2 text-xs text-muted">
               Role Anda tidak bisa mengubah identitas usaha.
             </p>
@@ -140,12 +198,45 @@ export function TenantIdentityForm({
             disabled={saving}
           />
 
-          {/*
-            THE ZONE IS NOT A FIELD HERE, although the route accepts it: changing
-            it moves the day boundary every shift close and daily report is cut
-            on, so it is a conversation with the Buloo team rather than a box on
-            a form. It is shown, read-only, on the profile above.
-          */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SelectField
+              label="Zona waktu"
+              value={timezone}
+              onChange={(value) => setTimezone(value as Timezone)}
+              options={TIMEZONE_OPTIONS}
+              disabled={saving}
+            />
+            <SelectField
+              label="Mata uang"
+              value={currency}
+              onChange={setCurrency}
+              options={CURRENCY_OPTIONS}
+              disabled={saving}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <SelectField
+              label="Format tanggal"
+              value={dateFormat}
+              onChange={(value) => setDateFormat(value as DateFormat)}
+              options={DATE_FORMATS.map((value) => ({ value, label: value }))}
+              disabled={saving}
+            />
+            <SelectField
+              label="Tahun buku"
+              value={fiscalYearStartMonth}
+              onChange={setFiscalYearStartMonth}
+              options={FISCAL_YEAR_OPTIONS}
+              disabled={saving}
+            />
+          </div>
+
+          <Alert variant="info">
+            <strong>Zona waktu menentukan batas hari.</strong> Mengubahnya
+            menggeser jam tutup shift dan batas laporan harian. Transaksi lama
+            tidak ikut bergeser.
+          </Alert>
 
           <div className="flex justify-end">
             <UIButton
