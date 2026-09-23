@@ -572,6 +572,86 @@ export interface TenantSettings {
    * September 2026). Absent until saved once; WRITTEN WHOLE like `grooming`.
    */
   antarJemput?: AntarJemputSettings;
+
+  /**
+   * Pengaturan › Nomor dokumen — what this tenant asked to differ about the
+   * shape of its document numbers, keyed by series (23 September 2026).
+   *
+   * OVERRIDES, NOT THE SERIES. The server's registry owns which series exist,
+   * their separators and their branch qualifiers, and supplies every default;
+   * only what a tenant changed lands here. Read the merged result from
+   * `GET /tenants/me/numbering` rather than reconstructing it.
+   *
+   * ⚠️ WRITTEN WHOLE, like `grooming`: the server flattens `settings` one level,
+   * so a partial map drops every series it leaves out.
+   */
+  numbering?: Record<string, DocumentNumberOverride>;
+
+  /**
+   * Pengaturan › Notifikasi — which automatic messages the shop wants.
+   *
+   * ⚠️ NOTHING SENDS THEM YET. The shape is stored because the decisions are the
+   * shop's and do not change with the provider; the screen says so plainly.
+   * Absent on a tenant that never saved it, and every switch defaults to off.
+   */
+  notifications?: NotificationSettings;
+}
+
+/** One series' overrides. Every field optional — the rest stays the registry's. */
+export interface DocumentNumberOverride {
+  /** A-Z and 0-9, up to 6 characters. Uppercased server-side. */
+  prefix?: string;
+  reset?: DocumentNumberReset;
+  /** Minimum digits in the sequence, 1–8. A longer number is never truncated. */
+  padding?: number;
+}
+
+export type DocumentNumberReset = "never" | "yearly" | "monthly" | "daily";
+
+/**
+ * One series as this tenant will issue it — `GET /tenants/me/numbering`. The
+ * registry's default with the tenant's overrides merged over it.
+ */
+export interface DocumentNumberSeries {
+  /** The permanent series key — "customerInvoice", "booking". */
+  key: string;
+  /** What this tenant issues now: the registry's shape with its overrides merged. */
+  prefix: string;
+  reset: DocumentNumberReset;
+  padding: number;
+  /**
+   * What we would use if the tenant said nothing.
+   *
+   * AN OVERRIDE IS THE DIFFERENCE FROM THIS, never from the merged shape above:
+   * a form comparing against the merged one would send an empty map the second
+   * time somebody pressed Simpan, silently dropping every override.
+   */
+  defaults: {
+    prefix: string;
+    reset: DocumentNumberReset;
+    padding: number;
+  };
+  /** What joins the segments — "-", or "/" for an invoice. Not a tenant's to change. */
+  separator: string;
+  /** How the period is written: "2026-09", or "2609" on an invoice. Ours too. */
+  scopeStyle: "long" | "short";
+  /** False for the series whose shape is ours: the four bukti kas & bank, and the till's own. */
+  editable: boolean;
+  /** True when this tenant changed something about it. */
+  overridden: boolean;
+  /** Sequence 1 of today's bucket — a preview of the SHAPE, not a peek at the counter. */
+  example: string;
+}
+
+/** Which automatic messages a shop wants. Nothing sends them yet. */
+export interface NotificationSettings {
+  bookingReminder?: boolean;
+  membershipExpiry?: boolean;
+  receivableDue?: boolean;
+  payableDue?: boolean;
+  fixedCostDue?: boolean;
+  lowStock?: boolean;
+  promo?: boolean;
 }
 
 /** One rule of a ride's commission — a percentage, or a flat rupiah amount. */

@@ -28,6 +28,11 @@ export { PetCardPrintScreen } from "./components/PetCardPrintScreen";
   one.
 */
 export { PetSpeciesBadge, PetStatusBadge } from "./components/PetBadges";
+/**
+ * The pet's photo, for any feature that names an animal — the booking work
+ * screen and the till's pet picker are the ones likely to want it next.
+ */
+export { PetAvatar } from "./components/PetAvatar";
 export { usePets, type PetsQuery } from "./hooks/usePets";
 export { PetSummaryCard } from "./components/PetSummaryCard";
 export { PetProfileScreen } from "./components/PetProfileScreen";

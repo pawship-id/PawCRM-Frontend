@@ -41,6 +41,12 @@ export type MediaUploadPurpose =
   | "product"
   | "category"
   | "service"
+  /*
+    A PET'S ONE PHOTO. Its own segment, not `category`: the sweeper matches a
+    key against the collection its segment names, and the claim that keeps this
+    one is `petRepository.existsByPhotoKey`.
+  */
+  | "pet"
   | "description"
   /*
     ⚠️ A SEGMENT OF ITS OWN FOR GROOMING PHOTOS, and it is not cosmetic. The

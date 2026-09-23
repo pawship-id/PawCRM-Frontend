@@ -14,7 +14,6 @@ import type { Tenant } from "@/types/api";
 
 import type { SettingsTab } from "../paths";
 import { SettingsPageHeader } from "./SettingsHeader";
-import { HubPendingCard } from "./SettingsHubCards";
 
 /**
  * The three Pengaturan pages that are one tenant switch each — Pajak, Stok &
@@ -26,7 +25,7 @@ import { HubPendingCard } from "./SettingsHubCards";
  * mockup has no place for them, and that is where the user asked them to go).
  * Each form still gates its own Simpan on `tenants:update`.
  */
-function TenantSettingsPage({
+export function TenantSettingsPage({
   tab,
   title,
   description,
@@ -115,14 +114,7 @@ export function DocumentSettingsScreen() {
       description="Yang tercetak di faktur. Catatan kaki struk kasir diatur per cabang."
     >
       {(tenant, refetch) => (
-        <>
-          <InvoiceFooterForm tenant={tenant} onSaved={refetch} />
-          <HubPendingCard
-            title="Nomor dokumen"
-            description="Format penomoran faktur, transfer, dan koreksi — awalan, panjang, dan kapan nomornya mengulang."
-            blockedBy="Penomoran masih ditentukan server"
-          />
-        </>
+        <InvoiceFooterForm tenant={tenant} onSaved={refetch} />
       )}
     </TenantSettingsPage>
   );

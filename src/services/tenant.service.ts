@@ -1,5 +1,10 @@
 import { apiClient } from "./api-client";
-import type { Tenant, TenantIdentityInput, TenantSettings } from "@/types/api";
+import type {
+  DocumentNumberSeries,
+  Tenant,
+  TenantIdentityInput,
+  TenantSettings,
+} from "@/types/api";
 
 /**
  * Tenant calls against /api/tenants.
@@ -48,4 +53,15 @@ export const tenantService = {
    */
   updateIdentity: (identity: TenantIdentityInput) =>
     apiClient.patch<Tenant>("/tenants/me", identity),
+
+  /**
+   * GET /tenants/me/numbering — every document series as this tenant issues it.
+   *
+   * SERVED RATHER THAN REBUILT HERE. The registry lives on the server: which
+   * series exist, their separators, their branch qualifiers and every default.
+   * A copy in the dashboard would drift the day a series is added, and the form
+   * would offer a shape the server does not use.
+   */
+  numbering: () =>
+    apiClient.get<DocumentNumberSeries[]>("/tenants/me/numbering"),
 };

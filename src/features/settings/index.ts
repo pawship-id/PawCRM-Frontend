@@ -18,6 +18,9 @@ export {
   SettingsPageHeader,
   SettingsTabsHeader,
 } from "./components/SettingsHeader";
+export { NotificationSettingsScreen } from "./components/NotificationSettingsScreen";
+export { NumberingSettingsScreen } from "./components/NumberingSettingsScreen";
+export { SupplierTypesScreen } from "./components/SupplierTypesScreen";
 export {
   DocumentSettingsScreen,
   IdentitySettingsScreen,

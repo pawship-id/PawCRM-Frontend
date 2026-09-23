@@ -184,8 +184,13 @@ describe("GeneralSettingsScreen", () => {
         .map((link) => link.textContent),
     ).toEqual(["Umum", "Layanan", "Keuangan", "Pengguna & Sistem"]);
 
-    // Two identity fields the tenant still does not hold, and four cards.
-    expect(screen.getAllByText("Segera")).toHaveLength(6);
+    /*
+      Two identity fields the tenant still does not hold (format tanggal, tahun
+      buku), and two cards: tipe pelanggan, which waits on a decision, and
+      langganan, which waits on a plan. Nomor dokumen, Notifikasi and Tipe
+      supplier stopped being "Segera" on 23 September 2026.
+    */
+    expect(screen.getAllByText("Segera")).toHaveLength(4);
   });
 
   it("lists each branch with its own warehouses, and offers no way to create one", async () => {
@@ -223,6 +228,19 @@ describe("GeneralSettingsScreen", () => {
     expect(screen.getByRole("link", { name: /Stok & kasir/ })).toHaveAttribute(
       "href",
       "/dashboard/pengaturan/stok-kasir",
+    );
+    expect(screen.getByRole("link", { name: /Nomor dokumen/ })).toHaveAttribute(
+      "href",
+      "/dashboard/pengaturan/nomor-dokumen",
+    );
+    expect(screen.getByRole("link", { name: /Notifikasi/ })).toHaveAttribute(
+      "href",
+      "/dashboard/pengaturan/notifikasi",
+    );
+    /* Ungated, unlike its neighbours: it reads no tenant setting at all. */
+    expect(screen.getByRole("link", { name: /Tipe supplier/ })).toHaveAttribute(
+      "href",
+      "/dashboard/pengaturan/tipe-supplier",
     );
     expect(
       screen.queryByRole("link", { name: /Langganan/ }),

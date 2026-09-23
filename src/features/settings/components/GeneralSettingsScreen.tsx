@@ -61,19 +61,7 @@ const PENDING_CARDS: PendingHubCard[] = [
     title: "Tipe pelanggan",
     description:
       "Umum, Member, Grosir, Klinik — mengisi harga dan tempo bawaan tiap pelanggan.",
-    blockedBy: "Belum ada di sistem; yang ada baru tier VIP",
-  },
-  {
-    title: "Tipe supplier",
-    description:
-      "Bentuk kerja sama dan badan usahanya — beli putus, konsinyasi, perusahaan, perorangan.",
-    blockedBy: "Masih daftar tetap, belum bisa diubah tenant",
-  },
-  {
-    title: "Notifikasi",
-    description:
-      "Pengingat jatuh tempo, stok minimum, dan membership yang akan habis.",
-    blockedBy: "Belum ada modul notifikasi",
+    blockedBy: "Menunggu keputusan; yang ada baru tier VIP",
   },
   {
     title: "Langganan & tagihan",
@@ -155,16 +143,36 @@ export function GeneralSettingsScreen() {
             <>
               <HubLinkCard
                 title="Faktur & dokumen"
-                description="Catatan kaki faktur — rekening tujuan dan syarat bayar. Format nomor dokumen menyusul."
+                description="Catatan kaki faktur — rekening tujuan dan syarat bayar."
                 href={SETTINGS_PATHS.fakturDokumen}
+              />
+              <HubLinkCard
+                title="Nomor dokumen"
+                description="Awalan, kapan nomor mengulang, dan jumlah digit tiap jenis dokumen."
+                href={SETTINGS_PATHS.nomorDokumen}
               />
               <HubLinkCard
                 title="Stok & kasir"
                 description="Boleh tidaknya kasir menjual barang yang stoknya sudah habis."
                 href={SETTINGS_PATHS.stokKasir}
               />
+              <HubLinkCard
+                title="Notifikasi"
+                description="Pengingat otomatis yang ingin dikirim. Belum ada yang mengirim — pilihannya tersimpan saja."
+                href={SETTINGS_PATHS.notifikasi}
+              />
             </>
           )}
+          {/*
+            NOT GATED ON `tenants:read` like the cards above it: this one reads
+            no tenant setting at all — it explains what `beli_putus` and
+            `konsinyasi` do to the books, which is the same answer for everybody.
+          */}
+          <HubLinkCard
+            title="Tipe supplier"
+            description="Beli putus, konsinyasi, perusahaan, perorangan — apa artinya, dan di mana diatur."
+            href={SETTINGS_PATHS.tipeSupplier}
+          />
           {PENDING_CARDS.map((card) => (
             <HubPendingCard key={card.title} {...card} />
           ))}

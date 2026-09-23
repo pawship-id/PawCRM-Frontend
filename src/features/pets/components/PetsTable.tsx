@@ -21,6 +21,7 @@ import { Can, usePermissions } from "@/features/permissions";
 import { usePetOptions } from "@/hooks/usePetOptions";
 import type { Pet } from "@/types/api";
 
+import { PetAvatar } from "./PetAvatar";
 import { PetSpeciesBadge, PetStatusBadge } from "./PetBadges";
 
 /** The row action that opens a confirm dialog, plus the pet it targets. */
@@ -150,8 +151,18 @@ export function PetsTable({
               return (
                 <TableRow key={pet._id}>
                   <TableCell>
-                    <div className="font-medium text-foreground">
-                      <HighlightText text={pet.name} query={search} />
+                    {/*
+                      THE PHOTO IS IN THE NAME CELL, not a column of its own. A
+                      column would need a header, and the only honest word for it
+                      ("Foto") labels something most rows do not have — so the
+                      table would carry a heading for a mostly-empty column. Here
+                      it reads as part of the name, which is what it identifies.
+                    */}
+                    <div className="flex items-center gap-2.5">
+                      <PetAvatar pet={pet} />
+                      <span className="font-medium text-foreground">
+                        <HighlightText text={pet.name} query={search} />
+                      </span>
                     </div>
                   </TableCell>
                   <TableCell>
