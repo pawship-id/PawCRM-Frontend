@@ -648,7 +648,22 @@ export interface GroomingSettings {
  */
 export interface Tenant {
   _id: string;
+  /** The name on the sign — what the shop is called. */
   name: string;
+  /**
+   * The name on the paper: "PT Anabul Sejahtera Bersama" beside a `name` of
+   * "Anabul Group". Printed on invoices, which fall back to `name` when it is
+   * null — a sole trader has no second name to give.
+   */
+  legalName?: string | null;
+  /**
+   * NPWP, stored as typed. Printed, never computed with.
+   *
+   * OPTIONAL, like `legalName` above: both arrived on 22 September 2026, and
+   * repository reads use `.lean()`, which skips Mongoose defaults — so a tenant
+   * written before then comes back without the keys at all.
+   */
+  taxId?: string | null;
   slug: string;
   logoUrl: string | null;
   /** IANA zone (e.g. "Asia/Jakarta") — the zone the tenant's day is measured in. */
@@ -721,9 +736,30 @@ export interface Branch {
    */
   code: string | null;
   address: string | null;
+  /**
+   * The city, separately from the free-text address it cannot be parsed out of.
+   *
+   * OPTIONAL for the reason `location` is read defensively: it arrived on
+   * 22 September 2026 and list reads use `.lean()`, so a branch written before
+   * then comes back without the key.
+   */
+  city?: string | null;
   phone: string | null;
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter: string | null;
+  /**
+   * When the doors are open — `HH:mm` in the tenant's timezone, both or neither.
+   * Null means UNRECORDED, not closed, and nothing enforces them yet: the
+   * booking validator that will read them is why they are stored as times rather
+   * than as a sentence.
+   */
+  openTime?: string | null;
+  closeTime?: string | null;
+  /**
+   * Which days those hours apply to. `[]` means unrecorded — a branch open no
+   * day at all is what `isActive: false` says, and says better.
+   */
+  operatingDays?: OperatingDay[];
   /**
    * Where the branch actually is, independent of the `address` text. Present on
    * every document written by the current schema — but read it defensively, as
@@ -737,6 +773,31 @@ export interface Branch {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Body of PATCH /tenants/me when a business edits WHO IT IS (22 September 2026).
+ * Every field optional, at least one required. `""` clears the nullable ones.
+ */
+export interface TenantIdentityInput {
+  name?: string;
+  legalName?: string | null;
+  taxId?: string | null;
+  logoUrl?: string | null;
+  timezone?: string;
+}
+
+/** The seven day codes a branch's `operatingDays` is drawn from, Monday first. */
+export const OPERATING_DAYS = [
+  "mon",
+  "tue",
+  "wed",
+  "thu",
+  "fri",
+  "sat",
+  "sun",
+] as const;
+
+export type OperatingDay = (typeof OPERATING_DAYS)[number];
 
 /** Query parameters accepted by GET /api/branches. All optional. */
 export interface BranchListQuery {
@@ -758,7 +819,12 @@ export interface CreateBranchInput {
   /** A-Z and 0-9 only, 2–8 characters. Uppercased server-side. */
   code?: string | null;
   address?: string | null;
+  city?: string | null;
   phone?: string | null;
+  /** `HH:mm`, both or neither — the backend refuses one on its own. */
+  openTime?: string | null;
+  closeTime?: string | null;
+  operatingDays?: OperatingDay[];
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
@@ -775,7 +841,12 @@ export interface UpdateBranchInput {
   /** `""` or `null` clears it. Uppercased server-side. */
   code?: string | null;
   address?: string | null;
+  city?: string | null;
   phone?: string | null;
+  /** `HH:mm`, both or neither — the backend refuses one on its own. */
+  openTime?: string | null;
+  closeTime?: string | null;
+  operatingDays?: OperatingDay[];
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
@@ -820,6 +891,12 @@ export interface Warehouse {
   picName: string | null;
   picPhone: string | null;
   isActive: boolean;
+  /**
+   * Is there a till here? False even on the warehouse created with a branch — a
+   * till is switched on deliberately. Nothing gates the POS on it yet; the
+   * tenant profile counts it, and the subscription will be priced on it.
+   */
+  hasPos?: boolean;
   /** True for the warehouse auto-created with a branch. Read-only: DELETE refuses. */
   isDefault: boolean;
   /** Soft-delete marker; non-null means deleted (restorable), null means live. */
@@ -855,6 +932,8 @@ export interface CreateWarehouseInput {
   picName?: string | null;
   picPhone?: string | null;
   isActive?: boolean;
+  /** Is there a till here? See Warehouse.hasPos. */
+  hasPos?: boolean;
 }
 
 /**
@@ -870,6 +949,8 @@ export interface UpdateWarehouseInput {
   picName?: string | null;
   picPhone?: string | null;
   isActive?: boolean;
+  /** Is there a till here? See Warehouse.hasPos. */
+  hasPos?: boolean;
 }
 
 /**
@@ -5928,7 +6009,17 @@ export interface PublicCustomerInvoice {
   notes: string | null;
   voidReason: string | null;
   /** The shop's name for the header, and its footer note — usually where to pay. */
-  tenant: { name: string; invoiceFooterNote: string | null };
+  /**
+   * Who is billing, and where to pay. `legalName` and `taxId` since
+   * 22 September 2026 — the sheet prints the legal name and falls back to
+   * `name`; both are null for a shop that gave neither.
+   */
+  tenant: {
+    name: string;
+    legalName?: string | null;
+    taxId?: string | null;
+    invoiceFooterNote: string | null;
+  };
 }
 
 /**

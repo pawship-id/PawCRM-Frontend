@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { Alert, Card, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
+import { branchHoursSummary } from "@/features/branches/hours";
 import { usePermissions } from "@/features/permissions";
 import { TenantSubscriptionBadge, useTenant } from "@/features/tenant";
 import type { Branch, Tenant, Warehouse } from "@/types/api";
@@ -45,13 +46,15 @@ const PLAN_LABELS: Record<Tenant["subscription"]["plan"], string> = {
   enterprise: "Enterprise",
 };
 
-/** Identity fields the mockup draws that the tenant document does not hold yet. */
-const PENDING_IDENTITY = [
-  "Nama badan hukum",
-  "NPWP",
-  "Format tanggal",
-  "Tahun buku",
-] as const;
+/**
+ * Identity fields the mockup draws that the tenant document still does not hold.
+ *
+ * The legal name and the NPWP left this list on 22 September 2026, when
+ * `PATCH /tenants/me` learned identity. These two stayed: nothing reads a date
+ * format or a fiscal year yet, and a setting that changes no screen is a control
+ * that teaches people to ignore controls. They arrive with the reports.
+ */
+const PENDING_IDENTITY = ["Format tanggal", "Tahun buku"] as const;
 
 const PENDING_CARDS: PendingHubCard[] = [
   {
@@ -125,9 +128,9 @@ export function GeneralSettingsScreen() {
                 ? directory.branches.length
                 : null
             }
-            warehouseCount={
+            warehouses={
               mayReadWarehouses && !directory.loading
-                ? directory.warehouses.length
+                ? directory.warehouses
                 : null
             }
           />
@@ -193,12 +196,12 @@ function Section({
 function TenantHero({
   tenant,
   branchCount,
-  warehouseCount,
+  warehouses,
 }: {
   tenant: Tenant;
   /** Null while unknown or not readable — the chip is then left out. */
   branchCount: number | null;
-  warehouseCount: number | null;
+  warehouses: Warehouse[] | null;
 }) {
   const { subscription } = tenant;
   const joined = monthYear(tenant.createdAt);
@@ -207,9 +210,16 @@ function TenantHero({
   const places =
     branchCount === null
       ? null
-      : warehouseCount === null
+      : warehouses === null
         ? `${branchCount} cabang`
-        : `${branchCount} cabang · ${warehouseCount} gudang`;
+        : `${branchCount} cabang · ${warehouses.length} gudang`;
+
+  /*
+    KASIR AKTIF, WITHOUT THE MOCKUP'S "dari 5". The quota is a subscription
+    figure and no plan carries one yet, so the chip counts what is switched on
+    and claims no limit nobody has set.
+  */
+  const tills = warehouses?.filter((warehouse) => warehouse.hasPos).length;
 
   return (
     <Card>
@@ -227,6 +237,7 @@ function TenantHero({
             <TenantSubscriptionBadge status={subscription.status} />
             {trial && <Chip>{trial}</Chip>}
             {places && <Chip>{places}</Chip>}
+            {tills !== undefined && <Chip>{`${tills} kasir aktif`}</Chip>}
             {joined && <Chip>Bergabung {joined}</Chip>}
           </div>
         </div>
@@ -239,7 +250,15 @@ function IdentitySection({ tenant }: { tenant: Tenant }) {
   return (
     <Section
       title="Identitas"
-      hint="Diubah oleh tim Buloo — belum bisa dari sini"
+      hint="Dipakai di dokumen resmi dan tagihan Buloo"
+      action={
+        <Link
+          href={SETTINGS_PATHS.identitas}
+          className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-surface-hover"
+        >
+          Ubah
+        </Link>
+      }
     >
       <dl className="divide-y divide-border">
         <IdentityRow
@@ -249,8 +268,21 @@ function IdentitySection({ tenant }: { tenant: Tenant }) {
           {tenant.name}
         </IdentityRow>
         <IdentityRow
+          label="Nama badan hukum"
+          note="Tercetak di faktur. Kosong berarti faktur memakai nama tampilan."
+        >
+          {tenant.legalName || "—"}
+        </IdentityRow>
+        <IdentityRow label="NPWP">
+          {tenant.taxId ? (
+            <span className="tabular-nums">{tenant.taxId}</span>
+          ) : (
+            "—"
+          )}
+        </IdentityRow>
+        <IdentityRow
           label="Zona waktu"
-          note="Menentukan batas hari untuk tutup shift dan laporan harian"
+          note="Menentukan batas hari untuk tutup shift dan laporan harian. Diubah oleh tim Buloo."
         >
           {tenant.timezone}
         </IdentityRow>
@@ -370,7 +402,10 @@ function BranchRow({
   warehouses: Warehouse[] | null;
   mayEdit: boolean;
 }) {
-  const contact = [branch.address, branch.phone].filter(Boolean).join(" · ");
+  const contact = [branch.address, branch.city, branch.phone]
+    .filter(Boolean)
+    .join(" · ");
+  const hours = branchHoursSummary(branch);
 
   return (
     <li className="flex flex-wrap items-center gap-3 py-3">
@@ -384,9 +419,10 @@ function BranchRow({
           <p className="text-xs text-muted">
             {warehouses.length === 0
               ? "Belum ada gudang"
-              : `${warehouses.length} gudang · ${warehouses.map((w) => w.name).join(", ")}`}
+              : `${warehouses.length} gudang · ${warehouses.map(warehouseLabel).join(", ")}`}
           </p>
         )}
+        <p className="text-xs text-muted">{hours ?? "Jam buka belum diisi"}</p>
       </div>
       {mayEdit && (
         <Link
@@ -398,6 +434,11 @@ function BranchRow({
       )}
     </li>
   );
+}
+
+/** "Etalase Pusat (kasir)" — a warehouse, and whether a till stands in it. */
+function warehouseLabel(warehouse: Warehouse): string {
+  return warehouse.hasPos ? `${warehouse.name} (kasir)` : warehouse.name;
 }
 
 function Chip({ children }: { children: ReactNode }) {

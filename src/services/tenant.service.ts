@@ -1,5 +1,5 @@
 import { apiClient } from "./api-client";
-import type { Tenant, TenantSettings } from "@/types/api";
+import type { Tenant, TenantIdentityInput, TenantSettings } from "@/types/api";
 
 /**
  * Tenant calls against /api/tenants.
@@ -34,4 +34,18 @@ export const tenantService = {
    */
   updateSettings: (settings: Partial<TenantSettings>) =>
     apiClient.patch<Tenant>("/tenants/me", { settings }),
+
+  /**
+   * PATCH /tenants/me with the business's own identity (22 September 2026).
+   *
+   * THE SAME ROUTE AND THE SAME GRANT as the settings above — a separate method
+   * only because the bodies share nothing. What it cannot send is the slug, the
+   * currency and the subscription: the first is a public URL other links depend
+   * on, and the other two are what the business is billed on.
+   *
+   * `""` on `legalName`, `taxId` or `logoUrl` is how a field is CLEARED; the
+   * server stores null for it.
+   */
+  updateIdentity: (identity: TenantIdentityInput) =>
+    apiClient.patch<Tenant>("/tenants/me", identity),
 };

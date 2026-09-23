@@ -7,6 +7,7 @@ import {
   InvoiceFooterForm,
   StockSettingsForm,
   TaxSettingsForm,
+  TenantIdentityForm,
   useTenant,
 } from "@/features/tenant";
 import type { Tenant } from "@/types/api";
@@ -61,6 +62,20 @@ function TenantSettingsPage({
         </div>
       )}
     </div>
+  );
+}
+
+export function IdentitySettingsScreen() {
+  return (
+    <TenantSettingsPage
+      tab="umum"
+      title="Identitas usaha"
+      description="Nama usaha, nama badan hukum, dan NPWP. Zona waktu dan mata uang diubah oleh tim Buloo."
+    >
+      {(tenant, refetch) => (
+        <TenantIdentityForm tenant={tenant} onSaved={refetch} />
+      )}
+    </TenantSettingsPage>
   );
 }
 

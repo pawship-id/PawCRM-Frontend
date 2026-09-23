@@ -158,6 +158,7 @@ function DetailsSection({
   const [picName, setPicName] = useState(warehouse.picName ?? "");
   const [picPhone, setPicPhone] = useState(warehouse.picPhone ?? "");
   const [isActive, setIsActive] = useState(warehouse.isActive);
+  const [hasPos, setHasPos] = useState(warehouse.hasPos === true);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -193,6 +194,7 @@ function DetailsSection({
         picName: picName.trim() === "" ? null : picName.trim(),
         picPhone: picPhone.trim() === "" ? null : picPhone.trim(),
         isActive,
+        hasPos,
       });
       onUpdated(updated);
       swalToast("Warehouse updated.");
@@ -299,6 +301,25 @@ function DetailsSection({
         />
         <Label htmlFor="warehouse-active" className="font-normal">
           Active — this warehouse accepts stock movement
+        </Label>
+      </div>
+
+
+      {/*
+        IS THERE A TILL HERE? A warehouse is a place stock sits; only some are
+        places a customer pays at. Nothing gates the POS on it yet — the tenant
+        profile counts it, and the subscription will be priced on it — so the
+        caption says what it is FOR rather than implying it closes a till.
+      */}
+      <div className="flex items-center gap-2.5">
+        <Checkbox
+          id="warehouse-pos"
+          checked={hasPos}
+          disabled={disabled}
+          onCheckedChange={(checked) => setHasPos(checked === true)}
+        />
+        <Label htmlFor="warehouse-pos" className="font-normal">
+          Ada kasir di gudang ini — dihitung sebagai kasir aktif di profil usaha
         </Label>
       </div>
 

@@ -98,6 +98,8 @@ function makeTenant(overrides: Partial<Tenant> = {}): Tenant {
     logoUrl: null,
     timezone: "Asia/Jakarta",
     currency: "IDR",
+    legalName: "PT Anabul Sejahtera Bersama",
+    taxId: "01.234.567.8-901.000",
     subscription: { status: "active", plan: "pro", trialEndsAt: null },
     settings: { hotelMode: "zone" },
     sv: 1,
@@ -116,13 +118,23 @@ function page<T>(items: T[]) {
 }
 
 const BRANCHES = [
-  { _id: "br-1", name: "Pusat", address: "Jl. Raya Darmo 121", phone: "031-5551200", isActive: true },
+  {
+    _id: "br-1",
+    name: "Pusat",
+    address: "Jl. Raya Darmo 121",
+    city: "Surabaya",
+    phone: "031-5551200",
+    openTime: "09:00",
+    closeTime: "20:00",
+    operatingDays: ["mon", "tue", "wed", "thu", "fri", "sat"],
+    isActive: true,
+  },
   { _id: "br-2", name: "Pawship Barat", address: null, phone: null, isActive: false },
 ] as Branch[];
 
 const WAREHOUSES = [
   { _id: "wh-1", name: "Gudang Utama", defaultBranchId: "br-1" },
-  { _id: "wh-2", name: "Etalase Pusat", defaultBranchId: "br-1" },
+  { _id: "wh-2", name: "Etalase Pusat", defaultBranchId: "br-1", hasPos: true },
   { _id: "wh-3", name: "Gudang Barat", defaultBranchId: "br-2" },
 ] as Warehouse[];
 
@@ -149,7 +161,21 @@ describe("GeneralSettingsScreen", () => {
     expect(screen.getByText("Paket Pro")).toBeInTheDocument();
     expect(screen.getByText("Asia/Jakarta")).toBeInTheDocument();
     expect(screen.getByText("KH")).toBeInTheDocument();
+    /* The name on the paper and the tax number, printed on every invoice. */
+    expect(
+      screen.getByText("PT Anabul Sejahtera Bersama"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("01.234.567.8-901.000")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ubah" })).toHaveAttribute(
+      "href",
+      "/dashboard/pengaturan/identitas",
+    );
     expect(await screen.findByText("2 cabang · 3 gudang")).toBeInTheDocument();
+    /*
+      ONE TILL, AND NO "dari 5": the quota is a subscription figure and no plan
+      carries one yet, so the chip counts what is on and claims no limit.
+    */
+    expect(screen.getByText("1 kasir aktif")).toBeInTheDocument();
 
     const tabs = screen.getByRole("navigation", { name: "Bagian pengaturan" });
     expect(
@@ -158,15 +184,23 @@ describe("GeneralSettingsScreen", () => {
         .map((link) => link.textContent),
     ).toEqual(["Umum", "Layanan", "Keuangan", "Pengguna & Sistem"]);
 
-    // Four identity fields the tenant does not hold yet, and four cards.
-    expect(screen.getAllByText("Segera")).toHaveLength(8);
+    // Two identity fields the tenant still does not hold, and four cards.
+    expect(screen.getAllByText("Segera")).toHaveLength(6);
   });
 
   it("lists each branch with its own warehouses, and offers no way to create one", async () => {
     renderWithAuth(<GeneralSettingsScreen />);
 
     expect(
-      await screen.findByText("2 gudang · Gudang Utama, Etalase Pusat"),
+      await screen.findByText(
+        "2 gudang · Gudang Utama, Etalase Pusat (kasir)",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("09:00 – 20:00 · Senin – Sabtu")).toBeInTheDocument();
+    /* Unrecorded, not closed — the branch with no hours says so in words. */
+    expect(screen.getByText("Jam buka belum diisi")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Jl. Raya Darmo 121 · Surabaya · 031-5551200/),
     ).toBeInTheDocument();
     expect(screen.getByText("1 gudang · Gudang Barat")).toBeInTheDocument();
     expect(screen.getByText("Nonaktif")).toBeInTheDocument();

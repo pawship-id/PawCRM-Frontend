@@ -33,6 +33,7 @@ export type SettingsTab = keyof typeof SETTINGS_TABS;
 
 export const SETTINGS_PATHS = {
   // Umum
+  identitas: `${ROOT}/identitas`,
   cabang: `${ROOT}/cabang`,
   gudang: `${ROOT}/gudang`,
   stokKasir: `${ROOT}/stok-kasir`,

@@ -59,9 +59,21 @@ export interface InvoiceSheetInvoice {
 }
 
 /** The shop, as far as the sheet needs it: its name and its footer note. */
-export type InvoiceSheetTenant = Pick<Tenant, "name"> & {
+export type InvoiceSheetTenant = Pick<Tenant, "name" | "legalName" | "taxId"> & {
   settings?: Pick<TenantSettings, "invoiceFooterNote">;
 };
+
+/**
+ * WHO THE INVOICE IS ISSUED BY — the legal name where there is one, the trading
+ * name otherwise (22 September 2026).
+ *
+ * The fallback is the point: a sole trader has no second name to give, and a
+ * header that went blank rather than falling back would produce an invoice
+ * issued by nobody.
+ */
+function issuerName(tenant: InvoiceSheetTenant | null): string {
+  return tenant?.legalName || tenant?.name || "—";
+}
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -199,7 +211,12 @@ export function InvoiceSheet({
     >
       <header className="flex flex-wrap items-start justify-between gap-6 border-b-2 border-primary pb-4">
         <div>
-          <p className="text-lg font-bold text-primary">{tenant?.name ?? "—"}</p>
+          <p className="text-lg font-bold text-primary">{issuerName(tenant)}</p>
+          {tenant?.taxId && (
+            <p className="mt-0.5 text-xs tabular-nums text-muted">
+              NPWP {tenant.taxId}
+            </p>
+          )}
           {invoice.branchName && (
             <p className="mt-1 text-sm text-muted">{invoice.branchName}</p>
           )}
@@ -404,7 +421,7 @@ export function InvoiceSheet({
               Hormat kami,
               <br />
               <span className="font-semibold text-foreground">
-                {tenant?.name ?? "—"}
+                {issuerName(tenant)}
               </span>
             </div>
           </div>
@@ -476,7 +493,9 @@ function ThermalSheet({
       className="mx-auto w-full bg-surface p-4 text-sm text-foreground"
     >
       <div className="text-center">
-        <p className="font-semibold">{tenant?.name ?? "—"}</p>
+        <p className="font-semibold">{issuerName(tenant)}</p>
+        {/* The NPWP is left OFF the narrow paper: a thermal invoice is read at a
+            counter, and the line that matters there is what is owed. */}
         {invoice.branchName && <p className="text-xs">{invoice.branchName}</p>}
       </div>
 

@@ -28,8 +28,9 @@ import {
   validateAddress,
   validatePhone,
 } from "@/utils/validation";
-import type { Branch } from "@/types/api";
+import type { Branch, OperatingDay } from "@/types/api";
 
+import { OperatingDaysField } from "./OperatingDaysField";
 import { BranchStatusBadge } from "./BranchStatusBadge";
 
 /**
@@ -144,6 +145,12 @@ function DetailsSection({
   const [code, setCode] = useState(branch.code ?? "");
   const [name, setName] = useState(branch.name);
   const [address, setAddress] = useState(branch.address ?? "");
+  const [city, setCity] = useState(branch.city ?? "");
+  const [openTime, setOpenTime] = useState(branch.openTime ?? "");
+  const [closeTime, setCloseTime] = useState(branch.closeTime ?? "");
+  const [operatingDays, setOperatingDays] = useState<OperatingDay[]>(
+    branch.operatingDays ?? [],
+  );
   const [phone, setPhone] = useState(branch.phone ?? "");
   const [receiptFooter, setReceiptFooter] = useState(branch.receiptFooter ?? "");
   // toLocationFieldsValue tolerates a missing pin, so a branch document written
@@ -172,6 +179,15 @@ function DetailsSection({
     if (codeError) nextErrors.code = codeError;
     if (addressError) nextErrors.address = addressError;
     if (phoneError) nextErrors.phone = phoneError;
+    /*
+      BOTH OR NEITHER, which the server enforces too: an opening time with no
+      closing one describes nothing. Caught here so the message names the empty
+      box instead of arriving as a 400 about the pair.
+    */
+    if (Boolean(openTime) !== Boolean(closeTime)) {
+      const missing = openTime ? "closeTime" : "openTime";
+      nextErrors[missing] = "Isi jam buka dan jam tutupnya sekaligus";
+    }
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
@@ -181,6 +197,10 @@ function DetailsSection({
         name: name.trim(),
         code: code.trim() === "" ? null : code.trim(),
         address: address.trim() === "" ? null : address.trim(),
+        city: city.trim() === "" ? null : city.trim(),
+        openTime: openTime === "" ? null : openTime,
+        closeTime: closeTime === "" ? null : closeTime,
+        operatingDays,
         phone: phone.trim() === "" ? null : phone.trim(),
         receiptFooter:
           receiptFooter.trim() === "" ? null : receiptFooter.trim(),
@@ -253,7 +273,7 @@ function DetailsSection({
           disabled={disabled}
         />
 
-        {/* Row 2: address (full width) */}
+        {/* Row 2: address (full width), then the city it is in */}
         <div className="sm:col-span-2">
           <TextField
             label="Address"
@@ -263,6 +283,57 @@ function DetailsSection({
             onChange={(e) => setAddress(e.target.value)}
             error={fieldErrors.address}
             hint="Leave blank to remove."
+            disabled={disabled}
+          />
+        </div>
+
+        {/*
+          A FIELD OF ITS OWN, not the tail of the address line: an address is
+          written however the shop writes it, and a list grouped by city cannot
+          be built on its last comma-separated fragment.
+        */}
+        <TextField
+          label="Kota"
+          name="city"
+          placeholder="mis. Surabaya"
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+          error={fieldErrors.city}
+          disabled={disabled}
+        />
+
+        <div />
+
+        {/*
+          Row 3: when the doors are open. Both times or neither — see the guard
+          in handleSubmit. Nothing enforces them yet; they are read on the tenant
+          profile, and the booking validator that will read them is why they are
+          stored as times rather than as a sentence.
+        */}
+        <TextField
+          label="Jam buka"
+          name="openTime"
+          type="time"
+          value={openTime}
+          onChange={(e) => setOpenTime(e.target.value)}
+          error={fieldErrors.openTime}
+          disabled={disabled}
+        />
+        <TextField
+          label="Jam tutup"
+          name="closeTime"
+          type="time"
+          value={closeTime}
+          onChange={(e) => setCloseTime(e.target.value)}
+          error={fieldErrors.closeTime}
+          hint="Boleh lewat tengah malam — 20:00 sampai 02:00 tetap diterima."
+          disabled={disabled}
+        />
+
+        <div className="sm:col-span-2">
+          <OperatingDaysField
+            value={operatingDays}
+            onChange={setOperatingDays}
             disabled={disabled}
           />
         </div>

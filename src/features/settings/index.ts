@@ -20,6 +20,7 @@ export {
 } from "./components/SettingsHeader";
 export {
   DocumentSettingsScreen,
+  IdentitySettingsScreen,
   StockCashierSettingsScreen,
   TaxSettingsScreen,
 } from "./components/TenantSettingsScreens";
