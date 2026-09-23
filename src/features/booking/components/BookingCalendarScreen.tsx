@@ -16,7 +16,10 @@ import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { bookingService } from "@/services/booking.service";
 import type { BookingCalendar, BookingCalendarEntry, BookingStatus } from "@/types/api";
 
-import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
+import {
+  BOOKING_STATUS_LABELS,
+  bookingStatusLabel,
+} from "./BookingStatusBadge";
 
 type View = "harian" | "mingguan";
 
@@ -516,7 +519,7 @@ function Block({
       <span className="block truncate">{entry.serviceName}</span>
       {/* THE STATUS AS WORDS. Colour is never the only difference. */}
       <span className="block truncate opacity-80">
-        {BOOKING_STATUS_LABELS[entry.status]}
+        {bookingStatusLabel(entry.status, entry)}
         {entry.durationMin === null && " · durasi belum diisi"}
       </span>
     </button>

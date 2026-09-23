@@ -44,8 +44,8 @@ import { BookingNotesCard } from "./BookingNotesCard";
 import { BookingRelatedCard } from "./BookingRelatedCard";
 import { BookingStatusActions } from "./BookingStatusActions";
 import {
-  BOOKING_STATUS_LABELS,
   BookingStatusBadge,
+  bookingStatusLabel,
 } from "./BookingStatusBadge";
 import {
   AddSessionButton,
@@ -219,9 +219,12 @@ export function BookingDetailScreen({ id }: { id: string }) {
           show the work because one of them timed out would send somebody to the
           table with nothing.
         */
+        /* A RIDE HAS NO ANIMAL OF ITS OWN (23 September 2026) — its animals
+           are `passengers`, already named on the booking. Asking for `null`
+           would be a request for a pet nobody named. */
         const [petResult, customerResult, branchResult] =
           await Promise.allSettled([
-            petService.getById(found.petId),
+            found.petId ? petService.getById(found.petId) : Promise.resolve(null),
             customerService.getById(found.customerId),
             branchService.getById(found.branchId),
           ]);
@@ -462,7 +465,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 {/* A DRAFT HAS NO NUMBER — see the model. Saying so beats a blank. */}
                 {booking.bookingNumber ?? "Booking (draf)"}
               </h1>
-              <BookingStatusBadge status={booking.status} />
+              <BookingStatusBadge status={booking.status} tripLeg={booking.tripLeg} />
               {/* A WORD, NOT A COLOUR (§1.3) — and a claim, so it says who holds it. */}
               <span className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted">
                 {booking.pulledToCartAt && !booking.pulledToInvoiceAt
@@ -567,13 +570,14 @@ export function BookingDetailScreen({ id }: { id: string }) {
               aria-label={
                 reached < 0
                   ? `Status ${booking.status} — di luar alur kunjungan`
-                  : `${reached + 1} dari ${track.length} tahap: ${BOOKING_STATUS_LABELS[booking.status] ?? booking.status}`
+                  : `${reached + 1} dari ${track.length} tahap: ${bookingStatusLabel(booking.status, booking)}`
               }
             >
               {track.map((rung, index) => (
                 <span
                   key={rung}
-                  title={BOOKING_STATUS_LABELS[rung] ?? rung}
+                  /* A van's last two rungs read On the Way and Arrived. */
+                  title={bookingStatusLabel(rung, booking)}
                   className={`h-1 flex-1 rounded-full ${
                     index <= reached ? "bg-primary" : "bg-border"
                   }`}
@@ -729,23 +733,32 @@ export function BookingDetailScreen({ id }: { id: string }) {
             </dl>
 
             {booking.tripLeg ? (
+              /*
+                BOTH ENDS ARE STORED (23 September 2026), so neither is guessed
+                from the direction any more — a van may start at another branch.
+              */
               <dl className="mt-3 grid gap-1 text-sm">
-                <div className="flex gap-3">
-                  <dt className="w-16 flex-none text-muted">Asal</dt>
-                  <dd className="text-foreground">
-                    {booking.tripLeg === "pickup"
-                      ? (booking.tripAddress ?? customer?.address ?? "Alamat pelanggan yang tersimpan")
-                      : (branchName ?? "Cabang")}
-                  </dd>
-                </div>
-                <div className="flex gap-3">
-                  <dt className="w-16 flex-none text-muted">Tujuan</dt>
-                  <dd className="text-foreground">
-                    {booking.tripLeg === "pickup"
-                      ? (branchName ?? "Cabang")
-                      : (booking.tripAddress ?? customer?.address ?? "Alamat pelanggan yang tersimpan")}
-                  </dd>
-                </div>
+                {(
+                  [
+                    ["Asal", booking.tripOrigin],
+                    ["Tujuan", booking.tripDestination],
+                  ] as const
+                ).map(([label, point]) => (
+                  <div key={label} className="flex gap-3">
+                    <dt className="w-16 flex-none text-muted">{label}</dt>
+                    <dd className="min-w-0 text-foreground">
+                      {point?.address ??
+                        booking.tripAddress ??
+                        customer?.address ??
+                        "Alamat belum dicatat"}
+                      {point?.lat != null && point?.lng != null && (
+                        <span className="block text-xs tabular-nums text-muted">
+                          {point.lat}, {point.lng}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                ))}
               </dl>
             ) : (
               (booking.pickupRequested || booking.deliveryRequested) && (

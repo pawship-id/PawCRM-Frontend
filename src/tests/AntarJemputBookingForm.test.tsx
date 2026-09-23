@@ -51,7 +51,9 @@ const customer = {
   name: "Ibu Rina",
   phone: "0812-3456-7890",
   address: "Jl. Mawar No. 12",
-} as Customer;
+  /* About 2 km north of the branch — both ends pinned, so a ride can save. */
+  location: { lat: -7.2395, lng: 112.7521 },
+} as unknown as Customer;
 
 const animal = (id: string, name: string) =>
   ({
@@ -77,6 +79,9 @@ const ride = {
   businessLineId: "line-aj",
   serviceLocations: ["in_home"],
   addonServiceIds: [],
+  /* Sold everywhere — the Layanan picker is scoped to the chosen branch. */
+  allBranches: true,
+  branchIds: [],
 } as unknown as Service;
 
 const result = (id: string, groupId: string, leg: "pickup" | "delivery") =>
@@ -97,7 +102,15 @@ beforeEach(() => {
     .mockResolvedValueOnce(result("bk-1", "grp-1", "pickup"))
     .mockResolvedValueOnce(result("bk-2", "grp-1", "delivery"));
   branches.list.mockResolvedValue(
-    page([{ _id: BRANCH_ID, name: "Cabang Barat", address: "Jl. Sudirman 10" }]) as never,
+    page([
+      {
+        _id: BRANCH_ID,
+        name: "Cabang Barat",
+        address: "Jl. Sudirman 10",
+        /* A ride is priced between two pins, so the branch carries one. */
+        location: { lat: -7.2575, lng: 112.7521 },
+      },
+    ]) as never,
   );
   businessLines.list.mockResolvedValue(page([{ _id: "line-aj", name: "Antar-Jemput" }]) as never);
   primeVariantOptions(variantOptionService.list, zoneService.list);
@@ -121,13 +134,14 @@ async function pickCustomer() {
  *
  * WHAT IS PINNED HERE:
  *  - one ride is one booking: the first animal is its own, the rest passengers;
- *  - Pulang-pergi is TWO saves, the second into the visit the first made;
+ *  - Antar Jemput is TWO saves, the second into the visit the first made, and
+ *    each direction carries its own pair of addresses;
  *  - "+ Antar-jemput" from a grooming SERVES that grooming — `linkedBookingIds`
  *    on the ride — and leaves its visit alone;
  *  - the animals are picked before any booking is offered to link.
  */
 describe("AntarJemputBookingForm", () => {
-  it("saves Pulang-pergi as two rides in one visit, the other animals riding along", async () => {
+  it("saves Antar Jemput as two rides in one visit, the other animals riding along", async () => {
     renderWithAuth(<AntarJemputBookingForm />);
 
     await userEvent.click(
@@ -137,15 +151,34 @@ describe("AntarJemputBookingForm", () => {
     await userEvent.click(await screen.findByRole("button", { name: /bruno/i }));
     await userEvent.click(screen.getByRole("button", { name: /coco/i }));
 
-    await userEvent.click(screen.getByRole("radio", { name: /pulang-pergi/i }));
+    /* The service comes first — Perjalanan is not on screen until it is picked. */
+    expect(screen.queryByRole("radio", { name: /antar jemput/i })).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: "Layanan" }));
     await userEvent.click(await screen.findByRole("option", { name: "Antar-Jemput" }));
+
+    await userEvent.click(await screen.findByRole("radio", { name: /antar jemput/i }));
 
     fireEvent.change(screen.getByLabelText(/tanggal jemput/i), { target: { value: "2026-09-22" } });
     fireEvent.change(screen.getByLabelText(/tanggal antar/i), { target: { value: "2026-09-22" } });
     await pickSlot("Jam jemput", "08.30");
     await pickSlot("Jam antar", "13.00");
+
+    /*
+      THE TWO DIRECTIONS ARE TWO JOURNEYS (23 September 2026): send the animal
+      home to somewhere the pickup never went, and the delivery must carry it.
+    */
+    const sources = screen.getAllByRole("button", { name: /sumber alamat tujuan/i });
+    expect(sources).toHaveLength(2);
+    await userEvent.click(sources[1]);
+    await userEvent.click(await screen.findByRole("option", { name: "Ketik manual" }));
+
+    const addresses = screen.getAllByLabelText(/^alamat$/i);
+    await userEvent.type(addresses[addresses.length - 1], "Kantor Bu Rina");
+    const lats = screen.getAllByLabelText(/latitude/i);
+    const lngs = screen.getAllByLabelText(/longitude/i);
+    fireEvent.change(lats[lats.length - 1], { target: { value: "-7.2700" } });
+    fireEvent.change(lngs[lngs.length - 1], { target: { value: "112.7600" } });
 
     await userEvent.click(screen.getByRole("button", { name: /simpan 2 booking/i }));
 
@@ -156,19 +189,33 @@ describe("AntarJemputBookingForm", () => {
       customerId: "cust-1",
       branchId: BRANCH_ID,
       scheduledAt: new Date("2026-09-22T08:30").toISOString(),
-      status: "requested",
+      /* A van is either written down or it is on — `requested` is not one of
+         its four rungs (23 September 2026). */
+      status: "draft",
       location: "in_home",
-      /* Left as the customer's own address — sent as "the one on file". */
-      tripAddress: null,
+      /* A pickup starts at the customer's door and ends at the branch. */
+      tripOrigin: { address: "Jl. Mawar No. 12", lat: -7.2395, lng: 112.7521 },
+      tripDestination: { address: "Jl. Sudirman 10", lat: -7.2575, lng: 112.7521 },
+      /* EVERY ANIMAL IN ONE LIST, and no `petId` at all (23 September 2026):
+         a ride promotes none of the animals it carries. */
       bookings: [
-        { petId: "pet-1", serviceId: "svc-aj", tripLeg: "pickup", passengerPetIds: ["pet-2"] },
+        {
+          serviceId: "svc-aj",
+          tripLeg: "pickup",
+          passengerPetIds: ["pet-1", "pet-2"],
+        },
       ],
     });
     expect(first).not.toHaveProperty("groupId");
+    /* The delivery leaves the branch for ITS OWN address, not the pickup's. */
     expect(second).toMatchObject({
       groupId: "grp-1",
       scheduledAt: new Date("2026-09-22T13:00").toISOString(),
-      bookings: [{ petId: "pet-1", tripLeg: "delivery", passengerPetIds: ["pet-2"] }],
+      tripOrigin: { address: "Jl. Sudirman 10", lat: -7.2575, lng: 112.7521 },
+      tripDestination: { address: "Kantor Bu Rina", lat: -7.27, lng: 112.76 },
+      bookings: [
+        { tripLeg: "delivery", passengerPetIds: ["pet-1", "pet-2"] },
+      ],
     });
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard/booking/bk-1"));
@@ -194,8 +241,6 @@ describe("AntarJemputBookingForm", () => {
 
     renderWithAuth(<AntarJemputBookingForm fromBookingId="bk-groom" />);
 
-    /* Both ways by default: the van leaves before, and brings it home after. */
-    expect(await screen.findByRole("radio", { name: /pulang-pergi/i })).toBeChecked();
     expect(await screen.findByRole("button", { name: /bruno/i })).toHaveAttribute(
       "aria-pressed",
       "true",
@@ -203,6 +248,10 @@ describe("AntarJemputBookingForm", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Layanan" }));
     await userEvent.click(await screen.findByRole("option", { name: "Antar-Jemput" }));
+
+    /* Both ways by default: the van leaves before, and brings it home after. */
+    expect(await screen.findByRole("radio", { name: /antar jemput/i })).toBeChecked();
+
     await userEvent.click(screen.getByRole("button", { name: /simpan 2 booking/i }));
 
     await waitFor(() => expect(bookings.create).toHaveBeenCalledTimes(2));
@@ -290,8 +339,45 @@ describe("AntarJemputBookingForm", () => {
     expect(screen.queryByRole("checkbox", { name: /BK-260922-003/ })).toBeNull();
   });
 
+  /*
+    THE FARE IS MEASURED BETWEEN THE TWO ENDS (23 September 2026), so an end
+    typed for this one trip is the one it is priced from — and an end with no
+    pin cannot be saved at all.
+  */
+  it("takes a typed address with its own pin, and refuses one without", async () => {
+    renderWithAuth(<AntarJemputBookingForm />);
+
+    await pickCustomer();
+    await userEvent.click(await screen.findByRole("button", { name: /bruno/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Layanan" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Antar-Jemput" }));
+
+    /* A pickup starts at the customer's door — swap that end for a typed one. */
+    await userEvent.click(screen.getByRole("button", { name: /sumber alamat asal/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Ketik manual" }));
+
+    const save = screen.getByRole("button", { name: /simpan booking/i });
+    expect(save).toBeDisabled();
+
+    await userEvent.type(screen.getByLabelText(/^alamat$/i), "Kos Melati 4");
+    fireEvent.change(screen.getByLabelText(/latitude/i), { target: { value: "-7.2000" } });
+    fireEvent.change(screen.getByLabelText(/longitude/i), { target: { value: "112.7000" } });
+
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalledTimes(1));
+    expect(bookings.create.mock.calls[0][0]).toMatchObject({
+      tripOrigin: { address: "Kos Melati 4", lat: -7.2, lng: 112.7 },
+      tripDestination: { address: "Jl. Sudirman 10", lat: -7.2575, lng: 112.7521 },
+    });
+  });
+
   it("offers the time every half hour, not as free text (BO's note 8)", async () => {
     renderWithAuth(<AntarJemputBookingForm />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Layanan" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Antar-Jemput" }));
 
     await userEvent.click(await screen.findByRole("button", { name: "Jam" }));
 

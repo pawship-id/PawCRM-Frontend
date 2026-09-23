@@ -4,8 +4,8 @@ import {
   choicesForLeg,
   legsOf,
   otherLeg,
+  customerEndOf,
   rideOf,
-  routeOf,
   slotAtOrAfter,
   slotAtOrBefore,
   TIME_SLOTS,
@@ -67,21 +67,20 @@ describe("the half-hour clock (BO's note 8)", () => {
 });
 
 describe("directions", () => {
-  it("makes two rides of Pulang-pergi, the pickup first", () => {
+  it("makes two rides of Antar Jemput, the pickup first", () => {
     expect(legsOf("both")).toEqual(["pickup", "delivery"]);
     expect(legsOf("delivery")).toEqual(["delivery"]);
     expect(otherLeg("pickup")).toBe("delivery");
   });
 
-  it("drives a pickup from the door to the branch, and a delivery back", () => {
-    expect(routeOf("pickup", "Jl. Mawar 12", "Cabang Barat")).toEqual({
-      from: "Jl. Mawar 12",
-      to: "Cabang Barat",
-    });
-    expect(routeOf("delivery", "Jl. Mawar 12", "Cabang Barat")).toEqual({
-      from: "Cabang Barat",
-      to: "Jl. Mawar 12",
-    });
+  /*
+    THE DEFAULT ONLY (23 September 2026). Both ends of a ride are stored and
+    both are editable, so this says which one the form fills from the customer
+    — not which one it must be.
+  */
+  it("starts a pickup at the customer's door and finishes a delivery there", () => {
+    expect(customerEndOf("pickup")).toBe("origin");
+    expect(customerEndOf("delivery")).toBe("destination");
   });
 });
 
@@ -126,14 +125,36 @@ describe("the Arah option (BO's note 7)", () => {
 });
 
 describe("rideOf", () => {
-  it("counts the booking's own animal and its passengers, names first", () => {
+  it("counts every animal in the van", () => {
     expect(
       rideOf({
         tripLeg: "pickup",
         tripAddress: null,
-        petName: "Bella",
-        passengers: [{ _id: "p2", name: "Milo" }],
+        tripOrigin: { address: "Jl. Mawar 12", lat: -6.2, lng: 106.8 },
+        tripDestination: { address: "Cabang Barat", lat: -6.21, lng: 106.82 },
+        passengers: [{ _id: "pet-1", name: "Bella", petSize: "small" }, { _id: "pet-2", name: "Milo", petSize: "medium" }],
       }),
-    ).toEqual({ leg: "pickup", address: null, animals: 2, names: ["Bella", "Milo"] });
+    ).toEqual({
+      leg: "pickup",
+      from: "Jl. Mawar 12",
+      to: "Cabang Barat",
+      /* The customer's end — where a pickup starts. */
+      address: "Jl. Mawar 12",
+      animals: 2,
+      names: ["Bella", "Milo"],
+    });
+  });
+
+  /* Rides written before the two ends existed kept one address. */
+  it("falls back to the old single address, on the end that direction used", () => {
+    expect(
+      rideOf({
+        tripLeg: "delivery",
+        tripAddress: "Jl. Lama 3",
+        tripOrigin: null,
+        tripDestination: null,
+        passengers: [{ _id: "pet-1", name: "Bella", petSize: "small" }],
+      }),
+    ).toMatchObject({ from: null, to: "Jl. Lama 3", address: "Jl. Lama 3" });
   });
 });

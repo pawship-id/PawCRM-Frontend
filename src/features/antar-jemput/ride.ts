@@ -12,7 +12,7 @@ import { staffAxesOf } from "@/utils/serviceVariant";
  * clock. PURE, so it is tested without a DOM (`src/tests/antarJemputRide.test.ts`).
  *
  * A RIDE IS ONE BOOKING (decided 21 September 2026): one direction, one van,
- * the booking's own animal plus the passengers riding with it. "Pulang-pergi"
+ * the booking's own animal plus the passengers riding with it. "Antar Jemput"
  * is two rides saved one after the other in one visit.
  */
 
@@ -24,10 +24,15 @@ export const LEG_LABEL: Record<TripLeg, string> = {
   delivery: "Antar",
 };
 
+/*
+  "ANTAR JEMPUT", NOT "PULANG-PERGI" (23 September 2026, on request). It is the
+  name of the service the shop sells, and the one the shop says out loud; the
+  earlier wording was this file's own choice, not anybody's.
+*/
 export const LEG_CHOICES: { value: LegChoice; label: string; hint: string }[] = [
-  { value: "pickup", label: "Jemput", hint: "Dari rumah pelanggan ke cabang" },
-  { value: "delivery", label: "Antar", hint: "Dari cabang ke rumah pelanggan" },
-  { value: "both", label: "Pulang-pergi", hint: "Jemput lalu antar — 2 booking" },
+  { value: "pickup", label: "Jemput", hint: "Dari alamat pelanggan ke cabang" },
+  { value: "delivery", label: "Antar", hint: "Dari cabang ke alamat pelanggan" },
+  { value: "both", label: "Antar Jemput", hint: "Jemput lalu antar — 2 booking" },
 ];
 
 export function otherLeg(leg: TripLeg): TripLeg {
@@ -144,39 +149,58 @@ export function choicesForLeg(
 
 export interface RideFacts {
   leg: TripLeg | null;
-  /** The customer's end; null means the address the customer has on file. */
+  /** Where it starts and where it ends, in the order the van drives them. */
+  from: string | null;
+  to: string | null;
+  /**
+   * THE CUSTOMER'S END, for a row with space for one address only: where a
+   * pickup starts, where a delivery finishes.
+   */
   address: string | null;
-  /** Every animal in the van — the booking's own and its passengers. */
+  /** Every animal in the van. */
   animals: number;
-  /** The names, the booking's own first. */
+  /** Their names, in the order the van lists them. */
   names: string[];
 }
 
 export function rideOf(
-  booking: Pick<Booking, "tripLeg" | "tripAddress" | "petName" | "passengers">,
+  booking: Pick<
+    Booking,
+    "tripLeg" | "tripAddress" | "tripOrigin" | "tripDestination" | "passengers"
+  >,
 ): RideFacts {
   const passengers = booking.passengers ?? [];
+  const leg = booking.tripLeg ?? null;
+  /* Rides written before the two ends existed kept the customer's in `tripAddress`. */
+  const from = booking.tripOrigin?.address ?? (leg === "pickup" ? booking.tripAddress : null);
+  const to = booking.tripDestination?.address ?? (leg === "delivery" ? booking.tripAddress : null);
 
   return {
-    leg: booking.tripLeg ?? null,
-    address: booking.tripAddress ?? null,
-    animals: 1 + passengers.length,
-    names: [booking.petName, ...passengers.map((pet) => pet.name)].filter(
-      (name): name is string => Boolean(name),
-    ),
+    leg,
+    from: from ?? null,
+    to: to ?? null,
+    address: (leg === "delivery" ? to : from) ?? null,
+    /*
+      ⚠️ `passengers` IS THE WHOLE VAN (23 September 2026), not "the others".
+      This used to add one for the booking's own animal and put `petName` at the
+      front of the names; a ride has neither now, so the old arithmetic counted
+      an animal that is not there.
+    */
+    animals: passengers.length,
+    names: passengers
+      .map((pet) => pet.name)
+      .filter((name): name is string => Boolean(name)),
   };
 }
 
 /**
- * The two ends of a ride, in the order it drives: a pickup goes from the
- * customer to the branch, a delivery back.
+ * WHICH END OF A TRIP IS THE CUSTOMER'S, by direction — a pickup starts at
+ * their door and a delivery finishes there.
+ *
+ * It is only the DEFAULT the form fills in. Both ends are editable, because a
+ * van may start at another branch or at a groomer's house (23 September 2026),
+ * which is why the booking stores both rather than inferring one.
  */
-export function routeOf(
-  leg: TripLeg,
-  customerEnd: string,
-  branchEnd: string,
-): { from: string; to: string } {
-  return leg === "pickup"
-    ? { from: customerEnd, to: branchEnd }
-    : { from: branchEnd, to: customerEnd };
+export function customerEndOf(leg: TripLeg): "origin" | "destination" {
+  return leg === "pickup" ? "origin" : "destination";
 }

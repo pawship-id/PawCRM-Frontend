@@ -194,6 +194,30 @@ describe("BookingStatusActions", () => {
     ).toBeInTheDocument();
   });
 
+  /*
+    ⚠️ THE WARNING HAS TO NAME THE RIGHT CONSEQUENCE (23 September 2026).
+
+    It used to say a completed booking left the kasir's list, which stopped
+    being true when the bridge began offering every status but `cancelled` — and
+    nothing failed, because the test above only looked for the half that was
+    still correct. What actually closes is the money: `hasCompletedWork` freezes
+    the service, the price and the crew.
+  */
+  it("names what completing actually closes, and not the till", async () => {
+    render(booking({ status: "in_progress" }));
+
+    const menu = await openMenu();
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: "Mark completed" }),
+    );
+
+    const note = await screen.findByText(/tidak mencatat pembayaran/i);
+
+    expect(note).toHaveTextContent(/tetap ada di daftar kasir/i);
+    expect(note).toHaveTextContent(/harga dan groomernya tidak bisa diubah/i);
+    expect(note).not.toHaveTextContent(/tidak muncul lagi di kasir/i);
+  });
+
   it("sends the cancellation reason, and omits it when there is none", async () => {
     render(booking({ status: "confirmed" }));
 

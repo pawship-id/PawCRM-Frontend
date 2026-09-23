@@ -2418,7 +2418,11 @@ export interface Booking {
    * there is a row nobody can act on.
    */
   customerName: string | null;
-  petId: string;
+  /**
+   * NULL ON A RIDE (23 September 2026), and only there. An antar-jemput booking
+   * carries several animals and promotes none of them — they are `passengers`.
+   */
+  petId: string | null;
   /**
    * RESOLVED ON READ — a LABEL, NOT A RECORD. A pet renamed between the
    * appointment and the counter appears under its new name. (The price on
@@ -2461,8 +2465,26 @@ export interface Booking {
    */
   pickupRequested: boolean;
   deliveryRequested: boolean;
-  /** Null means the customer's stored address, not "no address". */
+  /**
+   * Where the animal is, on a booking that only ASKS to be collected. Null
+   * means the customer's stored address, not "no address".
+   *
+   * ⚠️ A RIDE USES `tripOrigin` / `tripDestination` INSTEAD — see below.
+   */
   tripAddress: string | null;
+  /**
+   * ─── THE TWO ENDS OF A RIDE (23 September 2026) ───────────────────────────
+   *
+   * Both are written down and both carry a pin, because the fare is a band of
+   * the distance BETWEEN THEM: a ride whose address is typed for this one trip
+   * is priced from that address, not from the customer record's pin.
+   *
+   * Null on every booking that is not a ride. On a ride the server requires
+   * both, each with `lat` and `lng`. Optional only because older fixtures lack
+   * them, like `tripLeg` below.
+   */
+  tripOrigin?: TripPoint | null;
+  tripDestination?: TripPoint | null;
   /**
    * ─── ANTAR-JEMPUT (21 September 2026) ─────────────────────────────────────
    *
@@ -2472,14 +2494,22 @@ export interface Booking {
    * Optional only because older fixtures lack them.
    */
   tripLeg?: TripLeg | null;
-  /** The other animals on this ride — the same customer's, never `petId`. */
+  /**
+   * EVERY ANIMAL IN THE VAN (23 September 2026) — all of them, not "the others".
+   *
+   * A ride has NO `petId` and no `petName`: it used to promote whichever animal
+   * the form listed first, which nothing chose and which froze that one's size
+   * while the rest were read live. `passengerPetIds` is the plain list the form
+   * posts back; `passengers` is the same list named, each with the size it was
+   * when the ride was booked. Both are empty on every booking that is not a ride.
+   */
   passengerPetIds?: string[];
-  passengers?: { _id: string; name: string | null }[];
+  passengers?: BookingPassenger[];
   /**
    * THE BOOKINGS THIS RIDE SERVES (23 September 2026) — set only on a ride, and
    * what a `per_pet` fare is multiplied by, since one booking is one animal.
    * An animal riding along with no booking of its own is in `passengers` and
-   * costs nothing here.
+   * costs nothing here — being in the van is not being billed for.
    */
   linkedBookingIds?: string[];
   /** Those bookings in full — `GET /bookings/:id` only, like `group`. */
@@ -2580,6 +2610,25 @@ export interface Booking {
 
 /** An antar-jemput booking's direction: the door to the branch, or back. */
 export type TripLeg = "pickup" | "delivery";
+
+/**
+ * ONE END OF A TRIP — flat, the way the API sends and takes it.
+ *
+ * `lat`/`lng` are nullable in a RESPONSE, because a booking written before
+ * this field existed has none; a request must carry both.
+ */
+export interface TripPoint {
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+}
+
+/** One end as a request carries it — the pin is not optional going out. */
+export interface TripPointInput {
+  address?: string | null;
+  lat: number;
+  lng: number;
+}
 
 /** Another ride of the same visit, as `Booking.trips` carries it. */
 export interface BookingTrip {
@@ -2781,14 +2830,27 @@ export interface BookingAddon {
 }
 
 /**
+ * ONE ANIMAL IN THE VAN, named (23 September 2026) — with the size it was when
+ * the ride was booked, which is a snapshot and not the profile's value today.
+ */
+export interface BookingPassenger {
+  _id: string;
+  name: string | null;
+  petSize: string | null;
+}
+
+/**
  * Another booking saved in the same group — what the "Satu kunjungan" card
  * lists. Just enough to name it and link to it.
  */
 export interface BookingGroupMember {
   _id: string;
   bookingNumber: string | null;
-  petId: string;
+  /** NULL ON A RIDE — see `passengers`, which is where its animals are. */
+  petId: string | null;
   petName: string | null;
+  /** A ride's animals. Empty on every other booking. */
+  passengers?: BookingPassenger[];
   serviceName: string;
   /** The line of business, as the booking snapshotted it. */
   serviceType?: string | null;
@@ -2841,8 +2903,12 @@ export interface BookingCalendarEntry {
   groomerName: string | null;
   /** Why this groomer cannot work that day, computed on read — usually null. */
   groomerOffReason?: string | null;
-  petId: string;
+  /** Null on a ride, whose animals are named together in `petName`. */
+  petId: string | null;
+  /** On a ride, every animal in the van, comma-separated (23 September 2026). */
   petName: string | null;
+  /** Set when this block is a ride — it changes the status WORD, not the rung. */
+  tripLeg?: TripLeg | null;
   customerName: string | null;
   serviceName: string;
   /**
@@ -3296,7 +3362,11 @@ export interface BookingBelongingInput {
  * catalogue thinks, which is not the same kind of fact at all.
  */
 export interface CreateBookingEntry {
-  petId: string;
+  /**
+   * OMITTED ON A RIDE, and required everywhere else. A card that sends both
+   * this and `tripLeg` is refused: the van's animals are `passengerPetIds`.
+   */
+  petId?: string;
   /** Must be a MAIN service — an add-on goes in `addonServiceIds`. */
   serviceId: string;
   /**
@@ -3333,7 +3403,10 @@ export interface CreateBookingEntry {
   groomerUserId?: string | null;
   /** Only on a ride — see `Booking.tripLeg`. */
   tripLeg?: TripLeg | null;
-  /** The other animals on the ride; refused without `tripLeg`. */
+  /**
+   * EVERY animal on the ride. Required on a ride (at least one) and refused
+   * without `tripLeg` — a ride card sends no `petId` at all.
+   */
   passengerPetIds?: string[];
   /**
    * The bookings this ride serves; refused without `tripLeg`. The same
@@ -3370,6 +3443,9 @@ export interface CreateBookingInput {
   deliveryRequested?: boolean;
   /** Null means the customer's stored address, not "no address". */
   tripAddress?: string | null;
+  /** The two ends of a ride — required together on an antar-jemput save. */
+  tripOrigin?: TripPointInput | null;
+  tripDestination?: TripPointInput | null;
   /**
    * "Save it anyway" — FR-4 kriteria 4.6. A CLASH IS A WARNING, NOT A REFUSAL;
    * the server refuses this flag without `bookings:overrideClash`. LEAVE IS NOT
@@ -3423,8 +3499,11 @@ export interface UpdateBookingInput {
   pickupRequested?: boolean;
   deliveryRequested?: boolean;
   tripAddress?: string | null;
+  /** The two ends of a ride — required together on an antar-jemput save. */
+  tripOrigin?: TripPointInput | null;
+  tripDestination?: TripPointInput | null;
   tripLeg?: TripLeg | null;
-  /** Who else is in the van. Does NOT re-quote — see `linkedBookingIds`. */
+  /** Who is in the van. Does NOT re-quote — see `linkedBookingIds`. */
   passengerPetIds?: string[];
   /** The bookings the ride serves. Re-quotes a `per_pet` ride. */
   linkedBookingIds?: string[];

@@ -400,7 +400,8 @@ export function matchesSearch(row: GroomingRow, search: string): boolean {
     row.booking.petName,
     row.booking.customerName,
     row.booking.bookingNumber,
-    /* The other animals in the van, on a ride (21 September 2026). */
+    /* The animals in the van, on a ride — where `petName` is null and these
+       are the only names there are (23 September 2026). */
     ...(row.booking.passengers ?? []).map((pet) => pet.name),
   ]
     .filter(Boolean)

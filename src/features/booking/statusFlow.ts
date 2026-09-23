@@ -23,6 +23,23 @@ const LADDER: BookingStatus[] = [
 ];
 
 /**
+ * ─── A RIDE WALKS FOUR RUNGS (23 September 2026) ────────────────────────────
+ *
+ * A MIRROR of `RIDE_LADDER` in booking.model.js. Draft · Confirmed · On the Way
+ * · Arrived, under the ordinary status names — see `RIDE_STATUS_LABELS` for
+ * what each is called on a van.
+ *
+ * ⚠️ "ARRIVED" IS `completed`. A ride resting on `arrived` would never count as
+ * unbilled, and a journey that ends has to be billable.
+ */
+const RIDE_LADDER: BookingStatus[] = [
+  "draft",
+  "confirmed",
+  "in_progress",
+  "completed",
+];
+
+/**
  * What the booking must carry for any of this to be answerable.
  *
  * A STATUS IS NOT ENOUGH, and that is the whole shape of this file since the
@@ -32,7 +49,8 @@ const LADDER: BookingStatus[] = [
 export type BookingLike = Pick<
   Booking,
   "status" | "pickupRequested" | "deliveryRequested"
->;
+> &
+  Partial<Pick<Booking, "tripLeg">>;
 
 /**
  * The path THIS booking walks — a mirror of `ladderFor` on the server.
@@ -41,8 +59,12 @@ export type BookingLike = Pick<
  * put a van journey on a trail that never left the shop.
  */
 export function ladderFor(
-  booking: Pick<Booking, "pickupRequested" | "deliveryRequested">,
+  booking: Pick<Booking, "pickupRequested" | "deliveryRequested"> &
+    Partial<Pick<Booking, "tripLeg">>,
 ): BookingStatus[] {
+  /* A ride IS the journey — it walks its own, shorter path. */
+  if (booking.tripLeg) return [...RIDE_LADDER];
+
   return LADDER.filter((status) => {
     if (status === "pickup") return Boolean(booking.pickupRequested);
     if (status === "delivery") return Boolean(booking.deliveryRequested);
@@ -68,12 +90,19 @@ export function transitionsFor(booking: BookingLike): BookingStatus[] {
   if (at === -1) return [];
 
   /*
-    A DRAFT MAY NOT JUMP PAST THE ANIMAL ARRIVING. It is a line in a basket
-    somebody may yet empty, and landing one on `completed` would mint a finished,
-    commissioned visit out of something nobody ever agreed to.
+    A DRAFT MAY NOT REACH A RUNG WHERE THE WORK HAS STARTED. It is a line in a
+    basket somebody may yet empty, and landing one on `completed` would mint a
+    finished, commissioned visit out of something nobody ever agreed to.
+
+    ⚠️ "ONE SHORT OF `in_progress`", NOT THE LITERAL `arrived` (23 September
+    2026). On the full ladder they are the same rung — nothing changed for a
+    grooming — but a ride has no `arrived`, and naming it would leave `indexOf`
+    at -1 and freeze every draft van. A draft ride stops at Confirmed.
   */
   const ceiling =
-    booking.status === "draft" ? ladder.indexOf("arrived") : ladder.length - 1;
+    booking.status === "draft"
+      ? ladder.indexOf("in_progress") - 1
+      : ladder.length - 1;
 
   const forward = ladder.slice(at + 1, ceiling + 1);
 
@@ -165,6 +194,29 @@ export const BOOKING_STATUS_ACTIONS: Record<BookingStatus, string> = {
 };
 
 /**
+ * The same rows, said about a VAN (23 September 2026).
+ *
+ * Only the two that differ are listed. "Start work" is what somebody does to an
+ * animal; a driver sets off, and what ends is a journey rather than a grooming.
+ * Everything not named here keeps its ordinary row.
+ */
+const RIDE_STATUS_ACTIONS: Partial<Record<BookingStatus, string>> = {
+  in_progress: "Start the trip",
+  completed: "Mark arrived",
+};
+
+/** The row for this move, worded for the booking it is offered on. */
+export function bookingStatusAction(
+  status: BookingStatus,
+  booking?: Partial<Pick<Booking, "tripLeg">>,
+): string {
+  return (
+    (booking?.tripLeg ? RIDE_STATUS_ACTIONS[status] : undefined) ??
+    BOOKING_STATUS_ACTIONS[status]
+  );
+}
+
+/**
  * The forward moves offered for a booking, in ladder order.
  *
  * CANCELLATION IS NOT HERE. It is not a step forward, it needs its own
@@ -193,10 +245,26 @@ export function canCancel(booking: BookingLike): boolean {
 export function canReschedule(booking: BookingLike): boolean {
   if (booking.status === "draft") return false;
 
+  return !hasStarted(booking);
+}
+
+/**
+ * Whether the visit is UNDER WAY — a mirror of `hasStarted` on the server.
+ *
+ * The animal arriving, or, on a ride, the van leaving (23 September 2026). A
+ * ride has no `arrived` rung, so a comparison naming it answered -1 and called
+ * every van "already started" — including one booked for next Tuesday.
+ *
+ * ⚠️ NOT THE SAME LINE AS THE DRAFT CEILING, which asks where WORK starts. A
+ * dog that is here but not yet on the table has arrived — its date is fixed —
+ * while nobody has started on it.
+ */
+export function hasStarted(booking: BookingLike): boolean {
   const ladder = ladderFor(booking);
   const at = ladder.indexOf(booking.status);
+  const started = booking.tripLeg ? "in_progress" : "arrived";
 
-  return at !== -1 && at < ladder.indexOf("arrived");
+  return at !== -1 && at >= ladder.indexOf(started);
 }
 
 /**

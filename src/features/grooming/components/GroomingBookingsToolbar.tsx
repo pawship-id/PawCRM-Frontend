@@ -11,7 +11,7 @@ import {
   FilterSelect,
   FilterTrigger,
 } from "@/components";
-import { BOOKING_STATUS_LABELS } from "@/features/booking";
+import { bookingStatusLabel } from "@/features/booking";
 import { bookingService } from "@/services/booking.service";
 import type {
   BookingLocation,
@@ -46,6 +46,22 @@ const STATUSES: BookingStatus[] = [
   "completed",
   "delivery",
   "return_to_pawrents",
+  "cancelled",
+];
+
+/**
+ * A VAN WALKS FOUR (23 September 2026) — the rungs `RIDE_LADDER` holds, plus
+ * `cancelled`.
+ *
+ * Offering the salon's rungs here would be a filter for a state no antar-jemput
+ * booking can be in: every one of them would answer with an empty table, and a
+ * filter that can never match is one people stop trusting.
+ */
+const RIDE_STATUSES: BookingStatus[] = [
+  "draft",
+  "confirmed",
+  "in_progress",
+  "completed",
   "cancelled",
 ];
 
@@ -179,9 +195,10 @@ export function GroomingBookingsToolbar({
         />
         <FilterCheckList
           label="Status"
-          options={STATUSES.map((status) => ({
+          options={(rides ? RIDE_STATUSES : STATUSES).map((status) => ({
             value: status,
-            label: BOOKING_STATUS_LABELS[status],
+            /* "On the Way", not "In Progress", on a van — see the label map. */
+            label: bookingStatusLabel(status, rides ? { tripLeg: "pickup" } : undefined),
           }))}
           values={draft.statuses}
           onChange={(statuses) => patch({ statuses })}

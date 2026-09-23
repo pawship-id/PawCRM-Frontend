@@ -68,6 +68,9 @@ const LENS_WORDS: Record<Exclude<GroomingLens, "all">, string> = {
  * STATUSES ARE THE BOOKING'S OWN LADDER, not the mockup's four: "On the Way" is
  * In Progress and "Arrived" is Completed, moved by the same control Grooming's
  * rows carry.
+ *
+ * A ROW OPENS THE BOOKING (23 September 2026, on request) rather than unfolding
+ * under itself the way Grooming's board does — see `AntarJemputBookingsTable`.
  */
 export function AntarJemputBookingsScreen() {
   const line = useGroomingLine(ANTAR_JEMPUT_LINE);
@@ -326,8 +329,9 @@ export function AntarJemputBookingsScreen() {
         </>
       )}
       <p className="text-xs text-muted">
-        Klik baris untuk membuka tahapan dan rinciannya. Nomor booking membuka
-        halaman detail — rute, booking terkait, riwayat, dan faktur.
+        Klik baris untuk membuka halaman booking — rute, tahapan, rincian
+        harga, booking terkait, riwayat, dan faktur. Status bisa diubah langsung
+        dari barisnya.
       </p>
     </div>
   );

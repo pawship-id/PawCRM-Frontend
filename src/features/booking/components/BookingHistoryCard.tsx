@@ -2,7 +2,7 @@ import { Card } from "@/components";
 import type { Booking } from "@/types/api";
 
 import { bookingActorLabel } from "../format";
-import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
+import { bookingStatusLabel } from "./BookingStatusBadge";
 
 /**
  * WHAT HAS HAPPENED TO THIS BOOKING, newest first.
@@ -44,7 +44,8 @@ export function BookingHistoryCard({ booking }: { booking: Booking }) {
       /* One booking cannot reach one status twice in the same millisecond. */
       key: `${event.status}-${event.at}`,
       /* No animal in the title: the page's heading already names it. */
-      title: `Status → ${BOOKING_STATUS_LABELS[event.status] ?? event.status}`,
+      /* The trail says what the screen says — a van's own words (23 Sep 2026). */
+      title: `Status → ${bookingStatusLabel(event.status, booking)}`,
       at: event.at,
       who: bookingActorLabel(event.byName, event.byRoleName),
       /*

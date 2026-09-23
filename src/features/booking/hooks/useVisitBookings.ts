@@ -84,7 +84,10 @@ export function useVisitBookings(
             booking.status !== "cancelled" &&
             booking._id !== excludeId &&
             (!excludeRides || !booking.tripLeg) &&
-            (wanted === null || wanted.has(booking.petId)),
+            /* A ride has no `petId` (23 September 2026); it is never one of
+               the animals a picker is filtering by. */
+            (wanted === null ||
+              (booking.petId !== null && wanted.has(booking.petId))),
         )
       : [],
     loading: key !== "" && !current,

@@ -503,7 +503,11 @@ describe("GroomingBookingCreateScreen", () => {
         location: "in_home",
         /* Half an hour before the 10.30 grooming. */
         scheduledAt: new Date("2026-09-16T10:00").toISOString(),
-        bookings: [{ petId: "pet-1", serviceId: "svc-aj", tripLeg: "pickup", passengerPetIds: [] }],
+        /* The grooming's animal rides in the van, not above it — a ride sends
+           no `petId` since 23 September 2026. */
+        bookings: [
+          { serviceId: "svc-aj", tripLeg: "pickup", passengerPetIds: ["pet-1"] },
+        ],
       });
     });
 

@@ -32,7 +32,7 @@ export interface RidePeriodSummary {
   averagePerRide: string | null;
   unbilledCount: number;
   unbilledValue: string;
-  /** Every animal carried — each ride's own and its passengers. */
+  /** Every animal carried, across the live rides. */
   animals: number;
   /** Distinct customers served. */
   customers: number;

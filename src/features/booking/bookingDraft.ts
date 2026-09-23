@@ -131,7 +131,10 @@ export function cardFromBooking(booking: Booking): BookingCardDraft {
   const firstGroomer = service?.sessions?.[0]?.groomers?.[0]?._id;
 
   return {
-    ...blankCard(booking.petId),
+    /* A RIDE NEVER REACHES THIS FORM — it is edited in its own, and only it
+       has a null `petId` (23 September 2026). Empty rather than a crash if one
+       ever does: the card then shows "pick an animal", which is recoverable. */
+    ...blankCard(booking.petId ?? ""),
     serviceId: service?.serviceId ?? "",
     addonServiceIds: (service?.addons ?? []).map((addon) => addon.serviceId),
     // Shown as typed, so saving without touching it keeps the number.
@@ -310,7 +313,9 @@ export function storedPetServiceKeys(booking: Booking): Set<string> {
   return new Set(
     [service.serviceId, ...(service.addons ?? []).map((addon) => addon.serviceId)]
       .filter(Boolean)
-      .map((serviceId) => petServiceKey(booking.petId, serviceId)),
+      /* Null only on a ride, which has no card in this form — see
+         `cardFromBooking`. */
+      .map((serviceId) => petServiceKey(booking.petId ?? "", serviceId)),
   );
 }
 

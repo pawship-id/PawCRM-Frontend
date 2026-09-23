@@ -44,8 +44,10 @@ function booking(over: Partial<Booking> = {}): Booking {
     bookingNumber: "BK-260922-001",
     customerId: "cust-1",
     customerName: "Ibu Rina",
-    petId: "pet-1",
-    petName: "Bella",
+    /* A RIDE HAS NO ANIMAL OF ITS OWN (23 September 2026) — every animal it
+       carries is in `passengers`, each with the size it was booked at. */
+    petId: null,
+    petName: null,
     status: "confirmed",
     scheduledAt: "2026-09-22T09:00:00",
     location: "in_home",
@@ -53,7 +55,7 @@ function booking(over: Partial<Booking> = {}): Booking {
     deliveryRequested: false,
     tripLeg: "pickup",
     tripAddress: null,
-    passengers: [],
+    passengers: [{ _id: "pet-1", name: "Bella", petSize: "small" }],
     posTransactionId: null,
     pulledToCartAt: null,
     pulledToInvoiceAt: null,
@@ -85,7 +87,7 @@ describe("which bookings are rides", () => {
 describe("the Arah filter and the search", () => {
   const [pickup, delivery] = toGroomingRows(
     [
-      booking({ passengers: [{ _id: "pet-2", name: "Milo" }] }),
+      booking({ passengers: [{ _id: "pet-1", name: "Bella", petSize: "small" }, { _id: "pet-2", name: "Milo", petSize: "medium" }] }),
       booking({ _id: "bk-2", tripLeg: "delivery" }),
     ],
     scope,
@@ -109,7 +111,7 @@ describe("summariseRides", () => {
   it("adds up the live rides — after discount, with the discount beside it", () => {
     const rows = toGroomingRows(
       [
-        booking({ netAmount: "40000.0000", passengers: [{ _id: "pet-2", name: "Milo" }] }),
+        booking({ netAmount: "40000.0000", passengers: [{ _id: "pet-1", name: "Bella", petSize: "small" }, { _id: "pet-2", name: "Milo", petSize: "medium" }] }),
         booking({ _id: "bk-2", customerId: "cust-2", tripLeg: "delivery" }),
         booking({ _id: "bk-3", status: "cancelled" }),
       ],

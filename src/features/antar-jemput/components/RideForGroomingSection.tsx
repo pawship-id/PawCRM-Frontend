@@ -108,8 +108,8 @@ export function rideBlockedReason(
 /**
  * The saves that follow the grooming's — one POST per direction, INTO THE
  * VISIT the grooming just made (`groupId`), so each lists the other under
- * Booking terkait. The grooming's first animal rides as the booking's own; the
- * others are its passengers.
+ * Booking terkait. Every animal on the grooming form rides in the van — a ride
+ * has no animal of its own to promote (23 September 2026).
  */
 export function rideRequests({
   draft,
@@ -136,16 +136,18 @@ export function rideRequests({
     input: {
       ...base,
       scheduledAt: new Date(`${date}T${draft.times[row.leg]}`).toISOString(),
-      status: "requested",
+      /* A ride is born a draft — `requested` is not one of its rungs, and the
+         server refuses it. See RIDE_LADDER in booking.model.js. */
+      status: "draft",
       location: (service.serviceLocations ?? []).includes("in_home") ? "in_home" : "in_store",
       tripAddress,
       bookings: [
         {
-          petId: petIds[0],
+          /* No `petId` — the server refuses a ride that names one. */
           serviceId: service._id,
           groomerUserId: draft.driverId || null,
           tripLeg: row.leg,
-          passengerPetIds: petIds.slice(1),
+          passengerPetIds: petIds,
           ...(row.choices.length > 0 ? { variantChoices: row.choices } : {}),
         },
       ],

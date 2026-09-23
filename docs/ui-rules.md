@@ -419,9 +419,27 @@ is the translation step this exception exists to remove.
 
 **It stops at the control.** The confirm dialog behind those rows, its implied-rungs warning,
 the cancel-reason field, the reschedule dialog's fields, the history dialog's BODY ("Sistem",
-"otomatis", Tutup) and every toast stay in Bahasa — those are sentences. Two maps are covered, both in `features/booking/`:
-`BOOKING_STATUS_LABELS` (`components/BookingStatusBadge.tsx`) and `BOOKING_STATUS_ACTIONS`
+"otomatis", Tutup) and every toast stay in Bahasa — those are sentences. **Four maps are covered**,
+all in `features/booking/`: `BOOKING_STATUS_LABELS` and `RIDE_STATUS_LABELS`
+(`components/BookingStatusBadge.tsx`), `BOOKING_STATUS_ACTIONS` and `RIDE_STATUS_ACTIONS`
 (`statusFlow.ts`). A status word anywhere else is still Bahasa unless it is added here.
+
+**A VAN SAYS TWO OF THEM DIFFERENTLY: `On the Way` and `Arrived`.** Added 23 September 2026
+on the shop's request, with the mockup — an antar-jemput booking shows four rungs, Draft ·
+Confirmed · On the Way · Arrived, and only the last two leave the ordinary words.
+
+This is **the one place a status label stops matching its stored value**, which the rule above
+otherwise leans on. It is worth breaking here and nowhere else: `in_progress` on a journey names
+nothing a driver recognises, and `completed` reads as work finished rather than a van that got
+somewhere. Underneath they are still `in_progress` and `completed` — same rungs, same tints, same
+billing — so an export and a badge still describe one fact, they just say the last step out loud
+the way the person driving does.
+
+⚠️ **"Arrived" here is `completed`, not the `arrived` rung**, which a ride never walks. The two
+words meeting on one screen is exactly why both maps are small, explicit, and list only the rungs
+that differ. Reach for `bookingStatusLabel(status, booking)` and `bookingStatusAction(status,
+booking)` rather than indexing a map directly, so a screen that gains rides later says the right
+word without being found and edited.
 
 **The "any level" rule.** Never describe customers by their size. No "UMKM", no tier language, anywhere in copy. A petshop is a petshop.
 

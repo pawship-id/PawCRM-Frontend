@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowUpDown, Plus, Search } from "lucide-react";
 
@@ -44,7 +44,7 @@ import { ChoiceCards } from "@/features/grooming/components/GroomingSettingsCont
 import { useGroomingLine } from "@/features/grooming/hooks/useGroomingLine";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { usePermissions } from "@/features/permissions";
-import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
+import { PetQuickAddDialog } from "@/features/pets";
 // `PageHeading` is still purchasing-local, awaiting promotion (ui-rules §15).
 import { PageHeading } from "@/features/purchasing";
 import { useVariantQuote, VariantChoicePicker } from "@/features/services";
@@ -60,11 +60,13 @@ import { AXIS_LABEL, variesByZone } from "@/utils/serviceVariant";
 import type {
   Booking,
   BookingLocation,
+  Branch,
   Customer,
   GroomerAvailability,
   Pet,
   Service,
   TripLeg,
+  TripPoint,
   UpdateBookingInput,
   VariantChoice,
 } from "@/types/api";
@@ -78,7 +80,7 @@ import {
   LEG_LABEL,
   legsOf,
   otherLeg,
-  routeOf,
+  customerEndOf,
   slotAtOrAfter,
   slotAtOrBefore,
   type LegChoice,
@@ -113,6 +115,252 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((value) => b.includes(value));
 }
 
+/* ─── The two ends of the trip (23 September 2026) ──────────────────────────
+   Where each end came from. "map" — the Google Places picker — is offered and
+   disabled: it is the reason `location` is a subdocument on the server, and it
+   lands here without a change to the shape. */
+type PointSource = "customer" | "branch" | "manual" | "map";
+
+interface PointDraft {
+  source: PointSource;
+  address: string;
+  lat: string;
+  lng: string;
+}
+
+const BLANK_POINT: PointDraft = { source: "manual", address: "", lat: "", lng: "" };
+
+const POINT_SOURCES: { value: PointSource; label: string; disabled?: boolean }[] = [
+  { value: "customer", label: "Alamat pelanggan" },
+  { value: "branch", label: "Alamat cabang" },
+  { value: "manual", label: "Ketik manual" },
+  { value: "map", label: "Pilih dari peta (segera)", disabled: true },
+];
+
+/** One journey's two ends, as the form holds them. */
+interface LegPoints {
+  origin: PointDraft;
+  destination: PointDraft;
+}
+
+/**
+ * The ends a direction fills in by itself: a pickup starts at the customer's
+ * door, a delivery finishes there. Both stay editable — see `customerEndOf`.
+ */
+function defaultDrafts(leg: TripLeg): LegPoints {
+  const customerFirst = customerEndOf(leg) === "origin";
+
+  return {
+    origin: { ...BLANK_POINT, source: customerFirst ? "customer" : "branch" },
+    destination: { ...BLANK_POINT, source: customerFirst ? "branch" : "customer" },
+  };
+}
+
+/** A number a person typed, or null when they have not typed one yet. */
+function coordOf(typed: string): number | null {
+  const value = Number(typed);
+  return typed.trim() !== "" && Number.isFinite(value) ? value : null;
+}
+
+/** What an end actually resolves to — the record it points at, or what was typed. */
+function resolvePoint(
+  draft: PointDraft,
+  customer: Customer | null,
+  branch: Branch | null,
+): { address: string | null; lat: number | null; lng: number | null } {
+  if (draft.source === "customer") {
+    return {
+      address: customer?.address ?? null,
+      lat: customer?.location?.lat ?? null,
+      lng: customer?.location?.lng ?? null,
+    };
+  }
+
+  if (draft.source === "branch") {
+    return {
+      address: branch?.address ?? null,
+      lat: branch?.location?.lat ?? null,
+      lng: branch?.location?.lng ?? null,
+    };
+  }
+
+  return {
+    address: draft.address.trim() || null,
+    lat: coordOf(draft.lat),
+    lng: coordOf(draft.lng),
+  };
+}
+
+/** A saved end, back in the form as typed values — every end stays editable. */
+function storedDraft(point: TripPoint | null | undefined): PointDraft {
+  return {
+    source: "manual",
+    address: point?.address ?? "",
+    lat: point?.lat == null ? "" : String(point.lat),
+    lng: point?.lng == null ? "" : String(point.lng),
+  };
+}
+
+/** Whether an end is where it already was — an edit sends only what moved. */
+function samePoint(
+  next: { address: string | null; lat: number; lng: number },
+  stored: TripPoint | null | undefined,
+): boolean {
+  return (
+    (stored?.address ?? null) === next.address &&
+    (stored?.lat ?? null) === next.lat &&
+    (stored?.lng ?? null) === next.lng
+  );
+}
+
+type ResolvedPoint = ReturnType<typeof resolvePoint>;
+
+interface ResolvedLeg {
+  origin: ResolvedPoint;
+  destination: ResolvedPoint;
+}
+
+function resolveLeg(
+  leg: LegPoints,
+  customer: Customer | null,
+  branch: Branch | null,
+): ResolvedLeg {
+  return {
+    origin: resolvePoint(leg.origin, customer, branch),
+    destination: resolvePoint(leg.destination, customer, branch),
+  };
+}
+
+const pinOf = (point: ResolvedPoint) =>
+  point.lat !== null && point.lng !== null ? { lat: point.lat, lng: point.lng } : null;
+
+/**
+ * ONE STEP OF THE FORM, inside the one card (23 September 2026, on request).
+ *
+ * The screen used to be five cards; a ride is filled in as ONE sequence —
+ * customer, animals, bookings, service, journey, addresses, price, clock — and
+ * five boxes made a sequence look like five choices.
+ */
+function Section({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-3 border-t border-border pt-5 first:border-t-0 first:pt-0">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base font-bold">{title}</h3>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+/**
+ * ONE END OF THE TRIP — where it is, and where that came from.
+ *
+ * The two registers a shop already keeps (the customer's address and the
+ * branch's) are offered before the keyboard, because they carry a pin somebody
+ * has already checked. Typing one means typing its coordinates too: the fare
+ * is measured between the ends, so an address with no point has no price.
+ */
+function PointFields({
+  label,
+  draft,
+  point,
+  customer,
+  branch,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  draft: PointDraft;
+  point: ResolvedPoint;
+  customer: Customer | null;
+  branch: Branch | null;
+  disabled: boolean;
+  onChange: (next: PointDraft) => void;
+}) {
+  const typed = draft.source === "manual";
+  const missingPin = point.lat === null || point.lng === null;
+  const from =
+    draft.source === "customer"
+      ? (customer?.name ?? "pelanggan")
+      : (branch?.name ?? "cabang");
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4">
+      <FilterSelect
+        layout="form"
+        label={label}
+        ariaLabel={`Sumber ${label.toLowerCase()}`}
+        value={draft.source}
+        onChange={(next) => onChange({ ...draft, source: next as PointSource })}
+        options={POINT_SOURCES}
+        active={false}
+        placeholder="Pilih sumber alamat"
+        disabled={disabled}
+      />
+
+      {typed ? (
+        <>
+          <TextareaField
+            label="Alamat"
+            name={`${label}-address`}
+            value={draft.address}
+            onChange={(event) => onChange({ ...draft, address: event.target.value })}
+            maxLength={ADDRESS_MAX_LENGTH}
+            rows={2}
+            placeholder="Nama jalan, nomor, patokan"
+            disabled={disabled}
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <TextField
+              label="Latitude"
+              name={`${label}-lat`}
+              value={draft.lat}
+              onChange={(event) => onChange({ ...draft, lat: event.target.value })}
+              placeholder="-6.2088"
+              disabled={disabled}
+              required
+            />
+            <TextField
+              label="Longitude"
+              name={`${label}-lng`}
+              value={draft.lng}
+              onChange={(event) => onChange({ ...draft, lng: event.target.value })}
+              placeholder="106.8456"
+              disabled={disabled}
+              required
+            />
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col gap-1">
+          <p className="text-sm text-foreground">{point.address ?? "Belum ada alamat tersimpan"}</p>
+          <p className="text-xs text-muted">
+            Dari data {from}.{" "}
+            {missingPin
+              ? "Titik lokasinya belum ada — pilih Ketik manual, atau lengkapi di data itu."
+              : `Titik: ${point.lat}, ${point.lng}`}
+          </p>
+        </div>
+      )}
+
+      {missingPin && (
+        <p className="text-xs font-semibold text-danger" role="alert">
+          Titik lokasi wajib diisi.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function choicesKey(choices: readonly VariantChoice[]): string {
   return JSON.stringify(
     [...choices].sort((x, y) => x.optionId.localeCompare(y.optionId)),
@@ -127,7 +375,7 @@ function choicesKey(choices: readonly VariantChoice[]): string {
  *
  * The first animal picked is the booking's own; the others ride along as
  * passengers (decided 21 September 2026 — one trip is billed once, not once per
- * animal as two bookings would). "Pulang-pergi" saves TWO rides, the pickup
+ * animal as two bookings would). "Antar Jemput" saves TWO rides, the pickup
  * then the delivery, in one visit.
  *
  * ─── AND ONE RIDE SERVES MANY (23 September 2026) ──────────────────────────
@@ -154,6 +402,17 @@ function choicesKey(choices: readonly VariantChoice[]): string {
  * `?bookingId=` arrives from that booking's own "+ Antar-jemput" and fills the
  * customer, the animal, the branch, the day and the link. The time is picked
  * every half hour (note 8).
+ *
+ * ─── THE ORDER OF THE CARDS ────────────────────────────────────────────────
+ *
+ * Pelanggan → Hewan → Tautkan → Layanan & harga → **Perjalanan**, and the last
+ * one is not on screen until a service is picked (23 September 2026). The
+ * service is what gives a direction a meaning and a price — its "Arah" option
+ * is answered from the direction rather than asked twice — so asking the
+ * direction and the clock first was asking in the order the form was built.
+ * CABANG MOVED UP TO PELANGGAN with it: the zone is measured from the branch
+ * and the zone is a price, so a branch picked below the price rows would have
+ * changed numbers already on screen.
  *
  * ─── EDITING ────────────────────────────────────────────────────────────────
  *
@@ -199,7 +458,16 @@ export function AntarJemputBookingForm({
     pickup: { date: todayValue(), time: slotAtOrAfter(new Date()) },
     delivery: { date: todayValue(), time: slotAtOrAfter(new Date(Date.now() + 3 * 3_600_000)) },
   }));
-  const [address, setAddress] = useState("");
+  /**
+   * EACH DIRECTION HAS ITS OWN TWO ENDS (23 September 2026, on request). An
+   * Antar Jemput is two journeys, not one driven backwards: the van may collect
+   * from the house in the morning and take the animal to the owner's office in
+   * the afternoon, and a fare measured on the pickup would be the wrong one.
+   */
+  const [points, setPoints] = useState<Record<TripLeg, LegPoints>>(() => ({
+    pickup: defaultDrafts("pickup"),
+    delivery: defaultDrafts("delivery"),
+  }));
   /** The bookings this ride serves — empty is a visit of its own. */
   const [linkIds, setLinkIds] = useState<string[]>([]);
 
@@ -225,10 +493,32 @@ export function AntarJemputBookingForm({
   const [clash, setClash] = useState<string | null>(null);
   const [refusal, setRefusal] = useState<string | null>(null);
 
-  const variant = useVariantQuote({
-    branchPin: branch?.location,
-    customerPin: customer?.location,
+  /*
+    THE FARE IS A BAND OF THE DISTANCE THE VAN DRIVES (23 September 2026), so
+    the zone is measured between that journey's OWN two ends rather than
+    between the branch and whatever pin the customer's record holds. The server
+    re-measures the same two points and is what the line stores.
+
+    BOTH DIRECTIONS ARE QUOTED ON EVERY RENDER, whichever are being saved: a
+    hook cannot be called conditionally, and there are only ever two.
+  */
+  const resolved: Record<TripLeg, ResolvedLeg> = {
+    pickup: resolveLeg(points.pickup, customer, branch),
+    delivery: resolveLeg(points.delivery, customer, branch),
+  };
+
+  const pickupVariant = useVariantQuote({
+    branchPin: pinOf(resolved.pickup.origin),
+    customerPin: pinOf(resolved.pickup.destination),
   });
+  const deliveryVariant = useVariantQuote({
+    branchPin: pinOf(resolved.delivery.origin),
+    customerPin: pinOf(resolved.delivery.destination),
+  });
+  const variantFor: Record<TripLeg, typeof pickupVariant> = {
+    pickup: pickupVariant,
+    delivery: deliveryVariant,
+  };
   /*
     THE ANIMALS DECIDE WHAT MAY BE LINKED (23 September 2026): only bookings of
     the animals in the van, and never another ride — a ride cannot serve a ride.
@@ -242,6 +532,8 @@ export function AntarJemputBookingForm({
     ? [legChoice === "both" ? "pickup" : legChoice]
     : legsOf(legChoice);
   const firstLeg = legs[0];
+  /* The cards a service declares are the same whichever way the van goes. */
+  const variant = variantFor[firstLeg];
 
   /* ─── Reads ──────────────────────────────────────────────────────────── */
 
@@ -334,14 +626,23 @@ export function AntarJemputBookingForm({
           const leg = source.tripLeg ?? "pickup";
           setOriginal(source);
           setLegChoice(leg);
-          setRiders([source.petId, ...(source.passengerPetIds ?? [])]);
+          /* THE VAN IS ONE LIST (23 September 2026) — a ride has no animal of
+             its own to put at the front of it. */
+          setRiders(source.passengerPetIds ?? []);
           /* Not editable here, but the price preview is multiplied by them. */
           setLinkIds(source.linkedBookingIds ?? []);
           setSchedules((prev) => ({
             ...prev,
             [leg]: { date: dateOf(at), time: slotAtOrBefore(at) },
           }));
-          setAddress(source.tripAddress ?? owner.address ?? "");
+          /* What it was saved with, as typed values — every end stays editable. */
+          setPoints((prev) => ({
+            ...prev,
+            [leg]: {
+              origin: storedDraft(source.tripOrigin),
+              destination: storedDraft(source.tripDestination),
+            },
+          }));
           setServiceId(source.service.serviceId);
           setAddonIds((source.service.addons ?? []).map((addon) => addon.serviceId));
           setVariantChoices(
@@ -358,10 +659,12 @@ export function AntarJemputBookingForm({
             the work is expected to be done. For a ride: the other direction.
           */
           const end = new Date(at.getTime() + (source.totalDurationMin ?? 60) * 60_000);
-          setRiders([source.petId]);
+          /* From a grooming booking, its animal; from a ride, everybody in it. */
+          setRiders(
+            source.petId ? [source.petId] : (source.passengerPetIds ?? []),
+          );
           /* A ride cannot serve a ride — "+ Antar-jemput" on one only copies its ends. */
           setLinkIds(source.tripLeg ? [] : [source._id]);
-          setAddress(owner.address ?? "");
           if (source.tripLeg) {
             const leg = otherLeg(source.tripLeg);
             setLegChoice(leg);
@@ -402,22 +705,35 @@ export function AntarJemputBookingForm({
     [services],
   );
 
-  /* The Antar-Jemput line's main services. Without a line, every main service. */
+  /*
+    The Antar-Jemput line's main services, AT THE CHOSEN BRANCH (23 September
+    2026, on request). Filtered here rather than re-fetched per branch: the
+    catalogue is already loaded, and `allBranches` means every branch as new
+    ones open, so it is never listed in `branchIds`.
+  */
   const rideServices = useMemo(
     () =>
       services.filter(
         (service) =>
           service.serviceType === "main" &&
-          (!line.line || service.businessLineId === line.line._id),
+          (!line.line || service.businessLineId === line.line._id) &&
+          (!branchId || service.allBranches || service.branchIds.includes(branchId)),
       ),
-    [services, line.line],
+    [services, line.line, branchId],
   );
 
   /* ─── What the form comes to ──────────────────────────────────────────── */
 
   const service = serviceOf(serviceId);
-  const primary = pets.find((pet) => pet._id === riders[0]) ?? null;
-  const passengers = riders.slice(1);
+  /*
+    ⚠️ NO "PRIMARY" ANIMAL (23 September 2026). The form used to send `riders[0]`
+    as `petId` and `riders.slice(1)` as the passengers, then reassemble the two
+    for display — a split that existed only because the document demanded one
+    animal above the rest. The van is the list, and the quote is asked with NO
+    animal: a ride priced by an animal has several, so the SERVER refuses it and
+    `missingAxis` below says so.
+  */
+  const passengers = riders;
   const addons = addonIds.map((id) => serviceOf(id)).filter((one): one is Service => one !== null);
   const offered = (service?.addonServiceIds ?? [])
     .map((id) => serviceOf(id))
@@ -434,19 +750,21 @@ export function AntarJemputBookingForm({
   */
   const chargedPets = Math.max(1, linkIds.length);
 
+  /* EACH DIRECTION IS QUOTED IN ITS OWN ZONE — it has its own two addresses. */
   const priced = legs.map((leg) => {
+    const legVariant = variantFor[leg];
     const choices = choicesForLeg(service, cards, leg, variantChoices);
-    const quote = variant.quote(service, primary, choices);
+    const quote = legVariant.quote(service, null, choices);
     const unit = quote.price === null ? null : toMinor(quote.price);
     const quoted =
       unit === null ? null : toDecimalString(perAnimal ? unit * BigInt(chargedPets) : unit);
     const main = priceLine(quoted, mayPrice ? mainDrafts[leg] : BLANK_PRICE);
     const addonLines = addons.map((addon) => {
-      const addonQuote = variant.quote(addon, primary, choices);
+      const addonQuote = legVariant.quote(addon, null, choices);
       return {
         addon,
         quote: addonQuote,
-        problem: variant.problemOf(addon, addonQuote),
+        problem: legVariant.problemOf(addon, addonQuote),
         line: priceLine(addonQuote.price, mayPrice ? (addonDrafts[addon._id] ?? BLANK_PRICE) : BLANK_PRICE),
       };
     });
@@ -456,7 +774,8 @@ export function AntarJemputBookingForm({
       leg,
       choices,
       quote,
-      problem: service ? variant.problemOf(service, quote) : null,
+      zone: legVariant,
+      problem: service ? legVariant.problemOf(service, quote) : null,
       main,
       addons: addonLines,
       net: lines.reduce((sum, row) => sum + row.net, 0n),
@@ -464,8 +783,12 @@ export function AntarJemputBookingForm({
   });
   const total = priced.reduce((sum, row) => sum + row.net, 0n);
 
-  const customerEnd = address.trim() || customer?.address || "Alamat pelanggan";
-  const branchEnd = branch?.address || branch?.name || "Cabang";
+  /* The first end still missing its pin, in the order they are filled in. */
+  const unpinned = legs
+    .flatMap((leg) =>
+      (["origin", "destination"] as const).map((end) => ({ leg, end })),
+    )
+    .find(({ leg, end }) => !pinOf(resolved[leg][end]));
 
   const unscheduled = legs.find(
     (leg) => schedules[leg].date === "" || schedules[leg].time === "",
@@ -487,28 +810,43 @@ export function AntarJemputBookingForm({
         ? "Pelanggan belum dipilih."
         : riders.length === 0
           ? "Hewan belum dipilih."
-          : primary && !primary.size
-            ? `Ukuran ${primary.name} belum diisi.`
-            : !service
+          : !service
               ? "Layanan antar-jemput belum dipilih."
-              : priced.some((row) => row.quote.missingAxis !== null)
-                ? `Data ${primary?.name ?? "hewan"} belum lengkap, harganya belum bisa dihitung.`
-                : unanswered
-                  ? `${unanswered}.`
-                  : priced.some((row) => row.quote.inactive)
-                    ? "Varian layanan ini sedang nonaktif."
-                    : unscheduled
-                      ? `Tanggal dan jam ${LEG_LABEL[unscheduled].toLowerCase()} belum lengkap.`
-                      : backwards
-                        ? "Jam antar harus setelah jam jemput."
-                        : null;
+              : /* Before the price problems: a fare is measured between the two ends. */
+                unpinned
+                ? `Titik lokasi alamat ${unpinned.end === "origin" ? "asal" : "tujuan"}${
+                    legs.length > 1 ? ` ${LEG_LABEL[unpinned.leg].toLowerCase()}` : ""
+                  } belum ada — isi lat & lng-nya.`
+                : priced.some((row) => row.quote.missingAxis !== null)
+                  ? 'Layanan ini dihargai per hewan, sedangkan satu perjalanan mengangkut beberapa hewan \u2014 pakai varian zona atau harga tunggal.'
+                  : unanswered
+                    ? `${unanswered}.`
+                    : priced.some((row) => row.quote.inactive)
+                      ? "Varian layanan ini sedang nonaktif."
+                      : unscheduled
+                        ? `Tanggal dan jam ${LEG_LABEL[unscheduled].toLowerCase()} belum lengkap.`
+                        : backwards
+                          ? "Jam antar harus setelah jam jemput."
+                          : null;
+
+  function setEnd(leg: TripLeg, end: "origin" | "destination", next: PointDraft) {
+    setPoints((prev) => ({ ...prev, [leg]: { ...prev[leg], [end]: next } }));
+    setClash(null);
+  }
+
+  /** A service not sold at the new branch cannot stay chosen for it. */
+  function chooseBranch(next: string) {
+    setPickedBranch(next);
+    const kept = services.find((one) => one._id === serviceId);
+    if (kept && !kept.allBranches && !kept.branchIds.includes(next)) setServiceId("");
+    setClash(null);
+  }
 
   function chooseCustomer(next: Customer) {
     setCustomer(next);
     setPets([]);
     setRiders([]);
     setLinkIds([]);
-    setAddress(next.address ?? "");
     setClash(null);
     setRefusal(null);
   }
@@ -523,7 +861,9 @@ export function AntarJemputBookingForm({
     setLinkIds((prev) =>
       prev.filter((id) => {
         const booking = visits.bookings.find((one) => one._id === id);
-        return !booking || next.includes(booking.petId);
+        /* A linked booking always has an animal — only a ride has none, and a
+           ride is never offered for linking. */
+        return !booking || booking.petId === null || next.includes(booking.petId);
       }),
     );
     setClash(null);
@@ -541,20 +881,44 @@ export function AntarJemputBookingForm({
     setClash(null);
   }
 
-  /** Tukar: a pickup becomes a delivery and back — the ends swap with it. */
+  /** Tukar: the van drives the same two doors the other way round. */
   function swap() {
     if (legChoice === "both") return;
     const next = otherLeg(legChoice);
+
     setSchedules((prev) => ({ ...prev, [next]: prev[legChoice] }));
     setMainDrafts((prev) => ({ ...prev, [next]: prev[legChoice] }));
+    setPoints((prev) => ({
+      ...prev,
+      [next]: { origin: prev[legChoice].destination, destination: prev[legChoice].origin },
+    }));
     setLegChoice(next);
+  }
+
+  /**
+   * Flipping between the two single directions TURNS THE VAN ROUND — it keeps
+   * the journey and reverses it — rather than forgetting where it was going.
+   * Every other change just switches which directions are being saved; each one
+   * keeps its own pair of addresses.
+   */
+  function chooseLeg(next: LegChoice) {
+    if (next === legChoice) return;
+
+    if (legChoice !== "both" && next === otherLeg(legChoice)) {
+      swap();
+      return;
+    }
+
+    setLegChoice(next);
+    setClash(null);
   }
 
   /* ─── Saving ─────────────────────────────────────────────────────────── */
 
   function entryFor(leg: TripLeg) {
     const draft = {
-      ...blankPetDraft(riders[0]),
+      /* The draft's own `petId` is dropped below — a ride card sends none. */
+      ...blankPetDraft(""),
       serviceId,
       addonServiceIds: addonIds,
       groomerUserId: driverId,
@@ -564,8 +928,17 @@ export function AntarJemputBookingForm({
       variantChoices: choicesForLeg(service, cards, leg, variantChoices),
     };
 
+    /*
+      THE KEY IS REMOVED, NOT SET TO UNDEFINED (23 September 2026). The server
+      refuses a ride card that carries `petId` at all, and a key whose value is
+      undefined survives every path but `JSON.stringify` — which is a rule about
+      the transport, not about what this form means to send.
+    */
+    const entry = toEntry(draft, serviceOf);
+    delete entry.petId;
+
     return {
-      ...toEntry(draft, serviceOf),
+      ...entry,
       tripLeg: leg,
       passengerPetIds: passengers,
       linkedBookingIds: linkIds,
@@ -573,9 +946,18 @@ export function AntarJemputBookingForm({
   }
 
   /** Null — the customer's stored address — when it was left as it is. */
-  function tripAddressValue(): string | null {
-    const typed = address.trim();
-    return typed === "" || typed === (customer?.address ?? "").trim() ? null : typed;
+  /**
+   * THE TWO ENDS OF ONE JOURNEY, as the API takes them. Each direction carries
+   * its own pair (23 September 2026, on request), so an Antar Jemput sends two
+   * different journeys rather than one driven backwards.
+   */
+  function endsFor(leg: TripLeg) {
+    const { origin: from, destination: to } = resolved[leg];
+
+    return {
+      tripOrigin: { address: from.address, lat: from.lat as number, lng: from.lng as number },
+      tripDestination: { address: to.address, lat: to.lat as number, lng: to.lng as number },
+    };
   }
 
   function handleError(error: unknown) {
@@ -613,9 +995,14 @@ export function AntarJemputBookingForm({
           customerId: customer._id,
           branchId,
           scheduledAt,
-          status: "requested",
+          /*
+            A RIDE IS BORN A DRAFT (23 September 2026). `requested` is not one
+            of its four rungs — a van is either written down or it is on — and
+            the server refuses a ride asked for as one.
+          */
+          status: "draft",
           location: rideLocation(service),
-          tripAddress: tripAddressValue(),
+          ...endsFor(leg),
           forceClash: clash !== null,
           ...(groupId ? { groupId } : {}),
           bookings: [entryFor(leg)],
@@ -661,7 +1048,7 @@ export function AntarJemputBookingForm({
       const numbers = made.map((one) => one.bookingNumber).filter(Boolean).join(" & ");
       swalToast(
         made.length > 1
-          ? `2 booking pulang-pergi dibuat${numbers ? `: ${numbers}` : ""}.`
+          ? `2 booking antar jemput dibuat${numbers ? `: ${numbers}` : ""}.`
           : `Booking ${numbers || "antar-jemput"} dibuat.`,
       );
     } catch {
@@ -681,17 +1068,22 @@ export function AntarJemputBookingForm({
 
     const choices = choicesForLeg(service, cards, leg, variantChoices);
     const patch: UpdateBookingInput = {};
-    const originalAddress = original.tripAddress ?? null;
-    const nextAddress = tripAddressValue();
+    const ends = endsFor(leg);
 
     if (new Date(scheduledAt).getTime() !== new Date(original.scheduledAt).getTime()) {
       patch.scheduledAt = scheduledAt;
     }
     if (branchId !== original.branchId) patch.branchId = branchId;
     if (leg !== original.tripLeg) patch.tripLeg = leg;
-    if (nextAddress !== originalAddress) patch.tripAddress = nextAddress;
-    if (riders[0] !== original.petId) patch.petId = riders[0];
-    if (!sameSet(passengers, original.passengerPetIds ?? [])) patch.passengerPetIds = passengers;
+    if (!samePoint(ends.tripOrigin, original.tripOrigin)) patch.tripOrigin = ends.tripOrigin;
+    if (!samePoint(ends.tripDestination, original.tripDestination)) {
+      patch.tripDestination = ends.tripDestination;
+    }
+    /* `petId` is never patched on a ride — it has none, and sending one is
+       refused. The whole van moves through `passengerPetIds`. */
+    if (!sameSet(passengers, original.passengerPetIds ?? [])) {
+      patch.passengerPetIds = passengers;
+    }
     if (serviceId !== original.service.serviceId) patch.serviceId = serviceId;
     if (!sameSet(addonIds, (original.service.addons ?? []).map((addon) => addon.serviceId))) {
       patch.addonServiceIds = addonIds;
@@ -763,7 +1155,7 @@ export function AntarJemputBookingForm({
       >
         {editing
           ? "Satu perjalanan satu booking. Driver diganti di halaman booking."
-          : "Satu perjalanan satu booking — hewan lain ikut di perjalanan yang sama. Pulang-pergi disimpan jadi dua booking dalam satu kunjungan."}
+          : "Satu perjalanan satu booking — hewan lain ikut di perjalanan yang sama. Antar Jemput disimpan jadi dua booking dalam satu kunjungan."}
       </PageHeading>
 
       <form
@@ -801,314 +1193,212 @@ export function AntarJemputBookingForm({
 
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="flex min-w-0 flex-col gap-4">
-            {/* ─── PELANGGAN ─── */}
-            <Card title="Pelanggan">
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <Label>
-                    Pelanggan<span className="text-danger"> *</span>
-                  </Label>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className={`${FIELD_HEIGHT} justify-start font-normal`}
-                    disabled={saving || editing}
-                    onClick={() => setPicking(true)}
-                  >
-                    <Search className="size-4 text-muted" aria-hidden />
-                    {customer ? (
-                      <span className="truncate text-foreground">
-                        {customer.name}
-                        {customer.phone && (
-                          <span className="tabular-nums text-muted"> · {customer.phone}</span>
-                        )}
-                      </span>
-                    ) : (
-                      <span className="text-muted">Cari nama atau nomor WhatsApp</span>
-                    )}
-                  </Button>
-                </div>
-
-                {customer && (
-                  <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-3">
-                    <Fact label="WhatsApp">
-                      <span className="tabular-nums">{customer.phone ?? "—"}</span>
-                    </Fact>
-                    <Fact label="Alamat">{customer.address ?? "—"}</Fact>
-                    <Fact label="Zona">
-                      <span className={variant.zone.ok ? "tabular-nums" : "font-normal text-muted"}>
-                        {variant.zoneText}
-                      </span>
-                    </Fact>
-                  </dl>
-                )}
-              </div>
-            </Card>
-
-            {/* ─── HEWAN ─── */}
-            <Card
-              title="Hewan"
-              action={
-                <span className={`${badge} bg-tint-neutral text-muted tabular-nums`}>
-                  {riders.length} ikut
-                </span>
-              }
-            >
-              {!customer ? (
-                <p className="text-sm text-muted">
-                  Pilih pelanggannya dulu — daftar hewan mengikuti pemiliknya.
-                </p>
-              ) : loadingPets ? (
-                <p className="flex items-center gap-2 text-sm text-muted">
-                  <Spinner /> Memuat hewan…
-                </p>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {pets.length === 0 ? (
-                    <p className="text-sm text-muted">{customer.name} belum punya hewan terdaftar.</p>
-                  ) : (
-                    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                      {pets.map((pet) => {
-                        const index = riders.indexOf(pet._id);
-                        const on = index >= 0;
-                        return (
-                          <li key={pet._id}>
-                            <button
-                              type="button"
-                              aria-pressed={on}
-                              disabled={saving}
-                              onClick={() => toggleRider(pet._id)}
-                              className={`flex min-h-11 w-full items-center gap-3 rounded-lg border-[1.5px] px-3 py-2.5 text-left transition focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none ${
-                                on
-                                  ? "border-primary bg-navy-100"
-                                  : "border-border bg-surface hover:bg-surface-hover"
-                              }`}
-                            >
-                              <Initial name={pet.name} />
-                              <span className="min-w-0 flex-1">
-                                <span className="block truncate text-sm font-bold text-foreground">
-                                  {pet.name}
-                                </span>
-                                <span className="block truncate text-xs text-muted">
-                                  {[optionLabel("breed", pet.breed), optionLabel("size", pet.size)]
-                                    .filter(Boolean)
-                                    .join(" · ") || "—"}
-                                </span>
-                              </span>
-                              {index === 0 && (
-                                <span className={`${badge} bg-tint-brand text-primary`}>Utama</span>
-                              )}
-                              {index > 0 && (
-                                <span className={`${badge} bg-tint-neutral text-muted`}>Ikut</span>
-                              )}
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                  <p className="text-xs text-muted">
-                    Hewan pertama yang dipilih jadi hewan utama booking. Yang lain
-                    ikut di perjalanan yang sama
-                    {perAnimal
-                      ? " — yang ditagih tarif per hewan adalah booking yang ditautkan di bawah."
-                      : "."}
-                  </p>
-                  {primary && !primary.size && (
-                    <Alert variant="warning">
-                      {primary.name} belum punya ukuran — ukuran wajib diisi untuk
-                      booking. <PetFixLink pet={primary} axis="sizeCategory" />
-                    </Alert>
-                  )}
-                  <div>
+          <Card title={editing ? "Ubah perjalanan" : "Booking antar-jemput"}>
+            <div className="flex flex-col gap-5">
+              {/* ─── 1 · PELANGGAN & CABANG ─── */}
+              <Section title="Pelanggan & cabang">
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <Label>
+                      Pelanggan<span className="text-danger"> *</span>
+                    </Label>
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="sm"
-                      disabled={saving}
-                      onClick={() => setAddingPet(true)}
+                      variant="secondary"
+                      className={`${FIELD_HEIGHT} justify-start font-normal`}
+                      disabled={saving || editing}
+                      onClick={() => setPicking(true)}
                     >
-                      <Plus className="size-4" aria-hidden />
-                      Daftarkan hewan baru
+                      <Search className="size-4 text-muted" aria-hidden />
+                      {customer ? (
+                        <span className="truncate text-foreground">
+                          {customer.name}
+                          {customer.phone && (
+                            <span className="tabular-nums text-muted"> · {customer.phone}</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-muted">Cari nama atau nomor WhatsApp</span>
+                      )}
                     </Button>
                   </div>
-                </div>
-              )}
-            </Card>
 
-            {/* ─── TAUTKAN ─── */}
-            {!editing && (
-              <Card
-                title="Tautkan ke booking"
+                  {scope.branches.length > 1 && (
+                    <FilterSelect
+                      layout="form"
+                      label="Cabang"
+                      ariaLabel="Cabang"
+                      value={branchId}
+                      options={namedOptions(scope.branches)}
+                      active={false}
+                      required
+                      placeholder="Pilih cabang"
+                      disabled={saving}
+                      onChange={chooseBranch}
+                      hint="Layanan dan alamat cabang di bawah mengikuti pilihan ini."
+                    />
+                  )}
+
+                  {customer && (
+                    <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
+                      <Fact label="WhatsApp">
+                        <span className="tabular-nums">{customer.phone ?? "—"}</span>
+                      </Fact>
+                      <Fact label="Alamat tersimpan">{customer.address ?? "—"}</Fact>
+                    </dl>
+                  )}
+                </div>
+              </Section>
+
+              {/* ─── 2 · HEWAN ─── */}
+              <Section
+                title="Hewan"
                 action={
-                  linkIds.length > 0 ? (
-                    <span className={`${badge} bg-tint-neutral text-muted tabular-nums`}>
-                      {linkIds.length} booking
-                    </span>
-                  ) : null
+                  <span className={`${badge} bg-tint-neutral text-muted tabular-nums`}>
+                    {riders.length} ikut
+                  </span>
                 }
               >
                 {!customer ? (
                   <p className="text-sm text-muted">
-                    Pilih pelanggannya dulu — daftar booking mengikuti pemiliknya.
+                    Pilih pelanggannya dulu — daftar hewan mengikuti pemiliknya.
                   </p>
-                ) : riders.length === 0 ? (
-                  <p className="text-sm text-muted">
-                    Pilih hewannya dulu — yang muncul di sini cuma booking hewan
-                    yang ikut.
-                  </p>
-                ) : visits.loading ? (
+                ) : loadingPets ? (
                   <p className="flex items-center gap-2 text-sm text-muted">
-                    <Spinner /> Memuat booking…
-                  </p>
-                ) : visits.failed ? (
-                  <Alert variant="error">
-                    Daftar booking pelanggan ini tidak bisa dimuat.
-                  </Alert>
-                ) : visits.bookings.length === 0 ? (
-                  <p className="text-sm text-muted">
-                    Belum ada booking untuk hewan yang dipilih. Antar-jemput ini
-                    jalan sebagai kunjungan sendiri.
+                    <Spinner /> Memuat hewan…
                   </p>
                 ) : (
                   <div className="flex flex-col gap-3">
-                    <CheckRowGroup>
-                      {visits.bookings.map((booking) => (
-                        <CheckRow
-                          key={booking._id}
-                          label={visitLabel(booking)}
-                          checked={linkIds.includes(booking._id)}
-                          disabled={saving}
-                          onCheckedChange={() => toggleLink(booking._id)}
-                        />
-                      ))}
-                    </CheckRowGroup>
+                    {pets.length === 0 ? (
+                      <p className="text-sm text-muted">
+                        {customer.name} belum punya hewan terdaftar.
+                      </p>
+                    ) : (
+                      <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                        {pets.map((pet) => {
+                          const index = riders.indexOf(pet._id);
+                          const on = index >= 0;
+                          return (
+                            <li key={pet._id}>
+                              <button
+                                type="button"
+                                aria-pressed={on}
+                                disabled={saving}
+                                onClick={() => toggleRider(pet._id)}
+                                className={`flex min-h-11 w-full items-center gap-3 rounded-lg border-[1.5px] px-3 py-2.5 text-left transition focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none ${
+                                  on
+                                    ? "border-primary bg-navy-100"
+                                    : "border-border bg-surface hover:bg-surface-hover"
+                                }`}
+                              >
+                                <Initial name={pet.name} />
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm font-bold text-foreground">
+                                    {pet.name}
+                                  </span>
+                                  <span className="block truncate text-xs text-muted">
+                                    {[optionLabel("breed", pet.breed), optionLabel("size", pet.size)]
+                                      .filter(Boolean)
+                                      .join(" · ") || "—"}
+                                  </span>
+                                </span>
+                                {on && (
+                                  <span className={`${badge} bg-tint-brand text-primary`}>Ikut</span>
+                                )}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
                     <p className="text-xs text-muted">
-                      Satu antar-jemput bisa menangani beberapa booking sekaligus
-                      — semuanya menunjuk ke perjalanan yang sama
+                      Semua hewan yang dipilih ikut di perjalanan yang sama
                       {perAnimal
-                        ? ", dan tarifnya dihitung per booking yang ditautkan."
-                        : ", dan tarifnya tetap sekali per perjalanan."}
+                        ? " — yang ditagih tarif per hewan adalah booking yang ditautkan di bawah."
+                        : "."}
                     </p>
+                    <div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={saving}
+                        onClick={() => setAddingPet(true)}
+                      >
+                        <Plus className="size-4" aria-hidden />
+                        Daftarkan hewan baru
+                      </Button>
+                    </div>
                   </div>
                 )}
-              </Card>
-            )}
+              </Section>
 
-            {/* ─── PERJALANAN ─── */}
-            <Card title="Perjalanan">
-              <div className="flex flex-col gap-5">
-                <ChoiceCards
-                  legend="Arah"
-                  value={legChoice}
-                  onChange={(next) => {
-                    setLegChoice(next);
-                    setClash(null);
-                  }}
-                  options={(editing
-                    ? LEG_CHOICES.filter((choice) => choice.value !== "both")
-                    : LEG_CHOICES
-                  ).map((choice) => ({
-                    value: choice.value,
-                    label: choice.label,
-                    description: choice.hint,
-                  }))}
-                  disabled={saving}
-                />
-
-                {scope.branches.length > 1 && (
-                  <FilterSelect
-                    layout="form"
-                    label="Cabang"
-                    ariaLabel="Cabang"
-                    value={branchId}
-                    options={namedOptions(scope.branches)}
-                    active={false}
-                    required
-                    placeholder="Pilih cabang"
-                    disabled={saving}
-                    onChange={setPickedBranch}
-                  />
-                )}
-
-                <TextareaField
-                  label="Alamat pelanggan"
-                  name="ride-address"
-                  value={address}
-                  onChange={(event) => setAddress(event.target.value)}
-                  maxLength={ADDRESS_MAX_LENGTH}
-                  rows={2}
-                  placeholder={customer?.address ?? "Alamat jemput / antar"}
-                  hint="Terisi dari alamat pelanggan — ubah kalau kali ini ke alamat lain. Zona tetap dihitung dari titik pelanggan."
-                  disabled={saving}
-                />
-
-                {legs.map((leg) => {
-                  const route = routeOf(leg, customerEnd, branchEnd);
-                  return (
-                    <div
-                      key={leg}
-                      className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className={`${badge} ${leg === "pickup" ? "bg-tint-info text-info" : "bg-tint-brand text-primary"}`}>
-                          {LEG_LABEL[leg]}
-                        </span>
-                        {legChoice !== "both" && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="ml-auto"
+              {/* ─── 3 · TAUTKAN ─── */}
+              {!editing && (
+                <Section
+                  title="Tautkan ke booking"
+                  action={
+                    linkIds.length > 0 ? (
+                      <span className={`${badge} bg-tint-neutral text-muted tabular-nums`}>
+                        {linkIds.length} booking
+                      </span>
+                    ) : null
+                  }
+                >
+                  {!customer ? (
+                    <p className="text-sm text-muted">
+                      Pilih pelanggannya dulu — daftar booking mengikuti pemiliknya.
+                    </p>
+                  ) : riders.length === 0 ? (
+                    <p className="text-sm text-muted">
+                      Pilih hewannya dulu — yang muncul di sini cuma booking hewan
+                      yang ikut.
+                    </p>
+                  ) : visits.loading ? (
+                    <p className="flex items-center gap-2 text-sm text-muted">
+                      <Spinner /> Memuat booking…
+                    </p>
+                  ) : visits.failed ? (
+                    <Alert variant="error">
+                      Daftar booking pelanggan ini tidak bisa dimuat.
+                    </Alert>
+                  ) : visits.bookings.length === 0 ? (
+                    <p className="text-sm text-muted">
+                      Belum ada booking untuk hewan yang dipilih. Antar-jemput ini
+                      jalan sebagai kunjungan sendiri.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      <CheckRowGroup>
+                        {visits.bookings.map((booking) => (
+                          <CheckRow
+                            key={booking._id}
+                            label={visitLabel(booking)}
+                            checked={linkIds.includes(booking._id)}
                             disabled={saving}
-                            onClick={swap}
-                          >
-                            <ArrowUpDown className="size-4" aria-hidden />
-                            Tukar arah
-                          </Button>
-                        )}
-                      </div>
-                      <dl className="grid gap-2 text-sm">
-                        <div className="flex gap-3">
-                          <dt className="w-16 flex-none text-muted">Asal</dt>
-                          <dd className="min-w-0 font-medium text-foreground">{route.from}</dd>
-                        </div>
-                        <div className="flex gap-3">
-                          <dt className="w-16 flex-none text-muted">Tujuan</dt>
-                          <dd className="min-w-0 font-medium text-foreground">{route.to}</dd>
-                        </div>
-                      </dl>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <TextField
-                          label={legs.length > 1 ? `Tanggal ${LEG_LABEL[leg].toLowerCase()}` : "Tanggal"}
-                          name={`ride-date-${leg}`}
-                          type="date"
-                          value={schedules[leg].date}
-                          onChange={(event) => setSchedule(leg, { date: event.target.value })}
-                          disabled={saving}
-                          required
-                        />
-                        <TimeSlotField
-                          label={legs.length > 1 ? `Jam ${LEG_LABEL[leg].toLowerCase()}` : "Jam"}
-                          value={schedules[leg].time}
-                          onChange={(time) => setSchedule(leg, { time })}
-                          disabled={saving}
-                        />
-                      </div>
+                            onCheckedChange={() => toggleLink(booking._id)}
+                          />
+                        ))}
+                      </CheckRowGroup>
+                      <p className="text-xs text-muted">
+                        Satu antar-jemput bisa menangani beberapa booking sekaligus
+                        — semuanya menunjuk ke perjalanan yang sama
+                        {perAnimal
+                          ? ", dan tarifnya dihitung per booking yang ditautkan."
+                          : ", dan tarifnya tetap sekali per perjalanan."}
+                      </p>
                     </div>
-                  );
-                })}
-              </div>
-            </Card>
+                  )}
+                </Section>
+              )}
 
-            {/* ─── LAYANAN & HARGA ─── */}
-            <Card title="Layanan & harga">
-              {loadingServices ? (
-                <p className="flex items-center gap-2 text-sm text-muted">
-                  <Spinner /> Memuat layanan…
-                </p>
-              ) : (
-                <div className="flex flex-col gap-4">
+              {/* ─── 4 · LAYANAN & DRIVER ─── */}
+              <Section title="Layanan & driver">
+                {loadingServices ? (
+                  <p className="flex items-center gap-2 text-sm text-muted">
+                    <Spinner /> Memuat layanan…
+                  </p>
+                ) : (
                   <div className="grid gap-4 sm:grid-cols-2">
                     <FilterSelect
                       layout="form"
@@ -1124,6 +1414,11 @@ export function AntarJemputBookingForm({
                       options={rideServices.map((one) => ({ value: one._id, label: one.name }))}
                       active={false}
                       placeholder="Pilih layanan…"
+                      hint={
+                        rideServices.length === 0 && branchId
+                          ? "Belum ada layanan antar-jemput yang dijual di cabang ini."
+                          : "Hanya layanan yang dijual di cabang yang dipilih."
+                      }
                       closeOnScroll
                       disabled={saving}
                       required
@@ -1164,27 +1459,125 @@ export function AntarJemputBookingForm({
                       </div>
                     )}
                   </div>
+                )}
+              </Section>
 
-                  <VariantChoicePicker
-                    cards={askedCards}
-                    value={variantChoices}
-                    onChange={setVariantChoices}
+              {/* ─── 5 · PERJALANAN ─── */}
+              {service && (
+                <Section
+                  title="Perjalanan"
+                  action={
+                    legChoice !== "both" && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={saving}
+                        onClick={swap}
+                      >
+                        <ArrowUpDown className="size-4" aria-hidden />
+                        Tukar arah
+                      </Button>
+                    )
+                  }
+                >
+                  <ChoiceCards
+                    legend="Arah"
+                    value={legChoice}
+                    onChange={chooseLeg}
+                    options={(editing
+                      ? LEG_CHOICES.filter((choice) => choice.value !== "both")
+                      : LEG_CHOICES
+                    ).map((choice) => ({
+                      value: choice.value,
+                      label: choice.label,
+                      description: choice.hint,
+                    }))}
                     disabled={saving}
                   />
-                  {arah && (
-                    <p className="text-xs text-muted">
-                      {arah.card.name} mengikuti arah di atas —{" "}
-                      {legs
-                        .map((leg) => {
-                          const code = arah.codes[leg];
-                          return `${LEG_LABEL[leg]}: ${arah.card.values.find((value) => value.code === code)?.label ?? code}`;
-                        })
-                        .join(" · ")}
-                      .
-                    </p>
-                  )}
+                </Section>
+              )}
 
-                  {service && (
+              {/* ─── 6 · ALAMAT, SATU PASANG PER ARAH ─── */}
+              {service && (
+                <Section title="Alamat">
+                  <div className="flex flex-col gap-5">
+                    {legs.map((leg) => {
+                      const zone = variantFor[leg];
+                      const priced = pinOf(resolved[leg].origin) && pinOf(resolved[leg].destination);
+
+                      return (
+                        <div key={leg} className="flex flex-col gap-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            {legs.length > 1 && (
+                              <span
+                                className={`${badge} ${leg === "pickup" ? "bg-tint-info text-info" : "bg-tint-brand text-primary"}`}
+                              >
+                                Alamat {LEG_LABEL[leg].toLowerCase()}
+                              </span>
+                            )}
+                            <span
+                              className={`${badge} ml-auto ${zone.zone.ok ? "bg-tint-success text-success" : "bg-tint-neutral text-muted"}`}
+                            >
+                              {priced ? zone.zoneText : "Zona belum terhitung"}
+                            </span>
+                          </div>
+                          <div className="grid gap-4 lg:grid-cols-2">
+                            <PointFields
+                              label="Alamat asal"
+                              draft={points[leg].origin}
+                              point={resolved[leg].origin}
+                              customer={customer}
+                              branch={branch}
+                              disabled={saving}
+                              onChange={(next) => setEnd(leg, "origin", next)}
+                            />
+                            <PointFields
+                              label="Alamat tujuan"
+                              draft={points[leg].destination}
+                              point={resolved[leg].destination}
+                              customer={customer}
+                              branch={branch}
+                              disabled={saving}
+                              onChange={(next) => setEnd(leg, "destination", next)}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <p className="text-xs text-muted">
+                      Titik lokasi (lat &amp; lng) wajib diisi — tarif zona tiap arah
+                      dihitung dari jarak antara kedua alamatnya sendiri.
+                      {legs.length > 1 &&
+                        " Jemput dan antar punya alamatnya masing-masing, jadi hewan bisa diantar ke tempat lain."}
+                    </p>
+                  </div>
+                </Section>
+              )}
+
+              {/* ─── 7 · HARGA & ADD-ON ─── */}
+              {service && (
+                <Section title="Harga">
+                  <div className="flex flex-col gap-4">
+                    <VariantChoicePicker
+                      cards={askedCards}
+                      value={variantChoices}
+                      onChange={setVariantChoices}
+                      disabled={saving}
+                    />
+                    {arah && (
+                      <p className="text-xs text-muted">
+                        {arah.card.name} mengikuti arah di atas —{" "}
+                        {legs
+                          .map((leg) => {
+                            const code = arah.codes[leg];
+                            return `${LEG_LABEL[leg]}: ${arah.card.values.find((value) => value.code === code)?.label ?? code}`;
+                          })
+                          .join(" · ")}
+                        .
+                      </p>
+                    )}
+
                     <div className="flex flex-col gap-2">
                       <p className="text-sm font-medium">Harga &amp; diskon per item</p>
                       {priced.map((row) => (
@@ -1194,17 +1587,24 @@ export function AntarJemputBookingForm({
                           line={row.main}
                           draft={mainDrafts[row.leg]}
                           missing={
+                            /*
+                              A RIDE IS NOT PRICED BY AN ANIMAL (23 September
+                              2026). It carries several, so there is nobody to
+                              name here and nothing to go and fix on a profile —
+                              the catalogue is what has to change. The server
+                              refuses such a save with the same reason.
+                            */
                             row.quote.missingAxis ? (
                               <>
-                                {primary?.name ?? "Hewan"} belum punya {AXIS_LABEL[row.quote.missingAxis]} — harga
-                                layanan ini mengikutinya.{" "}
-                                <PetFixLink pet={primary} axis={row.quote.missingAxis} />
+                                Layanan ini dihargai per {AXIS_LABEL[row.quote.missingAxis]} hewan,
+                                sedangkan satu perjalanan mengangkut beberapa hewan sekaligus — pakai
+                                varian zona atau harga tunggal.
                               </>
                             ) : (
                               row.problem
                             )
                           }
-                          note={variesByZone(service) && variant.zone.ok ? `Zona: ${variant.zoneText}` : null}
+                          note={variesByZone(service) && row.zone.zone.ok ? `Zona: ${row.zone.zoneText}` : null}
                           inactive={row.quote.inactive}
                           mayPrice={mayPrice}
                           disabled={saving}
@@ -1241,52 +1641,88 @@ export function AntarJemputBookingForm({
                         />
                       ))}
                     </div>
-                  )}
 
-                  {offered.length > 0 && (
-                    <div className="flex flex-col gap-1.5">
-                      <p className="text-sm font-medium">Add-on</p>
-                      <CheckRowGroup>
-                        {offered.map((addon) => {
-                          const addonQuote = variant.quote(addon, primary, priced[0]?.choices ?? variantChoices);
-                          const checked = addonIds.includes(addon._id);
-                          return (
-                            <CheckRow
-                              key={addon._id}
-                              label={addon.name}
-                              description={
-                                addonQuote.inactive
-                                  ? "Varian nonaktif — tidak bisa dipilih."
-                                  : addonQuote.price
-                                    ? money(toMinor(addonQuote.price) ?? 0n)
-                                    : (variant.problemOf(addon, addonQuote) ?? "—")
-                              }
-                              checked={checked}
-                              disabled={saving || (addonQuote.inactive && !checked)}
-                              onCheckedChange={(next) => {
-                                setAddonIds((prev) =>
-                                  next ? [...prev, addon._id] : prev.filter((id) => id !== addon._id),
-                                );
-                              }}
-                            />
-                          );
-                        })}
-                      </CheckRowGroup>
-                    </div>
-                  )}
-
-                  <TextareaField
-                    label="Catatan internal"
-                    name="ride-notes"
-                    value={internalNotes}
-                    onChange={(event) => setInternalNotes(event.target.value)}
-                    maxLength={NOTES_MAX_LENGTH}
-                    placeholder="Dibaca driver dan staf — patokan rumah, jam pelanggan bisa dihubungi"
-                    disabled={saving}
-                  />
-                </div>
+                    {offered.length > 0 && (
+                      <div className="flex flex-col gap-1.5">
+                        <p className="text-sm font-medium">Add-on</p>
+                        <CheckRowGroup>
+                          {offered.map((addon) => {
+                            const addonQuote = variant.quote(addon, null, priced[0]?.choices ?? variantChoices);
+                            const checked = addonIds.includes(addon._id);
+                            return (
+                              <CheckRow
+                                key={addon._id}
+                                label={addon.name}
+                                description={
+                                  addonQuote.inactive
+                                    ? "Varian nonaktif — tidak bisa dipilih."
+                                    : addonQuote.price
+                                      ? money(toMinor(addonQuote.price) ?? 0n)
+                                      : (variant.problemOf(addon, addonQuote) ?? "—")
+                                }
+                                checked={checked}
+                                disabled={saving || (addonQuote.inactive && !checked)}
+                                onCheckedChange={(next) => {
+                                  setAddonIds((prev) =>
+                                    next ? [...prev, addon._id] : prev.filter((id) => id !== addon._id),
+                                  );
+                                }}
+                              />
+                            );
+                          })}
+                        </CheckRowGroup>
+                      </div>
+                    )}
+                  </div>
+                </Section>
               )}
-            </Card>
+
+              {/* ─── 8 · JADWAL ─── */}
+              {service && (
+                <Section title="Jadwal">
+                  <div className="flex flex-col gap-4">
+                    {legs.map((leg) => (
+                      <div key={leg} className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] sm:items-end">
+                        <span
+                          className={`${badge} mb-2.5 w-fit ${leg === "pickup" ? "bg-tint-info text-info" : "bg-tint-brand text-primary"}`}
+                        >
+                          {LEG_LABEL[leg]}
+                        </span>
+                        <TextField
+                          label={legs.length > 1 ? `Tanggal ${LEG_LABEL[leg].toLowerCase()}` : "Tanggal"}
+                          name={`ride-date-${leg}`}
+                          type="date"
+                          value={schedules[leg].date}
+                          onChange={(event) => setSchedule(leg, { date: event.target.value })}
+                          disabled={saving}
+                          required
+                        />
+                        <TimeSlotField
+                          label={legs.length > 1 ? `Jam ${LEG_LABEL[leg].toLowerCase()}` : "Jam"}
+                          value={schedules[leg].time}
+                          onChange={(time) => setSchedule(leg, { time })}
+                          disabled={saving}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </Section>
+              )}
+
+              {/* ─── 9 · CATATAN ─── */}
+              <Section title="Catatan">
+                <TextareaField
+                  label="Catatan internal"
+                  name="ride-notes"
+                  value={internalNotes}
+                  onChange={(event) => setInternalNotes(event.target.value)}
+                  maxLength={NOTES_MAX_LENGTH}
+                  placeholder="Dibaca driver dan staf — patokan rumah, jam pelanggan bisa dihubungi"
+                  disabled={saving}
+                />
+              </Section>
+            </div>
+          </Card>
           </div>
 
           {/* ─── RINGKASAN ─── */}
