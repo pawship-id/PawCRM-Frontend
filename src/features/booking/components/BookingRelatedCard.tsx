@@ -100,7 +100,16 @@ export function BookingRelatedCard({
   const [busy, setBusy] = useState<string | null>(null);
 
   const rows: Row[] = [
-    ...(booking.group ?? []).map((member) => ({ kind: "visit" as const, member })),
+    ...(booking.group ?? [])
+      /*
+        ⚠️ ON A VAN, ITS OTHER LEG IS NOT LISTED HERE (24 September 2026). An
+        Antar Jemput's two rides share a `groupId`, and since today the ride's
+        own page says so at the top, in "Satu Antar Jemput" — a second row
+        three cards down, filed under a different word, told the same fact
+        twice and more weakly. Everything ELSE in the visit still shows.
+      */
+      .filter((member) => !(booking.tripLeg && member.tripLeg))
+      .map((member) => ({ kind: "visit" as const, member })),
     ...(booking.linked ?? []).map((member) => ({ kind: "ride" as const, member })),
     ...(booking.related ?? []).map((member) => ({ kind: "billed" as const, member })),
   ];
@@ -187,7 +196,14 @@ export function BookingRelatedCard({
                     </span>
                   )}
                 </Link>
-                {kind === "visit" && (
+                {/*
+                  ⚠️ NO "LEPAS" ON A VAN (24 September 2026, on request). Its
+                  pair, "Tautkan booking", came off this page yesterday, which
+                  left releasing a ONE-WAY DOOR: a visit let go of here could
+                  not be rejoined from the page that let it go. The booking
+                  page keeps both, because there both halves are present.
+                */}
+                {kind === "visit" && !ride && (
                   <Can feature="bookings" action="update">
                     <Button
                       type="button"

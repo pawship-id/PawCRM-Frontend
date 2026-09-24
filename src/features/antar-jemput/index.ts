@@ -17,6 +17,7 @@ export { AntarJemputSettingsScreen } from "./components/AntarJemputSettingsScree
 export { ANTAR_JEMPUT_LINE } from "./line";
 export { ANTAR_JEMPUT_CRUMBS } from "./crumbs";
 export { AntarJemputBookingDetailScreen } from "./components/AntarJemputBookingDetailScreen";
+export { RoundTripCard } from "./components/RoundTripCard";
 export {
   ANTAR_JEMPUT_PATH,
   ANTAR_JEMPUT_NEW_PATH,

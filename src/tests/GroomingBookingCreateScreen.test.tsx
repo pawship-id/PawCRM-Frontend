@@ -501,6 +501,14 @@ describe("GroomingBookingCreateScreen", () => {
         customerId: "cust-1",
         groupId: "grp-1",
         location: "in_home",
+        /*
+          ⚠️ STILL A DRAFT (24 September 2026). A van saved from the MODULE now
+          opens on Confirmed, on request — this one does not: it rides on a
+          grooming that is itself only `requested` at this point, and a
+          confirmed van against an unconfirmed visit promises what the shop has
+          not agreed yet.
+        */
+        status: "draft",
         /* Half an hour before the 10.30 grooming. */
         scheduledAt: new Date("2026-09-16T10:00").toISOString(),
         /* The grooming's animal rides in the van, not above it — a ride sends

@@ -84,6 +84,17 @@ const ride = {
   branchIds: [],
 } as unknown as Service;
 
+/** One add-on of the ride service — what "+ Tambah add-on" offers. */
+const waiting = {
+  ...ride,
+  _id: "svc-wait",
+  name: "Tunggu di lokasi",
+  price: "20000.0000",
+  durationMin: 15,
+  serviceType: "addon",
+  addonServiceIds: [],
+} as unknown as Service;
+
 const result = (id: string, groupId: string, leg: "pickup" | "delivery") =>
   ({
     groupId,
@@ -189,9 +200,16 @@ describe("AntarJemputBookingForm", () => {
       customerId: "cust-1",
       branchId: BRANCH_ID,
       scheduledAt: new Date("2026-09-22T08:30").toISOString(),
-      /* A van is either written down or it is on — `requested` is not one of
-         its four rungs (23 September 2026). */
-      status: "draft",
+      /*
+        BOOKED HERE IS BOOKED (24 September 2026, on request): a van saved from
+        the module opens on Confirmed, not Draft — and is numbered, because the
+        server leaves a draft without a number. `requested` is not one of its
+        four rungs either way.
+
+        ⚠️ A VAN BOOKED WITH A GROOMING IS STILL A DRAFT — see
+        `RideForGroomingSection`, whose own test pins that.
+      */
+      status: "confirmed",
       location: "in_home",
       /* A pickup starts at the customer's door and ends at the branch. */
       tripOrigin: { address: "Jl. Mawar No. 12", lat: -7.2395, lng: 112.7521 },
@@ -489,6 +507,57 @@ describe("AntarJemputBookingForm", () => {
   });
 
   /*
+    ─── ADD-ON (24 September 2026, on request) ──────────────────────────────
+
+    The block was hidden whenever the service offered none, so a shop with
+    nothing attached read the form as one that does not do add-ons at all.
+
+    ⚠️ WHAT IT OFFERS IS THE SERVICE'S OWN `addonServiceIds`, not every add-on
+    of the kind: the server refuses one that is not on that list, so a wider
+    picker would only fail on save.
+  */
+  it("offers the service's add-ons, and sends the ticked one", async () => {
+    services.list.mockResolvedValue(
+      page([{ ...ride, addonServiceIds: ["svc-wait"] } as Service, waiting]),
+    );
+
+    renderWithAuth(<AntarJemputBookingForm />);
+
+    await pickCustomer();
+    await userEvent.click(await screen.findByRole("button", { name: /bruno/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Layanan" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Antar-Jemput" }));
+    /* The form opens on one direction — Jemput — so the labels are bare. */
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /tunggu di lokasi/i }),
+    );
+
+    fireEvent.change(screen.getByLabelText(/tanggal/i), { target: { value: "2026-09-22" } });
+    await pickSlot("Jam", "08.30");
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0]).toMatchObject({
+      bookings: [{ addonServiceIds: ["svc-wait"] }],
+    });
+  });
+
+  it("says where add-ons come from when the service has none", async () => {
+    renderWithAuth(<AntarJemputBookingForm />);
+
+    await pickCustomer();
+    await userEvent.click(await screen.findByRole("button", { name: /bruno/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Layanan" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Antar-Jemput" }));
+
+    expect(await screen.findByText(/belum punya add-on/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Layanan & Harga/ })).toHaveAttribute(
+      "href",
+      "/dashboard/layanan/antar-jemput/katalog/svc-aj",
+    );
+  });
+
+  /*
     NOTE 2 REOPENED (23 September 2026): the animals are picked first, and the
     list offers only their bookings — never the other dog's, never a ride.
   */
@@ -550,6 +619,62 @@ describe("AntarJemputBookingForm", () => {
     /* Coco is not in the van; a ride cannot serve a ride. */
     expect(screen.queryByRole("checkbox", { name: /BK-260922-002/ })).toBeNull();
     expect(screen.queryByRole("checkbox", { name: /BK-260922-003/ })).toBeNull();
+  });
+
+  /*
+    ─── FETCHED ONCE, TAKEN HOME ONCE (24 September 2026, on request) ────────
+
+    The server refuses a second van in the SAME direction, so the row is closed
+    here with the reason rather than ticked and bounced on save.
+  */
+  it("closes a booking that already has a van going this way", async () => {
+    bookings.list.mockResolvedValue(
+      page([
+        {
+          _id: "bk-bruno",
+          groupId: "grp-a",
+          customerId: "cust-1",
+          petId: "pet-1",
+          petName: "Bruno",
+          status: "confirmed",
+          bookingNumber: "BK-260922-001",
+          scheduledAt: new Date("2026-09-22T10:00").toISOString(),
+          tripLeg: null,
+          service: { serviceId: "svc-groom", name: "Basic Grooming", addons: [] },
+          /* Another van already fetches it — and takes it home is still open. */
+          trips: [
+            {
+              _id: "bk-other",
+              bookingNumber: "AJ-260922-009",
+              tripLeg: "pickup",
+              status: "confirmed",
+              scheduledAt: new Date("2026-09-22T09:30").toISOString(),
+            },
+          ],
+        },
+      ]) as never,
+    );
+
+    renderWithAuth(<AntarJemputBookingForm />);
+
+    await pickCustomer();
+    await userEvent.click(await screen.findByRole("button", { name: /bruno/i }));
+
+    const row = await screen.findByRole("checkbox", { name: /BK-260922-001/ });
+    expect(row).toBeDisabled();
+    expect(screen.getByText(/sudah punya perjalanan jemput/i)).toBeInTheDocument();
+
+    /* The other direction is a different question — pick Antar and it opens.
+       Arah is only on screen once a service is chosen. */
+    await userEvent.click(screen.getByRole("button", { name: "Layanan" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Antar-Jemput" }));
+    await userEvent.click(
+      await screen.findByRole("radio", { name: /dari cabang ke alamat pelanggan/i }),
+    );
+
+    expect(
+      await screen.findByRole("checkbox", { name: /BK-260922-001/ }),
+    ).toBeEnabled();
   });
 
   /*

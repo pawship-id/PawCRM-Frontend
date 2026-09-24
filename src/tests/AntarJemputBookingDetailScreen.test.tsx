@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { AntarJemputBookingDetailScreen } from "@/features/antar-jemput";
 import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
-import type { Booking, BookingSession } from "@/types/api";
+import type { Booking, BookingGroupMember, BookingSession } from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
@@ -333,6 +333,97 @@ describe("AntarJemputBookingDetailScreen", () => {
 
     expect(harga.getByText(/\+ Tunggu di lokasi · \+15 mnt/)).toBeInTheDocument();
     expect(harga.getByText("Rp 20.000")).toBeInTheDocument();
+  });
+
+  /*
+    ─── ONE ANTAR JEMPUT, TWO JOURNEYS (24 September 2026, on request) ──────
+
+    Saving "Antar Jemput" writes two bookings, and each page used to speak of
+    one direction only — so the Antar read as a one-way trip and the morning
+    pickup was nowhere on it.
+  */
+  const otherLeg = {
+    _id: "bk-aj-2",
+    bookingNumber: "AJ-260923-002",
+    petId: null,
+    petName: null,
+    serviceName: "Antar-Jemput",
+    status: "confirmed",
+    scheduledAt: "2026-09-23T10:30:00.000Z",
+    pickupRequested: false,
+    deliveryRequested: false,
+    tripLeg: "delivery",
+  } as unknown as BookingGroupMember;
+
+  /* The grooming the van was booked with — a visit member that is NOT a ride. */
+  const grooming = {
+    _id: "bk-groom",
+    bookingNumber: "BK-260923-007",
+    petId: "pet-1",
+    petName: "Bella",
+    serviceName: "Basic Grooming",
+    status: "confirmed",
+    scheduledAt: "2026-09-23T03:00:00.000Z",
+    pickupRequested: false,
+    deliveryRequested: false,
+    tripLeg: null,
+  } as unknown as BookingGroupMember;
+
+  it("says the service is a round trip, and opens the other leg", async () => {
+    draw(ride({ group: [otherLeg] }));
+
+    const card = (await screen.findByText("Satu Antar Jemput")).closest(
+      '[data-slot="card"]',
+    ) as HTMLElement;
+    const trip = within(card);
+
+    expect(trip.getByText("2 perjalanan")).toBeInTheDocument();
+    expect(trip.getByText("Jemput")).toBeInTheDocument();
+    expect(trip.getByText("Antar")).toBeInTheDocument();
+    /* The page names itself rather than linking to itself. */
+    expect(trip.getByText("Halaman ini")).toBeInTheDocument();
+    expect(trip.getByRole("link", { name: /buka/i })).toHaveAttribute(
+      "href",
+      "/dashboard/layanan/antar-jemput/bk-aj-2",
+    );
+  });
+
+  it("draws no such card for a one-way ride", async () => {
+    draw();
+
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(screen.queryByText("Satu Antar Jemput")).not.toBeInTheDocument();
+  });
+
+  /*
+    ⚠️ AND THE OTHER LEG IS NOT ALSO A ROW IN BOOKING TERKAIT — one fact, one
+    place. Nor can it be let go of here: "Tautkan booking" came off this page,
+    so a release would be a door that only opens one way.
+  */
+  it("keeps the other leg out of Booking terkait", async () => {
+    draw(ride({ group: [otherLeg] }));
+
+    const terkait = within(await terkaitCard());
+
+    expect(terkait.queryByText(/AJ-260923-002/)).not.toBeInTheDocument();
+    expect(terkait.getByText(/belum melayani booking mana pun/i)).toBeInTheDocument();
+  });
+
+  /*
+    ⚠️ AND NOTHING IN THAT CARD CAN BE LET GO OF FROM A VAN'S PAGE. The
+    grooming this van was booked with IS listed — it is not the other leg — but
+    without "Lepas": its pair, "Tautkan booking", came off this page, so a
+    release would be a door that only opens one way.
+  */
+  it("lists the visit's grooming without offering to let it go", async () => {
+    draw(ride({ group: [grooming] }));
+
+    const terkait = within(await terkaitCard());
+
+    expect(terkait.getByText("Bella")).toBeInTheDocument();
+    expect(terkait.getByText("Satu kunjungan")).toBeInTheDocument();
+    expect(terkait.queryByRole("button", { name: /lepas/i })).not.toBeInTheDocument();
   });
 
   /*

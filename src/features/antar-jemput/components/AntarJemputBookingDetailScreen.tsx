@@ -24,6 +24,7 @@ import { branchService } from "@/services/branch.service";
 import type { Booking } from "@/types/api";
 
 import { antarJemputEditPath } from "../paths";
+import { RoundTripCard } from "./RoundTripCard";
 import { LEG_LABEL, rideOf } from "../ride";
 
 /**
@@ -204,6 +205,15 @@ export function AntarJemputBookingDetailScreen({ id }: { id: string }) {
       {booking.status === "cancelled" && booking.cancelReason && (
         <Alert variant="warning">Dibatalkan: {booking.cancelReason}</Alert>
       )}
+
+      {/*
+        ─── ONE ANTAR JEMPUT, TWO JOURNEYS (24 September 2026, on request) ───
+
+        Above Rute on purpose: Rute answers "where does this van go", and the
+        answer is wrong in the reader's head until they know it is one half of
+        a round trip. Draws nothing on a one-way ride.
+      */}
+      <RoundTripCard booking={booking} legs={booking.group ?? []} />
 
       {/* ─── Rute ──────────────────────────────────────────────────────── */}
       <Card title="Rute">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUpDown, Plus, Search } from "lucide-react";
 
@@ -80,6 +81,7 @@ import type {
 
 import { ANTAR_JEMPUT_LINE } from "../line";
 import {
+  ANTAR_JEMPUT_CATALOG_PATH,
   ANTAR_JEMPUT_PATH,
   antarJemputDetailPath,
   bookingDetailPath,
@@ -869,6 +871,31 @@ export function AntarJemputBookingForm({
     (`linked`), so the only link that cannot be undone here is one this form
     never loaded.
   */
+  /*
+    ─── A BOOKING IS FETCHED ONCE, AND TAKEN HOME ONCE (24 Sep 2026) ────────
+
+    The server refuses a second van in the SAME direction ("sudah punya
+    perjalanan jemput"), so the row is closed here with the reason rather than
+    ticked and bounced on save. Per direction, never "already linked": the
+    grooming this van fetches is the same one the Antar takes home.
+
+    ⚠️ EVERY DIRECTION BEING SAVED COUNTS. An Antar Jemput writes both, so a
+    booking that already has a pickup elsewhere cannot be served by this pair
+    at all — half of it would fail. `trips` leaves out cancelled rides and, on
+    an edit, this ride itself.
+  */
+  function rideAlready(booking: Booking): TripLeg | null {
+    for (const leg of legs) {
+      const busy = (booking.trips ?? []).some(
+        (trip) => trip.tripLeg === leg && trip._id !== bookingId,
+      );
+
+      if (busy) return leg;
+    }
+
+    return null;
+  }
+
   const listed = new Set(visits.bookings.map((one) => one._id));
   const offList = visits.loading
     ? []
@@ -1122,11 +1149,25 @@ export function AntarJemputBookingForm({
           branchId,
           scheduledAt,
           /*
-            A RIDE IS BORN A DRAFT (23 September 2026). `requested` is not one
-            of its four rungs — a van is either written down or it is on — and
-            the server refuses a ride asked for as one.
+            ─── BOOKED HERE IS BOOKED (24 September 2026, on request) ────────
+
+            A van saved from the module opens on CONFIRMED, not Draft. Somebody
+            filling in this form has a customer on the phone, two addresses and
+            a time: the trip is agreed, and a draft would make them confirm the
+            same fact twice. It also draws the AJ number straight away — the
+            server leaves a draft unnumbered — so the ride can be named on the
+            day sheet and pulled to the till without a second step.
+
+            ⚠️ NOT THE VAN BOOKED WITH A GROOMING. `RideForGroomingSection`
+            still saves a draft: there the ride rides on somebody else's
+            booking, which is itself only `requested` at that point, and a
+            confirmed van against an unconfirmed visit is a promise the shop
+            has not made yet.
+
+            `requested` is not one of the four rungs either way — a van is
+            either written down or it is on — and the server refuses one.
           */
-          status: "draft",
+          status: "confirmed",
           location: rideLocation(service),
           ...endsFor(leg),
           forceClash: clash !== null,
@@ -1568,15 +1609,26 @@ export function AntarJemputBookingForm({
                       </Alert>
                     )}
                     <CheckRowGroup>
-                      {visits.bookings.map((booking) => (
-                        <CheckRow
-                          key={booking._id}
-                          label={visitLabel(booking)}
-                          checked={linkIds.includes(booking._id)}
-                          disabled={saving}
-                          onCheckedChange={() => toggleLink(booking._id)}
-                        />
-                      ))}
+                      {visits.bookings.map((booking) => {
+                        const busy = rideAlready(booking);
+                        const on = linkIds.includes(booking._id);
+
+                        return (
+                          <CheckRow
+                            key={booking._id}
+                            label={visitLabel(booking)}
+                            description={
+                              busy
+                                ? `Sudah punya perjalanan ${LEG_LABEL[busy].toLowerCase()}.`
+                                : undefined
+                            }
+                            checked={on}
+                            /* Never closed while ticked — it has to be undoable. */
+                            disabled={saving || (busy !== null && !on)}
+                            onCheckedChange={() => toggleLink(booking._id)}
+                          />
+                        );
+                      })}
                       {offList.map((member) => (
                         <CheckRow
                           key={member._id}
@@ -1852,9 +1904,42 @@ export function AntarJemputBookingForm({
                       ))}
                     </div>
 
-                    {offered.length > 0 && (
-                      <div className="flex flex-col gap-1.5">
-                        <p className="text-sm font-medium">Add-on</p>
+                    {/*
+                      ─── ADD-ON, SAID EVEN WHEN THERE IS NONE (24 Sep 2026) ──
+
+                      The block used to be hidden whenever the service offered
+                      no add-on, so a form with nothing attached looked like a
+                      form that does not do add-ons at all — which is what the
+                      shop reported ("belum ada pilihan untuk nambah add-on").
+
+                      ⚠️ THE LIST IS THE SERVICE'S OWN `addonServiceIds` and
+                      cannot be widened here: the server refuses an add-on that
+                      is not on it ("is not offered with …"), so offering every
+                      add-on of the kind would only produce a 400 on save. The
+                      way to get one into this list is the catalogue, which is
+                      where the empty state points.
+                    */}
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-sm font-medium">Add-on</p>
+                      {offered.length === 0 ? (
+                        <p className="text-xs text-muted">
+                          Layanan ini belum punya add-on.{" "}
+                          {can("services", "update") ? (
+                            <>
+                              Pasang dulu di{" "}
+                              <Link
+                                href={`${ANTAR_JEMPUT_CATALOG_PATH}/${service._id}`}
+                                className="font-semibold text-primary underline-offset-2 hover:underline"
+                              >
+                                Layanan &amp; Harga › {service.name}
+                              </Link>
+                              , lalu pilihannya muncul di sini.
+                            </>
+                          ) : (
+                            "Minta admin memasangnya di Layanan & Harga."
+                          )}
+                        </p>
+                      ) : (
                         <CheckRowGroup>
                           {offered.map((addon) => {
                             const addonQuote = variant.quote(addon, null, priced[0]?.choices ?? variantChoices);
@@ -1881,8 +1966,8 @@ export function AntarJemputBookingForm({
                             );
                           })}
                         </CheckRowGroup>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </Section>
               )}
