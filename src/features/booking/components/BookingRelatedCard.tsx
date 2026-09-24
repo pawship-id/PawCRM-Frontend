@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Link2, Plus, Unlink } from "lucide-react";
+import { Link2, Unlink } from "lucide-react";
 
 import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -14,11 +14,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { antarJemputForBookingPath } from "@/features/antar-jemput/paths";
 import { Can } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
+import { bookingDetailPath } from "@/features/antar-jemput/paths";
 import { bookingService } from "@/services/booking.service";
 import type {
   Booking,
@@ -60,9 +60,20 @@ type Row =
  *     them. BO: a ride pulled onto the grooming's invoice belongs with it. Read
  *     off the bill, so there is nothing here to undo — the bill is the fact.
  *
- * AND TWO WAYS TO ADD ONE: "+ Antar-jemput" opens the ride form started from
- * this booking (customer, animal, day and the link filled in), and "Tautkan
- * booking" moves this one into another visit of the same customer.
+ * ONE WAY TO ADD ONE: "Tautkan booking" moves this booking into another visit
+ * of the same customer.
+ *
+ * ─── "+ ANTAR-JEMPUT" WAS HERE AND IS GONE (24 September 2026, on request) ──
+ *
+ * It opened the ride form started from this booking. The shop asked for it back
+ * on 21 September and asked for it off today, on one rule: once a booking is
+ * CREATED, nothing is added to it from here. A van is booked with the grooming
+ * (the Antar-jemput section on Booking baru) or on its own from the module.
+ *
+ * ⚠️ THAT MAKES `antarJemputForBookingPath` UNREACHABLE FROM THE UI. The route
+ * and the form's `?bookingId=` handling are deliberately kept — they are the
+ * whole feature, not a button — so putting the entrance back is one line here
+ * rather than a rebuild. Do not delete them as dead code.
  */
 export function BookingRelatedCard({
   booking,
@@ -128,7 +139,7 @@ export function BookingRelatedCard({
                 className="flex items-start gap-2 border-t border-border py-2.5 first:border-t-0 first:pt-0 last:pb-0"
               >
                 <Link
-                  href={`/dashboard/booking/${member._id}`}
+                  href={bookingDetailPath(member)}
                   className="group flex min-w-0 flex-1 flex-col gap-1 rounded-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 >
                   <span className="flex flex-wrap items-center justify-between gap-2">
@@ -184,14 +195,6 @@ export function BookingRelatedCard({
 
         {!cancelled && (
           <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-            <Can feature="bookings" action="create">
-              <Button asChild variant="secondary" size="sm">
-                <Link href={antarJemputForBookingPath(booking._id)}>
-                  <Plus className="size-4" aria-hidden />
-                  Antar-jemput
-                </Link>
-              </Button>
-            </Can>
             <Can feature="bookings" action="update">
               <Button type="button" variant="ghost" size="sm" onClick={() => setLinking(true)}>
                 <Link2 className="size-4" aria-hidden />

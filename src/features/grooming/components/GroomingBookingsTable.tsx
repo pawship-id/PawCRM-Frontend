@@ -20,6 +20,7 @@ import {
   BookingStatusActions,
 } from "@/features/booking";
 import { Can } from "@/features/permissions";
+import { bookingDetailPath } from "@/features/antar-jemput/paths";
 import { cn } from "@/lib/utils";
 import {
   formatMoney,
@@ -146,7 +147,7 @@ export function GroomingBookingsTable({
                   <TableCell>
                     {/* "—" while a draft: the number is earned by leaving it. */}
                     <Link
-                      href={`/dashboard/booking/${booking._id}`}
+                      href={bookingDetailPath(booking)}
                       aria-label={`Buka ${booking.bookingNumber ?? "booking draf"}`}
                       className="rounded text-sm font-semibold tabular-nums text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     >
@@ -412,7 +413,7 @@ export function RowBreakdown({ row }: { row: GroomingRow }) {
           offered twice.
         */}
         <Button asChild variant="secondary" size="sm">
-          <Link href={`/dashboard/booking/${booking._id}`}>Buka detail</Link>
+          <Link href={bookingDetailPath(booking)}>Buka detail</Link>
         </Button>
         {row.billing === "unbilled" && (
           <Can feature="posTransactions" action="create">

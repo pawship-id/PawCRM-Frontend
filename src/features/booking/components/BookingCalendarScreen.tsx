@@ -12,6 +12,7 @@ import {
   namedOptions,
 } from "@/components";
 import { Button } from "@/components/ui/button";
+import { bookingDetailPath } from "@/features/antar-jemput/paths";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { bookingService } from "@/services/booking.service";
 import type { BookingCalendar, BookingCalendarEntry, BookingStatus } from "@/types/api";
@@ -631,7 +632,7 @@ function DetailPanel({
             a search for something they are already looking at.
           */}
           <Button asChild variant="secondary" size="sm">
-            <Link href={`/dashboard/booking/${entry.bookingId}`}>
+            <Link href={bookingDetailPath({ _id: entry.bookingId, tripLeg: entry.tripLeg })}>
               Buka booking
             </Link>
           </Button>

@@ -11,6 +11,7 @@ import { formatMoney } from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
 import { BILLING_BADGES } from "../billing";
+import { bookingDetailPath } from "@/features/antar-jemput/paths";
 import { clockOf, dayOf } from "../day";
 import type { TodayRow } from "../today";
 import { BookingSessionSteps } from "./BookingSessionSteps";
@@ -163,7 +164,7 @@ export function TodayDetailPanel({
 
       <div className="flex flex-wrap gap-2 border-t border-border pt-3">
         <Button asChild variant="secondary" size="sm">
-          <Link href={`/dashboard/booking/${booking._id}`}>Buka detail</Link>
+          <Link href={bookingDetailPath(booking)}>Buka detail</Link>
         </Button>
         {row.billing === "unbilled" && (
           <Can feature="posTransactions" action="create">

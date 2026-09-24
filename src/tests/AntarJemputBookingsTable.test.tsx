@@ -176,7 +176,9 @@ describe("AntarJemputBookingsTable", () => {
 
     await userEvent.click(screen.getByText("Ibu Rina"));
 
-    expect(push).toHaveBeenCalledWith("/dashboard/booking/bk-1");
+    /* A RIDE OPENS IN ITS OWN MODULE (23 September 2026), not on the
+       booking page — which is built round one animal and its grooming. */
+    expect(push).toHaveBeenCalledWith("/dashboard/layanan/antar-jemput/bk-1");
     expect(screen.queryByRole("button", { name: /rincian/i })).toBeNull();
   });
 

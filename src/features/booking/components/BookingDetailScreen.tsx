@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Cat, Dog, MessageCircle, Pencil, Printer } from "lucide-react";
 
 import { Alert, Card, Spinner } from "@/components";
@@ -34,7 +35,10 @@ import type {
   VariantChoiceSnapshot,
 } from "@/types/api";
 
-import { antarJemputEditPath } from "@/features/antar-jemput/paths";
+import {
+  antarJemputDetailPath,
+  antarJemputEditPath,
+} from "@/features/antar-jemput/paths";
 
 import { bookingActorLabel, finishClock } from "../format";
 import { canStartWork, hasCompletedWork, ladderFor } from "../statusFlow";
@@ -161,6 +165,8 @@ function elapsed(session: BookingSession): number | null {
  * preferences, a lifetime of visits. This is about ONE booking's work.
  */
 export function BookingDetailScreen({ id }: { id: string }) {
+  /* A ride is sent to its own page as soon as this one has read it — below. */
+  const router = useRouter();
   const [booking, setBooking] = useState<Booking | null>(null);
   /*
     WHAT EVERY WRITER ON THIS PAGE HANDS BACK. A mutation answers with the
@@ -209,6 +215,23 @@ export function BookingDetailScreen({ id }: { id: string }) {
       .getById(id)
       .then(async (found) => {
         if (!active) return;
+
+        /*
+          A RIDE HAS ITS OWN PAGE (23 September 2026) —
+          `/dashboard/layanan/antar-jemput/:id`. This page is built round one
+          animal and its grooming; a van has two ends, a direction and a driver.
+
+          REDIRECTED RATHER THAN RE-POINTED EVERYWHERE. Half the links that
+          reach a booking — a commission row, an invoice line — hold nothing but
+          an id, so they cannot know which of the two pages to aim at. Answering
+          it HERE, where the booking has actually been read, keeps every one of
+          them correct without being found and edited.
+        */
+        if (found.tripLeg) {
+          router.replace(antarJemputDetailPath(found._id));
+          return;
+        }
+
         setBooking(found);
         setError(null);
 
@@ -261,7 +284,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
       nothing else. Re-adding a nonce would bring back the four-request
       full-page flash it was removed for.
     */
-  }, [id]);
+  }, [id, router]);
 
   useEffect(() => {
     if (!booking?.scheduledAt) return;
@@ -1297,8 +1320,9 @@ export function BookingDetailScreen({ id }: { id: string }) {
           {/*
             ─── BOOKING TERKAIT (21 September 2026) ──────────────────────────
             "Satu kunjungan" grown into BO's "Relevant bookings": the visit's
-            other bookings, the ones billed with this one, and the two ways to
-            add one — "+ Antar-jemput" and "Tautkan booking".
+            other bookings, the ones billed with this one, and "Tautkan booking"
+            to relate another. Nothing is ADDED from here since 24 September
+            2026 — see the card.
           */}
           <BookingRelatedCard booking={booking} onChanged={replaceBooking} />
 

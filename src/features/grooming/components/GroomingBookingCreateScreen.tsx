@@ -466,7 +466,11 @@ export function GroomingBookingCreateScreen() {
       /*
         THE RIDES, AFTER THE GROOMING AND INTO ITS VISIT. Two saves, so one can
         fail on its own: the grooming stands, and what did not save is said —
-        it is added from the booking's own "+ Antar-jemput".
+        it is booked from the Antar-Jemput module.
+
+        ⚠️ THE MESSAGE USED TO NAME "+ Antar-jemput" on the booking's own page,
+        removed 24 September 2026. Nothing is added to a booking from there any
+        more, so the sentence had to stop sending people to look for it.
       */
       const rideMisses: string[] = [];
       if (rideOffered && ride.legs.length > 0 && rideService) {
@@ -500,7 +504,7 @@ export function GroomingBookingCreateScreen() {
       try {
         if (rideMisses.length > 0) {
           swalToast(
-            `Grooming tersimpan, antar-jemput belum — ${rideMisses.join("; ")}. Tambahkan dari tombol + Antar-jemput di halaman booking.`,
+            `Grooming tersimpan, antar-jemput belum — ${rideMisses.join("; ")}. Buat antar-jemputnya dari Layanan › Antar-Jemput.`,
             "error",
             9000,
           );

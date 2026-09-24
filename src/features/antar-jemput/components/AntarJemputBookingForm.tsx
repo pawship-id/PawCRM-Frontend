@@ -72,7 +72,11 @@ import type {
 } from "@/types/api";
 
 import { ANTAR_JEMPUT_LINE } from "../line";
-import { ANTAR_JEMPUT_PATH } from "../paths";
+import {
+  ANTAR_JEMPUT_PATH,
+  antarJemputDetailPath,
+  bookingDetailPath,
+} from "../paths";
 import {
   arahCardOf,
   choicesForLeg,
@@ -1019,14 +1023,19 @@ export function AntarJemputBookingForm({
         /*
           THE PICKUP IS SAVED AND THE DELIVERY IS NOT. The two are two saves, so
           this can happen; the ride that exists is shown, and the missing one is
-          added from its page ("+ Antar-jemput" fills everything back in).
+          booked from the module.
+
+          ⚠️ THIS USED TO SAY "+ Antar-jemput", the shortcut on Booking terkait —
+          removed 24 September 2026, so the sentence named a button that is no
+          longer on any page. A message pointing at a control nobody can find is
+          worse than one that points nowhere.
         */
-        router.push(`/dashboard/booking/${made[0]._id}`);
+        router.push(antarJemputDetailPath(made[0]._id));
         try {
           swalToast(
             `${LEG_LABEL[made[0].tripLeg ?? "pickup"]} tersimpan, ${LEG_LABEL[leg].toLowerCase()} belum: ${
               error instanceof ApiError ? error.fullMessage : "coba lagi"
-            }. Tambahkan dari tombol + Antar-jemput.`,
+            }. Buat arah satunya dari Layanan › Antar-Jemput.`,
             "error",
             9000,
           );
@@ -1042,7 +1051,7 @@ export function AntarJemputBookingForm({
       return;
     }
 
-    router.push(`/dashboard/booking/${made[0]._id}`);
+    router.push(antarJemputDetailPath(made[0]._id));
     router.refresh();
     try {
       const numbers = made.map((one) => one.bookingNumber).filter(Boolean).join(" & ");
@@ -1102,13 +1111,13 @@ export function AntarJemputBookingForm({
     if (clash !== null) patch.forceClash = true;
 
     if (Object.keys(patch).filter((key) => key !== "forceClash").length === 0) {
-      router.push(`/dashboard/booking/${original._id}`);
+      router.push(antarJemputDetailPath(original._id));
       return;
     }
 
     try {
       await bookingService.update(original._id, patch);
-      router.push(`/dashboard/booking/${original._id}`);
+      router.push(antarJemputDetailPath(original._id));
       router.refresh();
       try {
         swalToast("Booking antar-jemput diperbarui.");
@@ -1131,10 +1140,16 @@ export function AntarJemputBookingForm({
     else await create();
   }
 
+  /*
+    BACK TO WHAT WAS BEING LOOKED AT. Editing returns to the RIDE's own page;
+    starting one from another booking returns to THAT booking — which may itself
+    be a ride ("+ Antar-jemput" on one copies its ends), so `original.tripLeg`
+    decides rather than an assumption about which page the reader came from.
+  */
   const cancelHref = editing
-    ? `/dashboard/booking/${bookingId}`
+    ? antarJemputDetailPath(bookingId as string)
     : fromBookingId
-      ? `/dashboard/booking/${fromBookingId}`
+      ? bookingDetailPath({ _id: fromBookingId, tripLeg: original?.tripLeg })
       : ANTAR_JEMPUT_PATH;
 
   const submitLabel = editing

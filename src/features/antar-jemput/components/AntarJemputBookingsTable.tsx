@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { formatMoney } from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
+import { antarJemputDetailPath } from "../paths";
 import { LEG_LABEL, otherLeg, rideOf } from "../ride";
 
 /**
@@ -109,12 +110,12 @@ export function AntarJemputBookingsTable({
                   const target = event.target as HTMLElement;
                   if (!event.currentTarget.contains(target)) return;
                   if (target.closest("a, button, input, label, select")) return;
-                  router.push(`/dashboard/booking/${booking._id}`);
+                  router.push(antarJemputDetailPath(booking._id));
                 }}
               >
                 <TableCell>
                   <Link
-                    href={`/dashboard/booking/${booking._id}`}
+                    href={antarJemputDetailPath(booking._id)}
                     aria-label={`Buka ${booking.bookingNumber ?? "booking draf"}`}
                     className="rounded text-sm font-semibold tabular-nums text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                   >

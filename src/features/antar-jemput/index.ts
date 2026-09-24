@@ -15,9 +15,13 @@ export {
 } from "./components/AntarJemputCatalogScreens";
 export { AntarJemputSettingsScreen } from "./components/AntarJemputSettingsScreen";
 export { ANTAR_JEMPUT_LINE } from "./line";
+export { ANTAR_JEMPUT_CRUMBS } from "./crumbs";
+export { AntarJemputBookingDetailScreen } from "./components/AntarJemputBookingDetailScreen";
 export {
   ANTAR_JEMPUT_PATH,
   ANTAR_JEMPUT_NEW_PATH,
+  antarJemputDetailPath,
   antarJemputEditPath,
   antarJemputForBookingPath,
+  bookingDetailPath,
 } from "./paths";

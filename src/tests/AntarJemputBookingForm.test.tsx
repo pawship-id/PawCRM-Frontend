@@ -218,7 +218,7 @@ describe("AntarJemputBookingForm", () => {
       ],
     });
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard/booking/bk-1"));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard/layanan/antar-jemput/bk-1"));
   });
 
   it("starts from a grooming's page — its customer, animal and day — and serves it", async () => {
