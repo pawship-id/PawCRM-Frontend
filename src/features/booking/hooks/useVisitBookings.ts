@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { bookingService } from "@/services/booking.service";
-import type { Booking } from "@/types/api";
+import type { Booking, BookingGroupMember } from "@/types/api";
 
 import { isoDate } from "../day";
 
@@ -97,16 +97,43 @@ export function useVisitBookings(
 
 /** "BK-260922-003 · Bella · Grooming Full · Sen 22 Sep 09.00" — one visit, in a picker. */
 export function visitLabel(booking: Booking): string {
-  const at = new Date(booking.scheduledAt);
+  return oneLine({
+    bookingNumber: booking.bookingNumber,
+    petName: booking.petName,
+    serviceName: booking.service?.name ?? null,
+    scheduledAt: booking.scheduledAt,
+  });
+}
+
+/**
+ * THE SAME LINE for a booking known only as a related member — `Booking.linked`
+ * on a ride, which carries the bookings it serves whether or not this list can
+ * offer them (24 September 2026).
+ *
+ * A link older than `DAYS_BACK`, or one to an animal that has since left the
+ * van, is not in `bookings[]` and still has to be shown to be undone. Written
+ * beside `visitLabel` so the two rows never drift into two shapes in one list.
+ */
+export function memberLabel(member: BookingGroupMember): string {
+  return oneLine(member);
+}
+
+function oneLine({
+  bookingNumber,
+  petName,
+  serviceName,
+  scheduledAt,
+}: {
+  bookingNumber: string | null;
+  petName: string | null;
+  serviceName: string | null;
+  scheduledAt: string;
+}): string {
+  const at = new Date(scheduledAt);
   const day = at.toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" });
   const clock = `${String(at.getHours()).padStart(2, "0")}.${String(at.getMinutes()).padStart(2, "0")}`;
 
-  return [
-    booking.bookingNumber ?? "Draf",
-    booking.petName ?? "Hewan",
-    booking.service?.name ?? null,
-    `${day} ${clock}`,
-  ]
+  return [bookingNumber ?? "Draf", petName ?? "Hewan", serviceName, `${day} ${clock}`]
     .filter(Boolean)
     .join(" · ");
 }

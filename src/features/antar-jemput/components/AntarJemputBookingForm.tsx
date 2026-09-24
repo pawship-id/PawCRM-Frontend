@@ -19,14 +19,20 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { useVisitBookings, visitLabel } from "@/features/booking/hooks/useVisitBookings";
+import {
+  memberLabel,
+  useVisitBookings,
+  visitLabel,
+} from "@/features/booking/hooks/useVisitBookings";
 import { variantRefusalOf } from "@/features/booking/variantLine";
 import { CustomerSearchDialog } from "@/features/customers";
 import {
   BLANK_PRICE,
   blankPetDraft,
+  digitsOnly,
   priceLine,
   toEntry,
+  typedDiscount,
   type PriceDraft,
   type PricedLine,
 } from "@/features/grooming/bookingCreateDraft";
@@ -63,6 +69,7 @@ import type {
   Branch,
   Customer,
   GroomerAvailability,
+  InvoiceDiscount,
   Pet,
   Service,
   TripLeg,
@@ -421,10 +428,75 @@ function choicesKey(choices: readonly VariantChoice[]): string {
  * ─── EDITING ────────────────────────────────────────────────────────────────
  *
  * One ride, as `PATCH /bookings/:id` takes it: the day, the direction, the
- * address, the animals, the service and its options. Prices are the catalogue's
- * — the edit route takes no typed price — and the driver is changed on the
- * booking's page, turn by turn, the way Grooming's crew is.
+ * address, the animals, the service and its options, the price and its discount
+ * (24 September 2026), and THE BOOKINGS IT SERVES — the same section as the
+ * create form's, because a link made in a hurry is a link made wrong, and there
+ * is nowhere else in the app to take one off a ride. The driver is still changed
+ * on the booking's page, turn by turn, the way Grooming's crew is.
+ *
+ * ⚠️ THE LIST IS SENT WHOLESALE: what is ticked is what the ride serves
+ * afterwards. Unticking is how a booking is let go, so a link the picker cannot
+ * offer back is drawn as a row of its own rather than left invisible — see
+ * `offList`.
  */
+/**
+ * ONE STORED LINE, BACK IN THE BOXES IT WAS TYPED INTO (24 September 2026).
+ *
+ * ⚠️ THE PRICE IS ONLY CARRIED WHEN IT DIFFERS FROM `catalogPrice` — the same
+ * test the server makes in `#carriedPricing`. A line nobody overrode goes back
+ * empty so it keeps following the catalogue; filling the box with today's quote
+ * would pin the fare, and a ride's fare has to move when its zone does.
+ *
+ * `catalogPrice` is absent on older bookings, and then nothing is carried:
+ * guessing "typed" from a bare price would pin every fare ever written.
+ */
+function draftOf(line: {
+  price: string;
+  catalogPrice?: string | null;
+  discount?: InvoiceDiscount | null;
+}): PriceDraft {
+  const quoted = line.catalogPrice ?? null;
+  const typed =
+    quoted !== null && toMinor(line.price) !== toMinor(quoted)
+      ? digitsOf(line.price)
+      : "";
+
+  return {
+    price: typed,
+    discountMode: line.discount?.mode ?? "amount",
+    discountValue: line.discount ? digitsOf(String(line.discount.value)) : "",
+  };
+}
+
+/**
+ * "40000.0000" → "40000" — the digits the box ITSELF would hold.
+ *
+ * ⚠️ NOT `digitsOnly`, which strips the point and keeps the decimals:
+ * "40000.0000" would come back as "400000000" and put nine digits in a price
+ * box. The whole part first, then its digits.
+ *
+ * ⚠️ AND IT HAS TO MATCH WHAT THE BOX PRODUCES, not merely look right. These
+ * drafts are compared against the boxes on save (`sameDraft`) to decide whether
+ * a price MOVED; a stored "40000.0000" against a typed "40000" would read as a
+ * change on every save, sending a price nobody touched — and the server asks
+ * for `bookings:setPrice` whenever one is sent.
+ *
+ * Whole rupiah and whole percent, as the boxes have always been.
+ */
+function digitsOf(value: string): string {
+  return digitsOnly(String(value).split(".")[0] ?? "");
+}
+
+/** Two price boxes holding the same thing — "" and a missing row included. */
+function sameDraft(a: PriceDraft, b: PriceDraft): boolean {
+  return (
+    a.price === b.price &&
+    a.discountValue === b.discountValue &&
+    /* The mode only matters while there IS a discount. */
+    (a.discountValue === "" || a.discountMode === b.discountMode)
+  );
+}
+
 export function AntarJemputBookingForm({
   bookingId,
   fromBookingId,
@@ -437,7 +509,13 @@ export function AntarJemputBookingForm({
   const editing = bookingId !== undefined;
   const router = useRouter();
   const { can } = usePermissions();
-  const mayPrice = can("bookings", "setPrice") && !editing;
+  /*
+    ⚠️ THE GRANT ALONE (24 September 2026). This was `… && !editing`, because
+    `PATCH /bookings/:id` took no price — so correcting a fare meant cancelling
+    the booking and writing it again. The endpoint takes one now, under the same
+    permission, and an edit is the same form with the same inputs.
+  */
+  const mayPrice = can("bookings", "setPrice");
   const { label: optionLabel } = usePetOptions();
   const line = useGroomingLine(ANTAR_JEMPUT_LINE);
 
@@ -526,8 +604,14 @@ export function AntarJemputBookingForm({
   /*
     THE ANIMALS DECIDE WHAT MAY BE LINKED (23 September 2026): only bookings of
     the animals in the van, and never another ride — a ride cannot serve a ride.
+    A booking of ANOTHER animal is linked by putting that animal in the van
+    first, which is the truth anyway: the van has to carry it.
+
+    ⚠️ READ WHILE EDITING TOO since 24 September 2026. It used to be skipped on
+    the edit form, because the form had no list to fill; the list is there now
+    (a link made by mistake could not be undone anywhere else).
   */
-  const visits = useVisitBookings(editing ? null : (customer?._id ?? null), bookingId, {
+  const visits = useVisitBookings(customer?._id ?? null, bookingId, {
     petIds: riders,
     excludeRides: true,
   });
@@ -633,7 +717,8 @@ export function AntarJemputBookingForm({
           /* THE VAN IS ONE LIST (23 September 2026) — a ride has no animal of
              its own to put at the front of it. */
           setRiders(source.passengerPetIds ?? []);
-          /* Not editable here, but the price preview is multiplied by them. */
+          /* Editable since 24 September 2026 — and the price preview is
+             multiplied by them where the fare is per animal. */
           setLinkIds(source.linkedBookingIds ?? []);
           setSchedules((prev) => ({
             ...prev,
@@ -656,6 +741,26 @@ export function AntarJemputBookingForm({
             })),
           );
           setInternalNotes(source.internalNotes ?? "");
+          /*
+            ─── THE PRICE AND THE DISCOUNT, AS TYPED (24 September 2026) ─────
+
+            The edit form is the create form with the data already in it, so
+            these come back into the same boxes somebody typed them into.
+
+            A PRICE IS "TYPED" ONLY WHEN IT DIFFERS FROM THE QUOTE it was typed
+            against — the server's own test in `#carriedPricing`. Filling the
+            box with a price equal to the catalogue's would freeze it there: the
+            fare would stop following the zone the moment an address moved.
+          */
+          setMainDrafts((prev) => ({ ...prev, [leg]: draftOf(source.service) }));
+          setAddonDrafts(
+            Object.fromEntries(
+              (source.service.addons ?? []).map((addon) => [
+                addon.serviceId,
+                draftOf(addon),
+              ]),
+            ),
+          );
         } else {
           /*
             A RIDE FOR ANOTHER BOOKING. For a grooming or a stay: both ways, the
@@ -753,6 +858,23 @@ export function AntarJemputBookingForm({
     animal riding along with no booking of its own is not counted here.
   */
   const chargedPets = Math.max(1, linkIds.length);
+  /*
+    A LINK THE PICKER CANNOT OFFER BACK (24 September 2026). The list holds the
+    customer's bookings of the last month for the animals in the van; a link is
+    kept in `linkIds`, which is not the same set. An edit that loads a ride
+    serving a booking from six weeks ago — or one whose animal has just been
+    taken out of the van — would show an untickable link and save it anyway.
+
+    Shown as a ticked row of its own, from what the ride already knows
+    (`linked`), so the only link that cannot be undone here is one this form
+    never loaded.
+  */
+  const listed = new Set(visits.bookings.map((one) => one._id));
+  const offList = visits.loading
+    ? []
+    : (original?.linked ?? []).filter(
+        (member) => linkIds.includes(member._id) && !listed.has(member._id),
+      );
 
   /* EACH DIRECTION IS QUOTED IN ITS OWN ZONE — it has its own two addresses. */
   const priced = legs.map((leg) => {
@@ -1093,6 +1215,16 @@ export function AntarJemputBookingForm({
     if (!sameSet(passengers, original.passengerPetIds ?? [])) {
       patch.passengerPetIds = passengers;
     }
+    /*
+      WHAT THE RIDE SERVES, SENT WHOLESALE — the list IS the ride's links
+      afterwards, so a booking unticked here is let go (24 September 2026). It
+      re-quotes a `per_pet` fare on the server, which is why it is sent only
+      when it moved: one booking is one animal, and the fare is multiplied by
+      the bookings served.
+    */
+    if (!sameSet(linkIds, original.linkedBookingIds ?? [])) {
+      patch.linkedBookingIds = linkIds;
+    }
     if (serviceId !== original.service.serviceId) patch.serviceId = serviceId;
     if (!sameSet(addonIds, (original.service.addons ?? []).map((addon) => addon.serviceId))) {
       patch.addonServiceIds = addonIds;
@@ -1108,6 +1240,52 @@ export function AntarJemputBookingForm({
     if ((internalNotes.trim() || null) !== (original.internalNotes ?? null)) {
       patch.internalNotes = internalNotes.trim() || null;
     }
+
+    /*
+      ─── THE PRICE AND THE DISCOUNT (24 September 2026) ─────────────────────
+
+      `PATCH` takes them now, under `bookings:setPrice`, so an edit is the
+      create form with the data already in it rather than a form missing its
+      money. Only sent when they MOVED — the server asks for the grant whenever
+      this payload carries one, and an edit that merely changed the driver must
+      not demand it.
+
+      ⚠️ `null`, NOT OMITTED, when a typed price is cleared. Omitting it would
+      carry the old one forward; `null` is what puts the line back on the
+      catalogue. `sameDraft` tells the two apart.
+    */
+    if (mayPrice) {
+      const main = mainDrafts[leg];
+      const wasMain = draftOf(original.service);
+
+      if (!sameDraft(main, wasMain)) {
+        patch.price = main.price === "" ? null : main.price;
+        patch.discount = typedDiscount(main.discountMode, main.discountValue);
+      }
+
+      const wasAddon = new Map(
+        (original.service.addons ?? []).map((addon) => [
+          addon.serviceId,
+          draftOf(addon),
+        ]),
+      );
+      const addonMoved = addonIds.some((serviceId) => {
+        const now = addonDrafts[serviceId] ?? BLANK_PRICE;
+        return !sameDraft(now, wasAddon.get(serviceId) ?? BLANK_PRICE);
+      });
+
+      if (addonMoved) {
+        patch.addonPricing = addonIds.map((serviceId) => {
+          const row = addonDrafts[serviceId] ?? BLANK_PRICE;
+          return {
+            serviceId,
+            price: row.price === "" ? null : row.price,
+            discount: typedDiscount(row.discountMode, row.discountValue),
+          };
+        });
+      }
+    }
+
     if (clash !== null) patch.forceClash = true;
 
     if (Object.keys(patch).filter((key) => key !== "forceClash").length === 0) {
@@ -1349,63 +1527,80 @@ export function AntarJemputBookingForm({
               </Section>
 
               {/* ─── 3 · TAUTKAN ─── */}
-              {!editing && (
-                <Section
-                  title="Tautkan ke booking"
-                  action={
-                    linkIds.length > 0 ? (
-                      <span className={`${badge} bg-tint-neutral text-muted tabular-nums`}>
-                        {linkIds.length} booking
-                      </span>
-                    ) : null
-                  }
-                >
-                  {!customer ? (
-                    <p className="text-sm text-muted">
-                      Pilih pelanggannya dulu — daftar booking mengikuti pemiliknya.
+              <Section
+                title="Tautkan ke booking"
+                action={
+                  linkIds.length > 0 ? (
+                    <span className={`${badge} bg-tint-neutral text-muted tabular-nums`}>
+                      {linkIds.length} booking
+                    </span>
+                  ) : null
+                }
+              >
+                {!customer ? (
+                  <p className="text-sm text-muted">
+                    Pilih pelanggannya dulu — daftar booking mengikuti pemiliknya.
+                  </p>
+                ) : visits.loading ? (
+                  <p className="flex items-center gap-2 text-sm text-muted">
+                    <Spinner /> Memuat booking…
+                  </p>
+                ) : riders.length === 0 && offList.length === 0 ? (
+                  <p className="text-sm text-muted">
+                    Pilih hewannya dulu — yang muncul di sini cuma booking hewan
+                    yang ikut.
+                  </p>
+                ) : visits.failed && offList.length === 0 ? (
+                  <Alert variant="error">
+                    Daftar booking pelanggan ini tidak bisa dimuat.
+                  </Alert>
+                ) : visits.bookings.length === 0 && offList.length === 0 ? (
+                  <p className="text-sm text-muted">
+                    Belum ada booking untuk hewan yang dipilih. Antar-jemput ini
+                    jalan sebagai kunjungan sendiri.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    {visits.failed && (
+                      <Alert variant="error">
+                        Daftar booking pelanggan ini tidak bisa dimuat — yang
+                        tampil cuma tautan yang sudah ada.
+                      </Alert>
+                    )}
+                    <CheckRowGroup>
+                      {visits.bookings.map((booking) => (
+                        <CheckRow
+                          key={booking._id}
+                          label={visitLabel(booking)}
+                          checked={linkIds.includes(booking._id)}
+                          disabled={saving}
+                          onCheckedChange={() => toggleLink(booking._id)}
+                        />
+                      ))}
+                      {offList.map((member) => (
+                        <CheckRow
+                          key={member._id}
+                          label={memberLabel(member)}
+                          description="Sudah ditautkan, di luar daftar di atas. Hapus centang untuk melepas."
+                          checked
+                          disabled={saving}
+                          onCheckedChange={() => toggleLink(member._id)}
+                        />
+                      ))}
+                    </CheckRowGroup>
+                    <p className="text-xs text-muted">
+                      Satu antar-jemput bisa menangani beberapa booking sekaligus
+                      — semuanya menunjuk ke perjalanan yang sama
+                      {perAnimal
+                        ? ", dan tarifnya dihitung per booking yang ditautkan."
+                        : ", dan tarifnya tetap sekali per perjalanan."}
+                      {editing
+                        ? " Hapus centang untuk melepas booking dari perjalanan ini."
+                        : ""}
                     </p>
-                  ) : riders.length === 0 ? (
-                    <p className="text-sm text-muted">
-                      Pilih hewannya dulu — yang muncul di sini cuma booking hewan
-                      yang ikut.
-                    </p>
-                  ) : visits.loading ? (
-                    <p className="flex items-center gap-2 text-sm text-muted">
-                      <Spinner /> Memuat booking…
-                    </p>
-                  ) : visits.failed ? (
-                    <Alert variant="error">
-                      Daftar booking pelanggan ini tidak bisa dimuat.
-                    </Alert>
-                  ) : visits.bookings.length === 0 ? (
-                    <p className="text-sm text-muted">
-                      Belum ada booking untuk hewan yang dipilih. Antar-jemput ini
-                      jalan sebagai kunjungan sendiri.
-                    </p>
-                  ) : (
-                    <div className="flex flex-col gap-3">
-                      <CheckRowGroup>
-                        {visits.bookings.map((booking) => (
-                          <CheckRow
-                            key={booking._id}
-                            label={visitLabel(booking)}
-                            checked={linkIds.includes(booking._id)}
-                            disabled={saving}
-                            onCheckedChange={() => toggleLink(booking._id)}
-                          />
-                        ))}
-                      </CheckRowGroup>
-                      <p className="text-xs text-muted">
-                        Satu antar-jemput bisa menangani beberapa booking sekaligus
-                        — semuanya menunjuk ke perjalanan yang sama
-                        {perAnimal
-                          ? ", dan tarifnya dihitung per booking yang ditautkan."
-                          : ", dan tarifnya tetap sekali per perjalanan."}
-                      </p>
-                    </div>
-                  )}
-                </Section>
-              )}
+                  </div>
+                )}
+              </Section>
 
               {/* ─── 4 · LAYANAN & DRIVER ─── */}
               <Section title="Layanan & driver">
@@ -1792,9 +1987,8 @@ export function AntarJemputBookingForm({
                 )}
                 {!mayPrice && (
                   <p className="mt-2 text-xs text-muted">
-                    {editing
-                      ? "Harga mengikuti katalog. Harga ketikan tidak bisa diubah dari form ubah."
-                      : "Harga mengikuti katalog. Mengubah harga atau memberi diskon butuh izin dari Owner atau Admin."}
+                    Harga mengikuti katalog. Mengubah harga atau memberi diskon
+                    butuh izin dari Owner atau Admin.
                   </p>
                 )}
               </div>

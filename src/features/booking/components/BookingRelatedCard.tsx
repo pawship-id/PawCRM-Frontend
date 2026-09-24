@@ -56,12 +56,25 @@ type Row =
  *   - SATU ANTAR-JEMPUT — on a ride, the bookings it serves (23 September
  *     2026). One van may serve bookings from several visits, so this is its own
  *     list and not the group's. Let go of it in the ride's own form, not here.
+ *
+ *     ⚠️ THESE ROWS CARRY NEITHER A CHIP NOR A STATUS (24 September 2026, on
+ *     request). The chip said "Satu antar-jemput" on every row of a card that
+ *     only a van's page draws — one word repeated down the list, which is what
+ *     the Transaksi table's Status column was removed for. And the badge was a
+ *     status belonging to ANOTHER booking, next to a van whose own status is in
+ *     the heading two cards above: two rungs on one screen, neither saying
+ *     which document it is about. The ordinary page's rows keep both.
  *   - SATU FAKTUR / SATU KERANJANG — billed together without anybody linking
  *     them. BO: a ride pulled onto the grooming's invoice belongs with it. Read
  *     off the bill, so there is nothing here to undo — the bill is the fact.
  *
  * ONE WAY TO ADD ONE: "Tautkan booking" moves this booking into another visit
- * of the same customer.
+ * of the same customer — AND NOT ON A RIDE (24 September 2026, on request).
+ * What a van is linked to is the bookings it SERVES, and those are ticked in
+ * its own form ("Ubah perjalanan" › Tautkan ke booking) since earlier today.
+ * A second door that quietly meant something else — moving the van into another
+ * visit, `groupId` rather than `linkedBookingIds` — is the kind of pair nobody
+ * should have to tell apart from two buttons with one name.
  *
  * ─── "+ ANTAR-JEMPUT" WAS HERE AND IS GONE (24 September 2026, on request) ──
  *
@@ -92,6 +105,8 @@ export function BookingRelatedCard({
     ...(booking.related ?? []).map((member) => ({ kind: "billed" as const, member })),
   ];
   const cancelled = booking.status === "cancelled";
+  /* A van's links are its own form's — see the note above. */
+  const ride = Boolean(booking.tripLeg);
 
   async function release(member: BookingGroupMember) {
     if (busy) return;
@@ -128,8 +143,9 @@ export function BookingRelatedCard({
       <div className="flex flex-col gap-3">
         {rows.length === 0 ? (
           <p className="text-sm text-muted">
-            Belum terkait dengan booking lain. Tambahkan antar-jemput, atau
-            tautkan ke booking pelanggan ini yang lain.
+            {ride
+              ? "Perjalanan ini belum melayani booking mana pun. Tautkan lewat Ubah perjalanan."
+              : "Belum terkait dengan booking lain. Tautkan ke booking pelanggan ini yang lain."}
           </p>
         ) : (
           <ul className="flex flex-col">
@@ -148,30 +164,28 @@ export function BookingRelatedCard({
                         ? `${LEG_WORDS[member.tripLeg]} · ${member.petName ?? "Hewan terhapus"}`
                         : (member.petName ?? "Hewan terhapus")}
                     </span>
-                    <BookingStatusBadge status={member.status} />
+                    {kind !== "ride" && <BookingStatusBadge status={member.status} />}
                   </span>
                   <span className="text-xs tabular-nums text-muted">
                     {member.serviceName} · {member.bookingNumber ?? "Draf"} ·{" "}
                     {clock(member.scheduledAt)}
                   </span>
-                  <span
-                    className={cn(
-                      "w-fit rounded-full px-2 py-0.5 text-xs font-medium",
-                      kind === "visit"
-                        ? "bg-tint-neutral text-muted"
-                        : kind === "ride"
-                          ? "bg-tint-brand text-primary"
+                  {kind !== "ride" && (
+                    <span
+                      className={cn(
+                        "w-fit rounded-full px-2 py-0.5 text-xs font-medium",
+                        kind === "visit"
+                          ? "bg-tint-neutral text-muted"
                           : "bg-tint-info text-info",
-                    )}
-                  >
-                    {kind === "visit"
-                      ? "Satu kunjungan"
-                      : kind === "ride"
-                        ? "Satu antar-jemput"
+                      )}
+                    >
+                      {kind === "visit"
+                        ? "Satu kunjungan"
                         : member.via === "invoice"
                           ? `Satu faktur${member.documentNumber ? ` · ${member.documentNumber}` : ""}`
                           : `Satu keranjang${member.documentNumber ? ` · ${member.documentNumber}` : ""}`}
-                  </span>
+                    </span>
+                  )}
                 </Link>
                 {kind === "visit" && (
                   <Can feature="bookings" action="update">
@@ -193,7 +207,7 @@ export function BookingRelatedCard({
           </ul>
         )}
 
-        {!cancelled && (
+        {!cancelled && !ride && (
           <div className="flex flex-wrap gap-2 border-t border-border pt-3">
             <Can feature="bookings" action="update">
               <Button type="button" variant="ghost" size="sm" onClick={() => setLinking(true)}>

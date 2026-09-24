@@ -136,6 +136,26 @@ async function ruteCard(): Promise<HTMLElement> {
   return card as HTMLElement;
 }
 
+/** "Rincian & harga" alone — the totals repeat figures the Ringkasan carries. */
+async function hargaCard(): Promise<HTMLElement> {
+  const heading = await screen.findByText(/Rincian & harga/);
+  const card = heading.closest('[data-slot="card"]');
+
+  if (!card) throw new Error("Kartu Rincian & harga tidak ketemu");
+
+  return card as HTMLElement;
+}
+
+/** The card whose rows are the bookings this van serves. */
+async function terkaitCard(): Promise<HTMLElement> {
+  const heading = await screen.findByText("Booking terkait");
+  const card = heading.closest('[data-slot="card"]');
+
+  if (!card) throw new Error("Kartu Booking terkait tidak ketemu");
+
+  return card as HTMLElement;
+}
+
 /**
  * THE RIDE'S OWN PAGE — `/dashboard/layanan/antar-jemput/:bookingId`
  * (23 September 2026, from `buloo-antar-jemput-v5.html`).
@@ -210,6 +230,148 @@ describe("AntarJemputBookingDetailScreen", () => {
   });
 
   /*
+    ─── THE BOOKING PAGE'S OWN BLOCK (24 September 2026, on request) ────────
+
+    "Buat seperti digambar": the card draws `BookingPriceBreakdown` now — the
+    kind chip, what it was priced on, an add-on behind its rule, and the
+    Subtotal / Diskon booking / Total foot. The plainer card it replaced did
+    not know about "Diskon booking" at all, so a visit discounted across its
+    bookings added up differently here than on the grooming it rode for.
+  */
+  it("names the cards and the zone the fare was quoted on", async () => {
+    draw(
+      ride({
+        service: {
+          variantChoices: [
+            { optionId: "opt-arah", code: "jemput", name: "Arah", label: "Jemput" },
+            { optionId: "opt-hewan", code: "cat", name: "Hewan", label: "Kucing" },
+          ],
+        },
+      }),
+    );
+
+    const harga = within(await hargaCard());
+
+    /* The zone carries the distance it was measured at, and the minutes sit at
+       the right-hand end of that same line (24 September 2026, on request). */
+    expect(
+      harga.getByText("Arah: Jemput · Hewan: Kucing · Zona A · 2,4 km · 30 mnt"),
+    ).toBeInTheDocument();
+    /* Twice: the line's name, and the kind chip beside it — the booking's own
+       snapshot of what sort of work this is. */
+    expect(harga.getAllByText("Antar-Jemput")).toHaveLength(2);
+  });
+
+  /*
+    ⚠️ ONE MUTED LINE, NOT TWO. The minutes and the multiplier follow the zone
+    and the distance rather than standing above them — a van's line is one
+    sentence about how the fare was arrived at.
+  */
+  it("says the minutes, and how many bookings a per-animal fare is multiplied by", async () => {
+    draw(
+      ride({
+        linkedBookingIds: ["bk-a", "bk-b"],
+        service: { billingUnit: "per_pet" },
+      }),
+    );
+
+    const harga = within(await hargaCard());
+
+    expect(
+      harga.getByText("Zona A · 2,4 km · 30 mnt · per booking × 2"),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    ⚠️ EVERY REDUCTION CARRIES ITS WORD — §1.3 does not let a green figure say
+    "this comes off" on its own. "Diskon item" is the line's own; "Diskon
+    booking" is this booking's share of one typed across the visit, and the two
+    are never added into one number.
+  */
+  it("splits the line's own discount from the visit's share", async () => {
+    draw(
+      ride({
+        totalAmount: "45000.0000",
+        netAmount: "38000.0000",
+        service: {
+          discount: { mode: "amount", value: "2000.0000", resolvedAmount: "2000.0000" },
+          /* Own 2.000 plus a 5.000 share of "Diskon seluruh booking". */
+          discountAmount: "7000.0000",
+        },
+      }),
+    );
+
+    const harga = within(await hargaCard());
+
+    expect(harga.getByText("Diskon item")).toBeInTheDocument();
+    expect(harga.getByText("− Rp 2.000")).toBeInTheDocument();
+    expect(harga.getByText("Subtotal")).toBeInTheDocument();
+    expect(harga.getByText("Rp 43.000")).toBeInTheDocument();
+    expect(harga.getByText("Diskon booking")).toBeInTheDocument();
+    expect(harga.getByText("− Rp 5.000")).toBeInTheDocument();
+    expect(harga.getByText("Rp 38.000")).toBeInTheDocument();
+  });
+
+  it("hangs an add-on off the service it was added to", async () => {
+    draw(
+      ride({
+        service: {
+          addons: [
+            {
+              itemId: "it-1",
+              serviceId: "svc-wait",
+              name: "Tunggu di lokasi",
+              price: "20000.0000",
+              durationMin: 15,
+            },
+          ],
+        },
+      }),
+    );
+
+    const harga = within(await hargaCard());
+
+    expect(harga.getByText(/\+ Tunggu di lokasi · \+15 mnt/)).toBeInTheDocument();
+    expect(harga.getByText("Rp 20.000")).toBeInTheDocument();
+  });
+
+  /*
+    ─── A SERVED BOOKING IS A NAME AND A NUMBER (24 September 2026) ─────────
+
+    The chip read "Satu antar-jemput" on every row of a card only a van draws,
+    and the badge showed ANOTHER booking's rung beside a van whose own status
+    is in the heading. Both are off here and both stay on the booking page.
+  */
+  it("lists what the van serves without a chip or a status", async () => {
+    draw(
+      ride({
+        linkedBookingIds: ["bk-groom"],
+        linked: [
+          {
+            _id: "bk-groom",
+            bookingNumber: "BK-260915-004",
+            petId: "pet-1",
+            petName: "Cilang",
+            serviceName: "Basic Grooming",
+            status: "confirmed",
+            scheduledAt: "2026-09-15T02:00:00.000Z",
+            pickupRequested: false,
+            deliveryRequested: false,
+            tripLeg: null,
+          },
+        ],
+      }),
+    );
+
+    const terkait = within(await terkaitCard());
+
+    expect(terkait.getByText("Cilang")).toBeInTheDocument();
+    expect(terkait.getByText(/BK-260915-004/)).toBeInTheDocument();
+    expect(terkait.queryByText("Satu antar-jemput")).not.toBeInTheDocument();
+    expect(terkait.queryByText("Confirmed")).not.toBeInTheDocument();
+  });
+
+  /*
     ⚠️ THE OTHER HALF OF THE SPLIT. This page is for rides; an ordinary booking
     typed into this URL goes to its own, exactly as a ride opened on the booking
     page is sent here. Neither URL is a dead end.
@@ -223,11 +385,19 @@ describe("AntarJemputBookingDetailScreen", () => {
   });
 
   /*
-    NOTHING IS ADDED TO A PERJALANAN FROM HERE (24 September 2026, on request).
-    "Tautkan booking" stays — relating what already exists is not adding — but
-    "+ Antar-jemput" is gone from the card everywhere it renders.
+    NOTHING IS LINKED TO A PERJALANAN FROM HERE (24 September 2026, on request).
+
+    "+ Antar-jemput" went first: nothing is ADDED to a booking once it exists.
+    "Tautkan booking" followed, once the ride's own form gained its Tautkan
+    section — and it was the more confusing of the two, because on a van it did
+    not mean what the card's list says. It moved the ride into another visit
+    (`groupId`); what a van serves is `linkedBookingIds`, ticked in its form.
+
+    ⚠️ IT STAYS ON AN ORDINARY BOOKING — see `BookingDetailScreen.test.tsx`,
+    where moving a booking into another visit is still the only way to relate
+    two of them.
   */
-  it("offers no way to add another ride from the card", async () => {
+  it("offers no way to link anything from the card", async () => {
     draw();
 
     await screen.findByRole("heading", { level: 1 });
@@ -236,7 +406,15 @@ describe("AntarJemputBookingDetailScreen", () => {
       screen.queryByRole("link", { name: /antar-jemput/i }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /tautkan booking/i }),
+      screen.queryByRole("button", { name: /tautkan booking/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("points at the form when the van serves nothing yet", async () => {
+    draw(ride({ linked: [], group: [], related: [] }));
+
+    expect(
+      await screen.findByText(/belum melayani booking mana pun/i),
     ).toBeInTheDocument();
   });
 

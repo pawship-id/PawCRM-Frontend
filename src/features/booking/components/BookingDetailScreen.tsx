@@ -9,6 +9,7 @@ import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { PetSummaryCard } from "@/features/pets";
+import { BookingPriceBreakdown } from "./BookingPriceBreakdown";
 import { usePetOptions } from "@/hooks/usePetOptions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
@@ -16,23 +17,14 @@ import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
-import {
-  afterOwnDiscounts,
-  bookingShareOf,
-  ownDiscountOfLine,
-} from "@/features/sales/bookingDiscount";
-import { formatMoney, isPositive, sumDecimals } from "@/utils/decimal";
 import { GROOMER_LEVEL_LABELS } from "@/types/api";
 import type {
   Booking,
-  BookingAddon,
-  BookingMainService,
   BookingSession,
   BookingStatus,
   BookingWorkStatus,
   Customer,
   Pet,
-  VariantChoiceSnapshot,
 } from "@/types/api";
 
 import {
@@ -414,14 +406,8 @@ export function BookingDetailScreen({ id }: { id: string }) {
     MONEY AND ESTIMATE COME OFF THE SERVICE, NOT OFF THE TURNS. A service split
     into three turns is still one bath. The server's own summary is preferred;
     the sum on screen is the fallback for a booking whose summary has not run.
+    The TOTAL moved into `BookingPriceBreakdown` with the block that draws it.
   */
-  const total =
-    booking.netAmount ??
-    booking.totalAmount ??
-    sumDecimals([
-      ...(service ? [service.price] : []),
-      ...addons.map((addon) => addon.price),
-    ]);
   /*
     ⚠️ ADD-ONS ARE IN THE ESTIMATE. "+30 menit detangling" lengthens the visit
     exactly as the catalogue says it does — an estimate without it promises the
@@ -795,119 +781,27 @@ export function BookingDetailScreen({ id }: { id: string }) {
             )}
 
             {/*
-              WHAT IS BEING CHARGED, AND WHAT IS ADDED TO IT. An add-on hangs off
-              the service it was added to instead of sitting beside it as though
-              somebody had chosen "Parfum" on its own.
+              WHAT IS BEING CHARGED, AND WHAT IS ADDED TO IT — `BookingPriceBreakdown`
+              since 24 September 2026, when a ride's page asked for the same block.
+              THE ANIMAL'S OWN FACTS ARE THIS PAGE'S to say: a size and a coat come
+              from the pet's profile, which a van has none of.
             */}
             {service && (
               <div className="mt-4 border-t border-border pt-3">
-                <div className="flex justify-between gap-3 text-sm">
-                  <span className="font-medium text-foreground">
-                    {service.name}
-                    {/* THE KIND OF WORK, from the booking's own snapshot. */}
-                    {service.serviceType && (
-                      <span className="ml-2 rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-normal text-muted">
-                        {service.serviceType}
-                      </span>
-                    )}
-                  </span>
-                  <span className="font-semibold tabular-nums text-foreground">
-                    {formatMoney(service.price)}
-                  </span>
-                </div>
-                {/*
-                  THE FACTS THE PRICE WAS QUOTED FROM: a variant service costs
-                  what THIS animal's size and coat say it costs.
-                */}
-                <p className="text-xs text-muted">
-                  {[
-                    petOptionLabel("size", booking.petSize ?? pet?.size),
-                    petOptionLabel("furType", pet?.furType),
-                    service.durationMin
-                      ? `${service.durationMin} mnt`
-                      : "durasi belum diisi",
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-                {/*
-                  WHAT IT WAS PRICED ON BEYOND THE ANIMAL (17 September 2026) —
-                  the staff's choices and the zone, as the booking stored them.
-                */}
-                {pricedOn(service) && (
-                  <p className="text-xs text-muted tabular-nums">{pricedOn(service)}</p>
-                )}
-                {/* THE SERVICE'S OWN DISCOUNT, on its row. */}
-                {ownDiscountOfLine(service) && (
-                  <div className="flex justify-between gap-3 pl-3 text-sm">
-                    <span className="text-success">Diskon item</span>
-                    <span className="font-semibold tabular-nums text-success">
-                      − {formatMoney(ownDiscountOfLine(service)!)}
-                    </span>
-                  </div>
-                )}
-
-                {addons.length > 0 && (
-                  <ul className="mt-2 border-l-2 border-border pl-3">
-                    {addons.map((addon) => (
-                      <li
-                        key={addon.itemId}
-                        className="flex flex-wrap justify-between gap-x-3 py-1 text-sm"
-                      >
-                        <span className="text-muted">
-                          + {addon.name}
-                          {addon.durationMin
-                            ? ` · +${addon.durationMin} mnt`
-                            : ""}
-                          {/* Only an add-on's OWN choices — an inherited one repeats the service's. */}
-                          {ownChoicesOf(addon, service) && (
-                            <span className="block text-xs">{ownChoicesOf(addon, service)}</span>
-                          )}
-                        </span>
-                        <span className="font-semibold tabular-nums text-foreground">
-                          {formatMoney(addon.price)}
-                        </span>
-                        {ownDiscountOfLine(addon) && (
-                          <span className="flex w-full justify-between gap-3 pl-3">
-                            <span className="text-success">Diskon item</span>
-                            <span className="font-semibold tabular-nums text-success">
-                              − {formatMoney(ownDiscountOfLine(addon)!)}
-                            </span>
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {/*
-                  THE BOOKING'S SHARE OF "DISKON SELURUH BOOKING", ONCE, under a
-                  subtotal of the lines after their own discounts — the same split
-                  the till and the invoice show (16 September 2026).
-                */}
-                {isPositive(bookingShareOf(booking)) && (
-                  <div className="mt-2 border-t border-border pt-2">
-                    <div className="flex justify-between gap-3 py-1 text-sm">
-                      <span className="text-muted">Subtotal</span>
-                      <span className="tabular-nums text-muted">
-                        {formatMoney(afterOwnDiscounts(booking))}
-                      </span>
-                    </div>
-                    <div className="flex justify-between gap-3 py-1 text-sm">
-                      <span className="text-success">Diskon booking</span>
-                      <span className="font-semibold tabular-nums text-success">
-                        − {formatMoney(bookingShareOf(booking))}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-2 flex justify-between gap-3 border-t-2 border-foreground pt-2 text-sm">
-                  <span className="font-extrabold">Total</span>
-                  <span className="text-lg font-extrabold tabular-nums">
-                    {formatMoney(total)}
-                  </span>
-                </div>
+                <BookingPriceBreakdown
+                  booking={booking}
+                  facts={
+                    [
+                      petOptionLabel("size", booking.petSize ?? pet?.size),
+                      petOptionLabel("furType", pet?.furType),
+                      service.durationMin
+                        ? `${service.durationMin} mnt`
+                        : "durasi belum diisi",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || null
+                  }
+                />
               </div>
             )}
 
@@ -1367,34 +1261,3 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-/** "Lokasi: Di Rumah" — a line's staff choices, as it stored them. */
-function choicesWords(choices: readonly VariantChoiceSnapshot[] | undefined): string | null {
-  const words = (choices ?? []).map((choice) => `${choice.name}: ${choice.label}`);
-  return words.length > 0 ? words.join(" · ") : null;
-}
-
-/** "Lokasi: Di Rumah · Zona A · 2 km" — what the main service was priced on beyond the pet. */
-function pricedOn(service: Pick<BookingMainService, "variantChoices" | "zone">): string | null {
-  const zone = service.zone
-    ? `${service.zone.name}${
-        service.zone.distanceKm === null ? "" : ` · ${String(service.zone.distanceKm).replace(".", ",")} km`
-      }`
-    : null;
-  const words = [choicesWords(service.variantChoices), zone].filter(Boolean);
-  return words.length > 0 ? words.join(" · ") : null;
-}
-
-/** An add-on's choices, only where they are not the main service's. */
-function ownChoicesOf(
-  addon: Pick<BookingAddon, "variantChoices">,
-  service: Pick<BookingMainService, "variantChoices">,
-): string | null {
-  const inherited = new Set(
-    (service.variantChoices ?? []).map((choice) => `${choice.optionId}|${choice.code}`),
-  );
-  return choicesWords(
-    (addon.variantChoices ?? []).filter(
-      (choice) => !inherited.has(`${choice.optionId}|${choice.code}`),
-    ),
-  );
-}

@@ -3484,6 +3484,24 @@ export interface UpdateBookingInput {
   addonServiceIds?: string[];
   /** New "Dipilih staf" values — re-quotes the line in its agreed zone. */
   variantChoices?: VariantChoice[];
+  /**
+   * ─── A PRICE AND A DISCOUNT ON AN EDIT (24 September 2026) ────────────────
+   *
+   * They were create-only, so correcting a fare meant cancelling the booking
+   * and writing it again. Both need `bookings:setPrice`, asked for only when
+   * the payload carries one — an edit that moved the driver does not.
+   *
+   * ⚠️ `null` IS A REAL VALUE, not "leave it alone": it puts the line back on
+   * the catalogue. Omit the field to carry the typed price forward.
+   */
+  price?: string | null;
+  discount?: TypedDiscountInput | null;
+  /** The same, per add-on. Sent whole — a row left out keeps what it had. */
+  addonPricing?: {
+    serviceId: string;
+    price?: string | null;
+    discount?: TypedDiscountInput | null;
+  }[];
   durationMin?: number | null;
   groomerUserId?: string | null;
   internalNotes?: string | null;

@@ -221,6 +221,219 @@ describe("AntarJemputBookingForm", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard/layanan/antar-jemput/bk-1"));
   });
 
+  /*
+    ─── UBAH IS THE SAME FORM, ALREADY FILLED IN (24 September 2026) ─────────
+
+    The price and the discount were CREATE-ONLY, so an edit showed "Harga
+    katalog" and no boxes: correcting a fare meant cancelling the booking and
+    writing it again. `PATCH` takes both now, under `bookings:setPrice`.
+  */
+  describe("editing a ride", () => {
+    const saved = (over: Record<string, unknown> = {}) =>
+      ({
+        _id: "bk-aj",
+        groupId: "grp-1",
+        customerId: "cust-1",
+        branchId: BRANCH_ID,
+        status: "draft",
+        bookingNumber: "AJ-260923-001",
+        petId: null,
+        petName: null,
+        scheduledAt: new Date("2026-09-23T09:00").toISOString(),
+        tripLeg: "pickup",
+        tripOrigin: { address: "Jl. Mawar No. 12", lat: -7.2395, lng: 112.7521 },
+        tripDestination: { address: "Jl. Sudirman 10", lat: -7.2575, lng: 112.7521 },
+        passengerPetIds: ["pet-1"],
+        passengers: [{ _id: "pet-1", name: "Bruno", petSize: "small" }],
+        linkedBookingIds: [],
+        internalNotes: null,
+        service: {
+          serviceId: "svc-aj",
+          name: "Antar-Jemput",
+          price: "45000.0000",
+          catalogPrice: "45000.0000",
+          addons: [],
+          sessions: [],
+        },
+        ...over,
+      }) as unknown as Booking;
+
+    async function openEdit(booking: Booking = saved()) {
+      bookings.getById.mockResolvedValue(booking);
+      renderWithAuth(<AntarJemputBookingForm bookingId={booking._id} />);
+      await screen.findByLabelText("Harga dasar");
+    }
+
+    it("offers the price and the discount boxes, not a read-only figure", async () => {
+      await openEdit();
+
+      expect(screen.getByLabelText("Harga dasar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Diskon")).toBeInTheDocument();
+      expect(screen.queryByText("Harga katalog")).not.toBeInTheDocument();
+    });
+
+    /*
+      A PRICE EQUAL TO THE CATALOGUE'S IS NOT "TYPED". The box shows the quote
+      but stays empty underneath, so the fare keeps following the zone — filling
+      it would pin the fare the moment an address moved.
+    */
+    it("puts a price somebody typed back in the box, and leaves an untouched one following the catalogue", async () => {
+      await openEdit(
+        saved({
+          service: {
+            ...saved().service,
+            price: "40000.0000",
+            catalogPrice: "45000.0000",
+            discount: { mode: "percent", value: "10.0000" },
+          },
+        }),
+      );
+
+      expect(screen.getByLabelText("Harga dasar")).toHaveValue("40.000");
+      expect(screen.getByLabelText("Diskon")).toHaveValue("10");
+    });
+
+    it("sends the price and the discount it was given", async () => {
+      await openEdit();
+
+      /* `fireEvent.change` — select-all-and-type, which is how somebody
+         replaces a box that redraws the quote the moment it is emptied. */
+      fireEvent.change(screen.getByLabelText("Harga dasar"), {
+        target: { value: "40000" },
+      });
+
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+      await waitFor(() => expect(bookings.update).toHaveBeenCalled());
+      expect(bookings.update).toHaveBeenCalledWith(
+        "bk-aj",
+        expect.objectContaining({ price: "40000" }),
+      );
+    });
+
+    /*
+      ⚠️ AND SENDS NEITHER WHEN NEITHER MOVED. The server asks for
+      `bookings:setPrice` whenever the payload carries a price, so an edit that
+      only changed the notes must not carry one.
+    */
+    it("sends no price when only the note changed", async () => {
+      await openEdit();
+
+      await userEvent.type(
+        screen.getByLabelText(/catatan internal/i),
+        "Lewat gerbang belakang",
+      );
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+      await waitFor(() => expect(bookings.update).toHaveBeenCalled());
+
+      const patch = bookings.update.mock.calls[0][1];
+      expect(patch).not.toHaveProperty("price");
+      expect(patch).not.toHaveProperty("discount");
+    });
+
+    /*
+      ─── AND "TAUTKAN KE BOOKING" IS ON IT TOO (24 September 2026) ──────────
+
+      The section was create-only, so a ride linked to the wrong booking could
+      not be corrected anywhere in the app: the link lives on the ride, and its
+      own page only lists what it serves.
+    */
+    const grooming = {
+      _id: "bk-bruno",
+      groupId: "grp-a",
+      customerId: "cust-1",
+      petId: "pet-1",
+      petName: "Bruno",
+      status: "confirmed",
+      bookingNumber: "BK-260922-001",
+      scheduledAt: new Date("2026-09-22T10:00").toISOString(),
+      tripLeg: null,
+      service: { serviceId: "svc-groom", name: "Basic Grooming", addons: [] },
+    } as unknown as Booking;
+
+    it("offers the bookings it serves, ticked, and lets one go", async () => {
+      bookings.list.mockResolvedValue(page([grooming]) as never);
+      await openEdit(saved({ linkedBookingIds: ["bk-bruno"] }));
+
+      const row = await screen.findByRole("checkbox", { name: /BK-260922-001/ });
+      expect(row).toBeChecked();
+
+      await userEvent.click(row);
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+      await waitFor(() => expect(bookings.update).toHaveBeenCalled());
+      expect(bookings.update).toHaveBeenCalledWith(
+        "bk-aj",
+        expect.objectContaining({ linkedBookingIds: [] }),
+      );
+    });
+
+    it("sends no links when they did not move", async () => {
+      bookings.list.mockResolvedValue(page([grooming]) as never);
+      await openEdit(saved({ linkedBookingIds: ["bk-bruno"] }));
+      await screen.findByRole("checkbox", { name: /BK-260922-001/ });
+
+      await userEvent.type(
+        screen.getByLabelText(/catatan internal/i),
+        "Lewat gerbang belakang",
+      );
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+      await waitFor(() => expect(bookings.update).toHaveBeenCalled());
+      expect(bookings.update.mock.calls[0][1]).not.toHaveProperty("linkedBookingIds");
+    });
+
+    /*
+      ⚠️ A LINK THE PICKER CANNOT OFFER BACK is still shown. The list holds the
+      customer's last month for the animals in the van; the ride's links are not
+      that set, and one it cannot draw would be saved on every edit with no row
+      to untick.
+    */
+    it("shows a link from outside the list, and lets that one go too", async () => {
+      await openEdit(
+        saved({
+          linkedBookingIds: ["bk-old"],
+          linked: [
+            {
+              _id: "bk-old",
+              bookingNumber: "BK-260801-009",
+              petName: "Coco",
+              serviceName: "Basic Grooming",
+              status: "completed",
+              scheduledAt: new Date("2026-08-01T10:00").toISOString(),
+              tripLeg: null,
+            },
+          ],
+        }),
+      );
+
+      const row = await screen.findByRole("checkbox", { name: /BK-260801-009/ });
+      expect(row).toBeChecked();
+
+      await userEvent.click(row);
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+      await waitFor(() => expect(bookings.update).toHaveBeenCalled());
+      expect(bookings.update).toHaveBeenCalledWith(
+        "bk-aj",
+        expect.objectContaining({ linkedBookingIds: [] }),
+      );
+    });
+
+    /* Without the grant the figure is read-only, edit or not. */
+    it("shows a read-only figure to somebody without bookings:setPrice", async () => {
+      bookings.getById.mockResolvedValue(saved());
+      renderWithAuth(<AntarJemputBookingForm bookingId="bk-aj" />, {
+        isSuperAdmin: false,
+        permissions: [{ feature: "bookings", actions: ["read", "update"] }],
+      });
+
+      expect(await screen.findByText("Harga katalog")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Harga dasar")).not.toBeInTheDocument();
+    });
+  });
+
   it("starts from a grooming's page — its customer, animal and day — and serves it", async () => {
     const groomingBooking = {
       _id: "bk-groom",

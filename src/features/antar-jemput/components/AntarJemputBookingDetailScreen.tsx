@@ -16,11 +16,11 @@ import {
   hasCompletedWork,
 } from "@/features/booking";
 import { BookingHistoryCard } from "@/features/booking/components/BookingHistoryCard";
+import { BookingPriceBreakdown } from "@/features/booking/components/BookingPriceBreakdown";
 import { BookingRelatedCard } from "@/features/booking/components/BookingRelatedCard";
 import { Can } from "@/features/permissions";
 import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
-import { formatMoney } from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
 import { antarJemputEditPath } from "../paths";
@@ -137,7 +137,6 @@ export function AntarJemputBookingDetailScreen({ id }: { id: string }) {
 
   const ride = rideOf(booking);
   const service = booking.service;
-  const addons = service?.addons ?? [];
   const billing = BILLING_BADGES[billingOf(booking)];
   /* Money closes where the work does — the same line the booking page draws. */
   const editable =
@@ -261,52 +260,42 @@ export function AntarJemputBookingDetailScreen({ id }: { id: string }) {
       </Card>
 
       {/* ─── Rincian & harga ───────────────────────────────────────────── */}
-      <Card
-        title="Rincian &amp; harga"
-        action={
-          editable ? (
-            <Can feature="bookings" action="update">
-              <Button asChild variant="ghost" size="sm">
-                <Link href={antarJemputEditPath(booking._id)}>
-                  <Pencil className="size-4" aria-hidden />
-                  Ubah harga
-                </Link>
-              </Button>
-            </Can>
-          ) : null
-        }
-      >
-        <ul className="flex flex-col">
-          <PriceLine
-            name={service?.name ?? "Antar-Jemput"}
-            note={
+      {/*
+        ⚠️ NO "UBAH HARGA" HERE (24 September 2026, on request). It pointed at
+        the same form "Ubah perjalanan" opens, so the page offered two doors to
+        one room — and the one on this card implied the price could be corrected
+        apart from the journey, which it cannot: the fare is quoted from the
+        zone between the two ends.
+      */}
+      <Card title="Rincian &amp; harga">
+        {/*
+          THE BOOKING PAGE'S OWN BLOCK (24 September 2026, on request: "buat
+          seperti digambar"). What this card used to draw was a plainer thing —
+          a name, a figure, a green number — and it did not know about "Diskon
+          booking" at all, so a visit discounted across its bookings added up to
+          a different total here than on the grooming it was riding for.
+
+          THE MINUTES AND THE MULTIPLIER ARE THIS PAGE'S TO SAY: a van has no
+          animal whose size and coat could fill that line.
+        */}
+        <BookingPriceBreakdown
+          booking={booking}
+          /* ⚠️ `tail`, NOT `facts` — the minutes sit at the right-hand end of
+             the zone line, beside the distance the fare was measured over. */
+          tail={
+            [
+              service?.durationMin ? `${service.durationMin} mnt` : null,
               /* A `per_pet` fare is the catalogue's price once per booking the
                  ride serves — said here so the figure is not a surprise. */
               service?.billingUnit === "per_pet" &&
               (booking.linkedBookingIds?.length ?? 0) > 1
                 ? `per booking × ${booking.linkedBookingIds?.length}`
-                : null
-            }
-            amount={service?.price ?? null}
-            discount={service?.discountAmount ?? null}
-          />
-          {addons.map((addon) => (
-            <PriceLine
-              key={addon.itemId}
-              name={addon.name}
-              note="Add-on"
-              amount={addon.price}
-              discount={addon.discountAmount ?? null}
-            />
-          ))}
-        </ul>
-
-        <div className="mt-3 flex items-baseline justify-between gap-3 border-t-2 border-foreground pt-3">
-          <span className="text-sm font-bold text-foreground">Total</span>
-          <span className="text-lg font-extrabold tabular-nums text-foreground">
-            {formatMoney(booking.netAmount ?? booking.totalAmount)}
-          </span>
-        </div>
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || null
+          }
+        />
       </Card>
 
       {/* Booking terkait — the bookings this van serves, and its visit. */}
@@ -347,40 +336,6 @@ function RouteEnd({
         <span className={address ? "text-foreground" : "text-muted"}>
           {address ?? "Belum diisi"}
         </span>
-      </span>
-    </li>
-  );
-}
-
-/** One billed line — what it is, and what it comes to after its own discount. */
-function PriceLine({
-  name,
-  note,
-  amount,
-  discount,
-}: {
-  name: string;
-  note: string | null;
-  amount: string | null;
-  discount: string | null;
-}) {
-  const off = discount && discount !== "0" && Number(discount) > 0;
-
-  return (
-    <li className="flex items-baseline justify-between gap-3 border-b border-border py-2 last:border-b-0">
-      <span className="min-w-0">
-        <span className="block text-sm font-medium text-foreground">{name}</span>
-        {note && <span className="block text-xs text-muted">{note}</span>}
-      </span>
-      <span className="shrink-0 text-right">
-        <span className="block text-sm font-semibold tabular-nums text-foreground">
-          {formatMoney(amount)}
-        </span>
-        {off && (
-          <span className="block text-xs tabular-nums text-success">
-            −{formatMoney(discount)}
-          </span>
-        )}
       </span>
     </li>
   );
