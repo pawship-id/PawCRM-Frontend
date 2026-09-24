@@ -634,6 +634,50 @@ export function InvoiceCreateForm() {
     [lookups.services, customerRecord, branchRecord, variant],
   );
 
+  /**
+   * WHO A ROW IS FOR, in words — "Miko", or "Cici, Comoo" for a van. Null while
+   * the row has not said, which is what closes its add-on picker.
+   *
+   * ⚠️ A RIDE ANSWERS FROM ITS PASSENGERS, not from `petId`: it has none.
+   */
+  const whoseRow = (line: DraftLine): string | null => {
+    if (line.ride) {
+      const names = line.passengers
+        .map((id) => pets.items.find((one) => one._id === id)?.name)
+        .filter(Boolean)
+        .join(", ");
+      return names || null;
+    }
+
+    return pets.items.find((one) => one._id === line.petId)?.name ?? null;
+  };
+
+  /**
+   * WHAT AN ADD-ON COSTS ON A JOURNEY — quoted in the ride's OWN zone and with
+   * its direction answered, and never multiplied by the bookings the van serves
+   * (that is the fare's multiplier, not the add-on's — see `fareOf`).
+   */
+  const rideAddonQuote = (line: DraftLine, addon: Service) => {
+    const service = serviceOf(line.refId);
+    const ends = endsOf(line);
+    const from = ends && pinOf(ends.origin);
+    const to = ends && pinOf(ends.destination);
+
+    return variant.quote(
+      addon,
+      null,
+      service && line.ride
+        ? choicesForLeg(
+            service,
+            variant.cardsFor([service]),
+            line.ride.leg,
+            line.choices,
+          )
+        : line.choices,
+      from && to ? variant.zoneBetween(from, to) : undefined,
+    );
+  };
+
   /** A ride row's two ends, flat as the payload carries them. */
   const tripInputOf = (line: DraftLine) => {
     const ends = endsOf(line);
@@ -678,7 +722,13 @@ export function InvoiceCreateForm() {
       journey dialog is two ways to disagree. Same rule as the diary's form and
       the till's; same helper (`choicesForLeg`, in `fareOf`).
     */
-    const arah = line.ride ? arahCardOf(service, cards) : null;
+    /*
+      ⚠️ KEYED ON THE SERVICE, NOT ON `line.ride` (24 September 2026). Before a
+      journey is filled in the row has no `ride` yet — and that is exactly when
+      the select was still drawn, so an antar-jemput row asked for Arah on the
+      row AND in the dialog. The direction only ever comes from the dialog.
+    */
+    const arah = isRideService(line.refId) ? arahCardOf(service, cards) : null;
     const asked = arah
       ? cards.filter((card) => card.axisKey !== arah.card.axisKey)
       : cards;
@@ -1915,10 +1965,21 @@ export function InvoiceCreateForm() {
                             branch and the customer's record. The bill's would
                             be a different distance for a different trip.
                           */
+                          /*
+                            A RIDE'S ZONE IS ITS OWN JOURNEY'S — measured
+                            between the two doors it drives, not between the
+                            branch and the customer's record.
+
+                            ⚠️ AND NOTHING AT ALL UNTIL THERE IS A JOURNEY. The
+                            bill's zone was drawn there while the row was still
+                            empty, so a ride nobody had routed yet announced
+                            "Koordinat alamat pelanggan belum diisi" — about a
+                            pin its fare will never be measured from.
+                          */
                           zoneText={
                             !variant.needsZone([lineService])
                               ? null
-                              : line.ride
+                              : isRideService(line.refId)
                                 ? (() => {
                                     const ends = endsOf(line);
                                     const from = ends && pinOf(ends.origin);
@@ -1974,10 +2035,28 @@ export function InvoiceCreateForm() {
                                   <InvoiceAddonPicker
                                     idPrefix={line.key}
                                     serviceName={line.name}
+                                    /*
+                                      ⚠️ AN ANTAR-JEMPUT ROW HAS NO `petId` —
+                                      its animals are the van's — so who it is
+                                      for is read from the passengers instead.
+                                      Gated on the pet, every ride's add-ons sat
+                                      behind "Pilih hewan dulu" over a cell with
+                                      no pet picker in it.
+                                    */
+                                    whose={whoseRow(line)}
                                     pet={linePet}
+                                    pendingLabel={
+                                      line.ride || isRideService(line.refId)
+                                        ? "Atur perjalanan dulu"
+                                        : "Pilih hewan dulu"
+                                    }
                                     offered={offered}
                                     quoteOf={(addon) =>
-                                      variant.quote(addon, linePet, line.choices)
+                                      /* A van is quoted by where it goes, not
+                                         by an animal — see `fareOf`. */
+                                      line.ride
+                                        ? rideAddonQuote(line, addon)
+                                        : variant.quote(addon, linePet, line.choices)
                                     }
                                     problemOf={variant.problemOf}
                                     tickedIds={lines

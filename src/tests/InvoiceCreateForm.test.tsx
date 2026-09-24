@@ -2402,6 +2402,31 @@ describe("an antar-jemput line", () => {
     ).toBeDisabled();
   });
 
+  /*
+    ⚠️ AND NOT BEFORE THE JOURNEY EXISTS EITHER (24 September 2026, on request).
+    The row carries no `ride` until the dialog is saved, and that is exactly
+    when the Arah select was still drawn — so an empty antar-jemput row asked
+    for a direction on the row AND in the dialog, and announced the BILL's zone
+    ("Koordinat alamat pelanggan belum diisi") about a pin its fare will never
+    be measured from.
+  */
+  it("asks nothing on the row itself — no Arah, no bill zone", async () => {
+    render(<InvoiceCreateForm />);
+    await addRide();
+
+    const row = screen.getByRole("row", { name: /Antar-Jemput/ });
+    /* The Arah select — a `SelectField` labelled by the card's name. */
+    expect(within(row).queryByLabelText(/^Arah$/)).not.toBeInTheDocument();
+    /* No zone line either: the bill's is measured from a pin this fare will
+       never use, and the journey's does not exist yet. */
+    expect(within(row).queryByText(/^Zona /)).not.toBeInTheDocument();
+    expect(within(row).queryByText(/Koordinat alamat/)).not.toBeInTheDocument();
+    /* What it DOES offer is the one thing to do next, in the Hewan cell. */
+    expect(
+      within(row).getByRole("button", { name: /atur perjalanan/i }),
+    ).toBeInTheDocument();
+  });
+
   it("does not ask Arah twice — the direction answers it", async () => {
     render(<InvoiceCreateForm />);
     await addRide();
@@ -2572,6 +2597,108 @@ describe("an antar-jemput line", () => {
     expect(
       within(dialog).getByRole("button", { name: /^simpan perjalanan$/i }),
     ).toBeDisabled();
+  });
+
+  /*
+    ⚠️ A RIDE'S ADD-ONS ARE NOT BEHIND "Pilih hewan dulu" (24 September 2026, on
+    request). An antar-jemput row has no `petId` — its animals are the van's —
+    so a picker gated on the pet locked every ride's add-ons, over a cell that
+    has no pet picker in it at all.
+  */
+  describe("add-ons on a journey", () => {
+    const ADDON = {
+      _id: "s2",
+      name: "Kandang Jalan",
+      serviceType: "addon",
+      price: "15000",
+    };
+
+    beforeEach(() => {
+      jest.spyOn(serviceService, "list").mockResolvedValue(
+        page([
+          {
+            _id: "s1",
+            name: "Antar-Jemput",
+            price: null,
+            serviceKind: "pickup-delivery",
+            billingUnit: "per_visit",
+            hasVariants: true,
+            variantAxes: ["zone", ARAH_ID],
+            variants: [fare("jemput", "25000"), fare("antar", "30000")],
+            addonServiceIds: ["s2"],
+          },
+          ADDON,
+        ]) as never,
+      );
+    });
+
+    it("opens once the van has somebody in it, and names them", async () => {
+      render(<InvoiceCreateForm />);
+      await addRide();
+
+      const row = screen.getByRole("row", { name: /Antar-Jemput/ });
+      /* Nothing agreed yet — and it asks for a journey, not for a pet. */
+      expect(
+        within(row).getByRole("button", { name: /add-on untuk antar-jemput/i }),
+      ).toBeDisabled();
+      expect(within(row).getByText("Atur perjalanan dulu")).toBeInTheDocument();
+
+      await openJourney();
+      const dialog = await screen.findByRole("dialog");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
+      await userEvent.click(within(dialog).getByRole("button", { name: "Bulan" }));
+      await saveJourney();
+
+      const addon = within(
+        await screen.findByRole("row", { name: /Antar-Jemput/ }),
+      ).getByRole("button", { name: /add-on untuk antar-jemput/i });
+      expect(addon).toBeEnabled();
+
+      await userEvent.click(addon);
+      const picker = await screen.findByRole("dialog");
+      expect(picker).toHaveTextContent("Untuk Miko, Bulan");
+      expect(
+        within(picker).getByRole("checkbox", { name: /Kandang Jalan/ }),
+      ).toBeEnabled();
+    });
+
+    it("puts the add-on on the bill under its journey", async () => {
+      render(<InvoiceCreateForm />);
+      await addRide();
+      await openJourney();
+
+      let dialog = await screen.findByRole("dialog");
+      await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
+      await saveJourney();
+
+      await userEvent.click(
+        within(
+          await screen.findByRole("row", { name: /Antar-Jemput/ }),
+        ).getByRole("button", { name: /add-on untuk antar-jemput/i }),
+      );
+      dialog = await screen.findByRole("dialog");
+      await userEvent.click(
+        within(dialog).getByRole("checkbox", { name: /Kandang Jalan/ }),
+      );
+      await userEvent.click(
+        within(dialog).getByRole("button", { name: /^simpan add-on$/i }),
+      );
+
+      await submit();
+      await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+
+      const [main, extra] = sent().items;
+      expect(main).toMatchObject({ refId: "s1", passengerPetIds: ["pet1"] });
+      /* THE ADD-ON CARRIES THE JOURNEY so its shadow booking lands on the right
+         one — the server keys a line's booking by the direction too. */
+      expect(extra).toMatchObject({
+        refId: "s2",
+        passengerPetIds: ["pet1"],
+        trip: { leg: "pickup" },
+      });
+      /* …but never the links: the fare's multiplier is the main row's. */
+      expect(extra.linkedBookingIds).toBeUndefined();
+    });
   });
 
   it("multiplies a per_pet fare by the bookings the van serves", async () => {

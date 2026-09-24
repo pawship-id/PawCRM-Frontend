@@ -27,8 +27,15 @@ import type { Pet, Service } from "@/types/api";
  * them on the bill, Batal leaves the bill as it was — the same shape as the
  * "Tambah barang atau jasa" dialog beside it.
  *
- * ONLY AFTER AN ANIMAL IS CHOSEN. An add-on may be priced by size or coat, so
- * before the pet is known there is no honest figure to put beside a tick.
+ * ONLY AFTER THE ROW HAS SAID WHO IT IS FOR. An add-on may be priced by size or
+ * coat, so before that there is no honest figure to put beside a tick.
+ *
+ * ⚠️ "WHO" IS NOT ALWAYS A `petId` (24 September 2026). An antar-jemput row has
+ * none — one van carries several animals, and they live in `passengerPetIds` —
+ * so gating on the pet locked the add-ons of every ride with "Pilih hewan
+ * dulu", over a cell that has no pet picker at all. `whose` is the words the
+ * row can already say; `pet` is only for the default quote, which a row with
+ * one animal uses and a van never does.
  *
  * AN ADD-ON NOBODY CAN PRICE CANNOT BE TICKED, and neither can a switched-off
  * variant — the server refuses both. One already on the bill can still be
@@ -47,7 +54,9 @@ import type { Pet, Service } from "@/types/api";
 export function InvoiceAddonPicker({
   idPrefix,
   serviceName,
+  whose,
   pet,
+  pendingLabel = "Pilih hewan dulu",
   offered,
   tickedIds,
   onSave,
@@ -58,8 +67,15 @@ export function InvoiceAddonPicker({
   /** Unique per row — a customer with two cats has two of these. */
   idPrefix: string;
   serviceName: string;
-  /** The row's animal, or undefined while none is chosen. */
-  pet: Pet | undefined;
+  /**
+   * WHO THIS ROW IS FOR, in words — "Miko", or "Cici, Comoo" for a van. Null
+   * while the row has not said, which is what closes the button.
+   */
+  whose: string | null;
+  /** The row's one animal, when it has one — only the default quote reads it. */
+  pet?: Pet;
+  /** What to say while `whose` is null — a ride asks for a journey, not a pet. */
+  pendingLabel?: string;
   /** The active add-ons this service lists, in catalogue order. */
   offered: Service[];
   /** Add-ons already on the bill under this row. */
@@ -80,7 +96,7 @@ export function InvoiceAddonPicker({
         type="button"
         variant="secondary"
         size="sm"
-        disabled={disabled || !pet}
+        disabled={disabled || !whose}
         aria-label={
           tickedIds.length > 0
             ? `Add-on untuk ${serviceName} (${tickedIds.length} dipilih)`
@@ -91,15 +107,15 @@ export function InvoiceAddonPicker({
         {tickedIds.length > 0 ? `+ Add-on (${tickedIds.length})` : "+ Add-on"}
       </Button>
 
-      {!pet && <span className="text-xs text-muted">Pilih hewan dulu</span>}
+      {!whose && <span className="text-xs text-muted">{pendingLabel}</span>}
 
       {/* MOUNTED ONLY WHILE OPEN, so every opening starts its draft from what
           the bill carries now rather than from a draft somebody cancelled. */}
-      {open && pet && (
+      {open && whose && (
         <AddonDialog
           idPrefix={idPrefix}
           serviceName={serviceName}
-          pet={pet}
+          whose={whose}
           offered={offered}
           tickedIds={tickedIds}
           onSave={onSave}
@@ -115,7 +131,7 @@ export function InvoiceAddonPicker({
 function AddonDialog({
   idPrefix,
   serviceName,
-  pet,
+  whose,
   offered,
   tickedIds,
   onSave,
@@ -125,7 +141,7 @@ function AddonDialog({
 }: {
   idPrefix: string;
   serviceName: string;
-  pet: Pet;
+  whose: string;
   offered: Service[];
   tickedIds: string[];
   onSave: (addonIds: string[]) => void;
@@ -150,7 +166,7 @@ function AddonDialog({
         <DialogHeader>
           <DialogTitle>{`Add-on ${serviceName}`}</DialogTitle>
           <DialogDescription>
-            {`Untuk ${pet.name} — harganya sudah menurut hewannya. Yang dicentang masuk ke faktur di bawah ${serviceName}.`}
+            {`Untuk ${whose} — harganya sudah menurut hewannya. Yang dicentang masuk ke faktur di bawah ${serviceName}.`}
           </DialogDescription>
         </DialogHeader>
 

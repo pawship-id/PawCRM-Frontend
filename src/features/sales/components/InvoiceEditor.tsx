@@ -732,12 +732,34 @@ export function InvoiceEditor({
       (line) =>
         line.fromIndex === null &&
         line.kind === "service" &&
-        line.petId &&
+        /* ⚠️ A RIDE HAS NO `petId`. Asked for one, an antar-jemput row the
+           catalogue has no band for slipped past here and was refused by the
+           server instead. */
+        (line.petId || line.ride) &&
         line.unitPrice === "0",
     );
 
     if (unpriced) {
       const pet = pets.find((one) => one._id === unpriced.petId);
+
+      /*
+        A RIDE'S ZONE IS ITS OWN JOURNEY'S, so `quoteOf` cannot explain it — it
+        measures branch to customer record. Both ends are pinned by the time
+        this is reached, so what is left is a fare with no band.
+      */
+      if (unpriced.ride) {
+        const ends = endsOf(unpriced);
+        const from = ends && pinOf(ends.origin);
+        const to = ends && pinOf(ends.destination);
+        const zone = from && to ? variant.zoneBetween(from, to) : null;
+
+        if (zone && !zone.ok) {
+          return `${variant.zoneTextOf(zone)} — tarif '${unpriced.name}' ditentukan dari zona.`;
+        }
+
+        return `'${unpriced.name}' belum punya tarif untuk perjalanan ini. Tambahkan variannya di katalog.`;
+      }
+
       const lookup = quoteOf(unpriced);
       const missing = lookup.missingAxis;
 
@@ -987,7 +1009,13 @@ export function InvoiceEditor({
                       here beside the direction chosen in the journey dialog is
                       two ways to disagree. Same rule as the create form's.
                     */
-                    const arah = line.ride ? arahCardOf(service, cards) : null;
+                    /* ⚠️ KEYED ON THE SERVICE, NOT ON `line.ride`: before a
+                       journey is filled in the row has no `ride` yet, which is
+                       exactly when the select was still drawn. The direction
+                       only ever comes from the dialog. */
+                    const arah = isRideService(line.refId)
+                      ? arahCardOf(service, cards)
+                      : null;
 
                     return (
                       <InvoiceLineVariant
@@ -1000,10 +1028,12 @@ export function InvoiceEditor({
                         }
                         choices={line.choices}
                         onChange={(next) => setChoices(line.key, next)}
-                        /* A ride's zone is its own journey's — the bill's would
-                           be a different distance for a different trip. */
+                        /* A ride's zone is its own journey's — the bill's
+                           would be a different distance for a different trip,
+                           and before there is a journey it is about a pin the
+                           fare will never be measured from. */
                         zoneText={
-                          line.ride
+                          isRideService(line.refId)
                             ? null
                             : variant.needsZone([service])
                               ? variant.zoneText
