@@ -2276,3 +2276,352 @@ describe("a service priced beyond the pet", () => {
     });
   });
 });
+
+/*
+  ─── AN ANTAR-JEMPUT LINE ON A BILL (24 September 2026, on request) ──────────
+
+  "Buat seperti yang di kasir, harus input dulu alamat." A ride row has no pet
+  dropdown: one van carries several animals and drives between two doors, none
+  of which fits in a cell beside a quantity and a price. The row shows a summary
+  and a button; the questions live in a dialog.
+*/
+describe("an antar-jemput line", () => {
+  const ARAH_ID = "5a7f1f77bcf86cd7994391d1";
+  const ARAH = makeVariantOption({
+    _id: "vo-arah",
+    name: "Arah",
+    source: "staff",
+    axisKey: ARAH_ID,
+    sortOrder: 4,
+    values: [
+      { code: "jemput", label: "Jemput", sortOrder: 0, isActive: true },
+      { code: "antar", label: "Antar", sortOrder: 1, isActive: true },
+    ],
+  });
+  const ZONA_A = {
+    _id: "z1",
+    tenantId: "t1",
+    name: "Zona A",
+    nameKey: "zona a",
+    description: null,
+    minKm: 0,
+    maxKm: 5,
+    createdBy: null,
+    deletedAt: null,
+    createdAt: "2026-09-24T00:00:00.000Z",
+    updatedAt: "2026-09-24T00:00:00.000Z",
+  };
+  const BRANCH_PIN = { lat: -6.2, lng: 106.8, source: "manual" };
+  const HOUSE = { lat: -6.209, lng: 106.8, source: "manual" };
+
+  const fare = (code: string, price: string) => ({
+    petType: null,
+    sizeCategory: null,
+    furType: null,
+    zoneId: "z1",
+    choices: [{ optionId: ARAH_ID, code }],
+    price,
+    isActive: true,
+  });
+
+  beforeEach(() => {
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: [...BUILT_IN_VARIANT_OPTIONS, ARAH],
+      zones: [ZONA_A],
+    });
+    jest
+      .spyOn(branchService, "list")
+      .mockResolvedValue(
+        page([{ ...BRANCH, address: "Jl. Cabang 1", location: BRANCH_PIN }]) as never,
+      );
+    jest.spyOn(customerService, "list").mockResolvedValue(
+      page([
+        {
+          _id: "c1",
+          name: "Bu Sari",
+          address: "Jl. Kemang Raya 12",
+          location: HOUSE,
+        },
+      ]) as never,
+    );
+    jest.spyOn(petService, "list").mockResolvedValue(
+      page([
+        { _id: "pet1", name: "Miko" },
+        { _id: "pet2", name: "Bulan" },
+      ]) as never,
+    );
+    jest.spyOn(serviceService, "list").mockResolvedValue(
+      page([
+        {
+          _id: "s1",
+          name: "Antar-Jemput",
+          price: null,
+          serviceKind: "pickup-delivery",
+          billingUnit: "per_visit",
+          hasVariants: true,
+          variantAxes: ["zone", ARAH_ID],
+          variants: [fare("jemput", "25000"), fare("antar", "30000")],
+        },
+      ]) as never,
+    );
+    jest.spyOn(bookingService, "list").mockResolvedValue(page([]) as never);
+  });
+
+  async function addRide() {
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await addItem(/Antar-Jemput/, "Jasa");
+  }
+
+  const openJourney = () =>
+    userEvent.click(screen.getByRole("button", { name: /atur perjalanan/i }));
+
+  const saveJourney = () =>
+    userEvent.click(
+      screen.getByRole("button", { name: /^simpan perjalanan$/i }),
+    );
+
+  it("asks for a journey instead of a pet, and will not save until it has one", async () => {
+    render(<InvoiceCreateForm />);
+    await addRide();
+
+    const row = screen.getByRole("row", { name: /Antar-Jemput/ });
+    /* No pet dropdown on a ride row — a van carries several animals. */
+    expect(
+      within(row).queryByRole("button", { name: /hewan untuk/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).getByRole("button", { name: /atur perjalanan/i }),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByText(/Atur perjalanan Antar-Jemput dulu/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
+    ).toBeDisabled();
+  });
+
+  it("does not ask Arah twice — the direction answers it", async () => {
+    render(<InvoiceCreateForm />);
+    await addRide();
+    await openJourney();
+
+    const dialog = await screen.findByRole("dialog");
+    /* The journey is not asked until somebody is in the van. */
+    await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
+
+    expect(
+      await within(dialog).findByRole("button", { name: "Jemput", pressed: true }),
+    ).toBeInTheDocument();
+    /* Arah carries the price, but it is answered by the direction above — a
+       select beside it would be two ways to disagree. */
+    expect(within(dialog).queryByLabelText("Arah")).not.toBeInTheDocument();
+  });
+
+  it("fills the two ends from the direction and prices between them", async () => {
+    render(<InvoiceCreateForm />);
+    await addRide();
+    await openJourney();
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
+
+    /* A pickup starts at the customer's door and finishes at the branch. */
+    expect(await within(dialog).findByText("Jl. Kemang Raya 12")).toBeInTheDocument();
+    expect(within(dialog).getByText("Jl. Cabang 1")).toBeInTheDocument();
+
+    await saveJourney();
+
+    const row = await screen.findByRole("row", { name: /Antar-Jemput/ });
+    expect(within(row).getAllByText("Rp 25.000")).not.toHaveLength(0);
+    /* The zone of THIS journey — one km, house to branch — not the bill's. */
+    expect(within(row).getByText(/^Zona A · 1(,\d+)? km$/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /^simpan faktur$/i }),
+    ).toBeEnabled();
+  });
+
+  /*
+    THE "HEWAN" COLUMN SAYS THE ANIMALS AND NOTHING ELSE (24 September 2026, on
+    request). The direction, the addresses and the linked bookings are all a tap
+    away in the dialog; a column whose header asks one thing answering four made
+    a two-line cell out of it.
+  */
+  it("names only the animals in the Hewan cell", async () => {
+    render(<InvoiceCreateForm />);
+    await addRide();
+    await openJourney();
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
+    await saveJourney();
+
+    const row = await screen.findByRole("row", { name: /Antar-Jemput/ });
+    const cell = within(row).getByText("Miko");
+    expect(cell).toBeInTheDocument();
+    expect(within(row).queryByText(/Jemput ·/)).not.toBeInTheDocument();
+    expect(
+      within(row).queryByText("Jl. Kemang Raya 12"),
+    ).not.toBeInTheDocument();
+    /* The way back in stays under the name. */
+    expect(
+      within(row).getByRole("button", { name: /ubah perjalanan/i }),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    A DISABLED BUTTON SAYS WHY. The animals in the van and the bookings it may
+    fetch for are the CUSTOMER's, so there is nothing to ask until one is named
+    — and a greyed button with no sentence beside it is how somebody presses it
+    three times.
+  */
+  it("says to pick a customer first while there is none", async () => {
+    render(<InvoiceCreateForm />);
+    /* No customer picked — the form has to finish loading on its own. */
+    await screen.findByRole("button", { name: /tambah barang atau jasa/i });
+    await addItem(/Antar-Jemput/, "Jasa");
+
+    const row = await screen.findByRole("row", { name: /Antar-Jemput/ });
+    expect(
+      within(row).getByRole("button", { name: /atur perjalanan/i }),
+    ).toBeDisabled();
+    expect(within(row).getByText("Pilih pelanggan dulu.")).toBeInTheDocument();
+  });
+
+  it("re-prices when the direction changes", async () => {
+    render(<InvoiceCreateForm />);
+    await addRide();
+    await openJourney();
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Antar" }));
+    await saveJourney();
+
+    const row = await screen.findByRole("row", { name: /Antar-Jemput/ });
+    expect(within(row).getAllByText("Rp 30.000")).not.toHaveLength(0);
+  });
+
+  it("carries several animals in one van", async () => {
+    render(<InvoiceCreateForm />);
+    await addRide();
+    await openJourney();
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Bulan" }));
+    await saveJourney();
+
+    const row = await screen.findByRole("row", { name: /Antar-Jemput/ });
+    expect(within(row).getByText("Miko, Bulan")).toBeInTheDocument();
+    /* ONE row, charged once — a van is not billed per dog. */
+    expect(within(row).getAllByText("Rp 25.000")).not.toHaveLength(0);
+  });
+
+  it("sends the van, the journey and no petId", async () => {
+    render(<InvoiceCreateForm />);
+    await addRide();
+    await openJourney();
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Bulan" }));
+    await saveJourney();
+    await submit();
+
+    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    const body = sent();
+    expect(body.items[0]).toMatchObject({
+      kind: "service",
+      refId: "s1",
+      passengerPetIds: ["pet1", "pet2"],
+      linkedBookingIds: [],
+      trip: {
+        leg: "pickup",
+        origin: { address: "Jl. Kemang Raya 12", lat: -6.209, lng: 106.8 },
+        destination: { address: "Jl. Cabang 1", lat: -6.2, lng: 106.8 },
+      },
+    });
+    /* A RIDE HAS NO `petId` — its animals are the van's. */
+    expect(body.items[0].petId).toBeUndefined();
+  });
+
+  it("holds the save while an end has no pin, and says which line", async () => {
+    jest.spyOn(customerService, "list").mockResolvedValue(
+      page([
+        {
+          _id: "c1",
+          name: "Bu Sari",
+          address: "Jl. Kemang Raya 12",
+          location: { lat: null, lng: null, source: null },
+        },
+      ]) as never,
+    );
+
+    render(<InvoiceCreateForm />);
+    await addRide();
+    await openJourney();
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
+
+    expect(
+      await within(dialog).findByText(/lengkapi titik lokasi asal dan tujuan/i),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: /^simpan perjalanan$/i }),
+    ).toBeDisabled();
+  });
+
+  it("multiplies a per_pet fare by the bookings the van serves", async () => {
+    jest.spyOn(serviceService, "list").mockResolvedValue(
+      page([
+        {
+          _id: "s1",
+          name: "Antar-Jemput",
+          price: null,
+          serviceKind: "pickup-delivery",
+          billingUnit: "per_pet",
+          hasVariants: true,
+          variantAxes: ["zone", ARAH_ID],
+          variants: [fare("jemput", "25000"), fare("antar", "30000")],
+        },
+      ]) as never,
+    );
+    jest.spyOn(bookingService, "list").mockResolvedValue(
+      page([
+        {
+          _id: "bk1",
+          customerId: "c1",
+          petId: "pet1",
+          petName: "Miko",
+          bookingNumber: "BK-260924-010",
+          status: "confirmed",
+          scheduledAt: "2026-09-24T04:00:00.000Z",
+          service: { name: "Grooming" },
+          tripLeg: null,
+          trips: [],
+        },
+      ]) as never,
+    );
+
+    render(<InvoiceCreateForm />);
+    await addRide();
+    await openJourney();
+
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
+    await userEvent.click(
+      within(dialog).getByRole("switch", { name: /tautkan ke booking/i }),
+    );
+    await userEvent.click(
+      await within(dialog).findByRole("checkbox", { name: /BK-260924-010/ }),
+    );
+    await saveJourney();
+    await submit();
+
+    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    expect(sent().items[0].linkedBookingIds).toEqual(["bk1"]);
+  });
+});

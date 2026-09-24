@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 
-import { Alert, CheckRow, CheckRowGroup, Spinner } from "@/components";
+import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,25 +13,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import {
   arahCardOf,
   choicesForLeg,
-  LEG_CHOICES,
   LEG_LABEL,
 } from "@/features/antar-jemput/ride";
 import {
-  defaultDrafts,
   pinOf,
   resolveLeg,
-  TripPointFields,
-  type LegPoints,
 } from "@/features/antar-jemput/components/TripPointFields";
 import {
-  useVisitBookings,
-  visitLabel,
-} from "@/features/booking/hooks/useVisitBookings";
+  blankJourney,
+  RideJourneyFields,
+  type RideJourney,
+} from "@/features/antar-jemput/components/RideJourneyFields";
 import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
 import { useVariantQuote, VariantChoicePicker } from "@/features/services";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -46,14 +41,12 @@ import {
   variantLabelForPet,
 } from "@/utils/serviceVariant";
 import type {
-  Booking,
   Branch,
   Customer,
   Pet,
   PosCatalogAddon,
   PosCatalogItem,
   PosItemTripInput,
-  TripLeg,
   VariantChoice,
 } from "@/types/api";
 
@@ -186,12 +179,8 @@ export function PosServicePetDialog({
     branch: Branch | null;
     customer: Customer | null;
   } | null>(null);
-  /* ─── The journey, on an antar-jemput tile ──────────────────────────────── */
-  const [leg, setLeg] = useState<TripLeg>("pickup");
-  const [points, setPoints] = useState<LegPoints>(() => defaultDrafts("pickup"));
-  /** Whether the cashier opened "Tautkan ke booking" at all. */
-  const [linking, setLinking] = useState(false);
-  const [linkIds, setLinkIds] = useState<string[]>([]);
+  /* The journey, on an antar-jemput tile — direction, two doors, links. */
+  const [journey, setJourney] = useState<RideJourney>(() => blankJourney());
   const { label: petOptionLabel } = usePetOptions();
 
   const open = service !== null;
@@ -200,11 +189,6 @@ export function PosServicePetDialog({
      gates that ask "has the cashier answered yet". */
   const chosen = pets.find((candidate) => candidate._id === picked[0]) ?? null;
   const riders = pets.filter((pet) => picked.includes(pet._id));
-  /** "Bruno" · "Bruno & Coco" · "Bruno, Coco & Mochi" — the van, as a cashier says it. */
-  const riderNames =
-    riders.length <= 1
-      ? (riders[0]?.name ?? "")
-      : `${riders.slice(0, -1).map((pet) => pet.name).join(", ")} & ${riders[riders.length - 1].name}`;
   const offered = service?.addons ?? [];
   const ticked = offered.filter((addon) => addons.has(addon._id));
 
@@ -223,10 +207,16 @@ export function PosServicePetDialog({
     addresses nobody can see at once.
   */
   const isRide = service?.serviceKind === RIDE_KIND;
+  const leg = journey.leg;
+  const linkIds = journey.linkedBookingIds;
   /** What the journey's two ends actually resolve to — a record, or what was typed. */
-  const journey = resolveLeg(points, places?.customer ?? null, places?.branch ?? null);
-  const originPin = pinOf(journey.origin);
-  const destinationPin = pinOf(journey.destination);
+  const ends = resolveLeg(
+    journey.points,
+    places?.customer ?? null,
+    places?.branch ?? null,
+  );
+  const originPin = pinOf(ends.origin);
+  const destinationPin = pinOf(ends.destination);
 
   /*
     ─── PRICED BEYOND THE ANIMAL (17 September 2026) ─────────────────────────
@@ -363,56 +353,6 @@ export function PosServicePetDialog({
       addonQuote.inactive && addons.has(addon._id),
   );
 
-  /*
-    ─── THE BOOKINGS THIS VAN COULD BE FETCHING FOR (24 September 2026) ──────
-
-    ASKED ONLY ONCE THE SWITCH IS ON. Most antar-jemput sold at a counter is a
-    trip of its own — somebody dropping a dog off on their way to work — and a
-    request for a month of the customer's diary on every tap of the tile would
-    be paid for by every one of them.
-
-    NARROWED TO THE ANIMAL ON THIS LINE (on request, 24 September 2026), the
-    same way the diary's form narrows to the animals in the van. A customer with
-    three dogs has three dogs' worth of bookings, and this line names ONE of
-    them: offering Coco's grooming under a van carrying Bruno is a link the
-    cashier has to read past on every row, and a mis-tick nobody would notice.
-
-    ⚠️ A VAN FETCHING FOR TWO DOGS IS THIS TILE TAPPED TWICE, one line each, and
-    each line offers its own animal's bookings. That is what the narrowing costs
-    and it is the price of the rule above — an earlier pass offered every
-    animal's bookings on every line for exactly that case, and it was the wrong
-    trade.
-
-    DRAFTS ARE IN IT, which is the point: a grooming added to THIS basket a
-    moment ago is a booking the server has already raised, and it is the one a
-    cashier most often means.
-  */
-  const visits = useVisitBookings(
-    linking && isRide && picked.length > 0 ? customerId : null,
-    null,
-    { petIds: picked, excludeRides: true },
-  );
-
-  /*
-    ─── A BOOKING IS FETCHED ONCE, AND TAKEN HOME ONCE ───────────────────────
-
-    BO's rule, 24 September 2026: a grooming that already has a jemput cannot
-    be given a second one, and the same for antar. The server refuses it in
-    those words (`#assertLinkedBookings`) — this closes the row with the reason
-    instead, because a refusal that arrives after the basket is built names a
-    booking the cashier no longer remembers ticking.
-
-    PER DIRECTION, never "already linked, so no more": an Antar Jemput is a
-    pickup AND a delivery, both serving that grooming.
-
-    ⚠️ IT CANNOT SEE ANOTHER TILL'S BASKET, which is why the server keeps the
-    guard. `trips` is what the booking knew when this list was read.
-  */
-  const rideAlready = (booking: Booking): TripLeg | null =>
-    (booking.trips ?? []).some((trip) => trip.tripLeg === leg) ? leg : null;
-
-  const inThisCart = new Set(cartBookingIds.map(String));
-
   useEffect(() => {
     if (!open) return;
 
@@ -540,27 +480,9 @@ export function PosServicePetDialog({
       setAddons(new Set());
       setChoices([]);
       setPlaces(null);
-      pickLeg("pickup");
-      setLinking(false);
-      setLinkIds([]);
+      setJourney(blankJourney());
     }
     onOpenChange(next);
-  }
-
-  /*
-    THE DIRECTION FILLS IN ITS OWN TWO ENDS — a pickup starts at the customer's
-    door and a delivery finishes there. Both stay editable; the same defaults
-    the diary's form uses, from the same helper.
-
-    ⚠️ IT ALSO CLEARS THE LINKS. "Sudah punya perjalanan jemput" is a fact about
-    ONE direction, so a booking that could not be ticked for a pickup may well
-    be fine for a delivery — and one ticked before the switch would otherwise
-    survive into a direction where the server refuses it.
-  */
-  function pickLeg(next: TripLeg) {
-    setLeg(next);
-    setPoints(defaultDrafts(next));
-    setLinkIds([]);
   }
 
   /*
@@ -580,36 +502,17 @@ export function PosServicePetDialog({
 
     if (!isRide) {
       setPicked([id]);
-      /*
-        THE LINKS GO WITH IT. The list offers only the chosen animals' bookings,
-        so a link ticked for the previous dog is one the picker can no longer
-        show — and the server would refuse it as a booking for an animal that is
-        not in the van.
-      */
-      setLinkIds([]);
       return;
     }
 
-    const leaving = picked.includes(id);
-
-    setPicked((prev) =>
-      leaving ? prev.filter((one) => one !== id) : [...prev, id],
-    );
-
     /*
-      ⚠️ ONLY THE LEAVING ANIMAL'S LINKS ARE DROPPED, not all of them. Taking
-      Coco out of the van must not untick the grooming the van is still fetching
-      for Bruno — the cashier would have to find and re-tick it, and on a busy
-      counter they would not notice it had gone.
+      A LINK THE PICKER CAN NO LONGER OFFER GOES WITH THE ANIMAL — taking Coco
+      out of the van drops the bookings that were Coco's, and only those.
+      `RideJourneyFields` does it, from the list it is holding.
     */
-    if (leaving) {
-      setLinkIds((prev) =>
-        prev.filter((bookingId) => {
-          const booking = visits.bookings.find((one) => one._id === bookingId);
-          return !booking || booking.petId !== id;
-        }),
-      );
-    }
+    setPicked((prev) =>
+      prev.includes(id) ? prev.filter((one) => one !== id) : [...prev, id],
+    );
   }
 
   function toggleAddon(id: string) {
@@ -621,12 +524,6 @@ export function PosServicePetDialog({
     });
   }
 
-  function toggleLink(id: string) {
-    setLinkIds((prev) =>
-      prev.includes(id) ? prev.filter((one) => one !== id) : [...prev, id],
-    );
-  }
-
   function confirm() {
     if (!chosen) return;
 
@@ -635,7 +532,7 @@ export function PosServicePetDialog({
        them on a ride: it is a priced option like any other, answered from the
        direction rather than from a select. */
     const wanted = new Set(allCards.map((card) => card.axisKey));
-    const end = (point: typeof journey.origin) => ({
+    const end = (point: typeof ends.origin) => ({
       address: point.address,
       lat: point.lat as number,
       lng: point.lng as number,
@@ -649,12 +546,12 @@ export function PosServicePetDialog({
         ? {
             trip: {
               leg,
-              origin: end(journey.origin),
-              destination: end(journey.destination),
+              origin: end(ends.origin),
+              destination: end(ends.destination),
             },
             /* Only what the switch is actually showing — a list left behind by
                a switch somebody turned off is not part of this sale. */
-            linkedBookingIds: linking ? linkIds : [],
+            linkedBookingIds: journey.linking ? linkIds : [],
             /* EVERY ANIMAL IN THE VAN, in the order they were ticked. The
                server snapshots each one's size against the ride. */
             passengerPetIds: picked,
@@ -769,176 +666,26 @@ export function PosServicePetDialog({
               )}
 
               {/*
-                ─── WHICH WAY THE VAN IS GOING (24 September 2026) ───────────
-
-                A REAL CONTROL, not a "Dipilih staf" select. The Arah option is
-                still what carries the price — it is the owner's variant option
-                (BO, 21 September 2026), and `choicesForLeg` answers it from
-                what is pressed here — but the direction is also what the
-                booking STORES as `tripLeg`, and what the board, the driver's
-                row and the status ladder all read. Two controls asking one
-                question is two answers to keep in step.
-
-                TWO VALUES, NOT THREE. The diary offers "Antar Jemput" as a
-                third, which saves two bookings; at a counter that is the tile
-                tapped twice — the same gesture a cashier already makes for two
-                dogs, and it keeps a second pair of addresses off a modal that
-                can only show one at a time.
+                WHICH WAY, BETWEEN WHICH TWO DOORS, AND FOR WHICH BOOKINGS —
+                the three questions an antar-jemput line answers before it has a
+                price. Shared with the invoice (`RideJourneyFields`), because a
+                journey agreed at a counter and one agreed on a bill are one
+                record and every rule inside is a decision somebody made once.
               */}
               {isRide && riders.length > 0 && (
-                <fieldset className="flex flex-col gap-2">
-                  <legend className="mb-1 text-xs font-medium text-muted">
-                    Arah
-                  </legend>
-                  <div className="flex flex-wrap gap-2">
-                    {LEG_CHOICES.filter((choice) => choice.value !== "both").map(
-                      (choice) => (
-                        <Button
-                          key={choice.value}
-                          type="button"
-                          size="sm"
-                          className="h-11"
-                          variant={leg === choice.value ? "default" : "secondary"}
-                          aria-pressed={leg === choice.value}
-                          disabled={busy}
-                          onClick={() => pickLeg(choice.value as TripLeg)}
-                        >
-                          {choice.label}
-                        </Button>
-                      ),
-                    )}
-                  </div>
-                  <p className="text-xs text-muted">
-                    {LEG_CHOICES.find((choice) => choice.value === leg)?.hint}
-                  </p>
-                </fieldset>
-              )}
-
-              {/*
-                ─── AND BETWEEN WHICH TWO DOORS ─────────────────────────────
-
-                The same fields the diary's form asks, from the same component:
-                the two registers a shop already keeps are offered before the
-                keyboard, because they carry a pin somebody has already checked.
-
-                BOTH ENDS STAY EDITABLE. A van may start at another branch or
-                at a groomer's house (23 September 2026), which is why the
-                booking stores both rather than inferring one from the
-                direction.
-              */}
-              {isRide && riders.length > 0 && (
-                <div className="flex flex-col gap-3">
-                  <TripPointFields
-                    label="Asal"
-                    draft={points.origin}
-                    point={journey.origin}
-                    customer={places?.customer ?? null}
-                    branch={places?.branch ?? null}
-                    disabled={busy}
-                    onChange={(next) =>
-                      setPoints((prev) => ({ ...prev, origin: next }))
-                    }
-                  />
-                  <TripPointFields
-                    label="Tujuan"
-                    draft={points.destination}
-                    point={journey.destination}
-                    customer={places?.customer ?? null}
-                    branch={places?.branch ?? null}
-                    disabled={busy}
-                    onChange={(next) =>
-                      setPoints((prev) => ({ ...prev, destination: next }))
-                    }
-                  />
-                </div>
-              )}
-
-              {/*
-                ─── TAUTKAN KE BOOKING (24 September 2026, on request) ───────
-
-                BEHIND A SWITCH, because most antar-jemput sold at a counter is
-                a trip of its own: somebody dropping a dog off on their way to
-                work. Off, this costs nothing — the diary is not even read.
-
-                ON, IT OFFERS THE CUSTOMER'S OWN BOOKINGS, drafts included — a
-                grooming added to THIS basket a moment ago is already a booking
-                on the server, and it is the one a cashier most often means.
-
-                A BOOKING THAT ALREADY HAS A VAN THIS WAY IS CLOSED, with the
-                reason on the row. Never closed while ticked, or the button
-                would be held by a tick nobody can undo.
-              */}
-              {isRide && riders.length > 0 && (
-                <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <Label htmlFor="pos-ride-link">Tautkan ke booking</Label>
-                      <p className="mt-1 text-xs text-muted">
-                        Nyalakan kalau perjalanan ini menjemput atau mengantar
-                        booking {riderNames} yang sudah ada.
-                      </p>
-                    </div>
-                    <Switch
-                      id="pos-ride-link"
-                      checked={linking}
-                      disabled={busy}
-                      onCheckedChange={(next) => {
-                        setLinking(next);
-                        if (!next) setLinkIds([]);
-                      }}
-                    />
-                  </div>
-
-                  {linking &&
-                    (visits.loading ? (
-                      <p className="flex items-center gap-2 text-sm text-muted">
-                        <Spinner /> Memuat booking…
-                      </p>
-                    ) : visits.failed ? (
-                      <Alert variant="error">
-                        Daftar booking pelanggan ini tidak bisa dimuat.
-                      </Alert>
-                    ) : visits.bookings.length === 0 ? (
-                      /* NAMES THE ANIMAL, not the owner — the list is that
-                         animal's, so "belum ada booking Ibu Rina" would read as
-                         a customer with an empty diary. */
-                      <p className="text-sm text-muted">
-                        Belum ada booking {riderNames} yang bisa ditautkan.
-                        Antar-jemput ini jalan sendiri.
-                      </p>
-                    ) : (
-                      <>
-                        <CheckRowGroup>
-                          {visits.bookings.map((booking) => {
-                            const busyLeg = rideAlready(booking);
-                            const on = linkIds.includes(booking._id);
-
-                            return (
-                              <CheckRow
-                                key={booking._id}
-                                label={visitLabel(booking)}
-                                description={
-                                  busyLeg
-                                    ? `Sudah punya perjalanan ${LEG_LABEL[busyLeg].toLowerCase()}.`
-                                    : inThisCart.has(booking._id)
-                                      ? "Ada di keranjang ini."
-                                      : undefined
-                                }
-                                checked={on}
-                                disabled={busy || (busyLeg !== null && !on)}
-                                onCheckedChange={() => toggleLink(booking._id)}
-                              />
-                            );
-                          })}
-                        </CheckRowGroup>
-                        <p className="text-xs text-muted">
-                          {perAnimal
-                            ? "Tarifnya dihitung per booking yang ditautkan."
-                            : "Tarifnya tetap sekali per perjalanan, berapa pun booking yang ditautkan."}
-                        </p>
-                      </>
-                    ))}
-                </div>
+                <RideJourneyFields
+                  journey={journey}
+                  onChange={setJourney}
+                  customerId={customerId}
+                  petIds={picked}
+                  customer={places?.customer ?? null}
+                  branch={places?.branch ?? null}
+                  perAnimal={perAnimal}
+                  alreadyHere={cartBookingIds}
+                  alreadyHereLabel="Ada di keranjang ini."
+                  disabled={busy}
+                  idPrefix="pos-ride"
+                />
               )}
 
               {chosen && (
