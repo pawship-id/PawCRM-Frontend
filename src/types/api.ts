@@ -1626,6 +1626,12 @@ export interface PosItem {
    */
   linkedBookingIds?: string[];
   petId: string | null;
+  /**
+   * EVERY ANIMAL IN THE VAN — on an antar-jemput line rung up at the counter,
+   * and nothing else. Such a line has `petId: null`, exactly as the booking it
+   * raises keeps its animals in `passengerPets`.
+   */
+  passengerPetIds?: string[];
   petName: string | null;
   groomerName: string | null;
   /**
@@ -2310,6 +2316,8 @@ export interface PosItemInput {
   trip?: PosItemTripInput | null;
   /** The bookings this ride serves. Only on a ride. */
   linkedBookingIds?: string[];
+  /** Every animal in the van. Only on a ride, which has no `petId`. */
+  passengerPetIds?: string[];
 }
 
 /** One counter line's journey, as a response carries it. */

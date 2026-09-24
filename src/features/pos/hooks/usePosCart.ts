@@ -118,7 +118,11 @@ interface UsePosCartResult {
        * booking by the direction too — an add-on without one would hang off a
        * booking going the other way.
        */
-      ride?: { trip: PosItemTripInput; linkedBookingIds: string[] } | null;
+      ride?: {
+        trip: PosItemTripInput;
+        linkedBookingIds: string[];
+        passengerPetIds: string[];
+      } | null;
     }>,
   ) => Promise<void>;
   pullBookings: (bookingIds: string[]) => Promise<void>;
@@ -339,6 +343,7 @@ export function usePosCart(): UsePosCartResult {
                 },
               },
               linkedBookingIds: item.linkedBookingIds ?? [],
+              passengerPetIds: item.passengerPetIds ?? [],
             }
           : {}),
       })),
@@ -385,7 +390,11 @@ export function usePosCart(): UsePosCartResult {
         petId: string;
         serviceIds: string[];
         variantChoices?: VariantChoice[];
-        ride?: { trip: PosItemTripInput; linkedBookingIds: string[] } | null;
+        ride?: {
+          trip: PosItemTripInput;
+          linkedBookingIds: string[];
+          passengerPetIds: string[];
+        } | null;
       }>,
     ) => {
       const lines: PosItemInput[] = choices.flatMap(
@@ -394,13 +403,20 @@ export function usePosCart(): UsePosCartResult {
           serviceIds.map((refId) => ({
             kind: "service" as const,
             refId,
+            /*
+              ⚠️ A RIDE HAS NO `petId` — one van carries several animals, and
+              they go in `passengerPetIds`, the same shape the booking it raises
+              keeps them in. A ride PULLED from the diary has neither, and its
+              animals are its booking's.
+            */
+            ...(ride ? { petId: null } : { petId }),
             qty: "1",
-            petId,
             ...(variantChoices?.length ? { variantChoices } : {}),
             ...(ride
               ? {
                   trip: ride.trip,
                   linkedBookingIds: ride.linkedBookingIds,
+                  passengerPetIds: ride.passengerPetIds,
                 }
               : {}),
           })),

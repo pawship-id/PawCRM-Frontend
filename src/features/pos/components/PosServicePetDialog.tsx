@@ -67,6 +67,8 @@ const RIDE_KIND = "pickup-delivery";
 export interface PosRidePick {
   trip: PosItemTripInput;
   linkedBookingIds: string[];
+  /** Every animal in the van — a ride carries several off ONE line. */
+  passengerPetIds: string[];
 }
 
 /** Whether a service's price depends on anything beyond the animal. */
@@ -156,7 +158,15 @@ export function PosServicePetDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [pets, setPets] = useState<Pet[]>([]);
-  const [petId, setPetId] = useState("");
+  /**
+   * THE ANIMALS THIS LINE IS FOR — one for nearly every service, SEVERAL for a
+   * ride (24 September 2026, on request).
+   *
+   * A van collects three dogs in one trip and is charged once, so the picker
+   * below toggles on an antar-jemput tile and replaces on everything else: two
+   * dogs having a bath are two lines, two dogs in a van are one.
+   */
+  const [picked, setPicked] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addingPet, setAddingPet] = useState(false);
@@ -185,7 +195,16 @@ export function PosServicePetDialog({
   const { label: petOptionLabel } = usePetOptions();
 
   const open = service !== null;
-  const chosen = pets.find((candidate) => candidate._id === petId) ?? null;
+  /* The one animal a service is priced for. A ride has no single one — it is
+     quoted by where it goes — so this is only its first passenger, used for the
+     gates that ask "has the cashier answered yet". */
+  const chosen = pets.find((candidate) => candidate._id === picked[0]) ?? null;
+  const riders = pets.filter((pet) => picked.includes(pet._id));
+  /** "Bruno" · "Bruno & Coco" · "Bruno, Coco & Mochi" — the van, as a cashier says it. */
+  const riderNames =
+    riders.length <= 1
+      ? (riders[0]?.name ?? "")
+      : `${riders.slice(0, -1).map((pet) => pet.name).join(", ")} & ${riders[riders.length - 1].name}`;
   const offered = service?.addons ?? [];
   const ticked = offered.filter((addon) => addons.has(addon._id));
 
@@ -352,18 +371,27 @@ export function PosServicePetDialog({
     request for a month of the customer's diary on every tap of the tile would
     be paid for by every one of them.
 
-    NOT NARROWED TO THE ANIMAL ON THIS LINE, unlike the diary's form. One line
-    is one passenger here, and a van fetching for two groomings is the same
-    journey rung up twice; narrowing to the pet would hide the second grooming
-    on the line that is meant to name it.
+    NARROWED TO THE ANIMAL ON THIS LINE (on request, 24 September 2026), the
+    same way the diary's form narrows to the animals in the van. A customer with
+    three dogs has three dogs' worth of bookings, and this line names ONE of
+    them: offering Coco's grooming under a van carrying Bruno is a link the
+    cashier has to read past on every row, and a mis-tick nobody would notice.
+
+    ⚠️ A VAN FETCHING FOR TWO DOGS IS THIS TILE TAPPED TWICE, one line each, and
+    each line offers its own animal's bookings. That is what the narrowing costs
+    and it is the price of the rule above — an earlier pass offered every
+    animal's bookings on every line for exactly that case, and it was the wrong
+    trade.
 
     DRAFTS ARE IN IT, which is the point: a grooming added to THIS basket a
     moment ago is a booking the server has already raised, and it is the one a
     cashier most often means.
   */
-  const visits = useVisitBookings(linking && isRide ? customerId : null, null, {
-    excludeRides: true,
-  });
+  const visits = useVisitBookings(
+    linking && isRide && picked.length > 0 ? customerId : null,
+    null,
+    { petIds: picked, excludeRides: true },
+  );
 
   /*
     ─── A BOOKING IS FETCHED ONCE, AND TAKEN HOME ONCE ───────────────────────
@@ -401,8 +429,8 @@ export function PosServicePetDialog({
         if (!active) return;
         setPets(result.items);
         // One pet is the overwhelming case; pre-selecting it removes a tap from
-        // every walk-in grooming.
-        setPetId(result.items.length === 1 ? result.items[0]._id : "");
+        // every walk-in grooming — and from every one-dog van.
+        setPicked(result.items.length === 1 ? [result.items[0]._id] : []);
       })
       .catch(() => {
         if (active) setError("Daftar hewan tidak bisa dimuat. Coba lagi.");
@@ -507,7 +535,7 @@ export function PosServicePetDialog({
 
   function handleOpenChange(next: boolean) {
     if (!next) {
-      setPetId("");
+      setPicked([]);
       setPets([]);
       setAddons(new Set());
       setChoices([]);
@@ -536,13 +564,52 @@ export function PosServicePetDialog({
   }
 
   /*
-    THE TICKS ARE CLEARED WHEN THE ANIMAL CHANGES. An add-on priced by size costs
-    a different amount for the next dog, and a box left ticked across the switch
+    ─── WHO THIS LINE IS FOR ──────────────────────────────────────────────────
+
+    A RIDE TOGGLES, EVERYTHING ELSE REPLACES (24 September 2026, on request).
+    Two dogs having a bath are two lines — the tile is tapped twice, and each
+    bath is priced for its own animal. Two dogs in a van are ONE journey,
+    charged once, so the van is a set.
+
+    THE ADD-ON TICKS ARE CLEARED EITHER WAY. An add-on priced by size costs a
+    different amount for the next dog, and a box left ticked across the change
     is a charge nobody re-read.
   */
   function pickPet(id: string) {
-    setPetId(id);
     setAddons(new Set());
+
+    if (!isRide) {
+      setPicked([id]);
+      /*
+        THE LINKS GO WITH IT. The list offers only the chosen animals' bookings,
+        so a link ticked for the previous dog is one the picker can no longer
+        show — and the server would refuse it as a booking for an animal that is
+        not in the van.
+      */
+      setLinkIds([]);
+      return;
+    }
+
+    const leaving = picked.includes(id);
+
+    setPicked((prev) =>
+      leaving ? prev.filter((one) => one !== id) : [...prev, id],
+    );
+
+    /*
+      ⚠️ ONLY THE LEAVING ANIMAL'S LINKS ARE DROPPED, not all of them. Taking
+      Coco out of the van must not untick the grooming the van is still fetching
+      for Bruno — the cashier would have to find and re-tick it, and on a busy
+      counter they would not notice it had gone.
+    */
+    if (leaving) {
+      setLinkIds((prev) =>
+        prev.filter((bookingId) => {
+          const booking = visits.bookings.find((one) => one._id === bookingId);
+          return !booking || booking.petId !== id;
+        }),
+      );
+    }
   }
 
   function toggleAddon(id: string) {
@@ -588,6 +655,9 @@ export function PosServicePetDialog({
             /* Only what the switch is actually showing — a list left behind by
                a switch somebody turned off is not part of this sale. */
             linkedBookingIds: linking ? linkIds : [],
+            /* EVERY ANIMAL IN THE VAN, in the order they were ticked. The
+               server snapshots each one's size against the ride. */
+            passengerPetIds: picked,
           }
         : null,
     );
@@ -610,7 +680,7 @@ export function PosServicePetDialog({
         >
           <DialogHeader>
             <DialogTitle>
-              {isRide ? "Antar-jemput untuk hewan yang mana?" : "Untuk hewan yang mana?"}
+              {isRide ? "Hewan mana yang ikut?" : "Untuk hewan yang mana?"}
             </DialogTitle>
             <DialogDescription>
               {service?.name}
@@ -637,21 +707,32 @@ export function PosServicePetDialog({
                   Tambahkan dulu di bawah.
                 </p>
               ) : (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col gap-2">
+                  {/* A VAN TAKES SEVERAL, and nothing else does — said out loud,
+                      because the buttons look the same either way and a cashier
+                      who does not know they may tap twice will not. */}
+                  {isRide && pets.length > 1 && (
+                    <p className="text-xs text-muted">
+                      Bisa pilih lebih dari satu — satu perjalanan bisa
+                      mengangkut beberapa hewan sekaligus.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
                   {pets.map((pet) => (
                     <Button
                       key={pet._id}
                       type="button"
                       size="sm"
                       className="h-11"
-                      variant={petId === pet._id ? "default" : "secondary"}
-                      aria-pressed={petId === pet._id}
+                      variant={picked.includes(pet._id) ? "default" : "secondary"}
+                      aria-pressed={picked.includes(pet._id)}
                       disabled={busy}
                       onClick={() => pickPet(pet._id)}
                     >
                       {pet.name}
                     </Button>
                   ))}
+                  </div>
                 </div>
               )}
 
@@ -704,7 +785,7 @@ export function PosServicePetDialog({
                 dogs, and it keeps a second pair of addresses off a modal that
                 can only show one at a time.
               */}
-              {isRide && chosen && (
+              {isRide && riders.length > 0 && (
                 <fieldset className="flex flex-col gap-2">
                   <legend className="mb-1 text-xs font-medium text-muted">
                     Arah
@@ -745,7 +826,7 @@ export function PosServicePetDialog({
                 booking stores both rather than inferring one from the
                 direction.
               */}
-              {isRide && chosen && (
+              {isRide && riders.length > 0 && (
                 <div className="flex flex-col gap-3">
                   <TripPointFields
                     label="Asal"
@@ -787,14 +868,14 @@ export function PosServicePetDialog({
                 reason on the row. Never closed while ticked, or the button
                 would be held by a tick nobody can undo.
               */}
-              {isRide && chosen && (
+              {isRide && riders.length > 0 && (
                 <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <Label htmlFor="pos-ride-link">Tautkan ke booking</Label>
                       <p className="mt-1 text-xs text-muted">
                         Nyalakan kalau perjalanan ini menjemput atau mengantar
-                        booking yang sudah ada.
+                        booking {riderNames} yang sudah ada.
                       </p>
                     </div>
                     <Switch
@@ -818,9 +899,12 @@ export function PosServicePetDialog({
                         Daftar booking pelanggan ini tidak bisa dimuat.
                       </Alert>
                     ) : visits.bookings.length === 0 ? (
+                      /* NAMES THE ANIMAL, not the owner — the list is that
+                         animal's, so "belum ada booking Ibu Rina" would read as
+                         a customer with an empty diary. */
                       <p className="text-sm text-muted">
-                        Belum ada booking {customerName ?? "pelanggan ini"} yang
-                        bisa ditautkan. Antar-jemput ini jalan sendiri.
+                        Belum ada booking {riderNames} yang bisa ditautkan.
+                        Antar-jemput ini jalan sendiri.
                       </p>
                     ) : (
                       <>
@@ -1066,7 +1150,7 @@ export function PosServicePetDialog({
               */
               disabled={
                 busy ||
-                !petId ||
+                picked.length === 0 ||
                 !quote.price ||
                 quote.inactive ||
                 inactiveAddonTicked ||
@@ -1097,7 +1181,8 @@ export function PosServicePetDialog({
             // Re-asked rather than spliced: the list is server-ordered, and a
             // local insert would be a second ordering rule to keep in step.
             setNonce((n) => n + 1);
-            setPetId(pet._id);
+            /* A van gains the new animal; anything else is about it alone. */
+            setPicked((prev) => (isRide ? [...prev, pet._id] : [pet._id]));
           }}
         />
       )}

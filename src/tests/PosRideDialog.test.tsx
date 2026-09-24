@@ -45,6 +45,7 @@ const CART_ID = "5a7f1f77bcf86cd7994390e1";
 const PET_ID = "5a7f1f77bcf86cd799439121";
 const ARAH = "5a7f1f77bcf86cd799439202";
 const ZONA_A = "5a7f1f77bcf86cd799439301";
+const COCO_ID = "5a7f1f77bcf86cd799439122";
 const SERVED = "5a7f1f77bcf86cd799439401";
 const OTHER = "5a7f1f77bcf86cd799439402";
 
@@ -265,9 +266,7 @@ async function openDialog(user: ReturnType<typeof userEvent.setup>) {
   await user.click(
     await screen.findByRole("button", { name: /antar-jemput/i }),
   );
-  await screen.findByRole("heading", {
-    name: /antar-jemput untuk hewan yang mana/i,
-  });
+  await screen.findByRole("heading", { name: /hewan mana yang ikut/i });
 }
 
 const addButton = () =>
@@ -328,7 +327,10 @@ describe("PosServicePetDialog — antar-jemput", () => {
       expect.objectContaining({
         kind: "service",
         refId: "svc-ride",
-        petId: PET_ID,
+        /* A RIDE HAS NO `petId` — one van carries several animals, and they go
+           in `passengerPetIds`, as the booking it raises keeps them. */
+        petId: null,
+        passengerPetIds: [PET_ID],
         variantChoices: [{ optionId: ARAH, code: "jemput" }],
         linkedBookingIds: [],
         trip: {
@@ -452,6 +454,144 @@ describe("PosServicePetDialog — antar-jemput", () => {
       expect(
         await screen.findByRole("checkbox", { name: /BK-260924-010/ }),
       ).toBeEnabled();
+    });
+
+    /*
+      ⚠️ ONE LINE NAMES ONE ANIMAL, so the list is that animal's (on request,
+      24 September 2026). A customer with three dogs has three dogs' worth of
+      bookings, and offering Coco's grooming under a van carrying Bruno is a
+      mis-tick nobody would notice.
+    */
+    describe("a customer with more than one animal", () => {
+      const withTwoPets = () => {
+        (petService.list as jest.Mock).mockResolvedValue({
+          items: [
+            { _id: PET_ID, name: "Bruno" },
+            { _id: COCO_ID, name: "Coco" },
+          ],
+          pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+        });
+        mockedBookings.list.mockResolvedValue({
+          items: [
+            visit(),
+            visit({
+              _id: OTHER,
+              bookingNumber: "BK-260924-011",
+              petId: COCO_ID,
+              petName: "Coco",
+            }),
+          ],
+          pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+        });
+      };
+
+      it("offers only the chosen animals' bookings", async () => {
+        withTwoPets();
+
+        const user = userEvent.setup();
+        renderWithAuth(<PosScreen />);
+        await openDialog(user);
+
+        /* Two animals, so nothing is pre-selected — the cashier says which. */
+        await user.click(await screen.findByRole("button", { name: "Bruno" }));
+        await user.click(screen.getByRole("switch", { name: /tautkan ke booking/i }));
+
+        expect(
+          await screen.findByRole("checkbox", { name: /BK-260924-010/ }),
+        ).toBeInTheDocument();
+        expect(
+          screen.queryByRole("checkbox", { name: /BK-260924-011/ }),
+        ).not.toBeInTheDocument();
+      });
+
+      it("carries several animals in one van, and offers all of their bookings", async () => {
+        withTwoPets();
+
+        const user = userEvent.setup();
+        renderWithAuth(<PosScreen />);
+        await openDialog(user);
+
+        /* Two animals, so nothing is pre-selected — and the van TOGGLES. */
+        await user.click(await screen.findByRole("button", { name: "Bruno" }));
+        await user.click(screen.getByRole("button", { name: "Coco" }));
+        await user.click(screen.getByRole("switch", { name: /tautkan ke booking/i }));
+
+        expect(
+          await screen.findByRole("checkbox", { name: /BK-260924-010/ }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole("checkbox", { name: /BK-260924-011/ }),
+        ).toBeInTheDocument();
+
+        mockedPos.updateCart.mockClear();
+        await user.click(addButton());
+
+        await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+        const [, body] = mockedPos.updateCart.mock.calls[0];
+        /* ONE line, not two — a van is charged once however many ride. */
+        expect(body.items).toHaveLength(1);
+        expect(body.items?.[0]).toMatchObject({
+          petId: null,
+          passengerPetIds: [PET_ID, COCO_ID],
+        });
+      });
+
+      it("takes an animal back out of the van", async () => {
+        withTwoPets();
+
+        const user = userEvent.setup();
+        renderWithAuth(<PosScreen />);
+        await openDialog(user);
+
+        await user.click(await screen.findByRole("button", { name: "Bruno" }));
+        await user.click(screen.getByRole("button", { name: "Coco" }));
+        await user.click(screen.getByRole("button", { name: "Coco" }));
+
+        mockedPos.updateCart.mockClear();
+        await user.click(addButton());
+
+        await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+        const [, body] = mockedPos.updateCart.mock.calls[0];
+        expect(body.items?.[0]).toMatchObject({ passengerPetIds: [PET_ID] });
+      });
+
+      /*
+        ⚠️ ONLY THE LEAVING ANIMAL'S LINKS GO. Taking Coco out must not untick
+        the grooming the van is still fetching for Bruno — the cashier would
+        have to find and re-tick it, and on a busy counter they would not
+        notice it had gone.
+      */
+      it("drops only the links of an animal taken out of the van", async () => {
+        withTwoPets();
+
+        const user = userEvent.setup();
+        renderWithAuth(<PosScreen />);
+        await openDialog(user);
+
+        await user.click(await screen.findByRole("button", { name: "Bruno" }));
+        await user.click(screen.getByRole("button", { name: "Coco" }));
+        await user.click(screen.getByRole("switch", { name: /tautkan ke booking/i }));
+
+        await user.click(
+          await screen.findByRole("checkbox", { name: /BK-260924-010/ }),
+        );
+        await user.click(
+          await screen.findByRole("checkbox", { name: /BK-260924-011/ }),
+        );
+
+        await user.click(screen.getByRole("button", { name: "Coco" }));
+
+        mockedPos.updateCart.mockClear();
+        await user.click(addButton());
+
+        await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+        const [, body] = mockedPos.updateCart.mock.calls[0];
+        expect(body.items?.[0]).toMatchObject({
+          passengerPetIds: [PET_ID],
+          /* Bruno's link survives; Coco's went with Coco. */
+          linkedBookingIds: [SERVED],
+        });
+      });
     });
 
     it("closes a booking that already has a van going this way, with the reason", async () => {
