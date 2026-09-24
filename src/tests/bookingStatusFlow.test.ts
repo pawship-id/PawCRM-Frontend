@@ -1,13 +1,16 @@
 import {
   BOOKING_STATUS_ACTIONS,
+  bookingStatusAction,
   canCancel,
   canReschedule,
   forwardStatuses,
   hasCompletedWork,
+  hasStarted,
   impliedStatuses,
   ladderFor,
   transitionsFor,
 } from "@/features/booking/statusFlow";
+import { bookingStatusLabel } from "@/features/booking/components/BookingStatusBadge";
 import type { BookingLike } from "@/features/booking/statusFlow";
 import type { BookingStatus } from "@/types/api";
 
@@ -155,5 +158,104 @@ describe("the booking ladder", () => {
     Object.values(BOOKING_STATUS_ACTIONS).forEach((label) => {
       expect(label.length).toBeGreaterThan(0);
     });
+  });
+});
+
+/*
+  ─── A RIDE WALKS FOUR RUNGS (23 September 2026) ───────────────────────────
+
+  The mirror of `RIDE_LADDER` in booking.model.js. These pin the ORDER and the
+  two rungs that are NOT on it, which no type can check.
+*/
+describe("the antar-jemput ladder", () => {
+  const ride = (status: BookingStatus): [BookingLike] =>
+    at(status, { tripLeg: "pickup" });
+
+  it("walks Draft, Confirmed, On the Way, Arrived", () => {
+    expect(ladderFor(visit({ tripLeg: "pickup" }))).toEqual([
+      "draft",
+      "confirmed",
+      "in_progress",
+      "completed",
+    ]);
+  });
+
+  it("has no `requested` and no `arrived`", () => {
+    const ladder = ladderFor(visit({ tripLeg: "pickup" }));
+
+    expect(ladder).not.toContain("requested");
+    expect(ladder).not.toContain("arrived");
+  });
+
+  it("never offers the trip rungs, whatever the flags say", () => {
+    const ladder = ladderFor(
+      visit({ tripLeg: "pickup", pickupRequested: true, deliveryRequested: true }),
+    );
+
+    expect(ladder).not.toContain("pickup");
+    expect(ladder).not.toContain("delivery");
+  });
+
+  it("stops a draft ride at confirmed", () => {
+    expect(transitionsFor(...ride("draft"))).toEqual(["confirmed", "cancelled"]);
+  });
+
+  it("offers the rungs ahead from confirmed", () => {
+    expect(transitionsFor(...ride("confirmed"))).toEqual([
+      "in_progress",
+      "completed",
+      "cancelled",
+    ]);
+  });
+
+  it("is final once the van has arrived", () => {
+    expect(transitionsFor(...ride("completed"))).toEqual([]);
+  });
+
+  /*
+    ⚠️ THE REGRESSION GUARD for the refactor that made room for this: the draft
+    ceiling stopped naming `arrived` and started asking for the rung before
+    `in_progress`. On the full ladder they are the same rung.
+  */
+  it("leaves an ordinary booking's ladder exactly where it was", () => {
+    expect(transitionsFor(...at("draft"))).toEqual([
+      "requested",
+      "confirmed",
+      "arrived",
+      "cancelled",
+    ]);
+  });
+
+  /*
+    A RIDE'S DATE MOVES UNTIL THE VAN DOES. Asked through `hasStarted`: a
+    comparison naming `arrived` finds nothing on this ladder, answers -1, and
+    calls every van "already started" — including one booked for next Tuesday.
+  */
+  it("reschedules a confirmed ride and refuses one already on the way", () => {
+    expect(canReschedule(...ride("confirmed"))).toBe(true);
+    expect(canReschedule(...ride("in_progress"))).toBe(false);
+  });
+
+  it("still cuts an ordinary booking off at the animal arriving", () => {
+    expect(hasStarted(...at("confirmed"))).toBe(false);
+    expect(hasStarted(...at("arrived"))).toBe(true);
+  });
+
+  /* The shop's words, and the one place a label leaves its stored value. */
+  it("calls the last two rungs On the Way and Arrived", () => {
+    expect(bookingStatusLabel("in_progress", { tripLeg: "pickup" })).toBe("On the Way");
+    expect(bookingStatusLabel("completed", { tripLeg: "pickup" })).toBe("Arrived");
+    expect(bookingStatusLabel("confirmed", { tripLeg: "pickup" })).toBe("Confirmed");
+  });
+
+  it("leaves an ordinary booking's words alone", () => {
+    expect(bookingStatusLabel("in_progress")).toBe("In Progress");
+    expect(bookingStatusLabel("completed")).toBe("Completed");
+  });
+
+  it("says what pressing the row does, in a driver's words", () => {
+    expect(bookingStatusAction("in_progress", { tripLeg: "pickup" })).toBe("Start the trip");
+    expect(bookingStatusAction("completed", { tripLeg: "pickup" })).toBe("Mark arrived");
+    expect(bookingStatusAction("in_progress")).toBe("Start work");
   });
 });

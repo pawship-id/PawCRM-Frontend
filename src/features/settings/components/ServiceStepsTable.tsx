@@ -31,7 +31,6 @@ import {
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
 import { ApiError } from "@/services/api-error";
-import type { BusinessLine } from "@/services/businessLine.service";
 import { serviceStepService } from "@/services/serviceStep.service";
 import { swalToast } from "@/lib/swal";
 import type { ServiceStep } from "@/types/api";
@@ -40,10 +39,10 @@ import { reorderPatches } from "../sortOrder";
 import { ListItemStatus } from "./ListItemStatus";
 
 /**
- * One business line's tahapan and their row actions.
+ * The tenant's tahapan and their row actions.
  *
  * PetOptionsTable's shape, kept on purpose — the two screens sit one card apart
- * and are used by the same person: rows arrive sorted and narrowed to one line,
+ * and are used by the same person: rows arrive sorted,
  * writes that need no form are owned here (call, toast, ask the parent to
  * re-read), and renaming is handed up as `onRename` because it needs a field.
  *
@@ -56,7 +55,7 @@ import { ListItemStatus } from "./ListItemStatus";
  *
  * ─── DIPAKAI IS WHAT A RENAME REWRITES ─────────────────────────────────────
  *
- * `serviceCount` is how many live services of the line list the step. It is
+ * `serviceCount` is how many live services list the step. It is
  * the number a rename reaches and the number a delete is refused over, so it
  * sits beside the name rather than behind a click. A deleted row shows "—":
  * it is offered nowhere, and a count there would read as a use it still has.
@@ -77,14 +76,12 @@ import { ListItemStatus } from "./ListItemStatus";
  * anybody used that refusal is the normal outcome.
  */
 export function ServiceStepsTable({
-  line,
   rows,
   loading,
   onRename,
   onChanged,
 }: {
-  line: BusinessLine;
-  /** One line's steps in display order — deleted ones only when shown. */
+  /** The steps in display order — deleted ones only when shown. */
   rows: ServiceStep[];
   loading: boolean;
   onRename: (step: ServiceStep) => void;
@@ -328,7 +325,7 @@ export function ServiceStepsTable({
           onConfirm={confirmDelete}
           onCancel={closeDelete}
         >
-          Hapus <strong>{pendingDelete.name}</strong> dari tahapan {line.name}?
+          Hapus <strong>{pendingDelete.name}</strong> dari daftar tahapan?
           Hapusnya ditolak selama masih ada layanan yang memakainya
           {pendingUsedBy > 0 ? ` — sekarang ${pendingUsedBy} layanan` : ""}.
           Kalau cuma mau berhenti menawarkannya, pilih{" "}

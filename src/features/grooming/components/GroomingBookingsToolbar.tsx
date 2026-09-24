@@ -11,13 +11,14 @@ import {
   FilterSelect,
   FilterTrigger,
 } from "@/components";
-import { BOOKING_STATUS_LABELS } from "@/features/booking";
+import { bookingStatusLabel } from "@/features/booking";
 import { bookingService } from "@/services/booking.service";
 import type {
   BookingLocation,
   BookingStatus,
   GroomerAvailability,
   Service,
+  TripLeg,
 } from "@/types/api";
 
 import {
@@ -48,10 +49,39 @@ const STATUSES: BookingStatus[] = [
   "cancelled",
 ];
 
+/**
+ * A VAN WALKS FOUR (23 September 2026) — the rungs `RIDE_LADDER` holds, plus
+ * `cancelled`.
+ *
+ * Offering the salon's rungs here would be a filter for a state no antar-jemput
+ * booking can be in: every one of them would answer with an empty table, and a
+ * filter that can never match is one people stop trusting.
+ */
+const RIDE_STATUSES: BookingStatus[] = [
+  "draft",
+  "confirmed",
+  "in_progress",
+  "completed",
+  "cancelled",
+];
+
 const LOCATIONS: { value: BookingLocation; label: string }[] = [
   { value: "in_store", label: "Di toko" },
   { value: "in_home", label: "Di rumah" },
 ];
+
+const LEGS: { value: TripLeg; label: string }[] = [
+  { value: "pickup", label: "Jemput" },
+  { value: "delivery", label: "Antar" },
+];
+
+/**
+ * WHAT DIFFERS ON ANTAR-JEMPUT'S BOARD — BO's note 5 (21 September 2026): its
+ * search and filters are Grooming's. Only two fields change their words: the
+ * crew is the drivers, and Arah takes Tempat's place (a ride is always at the
+ * customer's door, so Tempat would narrow nothing).
+ */
+export type BookingsToolbarKind = "grooming" | "antar-jemput";
 
 /**
  * Search, and one Filter button.
@@ -73,7 +103,9 @@ export function GroomingBookingsToolbar({
   filters,
   onFilters,
   services,
+  kind = "grooming",
 }: {
+  kind?: BookingsToolbarKind;
   search: string;
   onSearch: (search: string) => void;
   filters: GroomingFilters;
@@ -88,12 +120,13 @@ export function GroomingBookingsToolbar({
   const [groomers, setGroomers] = useState<GroomerAvailability[]>([]);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(filters);
+  const rides = kind === "antar-jemput";
 
   useEffect(() => {
     let active = true;
 
     bookingService
-      .availability(isoDate(new Date()))
+      .availability(isoDate(new Date()), rides ? "driver" : "groomer")
       .then((rows) => {
         if (active) setGroomers(rows);
       })
@@ -104,7 +137,7 @@ export function GroomingBookingsToolbar({
     return () => {
       active = false;
     };
-  }, []);
+  }, [rides]);
 
   const count = countFilters(filters);
 
@@ -127,7 +160,7 @@ export function GroomingBookingsToolbar({
           value={search}
           onChange={onSearch}
           placeholder="Cari hewan, pelanggan, atau nomor booking…"
-          ariaLabel="Cari booking grooming"
+          ariaLabel={rides ? "Cari booking antar-jemput" : "Cari booking grooming"}
           fill
         />
       }
@@ -162,22 +195,23 @@ export function GroomingBookingsToolbar({
         />
         <FilterCheckList
           label="Status"
-          options={STATUSES.map((status) => ({
+          options={(rides ? RIDE_STATUSES : STATUSES).map((status) => ({
             value: status,
-            label: BOOKING_STATUS_LABELS[status],
+            /* "On the Way", not "In Progress", on a van — see the label map. */
+            label: bookingStatusLabel(status, rides ? { tripLeg: "pickup" } : undefined),
           }))}
           values={draft.statuses}
           onChange={(statuses) => patch({ statuses })}
         />
         <FilterCheckList
-          label="Groomer"
+          label={rides ? "Driver" : "Groomer"}
           options={groomers.map((groomer) => ({
             value: groomer._id,
             label: groomer.fullName,
           }))}
           values={draft.groomerIds}
           onChange={(groomerIds) => patch({ groomerIds })}
-          empty="Belum ada staf yang ditandai Groomer di Master Data › Staf."
+          empty={`Belum ada staf yang ditandai ${rides ? "Driver" : "Groomer"} di Pengaturan › Pengguna.`}
         />
         <FilterCheckList
           label="Layanan"
@@ -189,14 +223,23 @@ export function GroomingBookingsToolbar({
             .map((service) => ({ value: service._id, label: service.name }))}
           values={draft.serviceIds}
           onChange={(serviceIds) => patch({ serviceIds })}
-          empty="Belum ada layanan grooming."
+          empty={rides ? "Belum ada layanan antar-jemput." : "Belum ada layanan grooming."}
         />
-        <FilterCheckList
-          label="Tempat"
-          options={LOCATIONS}
-          values={draft.locations}
-          onChange={(locations) => patch({ locations })}
-        />
+        {rides ? (
+          <FilterCheckList
+            label="Arah"
+            options={LEGS}
+            values={draft.legs}
+            onChange={(legs) => patch({ legs })}
+          />
+        ) : (
+          <FilterCheckList
+            label="Tempat"
+            options={LOCATIONS}
+            values={draft.locations}
+            onChange={(locations) => patch({ locations })}
+          />
+        )}
       </FilterPanel>
     </FilterBar>
   );

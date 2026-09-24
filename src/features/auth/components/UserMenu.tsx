@@ -114,7 +114,7 @@ export function UserMenu() {
               panel would be worse than not offering it. */}
           {can("tenants", "read") && (
             <Link
-              href="/dashboard/business"
+              href="/dashboard/pengaturan/umum"
               role="menuitem"
               onClick={() => setOpen(false)}
               className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-foreground transition-colors hover:bg-primary/5"

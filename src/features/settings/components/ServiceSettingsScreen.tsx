@@ -4,7 +4,6 @@ import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 import { Alert } from "@/components";
-import { usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import type { PetOptionType } from "@/types/api";
 
@@ -22,6 +21,7 @@ import { AddonServicesPanel } from "./AddonServicesPanel";
 import { PetOptionsPanel } from "./PetOptionsPanel";
 import { ServiceStepsPanel } from "./ServiceStepsPanel";
 import { VariantOptionsPanel } from "./VariantOptionsPanel";
+import { SettingsTabsHeader } from "./SettingsHeader";
 import { ZonesPanel } from "./ZonesPanel";
 
 const BREED_TYPES: readonly PetOptionType[] = ["breed"];
@@ -71,11 +71,9 @@ export function ServiceSettingsScreen({
   initialSection?: ServiceSettingsSection;
 }) {
   const router = useRouter();
-  const { can } = usePermissions();
-  const mayReadLines = can("businessLines", "read");
 
   const petOptions = usePetOptionList();
-  const serviceSteps = useServiceStepList(mayReadLines);
+  const serviceSteps = useServiceStepList();
   const addons = useAddonServiceList();
   const zones = useZoneList();
   const variantOptions = useVariantOptions();
@@ -107,7 +105,6 @@ export function ServiceSettingsScreen({
         );
       }
       case "tahapan":
-        if (!mayReadLines) return;
         if (serviceSteps.loading && serviceSteps.steps.length === 0) return;
         return String(live(serviceSteps.steps));
       case "addon":
@@ -143,13 +140,7 @@ export function ServiceSettingsScreen({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Layanan</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Yang dipakai lebih dari satu layanan diatur di sini. Yang cuma dipakai
-          satu layanan tinggal di rumahnya.
-        </p>
-      </div>
+      <SettingsTabsHeader />
 
       <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-md">
         <div className="border-b border-border px-6 py-4">
@@ -249,7 +240,6 @@ export function ServiceSettingsScreen({
             {section === "tahapan" && (
               <ServiceStepsPanel
                 list={serviceSteps}
-                mayReadLines={mayReadLines}
                 intro={
                   <Intro title="Bobot tidak di sini">
                     Yang dibuat di sini hanya nama tahapan. Porsi komisinya
@@ -265,8 +255,10 @@ export function ServiceSettingsScreen({
                 steps={serviceSteps.steps}
                 intro={
                   <Intro title="Dua keputusan per add-on">
-                    Ada komisi atau tidak, dan menempel ke tahapan apa. Nilai
-                    komisinya diatur sekali di Grooming › Pengaturan › Komisi.
+                    Ada komisi atau tidak, dan menempel ke tahapan apa. Komisi
+                    add-on masuk utuh ke staf tahapan itu di booking; tanpa
+                    tahapan, dibagi ke semua tahapan seperti komisi layanannya.
+                    Nilai komisinya diatur sekali di setiap modul layanan.
                   </Intro>
                 }
               />

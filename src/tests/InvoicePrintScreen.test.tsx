@@ -141,6 +141,34 @@ describe("what the sheet says", () => {
     expect(screen.getAllByText("INV-2026-0042").length).toBeGreaterThan(0);
   });
 
+  /*
+    THE NAME ON THE PAPER (22 September 2026). An invoice is issued under the
+    legal entity where there is one; a shop that has none keeps its trading name,
+    because a header that went blank would produce an invoice issued by nobody.
+  */
+  it("issues it under the legal name and prints the NPWP", async () => {
+    asMock(tenantService.me).mockResolvedValue({
+      _id: "t1",
+      name: "Buloo Petshop",
+      legalName: "PT Buloo Sejahtera",
+      taxId: "01.234.567.8-901.000",
+    } as never);
+
+    await open();
+
+    // Letterhead and signature line both, as the trading name used to be.
+    expect(screen.getAllByText("PT Buloo Sejahtera").length).toBe(2);
+    expect(screen.getByText("NPWP 01.234.567.8-901.000")).toBeInTheDocument();
+    expect(screen.queryByText("Buloo Petshop")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the trading name for a shop with no legal one", async () => {
+    await open();
+
+    expect(screen.getAllByText("Buloo Petshop").length).toBe(2);
+    expect(screen.queryByText(/NPWP/)).not.toBeInTheDocument();
+  });
+
   it("names who it is billed to", async () => {
     await open();
 

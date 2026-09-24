@@ -13,6 +13,8 @@ import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import type { Customer, Pet, PetTimelineEntry } from "@/types/api";
 
+import { PetAvatar } from "./PetAvatar";
+
 import "@/features/pos/print/receipt.css";
 
 const SEX_LABELS: Record<string, string> = {
@@ -213,7 +215,28 @@ export function PetCardPrintScreen({ petId }: { petId: string }) {
         className="mx-auto w-full max-w-[210mm] bg-white p-8 text-black"
       >
         <header className="flex items-start justify-between gap-4 border-b-2 border-black pb-3">
-          <div>
+          {/*
+            ONLY WHEN THERE IS ONE, unlike the screen surfaces. The initial-letter
+            placeholder earns its place in a list of twenty rows, where it tells
+            them apart; on a sheet with the name set in 30 px directly beside it,
+            an empty circle holding one letter is ink spent saying nothing.
+
+            NAMED HERE, decorative everywhere else: on paper the photo IS how a
+            groomer matches the card to the animal in front of them, and a card
+            read aloud from a screen reader still needs to say a photo is on it.
+          */}
+          {pet.photo && (
+            <PetAvatar
+              pet={pet}
+              size="lg"
+              alt={`Foto ${pet.name}`}
+              /* Black, not `border-border`: this sheet is printed, and the token
+                 is a light grey that a mono printer renders as nothing. */
+              className="border-2 border-black"
+            />
+          )}
+
+          <div className="mr-auto">
             <h1 className="text-3xl font-extrabold leading-tight">{pet.name}</h1>
             <p className="text-sm">
               {label("species", pet.species)}

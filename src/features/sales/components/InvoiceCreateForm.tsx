@@ -37,6 +37,7 @@ import {
   isPositive,
   subtractDecimals,
   sumDecimals,
+  toDecimalString,
   toMinor,
 } from "@/utils/decimal";
 import { AXIS_LABEL, type PriceLookup } from "@/utils/serviceVariant";
@@ -52,6 +53,16 @@ import type {
   VariantChoice,
 } from "@/types/api";
 import type { Product } from "@/types/inventory";
+
+import { arahCardOf, choicesForLeg } from "@/features/antar-jemput/ride";
+import {
+  pinOf,
+  resolveLeg,
+} from "@/features/antar-jemput/components/TripPointFields";
+import {
+  RideJourneyDialog,
+} from "@/features/antar-jemput/components/RideJourneyDialog";
+import type { RideJourney } from "@/features/antar-jemput/components/RideJourneyFields";
 
 import { useInvoiceLineStock } from "../hooks/useInvoiceLineStock";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
@@ -159,11 +170,28 @@ function repriced(
   services: Service[],
   pets: Pet[],
   quote: Quote,
+  /** A ride's own quote — its zone is its journey's, not the bill's. */
+  fareOf: (line: DraftLine) => string | null,
 ) {
   let changed = false;
 
   const next = lines.map((line) => {
-    if (line.kind !== "service" || !line.petId) return line;
+    if (line.kind !== "service") return line;
+
+    /*
+      A RIDE IS PRICED BY WHERE IT GOES, not by an animal — a van has no coat
+      length. `fareOf` measures between the journey's own two ends and
+      multiplies a `per_pet` fare by the bookings it serves, exactly as the
+      server does.
+    */
+    if (line.ride) {
+      const fare = fareOf(line) ?? "0";
+      if (fare === line.unitPrice) return line;
+      changed = true;
+      return { ...line, unitPrice: fare };
+    }
+
+    if (!line.petId) return line;
 
     const price =
       quote(
@@ -261,6 +289,67 @@ interface DraftLine {
    * and on an add-on that simply inherits its service's.
    */
   choices: VariantChoice[];
+  /**
+   * ─── THE JOURNEY AN ANTAR-JEMPUT ROW IS (24 September 2026) ──────────────
+   *
+   * Which way the van goes, between which two doors, and the bookings it is
+   * fetching for. Null on every other row — and a ride row with none has no
+   * price at all, because a fare is a band of the distance driven.
+   *
+   * ASKED IN A DIALOG (`RideJourneyDialog`), not in the cell: a direction, two
+   * addresses and a list of bookings do not fit beside a quantity and a price.
+   */
+  ride: RideJourney | null;
+  /**
+   * EVERY ANIMAL IN THE VAN. A ride carries several off ONE row and is charged
+   * once, so `petId` stays empty on it — the same shape the booking it raises
+   * keeps its animals in.
+   */
+  passengers: string[];
+}
+
+/**
+ * WHO IS IN THE VAN, in a table cell — "Cici, Comoo", and nothing else
+ * (24 September 2026, on request).
+ *
+ * THE COLUMN IS "HEWAN", so it says the animals. An earlier pass put the
+ * direction, the customer's address and a count of linked bookings here too,
+ * which made a two-line cell out of a column whose header asks one thing —
+ * and every one of those facts is a tap away in the dialog.
+ */
+function RideSummary({
+  line,
+  pets,
+  disabled,
+  onEdit,
+}: {
+  line: DraftLine;
+  pets: Pet[];
+  disabled: boolean;
+  /** Null on an add-on — it rides on its service's journey and changes none. */
+  onEdit: (() => void) | null;
+}) {
+  const names = line.passengers
+    .map((id) => pets.find((one) => one._id === id)?.name)
+    .filter(Boolean)
+    .join(", ");
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <span className="text-sm text-foreground">{names || "—"}</span>
+      {onEdit && (
+        <UIButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={disabled}
+          onClick={onEdit}
+        >
+          Ubah perjalanan
+        </UIButton>
+      )}
+    </div>
+  );
 }
 
 /** Row handles — a counter, because an index shifts whenever a row is removed. */
@@ -481,13 +570,133 @@ export function InvoiceCreateForm() {
   )?.location;
   const variant = useVariantQuote({ branchPin, customerPin });
 
-  const lines = useMemo(
-    () => repriced(draftLines, lookups.services, pets.items, variant.quote),
-    [draftLines, lookups.services, pets.items, variant.quote],
-  );
-
   const serviceOf = (refId: string) =>
     lookups.services.find((one) => one._id === refId);
+
+  /** Which rows are a journey — the one kind of service that asks for one. */
+  const isRideService = (refId: string) =>
+    serviceOf(refId)?.serviceKind === "pickup-delivery";
+
+  const branchRecord = lookups.branches.find((one) => one._id === branchId) ?? null;
+  const customerRecord =
+    lookups.customers.find((one) => one._id === customerId) ?? null;
+
+  /** A ride row's two ends, resolved against the registers it may copy from. */
+  const endsOf = useCallback(
+    (line: DraftLine) =>
+      line.ride
+        ? resolveLeg(line.ride.points, customerRecord, branchRecord)
+        : null,
+    [customerRecord, branchRecord],
+  );
+
+  /**
+   * WHAT A JOURNEY COSTS — measured between its OWN two ends, and multiplied by
+   * the bookings the van serves when the fare is `per_pet` (one booking is one
+   * animal, 23 September 2026). Mirrors the server, which measures the same two
+   * points and is what the line stores.
+   *
+   * Null until both ends are pinned: a fare is a band of distance, so an
+   * address with no point has no price.
+   */
+  const fareOf = useCallback(
+    (line: DraftLine): string | null => {
+      const service = lookups.services.find((one) => one._id === line.refId);
+      const ends = line.ride
+        ? resolveLeg(line.ride.points, customerRecord, branchRecord)
+        : null;
+      const from = ends && pinOf(ends.origin);
+      const to = ends && pinOf(ends.destination);
+
+      if (!service || !line.ride || !from || !to) return null;
+
+      const zone = variant.zoneBetween(from, to);
+      const unit = variant.quote(
+        service,
+        null,
+        choicesForLeg(service, variant.cardsFor([service]), line.ride.leg, line.choices),
+        zone,
+      ).price;
+
+      if (unit === null) return null;
+
+      /* ⚠️ THE MAIN ROW ONLY. An add-on carries a copy of the journey so its
+         booking lands on the right one; the multiplier is the FARE's. */
+      const riders =
+        !line.parentKey && service.billingUnit === "per_pet"
+          ? Math.max(1, line.ride.linkedBookingIds.length)
+          : 1;
+
+      return riders > 1
+        ? toDecimalString(toMinor(unit)! * BigInt(riders))
+        : unit;
+    },
+    [lookups.services, customerRecord, branchRecord, variant],
+  );
+
+  /**
+   * WHO A ROW IS FOR, in words — "Miko", or "Cici, Comoo" for a van. Null while
+   * the row has not said, which is what closes its add-on picker.
+   *
+   * ⚠️ A RIDE ANSWERS FROM ITS PASSENGERS, not from `petId`: it has none.
+   */
+  const whoseRow = (line: DraftLine): string | null => {
+    if (line.ride) {
+      const names = line.passengers
+        .map((id) => pets.items.find((one) => one._id === id)?.name)
+        .filter(Boolean)
+        .join(", ");
+      return names || null;
+    }
+
+    return pets.items.find((one) => one._id === line.petId)?.name ?? null;
+  };
+
+  /**
+   * WHAT AN ADD-ON COSTS ON A JOURNEY — quoted in the ride's OWN zone and with
+   * its direction answered, and never multiplied by the bookings the van serves
+   * (that is the fare's multiplier, not the add-on's — see `fareOf`).
+   */
+  const rideAddonQuote = (line: DraftLine, addon: Service) => {
+    const service = serviceOf(line.refId);
+    const ends = endsOf(line);
+    const from = ends && pinOf(ends.origin);
+    const to = ends && pinOf(ends.destination);
+
+    return variant.quote(
+      addon,
+      null,
+      service && line.ride
+        ? choicesForLeg(
+            service,
+            variant.cardsFor([service]),
+            line.ride.leg,
+            line.choices,
+          )
+        : line.choices,
+      from && to ? variant.zoneBetween(from, to) : undefined,
+    );
+  };
+
+  /** A ride row's two ends, flat as the payload carries them. */
+  const tripInputOf = (line: DraftLine) => {
+    const ends = endsOf(line);
+    const from = ends && pinOf(ends.origin);
+    const to = ends && pinOf(ends.destination);
+
+    if (!line.ride || !ends || !from || !to) return undefined;
+
+    return {
+      leg: line.ride.leg,
+      origin: { address: ends.origin.address, ...from },
+      destination: { address: ends.destination.address, ...to },
+    };
+  };
+
+  const lines = useMemo(
+    () => repriced(draftLines, lookups.services, pets.items, variant.quote, fareOf),
+    [draftLines, lookups.services, pets.items, variant.quote, fareOf],
+  );
 
   /** What this row costs for its animal, zone and choices — or why not. */
   const quoteOf = (line: DraftLine): PriceLookup =>
@@ -504,17 +713,36 @@ export function InvoiceCreateForm() {
   function cardsOf(line: DraftLine) {
     if (line.kind !== "service") return [];
 
-    const cards = variant.cardsFor([serviceOf(line.refId)]);
+    const service = serviceOf(line.refId);
+    const cards = variant.cardsFor([service]);
+    /*
+      ⚠️ "ARAH" IS ANSWERED BY THE DIRECTION, NOT ASKED TWICE. It is an owner's
+      variant option like any other (BO, 21 September 2026), so it carries the
+      price — but a select on the row beside the direction chosen in the
+      journey dialog is two ways to disagree. Same rule as the diary's form and
+      the till's; same helper (`choicesForLeg`, in `fareOf`).
+    */
+    /*
+      ⚠️ KEYED ON THE SERVICE, NOT ON `line.ride` (24 September 2026). Before a
+      journey is filled in the row has no `ride` yet — and that is exactly when
+      the select was still drawn, so an antar-jemput row asked for Arah on the
+      row AND in the dialog. The direction only ever comes from the dialog.
+    */
+    const arah = isRideService(line.refId) ? arahCardOf(service, cards) : null;
+    const asked = arah
+      ? cards.filter((card) => card.axisKey !== arah.card.axisKey)
+      : cards;
+
     const parent = line.parentKey
       ? lines.find((one) => one.key === line.parentKey)
       : undefined;
 
-    if (!parent) return cards;
+    if (!parent) return asked;
 
     const inherited = new Set(
       variant.cardsFor([serviceOf(parent.refId)]).map((card) => card.axisKey),
     );
-    return cards.filter((card) => !inherited.has(card.axisKey));
+    return asked.filter((card) => !inherited.has(card.axisKey));
   }
 
   /** A row's choices changed — and any refusal about them is answered. */
@@ -552,6 +780,8 @@ export function InvoiceCreateForm() {
     .filter((charge) => charge.label !== "" || charge.amount !== "");
 
   const [saving, setSaving] = useState(false);
+  /** The row whose journey is being filled in, by its `key`. */
+  const [rideRow, setRideRow] = useState<string | null>(null);
 
   /**
    * Customers with their phone beside the name — the mockup's picker. Two
@@ -742,7 +972,40 @@ export function InvoiceCreateForm() {
       to be registered first, and "Ada baris jasa yang belum dipilih hewannya"
       in front of an empty dropdown is an instruction nobody can follow.
     */
-    if (lines.some((line) => line.kind === "service" && !line.petId)) {
+    /*
+      ⚠️ AN ANTAR-JEMPUT ROW ANSWERS THIS DIFFERENTLY (24 September 2026). It
+      has no `petId` — one van carries several animals, in `passengers` — and
+      what it is missing is a whole journey, not a dropdown. Asked first, so a
+      ride row is never told to "pilih hewannya" over a cell that has no picker.
+    */
+    const needsJourney = lines.find(
+      (line) =>
+        line.kind === "service" &&
+        !line.parentKey &&
+        isRideService(line.refId) &&
+        (!line.ride || line.passengers.length === 0),
+    );
+
+    if (needsJourney) {
+      return petOptions.length === 0
+        ? "Pelanggan ini belum punya hewan — daftarkan dulu di Master Data."
+        : `Atur perjalanan ${needsJourney.name} dulu — arah, alamat dan hewan yang ikut.`;
+    }
+
+    const unpinnedRide = lines.find((line) => {
+      const ends = endsOf(line);
+      return ends !== null && (!pinOf(ends.origin) || !pinOf(ends.destination));
+    });
+
+    if (unpinnedRide) {
+      return `Alamat ${unpinnedRide.name} belum punya titik lokasi — tarifnya dihitung dari jarak yang ditempuh.`;
+    }
+
+    if (
+      lines.some(
+        (line) => line.kind === "service" && !line.petId && !line.ride,
+      )
+    ) {
       return petOptions.length === 0
         ? "Pelanggan ini belum punya hewan — daftarkan dulu di Master Data."
         : "Ada baris jasa yang belum dipilih hewannya.";
@@ -766,13 +1029,37 @@ export function InvoiceCreateForm() {
       difference between a dead end and a next step.
     */
     const unpriced = lines.find(
-      (line) => line.kind === "service" && line.petId && line.unitPrice === "0",
+      (line) =>
+        line.kind === "service" &&
+        (line.petId || line.ride) &&
+        line.unitPrice === "0",
     );
 
     if (unpriced) {
       const pet = pets.items.find((one) => one._id === unpriced.petId);
       const lookup = quoteOf(unpriced);
       const missing = lookup.missingAxis;
+
+      /*
+        ⚠️ A RIDE'S ZONE IS ITS OWN JOURNEY'S, not the bill's, so `quoteOf`
+        cannot explain it — it measures branch to customer record. Both ends are
+        pinned by the time this is reached (the check above), so what is left is
+        a fare the catalogue has no band for.
+      */
+      if (unpriced.ride) {
+        const zone = (() => {
+          const ends = endsOf(unpriced);
+          const from = ends && pinOf(ends.origin);
+          const to = ends && pinOf(ends.destination);
+          return from && to ? variant.zoneBetween(from, to) : null;
+        })();
+
+        if (zone && !zone.ok) {
+          return `${variant.zoneTextOf(zone)} — tarif '${unpriced.name}' ditentukan dari zona.`;
+        }
+
+        return `'${unpriced.name}' belum punya tarif untuk perjalanan ini. Tambahkan variannya di katalog.`;
+      }
 
       if (missing) {
         return `Lengkapi ${AXIS_LABEL[missing]} ${pet?.name ?? "hewannya"} dulu — harga '${unpriced.name}' ditentukan dari situ.`;
@@ -851,6 +1138,8 @@ export function InvoiceCreateForm() {
             key: nextLineKey(),
             parentKey: null,
             choices: [],
+            ride: null,
+            passengers: [],
           },
         ];
       }
@@ -888,6 +1177,8 @@ export function InvoiceCreateForm() {
         key: nextLineKey(),
         parentKey: null,
         choices: [],
+        ride: null,
+        passengers: [],
       })),
       ...picked.services.map((service) => ({
         kind: "service" as const,
@@ -907,6 +1198,8 @@ export function InvoiceCreateForm() {
         key: nextLineKey(),
         parentKey: null,
         choices: [],
+        ride: null,
+        passengers: [],
       })),
     ];
 
@@ -1044,6 +1337,14 @@ export function InvoiceCreateForm() {
             key: nextLineKey(),
             parentKey,
             choices: [],
+            /*
+              AN ADD-ON RIDES ON ITS SERVICE'S JOURNEY — it carries a copy so
+              its shadow booking lands on the right one, since the server keys a
+              line's booking by the direction too. It is never asked for one of
+              its own.
+            */
+            ride: parent.ride,
+            passengers: parent.passengers,
           },
         ];
       });
@@ -1086,6 +1387,26 @@ export function InvoiceCreateForm() {
           PRODUCT line — `blocking` above stops a service with no pet.
         */
         ...(line.petId ? { petId: line.petId } : {}),
+        /*
+          ─── THE JOURNEY, ON AN ANTAR-JEMPUT ROW ───────────────────────────
+
+          Flat on the wire, nested in the document — the server translates it
+          once. The van goes in `passengerPetIds` rather than `petId`, the same
+          shape the booking it raises keeps its animals in.
+
+          ⚠️ AN ADD-ON SENDS THE JOURNEY TOO, because the server keys a line's
+          shadow booking by the direction — one without it would hang off a
+          booking going the other way — but never its own links.
+        */
+        ...(line.ride
+          ? {
+              passengerPetIds: line.passengers,
+              trip: tripInputOf(line),
+              ...(line.parentKey
+                ? {}
+                : { linkedBookingIds: line.ride.linkedBookingIds }),
+            }
+          : {}),
         /*
           THE ROW'S OWN "DIPILIH STAF" VALUES, only when it has some. An add-on
           that asks nothing of its own inherits its service's on the server.
@@ -1366,6 +1687,61 @@ export function InvoiceCreateForm() {
           />
         )}
 
+        {/*
+          THE JOURNEY OF ONE ROW — direction, two doors, the van and the
+          bookings it serves. Mounted only while a row is being filled in: it
+          asks the customer's diary the moment its switch is turned on, and a
+          permanently mounted one would do that for every bill.
+
+          AN ADD-ON GOES WITH ITS SERVICE, so saving rewrites the children too —
+          they carry a copy of the journey for the server's own booking key.
+        */}
+        {rideRow && (
+          <RideJourneyDialog
+            open
+            serviceName={lines.find((line) => line.key === rideRow)?.name ?? ""}
+            pets={pets.forCustomer === customerId ? pets.items : []}
+            customerId={customerId}
+            customer={customerRecord}
+            branch={branchRecord}
+            value={(() => {
+              const row = lines.find((line) => line.key === rideRow);
+              return row?.ride
+                ? { passengerPetIds: row.passengers, journey: row.ride }
+                : null;
+            })()}
+            perAnimal={
+              serviceOf(lines.find((line) => line.key === rideRow)?.refId ?? "")
+                ?.billingUnit === "per_pet"
+            }
+            alreadyHere={bookingIds}
+            alreadyHereLabel="Sudah ada di faktur ini."
+            busy={saving}
+            onOpenChange={(next) => {
+              if (!next) setRideRow(null);
+            }}
+            onSave={({ passengerPetIds, journey }) => {
+              setLines((current) =>
+                current.map((line) =>
+                  line.key === rideRow || line.parentKey === rideRow
+                    ? {
+                        ...line,
+                        passengers: passengerPetIds,
+                        /* An add-on keeps the journey but never the links —
+                           the fare's multiplier is the main row's. */
+                        ride:
+                          line.parentKey === rideRow
+                            ? { ...journey, linkedBookingIds: [] }
+                            : journey,
+                      }
+                    : line,
+                ),
+              );
+              setRideRow(null);
+            }}
+          />
+        )}
+
         <div className="flex flex-col gap-4">
           {/* Scanned products — by their own barcode or a lot's label — land
               straight on the bill. A counter scanner types into the field, the
@@ -1583,10 +1959,38 @@ export function InvoiceCreateForm() {
                           cards={cardsOf(line)}
                           choices={line.choices}
                           onChange={(next) => setChoices(line.key, next)}
+                          /*
+                            A RIDE'S ZONE IS ITS OWN JOURNEY'S — measured
+                            between the two doors it drives, not between the
+                            branch and the customer's record. The bill's would
+                            be a different distance for a different trip.
+                          */
+                          /*
+                            A RIDE'S ZONE IS ITS OWN JOURNEY'S — measured
+                            between the two doors it drives, not between the
+                            branch and the customer's record.
+
+                            ⚠️ AND NOTHING AT ALL UNTIL THERE IS A JOURNEY. The
+                            bill's zone was drawn there while the row was still
+                            empty, so a ride nobody had routed yet announced
+                            "Koordinat alamat pelanggan belum diisi" — about a
+                            pin its fare will never be measured from.
+                          */
                           zoneText={
-                            variant.needsZone([lineService])
-                              ? variant.zoneText
-                              : null
+                            !variant.needsZone([lineService])
+                              ? null
+                              : isRideService(line.refId)
+                                ? (() => {
+                                    const ends = endsOf(line);
+                                    const from = ends && pinOf(ends.origin);
+                                    const to = ends && pinOf(ends.destination);
+                                    return from && to
+                                      ? variant.zoneTextOf(
+                                          variant.zoneBetween(from, to),
+                                        )
+                                      : null;
+                                  })()
+                                : variant.zoneText
                           }
                           problem={
                             line.petId && !variant.loading
@@ -1631,10 +2035,28 @@ export function InvoiceCreateForm() {
                                   <InvoiceAddonPicker
                                     idPrefix={line.key}
                                     serviceName={line.name}
+                                    /*
+                                      ⚠️ AN ANTAR-JEMPUT ROW HAS NO `petId` —
+                                      its animals are the van's — so who it is
+                                      for is read from the passengers instead.
+                                      Gated on the pet, every ride's add-ons sat
+                                      behind "Pilih hewan dulu" over a cell with
+                                      no pet picker in it.
+                                    */
+                                    whose={whoseRow(line)}
                                     pet={linePet}
+                                    pendingLabel={
+                                      line.ride || isRideService(line.refId)
+                                        ? "Atur perjalanan dulu"
+                                        : "Pilih hewan dulu"
+                                    }
                                     offered={offered}
                                     quoteOf={(addon) =>
-                                      variant.quote(addon, linePet, line.choices)
+                                      /* A van is quoted by where it goes, not
+                                         by an animal — see `fareOf`. */
+                                      line.ride
+                                        ? rideAddonQuote(line, addon)
+                                        : variant.quote(addon, linePet, line.choices)
                                     }
                                     problemOf={variant.problemOf}
                                     tickedIds={lines
@@ -1667,6 +2089,59 @@ export function InvoiceCreateForm() {
                                     missing={lineQuote?.missingAxis ?? null}
                                   />
                                 </>
+                              ) : line.kind === "service" && line.ride !== null ? (
+                                /*
+                                  ─── A JOURNEY, NOT AN ANIMAL ───────────────
+
+                                  An antar-jemput row carries a whole van and
+                                  the two doors it drives between; none of that
+                                  fits in a cell beside a quantity and a price.
+                                  The cell says where it goes and who is in it,
+                                  and the questions live in a dialog.
+
+                                  AN ADD-ON ON A RIDE shows the same summary
+                                  READ-ONLY: it rides on its service's journey
+                                  and has none of its own to change.
+                                */
+                                <RideSummary
+                                  line={line}
+                                  pets={pets.items}
+                                  disabled={saving}
+                                  onEdit={
+                                    line.parentKey
+                                      ? null
+                                      : () => setRideRow(line.key)
+                                  }
+                                />
+                              ) : line.kind === "service" && isRideService(line.refId) ? (
+                                /*
+                                  NOT FILLED IN YET — the row has no price and
+                                  no journey until this is answered.
+
+                                  A DISABLED BUTTON SAYS WHY (24 September
+                                  2026, on request). The animals in the van and
+                                  the bookings it may fetch for are the
+                                  CUSTOMER's, so there is nothing to ask until
+                                  one is named — and a greyed button with no
+                                  sentence beside it is how somebody presses it
+                                  three times.
+                                */
+                                <div className="flex flex-col items-start gap-1">
+                                  <UIButton
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    disabled={saving || !customerId}
+                                    onClick={() => setRideRow(line.key)}
+                                  >
+                                    Atur perjalanan
+                                  </UIButton>
+                                  {!customerId && (
+                                    <span className="text-xs text-muted">
+                                      Pilih pelanggan dulu.
+                                    </span>
+                                  )}
+                                </div>
                               ) : line.kind === "service" ? (
                                 <>
                                   {/*

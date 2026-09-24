@@ -114,7 +114,10 @@ export function GroomingServicesToolbar({
   customRange,
   onApply,
   onReset,
+  noun = "grooming",
 }: {
+  /** The line, in a sentence — "grooming", "antar-jemput". */
+  noun?: string;
   search: string;
   onSearch: (search: string) => void;
   filters: ServiceFilters;
@@ -201,7 +204,7 @@ export function GroomingServicesToolbar({
           value={search}
           onChange={onSearch}
           placeholder="Cari nama atau kode layanan…"
-          ariaLabel="Cari layanan grooming"
+          ariaLabel={`Cari layanan ${noun}`}
           fill
         />
       }

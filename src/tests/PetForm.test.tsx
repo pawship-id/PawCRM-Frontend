@@ -38,8 +38,15 @@ const petFixture = {
   species: "dog" as const,
   sex: "female" as const,
   breed: "domestic" as const,
-  furType: null,
-  size: null,
+  /*
+    ⚠️ BOTH FILLED IN, and that is not incidental detail. Ukuran and Jenis bulu
+    became REQUIRED on 23 September 2026, so a fixture with either blank is a pet
+    the edit screen refuses to save — every test below that submits would fail on
+    two fields it is not about. A pet registered under the current rule has both.
+    The pet that does NOT is its own test.
+  */
+  furType: "short hair" as const,
+  size: "medium" as const,
   birthDate: "2022-03-14T00:00:00.000Z",
   weightKg: 12.4,
   color: null,
@@ -117,6 +124,27 @@ describe("PetForm — registering", () => {
     expect(await screen.findByText(/nama hewan wajib diisi/i)).toBeVisible();
     expect(screen.getByText(/pilih pemiliknya dulu/i)).toBeVisible();
     expect(screen.getByText(/pilih jenis hewannya/i)).toBeVisible();
+    expect(mockedPetService.create).not.toHaveBeenCalled();
+  });
+
+  /*
+    UKURAN AND JENIS BULU ARE ANSWERS, NOT OFFERS (23 September 2026, on request)
+    — a variant-priced grooming is priced BY size and coat, so a pet registered
+    without them cannot be quoted until somebody comes back to this form.
+
+    ⚠️ THE API STILL ACCEPTS NEITHER. The rule is the form's, not the server's:
+    the quick-add dialog with `requireTraits` off legitimately sends null, and
+    tightening `pet.validation.js` would break the till.
+  */
+  it("refuses to submit without a size and a coat, pointing at each", async () => {
+    await renderNew();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /daftarkan hewan/i }),
+    );
+
+    expect(await screen.findByText(/pilih ukurannya/i)).toBeVisible();
+    expect(screen.getByText(/pilih jenis bulunya/i)).toBeVisible();
     expect(mockedPetService.create).not.toHaveBeenCalled();
   });
 
@@ -330,4 +358,111 @@ describe("PetForm — editing", () => {
     );
     expect(push).toHaveBeenCalledWith("/dashboard/master/pets");
   });
+
+  /*
+    ⚠️ THE PHOTO IS THE ONE FIELD SENT AS A DIFF, and this is what stops it being
+    "tidied up" back into the payload with everything else. Two separate failures
+    hide behind that:
+
+      1. THE SAVE WOULD FAIL OUTRIGHT for any pet that has a picture. The API
+         strips the upload's `token` before storing, so the asset a GET returns
+         has none — and `MediaService.assertOwned` refuses an asset without one.
+      2. THE BYTES WOULD BE AT RISK. The API deletes what an update drops, so
+         sending the field on a patch that did not touch it is one dropped
+         connection away from losing the photo.
+  */
+  it("leaves the photo out of a patch that did not touch it", async () => {
+    mockedPetService.getById.mockResolvedValue({
+      ...petFixture,
+      photo: {
+        mediaType: "image",
+        url: "https://cdn.test/full.webp",
+        storageKey: "tenant-1/pet/2026/09/abc.webp",
+        driver: "local",
+        mimeType: "image/webp",
+        thumbUrl: "https://cdn.test/thumb.webp",
+      },
+    } as never);
+
+    render(<PetForm petId={PET_ID} />);
+
+    await screen.findByDisplayValue("Bella");
+    await userEvent.clear(screen.getByLabelText(/nama hewan/i));
+    await userEvent.type(screen.getByLabelText(/nama hewan/i), "Milo");
+    await userEvent.click(screen.getByRole("button", { name: /simpan hewan/i }));
+
+    await waitFor(() => expect(mockedPetService.update).toHaveBeenCalled());
+
+    const [, payload] = mockedPetService.update.mock.calls[0];
+    // Absent, not null — `null` is how a photo is taken OFF, so the two cannot
+    // be conflated here.
+    expect(payload).not.toHaveProperty("photo");
+  });
+
+  /*
+    THE PICTURE SURVIVES A SAVE somebody makes for another reason. The edit
+    screen loads it, so a shop owner who opens a pet to fix its weight sees the
+    photo already there rather than an empty slot that looks like it was lost.
+  */
+  it("loads the stored photo into the field", async () => {
+    mockedPetService.getById.mockResolvedValue({
+      ...petFixture,
+      photo: {
+        mediaType: "image",
+        url: "https://cdn.test/full.webp",
+        storageKey: "tenant-1/pet/2026/09/abc.webp",
+        driver: "local",
+        mimeType: "image/webp",
+        thumbUrl: "https://cdn.test/thumb.webp",
+      },
+    } as never);
+
+    render(<PetForm petId={PET_ID} />);
+
+    await screen.findByDisplayValue("Bella");
+    expect(
+      screen.getByRole("img", { name: "Foto Bella" }),
+    ).toHaveAttribute("src", "https://cdn.test/thumb.webp");
+    // The button says REPLACE rather than choose, which is how the slot shows
+    // it is already filled.
+    expect(
+      screen.getByRole("button", { name: /ganti gambar/i }),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    ⚠️ AN OLDER PET HAS TO ANSWER THEM BEFORE IT CAN BE SAVED. Ukuran and Jenis
+    bulu were optional until 23 September 2026, so a pet registered before that
+    loads with both blank — and somebody opening it to fix a weight is asked for
+    a size and a coat first.
+
+    THAT IS THE RULE DOING WHAT IT WAS ASKED TO DO, not a bug, and it is pinned
+    here so the behaviour is a decision somebody can find rather than a surprise
+    a shop reports. It is also why `PetFixLink` still exists and still points at
+    this form.
+  */
+  it("blocks a pet registered before the rule until its blanks are answered", async () => {
+    mockedPetService.getById.mockResolvedValue({
+      ...petFixture,
+      size: null,
+      furType: null,
+    } as never);
+
+    render(<PetForm petId={PET_ID} />);
+
+    await screen.findByDisplayValue("Bella");
+    await userEvent.click(screen.getByRole("button", { name: /simpan hewan/i }));
+
+    expect(await screen.findByText(/pilih ukurannya/i)).toBeVisible();
+    expect(screen.getByText(/pilih jenis bulunya/i)).toBeVisible();
+    expect(mockedPetService.update).not.toHaveBeenCalled();
+  });
+
+  /*
+    NOT PINNED HERE: that a create omits `photo` when nobody picked one. No test
+    in this suite completes a create — the owner is a dialog-based picker with no
+    harness for it — and standing that up for one `not.toHaveProperty` is more
+    machinery than the assertion is worth. The create path is one spread in
+    `handleSubmit` beside the patch's, which is what these two cover.
+  */
 });

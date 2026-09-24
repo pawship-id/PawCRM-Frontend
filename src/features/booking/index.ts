@@ -19,6 +19,8 @@ export { AddServiceTab } from "./components/AddServiceTab";
 export {
   BookingStatusBadge,
   BOOKING_STATUS_LABELS,
+  RIDE_STATUS_LABELS,
+  bookingStatusLabel,
 } from "./components/BookingStatusBadge";
 export { useBookingBridge } from "./hooks/useBookingBridge";
 
@@ -37,9 +39,11 @@ export {
   canStartWork,
   forwardStatuses,
   hasCompletedWork,
+  hasStarted,
   impliedStatuses,
   ladderFor,
   transitionsFor,
+  bookingStatusAction,
   type BookingLike,
 } from "./statusFlow";
 export { BOOKING_CRUMBS, TODAY_CRUMBS } from "./crumbs";

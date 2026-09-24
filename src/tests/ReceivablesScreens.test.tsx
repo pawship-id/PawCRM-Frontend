@@ -7,6 +7,7 @@ import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { customerService } from "@/services/customer.service";
 import { branchService } from "@/services/branch.service";
 import { paymentChannelService } from "@/services/paymentChannel.service";
+import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { tenantService } from "@/services/tenant.service";
 import { ApiError } from "@/services/api-error";
 import type {
@@ -23,6 +24,7 @@ jest.mock("@/services/customerInvoice.service");
 jest.mock("@/services/customer.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/services/paymentChannel.service");
+jest.mock("@/services/chartOfAccounts.service");
 // The kwitansi's header reads the shop's own details.
 jest.mock("@/services/tenant.service");
 
@@ -71,9 +73,8 @@ const toast = swalToast as jest.MockedFunction<typeof swalToast>;
  *     entries;
  *  5. `pay` is gated separately from `read`, which is the separation of duties
  *     the backend enforces;
- *  6. the channel picker asks for channels that can RECEIVE (`usableFor: "in"`)
- *     — one letter away from the payables form, and the server refuses the
- *     other direction.
+ *  6. the "Masuk ke" picker lists the Kas & Bank accounts of the chart — no
+ *     method, no channel (BO, 22 Sep 2026) — and the payment names the account.
  *
  * The Radix selects are not driven — jsdom cannot do their pointer protocol — so
  * the payment tests rely on the single-channel pre-selection and assert on the
@@ -166,6 +167,23 @@ beforeEach(() => {
     The payment form reads the tenant's INCOMING channels — where the money
     lands. One BCA account, which the form pre-selects.
   */
+  /*
+    The payment form lists the tenant's KAS & BANK ACCOUNTS — where the money
+    lands. One bank account, which the form pre-selects.
+  */
+  asMock(chartOfAccountsService.list).mockResolvedValue(
+    optionPage([
+      {
+        _id: "acc-bca",
+        code: "1102",
+        name: "Bank BCA",
+        accountType: "asset",
+        accountCategory: "cash_bank",
+        isActive: true,
+      },
+    ]),
+  );
+
   asMock(paymentChannelService.list).mockResolvedValue(
     optionPage([
       {
@@ -323,16 +341,47 @@ describe("InvoiceDetail", () => {
 
   /* --- the payment --- */
 
-  it("asks for channels that can RECEIVE, not pay out", async () => {
+  /*
+    NO METODE PICKER AND NO CHANNELS (BO, 22 Sep 2026): outside the till the
+    picker lists the chart's Kas & Bank accounts straight away, and the payment
+    names the account — the method is not sent at all.
+  */
+  it("lists the Kas & Bank accounts and pays into the one picked", async () => {
     const user = userEvent.setup();
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-    await openPaymentDialog(user);
+    asMock(customerInvoiceService.recordPayment).mockResolvedValue(detail());
 
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    const dialog = await openPaymentDialog(user);
+
+    expect(dialog.queryByLabelText("Metode")).not.toBeInTheDocument();
     await waitFor(() =>
-      expect(paymentChannelService.list).toHaveBeenCalledWith(
-        expect.objectContaining({ usableFor: "in" }),
+      expect(chartOfAccountsService.list).toHaveBeenCalledWith(
+        expect.objectContaining({ accountCategory: "cash_bank", isActive: true }),
       ),
     );
+    expect(paymentChannelService.list).not.toHaveBeenCalled();
+
+    await user.type(await screen.findByLabelText("Jumlah diterima"), "50000");
+    await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
+
+    await waitFor(() =>
+      expect(customerInvoiceService.recordPayment).toHaveBeenCalledWith(
+        INVOICE_ID,
+        { amount: "50000", accountId: "acc-bca", at: expect.any(String) },
+      ),
+    );
+  });
+
+  it("says where to add one when the chart has no Kas & Bank account", async () => {
+    const user = userEvent.setup();
+    asMock(chartOfAccountsService.list).mockResolvedValue(optionPage([]));
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    const dialog = await openPaymentDialog(user);
+
+    expect(
+      await dialog.findByText(/Belum ada akun berkategori Kas & Bank/),
+    ).toBeInTheDocument();
   });
 
   it("records a payment and renders the invoice the write returned", async () => {
@@ -381,8 +430,7 @@ describe("InvoiceDetail", () => {
         INVOICE_ID,
         expect.objectContaining({
           amount: "100000",
-          method: "transfer",
-          channelId: "chan-bca",
+          accountId: "acc-bca",
         }),
       ),
     );
@@ -1047,8 +1095,8 @@ describe("InvoiceDetail — the payment dialog", () => {
     whoever edits the form next.
 
     HOW MUCH AND WHEN COME FIRST, because that is what somebody holding a
-    transfer slip reads off it — the method and the account are chosen from what
-    they already know. Putting the pickers first makes them answer "which
+    transfer slip reads off it — the account is chosen from what they already
+    know, and the method comes with it (BO, 22 Sep: no separate Metode picker). Putting the pickers first makes them answer "which
     account" before they have said what they are recording.
   */
   it("asks how much before it asks how", async () => {
@@ -1066,7 +1114,6 @@ describe("InvoiceDetail — the payment dialog", () => {
     expect(order).toEqual([
       "Jumlah diterima",
       "Tanggal terima",
-      "Metode",
       "Masuk ke",
       "No. referensi",
     ]);

@@ -3,11 +3,20 @@
  * that lists services borrows from it.
  *
  * Pages import from here, never from deep component paths. `ServiceForm` backs
- * `/dashboard/master/layanan/new` and `/[id]`. The hub at that prefix belongs to
+ * `/dashboard/pengaturan/layanan/new` and `/[id]`. The hub at that prefix belongs to
  * `features/settings`, and the list is Grooming › Layanan & Harga — there is no
  * catalogue-wide list since 13 September 2026.
  */
 export { ServiceForm } from "./components/ServiceForm";
+export { ServiceFormLink } from "./components/ServiceFormLink";
+export { ServiceKindsField } from "./components/ServiceKindsField";
+export {
+  ADDON_FORM_ORIGIN,
+  clearServiceFormOrigin,
+  readServiceFormOrigin,
+  rememberServiceFormOrigin,
+  type ServiceFormOrigin,
+} from "./formOrigin";
 export {
   ServiceLifecycleDialog,
   type ServiceLifecycleAction,
@@ -30,6 +39,7 @@ export {
   orderedAxes,
   VARIANT_AXES,
   variantAxisDefs,
+  axisDefsForKind,
   variantAxisValues,
   variantComboCount,
   type StoredVariantValues,
@@ -43,7 +53,7 @@ export { useVariantAxisValues } from "./hooks/useVariantAxisValues";
 // customer's zone for the branch, and the "Dipilih staf" selects.
 export { useVariantQuote } from "./hooks/useVariantQuote";
 export { VariantChoicePicker } from "./components/VariantChoicePicker";
-// The one tahapan picker — the line's list plus a quick add — and the word a
+// The one tahapan picker — the tenant's list plus a quick add — and the word a
 // row carries when its name cannot be added again. The form and the grooming
 // detail page's Tahapan card both draw it (14 September 2026).
 export {

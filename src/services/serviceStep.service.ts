@@ -8,10 +8,10 @@ import type {
 } from "@/types/api";
 
 /**
- * Tahapan calls against /api/service-steps — one list per business line.
+ * Tahapan calls against /api/service-steps — ONE LIST PER TENANT (22 Sep 2026).
  *
- * Pickers read `useServiceSteps(businessLineId)` rather than calling this
- * directly: it loads a line's list once and shares it. This service is for that
+ * Pickers read `useServiceSteps()` rather than calling this directly: it loads
+ * the list once and shares it. This service is for that
  * hook, the quick-add on a service's Tahapan card, and the settings screen.
  */
 export const serviceStepService = {
@@ -21,19 +21,18 @@ export const serviceStepService = {
       query: {
         page: query.page,
         limit: query.limit ?? 100,
-        businessLineId: query.businessLineId,
         isActive: query.isActive,
         search: query.search,
         includeDeleted: query.includeDeleted,
       },
     }),
 
-  /** POST /service-steps — 409 when the line already has the name. */
+  /** POST /service-steps — 409 when the list already has the name. */
   create: (input: CreateServiceStepInput) =>
     apiClient.post<ServiceStep>("/service-steps", input),
 
   /**
-   * PATCH /service-steps/:id — a rename also rewrites the line's services;
+   * PATCH /service-steps/:id — a rename also rewrites every service listing it;
    * `renamedServiceCount` says how many.
    */
   update: (id: string, patch: UpdateServiceStepInput) =>

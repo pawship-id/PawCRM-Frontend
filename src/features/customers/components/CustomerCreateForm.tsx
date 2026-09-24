@@ -28,7 +28,7 @@ import { VipTierSelect } from "./VipTierSelect";
 /**
  * Create a customer via POST /customers, then return to the list.
  *
- * Follows the app's hand-rolled form pattern (see BranchCreateForm): local state,
+ * Follows the app's hand-rolled form pattern (see BranchEditForm): local state,
  * client validation as a UX nicety, and ApiError.fieldErrors mapped onto the
  * matching inputs so backend validation (duplicate email, bad phone) surfaces
  * inline. Only the name is required — a walk-in can be recorded with just a name.

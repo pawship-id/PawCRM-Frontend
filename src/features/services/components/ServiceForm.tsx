@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -30,15 +30,28 @@ import type {
   Service,
   ServiceBillingUnit,
   ServiceLocation,
+  ServiceKind,
   ServiceType,
   VariantAxisKey,
   ServiceVariantInput,
 } from "@/types/api";
+import { SERVICE_KIND_LABELS, SERVICE_KINDS } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
 
 import { invalidateVariantOptions } from "@/hooks/useVariantOptions";
 import { useVariantAxisValues } from "../hooks/useVariantAxisValues";
-import { buildVariantCombos, comboKey, MAX_VARIANTS } from "../variantAxes";
+import {
+  axisDefsForKind,
+  buildVariantCombos,
+  comboKey,
+  MAX_VARIANTS,
+} from "../variantAxes";
+import { ServiceKindsField } from "./ServiceKindsField";
+import {
+  clearServiceFormOrigin,
+  readServiceFormOrigin,
+  type ServiceFormOrigin,
+} from "../formOrigin";
 import {
   LOCATION_LABELS,
   ServiceAddonPicker,
@@ -166,20 +179,12 @@ function durationProblem(value: string): string | null {
  */
 export function ServiceForm({
   serviceId,
-  fixedServiceType,
 }: {
   serviceId?: string;
-  /**
-   * A NEW service whose type is already decided — `addon` when opened from
-   * Pengaturan › Layanan › Add-on's "Tambah add-on" (`?jenis=addon`). The
-   * "Jenis layanan" field is then not drawn and the save sends this type.
-   * Ignored when editing: the stored service's own type is loaded and shown.
-   */
-  fixedServiceType?: ServiceType;
 }) {
   const editing = serviceId !== undefined;
   const router = useRouter();
-  // Adding a missing tahapan to the line's list is `services:update`, which a
+  // Adding a missing tahapan to the list is `services:update`, which a
   // role opening this form to CREATE a service may not hold.
   const mayAddSteps = usePermissions().can("services", "update");
 
@@ -198,14 +203,45 @@ export function ServiceForm({
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
+  /* NO DEFAULT, from any module (22 September 2026) — the owner's choice every time. */
   const [businessLineId, setBusinessLineId] = useState("");
   const [image, setImage] = useState<MediaAsset | null>(null);
-  const [serviceType, setServiceType] = useState<ServiceType>(
-    fixedServiceType ?? "main",
-  );
-  const serviceTypeFixed = !editing && fixedServiceType !== undefined;
+  const [serviceType, setServiceType] = useState<ServiceType>("main");
+  /*
+    A NEW ADD-ON, from "Tambah add-on" on Master › Layanan › Add-on — told
+    through the tab, not `?jenis=addon` (22 September 2026). Jenis layanan is
+    then not drawn and the save sends `addon`. An edit shows the stored type.
+  */
+  const [addonFromOrigin, setAddonFromOrigin] = useState(false);
+  /*
+    A NEW SERVICE FROM A MODULE'S "Layanan baru" (22 September 2026, on
+    request): Grooming's is a grooming main service, Antar-Jemput's an
+    antar-jemput one. Both Kelompok layanan and Jenis layanan are then settled
+    and not drawn — the owner only picks the line of business — and the form is
+    titled by the module ("Layanan Grooming baru").
+  */
+  const [kindFromOrigin, setKindFromOrigin] = useState(false);
+  const serviceTypeFixed = !editing && (addonFromOrigin || kindFromOrigin);
   const [durationMin, setDurationMin] = useState("");
   const [billingUnit, setBillingUnit] = useState<ServiceBillingUnit>("per_pet");
+  /*
+    KELOMPOK LAYANAN (22 September 2026) — Grooming, Hotel, Antar-Jemput. Saved
+    on the service, so its Opsi Varian list no longer depends on which page the
+    form was opened from. Only a MAIN service has one; an add-on is shared.
+  */
+  const [serviceKind, setServiceKind] = useState<ServiceKind | "">("");
+  /*
+    WHICH MODULE OPENED THE FORM — left in the tab by `ServiceFormLink`, read
+    once (formOrigin.ts). A ref for the load below, which answers after mount;
+    state for the list a save returns to.
+  */
+  const originRef = useRef<ServiceFormOrigin | null | undefined>(undefined);
+  const [listPath, setListPath] = useState(LIST_PATH);
+  const originOf = () => {
+    if (originRef.current === undefined) originRef.current = readServiceFormOrigin();
+    return originRef.current;
+  };
+  const [kindError, setKindError] = useState<string | null>(null);
   const [description, setDescription] = useState("");
 
   const [hasVariants, setHasVariants] = useState(false);
@@ -241,6 +277,8 @@ export function ServiceForm({
   // Add-on. Defaults are the server's: earns commission, not sold on its own.
   const [commissionable, setCommissionable] = useState(true);
   const [soldSeparately, setSoldSeparately] = useState(false);
+  /* An add-on's "Dipakai di layanan" — empty is every kind (22 September 2026). */
+  const [addonKinds, setAddonKinds] = useState<ServiceKind[]>([]);
   const [isActive, setIsActive] = useState(true);
 
   const [nameError, setNameError] = useState<string | null>(null);
@@ -289,6 +327,33 @@ export function ServiceForm({
         : combos.length > MAX_VARIANTS
           ? `${combos.length} varian, maksimal ${MAX_VARIANTS} per layanan`
           : null;
+
+  /*
+    THE MODULE'S ANSWER, ON MOUNT: the list to return to and — for a new
+    service — its Kelompok layanan and Jenis layanan, settled. An edit takes
+    its kind from the loaded service instead (below), falling back to this.
+  */
+  useEffect(() => {
+    const origin = originOf();
+    if (!origin) return;
+    if ("addon" in origin) {
+      if (!editing) {
+        // The tab is read after mount so the server and first render agree.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setServiceType("addon");
+        setAddonFromOrigin(true);
+      }
+      return;
+    }
+    setListPath(origin.listPath);
+    if (!editing) {
+      setServiceType("main");
+      setServiceKind(origin.serviceKind);
+      setKindFromOrigin(true);
+    }
+    // Read once — `originOf` caches, and `editing` never changes under a form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -384,6 +449,12 @@ export function ServiceForm({
             : String(result.durationMin),
         );
         setBillingUnit(result.billingUnit ?? "per_pet");
+        /* An old service has none — it starts on the module's, for the owner to confirm. */
+        const origin = originOf();
+        setServiceKind(
+          result.serviceKind ??
+            (origin && "serviceKind" in origin ? origin.serviceKind : ""),
+        );
         setDescription(result.description ?? "");
         const axes = result.variantAxes ?? [];
         const storedVariants = result.variants ?? [];
@@ -448,6 +519,7 @@ export function ServiceForm({
         setTaxExempt(result.taxExempt);
         setCommissionable(result.commissionable ?? true);
         setSoldSeparately(result.soldSeparately ?? false);
+        setAddonKinds(result.serviceKinds ?? []);
         setIsActive(result.isActive);
       })
       .catch((error) => {
@@ -470,19 +542,22 @@ export function ServiceForm({
     go looking for the row they came from.
   */
   function goBack() {
-    router.push(editing ? `${LIST_PATH}/${serviceId}` : LIST_PATH);
-  }
-
-  /**
-   * BATAL RETURNS TO WHERE THE FORM WAS OPENED FROM when that is known: an
-   * add-on started from Pengaturan › Layanan › Add-on goes back to that
-   * section, not to the grooming catalogue it never came through.
-   */
-  function cancel() {
-    if (serviceTypeFixed && fixedServiceType === "addon") {
+    /* The form's journey ends here, saved or not — its origin is used up. */
+    clearServiceFormOrigin();
+    /*
+      AN ADD-ON ALWAYS GOES BACK TO MASTER › LAYANAN › ADD-ON, created or
+      edited — it has no page in a module (22 September 2026), and a module's
+      detail path would only send it back here.
+    */
+    if (serviceType === "addon") {
       router.push(serviceSettingsPath("addon"));
       return;
     }
+    router.push(editing ? `${listPath}/${serviceId}` : listPath);
+  }
+
+  /** Batal leaves without saving, to the same place a save goes. */
+  function cancel() {
     goBack();
   }
 
@@ -523,6 +598,10 @@ export function ServiceForm({
     }
     if (!businessLineId) {
       setLineError("Pilih lini bisnisnya dulu.");
+      invalid = true;
+    }
+    if (serviceType === "main" && !serviceKind) {
+      setKindError("Pilih kelompok layanannya dulu.");
       invalid = true;
     }
 
@@ -670,6 +749,8 @@ export function ServiceForm({
       ...(image || editing ? { image } : {}),
       description: description.trim() || null,
       billingUnit,
+      /* An add-on belongs to no one kind; a main service to exactly one. */
+      serviceKind: serviceType === "main" ? serviceKind || null : null,
       hasVariants,
       /*
         EXACTLY ONE HALF OF THE PRICING IS SENT, and the unused half is OMITTED
@@ -702,7 +783,9 @@ export function ServiceForm({
         ONLY FOR AN ADD-ON. A main service sends neither, so saving one never
         writes them; the server would reset them on a main service anyway.
       */
-      ...(serviceType === "addon" ? { commissionable, soldSeparately } : {}),
+      ...(serviceType === "addon"
+        ? { commissionable, soldSeparately, serviceKinds: addonKinds }
+        : {}),
       taxExempt,
     };
 
@@ -727,7 +810,7 @@ export function ServiceForm({
       } else if (error instanceof ApiError && error.status === 400) {
         const detail = error.details?.[0];
         /*
-          A REFUSED TAHAPAN — not on the line's list, retired, or listed twice.
+          A REFUSED TAHAPAN — not on the list, retired, or listed twice.
           The server's sentences are Bahasa and name the tahapan, so they go
           under the field as sent; the list is reloaded because a refusal means
           it changed since this form read it.
@@ -735,7 +818,7 @@ export function ServiceForm({
         const refusal = sessionsRefusal(error);
         if (refusal) {
           setSessionsError(refusal);
-          invalidateServiceSteps(businessLineId);
+          invalidateServiceSteps();
         } else if (detail?.field === "businessLineId") {
           setLineError("Lini bisnis ini tidak ditemukan lagi. Pilih yang lain.");
         } else if (detail?.field === "branchIds") {
@@ -797,9 +880,19 @@ export function ServiceForm({
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
       <FormActionBar
-        title={editing ? "Ubah layanan" : "Layanan baru"}
+        title={
+          editing
+            ? "Ubah layanan"
+            : serviceType === "addon"
+              ? "Add-on baru"
+              : kindFromOrigin && serviceKind
+                ? `Layanan ${SERVICE_KIND_LABELS[serviceKind]} baru`
+                : "Layanan baru"
+        }
         meta={editing ? (service?.name ?? undefined) : undefined}
-        submitLabel={editing ? "Simpan layanan" : "Buat layanan"}
+        submitLabel={
+          editing ? "Simpan layanan" : serviceType === "addon" ? "Buat add-on" : "Buat layanan"
+        }
         submitting={saving}
         disabled={variantBlock !== null}
         blockedReason={variantBlock}
@@ -845,6 +938,57 @@ export function ServiceForm({
             required
           />
 
+          {/*
+            THE ORDER IS THE QUESTIONS' ORDER (22 September 2026, on request):
+            Jenis layanan first — an add-on has no Kelompok layanan — then
+            Kelompok layanan, then Lini bisnis.
+          */}
+          {!serviceTypeFixed && (
+            <SelectField
+              label="Jenis layanan"
+              value={serviceType}
+              onChange={(next) => setServiceType(next as ServiceType)}
+              options={[
+                { value: "main", label: "Layanan utama" },
+                { value: "addon", label: "Add-on" },
+              ]}
+              hint="Layanan utama dipesan langsung. Add-on cuma bisa ditempelkan ke layanan utama."
+              disabled={saving}
+              required
+            />
+          )}
+
+          {/*
+            NOT "Jenis layanan" — that is Layanan utama / Add-on, above. This is
+            which part of the product sells it, and it decides which Opsi Varian
+            cards are offered under Harga & durasi.
+          */}
+          {serviceType === "main" && !kindFromOrigin && (
+            <SelectField
+              label="Kelompok layanan"
+              value={serviceKind}
+              onChange={(next) => {
+                /*
+                  RADIX HANDS BACK "" when the value arrives after mount (the
+                  module's answer, read from the tab) — there is no empty
+                  choice here, so an empty one is never somebody's pick.
+                */
+                if (!next) return;
+                setServiceKind(next as ServiceKind);
+                setKindError(null);
+              }}
+              options={SERVICE_KINDS.map((kind) => ({
+                value: kind,
+                label: SERVICE_KIND_LABELS[kind],
+              }))}
+              placeholder="Pilih kelompok layanan"
+              hint="Menentukan opsi varian yang ditawarkan di bagian harga."
+              error={kindError ?? undefined}
+              disabled={saving}
+              required
+            />
+          )}
+
           <div className="flex flex-col gap-1.5">
             <FilterSelect
               layout="form"
@@ -867,21 +1011,6 @@ export function ServiceForm({
               Menentukan laba-rugi lini mana yang mencatat penjualan ini.
             </p>
           </div>
-
-          {!serviceTypeFixed && (
-            <SelectField
-              label="Jenis layanan"
-              value={serviceType}
-              onChange={(next) => setServiceType(next as ServiceType)}
-              options={[
-                { value: "main", label: "Layanan utama" },
-                { value: "addon", label: "Add-on" },
-              ]}
-              hint="Layanan utama dipesan langsung. Add-on cuma bisa ditempelkan ke layanan utama."
-              disabled={saving}
-              required
-            />
-          )}
 
           <ImageField
             value={image}
@@ -944,7 +1073,17 @@ export function ServiceForm({
           {hasVariants ? (
             <ServiceVariantEditor
               axes={variantAxes}
-              axisDefs={axisDefs}
+              /*
+                ONLY THIS KIND'S OPTIONS (22 September 2026): Ukuran for a
+                grooming, Zona and Arah for a ride — plus whatever is ticked.
+              */
+              axisDefs={axisDefsForKind(
+                axisDefs,
+                serviceType === "main" ? serviceKind || null : null,
+                variantAxes,
+              )}
+              kindName={serviceKind ? SERVICE_KIND_LABELS[serviceKind] : null}
+              onReloadOptions={invalidateVariantOptions}
               prices={variantPrices}
               durations={variantDurations}
               active={variantActive}
@@ -1014,15 +1153,9 @@ export function ServiceForm({
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
             <ServiceStepsField
-              businessLineId={businessLineId}
               sessions={sessions}
-              // The server keeps what this service stored on this same line,
-              // retired or not; a moved service keeps nothing for free.
-              kept={
-                service && businessLineId === service.businessLineId
-                  ? (service.sessions ?? [])
-                  : []
-              }
+              // The server keeps what this service stored, retired or not.
+              kept={service?.sessions ?? []}
               maxItems={MAX_SESSIONS}
               mayAddToList={mayAddSteps}
               error={sessionsError ?? undefined}
@@ -1145,7 +1278,19 @@ export function ServiceForm({
           description="Layanan tambahan yang bisa dicentang bareng layanan ini di kasir."
         >
           <ServiceAddonPicker
-            addons={addons.filter((addon) => addon._id !== serviceId)}
+            /*
+              ONLY THIS KIND'S ADD-ONS (22 September 2026) — the ones for every
+              kind, the ones naming this Kelompok layanan, and whatever is
+              already ticked. No kind chosen yet: all of them.
+            */
+            addons={addons.filter(
+              (addon) =>
+                addon._id !== serviceId &&
+                (addonServiceIds.includes(addon._id) ||
+                  !serviceKind ||
+                  (addon.serviceKinds ?? []).length === 0 ||
+                  (addon.serviceKinds ?? []).includes(serviceKind)),
+            )}
             loading={addonsLoading}
             loadError={addonsError}
             selected={addonServiceIds}
@@ -1162,7 +1307,7 @@ export function ServiceForm({
       {serviceType === "addon" && (
         <Card
           title="Pengaturan add-on"
-          description="Berlaku untuk add-on ini saja. Nilai komisinya diatur sekali di Grooming › Pengaturan › Komisi."
+          description="Berlaku untuk add-on ini saja. Nilai komisinya diatur sekali di setiap modul layanan."
         >
           <div className="flex flex-col gap-4">
             <div className="flex items-start justify-between gap-4">
@@ -1192,6 +1337,15 @@ export function ServiceForm({
                 id="service-sold-separately"
                 checked={soldSeparately}
                 onCheckedChange={setSoldSeparately}
+                disabled={saving}
+              />
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <ServiceKindsField
+                what="Add-on"
+                value={addonKinds}
+                onChange={setAddonKinds}
                 disabled={saving}
               />
             </div>

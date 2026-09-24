@@ -158,6 +158,31 @@
   --chart-net: var(--orange-600);
 
   /*
+   * CATEGORICAL SERIES — one per lini bisnis on Keuangan › Ringkasan's stacked
+   * "Pendapatan 7 hari per lini bisnis" (22 September 2026).
+   *
+   * FIXED ORDER, NEVER CYCLED. Slot n belongs to the tenant's n-th business line
+   * (the order /business-lines returns), so a line keeps its colour whatever the
+   * filter or the week — colour follows the entity, never its rank. A sixth line
+   * does not get a generated hue; it folds into --chart-other with the
+   * unattributed bucket.
+   *
+   * The first two are the gross/net steps above, so the product still has one
+   * navy and one orange mark. Validated as an adjacent-pair palette with the
+   * dataviz validator: lightness band, chroma floor, CVD ΔE ≥ 10.9 (deutan),
+   * normal-vision ΔE ≥ 22.5 — all PASS. Slots 2, 3 and 5 are under 3:1 on
+   * white, which is why the chart always carries a legend and a table view.
+   * Re-run the validator before changing any value or the order.
+   */
+  --chart-line-1: var(--navy-600);
+  --chart-line-2: var(--orange-600);
+  --chart-line-3: #1baf7a;
+  --chart-line-4: #4a3aa7;
+  --chart-line-5: #e87ba4;
+  /* "Lainnya" — neutral on purpose: it is a remainder, not an identity. */
+  --chart-other: #a3adbf;
+
+  /*
    * MARKETING SURFACE. The deepest navy, used as a ground rather than as ink —
    * today only by the landing page's footer at `/`. It has its own name because
    * §3 asks components for a semantic token, and "the darkest thing on the page"
@@ -284,6 +309,12 @@
   /* Chart series — see :root above. */
   --color-chart-gross: var(--chart-gross);
   --color-chart-net: var(--chart-net);
+  --color-chart-line-1: var(--chart-line-1);
+  --color-chart-line-2: var(--chart-line-2);
+  --color-chart-line-3: var(--chart-line-3);
+  --color-chart-line-4: var(--chart-line-4);
+  --color-chart-line-5: var(--chart-line-5);
+  --color-chart-other: var(--chart-other);
 
   /* shadcn/ui token bindings (see :root above). */
   --color-card: var(--card);

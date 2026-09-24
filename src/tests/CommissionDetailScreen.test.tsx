@@ -125,6 +125,53 @@ describe("CommissionDetailScreen", () => {
     );
   });
 
+  it("says an add-on paid to one tahapan whole, in its line and that tahapan's formula (22 September 2026)", async () => {
+    reports.commissionDetail.mockResolvedValue(
+      detail({
+        pool: {
+          serviceName: "Basic Grooming",
+          rateType: "percentage",
+          rateValue: 20,
+          service: "24000.0000",
+          addon: "2000.0000",
+          addons: [
+            {
+              name: "Extra Handling",
+              sessionNames: ["Potong & Styling"],
+              price: "20000.0000",
+              rateType: "percentage",
+              rateValue: 10,
+              commission: "2000.0000",
+            },
+          ],
+          total: "26000.0000",
+          shared: "24000.0000",
+        },
+        stages: [
+          {
+            recordId: "cr-2",
+            sessionName: "Potong & Styling",
+            sharePercent: 60,
+            crewSize: 1,
+            crewSharePercent: 100,
+            stagePool: "16400.0000",
+            directAddon: "2000.0000",
+            rateType: "percentage",
+            rateValue: 20,
+            amount: "16400.0000",
+            status: "pending",
+          },
+        ],
+      }),
+    );
+    open();
+
+    expect(
+      await screen.findByText("Add-on · untuk tahapan Potong & Styling"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Rp 24.000 × 60% + Rp 2.000 add-on")).toBeInTheDocument();
+  });
+
   it("wants a reason before saving a figure that differs from the computed one", async () => {
     open();
     await screen.findByText("Potong & Styling");

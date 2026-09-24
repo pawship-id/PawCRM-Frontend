@@ -13,38 +13,30 @@ import type { ComponentType, SVGProps } from "react";
 import {
   ArrowRightLeft,
   Bed,
-  BookOpen,
   Boxes,
-  Building2,
   Calculator,
   CalendarDays,
   Car,
   ChartColumn,
   ClipboardList,
-  CreditCard,
-  FileClock,
   House,
   Package,
   PackagePlus,
   PawPrint,
-  Rocket,
   Scissors,
   ScrollText,
   Settings,
-  Shield,
   ShoppingCart,
   Truck,
-  UserCog,
   Users,
-  Warehouse,
   Wallet,
-  Wrench,
 } from "lucide-react";
 import type {
   Action,
   Feature,
   PermissionRequirement,
 } from "@/features/permissions";
+import { SETTINGS_ROOT, SETTINGS_TABS } from "@/features/settings/paths";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
@@ -166,15 +158,9 @@ export interface NavSection {
  * the group collapsed back into the single row the mockup asks for. It is the
  * worked example the other three follow.
  *
- * Pengaturan is the same bargain: the mockup gives it five hub pages of cards,
- * which is page work rather than chrome. THREE OF THE FIVE EXIST NOW — Umum and
- * Layanan (hubs of cards) and Data Awal (the opening-figures checklist) — and
- * the group still carries the old Master Data children beside them, relabelled
- * into Indonesian per §12, because the other two hubs are not built and those
- * routes would otherwise be reachable only by URL. Layanan's row did not move:
- * the hub took its address, and the catalogue-wide list it used to open is gone
- * — services are listed on Layanan › Grooming › Layanan & Harga. Cabang and
- * Gudang are the rows that leave when the rest arrive.
+ * PENGATURAN MADE IT TOO (22 September 2026): four tabs — Umum, Layanan,
+ * Keuangan, Pengguna & Sistem — and every page under /dashboard/pengaturan, so
+ * the ten-child group it used to be is one row again.
  */
 export const NAV_SECTIONS: NavSection[] = [
   {
@@ -484,12 +470,11 @@ export const NAV_SECTIONS: NavSection[] = [
          * Komisi, Daftar Akun, Jurnal (see AccountingModuleHeader).
          *
          * THREE OF THE SEVEN OLD ROWS ARE NOT TABS, and their screens are NOT
-         * deleted: Lini Bisnis, Laba Rugi and Arus Kas keep their routes and
-         * move to the module's landing page as cards (FinanceDashboardScreen's
-         * ModuleLinks), which is the Ringkasan tab. In the mockup the first
-         * belongs to `Pengaturan › Keuangan` and the other two to `Laporan`;
-         * neither home is built, so the hub holds them until one is. Daftar Akun
-         * was among them until it became a tab on 12 September 2026.
+         * deleted. Laba Rugi, Neraca and Arus Kas are cards in the Laporan hub
+         * (ReportsHub) since 22 September 2026, when the v3 mockup took the link
+         * cards off Ringkasan. Lini Bisnis is reached from Ringkasan's "Laba per
+         * lini bisnis" panel ("Kelola lini bisnis"); the mockup files it under
+         * `Pengaturan › Keuangan`, which is not built yet.
          *
          * NO `match` NEEDED. Komisi moved to /dashboard/keuangan/komisi, inside
          * this href's own prefix; its old address under /dashboard/reports
@@ -538,91 +523,34 @@ export const NAV_SECTIONS: NavSection[] = [
     label: "Sistem",
     items: [
       {
+        /**
+         * ONE ROW SINCE 22 SEPTEMBER 2026, as the mockup draws it
+         * (`buloo-navigation-v3`): its screen carries four tabs — Umum, Layanan,
+         * Keuangan, Pengguna & Sistem — and every page they open lives under
+         * /dashboard/pengaturan, so prefix-matching `href`'s parent keeps the
+         * row lit on all of them. It used to be a group of ten children, which
+         * is what the tabs replaced.
+         *
+         * `permissionAny`, NOT `permission`: the href is Umum, an ungated page
+         * whose sections gate themselves, so the row may show for anybody
+         * holding at least one grant a Pengaturan page reads. A role holding
+         * none of them — the old group's rule — still gets no row.
+         */
         label: "Pengaturan",
+        href: SETTINGS_TABS.umum,
         icon: Settings,
-        children: [
-          { label: "Umum", href: "/dashboard/pengaturan/umum", icon: Wrench },
-          {
-            /**
-             * MOVED HERE FROM KEUANGAN on 20 September 2026, on request and per
-             * the BO mockup, which files the chart of accounts under Pengaturan.
-             *
-             * It belongs with the setup screens rather than with the reports: a
-             * chart of accounts is configured once and then referred to, which
-             * is what every other row in this group is. The old address
-             * redirects, and Keuangan › Ringkasan still carries a card to it for
-             * anybody who reads the module top to bottom.
-             */
-            label: "Daftar Akun",
-            href: "/dashboard/pengaturan/daftar-akun",
-            icon: BookOpen,
-            permission: { feature: "chartOfAccounts", action: "read" },
-          },
-          {
-            /**
-             * MOVED HERE FROM KEUANGAN › KAS & BANK on 20 September 2026, on
-             * request — and placed directly under Daftar Akun, because that is
-             * the pair: a channel is a named place money arrives, and the row
-             * above is the account it lands in. Nobody edits one without
-             * looking at the other.
-             *
-             * Kas & Bank kept the question it is named for and answers it per
-             * account now, so the two screens no longer overlap. The old
-             * addresses redirect.
-             */
-            label: "Channel Pembayaran",
-            href: "/dashboard/pengaturan/channel-pembayaran",
-            icon: CreditCard,
-            permission: { feature: "paymentChannels", action: "read" },
-          },
-          {
-            // Beside the customer register rather than under Inventori → Produk,
-            // because the split is about who edits: the groomer who prices a
-            // bath is not the person pricing sacks of feed, and the RBAC
-            // catalogue makes the same split.
-            label: "Layanan",
-            href: "/dashboard/master/layanan",
-            icon: Scissors,
-            permission: { feature: "services", action: "read" },
-          },
-          {
-            label: "Pengguna",
-            href: "/dashboard/master/users",
-            icon: UserCog,
-            permission: { feature: "users", action: "read" },
-          },
-          {
-            label: "Peran",
-            href: "/dashboard/master/roles",
-            icon: Shield,
-            permission: { feature: "roles", action: "read" },
-          },
-          {
-            label: "Cabang",
-            href: "/dashboard/master/branches",
-            icon: Building2,
-            permission: { feature: "branches", action: "read" },
-          },
-          {
-            // Directly under Cabang: a warehouse is its sibling, not its child —
-            // stock location vs. bookkeeping unit — and the pair is read
-            // together.
-            label: "Gudang",
-            href: "/dashboard/master/warehouses",
-            icon: Warehouse,
-            permission: { feature: "warehouses", action: "read" },
-          },
-          {
-            label: "Riwayat Perubahan",
-            href: "/dashboard/master/audit-logs",
-            icon: FileClock,
-            permission: { feature: "auditLogs", action: "read" },
-          },
-          {
-            label: "Data Awal",
-            href: "/dashboard/pengaturan/data-awal",
-            icon: Rocket,
-          },
+        match: [SETTINGS_ROOT],
+        permissionAny: [
+          { feature: "tenants", action: "read" },
+          { feature: "branches", action: "read" },
+          { feature: "warehouses", action: "read" },
+          { feature: "services", action: "read" },
+          { feature: "chartOfAccounts", action: "read" },
+          { feature: "paymentChannels", action: "read" },
+          { feature: "businessLines", action: "read" },
+          { feature: "users", action: "read" },
+          { feature: "roles", action: "read" },
+          { feature: "auditLogs", action: "read" },
         ],
       },
     ],

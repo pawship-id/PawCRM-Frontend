@@ -1,13 +1,14 @@
 "use client";
 
 import { Alert, Spinner, Pagination } from "@/components";
+import { SettingsPageHeader } from "@/features/settings/components/SettingsHeader";
 
 import { useRoles } from "../hooks/useRoles";
 import { RolesToolbar } from "./RolesToolbar";
 import { RolesTable } from "./RolesTable";
 
 /**
- * The Master Data → Roles list screen. Owns the list query (useRoles) and wires
+ * Pengaturan › Peran, the roles list screen. Owns the list query (useRoles) and wires
  * the toolbar, table and pager together. Row mutations call `refetch` so the
  * list reflects the change. Mirrors UsersScreen.
  */
@@ -17,12 +18,11 @@ export function RolesScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Roles</h1>
-        <p className="mt-1 text-sm text-muted">
-          Define roles and the permissions attached to them.
-        </p>
-      </div>
+      <SettingsPageHeader
+        tab="sistem"
+        title="Peran"
+        description="Fitur apa yang boleh dibuka tiap peran. Cabang mana yang terlihat diatur terpisah, di Akses cabang."
+      />
 
       <RolesToolbar query={query} onChange={setQuery} />
 

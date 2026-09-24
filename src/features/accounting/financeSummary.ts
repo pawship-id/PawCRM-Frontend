@@ -1,5 +1,9 @@
 import type { DatePreset } from "@/components";
-import type { AccountBalance, JournalSummary } from "@/services/journalEntry.service";
+import type {
+  ProfitLossResult,
+  ProfitLossRow,
+} from "@/services/journalEntry.service";
+import type { AccountCategory } from "@/types/accounting";
 import { toDecimalString, toMinor } from "@/utils/decimal";
 
 /**
@@ -123,66 +127,199 @@ export function formatPercent(value: number | null): string {
   }).format(value)}%`;
 }
 
-/* ------------------------------------------------------------------- cash */
+/* ------------------------------------------------------------- P&L reading */
 
-/**
- * The cash and bank position — the sum of the balances the API returned.
- *
- * Summed here rather than asked for, because `/balances` answers per account and
- * the card wants one number; adding two decimal strings in BigInt is exact and
- * the alternative would be an endpoint that returns a total nobody can check.
- */
-export function cashPosition(accounts: AccountBalance[]): string {
-  return toDecimalString(
-    accounts.reduce((total, account) => total + minor(account.balance), 0n),
+/*
+  RINGKASAN READS THE LABA RUGI, NOT `/summary` (22 September 2026). The v3
+  mockup asks for HPP and biaya per lini and for the largest expense accounts,
+  and `/summary` folds by account CLASS — HPP and biaya are both `expense` there.
+  `/profit-loss` is BO's own statement, already split by category and by line,
+  so every figure below is read off one response the Laba Rugi screen also
+  renders. The two screens cannot disagree about a period because they are the
+  same answer.
+*/
+
+/** A category's row, or zeros when the response somehow lacks it. */
+function categoryRow(
+  result: ProfitLossResult,
+  category: AccountCategory,
+): ProfitLossRow {
+  return (
+    result.categories.find((row) => row.accountCategory === category) ?? {
+      lines: [],
+      total: "0",
+    }
   );
 }
 
-/**
- * One account's balance out of a trial balance, by code — `"0"` when it has none.
- *
- * ABSENT AND ZERO ARE THE SAME ANSWER HERE, deliberately, and this is the one
- * place that is true: `/balances` omits an account with no postings at all, and
- * "nobody has ever been owed commission" and "everybody has been paid" are both
- * honestly rendered as Rp 0 on the card. It would NOT be true of a figure whose
- * absence meant a failed request — that is what the hook's `error` is for.
- */
-export function balanceOf(accounts: AccountBalance[], code: string): string {
-  const account = accounts.find((item) => item.code === code);
-  return account ? account.balance : "0";
+/** One line's cell of a row — `"0"` when the line did not move there. */
+function cellOf(row: ProfitLossRow, businessLineId: string | null): string {
+  return (
+    row.lines.find((cell) => cell.businessLineId === businessLineId)?.amount ??
+    "0"
+  );
 }
 
-/* ------------------------------------------------------------- P&L reading */
+export interface ProfitLossHeadline {
+  /**
+   * Pendapatan at list price — every income account that grew, BEFORE the
+   * contra accounts (4191 Diskon, 4192 Retur) take their share.
+   *
+   * NOT AN ESTIMATE, unlike the mockup's flat 11%. Those two accounts carry a
+   * debit balance inside the pendapatan category, so the accounts with a
+   * negative total are exactly the deductions, and the ones with a positive
+   * total are the gross.
+   */
+  grossRevenue: string;
+  /** Diskon + retur, as a positive figure. */
+  deductions: string;
+  /** The pendapatan category — what the laba rugi calls revenue. */
+  netRevenue: string;
+  hpp: string;
+  grossProfit: string;
+  /** The `biaya` category — operating costs. */
+  operatingExpense: string;
+  /** Pendapatan lainnya − biaya lainnya. Usually zero, and hidden when it is. */
+  otherNet: string;
+  netProfit: string;
+  /** Net profit ÷ net revenue. Null when nothing was sold. */
+  marginPct: number | null;
+}
 
-export interface LineFigures {
+/** The consolidated column of the laba rugi, read as the Ringkasan cards. */
+export function profitLossHeadline(result: ProfitLossResult): ProfitLossHeadline {
+  let gross = 0n;
+  let deductions = 0n;
+
+  for (const account of result.accounts) {
+    if (account.accountCategory !== "pendapatan") continue;
+    const total = minor(account.total);
+    if (total >= 0n) gross += total;
+    else deductions -= total;
+  }
+
+  const netRevenue = categoryRow(result, "pendapatan").total;
+  const netProfit = result.results.netProfit.total;
+
+  return {
+    grossRevenue: toDecimalString(gross),
+    deductions: toDecimalString(deductions),
+    netRevenue,
+    hpp: categoryRow(result, "hpp").total,
+    grossProfit: result.results.grossProfit.total,
+    operatingExpense: categoryRow(result, "biaya").total,
+    otherNet: toDecimalString(
+      minor(categoryRow(result, "pendapatan_lainnya").total) -
+        minor(categoryRow(result, "biaya_lainnya").total),
+    ),
+    netProfit,
+    marginPct: marginPct(netProfit, netRevenue),
+  };
+}
+
+export interface LineProfit {
   businessLineId: string | null;
   label: string;
   revenue: string;
-  expense: string;
+  hpp: string;
+  /**
+   * EVERYTHING BETWEEN LABA KOTOR AND LABA BERSIH — biaya, plus biaya lainnya,
+   * minus pendapatan lainnya. Derived as `revenue − hpp − net` so the row always
+   * reads across: a Biaya column of `biaya` alone would leave a line with other
+   * income whose four figures do not add up, and nobody trusts a table that
+   * does not add up.
+   */
+  cost: string;
   net: string;
-  /** Net ÷ revenue as a percentage. Null when the line booked no revenue. */
-  netMarginPct: number | null;
+  /** Net ÷ revenue. Null for a line that sold nothing, the shared bucket above all. */
+  marginPct: number | null;
 }
 
 /**
- * The summary's per-line rows, labelled and with their margins worked out.
+ * The laba rugi's columns as rows — "Laba per lini bisnis".
  *
- * The arithmetic that is left — a percentage — is display arithmetic, and doing
- * it here rather than on the server is what keeps `/summary` a statement of
- * fact rather than of presentation.
+ * THINNEST MARGIN FIRST, as the mockup orders it: the line that needs looking
+ * at leads. A line with no revenue has no margin to rank, so it — and the
+ * unattributed bucket, which never has any — sorts after every line that does.
  */
-export function lineFigures(
-  summary: JournalSummary,
+export function lineProfits(
+  result: ProfitLossResult,
   names: Map<string, string>,
-): LineFigures[] {
-  return summary.byBusinessLine.map((row) => ({
-    businessLineId: row.businessLineId,
-    label: lineLabel(row.businessLineId, names),
-    revenue: row.revenue,
-    expense: row.expense,
-    net: row.net,
-    netMarginPct: marginPct(row.net, row.revenue),
-  }));
+): LineProfit[] {
+  const revenue = categoryRow(result, "pendapatan");
+  const hpp = categoryRow(result, "hpp");
+  const net = result.results.netProfit;
+
+  return net.lines
+    .map((cell) => {
+      const id = cell.businessLineId;
+      const lineRevenue = cellOf(revenue, id);
+      const lineHpp = cellOf(hpp, id);
+      return {
+        businessLineId: id,
+        label: lineLabel(id, names),
+        revenue: lineRevenue,
+        hpp: lineHpp,
+        cost: toDecimalString(
+          minor(lineRevenue) - minor(lineHpp) - minor(cell.amount),
+        ),
+        net: cell.amount,
+        marginPct: marginPct(cell.amount, lineRevenue),
+      };
+    })
+    .sort((a, b) => {
+      if (a.marginPct === null) return b.marginPct === null ? 0 : 1;
+      if (b.marginPct === null) return -1;
+      return a.marginPct - b.marginPct;
+    });
+}
+
+export interface ExpenseShare {
+  accountId: string;
+  code: string;
+  name: string;
+  amount: string;
+  /** Share of every expense account's total, 0–100. */
+  sharePct: number;
+}
+
+/** How many accounts "Beban terbesar" lists before it stops. */
+export const TOP_EXPENSES = 5;
+
+/**
+ * The expense accounts that cost the most — "Beban terbesar periode ini".
+ *
+ * BIAYA AND BIAYA LAINNYA, NOT HPP. HPP is what the goods cost and moves with
+ * sales; the question here is where the running costs go, which is what the
+ * mockup lists (Gaji, Sewa, Utilitas). An account whose total is zero or
+ * negative — a refund that outweighed the spend — is not a cost to rank.
+ */
+export function largestExpenses(
+  result: ProfitLossResult,
+  limit: number = TOP_EXPENSES,
+): ExpenseShare[] {
+  const costs = result.accounts.filter(
+    (account) =>
+      (account.accountCategory === "biaya" ||
+        account.accountCategory === "biaya_lainnya") &&
+      minor(account.total) > 0n,
+  );
+  const whole = costs.reduce((sum, account) => sum + minor(account.total), 0n);
+
+  return costs
+    .sort((a, b) => {
+      const left = minor(a.total);
+      const right = minor(b.total);
+      return right > left ? 1 : right < left ? -1 : 0;
+    })
+    .slice(0, limit)
+    .map((account) => ({
+      accountId: account.accountId,
+      code: account.code,
+      name: account.name,
+      amount: account.total,
+      sharePct: marginPct(account.total, toDecimalString(whole)) ?? 0,
+    }));
 }
 
 /* --------------------------------------------------------------- periods */
@@ -258,6 +395,75 @@ export function isoDate(date: Date): string {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * The period a Ringkasan card compares itself against — "vs periode sebelumnya".
+ *
+ * NULL UNLESS BOTH ENDS ARE SET. "Semua" has no before, and a range open at
+ * one end has no length to repeat; a delta against either would be invented.
+ *
+ * A WHOLE CALENDAR MONTH COMPARES TO THE WHOLE MONTH BEFORE IT, not to the
+ * same number of days: "Bulan ini" in September is 30 days, and the 30 days
+ * before it are 2–31 August — a comparison that quietly drops the 1st. Any
+ * other range repeats its own length immediately before it, so "7 hari" is
+ * compared with the seven days that preceded them.
+ *
+ * Calendar-date arithmetic in UTC, because these are dates rather than
+ * instants and a local-time `Date` crossing a DST change would lose an hour
+ * and, at midnight, a day.
+ */
+export function previousPeriod(dateFrom: string, dateTo: string): Period | null {
+  if (!dateFrom || !dateTo) return null;
+
+  const parse = (iso: string) => {
+    const [year, month, day] = iso.slice(0, 10).split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, day));
+  };
+  const format = (date: Date) => date.toISOString().slice(0, 10);
+
+  const from = parse(dateFrom);
+  const to = parse(dateTo);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to < from) {
+    return null;
+  }
+
+  const lastOfMonth = new Date(
+    Date.UTC(to.getUTCFullYear(), to.getUTCMonth() + 1, 0),
+  );
+  const wholeMonth =
+    from.getUTCDate() === 1 &&
+    from.getUTCFullYear() === to.getUTCFullYear() &&
+    from.getUTCMonth() === to.getUTCMonth() &&
+    to.getUTCDate() === lastOfMonth.getUTCDate();
+
+  if (wholeMonth) {
+    const month = from.getUTCMonth() === 0 ? 12 : from.getUTCMonth();
+    const year =
+      from.getUTCMonth() === 0 ? from.getUTCFullYear() - 1 : from.getUTCFullYear();
+    return monthRange(year, month);
+  }
+
+  const DAY = 86_400_000;
+  const length = Math.round((to.getTime() - from.getTime()) / DAY) + 1;
+  const prevTo = new Date(from.getTime() - DAY);
+  const prevFrom = new Date(prevTo.getTime() - (length - 1) * DAY);
+  return { dateFrom: format(prevFrom), dateTo: format(prevTo) };
+}
+
+/**
+ * How far `current` moved from `previous`, as a percentage of the previous
+ * figure's SIZE — so a loss that shrank reads as an improvement, not as a
+ * negative change of a negative number.
+ *
+ * NULL WHEN THE PREVIOUS PERIOD WAS ZERO: growth from nothing is not a
+ * percentage, and "∞%" or "+100%" would both be a number nobody can use.
+ */
+export function changePct(current: string, previous: string): number | null {
+  const before = minor(previous);
+  if (before === 0n) return null;
+  const size = before < 0n ? -before : before;
+  return Number(((minor(current) - before) * 1000n) / size) / 10;
 }
 
 /** How many days the Ringkasan tab's trend chart draws. */

@@ -64,6 +64,8 @@ Colour tokens available: `background`, `foreground`, `surface`, `surface-hover`,
 
 **`chart-gross` and `chart-net` are for chart MARKS and nothing else** — two series that have to stay tellable apart, added for the Keuangan trend chart. They are deliberately not `primary` and `secondary`: those two carry meaning (navy is the working colour, orange means a human must act), and a line on a chart means neither. They are also one step off the brand values because the brand values fail a categorical palette's checks — `navy-700` is too dark and too grey to be a mark, `orange-500` is 2.27:1 on white. Do not use them for text, fills, or anything that is not a data mark, and re-run the validator before changing either. Rationale in `globals.css`.
 
+**`chart-line-1` … `chart-line-5` and `chart-other` are the categorical series** (22 September 2026), for Ringkasan's stacked "Pendapatan 7 hari per lini bisnis". Slot n belongs to the tenant's n-th business line — colour follows the lini, never its rank — and a sixth line folds into `chart-other` rather than getting a generated hue. Same restriction: data marks only. Three of the five are under 3:1 on white, so any chart using them carries a legend and a table view. Validated order and numbers in `globals.css`.
+
 **Raw scale steps (`navy-700`, `orange-500`, …) are for composing tokens in `globals.css`, not for components.** In a component, reach for the semantic name. The one sanctioned exception is `bg-navy-100` for a selected row, because "selected" has no better semantic name yet.
 
 ---
@@ -417,9 +419,27 @@ is the translation step this exception exists to remove.
 
 **It stops at the control.** The confirm dialog behind those rows, its implied-rungs warning,
 the cancel-reason field, the reschedule dialog's fields, the history dialog's BODY ("Sistem",
-"otomatis", Tutup) and every toast stay in Bahasa — those are sentences. Two maps are covered, both in `features/booking/`:
-`BOOKING_STATUS_LABELS` (`components/BookingStatusBadge.tsx`) and `BOOKING_STATUS_ACTIONS`
+"otomatis", Tutup) and every toast stay in Bahasa — those are sentences. **Four maps are covered**,
+all in `features/booking/`: `BOOKING_STATUS_LABELS` and `RIDE_STATUS_LABELS`
+(`components/BookingStatusBadge.tsx`), `BOOKING_STATUS_ACTIONS` and `RIDE_STATUS_ACTIONS`
 (`statusFlow.ts`). A status word anywhere else is still Bahasa unless it is added here.
+
+**A VAN SAYS TWO OF THEM DIFFERENTLY: `On the Way` and `Arrived`.** Added 23 September 2026
+on the shop's request, with the mockup — an antar-jemput booking shows four rungs, Draft ·
+Confirmed · On the Way · Arrived, and only the last two leave the ordinary words.
+
+This is **the one place a status label stops matching its stored value**, which the rule above
+otherwise leans on. It is worth breaking here and nowhere else: `in_progress` on a journey names
+nothing a driver recognises, and `completed` reads as work finished rather than a van that got
+somewhere. Underneath they are still `in_progress` and `completed` — same rungs, same tints, same
+billing — so an export and a badge still describe one fact, they just say the last step out loud
+the way the person driving does.
+
+⚠️ **"Arrived" here is `completed`, not the `arrived` rung**, which a ride never walks. The two
+words meeting on one screen is exactly why both maps are small, explicit, and list only the rungs
+that differ. Reach for `bookingStatusLabel(status, booking)` and `bookingStatusAction(status,
+booking)` rather than indexing a map directly, so a screen that gains rides later says the right
+word without being found and edited.
 
 **The "any level" rule.** Never describe customers by their size. No "UMKM", no tier language, anywhere in copy. A petshop is a petshop.
 

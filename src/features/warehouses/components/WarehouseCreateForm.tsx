@@ -30,7 +30,7 @@ import { WarehouseBranchSelect } from "./WarehouseBranchSelect";
 /**
  * Create a warehouse via POST /warehouses, then return to the list.
  *
- * Follows the app's hand-rolled form pattern (see BranchCreateForm): local
+ * Follows the app's hand-rolled form pattern (see BranchEditForm): local
  * state, client validation as a UX nicety, and ApiError.fieldErrors mapped onto
  * the matching inputs so backend validation (duplicate name, bad phone)
  * surfaces inline. Only the name is required — a tenant may register its
@@ -53,6 +53,8 @@ export function WarehouseCreateForm() {
   const [picName, setPicName] = useState("");
   const [picPhone, setPicPhone] = useState("");
   const [isActive, setIsActive] = useState(true);
+  /* Off by default: a till is switched on deliberately — it is a line on a bill. */
+  const [hasPos, setHasPos] = useState(false);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -86,9 +88,10 @@ export function WarehouseCreateForm() {
         picName: picName.trim() === "" ? null : picName.trim(),
         picPhone: picPhone.trim() === "" ? null : picPhone.trim(),
         isActive,
+        hasPos,
       });
       // Redirect first, then fire the toast so it rides along on the list screen.
-      router.push("/dashboard/master/warehouses");
+      router.push("/dashboard/pengaturan/gudang");
       swalToast(`${created.name} has been created.`);
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
@@ -176,13 +179,31 @@ export function WarehouseCreateForm() {
         </Label>
       </div>
 
+
+      {/*
+        IS THERE A TILL HERE? A warehouse is a place stock sits; only some are
+        places a customer pays at. Nothing gates the POS on it yet — the tenant
+        profile counts it, and the subscription will be priced on it — so the
+        caption says what it is FOR rather than implying it closes a till.
+      */}
+      <div className="flex items-center gap-2.5">
+        <Checkbox
+          id="warehouse-pos"
+          checked={hasPos}
+          onCheckedChange={(checked) => setHasPos(checked === true)}
+        />
+        <Label htmlFor="warehouse-pos" className="font-normal">
+          Ada kasir di gudang ini — dihitung sebagai kasir aktif di profil usaha
+        </Label>
+      </div>
+
       {/* Stacks on small screens (Create on top, Cancel below); row on sm+. */}
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/master/warehouses")}
+          onClick={() => router.push("/dashboard/pengaturan/gudang")}
         >
           Cancel
         </Button>

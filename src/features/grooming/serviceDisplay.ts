@@ -1,3 +1,4 @@
+import { serviceFormPath } from "@/features/settings/paths";
 import {
   buildVariantCombos,
   servicePriceBounds,
@@ -24,7 +25,7 @@ import { formatMoneyShort } from "./board";
 
 /** Where somebody who wants to change a service is sent: the one editor. */
 export function serviceEditPath(serviceId: string): string {
-  return `/dashboard/master/layanan/${serviceId}`;
+  return serviceFormPath(serviceId);
 }
 
 export type ServicePlace = "store" | "home" | "both";

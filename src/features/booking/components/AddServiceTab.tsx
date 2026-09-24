@@ -182,7 +182,24 @@ export function AddServiceTab({
       .then(([petPage, servicePage]) => {
         if (!active) return;
         setPets(petPage.items);
-        setServices(servicePage.items);
+        /*
+          ⚠️ ANTAR-JEMPUT IS NOT OFFERED HERE (24 September 2026).
+
+          A journey needs a direction and two pinned addresses before it has a
+          price at all, and this tab is a grid of tick-boxes with nowhere to put
+          them — the server refuses such a line ("Pilih arah dan alamat … dulu")
+          and the cashier could not act on the refusal from this dialog.
+
+          The GRID TILE asks all three and is the way in. Hidden rather than
+          shown-and-refused: a tick-box the server will reject is worse than one
+          that is not there, which is the same rule the catalogue's add-on list
+          follows.
+        */
+        setServices(
+          servicePage.items.filter(
+            (one) => one.serviceKind !== "pickup-delivery",
+          ),
+        );
         // One pet is the overwhelming case; pre-selecting it removes a click
         // from every walk-in.
         if (petPage.items.length === 1) {
@@ -467,8 +484,8 @@ export function AddServiceTab({
         </Label>
         {services.length === 0 ? (
           <p className="text-sm text-muted">
-            Belum ada layanan yang bisa dijual. Tambahkan dulu di Master Data →
-            Layanan.
+            Belum ada layanan yang bisa dijual. Tambahkan dulu di Layanan ›
+            Grooming › Layanan &amp; Harga.
           </p>
         ) : (
           <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">

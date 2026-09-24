@@ -1,6 +1,7 @@
 "use client";
 
 import { Alert, Spinner, Pagination } from "@/components";
+import { SettingsPageHeader } from "@/features/settings/components/SettingsHeader";
 
 import { useWarehouses } from "../hooks/useWarehouses";
 import { useWarehouseBranches } from "../hooks/useWarehouseBranches";
@@ -8,7 +9,7 @@ import { WarehousesToolbar } from "./WarehousesToolbar";
 import { WarehousesTable } from "./WarehousesTable";
 
 /**
- * The Master Data → Warehouse list screen. Owns the list query (useWarehouses)
+ * Pengaturan › Gudang, the warehouse list screen. Owns the list query (useWarehouses)
  * and the branch lookup (useWarehouseBranches, which the branch column and the
  * branch filter both need), and wires the toolbar, table and pager together. Row
  * mutations call `refetch` so the list reflects the change. Mirrors
@@ -25,12 +26,11 @@ export function WarehousesScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Warehouses</h1>
-        <p className="mt-1 text-sm text-muted">
-          Manage the physical locations stock is held and moved between.
-        </p>
-      </div>
+      <SettingsPageHeader
+        tab="umum"
+        title="Gudang"
+        description="Tempat stok benar-benar berada. Satu cabang boleh punya lebih dari satu."
+      />
 
       <WarehousesToolbar
         query={query}

@@ -229,6 +229,14 @@ export const bookingService = {
     apiClient.patch<Booking>(`/bookings/${id}`, patch),
 
   /**
+   * PATCH /bookings/:id/group — "Tautkan booking": into another visit of the
+   * same customer, or (`null`) out into one of its own. Answers with `group[]`
+   * and `related[]`, like GET /bookings/:id (21 September 2026).
+   */
+  setGroup: (id: string, groupId: string | null) =>
+    apiClient.patch<Booking>(`/bookings/${id}/group`, { groupId }),
+
+  /**
    * PATCH /bookings/:id/status — move it through the state machine.
    *
    * Its own route because a transition has rules a `$set` cannot express. An
@@ -367,9 +375,10 @@ export const bookingService = {
    *
    * A BARE ARRAY: a handful of names a dropdown renders whole.
    */
-  availability: (date: string) =>
+  availability: (date: string, role: "groomer" | "driver" = "groomer") =>
     apiClient.get<GroomerAvailability[]>("/bookings/availability", {
-      query: { date },
+      /* `role` only when it is not the default — the request stays as it was. */
+      query: role === "driver" ? { date, role } : { date },
     }),
 
   /**

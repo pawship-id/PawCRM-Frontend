@@ -18,6 +18,9 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { variantOptionService } from "@/services/variantOption.service";
 
+import { ServiceKindsField } from "@/features/services/components/ServiceKindsField";
+import type { ServiceKind } from "@/types/api";
+
 const NAME_MAX_LENGTH = 60;
 const DESCRIPTION_MAX_LENGTH = 200;
 
@@ -42,6 +45,7 @@ export function VariantOptionFormDialog({
   const [description, setDescription] = useState("");
   const [source, setSource] = useState<"staff" | "zone">("staff");
   const [valuesText, setValuesText] = useState("");
+  const [serviceKinds, setServiceKinds] = useState<ServiceKind[]>([]);
   const [nameError, setNameError] = useState<string | null>(null);
   const [valuesError, setValuesError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -80,6 +84,7 @@ export function VariantOptionFormDialog({
         name: cleaned,
         description: description.trim() || null,
         source,
+        serviceKinds,
         ...(source === "staff" ? { values } : {}),
       });
       swalToast(`Opsi ${cleaned} ditambahkan.`);
@@ -168,6 +173,12 @@ export function VariantOptionFormDialog({
               alamatnya ke cabang transaksi.
             </p>
           )}
+
+          <ServiceKindsField
+            value={serviceKinds}
+            onChange={setServiceKinds}
+            disabled={busy}
+          />
 
           <TextField
             label="Keterangan"
@@ -294,12 +305,21 @@ export function VariantOptionEditDialog({
   onClose,
   onSaved,
 }: {
-  option: { _id: string; name: string; description: string | null; serviceCount: number };
+  option: {
+    _id: string;
+    name: string;
+    description: string | null;
+    serviceCount: number;
+    serviceKinds?: ServiceKind[];
+  };
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [name, setName] = useState(option.name);
   const [description, setDescription] = useState(option.description ?? "");
+  const [serviceKinds, setServiceKinds] = useState<ServiceKind[]>(
+    option.serviceKinds ?? [],
+  );
   const [nameError, setNameError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -312,7 +332,13 @@ export function VariantOptionEditDialog({
       return;
     }
 
+    const stored = option.serviceKinds ?? [];
+    const kindsChanged =
+      stored.length !== serviceKinds.length ||
+      stored.some((kind) => !serviceKinds.includes(kind));
+
     const patch = {
+      ...(kindsChanged ? { serviceKinds } : {}),
       ...(cleaned !== option.name ? { name: cleaned } : {}),
       ...((description.trim() || null) !== option.description
         ? { description: description.trim() || null }
@@ -381,6 +407,12 @@ export function VariantOptionEditDialog({
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             maxLength={DESCRIPTION_MAX_LENGTH}
+            disabled={busy}
+          />
+
+          <ServiceKindsField
+            value={serviceKinds}
+            onChange={setServiceKinds}
             disabled={busy}
           />
 

@@ -7,6 +7,7 @@ import { usePetOptions } from "@/hooks/usePetOptions";
 import { petService } from "@/services/pet.service";
 import type { Pet } from "@/types/api";
 
+import { PetAvatar } from "./PetAvatar";
 import { PetInfoTab } from "./PetInfoTab";
 import { PetMedicalTab } from "./PetMedicalTab";
 import { PetPreferencesTab } from "./PetPreferencesTab";
@@ -97,12 +98,22 @@ export function PetProfileScreen({ petId }: { petId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">{pet.name}</h1>
-        <p className="mt-1 text-sm text-muted">
-          {[label("breed", pet.breed), pet.color].filter(Boolean).join(" · ") ||
-            "—"}
-        </p>
+      {/*
+        THE PHOTO SITS BESIDE THE NAME, not above the tabs on its own. This is
+        the heading of the page — who this animal is — and the picture is part
+        of that answer rather than a section of its own. It is decorative to a
+        screen reader, because the name it would announce is the `h1` next to it.
+      */}
+      <div className="flex items-center gap-4">
+        <PetAvatar pet={pet} size="md" />
+        <div className="min-w-0">
+          <h1 className="text-2xl font-extrabold text-foreground">{pet.name}</h1>
+          <p className="mt-1 text-sm text-muted">
+            {[label("breed", pet.breed), pet.color]
+              .filter(Boolean)
+              .join(" · ") || "—"}
+          </p>
+        </div>
       </div>
 
       {/*

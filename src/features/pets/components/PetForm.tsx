@@ -7,6 +7,7 @@ import {
   Alert,
   Card,
   FormActionBar,
+  ImageField,
   SelectField,
   Spinner,
   TextField,
@@ -25,6 +26,7 @@ import type {
   PetSize,
   PetSpecies,
 } from "@/types/api";
+import type { MediaAsset } from "@/types/inventory";
 
 import { usePetPickers } from "../hooks/usePetPickers";
 import { PetOwnerField } from "./PetOwnerField";
@@ -72,6 +74,27 @@ function todayISO(): string {
  * in the shop's care — offering "register this one and retire it immediately"
  * answers a question nobody asked. Retiring is a decision taken later.
  *
+ * UKURAN AND JENIS BULU ARE REQUIRED (23 September 2026, on request), and that
+ * is a deliberate reversal of how they started. They were optional on the
+ * grounds that a flat-priced shop has nothing to say in either, with the two
+ * screens that DO need them asking at the moment they need them —
+ * `PetQuickAddDialog` under `requireTraits`, or `PetFixLink` sending somebody
+ * back afterwards. Asking here instead is the shop's call: a variant-priced
+ * grooming is priced BY size and coat, so a pet registered without them is one
+ * that cannot be quoted until somebody returns to this form anyway.
+ *
+ * ⚠️ THE API STILL ACCEPTS NEITHER, and deliberately. `pet.validation.js` keeps
+ * both optional and nullable because two callers legitimately send null: the
+ * quick-add dialog with `requireTraits` off (the till, the customer screen),
+ * and every pet registered before this rule existed. Tightening the server
+ * would break the till and lock the edit screen out of its own stored data.
+ *
+ * ⚠️ AN EDIT OF AN OLDER PET NOW HAS TO ANSWER THEM. A pet registered when the
+ * fields were optional loads with both blank, so somebody opening it to fix a
+ * weight is asked for a size and a coat before they can save. That is the rule
+ * doing what it was asked to do rather than a bug — but it is why `PetFixLink`
+ * still exists and still points here.
+ *
  * JENIS, RAS, UKURAN AND JENIS BULU ARE THE SHOP'S OWN LISTS. They were four
  * hardcoded arrays here — cat and dog, domestic and poodle — until 14 September
  * 2026, when they became tenant data (`petoptions`) a shop adds to, renames and
@@ -89,11 +112,22 @@ function todayISO(): string {
  * rest of the form is usable. See `usePetPickers` for why the stored value is
  * not called retired in that moment.
  *
- * NO PHOTO FIELD YET, and that is scoped rather than forgotten: the API accepts
- * one and the model stores one. The refactor this was waiting on has since
- * happened — the upload control is now `ImageField` in the shared component
- * layer, promoted out of the categories feature when services needed it — so
- * adding one here is a field, not a refactor. It goes in when somebody asks.
+ * THE PHOTO IS THE ONE FIELD SENT AS A DIFF, and the rest of the form is not.
+ * Everything else here is safe to resend — there is no unique name to collide
+ * with and nothing an unchanged value destroys — but `photo` is both of the
+ * things that made CategoryForm diff:
+ *
+ *   1. AN UNCHANGED ASSET CANNOT BE RESENT AT ALL. The API strips the upload's
+ *      `token` before storing it, so the photo a GET returns has none — and
+ *      `MediaService.assertOwned` refuses an asset without one. Resending what
+ *      was loaded would fail every save of a pet that has a picture.
+ *   2. THE API DELETES THE BYTES AN UPDATE DROPS. Sending the field at all on a
+ *      patch that did not touch it is one dropped connection away from losing
+ *      the photo.
+ *
+ * So it goes in the payload only when the storage key moved — compared by key
+ * rather than by object identity, because the asset is replaced wholesale on
+ * every upload and `!==` on the objects would call a re-render a change.
  */
 export function PetForm({ petId }: { petId?: string }) {
   const editing = petId !== undefined;
@@ -121,11 +155,14 @@ export function PetForm({ petId }: { petId?: string }) {
   const [microchipNo, setMicrochipNo] = useState("");
   const [description, setDescription] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
+  const [photo, setPhoto] = useState<MediaAsset | null>(null);
   const [isActive, setIsActive] = useState(true);
 
   const [nameError, setNameError] = useState<string | null>(null);
   const [ownerError, setOwnerError] = useState<string | null>(null);
   const [speciesError, setSpeciesError] = useState<string | null>(null);
+  const [sizeError, setSizeError] = useState<string | null>(null);
+  const [furTypeError, setFurTypeError] = useState<string | null>(null);
   const [birthDateError, setBirthDateError] = useState<string | null>(null);
   const [weightError, setWeightError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -155,6 +192,7 @@ export function PetForm({ petId }: { petId?: string }) {
         setMicrochipNo(result.microchipNo ?? "");
         setDescription(result.description ?? "");
         setInternalNotes(result.internalNotes ?? "");
+        setPhoto(result.photo ?? null);
         setIsActive(result.isActive);
       })
       .catch((error) => {
@@ -197,6 +235,20 @@ export function PetForm({ petId }: { petId?: string }) {
       setSpeciesError("Pilih jenis hewannya.");
       invalid = true;
     }
+    /*
+      UKURAN AND JENIS BULU ARE ANSWERS HERE, not offers — see the header. The
+      same two fields `PetQuickAddDialog` demands under `requireTraits`, asked
+      unconditionally because this is the form that registers the animal
+      properly.
+    */
+    if (size === "") {
+      setSizeError("Pilih ukurannya.");
+      invalid = true;
+    }
+    if (furType === "") {
+      setFurTypeError("Pilih jenis bulunya.");
+      invalid = true;
+    }
     // Checked here as well as on the server, because the server's message is in
     // English and this one can point at the box.
     if (birthDate && birthDate > todayISO()) {
@@ -205,7 +257,10 @@ export function PetForm({ petId }: { petId?: string }) {
     }
 
     const weight = weightKg.trim() === "" ? null : Number(weightKg);
-    if (weight !== null && (Number.isNaN(weight) || weight < 0 || weight > MAX_WEIGHT_KG)) {
+    if (
+      weight !== null &&
+      (Number.isNaN(weight) || weight < 0 || weight > MAX_WEIGHT_KG)
+    ) {
       setWeightError(`Isi angka antara 0 dan ${MAX_WEIGHT_KG}.`);
       invalid = true;
     }
@@ -232,22 +287,45 @@ export function PetForm({ petId }: { petId?: string }) {
       internalNotes: internalNotes.trim() || null,
     };
 
+    /*
+      THE ONE FIELD COMPARED BEFORE IT IS SENT — see the header for both reasons.
+      By storage key, not by object identity: an upload replaces the asset
+      wholesale, so `!==` on the objects would call a re-render a change.
+    */
+    const repictured =
+      editing &&
+      (photo?.storageKey ?? null) !== (pet?.photo?.storageKey ?? null);
+
     try {
       if (editing) {
-        // The whole editable surface is sent rather than a diff. Unlike a
-        // category, nothing here is destructive to resend: there is no unique
-        // name to collide with and no stored asset an update would delete, so
-        // the diffing CategoryForm needs would be complexity without a reason.
+        // Everything except the photo is sent whole rather than as a diff.
+        // Unlike a category, none of it is destructive to resend: there is no
+        // unique name to collide with and nothing a repeated value deletes.
         // `isActive` rides along, which is what makes retiring one switch flip.
-        await petService.update(petId, { ...payload, isActive });
+        await petService.update(petId, {
+          ...payload,
+          // `null` is how a photo is taken off, so an omission and a null mean
+          // different things here — which is exactly why this is spread rather
+          // than always present.
+          ...(repictured ? { photo } : {}),
+          isActive,
+        });
       } else {
-        await petService.create({ customerId, ...payload });
+        await petService.create({
+          customerId,
+          ...payload,
+          // Sent only when there is one: a create carrying `photo: null` reads
+          // as though somebody cleared a field that never existed.
+          ...(photo ? { photo } : {}),
+        });
       }
 
       // Navigate first, then toast, so the message rides along on the list.
       goBack();
       swalToast(
-        editing ? "Data hewan diperbarui." : `${trimmedName} sudah didaftarkan.`,
+        editing
+          ? "Data hewan diperbarui."
+          : `${trimmedName} sudah didaftarkan.`,
       );
     } catch (error) {
       // The owner failures come back attributed to customerId, so they belong on
@@ -349,7 +427,6 @@ export function PetForm({ petId }: { petId?: string }) {
               value={sex}
               onChange={(next) => setSex(next as PetSex)}
               options={SEX_OPTIONS}
-              hint="Belum diketahui itu jawaban yang sah — banyak hewan rescue datang tanpa keterangan."
               disabled={saving}
             />
           </div>
@@ -358,9 +435,30 @@ export function PetForm({ petId }: { petId?: string }) {
 
       <Card
         title="Ciri-ciri"
-        description="Semuanya opsional. Diisi kalau memang tahu — bukan tebakan."
+        description="Ukuran dan jenis bulu wajib diisi — harga grooming dihitung dari keduanya. Sisanya diisi kalau memang tahu, bukan tebakan."
       >
         <div className="flex flex-col gap-4">
+          {/*
+            FIRST IN THIS CARD, because a photo is the most direct ciri-ciri
+            there is: it settles "which one is Bella" faster than a breed and a
+            colour read together, and it is what the list, the profile header and
+            the printed card all draw.
+
+            IT UPLOADS ON CROP, BEFORE THE PET IS SAVED — the media endpoint is
+            owner-agnostic, so there is no pet to attach it to yet. Somebody who
+            then presses Batal leaves bytes nothing points at, which
+            `seeds/sweepOrphanMedia.js` collects after a day. See ImageField.
+          */}
+          <ImageField
+            value={photo}
+            onChange={setPhoto}
+            purpose="pet"
+            label="Foto"
+            alt={name.trim() ? `Foto ${name.trim()}` : "Foto hewan"}
+            hint="PNG, JPG atau WebP. Dipotong jadi kotak — itu bentuknya di daftar hewan dan kartu profil."
+            disabled={saving}
+          />
+
           <div className="grid gap-4 sm:grid-cols-2">
             <SelectField
               label="Ras"
@@ -369,7 +467,11 @@ export function PetForm({ petId }: { petId?: string }) {
               /* Only this animal's breeds — see `breedOptions`. */
               options={breedOptions(species, pet?.breed)}
               placeholder={optionsLoading ? "Memuat…" : "Pilih ras"}
-              hint={species ? undefined : "Pilih jenis hewan dulu untuk menyaring rasnya."}
+              hint={
+                species
+                  ? undefined
+                  : "Pilih jenis hewan dulu untuk menyaring rasnya."
+              }
               disabled={saving || optionsLoading}
             />
             <TextField
@@ -387,18 +489,28 @@ export function PetForm({ petId }: { petId?: string }) {
             <SelectField
               label="Ukuran"
               value={size}
-              onChange={(next) => setSize(next as PetSize)}
+              onChange={(next) => {
+                setSize(next as PetSize);
+                setSizeError(null);
+              }}
               options={pickerOptions("size", pet?.size)}
               placeholder={optionsLoading ? "Memuat…" : "Pilih ukuran"}
+              error={sizeError ?? undefined}
               disabled={saving || optionsLoading}
+              required
             />
             <SelectField
               label="Jenis bulu"
               value={furType}
-              onChange={(next) => setFurType(next as PetFurType)}
+              onChange={(next) => {
+                setFurType(next as PetFurType);
+                setFurTypeError(null);
+              }}
               options={pickerOptions("furType", pet?.furType)}
               placeholder={optionsLoading ? "Memuat…" : "Pilih jenis bulu"}
+              error={furTypeError ?? undefined}
               disabled={saving || optionsLoading}
+              required
             />
           </div>
 

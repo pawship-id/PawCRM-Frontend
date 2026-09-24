@@ -870,7 +870,7 @@ export function StockTransferForm() {
     return (
       <Alert variant="info">
         Transfer butuh <b>dua gudang aktif</b>. Tenant ini baru punya{" "}
-        {destinations.length}. Tambahkan gudang lain di Master Data → Warehouse
+        {destinations.length}. Tambahkan gudang lain di Pengaturan › Gudang
         dulu.
       </Alert>
     );

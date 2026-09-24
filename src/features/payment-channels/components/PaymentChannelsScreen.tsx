@@ -14,6 +14,7 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
+import { SettingsPageHeader } from "@/features/settings/components/SettingsHeader";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 import { usePaymentChannelList } from "../hooks/usePaymentChannelList";
@@ -56,24 +57,27 @@ export function PaymentChannelsScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold">Channel Pembayaran</h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted">
+      <SettingsPageHeader
+        tab="keuangan"
+        title="Channel Pembayaran"
+        description={
+          <>
             Tombol yang dipilih kasir saat menerima uang, dan akun kas atau bank
             yang menampungnya. Jumlah uang yang masuk lewat masing-masing akun
             ada di Keuangan › Kas &amp; Bank.
-          </p>
-        </div>
-        <Can feature="paymentChannels" action="create">
-          <Button asChild>
-            <Link href={NEW_HREF}>
-              <Plus className="size-4" />
-              Channel baru
-            </Link>
-          </Button>
-        </Can>
-      </div>
+          </>
+        }
+        action={
+          <Can feature="paymentChannels" action="create">
+            <Button asChild>
+              <Link href={NEW_HREF}>
+                <Plus className="size-4" />
+                Channel baru
+              </Link>
+            </Button>
+          </Can>
+        }
+      />
 
       {/* ui-rules §8: a quick bar — two fields, both applying on the spot,
           search pinned far right. */}

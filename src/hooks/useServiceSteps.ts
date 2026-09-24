@@ -30,17 +30,18 @@ interface Snapshot {
 const EMPTY: Snapshot = { steps: [], loaded: false, loading: false, error: null };
 
 /*
-  ONE CACHE PER BUSINESS LINE, shared by every consumer — the same bargain
-  `usePetOptions` makes. A service's detail page draws the Tahapan card and the
-  form may be a click away; neither should fetch its line's list twice. Writes
-  call `invalidateServiceSteps(lineId)`.
+  ONE LIST PER TENANT (22 September 2026 — it was per business line, then
+  briefly per Kelompok layanan), cached once and shared by every consumer — the
+  same bargain `usePetOptions` makes. A service's detail page draws the Tahapan
+  card and the form may be a click away; neither should fetch the list twice.
+  Writes call `invalidateServiceSteps()`.
 */
-const cache = new Map<string, Snapshot>();
-const generations = new Map<string, number>();
+let snapshot: Snapshot = EMPTY;
+let generation = 0;
 const listeners = new Set<() => void>();
 
-function emit(lineId: string, next: Snapshot) {
-  cache.set(lineId, next);
+function emit(next: Snapshot) {
+  snapshot = next;
   listeners.forEach((listener) => listener());
 }
 
@@ -51,15 +52,11 @@ function subscribe(listener: () => void) {
   };
 }
 
-async function fetchLine(lineId: string): Promise<ServiceStep[]> {
+async function fetchList(): Promise<ServiceStep[]> {
   const items: ServiceStep[] = [];
 
   for (let page = 1; ; page += 1) {
-    const result = await serviceStepService.list({
-      businessLineId: lineId,
-      page,
-      limit: 100,
-    });
+    const result = await serviceStepService.list({ page, limit: 100 });
     items.push(...result.items);
     if (page >= result.pagination.totalPages) break;
   }
@@ -67,24 +64,22 @@ async function fetchLine(lineId: string): Promise<ServiceStep[]> {
   return items;
 }
 
-function load(lineId: string, force = false) {
-  const current = cache.get(lineId) ?? EMPTY;
-  if (!force && (current.loading || current.loaded)) return;
+function load(force = false) {
+  if (!force && (snapshot.loading || snapshot.loaded)) return;
 
-  const mine = (generations.get(lineId) ?? 0) + 1;
-  generations.set(lineId, mine);
-  emit(lineId, { ...current, loading: true, error: null });
+  const mine = ++generation;
+  emit({ ...snapshot, loading: true, error: null });
 
-  fetchLine(lineId)
+  fetchList()
     .then((steps) => {
-      if (generations.get(lineId) !== mine) return;
-      emit(lineId, { steps, loaded: true, loading: false, error: null });
+      if (generation !== mine) return;
+      emit({ steps, loaded: true, loading: false, error: null });
     })
     .catch((error: unknown) => {
-      if (generations.get(lineId) !== mine) return;
+      if (generation !== mine) return;
       // Loaded even when it failed, so a mounted picker does not retry in a loop.
-      emit(lineId, {
-        ...(cache.get(lineId) ?? EMPTY),
+      emit({
+        ...snapshot,
         loaded: true,
         loading: false,
         error:
@@ -96,19 +91,15 @@ function load(lineId: string, force = false) {
 }
 
 /**
- * Drops a line's cached list — or every line's — after a create, rename,
- * reorder, retire, delete or restore. Mounted consumers refetch at once.
+ * Drops the cached list after a create, rename, reorder, retire, delete or
+ * restore. Mounted consumers refetch at once.
  */
-export function invalidateServiceSteps(lineId?: string) {
-  const lines = lineId ? [lineId] : [...cache.keys()];
-
-  lines.forEach((line) => {
-    generations.set(line, (generations.get(line) ?? 0) + 1);
-    cache.delete(line);
-  });
+export function invalidateServiceSteps() {
+  generation += 1;
+  snapshot = EMPTY;
 
   if (listeners.size > 0) {
-    lines.forEach((line) => load(line, true));
+    load(true);
   } else {
     listeners.forEach((listener) => listener());
   }
@@ -117,7 +108,7 @@ export function invalidateServiceSteps(lineId?: string) {
 const keyOf = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 
 /**
- * A business line's tahapan list.
+ * The tenant's tahapan list.
  *
  *   steps              — live steps (active and retired), in order.
  *   choices(keep?)     — what a picker offers: ACTIVE steps in order, plus any
@@ -125,32 +116,27 @@ const keyOf = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
  *                        is retired or not on the list, marked `retired`.
  *   stepFor(name)      — the live step a stored name resolves to, matched
  *                        case-insensitively, or undefined.
- *
- * `businessLineId` null or empty asks for nothing — a new service with no line
- * chosen has no list yet.
  */
-export function useServiceSteps(businessLineId: string | null | undefined) {
-  const lineId = businessLineId ?? "";
-
-  const snapshot = useSyncExternalStore(
+export function useServiceSteps() {
+  const current = useSyncExternalStore(
     subscribe,
-    () => (lineId ? (cache.get(lineId) ?? EMPTY) : EMPTY),
+    () => snapshot,
     () => EMPTY,
   );
 
   useEffect(() => {
-    if (lineId) load(lineId);
-  }, [lineId]);
+    load();
+  }, []);
 
   const steps = useMemo(
     () =>
-      [...snapshot.steps]
+      [...current.steps]
         .filter((step) => step.deletedAt === null)
         .sort(
           (a, b) =>
             a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "id"),
         ),
-    [snapshot.steps],
+    [current.steps],
   );
 
   const stepFor = useCallback(
@@ -183,14 +169,12 @@ export function useServiceSteps(businessLineId: string | null | undefined) {
     [steps, stepFor],
   );
 
-  const reload = useCallback(() => {
-    if (lineId) load(lineId, true);
-  }, [lineId]);
+  const reload = useCallback(() => load(true), []);
 
   return {
     steps,
-    loading: lineId !== "" && (!snapshot.loaded || snapshot.loading),
-    error: snapshot.error,
+    loading: !current.loaded || current.loading,
+    error: current.error,
     choices,
     stepFor,
     reload,

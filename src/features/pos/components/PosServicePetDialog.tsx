@@ -13,6 +13,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  arahCardOf,
+  choicesForLeg,
+  LEG_LABEL,
+} from "@/features/antar-jemput/ride";
+import {
+  pinOf,
+  resolveLeg,
+} from "@/features/antar-jemput/components/TripPointFields";
+import {
+  blankJourney,
+  RideJourneyFields,
+  type RideJourney,
+} from "@/features/antar-jemput/components/RideJourneyFields";
 import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
 import { useVariantQuote, VariantChoicePicker } from "@/features/services";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,24 +34,35 @@ import { usePetOptions } from "@/hooks/usePetOptions";
 import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
-import { formatMoney } from "@/utils/decimal";
+import { formatMoney, toDecimalString, toMinor } from "@/utils/decimal";
 import {
   AXIS_LABEL,
   isPetAxis,
   variantLabelForPet,
 } from "@/utils/serviceVariant";
 import type {
-  GeoLocation,
+  Branch,
+  Customer,
   Pet,
   PosCatalogAddon,
   PosCatalogItem,
+  PosItemTripInput,
   VariantChoice,
 } from "@/types/api";
 
 /** The API's page cap. Asking for more is a 400, not a bigger page. */
 const FETCH_LIMIT = 100;
 
-type Pin = Pick<GeoLocation, "lat" | "lng"> | null;
+/** The one `serviceKind` that is a journey. Mirrors RIDE_SERVICE_KIND on the server. */
+const RIDE_KIND = "pickup-delivery";
+
+/** What the dialog hands back when the tile was an antar-jemput one. */
+export interface PosRidePick {
+  trip: PosItemTripInput;
+  linkedBookingIds: string[];
+  /** Every animal in the van — a ride carries several off ONE line. */
+  passengerPetIds: string[];
+}
 
 /** Whether a service's price depends on anything beyond the animal. */
 const pricedBeyondPet = (
@@ -73,6 +98,7 @@ export function PosServicePetDialog({
   customerId,
   customerName,
   branchId,
+  cartBookingIds = [],
   busy = false,
   onPick,
   onOpenChange,
@@ -81,6 +107,17 @@ export function PosServicePetDialog({
   service: PosCatalogItem | null;
   customerId: string;
   customerName?: string;
+  /**
+   * The bookings THIS basket is already carrying — its own drafts and anything
+   * pulled from the diary.
+   *
+   * Used for one thing: marking those rows in "Tautkan ke booking". A grooming
+   * added to this basket a moment ago appears there as "Draf · Bruno · …",
+   * which is true and says nothing — a cashier cannot tell it from any other
+   * unnumbered booking of that customer's, and it is the one they most often
+   * mean.
+   */
+  cartBookingIds?: readonly string[];
   /**
    * The till's branch — where a service priced by Zona is measured FROM. The
    * server measures from the same one (the session's branch), so the preview
@@ -104,24 +141,82 @@ export function PosServicePetDialog({
      * on — only the cards they declare. Empty for an ordinary grooming.
      */
     variantChoices: VariantChoice[],
+    /**
+     * THE JOURNEY, on an antar-jemput tile (24 September 2026) — which way the
+     * van goes, the two doors, and the bookings it is fetching for. Null on
+     * every other service.
+     */
+    ride: PosRidePick | null,
   ) => void;
   onOpenChange: (open: boolean) => void;
 }) {
   const [pets, setPets] = useState<Pet[]>([]);
-  const [petId, setPetId] = useState("");
+  /**
+   * THE ANIMALS THIS LINE IS FOR — one for nearly every service, SEVERAL for a
+   * ride (24 September 2026, on request).
+   *
+   * A van collects three dogs in one trip and is charged once, so the picker
+   * below toggles on an antar-jemput tile and replaces on everything else: two
+   * dogs having a bath are two lines, two dogs in a van are one.
+   */
+  const [picked, setPicked] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [addingPet, setAddingPet] = useState(false);
   const [nonce, setNonce] = useState(0);
   const [addons, setAddons] = useState<Set<string>>(new Set());
   const [choices, setChoices] = useState<VariantChoice[]>([]);
-  const [pins, setPins] = useState<{ branch: Pin; customer: Pin } | null>(null);
+  /**
+   * The two registers a journey's ends may be copied from — the till's branch
+   * and the basket's customer, in full rather than as bare pins.
+   *
+   * IT WAS TWO PINS until 24 September 2026, which was all a zone needs. A
+   * cashier typing a journey needs the ADDRESSES too: "Alamat pelanggan" is an
+   * option on both ends, and an option that cannot show what it would fill in
+   * is one nobody dares pick.
+   */
+  const [places, setPlaces] = useState<{
+    branch: Branch | null;
+    customer: Customer | null;
+  } | null>(null);
+  /* The journey, on an antar-jemput tile — direction, two doors, links. */
+  const [journey, setJourney] = useState<RideJourney>(() => blankJourney());
   const { label: petOptionLabel } = usePetOptions();
 
   const open = service !== null;
-  const chosen = pets.find((candidate) => candidate._id === petId) ?? null;
+  /* The one animal a service is priced for. A ride has no single one — it is
+     quoted by where it goes — so this is only its first passenger, used for the
+     gates that ask "has the cashier answered yet". */
+  const chosen = pets.find((candidate) => candidate._id === picked[0]) ?? null;
+  const riders = pets.filter((pet) => picked.includes(pet._id));
   const offered = service?.addons ?? [];
   const ticked = offered.filter((addon) => addons.has(addon._id));
+
+  /*
+    ─── AN ANTAR-JEMPUT TILE ASKS TWO MORE QUESTIONS (24 September 2026) ─────
+
+    WHICH WAY, and BETWEEN WHICH TWO DOORS. Neither was asked before: the
+    direction was a "Dipilih staf" card like any other, which priced the line
+    and told nobody where to drive, and the fare was measured from whatever pin
+    the customer's record happened to hold. A van sold at the counter reached
+    the Antar-Jemput board saying "Arah belum diisi", carrying nought animals.
+
+    ONE LINE IS ONE DIRECTION, as one booking is (21 September 2026). A
+    round trip is the tile tapped twice — which is what a cashier already does
+    for two dogs, and what keeps this dialog from growing a second pair of
+    addresses nobody can see at once.
+  */
+  const isRide = service?.serviceKind === RIDE_KIND;
+  const leg = journey.leg;
+  const linkIds = journey.linkedBookingIds;
+  /** What the journey's two ends actually resolve to — a record, or what was typed. */
+  const ends = resolveLeg(
+    journey.points,
+    places?.customer ?? null,
+    places?.branch ?? null,
+  );
+  const originPin = pinOf(ends.origin);
+  const destinationPin = pinOf(ends.destination);
 
   /*
     ─── PRICED BEYOND THE ANIMAL (17 September 2026) ─────────────────────────
@@ -135,22 +230,45 @@ export function PosServicePetDialog({
     THE PINS ARE ASKED FOR ONLY WHEN SOMETHING HERE VARIES BY ZONA. The basket
     carries the customer's name and phone and nothing else, and a bath priced
     by size has no use for a map.
+
+    ⚠️ A RIDE IS MEASURED END TO END (24 September 2026). Its fare is a band of
+    the distance THE VAN ACTUALLY DRIVES, and the cashier has just typed both
+    ends of it — so the two points handed to the quote are the journey's own,
+    not the branch and the customer's record. The server measures between the
+    same two and is what the line stores.
   */
-  const variantQuote = useVariantQuote({
-    branchPin: pins?.branch,
-    customerPin: pins?.customer,
-  });
+  const variantQuote = useVariantQuote(
+    isRide
+      ? { branchPin: originPin, customerPin: destinationPin }
+      : {
+          branchPin: places?.branch?.location,
+          customerPin: places?.customer?.location,
+        },
+  );
   const zoneWanted = variantQuote.needsZone([service, ...offered]);
   const zoneShown = variantQuote.needsZone([service, ...ticked]);
-  const cards = variantQuote.cardsFor([service, ...ticked]);
   /*
-    STILL WORKING IT OUT — the cards, the zones or the two pins are in flight.
-    Only a service that depends on them waits: an ordinary grooming must not be
-    held up by a list it never reads.
+    "ARAH" IS ANSWERED BY THE DIRECTION, NOT ASKED TWICE. It is an owner's
+    variant option like any other (BO, 21 September 2026), so it carries the
+    price — but a select beside a direction control asking the same question is
+    two ways to disagree. Same rule as the diary's form; same helper.
+  */
+  const allCards = variantQuote.cardsFor([service, ...ticked]);
+  const arah = isRide ? arahCardOf(service, allCards) : null;
+  const cards = allCards.filter((card) => card.axisKey !== arah?.card.axisKey);
+  /** The staff's choices with Arah filled in from the direction, for a ride. */
+  const ridden = isRide ? choicesForLeg(service, allCards, leg, choices) : choices;
+  /*
+    STILL WORKING IT OUT — the cards, the zones or the two registers are in
+    flight. Only a service that depends on them waits: an ordinary grooming
+    must not be held up by a list it never reads.
+
+    A RIDE NEVER WAITS ON A MISSING PIN, only on the read. Its ends are the
+    cashier's to fill in, so "belum ada titik" is an instruction, not a delay.
   */
   const measuring =
     [service, ...offered].some(pricedBeyondPet) &&
-    (variantQuote.loading || (zoneWanted && pins === null));
+    (variantQuote.loading || (zoneWanted && !isRide && places === null));
 
   /*
     ─── WHAT IT COSTS FOR THIS ANIMAL, BEFORE IT IS ADDED ────────────────────
@@ -166,9 +284,33 @@ export function PosServicePetDialog({
     tap, and a refusal that says WHICH fact is missing instead of a 400 after
     the fact.
   */
-  const quote = variantQuote.quote(service, chosen, choices);
+  /*
+    ⚠️ A RIDE IS QUOTED WITHOUT THE ANIMAL. A van has no coat length: a journey
+    is priced by where it goes and which way, and the passenger is on the line
+    so the receipt can say whose dog was in it. The diary quotes a ride the same
+    way, and so does the server — three screens, one number.
+  */
+  const quote = variantQuote.quote(service, isRide ? null : chosen, ridden);
+  /*
+    ONE RIDE IS PRICED BY THE BOOKINGS IT SERVES (23 September 2026) — one
+    booking is one animal, so a `per_pet` fare is the catalogue's price once for
+    every booking the van is fetching for. `per_visit` is once, however many
+    ride. Mirrors `chargedRidersOf` on the server.
+  */
+  const perAnimal = isRide && service?.billingUnit === "per_pet";
+  const chargedPets = Math.max(1, linkIds.length);
+  const shownPrice = (() => {
+    const unit = perAnimal && chargedPets > 1 ? toMinor(quote.price) : null;
+    return unit === null ? quote.price : toDecimalString(unit * BigInt(chargedPets));
+  })();
   /* What it is missing beyond the animal, in the server's own words. */
   const problem = service ? variantQuote.problemOf(service, quote) : null;
+  /*
+    THE TWO ENDS ARE NOT OPTIONAL, and the reason is not a schema: a fare is a
+    band of distance, so an address with no point has no price at all. Said
+    once, here, and shown where the missing end is.
+  */
+  const unpinned = isRide && (!originPin || !destinationPin);
   /*
     WHICH VARIANT THE FIGURE CAME FROM — "Kucing · Kecil · Bulu pendek".
 
@@ -183,7 +325,7 @@ export function PosServicePetDialog({
   */
   const variantLabel = variantLabelForPet(service, chosen, petOptionLabel);
   const addonQuotes = offered.map((addon) => {
-    const addonQuote = variantQuote.quote(addon, chosen, choices);
+    const addonQuote = variantQuote.quote(addon, isRide ? null : chosen, ridden);
     return {
       addon,
       quote: addonQuote,
@@ -227,8 +369,8 @@ export function PosServicePetDialog({
         if (!active) return;
         setPets(result.items);
         // One pet is the overwhelming case; pre-selecting it removes a tap from
-        // every walk-in grooming.
-        setPetId(result.items.length === 1 ? result.items[0]._id : "");
+        // every walk-in grooming — and from every one-dog van.
+        setPicked(result.items.length === 1 ? [result.items[0]._id] : []);
       })
       .catch(() => {
         if (active) setError("Daftar hewan tidak bisa dimuat. Coba lagi.");
@@ -243,40 +385,44 @@ export function PosServicePetDialog({
   }, [open, customerId, nonce]);
 
   /*
-    THE TWO PINS A ZONE IS MEASURED BETWEEN — the till's branch and the
-    customer's address. A failure reads as "no pin", which is what the cashier
-    can act on; the server would refuse with the same sentence.
+    THE TWO REGISTERS A JOURNEY IS MEASURED — AND COPIED — FROM: the till's
+    branch and the basket's customer. A failure reads as "no address, no pin",
+    which is what the cashier can act on; the server would refuse with the same
+    sentence.
+
+    READ FOR A RIDE WHATEVER IT IS PRICED BY (24 September 2026). A zone is only
+    one of the two things these records answer now: "Alamat pelanggan" and
+    "Alamat cabang" are offered on both ends of the journey, and an option that
+    cannot show what it would fill in is one nobody dares pick.
   */
   useEffect(() => {
-    if (!open || !zoneWanted) return;
+    if (!open || (!zoneWanted && !isRide)) return;
 
     let active = true;
 
-    // Never the previous customer's pin while this one's is in flight.
+    // Never the previous customer's address while this one's is in flight.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPins(null);
+    setPlaces(null);
 
-    const pinOf = <T extends { location?: GeoLocation | null }>(
-      load: () => Promise<T>,
-    ) =>
+    const readOf = <T,>(load: () => Promise<T>) =>
       Promise.resolve()
         .then(load)
-        .then((found) => found?.location ?? null)
+        .then((found) => found ?? null)
         .catch(() => null);
 
     Promise.all([
       branchId
-        ? pinOf(() => branchService.getById(branchId))
+        ? readOf(() => branchService.getById(branchId))
         : Promise.resolve(null),
-      pinOf(() => customerService.getById(customerId)),
+      readOf(() => customerService.getById(customerId)),
     ]).then(([branch, customer]) => {
-      if (active) setPins({ branch, customer });
+      if (active) setPlaces({ branch, customer });
     });
 
     return () => {
       active = false;
     };
-  }, [open, zoneWanted, branchId, customerId]);
+  }, [open, zoneWanted, isRide, branchId, customerId]);
 
   /*
     ─── THE FACT THEY JUST WENT AND FILLED IN ─────────────────────────────────
@@ -329,23 +475,44 @@ export function PosServicePetDialog({
 
   function handleOpenChange(next: boolean) {
     if (!next) {
-      setPetId("");
+      setPicked([]);
       setPets([]);
       setAddons(new Set());
       setChoices([]);
-      setPins(null);
+      setPlaces(null);
+      setJourney(blankJourney());
     }
     onOpenChange(next);
   }
 
   /*
-    THE TICKS ARE CLEARED WHEN THE ANIMAL CHANGES. An add-on priced by size costs
-    a different amount for the next dog, and a box left ticked across the switch
+    ─── WHO THIS LINE IS FOR ──────────────────────────────────────────────────
+
+    A RIDE TOGGLES, EVERYTHING ELSE REPLACES (24 September 2026, on request).
+    Two dogs having a bath are two lines — the tile is tapped twice, and each
+    bath is priced for its own animal. Two dogs in a van are ONE journey,
+    charged once, so the van is a set.
+
+    THE ADD-ON TICKS ARE CLEARED EITHER WAY. An add-on priced by size costs a
+    different amount for the next dog, and a box left ticked across the change
     is a charge nobody re-read.
   */
   function pickPet(id: string) {
-    setPetId(id);
     setAddons(new Set());
+
+    if (!isRide) {
+      setPicked([id]);
+      return;
+    }
+
+    /*
+      A LINK THE PICKER CAN NO LONGER OFFER GOES WITH THE ANIMAL — taking Coco
+      out of the van drops the bookings that were Coco's, and only those.
+      `RideJourneyFields` does it, from the list it is holding.
+    */
+    setPicked((prev) =>
+      prev.includes(id) ? prev.filter((one) => one !== id) : [...prev, id],
+    );
   }
 
   function toggleAddon(id: string) {
@@ -361,21 +528,57 @@ export function PosServicePetDialog({
     if (!chosen) return;
 
     /* Only the cards the lines being added declare — a value picked for an
-       add-on that was then unticked is not part of this sale. */
-    const wanted = new Set(cards.map((card) => card.axisKey));
+       add-on that was then unticked is not part of this sale. Arah is among
+       them on a ride: it is a priced option like any other, answered from the
+       direction rather than from a select. */
+    const wanted = new Set(allCards.map((card) => card.axisKey));
+    const end = (point: typeof ends.origin) => ({
+      address: point.address,
+      lat: point.lat as number,
+      lng: point.lng as number,
+    });
+
     onPick(
       chosen,
       [...addons],
-      choices.filter((choice) => wanted.has(choice.optionId)),
+      ridden.filter((choice) => wanted.has(choice.optionId)),
+      isRide && originPin && destinationPin
+        ? {
+            trip: {
+              leg,
+              origin: end(ends.origin),
+              destination: end(ends.destination),
+            },
+            /* Only what the switch is actually showing — a list left behind by
+               a switch somebody turned off is not part of this sale. */
+            linkedBookingIds: journey.linking ? linkIds : [],
+            /* EVERY ANIMAL IN THE VAN, in the order they were ticked. The
+               server snapshots each one's size against the ride. */
+            passengerPetIds: picked,
+          }
+        : null,
     );
   }
 
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="sm:max-w-md">
+        {/*
+          A RIDE'S DIALOG IS TALLER AND SCROLLS. It asks four things where a
+          grooming asks one, and a modal that runs off the bottom of a laptop
+          is one whose "Tambah ke keranjang" nobody can reach.
+        */}
+        <DialogContent
+          className={
+            isRide
+              ? "max-h-[85vh] overflow-y-auto sm:max-w-lg"
+              : "sm:max-w-md"
+          }
+        >
           <DialogHeader>
-            <DialogTitle>Untuk hewan yang mana?</DialogTitle>
+            <DialogTitle>
+              {isRide ? "Hewan mana yang ikut?" : "Untuk hewan yang mana?"}
+            </DialogTitle>
             <DialogDescription>
               {service?.name}
               {customerName ? ` · ${customerName}` : ""}
@@ -401,21 +604,32 @@ export function PosServicePetDialog({
                   Tambahkan dulu di bawah.
                 </p>
               ) : (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-col gap-2">
+                  {/* A VAN TAKES SEVERAL, and nothing else does — said out loud,
+                      because the buttons look the same either way and a cashier
+                      who does not know they may tap twice will not. */}
+                  {isRide && pets.length > 1 && (
+                    <p className="text-xs text-muted">
+                      Bisa pilih lebih dari satu — satu perjalanan bisa
+                      mengangkut beberapa hewan sekaligus.
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
                   {pets.map((pet) => (
                     <Button
                       key={pet._id}
                       type="button"
                       size="sm"
                       className="h-11"
-                      variant={petId === pet._id ? "default" : "secondary"}
-                      aria-pressed={petId === pet._id}
+                      variant={picked.includes(pet._id) ? "default" : "secondary"}
+                      aria-pressed={picked.includes(pet._id)}
                       disabled={busy}
                       onClick={() => pickPet(pet._id)}
                     >
                       {pet.name}
                     </Button>
                   ))}
+                  </div>
                 </div>
               )}
 
@@ -451,30 +665,67 @@ export function PosServicePetDialog({
                 />
               )}
 
+              {/*
+                WHICH WAY, BETWEEN WHICH TWO DOORS, AND FOR WHICH BOOKINGS —
+                the three questions an antar-jemput line answers before it has a
+                price. Shared with the invoice (`RideJourneyFields`), because a
+                journey agreed at a counter and one agreed on a bill are one
+                record and every rule inside is a decision somebody made once.
+              */}
+              {isRide && riders.length > 0 && (
+                <RideJourneyFields
+                  journey={journey}
+                  onChange={setJourney}
+                  customerId={customerId}
+                  petIds={picked}
+                  customer={places?.customer ?? null}
+                  branch={places?.branch ?? null}
+                  perAnimal={perAnimal}
+                  alreadyHere={cartBookingIds}
+                  alreadyHereLabel="Ada di keranjang ini."
+                  disabled={busy}
+                  idPrefix="pos-ride"
+                />
+              )}
+
               {chosen && (
                 <div className="rounded-lg border border-border p-3">
                   <div className="flex items-baseline justify-between gap-2">
+                    {/* A JOURNEY IS NOT PRICED FOR AN ANIMAL. "Harga untuk
+                        Bruno" over a fare measured between two doors would
+                        name the one thing that did not decide the figure. */}
                     <span className="min-w-0 text-sm text-muted">
-                      Harga untuk {chosen.name}
+                      {isRide
+                        ? `Tarif ${LEG_LABEL[leg].toLowerCase()}`
+                        : `Harga untuk ${chosen.name}`}
                     </span>
                     <span className="shrink-0 text-base font-semibold tabular-nums text-foreground">
                       {quote.inactive
                         ? "Varian nonaktif"
-                        : quote.price && !measuring
-                          ? formatMoney(quote.price)
+                        : shownPrice && !measuring && !unpinned
+                          ? formatMoney(shownPrice)
                           : "—"}
                     </span>
                   </div>
 
                   {/* Under the name, not beside the figure: it explains WHICH
                       animal was read, which is what the name above is about. */}
-                  {variantLabel && (
+                  {!isRide && variantLabel && (
                     <p className="mt-0.5 text-xs text-muted">{variantLabel}</p>
+                  )}
+
+                  {/* WHAT THE FARE WAS MULTIPLIED BY, when it was. Silent on a
+                      `per_visit` service and on an untethered ride — there is
+                      no arithmetic to explain. */}
+                  {perAnimal && chargedPets > 1 && (
+                    <p className="mt-0.5 text-xs text-muted">
+                      {chargedPets} booking × {formatMoney(quote.price ?? "0")}
+                    </p>
                   )}
 
                   {/* WHERE IT WAS MEASURED TO — "Zona A · 2,1 km". A failure
                       is said once, in the refusal below. */}
-                  {zoneShown && !measuring && variantQuote.zone.ok && (
+                  {zoneShown && !measuring && !unpinned && variantQuote.zone.ok && (
                     <p className="mt-0.5 text-xs text-muted">
                       {variantQuote.zoneText}
                     </p>
@@ -482,6 +733,16 @@ export function PosServicePetDialog({
 
                   {measuring && (
                     <p className="mt-1 text-xs text-muted">Menghitung harga…</p>
+                  )}
+
+                  {/* AN UNPINNED END IS SAID HERE TOO, not only under the field
+                      it belongs to: this box is where the cashier is looking
+                      when the figure fails to appear. */}
+                  {unpinned && (
+                    <p className="mt-1 text-xs text-warning">
+                      Lengkapi titik lokasi asal dan tujuan dulu — tarifnya
+                      dihitung dari jarak yang ditempuh.
+                    </p>
                   )}
 
                   {/*
@@ -507,7 +768,12 @@ export function PosServicePetDialog({
                     </p>
                   )}
 
-                  {!quote.price && !measuring && (
+                  {/* ⚠️ NOT WHILE AN END IS UNPINNED. Without the two pins the
+                      zone cannot be measured, so the quote fails with "zona
+                      tidak bisa ditentukan" — a sentence about a band of
+                      distance, aimed at somebody who has simply not typed the
+                      second address yet. The line above says the useful thing. */}
+                  {!quote.price && !measuring && !unpinned && (
                     <p className="mt-1 text-xs text-warning">
                       {quote.missingAxis ? (
                         <>
@@ -517,7 +783,9 @@ export function PosServicePetDialog({
                         </>
                       ) : (
                         (problem ??
-                        "Layanan ini belum punya harga untuk hewan ini. Tambahkan variannya di katalog.")
+                        (isRide
+                          ? "Layanan ini belum punya tarif untuk perjalanan ini. Tambahkan variannya di katalog."
+                          : "Layanan ini belum punya harga untuk hewan ini. Tambahkan variannya di katalog."))
                       )}
                     </p>
                   )}
@@ -621,14 +889,21 @@ export function PosServicePetDialog({
                 basket that fails at the write — with an error naming an axis
                 nobody was asked about.
               */
+              /*
+                AND NOT WITHOUT BOTH ENDS OF THE JOURNEY (24 September 2026).
+                A fare is a band of distance, so the server refuses a ride it
+                cannot measure — and the refusal would arrive after the basket
+                had been written.
+              */
               disabled={
                 busy ||
-                !petId ||
+                picked.length === 0 ||
                 !quote.price ||
                 quote.inactive ||
                 inactiveAddonTicked ||
                 unpricedAddonTicked ||
-                measuring
+                measuring ||
+                unpinned
               }
               onClick={confirm}
             >
@@ -653,7 +928,8 @@ export function PosServicePetDialog({
             // Re-asked rather than spliced: the list is server-ordered, and a
             // local insert would be a second ordering rule to keep in step.
             setNonce((n) => n + 1);
-            setPetId(pet._id);
+            /* A van gains the new animal; anything else is about it alone. */
+            setPicked((prev) => (isRide ? [...prev, pet._id] : [pet._id]));
           }}
         />
       )}

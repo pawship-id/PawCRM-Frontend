@@ -12,11 +12,15 @@ import {
   namedOptions,
 } from "@/components";
 import { Button } from "@/components/ui/button";
+import { bookingDetailPath } from "@/features/antar-jemput/paths";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { bookingService } from "@/services/booking.service";
 import type { BookingCalendar, BookingCalendarEntry, BookingStatus } from "@/types/api";
 
-import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
+import {
+  BOOKING_STATUS_LABELS,
+  bookingStatusLabel,
+} from "./BookingStatusBadge";
 
 type View = "harian" | "mingguan";
 
@@ -516,7 +520,7 @@ function Block({
       <span className="block truncate">{entry.serviceName}</span>
       {/* THE STATUS AS WORDS. Colour is never the only difference. */}
       <span className="block truncate opacity-80">
-        {BOOKING_STATUS_LABELS[entry.status]}
+        {bookingStatusLabel(entry.status, entry)}
         {entry.durationMin === null && " · durasi belum diisi"}
       </span>
     </button>
@@ -628,7 +632,7 @@ function DetailPanel({
             a search for something they are already looking at.
           */}
           <Button asChild variant="secondary" size="sm">
-            <Link href={`/dashboard/booking/${entry.bookingId}`}>
+            <Link href={bookingDetailPath({ _id: entry.bookingId, tripLeg: entry.tripLeg })}>
               Buka booking
             </Link>
           </Button>

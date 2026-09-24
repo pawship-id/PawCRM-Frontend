@@ -20,6 +20,7 @@ import {
   BookingStatusActions,
 } from "@/features/booking";
 import { Can } from "@/features/permissions";
+import { bookingDetailPath } from "@/features/antar-jemput/paths";
 import { cn } from "@/lib/utils";
 import {
   formatMoney,
@@ -146,7 +147,7 @@ export function GroomingBookingsTable({
                   <TableCell>
                     {/* "—" while a draft: the number is earned by leaving it. */}
                     <Link
-                      href={`/dashboard/booking/${booking._id}`}
+                      href={bookingDetailPath(booking)}
                       aria-label={`Buka ${booking.bookingNumber ?? "booking draf"}`}
                       className="rounded text-sm font-semibold tabular-nums text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     >
@@ -178,7 +179,8 @@ export function GroomingBookingsTable({
 
                     {(booking.location === "in_home" ||
                       booking.pickupRequested ||
-                      booking.deliveryRequested) && (
+                      booking.deliveryRequested ||
+                      (booking.trips?.length ?? 0) > 0) && (
                       <span className="mt-1 flex flex-wrap gap-1">
                         {booking.location === "in_home" && (
                           <Badge
@@ -188,7 +190,13 @@ export function GroomingBookingsTable({
                             Di rumah
                           </Badge>
                         )}
-                        {(booking.pickupRequested || booking.deliveryRequested) && (
+                        {/*
+                          THE VAN, from either side: the booking's own trip
+                          flags, or a ride booked in its visit (21 Sep 2026).
+                        */}
+                        {(booking.pickupRequested ||
+                          booking.deliveryRequested ||
+                          (booking.trips?.length ?? 0) > 0) && (
                           <Badge
                             variant="outline"
                             className="border-transparent bg-tint-info text-info"
@@ -312,8 +320,11 @@ function DiscountLine({ amount }: { amount?: string | null }) {
   );
 }
 
-/** What this booking's grooming comes to, line by line, and where to go next. */
-function RowBreakdown({ row }: { row: GroomingRow }) {
+/**
+ * What this booking comes to, line by line, and where to go next. Shared with
+ * Antar-Jemput's board, whose opened row is the same two halves.
+ */
+export function RowBreakdown({ row }: { row: GroomingRow }) {
   const { booking, service } = row;
   const discounted = Boolean(
     booking.discountAmount && isPositive(booking.discountAmount),
@@ -402,7 +413,7 @@ function RowBreakdown({ row }: { row: GroomingRow }) {
           offered twice.
         */}
         <Button asChild variant="secondary" size="sm">
-          <Link href={`/dashboard/booking/${booking._id}`}>Buka detail</Link>
+          <Link href={bookingDetailPath(booking)}>Buka detail</Link>
         </Button>
         {row.billing === "unbilled" && (
           <Can feature="posTransactions" action="create">

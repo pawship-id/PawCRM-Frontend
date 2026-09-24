@@ -8,6 +8,8 @@ import { usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 
 import { useSetupCounts, type SetupCount } from "../hooks/useSetupCounts";
+import { SETTINGS_PATHS } from "../paths";
+import { SettingsPageHeader } from "./SettingsHeader";
 
 /**
  * Pengaturan → Data Awal: the opening figures, before Buloo starts recording.
@@ -91,7 +93,7 @@ export function InitialDataScreen() {
     {
       title: "Cabang & gudang",
       description: "Tempat semua saldo dan stok nanti menempel.",
-      href: mayReadBranches ? "/dashboard/master/branches" : undefined,
+      href: mayReadBranches ? SETTINGS_PATHS.cabang : undefined,
       status: mayReadBranches
         ? `${statusOf(counts.branches, "cabang")}${
             mayReadWarehouses && isDone(counts.warehouses)
@@ -164,13 +166,11 @@ export function InitialDataScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Data Awal</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Angka pembuka sebelum Buloo mulai mencatat. Urutannya mengikat — stok
-          awal butuh produk lebih dulu, piutang awal butuh pelanggan.
-        </p>
-      </div>
+      <SettingsPageHeader
+        tab="sistem"
+        title="Data awal"
+        description="Angka pembuka sebelum Buloo mulai mencatat. Urutannya mengikat — stok awal butuh produk lebih dulu, piutang awal butuh pelanggan."
+      />
 
       <ol className="overflow-hidden rounded-2xl border border-border bg-surface">
         {steps.map((step, index) => (

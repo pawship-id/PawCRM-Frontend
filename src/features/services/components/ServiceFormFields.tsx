@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import Link from "next/link";
+import { Plus, RotateCcw, X } from "lucide-react";
 
 import {
   Alert,
@@ -14,9 +15,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
 import { useServiceSteps } from "@/hooks/useServiceSteps";
 import { cn } from "@/lib/utils";
-import type { ServiceLocation, ServiceVariantAxis, VariantAxisKey } from "@/types/api";
+import type {
+  ServiceKind,
+  ServiceLocation,
+  ServiceVariantAxis,
+  VariantAxisKey,
+} from "@/types/api";
 
 import { MAX_VARIANTS, type VariantAxisDef, type VariantCombo } from "../variantAxes";
 import {
@@ -112,7 +119,17 @@ export function ServiceVariantEditor({
   onPriceChange,
   onDurationChange,
   onActiveChange,
+  kindName = null,
+  onReloadOptions,
 }: {
+  /**
+   * The kind of service's name — said when it has no options yet (22 September
+   * 2026), so the empty list reads as "set this up" rather than as a checklist
+   * with nothing in it.
+   */
+  kindName?: string | null;
+  /** Re-reads the Opsi Varian cards, after one was made in another tab. */
+  onReloadOptions?: () => void;
   axes: VariantAxisKey[];
   /** The axes offered — one per Opsi Varian card, in card order. */
   axisDefs: VariantAxisDef[];
@@ -135,10 +152,45 @@ export function ServiceVariantEditor({
     <div className="flex flex-col gap-4">
       <div>
         <p className="text-sm font-medium">Harga dibedakan berdasarkan</p>
-        <p className="mt-1 text-xs text-muted">
-          Pilih minimal satu. Barisnya dibuat otomatis dari kombinasi yang
-          dicentang.
-        </p>
+        {axisDefs.length === 0 ? (
+          /*
+            THIS KIND HAS NO OPTIONS YET — every card is for other kinds. Say
+            where they are made rather than drawing an empty checklist, and
+            open that page in a new tab so this form is not lost.
+          */
+          <div className="mt-1">
+            <p className="text-xs text-muted">
+              {kindName ? `Layanan ${kindName}` : "Layanan ini"} belum punya opsi
+              varian. Buat dulu di Layanan › Pengaturan › Opsi Varian dan centang{" "}
+              {kindName ?? "jenis layanannya"} — atau matikan harga bervariasi dan
+              pakai satu harga.
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button asChild variant="secondary" size="sm">
+                <Link href={serviceSettingsPath("opsi")} target="_blank" rel="noreferrer">
+                  Buka Opsi Varian (tab baru)
+                </Link>
+              </Button>
+              {onReloadOptions && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={onReloadOptions}
+                  disabled={disabled}
+                >
+                  <RotateCcw className="size-4" aria-hidden />
+                  Muat ulang opsi
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-1 text-xs text-muted">
+            Pilih minimal satu. Barisnya dibuat otomatis dari kombinasi yang
+            dicentang.
+          </p>
+        )}
         <CheckRowGroup className="mt-2">
           {axisDefs.map((def) => (
             <CheckRow
@@ -377,23 +429,18 @@ export function StringListField({
 }
 
 /**
- * The service's tahapan, picked from its business line's list (14 September
- * 2026) — they were free text before.
- *
- * NO LINE, NO LIST: the picker stays off and says "Pilih lini bisnis dulu"
- * until the Identitas card has one.
+ * The service's tahapan, picked from the tenant's ONE LIST (14 September 2026;
+ * not scoped by business line or Kelompok layanan since 22 September) — they
+ * were free text before. Main services and add-ons pick alike.
  *
  * A ROW THAT CANNOT BE ADDED AGAIN — retired on the list, or not on it — says
  * so beside its name and can still be removed.
  *
  * WHAT THE SERVER WILL REFUSE is warned about before Simpan. It keeps a name
- * the service already stored on this same line (`kept`), retired or not; any
- * other name must be an active step of the chosen line. So after the line is
- * changed, every row not on the new line's list is named in a warning — the
- * save would fail on them otherwise.
+ * the service already stored (`kept`), retired or not; any other name must be
+ * an active step of the list.
  */
 export function ServiceStepsField({
-  businessLineId,
   sessions,
   kept,
   maxItems,
@@ -402,9 +449,8 @@ export function ServiceStepsField({
   disabled,
   onChange,
 }: {
-  businessLineId: string;
   sessions: string[];
-  /** Names the server keeps whatever the list says — stored, same line. */
+  /** Names the server keeps whatever the list says — what the service stored. */
   kept: string[];
   maxItems: number;
   mayAddToList: boolean;
@@ -413,7 +459,7 @@ export function ServiceStepsField({
   /** A functional update: the quick add answers after an await. */
   onChange: (update: (current: string[]) => string[]) => void;
 }) {
-  const list = useServiceSteps(businessLineId || null);
+  const list = useServiceSteps();
   const keptKeys = new Set(kept.map((name) => name.trim().toLowerCase()));
   const flags = sessions.map((name) => serviceStepFlag(name, list));
   const refused = sessions.filter(
@@ -427,8 +473,8 @@ export function ServiceStepsField({
       <div>
         <p className="text-sm font-medium">Tahapan</p>
         <p className="mt-1 text-xs text-muted">
-          Urutan pengerjaannya, dipilih dari daftar tahapan lini bisnisnya — mis.
-          Mandi → Gunting → Blow dry.
+          Urutan pengerjaannya, dipilih dari daftar tahapan — mis. Mandi →
+          Gunting → Blow dry.
         </p>
       </div>
 
@@ -462,23 +508,16 @@ export function ServiceStepsField({
       {refused.length > 0 && (
         <Alert variant="warning">
           {refused.map((name) => `“${name}”`).join(", ")} tidak ada di daftar
-          tahapan aktif lini bisnis ini. Hapus, lalu pilih penggantinya dari
+          tahapan aktif. Hapus, lalu pilih penggantinya dari
           daftar — kalau tidak, layanan ini ditolak saat disimpan.
         </Alert>
       )}
 
       <ServiceStepPicker
-        businessLineId={businessLineId}
         taken={sessions}
         mayAddToList={mayAddToList}
         disabled={disabled}
-        disabledReason={
-          !businessLineId
-            ? "Pilih lini bisnis dulu."
-            : full
-              ? `Maksimal ${maxItems} tahapan.`
-              : null
-        }
+        disabledReason={full ? `Maksimal ${maxItems} tahapan.` : null}
         onPick={(name) =>
           onChange((current) =>
             current.length >= maxItems ||

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy, Pencil, Trash2 } from "lucide-react";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Can, usePermissions } from "@/features/permissions";
 import {
+  ServiceFormLink,
   ServiceLifecycleDialog,
   type ServiceLifecycleAction,
 } from "@/features/services";
@@ -25,8 +26,14 @@ import {
   useServiceAddons,
 } from "../hooks/useGroomingServiceDetail";
 import { useServiceBookingCounts } from "../hooks/useServiceBookingCounts";
-import { GROOMING_CATALOG_PATH, groomingServicePath } from "../paths";
-import { branchesText, serviceEditPath, statusOf } from "../serviceDisplay";
+import {
+  GROOMING_LINE,
+  lineFormOrigin,
+  lineServiceEditPath,
+  lineServicePath,
+  type ServiceLine,
+} from "../line";
+import { branchesText, statusOf } from "../serviceDisplay";
 import {
   ServicePortalPanel,
   ServiceSummaryPanel,
@@ -67,6 +74,7 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
     code: `${service.code.slice(0, CODE_MAX_LENGTH - suffix.length)}${suffix}`,
     businessLineId: service.businessLineId,
     billingUnit: service.billingUnit ?? "per_pet",
+    serviceKind: service.serviceKind ?? null,
     serviceLocations: service.serviceLocations?.length
       ? service.serviceLocations
       : ["in_store"],
@@ -140,8 +148,16 @@ function copyBlockedBy(service: Service): string | null {
  * THE SUB-TABS ARE STATE, NOT ROUTES: they are four readings of one record, and
  * nobody links to the Portal tab of a service.
  */
-export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }) {
+export function GroomingServiceDetailScreen({
+  serviceId,
+  serviceLine = GROOMING_LINE,
+}: {
+  serviceId: string;
+  /** Which line's module the page sits under — see `ServiceLine`. */
+  serviceLine?: ServiceLine;
+}) {
   const router = useRouter();
+  const catalogPath = serviceLine.paths.catalog;
   const { can } = usePermissions();
   const mayUpdate = can("services", "update");
   const mayReadBookings = can("bookings", "read");
@@ -159,6 +175,16 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
     service?.serviceType === "main" ? (service.addonServiceIds ?? []) : [],
     service?.serviceType === "main",
   );
+
+  /*
+    AN ADD-ON HAS NO PAGE IN A MODULE (22 September 2026, on request): it is
+    listed and edited on Master › Layanan › Add-on. An old link or bookmark
+    lands on its edit form there instead.
+  */
+  const isAddon = service?.serviceType === "addon";
+  useEffect(() => {
+    if (isAddon) router.replace(lineServiceEditPath(serviceId));
+  }, [isAddon, router, serviceId]);
 
   const [tab, setTab] = useState<DetailTab>("ringkasan");
   const [pending, setPending] = useState<ServiceLifecycleAction | null>(null);
@@ -222,7 +248,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
           swalToast(
             "Disalin sebagai nonaktif. Harga, varian, dan tahapan ikut; fotonya tidak.",
           );
-          router.push(groomingServicePath(created._id));
+          router.push(lineServicePath(serviceLine, created._id));
           return;
         } catch (err) {
           // The only 409 a create raises is a code already in use.
@@ -244,7 +270,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
     }
   }
 
-  const header = <GroomingModuleHeader />;
+  const header = <GroomingModuleHeader line={serviceLine} />;
 
   if (error) {
     return (
@@ -253,14 +279,14 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
         <Alert variant="error">{error}</Alert>
         <div>
           <Button asChild variant="secondary">
-            <Link href={GROOMING_CATALOG_PATH}>Kembali ke Layanan & Harga</Link>
+            <Link href={catalogPath}>Kembali ke Layanan & Harga</Link>
           </Button>
         </div>
       </div>
     );
   }
 
-  if (loading || !service) {
+  if (loading || !service || isAddon) {
     return (
       <div className="flex flex-col gap-6">
         {header}
@@ -295,7 +321,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
 
       <div className="flex flex-wrap items-start gap-4">
         <Link
-          href={GROOMING_CATALOG_PATH}
+          href={catalogPath}
           aria-label="Kembali ke Layanan & Harga"
           className="flex size-11 flex-none items-center justify-center rounded-full border border-border bg-surface text-muted transition hover:bg-surface-hover hover:text-foreground focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
         >
@@ -352,10 +378,13 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
               {service.isActive ? "Nonaktifkan" : "Aktifkan"}
             </Button>
             <Button asChild>
-              <Link href={serviceEditPath(service._id)}>
+              <ServiceFormLink
+                href={lineServiceEditPath(service._id)}
+                origin={lineFormOrigin(serviceLine)}
+              >
                 <Pencil className="size-4" />
                 Ubah
-              </Link>
+              </ServiceFormLink>
             </Button>
           </Can>
         </div>
@@ -420,7 +449,10 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
             onSetActive={(active) => void setActive(active)}
           />
         ) : tab === "portal" ? (
-          <ServicePortalPanel service={service} />
+          <ServicePortalPanel
+            service={service}
+            origin={lineFormOrigin(serviceLine)}
+          />
         ) : null}
 
         {/* Tahapan & Add-on is edited in place too — mounted and hidden, as below. */}
@@ -429,6 +461,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
             key={service._id}
             service={service}
             mayUpdate={mayUpdate}
+            serviceKind={serviceLine.serviceKind}
             addons={addons}
             onSaved={replace}
           />
@@ -446,6 +479,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
             key={`${service._id}:${variantsVersion}`}
             service={service}
             mayUpdate={mayUpdate}
+            serviceKind={serviceLine.serviceKind}
             onSaved={(updated) => {
               replace(updated);
               setVariantsVersion((current) => current + 1);
@@ -459,7 +493,7 @@ export function GroomingServiceDetailScreen({ serviceId }: { serviceId: string }
         onCancel={() => setPending(null)}
         onDone={() => {
           setPending(null);
-          router.push(GROOMING_CATALOG_PATH);
+          router.push(catalogPath);
         }}
       />
     </div>

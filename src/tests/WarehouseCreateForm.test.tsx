@@ -102,9 +102,34 @@ describe("WarehouseCreateForm", () => {
         picName: "Budi",
         picPhone: null,
         isActive: true,
+        /* A till is switched on deliberately — it is a line on a bill. */
+        hasPos: false,
       }),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/master/warehouses");
+    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/gudang");
+  });
+
+  it("sends the till flag when the warehouse asks for one", async () => {
+    const create = jest
+      .spyOn(warehouseService, "create")
+      .mockResolvedValue({ _id: "w1", name: "Etalase Pusat" } as never);
+
+    render(<WarehouseCreateForm />);
+
+    await userEvent.type(
+      screen.getByLabelText(/warehouse name/i),
+      "Etalase Pusat",
+    );
+    await userEvent.click(screen.getByLabelText(/Ada kasir di gudang ini/));
+    await userEvent.click(
+      screen.getByRole("button", { name: /create warehouse/i }),
+    );
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ hasPos: true }),
+      ),
+    );
   });
 
   it("surfaces a duplicate-name conflict as an alert", async () => {

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, X } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 
 import {
   Alert,
@@ -18,7 +18,6 @@ import {
   namedOptions,
 } from "@/components";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { variantRefusalOf, type VariantRefusal } from "@/features/booking/variantLine";
 import { CustomerSearchDialog } from "@/features/customers";
@@ -34,7 +33,7 @@ import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
-import { formatMoney, toDecimalString } from "@/utils/decimal";
+import { formatMoney } from "@/utils/decimal";
 import {
   AXIS_LABEL,
   staffAxesOf,
@@ -55,17 +54,39 @@ import type {
 import {
   BLANK_PRICE,
   blankPetDraft,
-  digitsOnly,
   priceLine,
   splitBookingDiscount,
   toEntry,
   typedDiscount,
   type DiscountMode,
   type PetDraft,
-  type PriceDraft,
   type PricedLine,
 } from "../bookingCreateDraft";
+import {
+  BLANK_RIDE,
+  quoteRides,
+  rideBlockedReason,
+  RideForGroomingSection,
+  rideRequests,
+  type RideDraft,
+} from "@/features/antar-jemput/components/RideForGroomingSection";
+import { LEG_LABEL } from "@/features/antar-jemput/ride";
+
 import { useGroomingLine } from "../hooks/useGroomingLine";
+import {
+  badge,
+  discountWords,
+  DiscountInput,
+  Fact,
+  Initial,
+  money,
+  nextHalfHourValue,
+  onlyAt,
+  PriceRow,
+  SummaryLine,
+  todayValue,
+  toScheduledAt,
+} from "./BookingPriceControls";
 import { GROOMING_PATH } from "../paths";
 
 /** The API's page cap. */
@@ -81,50 +102,6 @@ const VIP_WORDS: Record<VipTier, string> = {
   platinum: "Platinum",
 };
 
-/** Today on the shop's clock, as `<input type="date">` holds it. */
-function todayValue(): string {
-  const now = new Date();
-  return new Date(now.getTime() - now.getTimezoneOffset() * 60_000)
-    .toISOString()
-    .slice(0, 10);
-}
-
-/** The next half hour — most counter bookings are for later the same day. */
-function nextHalfHourValue(): string {
-  const at = new Date();
-  at.setSeconds(0, 0);
-  at.setMinutes(at.getMinutes() <= 30 ? 30 : 60);
-  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
-}
-
-/** Wall-clock time in the browser's zone — the shop's. */
-function toScheduledAt(date: string, time: string): string | null {
-  const at = new Date(`${date}T${time}`);
-  return Number.isNaN(at.getTime()) ? null : at.toISOString();
-}
-
-const money = (minor: bigint) => formatMoney(toDecimalString(minor));
-
-/** "150.000" for an input — whole rupiah, grouped the Indonesian way. */
-const grouped = (digits: string) =>
-  digits === "" ? "" : Number(digits).toLocaleString("id-ID");
-
-/** A quote's whole rupiah as digits — "150000.0000" → "150000". */
-const quoteDigits = (quote: bigint | null) =>
-  quote === null ? "" : toDecimalString(quote).split(".")[0];
-
-/** "10%" or "Rp 15.000" — how a discount was typed. */
-function discountWords(mode: DiscountMode, value: string): string {
-  return mode === "percent" ? `${value}%` : formatMoney(value);
-}
-
-/** The one place a service may be done, or null when it goes either way. */
-function onlyAt(service: Service | null): BookingLocation | null {
-  const at = service?.serviceLocations ?? [];
-  return at.length === 1 ? at[0] : null;
-}
-
-const badge = "rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap";
 
 /** How the summary names a variant: coat, then size, then species. */
 const VARIANT_ORDER = ["furType", "sizeCategory", "petType"] as const satisfies readonly ServiceVariantAxis[];
@@ -182,6 +159,9 @@ export function GroomingBookingCreateScreen() {
     mode: DiscountMode;
     value: string;
   }>({ mode: "amount", value: "" });
+
+  /* The van, when a chosen service offers one — BO's note 4 (21 Sep 2026). */
+  const [ride, setRide] = useState<RideDraft>(BLANK_RIDE);
 
   const [picking, setPicking] = useState(false);
   const [addingPet, setAddingPet] = useState(false);
@@ -396,6 +376,18 @@ export function GroomingBookingCreateScreen() {
   const homeOnly = chosenServices.some((service) => onlyAt(service) === "in_home");
   const storeOnly = chosenServices.some((service) => onlyAt(service) === "in_store");
   const location: BookingLocation = homeOnly ? "in_home" : "in_store";
+  /*
+    ANTAR-JEMPUT FOR THIS VISIT — offered when a chosen service is switched to
+    "Bisa antar-jemput" and the work is in the shop (a house call has no van).
+  */
+  const rideOffered =
+    !homeOnly && chosenServices.some((service) => service.pickupDeliveryAvailable);
+  const rideService = serviceOf(ride.serviceId);
+  const quotedRides = rideOffered
+    ? quoteRides(ride, rideService, priced[0]?.pet ?? null, priced.length, variant)
+    : [];
+  const rideTotal = quotedRides.reduce((sum, row) => sum + (row.price ?? 0n), 0n);
+  const rideBlocked = rideOffered ? rideBlockedReason(ride, quotedRides) : null;
   /* Whether anything chosen — a service or a ticked add-on — is priced by Zona. */
   const zoneAsked = variant.needsZone(
     priced.flatMap((row) => [row.service, ...row.addons.map((addon) => addon.addon)]),
@@ -436,7 +428,7 @@ export function GroomingBookingCreateScreen() {
                   ? "Layanan di alamat dan layanan di toko tidak bisa disimpan bersama — simpan terpisah."
                   : date === "" || time === ""
                     ? "Tanggal dan jamnya belum lengkap."
-                    : null;
+                    : rideBlocked;
 
   async function save() {
     if (saving || !customer || blockedReason) return;
@@ -471,6 +463,38 @@ export function GroomingBookingCreateScreen() {
         .filter(Boolean)
         .join(", ");
 
+      /*
+        THE RIDES, AFTER THE GROOMING AND INTO ITS VISIT. Two saves, so one can
+        fail on its own: the grooming stands, and what did not save is said —
+        it is booked from the Antar-Jemput module.
+
+        ⚠️ THE MESSAGE USED TO NAME "+ Antar-jemput" on the booking's own page,
+        removed 24 September 2026. Nothing is added to a booking from there any
+        more, so the sentence had to stop sending people to look for it.
+      */
+      const rideMisses: string[] = [];
+      if (rideOffered && ride.legs.length > 0 && rideService) {
+        for (const request of rideRequests({
+          draft: ride,
+          quoted: quotedRides,
+          service: rideService,
+          date,
+          base: { customerId: customer._id, branchId, groupId: result.groupId },
+          petIds: picked.map(({ pet }) => pet._id),
+          customerAddress: customer.address ?? null,
+        })) {
+          try {
+            await bookingService.create(request.input);
+          } catch (rideError) {
+            rideMisses.push(
+              `${LEG_LABEL[request.leg]}: ${
+                rideError instanceof ApiError ? rideError.fullMessage : "gagal"
+              }`,
+            );
+          }
+        }
+      }
+
       router.push(
         made.length === 1 ? `/dashboard/booking/${made[0]._id}` : GROOMING_PATH,
       );
@@ -478,11 +502,19 @@ export function GroomingBookingCreateScreen() {
 
       /* Last, and outside the save's try — see BookingForm for why. */
       try {
-        swalToast(
-          numbers
-            ? `${made.length} booking dibuat: ${numbers}`
-            : `${made.length} booking dibuat.`,
-        );
+        if (rideMisses.length > 0) {
+          swalToast(
+            `Grooming tersimpan, antar-jemput belum — ${rideMisses.join("; ")}. Buat antar-jemputnya dari Layanan › Antar-Jemput.`,
+            "error",
+            9000,
+          );
+        } else {
+          swalToast(
+            numbers
+              ? `${made.length} booking dibuat: ${numbers}${ride.legs.length && rideOffered ? " + antar-jemput" : ""}`
+              : `${made.length} booking dibuat.`,
+          );
+        }
       } catch {
         /* The page it landed on already shows it. */
       }
@@ -768,6 +800,22 @@ export function GroomingBookingCreateScreen() {
                 )}
               </div>
             </Card>
+
+            {rideOffered && (
+              <RideForGroomingSection
+                value={ride}
+                onChange={setRide}
+                services={services}
+                variant={variant}
+                pet={priced[0]?.pet ?? null}
+                riders={priced.length}
+                date={date}
+                time={time}
+                minutes={Math.max(...priced.map((row) => row.minutes), 0)}
+                customerAddress={customer?.address ?? null}
+                disabled={saving}
+              />
+            )}
 
             {/* ─── LAYANAN PER HEWAN ─── */}
             <section aria-labelledby="per-pet" className="flex flex-col gap-3">
@@ -1186,6 +1234,30 @@ export function GroomingBookingCreateScreen() {
                     Diskon booking dibagi rata ke tiap booking.
                   </p>
                 )}
+
+                {/*
+                  THE RIDES ARE THEIR OWN BOOKINGS — listed under the grooming's
+                  total, not folded into it, since each is billed as itself.
+                */}
+                {quotedRides.length > 0 && rideService && (
+                  <div className="mt-3 border-t border-border pt-2">
+                    <p className="text-xs font-bold tracking-wide text-muted uppercase">
+                      Antar-jemput · booking terpisah
+                    </p>
+                    {quotedRides.map((row) => (
+                      <SummaryLine
+                        key={row.leg}
+                        tone="sub"
+                        label={`${LEG_LABEL[row.leg]} · ${ride.times[row.leg].replace(":", ".") || "—"}`}
+                        value={row.price === null ? "—" : money(row.price)}
+                      />
+                    ))}
+                    <div className="mt-1 flex justify-between gap-3 font-semibold">
+                      <span>Total dengan antar-jemput</span>
+                      <span className="tabular-nums">{money(total + rideTotal)}</span>
+                    </div>
+                  </div>
+                )}
                 {!mayPrice && (
                   <p className="mt-2 text-xs text-muted">
                     Harga mengikuti katalog. Mengubah harga atau memberi diskon
@@ -1221,246 +1293,6 @@ export function GroomingBookingCreateScreen() {
             setDrafts((prev) => ({ ...prev, [pet._id]: blankPetDraft(pet._id) }));
           }}
         />
-      )}
-    </div>
-  );
-}
-
-/** One fact about the customer. */
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-xs font-bold tracking-wide text-muted uppercase">{label}</dt>
-      <dd className="mt-0.5 text-sm font-semibold wrap-break-word text-foreground">{children}</dd>
-    </div>
-  );
-}
-
-/** The animal's initial — a round shape, not a face. */
-function Initial({ name }: { name: string }) {
-  return (
-    <span
-      aria-hidden
-      className="flex size-9 shrink-0 items-center justify-center rounded-md bg-surface text-sm font-bold text-primary"
-    >
-      {name.trim().charAt(0).toUpperCase() || "?"}
-    </span>
-  );
-}
-
-function SummaryLine({
-  label,
-  detail,
-  hint,
-  value,
-  tone = "main",
-}: {
-  label: string;
-  /** A quieter second line under the label — the variant. */
-  detail?: string;
-  hint?: string;
-  value: string;
-  tone?: "main" | "sub" | "discount";
-}) {
-  return (
-    <div className={`flex justify-between gap-3 ${tone === "discount" ? "py-0.5" : "py-1"}`}>
-      <span
-        className={
-          /* A discount is small print under its line — 13px, the floor (§1.6). */
-          tone === "discount"
-            ? "pl-3 text-xs text-success"
-            : tone === "sub"
-              ? "pl-3 text-muted"
-              : "text-foreground"
-        }
-      >
-        {label}
-        {detail && <span className="block text-xs text-muted">{detail}</span>}
-        {hint && <span className="block text-xs text-warning">{hint}</span>}
-      </span>
-      <span
-        className={`whitespace-nowrap tabular-nums ${
-          tone === "discount"
-            ? "text-xs font-semibold text-success"
-            : tone === "sub"
-              ? "text-muted"
-              : "font-semibold"
-        }`}
-      >
-        {value}
-      </span>
-    </div>
-  );
-}
-
-/** A discount box with its Rp / % switch. Switching empties it, as the mockup does. */
-function DiscountInput({
-  id,
-  mode,
-  value,
-  disabled,
-  onChange,
-}: {
-  id: string;
-  mode: DiscountMode;
-  value: string;
-  disabled: boolean;
-  onChange: (next: { mode: DiscountMode; value: string }) => void;
-}) {
-  return (
-    <div className="flex">
-      <Input
-        id={id}
-        inputMode="numeric"
-        className={`${FIELD_HEIGHT} rounded-r-none text-right tabular-nums`}
-        value={mode === "percent" ? value : grouped(value)}
-        placeholder="0"
-        disabled={disabled}
-        onChange={(event) => {
-          let next = digitsOnly(event.target.value);
-          if (mode === "percent" && next !== "" && Number(next) > 100) next = "100";
-          onChange({ mode, value: next });
-        }}
-      />
-      <Button
-        type="button"
-        variant="secondary"
-        className={`${FIELD_HEIGHT} min-w-12 rounded-l-none`}
-        disabled={disabled}
-        aria-label={mode === "percent" ? "Diskon dalam persen — ganti ke rupiah" : "Diskon dalam rupiah — ganti ke persen"}
-        onClick={() => onChange({ mode: mode === "percent" ? "amount" : "percent", value: "" })}
-      >
-        {mode === "percent" ? "%" : "Rp"}
-      </Button>
-    </div>
-  );
-}
-
-/**
- * "Harga dasar − Diskon = Efektif" for one line — the main service or an add-on.
- *
- * A TYPED PRICE EQUAL TO THE CATALOGUE'S IS STORED AS NONE, so the line keeps
- * following the catalogue and "Katalog Rp … · kembalikan" only shows when the two
- * really differ. Without `bookings:setPrice` it is the catalogue's price, read-only.
- */
-function PriceRow({
-  name,
-  line,
-  draft,
-  missing,
-  note,
-  inactive,
-  mayPrice,
-  disabled,
-  onChange,
-  onRemove,
-}: {
-  name: string;
-  line: PricedLine;
-  draft: PriceDraft;
-  missing: React.ReactNode;
-  /** A quiet line under the price — the zone it was quoted in. */
-  note?: string | null;
-  inactive: boolean;
-  mayPrice: boolean;
-  disabled: boolean;
-  onChange: (next: PriceDraft) => void;
-  onRemove?: () => void;
-}) {
-  const priceId = `price-${name}`.replace(/\s+/g, "-");
-  const discountId = `discount-${name}`.replace(/\s+/g, "-");
-  const overridden = line.price !== null && line.quote !== null && line.price !== line.quote;
-
-  return (
-    <div className="rounded-lg border border-border bg-surface p-3">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-sm font-bold text-foreground">{name}</span>
-        {onRemove && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label={`Hapus ${name}`}
-            disabled={disabled}
-            onClick={onRemove}
-          >
-            <X className="size-4" aria-hidden />
-          </Button>
-        )}
-      </div>
-
-      {inactive ? (
-        <p className="text-sm">
-          <span className={`${badge} bg-tint-danger text-danger`}>Varian nonaktif</span>{" "}
-          <span className="text-xs text-muted">Pilih layanan lain atau aktifkan variannya di katalog.</span>
-        </p>
-      ) : missing && line.price === null ? (
-        <p className="text-sm font-semibold text-danger">{missing}</p>
-      ) : !mayPrice ? (
-        <p className="flex justify-between gap-3 text-sm">
-          <span className="text-muted">Harga katalog</span>
-          <span className="font-semibold tabular-nums">
-            {line.price === null ? "—" : money(line.price)}
-          </span>
-        </p>
-      ) : (
-        <>
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto] sm:items-end">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={priceId}>Harga dasar</Label>
-              <Input
-                id={priceId}
-                inputMode="numeric"
-                className={`${FIELD_HEIGHT} text-right tabular-nums`}
-                value={grouped(draft.price === "" ? quoteDigits(line.quote) : draft.price)}
-                disabled={disabled}
-                onChange={(event) => {
-                  const next = digitsOnly(event.target.value);
-                  onChange({ ...draft, price: next === quoteDigits(line.quote) ? "" : next });
-                }}
-              />
-            </div>
-            <span aria-hidden className="hidden pb-3 text-center font-bold text-muted sm:block">
-              −
-            </span>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={discountId}>Diskon</Label>
-              <DiscountInput
-                id={discountId}
-                mode={draft.discountMode}
-                value={draft.discountValue}
-                disabled={disabled}
-                onChange={(next) =>
-                  onChange({ ...draft, discountMode: next.mode, discountValue: next.value })
-                }
-              />
-            </div>
-            <div className="text-right sm:min-w-28">
-              <span className="text-xs text-muted">Efektif</span>
-              <p
-                className={`text-base font-extrabold tabular-nums ${line.discount > 0n ? "text-success" : "text-foreground"}`}
-              >
-                {line.price === null ? "—" : money(line.net)}
-              </p>
-            </div>
-          </div>
-          {overridden && (
-            <p className="mt-2 text-xs font-semibold text-warning">
-              Katalog {money(line.quote!)} ·{" "}
-              <button
-                type="button"
-                className="rounded underline-offset-2 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-                disabled={disabled}
-                onClick={() => onChange({ ...draft, price: "" })}
-              >
-                kembalikan
-              </button>
-            </p>
-          )}
-        </>
-      )}
-      {note && line.price !== null && !inactive && (
-        <p className="mt-2 text-xs text-muted tabular-nums">{note}</p>
       )}
     </div>
   );

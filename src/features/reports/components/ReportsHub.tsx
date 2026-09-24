@@ -8,7 +8,7 @@ import { usePermissions } from "@/features/permissions";
 import type { Action, Feature } from "@/features/permissions/types";
 
 /**
- * The reports landing page — seven cards, and one of them is deliberately dead.
+ * The reports landing page — twelve cards, and one of them is deliberately dead.
  *
  * MOST OF THESE LINK SOMEWHERE THAT ALREADY EXISTS, and that is the design
  * rather than a shortcut. The stock card, the expiry list and the opname history
@@ -45,6 +45,37 @@ interface ReportCard {
 }
 
 const CARDS: ReportCard[] = [
+  /*
+    THE THREE FINANCIAL STATEMENTS, moved here from Keuangan › Ringkasan on
+    22 September 2026. The v3 mockup files them under Laporan and gives the
+    Ringkasan no link cards; this hub is now their only door, so deleting one of
+    these strands a working screen. All three read the ledger, and the routes
+    enforce `journalEntries:read`.
+  */
+  {
+    title: "Laba Rugi",
+    description:
+      "Pendapatan dikurangi HPP dan beban untuk satu periode, dipecah per lini bisnis.",
+    href: "/dashboard/keuangan/laba-rugi",
+    feature: "journalEntries",
+    action: "read",
+  },
+  {
+    title: "Neraca",
+    description:
+      "Posisi pada satu tanggal: yang dimiliki, yang masih jadi kewajiban, dan sisanya milik pemilik.",
+    href: "/dashboard/keuangan/neraca",
+    feature: "journalEntries",
+    action: "read",
+  },
+  {
+    title: "Arus Kas",
+    description:
+      "Uang yang benar-benar masuk dan keluar — beda dari laba, dan ini yang menentukan bisa bayar apa tidak.",
+    href: "/dashboard/keuangan/arus-kas",
+    feature: "journalEntries",
+    action: "read",
+  },
   {
     title: "Stok per Cabang",
     description:

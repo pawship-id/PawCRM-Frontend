@@ -50,8 +50,12 @@ export const ACCOUNTING_CRUMBS = {
     label: "Jurnal",
     href: "/dashboard/keuangan/journal-entries",
   },
+  /**
+   * Also under Pengaturan since 22 September 2026, beside Daftar Akun — the
+   * mockup files it there. Same reason `accounts` is in this map.
+   */
   businessLines: {
     label: "Lini Bisnis",
-    href: "/dashboard/keuangan/business-lines",
+    href: "/dashboard/pengaturan/lini-bisnis",
   },
 } satisfies Record<string, Crumb>;

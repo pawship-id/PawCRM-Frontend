@@ -1710,7 +1710,7 @@ describe("BookingForm — when no staff are marked as groomers", () => {
     expect(
       await screen.findByText(/ditandai sebagai/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/master data/i)).toBeInTheDocument();
+    expect(screen.getByText(/Pengaturan › Pengguna/)).toBeInTheDocument();
   });
 
   it("still lets the booking be taken", async () => {

@@ -188,14 +188,32 @@ describe("GroomingServicesScreen", () => {
     ).toBeInTheDocument();
   });
 
+  it("asks for main services only — add-ons live on Master › Layanan (22 September 2026)", async () => {
+    jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
+
+    renderWithAuth(<GroomingServicesScreen />);
+    await screen.findByRole("link", { name: "Express Wash" });
+
+    // The table, and both "aktif dari" totals.
+    const calls = jest.mocked(serviceService.list).mock.calls.map(([query]) => query);
+    expect(calls.length).toBeGreaterThanOrEqual(3);
+    expect(calls.every((query) => query?.serviceType === "main")).toBe(true);
+  });
+
   it("opens the new-service form as a main service from Layanan baru", async () => {
     renderWithAuth(<GroomingServicesScreen />);
 
-    // `?jenis=utama` hides Jenis layanan on the form and files it as main.
-    expect(await screen.findByRole("link", { name: /Layanan baru/ })).toHaveAttribute(
-      "href",
-      "/dashboard/master/layanan/new?jenis=utama",
-    );
+    // One plain address from every module (22 September 2026); the module is
+    // left in the tab as the link is clicked.
+    const link = await screen.findByRole("link", { name: /Layanan baru/ });
+    expect(link).toHaveAttribute("href", "/dashboard/pengaturan/layanan/new");
+
+    link.addEventListener("click", (event) => event.preventDefault());
+    await userEvent.click(link);
+    expect(JSON.parse(window.sessionStorage.getItem("buloo.serviceFormOrigin")!)).toEqual({
+      serviceKind: "grooming",
+      listPath: "/dashboard/layanan/grooming/katalog",
+    });
   });
 
   it("asks for no booking count for a role that may not read bookings", async () => {

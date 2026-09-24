@@ -13,7 +13,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ApiError } from "@/services/api-error";
-import type { BusinessLine } from "@/services/businessLine.service";
 import { serviceStepService } from "@/services/serviceStep.service";
 import { swalToast } from "@/lib/swal";
 import type { ServiceStep } from "@/types/api";
@@ -21,33 +20,30 @@ import type { ServiceStep } from "@/types/api";
 import { SERVICE_STEP_NAME_MAX_LENGTH, stepNameOf } from "../serviceSteps";
 
 /**
- * Add a tahapan to one line's list, or rename one.
+ * Add a tahapan to the list, or rename one.
  *
  * A DIALOG, NOT A ROUTE, on PetOptionFormDialog's grounds: one field, the
  * common case is adding three in a row, and the list staying on screen is what
  * answers "is this one already there".
  *
- * THE NAME IS THE ONLY FIELD. The line is the pill that was on and never
- * changes after; the order is the end of the list (the server appends) and is
+ * THE NAME IS THE ONLY FIELD — one list per tenant (22 September 2026); the
+ * order is the end of the list (the server appends) and is
  * moved from the table; retiring is a row action. The commission weight is not
  * here at all — it belongs to a step's place IN A SERVICE (`sessionWeights[i]`),
  * so the same "Mandi" can weigh differently in two services.
  *
  * A RENAME IS NOT ONLY A LABEL. Services store the NAME, not an id, so the
- * server rewrites every service of the line that lists the old one, and leaves
+ * server rewrites every service that lists the old one, and leaves
  * bookings alone — a booking's turn is a record of what was agreed on the day.
  * When `serviceCount` says services are affected, the dialog says how many
  * BEFORE the click, and the toast says how many after, from
  * `renamedServiceCount`.
  */
 export function ServiceStepFormDialog({
-  line,
   step,
   onClose,
   onSaved,
 }: {
-  /** The line a new step goes into — the pill that was on. */
-  line: BusinessLine;
   /** Present to rename that step; absent to add one. */
   step?: ServiceStep;
   onClose: () => void;
@@ -99,21 +95,18 @@ export function ServiceStepFormDialog({
             : "Nama tahapan disimpan.",
         );
       } else {
-        await serviceStepService.create({
-          businessLineId: line._id,
-          name: cleaned,
-        });
+        await serviceStepService.create({ name: cleaned });
         onSaved();
         swalToast("Tahapan ditambahkan.");
       }
       onClose();
     } catch (error) {
       // A clash belongs on the field — it is the name that has to change. The
-      // server compares case-insensitively within the line, and a deleted step
+      // server compares case-insensitively across the list, and a deleted step
       // has already given its name up, so "sudah ada" is the whole story.
       if (error instanceof ApiError && error.status === 409) {
         setFieldError(
-          `"${cleaned}" sudah ada di tahapan ${line.name}. Pakai nama lain.`,
+          `"${cleaned}" sudah ada di daftar tahapan. Pakai nama lain.`,
         );
       } else {
         setFormError(
@@ -141,8 +134,8 @@ export function ServiceStepFormDialog({
             </DialogTitle>
             <DialogDescription>
               {editing
-                ? `Nama baru langsung dipakai di semua layanan ${line.name}.`
-                : `Masuk ke daftar tahapan ${line.name}, di urutan paling akhir. Bobot komisinya diisi di tiap layanan.`}
+                ? "Nama baru langsung dipakai di semua layanan yang memakainya."
+                : "Masuk ke daftar tahapan, di urutan paling akhir. Bobot komisinya diisi di tiap layanan."}
             </DialogDescription>
           </DialogHeader>
 

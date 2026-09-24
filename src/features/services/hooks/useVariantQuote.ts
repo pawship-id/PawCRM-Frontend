@@ -48,14 +48,48 @@ export function useVariantQuote({ branchPin, customerPin }: { branchPin: Pin; cu
       ? `${ZONE_FAILURE_MESSAGE.outside_zones} (${String(zone.distanceKm).replace(".", ",")} km)`
       : ZONE_FAILURE_MESSAGE[zone.reason];
 
+
   const quote = useCallback(
     (
       service: Priced,
       pet: Pet | null | undefined,
       choices?: readonly VariantChoice[] | null,
-    ): PriceLookup =>
-      priceForPet(service, pet, { zoneId: zone.ok ? zone.zone._id : null, choices }),
+      /*
+        A ZONE OTHER THAN THE TRANSACTION'S (24 September 2026). An antar-jemput
+        line is a band of the distance THE VAN DRIVES, and a document may carry
+        several journeys going different ways — so the caller resolves each one
+        with `zoneBetween` and quotes it here. Everything else leaves it out and
+        gets the transaction's own zone.
+      */
+      zoneOverride?: ZoneLookup,
+    ): PriceLookup => {
+      const found = zoneOverride ?? zone;
+      return priceForPet(service, pet, {
+        zoneId: found.ok ? found.zone._id : null,
+        choices,
+      });
+    },
     [zone],
+  );
+
+  /**
+   * The zone between two given points, out of the bands this hook already
+   * holds — no second read, however many journeys a document carries.
+   */
+  const zoneBetween = useCallback(
+    (from: Pin, to: Pin): ZoneLookup => resolveZone(from, to, zones.items),
+    [zones.items],
+  );
+
+  /** One zone as a line — "Zona A · 2,1 km", or why it cannot be said. */
+  const textOf = useCallback(
+    (found: ZoneLookup): string =>
+      found.ok
+        ? `${found.zone.name} · ${String(found.distanceKm).replace(".", ",")} km`
+        : found.reason === "outside_zones"
+          ? `${ZONE_FAILURE_MESSAGE.outside_zones} (${String(found.distanceKm).replace(".", ",")} km)`
+          : ZONE_FAILURE_MESSAGE[found.reason],
+    [],
   );
 
   const cardName = useCallback(
@@ -91,6 +125,8 @@ export function useVariantQuote({ branchPin, customerPin }: { branchPin: Pin; cu
   return {
     zone,
     zoneText,
+    zoneBetween,
+    zoneTextOf: textOf,
     quote,
     problemOf,
     cardsFor,

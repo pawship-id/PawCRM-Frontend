@@ -3,14 +3,9 @@ import userEvent from "@testing-library/user-event";
 
 import { ServiceStepsPanel } from "@/features/settings/components/ServiceStepsPanel";
 import { useServiceStepList } from "@/features/settings/hooks/useServiceStepList";
-import { usePermissions } from "@/features/permissions";
 import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
-import {
-  businessLineService,
-  type BusinessLine,
-} from "@/services/businessLine.service";
 import { serviceStepService } from "@/services/serviceStep.service";
 import type { ServiceStep } from "@/types/api";
 
@@ -19,13 +14,11 @@ import { makeServiceStep, primeServiceSteps } from "./helpers/serviceSteps";
 
 /** The panel with its own load — the hub passes both in; here the harness does. */
 function ServiceStepsScreen() {
-  const mayReadLines = usePermissions().can("businessLines", "read");
-  const list = useServiceStepList(mayReadLines);
-  return <ServiceStepsPanel list={list} mayReadLines={mayReadLines} />;
+  const list = useServiceStepList();
+  return <ServiceStepsPanel list={list} />;
 }
 
 jest.mock("@/services/serviceStep.service");
-jest.mock("@/services/businessLine.service");
 
 // The real store, with the one call this screen makes after a write swapped
 // for a spy: whether a service's Tahapan card is told is half of what a write
@@ -50,27 +43,18 @@ jest.mock("sweetalert2", () => ({
 /**
  * Pengaturan › Layanan › Tahapan.
  *
- * WHAT THESE TESTS ARE FOR. The screen is one small list per business line, and
- * the ways it can be quietly wrong are about which line, what a rename reaches,
- * and who may press what:
+ * WHAT THESE TESTS ARE FOR. The screen is ONE LIST PER TENANT (22 September
+ * 2026 — per business line, then per Kelompok layanan before), and the ways it
+ * can be quietly wrong are about what a rename reaches and who may press what:
  *
- *  1. it opens on the grooming line, and the pills count live steps per line
- *     from ONE load;
- *  2. a new step goes into the line whose pill is on;
+ *  1. it shows every step from ONE load, in sortOrder;
+ *  2. a new step is sent with its name and nothing else;
  *  3. a rename says how many services follow BEFORE the click and after it;
  *  4. a refused delete keeps its dialog open and shows the server's count;
  *  5. a move is a sortOrder swap with the neighbour;
  *  6. the grants are `services:*` — read sees no actions, update cannot delete,
- *     and no `businessLines:read` sends no request for lines.
+ *     and no business-line grant is needed at all.
  */
-
-const LINES: BusinessLine[] = [
-  // Server order is newest first; the screen sorts by name, so "Antar jemput"
-  // comes first and the default can only be Grooming by name.
-  { _id: "bl-hotel", name: "Hotel", color: "#1A2B3C" },
-  { _id: "bl-grooming", name: "Grooming", color: "#1A2B3C" },
-  { _id: "bl-antar", name: "Antar jemput", color: "#1A2B3C" },
-];
 
 const MANDI = makeServiceStep({ name: "Mandi", sortOrder: 0, serviceCount: 3 });
 const GUNTING = makeServiceStep({ name: "Gunting", sortOrder: 1, serviceCount: 0 });
@@ -82,7 +66,7 @@ const POTONG_KUKU = makeServiceStep({
 });
 const CEK_KESEHATAN = makeServiceStep({
   name: "Cek kesehatan",
-  businessLineId: "bl-hotel",
+  sortOrder: 4,
   serviceCount: 2,
 });
 
@@ -94,13 +78,6 @@ const STEPS: ServiceStep[] = [
   MANDI,
   CEK_KESEHATAN,
 ];
-
-function pill(name: string) {
-  return within(screen.getByRole("group", { name: "Lini bisnis" })).getByRole(
-    "button",
-    { name: new RegExp(`^${name}`) },
-  );
-}
 
 /** The name column, top to bottom. */
 function namesInTable() {
@@ -121,25 +98,16 @@ beforeEach(() => {
   // Priming drops the shared cache through the spied `invalidateServiceSteps`;
   // forget that call so only the screen's own writes are counted.
   jest.mocked(invalidateServiceSteps).mockClear();
-  jest.mocked(businessLineService.list).mockResolvedValue({
-    items: LINES,
-    pagination: { page: 1, limit: 100, total: LINES.length, totalPages: 1 },
-  });
   jest.mocked(serviceStepService.update).mockResolvedValue(MANDI);
 });
 
 describe("ServiceStepsScreen", () => {
-  it("opens on Grooming, counts live steps per line, and narrows one load", async () => {
+  it("shows every step from one load, with no Kelompok layanan (22 September 2026)", async () => {
     renderWithAuth(<ServiceStepsScreen />);
 
     expect(await screen.findByText("Mandi")).toBeInTheDocument();
-    expect(pill("Grooming")).toHaveAttribute("aria-pressed", "true");
-    expect(namesInTable()).toEqual(["Mandi", "Gunting", "Blow dry"]);
-
-    // The deleted Potong kuku is not counted.
-    expect(pill("Grooming")).toHaveTextContent("3");
-    expect(pill("Hotel")).toHaveTextContent("1");
-    expect(pill("Antar jemput")).toHaveTextContent("0");
+    expect(screen.queryByRole("group", { name: "Kelompok layanan" })).not.toBeInTheDocument();
+    expect(namesInTable()).toEqual(["Mandi", "Gunting", "Blow dry", "Cek kesehatan"]);
 
     const mandiRow = screen.getByText("Mandi").closest("tr")!;
     expect(within(mandiRow).getByText("3 layanan")).toBeInTheDocument();
@@ -147,53 +115,46 @@ describe("ServiceStepsScreen", () => {
     expect(within(guntingRow).getByText("Belum dipakai")).toBeInTheDocument();
 
     await userEvent.click(screen.getByLabelText("Tampilkan yang dihapus"));
-    expect(namesInTable()).toEqual(["Mandi", "Gunting", "Blow dry", "Potong kuku"]);
+    expect(namesInTable()).toEqual([
+      "Mandi",
+      "Gunting",
+      "Blow dry",
+      "Potong kuku",
+      "Cek kesehatan",
+    ]);
     const deletedRow = screen.getByText("Potong kuku").closest("tr")!;
     expect(within(deletedRow).getByText("Dihapus")).toBeInTheDocument();
     expect(within(deletedRow).getByText("—")).toBeInTheDocument();
-    expect(pill("Grooming")).toHaveTextContent("3");
 
-    await userEvent.click(pill("Hotel"));
-    expect(namesInTable()).toEqual(["Cek kesehatan"]);
-
-    // Narrowed on the client: switching pills and toggling asked for nothing.
+    // Toggling asked for nothing.
     expect(serviceStepService.list).toHaveBeenCalledTimes(1);
     expect(serviceStepService.list).toHaveBeenCalledWith(
       expect.objectContaining({ includeDeleted: true }),
     );
-    expect(serviceStepService.list).not.toHaveBeenCalledWith(
-      expect.objectContaining({ businessLineId: expect.anything() }),
-    );
   });
 
-  it("adds to the line whose pill is on, then re-reads and refreshes that line's pickers", async () => {
+  it("adds a step by name alone, then re-reads and refreshes the pickers", async () => {
     jest
       .mocked(serviceStepService.create)
-      .mockResolvedValue(
-        makeServiceStep({ name: "Mandi", businessLineId: "bl-hotel", sortOrder: 1 }),
-      );
+      .mockResolvedValue(makeServiceStep({ name: "Perjalanan", sortOrder: 5 }));
 
     renderWithAuth(<ServiceStepsScreen />);
     await screen.findByText("Mandi");
-    await userEvent.click(pill("Hotel"));
 
     await userEvent.click(screen.getByRole("button", { name: "Tambah tahapan" }));
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveTextContent(/daftar tahapan Hotel/);
+    expect(dialog).toHaveTextContent(/Masuk ke daftar tahapan, di urutan paling akhir/);
 
     const field = within(dialog).getByLabelText(/Nama tahapan/);
     expect(field).toHaveAttribute("placeholder", "mis. Mandi");
-    await userEvent.type(field, "  Mandi  ");
+    await userEvent.type(field, "  Perjalanan  ");
     await userEvent.click(within(dialog).getByRole("button", { name: "Tambah tahapan" }));
 
     await waitFor(() =>
-      expect(serviceStepService.create).toHaveBeenCalledWith({
-        businessLineId: "bl-hotel",
-        name: "Mandi",
-      }),
+      expect(serviceStepService.create).toHaveBeenCalledWith({ name: "Perjalanan" }),
     );
     await waitFor(() => expect(serviceStepService.list).toHaveBeenCalledTimes(2));
-    expect(invalidateServiceSteps).toHaveBeenCalledWith("bl-hotel");
+    expect(invalidateServiceSteps).toHaveBeenCalledWith();
     expect(swalToast).toHaveBeenCalledWith("Tahapan ditambahkan.");
   });
 
@@ -211,7 +172,7 @@ describe("ServiceStepsScreen", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Tambah tahapan" }));
 
     expect(
-      await within(dialog).findByText('"mandi" sudah ada di tahapan Grooming. Pakai nama lain.'),
+      await within(dialog).findByText('"mandi" sudah ada di daftar tahapan. Pakai nama lain.'),
     ).toBeInTheDocument();
     expect(invalidateServiceSteps).not.toHaveBeenCalled();
   });
@@ -249,7 +210,7 @@ describe("ServiceStepsScreen", () => {
     expect(swalToast).toHaveBeenCalledWith(
       "Nama tahapan disimpan. 3 layanan ikut diperbarui.",
     );
-    expect(invalidateServiceSteps).toHaveBeenCalledWith("bl-grooming");
+    expect(invalidateServiceSteps).toHaveBeenCalledWith();
   });
 
   it("renames an unused step with no warning and no count in the toast", async () => {
@@ -328,7 +289,7 @@ describe("ServiceStepsScreen", () => {
       sortOrder: 1,
     });
     await waitFor(() => expect(serviceStepService.list).toHaveBeenCalledTimes(2));
-    expect(invalidateServiceSteps).toHaveBeenCalledWith("bl-grooming");
+    expect(invalidateServiceSteps).toHaveBeenCalledWith();
     expect(swalToast).toHaveBeenCalledWith("Urutan tahapan disimpan.");
   });
 
@@ -346,15 +307,14 @@ describe("ServiceStepsScreen", () => {
     await waitFor(() =>
       expect(serviceStepService.restore).toHaveBeenCalledWith("step-potong-kuku"),
     );
-    expect(invalidateServiceSteps).toHaveBeenCalledWith("bl-grooming");
+    expect(invalidateServiceSteps).toHaveBeenCalledWith();
   });
 
-  it("says a line has no steps yet and offers the first", async () => {
+  it("says the list has no steps yet and offers the first", async () => {
+    primeServiceSteps(serviceStepService.list, []);
     renderWithAuth(<ServiceStepsScreen />);
-    await screen.findByText("Mandi");
-    await userEvent.click(pill("Antar jemput"));
 
-    expect(screen.getByText("Belum ada tahapan di Antar jemput.")).toBeInTheDocument();
+    expect(await screen.findByText("Belum ada tahapan.")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Tambah yang pertama/ }));
     expect(
       within(screen.getByRole("dialog")).getByRole("heading", { name: "Tambah tahapan" }),
@@ -366,7 +326,6 @@ describe("ServiceStepsScreen", () => {
       isSuperAdmin: false,
       permissions: [
         { feature: "services", actions: ["read"] },
-        { feature: "businessLines", actions: ["read"] },
       ],
     });
 
@@ -381,7 +340,6 @@ describe("ServiceStepsScreen", () => {
       isSuperAdmin: false,
       permissions: [
         { feature: "services", actions: ["read", "update"] },
-        { feature: "businessLines", actions: ["read"] },
       ],
     });
     await screen.findByText("Mandi");
@@ -393,18 +351,5 @@ describe("ServiceStepsScreen", () => {
       expect(within(menu).getByRole("menuitem", { name: item })).toBeInTheDocument();
     }
     expect(within(menu).queryByRole("menuitem", { name: /Hapus/ })).not.toBeInTheDocument();
-  });
-
-  it("asks nothing of the business-line API for a role that may not read it", async () => {
-    renderWithAuth(<ServiceStepsScreen />, {
-      isSuperAdmin: false,
-      permissions: [{ feature: "services", actions: ["read", "update"] }],
-    });
-
-    expect(
-      await screen.findByText(/akses ini belum bisa melihat daftar lini bisnis/),
-    ).toBeInTheDocument();
-    expect(businessLineService.list).not.toHaveBeenCalled();
-    expect(screen.queryByRole("group", { name: "Lini bisnis" })).not.toBeInTheDocument();
   });
 });

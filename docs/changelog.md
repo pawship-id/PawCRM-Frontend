@@ -7,6 +7,46 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Ukuran & jenis bulu wajib di form hewan
+
+23 September 2026, atas permintaan. Kebalikan dari aturan awal: keduanya dulu opsional,
+dan layar yang butuh baru memintanya saat butuh (`requireTraits`, `PetFixLink`).
+
+- **`PetForm`:** Ukuran dan Jenis bulu sekarang `required`, dengan pesan per field
+  ("Pilih ukurannya." / "Pilih jenis bulunya."). Deskripsi kartu Ciri-ciri tidak lagi
+  bilang "semuanya opsional" — sekarang menyebut alasannya: harga grooming dihitung dari
+  keduanya.
+- **API sengaja tidak ikut diperketat.** `pet.validation.js` tetap menerima null, karena
+  `PetQuickAddDialog` dengan `requireTraits` mati (kasir, layar pelanggan) memang
+  mengirim null — memperketat server akan mematikan kasir.
+- **⚠️ Hewan lama harus dilengkapi dulu.** Pet yang didaftarkan sebelum aturan ini punya
+  kedua field kosong, jadi membuka datanya untuk ubah berat akan diminta isi ukuran dan
+  jenis bulu dulu. Itu memang maksud aturannya, dan alasan `PetFixLink` tetap ada.
+- **`PetQuickAddDialog` tidak diubah.**
+
+---
+
+## [Unreleased] — Foto hewan
+
+23 September 2026. Backend-nya sudah ada sejak lama (`pets.photo`, validasi, pembersihan
+aset, klaim sweeper); yang kurang cuma layar.
+
+- **Form hewan:** `ImageField` di kartu Ciri-ciri, paling atas — foto itu ciri-ciri paling
+  langsung. Diunggah saat dipotong, `purpose="pet"`.
+- **Foto dikirim sebagai diff**, beda dari field lain di form ini yang dikirim utuh. Aset
+  yang sudah tersimpan tidak punya `token` (dibuang server sebelum disimpan), jadi
+  mengirim ulang yang tidak berubah akan **menggagalkan setiap simpan** hewan yang punya
+  foto — dan API menghapus byte yang hilang dari sebuah update. Dikirim hanya kalau
+  `storageKey` berubah; `null` berarti fotonya dilepas.
+- **`PetAvatar`** (baru, diekspor dari fitur): di kolom Nama daftar hewan, di sebelah judul
+  profil, dan di kartu cetak. Tanpa foto jatuh ke **huruf depan nama**, bukan paw print
+  (ui-rules §12) — satu ikon yang sama di dua puluh baris tidak membedakan apa-apa.
+  Dekoratif buat screen reader kecuali kartu cetak, yang menamainya.
+- **`purpose: "pet"`** ditambahkan di `MediaUploadPurpose` dan `PURPOSE_SEGMENTS` server,
+  supaya asetnya masuk segmen sendiri seperti category/service/booking.
+
+---
+
 ## [Unreleased] — Jurnal mengikuti mockup
 
 21 September 2026, dari `Buloo - jurnal (2).html`. Akses tidak berubah (mockup menandai

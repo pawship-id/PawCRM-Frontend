@@ -17,6 +17,13 @@ export const PERMISSION_CATALOG = {
   branches: ["create", "read", "update", "delete", "restore"],
   warehouses: ["create", "read", "update", "delete", "restore"],
   businessLines: ["create", "read", "update", "delete", "restore"],
+  /**
+   * A tenant's own labels for the kind of customer it is dealing with
+   * (Reguler, Reseller, Grosir, …) — Pengaturan › Tipe pelanggan
+   * (24 September 2026). No `delete`/`restore`: nothing references a
+   * customer type yet, so there is nothing a delete could strand.
+   */
+  customerTypes: ["create", "read", "update"],
   categories: ["create", "read", "update", "delete", "restore"],
   products: ["create", "read", "update", "delete", "restore"],
   // The stock ledger is append-only, so it has no `update`, `delete` or

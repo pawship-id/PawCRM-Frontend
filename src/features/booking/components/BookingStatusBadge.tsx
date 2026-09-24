@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import type { BookingStatus } from "@/types/api";
+import type { BookingStatus, TripLeg } from "@/types/api";
 
 /**
  * What each status is CALLED on screen — in English, and that is a deliberate
@@ -52,6 +52,37 @@ export const BOOKING_STATUS_LABELS: Record<BookingStatus, string> = {
 };
 
 /**
+ * ─── THE FOUR A VAN SHOWS (23 September 2026) ──────────────────────────────
+ *
+ * Draft · Confirmed · On the Way · Arrived — the shop's own words, and the one
+ * place a label stops matching its stored value. That rule is worth breaking
+ * here: `in_progress` on a journey names nothing a driver recognises, and
+ * `completed` reads as work finished rather than a van that got there.
+ *
+ * ⚠️ "ARRIVED" IS `completed`, NOT `arrived`, which a ride never walks. The two
+ * words meeting on one screen is exactly why this map is small and explicit.
+ *
+ * Only the rungs that differ are listed; a ride's Draft and Confirmed are the
+ * ordinary ones.
+ */
+export const RIDE_STATUS_LABELS: Partial<Record<BookingStatus, string>> = {
+  in_progress: "On the Way",
+  completed: "Arrived",
+};
+
+/** What this status is called on this booking — a van says it differently. */
+export function bookingStatusLabel(
+  status: BookingStatus,
+  booking?: { tripLeg?: TripLeg | null },
+): string {
+  return (
+    (booking?.tripLeg ? RIDE_STATUS_LABELS[status] : undefined) ??
+    BOOKING_STATUS_LABELS[status] ??
+    status
+  );
+}
+
+/**
  * The tint per status. Orange is reserved for the one that means A HUMAN MUST
  * ACT — an animal on the table right now — because ui-rules §4 gives it exactly
  * that meaning and spends it nowhere else.
@@ -81,14 +112,25 @@ const STATUS_STYLES: Record<BookingStatus, string> = {
   rescheduled: "bg-muted/40 text-muted",
 };
 
-/** Every coloured badge carries a word — ui-rules §1.3. */
-export function BookingStatusBadge({ status }: { status: BookingStatus }) {
+/**
+ * Every coloured badge carries a word — ui-rules §1.3.
+ *
+ * `tripLeg` is optional and only changes the WORD: a van on the way is still
+ * `in_progress` underneath, and keeps that rung's tint.
+ */
+export function BookingStatusBadge({
+  status,
+  tripLeg = null,
+}: {
+  status: BookingStatus;
+  tripLeg?: TripLeg | null;
+}) {
   return (
     <Badge
       variant="outline"
       className={cn("border-transparent", STATUS_STYLES[status])}
     >
-      {BOOKING_STATUS_LABELS[status]}
+      {bookingStatusLabel(status, { tripLeg })}
     </Badge>
   );
 }

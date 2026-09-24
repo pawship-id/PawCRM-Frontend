@@ -63,6 +63,9 @@ interface Loaded {
  * list was removed on 13 September 2026: this tab is where a service is deleted
  * and restored now, and a row action has to be able to re-read the page.
  *
+ * MAIN SERVICES ONLY (22 September 2026, on request): an add-on is listed and
+ * edited on Master › Layanan › Add-on, never in a module's catalogue.
+ *
  * EVERY FILTER IS THE SERVER'S. Cabang, Jenis hewan and Tempat narrow the query
  * rather than the page, so the pager's total is the total of what was asked for
  * and page 2 is not a page of leftovers.
@@ -99,6 +102,7 @@ export function useGroomingServices(lineId: string | null) {
     serviceService
       .list({
         businessLineId: lineId,
+        serviceType: "main",
         page: settled.page,
         limit: PAGE_SIZE,
         search: settled.search.trim() || undefined,
@@ -140,7 +144,7 @@ export function useGroomingServices(lineId: string | null) {
     loading: lineId !== null && !current,
     error:
       current && loaded.failed
-        ? "Daftar layanan grooming tidak bisa dimuat. Coba lagi."
+        ? "Daftar layanan tidak bisa dimuat. Coba lagi."
         : null,
   };
 }

@@ -87,6 +87,33 @@ why. `CustomerDeleteGuard.test.tsx` holds that.
 
 ---
 
+## Ukuran and Jenis bulu are required on the form, not in the API
+
+23 September 2026, on request — and it is a deliberate reversal. Both fields started
+optional, on the grounds that a flat-priced shop has nothing to say in either, with the
+screens that DO need them asking at the moment they need them: `PetQuickAddDialog` under
+`requireTraits`, or `PetFixLink` sending somebody back afterwards. Asking on the full form
+instead is the shop's call: a variant-priced grooming is priced BY size and coat, so a pet
+registered without them cannot be quoted until somebody returns to this form anyway.
+
+**The rule is the form's, and the API stays permissive.** `pet.validation.js` keeps both
+optional and nullable, because two callers legitimately send null — the quick-add dialog
+with `requireTraits` off (the till, the customer screen), and every pet registered before
+this rule existed. Tightening the server would break the till and lock the edit screen out
+of its own stored data.
+
+**⚠️ An edit of an older pet now has to answer them.** A pet registered when the fields were
+optional loads with both blank, so somebody opening it to fix a weight is asked for a size
+and a coat before they can save. That is the rule doing what it was asked to do rather than
+a bug — and it is why `PetFixLink` still exists and still points here. Both halves are
+pinned in `PetForm.test.tsx`.
+
+**`PetQuickAddDialog` is unchanged.** Its `requireTraits` default stays off: a two-field
+dialog at the till exists to avoid a trip to the full form, and making it demand what the
+till may not know would send the cashier on that trip anyway.
+
+---
+
 ## Known limits, stated rather than discovered
 
 **The owner picker loads 100 customers and searches in the popover.** 100 is the API's
@@ -110,10 +137,32 @@ pressing than 200 would have.
 "Validation failed" under a dropdown tells a shop owner nothing they can act on — it is
 written for whoever reads the logs. ui-rules §12.
 
-**There is no photo field on the form.** The API accepts one and the model stores one —
-`pets.photo`, claimed from the media sweeper — but the upload control lives inside the
-categories feature (`CategoryImageField`) and lifting it into the shared component layer
-is a refactor of its own. It goes in when that move happens.
+**The photo is the one field sent as a diff.** Everything else on the form is resent
+whole on an edit — there is no unique name to collide with and nothing a repeated value
+destroys — but `photo` is both of the things that made `CategoryForm` diff:
+
+1. **An unchanged asset cannot be resent at all.** The API strips the upload's `token`
+   before storing it, so the asset a `GET` returns has none, and `MediaService.assertOwned`
+   refuses an asset without one. Resending what was loaded would fail every save of a pet
+   that has a picture.
+2. **The API deletes the bytes an update drops.** Sending the field on a patch that did not
+   touch it is one dropped connection away from losing the photo.
+
+So it goes in the payload only when the storage key moved — compared by key, not by object
+identity, because an upload replaces the asset wholesale. `null` is how a photo is taken
+off, so an omission and a `null` mean different things here.
+
+The control is the shared `ImageField`, uploading under `purpose="pet"` — its own key
+segment, because `sweepOrphanMedia` matches a key against the collection its segment names
+and `petRepository.existsByPhotoKey` is the claim that keeps this one. It uploads on crop,
+before the pet exists, so a form somebody abandons leaves bytes the sweeper collects after
+a day; that is the cost of the media endpoint being owner-agnostic.
+
+**Where the photo is read:** `PetAvatar`, in the list's Nama cell, beside the `h1` on the
+profile, and on the printed card. It falls back to the pet's initial rather than a paw
+print (ui-rules §12 bans the paw as decoration, and one repeated icon distinguishes nothing
+in a list of twenty), and it is decorative to a screen reader everywhere the pet's name is
+already beside it — the print card is the exception and names it.
 
 **`PetBadges` is feature-local, not the shared `StatusBadge`** ui-rules §9 calls for.
 That component is specified and not yet built; building it belongs to whoever migrates

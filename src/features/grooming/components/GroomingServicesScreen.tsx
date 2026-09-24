@@ -20,6 +20,7 @@ import { Can, usePermissions } from "@/features/permissions";
 import {
   formatDurationRange,
   serviceDurationBounds,
+  ServiceFormLink,
   ServiceLifecycleDialog,
   type ServiceLifecycleAction,
   useVariantAxisValues,
@@ -31,7 +32,13 @@ import { useGroomingLine } from "../hooks/useGroomingLine";
 import { useGroomingServices } from "../hooks/useGroomingServices";
 import { useGroomingServiceTotals } from "../hooks/useGroomingServiceTotals";
 import { useServiceBookingCounts } from "../hooks/useServiceBookingCounts";
-import { groomingServicePath } from "../paths";
+import {
+  GROOMING_LINE,
+  lineFormOrigin,
+  lineServicePath,
+  NEW_MAIN_SERVICE_PATH,
+  type ServiceLine,
+} from "../line";
 import {
   axesLabel,
   PLACE_SHORT,
@@ -47,12 +54,6 @@ import {
   EMPTY_SERVICE_FILTERS,
   GroomingServicesToolbar,
 } from "./GroomingServicesToolbar";
-
-/**
- * The service form for a MAIN service — Jenis layanan is not drawn and the save
- * files it as `main`. Add-ons are made from Pengaturan › Layanan › Add-on.
- */
-const NEW_MAIN_SERVICE_PATH = "/dashboard/master/layanan/new?jenis=utama";
 
 /**
  * Layanan › Grooming › Layanan & Harga — the Grooming line's services.
@@ -99,11 +100,26 @@ const NEW_MAIN_SERVICE_PATH = "/dashboard/master/layanan/new?jenis=utama";
  * return a deleted service, so a deleted row opens nothing and carries its
  * Pulihkan beside the "Terhapus" badge instead.
  */
-export function GroomingServicesScreen() {
+export function GroomingServicesScreen({
+  /**
+   * Which line's catalogue — Grooming unless said. Antar-Jemput shows the same
+   * table for its own line (21 September 2026); see `ServiceLine`.
+   */
+  serviceLine = GROOMING_LINE,
+}: {
+  serviceLine?: ServiceLine;
+} = {}) {
   const router = useRouter();
   const { can } = usePermissions();
-  const line = useGroomingLine();
+  const line = useGroomingLine(serviceLine);
   const lineId = line.line?._id ?? null;
+  /*
+    The service form, at its one plain address — told this module's Kelompok
+    layanan and list through `ServiceFormLink`, never the URL (22 September
+    2026). Add-ons are made from Pengaturan › Layanan › Add-on.
+  */
+  const formOrigin = lineFormOrigin(serviceLine);
+  const noun = serviceLine.noun;
   const { services, pagination, query, setQuery, refetch, loading, error } =
     useGroomingServices(lineId);
   // Per row, over that row's own variants — see variantRows.
@@ -155,13 +171,14 @@ export function GroomingServicesScreen() {
   return (
     <div className="flex flex-col gap-6">
       <GroomingModuleHeader
+        line={serviceLine}
         action={
           <Can feature="services" action="create">
             <Button asChild>
-              <Link href={NEW_MAIN_SERVICE_PATH}>
+              <ServiceFormLink href={NEW_MAIN_SERVICE_PATH} origin={formOrigin}>
                 <Plus className="size-4" />
                 Layanan baru
-              </Link>
+              </ServiceFormLink>
             </Button>
           </Can>
         }
@@ -206,6 +223,7 @@ export function GroomingServicesScreen() {
             }
           }}
           onReset={() => setQuery(EMPTY_SERVICE_FILTERS)}
+          noun={noun}
         />
 
         {listed && (
@@ -218,37 +236,38 @@ export function GroomingServicesScreen() {
 
       {line.failed && (
         <Alert variant="error">
-          Lini bisnis tidak bisa dimuat, jadi layanan grooming belum bisa
+          Lini bisnis tidak bisa dimuat, jadi layanan {noun} belum bisa
           dipisahkan. Coba muat ulang halaman.
         </Alert>
       )}
       {line.missing && (
         <Alert variant="warning">
-          Belum ada lini bisnis bernama Grooming. Buat atau ganti nama lini
-          bisnisnya di Keuangan › Ringkasan › Lini Bisnis, lalu pasang di
-          layanannya.
+          Belum ada lini bisnis bernama {serviceLine.title}. Buat atau ganti
+          nama lini bisnisnya di Keuangan › Ringkasan › Lini Bisnis, lalu pasang
+          di layanannya.
         </Alert>
       )}
       {error && <Alert variant="error">{error}</Alert>}
 
       {line.loading || (loading && services.length === 0) ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Memuat layanan grooming…
+          <Spinner /> Memuat layanan {noun}…
         </div>
       ) : lineId === null ? null : services.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center text-sm text-muted">
           {narrowed ? (
-            "Tidak ada layanan grooming yang cocok dengan saringan ini."
+            `Tidak ada layanan ${noun} yang cocok dengan saringan ini.`
           ) : (
             <>
-              Belum ada layanan grooming.{" "}
+              Belum ada layanan {noun}.{" "}
               <Can feature="services" action="create">
-                <Link
+                <ServiceFormLink
                   href={NEW_MAIN_SERVICE_PATH}
+                  origin={formOrigin}
                   className="font-semibold text-primary underline-offset-2 hover:underline"
                 >
                   Tambah yang pertama →
-                </Link>
+                </ServiceFormLink>
               </Can>
             </>
           )}
@@ -271,7 +290,7 @@ export function GroomingServicesScreen() {
 
               <TableBody>
                 {services.map((service) => {
-                  const href = groomingServicePath(service._id);
+                  const href = lineServicePath(serviceLine, service._id);
                   const deleted = service.deletedAt !== null;
                   const place = placeOf(service.serviceLocations);
                   const counts = variantCounts(
@@ -313,7 +332,6 @@ export function GroomingServicesScreen() {
                         )}
                         <span className="block text-xs tabular-nums text-muted">
                           <HighlightText text={service.code ?? ""} query={query.search} />
-                          {service.serviceType === "addon" && " · add-on"}
                           {used !== undefined && ` · ${used} booking`}
                         </span>
                       </TableCell>

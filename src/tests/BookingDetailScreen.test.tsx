@@ -20,6 +20,22 @@ jest.mock("@/services/customer.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
+/*
+  THE SCREEN NAVIGATES NOW (23 September 2026) — a ride is sent to its own page
+  at `/dashboard/layanan/antar-jemput/:id`, so the router has to be here.
+
+  ⚠️ ONE OBJECT, NOT A FRESH ONE PER CALL. Next's own `useRouter` is stable, and
+  the load effect depends on it; a mock that built a new object each render made
+  that effect re-run on every render — `setLoading(true)`, re-render, repeat —
+  and the page never left its spinner.
+*/
+const replace = jest.fn();
+const router = { replace, push: jest.fn(), refresh: jest.fn() };
+jest.mock("next/navigation", () => ({
+  useRouter: () => router,
+  usePathname: () => "/dashboard/booking/bk-1",
+}));
+
 const bookings = bookingService as jest.Mocked<typeof bookingService>;
 const pets = petService as jest.Mocked<typeof petService>;
 const customers = customerService as jest.Mocked<typeof customerService>;
@@ -345,6 +361,35 @@ describe("BookingDetailScreen — the header", () => {
     expect(
       screen.queryByRole("link", { name: /whatsapp/i }),
     ).not.toBeInTheDocument();
+  });
+
+  /*
+    ─── A RIDE IS NOT THIS DOCUMENT (23 September 2026) ─────────────────────
+
+    It goes to `/dashboard/layanan/antar-jemput/:id`. Answered HERE, after the
+    read, because half the links that reach a booking — a commission row, an
+    invoice line — hold nothing but an id and cannot know which page to aim at.
+  */
+  it("sends a ride to its own page in the Antar-Jemput module", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({ _id: "bk-aj", tripLeg: "pickup", petId: null, petName: null }),
+    );
+
+    renderWithAuth(<BookingDetailScreen id="bk-aj" />);
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        "/dashboard/layanan/antar-jemput/bk-aj",
+      ),
+    );
+  });
+
+  it("leaves an ordinary booking where it is", async () => {
+    show();
+
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("says plainly when the booking is not there", async () => {
@@ -822,11 +867,13 @@ describe("BookingDetailScreen — the rail and the cards beside the work", () =>
 
     show();
 
-    const card = (await screen.findByText("Satu kunjungan")).closest(
+    /* "Satu kunjungan" grew into "Booking terkait" (21 September 2026). */
+    const card = (await screen.findByText("Booking terkait")).closest(
       "section, div[class*='rounded']",
     ) as HTMLElement;
 
-    expect(screen.getByText("2 booking lain")).toBeInTheDocument();
+    expect(screen.getByText("2 booking")).toBeInTheDocument();
+    expect(within(card).getAllByText("Satu kunjungan")).toHaveLength(2);
     expect(screen.getByRole("link", { name: /coco/i })).toHaveAttribute(
       "href",
       "/dashboard/booking/bk-2",
@@ -841,13 +888,92 @@ describe("BookingDetailScreen — the rail and the cards beside the work", () =>
   it.each([
     ["an empty group", []],
     ["no group at all", undefined],
-  ])("leaves the Satu kunjungan card out for %s", async (_label, group) => {
+  ])("says nothing is related for %s, and offers the way to relate one", async (_label, group) => {
     bookings.getById.mockResolvedValue(booking({ group }));
 
     show();
 
     await screen.findByText("BK-260903-001");
     expect(screen.queryByText("Satu kunjungan")).not.toBeInTheDocument();
+    expect(screen.getByText(/Belum terkait dengan booking lain/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /tautkan booking/i })).toBeInTheDocument();
+  });
+
+  /*
+    ─── NOTHING IS ADDED TO A BOOKING FROM HERE (24 September 2026) ──────────
+
+    "+ Antar-jemput" opened the ride form started from this booking. The shop
+    asked for it back on 21 September and asked for it off today, on one rule:
+    once a booking is CREATED, this card only relates what already exists.
+  */
+  it("offers no way to add a ride to a booking that already exists", async () => {
+    bookings.getById.mockResolvedValue(booking({ group: [] }));
+
+    show();
+
+    await screen.findByText("BK-260903-001");
+    expect(
+      screen.queryByRole("link", { name: /antar-jemput/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets a booking of the visit go, and re-reads this one", async () => {
+    const member = {
+      _id: "bk-2",
+      bookingNumber: "BK-260903-002",
+      petId: "pet-1",
+      petName: "Mochi",
+      serviceName: "Antar-Jemput",
+      status: "confirmed" as const,
+      scheduledAt: "2026-09-03T01:30:00.000Z",
+      pickupRequested: false,
+      deliveryRequested: false,
+      tripLeg: "pickup" as const,
+    };
+    bookings.getById
+      .mockResolvedValueOnce(booking({ group: [member] }))
+      .mockResolvedValueOnce(booking({ group: [] }));
+    bookings.setGroup.mockResolvedValue(booking({ _id: "bk-2" }));
+
+    show();
+
+    expect(await screen.findByText("Jemput · Mochi")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: /lepas BK-260903-002 dari kunjungan ini/i }),
+    );
+
+    await waitFor(() => expect(bookings.setGroup).toHaveBeenCalledWith("bk-2", null));
+    await waitFor(() =>
+      expect(screen.queryByText("Jemput · Mochi")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("names what one invoice billed beside it, which cannot be let go", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        related: [
+          {
+            _id: "bk-9",
+            bookingNumber: "BK-260903-009",
+            petId: "pet-1",
+            petName: "Mochi",
+            serviceName: "Antar-Jemput",
+            status: "completed",
+            scheduledAt: "2026-09-03T08:00:00.000Z",
+            pickupRequested: false,
+            deliveryRequested: false,
+            tripLeg: "delivery",
+            via: "invoice",
+            documentNumber: "INV-100381",
+          },
+        ],
+      }),
+    );
+
+    show();
+
+    expect(await screen.findByText("Satu faktur · INV-100381")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /lepas/i })).not.toBeInTheDocument();
   });
 
   it("points at the commission report rather than showing the money", async () => {

@@ -7,6 +7,12 @@ import type { ApiError } from "@/services/api-error";
  *
  * Read off the line's own snapshot, never off today's catalogue: a card renamed
  * since, or a zone redrawn, does not change what the bill was priced on.
+ *
+ * ⚠️ A BOOKING HAS ITS OWN, `pricedOn` IN `BookingPriceBreakdown`, which adds
+ * the distance the zone was measured at. They were nearly merged on
+ * 24 September 2026 and deliberately left apart: the invoice line says what was
+ * BILLED, the booking says what it was QUOTED from, and a bill is not the place
+ * to start printing kilometres.
  */
 export function variantSummary(
   item: Pick<CustomerInvoiceItem, "variantChoices" | "zone">,

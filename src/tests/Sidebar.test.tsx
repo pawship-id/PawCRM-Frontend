@@ -55,10 +55,10 @@ describe("Sidebar", () => {
       screen.getByRole("link", { name: "Produk & Varian" }),
     ).toHaveAttribute("aria-current", "page");
 
-    // Its neighbours stay folded — one open submenu, not all of them.
-    // Pengaturan rather than Pembelian, which is a leaf now: every screen under
-    // it is a tab of one row.
-    expect(screen.getByRole("button", { name: "Pengaturan" })).toHaveAttribute(
+    // Its neighbours stay folded — one open submenu, not all of them. Layanan,
+    // the one other group left: Pembelian and Pengaturan are leaves now, every
+    // screen under each a tab of one row.
+    expect(screen.getByRole("button", { name: "Layanan" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
@@ -80,7 +80,7 @@ describe("Sidebar", () => {
 
   it("folds and unfolds a group on click", async () => {
     renderRail();
-    const group = screen.getByRole("button", { name: "Pengaturan" });
+    const group = screen.getByRole("button", { name: "Layanan" });
 
     expect(group).toHaveAttribute("aria-expanded", "false");
     await userEvent.click(group);

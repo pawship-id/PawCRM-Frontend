@@ -22,7 +22,7 @@ import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
-import type { Service, UpdateServiceInput } from "@/types/api";
+import type { ServiceKind, Service, UpdateServiceInput } from "@/types/api";
 
 import { statusOf } from "../serviceDisplay";
 import {
@@ -96,7 +96,10 @@ export function GroomingServiceStepsEditor({
   mayUpdate,
   addons,
   onSaved,
+  serviceKind: moduleKind,
 }: {
+  /** The module's kind — only for an old service that has none of its own. */
+  serviceKind?: ServiceKind;
   service: Service;
   /** `services:update` — without it everything is shown and nothing is editable. */
   mayUpdate: boolean;
@@ -116,9 +119,12 @@ export function GroomingServiceStepsEditor({
   /*
     Read for every role, not only one that may edit: the "nonaktif" / "belum di
     daftar" words on a row are worth knowing to a reader too, and the list is
-    `services:read`. Shared with the picker below — one fetch per line.
+    `services:read`. Shared with the picker below — the tenant's ONE list,
+    every service picks from it (22 September 2026).
   */
-  const stepList = useServiceSteps(service.businessLineId);
+  const stepList = useServiceSteps();
+  /* The Kelompok layanan — which add-ons are offered below. */
+  const kind = service.serviceKind ?? moduleKind ?? null;
 
   const disabled = !mayUpdate || saving;
   const storedAddonIds = service.addonServiceIds ?? [];
@@ -185,11 +191,11 @@ export function GroomingServiceStepsEditor({
     } catch (err) {
       /*
         A REFUSED TAHAPAN says which one and why, in Bahasa, in `details` —
-        "'Spa' belum ada di daftar tahapan lini ini". The list changed since it
+        "'Spa' belum ada di daftar tahapan". The list changed since it
         was read, so it is read again and the rows' words follow.
       */
       const refusal = sessionsRefusal(err);
-      if (refusal) invalidateServiceSteps(service.businessLineId);
+      if (refusal) invalidateServiceSteps();
       setSaveError(
         refusal ??
           (err instanceof ApiError
@@ -215,7 +221,12 @@ export function GroomingServiceStepsEditor({
       addon._id !== service._id &&
       (addonIds.includes(addon._id) ||
         storedAddonIds.includes(addon._id) ||
-        (addon.deletedAt === null && addon.isActive)),
+        (addon.deletedAt === null &&
+          addon.isActive &&
+          /* This Kelompok layanan's add-ons, or every kind's (22 Sep 2026). */
+          (!kind ||
+            (addon.serviceKinds ?? []).length === 0 ||
+            (addon.serviceKinds ?? []).includes(kind)))),
   );
   const missingAddons =
     addons.loading || addons.failed
@@ -342,7 +353,6 @@ export function GroomingServiceStepsEditor({
         {mayUpdate && (
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <ServiceStepPicker
-              businessLineId={service.businessLineId}
               taken={draft.sessions}
               mayAddToList={mayUpdate}
               disabled={saving}

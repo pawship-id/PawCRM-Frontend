@@ -157,6 +157,12 @@ export interface JournalTrendDay {
   expense: string;
   /** `revenue − expense`, derived server-side like the summary's. */
   netProfit: string;
+  /**
+   * The same day split per lini — the summary's `byBusinessLine`, one day at a
+   * time. Only the lines that moved; a quiet day is `[]`. Optional so a response
+   * from a server that predates it (22 September 2026) still parses.
+   */
+  byBusinessLine?: BusinessLineFigures[];
 }
 
 export interface JournalTrend {

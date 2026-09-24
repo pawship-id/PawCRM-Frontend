@@ -304,7 +304,7 @@ function CategoryFields({
       }
 
       // Navigate first, then toast, so the message rides along on the list —
-      // the same order BranchCreateForm uses.
+      // the same order BranchEditForm uses.
       goBack();
       swalToast(
         editing ? "Kategori diperbarui." : `Kategori ${trimmed} dibuat.`,

@@ -1,5 +1,10 @@
 import { apiClient } from "./api-client";
-import type { Tenant, TenantSettings } from "@/types/api";
+import type {
+  DocumentNumberSeries,
+  Tenant,
+  TenantIdentityInput,
+  TenantSettings,
+} from "@/types/api";
 
 /**
  * Tenant calls against /api/tenants.
@@ -34,4 +39,29 @@ export const tenantService = {
    */
   updateSettings: (settings: Partial<TenantSettings>) =>
     apiClient.patch<Tenant>("/tenants/me", { settings }),
+
+  /**
+   * PATCH /tenants/me with the business's own identity (22 September 2026).
+   *
+   * THE SAME ROUTE AND THE SAME GRANT as the settings above — a separate method
+   * only because the bodies share nothing. What it cannot send is the slug, the
+   * currency and the subscription: the first is a public URL other links depend
+   * on, and the other two are what the business is billed on.
+   *
+   * `""` on `legalName`, `taxId` or `logoUrl` is how a field is CLEARED; the
+   * server stores null for it.
+   */
+  updateIdentity: (identity: TenantIdentityInput) =>
+    apiClient.patch<Tenant>("/tenants/me", identity),
+
+  /**
+   * GET /tenants/me/numbering — every document series as this tenant issues it.
+   *
+   * SERVED RATHER THAN REBUILT HERE. The registry lives on the server: which
+   * series exist, their separators, their branch qualifiers and every default.
+   * A copy in the dashboard would drift the day a series is added, and the form
+   * would offer a shape the server does not use.
+   */
+  numbering: () =>
+    apiClient.get<DocumentNumberSeries[]>("/tenants/me/numbering"),
 };

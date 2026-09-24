@@ -2,18 +2,19 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Plus, X } from "lucide-react";
+import { ChevronDown, Plus, X } from "lucide-react";
 
 import { Alert, ConfirmDialog, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -25,12 +26,16 @@ import {
 } from "@/components/ui/table";
 import { DraftSaveBar } from "@/features/grooming/components/DraftSaveBar";
 import { serviceEditPath } from "@/features/grooming/serviceDisplay";
+import { SETTINGS_PATHS } from "../paths";
 import {
   durationValue,
   priceDigits,
   priceText,
 } from "@/features/grooming/serviceVariantDraft";
 import { Can, usePermissions } from "@/features/permissions";
+// Deep, not the barrel — the same reason VariantOptionFormDialog gives.
+import { ServiceFormLink } from "@/features/services/components/ServiceFormLink";
+import { ADDON_FORM_ORIGIN } from "@/features/services/formOrigin";
 import {
   formatDurationRange,
   serviceDurationBounds,
@@ -38,25 +43,53 @@ import {
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
-import type { Service, ServiceStep, UpdateServiceInput } from "@/types/api";
+import { SERVICE_KIND_LABELS, SERVICE_KINDS } from "@/types/api";
+import type { Service, ServiceKind, ServiceStep, UpdateServiceInput } from "@/types/api";
 
 import type { UseAddonServiceListResult } from "../hooks/useAddonServiceList";
 import { byStepOrder } from "../serviceSteps";
 
 /** The service form for an add-on — no Jenis layanan field, saved as `addon`. */
-const NEW_SERVICE_PATH = "/dashboard/master/layanan/new?jenis=addon";
-
-/** Radix Select forbids `value=""`, so "no tahapan" needs a word of its own. */
-const NO_STEP = "none";
+/*
+  The form's one plain address (22 September 2026 — it was `?jenis=addon`);
+  that the new service is an add-on travels in the tab (`ADDON_FORM_ORIGIN`).
+*/
+const NEW_SERVICE_PATH = SETTINGS_PATHS.layananBaru;
 
 /** One row as the boxes hold it. Price and duration are the text typed. */
 interface RowDraft {
   price: string;
   duration: string;
-  stepId: string;
+  /**
+   * Its tahapan, by NAME, in order — several since 22 September 2026 (it was
+   * one `addonStepId`). The add-on's `sessions`, the same list its form edits.
+   */
+  steps: string[];
   commissionable: boolean;
   soldSeparately: boolean;
+  /** "Dipakai di layanan" — empty is every kind (22 September 2026). */
+  kinds: ServiceKind[];
 }
+
+/** "Semua layanan", or the kinds ticked, in the product's order. */
+function kindsText(kinds: ServiceKind[]): string {
+  return kinds.length === 0
+    ? "Semua layanan"
+    : SERVICE_KINDS.filter((kind) => kinds.includes(kind))
+        .map((kind) => SERVICE_KIND_LABELS[kind])
+        .join(", ");
+}
+
+function sameKinds(a: ServiceKind[], b: ServiceKind[]): boolean {
+  return a.length === b.length && a.every((kind) => b.includes(kind));
+}
+
+/** Tahapan are an ORDERED list — the same names in another order is a change. */
+function sameSteps(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((name, index) => name === b[index]);
+}
+
+const stepKey = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 
 function seedRow(addon: Service): RowDraft {
   return {
@@ -65,9 +98,10 @@ function seedRow(addon: Service): RowDraft {
       addon.hasVariants || addon.durationMin === null
         ? ""
         : String(addon.durationMin),
-    stepId: addon.addonStepId ?? NO_STEP,
+    steps: addon.sessions ?? [],
     commissionable: addon.commissionable,
     soldSeparately: addon.soldSeparately,
+    kinds: addon.serviceKinds ?? [],
   };
 }
 
@@ -82,14 +116,19 @@ function rowPatch(addon: Service, row: RowDraft): UpdateServiceInput {
       patch.durationMin = durationValue(row.duration) ?? undefined;
     }
   }
-  if (row.stepId !== seed.stepId) {
-    patch.addonStepId = row.stepId === NO_STEP ? null : row.stepId;
+  if (!sameSteps(row.steps, seed.steps)) {
+    patch.sessions = row.steps;
+    /* Bobot are by position — a changed list no longer lines up with them. */
+    if ((addon.sessionWeights ?? []).length > 0) patch.sessionWeights = [];
   }
   if (row.commissionable !== seed.commissionable) {
     patch.commissionable = row.commissionable;
   }
   if (row.soldSeparately !== seed.soldSeparately) {
     patch.soldSeparately = row.soldSeparately;
+  }
+  if (!sameKinds(row.kinds, seed.kinds)) {
+    patch.serviceKinds = row.kinds;
   }
 
   return patch;
@@ -101,9 +140,10 @@ function rowPatch(addon: Service, row: RowDraft): UpdateServiceInput {
  *
  * AN ADD-ON IS A SERVICE (`serviceType: "addon"`), in the same collection as
  * the main ones. Every save here is a PATCH /services/:id carrying only what
- * changed on that row, and the three add-on settings (`addonStepId`,
- * `commissionable`, `soldSeparately`) are ones the server resets on a main
- * service — nothing on this table can reach one.
+ * changed on that row. Its tahapan are its `sessions` (several, since
+ * 22 September 2026); `commissionable`, `soldSeparately` and `serviceKinds`
+ * are settings the server resets on a main service — nothing on this table
+ * can reach one.
  *
  * DRAFT + SIMPAN, like Varian & Harga on a service's page: a price typed
  * half-way must not be sent on every keystroke, and several rows are often
@@ -230,16 +270,27 @@ export function AddonServicesPanel({
     }
   }
 
-  /** The step choices for one add-on: its line's live steps, plus what it holds. */
-  function stepChoices(addon: Service) {
-    return steps
-      .filter(
-        (step) =>
-          step.businessLineId === addon.businessLineId &&
-          step.deletedAt === null &&
-          (step.isActive || step._id === addon.addonStepId),
-      )
-      .sort(byStepOrder);
+  /**
+   * The tahapan an add-on can tick: every ACTIVE step of the list, then what
+   * it already holds that is retired or not on the list — shown ticked, so it
+   * can be unticked, and never offered to anybody else.
+   */
+  function stepChoices(held: string[]) {
+    const active = steps
+      .filter((step) => step.deletedAt === null && step.isActive)
+      .sort(byStepOrder)
+      .map((step) => ({ name: step.name, note: null as string | null }));
+    const offered = new Set(active.map((choice) => stepKey(choice.name)));
+    const kept = held
+      .filter((name) => !offered.has(stepKey(name)))
+      .map((name) => {
+        const step = steps.find(
+          (one) => one.deletedAt === null && one.nameKey === stepKey(name),
+        );
+        return { name, note: step ? "nonaktif" : "belum di daftar" };
+      });
+
+    return [...active, ...kept];
   }
 
   const disabled = !mayUpdate || saving;
@@ -254,10 +305,10 @@ export function AddonServicesPanel({
         </p>
         <Can feature="services" action="create">
           <Button asChild>
-            <Link href={NEW_SERVICE_PATH}>
+            <ServiceFormLink href={NEW_SERVICE_PATH} origin={ADDON_FORM_ORIGIN}>
               <Plus className="size-4" aria-hidden />
               Tambah add-on
-            </Link>
+            </ServiceFormLink>
           </Button>
         </Can>
       </div>
@@ -287,7 +338,9 @@ export function AddonServicesPanel({
           </p>
           <Can feature="services" action="create">
             <Button asChild variant="ghost" className="mt-2">
-              <Link href={NEW_SERVICE_PATH}>Tambah yang pertama →</Link>
+              <ServiceFormLink href={NEW_SERVICE_PATH} origin={ADDON_FORM_ORIGIN}>
+                Tambah yang pertama →
+              </ServiceFormLink>
             </Button>
           </Can>
         </div>
@@ -296,13 +349,14 @@ export function AddonServicesPanel({
           <Table className={loading ? "min-w-215 opacity-60" : "min-w-215"}>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[24%]">Nama</TableHead>
-                <TableHead className="w-[14%]">Harga</TableHead>
-                <TableHead className="w-[10%]">Durasi Menit</TableHead>
-                <TableHead className="w-[22%]">Tahapan</TableHead>
-                <TableHead className="w-[9%]">Komisi</TableHead>
-                <TableHead className="w-[14%]">Dijual terpisah</TableHead>
-                <TableHead className="w-[7%]">
+                <TableHead className="w-[20%]">Nama</TableHead>
+                <TableHead className="w-[12%]">Harga</TableHead>
+                <TableHead className="w-[9%]">Durasi Menit</TableHead>
+                <TableHead className="w-[18%]">Tahapan</TableHead>
+                <TableHead className="w-[15%]">Dipakai di layanan</TableHead>
+                <TableHead className="w-[8%]">Komisi</TableHead>
+                <TableHead className="w-[12%]">Dijual terpisah</TableHead>
+                <TableHead className="w-[6%]">
                   <span className="sr-only">Hapus</span>
                 </TableHead>
               </TableRow>
@@ -311,10 +365,9 @@ export function AddonServicesPanel({
               {addons.map((addon) => {
                 const row = rowOf(addon);
                 const attached = attachedCount[addon._id] ?? 0;
-                const choices = stepChoices(addon);
-                const heldMissing =
-                  addon.addonStepId !== null &&
-                  !choices.some((step) => step._id === addon.addonStepId);
+                const choices = stepChoices(row.steps);
+                const stepsText =
+                  row.steps.length === 0 ? "— tidak ada —" : row.steps.join(", ");
                 const priceBad =
                   !addon.hasVariants && priceDigits(row.price) === null;
                 const durationBad =
@@ -385,32 +438,115 @@ export function AddonServicesPanel({
                     </TableCell>
 
                     <TableCell>
-                      <Select
-                        value={row.stepId}
-                        disabled={disabled}
-                        onValueChange={(next) => change(addon, { stepId: next })}
-                      >
-                        <SelectTrigger
-                          aria-label={`Tahapan ${addon.name}`}
-                          className="w-full max-w-52"
-                        >
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NO_STEP}>— tidak ada —</SelectItem>
-                          {choices.map((step) => (
-                            <SelectItem key={step._id} value={step._id}>
-                              {step.name}
-                              {!step.isActive && " (nonaktif)"}
-                            </SelectItem>
-                          ))}
-                          {heldMissing && (
-                            <SelectItem value={addon.addonStepId as string}>
-                              Tahapan dihapus
-                            </SelectItem>
+                      {/*
+                        SEVERAL TAHAPAN (22 September 2026) — its commission is
+                        split between those turns of a booking, evenly or by the
+                        bobot set on the add-on's form. The same menu as
+                        "Dipakai di layanan" beside it.
+                      */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={disabled}
+                            aria-label={`Tahapan ${addon.name}: ${stepsText}`}
+                            className="max-w-52 justify-between"
+                          >
+                            <span className="truncate">{stepsText}</span>
+                            <ChevronDown className="size-4" aria-hidden />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="max-h-72 min-w-52 overflow-y-auto">
+                          <DropdownMenuLabel>Tahapan</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {choices.length === 0 ? (
+                            <p className="px-2 py-1.5 text-sm text-muted">
+                              Belum ada tahapan di daftar.
+                            </p>
+                          ) : (
+                            choices.map((choice) => {
+                              const on = row.steps.some(
+                                (name) => stepKey(name) === stepKey(choice.name),
+                              );
+                              return (
+                                <DropdownMenuCheckboxItem
+                                  key={choice.name}
+                                  checked={on}
+                                  // A retired or unlisted one can only be taken off.
+                                  disabled={choice.note !== null && !on}
+                                  // Stays open, so several can be ticked in one visit.
+                                  onSelect={(event) => event.preventDefault()}
+                                  onCheckedChange={(next) =>
+                                    change(addon, {
+                                      steps: next
+                                        ? [...row.steps, choice.name]
+                                        : row.steps.filter(
+                                            (name) => stepKey(name) !== stepKey(choice.name),
+                                          ),
+                                    })
+                                  }
+                                >
+                                  {choice.name}
+                                  {choice.note && ` (${choice.note})`}
+                                </DropdownMenuCheckboxItem>
+                              );
+                            })
                           )}
-                        </SelectContent>
-                      </Select>
+                          <p className="px-2 py-1.5 text-xs text-muted">
+                            Komisinya dibagi ke tahapan yang dicentang — rata,
+                            atau menurut bobot di form add-on.
+                          </p>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+
+                    <TableCell>
+                      {/*
+                        WHICH MAIN SERVICES OFFER IT (22 September 2026) — only
+                        the kinds ticked see it in their Add-on list; none is
+                        every kind. A menu, not three switches: the row is dense.
+                      */}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            disabled={disabled}
+                            aria-label={`Dipakai di layanan ${addon.name}: ${kindsText(row.kinds)}`}
+                            className="max-w-44 justify-between"
+                          >
+                            <span className="truncate">{kindsText(row.kinds)}</span>
+                            <ChevronDown className="size-4" aria-hidden />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start" className="min-w-52">
+                          <DropdownMenuLabel>Dipakai di layanan</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          {SERVICE_KINDS.map((kind) => (
+                            <DropdownMenuCheckboxItem
+                              key={kind}
+                              checked={row.kinds.includes(kind)}
+                              // Stays open, so two kinds can be ticked in one visit.
+                              onSelect={(event) => event.preventDefault()}
+                              onCheckedChange={(on) =>
+                                change(addon, {
+                                  kinds: on
+                                    ? [...row.kinds, kind]
+                                    : row.kinds.filter((one) => one !== kind),
+                                })
+                              }
+                            >
+                              {SERVICE_KIND_LABELS[kind]}
+                            </DropdownMenuCheckboxItem>
+                          ))}
+                          <p className="px-2 py-1.5 text-xs text-muted">
+                            Kosongkan untuk semua layanan.
+                          </p>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </TableCell>
 
                     <TableCell>

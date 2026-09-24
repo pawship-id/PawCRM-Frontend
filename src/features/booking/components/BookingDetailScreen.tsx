@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Cat, Dog, MessageCircle, Pencil, Printer } from "lucide-react";
 
 import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import { PetSummaryCard } from "@/features/pets";
+import { BookingPriceBreakdown } from "./BookingPriceBreakdown";
 import { usePetOptions } from "@/hooks/usePetOptions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
@@ -15,34 +17,31 @@ import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
-import {
-  afterOwnDiscounts,
-  bookingShareOf,
-  ownDiscountOfLine,
-} from "@/features/sales/bookingDiscount";
-import { formatMoney, isPositive, sumDecimals } from "@/utils/decimal";
 import { GROOMER_LEVEL_LABELS } from "@/types/api";
 import type {
   Booking,
-  BookingAddon,
-  BookingMainService,
   BookingSession,
   BookingStatus,
   BookingWorkStatus,
   Customer,
   Pet,
-  VariantChoiceSnapshot,
 } from "@/types/api";
+
+import {
+  antarJemputDetailPath,
+  antarJemputEditPath,
+} from "@/features/antar-jemput/paths";
 
 import { bookingActorLabel, finishClock } from "../format";
 import { canStartWork, hasCompletedWork, ladderFor } from "../statusFlow";
 import { BookingBelongingsCard } from "./BookingBelongingsCard";
 import { BookingHistoryCard } from "./BookingHistoryCard";
 import { BookingNotesCard } from "./BookingNotesCard";
+import { BookingRelatedCard } from "./BookingRelatedCard";
 import { BookingStatusActions } from "./BookingStatusActions";
 import {
-  BOOKING_STATUS_LABELS,
   BookingStatusBadge,
+  bookingStatusLabel,
 } from "./BookingStatusBadge";
 import {
   AddSessionButton,
@@ -51,6 +50,7 @@ import {
   sharesOf,
 } from "./SessionGroomers";
 import { SessionAlbum } from "./SessionAlbum";
+import { crewWord } from "./BookingSessionSteps";
 import { SessionRecord } from "./SessionRecord";
 
 const BILLING_LABELS: Record<Booking["billingState"], string> = {
@@ -157,7 +157,22 @@ function elapsed(session: BookingSession): number | null {
  * preferences, a lifetime of visits. This is about ONE booking's work.
  */
 export function BookingDetailScreen({ id }: { id: string }) {
+  /* A ride is sent to its own page as soon as this one has read it — below. */
+  const router = useRouter();
   const [booking, setBooking] = useState<Booking | null>(null);
+  /*
+    WHAT EVERY WRITER ON THIS PAGE HANDS BACK. A mutation answers with the
+    booking but not its `group[]` and `related[]` — only `GET /bookings/:id`
+    carries those — so they are kept from the booking already on screen rather
+    than vanishing from "Booking terkait" the moment a status moves.
+  */
+  const replaceBooking = useCallback((next: Booking) => {
+    setBooking((prev) => ({
+      ...next,
+      group: next.group ?? prev?.group,
+      related: next.related ?? prev?.related,
+    }));
+  }, []);
   /*
     WHO MAY BE BOOKED ON THE DAY THIS BOOKING IS FOR — the same read the booking
     form makes: somebody who is off on Thursday must not be offered for a
@@ -192,6 +207,23 @@ export function BookingDetailScreen({ id }: { id: string }) {
       .getById(id)
       .then(async (found) => {
         if (!active) return;
+
+        /*
+          A RIDE HAS ITS OWN PAGE (23 September 2026) —
+          `/dashboard/layanan/antar-jemput/:id`. This page is built round one
+          animal and its grooming; a van has two ends, a direction and a driver.
+
+          REDIRECTED RATHER THAN RE-POINTED EVERYWHERE. Half the links that
+          reach a booking — a commission row, an invoice line — hold nothing but
+          an id, so they cannot know which of the two pages to aim at. Answering
+          it HERE, where the booking has actually been read, keeps every one of
+          them correct without being found and edited.
+        */
+        if (found.tripLeg) {
+          router.replace(antarJemputDetailPath(found._id));
+          return;
+        }
+
         setBooking(found);
         setError(null);
 
@@ -202,9 +234,12 @@ export function BookingDetailScreen({ id }: { id: string }) {
           show the work because one of them timed out would send somebody to the
           table with nothing.
         */
+        /* A RIDE HAS NO ANIMAL OF ITS OWN (23 September 2026) — its animals
+           are `passengers`, already named on the booking. Asking for `null`
+           would be a request for a pet nobody named. */
         const [petResult, customerResult, branchResult] =
           await Promise.allSettled([
-            petService.getById(found.petId),
+            found.petId ? petService.getById(found.petId) : Promise.resolve(null),
             customerService.getById(found.customerId),
             branchService.getById(found.branchId),
           ]);
@@ -241,7 +276,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
       nothing else. Re-adding a nonce would bring back the four-request
       full-page flash it was removed for.
     */
-  }, [id]);
+  }, [id, router]);
 
   useEffect(() => {
     if (!booking?.scheduledAt) return;
@@ -255,7 +290,8 @@ export function BookingDetailScreen({ id }: { id: string }) {
     ].join("-");
 
     bookingService
-      .availability(date)
+      /* A ride's crew is its driver (21 September 2026). */
+      .availability(date, booking.tripLeg ? "driver" : "groomer")
       .then((rows) => {
         if (!active) return;
         setGroomers(
@@ -280,7 +316,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
     return () => {
       active = false;
     };
-  }, [booking?.scheduledAt]);
+  }, [booking?.scheduledAt, booking?.tripLeg]);
 
   async function move(session: BookingSession, name: string, to: BookingWorkStatus) {
     if (busy) return;
@@ -293,7 +329,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
         the three neighbouring records cannot have changed because a bath
         started.
       */
-      setBooking(
+      replaceBooking(
         await bookingService.advanceSessionWork(id, session.sessionId, to),
       );
 
@@ -370,14 +406,8 @@ export function BookingDetailScreen({ id }: { id: string }) {
     MONEY AND ESTIMATE COME OFF THE SERVICE, NOT OFF THE TURNS. A service split
     into three turns is still one bath. The server's own summary is preferred;
     the sum on screen is the fallback for a booking whose summary has not run.
+    The TOTAL moved into `BookingPriceBreakdown` with the block that draws it.
   */
-  const total =
-    booking.netAmount ??
-    booking.totalAmount ??
-    sumDecimals([
-      ...(service ? [service.price] : []),
-      ...addons.map((addon) => addon.price),
-    ]);
   /*
     ⚠️ ADD-ONS ARE IN THE ESTIMATE. "+30 menit detangling" lengthens the visit
     exactly as the catalogue says it does — an estimate without it promises the
@@ -416,7 +446,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
   const editable = !finished && booking.status !== "cancelled";
 
   const whatsapp = waLink(customer?.phone);
-  const group = booking.group ?? [];
+  /* A ride is corrected in its own form — the direction, the address, the van. */
+  const editHref = booking.tripLeg
+    ? antarJemputEditPath(booking._id)
+    : `/dashboard/booking/${booking._id}/edit`;
+  const trips = booking.trips ?? [];
+  const passengerNames = (booking.passengers ?? [])
+    .map((one) => one.name)
+    .filter(Boolean)
+    .join(", ");
 
   return (
     <div className="flex flex-col gap-4">
@@ -436,7 +474,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 {/* A DRAFT HAS NO NUMBER — see the model. Saying so beats a blank. */}
                 {booking.bookingNumber ?? "Booking (draf)"}
               </h1>
-              <BookingStatusBadge status={booking.status} />
+              <BookingStatusBadge status={booking.status} tripLeg={booking.tripLeg} />
               {/* A WORD, NOT A COLOUR (§1.3) — and a claim, so it says who holds it. */}
               <span className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted">
                 {booking.pulledToCartAt && !booking.pulledToInvoiceAt
@@ -479,7 +517,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
             {editable && (
               <Can feature="bookings" action="update">
                 <Button asChild variant="secondary" size="sm">
-                  <Link href={`/dashboard/booking/${booking._id}/edit`}>
+                  <Link href={editHref}>
                     <Pencil className="size-4" aria-hidden />
                     Ubah
                   </Link>
@@ -541,13 +579,14 @@ export function BookingDetailScreen({ id }: { id: string }) {
               aria-label={
                 reached < 0
                   ? `Status ${booking.status} — di luar alur kunjungan`
-                  : `${reached + 1} dari ${track.length} tahap: ${BOOKING_STATUS_LABELS[booking.status] ?? booking.status}`
+                  : `${reached + 1} dari ${track.length} tahap: ${bookingStatusLabel(booking.status, booking)}`
               }
             >
               {track.map((rung, index) => (
                 <span
                   key={rung}
-                  title={BOOKING_STATUS_LABELS[rung] ?? rung}
+                  /* A van's last two rungs read On the Way and Arrived. */
+                  title={bookingStatusLabel(rung, booking)}
                   className={`h-1 flex-1 rounded-full ${
                     index <= reached ? "bg-primary" : "bg-border"
                   }`}
@@ -578,7 +617,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
           */}
           <BookingStatusActions
             booking={booking}
-            onChanged={setBooking}
+            onChanged={replaceBooking}
             variant="prominent"
           />
         </div>
@@ -608,7 +647,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
               editable ? (
                 <Can feature="bookings" action="update">
                   <Button asChild variant="ghost" size="sm">
-                    <Link href={`/dashboard/booking/${booking._id}/edit`}>
+                    <Link href={editHref}>
                       <Pencil className="size-4" aria-hidden />
                       Edit layanan &amp; harga
                     </Link>
@@ -636,30 +675,59 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 }
               />
               <Field label="Cabang" value={branchName ?? "—"} />
-              <Field
-                label="Lokasi"
-                value={
-                  booking.location === "in_home"
-                    ? "Di rumah pelanggan"
-                    : "Di toko"
-                }
-              />
-              {/*
-                SPELLED OUT RATHER THAN TICKED. "Tidak ada" is a real answer a
-                driver needs; an empty field reads as nobody having decided.
-              */}
-              <Field
-                label="Antar-jemput"
-                value={
-                  booking.pickupRequested && booking.deliveryRequested
-                    ? "Jemput & antar pulang"
-                    : booking.pickupRequested
-                      ? "Jemput saja"
-                      : booking.deliveryRequested
-                        ? "Antar pulang saja"
-                        : "Tidak ada"
-                }
-              />
+              {booking.tripLeg ? (
+                /*
+                  A RIDE (21 September 2026): its direction and who else is in
+                  the van, where a booking of anything else has its place and
+                  its trip. The two ends are under the grid.
+                */
+                <>
+                  <Field
+                    label="Arah"
+                    value={booking.tripLeg === "pickup" ? "Jemput" : "Antar"}
+                  />
+                  <Field
+                    label="Hewan ikut"
+                    value={passengerNames || "Tidak ada"}
+                  />
+                </>
+              ) : (
+                <>
+                  <Field
+                    label="Lokasi"
+                    value={
+                      booking.location === "in_home"
+                        ? "Di rumah pelanggan"
+                        : "Di toko"
+                    }
+                  />
+                  {/*
+                    SPELLED OUT RATHER THAN TICKED. "Tidak ada" is a real answer
+                    a driver needs; an empty field reads as nobody having
+                    decided. A RIDE BOOKED FOR THIS VISIT answers it too, by its
+                    number (21 September 2026).
+                  */}
+                  <Field
+                    label="Antar-jemput"
+                    value={
+                      trips.length > 0
+                        ? trips
+                            .map(
+                              (trip) =>
+                                `${trip.tripLeg === "pickup" ? "Jemput" : "Antar"} ${trip.bookingNumber ?? "(draf)"}`,
+                            )
+                            .join(" · ")
+                        : booking.pickupRequested && booking.deliveryRequested
+                          ? "Jemput & antar pulang"
+                          : booking.pickupRequested
+                            ? "Jemput saja"
+                            : booking.deliveryRequested
+                              ? "Antar pulang saja"
+                              : "Tidak ada"
+                    }
+                  />
+                </>
+              )}
               <Field
                 label="Durasi aktual"
                 value={
@@ -673,129 +741,67 @@ export function BookingDetailScreen({ id }: { id: string }) {
               />
             </dl>
 
-            {(booking.pickupRequested || booking.deliveryRequested) && (
-              <p className="mt-3 text-sm text-muted">
-                Alamat jemput/antar:{" "}
-                <span className="text-foreground">
-                  {booking.tripAddress ?? "alamat pelanggan yang tersimpan"}
-                </span>
-              </p>
+            {booking.tripLeg ? (
+              /*
+                BOTH ENDS ARE STORED (23 September 2026), so neither is guessed
+                from the direction any more — a van may start at another branch.
+              */
+              <dl className="mt-3 grid gap-1 text-sm">
+                {(
+                  [
+                    ["Asal", booking.tripOrigin],
+                    ["Tujuan", booking.tripDestination],
+                  ] as const
+                ).map(([label, point]) => (
+                  <div key={label} className="flex gap-3">
+                    <dt className="w-16 flex-none text-muted">{label}</dt>
+                    <dd className="min-w-0 text-foreground">
+                      {point?.address ??
+                        booking.tripAddress ??
+                        customer?.address ??
+                        "Alamat belum dicatat"}
+                      {point?.lat != null && point?.lng != null && (
+                        <span className="block text-xs tabular-nums text-muted">
+                          {point.lat}, {point.lng}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            ) : (
+              (booking.pickupRequested || booking.deliveryRequested) && (
+                <p className="mt-3 text-sm text-muted">
+                  Alamat jemput/antar:{" "}
+                  <span className="text-foreground">
+                    {booking.tripAddress ?? "alamat pelanggan yang tersimpan"}
+                  </span>
+                </p>
+              )
             )}
 
             {/*
-              WHAT IS BEING CHARGED, AND WHAT IS ADDED TO IT. An add-on hangs off
-              the service it was added to instead of sitting beside it as though
-              somebody had chosen "Parfum" on its own.
+              WHAT IS BEING CHARGED, AND WHAT IS ADDED TO IT — `BookingPriceBreakdown`
+              since 24 September 2026, when a ride's page asked for the same block.
+              THE ANIMAL'S OWN FACTS ARE THIS PAGE'S to say: a size and a coat come
+              from the pet's profile, which a van has none of.
             */}
             {service && (
               <div className="mt-4 border-t border-border pt-3">
-                <div className="flex justify-between gap-3 text-sm">
-                  <span className="font-medium text-foreground">
-                    {service.name}
-                    {/* THE KIND OF WORK, from the booking's own snapshot. */}
-                    {service.serviceType && (
-                      <span className="ml-2 rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-normal text-muted">
-                        {service.serviceType}
-                      </span>
-                    )}
-                  </span>
-                  <span className="font-semibold tabular-nums text-foreground">
-                    {formatMoney(service.price)}
-                  </span>
-                </div>
-                {/*
-                  THE FACTS THE PRICE WAS QUOTED FROM: a variant service costs
-                  what THIS animal's size and coat say it costs.
-                */}
-                <p className="text-xs text-muted">
-                  {[
-                    petOptionLabel("size", booking.petSize ?? pet?.size),
-                    petOptionLabel("furType", pet?.furType),
-                    service.durationMin
-                      ? `${service.durationMin} mnt`
-                      : "durasi belum diisi",
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-                {/*
-                  WHAT IT WAS PRICED ON BEYOND THE ANIMAL (17 September 2026) —
-                  the staff's choices and the zone, as the booking stored them.
-                */}
-                {pricedOn(service) && (
-                  <p className="text-xs text-muted tabular-nums">{pricedOn(service)}</p>
-                )}
-                {/* THE SERVICE'S OWN DISCOUNT, on its row. */}
-                {ownDiscountOfLine(service) && (
-                  <div className="flex justify-between gap-3 pl-3 text-sm">
-                    <span className="text-success">Diskon item</span>
-                    <span className="font-semibold tabular-nums text-success">
-                      − {formatMoney(ownDiscountOfLine(service)!)}
-                    </span>
-                  </div>
-                )}
-
-                {addons.length > 0 && (
-                  <ul className="mt-2 border-l-2 border-border pl-3">
-                    {addons.map((addon) => (
-                      <li
-                        key={addon.itemId}
-                        className="flex flex-wrap justify-between gap-x-3 py-1 text-sm"
-                      >
-                        <span className="text-muted">
-                          + {addon.name}
-                          {addon.durationMin
-                            ? ` · +${addon.durationMin} mnt`
-                            : ""}
-                          {/* Only an add-on's OWN choices — an inherited one repeats the service's. */}
-                          {ownChoicesOf(addon, service) && (
-                            <span className="block text-xs">{ownChoicesOf(addon, service)}</span>
-                          )}
-                        </span>
-                        <span className="font-semibold tabular-nums text-foreground">
-                          {formatMoney(addon.price)}
-                        </span>
-                        {ownDiscountOfLine(addon) && (
-                          <span className="flex w-full justify-between gap-3 pl-3">
-                            <span className="text-success">Diskon item</span>
-                            <span className="font-semibold tabular-nums text-success">
-                              − {formatMoney(ownDiscountOfLine(addon)!)}
-                            </span>
-                          </span>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {/*
-                  THE BOOKING'S SHARE OF "DISKON SELURUH BOOKING", ONCE, under a
-                  subtotal of the lines after their own discounts — the same split
-                  the till and the invoice show (16 September 2026).
-                */}
-                {isPositive(bookingShareOf(booking)) && (
-                  <div className="mt-2 border-t border-border pt-2">
-                    <div className="flex justify-between gap-3 py-1 text-sm">
-                      <span className="text-muted">Subtotal</span>
-                      <span className="tabular-nums text-muted">
-                        {formatMoney(afterOwnDiscounts(booking))}
-                      </span>
-                    </div>
-                    <div className="flex justify-between gap-3 py-1 text-sm">
-                      <span className="text-success">Diskon booking</span>
-                      <span className="font-semibold tabular-nums text-success">
-                        − {formatMoney(bookingShareOf(booking))}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-2 flex justify-between gap-3 border-t-2 border-foreground pt-2 text-sm">
-                  <span className="font-extrabold">Total</span>
-                  <span className="text-lg font-extrabold tabular-nums">
-                    {formatMoney(total)}
-                  </span>
-                </div>
+                <BookingPriceBreakdown
+                  booking={booking}
+                  facts={
+                    [
+                      petOptionLabel("size", booking.petSize ?? pet?.size),
+                      petOptionLabel("furType", pet?.furType),
+                      service.durationMin
+                        ? `${service.durationMin} mnt`
+                        : "durasi belum diisi",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || null
+                  }
+                />
               </div>
             )}
 
@@ -919,7 +925,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
             the work — arrival and collection — and the sessions are the longest
             card on the page.
           */}
-          <BookingBelongingsCard booking={booking} onChanged={setBooking} />
+          <BookingBelongingsCard booking={booking} onChanged={replaceBooking} />
 
           {/* ─── Sesi ───────────────────────────────────────────────────── */}
           <Card
@@ -934,7 +940,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
             */}
             {sessions.length === 0 ? (
               <p className="text-sm text-muted">
-                Belum ada sesi — tambahkan satu untuk menugaskan groomer.
+                {`Belum ada sesi — tambahkan satu untuk menugaskan ${crewWord(booking)}.`}
               </p>
             ) : (
               <ul className="flex flex-col gap-2">
@@ -1048,8 +1054,8 @@ export function BookingDetailScreen({ id }: { id: string }) {
                               role="alert"
                               className="mb-3 rounded-md bg-tint-danger px-2 py-1 text-sm font-semibold text-danger"
                             >
-                              {crew} {offReason.toLowerCase()} — ganti groomer
-                              atau hubungi pelanggan.
+                              {crew} {offReason.toLowerCase()} — ganti{" "}
+                              {crewWord(booking)} atau hubungi pelanggan.
                             </p>
                           )}
 
@@ -1057,10 +1063,11 @@ export function BookingDetailScreen({ id }: { id: string }) {
                               under the name it acts on. */}
                           <div className="mb-3">
                             <SessionCrew
+                              crewWord={crewWord(booking)}
                               bookingId={booking._id}
                               session={session}
                               groomers={groomers}
-                              onChanged={setBooking}
+                              onChanged={replaceBooking}
                             />
                           </div>
 
@@ -1107,7 +1114,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                             <SessionRecord
                               bookingId={booking._id}
                               session={session}
-                              onChanged={setBooking}
+                              onChanged={replaceBooking}
                             />
                           </div>
 
@@ -1150,8 +1157,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                               ) : (
                                 !assigned && (
                                   <p className="text-xs text-muted">
-                                    Tentukan groomernya dulu — sesi tanpa
-                                    groomer tidak bisa dimulai.
+                                    {`Tentukan ${crewWord(booking)}nya dulu — sesi tanpa ${crewWord(booking)} tidak bisa dimulai.`}
                                   </p>
                                 )
                               )}
@@ -1162,7 +1168,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                             <RemoveSessionButton
                               bookingId={booking._id}
                               session={session}
-                              onChanged={setBooking}
+                              onChanged={replaceBooking}
                             />
                           </div>
                         </div>
@@ -1184,7 +1190,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 <AddSessionButton
                   bookingId={booking._id}
                   service={service}
-                  onChanged={setBooking}
+                  onChanged={replaceBooking}
                 />
               </div>
             )}
@@ -1193,7 +1199,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
           {/* ─── Album ──────────────────────────────────────────────────────
               What the dog came in like and what it left like — `booking.media`,
               a different array from a turn's own photos. */}
-          <SessionAlbum booking={booking} onChanged={setBooking} />
+          <SessionAlbum booking={booking} onChanged={replaceBooking} />
         </div>
 
         {/* ─── The rail ────────────────────────────────────────────────── */}
@@ -1203,52 +1209,16 @@ export function BookingDetailScreen({ id }: { id: string }) {
             capture what was known when the appointment was taken; what is learned
             at the table is written here, where it stays in view beside the work.
           */}
-          <BookingNotesCard booking={booking} onChanged={setBooking} />
+          <BookingNotesCard booking={booking} onChanged={replaceBooking} />
 
           {/*
-            ─── SATU KUNJUNGAN ─────────────────────────────────────────────────
-
-            The other bookings saved in the same group — Coco's grooming beside
-            Mochi's, or Mochi's hotel stay beside her bath. Each is a booking of
-            its own, with its own status and bill, so this is a list of links,
-            not a summary. ABSENT when the booking was made on its own.
+            ─── BOOKING TERKAIT (21 September 2026) ──────────────────────────
+            "Satu kunjungan" grown into BO's "Relevant bookings": the visit's
+            other bookings, the ones billed with this one, and "Tautkan booking"
+            to relate another. Nothing is ADDED from here since 24 September
+            2026 — see the card.
           */}
-          {group.length > 0 && (
-            <Card
-              title="Satu kunjungan"
-              action={
-                <span className="text-sm text-muted">
-                  {group.length} booking lain
-                </span>
-              }
-            >
-              <ul className="flex flex-col">
-                {group.map((member) => (
-                  <li
-                    key={member._id}
-                    className="border-t border-border py-2.5 first:border-t-0 first:pt-0 last:pb-0"
-                  >
-                    <Link
-                      href={`/dashboard/booking/${member._id}`}
-                      className="group flex flex-col gap-1 rounded-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                    >
-                      <span className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-foreground group-hover:underline">
-                          {member.petName ?? "Hewan terhapus"}
-                        </span>
-                        <BookingStatusBadge status={member.status} />
-                      </span>
-                      <span className="text-xs tabular-nums text-muted">
-                        {member.serviceName} ·{" "}
-                        {member.bookingNumber ?? "Draf"} ·{" "}
-                        {clock(member.scheduledAt)}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          )}
+          <BookingRelatedCard booking={booking} onChanged={replaceBooking} />
 
           <BookingHistoryCard booking={booking} />
 
@@ -1291,34 +1261,3 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-/** "Lokasi: Di Rumah" — a line's staff choices, as it stored them. */
-function choicesWords(choices: readonly VariantChoiceSnapshot[] | undefined): string | null {
-  const words = (choices ?? []).map((choice) => `${choice.name}: ${choice.label}`);
-  return words.length > 0 ? words.join(" · ") : null;
-}
-
-/** "Lokasi: Di Rumah · Zona A · 2 km" — what the main service was priced on beyond the pet. */
-function pricedOn(service: Pick<BookingMainService, "variantChoices" | "zone">): string | null {
-  const zone = service.zone
-    ? `${service.zone.name}${
-        service.zone.distanceKm === null ? "" : ` · ${String(service.zone.distanceKm).replace(".", ",")} km`
-      }`
-    : null;
-  const words = [choicesWords(service.variantChoices), zone].filter(Boolean);
-  return words.length > 0 ? words.join(" · ") : null;
-}
-
-/** An add-on's choices, only where they are not the main service's. */
-function ownChoicesOf(
-  addon: Pick<BookingAddon, "variantChoices">,
-  service: Pick<BookingMainService, "variantChoices">,
-): string | null {
-  const inherited = new Set(
-    (service.variantChoices ?? []).map((choice) => `${choice.optionId}|${choice.code}`),
-  );
-  return choicesWords(
-    (addon.variantChoices ?? []).filter(
-      (choice) => !inherited.has(`${choice.optionId}|${choice.code}`),
-    ),
-  );
-}

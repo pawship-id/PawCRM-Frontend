@@ -1,4 +1,5 @@
 import type {
+  ServiceKind,
   PetFurType,
   PetOption,
   PetOptionType,
@@ -90,6 +91,8 @@ export interface VariantAxisDef {
   /** "Otomatis" unless `staff`. */
   source: VariantOption["source"];
   description: string | null;
+  /** The kinds of service the card is for — empty is every kind. */
+  serviceKinds: ServiceKind[];
 }
 
 const RETIRED_SUFFIX = " (nonaktif)";
@@ -116,6 +119,7 @@ export function variantAxisDefs(cards: readonly VariantOption[] | null | undefin
       name: PET_AXIS_FALLBACK_NAME[key],
       source: AXIS_OPTION_TYPE[key] as VariantOption["source"],
       description: null,
+      serviceKinds: [],
     }));
   }
 
@@ -126,7 +130,30 @@ export function variantAxisDefs(cards: readonly VariantOption[] | null | undefin
       name: card.name,
       source: card.source,
       description: card.description,
+      serviceKinds: card.serviceKinds ?? [],
     }));
+}
+
+/**
+ * THE AXES A SERVICE OF THIS KIND IS OFFERED (22 September 2026) — a card for
+ * every kind, or one naming this kind: Ukuran for grooming, Zona and Arah for
+ * pickup-delivery. The kind is the module the form was opened from. An axis the
+ * service already `keep`s is offered whatever its card says now, so narrowing a
+ * card never hides a price a service is already priced on. No kind → every card.
+ */
+export function axisDefsForKind(
+  defs: readonly VariantAxisDef[],
+  kind: ServiceKind | null | undefined,
+  keep: readonly string[] = [],
+): VariantAxisDef[] {
+  if (!kind) return [...defs];
+
+  return defs.filter(
+    (def) =>
+      def.serviceKinds.length === 0 ||
+      def.serviceKinds.includes(kind) ||
+      keep.includes(def.key),
+  );
 }
 
 /** The hook's own ordering — `sortOrder`, then the word. */

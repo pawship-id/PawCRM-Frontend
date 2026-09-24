@@ -25,12 +25,11 @@ const keyOf = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
 
 /**
  * Why a tahapan a service already lists could not be added to it today — or
- * null when it is an active step of the line.
+ * null when it is an active step of the list.
  *
  *   "nonaktif"        — on the list, retired since.
  *   "belum di daftar" — not on the list at all: a name stored while tahapan
- *                       were free text, or one from the line the service was
- *                       moved away from.
+ *                       were free text.
  *
  * Null while the list is loading or failed to load: "not found" in a list that
  * has not arrived is not a fact about the name.
@@ -54,7 +53,7 @@ export function serviceStepFlag(
 
 /**
  * The server's sentence(s) for a refused `sessions` — "'Spa' belum ada di
- * daftar tahapan lini ini", "Tahapan 'Blow dry' sudah dinonaktifkan" — or null
+ * daftar tahapan", "Tahapan 'Blow dry' sudah dinonaktifkan" — or null
  * when the error is about something else. Already in Bahasa, so shown as sent.
  */
 export function sessionsRefusal(error: unknown): string | null {
@@ -95,13 +94,14 @@ const ROW =
  * chosen: the service form and the Tahapan card on a grooming service's detail
  * page (decided 14 September 2026).
  *
- * WHAT IT OFFERS is the business line's tahapan list (`useServiceSteps`):
+ * WHAT IT OFFERS is the tenant's one tahapan list (`useServiceSteps`, not
+ * scoped by Kelompok layanan since 22 September 2026):
  * ACTIVE steps, in the list's order, minus the ones the service already has —
  * matched case-insensitively, so "mandi" hides "Mandi". The server refuses any
  * other name on save, so offering one would be a list that lies.
  *
  * A NAME NOT ON THE LIST can be put on it from here — "Tambah “X” ke daftar
- * tahapan" saves it to the line's list at once (`POST /service-steps`, which
+ * tahapan" saves it to the list at once (`POST /service-steps`, which
  * needs `services:update`), and the service gets the name as the list returned
  * it. Only when `mayAddToList`: a role without the grant is told the name is not
  * on the list instead of being offered a button the API refuses.
@@ -114,7 +114,6 @@ const ROW =
  * draft they rendered with.
  */
 export function ServiceStepPicker({
-  businessLineId,
   taken,
   onPick,
   mayAddToList,
@@ -122,8 +121,6 @@ export function ServiceStepPicker({
   disabledReason = null,
   className,
 }: {
-  /** The service's line. Empty asks for nothing — see `disabledReason`. */
-  businessLineId: string | null | undefined;
   /** What the service already lists; hidden from the options. */
   taken: string[];
   onPick: (name: string) => void;
@@ -131,19 +128,18 @@ export function ServiceStepPicker({
   mayAddToList: boolean;
   /** Off without saying why — a save in flight. */
   disabled?: boolean;
-  /** Off, and this sentence beside the trigger — "Pilih lini bisnis dulu." */
+  /** Off, and this sentence beside the trigger — "Pilih kelompok layanan dulu." */
   disabledReason?: string | null;
   className?: string;
 }) {
-  const lineId = businessLineId ?? "";
-  const { steps, loading, error, stepFor, reload } = useServiceSteps(lineId);
+  const { steps, loading, error, stepFor, reload } = useServiceSteps();
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
   const [addError, setAddError] = useState<string | null>(null);
 
-  const off = disabled || Boolean(disabledReason) || lineId === "";
+  const off = disabled || Boolean(disabledReason);
   const takenKeys = new Set(taken.map(keyOf));
 
   const typed = query.trim().replace(/\s+/g, " ");
@@ -174,22 +170,19 @@ export function ServiceStepPicker({
   }
 
   async function addToList(name: string) {
-    if (adding || !lineId) return;
+    if (adding) return;
 
     setAdding(name);
     setAddError(null);
     try {
-      const step = await serviceStepService.create({
-        businessLineId: lineId,
-        name,
-      });
-      invalidateServiceSteps(lineId);
+      const step = await serviceStepService.create({ name });
+      invalidateServiceSteps();
       pick(step.name);
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         // Somebody added it a moment ago. The reloaded list offers it — or says
         // it is nonaktif — under the same typed name.
-        invalidateServiceSteps(lineId);
+        invalidateServiceSteps();
         setAddError(
           `“${name}” ternyata sudah ada di daftar tahapan. Daftarnya dimuat ulang — pilih dari sana.`,
         );
@@ -293,7 +286,7 @@ export function ServiceStepPicker({
                 )}
                 {typedMissing && !mayAddToList && (
                   <p className="px-2 py-1.5 text-sm text-muted">
-                    “{typed}” belum ada di daftar tahapan lini ini.
+                    “{typed}” belum ada di daftar tahapan.
                   </p>
                 )}
                 {addError && (
@@ -305,7 +298,7 @@ export function ServiceStepPicker({
                 {matches.length > 0 ? (
                   <>
                     <p className="px-2 pt-1.5 pb-1 text-xs text-muted">
-                      Daftar tahapan lini ini
+                      Daftar tahapan
                     </p>
                     {matches.map((step) => (
                       <button
@@ -324,7 +317,7 @@ export function ServiceStepPicker({
                     <p className="px-2 py-1.5 text-sm text-muted">
                       {available.length === 0 && steps.some((step) => step.isActive)
                         ? "Semua tahapan di daftar sudah dipakai layanan ini."
-                        : "Belum ada tahapan di daftar lini ini."}
+                        : "Belum ada tahapan di daftar."}
                       {mayAddToList && " Ketik nama untuk menambahkannya."}
                     </p>
                   )

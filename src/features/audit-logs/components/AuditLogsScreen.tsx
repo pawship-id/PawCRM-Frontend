@@ -1,13 +1,14 @@
 "use client";
 
 import { Alert, Spinner, Pagination } from "@/components";
+import { SettingsPageHeader } from "@/features/settings/components/SettingsHeader";
 
 import { useAuditLogs } from "../hooks/useAuditLogs";
 import { AuditLogsToolbar } from "./AuditLogsToolbar";
 import { AuditLogsTable } from "./AuditLogsTable";
 
 /**
- * The Master Data → Audit Log screen. Owns the list query (useAuditLogs) and
+ * Pengaturan › Riwayat perubahan, the audit log screen. Owns the list query (useAuditLogs) and
  * wires the toolbar, table and pager together. Read-only: there are no row
  * mutations, so the toolbar's Refresh is the only thing that calls `refetch`.
  * Mirrors RolesScreen.
@@ -18,13 +19,11 @@ export function AuditLogsScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Audit Log</h1>
-        <p className="mt-1 text-sm text-muted">
-          A record of security-sensitive events — who did what, from where, and
-          when.
-        </p>
-      </div>
+      <SettingsPageHeader
+        tab="sistem"
+        title="Riwayat perubahan"
+        description="Siapa melakukan apa, dari mana, dan kapan. Sistem yang menulis catatan ini, jadi hanya bisa dibaca."
+      />
 
       <AuditLogsToolbar query={query} onChange={setQuery} onRefresh={refetch} />
 

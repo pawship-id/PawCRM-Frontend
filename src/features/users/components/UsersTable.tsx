@@ -209,7 +209,7 @@ export function UsersTable({
                           <Can feature="users" action="update">
                             <Button variant="ghost" size="sm" asChild>
                               <Link
-                                href={`/dashboard/master/users/${user._id}`}
+                                href={`/dashboard/pengaturan/pengguna/${user._id}`}
                               >
                                 <Pencil className="size-4" />
                                 Edit

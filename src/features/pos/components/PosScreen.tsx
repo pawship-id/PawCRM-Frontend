@@ -320,7 +320,13 @@ export function PosScreen() {
    * Bruno stops making sense when Bruno's owner leaves the basket.
    */
   function petLineCount(): number {
-    return (cart.cart?.items ?? []).filter((item) => item.petId).length;
+    /* ⚠️ A RIDE'S LINE HAS NO `petId` (24 September 2026): one van carries
+       several animals and they are in `passengerPetIds`. Counted by `petId`
+       alone, a basket holding only vans said "0 layanan" and the cashier was
+       told nothing would be lost — and then the server refused the swap. */
+    return (cart.cart?.items ?? []).filter(
+      (item) => item.petId || (item.passengerPetIds?.length ?? 0) > 0,
+    ).length;
   }
 
   /**
@@ -760,11 +766,12 @@ export function PosScreen() {
         customerId={cart.cart?.customer?._id ?? ""}
         customerName={cart.cart?.customer?.name}
         branchId={session?.currentBranchId ?? cart.cart?.branchId ?? null}
+        cartBookingIds={cart.cart?.bookingIds ?? []}
         busy={cart.busy}
         onOpenChange={(next) => {
           if (!next) setPendingService(null);
         }}
-        onPick={(pet, addonServiceIds, variantChoices) => {
+        onPick={(pet, addonServiceIds, variantChoices, ride) => {
           const tile = pendingService;
           if (!tile) return;
 
@@ -775,6 +782,10 @@ export function PosScreen() {
             `addServices` already takes several per animal, so nothing here has
             to know that an add-on is a different kind of line: the server reads
             the catalogue and files each one under the service it hangs off.
+
+            `ride` IS NULL ON EVERYTHING BUT ANTAR-JEMPUT — the journey the
+            dialog just asked for, which becomes the booking's direction and its
+            two addresses.
           */
           void cart
             .addServices([
@@ -782,15 +793,24 @@ export function PosScreen() {
                 petId: pet._id,
                 serviceIds: [tile._id, ...addonServiceIds],
                 variantChoices,
+                ride,
               },
             ])
-            .then(() =>
+            .then(() => {
+              /*
+                NAMES THE ANIMAL, or COUNTS THEM on a van carrying several —
+                "Antar-Jemput untuk Bruno" would name one of three dogs, picked
+                by nothing but the order they were ticked in.
+              */
+              const riders = ride?.passengerPetIds.length ?? 0;
+              const whose = riders > 1 ? `${riders} hewan` : pet.name;
+
               swalToast(
                 addonServiceIds.length > 0
-                  ? `${tile.name} untuk ${pet.name} ditambahkan, dengan ${addonServiceIds.length} tambahan.`
-                  : `${tile.name} untuk ${pet.name} ditambahkan.`,
-              ),
-            );
+                  ? `${tile.name} untuk ${whose} ditambahkan, dengan ${addonServiceIds.length} tambahan.`
+                  : `${tile.name} untuk ${whose} ditambahkan.`,
+              );
+            });
         }}
       />
 

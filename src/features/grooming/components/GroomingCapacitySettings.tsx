@@ -156,10 +156,10 @@ export function GroomingCapacitySettings({
           <p className="text-sm text-muted">
             Belum ada groomer.{" "}
             <Link
-              href="/dashboard/master/users"
+              href="/dashboard/pengaturan/pengguna"
               className="rounded font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
-              Tandai stafnya sebagai groomer di Master Data › User →
+              Tandai stafnya sebagai groomer di Pengaturan › Pengguna →
             </Link>
           </p>
         ) : (

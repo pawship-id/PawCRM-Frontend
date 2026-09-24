@@ -28,14 +28,15 @@ import type { Booking, BookingStatus } from "@/types/api";
 
 import {
   BOOKING_STATUS_ACTIONS,
+  bookingStatusAction,
   canReschedule,
   canCancel,
   forwardStatuses,
   impliedStatuses,
 } from "../statusFlow";
 import {
-  BOOKING_STATUS_LABELS,
   BookingStatusBadge,
+  bookingStatusLabel,
 } from "./BookingStatusBadge";
 import { BookingRescheduleDialog } from "./BookingRescheduleDialog";
 
@@ -182,7 +183,7 @@ export function BookingStatusActions({
       setNext(null);
       setReason("");
       onChanged(updated);
-      swalToast(`${label} · ${BOOKING_STATUS_LABELS[next]}.`);
+      swalToast(`${label} · ${bookingStatusLabel(next, booking)}.`);
     } catch (caught) {
       /*
         `reason` FIRST. A 409 here is the interesting failure — somebody else
@@ -247,13 +248,13 @@ export function BookingStatusActions({
               size={dense ? "sm" : "lg"}
               onClick={() => setNext(primaryMove)}
             >
-              {BOOKING_STATUS_ACTIONS[primaryMove]} →
+              {bookingStatusAction(primaryMove, booking)} →
             </Button>
           </Can>
         )}
 
         {variant === "status" && !hasMenu && (
-          <BookingStatusBadge status={booking.status} />
+          <BookingStatusBadge status={booking.status} tripLeg={booking.tripLeg} />
         )}
 
         {hasMenu && (
@@ -266,10 +267,10 @@ export function BookingStatusActions({
               ) : variant === "status" ? (
                 <button
                   type="button"
-                  aria-label={`Status ${label}: ${BOOKING_STATUS_LABELS[booking.status]}`}
+                  aria-label={`Status ${label}: ${bookingStatusLabel(booking.status, booking)}`}
                   className="inline-flex min-h-9 items-center gap-1 rounded-full pr-1.5 transition hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 >
-                  <BookingStatusBadge status={booking.status} />
+                  <BookingStatusBadge status={booking.status} tripLeg={booking.tripLeg} />
                   <ChevronDown className="size-4 text-muted" aria-hidden />
                 </button>
               ) : (
@@ -301,7 +302,7 @@ export function BookingStatusActions({
                       key={status}
                       onSelect={() => setNext(status)}
                     >
-                      {BOOKING_STATUS_ACTIONS[status]}
+                      {bookingStatusAction(status, booking)}
                     </DropdownMenuItem>
                   ))}
                   <DropdownMenuSeparator />
@@ -342,11 +343,11 @@ export function BookingStatusActions({
         <Dialog open onOpenChange={(open) => !open && close()}>
           <DialogContent showCloseButton={!busy}>
             <DialogHeader>
-              <DialogTitle>{BOOKING_STATUS_ACTIONS[next]}</DialogTitle>
+              <DialogTitle>{bookingStatusAction(next, booking)}</DialogTitle>
               <DialogDescription>
                 {/* `label` CARRIES THE NUMBER AND THE ANIMAL — exactly the scope
                     of what is about to happen. */}
-                {label} — statusnya menjadi {BOOKING_STATUS_LABELS[next]}.
+                {label} — statusnya menjadi {bookingStatusLabel(next, booking)}.
                 Perpindahan status tidak bisa dibatalkan.
               </DialogDescription>
             </DialogHeader>
@@ -365,7 +366,7 @@ export function BookingStatusActions({
                 Sekalian tercatat sebagai{" "}
                 <b className="font-medium text-foreground">
                   {implied
-                    .map((status) => BOOKING_STATUS_LABELS[status])
+                    .map((status) => bookingStatusLabel(status, booking))
                     .join(" dan ")}
                 </b>{" "}
                 pada jam yang sama.
@@ -374,15 +375,28 @@ export function BookingStatusActions({
 
             {next === "completed" && (
               /*
-                COMPLETING IS NOT BEING PAID. The till stamps the sale when money
-                lands; marking it here only says the work is done, and a
-                completed booking is no longer offered to the kasir — so anybody
-                doing this to a job that has not been paid for should know they
-                have just taken it off the counter's list.
+                COMPLETING IS NOT BEING PAID, and it is not the end of the line
+                at the counter either. The till stamps the sale when money lands;
+                marking it here only says the work is done.
+
+                ⚠️ THIS USED TO SAY THE BOOKING WOULD LEAVE THE KASIR'S LIST, and
+                that has not been true since the bridge started offering every
+                status but `cancelled` — see `useBookingBridge` and the row
+                comment in `BookingBridgeDialog`, which lists "one already
+                finished" among what a cashier sees. The warning named the wrong
+                consequence, so somebody checking it against the till found the
+                booking still there and learnt to skip the note.
+
+                WHAT ACTUALLY CLOSES is the money: `hasCompletedWork` freezes the
+                service, the price and the crew, because commission is computed
+                from here (booking.service.js — `updateBooking`,
+                `#assertCrewEditable`, `assignGroomer`). That is the thing worth
+                saying before somebody presses the button.
               */
               <p className="text-sm text-muted">
-                Menandai selesai di sini tidak mencatat pembayaran. Booking yang
-                sudah selesai tidak muncul lagi di kasir.
+                {booking.tripLeg
+                  ? "Menandai sampai di sini tidak mencatat pembayaran — perjalanannya tetap ada di daftar kasir. Yang berubah: layanan, harga dan drivernya tidak bisa diubah lagi."
+                  : "Menandai selesai di sini tidak mencatat pembayaran — booking-nya tetap ada di daftar kasir. Yang berubah: layanan, harga dan groomernya tidak bisa diubah lagi."}
               </p>
             )}
 
