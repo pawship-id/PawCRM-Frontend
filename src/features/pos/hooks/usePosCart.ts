@@ -7,6 +7,7 @@ import { ApiError } from "@/services/api-error";
 import type {
   PosCatalogItem,
   PosItemInput,
+  PosItemTripInput,
   PosTransaction,
   UpdateCartInput,
   VariantChoice,
@@ -109,6 +110,15 @@ interface UsePosCartResult {
        * inherit the main line's anyway.
        */
       variantChoices?: VariantChoice[];
+      /**
+       * THE JOURNEY, on an antar-jemput service (24 September 2026).
+       *
+       * SENT ON EVERY LINE OF THE ANIMAL, like the choices: an add-on on a ride
+       * rides on the main line's journey, and the server keys a line's draft
+       * booking by the direction too — an add-on without one would hang off a
+       * booking going the other way.
+       */
+      ride?: { trip: PosItemTripInput; linkedBookingIds: string[] } | null;
     }>,
   ) => Promise<void>;
   pullBookings: (bookingIds: string[]) => Promise<void>;
@@ -305,6 +315,32 @@ export function usePosCart(): UsePosCartResult {
               })),
             }
           : {}),
+        /*
+          THE JOURNEY THE LINE IS, SENT BACK (24 September 2026). Same reason as
+          the choices above: the server rebuilds every line from this payload on
+          each write, and a ride whose two ends were left out would be re-priced
+          from the customer's stored pin the moment somebody changed the
+          quantity of a bag of feed — a different fare, for a journey nobody
+          re-agreed. The response nests each end; the wire is flat.
+        */
+        ...(item.trip
+          ? {
+              trip: {
+                leg: item.trip.leg,
+                origin: {
+                  address: item.trip.origin?.address ?? null,
+                  lat: item.trip.origin?.lat as number,
+                  lng: item.trip.origin?.lng as number,
+                },
+                destination: {
+                  address: item.trip.destination?.address ?? null,
+                  lat: item.trip.destination?.lat as number,
+                  lng: item.trip.destination?.lng as number,
+                },
+              },
+              linkedBookingIds: item.linkedBookingIds ?? [],
+            }
+          : {}),
       })),
     [cart],
   );
@@ -349,10 +385,11 @@ export function usePosCart(): UsePosCartResult {
         petId: string;
         serviceIds: string[];
         variantChoices?: VariantChoice[];
+        ride?: { trip: PosItemTripInput; linkedBookingIds: string[] } | null;
       }>,
     ) => {
       const lines: PosItemInput[] = choices.flatMap(
-        ({ petId, serviceIds, variantChoices }) =>
+        ({ petId, serviceIds, variantChoices, ride }) =>
           // One line per animal per service (FR-3) — never bumped, never merged.
           serviceIds.map((refId) => ({
             kind: "service" as const,
@@ -360,6 +397,12 @@ export function usePosCart(): UsePosCartResult {
             qty: "1",
             petId,
             ...(variantChoices?.length ? { variantChoices } : {}),
+            ...(ride
+              ? {
+                  trip: ride.trip,
+                  linkedBookingIds: ride.linkedBookingIds,
+                }
+              : {}),
           })),
       );
 

@@ -126,6 +126,33 @@ export function PosCartLine({
           )}
 
           {/*
+            ─── WHERE THE VAN ACTUALLY GOES (24 September 2026) ──────────────
+
+            The line above already says the direction — "Arah: Jemput" is a
+            priced variant like any other — and a direction is not an
+            instruction: two jemput lines on one basket, for two doors, are
+            indistinguishable without the addresses.
+
+            ONE LINE, BOTH ENDS, truncated. A basket row is not the place to
+            read a full address; it is the place to notice that this one is the
+            wrong house.
+          */}
+          {item.trip && (
+            <span className="mt-0.5 block truncate text-xs text-muted">
+              {item.trip.origin?.address ?? "Alamat asal"} →{" "}
+              {item.trip.destination?.address ?? "Alamat tujuan"}
+            </span>
+          )}
+
+          {/* WHAT THE FARE WAS MULTIPLIED BY. Silent on a ride serving one
+              booking or none — there is no arithmetic to explain. */}
+          {(item.linkedBookingIds?.length ?? 0) > 1 && (
+            <span className="mt-0.5 block text-xs text-muted">
+              Menangani {item.linkedBookingIds?.length} booking
+            </span>
+          )}
+
+          {/*
             NO GROOMER HERE. Who is doing the work lives on the booking's detail
             screen, which is where it is decided and where it can be changed; a
             till line is what is being CHARGED for, and the animal is the only

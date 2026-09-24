@@ -1607,6 +1607,24 @@ export interface PosItem {
   /** What a walk-in service was priced on beyond the pet (17 September 2026). */
   variantChoices?: VariantChoiceSnapshot[];
   zone?: ZoneSnapshot | null;
+  /**
+   * THE JOURNEY THIS LINE IS (24 September 2026) — which way the van is going
+   * and the two doors it drives between.
+   *
+   * Set only on an antar-jemput line rung up at the counter. Null on every
+   * other line, and on a ride PULLED from the diary: that one carries its
+   * booking's own ends and is never re-asked.
+   *
+   * ⚠️ AN ADD-ON ON A RIDE CARRIES A COPY of its main line's, because the
+   * server keys a line's draft booking by the direction too — a pickup and a
+   * delivery off one service for one animal are two bookings.
+   */
+  trip?: PosItemTrip | null;
+  /**
+   * The bookings this ride serves — a grooming the van is fetching for. Empty
+   * on everything else, and the multiplier of a `per_pet` fare.
+   */
+  linkedBookingIds?: string[];
   petId: string | null;
   petName: string | null;
   groomerName: string | null;
@@ -1889,6 +1907,24 @@ export interface PosCatalogItem {
   hasVariants?: boolean;
   variantAxes?: VariantAxisKey[];
   variants?: ServiceVariant[];
+  /**
+   * WHICH KIND OF SERVICE THIS TILE IS — "grooming", "hotel",
+   * "pickup-delivery" (24 September 2026).
+   *
+   * The till reads it for ONE thing: "pickup-delivery" is the tile that asks
+   * which way the van is going and between which two doors, instead of going
+   * straight into the basket. Before this, a ride's direction was only ever a
+   * variant select — a price with nowhere to drive to.
+   *
+   * Null on an add-on and on a service saved before the field existed.
+   */
+  serviceKind?: ServiceKind | null;
+  /**
+   * How it is charged. On a ride it is the multiplier: `per_pet` is the
+   * catalogue's price once per booking the van serves, `per_visit` once
+   * however many ride.
+   */
+  billingUnit?: ServiceBillingUnit;
   /**
    * The add-ons this service may be sold with, resolved to names and prices.
    *
@@ -2264,6 +2300,30 @@ export interface PosItemInput {
   groomerName?: string | null;
   /** The "Dipilih staf" values a walk-in service is priced on; an add-on inherits its main line's. */
   variantChoices?: VariantChoice[];
+  /**
+   * The journey an antar-jemput line is — see `PosItemTrip`.
+   *
+   * SENT BACK ON EVERY WRITE, like `variantChoices`: the server rebuilds each
+   * line from this payload, and a fare re-measured without the two ends would
+   * be a different number for a journey nobody re-agreed.
+   */
+  trip?: PosItemTripInput | null;
+  /** The bookings this ride serves. Only on a ride. */
+  linkedBookingIds?: string[];
+}
+
+/** One counter line's journey, as a response carries it. */
+export interface PosItemTrip {
+  leg: TripLeg;
+  origin: TripPoint | null;
+  destination: TripPoint | null;
+}
+
+/** The same going out — the pin is not optional, because a fare is a band of distance. */
+export interface PosItemTripInput {
+  leg: TripLeg;
+  origin: TripPointInput;
+  destination: TripPointInput;
 }
 
 /**

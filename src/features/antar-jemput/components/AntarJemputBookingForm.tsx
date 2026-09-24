@@ -67,7 +67,6 @@ import { AXIS_LABEL, variesByZone } from "@/utils/serviceVariant";
 import type {
   Booking,
   BookingLocation,
-  Branch,
   Customer,
   GroomerAvailability,
   InvoiceDiscount,
@@ -93,21 +92,27 @@ import {
   LEG_LABEL,
   legsOf,
   otherLeg,
-  customerEndOf,
   slotAtOrAfter,
   slotAtOrBefore,
   type LegChoice,
 } from "../ride";
 import { TimeSlotField } from "./TimeSlotField";
+import {
+  defaultDrafts,
+  pinOf,
+  resolveLeg,
+  storedDraft,
+  TripPointFields,
+  type LegPoints,
+  type PointDraft,
+  type ResolvedLeg,
+} from "./TripPointFields";
 
 /** The API's page cap. */
 const FETCH_LIMIT = 100;
 
 /** Mirrors NOTES_MAX_LENGTH in booking.model.js. */
 const NOTES_MAX_LENGTH = 500;
-
-/** Mirrors TRIP_ADDRESS_MAX_LENGTH in booking.model.js. */
-const ADDRESS_MAX_LENGTH = 300;
 
 interface Schedule {
   date: string;
@@ -128,92 +133,6 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((value) => b.includes(value));
 }
 
-/* ─── The two ends of the trip (23 September 2026) ──────────────────────────
-   Where each end came from. "map" — the Google Places picker — is offered and
-   disabled: it is the reason `location` is a subdocument on the server, and it
-   lands here without a change to the shape. */
-type PointSource = "customer" | "branch" | "manual" | "map";
-
-interface PointDraft {
-  source: PointSource;
-  address: string;
-  lat: string;
-  lng: string;
-}
-
-const BLANK_POINT: PointDraft = { source: "manual", address: "", lat: "", lng: "" };
-
-const POINT_SOURCES: { value: PointSource; label: string; disabled?: boolean }[] = [
-  { value: "customer", label: "Alamat pelanggan" },
-  { value: "branch", label: "Alamat cabang" },
-  { value: "manual", label: "Ketik manual" },
-  { value: "map", label: "Pilih dari peta (segera)", disabled: true },
-];
-
-/** One journey's two ends, as the form holds them. */
-interface LegPoints {
-  origin: PointDraft;
-  destination: PointDraft;
-}
-
-/**
- * The ends a direction fills in by itself: a pickup starts at the customer's
- * door, a delivery finishes there. Both stay editable — see `customerEndOf`.
- */
-function defaultDrafts(leg: TripLeg): LegPoints {
-  const customerFirst = customerEndOf(leg) === "origin";
-
-  return {
-    origin: { ...BLANK_POINT, source: customerFirst ? "customer" : "branch" },
-    destination: { ...BLANK_POINT, source: customerFirst ? "branch" : "customer" },
-  };
-}
-
-/** A number a person typed, or null when they have not typed one yet. */
-function coordOf(typed: string): number | null {
-  const value = Number(typed);
-  return typed.trim() !== "" && Number.isFinite(value) ? value : null;
-}
-
-/** What an end actually resolves to — the record it points at, or what was typed. */
-function resolvePoint(
-  draft: PointDraft,
-  customer: Customer | null,
-  branch: Branch | null,
-): { address: string | null; lat: number | null; lng: number | null } {
-  if (draft.source === "customer") {
-    return {
-      address: customer?.address ?? null,
-      lat: customer?.location?.lat ?? null,
-      lng: customer?.location?.lng ?? null,
-    };
-  }
-
-  if (draft.source === "branch") {
-    return {
-      address: branch?.address ?? null,
-      lat: branch?.location?.lat ?? null,
-      lng: branch?.location?.lng ?? null,
-    };
-  }
-
-  return {
-    address: draft.address.trim() || null,
-    lat: coordOf(draft.lat),
-    lng: coordOf(draft.lng),
-  };
-}
-
-/** A saved end, back in the form as typed values — every end stays editable. */
-function storedDraft(point: TripPoint | null | undefined): PointDraft {
-  return {
-    source: "manual",
-    address: point?.address ?? "",
-    lat: point?.lat == null ? "" : String(point.lat),
-    lng: point?.lng == null ? "" : String(point.lng),
-  };
-}
-
 /** Whether an end is where it already was — an edit sends only what moved. */
 function samePoint(
   next: { address: string | null; lat: number; lng: number },
@@ -225,27 +144,6 @@ function samePoint(
     (stored?.lng ?? null) === next.lng
   );
 }
-
-type ResolvedPoint = ReturnType<typeof resolvePoint>;
-
-interface ResolvedLeg {
-  origin: ResolvedPoint;
-  destination: ResolvedPoint;
-}
-
-function resolveLeg(
-  leg: LegPoints,
-  customer: Customer | null,
-  branch: Branch | null,
-): ResolvedLeg {
-  return {
-    origin: resolvePoint(leg.origin, customer, branch),
-    destination: resolvePoint(leg.destination, customer, branch),
-  };
-}
-
-const pinOf = (point: ResolvedPoint) =>
-  point.lat !== null && point.lng !== null ? { lat: point.lat, lng: point.lng } : null;
 
 /**
  * ONE STEP OF THE FORM, inside the one card (23 September 2026, on request).
@@ -271,106 +169,6 @@ function Section({
       </div>
       {children}
     </section>
-  );
-}
-
-/**
- * ONE END OF THE TRIP — where it is, and where that came from.
- *
- * The two registers a shop already keeps (the customer's address and the
- * branch's) are offered before the keyboard, because they carry a pin somebody
- * has already checked. Typing one means typing its coordinates too: the fare
- * is measured between the ends, so an address with no point has no price.
- */
-function PointFields({
-  label,
-  draft,
-  point,
-  customer,
-  branch,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  draft: PointDraft;
-  point: ResolvedPoint;
-  customer: Customer | null;
-  branch: Branch | null;
-  disabled: boolean;
-  onChange: (next: PointDraft) => void;
-}) {
-  const typed = draft.source === "manual";
-  const missingPin = point.lat === null || point.lng === null;
-  const from =
-    draft.source === "customer"
-      ? (customer?.name ?? "pelanggan")
-      : (branch?.name ?? "cabang");
-
-  return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4">
-      <FilterSelect
-        layout="form"
-        label={label}
-        ariaLabel={`Sumber ${label.toLowerCase()}`}
-        value={draft.source}
-        onChange={(next) => onChange({ ...draft, source: next as PointSource })}
-        options={POINT_SOURCES}
-        active={false}
-        placeholder="Pilih sumber alamat"
-        disabled={disabled}
-      />
-
-      {typed ? (
-        <>
-          <TextareaField
-            label="Alamat"
-            name={`${label}-address`}
-            value={draft.address}
-            onChange={(event) => onChange({ ...draft, address: event.target.value })}
-            maxLength={ADDRESS_MAX_LENGTH}
-            rows={2}
-            placeholder="Nama jalan, nomor, patokan"
-            disabled={disabled}
-          />
-          <div className="grid gap-3 sm:grid-cols-2">
-            <TextField
-              label="Latitude"
-              name={`${label}-lat`}
-              value={draft.lat}
-              onChange={(event) => onChange({ ...draft, lat: event.target.value })}
-              placeholder="-6.2088"
-              disabled={disabled}
-              required
-            />
-            <TextField
-              label="Longitude"
-              name={`${label}-lng`}
-              value={draft.lng}
-              onChange={(event) => onChange({ ...draft, lng: event.target.value })}
-              placeholder="106.8456"
-              disabled={disabled}
-              required
-            />
-          </div>
-        </>
-      ) : (
-        <div className="flex flex-col gap-1">
-          <p className="text-sm text-foreground">{point.address ?? "Belum ada alamat tersimpan"}</p>
-          <p className="text-xs text-muted">
-            Dari data {from}.{" "}
-            {missingPin
-              ? "Titik lokasinya belum ada — pilih Ketik manual, atau lengkapi di data itu."
-              : `Titik: ${point.lat}, ${point.lng}`}
-          </p>
-        </div>
-      )}
-
-      {missingPin && (
-        <p className="text-xs font-semibold text-danger" role="alert">
-          Titik lokasi wajib diisi.
-        </p>
-      )}
-    </div>
   );
 }
 
@@ -1785,7 +1583,7 @@ export function AntarJemputBookingForm({
                             </span>
                           </div>
                           <div className="grid gap-4 lg:grid-cols-2">
-                            <PointFields
+                            <TripPointFields
                               label="Alamat asal"
                               draft={points[leg].origin}
                               point={resolved[leg].origin}
@@ -1794,7 +1592,7 @@ export function AntarJemputBookingForm({
                               disabled={saving}
                               onChange={(next) => setEnd(leg, "origin", next)}
                             />
-                            <PointFields
+                            <TripPointFields
                               label="Alamat tujuan"
                               draft={points[leg].destination}
                               point={resolved[leg].destination}

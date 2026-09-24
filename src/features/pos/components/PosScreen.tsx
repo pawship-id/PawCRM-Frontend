@@ -760,11 +760,12 @@ export function PosScreen() {
         customerId={cart.cart?.customer?._id ?? ""}
         customerName={cart.cart?.customer?.name}
         branchId={session?.currentBranchId ?? cart.cart?.branchId ?? null}
+        cartBookingIds={cart.cart?.bookingIds ?? []}
         busy={cart.busy}
         onOpenChange={(next) => {
           if (!next) setPendingService(null);
         }}
-        onPick={(pet, addonServiceIds, variantChoices) => {
+        onPick={(pet, addonServiceIds, variantChoices, ride) => {
           const tile = pendingService;
           if (!tile) return;
 
@@ -775,6 +776,10 @@ export function PosScreen() {
             `addServices` already takes several per animal, so nothing here has
             to know that an add-on is a different kind of line: the server reads
             the catalogue and files each one under the service it hangs off.
+
+            `ride` IS NULL ON EVERYTHING BUT ANTAR-JEMPUT — the journey the
+            dialog just asked for, which becomes the booking's direction and its
+            two addresses.
           */
           void cart
             .addServices([
@@ -782,6 +787,7 @@ export function PosScreen() {
                 petId: pet._id,
                 serviceIds: [tile._id, ...addonServiceIds],
                 variantChoices,
+                ride,
               },
             ])
             .then(() =>
