@@ -7,6 +7,25 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Ras menunjuk jenis hewannya pakai id
+
+25 September 2026. Sisi frontend dari perubahan backend dengan nama yang sama.
+
+- **`PetOption.speciesCode` → `speciesId`** di tipe, dialog, panel dan tabel
+  Pengaturan › Layanan › Ras. Pemilih "Jenis hewan" sekarang bernilai `_id`
+  jenis hewan, bukan kodenya.
+- **`usePetPickers` menyusut.** Filter ras dulu memetakan `_id` ras ke
+  `speciesCode`, lalu menerjemahkan jenis hewan yang sedang dipilih dari id
+  kembali ke kode sebelum bisa membandingkan — dua ujung satu relasi ditulis
+  dalam dua mata uang. Sekarang keduanya id dan dibandingkan langsung; `code`
+  tidak lagi dipanggil di hook ini.
+- **Kolom "Hewan" di tabel Ras** menampilkan "—" untuk jenis hewan yang tidak
+  dikenali, bukan nilai mentahnya. Kode dulu masih terbaca sebagai kata; id
+  tidak, dan mencetaknya di kolom berisi nama hewan cuma jadi derau.
+- **Jenis hewan nonaktif tetap muncul** di pemilih, tapi hanya untuk ras yang
+  memang sudah menunjuknya — supaya mengubah nama ras tidak diam-diam
+  melebarkannya ke semua hewan.
+
 ## [Unreleased] — Ukuran & jenis bulu wajib di form hewan
 
 23 September 2026, atas permintaan. Kebalikan dari aturan awal: keduanya dulu opsional,

@@ -81,10 +81,10 @@ export function PetOptionsTable({
   /** One type's options in display order — deleted ones only when shown. */
   rows: PetOption[];
   /**
-   * The tenant's word for a species code — a breed's "Hewan" column. From the
-   * SCREEN'S OWN list, not a second load of the same one.
+   * The tenant's word for a species, BY ITS `_id` — a breed's "Hewan" column.
+   * From the SCREEN'S OWN list, not a second load of the same one.
    */
-  speciesLabel?: (code: string) => string | null;
+  speciesLabel?: (speciesId: string) => string | null;
   loading: boolean;
   onRename: (option: PetOption) => void;
   /** Re-read the screen's list and the app's shared one. */
@@ -195,7 +195,9 @@ export function PetOptionsTable({
                 on every one of these four lists.
               */}
               <TableHead>Status</TableHead>
-              {showActions && <TableHead className="text-right">Aksi</TableHead>}
+              {showActions && (
+                <TableHead className="text-right">Aksi</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -214,8 +216,15 @@ export function PetOptionsTable({
                   </TableCell>
                   {type === "breed" && (
                     <TableCell className="text-sm text-muted">
-                      {option.speciesCode
-                        ? (speciesLabel?.(option.speciesCode) ?? option.speciesCode)
+                      {/*
+                        A SPECIES THIS SCREEN CANNOT NAME reads "—", not its raw
+                        id: the code used to be a word a reader could recognise,
+                        an id is not, and printing one in a column of animal
+                        names would be noise. It means the species was deleted,
+                        which `deleteOption` now refuses to let happen.
+                      */}
+                      {option.speciesId
+                        ? (speciesLabel?.(option.speciesId) ?? "—")
                         : "Semua hewan"}
                     </TableCell>
                   )}
@@ -246,7 +255,8 @@ export function PetOptionsTable({
                                   <DropdownMenuItem
                                     onSelect={() =>
                                       void run(
-                                        () => petOptionService.restore(option._id),
+                                        () =>
+                                          petOptionService.restore(option._id),
                                         `${words.title} dipulihkan.`,
                                       )
                                     }
@@ -285,9 +295,12 @@ export function PetOptionsTable({
                                       onSelect={() =>
                                         void run(
                                           () =>
-                                            petOptionService.update(option._id, {
-                                              isActive: !option.isActive,
-                                            }),
+                                            petOptionService.update(
+                                              option._id,
+                                              {
+                                                isActive: !option.isActive,
+                                              },
+                                            ),
                                           option.isActive
                                             ? `${words.title} dinonaktifkan.`
                                             : `${words.title} diaktifkan.`,
@@ -346,9 +359,9 @@ export function PetOptionsTable({
           onCancel={closeDelete}
         >
           Hapus <strong>{pendingDelete.label}</strong> dari daftar {words.noun}?
-          Hapusnya ditolak selama masih ada {words.heldBy} yang memakainya. Kalau
-          cuma mau berhenti menawarkannya, pilih <strong>Nonaktifkan</strong>{" "}
-          saja — data yang sudah ada tetap aman.
+          Hapusnya ditolak selama masih ada {words.heldBy} yang memakainya.
+          Kalau cuma mau berhenti menawarkannya, pilih{" "}
+          <strong>Nonaktifkan</strong> saja — data yang sudah ada tetap aman.
         </ConfirmDialog>
       )}
     </>

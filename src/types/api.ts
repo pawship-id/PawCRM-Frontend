@@ -4083,11 +4083,16 @@ export interface PetOption {
   code: string;
   label: string;
   /**
-   * WHICH ANIMAL A BREED IS FOR (18 September 2026) — a `species` option's code.
-   * Only a breed carries one; null means the shop has not said, and the breed is
-   * then offered for every animal.
+   * WHICH ANIMAL A BREED IS FOR (18 September 2026) — a `species` option's
+   * `_id`, an id rather than a code since 25 September 2026. Only a breed
+   * carries one; null means the shop has not said, and the breed is then
+   * offered for every animal.
+   *
+   * THE SAME CURRENCY THE PICKERS DEAL IN, which is the point of the change:
+   * `usePetPickers` compares it against the selected species' id directly,
+   * where it used to translate that id back to a code first.
    */
-  speciesCode?: string | null;
+  speciesId?: string | null;
   /** Position within its list, ascending — sizes go smallest first. */
   sortOrder: number;
   /**
@@ -4124,8 +4129,8 @@ export interface PetOptionListQuery {
 export interface CreatePetOptionInput {
   type: PetOptionType;
   label: string;
-  /** Only on a `breed` — see `PetOption.speciesCode`. */
-  speciesCode?: string | null;
+  /** Only on a `breed` — see `PetOption.speciesId`. */
+  speciesId?: string | null;
   code?: string;
   sortOrder?: number;
   isActive?: boolean;
@@ -4137,7 +4142,7 @@ export interface CreatePetOptionInput {
  */
 export interface UpdatePetOptionInput {
   label?: string;
-  speciesCode?: string | null;
+  speciesId?: string | null;
   sortOrder?: number;
   isActive?: boolean;
 }
