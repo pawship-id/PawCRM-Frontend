@@ -4071,7 +4071,7 @@ export type PetOptionType = "species" | "breed" | "size" | "furType";
  * One word in a tenant's vocabulary for an animal, as GET /api/pet-options
  * returns it (14 September 2026).
  *
- * `code` IS WHAT OTHER DOCUMENTS STORE — `pet.species`, a variant's
+ * `code` IS WHAT A SERVICE VARIANT AND EVERY FROZEN FACT STORE — a variant's
  * `sizeCategory`, a key of `sizeNominal` — and it never changes. `label` is what
  * a screen shows, and is free to. Never render a code where a label is wanted:
  * use `usePetOptions().label(type, code)`.
@@ -4244,6 +4244,11 @@ export interface UpdateServiceStepInput {
  * pet.model.js; since 14 September 2026 the lists are tenant data
  * (`petoptions`), so any string the tenant has made an option is legal. The
  * names are kept so a reader still sees WHICH list a field draws from.
+ *
+ * STILL CODES, AND STILL USED — by a service variant's axes, by a booking's
+ * frozen `petSize`, by an invoice line's `petSpecies`, by the `sizeNominal`
+ * keys. A PET no longer uses them: since 25 September 2026 `Pet.species` and
+ * its three siblings hold `PetOptionId`. See that type for the split.
  */
 export type PetSpecies = string;
 
@@ -4255,6 +4260,29 @@ export type PetFurType = string;
 
 /** A `size` option code. */
 export type PetSize = string;
+
+/**
+ * A pet-option's `_id` — what a PET stores for its species, breed, size and
+ * coat since 25 September 2026.
+ *
+ * ─── WHY A PET AND A VARIANT DISAGREE ──────────────────────────────────────
+ *
+ * The four lists have a CRUD screen behind them now, and a code is the wrong
+ * key for a pet to hold: it is a second identity for a row that already has
+ * one, and holding it made the code immutable for everybody. An id survives any
+ * edit the settings screen offers.
+ *
+ * A SERVICE VARIANT KEPT ITS CODES, and so did every frozen fact — a booking's
+ * `petSize`, an invoice line's `petSpecies`, a `sizeNominal` key. A price grid
+ * is the tenant's own vocabulary; the rest are HISTORY, which is allowed to
+ * outlive the row it was copied from. The server resolves a pet's ids back to
+ * codes wherever those meet (`PetRepository#findVariantFactsByIds`), so nothing
+ * on this side has to.
+ *
+ * `usePetOptions().label()` and `.code()` accept either and resolve both, so a
+ * screen showing a pet and a variant side by side needs one helper.
+ */
+export type PetOptionId = string;
 
 /**
  * `unknown` is a REAL value, not a missing one: a rescue arrives unsexed and
@@ -4377,11 +4405,42 @@ export interface Pet {
   tenantId: string;
   customerId: string;
   name: string;
-  species: PetSpecies;
+  /** An option's `_id`, not its code — see `PetOptionId`. */
+  species: PetOptionId;
   sex: PetSex;
-  breed: PetBreed | null;
-  furType: PetFurType | null;
-  size: PetSize | null;
+  breed: PetOptionId | null;
+  furType: PetOptionId | null;
+  size: PetOptionId | null;
+  /**
+   * THE TENANT'S WORD FOR EACH OF THE FOUR, resolved by the server on every
+   * read (25 September 2026).
+   *
+   * A code degraded to something readable when the client could not resolve it;
+   * an id degrades to nothing, so the label rides along and a row renders
+   * correctly from the response alone — the same argument `petSpeciesLabel` on
+   * an invoice line makes. `null` when the field is unset, or when the option
+   * has been hard-deleted since: a pet is not worth hiding over a word.
+   */
+  speciesLabel: string | null;
+  breedLabel: string | null;
+  furTypeLabel: string | null;
+  sizeLabel: string | null;
+  /**
+   * THE CODE BEHIND EACH ID, resolved on read for the same reason the label is
+   * — and for one the label cannot cover.
+   *
+   * The browser prices variants too, to show a figure before anything is saved
+   * (`utils/serviceVariant.ts`), and a variant's axes are keyed by CODE. These
+   * four are what that matching reads; they are the client's half of the seam
+   * `findVariantFactsByIds` is on the server.
+   *
+   * READ-ONLY. Nothing accepts a code back — `CreatePetInput` and
+   * `UpdatePetInput` take ids — and nothing should store one.
+   */
+  speciesCode: PetSpecies | null;
+  breedCode: PetBreed | null;
+  furTypeCode: PetFurType | null;
+  sizeCode: PetSize | null;
   /** ISO date. The birth date, never an age — an age is wrong the day after it is written. */
   birthDate: string | null;
   weightKg: number | null;
@@ -4415,10 +4474,17 @@ export interface PetListQuery {
   limit?: number;
   /** The filter this endpoint exists for — one customer's animals. */
   customerId?: string;
-  species?: PetSpecies;
+  /** A species option's `_id` — see `PetOptionId`. */
+  species?: PetOptionId;
   /** `true` for a booking picker, which wants only pets still in the tenant's care. */
   isActive?: boolean;
-  /** Free-text over name / breed. */
+  /**
+   * Free-text over the name and the breed's WORD.
+   *
+   * The breed half is resolved server-side: a pet stores a breed's id, so the
+   * term is matched against the option labels first and the pets filtered by
+   * what comes back.
+   */
   search?: string;
   /**
    * One tag, matched exactly — "which animals need two people on a Saturday".
@@ -4469,11 +4535,12 @@ export interface PetTimelineQuery {
 export interface CreatePetInput {
   customerId: string;
   name: string;
-  species: PetSpecies;
+  /** An option's `_id` — see `PetOptionId`. */
+  species: PetOptionId;
   sex?: PetSex;
-  breed?: PetBreed | null;
-  furType?: PetFurType | null;
-  size?: PetSize | null;
+  breed?: PetOptionId | null;
+  furType?: PetOptionId | null;
+  size?: PetOptionId | null;
   birthDate?: string | null;
   weightKg?: number | null;
   color?: string | null;
@@ -4495,11 +4562,11 @@ export interface CreatePetInput {
  */
 export interface UpdatePetInput {
   name?: string;
-  species?: PetSpecies;
+  species?: PetOptionId;
   sex?: PetSex;
-  breed?: PetBreed | null;
-  furType?: PetFurType | null;
-  size?: PetSize | null;
+  breed?: PetOptionId | null;
+  furType?: PetOptionId | null;
+  size?: PetOptionId | null;
   birthDate?: string | null;
   weightKg?: number | null;
   color?: string | null;

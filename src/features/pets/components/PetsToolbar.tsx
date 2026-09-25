@@ -127,15 +127,23 @@ function PetFilterPanel({
     opens this filter to answer. The chosen value is kept as well, so a species
     deleted since it was applied still names itself rather than going blank.
   */
+  /*
+    `by: "id"` — `?species=` FILTERS ON THE ID a pet stores (25 September 2026),
+    so the kept values below are ids too.
+  */
   const species = withAll<PetsQuery["species"]>(
     loading
       ? []
-      : choices("species", [
-          ...ordered("species")
-            .filter((option) => !option.isActive)
-            .map((option) => option.code),
-          draft.species,
-        ]),
+      : choices(
+          "species",
+          [
+            ...ordered("species")
+              .filter((option) => !option.isActive)
+              .map((option) => option._id),
+            draft.species,
+          ],
+          { by: "id" },
+        ),
     "Semua jenis",
   );
 

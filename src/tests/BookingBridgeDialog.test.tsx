@@ -15,6 +15,7 @@ import {
   makeVariantOption,
   primeVariantOptions,
 } from "./helpers/variantOptions";
+import { petOptionFields } from "./helpers/petOptions";
 
 jest.mock("@/services/booking.service");
 jest.mock("@/services/pet.service");
@@ -385,7 +386,7 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
   it("prices each service for the animal the list is for", async () => {
     mockedPets.list.mockResolvedValue(
       page([
-        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, size: "large" },
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, ...petOptionFields({ size: "large" }) },
       ]),
     );
     mockedServices.list.mockResolvedValue(
@@ -441,12 +442,12 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
   it("prices each animal's line in the summary, so the total can be checked", async () => {
     mockedPets.list.mockResolvedValue(
       page([
-        { _id: PET_ID, name: "Cici", customerId: CUSTOMER_ID, size: "small" },
+        { _id: PET_ID, name: "Cici", customerId: CUSTOMER_ID, ...petOptionFields({ size: "small" }) },
         {
           _id: SECOND_PET_ID,
           name: "Cilang",
           customerId: CUSTOMER_ID,
-          size: "large",
+          ...petOptionFields({ size: "large" }),
         },
       ]),
     );
@@ -504,7 +505,7 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
   it("cannot tick a service the animal cannot be priced for", async () => {
     mockedPets.list.mockResolvedValue(
       page([
-        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, size: null },
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, ...petOptionFields({}) },
       ]),
     );
     mockedServices.list.mockResolvedValue(
@@ -544,7 +545,7 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
   it("cannot tick a service whose variant for the animal is switched off", async () => {
     mockedPets.list.mockResolvedValue(
       page([
-        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, size: "large" },
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, ...petOptionFields({ size: "large" }) },
       ]),
     );
     mockedServices.list.mockResolvedValue(

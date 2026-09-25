@@ -17,11 +17,17 @@ import type { PetOptionType } from "@/types/api";
  * instead — the trigger reads right, and nothing is called retired that is not.
  */
 export function usePetPickers() {
-  const { options, choices, label, loading, error } = usePetOptions();
+  const { options, choices, label, code, loading, error } = usePetOptions();
 
+  /*
+    `by: "id"` — A PET STORES THE OPTION'S `_id` (25 September 2026), so these
+    two forms must SAVE ids. Every other caller of `choices` fills a service
+    variant's axis, which is still keyed by code; that is why the default
+    stayed `code` rather than flipping under them.
+  */
   const pickerOptions = useCallback(
     (type: PetOptionType, stored?: string | null): PetOptionChoice[] => {
-      if (!loading) return choices(type, [stored]);
+      if (!loading) return choices(type, [stored], { by: "id" });
 
       return stored
         ? [{ value: stored, label: label(type, stored) ?? stored, retired: false }]
@@ -47,18 +53,28 @@ export function usePetPickers() {
       const all = pickerOptions("breed", stored);
       if (!species) return all;
 
-      const codeOf = new Map(
+      /*
+        TWO SIDES OF THE SAME LINK, IN TWO CURRENCIES (25 September 2026). The
+        picker now deals in breed IDS, while `speciesCode` on a breed is exactly
+        what its name says — a species CODE, because only the PET moved to ids
+        and the option rows point at each other as they did. So the map is keyed
+        by `_id` and the selected species is translated to its code before the
+        comparison; matching the raw ids would exclude every breed.
+      */
+      const chosen = code("species", species);
+
+      const belongsToOf = new Map(
         options
           .filter((option) => option.type === "breed")
-          .map((option) => [option.code, option.speciesCode ?? null]),
+          .map((option) => [option._id, option.speciesCode ?? null]),
       );
 
       return all.filter((choice) => {
-        const belongsTo = codeOf.get(choice.value) ?? null;
-        return belongsTo === null || belongsTo === species || choice.value === stored;
+        const belongsTo = belongsToOf.get(choice.value) ?? null;
+        return belongsTo === null || belongsTo === chosen || choice.value === stored;
       });
     },
-    [options, pickerOptions],
+    [options, pickerOptions, code],
   );
 
   return { pickerOptions, breedOptions, loading, error };

@@ -9,6 +9,8 @@ import { petOptionService } from "@/services/petOption.service";
 import {
   PET_OPTION_FIXTURES,
   makePetOption,
+  petOptionFields,
+  petOptionId,
   primePetOptions,
 } from "./helpers/petOptions";
 
@@ -35,18 +37,23 @@ const petFixture = {
   tenantId: "507f1f77bcf86cd799439011",
   customerId: CUSTOMER_ID,
   name: "Bella",
-  species: "dog" as const,
   sex: "female" as const,
-  breed: "domestic" as const,
   /*
-    ⚠️ BOTH FILLED IN, and that is not incidental detail. Ukuran and Jenis bulu
-    became REQUIRED on 23 September 2026, so a fixture with either blank is a pet
-    the edit screen refuses to save — every test below that submits would fail on
-    two fields it is not about. A pet registered under the current rule has both.
-    The pet that does NOT is its own test.
+    THE FOUR OPTION FIELDS, AS IDS, with the label and code the server resolves
+    beside each (25 September 2026) — see `petOptionFields`.
+
+    ⚠️ UKURAN AND JENIS BULU ARE BOTH FILLED IN, and that is not incidental
+    detail. Both became REQUIRED on 23 September 2026, so a fixture with either
+    blank is a pet the edit screen refuses to save — every test below that
+    submits would fail on two fields it is not about. A pet registered under the
+    current rule has both. The pet that does NOT is its own test.
   */
-  furType: "short hair" as const,
-  size: "medium" as const,
+  ...petOptionFields({
+    species: "dog",
+    breed: "domestic",
+    furType: "short hair",
+    size: "medium",
+  }),
   birthDate: "2022-03-14T00:00:00.000Z",
   weightKg: 12.4,
   color: null,
@@ -299,7 +306,9 @@ describe("PetForm — editing", () => {
     ]);
     mockedPetService.getById.mockResolvedValue({
       ...petFixture,
-      species: "kelinci",
+      species: petOptionId("species", "kelinci"),
+      speciesLabel: "Kelinci",
+      speciesCode: "kelinci",
     });
 
     render(<PetForm petId={PET_ID} />);
@@ -313,7 +322,7 @@ describe("PetForm — editing", () => {
     await waitFor(() =>
       expect(mockedPetService.update).toHaveBeenCalledWith(
         PET_ID,
-        expect.objectContaining({ species: "kelinci" }),
+        expect.objectContaining({ species: petOptionId("species", "kelinci") }),
       ),
     );
   });

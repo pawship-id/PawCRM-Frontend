@@ -16,6 +16,7 @@ import { swalToast } from "@/lib/swal";
 import type { Booking, PosShift, PosTransaction } from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
+import { petOptionFields } from "./helpers/petOptions";
 
 jest.mock("@/services/pos.service");
 jest.mock("@/services/booking.service");
@@ -1305,7 +1306,7 @@ describe("PosScreen — a service tapped in the grid", () => {
     } as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (petService as any).list.mockResolvedValue({
-      items: [{ _id: PET_ID, name: "Bruno", size: "large" }],
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({ size: "large" }) }],
       pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
 
@@ -1356,7 +1357,7 @@ describe("PosScreen — a service tapped in the grid", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (petService as any).list.mockResolvedValue({
       /* No size recorded — the one fact this service is priced by. */
-      items: [{ _id: PET_ID, name: "Bruno", size: null }],
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({}) }],
       pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
 
@@ -1418,7 +1419,7 @@ describe("PosScreen — a service tapped in the grid", () => {
     } as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (petService as any).list.mockResolvedValue({
-      items: [{ _id: PET_ID, name: "Bruno", size: "large" }],
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({ size: "large" }) }],
       pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
 
@@ -1479,7 +1480,7 @@ describe("PosScreen — a service tapped in the grid", () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (petService as any).list.mockResolvedValue({
       /* No size yet — the cashier is about to go and record one. */
-      items: [{ _id: PET_ID, name: "Bruno", size: null }],
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({}) }],
       pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
 
@@ -1494,7 +1495,7 @@ describe("PosScreen — a service tapped in the grid", () => {
     /* Filled in on the other tab. */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (petService as any).list.mockResolvedValue({
-      items: [{ _id: PET_ID, name: "Bruno", size: "large" }],
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({ size: "large" }) }],
       pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
 

@@ -50,11 +50,19 @@ type Priced = Pick<
  * `petType` IS `species` ON THE ANIMAL — the one rename between the two
  * collections, written here once. Reading `pet.petType` would find undefined on
  * every animal ever stored, and the bug would look like "variants do not work".
+ *
+ * ─── THE `Code` SUFFIX IS NOT COSMETIC (25 September 2026) ──────────────────
+ *
+ * `pet.species` holds the option's `_id` now, and a variant's axes are still
+ * keyed by CODE, so matching one against the other would compare an id to a
+ * slug and find nothing — every variant-priced service unpriceable, for every
+ * animal, with no error to read. `pet.speciesCode` is the same fact resolved by
+ * the server on read, which is what these three must use.
  */
 const AXIS_TO_PET_FIELD: Record<ServiceVariantAxis, keyof Pet> = {
-  petType: "species",
-  sizeCategory: "size",
-  furType: "furType",
+  petType: "speciesCode",
+  sizeCategory: "sizeCode",
+  furType: "furTypeCode",
 };
 
 /**

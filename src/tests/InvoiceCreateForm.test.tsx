@@ -29,6 +29,7 @@ import {
   makeVariantOption,
   primeVariantOptions,
 } from "./helpers/variantOptions";
+import { petOptionFields } from "./helpers/petOptions";
 
 jest.mock("@/services/variantOption.service");
 jest.mock("@/services/zone.service");
@@ -734,7 +735,7 @@ describe("the animal a service is for", () => {
     jest
       .spyOn(petService, "list")
       .mockResolvedValue(
-        page([{ _id: "pet1", name: "Miko", size: "large" }]) as never,
+        page([{ _id: "pet1", name: "Miko", ...petOptionFields({ size: "large" }) }]) as never,
       );
 
     render(<InvoiceCreateForm />);
@@ -783,7 +784,7 @@ describe("the animal a service is for", () => {
     jest
       .spyOn(petService, "list")
       .mockResolvedValue(
-        page([{ _id: "pet1", name: "Miko", size: null }]) as never,
+        page([{ _id: "pet1", name: "Miko", ...petOptionFields({}) }]) as never,
       );
 
     render(<InvoiceCreateForm />);
@@ -826,7 +827,7 @@ describe("the animal a service is for", () => {
     jest
       .spyOn(petService, "list")
       .mockResolvedValue(
-        page([{ _id: "pet1", name: "Miko", size: null }]) as never,
+        page([{ _id: "pet1", name: "Miko", ...petOptionFields({}) }]) as never,
       );
 
     render(<InvoiceCreateForm />);
@@ -866,7 +867,7 @@ describe("the animal a service is for", () => {
     const pets = jest
       .spyOn(petService, "list")
       .mockResolvedValue(
-        page([{ _id: "pet1", name: "Miko", size: null }]) as never,
+        page([{ _id: "pet1", name: "Miko", ...petOptionFields({}) }]) as never,
       );
 
     render(<InvoiceCreateForm />);
@@ -882,7 +883,7 @@ describe("the animal a service is for", () => {
 
     /* Miko's size is filled in in the other tab, and this one comes forward. */
     pets.mockResolvedValue(
-      page([{ _id: "pet1", name: "Miko", size: "small" }]) as never,
+      page([{ _id: "pet1", name: "Miko", ...petOptionFields({ size: "small" }) }]) as never,
     );
     fireEvent(document, new Event("visibilitychange"));
 
@@ -924,7 +925,7 @@ describe("the animal a service is for", () => {
     );
     const pets = jest.spyOn(petService, "list").mockResolvedValue(
       page([
-        { _id: "pet1", name: "Miko", size: null, furType: null },
+        { _id: "pet1", name: "Miko", ...petOptionFields({}) },
       ]) as never,
     );
 
@@ -942,7 +943,7 @@ describe("the animal a service is for", () => {
     /* The size is answered; the coat is not. */
     pets.mockResolvedValue(
       page([
-        { _id: "pet1", name: "Miko", size: "small", furType: null },
+        { _id: "pet1", name: "Miko", ...petOptionFields({ size: "small" }) },
       ]) as never,
     );
     fireEvent(document, new Event("visibilitychange"));
@@ -983,7 +984,7 @@ describe("the animal a service is for", () => {
     jest
       .spyOn(petService, "list")
       .mockResolvedValue(
-        page([{ _id: "pet1", name: "Miko", size: "large" }]) as never,
+        page([{ _id: "pet1", name: "Miko", ...petOptionFields({ size: "large" }) }]) as never,
       );
 
     render(<InvoiceCreateForm />);
@@ -1142,8 +1143,8 @@ describe("add-ons under a service", () => {
       .mockResolvedValue(page([PARFUM, MAIN, SISIR]) as never);
     jest.spyOn(petService, "list").mockResolvedValue(
       page([
-        { _id: "pet1", name: "Miko", size: "small" },
-        { _id: "pet2", name: "Coco", size: "large" },
+        { _id: "pet1", name: "Miko", ...petOptionFields({ size: "small" }) },
+        { _id: "pet2", name: "Coco", ...petOptionFields({ size: "large" }) },
       ]) as never,
     );
   });

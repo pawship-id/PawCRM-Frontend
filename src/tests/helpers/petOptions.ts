@@ -58,6 +58,87 @@ export const PET_OPTION_FIXTURES: PetOption[] = [
   ]),
 ];
 
+/** The `_id` `makePetOption` gives an option — `petOptionId("species", "dog")`. */
+export const petOptionId = (type: PetOptionType, code: string) =>
+  `opt-${type}-${code.replace(/\s+/g, "-")}`;
+
+/**
+ * The four option fields of a Pet fixture, from the CODES a test reads.
+ *
+ * WHY A HELPER RATHER THAN TWELVE LINES PER FIXTURE. A pet stores an option's
+ * `_id` since 25 September 2026, and the server sends the resolved `…Label` and
+ * `…Code` beside it — twelve fields that must agree with each other, in every
+ * suite that renders an animal. Written out by hand they drift: a fixture whose
+ * `speciesLabel` says "Anjing" while `species` points at the cat would pass a
+ * label assertion and misprice every variant in the same test.
+ *
+ * Call it with what a test actually cares about:
+ *
+ *   const bella = { ...base, ...petOptionFields({ species: "dog", size: "medium" }) };
+ *
+ * EVERY FIELD IS OPTIONAL, including species — most fixtures outside the pet
+ * module are partial `as Pet` objects carrying only the one fact the test is
+ * about (`{ _id, name, size: "small" }`), and forcing a species on them would
+ * be noise in twenty suites. An omitted list resolves to null throughout.
+ *
+ * A CODE WITH NO SEEDED OPTION still gets an id and its own code back, with a
+ * null label: a suite priming its own list ("kelinci", "xl") must be able to
+ * build a pet wearing it.
+ */
+/** The codes a fixture is described by. Every list is optional — see below. */
+interface PetOptionCodes {
+  species?: string | null;
+  breed?: string | null;
+  size?: string | null;
+  furType?: string | null;
+}
+
+/** What `petOptionFields` returns: the id, the word and the code, per list. */
+interface PetOptionFields {
+  species: string | null;
+  speciesLabel: string | null;
+  speciesCode: string | null;
+  breed: string | null;
+  breedLabel: string | null;
+  breedCode: string | null;
+  size: string | null;
+  sizeLabel: string | null;
+  sizeCode: string | null;
+  furType: string | null;
+  furTypeLabel: string | null;
+  furTypeCode: string | null;
+}
+
+/*
+  TWO SIGNATURES, so a full `Pet` fixture still typechecks. `Pet.species` is
+  required and non-null; a partial `as Pet` fixture usually omits it. Naming a
+  species narrows the result to match.
+*/
+export function petOptionFields(
+  codes: PetOptionCodes & { species: string },
+): PetOptionFields & { species: string };
+export function petOptionFields(codes: PetOptionCodes): PetOptionFields;
+export function petOptionFields(codes: PetOptionCodes): PetOptionFields {
+  const types = ["species", "breed", "size", "furType"] as const;
+
+  return Object.fromEntries(
+    types.flatMap((type) => {
+      const code = codes[type] ?? null;
+      const found = code
+        ? (PET_OPTION_FIXTURES.find(
+            (option) => option.type === type && option.code === code,
+          ) ?? null)
+        : null;
+
+      return [
+        [type, code ? petOptionId(type, code) : null],
+        [`${type}Label`, found?.label ?? null],
+        [`${type}Code`, code],
+      ];
+    }),
+  ) as unknown as PetOptionFields;
+}
+
 /**
  * Points a mocked `petOptionService.list` at `options` and drops the shared
  * cache, so the next `usePetOptions()` consumer loads exactly these.

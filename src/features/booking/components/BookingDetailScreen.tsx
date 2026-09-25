@@ -831,7 +831,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
                     <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-secondary/20 text-secondary-foreground">
-                      {pet.species === "cat" ? (
+                      {pet.speciesCode === "cat" ? (
                         <Cat className="size-6" aria-hidden />
                       ) : (
                         <Dog className="size-6" aria-hidden />

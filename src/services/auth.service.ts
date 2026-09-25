@@ -41,6 +41,17 @@ export const authService = {
   logout: () => apiClient.post<{ revoked: boolean }>("/auth/logout"),
 
   /**
+   * POST /auth/logout-all — revokes EVERY session this user holds, the caller's
+   * included, and clears the cookie.
+   *
+   * Distinct from `logout`, which ends one session. This is the "somebody else
+   * knows my password" control, so a device that is not in the room stops being
+   * signed in. `revokedCount` is all the caller can report back — the other
+   * devices find out by being refused on their next request.
+   */
+  logoutAll: () => apiClient.post<{ revokedCount: number }>("/auth/logout-all"),
+
+  /**
    * POST /auth/forgot-password — always resolves with a generic message,
    * whether or not the address has an account (no enumeration).
    */

@@ -6,7 +6,11 @@ import { petService } from "@/services/pet.service";
 import { petOptionService } from "@/services/petOption.service";
 import type { Pet } from "@/types/api";
 
-import { primePetOptions } from "./helpers/petOptions";
+import {
+  petOptionFields,
+  petOptionId,
+  primePetOptions,
+} from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/pet.service");
@@ -21,11 +25,9 @@ const pet = (overrides: Partial<Pet> = {}): Pet => ({
   tenantId: "507f1f77bcf86cd799439011",
   customerId: CUSTOMER_ID,
   name: "Bella",
-  species: "dog",
   sex: "female",
-  breed: "domestic",
-  furType: null,
-  size: null,
+  /* The ids a pet stores, with the label and code the server resolves. */
+  ...petOptionFields({ species: "dog", breed: "domestic" }),
   birthDate: null,
   weightKg: 12.4,
   color: null,
@@ -85,7 +87,10 @@ describe("CustomerPetsSection", () => {
   });
 
   it("lists the pets with their species", async () => {
-    listReturns([pet(), pet({ _id: "b", name: "Milo", species: "cat" })]);
+    listReturns([
+      pet(),
+      pet({ _id: "b", name: "Milo", ...petOptionFields({ species: "cat" }) }),
+    ]);
 
     renderWithAuth(<CustomerPetsSection customerId={CUSTOMER_ID} />);
 
@@ -170,7 +175,8 @@ describe("CustomerPetsSection", () => {
         expect.objectContaining({
           customerId: CUSTOMER_ID,
           name: "Bella",
-          species: "dog",
+          /* The form saves the option's ID — see `usePetPickers`. */
+          species: petOptionId("species", "dog"),
           size: null,
           furType: null,
         }),
@@ -228,9 +234,9 @@ describe("CustomerPetsSection", () => {
       expect(mockedPetService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Bella",
-          species: "dog",
-          size: "large",
-          furType: "long hair",
+          species: petOptionId("species", "dog"),
+          size: petOptionId("size", "large"),
+          furType: petOptionId("furType", "long hair"),
         }),
       ),
     );

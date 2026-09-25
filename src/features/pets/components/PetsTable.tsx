@@ -166,13 +166,21 @@ export function PetsTable({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <PetSpeciesBadge species={pet.species} />
+                    <PetSpeciesBadge species={pet.species} label={pet.speciesLabel} />
                   </TableCell>
                   <TableCell>
                     <span className="text-muted">
                       {pet.breed ? (
                         <HighlightText
-                          text={label("breed", pet.breed) ?? pet.breed}
+                          /*
+                            THE SERVER'S WORD FIRST (25 September 2026). `breed`
+                            is an option id now, so the old fallback to the
+                            stored value would print `66f1a2…` in the column —
+                            the response carries the resolved label for exactly
+                            this, and the hook only stands in while it is
+                            missing.
+                          */
+                          text={pet.breedLabel ?? label("breed", pet.breed) ?? "—"}
                           query={search}
                         />
                       ) : (
