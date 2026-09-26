@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Cat, Dog, MessageCircle, Pencil, Printer } from "lucide-react";
+import { MessageCircle, PawPrint, Pencil, Printer } from "lucide-react";
 
 import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -824,18 +824,26 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 {/*
                   THE ANIMAL, AT ARM'S LENGTH. A groomer reads this while holding a
                   dog: the name, then the facts that decide how it is handled, then
-                  the warnings. AN ICON, NOT AN EMOJI (§1.8), keyed on the seeded
-                  `cat` code with the dog for everything else — the WORD beside the
-                  name is what says which animal it is.
+                  the warnings. AN ICON, NOT AN EMOJI (§1.8).
+
+                  ─── IT IS A PAW, NOT A CAT OR A DOG (25 September 2026) ──────
+
+                  It used to pick `Cat` for the seeded `cat` code and `Dog` for
+                  everything else. Species are pet options and an option has no
+                  code any more, so there is nothing stable left to key on: a
+                  tenant's "Kucing" is an `_id` generated for that tenant, and
+                  matching the LABEL would break the moment somebody renamed it
+                  or ran the shop in another language.
+
+                  Guessing wrong is worse than not guessing — a cat under a dog
+                  icon reads as the wrong animal's card. THE WORD BESIDE THE
+                  NAME already says which animal it is, which is what this icon
+                  was never doing on its own.
                 */}
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
                     <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-secondary/20 text-secondary-foreground">
-                      {pet.species === "cat" ? (
-                        <Cat className="size-6" aria-hidden />
-                      ) : (
-                        <Dog className="size-6" aria-hidden />
-                      )}
+                      <PawPrint className="size-6" aria-hidden />
                     </span>
 
                     <div className="min-w-0">

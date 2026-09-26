@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { ApiError } from "@/services/api-error";
 import { petService } from "@/services/pet.service";
-import type { Pet, PetFurType, PetSize, PetSpecies } from "@/types/api";
+import type { Pet, PetOptionId } from "@/types/api";
 
 import { usePetPickers } from "../hooks/usePetPickers";
 
@@ -98,9 +98,10 @@ export function PetQuickAddDialog({
   requireTraits?: boolean;
 }) {
   const [name, setName] = useState("");
-  const [species, setSpecies] = useState<PetSpecies | "">("");
-  const [size, setSize] = useState<PetSize | "">("");
-  const [furType, setFurType] = useState<PetFurType | "">("");
+  /* Option IDS, not codes — `usePetPickers` builds the items. See PetForm. */
+  const [species, setSpecies] = useState<PetOptionId | "">("");
+  const [size, setSize] = useState<PetOptionId | "">("");
+  const [furType, setFurType] = useState<PetOptionId | "">("");
   const [nameError, setNameError] = useState<string | null>(null);
   const [speciesError, setSpeciesError] = useState<string | null>(null);
   const [sizeError, setSizeError] = useState<string | null>(null);
@@ -164,7 +165,7 @@ export function PetQuickAddDialog({
       const pet = await petService.create({
         customerId,
         name: trimmed,
-        species: species as PetSpecies,
+        species: species as PetOptionId,
         /* NULL, NOT OMITTED, when nothing was chosen — "belum diisi" is a real
            state the pricing rule reads, and the API says so explicitly. */
         size: size === "" ? null : size,
@@ -279,14 +280,14 @@ function QuickAddPickers({
   required,
   disabled,
 }: {
-  species: PetSpecies | "";
-  onSpeciesChange: (next: PetSpecies) => void;
+  species: PetOptionId | "";
+  onSpeciesChange: (next: PetOptionId) => void;
   speciesError: string | null;
-  size: PetSize | "";
-  onSizeChange: (next: PetSize) => void;
+  size: PetOptionId | "";
+  onSizeChange: (next: PetOptionId) => void;
   sizeError: string | null;
-  furType: PetFurType | "";
-  onFurTypeChange: (next: PetFurType) => void;
+  furType: PetOptionId | "";
+  onFurTypeChange: (next: PetOptionId) => void;
   furTypeError: string | null;
   /** Ukuran and Jenis bulu are answers, not offers — see `requireTraits`. */
   required: boolean;

@@ -26,6 +26,7 @@ function withAuth(
     isSuperAdmin,
     signIn: jest.fn(),
     signOut: jest.fn(),
+    signOutEverywhere: jest.fn(),
     refresh: jest.fn(),
     setUser: jest.fn(),
     switchBranch: jest.fn(),

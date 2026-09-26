@@ -29,6 +29,7 @@ import {
   makeVariantOption,
   primeVariantOptions,
 } from "./helpers/variantOptions";
+import { petOptionFields } from "./helpers/petOptions";
 
 jest.mock("@/services/variantOption.service");
 jest.mock("@/services/zone.service");
@@ -725,8 +726,8 @@ describe("the animal a service is for", () => {
           hasVariants: true,
           variantAxes: ["sizeCategory"],
           variants: [
-            { sizeCategory: "small", price: "120000" },
-            { sizeCategory: "large", price: "140000" },
+            { sizeCategory: "opt-size-kecil", price: "120000" },
+            { sizeCategory: "opt-size-besar", price: "140000" },
           ],
         },
       ]) as never,
@@ -734,7 +735,7 @@ describe("the animal a service is for", () => {
     jest
       .spyOn(petService, "list")
       .mockResolvedValue(
-        page([{ _id: "pet1", name: "Miko", size: "large" }]) as never,
+        page([{ _id: "pet1", name: "Miko", ...petOptionFields({ size: "Besar" }) }]) as never,
       );
 
     render(<InvoiceCreateForm />);
@@ -776,14 +777,14 @@ describe("the animal a service is for", () => {
           price: null,
           hasVariants: true,
           variantAxes: ["sizeCategory"],
-          variants: [{ sizeCategory: "small", price: "120000" }],
+          variants: [{ sizeCategory: "opt-size-kecil", price: "120000" }],
         },
       ]) as never,
     );
     jest
       .spyOn(petService, "list")
       .mockResolvedValue(
-        page([{ _id: "pet1", name: "Miko", size: null }]) as never,
+        page([{ _id: "pet1", name: "Miko", ...petOptionFields({}) }]) as never,
       );
 
     render(<InvoiceCreateForm />);
@@ -819,14 +820,14 @@ describe("the animal a service is for", () => {
           price: null,
           hasVariants: true,
           variantAxes: ["sizeCategory"],
-          variants: [{ sizeCategory: "small", price: "120000" }],
+          variants: [{ sizeCategory: "opt-size-kecil", price: "120000" }],
         },
       ]) as never,
     );
     jest
       .spyOn(petService, "list")
       .mockResolvedValue(
-        page([{ _id: "pet1", name: "Miko", size: null }]) as never,
+        page([{ _id: "pet1", name: "Miko", ...petOptionFields({}) }]) as never,
       );
 
     render(<InvoiceCreateForm />);
@@ -859,14 +860,14 @@ describe("the animal a service is for", () => {
           price: null,
           hasVariants: true,
           variantAxes: ["sizeCategory"],
-          variants: [{ sizeCategory: "small", price: "120000" }],
+          variants: [{ sizeCategory: "opt-size-kecil", price: "120000" }],
         },
       ]) as never,
     );
     const pets = jest
       .spyOn(petService, "list")
       .mockResolvedValue(
-        page([{ _id: "pet1", name: "Miko", size: null }]) as never,
+        page([{ _id: "pet1", name: "Miko", ...petOptionFields({}) }]) as never,
       );
 
     render(<InvoiceCreateForm />);
@@ -882,7 +883,7 @@ describe("the animal a service is for", () => {
 
     /* Miko's size is filled in in the other tab, and this one comes forward. */
     pets.mockResolvedValue(
-      page([{ _id: "pet1", name: "Miko", size: "small" }]) as never,
+      page([{ _id: "pet1", name: "Miko", ...petOptionFields({ size: "Kecil" }) }]) as never,
     );
     fireEvent(document, new Event("visibilitychange"));
 
@@ -917,14 +918,14 @@ describe("the animal a service is for", () => {
           hasVariants: true,
           variantAxes: ["sizeCategory", "furType"],
           variants: [
-            { sizeCategory: "small", furType: "short", price: "120000" },
+            { sizeCategory: "opt-size-kecil", furType: "short", price: "120000" },
           ],
         },
       ]) as never,
     );
     const pets = jest.spyOn(petService, "list").mockResolvedValue(
       page([
-        { _id: "pet1", name: "Miko", size: null, furType: null },
+        { _id: "pet1", name: "Miko", ...petOptionFields({}) },
       ]) as never,
     );
 
@@ -942,7 +943,7 @@ describe("the animal a service is for", () => {
     /* The size is answered; the coat is not. */
     pets.mockResolvedValue(
       page([
-        { _id: "pet1", name: "Miko", size: "small", furType: null },
+        { _id: "pet1", name: "Miko", ...petOptionFields({ size: "Kecil" }) },
       ]) as never,
     );
     fireEvent(document, new Event("visibilitychange"));
@@ -971,7 +972,7 @@ describe("the animal a service is for", () => {
           variantAxes: ["sizeCategory"],
           variants: [
             {
-              sizeCategory: "large",
+              sizeCategory: "opt-size-besar",
               price: "140000",
               durationMin: 90,
               isActive: false,
@@ -983,7 +984,7 @@ describe("the animal a service is for", () => {
     jest
       .spyOn(petService, "list")
       .mockResolvedValue(
-        page([{ _id: "pet1", name: "Miko", size: "large" }]) as never,
+        page([{ _id: "pet1", name: "Miko", ...petOptionFields({ size: "Besar" }) }]) as never,
       );
 
     render(<InvoiceCreateForm />);
@@ -1131,7 +1132,7 @@ describe("add-ons under a service", () => {
     price: null,
     hasVariants: true,
     variantAxes: ["sizeCategory"],
-    variants: [{ sizeCategory: "large", price: "40000" }],
+    variants: [{ sizeCategory: "opt-size-besar", price: "40000" }],
     serviceType: "addon",
     addonServiceIds: [],
   };
@@ -1142,8 +1143,8 @@ describe("add-ons under a service", () => {
       .mockResolvedValue(page([PARFUM, MAIN, SISIR]) as never);
     jest.spyOn(petService, "list").mockResolvedValue(
       page([
-        { _id: "pet1", name: "Miko", size: "small" },
-        { _id: "pet2", name: "Coco", size: "large" },
+        { _id: "pet1", name: "Miko", ...petOptionFields({ size: "Kecil" }) },
+        { _id: "pet2", name: "Coco", ...petOptionFields({ size: "Besar" }) },
       ]) as never,
     );
   });
@@ -1246,8 +1247,8 @@ describe("add-ons under a service", () => {
         {
           ...SISIR,
           variants: [
-            { sizeCategory: "small", price: "30000" },
-            { sizeCategory: "large", price: "40000" },
+            { sizeCategory: "opt-size-kecil", price: "30000" },
+            { sizeCategory: "opt-size-besar", price: "40000" },
           ],
         },
       ]) as never,

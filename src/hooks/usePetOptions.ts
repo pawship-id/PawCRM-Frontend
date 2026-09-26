@@ -6,27 +6,15 @@ import { ApiError } from "@/services/api-error";
 import { petOptionService } from "@/services/petOption.service";
 import type { PetOption, PetOptionType } from "@/types/api";
 
-/**
- * The words every tenant is seeded with — mirrors DEFAULT_PET_OPTIONS in
- * petOption.model.js.
- *
- * THE LABEL OF LAST RESORT, not a list anybody picks from: what `label()` says
- * before the tenant's own list has loaded, or when it cannot. A shop that has
- * renamed "Kecil" sees its own word the moment the list arrives.
- */
-export const DEFAULT_PET_OPTION_LABELS: Record<
-  PetOptionType,
-  Record<string, string>
-> = {
-  species: { cat: "Kucing", dog: "Anjing" },
-  breed: { domestic: "Domestic", poodle: "Poodle" },
-  size: { small: "Kecil", medium: "Sedang", large: "Besar" },
-  furType: { "long hair": "Bulu panjang", "short hair": "Bulu pendek" },
-};
+
 
 /** One entry a select can render. */
 export interface PetOptionChoice {
-  /** The code — what gets saved. */
+  /**
+   * What gets saved — the option's `_id` for a PET field, its `code` for a
+   * service variant's axis. `choices(type, keep, { by })` picks which, and the
+   * default stays `code` because the price grid is the older caller.
+   */
   value: string;
   /** The word, with " (nonaktif)" appended when the option is retired. */
   label: string;
@@ -153,15 +141,31 @@ function byOrder(a: PetOption, b: PetOption) {
 /**
  * The tenant's species, breeds, sizes and coats.
  *
- *   choices(type, keep?) — what a picker offers: ACTIVE options in order, plus
- *                          any code in `keep` the record already holds that is
- *                          retired, deleted or unknown, marked `retired`. Pass
- *                          the stored value as `keep` on an edit form, or the
- *                          select renders a value it has no item for and the
- *                          next save silently clears it.
- *   label(type, code)    — the word for a stored code: the tenant's label, else
- *                          the seeded default, else the code itself. Never
- *                          blank for a non-empty code.
+ * ─── A STORED VALUE IS AN ID OR A CODE, DEPENDING ON WHO STORED IT ──────────
+ *
+ * Since 25 September 2026 a PET holds an option's `_id` (`pet.species`), while
+ * a SERVICE VARIANT still holds its `code` (`variant.sizeCategory`), and so do
+ * the frozen facts on a booking, an invoice line and a commission row. Only the
+ * pet moved.
+ *
+ * `label`, `code` and `find` therefore accept EITHER and resolve both, so a
+ * caller does not have to know which side of that line its value came from —
+ * and so a screen reading a pet and a variant side by side needs one helper
+ * rather than two. `choices` is the exception: it decides what a form will
+ * SAVE, which is a real choice, so it is passed explicitly.
+ *
+ *   choices(type, keep?, { by }) — what a picker offers: ACTIVE options in
+ *                          order, plus anything in `keep` the record already
+ *                          holds that is retired, deleted or unknown, marked
+ *                          `retired`. Pass the stored value as `keep` on an
+ *                          edit form, or the select renders a value it has no
+ *                          item for and the next save silently clears it.
+ *                          Values are always the option's `_id`.
+ *   label(type, value)   — the tenant's word for a stored id, or null when
+ *                          nothing matches: a raw id is not a word, and there
+ *                          is no seeded table to fall back to.
+ *   find(type, value)    — the whole option, for anything the two above do
+ *                          not cover.
  *   ordered(type)        — every live option of one type (active and retired)
  *                          in order, for a screen laid out per value — the
  *                          commission-per-size rows, a price grid.
@@ -184,19 +188,45 @@ export function usePetOptions() {
     [live],
   );
 
-  const label = useCallback(
-    (type: PetOptionType, code: string | null | undefined): string | null => {
-      if (!code) return null;
+  /**
+   * The option behind a stored value — matched on `_id` FIRST, then on `code`.
+   *
+   * IN THAT ORDER because an id is unambiguous and a code is only unique within
+   * BY `_id` ALONE since 25 September 2026 — an option has no code to be found
+   * by any more, and every stored value in the app is an id.
+   *
+   * Live options win, then soft-deleted ones: a pet may point at a word the
+   * shop removed, and naming it beats showing an id.
+   */
+  const find = useCallback(
+    (type: PetOptionType, value: string | null | undefined) => {
+      if (!value) return null;
 
-      const match =
-        live.find((option) => option.type === type && option.code === code) ??
-        state.options.find(
-          (option) => option.type === type && option.code === code,
-        );
+      const matches = (option: PetOption) =>
+        option.type === type && option._id === value;
 
-      return match?.label ?? DEFAULT_PET_OPTION_LABELS[type][code] ?? code;
+      return live.find(matches) ?? state.options.find(matches) ?? null;
     },
     [live, state.options],
+  );
+
+  const label = useCallback(
+    (type: PetOptionType, value: string | null | undefined): string | null => {
+      if (!value) return null;
+
+      const match = find(type, value);
+      if (match) return match.label;
+
+      /*
+        NOT FOUND — and since 25 September 2026 there is nothing to fall back
+        to. A stored value is an option `_id`, generated per tenant, so no table
+        of seeded words can name one; printing the raw id would put `66f1a2…` in
+        a column of animal names. Callers render the value's own placeholder
+        instead, which is why this returns null rather than the id.
+      */
+      return null;
+    },
+    [find],
   );
 
   const choices = useCallback(
@@ -204,26 +234,48 @@ export function usePetOptions() {
       type: PetOptionType,
       keep: Array<string | null | undefined> = [],
     ): PetOptionChoice[] => {
+      /*
+        ALWAYS THE `_id` since 25 September 2026. There used to be a `by` option
+        — `"id"` for a pet field, `"code"` for a variant axis — and both ends
+        hold ids now, so the choice had one answer left.
+      */
+      const valueOf = (option: PetOption) => option._id;
+
       const active: PetOptionChoice[] = ordered(type)
         .filter((option) => option.isActive)
         .map((option) => ({
-          value: option.code,
+          value: valueOf(option),
           label: option.label,
           retired: false,
         }));
 
       const offered = new Set(active.map((choice) => choice.value));
+      /*
+        A KEPT VALUE IS RESOLVED BEFORE IT IS COMPARED. An edit form passes the
+        stored id; if the option is active it is already in `active` under that
+        same id and must not be added twice.
+      */
       const kept = [...new Set(keep)]
-        .filter((code): code is string => Boolean(code) && !offered.has(code!))
-        .map((code) => ({
-          value: code,
-          label: `${label(type, code)} (nonaktif)`,
+        .map((stored) => {
+          if (!stored) return null;
+          const match = find(type, stored);
+          return match ? valueOf(match) : stored;
+        })
+        .filter(
+          (value, index, all): value is string =>
+            Boolean(value) &&
+            !offered.has(value!) &&
+            all.indexOf(value) === index,
+        )
+        .map((value) => ({
+          value,
+          label: `${label(type, value) ?? value} (nonaktif)`,
           retired: true,
         }));
 
       return [...active, ...kept];
     },
-    [ordered, label],
+    [ordered, label, find],
   );
 
   const reload = useCallback(() => load(true), []);
@@ -235,6 +287,7 @@ export function usePetOptions() {
     error: state.error,
     choices,
     label,
+    find,
     ordered,
     reload,
   };

@@ -4,15 +4,19 @@ import { useCallback, useEffect, useState } from "react";
 
 import { petService } from "@/services/pet.service";
 import { ApiError } from "@/services/api-error";
-import type { Pet, PetListQuery, PageResult, PetSpecies } from "@/types/api";
+import type { Pet, PetListQuery, PageResult, PetOptionId } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface PetsQuery {
   page: number;
   search: string;
-  /** "" = any species, otherwise one of the tenant's species codes (`petoptions`). */
-  species: PetSpecies | "";
+  /**
+   * "" = any species, otherwise the `_id` of one of the tenant's species
+   * options — what a pet stores since 25 September 2026, and what `?species=`
+   * filters on.
+   */
+  species: PetOptionId | "";
   /** "" = both, "true"/"false" = only pets in care / only retired ones. */
   isActive: "" | "true" | "false";
   includeDeleted: boolean;

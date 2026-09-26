@@ -26,7 +26,7 @@ const pet = (overrides: Partial<Pet> = {}): Pet =>
     _id: "pet-1",
     customerId: "cust-1",
     name: "Bruno",
-    species: "dog",
+    species: "opt-species-anjing",
     sex: "male",
     breed: "Golden Retriever",
     weightKg: 24,
@@ -100,7 +100,7 @@ describe("PetCardPrintScreen", () => {
     primePetOptions(
       petOptionService.list,
       PET_OPTION_FIXTURES.map((option) =>
-        option.type === "species" && option.code === "dog"
+        option.type === "species" && option.label === "Anjing"
           ? makePetOption({ ...option, label: "Guguk" })
           : option,
       ),

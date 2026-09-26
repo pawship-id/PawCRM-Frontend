@@ -132,7 +132,7 @@ describe("rideOf", () => {
         tripAddress: null,
         tripOrigin: { address: "Jl. Mawar 12", lat: -6.2, lng: 106.8 },
         tripDestination: { address: "Cabang Barat", lat: -6.21, lng: 106.82 },
-        passengers: [{ _id: "pet-1", name: "Bella", petSize: "small" }, { _id: "pet-2", name: "Milo", petSize: "medium" }],
+        passengers: [{ _id: "pet-1", name: "Bella", petSize: "opt-size-kecil" }, { _id: "pet-2", name: "Milo", petSize: "opt-size-sedang" }],
       }),
     ).toEqual({
       leg: "pickup",
@@ -153,7 +153,7 @@ describe("rideOf", () => {
         tripAddress: "Jl. Lama 3",
         tripOrigin: null,
         tripDestination: null,
-        passengers: [{ _id: "pet-1", name: "Bella", petSize: "small" }],
+        passengers: [{ _id: "pet-1", name: "Bella", petSize: "opt-size-kecil" }],
       }),
     ).toMatchObject({ from: null, to: "Jl. Lama 3", address: "Jl. Lama 3" });
   });

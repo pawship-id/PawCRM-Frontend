@@ -76,7 +76,7 @@ const booking = ({ service, ...over }: Overrides = {}): Booking =>
     customerName: "Bu Lisa",
     petId: "pet-1",
     petName: "Mochi",
-    petSize: "small",
+    petSize: "opt-size-kecil",
     status: "in_progress",
     statusHistory: [],
     nextStatuses: [],

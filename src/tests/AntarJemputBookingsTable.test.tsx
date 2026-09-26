@@ -65,8 +65,8 @@ function ride(over: Partial<Booking> = {}): Booking {
     totalAmount: "45000.0000",
     tripLeg: "pickup",
     passengers: [
-      { _id: "pet-1", name: "Bella", petSize: "small" },
-      { _id: "pet-2", name: "Milo", petSize: "medium" },
+      { _id: "pet-1", name: "Bella", petSize: "opt-size-kecil" },
+      { _id: "pet-2", name: "Milo", petSize: "opt-size-sedang" },
     ],
     tripOrigin: { address: "Jl. Mawar 12", lat: -7.2395, lng: 112.7521 },
     tripDestination: { address: "Cabang Barat", lat: -7.2575, lng: 112.7521 },

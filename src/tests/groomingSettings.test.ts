@@ -20,7 +20,11 @@ import {
 } from "@/features/grooming/settings";
 import type { GroomerCapacityDay, GroomingSettings } from "@/types/api";
 
-import { makePetOption, PET_OPTION_FIXTURES } from "./helpers/petOptions";
+import {
+  makePetOption,
+  petOptionId,
+  PET_OPTION_FIXTURES,
+} from "./helpers/petOptions";
 
 /**
  * Grooming › Pengaturan saves a WHOLE settings object and one PATCH per changed
@@ -38,7 +42,6 @@ const SEEDED_SIZES = PET_OPTION_FIXTURES.filter((option) => option.type === "siz
 /** A size a shop added itself, after the seeded three. */
 const XL = makePetOption({
   type: "size",
-  code: "xl",
   label: "Ekstra besar",
   sortOrder: 3,
 });
@@ -46,7 +49,23 @@ const XL = makePetOption({
 const SIZES = commissionSizes(SEEDED_SIZES, {});
 const SIZES_WITH_XL = commissionSizes([...SEEDED_SIZES, XL], {});
 
-const PRICED = { small: 30000, medium: 45000, large: 60000 };
+/*
+  KEYED BY THE SIZE OPTION'S `_id` since 25 September 2026 — `sizeNominal`
+  stores ids now, so a fixture keyed by code would look like three sizes nobody
+  has priced.
+*/
+const SIZE_ID = {
+  small: petOptionId("size", "Kecil"),
+  medium: petOptionId("size", "Sedang"),
+  large: petOptionId("size", "Besar"),
+  xl: XL._id,
+};
+
+const PRICED = {
+  [SIZE_ID.small]: 30000,
+  [SIZE_ID.medium]: 45000,
+  [SIZE_ID.large]: 60000,
+};
 
 function settings(
   change: (draft: GroomingSettings) => void = () => {},
@@ -137,41 +156,50 @@ describe("withGroomingDefaults", () => {
     expect(merged.capacity).toEqual({ defaultMinutes: 420, overLimit: "warn" });
   });
 
-  it("keeps a stored nominal whatever its size code, and drops what is not a number", () => {
+  it("keeps a stored nominal whatever size it names, and drops what is not a number", () => {
+    const jumbo = petOptionId("size", "Jumbo");
     const merged = withGroomingDefaults({
       commission: {
-        service: { sizeNominal: { xl: 55000, jumbo: 80000, medium: "40000" } },
+        service: {
+          sizeNominal: {
+            [SIZE_ID.xl]: 55000,
+            [jumbo]: 80000,
+            [SIZE_ID.medium]: "40000",
+          },
+        },
       },
     });
 
-    expect(merged.commission.service.sizeNominal).toEqual({ xl: 55000, jumbo: 80000 });
+    expect(merged.commission.service.sizeNominal).toEqual({
+      [SIZE_ID.xl]: 55000,
+      [jumbo]: 80000,
+    });
   });
 });
 
 describe("commissionSizes", () => {
   it("draws every active size in the tenant's order, a size the shop added included", () => {
     expect(SIZES_WITH_XL).toEqual([
-      { code: "small", label: "Kecil", retired: false },
-      { code: "medium", label: "Sedang", retired: false },
-      { code: "large", label: "Besar", retired: false },
-      { code: "xl", label: "Ekstra besar", retired: false },
+      { code: SIZE_ID.small, label: "Kecil", retired: false },
+      { code: SIZE_ID.medium, label: "Sedang", retired: false },
+      { code: SIZE_ID.large, label: "Besar", retired: false },
+      { code: SIZE_ID.xl, label: "Ekstra besar", retired: false },
     ]);
   });
 
   it("shows a retired size only while a nominal is stored for it", () => {
     const options = SEEDED_SIZES.map((option) =>
-      option.code === "large" ? { ...option, isActive: false } : option,
+      option.label === "Besar" ? { ...option, isActive: false } : option,
     );
 
     expect(commissionSizes(options, PRICED)).toContainEqual({
-      code: "large",
+      code: SIZE_ID.large,
       label: "Besar",
       retired: true,
     });
-    expect(commissionSizes(options, { small: 30000 }).map((size) => size.code)).toEqual([
-      "small",
-      "medium",
-    ]);
+    expect(
+      commissionSizes(options, { [SIZE_ID.small]: 30000 }).map((size) => size.code),
+    ).toEqual([SIZE_ID.small, SIZE_ID.medium]);
   });
 });
 
@@ -223,11 +251,15 @@ describe("exampleCommission", () => {
   it("reads the middle active size's nominal when commission is per size", () => {
     const perSize = settings((s) => {
       s.commission.service.mode = "size_nominal";
-      s.commission.service.sizeNominal = { ...PRICED, xl: 75000 };
+      s.commission.service.sizeNominal = { ...PRICED, [SIZE_ID.xl]: 75000 };
     });
 
     const result = exampleCommission(perSize, SIZES);
-    expect(result.size).toEqual({ code: "medium", label: "Sedang", retired: false });
+    expect(result.size).toEqual({
+      code: SIZE_ID.medium,
+      label: "Sedang",
+      retired: false,
+    });
     expect(result.service).toEqual({ amount: 45_000, basis: "nominal Sedang" });
 
     // Adding a size at the end does not change the example's animal.
@@ -298,12 +330,12 @@ describe("the draft", () => {
     });
 
     const retyped = draftOf(base, (d) => {
-      d.service.sizeNominal.xl = "";
+      d.service.sizeNominal[SIZE_ID.xl] = "";
     });
     expect(isDraftDirty(retyped, draftOf(base), day)).toBe(false);
 
     const emptied = draftOf(base, (d) => {
-      d.service.sizeNominal.small = "";
+      d.service.sizeNominal[SIZE_ID.small] = "";
     });
     expect(isDraftDirty(emptied, draftOf(base), day)).toBe(true);
   });
@@ -357,36 +389,39 @@ describe("nominal per size, on the tenant's own sizes", () => {
   it("holds up the save until a size the shop added is priced — then sends it", () => {
     const empty = draftOf(perSize);
     expect(validateDraft(empty, SIZES_WITH_XL)).toEqual({
-      "service.size.xl": RUPIAH_ERROR,
+      [`service.size.${SIZE_ID.xl}`]: RUPIAH_ERROR,
     });
 
     const priced = draftOf(perSize, (d) => {
-      d.service.sizeNominal.xl = "55000";
+      d.service.sizeNominal[SIZE_ID.xl] = "55000";
     });
     expect(validateDraft(priced, SIZES_WITH_XL)).toEqual({});
     expect(draftToSettings(priced, perSize).commission.service.sizeNominal).toEqual({
       ...PRICED,
-      xl: 55000,
+      [SIZE_ID.xl]: 55000,
     });
   });
 
   it("carries a stored nominal for a size not on screen back unchanged", () => {
     const base = settings((s) => {
       s.commission.service.mode = "size_nominal";
-      s.commission.service.sizeNominal = { ...PRICED, jumbo: 80000 };
+      s.commission.service.sizeNominal = {
+        ...PRICED,
+        [petOptionId("size", "Jumbo")]: 80000,
+      };
     });
     const draft = draftOf(base, (d) => {
-      d.service.sizeNominal.medium = "50000";
+      d.service.sizeNominal[SIZE_ID.medium] = "50000";
     });
 
-    // "jumbo" is not one of the tenant's sizes, so it is not a row to check…
+    // "Jumbo" is not one of the tenant's sizes, so it is not a row to check…
     expect(validateDraft(draft, SIZES)).toEqual({});
     // …and saving does not delete it.
     expect(draftToSettings(draft, base).commission.service.sizeNominal).toEqual({
-      small: 30000,
-      medium: 50000,
-      large: 60000,
-      jumbo: 80000,
+      [SIZE_ID.small]: 30000,
+      [SIZE_ID.medium]: 50000,
+      [SIZE_ID.large]: 60000,
+      [petOptionId("size", "Jumbo")]: 80000,
     });
   });
 

@@ -109,7 +109,7 @@ export function PetProfileScreen({ petId }: { petId: string }) {
         <div className="min-w-0">
           <h1 className="text-2xl font-extrabold text-foreground">{pet.name}</h1>
           <p className="mt-1 text-sm text-muted">
-            {[label("breed", pet.breed), pet.color]
+            {[pet.breedLabel ?? label("breed", pet.breed), pet.color]
               .filter(Boolean)
               .join(" · ") || "—"}
           </p>
