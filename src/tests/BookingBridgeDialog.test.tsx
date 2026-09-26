@@ -44,7 +44,7 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
   /* One booking is one animal and one main service. */
   petId: PET_ID,
   petName: "Bruno",
-  petSize: "medium",
+  petSize: "opt-size-sedang",
   status: "confirmed",
   statusHistory: [],
   nextStatuses: [],
@@ -386,7 +386,7 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
   it("prices each service for the animal the list is for", async () => {
     mockedPets.list.mockResolvedValue(
       page([
-        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, ...petOptionFields({ size: "large" }) },
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, ...petOptionFields({ size: "Besar" }) },
       ]),
     );
     mockedServices.list.mockResolvedValue(
@@ -400,13 +400,13 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
           variants: [
             {
               petType: null,
-              sizeCategory: "small",
+              sizeCategory: "opt-size-kecil",
               furType: null,
               price: "120000.0000",
             },
             {
               petType: null,
-              sizeCategory: "large",
+              sizeCategory: "opt-size-besar",
               furType: null,
               price: "150000.0000",
             },
@@ -442,12 +442,12 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
   it("prices each animal's line in the summary, so the total can be checked", async () => {
     mockedPets.list.mockResolvedValue(
       page([
-        { _id: PET_ID, name: "Cici", customerId: CUSTOMER_ID, ...petOptionFields({ size: "small" }) },
+        { _id: PET_ID, name: "Cici", customerId: CUSTOMER_ID, ...petOptionFields({ size: "Kecil" }) },
         {
           _id: SECOND_PET_ID,
           name: "Cilang",
           customerId: CUSTOMER_ID,
-          ...petOptionFields({ size: "large" }),
+          ...petOptionFields({ size: "Besar" }),
         },
       ]),
     );
@@ -462,13 +462,13 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
           variants: [
             {
               petType: null,
-              sizeCategory: "small",
+              sizeCategory: "opt-size-kecil",
               furType: null,
               price: "120000.0000",
             },
             {
               petType: null,
-              sizeCategory: "large",
+              sizeCategory: "opt-size-besar",
               furType: null,
               price: "140000.0000",
             },
@@ -519,7 +519,7 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
           variants: [
             {
               petType: null,
-              sizeCategory: "small",
+              sizeCategory: "opt-size-kecil",
               furType: null,
               price: "120000.0000",
             },
@@ -545,7 +545,7 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
   it("cannot tick a service whose variant for the animal is switched off", async () => {
     mockedPets.list.mockResolvedValue(
       page([
-        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, ...petOptionFields({ size: "large" }) },
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, ...petOptionFields({ size: "Besar" }) },
       ]),
     );
     mockedServices.list.mockResolvedValue(
@@ -559,7 +559,7 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
           variants: [
             {
               petType: null,
-              sizeCategory: "large",
+              sizeCategory: "opt-size-besar",
               furType: null,
               price: "150000.0000",
               durationMin: 120,

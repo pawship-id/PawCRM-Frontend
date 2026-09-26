@@ -409,7 +409,7 @@ describe("GroomingServicesScreen", () => {
     // A species the tenant added — the list is not a cat and a dog written in.
     primePetOptions(petOptionService.list, [
       ...PET_OPTION_FIXTURES,
-      makePetOption({ type: "species", code: "rabbit", label: "Kelinci", sortOrder: 2 }),
+      makePetOption({ type: "species", label: "Kelinci", sortOrder: 2 }),
     ]);
 
     renderWithAuth(<GroomingServicesScreen />);
@@ -426,7 +426,7 @@ describe("GroomingServicesScreen", () => {
 
     // A draft: nothing is asked while the panel is being composed.
     expect(serviceService.list).not.toHaveBeenCalledWith(
-      expect.objectContaining({ petType: "cat" }),
+      expect.objectContaining({ petType: "opt-species-kucing" }),
     );
 
     await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
@@ -436,7 +436,7 @@ describe("GroomingServicesScreen", () => {
         expect.objectContaining({
           businessLineId: "bl-grooming",
           branchId: "br-1",
-          petType: "cat",
+          petType: "opt-species-kucing",
           location: "in_home",
           page: 1,
         }),

@@ -62,8 +62,8 @@ function listing(items: PetOption[]) {
   });
 }
 
-const size = (code: string) =>
-  PET_OPTION_FIXTURES.find((o) => o.type === "size" && o.code === code)!;
+const size = (label: string) =>
+  PET_OPTION_FIXTURES.find((o) => o.type === "size" && o.label === label)!;
 
 function pill(name: string) {
   return within(
@@ -105,7 +105,6 @@ describe("PetOptionsScreen", () => {
       ...[...PET_OPTION_FIXTURES].reverse(),
       makePetOption({
         type: "size",
-        code: "giant",
         label: "Raksasa",
         sortOrder: 3,
         deletedAt: "2026-09-10T00:00:00.000Z",
@@ -151,20 +150,18 @@ describe("PetOptionsScreen", () => {
       ...PET_OPTION_FIXTURES.filter((option) => option.type !== "breed"),
       makePetOption({
         type: "breed",
-        code: "poodle",
         label: "Poodle",
-        speciesId: petOptionId("species", "dog"),
+        speciesId: petOptionId("species", "Anjing"),
       }),
-      makePetOption({ type: "breed", code: "mix", label: "Mix", sortOrder: 1 }),
+      makePetOption({ type: "breed", label: "Mix", sortOrder: 1 }),
     ]);
     jest
       .mocked(petOptionService.create)
       .mockResolvedValue(
         makePetOption({
           type: "breed",
-          code: "persia",
           label: "Persia",
-          speciesId: petOptionId("species", "cat"),
+          speciesId: petOptionId("species", "Kucing"),
         }),
       );
 
@@ -194,7 +191,7 @@ describe("PetOptionsScreen", () => {
       expect(petOptionService.create).toHaveBeenCalledWith({
         type: "breed",
         label: "Persia",
-        speciesId: petOptionId("species", "cat"),
+        speciesId: petOptionId("species", "Kucing"),
       }),
     );
   });
@@ -241,7 +238,6 @@ describe("PetOptionsScreen", () => {
     jest.mocked(petOptionService.create).mockResolvedValue(
       makePetOption({
         type: "size",
-        code: "ekstra-besar",
         label: "Ekstra besar",
         sortOrder: 3,
       }),
@@ -297,7 +293,7 @@ describe("PetOptionsScreen", () => {
     );
 
     await waitFor(() =>
-      expect(petOptionService.update).toHaveBeenCalledWith("opt-size-small", {
+      expect(petOptionService.update).toHaveBeenCalledWith("opt-size-kecil", {
         label: "Mungil",
       }),
     );
@@ -335,7 +331,7 @@ describe("PetOptionsScreen", () => {
         /3 pet\(s\) and 1 service\(s\) still use 'Kucing'/,
       ),
     ).toBeInTheDocument();
-    expect(petOptionService.remove).toHaveBeenCalledWith("opt-species-cat");
+    expect(petOptionService.remove).toHaveBeenCalledWith("opt-species-kucing");
     expect(invalidatePetOptions).not.toHaveBeenCalled();
   });
 
@@ -357,10 +353,10 @@ describe("PetOptionsScreen", () => {
     await waitFor(() =>
       expect(petOptionService.update).toHaveBeenCalledTimes(2),
     );
-    expect(petOptionService.update).toHaveBeenCalledWith("opt-size-medium", {
+    expect(petOptionService.update).toHaveBeenCalledWith("opt-size-sedang", {
       sortOrder: 0,
     });
-    expect(petOptionService.update).toHaveBeenCalledWith("opt-size-small", {
+    expect(petOptionService.update).toHaveBeenCalledWith("opt-size-kecil", {
       sortOrder: 1,
     });
     await waitFor(() => expect(petOptionService.list).toHaveBeenCalledTimes(2));
@@ -370,9 +366,9 @@ describe("PetOptionsScreen", () => {
   it("renumbers when the two rows share a sortOrder, so the move still lands", async () => {
     // All three at 0: shown in label order, and a swap of 0 for 0 moves nothing.
     listing([
-      makePetOption({ type: "species", code: "cat", label: "Kucing" }),
-      makePetOption({ type: "species", code: "dog", label: "Anjing" }),
-      makePetOption({ type: "species", code: "rabbit", label: "Kelinci" }),
+      makePetOption({ type: "species", label: "Kucing" }),
+      makePetOption({ type: "species", label: "Anjing" }),
+      makePetOption({ type: "species", label: "Kelinci" }),
     ]);
 
     renderWithAuth(<PetOptionsScreen />);
@@ -388,20 +384,20 @@ describe("PetOptionsScreen", () => {
       expect(petOptionService.update).toHaveBeenCalledTimes(2),
     );
     // Anjing is already at 0 and is not written.
-    expect(petOptionService.update).toHaveBeenCalledWith("opt-species-cat", {
+    expect(petOptionService.update).toHaveBeenCalledWith("opt-species-kucing", {
       sortOrder: 1,
     });
-    expect(petOptionService.update).toHaveBeenCalledWith("opt-species-rabbit", {
-      sortOrder: 2,
-    });
+    expect(petOptionService.update).toHaveBeenCalledWith(
+      petOptionId("species", "Kelinci"),
+      { sortOrder: 2 },
+    );
   });
 
   it("retires and reactivates without deleting", async () => {
     listing([
-      makePetOption({ type: "species", code: "cat", label: "Kucing" }),
+      makePetOption({ type: "species", label: "Kucing" }),
       makePetOption({
         type: "species",
-        code: "dog",
         label: "Anjing",
         sortOrder: 1,
         isActive: false,
@@ -419,7 +415,7 @@ describe("PetOptionsScreen", () => {
       within(menu).getByRole("menuitem", { name: /Nonaktifkan/ }),
     );
     await waitFor(() =>
-      expect(petOptionService.update).toHaveBeenCalledWith("opt-species-cat", {
+      expect(petOptionService.update).toHaveBeenCalledWith("opt-species-kucing", {
         isActive: false,
       }),
     );
@@ -439,10 +435,9 @@ describe("PetOptionsScreen", () => {
   it("offers Pulihkan, and only that, on a deleted row", async () => {
     jest.mocked(petOptionService.restore).mockResolvedValue(size("small"));
     listing([
-      makePetOption({ type: "species", code: "cat", label: "Kucing" }),
+      makePetOption({ type: "species", label: "Kucing" }),
       makePetOption({
         type: "species",
-        code: "dog",
         label: "Anjing",
         deletedAt: "2026-09-10T00:00:00.000Z",
       }),
@@ -459,7 +454,7 @@ describe("PetOptionsScreen", () => {
     );
 
     await waitFor(() =>
-      expect(petOptionService.restore).toHaveBeenCalledWith("opt-species-dog"),
+      expect(petOptionService.restore).toHaveBeenCalledWith("opt-species-anjing"),
     );
     expect(invalidatePetOptions).toHaveBeenCalled();
   });

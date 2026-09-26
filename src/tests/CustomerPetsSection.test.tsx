@@ -27,7 +27,7 @@ const pet = (overrides: Partial<Pet> = {}): Pet => ({
   name: "Bella",
   sex: "female",
   /* The ids a pet stores, with the label and code the server resolves. */
-  ...petOptionFields({ species: "dog", breed: "domestic" }),
+  ...petOptionFields({ species: "Anjing", breed: "Domestic" }),
   birthDate: null,
   weightKg: 12.4,
   color: null,
@@ -89,7 +89,7 @@ describe("CustomerPetsSection", () => {
   it("lists the pets with their species", async () => {
     listReturns([
       pet(),
-      pet({ _id: "b", name: "Milo", ...petOptionFields({ species: "cat" }) }),
+      pet({ _id: "b", name: "Milo", ...petOptionFields({ species: "Kucing" }) }),
     ]);
 
     renderWithAuth(<CustomerPetsSection customerId={CUSTOMER_ID} />);
@@ -176,7 +176,7 @@ describe("CustomerPetsSection", () => {
           customerId: CUSTOMER_ID,
           name: "Bella",
           /* The form saves the option's ID — see `usePetPickers`. */
-          species: petOptionId("species", "dog"),
+          species: petOptionId("species", "Anjing"),
           size: null,
           furType: null,
         }),
@@ -234,9 +234,9 @@ describe("CustomerPetsSection", () => {
       expect(mockedPetService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Bella",
-          species: petOptionId("species", "dog"),
-          size: petOptionId("size", "large"),
-          furType: petOptionId("furType", "long hair"),
+          species: petOptionId("species", "Anjing"),
+          size: petOptionId("size", "Besar"),
+          furType: petOptionId("furType", "Bulu panjang"),
         }),
       ),
     );

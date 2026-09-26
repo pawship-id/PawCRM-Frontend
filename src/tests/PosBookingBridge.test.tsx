@@ -16,7 +16,9 @@ import { swalToast } from "@/lib/swal";
 import type { Booking, PosShift, PosTransaction } from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
-import { petOptionFields } from "./helpers/petOptions";
+import { petOptionService } from "@/services/petOption.service";
+
+import { petOptionFields, primePetOptions } from "./helpers/petOptions";
 
 jest.mock("@/services/pos.service");
 jest.mock("@/services/booking.service");
@@ -27,6 +29,7 @@ jest.mock("@/services/branch.service");
 jest.mock("@/services/customer.service");
 jest.mock("@/services/pet.service");
 jest.mock("@/services/service.service");
+jest.mock("@/services/petOption.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 const mockedPos = posService as jest.Mocked<typeof posService>;
@@ -61,7 +64,7 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     // One booking is one animal and one main service.
     petId: PET_ID,
     petName: "Bruno",
-    petSize: "medium",
+    petSize: "opt-size-sedang",
     service: {
       serviceId: "svc-1",
       name: "Grooming Full Service",
@@ -168,6 +171,13 @@ const pulledCart = () =>
 
 beforeEach(() => {
   mockedPos.currentShift.mockResolvedValue(shift);
+  /*
+    THE TENANT'S VOCABULARY, loaded the way the app loads it. A variant's axes
+    are pet-option IDS since 25 September 2026, and an id becomes a word only
+    through this list — there is no table of seeded labels to fall back on any
+    more.
+  */
+  primePetOptions(petOptionService.list);
   // The shift bar's running figures (FR-9) — read on every render of the till.
   mockedPos.xReport.mockResolvedValue({
     shift: shift,
@@ -1288,13 +1298,13 @@ describe("PosScreen — a service tapped in the grid", () => {
           variants: [
             {
               petType: null,
-              sizeCategory: "small",
+              sizeCategory: "opt-size-kecil",
               furType: null,
               price: "120000.0000",
             },
             {
               petType: null,
-              sizeCategory: "large",
+              sizeCategory: "opt-size-besar",
               furType: null,
               price: "140000.0000",
             },
@@ -1306,7 +1316,7 @@ describe("PosScreen — a service tapped in the grid", () => {
     } as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (petService as any).list.mockResolvedValue({
-      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({ size: "large" }) }],
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({ size: "Besar" }) }],
       pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
 
@@ -1344,7 +1354,7 @@ describe("PosScreen — a service tapped in the grid", () => {
           variants: [
             {
               petType: null,
-              sizeCategory: "small",
+              sizeCategory: "opt-size-kecil",
               furType: null,
               price: "120000.0000",
             },
@@ -1405,7 +1415,7 @@ describe("PosScreen — a service tapped in the grid", () => {
           variants: [
             {
               petType: null,
-              sizeCategory: "large",
+              sizeCategory: "opt-size-besar",
               furType: null,
               price: "140000.0000",
               durationMin: 120,
@@ -1419,7 +1429,7 @@ describe("PosScreen — a service tapped in the grid", () => {
     } as any);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (petService as any).list.mockResolvedValue({
-      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({ size: "large" }) }],
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({ size: "Besar" }) }],
       pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
 
@@ -1467,7 +1477,7 @@ describe("PosScreen — a service tapped in the grid", () => {
           variants: [
             {
               petType: null,
-              sizeCategory: "large",
+              sizeCategory: "opt-size-besar",
               furType: null,
               price: "140000.0000",
             },
@@ -1495,7 +1505,7 @@ describe("PosScreen — a service tapped in the grid", () => {
     /* Filled in on the other tab. */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (petService as any).list.mockResolvedValue({
-      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({ size: "large" }) }],
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({ size: "Besar" }) }],
       pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
 

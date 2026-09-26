@@ -2,7 +2,6 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { GroomingBookingCreateScreen } from "@/features/grooming";
-import { DEFAULT_PET_OPTION_LABELS } from "@/hooks/usePetOptions";
 import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
 import { businessLineService } from "@/services/businessLine.service";
@@ -21,6 +20,9 @@ import type {
   Zone,
 } from "@/types/api";
 
+import { petOptionService } from "@/services/petOption.service";
+
+import { petOptionId, primePetOptions } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 import {
   BUILT_IN_VARIANT_OPTIONS,
@@ -36,6 +38,7 @@ jest.mock("@/services/branch.service");
 jest.mock("@/services/businessLine.service");
 jest.mock("@/services/variantOption.service");
 jest.mock("@/services/zone.service");
+jest.mock("@/services/petOption.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 const push = jest.fn();
@@ -64,7 +67,7 @@ const customer = { _id: "cust-1", name: "Ibu Rina", phone: "0812-3456-7890" } as
 const pet = {
   _id: "pet-1",
   name: "Bruno",
-  size: "medium",
+  size: "opt-size-sedang",
   breed: null,
   furType: null,
   weightKg: 6,
@@ -109,6 +112,14 @@ beforeEach(() => {
   businessLines.list.mockResolvedValue(
     page([{ _id: "line-groom", name: "Grooming" }]) as never,
   );
+  /*
+    THE TENANT'S VOCABULARY HAS TO BE LOADED, because a variant's axes are
+    pet-option IDS since 25 September 2026 and an id resolves to a word only
+    through this list. There used to be a table of seeded labels to fall back
+    on; with ids there is nothing to fall back to, which is why the app loads
+    the list on mount and why this suite now has to as well.
+  */
+  primePetOptions(petOptionService.list);
   primeVariantOptions(variantOptionService.list, zoneService.list);
 });
 
@@ -253,8 +264,8 @@ describe("GroomingBookingCreateScreen", () => {
           variants: [
             {
               petType: null,
-              sizeCategory: "medium",
-              furType: "long",
+              sizeCategory: petOptionId("size", "Sedang"),
+              furType: petOptionId("furType", "Bulu panjang"),
               price: "180000.0000",
               durationMin: 90,
               isActive: true,
@@ -263,16 +274,28 @@ describe("GroomingBookingCreateScreen", () => {
         } as unknown as Service,
       ]),
     );
-    pets.list.mockResolvedValue(page([{ ...pet, furType: "long" } as Pet]));
+    pets.list.mockResolvedValue(
+      page([
+        {
+          ...pet,
+          furType: petOptionId("furType", "Bulu panjang"),
+          furTypeLabel: "Bulu panjang",
+        } as Pet,
+      ]),
+    );
 
     renderWithAuth(<GroomingBookingCreateScreen />);
 
     await fillIn();
 
-    const coat = DEFAULT_PET_OPTION_LABELS.furType.long ?? "long";
-    const size = DEFAULT_PET_OPTION_LABELS.size.medium ?? "medium";
-
-    expect(await screen.findByText(`${coat} · ${size}`)).toBeInTheDocument();
+    /*
+      THE TENANT'S OWN WORDS, from the fixture list — there is no table of
+      seeded labels to fall back to since options lost their codes
+      (25 September 2026), and a label is the only word an option has.
+    */
+    expect(
+      await screen.findByText("Bulu panjang · Sedang"),
+    ).toBeInTheDocument();
   });
 
   it("shows the catalogue's price read-only without bookings:setPrice", async () => {

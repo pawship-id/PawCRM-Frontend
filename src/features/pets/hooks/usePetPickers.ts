@@ -20,14 +20,13 @@ export function usePetPickers() {
   const { options, choices, label, loading, error } = usePetOptions();
 
   /*
-    `by: "id"` — A PET STORES THE OPTION'S `_id` (25 September 2026), so these
-    two forms must SAVE ids. Every other caller of `choices` fills a service
-    variant's axis, which is still keyed by code; that is why the default
-    stayed `code` rather than flipping under them.
+    EVERY CHOICE IS AN OPTION `_id` (25 September 2026). `choices` took a `by`
+    flag for one day — `"id"` here, `"code"` for a service variant's axis — and
+    the axes hold ids too now, so there is one currency and no flag.
   */
   const pickerOptions = useCallback(
     (type: PetOptionType, stored?: string | null): PetOptionChoice[] => {
-      if (!loading) return choices(type, [stored], { by: "id" });
+      if (!loading) return choices(type, [stored]);
 
       return stored
         ? [

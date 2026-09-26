@@ -334,11 +334,11 @@ describe("bookingDraft — when the customer gets their animals back", () => {
   };
   const serviceOf = (id: string) => services[id] ?? null;
   /*
-    `petOptionFields` rather than `size: "small"` — a pet stores the option's
+    `petOptionFields` rather than `size: "opt-size-kecil"` — a pet stores the option's
     id and the variant seam reads the `sizeCode` beside it (25 September 2026).
   */
   const petOf = (id: string) =>
-    ({ _id: id, ...petOptionFields({ size: "small" }) }) as Pet;
+    ({ _id: id, ...petOptionFields({ size: "Kecil" }) }) as Pet;
 
   it("takes the longest groomer, not the sum", () => {
     expect(
@@ -382,7 +382,7 @@ describe("bookingDraft — when the customer gets their animals back", () => {
       variants: [
         {
           petType: null,
-          sizeCategory: "large",
+          sizeCategory: "opt-size-besar",
           furType: null,
           price: "180000.0000",
           durationMin: 150,
@@ -395,7 +395,7 @@ describe("bookingDraft — when the customer gets their animals back", () => {
       longestGroomerMinutes(
         [card()],
         () => variant,
-        (id) => ({ _id: id, ...petOptionFields({ size: "large" }) }) as Pet,
+        (id) => ({ _id: id, ...petOptionFields({ size: "Besar" }) }) as Pet,
       ),
     ).toBe(150);
   });

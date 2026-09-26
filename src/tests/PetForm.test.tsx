@@ -49,10 +49,10 @@ const petFixture = {
     current rule has both. The pet that does NOT is its own test.
   */
   ...petOptionFields({
-    species: "dog",
-    breed: "domestic",
-    furType: "short hair",
-    size: "medium",
+    species: "Anjing",
+    breed: "Domestic",
+    furType: "Bulu pendek",
+    size: "Sedang",
   }),
   birthDate: "2022-03-14T00:00:00.000Z",
   weightKg: 12.4,
@@ -199,13 +199,11 @@ describe("PetForm — registering", () => {
       ...PET_OPTION_FIXTURES,
       makePetOption({
         type: "species",
-        code: "kelinci",
         label: "Kelinci",
         sortOrder: 2,
       }),
       makePetOption({
         type: "species",
-        code: "hamster",
         label: "Hamster",
         sortOrder: 3,
         isActive: false,
@@ -237,18 +235,16 @@ describe("PetForm — registering", () => {
       ...PET_OPTION_FIXTURES.filter((option) => option.type !== "breed"),
       makePetOption({
         type: "breed",
-        code: "poodle",
         label: "Poodle",
-        speciesId: petOptionId("species", "dog"),
+        speciesId: petOptionId("species", "Anjing"),
       }),
       makePetOption({
         type: "breed",
-        code: "persia",
         label: "Persia",
-        speciesId: petOptionId("species", "cat"),
+        speciesId: petOptionId("species", "Kucing"),
         sortOrder: 1,
       }),
-      makePetOption({ type: "breed", code: "mix", label: "Mix", sortOrder: 2 }),
+      makePetOption({ type: "breed", label: "Mix", sortOrder: 2 }),
     ]);
 
     await renderNew();
@@ -312,7 +308,6 @@ describe("PetForm — editing", () => {
       ...PET_OPTION_FIXTURES,
       makePetOption({
         type: "species",
-        code: "kelinci",
         label: "Kelinci",
         sortOrder: 2,
         isActive: false,
@@ -320,10 +315,8 @@ describe("PetForm — editing", () => {
     ]);
     mockedPetService.getById.mockResolvedValue({
       ...petFixture,
-      species: petOptionId("species", "kelinci"),
+      species: petOptionId("species", "Kelinci"),
       speciesLabel: "Kelinci",
-      /* The PET's resolved code — unrelated to a breed's `speciesId`. */
-      speciesCode: "kelinci",
     });
 
     render(<PetForm petId={PET_ID} />);
@@ -339,7 +332,7 @@ describe("PetForm — editing", () => {
     await waitFor(() =>
       expect(mockedPetService.update).toHaveBeenCalledWith(
         PET_ID,
-        expect.objectContaining({ species: petOptionId("species", "kelinci") }),
+        expect.objectContaining({ species: petOptionId("species", "Kelinci") }),
       ),
     );
   });

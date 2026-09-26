@@ -142,7 +142,6 @@ function PetFilterPanel({
               .map((option) => option._id),
             draft.species,
           ],
-          { by: "id" },
         ),
     "Semua jenis",
   );

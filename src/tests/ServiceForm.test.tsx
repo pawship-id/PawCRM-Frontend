@@ -18,6 +18,7 @@ import type { Service, ServiceKind } from "@/types/api";
 
 import {
   makePetOption,
+  petOptionId,
   PET_OPTION_FIXTURES,
   primePetOptions,
 } from "./helpers/petOptions";
@@ -726,7 +727,7 @@ describe("ServiceForm — variant pricing", () => {
       {
         petType: null,
         sizeCategory: null,
-        furType: "long hair",
+        furType: "opt-furType-bulu-panjang",
         price: "180000",
         durationMin: 120,
         isActive: true,
@@ -734,7 +735,7 @@ describe("ServiceForm — variant pricing", () => {
       {
         petType: null,
         sizeCategory: null,
-        furType: "short hair",
+        furType: "opt-furType-bulu-pendek",
         price: "150000",
         durationMin: 90,
         isActive: false,
@@ -787,13 +788,12 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
   */
   const XL = makePetOption({
     type: "size",
-    code: "xl",
     label: "Ekstra besar",
     sortOrder: 3,
   });
 
   const LONG_HAIR_RETIRED = PET_OPTION_FIXTURES.map((option) =>
-    option.code === "long hair" ? { ...option, isActive: false } : option,
+    option.label === "Bulu panjang" ? { ...option, isActive: false } : option,
   );
 
   const priceRows = () =>
@@ -830,7 +830,7 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
         {
           petType: null,
           sizeCategory: null,
-          furType: "long hair",
+          furType: "opt-furType-bulu-panjang",
           price: "180000.0000",
           durationMin: 120,
           isActive: true,
@@ -838,7 +838,7 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
         {
           petType: null,
           sizeCategory: null,
-          furType: "short hair",
+          furType: "opt-furType-bulu-pendek",
           price: "150000.0000",
           durationMin: 90,
           isActive: true,
@@ -862,8 +862,8 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
     await waitFor(() => expect(mockedServiceService.update).toHaveBeenCalled());
     const [, payload] = mockedServiceService.update.mock.calls[0];
     expect(payload.variants?.map((variant) => variant.furType)).toEqual([
-      "long hair",
-      "short hair",
+      petOptionId("furType", "Bulu panjang"),
+      petOptionId("furType", "Bulu pendek"),
     ]);
   });
 
@@ -1581,7 +1581,7 @@ describe("ServiceForm — editing", () => {
         {
           petType: null,
           sizeCategory: null,
-          furType: "long hair",
+          furType: "opt-furType-bulu-panjang",
           price: "180000.0000",
           durationMin: 120,
           isActive: true,
@@ -1589,7 +1589,7 @@ describe("ServiceForm — editing", () => {
         {
           petType: null,
           sizeCategory: null,
-          furType: "short hair",
+          furType: "opt-furType-bulu-pendek",
           price: "150000.0000",
           durationMin: 90,
           isActive: false,

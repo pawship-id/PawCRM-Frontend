@@ -7,6 +7,31 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Opsi hewan dikenali lewat id, `code` dihapus
+
+25 September 2026. Sisi frontend dari perubahan backend dengan nama yang sama.
+
+- **`PetOption.code` hilang dari tipe**, begitu pula `Pet.speciesCode` dan tiga
+  saudaranya. `ServiceVariant.petType | sizeCategory | furType` sekarang
+  `PetOptionId`.
+- **`usePetOptions` menyusut.** `find()` mencocokkan `_id` saja, `choices()`
+  kehilangan flag `by` (dulu `"id"` untuk field hewan, `"code"` untuk sumbu
+  varian — keduanya id sekarang), dan `code()` dihapus karena tidak ada
+  sumbernya lagi. `DEFAULT_PET_OPTION_LABELS` dan `looksLikeId` ikut hilang:
+  `label()` mengembalikan `null` untuk id yang tidak dikenal, karena id mentah
+  bukan kata.
+- **`utils/serviceVariant.ts` membandingkan langsung.** Tabelnya menunjuk
+  `pet.species`/`size`/`furType`, bukan lagi `speciesCode`/`sizeCode`/`furTypeCode`.
+- **Ikon Kucing/Anjing di detail booking diganti telapak.** Dulu dipilih dari
+  code `cat`; tanpa code tidak ada patokan stabil — `_id` beda per tenant, dan
+  mencocokkan LABEL akan rusak begitu ada yang rename atau memakai bahasa lain.
+  Menebak salah lebih buruk daripada tidak menebak: kucing di bawah ikon anjing
+  terbaca sebagai kartu hewan yang keliru. **Kata di sebelah nama sudah
+  menyebut hewannya** — itu yang sejak awal memikul beban ini.
+- **Kolom harga per ukuran** (`commissionSizes`) dikunci `_id`; field-nya masih
+  bernama `code` di `CommissionSize` karena itu memang "nilai yang disimpan
+  baris ini" bagi pemanggilnya.
+
 ## [Unreleased] — Ras menunjuk jenis hewannya pakai id
 
 25 September 2026. Sisi frontend dari perubahan backend dengan nama yang sama.

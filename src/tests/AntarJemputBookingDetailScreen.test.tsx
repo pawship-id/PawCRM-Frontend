@@ -72,8 +72,8 @@ const ride = ({ service, ...over }: Overrides = {}): Booking =>
     tripOrigin: { address: "Jl. Mawar No. 12", lat: -7.24, lng: 112.75 },
     tripDestination: { address: "Cabang Barat", lat: -7.26, lng: 112.75 },
     passengers: [
-      { _id: "pet-1", name: "Bella", petSize: "small" },
-      { _id: "pet-2", name: "Milo", petSize: "medium" },
+      { _id: "pet-1", name: "Bella", petSize: "opt-size-kecil" },
+      { _id: "pet-2", name: "Milo", petSize: "opt-size-sedang" },
     ],
     passengerPetIds: ["pet-1", "pet-2"],
     linkedBookingIds: [],
