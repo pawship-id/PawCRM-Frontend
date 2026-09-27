@@ -13,7 +13,7 @@ import type { Branch } from "@/types/api";
 /**
  * The `defaultBranchId` picker, shared by the create and edit forms.
  *
- * "No branch" is a first-class option, not an empty state: a central warehouse
+ * "Tanpa cabang" is a first-class option, not an empty state: a central warehouse
  * serving every branch belongs to none of them, and the backend models that as
  * `defaultBranchId: null`. Radix Select forbids an empty item value, so it rides
  * on a sentinel that the caller never sees — the component speaks
@@ -44,7 +44,7 @@ export function WarehouseBranchSelect({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor="warehouse-branch">Default branch</Label>
+      <Label htmlFor="warehouse-branch">Cabang utama</Label>
       <Select
         value={value ?? NONE}
         disabled={disabled}
@@ -52,18 +52,18 @@ export function WarehouseBranchSelect({
       >
         <SelectTrigger
           id="warehouse-branch"
-          aria-label="Default branch"
+          aria-label="Cabang utama"
           aria-invalid={error ? true : undefined}
           className="w-full"
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={NONE}>No branch (central warehouse)</SelectItem>
+          <SelectItem value={NONE}>Tanpa cabang (gudang pusat)</SelectItem>
           {options.map((branch) => (
             <SelectItem key={branch._id} value={branch._id}>
               {branch.name}
-              {!branch.isActive && " (inactive)"}
+              {!branch.isActive && " (nonaktif)"}
             </SelectItem>
           ))}
         </SelectContent>
@@ -74,7 +74,7 @@ export function WarehouseBranchSelect({
         </p>
       ) : (
         <p className="text-xs text-muted">
-          The branch movements here post against by default.
+          Cabang yang jadi tujuan mutasi stok gudang ini.
         </p>
       )}
     </div>

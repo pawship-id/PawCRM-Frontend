@@ -288,6 +288,32 @@ describe("GeneralSettingsScreen", () => {
     await screen.findByText("2 cabang · 3 gudang");
   });
 
+  /**
+   * THE ONLY WAY IN TO THE WAREHOUSE CRUD. Until 27 September 2026 nothing in
+   * the app linked /dashboard/pengaturan/gudang — the list, the create form and
+   * the edit form were all built and all unreachable — so this asserts the link
+   * itself, not just the label.
+   */
+  it("links Gudang, with the warehouse count beside it", async () => {
+    renderWithAuth(<GeneralSettingsScreen />);
+
+    const card = await screen.findByRole("link", { name: /Gudang/ });
+    expect(card).toHaveAttribute("href", "/dashboard/pengaturan/gudang");
+    expect(card).toHaveTextContent("3 gudang");
+  });
+
+  it("drops Gudang for a role without warehouses:read", async () => {
+    renderWithAuth(<GeneralSettingsScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "tenants", actions: ["read"] }],
+    });
+
+    await screen.findByRole("heading", { name: "Klinik Hewan Sehat" });
+    expect(
+      screen.queryByRole("link", { name: /Gudang/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("drops Tipe pelanggan for a role without customerTypes:read", async () => {
     renderWithAuth(<GeneralSettingsScreen />, {
       isSuperAdmin: false,
@@ -307,6 +333,8 @@ describe("GeneralSettingsScreen", () => {
   /**
    * THE CARD ORDER (24 September 2026, on request): Tipe pelanggan and
    * Langganan & tagihan bookend the grid rather than sitting side by side,
+   * with Gudang ahead of both since 27 September 2026 — it is the one card
+   * that opens a list somebody edits rather than a single form,
    * which is only visible by DOM order — every card's href/label assertion
    * above would still pass if the grid were shuffled.
    */
@@ -326,6 +354,7 @@ describe("GeneralSettingsScreen", () => {
     ).map((node) => node.textContent);
 
     expect(titles).toEqual([
+      "Gudang",
       "Tipe pelanggan",
       "Tipe supplier",
       "Nomor dokumen",

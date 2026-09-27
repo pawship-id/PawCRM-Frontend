@@ -165,6 +165,28 @@ export function GeneralSettingsScreen() {
         hint="Diatur sekali lalu ditinggal"
       >
         <div className="grid gap-4 sm:grid-cols-2">
+          {/*
+            GUDANG IS A CARD, not a link on the Cabang & gudang section above.
+            That section deliberately carries no list links (see its own note):
+            a tenant cannot add a branch, so a way in there led nowhere new.
+            A warehouse is the opposite — the tenant creates, renames and
+            deactivates its own, and until 27 September 2026 nothing in the app
+            pointed at /dashboard/pengaturan/gudang at all, so the CRUD sat
+            unreachable. The count comes from the directory the section already
+            loads, so the card costs no extra request.
+          */}
+          {mayReadWarehouses && (
+            <HubLinkCard
+              title="Gudang"
+              description="Tempat stok disimpan dan gudang mana yang punya kasir. Tambah, ubah, atau nonaktifkan."
+              href={SETTINGS_PATHS.gudang}
+              meta={
+                directory.loading || directory.error
+                  ? undefined
+                  : `${directory.warehouses.length} gudang`
+              }
+            />
+          )}
           {mayReadCustomerTypes && (
             <HubLinkCard
               title="Tipe pelanggan"
