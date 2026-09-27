@@ -186,7 +186,7 @@ export function variantAxisValues(
     const priced = new Set(
       (variants ?? [])
         .map((variant) => variant[axis])
-        .filter((code): code is string => Boolean(code)),
+        .filter((id): id is string => Boolean(id)),
     );
 
     const values: VariantAxisValue[] = options
@@ -194,11 +194,11 @@ export function variantAxisValues(
         (option) =>
           option.type === type &&
           option.deletedAt === null &&
-          (option.isActive || priced.has(option.code)),
+          (option.isActive || priced.has(option._id)),
       )
       .sort(byOrder)
       .map((option) => ({
-        value: option.code,
+        value: option._id,
         label: option.isActive ? option.label : `${option.label}${RETIRED_SUFFIX}`,
         retired: !option.isActive,
       }));
@@ -209,7 +209,7 @@ export function variantAxisValues(
 
       const word =
         labelOf?.(type, code) ??
-        options.find((option) => option.type === type && option.code === code)
+        options.find((option) => option.type === type && option._id === code)
           ?.label ??
         code;
       values.push({ value: code, label: `${word}${RETIRED_SUFFIX}`, retired: true });

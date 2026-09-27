@@ -52,20 +52,38 @@ const FLAT = {
   serviceLocations: ["in_store", "in_home"],
 } as unknown as Service;
 
-/** What a new tenant is seeded with: 2 species × 3 sizes × 2 coats. */
-const TABLE = variantAxisValues(PET_OPTION_FIXTURES);
+/*
+  THE `_id` IS FORCED TO THE OLD CODE IN THIS SUITE, as in groomingSettings.
 
-const XL = makePetOption({
-  type: "size",
-  code: "xl",
-  label: "Ekstra besar",
-  sortOrder: 3,
+  A variant stores the option's `_id` (25 September 2026) — `petType`,
+  `sizeCategory` and `furType` are all ids on the server. Every fixture below
+  would otherwise read `sizeCategory: "opt-size-medium"`, which hides the one
+  thing each row is about. Naming the ids after the sizes keeps them readable
+  while `variantAxisValues` still does the real work: it reads `_id`.
+*/
+const asId = <T extends { code?: string }>(option: T) => ({
+  ...option,
+  _id: option.code as string,
 });
+
+const OPTIONS = PET_OPTION_FIXTURES.map(asId);
+
+/** What a new tenant is seeded with: 2 species × 3 sizes × 2 coats. */
+const TABLE = variantAxisValues(OPTIONS);
+
+const XL = asId(
+  makePetOption({
+    type: "size",
+    code: "xl",
+    label: "Ekstra besar",
+    sortOrder: 3,
+  }),
+);
 
 /** The seeded lists with one option swapped for `replacement`. */
 function withOption(replacement: PetOption): PetOption[] {
-  return PET_OPTION_FIXTURES.map((option) =>
-    option.type === replacement.type && option.code === replacement.code
+  return OPTIONS.map((option) =>
+    option.type === replacement.type && option._id === replacement._id
       ? replacement
       : option,
   );
@@ -180,7 +198,7 @@ describe("serviceVariantDraft", () => {
 describe("variant axis values — the tenant's lists", () => {
   it("gives a tenant-added size its own combinations, in the tenant's order", () => {
     // Listed first on purpose: the order is `sortOrder`, not arrival.
-    const table = variantAxisValues([XL, ...PET_OPTION_FIXTURES]);
+    const table = variantAxisValues([XL, ...OPTIONS]);
 
     expect(
       buildVariantCombos(["sizeCategory"], table).map((combo) => combo.label),
@@ -209,8 +227,8 @@ describe("variant axis values — the tenant's lists", () => {
   });
 
   it("keeps a priced value whose option was retired, in its place — and a deleted one last", () => {
-    const options = withOption({ ...PET_OPTION_FIXTURES[5], isActive: false });
-    expect(PET_OPTION_FIXTURES[5].code).toBe("medium");
+    const options = withOption({ ...OPTIONS[5], isActive: false });
+    expect(OPTIONS[5]._id).toBe("medium");
 
     const stored = [
       ...BY_SIZE.variants,
@@ -235,7 +253,7 @@ describe("variant axis values — the tenant's lists", () => {
   });
 
   it("saves a retired value's row with the rest rather than dropping it", () => {
-    const options = withOption({ ...PET_OPTION_FIXTURES[5], isActive: false });
+    const options = withOption({ ...OPTIONS[5], isActive: false });
     const table = variantAxisValues(options, BY_SIZE.variants);
 
     expect(
@@ -278,7 +296,7 @@ describe("variant axis values — the tenant's lists", () => {
       });
 
     // 4 sizes × 2 coats × 13 tiers = 104.
-    const wide = variantAxisValues([...PET_OPTION_FIXTURES, XL], null, undefined, {
+    const wide = variantAxisValues([...OPTIONS, XL], null, undefined, {
       cards: [tier(13)],
     });
     const all = ["sizeCategory", "furType", TIER_KEY];
@@ -296,7 +314,7 @@ describe("variant axis values — the tenant's lists", () => {
     expect(draftProblem(toggleAxis(tooMany, "furType", false, wide), wide)).toBeNull();
 
     // 4 sizes × 25 tiers = 100, the limit itself.
-    const hundred = variantAxisValues([...PET_OPTION_FIXTURES, XL], null, undefined, {
+    const hundred = variantAxisValues([...OPTIONS, XL], null, undefined, {
       cards: [tier(25)],
     });
     const atLimit = toggleAxis(

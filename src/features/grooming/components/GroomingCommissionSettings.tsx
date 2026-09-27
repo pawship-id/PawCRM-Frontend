@@ -61,7 +61,7 @@ export function GroomingCommissionSettings({
 }) {
   const service = draft.service;
   const sizeErrorId = useId();
-  const sizesInvalid = sizes.some((size) => Boolean(errors[sizeErrorKey(size.code)]));
+  const sizesInvalid = sizes.some((size) => Boolean(errors[sizeErrorKey(size.id)]));
 
   function setFlat(key: "addon" | "travel", patch: Partial<FlatRuleDraft>) {
     update((current) => ({ ...current, [key]: { ...current[key], ...patch } }));
@@ -139,14 +139,14 @@ export function GroomingCommissionSettings({
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     {sizes.map((size) => (
                       <UnitField
-                        key={size.code}
+                        key={size.id}
                         label={size.retired ? `${size.label} (nonaktif)` : size.label}
                         hint={
                           size.retired
                             ? "Tidak dipilih lagi untuk hewan baru; hewan yang sudah berukuran ini tetap dihitung."
                             : undefined
                         }
-                        value={sizeNominalText(draft, size.code)}
+                        value={sizeNominalText(draft, size.id)}
                         onChange={(value) =>
                           update((current) => ({
                             ...current,
@@ -154,13 +154,13 @@ export function GroomingCommissionSettings({
                               ...current.service,
                               sizeNominal: {
                                 ...current.service.sizeNominal,
-                                [size.code]: value,
+                                [size.id]: value,
                               },
                             },
                           }))
                         }
                         prefix="Rp"
-                        invalid={Boolean(errors[sizeErrorKey(size.code)])}
+                        invalid={Boolean(errors[sizeErrorKey(size.id)])}
                         describedBy={sizeErrorId}
                         disabled={disabled}
                       />

@@ -88,6 +88,12 @@ async function renderOnSizes() {
   await userEvent.click(pill("Ukuran"));
 }
 
+async function renderOnBreeds() {
+  renderWithAuth(<PetOptionsScreen />);
+  await screen.findByText("Kucing");
+  await userEvent.click(pill("Ras"));
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   listing(PET_OPTION_FIXTURES);
@@ -145,11 +151,11 @@ describe("PetOptionsScreen", () => {
   it("names a breed's animal in its own column, and stores the choice", async () => {
     listing([
       ...PET_OPTION_FIXTURES.filter((option) => option.type !== "breed"),
-      makePetOption({ type: "breed", code: "poodle", label: "Poodle", speciesCode: "dog" }),
+      makePetOption({ type: "breed", code: "poodle", label: "Poodle", speciesId: "opt-species-dog" }),
       makePetOption({ type: "breed", code: "mix", label: "Mix", sortOrder: 1 }),
     ]);
     jest.mocked(petOptionService.create).mockResolvedValue(
-      makePetOption({ type: "breed", code: "persia", label: "Persia", speciesCode: "cat" }),
+      makePetOption({ type: "breed", code: "persia", label: "Persia", speciesId: "opt-species-cat" }),
     );
 
     renderWithAuth(<PetOptionsScreen />);
@@ -172,9 +178,54 @@ describe("PetOptionsScreen", () => {
       expect(petOptionService.create).toHaveBeenCalledWith({
         type: "breed",
         label: "Persia",
-        speciesCode: "cat",
+        speciesId: "opt-species-cat",
       }),
     );
+  });
+
+  /*
+    ─── WHAT A 409 MAY AND MAY NOT BE BLAMED ON — 28 September 2026 ───────────
+
+    A stale unique index on the removed `code` field once made EVERY new option
+    collide. The server answered 409, this dialog assumed a 409 could only mean
+    a duplicate name, and the shop was told the name was taken for names
+    nothing had ever used. The server names the clashing FIELD now, and only
+    that lands on the input.
+  */
+  it("blames the name only when the server says the name is the clash", async () => {
+    await renderOnBreeds();
+    jest.mocked(petOptionService.create).mockRejectedValue(
+      new ApiError("A breed labelled 'Persia' already exists for that animal", 409, {
+        details: [{ field: "label", message: "already taken" }],
+      }),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Tambah ras/ }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(/^Nama ras/), "Persia");
+    await userEvent.click(within(dialog).getByRole("combobox", { name: "Jenis hewan" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Kucing" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: /Tambah ras/ }));
+
+    // It says WHICH animal: the name is free on every other one.
+    expect(
+      await within(dialog).findByText(/sudah ada untuk jenis hewan itu/i),
+    ).toBeInTheDocument();
+  });
+
+  it("shows a conflict that is not about the name in the server's own words", async () => {
+    await renderOnBreeds();
+    jest.mocked(petOptionService.create).mockRejectedValue(
+      new ApiError("Duplicate value for 'tenantId, type, code'", 409),
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Tambah ras/ }));
+    const dialog = screen.getByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText(/^Nama ras/), "Anggora");
+    await userEvent.click(within(dialog).getByRole("button", { name: /Tambah ras/ }));
+
+    expect(await within(dialog).findByText(/Duplicate value/)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/sudah ada/i)).not.toBeInTheDocument();
   });
 
   it("only asks for an animal on a breed — a size has none", async () => {

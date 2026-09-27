@@ -29,11 +29,16 @@ import {
  * earn a page, the common case is adding three breeds in a row, and keeping the
  * list on screen is what answers "is this one already there".
  *
- * THE NAME IS THE ONLY FIELD. The code is derived by the server from the first
- * name and never changes after — pets, variant prices and commission rows store
- * the CODE, so renaming "Sedang" to "Medium" moves every screen at once and
- * rewrites nothing. Creating says so before the code exists; renaming shows the
- * code read-only so nobody goes hunting for where to edit it.
+ * THE NAME IS FREELY EDITABLE, and there is no code to show beside it any
+ * more. Pets, variant prices and commission rows store the option's `_id`, so
+ * renaming "Sedang" to "Medium" moves every screen at once and rewrites
+ * nothing.
+ *
+ * ⚠️ WHAT THE SPECIES FIELD SENDS IS `speciesId` (27 September 2026). It sent
+ * `speciesCode` until then — a key the API does not name, which
+ * `validate.middleware`'s `stripUnknown: true` removed without a word, so every
+ * breed added through this dialog was saved with no animal and the field looked
+ * broken rather than refused.
  *
  * NO ACTIVE SWITCH HERE. Retiring is a row action of its own — somebody adds a
  * word because they want to offer it, and renaming is not the moment to decide
@@ -64,7 +69,7 @@ export function PetOptionFormDialog({
 
   const [label, setLabel] = useState(option?.label ?? "");
   /* A breed says which animal it is for — "" means every animal. */
-  const [speciesCode, setSpeciesCode] = useState(option?.speciesCode ?? "");
+  const [speciesId, setSpeciesId] = useState(option?.speciesId ?? "");
 
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -86,7 +91,7 @@ export function PetOptionFormDialog({
     // An untouched save closes: there is nothing to send, and the server would
     // answer an empty patch with a 400.
     const speciesChanged =
-      type === "breed" && (speciesCode || null) !== (option?.speciesCode ?? null);
+      type === "breed" && (speciesId || null) !== (option?.speciesId ?? null);
     if (editing && trimmed === option.label && !speciesChanged) {
       onClose();
       return;
@@ -100,13 +105,13 @@ export function PetOptionFormDialog({
       if (editing) {
         await petOptionService.update(option._id, {
           ...(trimmed === option.label ? {} : { label: trimmed }),
-          ...(speciesChanged ? { speciesCode: speciesCode || null } : {}),
+          ...(speciesChanged ? { speciesId: speciesId || null } : {}),
         });
       } else {
         await petOptionService.create({
           type,
           label: trimmed,
-          ...(type === "breed" ? { speciesCode: speciesCode || null } : {}),
+          ...(type === "breed" ? { speciesId: speciesId || null } : {}),
         });
       }
       onSaved();
@@ -115,12 +120,35 @@ export function PetOptionFormDialog({
       );
       onClose();
     } catch (error) {
-      // A clash belongs on the field — it is the name that has to change. The
-      // server compares case-insensitively within the list, and a deleted word
-      // has already given its name up, so "sudah ada" is the whole story.
-      if (error instanceof ApiError && error.status === 409) {
+      /*
+        A clash belongs on the field — it is the name that has to change. The
+        server compares case-insensitively within the list, and a deleted word
+        has already given its name up.
+
+        ⚠️ IT SAYS WHICH ANIMAL FOR A BREED (28 September 2026), because the
+        name only has to be free within one: "Persia sudah ada di daftar ras"
+        reads as a flat refusal when the shop can plainly see no such cat, and
+        the breed it collides with may be filed under a different animal
+        entirely.
+
+        ⚠️ AND IT NO LONGER SWALLOWS EVERY 409. This blanket mapping is what
+        hid a real outage for a day: a stale unique index on the removed `code`
+        field made EVERY new option collide, the server answered 409, and this
+        branch reported it as a name that was taken — for names nothing had
+        ever used. The server NAMES the field on a real label clash now, so a
+        conflict it means differently reaches the form error and says what the
+        server actually said.
+      */
+      const labelClash =
+        error instanceof ApiError &&
+        error.status === 409 &&
+        Boolean(error.fieldErrors.label);
+
+      if (labelClash) {
         setFieldError(
-          `"${trimmed}" sudah ada di daftar ${words.noun}. Pakai nama lain.`,
+          type === "breed" && speciesId
+            ? `"${trimmed}" sudah ada untuk jenis hewan itu. Pakai nama lain, atau pilih jenis hewan lain.`
+            : `"${trimmed}" sudah ada di daftar ${words.noun}. Pakai nama lain.`,
         );
       } else {
         setFormError(
@@ -179,8 +207,8 @@ export function PetOptionFormDialog({
           {type === "breed" && (
             <SelectField
               label="Jenis hewan"
-              value={speciesCode}
-              onChange={setSpeciesCode}
+              value={speciesId}
+              onChange={setSpeciesId}
               options={[
                 { value: "", label: "Semua hewan" },
                 ...speciesChoices.map((choice) => ({

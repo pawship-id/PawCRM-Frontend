@@ -34,10 +34,10 @@ export function usePetPickers() {
    * THE BREEDS OF ONE ANIMAL (18 September 2026) — a breed now says which
    * species it belongs to, so a cat's form stops offering "Golden Retriever".
    *
-   * A BREED THAT SAYS NOTHING IS OFFERED FOR EVERY ANIMAL: `speciesCode` is
-   * null on every breed stored before the field and on any the shop has not
-   * sorted, and hiding those would empty the picker for a list nobody has
-   * touched yet. No species chosen yet offers all of them, for the same reason.
+   * A BREED THAT SAYS NOTHING IS OFFERED FOR EVERY ANIMAL: `speciesId` is null
+   * on every breed stored before the field and on any the shop has not sorted,
+   * and hiding those would empty the picker for a list nobody has touched yet.
+   * No species chosen yet offers all of them, for the same reason.
    *
    * The stored breed is always kept, whatever animal it belongs to — correcting
    * a pet's species must not silently blank its breed.
@@ -47,14 +47,16 @@ export function usePetPickers() {
       const all = pickerOptions("breed", stored);
       if (!species) return all;
 
-      const codeOf = new Map(
+      // Keyed by `_id`, the currency both sides speak since 25 September 2026:
+      // a choice's value is the breed's id, and the species it names is an id.
+      const speciesOf = new Map(
         options
           .filter((option) => option.type === "breed")
-          .map((option) => [option.code, option.speciesCode ?? null]),
+          .map((option) => [option._id, option.speciesId ?? null]),
       );
 
       return all.filter((choice) => {
-        const belongsTo = codeOf.get(choice.value) ?? null;
+        const belongsTo = speciesOf.get(choice.value) ?? null;
         return belongsTo === null || belongsTo === species || choice.value === stored;
       });
     },

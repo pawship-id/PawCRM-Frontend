@@ -170,7 +170,9 @@ describe("CustomerPetsSection", () => {
         expect.objectContaining({
           customerId: CUSTOMER_ID,
           name: "Bella",
-          species: "dog",
+          // IDS, NOT CODES (27 September 2026): the picker's value is the pet
+          // option's `_id`, which is the only thing POST /api/pets accepts.
+          species: "opt-species-dog",
           size: null,
           furType: null,
         }),
@@ -228,9 +230,9 @@ describe("CustomerPetsSection", () => {
       expect(mockedPetService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Bella",
-          species: "dog",
-          size: "large",
-          furType: "long hair",
+          species: "opt-species-dog",
+          size: "opt-size-large",
+          furType: "opt-furType-long-hair",
         }),
       ),
     );

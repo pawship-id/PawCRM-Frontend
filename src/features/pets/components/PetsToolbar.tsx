@@ -133,7 +133,7 @@ function PetFilterPanel({
       : choices("species", [
           ...ordered("species")
             .filter((option) => !option.isActive)
-            .map((option) => option.code),
+            .map((option) => option._id),
           draft.species,
         ]),
     "Semua jenis",

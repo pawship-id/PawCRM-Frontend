@@ -166,9 +166,9 @@ export function PetOptionsPanel({
             type={type}
             rows={rows}
             /* A breed's animal, named from this same load. */
-            speciesLabel={(code) =>
+            speciesLabel={(id) =>
               options.find(
-                (option) => option.type === "species" && option.code === code,
+                (option) => option.type === "species" && option._id === id,
               )?.label ?? null
             }
             loading={loading}
@@ -196,12 +196,12 @@ export function PetOptionsPanel({
                 option.type === "species" &&
                 option.deletedAt === null &&
                 (option.isActive ||
-                  option.code ===
-                    (dialog.mode === "rename" ? dialog.option.speciesCode : null)),
+                  option._id ===
+                    (dialog.mode === "rename" ? dialog.option.speciesId : null)),
             )
             .sort(byOrder)
             .map((option) => ({
-              value: option.code,
+              value: option._id,
               label: option.isActive ? option.label : `${option.label} (nonaktif)`,
             }))}
           option={dialog.mode === "rename" ? dialog.option : undefined}

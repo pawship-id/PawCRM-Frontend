@@ -726,7 +726,7 @@ describe("ServiceForm — variant pricing", () => {
       {
         petType: null,
         sizeCategory: null,
-        furType: "long hair",
+        furType: "opt-furType-long-hair",
         price: "180000",
         durationMin: 120,
         isActive: true,
@@ -734,7 +734,7 @@ describe("ServiceForm — variant pricing", () => {
       {
         petType: null,
         sizeCategory: null,
-        furType: "short hair",
+        furType: "opt-furType-short-hair",
         price: "150000",
         durationMin: 90,
         isActive: false,
@@ -830,7 +830,7 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
         {
           petType: null,
           sizeCategory: null,
-          furType: "long hair",
+          furType: "opt-furType-long-hair",
           price: "180000.0000",
           durationMin: 120,
           isActive: true,
@@ -838,7 +838,7 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
         {
           petType: null,
           sizeCategory: null,
-          furType: "short hair",
+          furType: "opt-furType-short-hair",
           price: "150000.0000",
           durationMin: 90,
           isActive: true,
@@ -862,8 +862,8 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
     await waitFor(() => expect(mockedServiceService.update).toHaveBeenCalled());
     const [, payload] = mockedServiceService.update.mock.calls[0];
     expect(payload.variants?.map((variant) => variant.furType)).toEqual([
-      "long hair",
-      "short hair",
+      "opt-furType-long-hair",
+      "opt-furType-short-hair",
     ]);
   });
 
@@ -1581,7 +1581,7 @@ describe("ServiceForm — editing", () => {
         {
           petType: null,
           sizeCategory: null,
-          furType: "long hair",
+          furType: "opt-furType-long-hair",
           price: "180000.0000",
           durationMin: 120,
           isActive: true,
@@ -1589,7 +1589,7 @@ describe("ServiceForm — editing", () => {
         {
           petType: null,
           sizeCategory: null,
-          furType: "short hair",
+          furType: "opt-furType-short-hair",
           price: "150000.0000",
           durationMin: 90,
           isActive: false,

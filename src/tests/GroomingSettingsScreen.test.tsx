@@ -55,8 +55,17 @@ const GROOMING: GroomingSettings = {
     service: {
       mode: "size_nominal",
       percent: 0,
-      // "jumbo" is not one of the tenant's options — a size since deleted.
-      sizeNominal: { small: 30000, medium: 45000, large: 60000, jumbo: 80000 },
+      /*
+        KEYED BY THE OPTION'S `_id` (25 September 2026), which here is what
+        `makePetOption` derives from the seeded codes. "jumbo" is not one of
+        the tenant's options at all — a size since deleted.
+      */
+      sizeNominal: {
+        "opt-size-small": 30000,
+        "opt-size-medium": 45000,
+        "opt-size-large": 60000,
+        jumbo: 80000,
+      },
     },
     addon: { enabled: false, mode: "percentage", percent: 0, fixed: 0 },
     travel: { enabled: false, mode: "percentage", percent: 0, fixed: 0 },
@@ -121,7 +130,13 @@ describe("GroomingSettingsScreen — nominal per size", () => {
     expect(
       (tenantService.updateSettings as jest.Mock).mock.calls[0][0].grooming.commission
         .service.sizeNominal,
-    ).toEqual({ small: 30000, medium: 45000, large: 60000, jumbo: 80000, xl: 55000 });
+    ).toEqual({
+      "opt-size-small": 30000,
+      "opt-size-medium": 45000,
+      "opt-size-large": 60000,
+      jumbo: 80000,
+      "opt-size-xl": 55000,
+    });
   });
 
   it("holds up the save while an added size is still empty", async () => {

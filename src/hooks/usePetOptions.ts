@@ -13,6 +13,10 @@ import type { PetOption, PetOptionType } from "@/types/api";
  * THE LABEL OF LAST RESORT, not a list anybody picks from: what `label()` says
  * before the tenant's own list has loaded, or when it cannot. A shop that has
  * renamed "Kecil" sees its own word the moment the list arrives.
+ *
+ * KEYED BY THE OLD CODE, which is why it reaches less far than it used to: a
+ * stored value is an `_id` now (see `label()`), and no fixed table can name an
+ * id. It still answers for the residual codes on pre-25-September documents.
  */
 export const DEFAULT_PET_OPTION_LABELS: Record<
   PetOptionType,
@@ -26,7 +30,7 @@ export const DEFAULT_PET_OPTION_LABELS: Record<
 
 /** One entry a select can render. */
 export interface PetOptionChoice {
-  /** The code — what gets saved. */
+  /** The option's `_id` — what gets saved. */
   value: string;
   /** The word, with " (nonaktif)" appended when the option is retired. */
   label: string;
@@ -184,17 +188,31 @@ export function usePetOptions() {
     [live],
   );
 
+/*
+    BY `_id`, NOT BY CODE (27 September 2026).
+
+    THE BACKEND MOVED ON 25 SEPTEMBER and this layer did not. A pet option has
+    no `code` field any more — `pets.species`, `pets.breed`, a service variant's
+    `petType` / `sizeCategory` / `furType` all store the option's `_id`, and the
+    Joi schemas accept nothing else. Matching on `code` here only appeared to
+    work because documents written BEFORE the migration still carry a leftover
+    `code` key that `.lean()` passes through untouched; every option created
+    since has none, and every stored value has been an id all along.
+
+    THE LEGACY CODE IS STILL TRIED, second. Those residual keys are real data on
+    a live database, and a value written as a code before the migration must
+    still find its word rather than render as raw text. It costs one miss.
+  */
   const label = useCallback(
-    (type: PetOptionType, code: string | null | undefined): string | null => {
-      if (!code) return null;
+    (type: PetOptionType, id: string | null | undefined): string | null => {
+      if (!id) return null;
 
-      const match =
-        live.find((option) => option.type === type && option.code === code) ??
-        state.options.find(
-          (option) => option.type === type && option.code === code,
-        );
+      const of = (option: PetOption) =>
+        option.type === type && (option._id === id || option.code === id);
 
-      return match?.label ?? DEFAULT_PET_OPTION_LABELS[type][code] ?? code;
+      const match = live.find(of) ?? state.options.find(of);
+
+      return match?.label ?? DEFAULT_PET_OPTION_LABELS[type][id] ?? id;
     },
     [live, state.options],
   );
@@ -207,17 +225,17 @@ export function usePetOptions() {
       const active: PetOptionChoice[] = ordered(type)
         .filter((option) => option.isActive)
         .map((option) => ({
-          value: option.code,
+          value: option._id,
           label: option.label,
           retired: false,
         }));
 
       const offered = new Set(active.map((choice) => choice.value));
       const kept = [...new Set(keep)]
-        .filter((code): code is string => Boolean(code) && !offered.has(code!))
-        .map((code) => ({
-          value: code,
-          label: `${label(type, code)} (nonaktif)`,
+        .filter((id): id is string => Boolean(id) && !offered.has(id!))
+        .map((id) => ({
+          value: id,
+          label: `${label(type, id)} (nonaktif)`,
           retired: true,
         }));
 

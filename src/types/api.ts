@@ -4202,14 +4202,20 @@ export interface PetOption {
   _id: string;
   tenantId: string;
   type: PetOptionType;
-  code: string;
+  /**
+   * LEGACY, AND ONLY EVER READ (25 September 2026). The field is gone from the
+   * schema; documents written before that day still carry it, so `.lean()`
+   * hands it back and `usePetOptions().label` tries it as a fallback. Nothing
+   * sends it and nothing new has one.
+   */
+  code?: string;
   label: string;
   /**
-   * WHICH ANIMAL A BREED IS FOR (18 September 2026) — a `species` option's code.
-   * Only a breed carries one; null means the shop has not said, and the breed is
-   * then offered for every animal.
+   * WHICH ANIMAL A BREED IS FOR (18 September 2026) — a `species` option's
+   * `_id` (a code until 25 September 2026). Only a breed carries one; null
+   * means the shop has not said, and the breed is offered for every animal.
    */
-  speciesCode?: string | null;
+  speciesId?: string | null;
   /** Position within its list, ascending — sizes go smallest first. */
   sortOrder: number;
   /**
@@ -4234,32 +4240,35 @@ export interface PetOptionListQuery {
   type?: PetOptionType;
   /** Omit for both states. */
   isActive?: boolean;
-  /** Free text over label and code. */
+  /** Free text over the label. */
   search?: string;
   includeDeleted?: boolean;
 }
 
 /**
- * Body of POST /api/pet-options. `code` is optional — the server derives one
- * from the label — and `sortOrder` defaults to the end of the list.
+ * Body of POST /api/pet-options. `sortOrder` defaults to the end of the list.
+ *
+ * NO `code`: the server stopped deriving one on 25 September 2026, and the Joi
+ * schema strips anything it does not name — which is how `speciesCode` went on
+ * being sent and silently dropped for two days.
  */
 export interface CreatePetOptionInput {
   type: PetOptionType;
   label: string;
-  /** Only on a `breed` — see `PetOption.speciesCode`. */
-  speciesCode?: string | null;
-  code?: string;
+  /** Only on a `breed` — see `PetOption.speciesId`. */
+  speciesId?: string | null;
   sortOrder?: number;
   isActive?: boolean;
 }
 
 /**
- * Body of PATCH /api/pet-options/:id. No `code` and no `type`: other documents
- * store the code, so it is fixed for life.
+ * Body of PATCH /api/pet-options/:id. No `type`: which list an option belongs
+ * to is settled when it is created. The label IS freely editable — every
+ * document that names an option holds its `_id`, so renaming rewrites nothing.
  */
 export interface UpdatePetOptionInput {
   label?: string;
-  speciesCode?: string | null;
+  speciesId?: string | null;
   sortOrder?: number;
   isActive?: boolean;
 }
