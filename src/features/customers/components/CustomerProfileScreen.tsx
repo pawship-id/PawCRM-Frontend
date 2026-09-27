@@ -58,11 +58,11 @@ function initials(name: string): string {
  * "should I chase this person" is their piutang next to their last visit, and a tab
  * would hide one of the two.
  *
- * WHAT IS BADGED "Segera" RATHER THAN DRAWN. Jenis pelanggan (Perorangan /
- * Perusahaan), Kategori pelanggan, NPWP, PIC, tag and catatan are all on the
- * mockup and none of them exist on `customer.model.js`. Shown as rows with the
- * badge, because a row that is missing is a field somebody assumes is there and
- * goes looking for in the form.
+ * MOST OF THE MOCKUP'S FIELDS ARE REAL NOW (27 September 2026) — jenis,
+ * kategori, NPWP, PIC, catatan and the notification consents all landed with the
+ * form. What is left badged "Segera" is Tag, which has no field: a row that is
+ * simply missing is one somebody assumes exists and goes hunting for in the
+ * form.
  */
 export function CustomerProfileScreen({ id }: { id: string }) {
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -143,6 +143,16 @@ export function CustomerProfileScreen({ id }: { id: string }) {
               "Belum ada kontak tersimpan"}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
+            {/* The number staff read out over the phone — first, because it is
+                what identifies this record to everyone outside this screen. */}
+            {customer.code && (
+              <Badge
+                variant="outline"
+                className="font-normal tabular-nums text-muted"
+              >
+                {customer.code}
+              </Badge>
+            )}
             <CustomerStatusBadge deleted={deleted} />
             {customer.vipTier && <CustomerVipBadge tier={customer.vipTier} />}
             <Badge variant="outline" className="font-normal text-muted">
@@ -184,6 +194,18 @@ export function CustomerProfileScreen({ id }: { id: string }) {
         description="Data pemilik. Data hewan diubah dari kartunya masing-masing."
       >
         <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+          <Row
+            label="Kode pelanggan"
+            value={
+              customer.code ? (
+                <span className="tabular-nums">{customer.code}</span>
+              ) : (
+                <span className="text-muted">
+                  Belum punya kode — terdaftar sebelum penomoran dipakai
+                </span>
+              )
+            }
+          />
           <Row label="Nama" value={customer.name} />
           <Row label="WhatsApp / telepon" value={customer.phone ?? "—"} />
           <Row label="Email" value={customer.email ?? "—"} />
@@ -218,21 +240,55 @@ export function CustomerProfileScreen({ id }: { id: string }) {
           <Row label="Terdaftar sejak" value={day(customer.createdAt)} />
           <Row label="Terakhir diubah" value={day(customer.updatedAt)} />
 
-          <PendingRow
+          <Row
             label="Jenis pelanggan"
-            blockedBy="Perorangan dan Perusahaan belum dibedakan di sistem"
+            value={
+              customer.kind === "company" ? "Perusahaan" : "Perorangan"
+            }
           />
-          <PendingRow
+          <Row
             label="Kategori pelanggan"
-            blockedBy="Daftarnya sudah ada di Pengaturan › Tipe pelanggan, tapi pelanggan belum bisa menunjuk salah satunya"
+            value={
+              customer.customerTypeName ? (
+                <Badge
+                  variant="outline"
+                  className="border-transparent bg-tint-info text-info"
+                >
+                  {customer.customerTypeName}
+                </Badge>
+              ) : (
+                <span className="text-muted">Belum dikategorikan</span>
+              )
+            }
           />
-          <PendingRow
-            label="NPWP & PIC"
-            blockedBy="Menunggu jenis pelanggan Perusahaan"
+          {/* A person has neither, and two empty rows saying so would be two
+              questions this customer is not the answer to. */}
+          {customer.kind === "company" && (
+            <>
+              <Row label="NPWP" value={customer.taxId ?? "—"} />
+              <Row label="PIC (contact person)" value={customer.picName ?? "—"} />
+            </>
+          )}
+          <Row
+            label="Catatan"
+            value={
+              customer.notes ? (
+                <span className="whitespace-pre-wrap">{customer.notes}</span>
+              ) : (
+                "—"
+              )
+            }
+            className="sm:col-span-2"
           />
+          <Row
+            label="Pengingat"
+            value={<Consents customer={customer} />}
+            className="sm:col-span-2"
+          />
+
           <PendingRow
-            label="Tag & catatan"
-            blockedBy="Belum ada field catatan pelanggan — catatan penanganan per hewan sudah ada di profil hewannya"
+            label="Tag"
+            blockedBy="Belum ada tag pelanggan — catatan penanganan per hewan sudah ada di profil hewannya"
           />
         </dl>
       </Card>
@@ -288,6 +344,30 @@ export function CustomerProfileScreen({ id }: { id: string }) {
         </Card>
       </Can>
     </div>
+  );
+}
+
+/**
+ * Which automatic messages this customer agreed to.
+ *
+ * SAID IN WORDS, not as three ticks: nothing sends any of these yet, and a row
+ * of checkboxes on a READ page invites somebody to press one. The trailing note
+ * is what stops the list reading as a promise the shop is already keeping.
+ */
+function Consents({ customer }: { customer: Customer }) {
+  const on = [
+    customer.notifications.bookingReminder && "pengingat booking",
+    customer.notifications.membershipRenewal && "perpanjangan membership",
+    customer.notifications.promo && "promo",
+  ].filter(Boolean) as string[];
+
+  return (
+    <span>
+      {on.length === 0 ? "Tidak mengizinkan pesan otomatis" : on.join(" · ")}
+      <span className="block text-xs text-muted">
+        Tersimpan sebagai izin — pengiriman otomatis belum dibangun.
+      </span>
+    </span>
   );
 }
 

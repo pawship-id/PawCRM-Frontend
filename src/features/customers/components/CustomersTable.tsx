@@ -51,12 +51,16 @@ function joinedOn(iso: string): string {
  * so the chat and edit buttons still do their own job — GroomingBookingsTable's
  * two guards, for the same two reasons.
  *
- * TWO COLUMNS THE MOCKUP ASKS FOR AND THIS DATABASE CANNOT FILL — Kode and
- * Kategori. Drawn, and badged "Segera" in the header rather than quietly dropped:
- * the header is where the promise belongs, so the empty cells below read as a
- * feature that is coming instead of data that failed to load. `customer.model.js`
- * has no code and no type reference; `/customer-types` exists as a settings list
- * but nothing points a customer at one yet (see customerType.service.ts).
+ * EVERY COLUMN THE MOCKUP DRAWS IS REAL NOW (27 September 2026). Kategori is
+ * `customerTypeName`, filed from Pengaturan › Tipe pelanggan — it arrives beside
+ * its id on every row, so the table prints a word while the form edits a
+ * reference. Kode is allocated by the shared counter when a customer is
+ * registered.
+ *
+ * A DASH IN THE KODE CELL IS NOT A FAILED LOAD. Customers registered before the
+ * series existed carry no code until `seeds/backfillCustomerCodes.js` has been
+ * run against that deployment, and inventing one for them would look exactly
+ * like a number the shop had printed on a card years ago.
  *
  * DELETE STAYS ON THE ROW, unlike the mockup, which moves it into the form. The
  * mockup is right that deleting is not list work, but the list is where somebody
@@ -146,14 +150,10 @@ export function CustomersTable({
         <Table className={loading ? "opacity-60" : undefined}>
           <TableHeader>
             <TableRow>
-              <TableHead>
-                <PendingHead label="Kode" />
-              </TableHead>
+              <TableHead>Kode</TableHead>
               <TableHead>Pelanggan</TableHead>
               <TableHead>Kontak</TableHead>
-              <TableHead>
-                <PendingHead label="Kategori" />
-              </TableHead>
+              <TableHead>Kategori</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Bergabung</TableHead>
               {showActions && <TableHead className="text-right">Aksi</TableHead>}
@@ -185,8 +185,17 @@ export function CustomersTable({
                     router.push(`/dashboard/master/customers/${customer._id}`);
                   }}
                 >
-                  {/* Kode — see the note above the component. */}
-                  <TableCell className="text-muted">—</TableCell>
+                  <TableCell>
+                    {customer.code ? (
+                      // tabular-nums, never font-mono — ui-rules §5. Keeps the
+                      // column from shifting as the digits differ in width.
+                      <span className="tabular-nums text-muted">
+                        <HighlightText text={customer.code} query={search} />
+                      </span>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
@@ -201,6 +210,21 @@ export function CustomersTable({
                         than a column anybody sorts by, and most customers have
                         none — a column of dashes for the sake of one badge.
                       */}
+                      {/*
+                        A COMPANY SAYS SO BESIDE ITS NAME, which is where the
+                        mockup puts it and where it is useful: "Toko Hewan Mitra
+                        Jaya" reads as a shop either way, but plenty of companies
+                        are registered under a person's name. Individuals get no
+                        badge — a label on 95% of the rows is noise.
+                      */}
+                      {customer.kind === "company" && (
+                        <Badge
+                          variant="outline"
+                          className="border-transparent bg-tint-warning text-warning"
+                        >
+                          Perusahaan
+                        </Badge>
+                      )}
                       {customer.vipTier && (
                         <CustomerVipBadge tier={customer.vipTier} />
                       )}
@@ -228,7 +252,18 @@ export function CustomersTable({
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted">—</TableCell>
+                  <TableCell>
+                    {customer.customerTypeName ? (
+                      <Badge
+                        variant="outline"
+                        className="border-transparent bg-tint-info text-info"
+                      >
+                        {customer.customerTypeName}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <CustomerStatusBadge deleted={deleted} />
                   </TableCell>
@@ -353,23 +388,5 @@ export function CustomersTable({
         </ConfirmDialog>
       )}
     </>
-  );
-}
-
-/**
- * A column heading for data that is not there yet.
- *
- * THE BADGE IS IN THE HEADER, ONCE, not repeated down the column. Said on every
- * row it would be the loudest thing on the table and would still say the same
- * thing; said here it reads as what it is — a column waiting for a field.
- */
-function PendingHead({ label }: { label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      {label}
-      <Badge variant="outline" className="font-normal opacity-70">
-        Segera
-      </Badge>
-    </span>
   );
 }

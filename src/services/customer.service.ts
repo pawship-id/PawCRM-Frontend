@@ -32,6 +32,8 @@ export const customerService = {
         page: query.page,
         limit: query.limit,
         vipTier: query.vipTier,
+        customerTypeId: query.customerTypeId,
+        kind: query.kind,
         search: query.search,
         includeDeleted: query.includeDeleted,
       },

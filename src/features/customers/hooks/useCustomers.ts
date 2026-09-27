@@ -6,6 +6,7 @@ import { customerService } from "@/services/customer.service";
 import { ApiError } from "@/services/api-error";
 import type {
   Customer,
+  CustomerKind,
   CustomerListQuery,
   PageResult,
   VipTier,
@@ -18,6 +19,10 @@ export interface CustomersQuery {
   search: string;
   /** "" = any tier, otherwise a specific VIP tier. */
   vipTier: VipTier | "";
+  /** "" = any category, otherwise one of the tenant's Tipe pelanggan. */
+  customerTypeId: string;
+  /** "" = both, otherwise Perorangan or Perusahaan. */
+  kind: CustomerKind | "";
   includeDeleted: boolean;
 }
 
@@ -27,6 +32,8 @@ const DEFAULT_QUERY: CustomersQuery = {
   page: 1,
   search: "",
   vipTier: "",
+  customerTypeId: "",
+  kind: "",
   includeDeleted: false,
 };
 
@@ -99,6 +106,12 @@ export function useCustomers(): UseCustomersResult {
       limit: PAGE_SIZE,
       search: settled.search.trim() || undefined,
       vipTier: settled.vipTier === "" ? undefined : settled.vipTier,
+      // "" means "not filtering", which is an ABSENT parameter rather than an
+      // empty one: sent as "" the server would look for a customer filed under
+      // the empty string and answer with nothing.
+      customerTypeId:
+        settled.customerTypeId === "" ? undefined : settled.customerTypeId,
+      kind: settled.kind === "" ? undefined : settled.kind,
       includeDeleted: settled.includeDeleted || undefined,
     };
 

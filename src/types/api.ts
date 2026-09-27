@@ -1407,13 +1407,55 @@ export type VipTier = "bronze" | "silver" | "gold" | "platinum";
  * when a screen needs them. Mirrors the Branch shape, minus the `isActive` axis
  * (a customer has no open/closed state).
  */
+/** Perorangan or Perusahaan — a closed enum, unlike the tenant's own Kategori. */
+export type CustomerKind = "individual" | "company";
+
+/**
+ * Which automatic messages a customer agreed to.
+ *
+ * ⚠️ NOTHING SENDS ANY OF THEM YET, the same state Pengaturan › Notifikasi is
+ * in. Stored now because consent has to be true from the day it was given.
+ */
+export interface CustomerNotifications {
+  bookingReminder: boolean;
+  membershipRenewal: boolean;
+  promo: boolean;
+}
+
 export interface Customer {
   _id: string;
   tenantId: string;
+  /**
+   * The customer's own number — "CUST-0001", allocated by the server when the
+   * record is created (27 September 2026). Never sent by a client: whatever a
+   * form put here is overwritten.
+   *
+   * `null` on customers registered before the series existed, until
+   * `seeds/backfillCustomerCodes.js` has been run — the screens show a dash for
+   * those rather than inventing a number the shop never printed.
+   */
+  code: string | null;
   name: string;
   email: string | null;
   phone: string | null;
   address: string | null;
+  /** Perorangan or Perusahaan. Every customer has one; it defaults to individual. */
+  kind: CustomerKind;
+  /**
+   * The tenant's own category, from Pengaturan › Tipe pelanggan — the id to
+   * PATCH with, and the name to print, side by side.
+   *
+   * A CATEGORY THE TENANT HAS RETIRED still reads back with its name: the label
+   * still describes this customer, only new filings under it are refused.
+   */
+  customerTypeId: string | null;
+  customerTypeName: string | null;
+  /** NPWP and the contact person — shown by the form for a company only. */
+  taxId: string | null;
+  picName: string | null;
+  /** What the shop needs to remember. Read at the till and on a booking card. */
+  notes: string | null;
+  notifications: CustomerNotifications;
   /**
    * The address's coordinates (17 September 2026) — what a service priced by
    * Zona is quoted from, measured to the transaction's branch. `{lat: null,
@@ -1432,6 +1474,9 @@ export interface CustomerListQuery {
   page?: number;
   limit?: number;
   vipTier?: VipTier;
+  /** The toolbar's Kategori and Jenis — narrowed on the server, never here. */
+  customerTypeId?: string;
+  kind?: CustomerKind;
   /** Free-text over name / email / phone. */
   search?: string;
   /** Include soft-deleted customers (default false on the backend). */
@@ -1514,6 +1559,13 @@ export interface CreateCustomerInput {
   address?: string | null;
   location?: GeoLocationInput | null;
   vipTier?: VipTier | null;
+  kind?: CustomerKind;
+  customerTypeId?: string | null;
+  taxId?: string | null;
+  picName?: string | null;
+  notes?: string | null;
+  /** Partial: a form that flips one switch may send one key. */
+  notifications?: Partial<CustomerNotifications>;
 }
 
 /**
@@ -1528,6 +1580,12 @@ export interface UpdateCustomerInput {
   address?: string | null;
   location?: GeoLocationInput | null;
   vipTier?: VipTier | null;
+  kind?: CustomerKind;
+  customerTypeId?: string | null;
+  taxId?: string | null;
+  picName?: string | null;
+  notes?: string | null;
+  notifications?: Partial<CustomerNotifications>;
 }
 
 /* ------------------------------------------------------------------- POS */

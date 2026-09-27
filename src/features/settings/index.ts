@@ -19,6 +19,18 @@ export {
   SettingsTabsHeader,
 } from "./components/SettingsHeader";
 export { CustomerTypesScreen } from "./components/CustomerTypesScreen";
+/**
+ * The tenant's Tipe pelanggan list, for the screens that CHOOSE one rather than
+ * manage it — the Pelanggan form's Kategori field (27 September 2026).
+ *
+ * Exported here rather than copied: the settings screen and the customer form
+ * must offer the same labels, and a second loader would be a second opinion
+ * about what this tenant's categories are.
+ */
+export {
+  useCustomerTypeList,
+  type UseCustomerTypeListResult,
+} from "./hooks/useCustomerTypeList";
 export { NotificationSettingsScreen } from "./components/NotificationSettingsScreen";
 export { NumberingSettingsScreen } from "./components/NumberingSettingsScreen";
 export { SupplierTypesScreen } from "./components/SupplierTypesScreen";

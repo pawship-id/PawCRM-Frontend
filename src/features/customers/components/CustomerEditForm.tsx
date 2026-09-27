@@ -9,13 +9,8 @@ import {
   Button,
   Card,
   ConfirmDialog,
-  LocationFields,
   Spinner,
-  TextField,
-  toGeoLocation,
-  toLocationFieldsValue,
   validateLocationFields,
-  type LocationFieldsValue,
 } from "@/components";
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
@@ -27,9 +22,14 @@ import {
   validateCustomerAddress,
 } from "@/utils/validation";
 import { CustomerPetsSection } from "@/features/pets";
-import type { Customer, VipTier } from "@/types/api";
+import type { Customer } from "@/types/api";
 
-import { VipTierSelect } from "./VipTierSelect";
+import {
+  CustomerFormFields,
+  customerFormToPayload,
+  customerToForm,
+  type CustomerFormValue,
+} from "./CustomerFormFields";
 import { CustomerVipBadge, CustomerStatusBadge } from "./CustomerVipBadge";
 
 /**
@@ -156,15 +156,15 @@ function DetailsSection({
   onUpdated: (customer: Customer) => void;
 }) {
   const router = useRouter();
-  const [name, setName] = useState(customer.name);
-  const [email, setEmail] = useState(customer.email ?? "");
-  const [phone, setPhone] = useState(customer.phone ?? "");
-  const [address, setAddress] = useState(customer.address ?? "");
-  // The address's pin — what a service priced by Zona is quoted from (17 September 2026).
-  const [location, setLocation] = useState<LocationFieldsValue>(() =>
-    toLocationFieldsValue(customer.location),
+  /*
+    SEEDED ONCE, FROM THE CUSTOMER THIS SECTION WAS HANDED. Re-seeding on every
+    change of `customer` would throw away what somebody is typing the moment a
+    sibling section lifts a new copy up — which the danger zone does on every
+    restore.
+  */
+  const [value, setValue] = useState<CustomerFormValue>(() =>
+    customerToForm(customer),
   );
-  const [vipTier, setVipTier] = useState<VipTier | "">(customer.vipTier ?? "");
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -172,34 +172,42 @@ function DetailsSection({
 
   const disabled = customer.deletedAt !== null;
 
+  function patch(change: Partial<CustomerFormValue>) {
+    setValue((prev) => ({ ...prev, ...change }));
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setFormError(null);
 
     const nextErrors: Record<string, string> = {};
-    const nameError = validateCustomerName(name);
-    const emailError = validateOptionalEmail(email);
-    const phoneError = validateCustomerPhone(phone);
-    const addressError = validateCustomerAddress(address);
+    const nameError = validateCustomerName(value.name);
+    const emailError = validateOptionalEmail(value.email);
+    const phoneError = validateCustomerPhone(value.phone);
+    const addressError = validateCustomerAddress(value.address);
     if (nameError) nextErrors.name = nameError;
     if (emailError) nextErrors.email = emailError;
     if (phoneError) nextErrors.phone = phoneError;
     if (addressError) nextErrors.address = addressError;
-    Object.assign(nextErrors, validateLocationFields(location));
+    Object.assign(nextErrors, validateLocationFields(value.location));
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
     setSaving(true);
     try {
-      const updated = await customerService.update(customer._id, {
-        name: name.trim(),
-        email: email.trim() === "" ? null : email.trim(),
-        phone: phone.trim() === "" ? null : phone.trim(),
-        address: address.trim() === "" ? null : address.trim(),
-        location: toGeoLocation(location),
-        vipTier: vipTier === "" ? null : vipTier,
-      });
+      /*
+        THE WHOLE FORM IS SENT, not a diff. The API takes any subset but rejects
+        an empty body, and working out which of a dozen fields moved is a second
+        source of truth about what the user changed — the bug that reliably falls
+        out of it is a cleared field that never clears, because `""` and
+        "unchanged" look alike.
+      */
+      const updated = await customerService.update(
+        customer._id,
+        customerFormToPayload(value),
+      );
       onUpdated(updated);
+      setValue(customerToForm(updated));
       swalToast("Perubahan pelanggan tersimpan.");
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
@@ -224,73 +232,12 @@ function DetailsSection({
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {/* Row 1: name & email */}
-        <TextField
-          label="Nama pelanggan"
-          name="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          error={fieldErrors.name}
-          disabled={disabled}
-          required
-        />
-        <TextField
-          label="Email"
-          type="email"
-          name="email"
-          placeholder="Opsional"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          error={fieldErrors.email}
-          hint="Kosongkan untuk menghapus."
-          disabled={disabled}
-        />
-
-        {/* Row 2: phone & VIP tier */}
-        <TextField
-          label="Telepon / WhatsApp"
-          type="tel"
-          name="phone"
-          placeholder="Opsional"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          error={fieldErrors.phone}
-          hint="Kosongkan untuk menghapus."
-          disabled={disabled}
-        />
-        <VipTierSelect
-          value={vipTier}
-          onChange={setVipTier}
-          error={fieldErrors.vipTier}
-          disabled={disabled}
-        />
-
-        {/* Row 3: address (full width) */}
-        <div className="sm:col-span-2">
-          <TextField
-            label="Alamat"
-            name="address"
-            placeholder="Opsional"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            error={fieldErrors.address}
-            hint="Kosongkan untuk menghapus."
-            disabled={disabled}
-          />
-        </div>
-
-        {/* Row 4: the address's pin — paste "lat, lng" from Google Maps. */}
-        <LocationFields
-          value={location}
-          onChange={setLocation}
-          errors={fieldErrors}
-          disabled={disabled}
-        />
-        <p className="text-xs text-muted sm:col-span-2">
-          Titik alamat dipakai untuk menentukan zona antar-jemput dari jarak ke cabang.
-        </p>
-      </div>
+      <CustomerFormFields
+        value={value}
+        onChange={patch}
+        errors={fieldErrors}
+        disabled={disabled}
+      />
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button

@@ -17,10 +17,24 @@ jest.mock("next/navigation", () => ({
 const customer: Customer = {
   _id: "5a7f1f77bcf86cd799439022",
   tenantId: "507f1f77bcf86cd799439011",
+  code: "CUST-0001",
   name: "Rina Wijaya",
   email: "rina@email.com",
   phone: "0812-1111-2222",
   address: null,
+  // The Pelanggan form's fields (27 September 2026). An ordinary private
+  // customer with no category — what the register is mostly made of.
+  kind: "individual" as const,
+  customerTypeId: null,
+  customerTypeName: null,
+  taxId: null,
+  picName: null,
+  notes: null,
+  notifications: {
+    bookingReminder: true,
+    membershipRenewal: true,
+    promo: false,
+  },
   vipTier: "gold",
   deletedAt: null,
   createdAt: "2025-01-12T00:00:00.000Z",
@@ -92,15 +106,46 @@ describe("customers table", () => {
     );
   });
 
-  it("draws the columns the database cannot fill, badged rather than dropped", () => {
+  it("draws every column the mockup asks for, none of them badged", () => {
     renderTable();
 
+    // Both were "Segera" until the fields existed. Nothing on this table is now.
+    expect(screen.getByRole("columnheader", { name: /^Kode$/ })).toBeVisible();
     expect(
-      screen.getByRole("columnheader", { name: /Kode Segera/ }),
+      screen.getByRole("columnheader", { name: /^Kategori$/ }),
     ).toBeVisible();
-    expect(
-      screen.getByRole("columnheader", { name: /Kategori Segera/ }),
-    ).toBeVisible();
+    expect(screen.queryByText("Segera")).not.toBeInTheDocument();
+  });
+
+  it("shows the code the server allocated", () => {
+    renderTable();
+    expect(screen.getByText("CUST-0001")).toBeVisible();
+  });
+
+  it("leaves a customer registered before the series with a dash, not a made-up number", () => {
+    // A dash is a fact; an invented code looks exactly like one the shop printed
+    // on a card years ago.
+    renderTable({ code: null });
+    expect(screen.queryByText(/CUST-/)).not.toBeInTheDocument();
+  });
+
+  it("prints the category's word, not the id the form edits", () => {
+    renderTable({ customerTypeId: "type-1", customerTypeName: "B2B" });
+
+    expect(screen.getByText("B2B")).toBeVisible();
+    expect(screen.queryByText("type-1")).not.toBeInTheDocument();
+  });
+
+  it("says beside the name when a customer is a company", () => {
+    // Plenty of companies are registered under a person's name; individuals get
+    // no badge, because a label on 95% of the rows is noise.
+    renderTable({ kind: "company" });
+    expect(screen.getByText("Perusahaan")).toBeVisible();
+  });
+
+  it("leaves an uncategorised customer's cell empty rather than guessing", () => {
+    renderTable();
+    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
   it("shows when the customer joined, and their tier beside their name", () => {

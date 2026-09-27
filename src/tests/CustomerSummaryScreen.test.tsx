@@ -41,10 +41,24 @@ function customer(overrides: Partial<Customer> = {}): Customer {
   return {
     _id: "n1",
     tenantId: "t1",
+    code: "CUST-0005",
     name: "Fajar Ramadhan",
     email: null,
     phone: "0856-4433-2211",
     address: null,
+    // The Pelanggan form's fields (27 September 2026). An ordinary private
+    // customer with no category — what the register is mostly made of.
+    kind: "individual" as const,
+    customerTypeId: null,
+    customerTypeName: null,
+    taxId: null,
+    picName: null,
+    notes: null,
+    notifications: {
+      bookingReminder: true,
+      membershipRenewal: true,
+      promo: false,
+    },
     vipTier: null,
     deletedAt: null,
     createdAt: daysAgo(4),
