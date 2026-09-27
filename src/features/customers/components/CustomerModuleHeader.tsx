@@ -2,31 +2,26 @@
 
 import type { ReactNode } from "react";
 
-import {
-  Breadcrumb,
-  PageTabs,
-  PendingStatTile,
-  StatTile,
-  type PageTab,
-} from "@/components";
+import { Breadcrumb, PageTabs, StatTile, type PageTab } from "@/components";
 import { usePermissions } from "@/features/permissions";
 
 import {
   useRegistryCounts,
+  type CustomerStatsState,
   type RegistryCount,
 } from "../hooks/useRegistryCounts";
 
 /**
  * The head of the Pelanggan module, shared by every tab under it — the title,
- * the tab row, and the two numbers that describe the register.
+ * the tab row, and the four numbers that describe the register.
  *
- * ONE HEADER FOR TWO ROUTES. /master/customers and /master/pets are separate
- * screens with separate grants, but the mockup (buloo-navbar-v3.html) draws them
- * as one page with tabs, and the rail now has one row for both. Rendering the
- * same header from both screens is what makes the two routes read as the one
- * module the menu says they are; a second copy would drift within a sprint.
+ * ONE HEADER FOR EVERY TAB. /master/customers, /master/pets and the Ringkasan
+ * tab are separate screens with separate grants, but the mockup draws them as
+ * one page with tabs, and the rail has one row for all of them. Rendering the
+ * same header from each screen is what makes the routes read as the one module
+ * the menu says they are; a second copy would drift within a sprint.
  *
- * THE TITLE IS "Pelanggan" ON BOTH TABS, deliberately — the tab says which list
+ * THE TITLE IS "Pelanggan" ON EVERY TAB, deliberately — the tab says which list
  * you are looking at, the title says which module you are in. The mockup does
  * the same, and it is why the breadcrumb has one level rather than two.
  *
@@ -47,18 +42,51 @@ import {
 export function CustomerModuleHeader({
   /** The create button for the tab you are on — "+ Pelanggan", "+ Hewan". */
   action,
+  /**
+   * A card row of this tab's own, INSTEAD of the register's four.
+   *
+   * THE RINGKASAN TAB ASKS A DIFFERENT QUESTION, so it draws different cards:
+   * the register's totals answer "how big is this shop", while Ringkasan's
+   * answer "what happened this period, and is it better than last". Drawing both
+   * rows would be seven numbers above a worklist, and the reader would have to
+   * work out which four of them the page below is not about.
+   *
+   * Passing this also stops the header FETCHING the register's figures — the tab
+   * that overrides the row has already asked for what it needs, and the two
+   * requests would be the same endpoint twice.
+   */
+  tiles,
 }: {
   action?: ReactNode;
+  tiles?: ReactNode;
 }) {
   const { can } = usePermissions();
   const mayReadCustomers = can("customers", "read");
   const mayReadPets = can("pets", "read");
+  const ownTiles = tiles !== undefined;
 
-  const counts = useRegistryCounts(mayReadCustomers, mayReadPets);
+  const counts = useRegistryCounts(
+    mayReadCustomers && !ownTiles,
+    mayReadPets && !ownTiles,
+  );
 
   const tabs: PageTab[] = [
     ...(mayReadCustomers
       ? [
+          {
+            /*
+              THE MODULE'S FRONT PAGE, and the one tab that is not a list: who
+              has stopped coming, who has just arrived. It is first because it is
+              what somebody opens the module to find out — the register itself is
+              a thing you go to when you already know whose name you are after.
+
+              EXACT, like Pelanggan below, and for the same reason: it is a route
+              UNDER /master/customers.
+            */
+            label: "Ringkasan",
+            href: "/dashboard/master/customers/ringkasan",
+            exact: true,
+          },
           {
             label: "Pelanggan",
             href: "/dashboard/master/customers",
@@ -93,57 +121,67 @@ export function CustomerModuleHeader({
 
       <PageTabs tabs={tabs} ariaLabel="Bagian pelanggan" />
 
-      <section
-        aria-label="Ringkasan pelanggan"
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
-      >
-        {mayReadCustomers && (
-          <StatTile
-            label="Pelanggan terdaftar"
-            value={NUMBER.format(counts.customers.total)}
-            caption="tidak termasuk yang dihapus"
-            loading={counts.customers.loading}
-            error={counts.customers.error}
-          />
-        )}
-        {mayReadPets && (
-          <StatTile
-            label="Hewan terdaftar"
-            value={NUMBER.format(counts.pets.total)}
-            caption={perOwner(counts.pets, counts.customers)}
-            loading={counts.pets.loading}
-            error={counts.pets.error}
-          />
-        )}
+      {/*
+        THE REGISTER'S FOUR, AND ALL FOUR ARE REAL NOW (27 September 2026). Two of
+        them used to be `PendingStatTile`s — the database could not be asked how
+        many customers arrived this month, or how many had bought anything lately,
+        because the list endpoint has no date filter. `GET /customers/stats`
+        answers both, so the badges are gone rather than redrawn.
 
-        {/*
-          THE TWO THE MOCKUP ASKS FOR AND THE DATABASE CANNOT ANSWER. See
-          PendingStatTile: badged rather than invented, and rather than left
-          showing a dash that would read as a failed load.
-        */}
-        {PENDING_TILES.map((tile) => (
-          <PendingStatTile
-            key={tile.label}
-            label={tile.label}
-            blockedBy={tile.blockedBy}
-          />
-        ))}
-      </section>
+        EACH CAPTION READS ITS WINDOW OFF THE ANSWER. The server says which number
+        of days it measured, so a tile cannot caption "30 hari terakhir" over a
+        figure counted across 60.
+
+        A TAB MAY REPLACE THE WHOLE ROW — see `tiles` above.
+      */}
+      {ownTiles ? (
+        tiles
+      ) : (
+        <section
+          aria-label="Ringkasan pelanggan"
+          className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+        >
+          {mayReadPets && (
+            <StatTile
+              label="Jumlah hewan"
+              value={NUMBER.format(counts.pets.total)}
+              caption={perOwner(counts.pets, counts.customers)}
+              loading={counts.pets.loading}
+              error={counts.pets.error}
+            />
+          )}
+          {mayReadCustomers && (
+            <>
+              <StatTile
+                label="Jumlah pelanggan"
+                value={NUMBER.format(counts.customers.data?.total ?? 0)}
+                caption="tidak termasuk yang dihapus"
+                loading={counts.customers.loading}
+                error={counts.customers.error}
+              />
+              <StatTile
+                label="Pelanggan baru bulan ini"
+                value={NUMBER.format(
+                  counts.customers.data?.newCustomers.count ?? 0,
+                )}
+                caption={`${counts.customers.data?.newCustomers.days ?? 30} hari terakhir`}
+                loading={counts.customers.loading}
+                error={counts.customers.error}
+              />
+              <StatTile
+                label={`Transaksi ${counts.customers.data?.activeCustomers.days ?? 90} hari terakhir`}
+                value={activeShare(counts.customers)}
+                caption="dari seluruh pelanggan terdaftar"
+                loading={counts.customers.loading}
+                error={counts.customers.error}
+              />
+            </>
+          )}
+        </section>
+      )}
     </div>
   );
 }
-
-/** The mockup's other two tiles, and what each one is waiting for. */
-const PENDING_TILES = [
-  {
-    label: "Baru bulan ini",
-    blockedBy: "Daftar pelanggan belum bisa disaring per tanggal",
-  },
-  {
-    label: "Membership habis ≤30 hari",
-    blockedBy: "Membership belum ada di sistem",
-  },
-];
 
 const NUMBER = new Intl.NumberFormat("id-ID");
 const ONE_DECIMAL = new Intl.NumberFormat("id-ID", {
@@ -152,13 +190,31 @@ const ONE_DECIMAL = new Intl.NumberFormat("id-ID", {
 });
 
 /**
- * "1,4 per pelanggan" — the mockup's caption under the animal count, and the one
- * derived number on this header that is genuinely derivable. Empty while either
- * side is unknown, and on an empty register: 0 owners is a division, not a fact.
+ * "1,4 per pelanggan" — the caption under the animal count, and the one derived
+ * number on this header. Empty while either side is unknown, and on an empty
+ * register: 0 owners is a division, not a fact.
  */
-function perOwner(pets: RegistryCount, customers: RegistryCount): string {
+function perOwner(pets: RegistryCount, customers: CustomerStatsState): string {
   if (pets.loading || pets.error || customers.loading || customers.error)
     return "";
-  if (customers.total === 0) return "";
-  return `${ONE_DECIMAL.format(pets.total / customers.total)} per pelanggan`;
+
+  const owners = customers.data?.total ?? 0;
+  if (owners === 0) return "";
+
+  return `${ONE_DECIMAL.format(pets.total / owners)} per pelanggan`;
+}
+
+/**
+ * "42%" — how much of the register bought something inside the window.
+ *
+ * A DASH WHEN THE SERVER DECLINED TO DIVIDE. `share` is null on an empty
+ * register, because 0 customers out of 0 is a question with no answer — and a
+ * tile reading "0%" over a shop that opened this week is a failure report rather
+ * than a fact.
+ */
+function activeShare(customers: CustomerStatsState): string {
+  const share = customers.data?.activeCustomers.share;
+  if (share === null || share === undefined) return "—";
+
+  return `${Math.round(share * 100)}%`;
 }

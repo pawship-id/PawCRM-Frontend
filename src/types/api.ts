@@ -1439,6 +1439,70 @@ export interface CustomerListQuery {
 }
 
 /**
+ * What GET /api/customers/stats answers — the numbers on the Pelanggan header's
+ * tiles (27 September 2026).
+ *
+ * THE WINDOW COMES BACK WITH THE ANSWER. Both figures are measured over a number
+ * of days the caller may change, so a tile that drew "30 hari terakhir" from a
+ * constant could caption a 60-day figure. It says which window it used.
+ */
+export interface CustomerStats {
+  /** Live customers on the books, ignoring whatever the list is filtered by. */
+  total: number;
+  /**
+   * Arrivals in the window, and in the window of the same length before it —
+   * what the Ringkasan tab's "vs periode lalu" is measured against.
+   */
+  newCustomers: { days: number; count: number; previousCount: number };
+  /**
+   * What the register did inside the window: who bought, how much of it came
+   * back, and what they spent.
+   *
+   * THE SHARES ARE NULL ON AN EMPTY REGISTER, and `averageSpend` is null when
+   * nobody bought anything — 0 of 0 is a question with no answer, not 0% and not
+   * Rp 0.
+   *
+   * `revenue` and `averageSpend` are decimal STRINGS, like every other amount
+   * from this API: they never pass through a float, and the average is divided
+   * on the server so it cannot disagree with the two figures it came from.
+   */
+  activeCustomers: {
+    days: number;
+    count: number;
+    share: number | null;
+    revenue: string;
+    averageSpend: string | null;
+    /** Customers with a second settled sale inside the window. */
+    repeatCount: number;
+    /** Those as a share of the whole register, not of the active customers. */
+    repeatShare: number | null;
+  };
+}
+
+/** One row of GET /api/customers/dormant — a customer worth ringing. */
+export interface DormantCustomer {
+  _id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  vipTier: VipTier | null;
+  createdAt: string;
+  /** Their last settled sale. ABSENT when they have never bought anything. */
+  lastVisitAt?: string | null;
+  /**
+   * Counted by the server, from the clock that set the cutoff — measured from
+   * the last visit, or from the day they were registered when there is none.
+   */
+  daysSinceLastVisit: number;
+}
+
+/** What GET /api/customers/dormant answers, window included. */
+export interface DormantCustomerList {
+  days: number;
+  items: DormantCustomer[];
+}
+
+/**
  * Body of POST /api/customers. Only `name` is required; `tenantId` and
  * `createdBy` are derived from the session, never sent from here. The nullable
  * fields accept `null` to leave them unset.

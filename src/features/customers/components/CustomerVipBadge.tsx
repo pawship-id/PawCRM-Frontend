@@ -40,9 +40,13 @@ export function CustomerVipBadge({ tier }: { tier: VipTier | null }) {
 
 /** Whether the customer is live or soft-deleted (restorable). */
 export function CustomerStatusBadge({ deleted }: { deleted: boolean }) {
+  /* Indonesian, like the rest of the module — "Terhapus" rather than "Nonaktif",
+     because a soft-deleted customer is not a customer somebody switched off: it
+     is one that was removed and can be restored. Pets DO have an active/inactive
+     axis, and that word is theirs. */
   const { label, className } = deleted
-    ? { label: "Deleted", className: "bg-muted/40 text-muted" }
-    : { label: "Active", className: "bg-success/12 text-success" };
+    ? { label: "Terhapus", className: "bg-muted/40 text-muted" }
+    : { label: "Aktif", className: "bg-success/12 text-success" };
 
   return (
     <Badge variant="outline" className={cn("border-transparent", className)}>

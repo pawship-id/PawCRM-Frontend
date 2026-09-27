@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import { Alert, Spinner, Pagination } from "@/components";
+import { Alert, Card, Spinner, Pagination } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 
@@ -74,6 +74,27 @@ export function CustomersScreen() {
             unitPlural="pelanggan"
             onPageChange={(page) => setQuery({ page })}
           />
+
+          {/*
+            THE MOCKUP'S CALLOUT, KEPT. It is the one thing on the screen that
+            teaches a gesture nothing else announces: the row is the way into a
+            customer's profile, and the icons are there so a small job never
+            needs the profile at all. Left off, people look for a menu.
+
+            A `Card` rather than the mockup's hand-rolled panel — ui-rules §2 —
+            with one borrowed detail: the navy left edge, which is what tells a
+            note apart from the table above it at a glance.
+          */}
+          <Card
+            className="border-l-[3px] border-l-primary"
+            title="Profil pelanggan dibuka dari baris, bukan dari menu"
+          >
+            <p className="text-sm text-muted">
+              Klik baris mana pun untuk membuka profilnya. Ikon di kolom terakhir
+              jalan pintas untuk chat WhatsApp, ubah, dan hapus — supaya tidak
+              perlu buka profil dulu untuk hal kecil.
+            </p>
+          </Card>
         </>
       )}
     </div>

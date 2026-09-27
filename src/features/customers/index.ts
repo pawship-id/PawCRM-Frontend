@@ -11,6 +11,17 @@ export { CustomersScreen } from "./components/CustomersScreen";
  * `features/pets` but a TAB of this module.
  */
 export { CustomerModuleHeader } from "./components/CustomerModuleHeader";
+/**
+ * The module's front page — the Ringkasan tab's worklists. Wears
+ * `CustomerModuleHeader` like every other tab.
+ */
+export { CustomerSummaryScreen } from "./components/CustomerSummaryScreen";
+/**
+ * The read side of one customer — the mockup's `profilPelanggan`, at
+ * `/master/customers/:id`. The form it links to is `CustomerEditForm`, one route
+ * deeper; the two used to be the same screen. See CustomerProfileScreen.
+ */
+export { CustomerProfileScreen } from "./components/CustomerProfileScreen";
 export { CustomerCreateForm } from "./components/CustomerCreateForm";
 export { CustomerEditForm } from "./components/CustomerEditForm";
 /**

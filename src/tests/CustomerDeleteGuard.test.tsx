@@ -10,6 +10,12 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/customer.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
+/*
+  The row navigates to the customer's profile when clicked, so the table reaches
+  for `useRouter` — which throws outside an app-router tree. The repo's
+  convention for this is a per-file stub; see WarehousesTable.test.tsx.
+*/
+jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 
 const mockedCustomerService = customerService as jest.Mocked<
   typeof customerService
@@ -40,6 +46,19 @@ const customer: Customer = {
  * leaves somebody staring at a button that will not work with nothing on screen
  * explaining why.
  */
+/**
+ * Press the row's delete button, then the dialog's.
+ *
+ * BOTH ARE FOUND BY THEIR ACCESSIBLE NAME, and the row's is icon-only since the
+ * list moved to the mockup's shape — which is exactly what its `aria-label`
+ * ("Hapus Ibu Rina") is for. If this helper stops finding a button, the label is
+ * missing, and that is a real accessibility regression rather than a test detail.
+ */
+async function openDeleteDialogAndConfirm() {
+  await userEvent.click(screen.getByRole("button", { name: /^hapus ibu rina$/i }));
+  await userEvent.click(screen.getByRole("button", { name: /^hapus$/i }));
+}
+
 describe("deleting a customer that still has pets", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -61,10 +80,7 @@ describe("deleting a customer that still has pets", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /delete/i }));
-    await userEvent.click(
-      screen.getByRole("button", { name: /^delete$/i, hidden: false }),
-    );
+    await openDeleteDialogAndConfirm();
 
     expect(await screen.findByText(/3 pet\(s\) still belong/i)).toBeVisible();
   });
@@ -85,10 +101,7 @@ describe("deleting a customer that still has pets", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /delete/i }));
-    await userEvent.click(
-      screen.getByRole("button", { name: /^delete$/i, hidden: false }),
-    );
+    await openDeleteDialogAndConfirm();
 
     await waitFor(() => expect(mockedCustomerService.remove).toHaveBeenCalled());
     expect(onChanged).not.toHaveBeenCalled();
@@ -107,10 +120,7 @@ describe("deleting a customer that still has pets", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /delete/i }));
-    await userEvent.click(
-      screen.getByRole("button", { name: /^delete$/i, hidden: false }),
-    );
+    await openDeleteDialogAndConfirm();
 
     expect(await screen.findByText(/customer not found/i)).toBeVisible();
   });

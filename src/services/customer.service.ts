@@ -2,6 +2,8 @@ import { apiClient } from "./api-client";
 import type {
   Customer,
   CustomerListQuery,
+  CustomerStats,
+  DormantCustomerList,
   CreateCustomerInput,
   UpdateCustomerInput,
   PageResult,
@@ -33,6 +35,32 @@ export const customerService = {
         search: query.search,
         includeDeleted: query.includeDeleted,
       },
+    }),
+
+  /**
+   * GET /customers/stats — the header tiles' numbers (27 September 2026).
+   *
+   * COUNTED BY THE SERVER, not derived from the list on screen. The obvious
+   * shortcut — read `pagination.total` off the list already fetched — is wrong in
+   * two ways: that list is filtered, so "Jumlah pelanggan" would fall to 3 while
+   * somebody types in the search box, and it cannot answer the other two
+   * questions at all, since the list has no date filter.
+   */
+  stats: (query: { newWithinDays?: number; activeWithinDays?: number } = {}) =>
+    apiClient.get<CustomerStats>("/customers/stats", {
+      query: {
+        newWithinDays: query.newWithinDays,
+        activeWithinDays: query.activeWithinDays,
+      },
+    }),
+
+  /**
+   * GET /customers/dormant — who has not been in for `days`, longest absent
+   * first. The Ringkasan tab's worklist; capped by the server at 50.
+   */
+  dormant: (query: { days?: number; limit?: number } = {}) =>
+    apiClient.get<DormantCustomerList>("/customers/dormant", {
+      query: { days: query.days, limit: query.limit },
     }),
 
   /** GET /customers/:id — a single customer. */

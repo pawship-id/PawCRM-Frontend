@@ -28,7 +28,10 @@ import type { CustomersQuery } from "../hooks/useCustomers";
  * between them should not have to notice which arrangement each screen picked —
  * and search taking the whole row is what narrowing a list of names starts with.
  *
- * TWO FIELDS, WHICH IS THE FLOOR §8 SETS, not a comfortable margin: one filter
+ * FOUR FIELDS IN THE PANEL, TWO OF THEM LIVE. The tier and the deleted toggle do
+ * work; Kategori and Jenis are the mockup's filters for fields a customer does
+ * not have yet, drawn disabled with the reason attached — see the block below.
+ * Two working fields is the floor §8 sets, not a comfortable margin: one filter
  * behind a button would be a button that hides one thing. The neighbourhood
  * argument is what carries it over the line, the same way it carried Stok Awal
  * and Penyesuaian Stok.
@@ -97,7 +100,7 @@ export function CustomersToolbar({
         <FilterSearch
           value={query.search}
           onChange={(search) => onChange({ search })}
-          placeholder="Cari nama, email, atau telepon…"
+          placeholder="Cari nama, telepon, atau email…"
           ariaLabel="Cari pelanggan"
           fill
         />
@@ -175,6 +178,39 @@ function CustomerFilterPanel({
           options={TIERS}
           onChange={(vipTier) => patch({ vipTier })}
         />
+
+        {/*
+          THE MOCKUP'S OTHER TWO FILTERS, DRAWN AND DISABLED. Kategori is a
+          tenant's own label (Umum, Snack, B2B) and Jenis is Perorangan vs
+          Perusahaan; neither exists on a customer yet — `/customer-types` is a
+          settings list nothing points at, and there is no jenis field at all.
+
+          SHOWN RATHER THAN OMITTED so the panel matches the drawing staff were
+          shown, and DISABLED WITH A REASON rather than left live: a filter that
+          narrows nothing is worse than a missing one, because somebody sets it
+          and then reads the list as though it had been applied.
+        */}
+        <FilterSelect
+          layout="field"
+          label="Kategori"
+          ariaLabel="Filter kategori pelanggan"
+          value={""}
+          options={[{ value: "", label: "Semua kategori" }]}
+          onChange={() => {}}
+          disabled
+          disabledHint="Pelanggan belum punya kategori. Daftarnya ada di Pengaturan › Tipe pelanggan."
+        />
+        <FilterSelect
+          layout="field"
+          label="Jenis"
+          ariaLabel="Filter jenis pelanggan"
+          value={""}
+          options={[{ value: "", label: "Semua jenis" }]}
+          onChange={() => {}}
+          disabled
+          disabledHint="Perorangan dan Perusahaan belum dibedakan di sistem."
+        />
+
         <FilterToggle
           label="Tampilkan pelanggan terhapus"
           checked={draft.includeDeleted}
