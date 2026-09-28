@@ -6991,6 +6991,62 @@ export interface CustomerInvoiceListSummary {
 }
 
 /**
+ * The axes `GET /api/customer-invoices/summary/breakdown/:axis` can split a
+ * period's omzet by — the Ringkasan tab's three panels.
+ *
+ *   category     — the catalogue category on the product or service each invoice
+ *                  LINE sold (`products.categoryId` / `services.categoryId`).
+ *   businessLine — the lini usaha on those same rows (`businessLineId`).
+ *   customerType — the Kategori pelanggan on the customer the INVOICE was raised
+ *                  for (`customers.customerTypeId`).
+ */
+export type RevenueBreakdownAxis =
+  | "category"
+  | "businessLine"
+  | "customerType";
+
+/**
+ * GET /api/customer-invoices/summary/breakdown/:axis — where the period's omzet
+ * came from. The Ringkasan tab's bars.
+ *
+ * TAKES THE LIST'S OWN FILTER, exactly as `/summary` does, so every panel and
+ * the Omzet card above them answer one question. `period` is echoed back for the
+ * same reason it is there.
+ *
+ * `basis` IS WHAT THE BARS ADD UP TO, and it is not the same for every axis:
+ *
+ *   "invoice" — `total` sums exactly to the Omzet card. Only `customerType`,
+ *               because a customer's category belongs to the whole document.
+ *   "line"    — the invoice LINES after their own discounts, which is SHORT of
+ *               the omzet: an invoice-level discount, the other charges (ongkir,
+ *               packaging) and the tax belong to no single catalogue row and are
+ *               deliberately not split across them.
+ *
+ * A GROUP WITH `id: null` IS THE UNNAMED BUCKET — a service with no category, a
+ * customer with no type, or a master row hard-deleted since. `name` is null when
+ * the record itself could not be read; both are the screen's to label, because
+ * inventing a name here would make them the same thing.
+ */
+export interface RevenueBreakdown {
+  asOf: string;
+  period: CustomerInvoiceListSummary["period"];
+  axis: RevenueBreakdownAxis;
+  basis: "invoice" | "line";
+  /** Σ of every group's amount, as a decimal string. */
+  total: string;
+  /** Largest first — the order the bars are drawn in, decided by the server. */
+  groups: Array<{
+    id: string | null;
+    name: string | null;
+    amount: string;
+    /** Null on the `customerType` axis, which counts documents instead. */
+    lineCount: number | null;
+    /** Null on the two line axes, which count lines. */
+    invoiceCount: number | null;
+  }>;
+}
+
+/**
  * GET /api/customer-invoices/filter-options — the values that actually appear on
  * this tenant's invoices, labelled. Gated on `customerInvoices:read` only.
  */

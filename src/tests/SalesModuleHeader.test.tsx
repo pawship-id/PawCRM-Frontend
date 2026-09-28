@@ -10,7 +10,7 @@ jest.mock("next/navigation", () => ({
 }));
 
 /**
- * The head of the Penjualan module — four tabs, two of which open on "belum
+ * The head of the Penjualan module — five tabs, two of which open on "belum
  * tersedia", and one of which lives outside the module's own route prefix.
  */
 function tabNames() {
@@ -24,10 +24,20 @@ beforeEach(() => {
 });
 
 describe("SalesModuleHeader", () => {
-  it("draws the mockup's four tabs, every one of them a route", () => {
+  it("draws the mockup's five tabs, every one of them a route", () => {
     renderWithAuth(<SalesModuleHeader />);
 
-    expect(tabNames()).toEqual(["Faktur", "Piutang", "E-commerce", "Retur"]);
+    expect(tabNames()).toEqual([
+      "Ringkasan",
+      "Faktur",
+      "Piutang",
+      "E-commerce",
+      "Retur",
+    ]);
+    expect(screen.getByRole("link", { name: "Ringkasan" })).toHaveAttribute(
+      "href",
+      "/dashboard/sales/ringkasan",
+    );
     expect(screen.getByRole("link", { name: "Piutang" })).toHaveAttribute(
       "href",
       "/dashboard/sales/piutang",
@@ -37,6 +47,20 @@ describe("SalesModuleHeader", () => {
     expect(screen.getByRole("link", { name: "E-commerce" })).toHaveAttribute(
       "href",
       "/dashboard/ecommerce-sync",
+    );
+  });
+
+  it("leaves Faktur at the module's landing route, not Ringkasan", () => {
+    // Every existing link into Penjualan opens /dashboard/sales; a Ringkasan
+    // that took it over would silently redirect all of them.
+    renderWithAuth(<SalesModuleHeader />);
+
+    expect(screen.getByRole("link", { name: "Faktur" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("link", { name: "Ringkasan" })).not.toHaveAttribute(
+      "aria-current",
     );
   });
 
@@ -63,7 +87,7 @@ describe("SalesModuleHeader", () => {
     );
   });
 
-  it("hides Faktur and Piutang from a role that cannot read invoices", () => {
+  it("hides Ringkasan, Faktur and Piutang from a role that cannot read invoices", () => {
     // Who owes the shop money is the sensitive half of this module; the two
     // ungated placeholders ride along because they hold nothing.
     renderWithAuth(<SalesModuleHeader />, {

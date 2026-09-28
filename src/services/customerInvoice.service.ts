@@ -1,5 +1,7 @@
 import { apiClient } from "./api-client";
 import type {
+  RevenueBreakdown,
+  RevenueBreakdownAxis,
   CustomerInvoiceDetail,
   CustomerInvoiceFilterOptions,
   CustomerInvoiceListQuery,
@@ -125,6 +127,23 @@ export const customerInvoiceService = {
     apiClient.get<CustomerInvoiceListSummary>("/customer-invoices/summary", {
       query: filterParams(query),
     }),
+
+  /**
+   * GET /customer-invoices/summary/breakdown/:axis — the Ringkasan tab's bars:
+   * per kategori produk, per lini usaha, or per kategori pelanggan.
+   *
+   * THE SAME `filterParams` AS `list` AND `summary`, for the same reason: the
+   * bars sit under the card, and a filter one honoured and the other ignored
+   * would be two answers to one question on one screen.
+   */
+  revenueBreakdown: (
+    axis: RevenueBreakdownAxis,
+    query: Omit<CustomerInvoiceListQuery, "page" | "limit" | "sort"> = {},
+  ) =>
+    apiClient.get<RevenueBreakdown>(
+      `/customer-invoices/summary/breakdown/${axis}`,
+      { query: filterParams(query) },
+    ),
 
   /**
    * GET /customer-invoices/filter-options — the cabang, gudang and kasir that
