@@ -1167,6 +1167,15 @@ export interface Category {
   cogsAccountId: string | null;
   inventoryAccountId: string | null;
   /**
+   * HOW MANY LIVE PRODUCTS ARE FILED UNDER IT — present only when the read
+   * asked for it (`withProductCount`), which the till's pill row does and
+   * nothing else (28 September 2026).
+   *
+   * ACTIVE products, not merely undeleted: it exists to RANK, and a category
+   * whose stock has all been retired has nothing to sell.
+   */
+  productCount?: number;
+  /**
    * The category this one sits under, or `null` for a top-level category.
    *
    * THE TREE IS EXACTLY TWO DEEP. A category with a `parentId` cannot itself
@@ -1233,6 +1242,11 @@ export const SUB_LEVEL_ONLY = "sub";
 export interface CategoryListQuery {
   page?: number;
   limit?: number;
+  /**
+   * Adds `productCount` to each row. Opt-in: it costs an aggregation over the
+   * products collection, and most readers want a name and an id.
+   */
+  withProductCount?: boolean;
   /**
    * Product only, and the API refuses anything else on this resource. Kept
    * because the field predates the second kind and clients were already sending
