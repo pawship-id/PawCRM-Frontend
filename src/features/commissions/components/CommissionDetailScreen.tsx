@@ -199,7 +199,7 @@ export function CommissionDetailScreen({ bookingId, groomerUserId }: CommissionR
           <Field label="Faktur">
             {detail.invoiceId ? (
               <Link
-                href={`/dashboard/sales/${detail.invoiceId}`}
+                href={`/dashboard/sales/invoice/${detail.invoiceId}`}
                 className="rounded-md tabular-nums text-primary-hover underline-offset-2 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
               >
                 {detail.invoiceNumber ?? "Lihat faktur"}

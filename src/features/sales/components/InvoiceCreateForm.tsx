@@ -235,7 +235,7 @@ function repriced(
  * matter most here — the branch has no code, the shelf is short — arrive while
  * the cursor is somewhere in a table halfway down the page.
  */
-const LIST_PATH = "/dashboard/sales";
+const LIST_PATH = "/dashboard/sales/invoice";
 
 /**
  * The two the PRD names. `manual` is every invoice anybody types here; the other

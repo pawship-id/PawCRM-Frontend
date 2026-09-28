@@ -471,7 +471,7 @@ function documentHref(document: JournalSourceDocument | null): string | null {
     case "cash_transaction":
       return `/dashboard/keuangan/kas-bank/transaksi/${document.id}`;
     case "customer_invoice":
-      return `/dashboard/sales/${document.id}`;
+      return `/dashboard/sales/invoice/${document.id}`;
     default:
       return null;
   }

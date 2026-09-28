@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import type { ReactNode } from "react";
 import { CalendarDays, Store } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -57,13 +56,6 @@ export interface ScopePeriodCardProps {
    * a module's several dates this one is.
    */
   dateLabel: string;
-  /**
-   * One line under the row saying what each control narrows. Required rather than
-   * optional: on every screen using this card the two controls reach DIFFERENT
-   * figures, and a reader comparing a balance with a period beside it deserves
-   * the reason on the page.
-   */
-  note: ReactNode;
 }
 
 /**
@@ -86,6 +78,12 @@ export interface ScopePeriodCardProps {
  * THE PILL ROW CARRIES A VISIBLE CAPTION, which is the condition §8's Transaksi
  * exception attaches to using one at all: `FilterPills` names itself only to a
  * screen reader, and an unlabelled row of five is a filter somebody cannot find.
+ *
+ * IT DRAWS NO EXPLANATORY LINE (29 September 2026, on request). Both callers had
+ * one saying which figures each control reached — that the cabang scoped
+ * everything while the period touched only some of it. Where that distinction
+ * still has to be made, it belongs on the figure it is about (a card's own
+ * caption), not on a filter row somebody reads once and then scrolls past.
  */
 export function ScopePeriodCard({
   branchId,
@@ -97,7 +95,6 @@ export function ScopePeriodCard({
   dateTo,
   onDateRangeChange,
   dateLabel,
-  note,
 }: ScopePeriodCardProps) {
   return (
     <section
@@ -168,8 +165,6 @@ export function ScopePeriodCard({
           onApply={onDateRangeChange}
         />
       )}
-
-      <p className="text-xs text-muted">{note}</p>
     </section>
   );
 }

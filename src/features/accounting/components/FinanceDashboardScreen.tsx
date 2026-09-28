@@ -441,7 +441,7 @@ function PositionRow({
           loading={data.loading}
           href={
             receivables && receivables.totalInvoices > 0
-              ? "/dashboard/sales"
+              ? "/dashboard/sales/invoice"
               : undefined
           }
         />

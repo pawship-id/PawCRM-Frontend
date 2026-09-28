@@ -1498,7 +1498,7 @@ describe("what the form sends", () => {
     await submit();
 
     await waitFor(() =>
-      expect(push).toHaveBeenCalledWith("/dashboard/sales/inv1"),
+      expect(push).toHaveBeenCalledWith("/dashboard/sales/invoice/inv1"),
     );
   });
 

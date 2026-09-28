@@ -264,8 +264,13 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       {
         /**
-         * A LEAF, as the mockup draws it, with its four tabs on the screen (see
-         * SalesModuleHeader): Faktur, Piutang, E-commerce, Retur.
+         * A LEAF, as the mockup draws it, with its five tabs on the screen (see
+         * SalesModuleHeader): Ringkasan, Faktur, Piutang, E-commerce, Retur.
+         *
+         * THE HREF OPENS RINGKASAN, which took `/dashboard/sales` on 29
+         * September 2026 (on request). The invoice list moved a segment down to
+         * `/dashboard/sales/invoice`, so this row still needs no `match` for it:
+         * every sales document is under the prefix this href already covers.
          *
          * `match` reaches OUT OF ITS OWN PREFIX for exactly one of them.
          * E-commerce lives at /dashboard/ecommerce-sync — it predates this

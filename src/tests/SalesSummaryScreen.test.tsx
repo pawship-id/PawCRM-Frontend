@@ -14,7 +14,7 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 jest.mock("@/services/customerInvoice.service");
 
 jest.mock("next/navigation", () => ({
-  usePathname: () => "/dashboard/sales/ringkasan",
+  usePathname: () => "/dashboard/sales",
 }));
 
 const mocked = customerInvoiceService as jest.Mocked<

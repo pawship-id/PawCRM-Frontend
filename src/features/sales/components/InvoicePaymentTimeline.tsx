@@ -53,7 +53,7 @@ export function InvoicePaymentTimeline({
               className="border-b border-border last:border-b-0"
             >
               <Link
-                href={`/dashboard/sales/${invoiceId}/payments/${payment.paymentId}`}
+                href={`/dashboard/sales/invoice/${invoiceId}/payments/${payment.paymentId}`}
                 className="flex min-h-11 items-start gap-3 rounded-lg px-2 py-2.5 transition hover:bg-surface-hover focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
               >
                 <span

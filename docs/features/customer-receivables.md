@@ -1,11 +1,11 @@
 # Faktur Penjualan (customer invoices / receivables)
 
-Sales invoices and what is still owed on them, at **`/dashboard/sales`**.
+Sales invoices and what is still owed on them, at **`/dashboard/sales/invoice`** (the module's landing page, `/dashboard/sales`, is the Ringkasan tab since 29 September 2026).
 Branch: `feature/sales-invoice`.
 
 Two screens: the list, and one invoice with its payment form. Both run against
 `/api/customer-invoices`. This is Sprint 1 of the Sales & Invoice module
-(PCR-032 + PCR-033); `/dashboard/sales` was a `SectionPlaceholder` before it.
+(PCR-032 + PCR-033); `/dashboard/sales` was a `SectionPlaceholder` before it, and held this list until Ringkasan took that address.
 
 ## Read this first: where these come from
 
@@ -150,8 +150,9 @@ different question, and it belongs to reporting.
 
 | Route                    | Guard                     |
 | ------------------------ | ------------------------- |
-| `/dashboard/sales`       | `customerInvoices:read`   |
-| `/dashboard/sales/[id]`  | `customerInvoices:read`   |
+| `/dashboard/sales`               | `customerInvoices:read`   |
+| `/dashboard/sales/invoice`       | `customerInvoices:read`   |
+| `/dashboard/sales/invoice/[id]`  | `customerInvoices:read`   |
 
 The nav entry is gated on `customerInvoices:read` too — it was ungated before,
 because until now there was nothing behind the link to protect.
@@ -448,7 +449,7 @@ transaction. Nothing posted changes in place.
 | Right (sticky) | Status pembayaran, **Riwayat pembayaran** (each row opens the payment's page), Dampak stok, Piutang pelanggan |
 | Foot | **Riwayat aktivitas**, folded, with the entry count on the fold — read with the page so the count is known; no badge while loading or after a failed read |
 
-**One payment has its own page** — `/dashboard/sales/[id]/payments/[paymentId]`,
+**One payment has its own page** — `/dashboard/sales/invoice/[id]/payments/[paymentId]`,
 read-only: its channel, amount, date, reference and journal entry, with
 **Kwitansi** and **Batalkan pembayaran**.
 

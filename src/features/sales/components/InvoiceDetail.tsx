@@ -113,7 +113,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           Nomor ini tidak ada, atau bukan milik tenant Anda.
         </p>
         <Button variant="secondary" asChild>
-          <Link href="/dashboard/sales">← Semua faktur penjualan</Link>
+          <Link href="/dashboard/sales/invoice">← Semua faktur penjualan</Link>
         </Button>
       </div>
     );
@@ -245,7 +245,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
             invoice still prints, stamped as such.
           */}
           <Button variant="secondary" size="sm" asChild>
-            <Link href={`/dashboard/sales/${invoiceId}/print`}>
+            <Link href={`/dashboard/sales/invoice/${invoiceId}/print`}>
               <Printer className="size-4" />
               Cetak
             </Link>

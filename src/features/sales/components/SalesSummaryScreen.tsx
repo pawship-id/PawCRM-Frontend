@@ -95,14 +95,6 @@ export function SalesSummaryScreen() {
           setQuery({ dateFrom: from, dateTo: to })
         }
         dateLabel="Tanggal faktur"
-        note={
-          <>
-            Cabang dan periode menyaring semua angka di halaman ini — omzet dan
-            ketiga rincian di bawahnya. Periode membatasi{" "}
-            <b className="font-semibold">tanggal faktur</b>, bukan tanggal
-            pembayarannya.
-          </>
-        }
       />
 
       <section
@@ -147,7 +139,7 @@ export function SalesSummaryScreen() {
         <p className="mt-1 text-sm text-muted">
           Status faktur — belum lunas, jatuh tempo, tertagih — tetap di tab{" "}
           <Link
-            href="/dashboard/sales"
+            href="/dashboard/sales/invoice"
             className="text-primary underline-offset-2 hover:underline"
           >
             Faktur

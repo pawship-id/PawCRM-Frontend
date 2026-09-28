@@ -103,7 +103,7 @@ export function CustomerValueSection({ customerId }: { customerId: string }) {
         Hanya penjualan yang menjadi faktur. Transaksi kasir yang langsung lunas
         tidak menerbitkan faktur, jadi tidak ikut dihitung di sini —{" "}
         <Link
-          href="/dashboard/sales"
+          href="/dashboard/sales/invoice"
           className="text-primary underline-offset-2 hover:underline"
         >
           rinciannya ada di Penjualan › Faktur

@@ -134,7 +134,7 @@ describe("InvoicePaymentDetail — what it shows", () => {
     expect(screen.getByText("Transfer — BCA Operasional")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /INV-2026-0042 →/ }),
-    ).toHaveAttribute("href", "/dashboard/sales/inv1");
+    ).toHaveAttribute("href", "/dashboard/sales/invoice/inv1");
     // The same number, also in the Rincian pembayaran field.
     expect(screen.getAllByText("PMT-2026-0001").length).toBeGreaterThan(0);
   });
@@ -175,7 +175,7 @@ describe("InvoicePaymentDetail — what it shows", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /Kembali ke faktur/ }),
-    ).toHaveAttribute("href", "/dashboard/sales/inv1");
+    ).toHaveAttribute("href", "/dashboard/sales/invoice/inv1");
   });
 });
 

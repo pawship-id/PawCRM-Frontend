@@ -127,7 +127,7 @@ export function ReceivablesScreen() {
           */
           <Can feature="customerInvoices" action="create">
             <UIButton asChild size="lg">
-              <Link href="/dashboard/sales/new">
+              <Link href="/dashboard/sales/invoice/new">
                 <Plus className="size-4" />
                 Buat faktur
               </Link>
