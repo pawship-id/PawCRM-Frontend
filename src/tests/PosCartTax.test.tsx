@@ -71,6 +71,7 @@ const open = (runningTotals: PosRunningTotals) =>
       onQtyChange={jest.fn()}
       onRemove={jest.fn()}
       onItemDiscount={jest.fn()}
+      onLinePrice={jest.fn()}
       onCartDiscount={jest.fn()}
       onCharges={jest.fn()}
       onHold={jest.fn()}

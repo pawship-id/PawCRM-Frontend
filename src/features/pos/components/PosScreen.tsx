@@ -498,6 +498,9 @@ export function PosScreen() {
           busy={cart.busy}
           error={cart.error}
           onQtyChange={(index, qty) => void cart.setQty(index, qty)}
+          onLinePrice={(index, unitPrice) =>
+            void cart.setLinePrice(index, unitPrice)
+          }
           onRemove={(index) => void cart.removeItem(index)}
           onItemDiscount={(index, discount) =>
             void cart.setItemDiscount(index, discount)

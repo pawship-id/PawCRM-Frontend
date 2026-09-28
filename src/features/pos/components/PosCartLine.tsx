@@ -10,6 +10,7 @@ import type { PosItem, PosDiscountMode } from "@/types/api";
 import { ownDiscountOf } from "../bookingDiscount";
 import { variantDetailOf } from "../variantDetail";
 import { PosDiscountPopover } from "./PosDiscountPopover";
+import { PosLinePrice } from "./PosLinePrice";
 
 /**
  * One line in the basket.
@@ -30,6 +31,8 @@ export function PosCartLine({
   onQtyChange,
   onRemove,
   onDiscountChange,
+  onPriceChange,
+  maySetPrice = false,
   disabled = false,
 }: {
   item: PosItem;
@@ -62,6 +65,15 @@ export function PosCartLine({
     index: number,
     discount: { mode: PosDiscountMode; value: string } | null,
   ) => void;
+  /**
+   * Typing a price over the catalogue's — `null` puts the line back to it.
+   *
+   * ABSENT MEANS THE PRICE IS READ-ONLY, which is how every caller that has
+   * nothing to do with re-pricing keeps the line exactly as it was.
+   */
+  onPriceChange?: (index: number, unitPrice: string | null) => void;
+  /** `posTransactions:setPrice`. See PosLinePrice. */
+  maySetPrice?: boolean;
   disabled?: boolean;
 }) {
   const qty = Number(item.qty);
@@ -179,7 +191,13 @@ export function PosCartLine({
           )}
 
           <span className="mt-0.5 block text-xs tabular-nums text-muted">
-            {formatMoney(item.unitPrice)}
+            <PosLinePrice
+              item={item}
+              label={`Harga ${item.name}`}
+              editable={maySetPrice && onPriceChange !== undefined}
+              disabled={disabled}
+              onChange={(unitPrice) => onPriceChange?.(index, unitPrice)}
+            />
             {/*
               ITS OWN DISCOUNT ONLY — the booking's share of "Diskon seluruh
               booking" is shown once, under the booking (see `PosCart`).
@@ -319,6 +337,7 @@ export function PosCartLine({
             value={ownDiscountOf(item)}
             disabled={disabled}
             label={`Diskon ${item.name}`}
+            subject={item.name}
             onApply={(discount) => onDiscountChange(index, discount)}
           />
           {/*

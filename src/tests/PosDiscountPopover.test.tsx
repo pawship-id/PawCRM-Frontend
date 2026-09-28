@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { PosDiscountPopover } from "@/features/pos/components/PosDiscountPopover";
 import type { PosDiscount } from "@/types/api";
@@ -107,5 +108,119 @@ describe("what the badge says", () => {
       />);
 
     expect(badge()).toHaveTextContent(/^$/);
+  });
+});
+
+/**
+ * ─── THE PANEL ITSELF — 28 September 2026, on request ────────────────────────
+ *
+ * It was cramped in a way that read as a broken form: the heading was the
+ * TRIGGER's accessible name, so a product name ran to two lines and shoved the
+ * mode buttons down the panel, and the number box carried no unit at all — a
+ * bare "5" in a panel that can mean 5 percent or 5 rupiah, which are a
+ * thousandfold apart.
+ */
+const LONG = "Cat Choise Adult — 1kg / Chicken / Orange";
+
+const openPanel = async (value: PosDiscount | null) => {
+  render(
+    <PosDiscountPopover
+      value={value}
+      label={`Diskon ${LONG}`}
+      subject={LONG}
+      onApply={() => {}}
+    />,
+  );
+  await userEvent.click(badge());
+  return screen.getByRole("dialog");
+};
+
+describe("the panel", () => {
+  it("heads itself with one word and leaves the long name to a subtitle", async () => {
+    const panel = await openPanel(null);
+
+    /*
+      THE HEADING IS A FIXED WORD. `getByText` with an exact string is the
+      point of this assertion: the moment the heading goes back to carrying the
+      item name, it stops matching.
+    */
+    expect(within(panel).getByText("Diskon")).toBeVisible();
+    // The name is still there — as a subtitle, with the whole of it on hover.
+    expect(within(panel).getByText(LONG)).toHaveAttribute("title", LONG);
+  });
+
+  it("keeps the long name on the trigger, where a screen reader needs it", async () => {
+    await openPanel(null);
+
+    // Twelve buttons all called "Diskon" tell somebody navigating by button
+    // exactly nothing about which line they are on.
+    expect(badge()).toHaveAccessibleName(`Diskon ${LONG}`);
+  });
+
+  it("says which unit the number is in, in both modes", async () => {
+    const panel = await openPanel(null);
+
+    expect(within(panel).getByText("%")).toBeVisible();
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Nominal" }));
+
+    expect(within(panel).getByText("Rp")).toBeVisible();
+    expect(within(panel).queryByText("%")).not.toBeInTheDocument();
+  });
+
+  /*
+    A GREYED "Hapus diskon" ON A LINE THAT HAS NONE is a third of the footer
+    spent saying nothing, and it made Terapkan read as half of a pair rather
+    than as the action of the panel.
+  */
+  it("offers Hapus only when there is a discount to remove", async () => {
+    const panel = await openPanel(null);
+
+    expect(
+      within(panel).queryByRole("button", { name: /Hapus diskon/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    ─── THE PANEL OPENED ON ITS OWN ERROR ───────────────────────────────────
+
+    A stored discount carries the LEDGER'S SCALE — 5% is "5.0000" — and the
+    percent field allows two decimals. So re-opening an existing discount drew
+    "Isi persentase 0–100" under a box nobody had touched and greyed out
+    Terapkan: adjusting a discount meant clearing the field and retyping it.
+  */
+  it("opens an existing percentage ready to apply, not ready to complain", async () => {
+    const panel = await openPanel(
+      discount({ mode: "percent", value: "5.0000", resolvedAmount: "5000.0000" }),
+    );
+
+    expect(within(panel).getByRole("textbox", { name: /persen/i })).toHaveValue("5");
+    expect(
+      within(panel).queryByText(/Isi persentase/),
+    ).not.toBeInTheDocument();
+    expect(
+      within(panel).getByRole("button", { name: "Terapkan" }),
+    ).toBeEnabled();
+  });
+
+  it("opens an existing nominal discount as whole rupiah", async () => {
+    const panel = await openPanel(
+      discount({ mode: "amount", value: "15000.0000", resolvedAmount: "15000.0000" }),
+    );
+
+    // ".0000" would fail WHOLE_RUPIAH, which is what decides whether Terapkan
+    // can be pressed at all.
+    expect(within(panel).getByRole("textbox", { name: /rupiah/i })).toHaveValue("15000");
+    expect(
+      within(panel).getByRole("button", { name: "Terapkan" }),
+    ).toBeEnabled();
+  });
+
+  it("offers Hapus once a discount is on the line", async () => {
+    const panel = await openPanel(discount());
+
+    expect(
+      within(panel).getByRole("button", { name: /Hapus diskon/ }),
+    ).toBeVisible();
   });
 });

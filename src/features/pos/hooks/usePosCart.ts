@@ -37,6 +37,8 @@ interface UsePosCartResult {
   open: (cart: PosTransaction | null) => void;
   addItem: (tile: PosCatalogItem) => Promise<void>;
   setQty: (index: number, qty: string) => Promise<void>;
+  /** Type a price over the catalogue's; `null` puts the line back to it. */
+  setLinePrice: (index: number, unitPrice: string | null) => Promise<void>;
   /**
    * Takes lines out of the basket — one, or a run of them in ONE write.
    *
@@ -285,6 +287,20 @@ export function usePosCart(): UsePosCartResult {
         refId: item.refId,
         qty: item.qty,
         /*
+          A TYPED PRICE IS RE-SENT, OR IT EVAPORATES (28 September 2026).
+
+          The server rebuilds every line from this payload on each write, so an
+          override left out of the next one — stepping the quantity of a bag of
+          feed three lines down — would quietly put this line back to the shelf
+          price with nothing on screen saying so.
+
+          `listPrice` IS THE FLAG. It is non-null only when the two differ, so
+          this sends a price exactly for the lines that have one and leaves
+          every ordinary line alone — which matters, because sending a price at
+          all is what makes the server ask for `posTransactions:setPrice`.
+        */
+        ...(item.listPrice ? { unitPrice: item.unitPrice } : {}),
+        /*
           THE LINE'S OWN DISCOUNT, never the whole of it. A booking's share of
           "Diskon seluruh booking" rides inside the stored figure, and the server
           adds it back from the booking — sending it too would count it twice.
@@ -448,6 +464,36 @@ export function usePosCart(): UsePosCartResult {
     [itemsAsInput, send],
   );
 
+  /**
+   * Type a price over the catalogue's, or put the line back to it.
+   *
+   * `null` IS THE WAY BACK. Sending no `unitPrice` at all is what makes the
+   * server re-read the catalogue, so "reset" is the absence of the field rather
+   * than a second verb — and the cashier gets the shelf price of TODAY, which
+   * is the only honest answer to "what should this cost".
+   */
+  const setLinePrice = useCallback(
+    async (index: number, unitPrice: string | null) => {
+      const items = itemsAsInput();
+      if (!items[index]) return;
+
+      /*
+        REBUILT WITHOUT THE FIELD, rather than set to undefined: `itemsAsInput`
+        adds `unitPrice` only for a line that already carries an override, and
+        clearing one has to REMOVE it — an explicit `undefined` would serialise
+        the key away anyway, but leaves a payload whose shape says "I meant to
+        send this" to anyone reading it.
+      */
+      const next = { ...items[index] };
+      delete next.unitPrice;
+      if (unitPrice !== null) next.unitPrice = unitPrice;
+      items[index] = next;
+
+      await send({ items });
+    },
+    [itemsAsInput, send],
+  );
+
   const setItemDiscount = useCallback(
     async (index: number, discount: UpdateCartInput["cartDiscount"]) => {
       const items = itemsAsInput();
@@ -569,6 +615,7 @@ export function usePosCart(): UsePosCartResult {
     addItem,
     addServices,
     setQty,
+    setLinePrice,
     removeItem,
     setItemDiscount,
     setCartDiscount,

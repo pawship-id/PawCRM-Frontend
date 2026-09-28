@@ -1695,6 +1695,16 @@ export interface PosItem {
   qty: string;
   unitPrice: string;
   /**
+   * WHAT THE CATALOGUE SAID, when the cashier typed something else
+   * (28 September 2026). Null on every ordinary line, which is nearly all of
+   * them — its presence IS the flag that this line was re-priced.
+   *
+   * It cannot be looked up later: a shelf price moves, so the figure has to be
+   * frozen at the moment of sale for the question "sold below list?" to stay
+   * answerable. Optional only because older fixtures lack it.
+   */
+  listPrice?: string | null;
+  /**
    * `qty × unitPrice`, GROSS — before this line's own discount.
    *
    * Read, never recomputed. Multiplying qty by price here would round
@@ -2423,6 +2433,18 @@ export interface PosItemInput {
   kind: PosItemKind;
   refId: string;
   qty?: string;
+  /**
+   * A PRICE TYPED OVER THE CATALOGUE'S (28 September 2026). Refused with 403
+   * unless the cashier holds `posTransactions:setPrice`.
+   *
+   * ⚠️ SEND IT ON EVERY WRITE once a line carries one, exactly as
+   * `variantChoices` is sent: the server rebuilds each line from this payload,
+   * so an override left out of the next write — changing the quantity of some
+   * other line — silently reverts that line to the shelf price.
+   *
+   * Omitted means "whatever the catalogue says", which is nearly every line.
+   */
+  unitPrice?: string;
   discount?: {
     mode: PosDiscountMode;
     value: string;

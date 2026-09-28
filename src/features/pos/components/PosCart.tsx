@@ -10,6 +10,7 @@ import {
   subtractDecimals,
   sumDecimals,
 } from "@/utils/decimal";
+import { usePermissions } from "@/features/permissions";
 import type { PosDiscountMode, PosItem, PosTransaction } from "@/types/api";
 
 import { bookingShareOf } from "../bookingDiscount";
@@ -144,6 +145,7 @@ export function PosCart({
   busy,
   error,
   onQtyChange,
+  onLinePrice,
   onRemove,
   onItemDiscount,
   onCartDiscount,
@@ -165,6 +167,8 @@ export function PosCart({
     index: number,
     discount: { mode: PosDiscountMode; value: string } | null,
   ) => void;
+  /** Typing a price over the catalogue's; `null` puts the line back to it. */
+  onLinePrice: (index: number, unitPrice: string | null) => void;
   onCartDiscount: (
     discount: { mode: PosDiscountMode; value: string } | null,
   ) => void;
@@ -180,6 +184,7 @@ export function PosCart({
   /** FR-3's booking banner and button, or nothing without a customer. */
   bookingSlot?: React.ReactNode;
 }) {
+  const { can } = usePermissions();
   const items = cart?.items ?? [];
   const totals = cart?.runningTotals;
   const empty = items.length === 0;
@@ -265,6 +270,13 @@ export function PosCart({
                   onQtyChange={onQtyChange}
                   onRemove={onRemove}
                   onDiscountChange={onItemDiscount}
+                  onPriceChange={onLinePrice}
+                  /*
+                    READ FROM THE GRANT, not passed down as a flag somebody
+                    might forget to set: a price box drawn for a cashier the
+                    server will refuse is a control that exists to fail.
+                  */
+                  maySetPrice={can("posTransactions", "setPrice")}
                 />
               ))}
             </div>
