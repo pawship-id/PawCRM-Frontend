@@ -1455,7 +1455,13 @@ export interface Customer {
   picName: string | null;
   /** What the shop needs to remember. Read at the till and on a booking card. */
   notes: string | null;
-  notifications: CustomerNotifications;
+  /**
+   * ⚠️ ABSENT ON A CUSTOMER WRITTEN BEFORE THE FIELD — the API reads with
+   * `.lean()`, which skips the schema defaults behind it, exactly as `location`
+   * below is absent for its own reason. Never read a flag off this directly;
+   * `customerNotifications()` resolves it against the model's defaults.
+   */
+  notifications?: CustomerNotifications;
   /**
    * The address's coordinates (17 September 2026) — what a service priced by
    * Zona is quoted from, measured to the transaction's branch. `{lat: null,

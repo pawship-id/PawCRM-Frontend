@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { CustomersTable } from "@/features/customers/components/CustomersTable";
@@ -52,6 +52,18 @@ const customer: Customer = {
  * tempting tidy-up; the badge in the header is what keeps an empty cell from
  * reading as a failed load.
  */
+/**
+ * The row's actions live behind one kebab since 28 September 2026, so every
+ * assertion about them opens it first. Named after the customer, because that
+ * is what the trigger's accessible name says.
+ */
+async function openRowMenu(name: string) {
+  await userEvent.click(
+    screen.getByRole("button", { name: `Aksi untuk ${name}` }),
+  );
+  return screen.getByRole("menu");
+}
+
 describe("customers table", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -80,10 +92,35 @@ describe("customers table", () => {
   it("does not navigate when a control inside the row is pressed", async () => {
     renderTable();
 
-    // The chat link is a control with its own job; the row must keep its hands off.
-    await userEvent.click(screen.getByRole("link", { name: /^Chat WhatsApp/ }));
+    /*
+      Opening the kebab is that button's job; the row must keep its hands off,
+      or the menu would close onto the profile before anything could be picked.
+      It was the chat link that proved this before chat moved to the profile.
+    */
+    await userEvent.click(
+      screen.getByRole("button", { name: "Aksi untuk Rina Wijaya" }),
+    );
 
     expect(push).not.toHaveBeenCalled();
+    expect(screen.getByRole("menu")).toBeVisible();
+  });
+
+  /*
+    CHAT LEFT THIS TABLE ON 28 SEPTEMBER 2026, on request: it lives on the
+    profile alone. It was the one action here that left the app entirely, and a
+    menu row beside Hapus is a worse home for it than its own icon was.
+  */
+  it("offers no WhatsApp shortcut — that belongs to the profile now", async () => {
+    renderTable();
+
+    expect(
+      screen.queryByRole("link", { name: /Chat WhatsApp/ }),
+    ).not.toBeInTheDocument();
+
+    const menu = await openRowMenu("Rina Wijaya");
+    expect(
+      within(menu).queryByRole("menuitem", { name: /chat/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps the name reachable as a link, not only as a row click", async () => {
@@ -97,13 +134,22 @@ describe("customers table", () => {
     );
   });
 
-  it("sends Ubah to the form, one route under the profile", () => {
+  it("holds Detail, Ubah and Hapus behind one kebab", async () => {
     renderTable();
 
-    expect(screen.getByRole("link", { name: /^Ubah/ })).toHaveAttribute(
+    const menu = await openRowMenu("Rina Wijaya");
+
+    expect(within(menu).getByRole("menuitem", { name: /detail/i })).toHaveAttribute(
+      "href",
+      "/dashboard/master/customers/5a7f1f77bcf86cd799439022",
+    );
+    expect(within(menu).getByRole("menuitem", { name: /ubah/i })).toHaveAttribute(
       "href",
       "/dashboard/master/customers/5a7f1f77bcf86cd799439022/edit",
     );
+    expect(
+      within(menu).getByRole("menuitem", { name: /hapus/i }),
+    ).toBeInTheDocument();
   });
 
   it("draws every column the mockup asks for, none of them badged", () => {
@@ -163,11 +209,19 @@ describe("customers table", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("offers Pulihkan instead of the edit shortcuts on a deleted row", () => {
+  it("offers Pulihkan alone on a deleted row", async () => {
     renderTable({ deletedAt: "2026-09-20T00:00:00.000Z" });
 
-    expect(screen.getByRole("button", { name: /Pulihkan/ })).toBeVisible();
     expect(screen.getByText("Terhapus")).toBeVisible();
-    expect(screen.queryByRole("link", { name: /^Ubah/ })).not.toBeInTheDocument();
+
+    /*
+      A DELETED CUSTOMER HAS NO PROFILE to open and nothing to edit, so
+      restoring is the whole menu — not one option among three.
+    */
+    const menu = await openRowMenu("Rina Wijaya");
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(1);
+    expect(
+      within(menu).getByRole("menuitem", { name: /pulihkan/i }),
+    ).toBeInTheDocument();
   });
 });

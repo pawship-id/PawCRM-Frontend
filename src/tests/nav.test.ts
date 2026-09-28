@@ -232,15 +232,28 @@ describe("filterNavItems", () => {
     back to the single row — and `match` is what keeps it lit while the reader is
     on the tab that lives outside its own href.
   */
-  it("carries Pelanggan as one row, not a group", () => {
+  it("carries Pelanggan as one row, opening on Ringkasan", () => {
     const pelanggan = groupOf("Pelanggan");
     expect(pelanggan?.children).toBeUndefined();
-    expect(pelanggan?.href).toBe("/dashboard/master/customers");
+    /*
+      THE FRONT PAGE, NOT THE REGISTER (28 September 2026, on request):
+      Ringkasan is the module's first tab and what somebody opens it to find
+      out. The register is a screen you go to already knowing a name.
+    */
+    expect(pelanggan?.href).toBe("/dashboard/master/customers/ringkasan");
   });
 
-  it("keeps the Pelanggan row lit on the Hewan tab and its detail routes", () => {
+  it("keeps the Pelanggan row lit on every one of its tabs", () => {
     const pelanggan = groupOf("Pelanggan")!;
+    expect(isActive(pelanggan, "/dashboard/master/customers/ringkasan")).toBe(true);
+    /*
+      THE REGISTER IS THE ONE THAT WOULD HAVE GONE DARK. `href` is prefix
+      matched and `/…/customers/ringkasan` is not a prefix of `/…/customers`,
+      so the row only stays lit here because the register is listed in `match`.
+    */
     expect(isActive(pelanggan, "/dashboard/master/customers")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/master/customers/507f1f")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/master/customers/membership")).toBe(true);
     expect(isActive(pelanggan, "/dashboard/master/pets")).toBe(true);
     expect(isActive(pelanggan, "/dashboard/master/pets/507f1f")).toBe(true);
     // A sibling under the same /master prefix must not borrow the row.

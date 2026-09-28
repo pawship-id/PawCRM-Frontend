@@ -20,6 +20,10 @@ import type {
   VipTier,
 } from "@/types/api";
 
+import {
+  customerNotifications,
+  DEFAULT_CUSTOMER_NOTIFICATIONS,
+} from "../notifications";
 import { VipTierSelect } from "./VipTierSelect";
 
 /**
@@ -64,12 +68,9 @@ export function emptyCustomerForm(): CustomerFormValue {
     vipTier: "",
     notes: "",
     // The mockup's own: the two service messages on, marketing off. Promo is
-    // opted INTO, never out of.
-    notifications: {
-      bookingReminder: true,
-      membershipRenewal: true,
-      promo: false,
-    },
+    // opted INTO, never out of. Shared with `customerToForm` so a blank form
+    // and an old customer with no stored flags start from the same answer.
+    notifications: { ...DEFAULT_CUSTOMER_NOTIFICATIONS },
   };
 }
 
@@ -87,7 +88,13 @@ export function customerToForm(customer: Customer): CustomerFormValue {
     picName: customer.picName ?? "",
     vipTier: customer.vipTier ?? "",
     notes: customer.notes ?? "",
-    notifications: { ...customer.notifications },
+    /*
+      RESOLVED, NOT SPREAD. Spreading an absent `notifications` used to leave
+      all three flags `undefined`, which drew the boxes unticked and then SAVED
+      them as false — quietly opting the customer out of reminders nobody had
+      asked them about. See features/customers/notifications.ts.
+    */
+    notifications: customerNotifications(customer),
   };
 }
 

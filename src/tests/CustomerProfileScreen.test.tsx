@@ -190,6 +190,55 @@ describe("customer profile", () => {
     ).toBeVisible();
   });
 
+  /*
+    ─── THE CRASH OF 28 SEPTEMBER 2026 ───────────────────────────────────────
+
+    `customer.notifications` is ABSENT on every record written before the field
+    existed — 9 of 10 on the development database — because the API reads with
+    `.lean()`, which skips the schema defaults behind it. Reading a flag off it
+    threw "Cannot read properties of undefined" and took the whole profile down.
+
+    THE DEFAULTS ARE NOT `false`, which is the half worth guarding: an absent
+    record means the shop never asked, and `customer.model.js` would have
+    written both service messages ON. Rendering "Tidak mengizinkan" instead
+    would invent a refusal the customer never gave.
+  */
+  it("renders a customer whose notifications were never stored, using the model's defaults", async () => {
+    const { notifications, ...withoutNotifications } = customer;
+    void notifications;
+    mockedCustomers.getById.mockResolvedValue(
+      withoutNotifications as typeof customer,
+    );
+
+    renderWithAuth(<CustomerProfileScreen id={customer._id} />);
+
+    await screen.findByRole("heading", { level: 1, name: "Rina Wijaya" });
+    expect(
+      screen.getByText(/pengingat booking · perpanjangan membership/),
+    ).toBeVisible();
+    expect(
+      screen.queryByText(/Tidak mengizinkan pesan otomatis/),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says nobody is opted in when all three flags are stored false", async () => {
+    mockedCustomers.getById.mockResolvedValue({
+      ...customer,
+      notifications: {
+        bookingReminder: false,
+        membershipRenewal: false,
+        promo: false,
+      },
+    });
+
+    renderWithAuth(<CustomerProfileScreen id={customer._id} />);
+
+    await screen.findByRole("heading", { level: 1, name: "Rina Wijaya" });
+    expect(
+      screen.getByText(/Tidak mengizinkan pesan otomatis/),
+    ).toBeVisible();
+  });
+
   it("still marks Tag as coming rather than leaving the row out", async () => {
     renderWithAuth(<CustomerProfileScreen id={customer._id} />);
 

@@ -14,6 +14,7 @@ import { customerService } from "@/services/customer.service";
 import type { Customer } from "@/types/api";
 import { whatsAppLink } from "@/utils/phone";
 
+import { customerNotifications } from "../notifications";
 import { CustomerHistorySection } from "./CustomerHistorySection";
 import { CustomerValueSection } from "./CustomerValueSection";
 import { CustomerVipBadge, CustomerStatusBadge } from "./CustomerVipBadge";
@@ -355,10 +356,17 @@ export function CustomerProfileScreen({ id }: { id: string }) {
  * is what stops the list reading as a promise the shop is already keeping.
  */
 function Consents({ customer }: { customer: Customer }) {
+  /*
+    RESOLVED AGAINST THE MODEL'S DEFAULTS. Reading the flags straight off the
+    customer threw "Cannot read properties of undefined" for every record
+    written before the field existed — most of them — because the API reads
+    with `.lean()` and `.lean()` skips schema defaults.
+  */
+  const notifications = customerNotifications(customer);
   const on = [
-    customer.notifications.bookingReminder && "pengingat booking",
-    customer.notifications.membershipRenewal && "perpanjangan membership",
-    customer.notifications.promo && "promo",
+    notifications.bookingReminder && "pengingat booking",
+    notifications.membershipRenewal && "perpanjangan membership",
+    notifications.promo && "promo",
   ].filter(Boolean) as string[];
 
   return (

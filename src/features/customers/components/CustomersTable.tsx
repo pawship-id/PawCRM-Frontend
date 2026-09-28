@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MessageCircle, Pencil, Trash2, RotateCcw } from "lucide-react";
+import { EllipsisVertical, Eye, Pencil, Trash2, RotateCcw } from "lucide-react";
 
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
@@ -11,6 +11,12 @@ import { swalToast } from "@/lib/swal";
 import { ConfirmDialog, HighlightText } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -21,7 +27,6 @@ import {
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
 import type { Customer } from "@/types/api";
-import { whatsAppLink } from "@/utils/phone";
 
 import { CustomerVipBadge, CustomerStatusBadge } from "./CustomerVipBadge";
 
@@ -91,16 +96,14 @@ export function CustomersTable({
   const [actionError, setActionError] = useState<string | null>(null);
   const { can } = usePermissions();
 
-  // Show the Aksi column only when at least one CURRENTLY-LISTED row would render
-  // a button — so a restore-only role sees the column while "show deleted" is on
-  // (deleted rows → Pulihkan) but not while it is off. Chat counts: it needs no
-  // grant beyond reading the list, so any row with a readable number has one.
+  /*
+    A LIVE ROW ALWAYS HAS ONE — Detail, which needs no grant beyond the
+    `customers:read` this table already required (28 September 2026). Only a
+    DELETED row can come up empty: there is no profile to open for one, so the
+    column is worth drawing only if it can be restored.
+  */
   const rowHasActions = (customer: Customer) =>
-    customer.deletedAt !== null
-      ? can("customers", "restore")
-      : can("customers", "update") ||
-        can("customers", "delete") ||
-        whatsAppLink(customer.phone) !== null;
+    customer.deletedAt === null || can("customers", "restore");
   const showActions = customers.some(rowHasActions);
 
   function closeDialog() {
@@ -162,8 +165,6 @@ export function CustomersTable({
           <TableBody>
             {customers.map((customer) => {
               const deleted = customer.deletedAt !== null;
-              const chat = whatsAppLink(customer.phone);
-
               return (
                 <TableRow
                   key={customer._id}
@@ -177,7 +178,8 @@ export function CustomersTable({
                       and navigate away from the question being answered.
 
                       And a click on a control inside the row is that control's,
-                      not the row's — otherwise "chat" would also navigate.
+                      not the row's — otherwise opening the kebab would also
+                      navigate.
                     */
                     const target = event.target as HTMLElement;
                     if (!event.currentTarget.contains(target)) return;
@@ -272,85 +274,92 @@ export function CustomersTable({
                   </TableCell>
                   {showActions && (
                     <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        {deleted ? (
-                          <Can feature="customers" action="restore">
+                      {/*
+                        ONE KEBAB PER ROW (28 September 2026, on request),
+                        matching BranchesTable and PetOptionsTable — the pattern
+                        this app already uses for a row with several things to
+                        do. It replaced three icon-only buttons, which is also
+                        what gives the wide columns beside it their width back.
+
+                        DETAIL IS UNGATED beyond the `customers:read` this table
+                        already required, so a reader opens the menu and finds
+                        exactly one row rather than a button opening onto
+                        nothing.
+
+                        ⚠️ CHAT IS NOT HERE, and deliberately: it lives on the
+                        profile alone now (on request). It was the one action in
+                        this cell that left the app entirely, and putting it a
+                        keystroke away from Hapus in a menu is worse than having
+                        it as its own icon — the reason it is gone rather than
+                        moved into the list below.
+                      */}
+                      <div className="flex items-center justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                setPending({ kind: "restore", customer })
-                              }
+                              className="size-9"
+                              disabled={busy}
+                              // Names the row: twenty identical "Aksi" buttons
+                              // tell a screen reader nothing.
+                              aria-label={`Aksi untuk ${customer.name}`}
                             >
-                              <RotateCcw className="size-4" />
-                              Pulihkan
+                              <EllipsisVertical className="size-4" />
                             </Button>
-                          </Can>
-                        ) : (
-                          <>
-                            {/*
-                              ICON-ONLY, and each one carries its own label for
-                              the people who cannot see it. Three words per row
-                              across a table this wide pushed Bergabung off a
-                              laptop screen; the mockup draws icons here for the
-                              same reason. `size="icon"` (36px) is the floor
-                              ui-rules §1.5 sets for an icon-only control, not
-                              `icon-sm` — 32px is below it even before the hit
-                              area is counted.
+                          </DropdownMenuTrigger>
 
-                              A NEW TAB, because WhatsApp Web replacing the list
-                              loses the reader's place in it — and `rel` because
-                              `target="_blank"` without it hands the opened page a
-                              handle on this one.
-                            */}
-                            {chat && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                asChild
-                                title={`Chat WhatsApp ${customer.name}`}
-                              >
-                                <a
-                                  href={chat}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  aria-label={`Chat WhatsApp ${customer.name}`}
+                          <DropdownMenuContent align="end">
+                            {deleted ? (
+                              /*
+                                A DELETED CUSTOMER HAS NO PROFILE to open and
+                                nothing to edit — restoring is the only move
+                                left, so it is the only row here.
+                              */
+                              <Can feature="customers" action="restore">
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    setPending({ kind: "restore", customer })
+                                  }
                                 >
-                                  <MessageCircle className="size-4" />
-                                </a>
-                              </Button>
+                                  <RotateCcw />
+                                  Pulihkan
+                                </DropdownMenuItem>
+                              </Can>
+                            ) : (
+                              <>
+                                <DropdownMenuItem asChild>
+                                  <Link
+                                    href={`/dashboard/master/customers/${customer._id}`}
+                                  >
+                                    <Eye />
+                                    Detail
+                                  </Link>
+                                </DropdownMenuItem>
+                                <Can feature="customers" action="update">
+                                  <DropdownMenuItem asChild>
+                                    <Link
+                                      href={`/dashboard/master/customers/${customer._id}/edit`}
+                                    >
+                                      <Pencil />
+                                      Ubah
+                                    </Link>
+                                  </DropdownMenuItem>
+                                </Can>
+                                <Can feature="customers" action="delete">
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onSelect={() =>
+                                      setPending({ kind: "delete", customer })
+                                    }
+                                  >
+                                    <Trash2 />
+                                    Hapus
+                                  </DropdownMenuItem>
+                                </Can>
+                              </>
                             )}
-                            <Can feature="customers" action="update">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                asChild
-                                title={`Ubah ${customer.name}`}
-                              >
-                                <Link
-                                  href={`/dashboard/master/customers/${customer._id}/edit`}
-                                  aria-label={`Ubah ${customer.name}`}
-                                >
-                                  <Pencil className="size-4" />
-                                </Link>
-                              </Button>
-                            </Can>
-                            <Can feature="customers" action="delete">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="text-danger hover:bg-danger/10 hover:text-danger"
-                                title={`Hapus ${customer.name}`}
-                                aria-label={`Hapus ${customer.name}`}
-                                onClick={() =>
-                                  setPending({ kind: "delete", customer })
-                                }
-                              >
-                                <Trash2 className="size-4" />
-                              </Button>
-                            </Can>
-                          </>
-                        )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   )}

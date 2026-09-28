@@ -234,10 +234,28 @@ export const NAV_SECTIONS: NavSection[] = [
          * granted pets alone would reach /dashboard/master/pets by URL only.
          */
         label: "Pelanggan",
-        href: "/dashboard/master/customers",
+        /*
+          IT OPENS ON RINGKASAN, not on the register (28 September 2026, on
+          request). Ringkasan is the module's FRONT PAGE and the first tab —
+          who has stopped coming, who has just arrived — which is what somebody
+          opens the module to find out. The register is where you go when you
+          already know whose name you are after.
+
+          SAME GRANT EITHER WAY, so this does not break the rule above that a
+          gated href must match the row's own `permission`: the Ringkasan route
+          is gated on `customers:read` exactly as the register is.
+        */
+        href: "/dashboard/master/customers/ringkasan",
         icon: Users,
         permission: { feature: "customers", action: "read" },
-        match: ["/dashboard/master/pets"],
+        /*
+          THE REGISTER IS A `match` NOW, and it has to be: `href` is prefix
+          matched, and `/…/customers/ringkasan` is not a prefix of
+          `/…/customers`, so without this the row would go dark the moment the
+          reader opened the Pelanggan tab. Listed as a prefix, it also covers
+          Membership, Riwayat and every customer detail route in one entry.
+        */
+        match: ["/dashboard/master/customers", "/dashboard/master/pets"],
       },
     ],
   },

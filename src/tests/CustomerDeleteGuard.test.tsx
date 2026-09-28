@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { CustomersTable } from "@/features/customers/components/CustomersTable";
@@ -61,15 +61,22 @@ const customer: Customer = {
  * explaining why.
  */
 /**
- * Press the row's delete button, then the dialog's.
+ * Open the row's kebab, press Hapus, then confirm in the dialog.
  *
- * BOTH ARE FOUND BY THEIR ACCESSIBLE NAME, and the row's is icon-only since the
- * list moved to the mockup's shape — which is exactly what its `aria-label`
- * ("Hapus Ibu Rina") is for. If this helper stops finding a button, the label is
- * missing, and that is a real accessibility regression rather than a test detail.
+ * THE ROW ACTIONS MOVED INTO A MENU on 28 September 2026, so this is three
+ * steps rather than two. The trigger is still found BY ITS ACCESSIBLE NAME —
+ * icon-only controls are why `aria-label` exists — and it now names the
+ * customer ("Aksi untuk Ibu Rina") rather than the action. If this helper stops
+ * finding it, the label is missing, and that is a real accessibility
+ * regression rather than a test detail.
  */
 async function openDeleteDialogAndConfirm() {
-  await userEvent.click(screen.getByRole("button", { name: /^hapus ibu rina$/i }));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Aksi untuk Ibu Rina" }),
+  );
+  await userEvent.click(
+    within(screen.getByRole("menu")).getByRole("menuitem", { name: /^hapus$/i }),
+  );
   await userEvent.click(screen.getByRole("button", { name: /^hapus$/i }));
 }
 
