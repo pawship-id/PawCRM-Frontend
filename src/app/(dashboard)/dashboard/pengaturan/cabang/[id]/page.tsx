@@ -1,20 +1,23 @@
 import type { Metadata } from "next";
 
-import { BranchEditForm } from "@/features/branches";
+import { BranchDetail } from "@/features/branches";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
-  title: "Ubah cabang · Pengaturan · Buloo",
+  title: "Detail cabang · Pengaturan · Buloo",
 };
 
 /**
- * Per-branch edit route. In Next 16 the `params` prop is a Promise, so this is
- * an async Server Component that awaits it and hands the id to the client
- * BranchEditForm (which owns the fetch + the edit sections). Mirrors the users
- * per-id route. Wrapped in RequirePermission so a direct link without
- * `branches:update` shows access-denied rather than a form that cannot save.
+ * One branch, READ-ONLY — its identity, its hours, and the warehouses filed
+ * under it (28 September 2026, on request). The edit form that used to live on
+ * this address moved to `./edit`.
+ *
+ * GATED ON `branches:read`, NOT `:update`, which is the point of the split: a
+ * role that may look at the branch list can now open a branch and see where its
+ * stock sits without being able to change anything. While the form sat here,
+ * that role had nowhere to click through to at all.
  */
-export default async function EditBranchPage({
+export default async function BranchDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
@@ -22,10 +25,8 @@ export default async function EditBranchPage({
   const { id } = await params;
 
   return (
-    <RequirePermission feature="branches" action="update">
-      <div className="flex flex-col gap-6">
-        <BranchEditForm id={id} />
-      </div>
+    <RequirePermission feature="branches">
+      <BranchDetail id={id} />
     </RequirePermission>
   );
 }

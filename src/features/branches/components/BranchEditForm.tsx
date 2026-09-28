@@ -77,7 +77,7 @@ export function BranchEditForm({ id }: { id: string }) {
         setLoadError(
           error instanceof ApiError
             ? error.message
-            : "Could not load this branch.",
+            : "Data cabang ini tidak bisa dimuat.",
         );
       });
     return () => {
@@ -90,7 +90,7 @@ export function BranchEditForm({ id }: { id: string }) {
       {/* The header stays visible while the body loads. */}
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-extrabold text-foreground">Edit Branch</h1>
+          <h1 className="text-2xl font-extrabold text-foreground">Ubah cabang</h1>
           {branch && (
             <BranchStatusBadge
               isActive={branch.isActive}
@@ -100,8 +100,8 @@ export function BranchEditForm({ id }: { id: string }) {
         </div>
         <p className="mt-1 text-sm text-muted">
           {branch
-            ? `Update ${branch.name}'s details and availability.`
-            : "Update this branch's details and availability."}
+            ? `Ubah data dan ketersediaan ${branch.name}.`
+            : "Ubah data dan ketersediaan cabang ini."}
         </p>
       </div>
 
@@ -114,15 +114,15 @@ export function BranchEditForm({ id }: { id: string }) {
       ) : (
         <>
           <Card
-            title="Details"
-            description="Name, contact and availability."
+            title="Data cabang"
+            description="Nama, kontak, dan ketersediaan."
           >
             <DetailsSection branch={branch} onUpdated={setBranch} />
           </Card>
 
           <Card
-            title="Danger zone"
-            description="Remove this branch or restore a removed one."
+            title="Zona berbahaya"
+            description="Hapus cabang ini, atau pulihkan yang sudah dihapus."
           >
             <DangerSection branch={branch} onUpdated={setBranch} />
           </Card>
@@ -208,7 +208,7 @@ function DetailsSection({
         isActive,
       });
       onUpdated(updated);
-      swalToast("Branch updated.");
+      swalToast("Cabang tersimpan.");
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
         setFieldErrors(error.fieldErrors);
@@ -234,7 +234,7 @@ function DetailsSection({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Row 1: name & phone */}
         <TextField
-          label="Branch name"
+          label="Nama cabang"
           name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -243,14 +243,14 @@ function DetailsSection({
           required
         />
         <TextField
-          label="Phone"
+          label="Telepon"
           type="tel"
           name="phone"
-          placeholder="Optional"
+          placeholder="Opsional"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           error={fieldErrors.phone}
-          hint="Leave blank to remove."
+          hint="Kosongkan untuk menghapus isinya."
           disabled={disabled}
         />
 
@@ -276,13 +276,13 @@ function DetailsSection({
         {/* Row 2: address (full width), then the city it is in */}
         <div className="sm:col-span-2">
           <TextField
-            label="Address"
+            label="Alamat"
             name="address"
-            placeholder="Optional"
+            placeholder="Opsional"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             error={fieldErrors.address}
-            hint="Leave blank to remove."
+            hint="Kosongkan untuk menghapus isinya."
             disabled={disabled}
           />
         </div>
@@ -380,7 +380,7 @@ function DetailsSection({
           onCheckedChange={(checked) => setIsActive(checked === true)}
         />
         <Label htmlFor="branch-active" className="font-normal">
-          Active — this branch is open and available for use
+          Aktif — cabang ini buka dan bisa dipakai
         </Label>
       </div>
 
@@ -389,9 +389,17 @@ function DetailsSection({
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/pengaturan/cabang")}
+          /*
+            BACK TO THE BRANCH, not to the list (28 September 2026). This form
+            is reached from `/cabang/:id`, so dropping the reader at the list
+            costs them the page they were reading. A DELETE still goes to the
+            list, below — that branch has no page left to go back to.
+          */
+          onClick={() =>
+            router.push(`/dashboard/pengaturan/cabang/${branch._id}`)
+          }
         >
-          Cancel
+          Batal
         </Button>
         <Button
           type="submit"
@@ -399,7 +407,7 @@ function DetailsSection({
           disabled={disabled}
           className="w-full sm:w-auto"
         >
-          Save changes
+          Simpan cabang
         </Button>
       </div>
     </form>
@@ -438,18 +446,18 @@ function DangerSection({
       if (pending === "delete") {
         await branchService.remove(branch._id);
         router.push("/dashboard/pengaturan/cabang");
-        swalToast("Branch deleted.");
+        swalToast("Cabang dihapus.");
         return;
       }
       const updated = await branchService.restore(branch._id);
       onUpdated(updated);
       setPending(null);
-      swalToast("Branch restored.");
+      swalToast("Cabang dipulihkan.");
     } catch (err) {
       setError(
         err instanceof ApiError
           ? err.message
-          : "Something went wrong. Please try again.",
+          : "Ada yang tidak beres. Coba lagi, ya.",
       );
     } finally {
       setBusy(false);
@@ -460,7 +468,7 @@ function DangerSection({
     <div className="flex flex-wrap items-center gap-3">
       {deleted ? (
         <Button variant="secondary" onClick={() => setPending("restore")}>
-          Restore branch
+          Pulihkan cabang
         </Button>
       ) : (
         <Button
@@ -468,14 +476,14 @@ function DangerSection({
           className="bg-danger text-danger-foreground hover:bg-danger/90"
           onClick={() => setPending("delete")}
         >
-          Delete branch
+          Hapus cabang
         </Button>
       )}
 
       {pending && (
         <ConfirmDialog
-          title={pending === "delete" ? "Delete branch" : "Restore branch"}
-          confirmLabel={pending === "delete" ? "Delete" : "Restore"}
+          title={pending === "delete" ? "Hapus cabang" : "Pulihkan cabang"}
+          confirmLabel={pending === "delete" ? "Hapus" : "Pulihkan"}
           destructive={pending === "delete"}
           busy={busy}
           error={error}
@@ -484,13 +492,13 @@ function DangerSection({
         >
           {pending === "delete" ? (
             <>
-              Delete <strong>{branch.name}</strong>? It will be hidden from the
-              list and its name freed for reuse. You can restore it later.
+              Hapus <strong>{branch.name}</strong>? Cabang ini akan hilang dari
+              daftar dan namanya bisa dipakai lagi. Masih bisa dipulihkan nanti.
             </>
           ) : (
             <>
-              Restore <strong>{branch.name}</strong>? This may fail if its name
-              has since been taken by another branch.
+              Pulihkan <strong>{branch.name}</strong>? Bisa gagal kalau namanya
+              sudah dipakai cabang lain.
             </>
           )}
         </ConfirmDialog>

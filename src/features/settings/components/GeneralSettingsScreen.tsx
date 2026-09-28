@@ -156,7 +156,6 @@ export function GeneralSettingsScreen() {
         <BranchesSection
           directory={directory}
           showWarehouses={mayReadWarehouses}
-          mayEdit={can("branches", "update")}
         />
       )}
 
@@ -431,11 +430,9 @@ function IdentityRow({
 function BranchesSection({
   directory,
   showWarehouses,
-  mayEdit,
 }: {
   directory: ReturnType<typeof useBranchDirectory>;
   showWarehouses: boolean;
-  mayEdit: boolean;
 }) {
   const { branches, warehouses, loading, error } = directory;
 
@@ -471,7 +468,6 @@ function BranchesSection({
               warehouses={
                 showWarehouses ? (byBranch.get(branch._id) ?? []) : null
               }
-              mayEdit={mayEdit}
             />
           ))}
         </ul>
@@ -499,12 +495,10 @@ function BranchesSection({
 function BranchRow({
   branch,
   warehouses,
-  mayEdit,
 }: {
   branch: Branch;
   /** Null when the role may not read warehouses — the line is left out. */
   warehouses: Warehouse[] | null;
-  mayEdit: boolean;
 }) {
   const contact = [branch.address, branch.city, branch.phone]
     .filter(Boolean)
@@ -532,14 +526,18 @@ function BranchRow({
         )}
         <p className="text-xs text-muted">{hours ?? "Jam buka belum diisi"}</p>
       </div>
-      {mayEdit && (
-        <Link
-          href={`${SETTINGS_PATHS.cabang}/${branch._id}`}
-          className="flex-none rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-surface-hover"
-        >
-          Kelola
-        </Link>
-      )}
+      {/*
+        UNGATED SINCE 28 SEPTEMBER 2026: that address is the branch's read-only
+        detail now, not its edit form, so `branches:update` is the wrong
+        question to ask before offering it. The row is already inside a section
+        gated on `branches:read`.
+      */}
+      <Link
+        href={`${SETTINGS_PATHS.cabang}/${branch._id}`}
+        className="flex-none rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-surface-hover"
+      >
+        Detail
+      </Link>
     </li>
   );
 }

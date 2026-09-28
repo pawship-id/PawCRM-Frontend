@@ -237,7 +237,7 @@ describe("GeneralSettingsScreen", () => {
     expect(screen.getByText("Nonaktif")).toBeInTheDocument();
     expect(screen.getByText("Alamat belum diisi")).toBeInTheDocument();
 
-    const manage = screen.getAllByRole("link", { name: "Kelola" });
+    const manage = screen.getAllByRole("link", { name: "Detail" });
     expect(manage[0]).toHaveAttribute("href", "/dashboard/pengaturan/cabang/br-1");
     expect(
       screen.queryByRole("link", { name: /cabang baru/i }),
@@ -450,8 +450,15 @@ describe("GeneralSettingsScreen", () => {
     expect(
       screen.queryByRole("link", { name: /Faktur & dokumen/ }),
     ).not.toBeInTheDocument();
-    // No grant to edit a branch, no Kelola.
-    expect(screen.queryByRole("link", { name: "Kelola" })).not.toBeInTheDocument();
+    /*
+      THE BRANCH IS STILL REACHABLE, and that is the change of 28 September
+      2026. `/cabang/:id` is the read-only detail now, so a role holding only
+      `branches:read` is precisely who it is for — it used to be hidden from
+      them because the address led to an edit form they could not open.
+    */
+    expect(
+      screen.getAllByRole("link", { name: "Detail" })[0],
+    ).toHaveAttribute("href", "/dashboard/pengaturan/cabang/br-1");
 
     const tabs = screen.getByRole("navigation", { name: "Bagian pengaturan" });
     expect(
