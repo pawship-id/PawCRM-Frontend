@@ -4,7 +4,12 @@ import type { ReactNode } from "react";
 import { CalendarDays, Store, Warehouse } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-
+/**
+ * PROMOTED TO `utils/date` (29 September 2026) when Pembelian's own scope card
+ * needed the same phrase. Re-exported here because the tests and one import
+ * still name this module — see ui-rules §14 on promotion.
+ */
+import { formatDateRange } from "@/utils/date";
 import type {
   CustomerInvoiceFilterOptions,
   CustomerInvoiceListSummary,
@@ -13,52 +18,7 @@ import type {
 import type { CustomerInvoicesQuery } from "../hooks/useCustomerInvoices";
 import { PERIODS } from "./ReceivablesToolbar";
 
-/** `9` → `Sep`, in the module's own month vocabulary (the table's dates use it). */
-function monthShort(month: number): string {
-  return new Date(2026, month - 1, 1).toLocaleDateString("id-ID", {
-    month: "short",
-  });
-}
-
-function partsOf(date: string) {
-  const [year, month, day] = date.split("-").map(Number);
-  return { year, month, day };
-}
-
-function fullDate(date: string): string {
-  const { year, month, day } = partsOf(date);
-  return `${day} ${monthShort(month)} ${year}`;
-}
-
-/**
- * Two calendar days as one short phrase, sharing what they share.
- *
- *   same day    → `11 Sep 2026`
- *   same month  → `1–30 Sep 2026`
- *   same year   → `31 Agu – 6 Sep 2026`
- *   otherwise   → `28 Des 2026 – 3 Jan 2027`
- *
- * READS `yyyy-mm-dd` STRINGS, NEVER INSTANTS. The day a range starts on is the
- * tenant's calendar day; a `Date` formatted in the reader's timezone would name
- * the day before for anybody west of the shop.
- */
-export function formatDateRange(from: string | null, to: string | null): string {
-  if (!from && !to) return "Semua tanggal";
-  if (from && !to) return `Sejak ${fullDate(from)}`;
-  if (!from && to) return `Sampai ${fullDate(to)}`;
-
-  const a = partsOf(from!);
-  const b = partsOf(to!);
-
-  if (from === to) return fullDate(from!);
-  if (a.year === b.year && a.month === b.month) {
-    return `${a.day}–${b.day} ${monthShort(b.month)} ${b.year}`;
-  }
-  if (a.year === b.year) {
-    return `${a.day} ${monthShort(a.month)} – ${b.day} ${monthShort(b.month)} ${b.year}`;
-  }
-  return `${fullDate(from!)} – ${fullDate(to!)}`;
-}
+export { formatDateRange };
 
 /**
  * A ticked set of cabang or gudang, as the few words the card has room for.

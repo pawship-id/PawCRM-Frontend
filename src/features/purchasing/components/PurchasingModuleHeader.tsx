@@ -23,10 +23,10 @@ import type { Action, Feature } from "@/features/permissions";
  * left-to-right learns it in the right order.
  *
  * NO TILE ROW, unlike the Pelanggan and Produk & Varian headers. The mockup's
- * four `pembelian` cards are all about invoices — pembelian periode, utang belum
- * lunas, jatuh tempo ≤7 hari — and every one of them is ALREADY on the Faktur
- * Pembelian tab, beside the table they describe, plus two more on the Ringkasan
- * tab. Hoisting them would put "total sisa utang" above a list of vendor
+ * `pembelian` cards are all about invoices — total hutang supplier, hutang belum
+ * lunas, hutang terbayar periode ini — and they live on the Ringkasan tab, with
+ * the Faktur Pembelian tab carrying its own headline beside the table it
+ * describes. Hoisting them would put "total sisa utang" above a list of vendor
  * categories, and would double figures that already exist a tab away.
  */
 const TABS: Array<{

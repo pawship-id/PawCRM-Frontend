@@ -1,4 +1,5 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { SalesSummaryScreen } from "@/features/sales";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
@@ -124,6 +125,53 @@ describe("SalesSummaryScreen", () => {
     mocked.revenueBreakdown.mock.calls.forEach((call) => {
       expect(call[1]).toEqual({ period: "month" });
     });
+  });
+
+  /*
+    NO SEARCH BOX AND NO `Filter` BUTTON (29 September 2026, on request) — the
+    row is a cabang dropdown and five chips, applying on click, the same one
+    Pembelian › Ringkasan wears.
+  */
+  it("draws the scope row outright, with no search and no Filter button", async () => {
+    renderWithAuth(<SalesSummaryScreen />);
+
+    const scope = await screen.findByLabelText("Lingkup data");
+    expect(within(scope).getByRole("button", { name: "Cabang" })).toHaveTextContent(
+      "Semua cabang",
+    );
+    expect(within(scope).getByRole("button", { name: "Bulan ini" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.queryByRole("button", { name: /^Filter/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+  });
+
+  it("re-asks both endpoints when a chip or the cabang changes", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<SalesSummaryScreen />);
+
+    await waitFor(() => expect(mocked.revenueBreakdown).toHaveBeenCalledTimes(3));
+
+    await user.click(screen.getByRole("button", { name: "Hari ini" }));
+
+    // The card and every bar under it move together — one filter, four requests.
+    await waitFor(() =>
+      expect(mocked.summary).toHaveBeenLastCalledWith({ period: "today" }),
+    );
+    expect(mocked.revenueBreakdown).toHaveBeenLastCalledWith("customerType", {
+      period: "today",
+    });
+
+    await user.click(screen.getByRole("button", { name: "Cabang" }));
+    await user.click(await screen.findByRole("option", { name: "Cabang Pusat" }));
+
+    await waitFor(() =>
+      expect(mocked.summary).toHaveBeenLastCalledWith({
+        branchIds: ["b1"],
+        period: "today",
+      }),
+    );
   });
 
   it("shows the server's omzet, not a sum of rows", async () => {

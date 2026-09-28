@@ -5141,6 +5141,52 @@ export interface SupplierOutstandingRow {
   dueSoonOutstanding: string;
 }
 
+/**
+ * GET /api/purchase-invoices/summary — the three cards over the Pembelian ›
+ * Ringkasan tab.
+ *
+ * TWO HALVES THAT ANSWER DIFFERENT QUESTIONS, the same split the sales summary
+ * makes on the other side of the ledger:
+ *
+ *   `outstanding`, `overdue`, `dueSoon` — BALANCES. What is owed today, narrowed
+ *   only by the cabang scope. A bill raised in July is still owed while a screen
+ *   shows September, so a period must not touch these.
+ *
+ *   `paid` — A FLOW. What actually left inside the period, counted by
+ *   `payments.at` (the day the money moved) rather than by when it was typed in.
+ *
+ * `period` IS THE RANGE THE SERVER RESOLVED, in the tenant's timezone, and null
+ * when no dates were asked for. Caption from `fromDate` / `toDate`, never by
+ * formatting the instants in the browser.
+ *
+ * NOTE THE DATES MEAN SOMETHING ELSE HERE than on the invoice list: there they
+ * bound `invoiceDate` (when the vendor issued the bill), here they bound the
+ * payments.
+ */
+export interface PayablesSummary {
+  asOf: string;
+  period: {
+    from: string | null;
+    to: string | null;
+    fromDate: string | null;
+    toDate: string | null;
+  } | null;
+  outstanding: {
+    amount: string;
+    invoiceCount: number;
+    /** How many vendors are still owed anything — the aggregation's row count. */
+    supplierCount: number;
+  };
+  overdue: { amount: string; invoiceCount: number };
+  dueSoon: { amount: string; invoiceCount: number; horizonDays: number };
+  paid: {
+    amount: string;
+    paymentCount: number;
+    /** Distinct bills that received one — three instalments on one bill is one. */
+    invoiceCount: number;
+  };
+}
+
 export interface SupplierOutstandingSummary {
   items: SupplierOutstandingRow[];
   totalOutstanding: string;

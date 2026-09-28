@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { Alert, Card, Spinner, StatTile } from "@/components";
+import { Alert, Card, ScopePeriodCard, Spinner, StatTile } from "@/components";
 import { SETTINGS_PATHS } from "@/features/settings/paths";
 import type { RevenueBreakdown } from "@/types/api";
 import { formatMoney } from "@/utils/decimal";
@@ -10,12 +10,6 @@ import { formatMoney } from "@/utils/decimal";
 import type { BreakdownState } from "../hooks/useSalesSummary";
 import { useReceivableFilterOptions } from "../hooks/useReceivableFilterOptions";
 import { useSalesSummary } from "../hooks/useSalesSummary";
-import { InvoiceScopeCard } from "./InvoiceScopeCard";
-import {
-  CLEARED_INVOICE_FILTERS,
-  ReceivablesToolbar,
-  countInvoiceFilters,
-} from "./ReceivablesToolbar";
 import { SalesModuleHeader } from "./SalesModuleHeader";
 
 /** How many bars a panel draws before it folds the rest into one row. */
@@ -35,13 +29,18 @@ const SHARE = new Intl.NumberFormat("id-ID", {
  * jatuh tempo, tertagih), this says what the money was made of. It therefore
  * does not repeat the four status cards already sitting over that table.
  *
- * THE FAKTUR TAB'S OWN FILTER CHROME, deliberately — the same scope card, the
- * same `Filter (n)` panel, the same search box, driven by the same
- * `toFilterQuery`. They are two tabs of one module read in one sitting, and a
- * screen that narrowed by two inline selects while its neighbour used a panel
- * would make the reader learn the module twice. It also means a filter the list
- * honours cannot be silently ignored here: one translation feeds all four
- * requests.
+ * THE SUMMARY TABS' OWN SCOPE ROW, NOT THE FAKTUR TAB'S (29 September 2026, on
+ * request). It opened with the list's read-only scope card, its search box and
+ * its `Filter (n)` panel; all three are gone in favour of the row Pembelian ›
+ * Ringkasan wears — a cabang dropdown and five period chips, applying on click.
+ *
+ * WHAT WENT WITH THEM, so the next person does not look for it: the search box
+ * (this tab counts a period's composition; narrowing it to one invoice number
+ * answers nothing), the Gudang / Kasir / Sumber / Status fields, and the
+ * multi-cabang set — all of which the Faktur tab still offers over the rows they
+ * were written for. The filter still travels through `toFilterQuery`, the same
+ * translation the list uses, so the fields that remain cannot be honoured by the
+ * card and ignored by a breakdown.
  *
  * THREE BREAKDOWNS, ALL REAL, AND TWO OF THEM COUNT DIFFERENT THINGS. Kategori
  * produk and Lini usaha are read off the invoice LINES, joined to the catalogue
@@ -54,7 +53,7 @@ const SHARE = new Intl.NumberFormat("id-ID", {
  * than in a commit message.
  */
 export function SalesSummaryScreen() {
-  const { query, summary, summaryFailed, summaryStale, breakdowns, setQuery } =
+  const { query, summary, summaryFailed, breakdowns, setQuery } =
     useSalesSummary();
   const options = useReceivableFilterOptions();
 
@@ -64,14 +63,46 @@ export function SalesSummaryScreen() {
     <div className="flex flex-col gap-5">
       <SalesModuleHeader />
 
-      {/* What every figure below is ABOUT — read-only; changed in the panel. */}
-      <InvoiceScopeCard
-        query={query}
-        options={options}
-        summary={summary}
-        summaryStale={summaryStale}
-        filterCount={countInvoiceFilters(query)}
-        onReset={() => setQuery(CLEARED_INVOICE_FILTERS)}
+      {/* What every figure below is ABOUT — and the two controls that set it.
+          The same row Pembelian › Ringkasan wears (29 September 2026, on
+          request); see ScopePeriodCard for why there is no Filter button. */}
+      <ScopePeriodCard
+        /*
+          ONE CABANG, WHERE THE QUERY HOLDS A SET. The list's panel offers several
+          at once; this row offers one, so the value is the first of the set and
+          picking replaces it. Nothing is lost that this tab could show: a
+          composition of two branches read as one number is a figure nobody can
+          act on, and the Faktur tab still takes the set.
+        */
+        branchId={query.branchIds[0] ?? ""}
+        branches={options.branches}
+        onBranchChange={(branchId) =>
+          setQuery({ branchIds: branchId ? [branchId] : [] })
+        }
+        period={query.period}
+        /* Leaving Custom drops the typed dates: a named period carries its own,
+           and stale ones would travel beside it. */
+        onPeriodChange={(period) =>
+          setQuery(
+            period === "custom"
+              ? { period }
+              : { period, dateFrom: "", dateTo: "" },
+          )
+        }
+        dateFrom={query.dateFrom}
+        dateTo={query.dateTo}
+        onDateRangeChange={({ from, to }) =>
+          setQuery({ dateFrom: from, dateTo: to })
+        }
+        dateLabel="Tanggal faktur"
+        note={
+          <>
+            Cabang dan periode menyaring semua angka di halaman ini — omzet dan
+            ketiga rincian di bawahnya. Periode membatasi{" "}
+            <b className="font-semibold">tanggal faktur</b>, bukan tanggal
+            pembayarannya.
+          </>
+        }
       />
 
       <section
@@ -91,8 +122,6 @@ export function SalesSummaryScreen() {
         />
         <LeaderTile label="Lini terbesar" state={breakdowns.businessLine} />
       </section>
-
-      <ReceivablesToolbar query={query} onChange={setQuery} options={options} />
 
       <BreakdownPanel
         title="Omzet per kategori produk"

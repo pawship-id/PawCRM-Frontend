@@ -15,6 +15,15 @@ export { Alert } from "./Alert";
 export { Breadcrumb } from "./Breadcrumb";
 export { PageTabs } from "./PageTabs";
 export { StatTile, PendingStatTile } from "./StatTile";
+/**
+ * The scope row a summary tab wears — cabang, periode, and the custom range the
+ * last chip reveals. Shared by Penjualan › Ringkasan and Pembelian › Ringkasan.
+ */
+export {
+  ScopePeriodCard,
+  type ScopePeriod,
+  type ScopePeriodCardProps,
+} from "./ScopePeriodCard";
 export type { PageTab, PageTabsProps } from "./PageTabs";
 export type { BreadcrumbProps, Crumb } from "./Breadcrumb";
 export { Card } from "./Card";
