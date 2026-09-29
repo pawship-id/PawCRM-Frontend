@@ -1,5 +1,9 @@
 import { apiClient } from "./api-client";
-import type { StockOnHandQuery, StockOnHandResult } from "@/types/report";
+import type {
+  ProductMovementReport,
+  StockOnHandQuery,
+  StockOnHandResult,
+} from "@/types/report";
 import type {
   CommissionDetail,
   CommissionOutstanding,
@@ -45,6 +49,33 @@ export const reportService = {
         // Sent only when true: the server defaults it to false, and an explicit
         // `false` in the query string is noise in the browser's address bar.
         includeZero: query.includeZero || undefined,
+      },
+    }),
+
+  /**
+   * GET /reports/product-movement — what is selling and what is not.
+   *
+   * ONE CALL FOR BOTH LISTS on purpose; see `ProductMovementReport`. The two
+   * windows are separate parameters because the screen fixes one and lets the
+   * reader choose the other.
+   */
+  productMovement: (
+    query: {
+      warehouseId?: string;
+      /** Every gudang filed under this cabang, plus the branchless ones. */
+      branchId?: string;
+      days?: number;
+      idleDays?: number;
+      limit?: number;
+    } = {},
+  ) =>
+    apiClient.get<ProductMovementReport>("/reports/product-movement", {
+      query: {
+        warehouseId: query.warehouseId || undefined,
+        branchId: query.branchId || undefined,
+        days: query.days,
+        idleDays: query.idleDays,
+        limit: query.limit,
       },
     }),
 

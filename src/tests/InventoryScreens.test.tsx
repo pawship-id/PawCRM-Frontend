@@ -1,9 +1,14 @@
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { InventoryHub } from "@/features/inventory";
 import { productService } from "@/services/product.service";
 import { productBatchService } from "@/services/productBatch.service";
 import { tenantService } from "@/services/tenant.service";
+import { reportService } from "@/services/report.service";
+import { warehouseService } from "@/services/warehouse.service";
+import { serviceService } from "@/services/service.service";
+import { branchService } from "@/services/branch.service";
 import { ApiError } from "@/services/api-error";
 import type { PageResult } from "@/types/api";
 import type {
@@ -40,10 +45,23 @@ jest.mock("@/services/productBatch.service");
   real fetch from jsdom.
 */
 jest.mock("@/services/tenant.service");
+/*
+  THE RINGKASAN TAB'S OWN READS (29 September 2026): the valuation card, the
+  per-gudang breakdown, and the two movement lists — plus the service catalogue,
+  which the SKU card counts beside the goods.
+*/
+jest.mock("@/services/report.service");
+jest.mock("@/services/warehouse.service");
+jest.mock("@/services/service.service");
+jest.mock("@/services/branch.service");
 
 const mockedProducts = jest.mocked(productService);
 const mockedBatches = jest.mocked(productBatchService);
 const mockedTenant = jest.mocked(tenantService);
+const mockedReports = jest.mocked(reportService);
+const mockedWarehouses = jest.mocked(warehouseService);
+const mockedServices = jest.mocked(serviceService);
+const mockedBranches = jest.mocked(branchService);
 
 type LowStockRow = Product & { qtyOnHand: string };
 
@@ -157,29 +175,230 @@ const tenantWith = (allowNegativeStock?: boolean) =>
     settings: { hotelMode: "numbered", ...(allowNegativeStock === undefined ? {} : { allowNegativeStock }) },
   }) as unknown as Tenant;
 
+/** `/reports/stock-on-hand` answered for the totals only — the card reads those. */
+const valuation = (value = "94200000.0000", qty = "18400.0000", products = 248) =>
+  ({
+    items: [],
+    totals: { qty, value, productCount: products },
+    pagination: { page: 1, limit: 1, total: products, totalPages: products },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  }) as any;
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockedProducts.lowStock.mockResolvedValue(lowStockPage([lowStockRow()]));
+  mockedReports.stockOnHand.mockResolvedValue(valuation());
+  mockedReports.productMovement.mockResolvedValue({
+    asOf: "2026-09-29T00:00:00.000Z",
+    days: 30,
+    idleDays: 60,
+    topSellers: [
+      {
+        productId: "p1",
+        sku: "RC-ADULT-2KG",
+        name: "Royal Canin Adult 2kg",
+        unitsSold: "38.0000",
+        qtyOnHand: "4.0000",
+      },
+    ],
+    idle: [
+      {
+        productId: "p8",
+        sku: "SHAMPO-250",
+        name: "Shampo Anti Kutu 250ml",
+        qtyOnHand: "18.0000",
+      },
+    ],
+  });
+  mockedWarehouses.list.mockResolvedValue({
+    items: [],
+    pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
+  mockedProducts.list.mockResolvedValue({
+    items: [],
+    pagination: { page: 1, limit: 1, total: 214, totalPages: 214 },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
+  mockedBranches.list.mockResolvedValue({
+    items: [],
+    pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
+  mockedServices.list.mockResolvedValue({
+    items: [],
+    pagination: { page: 1, limit: 1, total: 34, totalPages: 34 },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any);
   mockedProducts.negativeStock.mockResolvedValue(negativePage([]));
   mockedBatches.expiring.mockResolvedValue(expiringPage([lot()]));
   mockedTenant.me.mockResolvedValue(tenantWith());
 });
 
 describe("InventoryHub", () => {
-  it("surfaces the two questions worth acting on today", async () => {
+  it("opens with the mockup's five worklists and two figures", async () => {
     renderWithAuth(<InventoryHub />);
 
     expect(
-      screen.getByRole("heading", { name: "Inventory" }),
+      screen.getByRole("heading", { name: "Inventori — Ringkasan" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Perlu restock")).toBeInTheDocument();
     expect(screen.getByText("Mendekati kedaluwarsa")).toBeInTheDocument();
+    expect(screen.getByText("SKU paling laris (30 hari)")).toBeInTheDocument();
+    expect(screen.getByText("SKU tidak laku")).toBeInTheDocument();
 
     // Labels resolved by the API, not joined here.
     await waitFor(() => {
       expect(screen.getByText("FD-RC-3KG")).toBeInTheDocument();
     });
     expect(screen.getByText("RC-B26-0455")).toBeInTheDocument();
+
+    // The valuation and the catalogue size, both the server's own totals.
+    expect(await screen.findByText("Rp 94.200.000")).toBeInTheDocument();
+    expect(screen.getByText("248")).toBeInTheDocument();
+    expect(screen.getByText("214 barang · 34 jasa")).toBeInTheDocument();
+  });
+
+  /*
+    A PAGE OF WARNINGS, NOT A MENU (29 September 2026). The eight cards that
+    linked to every screen in the module are gone: the rail expands to all of
+    them, always visible, and they took the top of the page from the lists
+    somebody opens this tab to read.
+  */
+  it("no longer duplicates the rail's navigation", async () => {
+    renderWithAuth(<InventoryHub />);
+    await waitFor(() => expect(mockedBatches.expiring).toHaveBeenCalled());
+
+    expect(
+      screen.queryByRole("link", { name: /Kategori/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Transfer Stok/i }),
+    ).not.toBeInTheDocument();
+    // What survives is the two acts a reader starts FROM this page.
+    expect(screen.getByRole("link", { name: "Opname" })).toHaveAttribute(
+      "href",
+      "/dashboard/inventory/opname",
+    );
+    expect(screen.getByRole("link", { name: "+ Produk" })).toBeInTheDocument();
+  });
+
+  it("ranks sellers with what is left beside them, and dates the run-out", async () => {
+    renderWithAuth(<InventoryHub />);
+
+    expect(await screen.findByText("38 terjual")).toBeInTheDocument();
+    // 4 left against 38 in 30 days — about three days of cover, which is the
+    // half of the row that makes it worth acting on.
+    expect(
+      screen.getByText(/sisa 4 · habis ~3 hari lagi/),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    THE HEADLINE SURVIVES A REFUSED WAREHOUSE. `/reports/stock-on-hand` answers
+    403 for a gudang outside the caller's reach, and the picker above the card
+    can legitimately list one — it shows what the TENANT has, while the report
+    enforces what this ACCOUNT may read. Batched with `Promise.all`, that one
+    refusal blanked the valuation: the card read "—" over a shop with stock in
+    it, which is the one thing a valuation must never do.
+  */
+  /*
+    THE SAME SCOPE ROW THE RINGKASAN TABS WEAR, with two fields instead of their
+    cabang-and-periode: a stock page has no period, because every figure on it is
+    a balance as of now.
+  */
+  it("scopes by cabang as well as gudang, and narrows the gudang list to it", async () => {
+    const user = userEvent.setup();
+    mockedBranches.list.mockResolvedValue({
+      items: [
+        { _id: "b1", name: "Cabang Pusat", isActive: true },
+        { _id: "b2", name: "Cabang Timur", isActive: true },
+      ],
+      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    mockedWarehouses.list.mockResolvedValue({
+      items: [
+        { _id: "w1", name: "Gudang Pusat", isActive: true, defaultBranchId: "b1" },
+        { _id: "w2", name: "Gudang Timur", isActive: true, defaultBranchId: "b2" },
+      ],
+      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    renderWithAuth(<InventoryHub />);
+
+    await user.click(await screen.findByRole("button", { name: "Cabang" }));
+    await user.click(await screen.findByRole("option", { name: "Cabang Pusat" }));
+
+    // Every list on the page follows it — the cabang says whose shelves.
+    await waitFor(() =>
+      expect(mockedProducts.lowStock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ branchId: "b1" }),
+      ),
+    );
+    expect(mockedReports.productMovement).toHaveBeenLastCalledWith(
+      expect.objectContaining({ branchId: "b1" }),
+    );
+
+    // And the gudang picker offers only what is filed under it: two controls
+    // contradicting each other is the thing this narrowing prevents.
+    await user.click(screen.getByRole("button", { name: "Gudang" }));
+    expect(
+      await screen.findByRole("option", { name: "Gudang Pusat" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Gudang Timur" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the valuation when one gudang refuses to answer", async () => {
+    mockedWarehouses.list.mockResolvedValue({
+      items: [
+        { _id: "w1", name: "Gudang Pusat", isActive: true },
+        { _id: "w9", name: "Gudang Cabang Lain", isActive: true },
+      ],
+      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    mockedReports.stockOnHand.mockImplementation(async (query) => {
+      if (query?.warehouseId === "w9") {
+        throw new ApiError("You do not have access to that warehouse", 403);
+      }
+      return valuation();
+    });
+
+    renderWithAuth(<InventoryHub />);
+
+    expect(await screen.findByText("Rp 94.200.000")).toBeInTheDocument();
+    expect(screen.queryByText("gagal dimuat")).not.toBeInTheDocument();
+    // The refused gudang is simply a bar missing from the chart.
+    expect(screen.getByText("Gudang Pusat")).toBeInTheDocument();
+    expect(screen.queryByText("Gudang Cabang Lain")).not.toBeInTheDocument();
+  });
+
+  it("says so on the card when the valuation itself fails", async () => {
+    mockedReports.stockOnHand.mockRejectedValue(
+      new ApiError("Gagal memuat", 500),
+    );
+
+    renderWithAuth(<InventoryHub />);
+
+    expect(await screen.findByText("gagal dimuat")).toBeInTheDocument();
+  });
+
+  it("asks the server for both movement lists in one call, with its own window", async () => {
+    renderWithAuth(<InventoryHub />);
+
+    await waitFor(() =>
+      expect(mockedReports.productMovement).toHaveBeenCalledWith({
+        warehouseId: "",
+        branchId: "",
+        days: 30,
+        idleDays: 60,
+        limit: 5,
+      }),
+    );
   });
 
   it("badges the server's total, not the rows on screen", async () => {
@@ -230,30 +449,7 @@ describe("InventoryHub", () => {
     });
   });
 
-  it("links to every screen the role may open", async () => {
-    renderWithAuth(<InventoryHub />);
-    // Both lists land before the assertions, so neither settles mid-assert.
-    await waitFor(() => expect(mockedBatches.expiring).toHaveBeenCalled());
-
-    // The same screens the sidebar lists, in the order the data flows: define a
-    // product, file it, watch its card, manage its lots, count it, move it,
-    // correct it.
-    const expected: Array<[RegExp, string]> = [
-      [/Produk & Varian/i, "/dashboard/inventory/products"],
-      [/Kategori/i, "/dashboard/inventory/categories"],
-      [/Kartu Stok/i, "/dashboard/inventory/stock-card"],
-      [/Batch & Expired/i, "/dashboard/inventory/batches"],
-      [/Stok Opname/i, "/dashboard/inventory/opname"],
-      [/Transfer Stok/i, "/dashboard/inventory/transfers"],
-      [/Penyesuaian cepat/i, "/dashboard/inventory/adjustments"],
-    ];
-
-    for (const [name, href] of expected) {
-      expect(screen.getByRole("link", { name })).toHaveAttribute("href", href);
-    }
-  });
-
-  it("hides a card the role cannot open", async () => {
+  it("hides an action the role cannot perform", async () => {
     renderWithAuth(<InventoryHub />, {
       isSuperAdmin: false,
       permissions: [
@@ -264,13 +460,13 @@ describe("InventoryHub", () => {
 
     await waitFor(() => expect(mockedProducts.lowStock).toHaveBeenCalled());
 
+    // Gated on `products:create` and `stockOpnames:read` — a read-only role is
+    // offered neither.
     expect(
-      screen.getByRole("link", { name: /Produk & Varian/i }),
-    ).toBeInTheDocument();
-    // Gated on `stockMovements:create` — a read-only role never sees the
-    // shortcut that writes off stock with no document behind it.
+      screen.queryByRole("link", { name: "+ Produk" }),
+    ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: /Penyesuaian cepat/i }),
+      screen.queryByRole("link", { name: "Opname" }),
     ).not.toBeInTheDocument();
   });
 

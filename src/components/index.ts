@@ -20,6 +20,8 @@ export { StatTile, PendingStatTile } from "./StatTile";
  * last chip reveals. Shared by Penjualan › Ringkasan and Pembelian › Ringkasan.
  */
 export {
+  ScopeCard,
+  ScopeField,
   ScopePeriodCard,
   type ScopePeriod,
   type ScopePeriodCardProps,

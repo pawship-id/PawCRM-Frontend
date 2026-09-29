@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { CalendarDays, Store } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -37,6 +38,61 @@ const PERIODS: PillOption<ScopePeriod>[] = [
   { value: "month", label: "Bulan ini" },
   { value: "custom", label: "Custom" },
 ];
+
+/**
+ * THE SHELL both scope rows wear: one bordered strip, its fields divided by a
+ * hairline, and an optional row beneath for whatever the last field reveals.
+ *
+ * EXTRACTED WHEN INVENTORI ASKED FOR THE SAME ROW with different fields (29
+ * September 2026). It holds geometry and nothing else — which fields go in it,
+ * and what they mean, stays with the screen that knows.
+ */
+export function ScopeCard({
+  children,
+  below,
+}: {
+  children: ReactNode;
+  /** Revealed under the divider — the custom range, today. */
+  below?: ReactNode;
+}) {
+  return (
+    <section
+      aria-label="Lingkup data"
+      className="flex flex-col gap-3 rounded-xl border border-border bg-surface px-5 py-3.5 shadow-sm"
+    >
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        {children}
+      </div>
+      {below}
+    </section>
+  );
+}
+
+/**
+ * One labelled control in a `ScopeCard` — icon, caption, then the control.
+ *
+ * THE HAIRLINE BELONGS TO THE FIELD, not to the row: `first:` drops it from the
+ * leading one, so a card of two fields and a card of three are the same markup.
+ */
+export function ScopeField({
+  icon,
+  label,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 sm:border-l sm:border-border sm:pl-6 sm:first:border-l-0 sm:first:pl-0">
+      <span aria-hidden className="text-primary">
+        {icon}
+      </span>
+      <span className="text-sm text-muted">{label}</span>
+      {children}
+    </div>
+  );
+}
 
 export interface ScopePeriodCardProps {
   /** The cabang this tab is scoped to; `""` is every one of them. */
@@ -97,75 +153,64 @@ export function ScopePeriodCard({
   dateLabel,
 }: ScopePeriodCardProps) {
   return (
-    <section
-      aria-label="Lingkup data"
-      className="flex flex-col gap-3 rounded-xl border border-border bg-surface px-5 py-3.5 shadow-sm"
+    <ScopeCard
+      below={
+        /*
+          THE TWO DATES APPEAR ONLY UNDER "Custom", on a row of their own. Inline
+          beside five pills they would wrap into a block that reads as several
+          controls rather than as one lens.
+        */
+        period === "custom" ? (
+          <CustomRange
+            /*
+              KEYED ON THE APPLIED RANGE, which is how the draft is re-seeded
+              when it changes from outside — Reset, or coming back to Custom
+              after another chip. React remounts on a new key; an effect writing
+              state would be the same thing said worse (and is banned by
+              react-hooks/set-state-in-effect).
+            */
+            key={`${dateFrom}|${dateTo}`}
+            from={dateFrom}
+            to={dateTo}
+            label={dateLabel}
+            onApply={onDateRangeChange}
+          />
+        ) : undefined
+      }
     >
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        <div className="flex items-center gap-2">
-          <span aria-hidden className="text-primary">
-            <Store className="size-4" />
-          </span>
-          <span className="text-sm text-muted">Cabang</span>
-          {/*
-            `layout="bar"` draws the VALUE alone, so the caption beside it is the
-            one label — the arrangement the list footer's page size uses. The
-            trigger stays plain rather than navy: picking a cabang here is the
-            page's own scope, not a filter applied on top of one.
-          */}
-          <FilterSelect
-            layout="bar"
-            label="Cabang"
-            ariaLabel="Cabang"
-            value={branchId}
-            options={withAll(
-              branches.map((branch) => ({
-                value: branch._id,
-                label: branch.name,
-              })),
-              "Semua cabang",
-            )}
-            onChange={onBranchChange}
-            active={false}
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 sm:border-l sm:border-border sm:pl-6">
-          <span aria-hidden className="text-primary">
-            <CalendarDays className="size-4" />
-          </span>
-          <span className="text-sm text-muted">Periode</span>
-          <FilterPills
-            ariaLabel="Periode"
-            value={period}
-            options={PERIODS}
-            onChange={onPeriodChange}
-          />
-        </div>
-      </div>
-
-      {/*
-        THE TWO DATES APPEAR ONLY UNDER "Custom", on a row of their own. Inline
-        beside five pills they would wrap into a block that reads as several
-        controls rather than as one lens.
-      */}
-      {period === "custom" && (
-        <CustomRange
-          /*
-            KEYED ON THE APPLIED RANGE, which is how the draft is re-seeded when
-            it changes from outside — Reset, or coming back to Custom after
-            another chip. React remounts on a new key; an effect writing state
-            would be the same thing said worse (and is banned by
-            react-hooks/set-state-in-effect).
-          */
-          key={`${dateFrom}|${dateTo}`}
-          from={dateFrom}
-          to={dateTo}
-          label={dateLabel}
-          onApply={onDateRangeChange}
+      <ScopeField icon={<Store className="size-4" />} label="Cabang">
+        {/*
+          `layout="bar"` draws the VALUE alone, so the caption beside it is the
+          one label — the arrangement the list footer's page size uses. The
+          trigger stays plain rather than navy: picking a cabang here is the
+          page's own scope, not a filter applied on top of one.
+        */}
+        <FilterSelect
+          layout="bar"
+          label="Cabang"
+          ariaLabel="Cabang"
+          value={branchId}
+          options={withAll(
+            branches.map((branch) => ({
+              value: branch._id,
+              label: branch.name,
+            })),
+            "Semua cabang",
+          )}
+          onChange={onBranchChange}
+          active={false}
         />
-      )}
-    </section>
+      </ScopeField>
+
+      <ScopeField icon={<CalendarDays className="size-4" />} label="Periode">
+        <FilterPills
+          ariaLabel="Periode"
+          value={period}
+          options={PERIODS}
+          onChange={onPeriodChange}
+        />
+      </ScopeField>
+    </ScopeCard>
   );
 }
 

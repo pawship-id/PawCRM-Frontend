@@ -43,6 +43,8 @@ export function useExpiringAlert(
   enabled: boolean,
   /** Empty means every warehouse. */
   warehouseId = "",
+  /** Empty means every cabang — the API resolves it to that branch's gudang. */
+  branchId = "",
 ): UseExpiringAlertResult {
   const [items, setItems] = useState<ProductBatch[]>([]);
   const [total, setTotal] = useState(0);
@@ -66,6 +68,7 @@ export function useExpiringAlert(
         limit: LIMIT,
         withinDays: WITHIN_DAYS,
         warehouseId: warehouseId || undefined,
+        branchId: branchId || undefined,
       })
       .then((result) => {
         if (!active) return;
@@ -90,7 +93,7 @@ export function useExpiringAlert(
     return () => {
       active = false;
     };
-  }, [enabled, warehouseId]);
+  }, [enabled, warehouseId, branchId]);
 
   return { items, total, withinDays, loading, error };
 }

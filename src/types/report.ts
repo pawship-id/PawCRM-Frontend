@@ -76,3 +76,41 @@ export interface StockOnHandResult {
   totals: StockOnHandTotals;
   pagination: { page: number; limit: number; total: number; totalPages: number };
 }
+
+/**
+ * GET /api/reports/product-movement — what is selling and what is not, for the
+ * Inventori Ringkasan tab.
+ *
+ * TWO LISTS FROM ONE CALL, because the second is defined by the first: a slow
+ * mover is a product in stock that does NOT appear in the sold set, so asking
+ * separately would let a sale made between the two calls put a product on both.
+ *
+ * TWO WINDOWS. `days` ranks the sellers and is fixed at 30 on screen — a ranking
+ * is only comparable against itself — while `idleDays` is the reader's own
+ * choice, because "nothing in 30 days" and "nothing in 90" are different
+ * questions about different products.
+ *
+ * UNITS ARE NET OF VOIDS, read off `stockmovements` rather than off invoices and
+ * till baskets: every sale writes a movement, and the movement carries the
+ * warehouse this screen filters by.
+ */
+export interface ProductMovementReport {
+  asOf: string;
+  days: number;
+  idleDays: number;
+  /** Most units first. `qtyOnHand` is what is left on the shelves in scope. */
+  topSellers: Array<{
+    productId: string;
+    sku: string | null;
+    name: string;
+    unitsSold: string;
+    qtyOnHand: string;
+  }>;
+  /** Most stock first — the biggest pile nobody is buying is worth acting on first. */
+  idle: Array<{
+    productId: string;
+    sku: string | null;
+    name: string;
+    qtyOnHand: string;
+  }>;
+}
