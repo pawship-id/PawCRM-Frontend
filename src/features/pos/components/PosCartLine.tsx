@@ -6,9 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/utils/decimal";
 import type { PosItem, PosDiscountMode } from "@/types/api";
+import type { BenefitCandidate } from "@/types/membership";
 
 import { ownDiscountOf } from "../bookingDiscount";
 import { variantDetailOf } from "../variantDetail";
+import { PosBenefitChip } from "./PosBenefitChip";
 import { PosDiscountPopover } from "./PosDiscountPopover";
 import { PosLinePrice } from "./PosLinePrice";
 
@@ -32,11 +34,24 @@ export function PosCartLine({
   onRemove,
   onDiscountChange,
   onPriceChange,
+  onBenefitChange,
+  benefitOffer = null,
   maySetPrice = false,
   disabled = false,
 }: {
   item: PosItem;
   index: number;
+  /**
+   * What a membership card could pay for on THIS line, from the cart quote.
+   *
+   * Null when there is no card, no match, or no quota left — and the chip then
+   * draws nothing at all. See `PosBenefitChip`.
+   */
+  benefitOffer?: BenefitCandidate | null;
+  onBenefitChange?: (
+    index: number,
+    benefit: { membershipId: string; benefitId: string } | null,
+  ) => void;
   /**
    * The add-ons attached to THIS service, drawn inside its line rather than
    * beside it.
@@ -77,6 +92,14 @@ export function PosCartLine({
   disabled?: boolean;
 }) {
   const qty = Number(item.qty);
+  /*
+    ONLY A PRODUCT IS STEPPED. Stated as a positive rather than as "not a
+    service", because the list of kinds grew on 29 September 2026 and a negative
+    test does not grow with it: a MEMBERSHIP line fell into the product branch
+    and got a −/+ stepper, while the server forces one package per line — a
+    control that did nothing, on the screen where every pixel is read at speed.
+  */
+  const stepsQty = item.kind === "product";
   const isService = item.kind === "service";
 
   /**
@@ -280,13 +303,18 @@ export function PosCartLine({
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          {isService ? (
-            /* A word, not a bare "1" — §1.3. */
+          {!stepsQty ? (
+            /*
+              A WORD, NOT A BARE "1" — §1.3. Both unstepped kinds get one, and
+              each says which it is: a cashier scanning the basket has to be
+              able to tell a grooming from a year of membership without reading
+              the name twice.
+            */
             <Badge
               variant="outline"
               className="border-transparent bg-secondary"
             >
-              Layanan
+              {isService ? "Layanan" : "Membership"}
             </Badge>
           ) : (
             <>
@@ -333,6 +361,33 @@ export function PosCartLine({
             the same over-reach as locking the bin: it left a cashier unable to
             give 10% off a grooming that was already on the table.
           */}
+          {/*
+            BEFORE THE DISCOUNT CONTROL, and the order is the order the money
+            comes off: the benefit first, then whatever the cashier types on
+            what is left (decision 7). A cashier reading the row left to right
+            reads it in the same sequence the server prices it.
+          */}
+          {onBenefitChange && (
+            <PosBenefitChip
+              applied={
+                item.discount?.source === "membership"
+                  ? {
+                      benefitLabel: item.discount.benefitLabel ?? null,
+                      amount: item.membershipDiscount ?? "0",
+                    }
+                  : null
+              }
+              offer={benefitOffer}
+              disabled={disabled}
+              onApply={(candidate) =>
+                onBenefitChange(index, {
+                  membershipId: candidate.membershipId,
+                  benefitId: candidate.benefitId,
+                })
+              }
+              onRemove={() => onBenefitChange(index, null)}
+            />
+          )}
           <PosDiscountPopover
             value={ownDiscountOf(item)}
             disabled={disabled}

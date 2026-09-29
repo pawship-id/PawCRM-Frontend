@@ -44,6 +44,7 @@ export const serviceService = {
         businessLineId: query.businessLineId,
         categoryId: query.categoryId,
         serviceType: query.serviceType,
+        serviceKind: query.serviceKind,
         branchId: query.branchId,
         isActive: query.isActive,
         location: query.location,

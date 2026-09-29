@@ -138,6 +138,29 @@ export const PERMISSION_CATALOG = {
     transaction and its journal entry. Mirrors the server's catalog.
   */
   fixedCosts: ["read", "create", "update", "delete", "post"],
+  /**
+   * The membership catalogue. Benefits have no feature of their own because
+   * they have no routes of their own — a benefit is edited by PATCHing the plan
+   * that holds it, so one grant over the plan is one grant over its benefits.
+   */
+  membershipPlans: ["create", "read", "update", "delete", "restore"],
+  /**
+   * Membership cards. NOT the uniform five, and the two odd ones carry the
+   * authority the others do not:
+   *
+   *   create — ISSUES a card outside any transaction: giving a package away
+   *            rather than honouring one already paid for. Managers, not the
+   *            counter.
+   *   redeem — SPENDS a benefit. Every cashier has it, because honouring an
+   *            entitlement is the counter's daily work. Gated separately for the
+   *            same reason `posTransactions:discountOverride` is: applying a
+   *            benefit is giving money away, but the person allowed to honour an
+   *            entitlement is not automatically allowed to mint one.
+   *
+   * No `delete`: a card is business history the moment it is issued, and one
+   * sold by mistake is cancelled, which leaves a trail.
+   */
+  petMemberships: ["create", "read", "update", "cancel", "redeem"],
   chartOfAccounts: ["create", "read", "update", "delete", "restore"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is
   // its own action because correcting the ledger is a different privilege from

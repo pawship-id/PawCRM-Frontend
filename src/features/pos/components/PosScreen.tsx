@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert, ConfirmDialog, Spinner } from "@/components";
 import { posService } from "@/services/pos.service";
@@ -11,6 +11,7 @@ import type { PosCatalogItem, PosTransaction } from "@/types/api";
 import { useAuth } from "@/features/auth";
 import { CustomerSearchDialog } from "@/features/customers";
 import { BookingBridgeDialog, useBookingBridge } from "@/features/booking";
+import { useBenefitQuote } from "@/features/memberships";
 
 import { usePosCart } from "../hooks/usePosCart";
 import { usePosShift } from "../hooks/usePosShift";
@@ -272,7 +273,18 @@ export function PosScreen() {
         not — a bag of feed belongs to whoever is paying, and stopping to ask
         would be a dialog on every scan.
       */
-      if (tile.kind === "service") {
+      /*
+        A MEMBERSHIP PACKAGE ASKS THE SAME QUESTION, for a stronger reason: a
+        card belongs to an ANIMAL, and a package line that cannot say whose
+        animal cannot mint a card at all. The server refuses one without a
+        `petId`; asking here is what stops that refusal landing after the
+        customer has already been told the total.
+
+        THE SAME DIALOG as a service's, deliberately. It is the same question —
+        "untuk hewan yang mana?" — and a second dialog asking it differently is
+        a second thing for a cashier to learn.
+      */
+      if (tile.kind === "service" || tile.kind === "membership") {
         setPendingService(tile);
 
         // No customer yet: that question comes first, and the tile waits.
@@ -446,6 +458,65 @@ export function PosScreen() {
   }
 
   /*
+    ─── WHAT A MEMBERSHIP CARD COULD PAY FOR, ON THIS BASKET ────────────────
+
+    Asked of the server on every change to the lines, and asked as an OFFER: the
+    answer never touches a total. Applying one sends `{ membershipId,
+    benefitKey }` back on the line and lets the server price it for real — a
+    till that could name its own benefit amount could give away the shop.
+
+    ONLY LINES THAT NAME AN ANIMAL ARE ASKED ABOUT, because a card belongs to an
+    animal: a bag of food on the same receipt is nobody's. Membership lines are
+    left out too — a package is not something a benefit can be spent on.
+
+    `ref` IS THE POSITION, STRINGIFIED. The cart renumbers when a line is
+    removed, so both the question and the map below are rebuilt from the same
+    array the rows are drawn from.
+  */
+  const benefitLines = useMemo(
+    () =>
+      (cart.cart?.items ?? []).flatMap((item, index) =>
+        item.petId && item.kind !== "membership"
+          ? [
+              {
+                ref: String(index),
+                kind: item.kind as "service" | "product",
+                refId: item.refId,
+                petId: item.petId,
+                amount: item.lineTotal,
+                parentServiceId: item.parentServiceId ?? null,
+              },
+            ]
+          : [],
+      ),
+    [cart.cart],
+  );
+
+  const { offerFor } = useBenefitQuote({
+    customerId: cart.cart?.customerId ?? null,
+    lines: benefitLines,
+  });
+
+  const benefitOffers = useMemo(() => {
+    const map = new Map<number, NonNullable<ReturnType<typeof offerFor>>>();
+
+    (cart.cart?.items ?? []).forEach((item, index) => {
+      /*
+        A LINE THAT ALREADY CARRIES ONE IS NOT OFFERED ANOTHER — the chip shows
+        what is applied instead. The quote goes on offering it (the ledger has
+        not been written yet, so the quota still looks free), and without this
+        the till would draw the pill and the button side by side.
+      */
+      if (item.discount?.source === "membership") return;
+
+      const offer = offerFor(String(index));
+      if (offer) map.set(index, offer);
+    });
+
+    return map;
+  }, [cart.cart, offerFor]);
+
+  /*
     THE BRANCH COMES BEFORE THE SHIFT, and before the loading state — there is
     nothing to load until the session knows which shop this is. A user who
     reaches every branch signs in pointed at none, so this is the ordinary first
@@ -470,6 +541,7 @@ export function PosScreen() {
   if (!shift) {
     return <PosShiftGate onOpened={refetch} />;
   }
+
 
   return (
     <div className="flex flex-col gap-4">
@@ -505,6 +577,10 @@ export function PosScreen() {
           onItemDiscount={(index, discount) =>
             void cart.setItemDiscount(index, discount)
           }
+          onItemBenefit={(index, benefit) =>
+            void cart.setItemBenefit(index, benefit)
+          }
+          benefitOffers={benefitOffers}
           onCartDiscount={(discount) => void cart.setCartDiscount(discount)}
           onCharges={(charges) => void cart.setCharges(charges)}
           onNote={(note) => void cart.setNote(note)}

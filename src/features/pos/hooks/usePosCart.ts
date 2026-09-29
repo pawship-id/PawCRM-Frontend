@@ -49,6 +49,11 @@ interface UsePosCartResult {
    * yet, and would put the add-on straight back.
    */
   removeItem: (index: number | number[]) => Promise<void>;
+  /** Apply or remove a membership benefit on one line — see the implementation. */
+  setItemBenefit: (
+    index: number,
+    benefit: { membershipId: string; benefitId: string } | null,
+  ) => Promise<void>;
   setItemDiscount: (
     index: number,
     discount: UpdateCartInput["cartDiscount"],
@@ -504,6 +509,40 @@ export function usePosCart(): UsePosCartResult {
     [itemsAsInput, send],
   );
 
+  /**
+   * Apply or remove a membership benefit on one line (29 September 2026).
+   *
+   * ─── IT SENDS A NAME, NOT A NUMBER ────────────────────────────────────────
+   *
+   * `{ membershipId, benefitId }` and nothing else. The server reads the card,
+   * its frozen plan and the redemption ledger, and prices the benefit itself —
+   * so a till that had been tampered with, or that was simply looking at a
+   * stale quote, cannot decide what the shop gives away.
+   *
+   * ─── REBUILT WITHOUT THE FIELD WHEN REMOVED ───────────────────────────────
+   *
+   * The same discipline `setLinePrice` uses above: the server rebuilds every
+   * line from this payload, so removing a benefit has to mean the key is
+   * ABSENT, not present and null-ish.
+   */
+  const setItemBenefit = useCallback(
+    async (
+      index: number,
+      benefit: { membershipId: string; benefitId: string } | null,
+    ) => {
+      const items = itemsAsInput();
+      if (!items[index]) return;
+
+      const next = { ...items[index] };
+      delete next.benefit;
+      if (benefit) next.benefit = benefit;
+      items[index] = next;
+
+      await send({ items });
+    },
+    [itemsAsInput, send],
+  );
+
   const setCartDiscount = useCallback(
     async (discount: UpdateCartInput["cartDiscount"]) => {
       await send({ cartDiscount: discount ?? null });
@@ -618,6 +657,7 @@ export function usePosCart(): UsePosCartResult {
     setLinePrice,
     removeItem,
     setItemDiscount,
+    setItemBenefit,
     setCartDiscount,
     setCharges,
     setNote,

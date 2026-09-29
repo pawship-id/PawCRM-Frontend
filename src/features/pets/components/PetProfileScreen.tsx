@@ -16,6 +16,8 @@ import type { Pet } from "@/types/api";
 import { petAgeText } from "../age";
 import { PetAvatar } from "./PetAvatar";
 import { PetStatusBadge } from "./PetBadges";
+import { PetMembershipPanel } from "@/features/memberships";
+
 import { PetInfoTab } from "./PetInfoTab";
 import { PetMedicalTab } from "./PetMedicalTab";
 import { PetPreferencesTab } from "./PetPreferencesTab";
@@ -268,6 +270,15 @@ export function PetProfileScreen({ petId }: { petId: string }) {
         only visible on the right tab is an allergy nobody reads on a Saturday.
       */}
       <PetSummaryCard pet={pet} />
+
+      {/*
+        MEMBERSHIP SITS ABOVE THE TABS, beside the summary card, for the reason
+        that card does: it answers "what has this animal already been promised",
+        and a front desk asking it is not going to hunt for the right tab first.
+        It is also the panel with a BUTTON on it — Terbitkan, Perpanjang — and a
+        control hidden behind a tab is a control nobody finds.
+      */}
+      <PetMembershipPanel petId={pet._id} petName={pet.name} />
 
       <div
         role="tablist"

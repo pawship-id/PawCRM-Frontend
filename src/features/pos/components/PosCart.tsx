@@ -14,6 +14,8 @@ import { usePermissions } from "@/features/permissions";
 import type { PosDiscountMode, PosItem, PosTransaction } from "@/types/api";
 
 import { bookingShareOf } from "../bookingDiscount";
+import type { BenefitCandidate } from "@/types/membership";
+
 import { PosCartLine } from "./PosCartLine";
 import { PosCustomerSection } from "./PosCustomerSection";
 import { PosDiscountPopover } from "./PosDiscountPopover";
@@ -148,6 +150,8 @@ export function PosCart({
   onLinePrice,
   onRemove,
   onItemDiscount,
+  onItemBenefit,
+  benefitOffers,
   onCartDiscount,
   onCharges,
   onNote,
@@ -163,6 +167,27 @@ export function PosCart({
   onQtyChange: (index: number, qty: string) => void;
   /** One line, or a service and the add-ons under it — see `PosCartLine`. */
   onRemove: (index: number | number[]) => void;
+  /**
+   * Apply or remove a membership benefit on one line (29 September 2026).
+   *
+   * OPTIONAL, so a caller that has not wired the quote yet simply renders no
+   * chips rather than a control that cannot work — the same shape `maySetPrice`
+   * takes for a cashier who may not re-price.
+   */
+  onItemBenefit?: (
+    index: number,
+    benefit: { membershipId: string; benefitId: string } | null,
+  ) => void;
+  /**
+   * What a card could pay for, keyed by the line's position in the cart.
+   *
+   * KEYED BY INDEX AND BUILT FRESH FROM THE SAME `cart.items` the rows are
+   * drawn from, so the two cannot disagree. The quote itself is matched by a
+   * `ref` rather than a position — see `useBenefitQuote` — precisely because a
+   * cart renumbers when a line is removed; this map is the last step, after the
+   * matching is already done.
+   */
+  benefitOffers?: Map<number, BenefitCandidate>;
   onItemDiscount: (
     index: number,
     discount: { mode: PosDiscountMode; value: string } | null,
@@ -271,6 +296,8 @@ export function PosCart({
                   onRemove={onRemove}
                   onDiscountChange={onItemDiscount}
                   onPriceChange={onLinePrice}
+                  onBenefitChange={onItemBenefit}
+                  benefitOffer={benefitOffers?.get(index) ?? null}
                   /*
                     READ FROM THE GRANT, not passed down as a flag somebody
                     might forget to set: a price box drawn for a cashier the

@@ -63,6 +63,7 @@ export function PosCategoryPills({
 
   const isAll = state.categoryId === "" && state.kind === "";
   const isServices = state.kind === "service";
+  const isMemberships = state.kind === "membership";
 
   /**
    * Busiest first, and ties broken by name so the row is STABLE.
@@ -138,6 +139,27 @@ export function PosCategoryPills({
         onClick={() => onChange({ categoryId: "", kind: "service" })}
       >
         Layanan
+      </Button>
+
+      {/*
+        MEMBERSHIP IS ITS OWN LENS, beside Layanan rather than inside it
+        (29 September 2026). A package is not a service: it is not performed, it
+        has no groomer and no duration on the day, and it is sold a handful of
+        times a week rather than every sale. Folding it into Layanan would bury
+        it under every grooming the shop offers, on the one pill a cashier
+        presses most.
+
+        NOT A CATEGORY EITHER — a package has no `categoryId`, which is exactly
+        why it needs a lens of its own to be reachable at all.
+      */}
+      <Button
+        type="button"
+        size="sm"
+        variant={isMemberships ? "default" : "secondary"}
+        aria-pressed={isMemberships}
+        onClick={() => onChange({ categoryId: "", kind: "membership" })}
+      >
+        Membership
       </Button>
 
       {/*

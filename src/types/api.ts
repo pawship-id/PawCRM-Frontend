@@ -1679,7 +1679,13 @@ export interface PosXReport {
 }
 
 /** What a cart line is. A service consumes no stock and posts no HPP. */
-export type PosItemKind = "product" | "service";
+/**
+ * `membership` JOINED THE LIST ON 29 SEPTEMBER 2026 — a package sold as a line
+ * of its own. It holds no stock, earns no groomer commission, has its own
+ * revenue account, and is the only line whose completion CREATES something the
+ * customer keeps: a card, minted when the sale is paid.
+ */
+export type PosItemKind = "product" | "service" | "membership";
 
 /** How a discount was expressed. Both are stored — see PosDiscount. */
 export type PosDiscountMode = "percent" | "amount";
@@ -1698,6 +1704,25 @@ export interface PosDiscount {
   value: string;
   resolvedAmount: string;
   approvedBy: string | null;
+  /**
+   * WHERE THIS DISCOUNT CAME FROM (29 September 2026).
+   *
+   *   manual     — somebody typed it.
+   *   membership — a benefit on the animal's card was applied. The amount was
+   *                priced by the server from the card's frozen plan; the cashier
+   *                chose only WHETHER to apply it.
+   *
+   * A `membership` discount is NOT EDITABLE on the line and does not consume the
+   * cashier's approval ceiling: it is not their discretion, it is an entitlement
+   * the customer already bought. To change it, remove it and re-apply.
+   *
+   * Optional only because older fixtures lack it; absent means `manual`.
+   */
+  source?: "manual" | "membership";
+  membershipId?: string | null;
+  benefitId?: string | null;
+  /** Frozen onto the line so a reprinted receipt can name it without a lookup. */
+  benefitLabel?: string | null;
 }
 
 /** One line in the basket. `name` and `unitPrice` are snapshots. */
@@ -1734,6 +1759,14 @@ export interface PosItem {
    * Optional only because older fixtures lack it.
    */
   bookingDiscount?: string | null;
+  /**
+   * HOW MUCH OF `discount` A MEMBERSHIP BENEFIT PAID FOR — a PART of it, never
+   * beside it, exactly like `bookingDiscount` above (29 September 2026). A line
+   * may carry a benefit AND a discount the cashier typed on top of it.
+   */
+  membershipDiscount?: string | null;
+  /** The card this line minted, once the sale is paid. Membership lines only. */
+  membershipId?: string | null;
   hppAtTime: string | null;
   /**
    * THE BOOKING BEHIND THIS LINE — and since one booking is one animal and one
@@ -1998,6 +2031,16 @@ export interface PosCatalogAddon {
 
 export interface PosCatalogItem {
   kind: PosItemKind;
+  /**
+   * ON A MEMBERSHIP TILE ONLY (29 September 2026) — how long the package runs,
+   * and how many benefits come with it.
+   *
+   * The two questions a cashier is asked at the counter: "berapa lama?" and
+   * "dapat apa saja?". A tile that could answer neither would send them to
+   * another screen in the middle of a sale.
+   */
+  durationDays?: number | null;
+  benefitCount?: number;
   _id: string;
   name: string;
   code: string | null;
@@ -2464,6 +2507,20 @@ export interface PosItemInput {
     value: string;
     approvedBy?: string;
   } | null;
+  /**
+   * WHICH CARD, AND WHICH BENEFIT ON IT (29 September 2026) — and NOTHING about
+   * what it is worth.
+   *
+   * The server reads the card, its frozen plan and the ledger, and prices the
+   * benefit itself. SENT BACK ON EVERY WRITE like `variantChoices` and
+   * `unitPrice`: the server rebuilds each line from this payload, so a benefit
+   * left out of the next write silently drops off that line.
+   */
+  benefit?: { membershipId: string; benefitId: string } | null;
+  /** On a `membership` line: when cover starts. Default is the day it is paid. */
+  membershipStartDate?: string;
+  /** On a `membership` line: the card this one renews. */
+  renewFromId?: string;
   bookingId?: string | null;
   petId?: string | null;
   petName?: string | null;
@@ -4104,6 +4161,17 @@ export interface ServiceListQuery {
   categoryId?: string;
   /** "Every addon" — the addon picker's list. */
   serviceType?: ServiceType;
+  /**
+   * WHICH KELOMPOK LAYANAN — grooming / hotel / pickup-delivery
+   * (29 September 2026).
+   *
+   * Matches a MAIN service's own `serviceKind` and an ADD-ON's `serviceKinds`
+   * list alike, and an add-on that declares no kinds matches every value —
+   * "offered with everything" is what an empty list means there. Added for the
+   * membership benefit form's cascading picker, where choosing a kelompok
+   * narrows the services offered below it.
+   */
+  serviceKind?: string;
   /** Only services offered at that branch, `allBranches` ones included. */
   branchId?: string;
   isActive?: boolean;
@@ -6679,7 +6747,18 @@ export interface InvoiceJournalEntry {
 }
 
 /** What an invoice line sells. */
-export type InvoiceItemKind = "product" | "service";
+/**
+ * `membership` JOINED THE LIST ON 29 SEPTEMBER 2026 — a package billed as a line
+ * of its own. It holds no stock, has its own accounts (credited to the unearned
+ * liability until the bill is paid), and mints a CARD when the money arrives.
+ *
+ * IT CANNOT BE ADDED OR RE-PRICED IN THE INVOICE EDITOR, and does not need to
+ * be: the editor only offers products and services in its picker, and a KEPT
+ * line is sent back by `fromIndex` for the server to re-read rather than
+ * re-priced in the browser. Widening this type is what stops it claiming the
+ * server can only ever send two kinds.
+ */
+export type InvoiceItemKind = "product" | "service" | "membership";
 
 /** How a discount was typed. `amount` is a rupiah figure, not a percentage. */
 export type InvoiceDiscountMode = "percent" | "amount";
@@ -6709,6 +6788,16 @@ export interface InvoiceDiscount {
   mode: InvoiceDiscountMode;
   value: string;
   resolvedAmount: string;
+  /**
+   * WHERE IT CAME FROM (29 September 2026). `membership` means a benefit on the
+   * animal's card paid for part or all of it — priced by the server from the
+   * card's frozen plan, not typed by anybody.
+   */
+  source?: "manual" | "membership";
+  membershipId?: string | null;
+  benefitId?: string | null;
+  /** Frozen onto the line so a reprinted bill can name it without a lookup. */
+  benefitLabel?: string | null;
 }
 
 /** One line of an invoice, as stored. Prices are snapshots. */
@@ -6720,6 +6809,17 @@ export interface CustomerInvoiceItem {
   qty: string;
   unitPrice: string;
   discount: InvoiceDiscount | null;
+  /**
+   * HOW MUCH OF `discount` A MEMBERSHIP BENEFIT PAID FOR (29 September 2026) —
+   * a PART of it, never beside it, exactly like the booking share.
+   *
+   * A line may carry a benefit AND a discount somebody typed on top of it, so
+   * reading `discount.resolvedAmount` as "what the card gave" would overstate
+   * the programme's cost every time both are present.
+   */
+  membershipDiscount?: string | null;
+  /** The card this line minted, once the bill was paid. Membership lines only. */
+  membershipId?: string | null;
   /** `qty × unitPrice`, BEFORE this line's own discount. */
   lineTotal: string;
   /** The cost the consumed lots carried. Null on a service. */

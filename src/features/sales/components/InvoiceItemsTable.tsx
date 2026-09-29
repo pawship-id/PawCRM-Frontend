@@ -418,6 +418,20 @@ export function InvoiceItemsTable({
                                 )}
                               </span>
                             )}
+                            {/*
+                              A MEMBERSHIP BENEFIT IS NAMED, not left as a bare
+                              deduction (29 September 2026). "−Rp 250.000" with
+                              nothing beside it is the line a customer calls
+                              about; "Gratis full grooming" is the answer. The
+                              label is frozen onto the line at issue, so a bill
+                              reprinted next year still says it even if the card
+                              has since been withdrawn.
+                            */}
+                            {item.discount.source === "membership" && (
+                              <span className="block text-xs text-muted">
+                                {item.discount.benefitLabel ?? "Benefit membership"}
+                              </span>
+                            )}
                           </>
                         ) : (
                           "—"

@@ -55,6 +55,15 @@ export function ReturnItemsPicker({
         const left = remaining[index] ?? 0;
         const line = draft[index] ?? { qty: 0, returnToStock: true };
         const isService = item.kind === "service";
+        /*
+          A MEMBERSHIP IS NOT RETURNED HERE (29 September 2026). Handing a
+          package back means WITHDRAWING THE CARD it minted, which refuses once
+          a benefit has been used — the rule that matters, and one a refund
+          screen cannot enforce. The server refuses the line outright; this
+          keeps the row visible so the receipt still reads whole, and says why
+          rather than offering a control that will be rejected.
+        */
+        const isMembership = item.kind === "membership";
 
         return (
           <li key={`${item.refId}-${index}`} className="py-3">
@@ -67,6 +76,12 @@ export function ReturnItemsPicker({
                   {formatQty(item.qty)} × {formatMoney(item.unitPrice)}
                   {left <= 0 && " · sudah diretur semua"}
                 </span>
+                {isMembership && (
+                  <span className="block text-xs text-muted">
+                    Batalkan kartunya di halaman Membership — tidak bisa
+                    diretur dari sini.
+                  </span>
+                )}
               </div>
 
               <div className="flex shrink-0 items-center gap-1">
@@ -75,7 +90,7 @@ export function ReturnItemsPicker({
                   variant="ghost"
                   size="icon"
                   className="size-9"
-                  disabled={disabled || line.qty <= 0}
+                  disabled={disabled || isMembership || line.qty <= 0}
                   aria-label={`Kurangi ${item.name}`}
                   onClick={() =>
                     onChange(index, { ...line, qty: line.qty - 1 })
@@ -93,7 +108,7 @@ export function ReturnItemsPicker({
                   variant="ghost"
                   size="icon"
                   className="size-9"
-                  disabled={disabled || line.qty >= left}
+                  disabled={disabled || isMembership || line.qty >= left}
                   aria-label={`Tambah ${item.name}`}
                   onClick={() =>
                     onChange(index, { ...line, qty: line.qty + 1 })
@@ -105,7 +120,7 @@ export function ReturnItemsPicker({
             </div>
 
             {/* Only asked once something on this line is actually coming back. */}
-            {line.qty > 0 && !isService && (
+            {line.qty > 0 && !isService && !isMembership && (
               <div className="mt-2 flex items-center gap-2">
                 <Checkbox
                   id={`restock-${index}`}

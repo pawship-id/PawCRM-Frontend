@@ -100,9 +100,14 @@ export function CustomerModuleHeader({
     ...(mayReadPets
       ? [{ label: "Hewan", href: "/dashboard/master/pets" }]
       : []),
-    // Both open on a "belum tersedia" panel wearing this same header. Ungated:
-    // there is no membership feature in the RBAC catalogue to gate them on, and
-    // neither page holds anything to protect.
+    /*
+      NOT EXACT, unlike Pelanggan above — Membership has sub-tabs of its own
+      (Paket / Kartu / Perpanjangan) and has to stay underlined on all three.
+      Its own row handles which of the three is current.
+
+      The page behind it is real and gated on `membershipPlans:read`; only
+      Riwayat below still opens on a "belum tersedia" panel.
+    */
     { label: "Membership", href: "/dashboard/master/customers/membership" },
     { label: "Riwayat", href: "/dashboard/master/customers/riwayat" },
   ];

@@ -46,6 +46,7 @@ import type {
   CustomerInvoiceDetail,
   GeoLocation,
   InvoiceDiscountMode,
+  InvoiceItemKind,
   Pet,
   UpdateCustomerInvoiceInput,
   VariantChoice,
@@ -76,7 +77,20 @@ interface EditLine {
   key: string;
   /** The stored line this continues, or null for a line added here. */
   fromIndex: number | null;
-  kind: "product" | "service";
+  /**
+   * `membership` REACHES THIS EDITOR BUT IS NEVER CREATED IN IT (29 September
+   * 2026). A package can be billed on an invoice, so a bill being corrected may
+   * already carry one — and dropping it, or narrowing this type so it could not
+   * be represented, would quietly delete a line the customer was charged for.
+   *
+   * WHAT PROTECTS IT: the "Tambah baris" picker offers only products and
+   * services, and a KEPT line is sent back by `fromIndex` for the server to
+   * re-read rather than re-priced here (`priceOf` runs on new rows only). So a
+   * membership line passes through untouched, which is exactly what it should
+   * do. An invoice is editable only while UNPAID, and a card is not minted
+   * until payment, so there is never a card behind it to keep in step.
+   */
+  kind: InvoiceItemKind;
   refId: string;
   name: string;
   sku: string | null;
@@ -782,7 +796,17 @@ export function InvoiceEditor({
     return null;
   })();
 
+  /**
+   * The catalogue price for a NEW row. Never reached by a kept line — see
+   * `EditLine.kind` — which is why a membership needs no branch here: one can
+   * only arrive as a kept line, and kept lines keep the price they were billed
+   * at.
+   */
   function priceOf(line: Pick<EditLine, "kind" | "refId" | "petId">) {
+    if (line.kind === "membership") {
+      return "0";
+    }
+
     if (line.kind === "product") {
       const product = lookups.products.find((one) => one._id === line.refId);
       return String(product?.sellPrice ?? "0");
