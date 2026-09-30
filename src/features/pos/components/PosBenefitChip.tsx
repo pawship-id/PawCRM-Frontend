@@ -1,7 +1,5 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
-
 /**
  * The mark on a cart line a membership card paid for.
  *
@@ -40,10 +38,9 @@ export function PosBenefitChip({
     */
     return (
       <span
-        className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-success-fill px-2 py-0.5 text-xs font-medium text-foreground"
+        className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-success-fill px-2 py-0.5 text-xs font-medium text-foreground"
         title={applied.benefitLabel ?? undefined}
       >
-        <Sparkles className="size-3 shrink-0" aria-hidden />
         Benefit membership
       </span>
     );

@@ -13,7 +13,7 @@ import {
 import { usePermissions } from "@/features/permissions";
 import type { PosDiscountMode, PosItem, PosTransaction } from "@/types/api";
 
-import { bookingShareOf } from "../bookingDiscount";
+import { bookingShareOf, membershipShareOf } from "../bookingDiscount";
 import type { BenefitQuoteResponse } from "@/types/membership";
 
 import { PosBenefitSection } from "./PosBenefitSection";
@@ -339,15 +339,33 @@ export function PosCart({
             </div>
 
             {/*
-              THE SERVER'S ITEM DISCOUNT, SPLIT THE WAY THE LINES SHOW IT — the
-              lines' own, then the bookings' shares of "Diskon seluruh booking".
-              The two always add up to `totals.itemDiscount`. The share is shown
-              HERE ONLY, once for the whole basket — not under each booking,
-              which read as a second discount per animal (15 September 2026).
+              THE SERVER'S ITEM DISCOUNT, SPLIT THREE WAYS — the lines' own
+              typed discount, the bookings' shares of "Diskon seluruh booking",
+              and what a membership card paid for. The three always add up to
+              `totals.itemDiscount`. The booking share is shown HERE ONLY, once
+              for the whole basket — not under each booking, which read as a
+              second discount per animal (15 September 2026).
+
+              ⚠️ A CARD'S GIVEAWAY IS NOT "DISKON ITEM" (1 October 2026, on
+              request). It used to be folded into the same figure as whatever the
+              cashier typed — one number answering two different questions: "how
+              much did we choose to give away" and "how much had the customer
+              already paid for". `own` now excludes it, so Diskon item is
+              CASHIER-TYPED DISCOUNTS ONLY; a card's part gets its own line below,
+              with which lines it paid for.
             */}
             {(() => {
               const shares = sumDecimals((cart?.items ?? []).map(bookingShareOf));
-              const own = subtractDecimals(totals.itemDiscount, shares);
+              const membershipShares = sumDecimals(
+                (cart?.items ?? []).map((item) => membershipShareOf(item) ?? "0"),
+              );
+              const own = subtractDecimals(
+                subtractDecimals(totals.itemDiscount, shares),
+                membershipShares,
+              );
+              const membershipLines = (cart?.items ?? [])
+                .map((item, index) => ({ item, index }))
+                .filter(({ item }) => membershipShareOf(item) !== null);
 
               return (
                 <>
@@ -367,6 +385,37 @@ export function PosCart({
                       </dd>
                     </div>
                   )}
+                  {isPositive(membershipShares) && (
+                    <div>
+                      <div className="flex justify-between">
+                        <dt className="text-muted">Diskon membership</dt>
+                        <dd className="tabular-nums text-success">
+                          −{formatMoney(membershipShares)}
+                        </dd>
+                      </div>
+                      {/*
+                        WHICH LINES IT PAID FOR — the question a number alone
+                        cannot answer once a basket holds more than one.
+                      */}
+                      <ul className="mt-0.5 flex flex-col gap-0.5 pl-4">
+                        {membershipLines.map(({ item, index }) => (
+                          <li
+                            key={`${item.kind}-${item.refId}-${index}`}
+                            className="flex justify-between gap-2 text-xs text-muted"
+                          >
+                            <span className="min-w-0 truncate">
+                              {item.petName
+                                ? `${item.petName} - ${item.name}`
+                                : item.name}
+                            </span>
+                            <span className="shrink-0 tabular-nums">
+                              −{formatMoney(membershipShareOf(item)!)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </>
               );
             })()}
@@ -374,9 +423,22 @@ export function PosCart({
             <div className="flex items-center justify-between">
               <dt className="flex items-center gap-1 text-muted">
                 Diskon keranjang
+                {/*
+                  NOTHING LEFT TO DISCOUNT (1 October 2026, on request) — the
+                  same rule as a line's own discount button. A basket already at
+                  nought cannot be cut further; the server would floor it there
+                  anyway.
+                  ⚠️ ONLY WHEN NOTHING WAS TYPED. A basket at nought BECAUSE the
+                  cashier typed 100% off must keep its control, or the discount
+                  they just entered is one they can never take back off.
+                */}
                 <PosDiscountPopover
                   value={cart?.cartDiscount ?? null}
-                  disabled={busy}
+                  disabled={
+                    busy ||
+                    (!cart?.cartDiscount &&
+                      (totals.payable ?? totals.net) === "0.0000")
+                  }
                   label="Diskon keranjang"
                   onApply={onCartDiscount}
                 />

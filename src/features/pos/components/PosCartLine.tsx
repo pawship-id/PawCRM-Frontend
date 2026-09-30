@@ -336,13 +336,11 @@ export function PosCartLine({
               </Button>
             </>
           )}
-        </div>
 
-        <div className="flex items-center gap-1">
           {/*
-            BESIDE THE DISCOUNT CONTROL (1 October 2026, on request) — the two
-            answer the same question, "what came off this line and why", so
-            they read together rather than one by the name and one down here.
+            BESIDE "LAYANAN" (1 October 2026, on request) — both are marks about
+            the line rather than controls on it, so they sit together on the
+            side that names what this row is, not the side that acts on it.
           */}
           {item.discount?.source === "membership" && (
             <PosBenefitChip
@@ -352,6 +350,9 @@ export function PosCartLine({
               }}
             />
           )}
+        </div>
+
+        <div className="flex items-center gap-1">
           {/*
             A DISCOUNT IS NEVER LOCKED. It changes what the customer pays, not
             what the animal is having — the booking behind the line stores the

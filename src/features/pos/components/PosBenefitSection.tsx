@@ -1,7 +1,5 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import { REASON_LABEL } from "@/features/memberships/labels";
 import { formatMoney } from "@/utils/decimal";
@@ -154,8 +152,7 @@ export function PosBenefitSection({
       aria-label="Benefit membership"
       className="flex flex-col gap-2 border-t border-border pt-3"
     >
-      <h3 className="flex items-center gap-1.5 text-xs font-semibold tracking-widest text-muted uppercase">
-        <Sparkles className="size-3.5" aria-hidden />
+      <h3 className="text-xs font-semibold tracking-widest text-muted uppercase">
         Benefit membership
       </h3>
 
