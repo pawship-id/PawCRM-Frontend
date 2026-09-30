@@ -25,6 +25,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PetFixLink } from "@/features/pets";
+import { useBenefitQuote } from "@/features/memberships";
+
+import { InvoiceBenefitChip } from "./InvoiceBenefitChip";
 import { useVariantQuote } from "@/features/services";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
@@ -260,6 +263,15 @@ interface DraftLine {
   qty: string;
   discountMode: InvoiceDiscountMode;
   discountValue: string;
+  /**
+   * THE MEMBERSHIP BENEFIT CHOSEN ON THIS ROW (30 September 2026), or null.
+   *
+   * WHICH card and WHICH benefit — never what it is worth. The server reads the
+   * card, its frozen plan and the redemption ledger and prices it itself; the
+   * amount below is only what the SERVER quoted, held so the preview can show a
+   * total that matches the bill.
+   */
+  benefit: { membershipId: string; benefitId: string; amount: string } | null;
   /**
    * WHOSE ANIMAL, on a service line — PCR-035. REQUIRED on one.
    *
@@ -875,6 +887,50 @@ export function InvoiceCreateForm() {
   const hasServiceLine =
     pulledBookings.length > 0 || lines.some((line) => line.kind === "service");
 
+  /*
+    ─── WHAT A MEMBERSHIP CARD COULD PAY FOR ON THIS BILL (30 September 2026) ──
+
+    Asked of the server on every change to the lines, and asked as an OFFER: the
+    answer never becomes a total on its own. Choosing one sends
+    `{ membershipId, benefitId }` on the line and lets the server price it for
+    real — a form that could name its own benefit amount could write a free
+    invoice.
+
+    ONLY ROWS THAT NAME AN ANIMAL ARE ASKED ABOUT, because a card belongs to an
+    animal: a bag of feed on the same bill is nobody's.
+
+    PULLED BOOKING LINES ARE NOT ASKED ABOUT EITHER, and that is worth stating.
+    They carry the price and the discount the booking froze, and this form does
+    not own them — a benefit on one belongs at the till that bills it, where the
+    ledger is written in the same transaction as the money.
+
+    `ref` IS THE ROW'S OWN KEY, not its index: a row's position moves when one
+    above it is removed, and an offer matched by position would land on the
+    wrong line for exactly as long as it takes the next quote to come back.
+  */
+  const benefitQuoteLines = useMemo(
+    () =>
+      lines.flatMap((line) =>
+        line.petId && line.kind === "service"
+          ? [
+              {
+                ref: line.key,
+                kind: "service" as const,
+                refId: line.refId,
+                petId: line.petId,
+                amount: line.unitPrice,
+              },
+            ]
+          : [],
+      ),
+    [lines],
+  );
+
+  const { offerFor: benefitOfferFor } = useBenefitQuote({
+    customerId: customerId || null,
+    lines: benefitQuoteLines,
+  });
+
   const preview = useMemo(
     () =>
       previewInvoice(
@@ -887,6 +943,13 @@ export function InvoiceCreateForm() {
             discount: line.discountValue
               ? { mode: line.discountMode, value: line.discountValue }
               : null,
+            /*
+              THE SERVER'S OWN QUOTE, fed straight in. The preview must apply it
+              BEFORE the typed discount because `utils/invoicePricing.js` does —
+              a screen that ordered the two differently would show a total the
+              bill then disagrees with, in front of the customer.
+            */
+            benefit: line.benefit?.amount ?? null,
           })),
         ],
         invoiceDiscountValue
@@ -1134,6 +1197,7 @@ export function InvoiceCreateForm() {
             qty: "1",
             discountMode: "percent",
             discountValue: "",
+            benefit: null,
             petId: "",
             key: nextLineKey(),
             parentKey: null,
@@ -1173,6 +1237,7 @@ export function InvoiceCreateForm() {
         qty: "1",
         discountMode: "percent" as const,
         discountValue: "",
+        benefit: null,
         petId: "",
         key: nextLineKey(),
         parentKey: null,
@@ -1194,6 +1259,7 @@ export function InvoiceCreateForm() {
         qty: "1",
         discountMode: "percent" as const,
         discountValue: "",
+        benefit: null,
         petId: "",
         key: nextLineKey(),
         parentKey: null,
@@ -1333,6 +1399,7 @@ export function InvoiceCreateForm() {
             qty: "1",
             discountMode: "percent",
             discountValue: "",
+            benefit: null,
             petId: parent.petId,
             key: nextLineKey(),
             parentKey,
@@ -1380,6 +1447,18 @@ export function InvoiceCreateForm() {
         discount: line.discountValue
           ? { mode: line.discountMode, value: line.discountValue }
           : null,
+        /*
+          WHICH CARD AND WHICH BENEFIT — never the amount. The server prices it
+          again from the card; what was quoted here only ever drove the preview.
+        */
+        ...(line.benefit
+          ? {
+              benefit: {
+                membershipId: line.benefit.membershipId,
+                benefitId: line.benefit.benefitId,
+              },
+            }
+          : {}),
         /*
           OMITTED rather than sent as an empty string, which the server's
           objectId check would refuse with a validation error instead of the
@@ -2278,6 +2357,33 @@ export function InvoiceCreateForm() {
                                 )}
                               </span>
                             )}
+                            {/*
+                              ─── THE MEMBERSHIP BENEFIT, UNDER THE DISCOUNT ───
+
+                              Below the typed discount because that is the order
+                              the money comes off: the benefit first, the typed
+                              discount on what is left. A reader going down the
+                              cell reads it in the sequence the server prices it.
+
+                              NOT AN EDITABLE FIELD. The amount comes from the
+                              card's frozen plan; the only decision here is
+                              whether to honour it, so the control is a toggle.
+                            */}
+                            <InvoiceBenefitChip
+                              applied={line.benefit}
+                              offer={benefitOfferFor(line.key)}
+                              disabled={saving}
+                              onApply={(candidate) =>
+                                patchLine(index, {
+                                  benefit: {
+                                    membershipId: candidate.membershipId,
+                                    benefitId: candidate.benefitId,
+                                    amount: candidate.discount,
+                                  },
+                                })
+                              }
+                              onRemove={() => patchLine(index, { benefit: null })}
+                            />
                           </TableCell>
 
                           <TableCell className="tabular-nums">

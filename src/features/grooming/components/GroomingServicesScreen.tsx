@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
+import { SETTINGS_PATHS } from "@/features/settings";
 import {
   formatDurationRange,
   serviceDurationBounds,
@@ -243,8 +244,15 @@ export function GroomingServicesScreen({
       {line.missing && (
         <Alert variant="warning">
           Belum ada lini bisnis bernama {serviceLine.title}. Buat atau ganti
-          nama lini bisnisnya di Keuangan › Ringkasan › Lini Bisnis, lalu pasang
-          di layanannya.
+          nama lini bisnisnya di{" "}
+          <Link
+            href={SETTINGS_PATHS.liniBisnis}
+            className="underline underline-offset-2"
+            target="_blank"
+          >
+            Pengaturan › Keuangan › Lini Bisnis
+          </Link>
+          , lalu pasang di layanannya.
         </Alert>
       )}
       {error && <Alert variant="error">{error}</Alert>}

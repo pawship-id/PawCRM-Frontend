@@ -215,6 +215,8 @@ describe("BookingForm", () => {
             /* Two notes, and the key is always sent — same reason as above. */
             internalNotes: null,
             customerNotes: null,
+            /* A plan, not a spend — the key is always sent, same reason. */
+            plannedBenefit: null,
             belongings: [],
           },
         ],

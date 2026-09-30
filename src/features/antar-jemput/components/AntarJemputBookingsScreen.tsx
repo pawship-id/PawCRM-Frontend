@@ -7,6 +7,7 @@ import { Plus } from "lucide-react";
 import { Alert, Pagination, Spinner, formatRangeShort } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
+import { SETTINGS_PATHS } from "@/features/settings";
 import {
   countFilters,
   DEFAULT_FILTERS,
@@ -186,8 +187,15 @@ export function AntarJemputBookingsScreen() {
         <Alert variant="warning">
           Belum ada lini bisnis bernama Antar-Jemput, jadi layanan antar-jemput
           belum bisa dipisahkan dari layanan lain. Buat atau ganti nama lini
-          bisnisnya di Keuangan › Ringkasan › Lini Bisnis. Booking yang sudah
-          punya arah tetap tampil di sini.
+          bisnisnya di{" "}
+          <Link
+            href={SETTINGS_PATHS.liniBisnis}
+            className="underline underline-offset-2"
+            target="_blank"
+          >
+            Pengaturan › Keuangan › Lini Bisnis
+          </Link>
+          . Booking yang sudah punya arah tetap tampil di sini.
         </Alert>
       )}
       {board.error && (

@@ -31,6 +31,17 @@ export interface PreviewLine {
   qty: string;
   unitPrice: string;
   discount?: TypedDiscountInput | null;
+  /**
+   * WHAT A MEMBERSHIP BENEFIT TAKES OFF THIS LINE (30 September 2026), as a
+   * decimal string — quoted by the server, never computed here.
+   *
+   * IT COMES OFF BEFORE THE TYPED DISCOUNT, mirroring `utils/invoicePricing.js`
+   * exactly: the cashier's 10% runs on what is left, not on the list price. The
+   * whole reason this preview exists is that the form shows a total before
+   * anything is saved, and a preview that applied the two in the other order
+   * would show the customer a different number from the one they are charged.
+   */
+  benefit?: string | null;
 }
 
 export interface InvoicePreview {
@@ -158,7 +169,17 @@ export function previewInvoice(
     // Both operands carry the scale, so their product carries it twice.
     const total = divideRound(parse(line.qty) * parse(line.unitPrice), ONE);
     lineTotals.push(total);
-    lineDiscounts.push(resolveDiscount(total, line.discount));
+
+    /*
+      THE BENEFIT FIRST, CAPPED AT THE LINE — the server's order and the
+      server's cap. A Rp 50.000 benefit against a Rp 30.000 line takes 30.000
+      and does not pay the customer.
+    */
+    const quoted = line.benefit ? parse(line.benefit) : ZERO;
+    const benefit = quoted > total ? total : quoted < ZERO ? ZERO : quoted;
+
+    // The typed discount is measured against what is LEFT after it.
+    lineDiscounts.push(benefit + resolveDiscount(total - benefit, line.discount));
   });
 
   const subtotal = lineTotals.reduce((sum, value) => sum + value, ZERO);

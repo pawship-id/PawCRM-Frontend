@@ -26,6 +26,7 @@ import {
 } from "@/utils/serviceVariant";
 import type { BusinessLine } from "@/services/businessLine.service";
 import type { Pet, Service, VariantOption } from "@/types/api";
+import { BookingBenefitField } from "./BookingBenefitField";
 import { petServiceKey, UNASSIGNED } from "../bookingDraft";
 import type { BelongingDraft, BookingCardDraft } from "../bookingDraft";
 import type { VariantRefusal } from "../variantLine";
@@ -452,6 +453,23 @@ export function BookingCard({
                 )}
               </p>
             )}
+
+            {/*
+              ─── MEMBERSHIP (30 September 2026) ──────────────────────────────
+
+              Shown only when this animal holds a card with a benefit that
+              covers what is being booked. A PLAN, not a spend: the badge under
+              it says so, because "pakai jatah gratisnya" agreed at the counter
+              and a quota actually deducted are two different promises, and a
+              customer told the wrong one at the till is the failure this whole
+              field exists to prevent.
+            */}
+            <BookingBenefitField
+              petId={card.petId}
+              serviceId={card.serviceId}
+              value={card.plannedBenefit}
+              onChange={(plannedBenefit) => onChange({ plannedBenefit })}
+            />
 
             {offeredAddons.length > 0 && (
               <div className="mt-3">

@@ -138,6 +138,18 @@ const CARDS: ReportCard[] = [
     action: "read",
   },
   {
+    title: "Laporan Membership",
+    description:
+      "Paket terlaris, dan berapa nilai benefit yang sudah diberikan. Benefit yang tidak pernah muncul di sana berarti tidak pernah dipakai seorang pun.",
+    href: "/dashboard/reports/membership",
+    /*
+      `membershipPlans:read`, not a report grant: the report is about what the
+      packages did, and whoever may see the catalogue is who is asking.
+    */
+    feature: "membershipPlans",
+    action: "read",
+  },
+  {
     title: "Konsinyasi Outstanding",
     description:
       "Barang titipan yang masih di gudang, per supplier. Belum jadi utang — utang muncul saat barangnya laku.",

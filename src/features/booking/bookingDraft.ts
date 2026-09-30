@@ -60,6 +60,21 @@ export interface BookingCardDraft {
   serviceId: string;
   /** The add-ons ticked under it, by service id. */
   addonServiceIds: string[];
+  /**
+   * A MEMBERSHIP BENEFIT THIS BOOKING MEANS TO USE (30 September 2026).
+   *
+   * A PLAN, NOT A SPEND: nothing is deducted when the booking is made. The
+   * quota moves when it is BILLED, and the till re-reads the card then — a
+   * booking is a promise, and one that ate a customer's weekly free bath and
+   * was then cancelled would have taken something from somebody who received
+   * nothing.
+   *
+   * WHAT IT IS FOR is the conversation at the counter: "pakai jatah gratisnya
+   * ya" is agreed when the appointment is made, days before anybody rings it
+   * up. Without it, that has to be remembered by whoever happens to be on the
+   * till.
+   */
+  plannedBenefit: { membershipId: string; benefitId: string } | null;
   /** As typed; "" means "use the catalogue's". */
   durationMin: string;
   /**
@@ -107,6 +122,7 @@ export function blankCard(petId = ""): BookingCardDraft {
     businessLineId: "",
     serviceId: "",
     addonServiceIds: [],
+    plannedBenefit: null,
     durationMin: "",
     groomerUserId: UNASSIGNED,
     internalNotes: "",
@@ -137,6 +153,12 @@ export function cardFromBooking(booking: Booking): BookingCardDraft {
     ...blankCard(booking.petId ?? ""),
     serviceId: service?.serviceId ?? "",
     addonServiceIds: (service?.addons ?? []).map((addon) => addon.serviceId),
+    plannedBenefit: booking.plannedBenefit
+      ? {
+          membershipId: booking.plannedBenefit.membershipId,
+          benefitId: booking.plannedBenefit.benefitId,
+        }
+      : null,
     // Shown as typed, so saving without touching it keeps the number.
     durationMin:
       service?.durationMin === null || service?.durationMin === undefined
@@ -189,6 +211,13 @@ function cardFields(card: BookingCardDraft) {
       card.groomerUserId === UNASSIGNED ? null : card.groomerUserId,
     internalNotes: noteOf(card.internalNotes),
     customerNotes: noteOf(card.customerNotes),
+    /*
+      TWO IDS AND NOTHING ELSE — which card, which benefit. The server stores
+      the plan as sent and deducts nothing; the till prices it for real when the
+      booking is billed. `null` clears a plan somebody changed their mind about,
+      which is why it is sent rather than omitted when empty.
+    */
+    plannedBenefit: card.plannedBenefit,
   };
 }
 

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Alert, Card, CheckRow, CheckRowGroup, FilterSelect, TextareaField } from "@/components";
 import { money } from "@/features/grooming/components/BookingPriceControls";
-import { useGroomingLine } from "@/features/grooming/hooks/useGroomingLine";
 import type { useVariantQuote } from "@/features/services";
 import { bookingService } from "@/services/booking.service";
 import { toMinor } from "@/utils/decimal";
@@ -49,18 +48,24 @@ export const BLANK_RIDE: RideDraft = {
   choices: [],
 };
 
-/** The Antar-Jemput line's main services, out of the list the form already read. */
+/**
+ * The antar-jemput services, out of the list the form already read.
+ *
+ * BY KIND, NOT BY LINE (30 September 2026, on request): `serviceKind` is a fixed
+ * word the service carries, where a lini bisnis is a free label a tenant that
+ * does not report its van separately may never create. Keyed off the line for
+ * its first three days, this returned NOTHING for such a tenant — a grooming
+ * booking could not be given a ride at all.
+ */
 export function useRideServices(services: Service[]): Service[] {
-  const line = useGroomingLine(ANTAR_JEMPUT_LINE);
-
   return useMemo(
     () =>
       services.filter(
         (service) =>
           service.serviceType === "main" &&
-          (line.line ? service.businessLineId === line.line._id : false),
+          service.serviceKind === ANTAR_JEMPUT_LINE.serviceKind,
       ),
-    [services, line.line],
+    [services],
   );
 }
 

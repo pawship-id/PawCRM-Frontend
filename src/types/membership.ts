@@ -304,3 +304,45 @@ export interface BenefitQuoteResponse {
     recommended: BenefitCandidate | null;
   }>;
 }
+
+/**
+ * Membership, in the three numbers that decide whether the programme works —
+ * `GET /reports/membership`.
+ *
+ * `margin` IS NOT A PROFIT and is deliberately not called one: it is revenue
+ * less what the benefits cost at list price, and it ignores the cost of
+ * actually performing those baths. The screen labels it accordingly.
+ */
+export interface MembershipReport {
+  summary: {
+    cards: number;
+    revenue: string;
+    benefitValue: string;
+    margin: string;
+  };
+  plans: Array<{
+    planId: string;
+    /** The name the card was SOLD under — a later rename does not rewrite history. */
+    name: string;
+    cards: number;
+    revenue: string;
+    benefitsUsed: number;
+    benefitValue: string;
+  }>;
+  /**
+   * One row per benefit actually spent.
+   *
+   * A BENEFIT NOBODY EVER USED HAS NO ROW — this is built from the redemption
+   * ledger, and an unused benefit has nothing in it. That absence is the point:
+   * it is what the screen has to make visible.
+   */
+  benefits: Array<{
+    benefitId: string;
+    planId: string;
+    planName: string;
+    label: string;
+    used: number;
+    value: string;
+    lastUsedAt: string | null;
+  }>;
+}

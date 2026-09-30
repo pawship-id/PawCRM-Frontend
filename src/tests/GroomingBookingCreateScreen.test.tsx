@@ -88,6 +88,8 @@ const grooming = {
   variants: [],
   variantAxes: [],
   serviceType: "main",
+  /* What the Layanan picker narrows by — never the lini bisnis. */
+  serviceKind: "grooming",
   businessLineId: "line-groom",
   serviceLocations: [],
   addonServiceIds: [],
@@ -466,6 +468,7 @@ describe("GroomingBookingCreateScreen", () => {
       _id: "svc-aj",
       name: "Antar-Jemput",
       price: "45000.0000",
+      serviceKind: "pickup-delivery",
       businessLineId: "line-aj",
       billingUnit: "per_visit",
       serviceLocations: ["in_home"],

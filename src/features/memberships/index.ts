@@ -15,6 +15,7 @@ export { MembershipPlanDetail } from "./components/MembershipPlanDetail";
 export { MembershipCardsPanel } from "./components/MembershipCardsPanel";
 export { MembershipCardDetail } from "./components/MembershipCardDetail";
 export { RenewalPanel } from "./components/RenewalPanel";
+export { MembershipReportScreen } from "./components/MembershipReportScreen";
 export { PetMembershipPanel } from "./components/PetMembershipPanel";
 export { IssueMembershipDialog } from "./components/IssueMembershipDialog";
 export { MembershipStatusBadge } from "./components/MembershipStatusBadge";

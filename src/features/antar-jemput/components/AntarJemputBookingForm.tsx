@@ -48,7 +48,6 @@ import {
   toScheduledAt,
 } from "@/features/grooming/components/BookingPriceControls";
 import { ChoiceCards } from "@/features/grooming/components/GroomingSettingsControls";
-import { useGroomingLine } from "@/features/grooming/hooks/useGroomingLine";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { usePermissions } from "@/features/permissions";
 import { PetQuickAddDialog } from "@/features/pets";
@@ -317,7 +316,6 @@ export function AntarJemputBookingForm({
   */
   const mayPrice = can("bookings", "setPrice");
   const { label: optionLabel } = usePetOptions();
-  const line = useGroomingLine(ANTAR_JEMPUT_LINE);
 
   const scope = useBranchScope();
   const [pickedBranch, setPickedBranch] = useState("");
@@ -615,20 +613,27 @@ export function AntarJemputBookingForm({
   );
 
   /*
-    The Antar-Jemput line's main services, AT THE CHOSEN BRANCH (23 September
-    2026, on request). Filtered here rather than re-fetched per branch: the
-    catalogue is already loaded, and `allBranches` means every branch as new
-    ones open, so it is never listed in `branchIds`.
+    The antar-jemput services, AT THE CHOSEN BRANCH (23 September 2026, on
+    request). Filtered here rather than re-fetched per branch: the catalogue is
+    already loaded, and `allBranches` means every branch as new ones open, so it
+    is never listed in `branchIds`.
+
+    ─── BY KIND, NOT BY LINE (30 September 2026, on request) ─────────────────
+
+    `serviceKind` is a fixed word the service itself carries; a lini bisnis is a
+    free label the tenant may never create. Narrowing by the line meant a shop
+    that runs a van but reports its takings under one line had no antar-jemput
+    services to pick — or, worse, was offered every main service it sells.
   */
   const rideServices = useMemo(
     () =>
       services.filter(
         (service) =>
           service.serviceType === "main" &&
-          (!line.line || service.businessLineId === line.line._id) &&
+          service.serviceKind === ANTAR_JEMPUT_LINE.serviceKind &&
           (!branchId || service.allBranches || service.branchIds.includes(branchId)),
       ),
-    [services, line.line, branchId],
+    [services, branchId],
   );
 
   /* ─── What the form comes to ──────────────────────────────────────────── */
@@ -1211,12 +1216,6 @@ export function AntarJemputBookingForm({
         {loadError && <Alert variant="error">{loadError}</Alert>}
         {formError && <Alert variant="error">{formError}</Alert>}
         {refusal && <Alert variant="error">{refusal}</Alert>}
-        {line.missing && (
-          <Alert variant="warning">
-            Belum ada lini bisnis bernama Antar-Jemput, jadi semua layanan utama
-            ditawarkan di sini.
-          </Alert>
-        )}
         {clash && (
           <Alert variant="warning">
             {clash} — tekan Simpan lagi kalau memang mau dijadwalkan bersamaan.

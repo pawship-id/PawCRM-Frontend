@@ -320,6 +320,29 @@ export function usePosCart(): UsePosCartResult {
               }
             : null;
         })(),
+        /*
+          THE MEMBERSHIP BENEFIT, SENT BACK (30 September 2026). Same reason as
+          the typed price above and the journey below: the server rebuilds every
+          line from this payload on each write, so a benefit left out of the
+          next one would quietly fall off the moment the cashier stepped the
+          quantity of a bag of feed three lines down — and the customer would be
+          charged full price for something they had already been told was free.
+
+          `discount.source` IS THE FLAG, the way `listPrice` is the flag for an
+          overridden price: it is `membership` only on a line a card paid for.
+          TWO IDS AND NOTHING ELSE go back — the server re-reads the card and
+          re-prices it, so a stale amount on this side can never become money.
+        */
+        ...(item.discount?.source === "membership" &&
+        item.discount.membershipId &&
+        item.discount.benefitId
+          ? {
+              benefit: {
+                membershipId: item.discount.membershipId,
+                benefitId: item.discount.benefitId,
+              },
+            }
+          : {}),
         bookingId: item.bookingId,
         petId: item.petId,
         petName: item.petName,

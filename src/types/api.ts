@@ -2782,6 +2782,19 @@ export interface Booking {
    * `tripAddress` is the customer's end; the other end is the branch.
    * Optional only because older fixtures lack them.
    */
+  /**
+   * A MEMBERSHIP BENEFIT THIS BOOKING MEANS TO USE (30 September 2026).
+   *
+   * A PLAN, NOT A SPEND — nothing is deducted here. The quota moves when the
+   * booking is BILLED, and the till re-reads the card at that moment: a booking
+   * is a promise, and one that ate a customer's weekly free bath and was then
+   * cancelled would have taken something from somebody who received nothing.
+   *
+   * NO LABEL COMES BACK, deliberately: a stored one would be either forgeable
+   * client text or a card read per booking to decorate a board. The till names
+   * the benefit where the name changes what somebody does.
+   */
+  plannedBenefit?: { membershipId: string; benefitId: string } | null;
   tripLeg?: TripLeg | null;
   /**
    * EVERY ANIMAL IN THE VAN (23 September 2026) — all of them, not "the others".
@@ -6985,6 +6998,15 @@ export interface CreateInvoiceItemInput {
   refId: string;
   qty: string;
   discount?: TypedDiscountInput | null;
+  /**
+   * WHICH CARD AND WHICH BENEFIT (30 September 2026) — never what it is worth.
+   *
+   * The server reads the card, its frozen plan and the redemption ledger and
+   * prices the benefit itself. A payload that could name its own benefit amount
+   * could write a free invoice, so the amount is deliberately absent from this
+   * shape; what the form quoted only ever drove its own preview.
+   */
+  benefit?: { membershipId: string; benefitId: string } | null;
   /**
    * WHOSE ANIMAL, on a service line — PCR-035, and the prerequisite for the rest
    * of it. A booking needs a pet, and a grooming typed straight onto an invoice

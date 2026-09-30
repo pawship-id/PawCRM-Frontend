@@ -7,6 +7,7 @@ import type {
   MembershipPlan,
   MembershipPlanListQuery,
   MembershipPlanListResponse,
+  MembershipReport,
   PetMembership,
   PetMembershipListQuery,
   PetMembershipListResponse,
@@ -122,6 +123,16 @@ export const membershipService = {
     apiClient.get<PetMembershipListResponse>("/pet-memberships/expiring", {
       query,
     }),
+
+  /**
+   * GET /reports/membership — what the packages brought in and gave away.
+   *
+   * ONE CALL FOR ALL THREE BLOCKS, because the headline is DERIVED from the
+   * per-plan rows: split across calls, a screen could show a summary taken at a
+   * different instant from the table under it.
+   */
+  report: (query: { dateFrom?: string; dateTo?: string } = {}) =>
+    apiClient.get<MembershipReport>("/reports/membership", { query }),
 
   /**
    * "For this cart, what could this customer be given?"
