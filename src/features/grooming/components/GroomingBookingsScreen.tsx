@@ -13,7 +13,6 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import { SETTINGS_PATHS } from "@/features/settings";
 
 import {
   countFilters,
@@ -34,7 +33,7 @@ import {
 } from "../board";
 import { MAX_BOOKING_PAGES, useGroomingBoard } from "../hooks/useGroomingBoard";
 import { useGroomingCatalog } from "../hooks/useGroomingCatalog";
-import { GROOMING_LINE_FALLBACK, useGroomingLine } from "../hooks/useGroomingLine";
+import { GROOMING_LINE } from "../line";
 import { GroomingBookingsTable } from "./GroomingBookingsTable";
 import { GroomingBookingsToolbar } from "./GroomingBookingsToolbar";
 import { GroomingModuleHeader } from "./GroomingModuleHeader";
@@ -75,17 +74,16 @@ const LENS_WORDS: Record<Exclude<GroomingLens, "all">, string> = {
  * shrank while somebody typed a dog's name would be a total of nothing.
  */
 export function GroomingBookingsScreen() {
-  const line = useGroomingLine();
-  const catalog = useGroomingCatalog(line.line?._id ?? null, line.loading);
+  const catalog = useGroomingCatalog(GROOMING_LINE.serviceKind);
 
   const scope = useMemo<GroomingScope | null>(() => {
-    if (line.loading || catalog.loading) return null;
+    if (catalog.loading) return null;
 
     return {
       serviceIds: new Set(catalog.services.map((service) => service._id)),
-      lineName: line.line?.name ?? GROOMING_LINE_FALLBACK,
+      lineName: GROOMING_LINE.fallbackName,
     };
-  }, [line.loading, line.line, catalog.loading, catalog.services]);
+  }, [catalog.loading, catalog.services]);
 
   const [branchId, setBranchId] = useState("");
   const [period, setPeriod] = useState<GroomingPeriod>("month");
@@ -182,20 +180,6 @@ export function GroomingBookingsScreen() {
         }}
       />
 
-      {line.missing && (
-        <Alert variant="warning">
-          Belum ada lini bisnis bernama Grooming, jadi booking grooming belum bisa
-          dipisahkan dari layanan lain. Buat atau ganti nama lini bisnisnya di{" "}
-          <Link
-            href={SETTINGS_PATHS.liniBisnis}
-            className="underline underline-offset-2"
-            target="_blank"
-          >
-            Pengaturan › Keuangan › Lini Bisnis
-          </Link>
-          .
-        </Alert>
-      )}
       {board.error && <Alert variant="error">{board.error}</Alert>}
       {board.truncated && (
         <Alert variant="warning">

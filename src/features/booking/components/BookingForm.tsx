@@ -30,8 +30,6 @@ import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
 import { swalToast } from "@/lib/swal";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
-import { businessLineService } from "@/services/businessLine.service";
-import type { BusinessLine } from "@/services/businessLine.service";
 import { BookingCard } from "./BookingCard";
 import {
   MAX_CARDS,
@@ -254,7 +252,6 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
    * API takes; nothing else in this file knows both shapes.
    */
   const [cards, setCards] = useState<BookingCardDraft[]>([blankCard()]);
-  const [businessLines, setBusinessLines] = useState<BusinessLine[]>([]);
   const [groomers, setGroomers] = useState<
     { value: string; label: string; disabled?: boolean }[]
   >([]);
@@ -373,28 +370,6 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
       })
       .finally(() => {
         if (active) setLoadingServices(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  /*
-    THE LINES OF BUSINESS, for the per-card service filter. Best effort and
-    silent: the filter is a convenience, and its absence leaves the full
-    catalogue on offer rather than an empty one.
-  */
-  useEffect(() => {
-    let active = true;
-
-    businessLineService
-      .list({ limit: FETCH_LIMIT })
-      .then((result) => {
-        if (active) setBusinessLines(result.items);
-      })
-      .catch(() => {
-        if (active) setBusinessLines([]);
       });
 
     return () => {
@@ -1288,7 +1263,6 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
                     index={index}
                     pets={pets}
                     services={services}
-                    businessLines={businessLines}
                     groomers={groomers}
                     disabled={saving}
                     removable={!editing && cards.length > 1}

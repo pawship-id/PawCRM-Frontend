@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Alert, SelectField, TextField, TextareaField } from "@/components";
+import { SelectField, TextField, TextareaField } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,11 +12,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ApiError } from "@/services/api-error";
 import { membershipService } from "@/services/membership.service";
 import { swalToast } from "@/lib/swal";
 import type { MembershipPlan, PetMembership } from "@/types/membership";
 
+import { membershipFailure } from "../errors";
 import { formatDuration, formatRupiah } from "../labels";
 
 /**
@@ -56,7 +56,6 @@ export function IssueMembershipDialog({
   const [startDate, setStartDate] = useState(today);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -109,7 +108,6 @@ export function IssueMembershipDialog({
 
   async function submit() {
     setSubmitting(true);
-    setError(null);
 
     try {
       const membership = await membershipService.issue({
@@ -130,10 +128,10 @@ export function IssueMembershipDialog({
         that reason — the next thing the user needs is exactly what the server
         already told us.
       */
-      setError(
-        err instanceof ApiError
-          ? err.fullMessage
-          : "Gagal menerbitkan membership. Coba lagi.",
+      swalToast(
+        membershipFailure(err, "Gagal menerbitkan membership. Coba lagi.").toast,
+        "error",
+        6000,
       );
     } finally {
       setSubmitting(false);
@@ -152,8 +150,6 @@ export function IssueMembershipDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          {error && <Alert variant="error">{error}</Alert>}
-
           <SelectField
             label="Paket"
             required

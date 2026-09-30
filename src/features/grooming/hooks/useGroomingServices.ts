@@ -8,6 +8,7 @@ import type {
   PageResult,
   PetSpecies,
   Service,
+  ServiceKind,
   ServiceLocation,
 } from "@/types/api";
 
@@ -56,9 +57,15 @@ interface Loaded {
 }
 
 /**
- * The Layanan & Harga tab's list — `GET /services` pinned to the Grooming line.
+ * The Layanan & Harga tab's list — `GET /services` pinned to this module's
+ * Kelompok layanan.
  *
- * MIRRORS the catalogue-wide `useServices` it outlived, minus the line filter
+ * BY KIND, NOT BY LINE (30 September 2026, on request): it was pinned to a
+ * business line found by name, so a tenant that never created one called
+ * "Grooming" opened this tab on an EMPTY table with every filter working and
+ * nothing to show. `serviceKind` is stored on the service itself.
+ *
+ * MIRRORS the catalogue-wide `useServices` it outlived, minus the kind filter
  * (the tab IS the filter). The deleted toggle and `refetch` came across when that
  * list was removed on 13 September 2026: this tab is where a service is deleted
  * and restored now, and a row action has to be able to re-read the page.
@@ -70,7 +77,7 @@ interface Loaded {
  * rather than the page, so the pager's total is the total of what was asked for
  * and page 2 is not a page of leftovers.
  */
-export function useGroomingServices(lineId: string | null) {
+export function useGroomingServices(serviceKind: ServiceKind) {
   const [query, setQueryState] = useState<GroomingServicesQuery>(DEFAULT_QUERY);
   const settled = useDebouncedQuery(query);
   // Bumped by refetch() so the effect re-runs without the query changing.
@@ -92,16 +99,14 @@ export function useGroomingServices(lineId: string | null) {
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 
-  const key = JSON.stringify([lineId, settled, nonce]);
+  const key = JSON.stringify([serviceKind, settled, nonce]);
 
   useEffect(() => {
-    if (!lineId) return;
-
     let active = true;
 
     serviceService
       .list({
-        businessLineId: lineId,
+        serviceKind,
         serviceType: "main",
         page: settled.page,
         limit: PAGE_SIZE,
@@ -131,7 +136,7 @@ export function useGroomingServices(lineId: string | null) {
     return () => {
       active = false;
     };
-  }, [key, lineId, settled]);
+  }, [key, serviceKind, settled]);
 
   const current = loaded.key === key;
 
@@ -141,7 +146,7 @@ export function useGroomingServices(lineId: string | null) {
     query,
     setQuery,
     refetch,
-    loading: lineId !== null && !current,
+    loading: !current,
     error:
       current && loaded.failed
         ? "Daftar layanan tidak bisa dimuat. Coba lagi."

@@ -4,7 +4,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import {
-  Alert,
   Button,
   Card,
   CheckRow,
@@ -12,7 +11,6 @@ import {
   TextField,
   TextareaField,
 } from "@/components";
-import { ApiError } from "@/services/api-error";
 import { membershipService } from "@/services/membership.service";
 import { swalToast } from "@/lib/swal";
 import type {
@@ -21,6 +19,7 @@ import type {
   MembershipPlan,
 } from "@/types/membership";
 
+import { membershipFailure } from "../errors";
 import { DURATION_PRESETS, MEMBERSHIP_HREF, planHref } from "../labels";
 import { BenefitEditor } from "./BenefitEditor";
 
@@ -38,15 +37,6 @@ import { BenefitEditor } from "./BenefitEditor";
  * payloads are the same shape — the API's PATCH takes exactly what its POST
  * does.
  */
-
-/** Field errors the API returns as `details: [{ field, message }]`. */
-function fieldErrorsOf(error: unknown): Record<string, string> {
-  if (!(error instanceof ApiError) || !error.details) return {};
-
-  return Object.fromEntries(
-    error.details.map((detail) => [detail.field, detail.message]),
-  );
-}
 
 export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
   const router = useRouter();
@@ -84,13 +74,11 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
   );
 
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     setSubmitting(true);
-    setError(null);
     setFieldErrors({});
 
     const payload: CreateMembershipPlanInput = {
@@ -124,12 +112,13 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
       router.push(planHref(saved.id));
       router.refresh();
     } catch (err) {
-      setError(
-        err instanceof ApiError
-          ? err.fullMessage
-          : "Gagal menyimpan paket membership. Coba lagi.",
+      const failure = membershipFailure(
+        err,
+        "Gagal menyimpan paket membership. Coba lagi.",
       );
-      setFieldErrors(fieldErrorsOf(err));
+      /* Lebih lama dari toast "tersimpan": penolakan harus sempat dibaca. */
+      swalToast(failure.toast, "error", 6000);
+      setFieldErrors(failure.fieldErrors);
     } finally {
       setSubmitting(false);
     }
@@ -144,8 +133,6 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
         cancelHref={editing ? planHref(plan!.id) : MEMBERSHIP_HREF}
         cancelLabel="Kembali"
       />
-
-      {error && <Alert variant="error">{error}</Alert>}
 
       <Card
         title="Paket"

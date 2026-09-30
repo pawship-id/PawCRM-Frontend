@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { serviceService } from "@/services/service.service";
-import type { Service } from "@/types/api";
+import type { Service, ServiceKind } from "@/types/api";
 
 /** The API's page cap. */
 const PAGE_LIMIT = 100;
@@ -11,12 +11,12 @@ const PAGE_LIMIT = 100;
 /** A grooming menu of a thousand services is not a menu; stop asking there. */
 const MAX_PAGES = 10;
 
-async function listAll(businessLineId: string): Promise<Service[]> {
+async function listAll(serviceKind: ServiceKind): Promise<Service[]> {
   const services: Service[] = [];
 
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const result = await serviceService.list({
-      businessLineId,
+      serviceKind,
       /* A booking is for a main service; add-ons are not the board's (22 Sep 2026). */
       serviceType: "main",
       /* Deleted too: an old booking still names a retired service. */
@@ -32,43 +32,50 @@ async function listAll(businessLineId: string): Promise<Service[]> {
 }
 
 /**
- * EVERY main service on the line, unpaged — what the board uses to tell a
+ * EVERY main service of this kind, unpaged — what the board uses to tell a
  * grooming row from a hotel night, and what its Layanan filter offers.
+ *
+ * ─── BY KIND, NOT BY LINE (30 September 2026, on request) ──────────────────
+ *
+ * It asked for a business line by id until then, which the module found by
+ * NAME. A lini bisnis is a free label a tenant need never create — a shop that
+ * reports every takings under one line got an EMPTY catalogue here, so its
+ * board could not tell a grooming row from anything else and its Layanan filter
+ * offered nothing. `serviceKind` is a fixed word the service itself carries, so
+ * there is no lookup to fail and no loading to wait on.
  *
  * A FAILURE IS NOT FATAL. The board falls back to the line name each booking
  * row snapshots, so a role without `services:read` still sees its grooming.
  */
-export function useGroomingCatalog(
-  lineId: string | null,
-  lineLoading: boolean,
-): { services: Service[]; loading: boolean } {
+export function useGroomingCatalog(serviceKind: ServiceKind): {
+  services: Service[];
+  loading: boolean;
+} {
   const [loaded, setLoaded] = useState<{
-    lineId: string | null;
+    serviceKind: ServiceKind | null;
     services: Service[];
-  }>({ lineId: null, services: [] });
+  }>({ serviceKind: null, services: [] });
 
   useEffect(() => {
-    if (!lineId) return;
-
     let active = true;
 
-    listAll(lineId)
+    listAll(serviceKind)
       .then((services) => {
-        if (active) setLoaded({ lineId, services });
+        if (active) setLoaded({ serviceKind, services });
       })
       .catch(() => {
-        if (active) setLoaded({ lineId, services: [] });
+        if (active) setLoaded({ serviceKind, services: [] });
       });
 
     return () => {
       active = false;
     };
-  }, [lineId]);
+  }, [serviceKind]);
 
-  const current = lineId !== null && loaded.lineId === lineId;
+  const current = loaded.serviceKind === serviceKind;
 
   return {
     services: current ? loaded.services : [],
-    loading: lineId === null ? lineLoading : !current,
+    loading: !current,
   };
 }

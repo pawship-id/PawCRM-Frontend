@@ -6,10 +6,10 @@ import { useState } from "react";
 import { Alert, Card, FilterSelect, ListFooter, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import { ApiError } from "@/services/api-error";
 import { membershipService } from "@/services/membership.service";
 import { swalToast } from "@/lib/swal";
 
+import { membershipFailure } from "../errors";
 import { usePetMemberships } from "../hooks/usePetMemberships";
 import { cardHref, formatDate } from "../labels";
 
@@ -50,11 +50,9 @@ export function RenewalPanel() {
     usePetMemberships({ page: 1, limit: 20, expiringWithinDays: 30 }, "expiring");
 
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   async function renew(id: string, number: string) {
     setBusyId(id);
-    setActionError(null);
 
     try {
       const card = await membershipService.renew(id);
@@ -64,10 +62,10 @@ export function RenewalPanel() {
       );
       reload();
     } catch (err) {
-      setActionError(
-        err instanceof ApiError
-          ? err.fullMessage
-          : "Gagal memperpanjang membership.",
+      swalToast(
+        membershipFailure(err, "Gagal memperpanjang membership.").toast,
+        "error",
+        6000,
       );
     } finally {
       setBusyId(null);
@@ -100,7 +98,6 @@ export function RenewalPanel() {
       </div>
 
       {error && <Alert variant="error">{error}</Alert>}
-      {actionError && <Alert variant="error">{actionError}</Alert>}
 
       {loading ? (
         <div className="flex justify-center py-10">

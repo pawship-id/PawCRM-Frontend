@@ -17,7 +17,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
-import { SETTINGS_PATHS } from "@/features/settings";
 import {
   formatDurationRange,
   serviceDurationBounds,
@@ -29,7 +28,6 @@ import {
 import { cn } from "@/lib/utils";
 
 import { periodRange, type DateRange, type GroomingPeriod } from "../board";
-import { useGroomingLine } from "../hooks/useGroomingLine";
 import { useGroomingServices } from "../hooks/useGroomingServices";
 import { useGroomingServiceTotals } from "../hooks/useGroomingServiceTotals";
 import { useServiceBookingCounts } from "../hooks/useServiceBookingCounts";
@@ -112,8 +110,6 @@ export function GroomingServicesScreen({
 } = {}) {
   const router = useRouter();
   const { can } = usePermissions();
-  const line = useGroomingLine(serviceLine);
-  const lineId = line.line?._id ?? null;
   /*
     The service form, at its one plain address — told this module's Kelompok
     layanan and list through `ServiceFormLink`, never the URL (22 September
@@ -122,7 +118,7 @@ export function GroomingServicesScreen({
   const formOrigin = lineFormOrigin(serviceLine);
   const noun = serviceLine.noun;
   const { services, pagination, query, setQuery, refetch, loading, error } =
-    useGroomingServices(lineId);
+    useGroomingServices(serviceLine.serviceKind);
   // Per row, over that row's own variants — see variantRows.
   const { valuesFor, axes: axisDefs } = useVariantAxisValues();
   /* The tenant's card names — "Ukuran × Lokasi", not only the pet's three. */
@@ -147,7 +143,7 @@ export function GroomingServicesScreen({
 
   // Bumped after a delete or restore — the only things here that move a total.
   const [version, setVersion] = useState(0);
-  const totals = useGroomingServiceTotals(lineId, version);
+  const totals = useGroomingServiceTotals(serviceLine.serviceKind, version);
   const [pending, setPending] = useState<ServiceLifecycleAction | null>(null);
 
   const mayRestore = can("services", "restore");
@@ -166,8 +162,7 @@ export function GroomingServicesScreen({
     setPeriod("custom");
   }
 
-  const listed =
-    lineId !== null && !line.loading && !error && !(loading && services.length === 0);
+  const listed = !error && !(loading && services.length === 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -235,33 +230,13 @@ export function GroomingServicesScreen({
         )}
       </div>
 
-      {line.failed && (
-        <Alert variant="error">
-          Lini bisnis tidak bisa dimuat, jadi layanan {noun} belum bisa
-          dipisahkan. Coba muat ulang halaman.
-        </Alert>
-      )}
-      {line.missing && (
-        <Alert variant="warning">
-          Belum ada lini bisnis bernama {serviceLine.title}. Buat atau ganti
-          nama lini bisnisnya di{" "}
-          <Link
-            href={SETTINGS_PATHS.liniBisnis}
-            className="underline underline-offset-2"
-            target="_blank"
-          >
-            Pengaturan › Keuangan › Lini Bisnis
-          </Link>
-          , lalu pasang di layanannya.
-        </Alert>
-      )}
       {error && <Alert variant="error">{error}</Alert>}
 
-      {line.loading || (loading && services.length === 0) ? (
+      {loading && services.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
           <Spinner /> Memuat layanan {noun}…
         </div>
-      ) : lineId === null ? null : services.length === 0 ? (
+      ) : services.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center text-sm text-muted">
           {narrowed ? (
             `Tidak ada layanan ${noun} yang cocok dengan saringan ini.`

@@ -334,10 +334,39 @@ The badge label is **always a string**, never colour alone and never an icon alo
 
 | Surface | Use when |
 | --- | --- |
-| `swalToast()` | it worked; there is nothing to decide |
-| `<Alert>` | inline, form-level, stays on screen while the problem persists |
+| `swalToast()` | it worked; there is nothing to decide — **and an act that failed**, see below |
+| `<Alert>` | the screen cannot show what it is for: a load that failed, a record that is not there |
 | `<ConfirmDialog>` | destructive or irreversible; needs an explicit yes |
 | raw `ui/dialog` | only when the body needs a form |
+
+### A FAILED ACT IS A TOAST; A SCREEN THAT CANNOT LOAD IS AN ALERT
+
+Decided 30 September 2026, on request, and it moved the boundary this table used
+to draw at "form-level". **What decides it is whether the screen still has
+something to show**, not whether a form is involved.
+
+- **An act somebody pressed that failed** — save, delete, restore, renew, cancel
+  — is `swalToast(message, "error", 6000)`. The screen behind it is intact and
+  still usable; a red bar pinned above it is a second thing to dismiss. Six
+  seconds, not the three a success gets: a refusal has to be read.
+- **A screen that cannot draw itself** stays an `<Alert>` and MUST NOT become a
+  toast. A list that failed to load, a record that is not there — some of these
+  ARE the whole page (`MembershipPlanDetail` returns the Alert instead of the
+  page). A toast there leaves a blank screen and then takes the only explanation
+  away with it.
+
+**Where a field error belongs is unchanged**: under its own input, via the
+control's `error` prop. The toast summarises — one problem is quoted whole, and
+several are counted ("Ada 3 isian yang belum benar — lihat tanda merah di
+formulir"), because five sentences in a toast that vanishes is how people learn
+not to read toasts.
+
+**BUILT IN `features/memberships` FIRST**, which is the only module that follows
+this today (`errors.ts` → `membershipFailure`). Every other module still puts its
+action failures in an `<Alert>`; they are on the migration list in §15, not a
+sweep to open unasked. **Server messages are translated where they are BORN** —
+the Joi schema's `.label()` and the service's own strings, both Indonesian — not
+mapped from English in the client; see `validations/common.validation.js`.
 
 **`Swal.fire` is banned outside `src/lib/swal.ts`.** No new sweetalert call sites — that module is the single seam through which the toasts get themed, and it is on the migration list to be replaced entirely.
 
@@ -491,6 +520,7 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 - ~58 `text-muted-foreground`, 31 `bg-card`, 13 `text-destructive` outside `components/ui/` → app vocabulary
 - 9 files importing `@/components/icons` → lucide, then delete `icons.tsx`
 - 49 files reaching sweetalert through `lib/swal.ts` → a tokened toast, then drop the dependency
+- every module but `memberships` still puts a FAILED ACT in an `<Alert>` (§9) → `swalToast(…, "error", 6000)`, keeping the load-failure Alerts exactly as they are. `features/memberships/errors.ts` is the shape to copy. Opportunistic; the API messages behind a module have to be Indonesian first, or the swap only moves English into a toast
 - English UI strings in customers / users / roles / branches / warehouses → Bahasa. (`Pagination` is done — 25 Aug: "Halaman 2 dari 5", "Sebelumnya"/"Berikutnya", and its `unitPlural` default changed from `${unit}s`, which appended an English plural to an Indonesian noun for every caller that omitted it.)
 
 **Open questions — record an answer here, don't guess in code:**

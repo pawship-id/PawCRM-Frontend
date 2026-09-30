@@ -834,7 +834,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
     name: "Grooming Full Service",
     serviceType: "main",
     addonServiceIds: ["svc-addon"],
-    businessLineId: "line-1",
+    serviceKind: "grooming",
   });
   const addon = service({
     _id: "svc-addon",
@@ -855,8 +855,8 @@ describe("BookingForm — layanan, add-on dan varian", () => {
     */
     services.list.mockResolvedValue(
       page([
-        service({ _id: "svc-groom", name: "Full Grooming", businessLineId: "line-groom" }),
-        service({ _id: "svc-hotel", name: "Penitipan", businessLineId: "line-hotel" }),
+        service({ _id: "svc-groom", name: "Full Grooming", serviceKind: "grooming" }),
+        service({ _id: "svc-hotel", name: "Penitipan", serviceKind: "hotel" }),
       ]),
     );
 
@@ -879,8 +879,8 @@ describe("BookingForm — layanan, add-on dan varian", () => {
     // Leaving a name the list below cannot show is worse than asking again.
     services.list.mockResolvedValue(
       page([
-        service({ _id: "svc-groom", name: "Full Grooming", businessLineId: "line-groom" }),
-        service({ _id: "svc-hotel", name: "Penitipan", businessLineId: "line-hotel" }),
+        service({ _id: "svc-groom", name: "Full Grooming", serviceKind: "grooming" }),
+        service({ _id: "svc-hotel", name: "Penitipan", serviceKind: "hotel" }),
       ]),
     );
 

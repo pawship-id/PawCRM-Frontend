@@ -7,10 +7,10 @@ import { useState } from "react";
 import { Alert, Card, ConfirmDialog, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import { ApiError } from "@/services/api-error";
 import { membershipService } from "@/services/membership.service";
 import { swalToast } from "@/lib/swal";
 
+import { membershipFailure } from "../errors";
 import { useMembershipPlan } from "../hooks/useMembershipPlan";
 import {
   MEMBERSHIP_HREF,
@@ -35,7 +35,6 @@ export function MembershipPlanDetail({ id }: { id: string }) {
   const router = useRouter();
   const { plan, loading, error, reload } = useMembershipPlan(id);
   const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   if (loading) {
@@ -53,7 +52,6 @@ export function MembershipPlanDetail({ id }: { id: string }) {
   async function toggleActive() {
     if (!plan) return;
     setBusy(true);
-    setActionError(null);
 
     try {
       await membershipService.updatePlan(plan.id, { isActive: !plan.isActive });
@@ -65,9 +63,7 @@ export function MembershipPlanDetail({ id }: { id: string }) {
       );
       reload();
     } catch (err) {
-      setActionError(
-        err instanceof ApiError ? err.fullMessage : "Gagal mengubah paket.",
-      );
+      swalToast(membershipFailure(err, "Gagal mengubah paket.").toast, "error", 6000);
     } finally {
       setBusy(false);
     }
@@ -76,7 +72,6 @@ export function MembershipPlanDetail({ id }: { id: string }) {
   async function remove() {
     if (!plan) return;
     setBusy(true);
-    setActionError(null);
 
     try {
       await membershipService.removePlan(plan.id);
@@ -90,9 +85,7 @@ export function MembershipPlanDetail({ id }: { id: string }) {
         instead. Replacing it with "gagal menghapus" would throw away the only
         part of the answer worth reading.
       */
-      setActionError(
-        err instanceof ApiError ? err.fullMessage : "Gagal menghapus paket.",
-      );
+      swalToast(membershipFailure(err, "Gagal menghapus paket.").toast, "error", 6000);
       setConfirmDelete(false);
     } finally {
       setBusy(false);
@@ -130,8 +123,6 @@ export function MembershipPlanDetail({ id }: { id: string }) {
           </Can>
         </div>
       </div>
-
-      {actionError && <Alert variant="error">{actionError}</Alert>}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Paket">

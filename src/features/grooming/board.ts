@@ -1,6 +1,5 @@
 import { billingOf, type BillingState } from "@/features/booking/billing";
 import { clockOf, dayOf, isoDate } from "@/features/booking/day";
-import type { BusinessLine } from "@/services/businessLine.service";
 import type {
   Booking,
   BookingAddon,
@@ -54,10 +53,16 @@ export interface GroomingScope {
    */
   serviceIds: ReadonlySet<string>;
   /**
-   * The line's name, which a booking snapshots into `service.serviceType`.
+   * This module's own name, which a booking snapshots into `service.serviceType`.
    *
    * THE FALLBACK FOR AN ID WE CANNOT SEE. A role that may read bookings but not
    * the catalogue gets no ids at all, and the snapshot is still on every booking.
+   *
+   * ⚠️ IT IS THE MODULE'S FIXED NAME NOW, NOT THE TENANT'S LINE (30 September
+   * 2026). The screens read their catalogue by `serviceKind` and no longer look a
+   * business line up, so a booking snapshotted under a line named something else
+   * ("Salon") is matched by its service id or not at all. That only loses rows
+   * whose service was BOTH renamed away and deleted — the id covers the rest.
    */
   lineName: string;
   /**
@@ -66,17 +71,6 @@ export interface GroomingScope {
    * moved to another line still shows where its van is (21 September 2026).
    */
   includes?: (booking: Booking) => boolean;
-}
-
-/** The tenant's grooming line — named "Grooming" exactly, else the nearest. */
-export function pickGroomingLine(lines: BusinessLine[]): BusinessLine | null {
-  const named = (line: BusinessLine) => line.name.trim().toLowerCase();
-
-  return (
-    lines.find((line) => named(line) === "grooming") ??
-    lines.find((line) => named(line).includes("groom")) ??
-    null
-  );
 }
 
 export function isGroomingService(

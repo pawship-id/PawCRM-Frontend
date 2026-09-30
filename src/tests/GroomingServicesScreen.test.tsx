@@ -434,7 +434,7 @@ describe("GroomingServicesScreen", () => {
     await waitFor(() =>
       expect(serviceService.list).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          businessLineId: "bl-grooming",
+          serviceKind: "grooming",
           branchId: "br-1",
           petType: "opt-species-cat",
           location: "in_home",

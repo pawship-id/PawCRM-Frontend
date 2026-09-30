@@ -7,7 +7,6 @@ import { Plus } from "lucide-react";
 import { Alert, Pagination, Spinner, formatRangeShort } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import { SETTINGS_PATHS } from "@/features/settings";
 import {
   countFilters,
   DEFAULT_FILTERS,
@@ -30,7 +29,6 @@ import { GroomingPeriodBar } from "@/features/grooming/components/GroomingPeriod
 import { GroomingStatCard } from "@/features/grooming/components/GroomingStatCard";
 import { MAX_BOOKING_PAGES, useGroomingBoard } from "@/features/grooming/hooks/useGroomingBoard";
 import { useGroomingCatalog } from "@/features/grooming/hooks/useGroomingCatalog";
-import { useGroomingLine } from "@/features/grooming/hooks/useGroomingLine";
 
 import { summariseRides } from "../board";
 import { ANTAR_JEMPUT_LINE } from "../line";
@@ -74,19 +72,18 @@ const LENS_WORDS: Record<Exclude<GroomingLens, "all">, string> = {
  * under itself the way Grooming's board does — see `AntarJemputBookingsTable`.
  */
 export function AntarJemputBookingsScreen() {
-  const line = useGroomingLine(ANTAR_JEMPUT_LINE);
-  const catalog = useGroomingCatalog(line.line?._id ?? null, line.loading);
+  const catalog = useGroomingCatalog(ANTAR_JEMPUT_LINE.serviceKind);
 
   const scope = useMemo<GroomingScope | null>(() => {
-    if (line.loading || catalog.loading) return null;
+    if (catalog.loading) return null;
 
     return {
       serviceIds: new Set(catalog.services.map((service) => service._id)),
-      lineName: line.line?.name ?? ANTAR_JEMPUT_LINE.fallbackName,
-      /* A ride is a ride, whatever line its service was moved to since. */
+      lineName: ANTAR_JEMPUT_LINE.fallbackName,
+      /* A ride is a ride, whatever kind its service was moved to since. */
       includes: (booking) => Boolean(booking.tripLeg),
     };
-  }, [line.loading, line.line, catalog.loading, catalog.services]);
+  }, [catalog.loading, catalog.services]);
 
   const [branchId, setBranchId] = useState("");
   const [period, setPeriod] = useState<GroomingPeriod>("month");
@@ -183,21 +180,6 @@ export function AntarJemputBookingsScreen() {
         }}
       />
 
-      {line.missing && (
-        <Alert variant="warning">
-          Belum ada lini bisnis bernama Antar-Jemput, jadi layanan antar-jemput
-          belum bisa dipisahkan dari layanan lain. Buat atau ganti nama lini
-          bisnisnya di{" "}
-          <Link
-            href={SETTINGS_PATHS.liniBisnis}
-            className="underline underline-offset-2"
-            target="_blank"
-          >
-            Pengaturan › Keuangan › Lini Bisnis
-          </Link>
-          . Booking yang sudah punya arah tetap tampil di sini.
-        </Alert>
-      )}
       {board.error && (
         <Alert variant="error">
           Booking antar-jemput tidak bisa dimuat. Coba muat ulang halaman.

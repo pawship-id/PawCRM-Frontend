@@ -11,6 +11,7 @@ import { membershipService } from "@/services/membership.service";
 import { swalToast } from "@/lib/swal";
 import type { PetMembership } from "@/types/membership";
 
+import { membershipFailure } from "../errors";
 import {
   MEMBERSHIP_CARDS_HREF,
   formatDate,
@@ -35,7 +36,6 @@ export function MembershipCardDetail({ id }: { id: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [nonce, setNonce] = useState(0);
 
@@ -86,7 +86,6 @@ export function MembershipCardDetail({ id }: { id: string }) {
   async function renew() {
     if (!card) return;
     setBusy(true);
-    setActionError(null);
 
     try {
       const next = await membershipService.renew(card.id);
@@ -96,9 +95,7 @@ export function MembershipCardDetail({ id }: { id: string }) {
       );
       reload();
     } catch (err) {
-      setActionError(
-        err instanceof ApiError ? err.fullMessage : "Gagal memperpanjang.",
-      );
+      swalToast(membershipFailure(err, "Gagal memperpanjang.").toast, "error", 6000);
     } finally {
       setBusy(false);
     }
@@ -107,7 +104,6 @@ export function MembershipCardDetail({ id }: { id: string }) {
   async function cancel() {
     if (!card) return;
     setBusy(true);
-    setActionError(null);
 
     try {
       await membershipService.cancel(card.id);
@@ -121,9 +117,7 @@ export function MembershipCardDetail({ id }: { id: string }) {
         those transactions or to leave the card to expire, and only the count
         tells them which.
       */
-      setActionError(
-        err instanceof ApiError ? err.fullMessage : "Gagal membatalkan.",
-      );
+      swalToast(membershipFailure(err, "Gagal membatalkan.").toast, "error", 6000);
       setConfirmCancel(false);
     } finally {
       setBusy(false);
@@ -168,8 +162,6 @@ export function MembershipCardDetail({ id }: { id: string }) {
           )}
         </div>
       </div>
-
-      {actionError && <Alert variant="error">{actionError}</Alert>}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Kartu">

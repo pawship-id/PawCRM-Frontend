@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { EllipsisVertical, Eye, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 
 import { useState } from "react";
 
 import {
   Alert,
   Card,
+  ConfirmDialog,
   FilterBar,
   FilterSearch,
   FilterSelect,
@@ -17,8 +18,13 @@ import {
   withAll,
 } from "@/components";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Can } from "@/features/permissions";
-import { ApiError } from "@/services/api-error";
 import { membershipService } from "@/services/membership.service";
 import { swalToast } from "@/lib/swal";
 import {
@@ -34,7 +40,9 @@ import {
   PLAN_PAGE_SIZE,
   useMembershipPlans,
 } from "../hooks/useMembershipPlans";
+import { membershipFailure } from "../errors";
 import { MEMBERSHIP_HREF, formatDuration, formatRupiah, planHref } from "../labels";
+import type { MembershipPlan } from "@/types/membership";
 
 /**
  * The membership CATALOGUE — what a shop sells.
@@ -64,7 +72,10 @@ export function MembershipPlansPanel() {
     useMembershipPlans();
 
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  /** Paket yang sedang ditanyakan "yakin dihapus?" — null berarti tidak ada. */
+  const [pendingDelete, setPendingDelete] = useState<MembershipPlan | null>(
+    null,
+  );
 
   /*
     RESTORE LIVES ON THE ROW, not on a detail screen, because a deleted plan has
@@ -73,7 +84,6 @@ export function MembershipPlansPanel() {
   */
   async function restore(id: string, name: string) {
     setBusyId(id);
-    setActionError(null);
 
     try {
       await membershipService.restorePlan(id);
@@ -86,9 +96,29 @@ export function MembershipPlansPanel() {
         was away. The server says so in a sentence; replacing it with "gagal"
         would throw away the only part worth reading.
       */
-      setActionError(
-        err instanceof ApiError ? err.fullMessage : "Gagal memulihkan paket.",
-      );
+      swalToast(membershipFailure(err, "Gagal memulihkan paket.").toast, "error", 6000);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function remove(plan: MembershipPlan) {
+    setBusyId(plan.id);
+
+    try {
+      await membershipService.removePlan(plan.id);
+      swalToast("Paket membership dihapus.", "success");
+      setPendingDelete(null);
+      reload();
+    } catch (err) {
+      /*
+        409 DI SINI YANG PALING BERGUNA dan ditampilkan apa adanya: ia menyebut
+        berapa kartu yang masih berjalan di paket itu dan menyuruh pembacanya
+        mematikan penjualan saja. Menggantinya dengan "gagal menghapus" membuang
+        satu-satunya bagian yang layak dibaca.
+      */
+      swalToast(membershipFailure(err, "Gagal menghapus paket.").toast, "error", 6000);
+      setPendingDelete(null);
     } finally {
       setBusyId(null);
     }
@@ -142,9 +172,15 @@ export function MembershipPlansPanel() {
       </FilterBar>
 
       {error && <Alert variant="error">{error}</Alert>}
-      {actionError && <Alert variant="error">{actionError}</Alert>}
 
-      <Card>
+      {/*
+        RAPAT DI TEPINYA. Kartu ini membungkus tabel, bukan teks — 24px di
+        keempat sisinya (`py-6` + `px-6` milik CardContent) menyisakan lajur
+        kosong di kiri-kanan tabel yang sudah punya padding selnya sendiri.
+        Ditipiskan dari LUAR lewat `data-slot`, karena `components/ui/card.tsx`
+        dipakai setiap kartu di aplikasi ini (ui-rules §14).
+      */}
+      <Card className="py-3 [&>[data-slot=card-content]]:px-3">
         {loading ? (
           <div className="flex justify-center py-10">
             <Spinner size={24} />
@@ -169,7 +205,7 @@ export function MembershipPlansPanel() {
                 <TableHead>Masa berlaku</TableHead>
                 <TableHead className="text-right">Benefit</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="sr-only">Tindakan</TableHead>
+                <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -232,17 +268,67 @@ export function MembershipPlansPanel() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {plan.deletedAt && (
-                      <Can feature="membershipPlans" action="restore">
-                        <Button
-                          variant="secondary"
-                          onClick={() => restore(plan.id, plan.name)}
-                          disabled={busyId === plan.id}
-                        >
-                          Pulihkan
-                        </Button>
-                      </Can>
-                    )}
+                    <div className="flex items-center justify-end">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            className="size-9"
+                            disabled={busyId === plan.id}
+                            /* Menyebut barisnya: dua puluh tombol "Aksi" yang
+                               identik tidak mengatakan apa pun ke pembaca layar. */
+                            aria-label={`Aksi untuk ${plan.name}`}
+                          >
+                            <EllipsisVertical className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+
+                        <DropdownMenuContent align="end">
+                          {plan.deletedAt ? (
+                            /*
+                              PAKET TERHAPUS TIDAK PUNYA DETAIL untuk dibuka dan
+                              tidak ada yang bisa diubah — `GET /membership-plans/:id`
+                              menjawab 404 untuknya. Memulihkan satu-satunya
+                              langkah yang tersisa, jadi itu saja isinya.
+                            */
+                            <Can feature="membershipPlans" action="restore">
+                              <DropdownMenuItem
+                                onSelect={() => restore(plan.id, plan.name)}
+                              >
+                                <RotateCcw />
+                                Pulihkan
+                              </DropdownMenuItem>
+                            </Can>
+                          ) : (
+                            <>
+                              <DropdownMenuItem asChild>
+                                <Link href={planHref(plan.id)}>
+                                  <Eye />
+                                  Detail
+                                </Link>
+                              </DropdownMenuItem>
+                              <Can feature="membershipPlans" action="update">
+                                <DropdownMenuItem asChild>
+                                  <Link href={`${planHref(plan.id)}/edit`}>
+                                    <Pencil />
+                                    Ubah
+                                  </Link>
+                                </DropdownMenuItem>
+                              </Can>
+                              <Can feature="membershipPlans" action="delete">
+                                <DropdownMenuItem
+                                  variant="destructive"
+                                  onSelect={() => setPendingDelete(plan)}
+                                >
+                                  <Trash2 />
+                                  Hapus
+                                </DropdownMenuItem>
+                              </Can>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -262,6 +348,24 @@ export function MembershipPlansPanel() {
           onPageChange={(page) => patchQuery({ page })}
           onPageSizeChange={(limit) => patchQuery({ limit })}
         />
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title="Hapus paket membership?"
+          confirmLabel="Hapus"
+          destructive
+          busy={busyId === pendingDelete.id}
+          onConfirm={() => remove(pendingDelete)}
+          onCancel={() => setPendingDelete(null)}
+        >
+          <p>
+            &ldquo;{pendingDelete.name}&rdquo; akan dihapus. Kalau maksudnya
+            hanya berhenti menjual paket ini, pakai{" "}
+            <strong>Berhenti dijual</strong> di halaman paketnya — kartu yang
+            sudah terbit tetap berlaku.
+          </p>
+        </ConfirmDialog>
       )}
     </div>
   );

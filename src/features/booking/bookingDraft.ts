@@ -5,6 +5,7 @@ import type {
   CreateBookingEntry,
   Pet,
   Service,
+  ServiceKind,
   UpdateBookingInput,
   VariantChoice,
 } from "@/types/api";
@@ -50,12 +51,16 @@ export interface BookingCardDraft {
   key: string;
   petId: string;
   /**
-   * WHICH LINE OF BUSINESS the service picker is narrowed to.
+   * WHICH KELOMPOK LAYANAN the service picker is narrowed to — `""` is every one.
    *
    * A FILTER, NOT A FIELD: never sent, because the service already names its
    * own.
+   *
+   * IT WAS A LINI BISNIS UNTIL 30 September 2026, which made a picker labelled
+   * "Tipe layanan" offer the tenant's P&L lines — and offer NOTHING at all to a
+   * shop that keeps one line for everything.
    */
-  businessLineId: string;
+  serviceKind: ServiceKind | "";
   /** The ONE main service. */
   serviceId: string;
   /** The add-ons ticked under it, by service id. */
@@ -119,7 +124,7 @@ export function blankCard(petId = ""): BookingCardDraft {
   return {
     key: `card-${seq}`,
     petId,
-    businessLineId: "",
+    serviceKind: "",
     serviceId: "",
     addonServiceIds: [],
     plannedBenefit: null,

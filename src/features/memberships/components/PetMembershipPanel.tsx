@@ -6,10 +6,10 @@ import { useState } from "react";
 import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import { ApiError } from "@/services/api-error";
 import { membershipService } from "@/services/membership.service";
 import { swalToast } from "@/lib/swal";
 
+import { membershipFailure } from "../errors";
 import { usePetMembershipCards } from "../hooks/usePetMembershipCards";
 import { cardHref, formatDate } from "../labels";
 import { BenefitList } from "./BenefitList";
@@ -39,11 +39,9 @@ export function PetMembershipPanel({
   const { cards, loading, error, reload } = usePetMembershipCards(petId);
   const [issuing, setIssuing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   async function renew(id: string, number: string) {
     setBusyId(id);
-    setActionError(null);
 
     try {
       const card = await membershipService.renew(id);
@@ -53,10 +51,10 @@ export function PetMembershipPanel({
       );
       reload();
     } catch (err) {
-      setActionError(
-        err instanceof ApiError
-          ? err.fullMessage
-          : `Gagal memperpanjang ${number}.`,
+      swalToast(
+        membershipFailure(err, `Gagal memperpanjang ${number}.`).toast,
+        "error",
+        6000,
       );
     } finally {
       setBusyId(null);
@@ -132,11 +130,6 @@ export function PetMembershipPanel({
                   )}
               </div>
 
-              {actionError && busyId === null && (
-                <Alert variant="error" className="mt-3">
-                  {actionError}
-                </Alert>
-              )}
 
               <div className="mt-3 border-t border-border pt-3">
                 <BenefitList benefits={card.benefits ?? card.plan.benefits} />
