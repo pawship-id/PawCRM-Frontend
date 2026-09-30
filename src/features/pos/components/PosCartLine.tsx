@@ -6,13 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/utils/decimal";
 import type { PosItem, PosDiscountMode } from "@/types/api";
-import type { BenefitCandidate } from "@/types/membership";
 
 import { ownDiscountOf } from "../bookingDiscount";
 import { variantDetailOf } from "../variantDetail";
 import { PosBenefitChip } from "./PosBenefitChip";
 import { PosDiscountPopover } from "./PosDiscountPopover";
 import { PosLinePrice } from "./PosLinePrice";
+import { netOf, PosLineTotal } from "./PosLineTotal";
 
 /**
  * One line in the basket.
@@ -34,24 +34,11 @@ export function PosCartLine({
   onRemove,
   onDiscountChange,
   onPriceChange,
-  onBenefitChange,
-  benefitOffer = null,
   maySetPrice = false,
   disabled = false,
 }: {
   item: PosItem;
   index: number;
-  /**
-   * What a membership card could pay for on THIS line, from the cart quote.
-   *
-   * Null when there is no card, no match, or no quota left — and the chip then
-   * draws nothing at all. See `PosBenefitChip`.
-   */
-  benefitOffer?: BenefitCandidate | null;
-  onBenefitChange?: (
-    index: number,
-    benefit: { membershipId: string; benefitId: string } | null,
-  ) => void;
   /**
    * The add-ons attached to THIS service, drawn inside its line rather than
    * beside it.
@@ -236,16 +223,14 @@ export function PosCartLine({
           </span>
         </div>
 
-        <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-          {/*
-            ITS OWN PRICE, NOT THE PAIR'S — the same rule as the struk. The
-            add-on carries its own figure directly below, so adding it in here
-            would show the same 20.000 twice: once inside this number and once
-            under it. The two screens now agree, and both add up to the same
-            subtotal.
-          */}
-          {formatMoney(item.lineTotal)}
-        </span>
+        {/*
+          ITS OWN PRICE, NOT THE PAIR'S — the same rule as the struk. The
+          add-on carries its own figure directly below, so adding it in here
+          would show the same 20.000 twice: once inside this number and once
+          under it. The two screens now agree, and both add up to the same
+          subtotal.
+        */}
+        <PosLineTotal item={item} />
       </div>
 
       {/*
@@ -355,6 +340,19 @@ export function PosCartLine({
 
         <div className="flex items-center gap-1">
           {/*
+            BESIDE THE DISCOUNT CONTROL (1 October 2026, on request) — the two
+            answer the same question, "what came off this line and why", so
+            they read together rather than one by the name and one down here.
+          */}
+          {item.discount?.source === "membership" && (
+            <PosBenefitChip
+              applied={{
+                benefitLabel: item.discount.benefitLabel ?? null,
+                amount: item.membershipDiscount ?? "0",
+              }}
+            />
+          )}
+          {/*
             A DISCOUNT IS NEVER LOCKED. It changes what the customer pays, not
             what the animal is having — the booking behind the line stores the
             service and its list price, and neither moves. Greying this out was
@@ -367,30 +365,18 @@ export function PosCartLine({
             what is left (decision 7). A cashier reading the row left to right
             reads it in the same sequence the server prices it.
           */}
-          {onBenefitChange && (
-            <PosBenefitChip
-              applied={
-                item.discount?.source === "membership"
-                  ? {
-                      benefitLabel: item.discount.benefitLabel ?? null,
-                      amount: item.membershipDiscount ?? "0",
-                    }
-                  : null
-              }
-              offer={benefitOffer}
-              disabled={disabled}
-              onApply={(candidate) =>
-                onBenefitChange(index, {
-                  membershipId: candidate.membershipId,
-                  benefitId: candidate.benefitId,
-                })
-              }
-              onRemove={() => onBenefitChange(index, null)}
-            />
-          )}
+          {/*
+            NOTHING LEFT TO DISCOUNT (1 October 2026, on request). A line a card
+            already took to nothing cannot be cut further — the server would
+            floor it at zero anyway — so the control says so rather than opening
+            a panel whose every entry changes no figure.
+            ⚠️ ONLY WHEN NOTHING WAS TYPED. A line at zero BECAUSE the cashier
+            typed 100% must keep its control, or the discount they just entered
+            is one they can never take back off.
+          */}
           <PosDiscountPopover
             value={ownDiscountOf(item)}
-            disabled={disabled}
+            disabled={disabled || (!ownDiscountOf(item) && netOf(item) === "0.0000")}
             label={`Diskon ${item.name}`}
             subject={item.name}
             onApply={(discount) => onDiscountChange(index, discount)}

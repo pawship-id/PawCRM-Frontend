@@ -139,7 +139,6 @@ export function PosDiscountPopover({
       ? PERCENT.test(trimmed) && Number(normalised) <= 100
       : WHOLE_RUPIAH.test(trimmed);
 
-  const overLimit = valid && mode === "percent" && Number(normalised) > 10;
 
   function apply() {
     if (!valid) return;
@@ -156,9 +155,16 @@ export function PosDiscountPopover({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
+        {/*
+          A BORDER WHEN IT IS NOT FILLED (1 October 2026, on request). `ghost`
+          drew a bare icon that read as decoration on a busy row — a thing to
+          look at rather than a thing to press. `secondary` is the app's
+          outlined button (ui-rules §7), so the empty state now says "control"
+          and the filled state stays navy.
+        */}
         <Button
           type="button"
-          variant={value ? "default" : "ghost"}
+          variant={value ? "default" : "secondary"}
           size="sm"
           disabled={disabled}
           aria-label={label}
@@ -275,15 +281,17 @@ export function PosDiscountPopover({
         )}
 
         {/*
-          The warning, not a block. A cashier is allowed to ask for 20% — they
-          just need someone to approve it, and knowing that now beats being
-          refused after they have told the customer.
+          ⏸️ THE "Di atas 10% perlu persetujuan atasan" LINE IS GONE (30
+          September 2026, on request): the approval gate is shelved on the
+          server (`DISCOUNT_APPROVAL_ENABLED` in posTransaction.service.js), so
+          a warning about an approval nobody will be asked for is simply untrue.
+
+          TO RESTORE, with the server's flag: recompute the one line it needed —
+          `const overLimit = valid && mode === "percent" && Number(normalised) > 10;`
+          — and put the paragraph back here. Left OUT rather than kept unused,
+          which would only be a dead variable and a lint warning standing in for
+          a comment.
         */}
-        {overLimit && (
-          <p className="text-xs text-muted">
-            Di atas 10% perlu persetujuan atasan.
-          </p>
-        )}
 
         {/*
           HAPUS ONLY WHEN THERE IS ONE TO REMOVE. It used to sit there disabled

@@ -310,7 +310,10 @@ export function PosScreen() {
       */
       void cart
         .addItem(tile)
-        .then(() => swalToast(`${tile.name} ditambahkan.`));
+        /* Hanya kalau memang masuk — lihat `send` di `usePosCart`. */
+        .then((ok) => {
+          if (ok) swalToast(`${tile.name} ditambahkan.`);
+        });
     },
     [cart],
   );
@@ -492,29 +495,15 @@ export function PosScreen() {
     [cart.cart],
   );
 
-  const { offerFor } = useBenefitQuote({
+  /*
+    THE WHOLE QUOTE GOES DOWN, not a per-line map of offers (30 September 2026).
+    `PosBenefitSection` lists EVERY benefit — including the ones no line in the
+    basket matches — and a map keyed by line cannot express those at all.
+  */
+  const { quote: benefitQuote } = useBenefitQuote({
     customerId: cart.cart?.customerId ?? null,
     lines: benefitLines,
   });
-
-  const benefitOffers = useMemo(() => {
-    const map = new Map<number, NonNullable<ReturnType<typeof offerFor>>>();
-
-    (cart.cart?.items ?? []).forEach((item, index) => {
-      /*
-        A LINE THAT ALREADY CARRIES ONE IS NOT OFFERED ANOTHER — the chip shows
-        what is applied instead. The quote goes on offering it (the ledger has
-        not been written yet, so the quota still looks free), and without this
-        the till would draw the pill and the button side by side.
-      */
-      if (item.discount?.source === "membership") return;
-
-      const offer = offerFor(String(index));
-      if (offer) map.set(index, offer);
-    });
-
-    return map;
-  }, [cart.cart, offerFor]);
 
   /*
     THE BRANCH COMES BEFORE THE SHIFT, and before the loading state — there is
@@ -580,7 +569,7 @@ export function PosScreen() {
           onItemBenefit={(index, benefit) =>
             void cart.setItemBenefit(index, benefit)
           }
-          benefitOffers={benefitOffers}
+          benefitQuote={benefitQuote}
           onCartDiscount={(discount) => void cart.setCartDiscount(discount)}
           onCharges={(charges) => void cart.setCharges(charges)}
           onNote={(note) => void cart.setNote(note)}
@@ -767,7 +756,7 @@ export function PosScreen() {
           }}
           onAdd={(choices) => {
             void (async () => {
-              await cart.addServices(choices);
+              if (!(await cart.addServices(choices))) return;
 
               /*
                 NAMES THE ANIMALS, not just a count. "3 layanan ditambahkan" for
@@ -857,6 +846,22 @@ export function PosScreen() {
           setPendingService(null);
 
           /*
+            A PACKAGE IS NOT A SERVICE, and this is the branch that says so. The
+            dialog is shared on purpose — "untuk hewan yang mana?" is one
+            question — but its answer used to go to `addServices` whatever was
+            being sold, which stamped `kind: "service"` on a membership plan's
+            id and earned a "Service not found" from the catalogue it was then
+            looked up in. Add-ons, variants and rides mean nothing here: a card
+            has one price, one animal and one line.
+          */
+          if (tile.kind === "membership") {
+            void cart.addMembership(tile._id, pet._id).then((ok) => {
+              if (ok) swalToast(`${tile.name} untuk ${pet.name} ditambahkan.`);
+            });
+            return;
+          }
+
+          /*
             THE SERVICE FIRST, THEN ITS ADD-ONS — one patch, one line each.
             `addServices` already takes several per animal, so nothing here has
             to know that an add-on is a different kind of line: the server reads
@@ -875,7 +880,11 @@ export function PosScreen() {
                 ride,
               },
             ])
-            .then(() => {
+            .then((ok) => {
+              /* Ditolak: keranjang sudah memasang alasannya, dan "ditambahkan"
+                 di atasnya hanya akan membantah panel itu. */
+              if (!ok) return;
+
               /*
                 NAMES THE ANIMAL, or COUNTS THEM on a van carrying several —
                 "Antar-Jemput untuk Bruno" would name one of three dogs, picked

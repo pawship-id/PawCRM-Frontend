@@ -35,7 +35,14 @@ interface UsePosCartResult {
   /** Set when the server refused a discount for lack of approval. */
   pendingApproval: PendingApproval | null;
   open: (cart: PosTransaction | null) => void;
-  addItem: (tile: PosCatalogItem) => Promise<void>;
+  /**
+   * ⚠️ RESOLVES `false` WHEN THE SERVER REFUSED IT — as do `addServices` and
+   * `addMembership`. Gate any "… ditambahkan" toast on it; the basket's banner
+   * carries the reason. See `send`.
+   */
+  addItem: (tile: PosCatalogItem) => Promise<boolean>;
+  /** Sells one membership package to one animal — see the implementation. */
+  addMembership: (planId: string, petId: string) => Promise<boolean>;
   setQty: (index: number, qty: string) => Promise<void>;
   /** Type a price over the catalogue's; `null` puts the line back to it. */
   setLinePrice: (index: number, unitPrice: string | null) => Promise<void>;
@@ -131,9 +138,9 @@ interface UsePosCartResult {
         passengerPetIds: string[];
       } | null;
     }>,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   pullBookings: (bookingIds: string[]) => Promise<void>;
-  patch: (input: UpdateCartInput) => Promise<void>;
+  patch: (input: UpdateCartInput) => Promise<boolean>;
   /** Retry the refused patch with an approver attached. */
   approve: (approverUserId: string) => Promise<void>;
   dismissApproval: () => void;
@@ -210,9 +217,22 @@ export function usePosCart(): UsePosCartResult {
    * A CART IS CREATED LAZILY, on the first item rather than when the screen
    * loads: opening the till would otherwise leave an empty row behind every time
    * somebody looked at the catalogue and walked away.
+   *
+   * ─── IT ANSWERS WHETHER THE WRITE LANDED (30 September 2026) ───────────────
+   *
+   * It used to resolve the same way whether the server accepted the patch or
+   * refused it — the failure went into `error` and the promise resolved — so
+   * every `void cart.addItem(tile).then(() => swalToast("… ditambahkan"))` in
+   * the till announced a success it had not checked. A cashier saw "Gratis
+   * Grooming Lengkap (VIP) untuk Bruno ditambahkan" over a basket holding
+   * nothing but the refusal that stopped it.
+   *
+   * REPORTED, NOT THROWN. The call sites are `void`-ed fire-and-forget patches;
+   * making this reject would turn every refusal into an unhandled rejection.
+   * `false` is the whole contract: the banner still carries the WHY.
    */
   const send = useCallback(
-    async (input: UpdateCartInput) => {
+    async (input: UpdateCartInput): Promise<boolean> => {
       setBusy(true);
       setError(null);
 
@@ -221,6 +241,7 @@ export function usePosCart(): UsePosCartResult {
         const updated = await posService.updateCart(target._id, input);
         setCart(updated);
         setPendingApproval(null);
+        return true;
       } catch (err) {
         /*
           A DISCOUNT AWAITING APPROVAL IS NOT A FAILURE, it is a request. The
@@ -250,6 +271,13 @@ export function usePosCart(): UsePosCartResult {
         } else {
           setError(cartWriteError(err));
         }
+
+        /*
+          A DISCOUNT AWAITING APPROVAL IS FALSE TOO. Nothing was written, and the
+          caller's toast would be announcing a line the basket does not hold —
+          the dialog is what carries this one forward.
+        */
+        return false;
       } finally {
         setBusy(false);
       }
@@ -423,7 +451,31 @@ export function usePosCart(): UsePosCartResult {
         items.push({ kind: tile.kind, refId: tile._id, qty: "1" });
       }
 
-      await send({ items });
+      return send({ items });
+    },
+    [itemsAsInput, send],
+  );
+
+  /**
+   * A MEMBERSHIP PACKAGE, FOR ONE ANIMAL (30 September 2026).
+   *
+   * Its own path because it is its own `kind`. The till asks whose animal it is
+   * with the SAME dialog a service uses, and that shared dialog is exactly how
+   * this went wrong: `onPick` fed every answer to `addServices`, which stamps
+   * `kind: "service"` on what it is given, so a package's id was looked up in
+   * the service catalogue and came back "Service not found".
+   *
+   * `petId` IS THE POINT, not a detail. A card belongs to an animal; the server
+   * refuses a package line without one, because there would be nobody to mint
+   * the card for.
+   */
+  const addMembership = useCallback(
+    async (planId: string, petId: string) => {
+      const items = itemsAsInput();
+      // One card per line — never bumped, never merged. Two cards is two lines.
+      items.push({ kind: "membership", refId: planId, petId, qty: "1" });
+
+      return send({ items });
     },
     [itemsAsInput, send],
   );
@@ -466,9 +518,9 @@ export function usePosCart(): UsePosCartResult {
           })),
       );
 
-      if (lines.length === 0) return;
+      if (lines.length === 0) return false;
 
-      await send({ items: [...itemsAsInput(), ...lines] });
+      return send({ items: [...itemsAsInput(), ...lines] });
     },
     [itemsAsInput, send],
   );
@@ -676,6 +728,7 @@ export function usePosCart(): UsePosCartResult {
     openIfEmpty,
     addItem,
     addServices,
+    addMembership,
     setQty,
     setLinePrice,
     removeItem,

@@ -27,12 +27,15 @@ import {
   RideJourneyFields,
   type RideJourney,
 } from "@/features/antar-jemput/components/RideJourneyFields";
+import { formatDate } from "@/features/memberships/labels";
+import type { PetMembership } from "@/types/membership";
 import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
 import { useVariantQuote, VariantChoicePicker } from "@/features/services";
 import { Checkbox } from "@/components/ui/checkbox";
 import { usePetOptions } from "@/hooks/usePetOptions";
 import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
+import { membershipService } from "@/services/membership.service";
 import { petService } from "@/services/pet.service";
 import { formatMoney, toDecimalString, toMinor } from "@/utils/decimal";
 import {
@@ -191,6 +194,81 @@ export function PosServicePetDialog({
   const riders = pets.filter((pet) => picked.includes(pet._id));
   const offered = service?.addons ?? [];
   const ticked = offered.filter((addon) => addons.has(addon._id));
+
+  /*
+    ─── A CARD THIS ANIMAL ALREADY HOLDS (30 September 2026, on request) ──────
+
+    THE TILL DOES NOT SELL A SECOND ONE, and it does not quietly turn it into a
+    renewal either: a renewal is done from Pelanggan › Membership, where the
+    dates and the chain are visible. Here the answer is simply no.
+
+    ASKED BEFORE THE BASKET IS WRITTEN, not after. The server refuses the
+    duplicate at PAYMENT — `petMembershipService.issue` throws and the payment
+    fails — so without this the cashier discovers it with the customer standing
+    at the counter and a total already read out.
+
+    "MASIH ADA" MATCHES THE SERVER'S `findLiveForPlan` EXACTLY: not cancelled and
+    not yet ended, which INCLUDES a scheduled card. Blocking only on `active`
+    would let a queued card through here and refuse it at payment — the very
+    thing this is for.
+  */
+  const planId = service?.kind === "membership" ? service._id : null;
+  const forPetId = chosen?._id ?? null;
+  /*
+    KEYED BY WHAT IT DESCRIBES, so the answer to the LAST question can never be
+    read as the answer to this one — the pattern `useGroomingCatalog` and
+    `useGroomingServices` already use here.
+
+    ⚠️ AND SO THE EFFECT WRITES NO STATE SYNCHRONOUSLY. Resetting with a bare
+    `setHeldCard(null)` at the top of the effect is a cascading render, and it
+    BROKE THE DIALOG'S TAB-REFRESH: the pet list reloaded when the tab came back
+    and the "Lengkapi ukuran Bruno →" link stayed on screen over a price that
+    had already been recalculated. Caught by `PosBookingBridge.test.tsx`.
+  */
+  const [loadedCard, setLoadedCard] = useState<{
+    key: string;
+    card: PetMembership | null;
+  }>({ key: "", card: null });
+
+  const cardKey = planId && forPetId ? `${planId}:${forPetId}` : "";
+  const heldCard = loadedCard.key === cardKey ? loadedCard.card : null;
+  /*
+    STILL ASKING — there is a question to answer and the answer on hand is for
+    some other one.
+    ⚠️ THE BUTTON MUST BE DEAD FOR THIS TOO, not only for a card that was found.
+    "Not found YET" and "not held" are the same value here (`heldCard === null`)
+    and they are not the same fact: enabling on the first one let the button go
+    live the instant an animal was picked and then die again when the warning
+    arrived a moment later — a button that invites a click it is about to refuse.
+  */
+  const checkingCard = cardKey !== "" && loadedCard.key !== cardKey;
+
+  useEffect(() => {
+    if (!cardKey) return;
+
+    let active = true;
+
+    membershipService
+      .listMemberships({
+        petId: forPetId as string,
+        planId: planId as string,
+        status: ["active", "scheduled"],
+        limit: 1,
+      })
+      .then((result) => {
+        if (active) setLoadedCard({ key: cardKey, card: result.items[0] ?? null });
+      })
+      /* A READ THAT FAILED MUST NOT BLOCK THE SALE. The server still refuses a
+         genuine duplicate at payment, so the worst case here is the old
+         behaviour rather than a till that cannot sell anything. */
+      .catch(() => {
+        if (active) setLoadedCard({ key: cardKey, card: null });
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [cardKey, planId, forPetId]);
 
   /*
     ─── AN ANTAR-JEMPUT TILE ASKS TWO MORE QUESTIONS (24 September 2026) ─────
@@ -688,6 +766,19 @@ export function PosServicePetDialog({
                 />
               )}
 
+              {/* KUNING, BUKAN MERAH: tidak ada yang salah diketik kasir —
+                  paketnya memang sudah dipegang. Menyebut TANGGALNYA, karena
+                  itu yang menentukan kapan boleh dijual lagi, dan menyebut ke
+                  mana harus pergi untuk memperpanjang. */}
+              {heldCard && (
+                <Alert variant="warning">
+                  {chosen?.name} masih punya membership ini sampai{" "}
+                  <strong>{formatDate(heldCard.endDate)}</strong> (kartu{" "}
+                  {heldCard.number}). Untuk memperpanjang, buka Pelanggan ›
+                  Membership.
+                </Alert>
+              )}
+
               {chosen && (
                 <div className="rounded-lg border border-border p-3">
                   <div className="flex items-baseline justify-between gap-2">
@@ -895,6 +986,11 @@ export function PosServicePetDialog({
                 cannot measure — and the refusal would arrive after the basket
                 had been written.
               */
+              /*
+                AND NOT A SECOND CARD FOR A PLAN THIS ANIMAL STILL HOLDS
+                (30 September 2026). The alert above says until when, and where
+                a renewal is done — see `heldCard`.
+              */
               disabled={
                 busy ||
                 picked.length === 0 ||
@@ -903,11 +999,19 @@ export function PosServicePetDialog({
                 inactiveAddonTicked ||
                 unpricedAddonTicked ||
                 measuring ||
-                unpinned
+                unpinned ||
+                heldCard !== null ||
+                checkingCard
               }
               onClick={confirm}
             >
-              {busy ? "Menambahkan…" : "Tambah ke keranjang"}
+              {/* Tombol mati tanpa keterangan terbaca seperti rusak — sebut apa
+                  yang sedang ditunggu, seperti "Menambahkan…" melakukannya. */}
+              {busy
+                ? "Menambahkan…"
+                : checkingCard
+                  ? "Memeriksa membership…"
+                  : "Tambah ke keranjang"}
             </Button>
           </DialogFooter>
         </DialogContent>

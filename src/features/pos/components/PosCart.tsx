@@ -14,8 +14,9 @@ import { usePermissions } from "@/features/permissions";
 import type { PosDiscountMode, PosItem, PosTransaction } from "@/types/api";
 
 import { bookingShareOf } from "../bookingDiscount";
-import type { BenefitCandidate } from "@/types/membership";
+import type { BenefitQuoteResponse } from "@/types/membership";
 
+import { PosBenefitSection } from "./PosBenefitSection";
 import { PosCartLine } from "./PosCartLine";
 import { PosCustomerSection } from "./PosCustomerSection";
 import { PosDiscountPopover } from "./PosDiscountPopover";
@@ -151,7 +152,7 @@ export function PosCart({
   onRemove,
   onItemDiscount,
   onItemBenefit,
-  benefitOffers,
+  benefitQuote,
   onCartDiscount,
   onCharges,
   onNote,
@@ -179,15 +180,14 @@ export function PosCart({
     benefit: { membershipId: string; benefitId: string } | null,
   ) => void;
   /**
-   * What a card could pay for, keyed by the line's position in the cart.
+   * THE WHOLE QUOTE, not a per-line map (30 September 2026).
    *
-   * KEYED BY INDEX AND BUILT FRESH FROM THE SAME `cart.items` the rows are
-   * drawn from, so the two cannot disagree. The quote itself is matched by a
-   * `ref` rather than a position — see `useBenefitQuote` — precisely because a
-   * cart renumbers when a line is removed; this map is the last step, after the
-   * matching is already done.
+   * The benefits moved off the rows into one section under Diskon keranjang —
+   * see `PosBenefitSection` — and that section lists EVERY benefit, including
+   * the ones no line matches. A map keyed by line could not express those at
+   * all: a benefit with nothing to land on has no line to be keyed by.
    */
-  benefitOffers?: Map<number, BenefitCandidate>;
+  benefitQuote?: BenefitQuoteResponse | null;
   onItemDiscount: (
     index: number,
     discount: { mode: PosDiscountMode; value: string } | null,
@@ -296,8 +296,6 @@ export function PosCart({
                   onRemove={onRemove}
                   onDiscountChange={onItemDiscount}
                   onPriceChange={onLinePrice}
-                  onBenefitChange={onItemBenefit}
-                  benefitOffer={benefitOffers?.get(index) ?? null}
                   /*
                     READ FROM THE GRANT, not passed down as a flag somebody
                     might forget to set: a price box drawn for a cashier the
@@ -389,6 +387,19 @@ export function PosCart({
                   : `−${formatMoney(totals.cartDiscount)}`}
               </dd>
             </div>
+
+            {/* UNDER DISKON KERANJANG, where the owner asked for it — the two
+                are the same kind of thing: money coming off the whole basket
+                rather than off one row. */}
+            {onItemBenefit && (
+              <PosBenefitSection
+                quote={benefitQuote ?? null}
+                items={cart?.items ?? []}
+                disabled={busy}
+                onApply={(index, benefit) => onItemBenefit(index, benefit)}
+                onRemove={(index) => onItemBenefit(index, null)}
+              />
+            )}
 
             {totals.otherCharges !== "0.0000" && (
               <div className="flex justify-between">

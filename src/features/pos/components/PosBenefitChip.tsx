@@ -1,25 +1,18 @@
 "use client";
 
-import { Sparkles, X } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
-import { formatMoney } from "@/utils/decimal";
-import type { BenefitCandidate } from "@/types/membership";
+import { Sparkles } from "lucide-react";
 
 /**
- * "Pakai benefit" on a cart line — one click to apply, one to remove.
+ * The mark on a cart line a membership card paid for.
  *
- * ─── THREE STATES, AND ONLY TWO OF THEM DRAW ANYTHING ──────────────────────
+ * ─── IT NO LONGER OFFERS ONE (30 September 2026, on request) ───────────────
  *
- *   applied   — the line already carries a benefit. A removable pill naming it.
- *   offered   — a card could pay for this line. A button saying what it saves.
- *   nothing   — no card, no match, or the quota is gone. Draws NOTHING.
- *
- * THE THIRD STATE IS BLANK ON PURPOSE. A disabled "Pakai benefit" on every
- * shampoo in the shop would be a control that never works, on a screen where
- * every pixel is read at speed. Why a benefit is unavailable belongs on the pet
- * profile, where somebody is asking that question; at the till the only useful
- * signal is that one IS available.
+ * It used to have a second state: a "Pakai benefit −Rp …" button on any line a
+ * card could pay for. Choosing moved to `PosBenefitSection`, under Diskon
+ * keranjang, because a per-row offer could only show what happened to MATCH —
+ * a customer holding four benefits saw one button and no sign the other three
+ * existed. What is left here is the INDICATOR, which still belongs on the row:
+ * the section says what was spent, the row says what it was spent on.
  *
  * ─── IT IS NOT AN EDITABLE DISCOUNT ────────────────────────────────────────
  *
@@ -30,57 +23,32 @@ import type { BenefitCandidate } from "@/types/membership";
  */
 export function PosBenefitChip({
   applied,
-  offer,
-  disabled = false,
-  onApply,
-  onRemove,
 }: {
   /** What the line already carries, from `item.discount`. */
   applied: { benefitLabel: string | null; amount: string } | null;
-  /** What the server says could be applied, from the cart quote. */
-  offer: BenefitCandidate | null;
-  disabled?: boolean;
-  onApply: (candidate: BenefitCandidate) => void;
-  onRemove: () => void;
 }) {
   if (applied) {
+    /*
+      ─── A MARK, NOT A CONTROL (1 October 2026, on request) ──────────────────
+
+      It carried a ✕ that took the benefit off. Removing now happens ONLY in
+      the Benefit membership section, so the chip is plain text: one place
+      decides what is spent, and the row reports it.
+
+      Its ✕ was also the only thing making the chip tall enough to push the row
+      around — see the note below on the name and the amount.
+    */
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-success-fill py-0.5 pl-2.5 pr-0.5 text-sm font-medium text-foreground">
-        <Sparkles className="size-3.5" aria-hidden />
-        {applied.benefitLabel ?? "Benefit"} −{formatMoney(applied.amount)}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          disabled={disabled}
-          onClick={onRemove}
-          aria-label={`Lepas benefit ${applied.benefitLabel ?? ""}`.trim()}
-        >
-          <X className="size-3.5" aria-hidden />
-        </Button>
+      <span
+        className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-success-fill px-2 py-0.5 text-xs font-medium text-foreground"
+        title={applied.benefitLabel ?? undefined}
+      >
+        <Sparkles className="size-3 shrink-0" aria-hidden />
+        Benefit membership
       </span>
     );
   }
 
-  if (!offer) return null;
-
-  return (
-    <Button
-      type="button"
-      variant="secondary"
-      className="h-9"
-      disabled={disabled}
-      onClick={() => onApply(offer)}
-      /*
-        THE TITLE NAMES THE CARD, because a customer with two packages needs to
-        know which one is about to be spent — and the button itself has room
-        only for the benefit and the saving.
-      */
-      title={`${offer.planName ?? "Membership"} · ${offer.membershipNumber}`}
-    >
-      <Sparkles className="size-4" aria-hidden />
-      Pakai benefit −{formatMoney(offer.discount)}
-    </Button>
-  );
+  /* Nothing applied — nothing to say. Offering one is the section's job now. */
+  return null;
 }
