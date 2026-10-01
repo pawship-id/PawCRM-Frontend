@@ -22,12 +22,14 @@ import type { Action, Feature } from "@/features/permissions";
  * is owed for them, then what goes back. A reader learning the module
  * left-to-right learns it in the right order.
  *
- * NO TILE ROW, unlike the Pelanggan and Produk & Varian headers. The mockup's
- * `pembelian` cards are all about invoices — total hutang supplier, hutang belum
- * lunas, hutang terbayar periode ini — and they live on the Ringkasan tab, with
- * the Faktur Pembelian tab carrying its own headline beside the table it
- * describes. Hoisting them would put "total sisa utang" above a list of vendor
- * categories, and would double figures that already exist a tab away.
+ * NO TILE ROW ON THE HEADER ITSELF, unlike the Pelanggan and Produk & Varian
+ * headers — it is shared across all six tabs, and the mockup's cards are all
+ * about invoices. The Ringkasan tab carries its own three (total hutang
+ * supplier, hutang belum lunas, hutang terbayar periode ini); the Faktur
+ * Pembelian tab carries the mockup's OWN four-card strip in its body, above its
+ * search box (1 October 2026 — see `PayablesScreen`). Hoisting either set into
+ * this shared header would put them above a list of vendor categories too, and
+ * would double figures that already exist a tab away.
  */
 const TABS: Array<{
   label: string;

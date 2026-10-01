@@ -377,9 +377,10 @@ describe("PayablesScreen", () => {
   /**
    * The whole book, from `/outstanding` — not a sum of the page. A total that
    * grew as the user paged would be worse than none, because it looks
-   * authoritative.
+   * authoritative. Lands on the "Utang belum lunas" card now (1 October 2026),
+   * not a headline figure in the header.
    */
-  it("takes the headline total from the summary endpoint", async () => {
+  it("takes the Utang belum lunas card from the summary endpoint", async () => {
     asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
       summary({ totalOutstanding: "9500000.0000", totalInvoices: 12 }),
     );
@@ -388,7 +389,7 @@ describe("PayablesScreen", () => {
     renderWithAuth(<PayablesScreen />);
 
     expect(await screen.findByText("Rp 9.500.000")).toBeInTheDocument();
-    expect(screen.getByText("12 faktur belum lunas")).toBeInTheDocument();
+    expect(screen.getByText("12 faktur")).toBeInTheDocument();
   });
 
   /**
@@ -546,7 +547,7 @@ describe("PayablesScreen", () => {
     });
   });
 
-  it("states the due-soon note with the server's own window", async () => {
+  it("states the due-soon card with the server's own window", async () => {
     asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
       summary({
         totalDueSoonInvoices: 4,
@@ -558,15 +559,16 @@ describe("PayablesScreen", () => {
     renderWithAuth(<PayablesScreen />);
 
     expect(
-      await screen.findByText("4 faktur jatuh tempo dalam 14 hari"),
+      await screen.findByText("Jatuh tempo ≤ 14 hari"),
     ).toBeInTheDocument();
+    expect(screen.getByText("4 faktur")).toBeInTheDocument();
     expect(screen.getByText(/Rp 1\.250\.000/)).toBeInTheDocument();
   });
 
-  // The note is the only headline here with a way to act on it — the bucket it
-  // describes is a view of the list underneath, asked of the server with the
-  // same definition.
-  it("switches the list to the due-soon bucket from the note", async () => {
+  // The due-soon card is the one stat tile here with a way to act on it — it is
+  // a view of the list underneath, asked of the server with the same
+  // definition.
+  it("switches the list to the due-soon bucket from the card", async () => {
     const user = userEvent.setup();
     asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
       summary({
@@ -577,22 +579,34 @@ describe("PayablesScreen", () => {
 
     renderWithAuth(<PayablesScreen />);
 
-    await user.click(await screen.findByText("Lihat daftarnya →"));
+    // The card's own label carries "≤", which the toolbar's plain "Jatuh
+    // tempo" pill does not — disambiguating the two without depending on
+    // DOM order.
+    await user.click(
+      await screen.findByRole("button", { name: /Jatuh tempo ≤/ }),
+    );
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
       expect(calls[calls.length - 1][0]).toMatchObject({ dueSoon: true });
     });
-    // Gone once the list already shows it — a link to where you are is noise.
-    expect(screen.queryByText("Lihat daftarnya →")).not.toBeInTheDocument();
+    // No longer a button once the list already shows it — a control that leads
+    // nowhere new is noise.
+    expect(
+      screen.queryByRole("button", { name: /Jatuh tempo ≤/ }),
+    ).not.toBeInTheDocument();
   });
 
-  it("hides the due-soon note when nothing falls due", async () => {
+  it("shows a plain due-soon card when nothing falls due", async () => {
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
 
-    expect(screen.queryByText(/faktur jatuh tempo dalam/)).not.toBeInTheDocument();
+    // Still on the page — this is a card now, not a conditional banner — but
+    // not a button, since there is nothing behind it to switch the list to.
+    expect(
+      screen.queryByRole("button", { name: /Jatuh tempo ≤/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("sends an exact status for the status views", async () => {

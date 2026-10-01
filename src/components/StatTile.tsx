@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 /**
  * One number under a page title — the mockup's `.kartu`, as the module headers
@@ -17,6 +18,11 @@ import { Badge } from "@/components/ui/badge";
  * private tile. The catalogue header wanted the same three states and the same
  * shape, which is the rule for promotion (§14) and the point at which a copy
  * would have started drifting.
+ *
+ * `onClick` MAKES IT A BUTTON — the mockup's `.mcard.click` — for a tile that is
+ * also a view of a list elsewhere on the page (Faktur Pembelian's due-soon
+ * card drills into the same bucket the figures describe). Omit it for a plain
+ * figure; most callers do.
  */
 export function StatTile({
   label,
@@ -25,6 +31,7 @@ export function StatTile({
   loading = false,
   error = false,
   dense = false,
+  onClick,
 }: {
   label: string;
   /** Already formatted for reading — "412", "Rp 4,2 jt". */
@@ -40,10 +47,24 @@ export function StatTile({
    * them. Without it a tile 145 px wide breaks "Rp 3,8 jt" across two lines.
    */
   dense?: boolean;
+  onClick?: () => void;
 }) {
+  const interactive = Boolean(onClick);
+  const Tag = interactive ? "button" : "div";
+  const interactiveProps = interactive
+    ? ({ type: "button", onClick } as const)
+    : {};
+
   if (dense) {
     return (
-      <div className="rounded-xl border border-border bg-surface p-4">
+      <Tag
+        {...interactiveProps}
+        className={cn(
+          "rounded-xl border border-border bg-surface p-4 text-left",
+          interactive &&
+            "outline-none transition hover:border-primary/50 hover:shadow-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        )}
+      >
         {/*
           SENTENCE CASE, not the mockup's uppercase. Its labels are 10 px and
           ours cannot go below 13 (§1.6) — "OKUPANSI HOTEL" at 13 px breaks
@@ -57,12 +78,19 @@ export function StatTile({
         <p className="mt-1 text-xs text-muted">
           {error ? "gagal dimuat" : caption}
         </p>
-      </div>
+      </Tag>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5">
+    <Tag
+      {...interactiveProps}
+      className={cn(
+        "rounded-2xl border border-border bg-surface p-5 text-left",
+        interactive &&
+          "outline-none transition hover:border-primary/50 hover:shadow-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
+      )}
+    >
       <p className="text-sm text-muted">{label}</p>
       <p className="mt-2 text-3xl font-semibold tabular-nums text-foreground">
         {loading || error ? "—" : value}
@@ -70,7 +98,7 @@ export function StatTile({
       <p className="mt-1 text-xs text-muted">
         {error ? "gagal dimuat" : caption}
       </p>
-    </div>
+    </Tag>
   );
 }
 

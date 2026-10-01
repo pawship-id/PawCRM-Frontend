@@ -27,14 +27,6 @@ export function SupplierCategoriesScreen() {
     <div className="flex flex-col gap-6">
       <PurchasingModuleHeader />
 
-      {/* What the module header cannot say, because it is on every tab: what
-          THIS list is. */}
-      <p className="max-w-2xl text-sm text-muted">
-        Pengelompokan supplier — misalnya distributor, agen, atau peternak
-        lokal. Isinya cuma nama; termin, NPWP, dan sisa utang ada di data
-        suppliernya.
-      </p>
-
       <SupplierCategoriesToolbar query={query} onChange={setQuery} />
 
       {error && <Alert variant="error">{error}</Alert>}

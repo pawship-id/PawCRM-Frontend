@@ -69,13 +69,6 @@ export function ReceiptsScreen() {
         }
       />
 
-      {/* What the module header cannot say, because it is on every tab: what
-          THIS list is. */}
-      <p className="max-w-2xl text-sm text-muted">
-        Setiap penerimaan menaikkan stok dan menghitung ulang HPP rata-rata.
-        Beli putus langsung mencatat utang ke supplier; konsinyasi tidak.
-      </p>
-
       <ReceiptsToolbar query={query} onChange={setQuery} />
 
       {error && <Alert variant="error">{error}</Alert>}

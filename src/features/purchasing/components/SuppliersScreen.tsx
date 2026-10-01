@@ -56,12 +56,6 @@ export function SuppliersScreen() {
         }
       />
 
-      {/* What the module header cannot say, because it is on every tab: what
-          THIS list is. */}
-      <p className="max-w-2xl text-sm text-muted">
-        Data pemasok, termin pembayaran, dan sisa utang yang belum dibayar.
-      </p>
-
       <SuppliersToolbar query={query} onChange={setQuery} />
 
       {error && <Alert variant="error">{error}</Alert>}
