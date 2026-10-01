@@ -21,8 +21,8 @@ import type { PayablesSummaryQuery } from "../hooks/usePayablesSummary";
  * lives, beside the figure it is about.
  *
  * "Tanggal bayar", NOT "Tanggal faktur": the identical-looking control on the
- * Faktur Pembelian tab bounds the day the VENDOR issued a bill; here it bounds
- * the day money moved.
+ * Faktur tab bounds the day the VENDOR issued a bill; here it bounds the day
+ * money moved.
  */
 export function PayablesScopeCard({
   query,

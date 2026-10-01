@@ -292,8 +292,11 @@ export const NAV_SECTIONS: NavSection[] = [
        * Pembelian — the supply side, and ONE ROW rather than the six-child group
        * it used to be. Every screen in the module is a tab of it now (see
        * PurchasingModuleHeader), in the order a purchase actually unfolds: the
-       * landing page, then the vendor and how they are filed, then their goods
-       * arriving, then what is owed for them, then what goes back.
+       * landing page, then the vendor, then their goods arriving, then what is
+       * owed for them, then what goes back. Kategori Supplier left this list on
+       * 1 October 2026 along with its tab — it is opened from a card on
+       * Pengaturan › Umum now, so `supplierCategories:read` describes nothing
+       * reachable under /dashboard/purchasing any more.
        *
        * Kept separate from Inventori rather than folded into it, because the two
        * answer different questions and are usually done by different people.
@@ -303,14 +306,14 @@ export const NAV_SECTIONS: NavSection[] = [
        * NO `match` IS NEEDED, unlike the other tabbed rows: every tab lives
        * under /dashboard/purchasing, so this href's own prefix already covers
        * them. And no `exact` either, for the same reason — the row should light
-       * up on all six.
+       * up on all five.
        *
        * `permissionAny` RATHER THAN ONE `permission`, and this row is the reason
-       * that field exists: five of its six tabs are gated on five different
+       * that field exists: four of its five tabs are gated on four different
        * features, so no single grant describes the module. It is legal here
        * because the href is the ungated hub — every card on it gates itself, so
-       * whoever the row is shown to lands somewhere they may read. The six
-       * grants below are exactly the five the hub's cards carry.
+       * whoever the row is shown to lands somewhere they may read. The four
+       * grants below are exactly the four the hub's cards carry.
        */
       {
         label: "Pembelian",
@@ -318,7 +321,6 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: Truck,
         permissionAny: [
           { feature: "suppliers", action: "read" },
-          { feature: "supplierCategories", action: "read" },
           { feature: "goodsReceipts", action: "read" },
           { feature: "purchaseInvoices", action: "read" },
           { feature: "purchaseReturns", action: "read" },

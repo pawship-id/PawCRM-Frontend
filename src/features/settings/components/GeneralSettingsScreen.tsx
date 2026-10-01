@@ -194,6 +194,23 @@ export function GeneralSettingsScreen() {
             />
           )}
           {/*
+            THE REGISTER ITSELF, AND THE ONLY WAY IN (1 October 2026, on
+            request — corrected the same day from an earlier pass that moved
+            Supplier here instead): Kategori Supplier lost its Pembelian tab,
+            so this card is not a shortcut — it is the entry point, at its own
+            Pengaturan address (`SETTINGS_PATHS.kategoriSupplier`). It sits
+            beside Tipe supplier because the two are read together: one names
+            what a vendor's TYPE means, the other groups vendors by what they
+            sell. Supplier itself kept its Pembelian tab and has no card here.
+          */}
+          {can("supplierCategories", "read") && (
+            <HubLinkCard
+              title="Kategori Supplier"
+              description="Kelompok seperti Makanan, Perlengkapan, atau Obat — dipakai untuk memilah supplier."
+              href={SETTINGS_PATHS.kategoriSupplier}
+            />
+          )}
+          {/*
             NOT GATED ON `tenants:read` like the cards below it: this one reads
             no tenant setting at all — it explains what `beli_putus` and
             `konsinyasi` do to the books, which is the same answer for everybody.

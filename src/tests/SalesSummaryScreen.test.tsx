@@ -259,11 +259,17 @@ describe("SalesSummaryScreen", () => {
     expect(screen.getByText(/Tanpa kategori/)).toBeInTheDocument();
   });
 
+  /**
+   * ALL FOUR CARDS SAY SO, since this tab shares the Faktur tab's
+   * `InvoiceStatCards` (1 October 2026) and one failed request is the only
+   * request behind all four. Zero is the answer this must never give: nobody
+   * goes and checks a confident "Rp 0".
+   */
   it("shows a dash rather than Rp 0 when the summary fails", async () => {
     mocked.summary.mockRejectedValue(new Error("boom"));
     renderWithAuth(<SalesSummaryScreen />);
 
-    expect(await screen.findByText("gagal dimuat")).toBeInTheDocument();
+    expect(await screen.findAllByText("gagal dimuat")).toHaveLength(4);
     expect(screen.queryByText("Rp 0")).not.toBeInTheDocument();
   });
 });

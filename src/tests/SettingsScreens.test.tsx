@@ -314,6 +314,42 @@ describe("GeneralSettingsScreen", () => {
     ).not.toBeInTheDocument();
   });
 
+  /**
+   * THE ONLY WAY IN TO KATEGORI SUPPLIER since 1 October 2026, when its
+   * Pembelian tab was dropped on request. The href is asserted, not just the
+   * label: this screen actually MOVED (unlike Supplier, which kept its tab and
+   * its purchasing address), so a card still pointing at the old
+   * /dashboard/purchasing/supplier-categories would 404.
+   */
+  it("links Kategori Supplier at its new Pengaturan address", async () => {
+    renderWithAuth(<GeneralSettingsScreen />);
+
+    const card = await screen.findByRole("link", {
+      name: /^Kategori Supplier/,
+    });
+    expect(card).toHaveAttribute(
+      "href",
+      "/dashboard/pengaturan/kategori-supplier",
+    );
+  });
+
+  it("drops Kategori Supplier for a role without supplierCategories:read", async () => {
+    renderWithAuth(<GeneralSettingsScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "tenants", actions: ["read"] }],
+    });
+
+    await screen.findByRole("heading", { name: "Klinik Hewan Sehat" });
+    expect(
+      screen.queryByRole("link", { name: /^Kategori Supplier/ }),
+    ).not.toBeInTheDocument();
+    // Tipe supplier stays — it is ungated, and explains the types rather than
+    // listing any vendor group.
+    expect(
+      screen.getByRole("link", { name: /Tipe supplier/ }),
+    ).toBeInTheDocument();
+  });
+
   it("drops Tipe pelanggan for a role without customerTypes:read", async () => {
     renderWithAuth(<GeneralSettingsScreen />, {
       isSuperAdmin: false,
@@ -337,6 +373,13 @@ describe("GeneralSettingsScreen", () => {
    * that opens a list somebody edits rather than a single form,
    * which is only visible by DOM order — every card's href/label assertion
    * above would still pass if the grid were shuffled.
+   *
+   * KATEGORI SUPPLIER SITS DIRECTLY ABOVE TIPE SUPPLIER (1 October 2026, on
+   * request), which is the pairing it was added for: one groups vendors, the
+   * other names what a vendor's type means, and the two are read together. It
+   * is also the ONLY way into that screen now that Pembelian has no Kategori
+   * Supplier tab, so a card missing from this grid is a screen with no entry
+   * point — not merely a shuffled page.
    */
   it("draws the cards in the order asked for", async () => {
     const { container } = renderWithAuth(<GeneralSettingsScreen />);
@@ -356,6 +399,7 @@ describe("GeneralSettingsScreen", () => {
     expect(titles).toEqual([
       "Gudang",
       "Tipe pelanggan",
+      "Kategori Supplier",
       "Tipe supplier",
       "Nomor dokumen",
       "Notifikasi",

@@ -23,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
+import { SETTINGS_PATHS } from "@/features/settings";
 import { ApiError } from "@/services/api-error";
 import { supplierCategoryService } from "@/services/supplierCategory.service";
 import { swalToast } from "@/lib/swal";
@@ -213,7 +214,7 @@ export function SupplierCategoriesTable({
                                       menu provides would not follow the href. */}
                                   <DropdownMenuItem asChild>
                                     <Link
-                                      href={`/dashboard/purchasing/supplier-categories/${category._id}`}
+                                      href={`${SETTINGS_PATHS.kategoriSupplier}/${category._id}`}
                                     >
                                       <Pencil />
                                       Edit

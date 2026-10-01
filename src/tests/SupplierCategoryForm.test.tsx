@@ -17,7 +17,7 @@ jest.mock("sweetalert2", () => ({
   default: { fire: jest.fn().mockResolvedValue({ isConfirmed: true }) },
 }));
 
-const LIST_PATH = "/dashboard/purchasing/supplier-categories";
+const LIST_PATH = "/dashboard/pengaturan/kategori-supplier";
 
 function makeCategory(
   overrides: Partial<SupplierCategory> = {},

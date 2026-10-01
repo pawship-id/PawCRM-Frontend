@@ -15,6 +15,7 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
+import { SETTINGS_PATHS } from "@/features/settings";
 import type { CategorySort } from "@/types/api";
 
 import type { SupplierCategoriesQuery } from "../hooks/useSupplierCategories";
@@ -133,7 +134,7 @@ export function SupplierCategoriesToolbar({
               <button> is invalid markup and gives a screen reader two controls
               where there is one. */}
           <Button asChild className="w-full">
-            <Link href="/dashboard/purchasing/supplier-categories/new">
+            <Link href={`${SETTINGS_PATHS.kategoriSupplier}/new`}>
               <Plus className="size-4" />
               Kategori baru
             </Link>

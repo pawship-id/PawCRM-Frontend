@@ -20,7 +20,7 @@ export default function NewSupplierCategoryPage() {
       <div className="flex flex-col gap-6">
         <PageHeading
           crumbs={[
-            PURCHASING_CRUMBS.hub,
+            PURCHASING_CRUMBS.settings,
             PURCHASING_CRUMBS.supplierCategories,
             // No href: this is the page. See Breadcrumb for why the last crumb
             // must not link to itself.
