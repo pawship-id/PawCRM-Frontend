@@ -18,10 +18,13 @@ import type {
  * cabang / gudang scope: a July debt is still owed while the table shows
  * September.
  *
- * THE TWO BALANCE CARDS ARE BUTTONS. Clicking one shows exactly the invoices
- * behind its number — see `ReceivablesScreen`'s drill, which also lifts the date
- * range, because a card counting every late invoice over a table showing only
- * this month's would be two numbers nobody can reconcile.
+ * THE TWO BALANCE CARDS ARE BUTTONS WHEN `onDrill` IS GIVEN. Clicking one shows
+ * exactly the invoices behind its number — see `ReceivablesScreen`'s drill,
+ * which also lifts the date range, because a card counting every late invoice
+ * over a table showing only this month's would be two numbers nobody can
+ * reconcile. THE RINGKASAN TAB OMITS `onDrill` (1 October 2026): it carries no
+ * invoice table of its own to drill into, so the two balance cards render as
+ * plain figures there, same as Omzet and Tertagih always have.
  *
  * A FAILED SUMMARY IS A DASH, never "Rp 0" — zero is a confident answer to a
  * question that was never answered.
@@ -33,7 +36,7 @@ export function InvoiceStatCards({
 }: {
   summary: CustomerInvoiceListSummary | null;
   failed: boolean;
-  onDrill: (statuses: CustomerInvoiceStatusFilter[], label: string) => void;
+  onDrill?: (statuses: CustomerInvoiceStatusFilter[], label: string) => void;
 }) {
   const overdueCount = summary?.overdue.invoiceCount ?? 0;
   const collectedCount = summary?.collected.invoiceCount ?? 0;
@@ -51,7 +54,9 @@ export function InvoiceStatCards({
         value={summary && formatMoney(summary.outstanding.amount)}
         caption={summary && `${summary.outstanding.invoiceCount} faktur`}
         failed={failed}
-        onClick={() => onDrill(["unpaid", "partial"], "belum lunas")}
+        onClick={
+          onDrill ? () => onDrill(["unpaid", "partial"], "belum lunas") : undefined
+        }
       />
       <StatCard
         label="Lewat jatuh tempo"
@@ -59,7 +64,7 @@ export function InvoiceStatCards({
         caption={summary && formatMoney(summary.overdue.amount)}
         failed={failed}
         tone={overdueCount > 0 ? "danger" : "plain"}
-        onClick={() => onDrill(["overdue"], "lewat jatuh tempo")}
+        onClick={onDrill ? () => onDrill(["overdue"], "lewat jatuh tempo") : undefined}
       />
       <StatCard
         label="Tertagih"

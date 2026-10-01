@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { Alert, Card, ScopePeriodCard, Spinner, StatTile } from "@/components";
+import { Alert, Card, ScopePeriodCard, Spinner } from "@/components";
 import { SETTINGS_PATHS } from "@/features/settings/paths";
 import type { RevenueBreakdown } from "@/types/api";
 import { formatMoney } from "@/utils/decimal";
@@ -10,6 +10,7 @@ import { formatMoney } from "@/utils/decimal";
 import type { BreakdownState } from "../hooks/useSalesSummary";
 import { useReceivableFilterOptions } from "../hooks/useReceivableFilterOptions";
 import { useSalesSummary } from "../hooks/useSalesSummary";
+import { InvoiceStatCards } from "./InvoiceStatCards";
 import { SalesModuleHeader } from "./SalesModuleHeader";
 
 /** How many bars a panel draws before it folds the rest into one row. */
@@ -24,10 +25,13 @@ const SHARE = new Intl.NumberFormat("id-ID", {
 /**
  * The Penjualan › Ringkasan tab — where the period's omzet came from.
  *
- * IT ANSWERS A DIFFERENT QUESTION FROM THE FAKTUR TAB, which is the only reason
- * it stands beside it: Faktur says what each bill's STATUS is (belum lunas,
- * jatuh tempo, tertagih), this says what the money was made of. It therefore
- * does not repeat the four status cards already sitting over that table.
+ * IT SHARES THE FAKTUR TAB'S FOUR STATUS CARDS (1 October 2026, on request) —
+ * `InvoiceStatCards`, the same component and the same `/customer-invoices/summary`
+ * figures, so Omzet periode / Belum lunas / Lewat jatuh tempo / Tertagih read
+ * identically wherever somebody lands. What is unique to THIS tab is everything
+ * below the cards: the breakdowns of what the omzet was MADE OF, which Faktur's
+ * table does not show. `onDrill` is left unset here — there is no invoice table
+ * on this page to drill into, so the two balance cards render as plain figures.
  *
  * THE SUMMARY TABS' OWN SCOPE ROW, NOT THE FAKTUR TAB'S (29 September 2026, on
  * request). It opened with the list's read-only scope card, its search box and
@@ -97,23 +101,7 @@ export function SalesSummaryScreen() {
         dateLabel="Tanggal faktur"
       />
 
-      <section
-        aria-label="Ringkasan penjualan"
-        className="grid grid-cols-1 gap-4 lg:grid-cols-3"
-      >
-        <StatTile
-          label="Omzet periode"
-          value={formatMoney(revenue?.amount ?? null)}
-          caption={`${revenue?.invoiceCount ?? 0} faktur`}
-          loading={!summary && !summaryFailed}
-          error={summaryFailed}
-        />
-        <LeaderTile
-          label="Kategori produk terbesar"
-          state={breakdowns.category}
-        />
-        <LeaderTile label="Lini terbesar" state={breakdowns.businessLine} />
-      </section>
+      <InvoiceStatCards summary={summary} failed={summaryFailed} />
 
       <BreakdownPanel
         title="Omzet per kategori produk"
@@ -134,24 +122,26 @@ export function SalesSummaryScreen() {
       {/* The mockup's closing note — what this tab is, and what it is not. */}
       <Card>
         <p className="text-base font-bold text-foreground">
-          Komposisi, bukan status faktur
+          Komposisi, bukan daftar faktur
         </p>
         <p className="mt-1 text-sm text-muted">
-          Status faktur — belum lunas, jatuh tempo, tertagih — tetap di tab{" "}
+          Kartu di atas sama dengan tab{" "}
           <Link
             href="/dashboard/sales/invoice"
             className="text-primary underline-offset-2 hover:underline"
           >
             Faktur
-          </Link>{" "}
-          dan{" "}
+          </Link>
+          . Yang khas di sini adalah rinciannya — dari kategori, lini, dan
+          jenis pelanggan apa omzet itu berasal. Daftar fakturnya sendiri,
+          beserta aksi bayar dan batalkan, tetap di tab Faktur dan{" "}
           <Link
             href="/dashboard/sales/piutang"
             className="text-primary underline-offset-2 hover:underline"
           >
             Piutang
           </Link>
-          , tidak digandakan di sini.
+          .
         </p>
       </Card>
     </div>
@@ -233,35 +223,6 @@ const groupName = (
   axis: RevenueBreakdown["axis"],
   row: RevenueBreakdown["groups"][number],
 ) => row.name ?? SOURCES[axis].unnamed;
-
-/**
- * The biggest slice, as one of the three cards over the toolbar.
- *
- * ITS SHARE IS OF ITS OWN PANEL'S TOTAL, never of the omzet beside it — on a
- * line-based axis those two differ, and a percentage of a number the reader
- * cannot see under it is the kind of figure that gets quoted wrongly.
- */
-function LeaderTile({ label, state }: { label: string; state: BreakdownState }) {
-  const top = state.data?.groups[0];
-  const total = Number(state.data?.total ?? 0);
-  const share = top && total > 0 ? (Number(top.amount) / total) * 100 : null;
-
-  return (
-    <StatTile
-      label={label}
-      value={top && state.data ? groupName(state.data.axis, top) : "—"}
-      caption={
-        top
-          ? `${formatMoney(top.amount)}${
-              share === null ? "" : ` · ${SHARE.format(share)}% dari total panel`
-            }`
-          : "Belum ada penjualan pada periode ini"
-      }
-      loading={state.loading}
-      error={state.failed}
-    />
-  );
-}
 
 /**
  * One breakdown, as the mockup's bar list on real figures.
