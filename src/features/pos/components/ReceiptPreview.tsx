@@ -1,10 +1,32 @@
 "use client";
 
-import { formatMoney, formatQty } from "@/utils/decimal";
-import type { PublicReceipt } from "@/types/api";
+import {
+  formatMoney,
+  formatQty,
+  isPositive,
+  subtractDecimals,
+  sumDecimals,
+} from "@/utils/decimal";
+import type { PosReceiptItem, PublicReceipt } from "@/types/api";
 
 import type { ReceiptSize } from "../deviceSettings";
 import { variantDetailOf } from "../variantDetail";
+
+/**
+ * What a membership card paid for, across every line AND every add-on under
+ * it — the total the receipt's "Diskon membership" row prints.
+ *
+ * FLATTENED, because an add-on's own giveaway is nested one level under its
+ * service (`#nestAddons` on the server) and would otherwise be missed.
+ */
+function membershipDiscountOf(items: PosReceiptItem[]): string {
+  return sumDecimals(
+    items.flatMap((item) => [
+      item.membershipDiscount ?? "0.0000",
+      ...item.addons.map((addon) => addon.membershipDiscount ?? "0.0000"),
+    ]),
+  );
+}
 
 function paidAtLabel(paidAt: string | null): string {
   if (!paidAt) return "";
@@ -215,14 +237,37 @@ export function ReceiptPreview({
             <dt>Subtotal</dt>
             <dd className="tabular-nums">{formatMoney(totals.subtotal)}</dd>
           </div>
-          {totals.itemDiscount !== "0.0000" && (
-            <div className="flex justify-between">
-              <dt>Diskon item</dt>
-              <dd className="tabular-nums">
-                −{formatMoney(totals.itemDiscount)}
-              </dd>
-            </div>
-          )}
+          {/*
+            SPLIT FROM "DISKON ITEM" (1 October 2026, on request) — a card's
+            giveaway is not the same fact as a discount the cashier typed, and
+            `totals.itemDiscount` is frozen as their sum. The membership part is
+            worked out here, from what each line's own `membershipDiscount`
+            says, and subtracted back off for the cashier-typed figure — the
+            same split the till's own basket panel shows before payment.
+          */}
+          {(() => {
+            const membershipShare = membershipDiscountOf(receipt.items);
+            const own = subtractDecimals(totals.itemDiscount, membershipShare);
+
+            return (
+              <>
+                {isPositive(own) && (
+                  <div className="flex justify-between">
+                    <dt>Diskon item</dt>
+                    <dd className="tabular-nums">−{formatMoney(own)}</dd>
+                  </div>
+                )}
+                {isPositive(membershipShare) && (
+                  <div className="flex justify-between">
+                    <dt>Diskon membership</dt>
+                    <dd className="tabular-nums">
+                      −{formatMoney(membershipShare)}
+                    </dd>
+                  </div>
+                )}
+              </>
+            );
+          })()}
           {totals.cartDiscount !== "0.0000" && (
             <div className="flex justify-between">
               <dt>Diskon</dt>

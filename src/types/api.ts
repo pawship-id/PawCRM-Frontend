@@ -2251,6 +2251,13 @@ export interface PosReceiptItem {
   unitPrice: string;
   lineTotal: string;
   discount: { resolvedAmount: string } | null;
+  /**
+   * THE CARD'S SHARE OF `discount` (1 October 2026) — null on a line no
+   * membership benefit paid for. What lets the totals below tell "Diskon
+   * item" (cashier-typed) apart from "Diskon membership" (a card's giveaway),
+   * the way the till's own basket does.
+   */
+  membershipDiscount?: string | null;
   /** FR-8's sub-line, denormalised at sale time so a reprint survives a rename. */
   petName: string | null;
   groomerName: string | null;

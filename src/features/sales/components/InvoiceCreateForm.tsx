@@ -27,7 +27,7 @@ import {
 import { PetFixLink } from "@/features/pets";
 import { useBenefitQuote } from "@/features/memberships";
 
-import { InvoiceBenefitChip } from "./InvoiceBenefitChip";
+import { InvoiceBenefitSection } from "./InvoiceBenefitSection";
 import { useVariantQuote } from "@/features/services";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
@@ -271,7 +271,18 @@ interface DraftLine {
    * amount below is only what the SERVER quoted, held so the preview can show a
    * total that matches the bill.
    */
-  benefit: { membershipId: string; benefitId: string; amount: string } | null;
+  benefit: {
+    membershipId: string;
+    benefitId: string;
+    amount: string;
+    /**
+     * FOR THE ROW'S OWN INDICATOR ONLY (1 October 2026) — never sent. The
+     * server never sends this back pre-settlement, so it is captured at the
+     * moment `InvoiceBenefitSection` applies the benefit and carried on the
+     * draft purely so the row can name it in a tooltip.
+     */
+    benefitLabel: string | null;
+  } | null;
   /**
    * WHOSE ANIMAL, on a service line — PCR-035. REQUIRED on one.
    *
@@ -926,7 +937,12 @@ export function InvoiceCreateForm() {
     [lines],
   );
 
-  const { offerFor: benefitOfferFor } = useBenefitQuote({
+  /*
+    THE WHOLE QUOTE, not a per-row offer (1 October 2026) — see
+    `InvoiceBenefitSection`, which lists every benefit the quote names, not only
+    the ones that happen to match a row already on the faktur.
+  */
+  const { quote: benefitQuote } = useBenefitQuote({
     customerId: customerId || null,
     lines: benefitQuoteLines,
   });
@@ -966,6 +982,22 @@ export function InvoiceCreateForm() {
       charges,
     ],
   );
+
+  /**
+   * Whether a TYPED row's own discount control should be dead (1 October 2026,
+   * on request, matching the till): a benefit already took it to nought, and
+   * nothing further was typed. `index` is the row's place in `lines`, not in
+   * the preview — bookings are priced first, so it is offset by their count the
+   * same way every other per-row preview read here already is.
+   */
+  function lineFullyDiscounted(index: number): boolean {
+    const at = bookingLines.length + index;
+    return (
+      !lines[index]?.discountValue &&
+      subtractDecimals(preview.lineTotals[at], preview.lineDiscounts[at]) ===
+        "0.0000"
+    );
+  }
 
   /**
    * A line's slice of the invoice's PPN — the allocation the server freezes per
@@ -2312,6 +2344,17 @@ export function InvoiceCreateForm() {
                           </TableCell>
 
                           <TableCell>
+                            {/*
+                              NOTHING LEFT TO DISCOUNT (1 October 2026, on
+                              request, matching the till) — a row a benefit
+                              already took to nought cannot be cut further; the
+                              server floors a line discount at the line's own
+                              total anyway.
+                              ⚠️ ONLY WHEN NOTHING WAS TYPED. A row at nought
+                              BECAUSE someone typed 100% off must keep its
+                              control, or the discount they just entered is one
+                              they can never take back off.
+                            */}
                             <div className="flex gap-1">
                               <select
                                 aria-label={`Jenis diskon ${line.name}`}
@@ -2323,7 +2366,7 @@ export function InvoiceCreateForm() {
                                       .value as InvoiceDiscountMode,
                                   })
                                 }
-                                disabled={saving}
+                                disabled={saving || lineFullyDiscounted(index)}
                               >
                                 <option value="percent">%</option>
                                 <option value="amount">Rp</option>
@@ -2338,7 +2381,7 @@ export function InvoiceCreateForm() {
                                     discountValue: event.target.value,
                                   })
                                 }
-                                disabled={saving}
+                                disabled={saving || lineFullyDiscounted(index)}
                               />
                             </div>
                             {/* OFFSET PAST THE BOOKING LINES, which the preview
@@ -2358,32 +2401,25 @@ export function InvoiceCreateForm() {
                               </span>
                             )}
                             {/*
-                              ─── THE MEMBERSHIP BENEFIT, UNDER THE DISCOUNT ───
+                              ─── A MARK, NOT A CONTROL (1 October 2026) ───────
 
-                              Below the typed discount because that is the order
-                              the money comes off: the benefit first, the typed
-                              discount on what is left. A reader going down the
-                              cell reads it in the sequence the server prices it.
-
-                              NOT AN EDITABLE FIELD. The amount comes from the
-                              card's frozen plan; the only decision here is
-                              whether to honour it, so the control is a toggle.
+                              Applying and removing a benefit moved to
+                              `InvoiceBenefitSection`, under Diskon faktur — a
+                              per-row offer could only show what happened to
+                              match a row already typed, so a customer holding
+                              four benefits saw one button and no sign the
+                              other three existed. What is left here is the
+                              INDICATOR: the section says what was spent, the
+                              row says what it was spent on.
                             */}
-                            <InvoiceBenefitChip
-                              applied={line.benefit}
-                              offer={benefitOfferFor(line.key)}
-                              disabled={saving}
-                              onApply={(candidate) =>
-                                patchLine(index, {
-                                  benefit: {
-                                    membershipId: candidate.membershipId,
-                                    benefitId: candidate.benefitId,
-                                    amount: candidate.discount,
-                                  },
-                                })
-                              }
-                              onRemove={() => patchLine(index, { benefit: null })}
-                            />
+                            {line.benefit && (
+                              <span
+                                className="mt-1 inline-flex w-fit shrink-0 items-center whitespace-nowrap rounded-full bg-success-fill px-2 py-0.5 text-xs font-medium text-foreground"
+                                title={line.benefit.benefitLabel ?? undefined}
+                              >
+                                Benefit membership
+                              </span>
+                            )}
                           </TableCell>
 
                           <TableCell className="tabular-nums">
@@ -2444,28 +2480,68 @@ export function InvoiceCreateForm() {
                   {formatMoney(preview.subtotal)}
                 </dd>
               </div>
-              {/* The lines' own discounts — the bookings' shares follow. */}
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted">Diskon baris</dt>
-                {/* Green, as the till draws a discount. */}
-                <dd className="tabular-nums text-success">
-                  −
-                  {formatMoney(
-                    subtractDecimals(preview.itemDiscount, bookingShares),
-                  )}
-                </dd>
-              </div>
-              {isPositive(bookingShares) && (
-                <div className="flex justify-between gap-4">
-                  <dt className="text-muted">Diskon booking</dt>
-                  <dd className="tabular-nums text-success">
-                    −{formatMoney(bookingShares)}
-                  </dd>
-                </div>
-              )}
+              {/*
+                THE LINES' OWN DISCOUNTS, SPLIT THREE WAYS — same as the till's
+                own basket (`PosCart`): what was typed, the bookings' shares,
+                and what a membership card paid for. The three always add up to
+                `preview.itemDiscount`.
+
+                ⚠️ A CARD'S GIVEAWAY IS NOT "DISKON BARIS" (1 October 2026, on
+                request, matching the till). It used to be folded into the same
+                figure as whatever was typed on a row — one number answering two
+                different questions: "how much did we choose to give away" and
+                "how much had the customer already paid for". `ownDiscount` now
+                excludes it; a card's part gets its own line below.
+              */}
+              {(() => {
+                const membershipShare = sumDecimals(
+                  lines.map((line) => line.benefit?.amount ?? "0"),
+                );
+                const ownDiscount = subtractDecimals(
+                  subtractDecimals(preview.itemDiscount, bookingShares),
+                  membershipShare,
+                );
+
+                return (
+                  <>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted">Diskon baris</dt>
+                      {/* Green, as the till draws a discount. */}
+                      <dd className="tabular-nums text-success">
+                        −{formatMoney(ownDiscount)}
+                      </dd>
+                    </div>
+                    {isPositive(bookingShares) && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted">Diskon booking</dt>
+                        <dd className="tabular-nums text-success">
+                          −{formatMoney(bookingShares)}
+                        </dd>
+                      </div>
+                    )}
+                    {isPositive(membershipShare) && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted">Diskon membership</dt>
+                        <dd className="tabular-nums text-success">
+                          −{formatMoney(membershipShare)}
+                        </dd>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
               {/* TYPED IN ITS OWN ROW, as the mockup draws it. What it comes
                   to shows in the Total below — no line of its own under the
                   field (removed 14 Sep 2026 on request). */}
+              {/*
+                NOTHING LEFT ON THE WHOLE BILL (1 October 2026, on request,
+                matching the till) — once the lines and their benefits have
+                already taken the document to nought, a document discount on
+                top of that could only ever read "0".
+                ⚠️ ONLY WHEN NOTHING WAS TYPED. A bill at nought BECAUSE this
+                field itself was typed to 100% off must stay editable, or the
+                discount just entered is one that can never be taken back off.
+              */}
               <div className="flex items-center justify-between gap-4">
                 <dt className="text-muted">Diskon faktur</dt>
                 <dd>
@@ -2479,7 +2555,11 @@ export function InvoiceCreateForm() {
                           event.target.value as InvoiceDiscountMode,
                         )
                       }
-                      disabled={saving}
+                      disabled={
+                        saving ||
+                        (!invoiceDiscountValue &&
+                          preview.grandTotal === "0.0000")
+                      }
                     >
                       <option value="percent">%</option>
                       <option value="amount">Rp</option>
@@ -2493,7 +2573,11 @@ export function InvoiceCreateForm() {
                       onChange={(event) =>
                         setInvoiceDiscountValue(event.target.value)
                       }
-                      disabled={saving}
+                      disabled={
+                        saving ||
+                        (!invoiceDiscountValue &&
+                          preview.grandTotal === "0.0000")
+                      }
                     />
                   </div>
                 </dd>
@@ -2512,6 +2596,12 @@ export function InvoiceCreateForm() {
                 EACH ROW AND THE LINK KEEP A `dt` OF THEIR OWN, visually hidden:
                 a `dl` group holds a term and its details, and bare inputs in one
                 are invalid markup a screen reader stumbles over.
+
+                ABOVE BENEFIT MEMBERSHIP (1 October 2026, on request) — it used
+                to sit under the section instead, which put the thing that ADDS
+                to the bill below the thing that TAKES OFF it, in the one place
+                on the form where the order of the two is read as "what's left
+                after everything above".
               */}
               {charges.map((charge, index) => (
                 <div key={charge.key}>
@@ -2579,6 +2669,24 @@ export function InvoiceCreateForm() {
                   </UIButton>
                 </dd>
               </div>
+
+              {/* UNDER BIAYA LAIN, where the owner asked for it (1 October
+                  2026) — the one thing on this recap that takes money OFF the
+                  document rather than adding to it, right before the total. */}
+              <InvoiceBenefitSection
+                quote={benefitQuote ?? null}
+                lines={lines}
+                pets={pets.forCustomer === customerId ? pets.items : []}
+                disabled={saving}
+                onApply={(key, benefit) => {
+                  const index = lines.findIndex((line) => line.key === key);
+                  if (index !== -1) patchLine(index, { benefit });
+                }}
+                onRemove={(key) => {
+                  const index = lines.findIndex((line) => line.key === key);
+                  if (index !== -1) patchLine(index, { benefit: null });
+                }}
+              />
 
               {/*
                 THE ROW THAT MAKES THE LIST ADD UP. Without it the recap ran

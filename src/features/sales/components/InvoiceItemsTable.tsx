@@ -503,17 +503,31 @@ export function InvoiceItemsTable({
           </div>
 
           {/*
-            THE ITEM DISCOUNT, SPLIT AS THE TILL AND THE NEW-INVOICE FORM SHOW IT
-            (15 September 2026) — the lines' own, then the bookings' shares of
-            "Diskon seluruh booking" directly under it. The two add up to
-            `totals.itemDiscount`; nothing about the stored figure changes.
+            THE ITEM DISCOUNT, SPLIT THREE WAYS — as the till, the new-invoice
+            form and this invoice's own receipt all show it: what was typed, the
+            bookings' shares of "Diskon seluruh booking", and what a membership
+            card paid for. The three add up to `totals.itemDiscount`; nothing
+            about the stored figure changes.
+
+            ⚠️ A CARD'S GIVEAWAY IS NOT "DISKON ITEM" (1 October 2026, on
+            request, matching the till and the till's receipt). It used to be
+            folded into the same figure as whatever was typed on a row — one
+            number answering two different questions: "how much did we choose
+            to give away" and "how much had the customer already paid for".
+            `own` now excludes it; a card's part gets its own line below.
           */}
           {(() => {
             const shares = invoiceBookingShares(
               invoice.items ?? [],
               invoice.bookings ?? [],
             );
-            const own = subtractDecimals(totals.itemDiscount, shares);
+            const membershipShare = sumDecimals(
+              (invoice.items ?? []).map((item) => item.membershipDiscount ?? "0"),
+            );
+            const own = subtractDecimals(
+              subtractDecimals(totals.itemDiscount, shares),
+              membershipShare,
+            );
 
             return (
               <>
@@ -530,6 +544,14 @@ export function InvoiceItemsTable({
                     <dt className="text-muted">Diskon booking</dt>
                     <dd className="tabular-nums font-semibold text-danger">
                       −{formatMoney(shares)}
+                    </dd>
+                  </div>
+                )}
+                {isPositive(membershipShare) && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted">Diskon membership</dt>
+                    <dd className="tabular-nums font-semibold text-danger">
+                      −{formatMoney(membershipShare)}
                     </dd>
                   </div>
                 )}
