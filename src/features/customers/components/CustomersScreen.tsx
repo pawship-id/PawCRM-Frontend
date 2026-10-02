@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 
 import { Alert, Card, Spinner, Pagination } from "@/components";
@@ -31,8 +33,37 @@ export function CustomersScreen({
 }: {
   initialQuery?: Partial<CustomersQuery>;
 } = {}) {
+  const router = useRouter();
   const { customers, pagination, query, loading, error, setQuery, refetch } =
     useCustomers(initialQuery);
+
+  /*
+    KEEPS THE CHIP'S "×" HONEST (2 October 2026, fixing a bug report).
+    `createdSince` is the one query field this screen ever reflects in the
+    URL, and unlike the dormant list's `days`, it does NOT gate a server
+    round trip — `useCustomers` already refilters instantly from client
+    state the moment the chip clears it, so there is no desync risk in
+    writing the URL alongside that the way the dormant screen had to guard
+    against. The bug here was simpler and dumber: nothing ever wrote the URL
+    back at all, so clearing the chip narrowed the table but left
+    `?createdSince=…` sitting in the address bar as if it still applied.
+    `skipFirst` drops the run on mount, where the URL already reads whatever
+    the server just resolved it from — replacing it with itself would be a
+    no-op history entry, not a fix for anything.
+  */
+  const skipFirst = useRef(true);
+  useEffect(() => {
+    if (skipFirst.current) {
+      skipFirst.current = false;
+      return;
+    }
+    router.replace(
+      query.createdSince
+        ? `/dashboard/master/customers?createdSince=${encodeURIComponent(query.createdSince)}`
+        : "/dashboard/master/customers",
+      { scroll: false },
+    );
+  }, [query.createdSince, router]);
 
   return (
     <div className="flex flex-col gap-6">

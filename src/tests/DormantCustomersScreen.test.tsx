@@ -23,9 +23,15 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 jest.mock("@/services/customer.service");
 
 const replace = jest.fn();
-jest.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: (href: string, opts?: unknown) => replace(href, opts) }),
-}));
+// `router` built once, inside the factory — a fresh object on every
+// `useRouter()` call would make `isPending`'s own `useTransition` and any
+// effect depending on `router` behave differently from the real, stable
+// `next/navigation` reference. See CustomersScreen.test.tsx for the test this
+// was first caught in.
+jest.mock("next/navigation", () => {
+  const router = { replace: (href: string, opts?: unknown) => replace(href, opts) };
+  return { useRouter: () => router };
+});
 
 const mockedCustomerService = jest.mocked(customerService);
 

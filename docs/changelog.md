@@ -7,6 +7,38 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Chip "Pelanggan baru" di tabel Pelanggan sekarang benar-benar menghapus `?createdSince=`
+
+2 Oktober 2026, laporan bug: buka "Lihat semua" dari kartu "Pelanggan baru
+dalam N hari" (URL `?createdSince=...`), lalu klik "×" di chip "Pelanggan
+baru (dari Ringkasan)" — tabel benar kembali menampilkan semua pelanggan,
+tapi URL tetap `?createdSince=...`. Bug yang sama persis dengan yang baru
+dibetulkan di halaman "Pelanggan tidak aktif", di komponen yang beda, belum
+sempat ikut dibetulkan waktu itu.
+
+- **`CustomersScreen.tsx` sekarang menulis balik URL** lewat `useEffect` yang
+  mengamati `query.createdSince` dan memanggil `router.replace` begitu
+  nilainya berubah — balik ke `/dashboard/master/customers` polos kalau
+  kosong. `skipFirst` (via `useRef`) mencegah penulisan ulang yang sia-sia
+  pas render pertama, karena URL-nya saat itu memang sudah benar (baru saja
+  diresolve oleh server page).
+- **Beda caranya dari perbaikan "Pelanggan tidak aktif".** Di sana, filter
+  `days` memang HARUS lewat remount (`key` berubah) karena seluruh data
+  halaman bergantung padanya. Di sini `createdSince` cuma salah satu dari
+  banyak filter lokal (pencarian, tier, kategori, dll) — me-remount seluruh
+  layar tiap kali chip ini berubah akan ikut membuang filter lain yang
+  sedang dipakai pengguna. Jadi di sini `router.replace` cukup dipanggil
+  langsung di samping `setQuery`: berbeda dengan dormant, tabelnya sendiri
+  tidak pernah menunggu server re-render — sudah lebih dulu tersaring instan
+  lewat state klien, jadi tidak ada risiko balapan antara tabel dan URL.
+- **Ketemu bug di test double-nya juga sambil di sana**: mock `useRouter()`
+  di `DormantCustomersScreen.test.tsx` mengembalikan objek baru setiap
+  dipanggil, beda dari `next/navigation` asli yang stabil — tidak kelihatan
+  dampaknya sampai test baru untuk halaman ini butuh assert "`replace` belum
+  terpanggil" pas render pertama. Dibetulkan di kedua file test sekaligus.
+
+---
+
 ## [Unreleased] — URL halaman "Pelanggan tidak aktif" ikut berubah saat filter diganti
 
 2 Oktober 2026, laporan bug, diperbaiki dua kali. Buka "Lihat semua" dari kartu
