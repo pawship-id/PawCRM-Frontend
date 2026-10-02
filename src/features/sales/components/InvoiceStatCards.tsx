@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { StatTile } from "@/components";
 import { formatMoney } from "@/utils/decimal";
 import type {
   CustomerInvoiceListSummary,
@@ -28,6 +28,12 @@ import type {
  *
  * A FAILED SUMMARY IS A DASH, never "Rp 0" — zero is a confident answer to a
  * question that was never answered.
+ *
+ * BUILT ON THE SHARED `<StatTile>` (2 October 2026) — this used to carry its
+ * own `StatCard`, which is where Penjualan's cards picked up an `uppercase`
+ * label and a `rounded-xl` shell that Pembelian's (built straight on
+ * `StatTile`) never had. Moving onto the same tile is the fix, not a rule to
+ * remember next to a second implementation — see ui-rules §2.
  */
 export function InvoiceStatCards({
   summary,
@@ -38,103 +44,48 @@ export function InvoiceStatCards({
   failed: boolean;
   onDrill?: (statuses: CustomerInvoiceStatusFilter[], label: string) => void;
 }) {
+  const loading = !summary && !failed;
   const overdueCount = summary?.overdue.invoiceCount ?? 0;
   const collectedCount = summary?.collected.invoiceCount ?? 0;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      <StatCard
+      <StatTile
         label="Omzet periode"
-        value={summary && formatMoney(summary.revenue.amount)}
-        caption={summary && `${summary.revenue.invoiceCount} faktur`}
-        failed={failed}
+        value={summary ? formatMoney(summary.revenue.amount) : "—"}
+        caption={summary ? `${summary.revenue.invoiceCount} faktur` : undefined}
+        loading={loading}
+        error={failed}
       />
-      <StatCard
+      <StatTile
         label="Belum lunas"
-        value={summary && formatMoney(summary.outstanding.amount)}
-        caption={summary && `${summary.outstanding.invoiceCount} faktur`}
-        failed={failed}
+        value={summary ? formatMoney(summary.outstanding.amount) : "—"}
+        caption={
+          summary ? `${summary.outstanding.invoiceCount} faktur` : undefined
+        }
+        loading={loading}
+        error={failed}
         onClick={
           onDrill ? () => onDrill(["unpaid", "partial"], "belum lunas") : undefined
         }
       />
-      <StatCard
+      <StatTile
         label="Lewat jatuh tempo"
-        value={summary && `${overdueCount} faktur`}
-        caption={summary && formatMoney(summary.overdue.amount)}
-        failed={failed}
+        value={summary ? `${overdueCount} faktur` : "—"}
+        caption={summary ? formatMoney(summary.overdue.amount) : undefined}
+        loading={loading}
+        error={failed}
         tone={overdueCount > 0 ? "danger" : "plain"}
         onClick={onDrill ? () => onDrill(["overdue"], "lewat jatuh tempo") : undefined}
       />
-      <StatCard
+      <StatTile
         label="Tertagih"
-        value={summary && formatMoney(summary.collected.amount)}
-        caption={summary && `dari ${collectedCount} faktur`}
-        failed={failed}
+        value={summary ? formatMoney(summary.collected.amount) : "—"}
+        caption={summary ? `dari ${collectedCount} faktur` : undefined}
+        loading={loading}
+        error={failed}
         tone={collectedCount > 0 ? "success" : "plain"}
       />
     </div>
-  );
-}
-
-/**
- * One figure. THE TONE COLOURS THE NUMBER, never the card: a red panel in a row
- * of four turns a dashboard into an alarm, and a red numeral says the same thing
- * while the row stays scannable.
- */
-function StatCard({
-  label,
-  value,
-  caption,
-  failed,
-  tone = "plain",
-  onClick,
-}: {
-  label: string;
-  /** Null while loading or after a failure. */
-  value: string | null;
-  caption: string | null;
-  failed: boolean;
-  tone?: "plain" | "danger" | "success";
-  onClick?: () => void;
-}) {
-  const body = (
-    <>
-      <p className="text-xs font-semibold tracking-wide text-muted uppercase">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "mt-1.5 text-2xl font-extrabold tabular-nums text-foreground",
-          tone === "danger" && "text-danger-ink",
-          tone === "success" && "text-success",
-        )}
-      >
-        {value ?? "—"}
-      </p>
-      <p className="mt-1 text-xs text-muted tabular-nums">
-        {failed ? "gagal dimuat" : (caption ?? "—")}
-      </p>
-    </>
-  );
-
-  const frame = "rounded-xl border border-border bg-surface p-5 text-left shadow-sm";
-
-  if (!onClick) {
-    return <div className={frame}>{body}</div>;
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        frame,
-        "transition outline-none hover:-translate-y-px hover:shadow-md",
-        "focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
-      )}
-    >
-      {body}
-    </button>
   );
 }

@@ -594,6 +594,11 @@ function ComparisonNote({ data }: { data: DashboardData }) {
  * an error is the most dangerous thing a summary can show, because nobody goes
  * and looks. Same contract as `components/StatTile`; the layout differs because
  * these carry an icon and a caveat line.
+ *
+ * TYPE MATCHES `StatTile` EXACTLY (2 October 2026) — label sentence case,
+ * value `text-3xl font-semibold`. It used to run its own `uppercase` label
+ * and a heavier `text-2xl font-extrabold` value, which is why Ringkasan read
+ * louder than Kas & Bank's cards (built on `StatTile` directly) one tab over.
  */
 function SummaryCard({
   icon: Icon,
@@ -626,9 +631,13 @@ function SummaryCard({
     <>
       <div className="flex items-center gap-2 text-muted">
         <Icon className="size-4" aria-hidden />
-        <span className="text-xs font-semibold tracking-wide uppercase">
-          {label}
-        </span>
+        {/*
+          SENTENCE CASE, not the mockup's small caps — same reason as
+          `StatTile` (ui-rules §5): this row's cards sit beside Pelanggan's and
+          Pembelian's in the same nav, and this was the one row still reading
+          louder than its neighbours.
+        */}
+        <span className="text-sm">{label}</span>
       </div>
       {/*
         Dimmed rather than replaced while a new period loads — the previous
@@ -637,7 +646,10 @@ function SummaryCard({
       */}
       <p
         className={cn(
-          "mt-2 text-2xl font-extrabold tabular-nums text-foreground transition-opacity",
+          // Same weight and size as `StatTile`'s value — this card has an
+          // icon and a delta line StatTile doesn't, but the number itself
+          // reads the same everywhere else in the product.
+          "mt-2 text-3xl font-semibold tabular-nums text-foreground transition-opacity",
           !failed && valueClassName,
           loading && "opacity-50",
         )}

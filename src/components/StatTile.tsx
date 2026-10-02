@@ -23,6 +23,12 @@ import { cn } from "@/lib/utils";
  * also a view of a list elsewhere on the page (Faktur Pembelian's due-soon
  * card drills into the same bucket the figures describe). Omit it for a plain
  * figure; most callers do.
+ *
+ * `tone` COLOURS THE NUMBER, NEVER THE TILE — absorbed from Penjualan's own
+ * stat card (2 October 2026), which existed only to get a red/green figure for
+ * Lewat jatuh tempo / Tertagih and drifted into its own uppercase label and
+ * radius along the way. A red panel in a row of four turns a dashboard into an
+ * alarm; a red numeral says the same thing while the row stays scannable.
  */
 export function StatTile({
   label,
@@ -31,6 +37,7 @@ export function StatTile({
   loading = false,
   error = false,
   dense = false,
+  tone = "plain",
   onClick,
 }: {
   label: string;
@@ -47,6 +54,8 @@ export function StatTile({
    * them. Without it a tile 145 px wide breaks "Rp 3,8 jt" across two lines.
    */
   dense?: boolean;
+  /** Plain is the default; danger/success colour the value for a figure that is good or bad news. */
+  tone?: "plain" | "danger" | "success";
   onClick?: () => void;
 }) {
   const interactive = Boolean(onClick);
@@ -54,6 +63,12 @@ export function StatTile({
   const interactiveProps = interactive
     ? ({ type: "button", onClick } as const)
     : {};
+  const toneClass =
+    tone === "danger"
+      ? "text-danger-ink"
+      : tone === "success"
+        ? "text-success"
+        : undefined;
 
   if (dense) {
     return (
@@ -72,10 +87,15 @@ export function StatTile({
           headings wrap reads as broken rather than as dense.
         */}
         <p className="text-xs font-semibold text-muted">{label}</p>
-        <p className="mt-1.5 text-xl font-bold tabular-nums text-foreground">
+        <p
+          className={cn(
+            "mt-1.5 text-xl font-bold tabular-nums text-foreground",
+            !(loading || error) && toneClass,
+          )}
+        >
           {loading || error ? "—" : value}
         </p>
-        <p className="mt-1 text-xs text-muted">
+        <p className="mt-1 text-xs text-muted tabular-nums">
           {error ? "gagal dimuat" : caption}
         </p>
       </Tag>
@@ -92,10 +112,15 @@ export function StatTile({
       )}
     >
       <p className="text-sm text-muted">{label}</p>
-      <p className="mt-2 text-3xl font-semibold tabular-nums text-foreground">
+      <p
+        className={cn(
+          "mt-2 text-3xl font-semibold tabular-nums text-foreground",
+          !(loading || error) && toneClass,
+        )}
+      >
         {loading || error ? "—" : value}
       </p>
-      <p className="mt-1 text-xs text-muted">
+      <p className="mt-1 text-xs text-muted tabular-nums">
         {error ? "gagal dimuat" : caption}
       </p>
     </Tag>

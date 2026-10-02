@@ -31,6 +31,8 @@ The fastest way to be consistent here. Check this table before writing markup.
 | a `w-40` / `w-44` / `w-52` guess on a filter | nothing — width comes from content | One number, in `FilterTrigger.tsx`. |
 | a bare `<input type="date">` pair with an `s/d` between them | `<FilterDateRange>` | It bounds the two ends against each other and holds a draft until Terapkan. |
 | `rounded-xl border border-border bg-surface` | `<Card>` from `@/components` | Hand-written 52 times. |
+| a hand-rolled stat/summary tile — a label, a big number, a caption | `<StatTile>` / `<PendingStatTile>` from `@/components` | Penjualan grew its own copy with an `uppercase` label; Keuangan's Ringkasan tab grew another with that plus a heavier value weight. Pembelian built on `StatTile` straight and never drifted. Both fixed 2 October 2026 — same label casing, same `text-3xl font-semibold` value, even where (Keuangan's `SummaryCard`, Grooming's `GroomingStatCard`) the tile legitimately keeps its own component for an icon, a delta line, or a press-to-filter state `StatTile` doesn't have. §5 |
+| extra inline text under a card's caption, for an explanation that needs more words | a `lucide-react` `Info` icon next to the label, with the explanation in its `title` + `aria-label` | The caption stays short and inline; a longer "why" goes in a tooltip instead of stacking a third line under every tile. See `CustomerSummaryScreen.tsx`'s `SummaryTile`. There is no shared `Tooltip` component — the native `title` attribute is the convention until one exists. |
 | `Breadcrumb` + `h1` + `p` assembled by hand | `<PageHeading>` | ~25 pages hand-roll it in 3 drifted variants. |
 | a new `XxxStatusBadge` in a feature folder | `<StatusBadge tone label>` (spec'd) | 15 exist with 3 incompatible tinting conventions. §9 |
 | `Swal.fire(...)` | `swalToast()` from `@/lib/swal` | One themed entry point. §9 |
@@ -112,6 +114,8 @@ Two families. `font-display` (Plus Jakarta Sans) for headings only; `font-sans` 
 - **Prices, quantities, dates, times, phone numbers, SKUs and document numbers get `tabular-nums`**, so digits don't jitter as they update and columns stay aligned.
 - **There are exactly two typefaces. There is no `font-mono`.** `--font-mono` is deliberately unbound in `globals.css`: a third family is a brand violation, and Inter's tabular figures already do the column-alignment job a monospace face was doing here.
 - Nothing below 13 px. `text-[10px]` is banned — it is the single worst offender in the current table headers.
+- **A stat/summary tile's label is sentence case. Never `uppercase`/`tracking-wide` on it.** The mockup sets these in small caps at 10 px; this product's floor is 13 px (§1.6), and a label like "OKUPANSI HOTEL" set in caps at 13 px wraps across two lines in a tile that was only ever drawn for one. `StatTile.tsx` carries the fuller rationale. Reach for the shared `<StatTile>` (§2) instead of re-deriving this per screen — that drift is exactly how Penjualan's and Keuangan Ringkasan's cards ended up louder than their neighbours (both fixed 2 October 2026).
+  **This does not reach the small-caps convention elsewhere** — a `<dt>` field label in a detail view, a table header, or a Card's small `text-xs … uppercase` caption (`JournalEntriesScreen`'s "Jurnal umum", `CashTransactionsScreen`'s "Daftar transaksi") are a different, already-consistent role and are not part of this rule.
 
 ---
 

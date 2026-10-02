@@ -7,6 +7,47 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Card ringkasan: satu komponen, satu aturan huruf
+
+2 Oktober 2026, atas masukan BO: tiap layar kelihatan beda — ada yang labelnya
+huruf besar semua, ada yang tidak, dan subteks ada yang ditaruh di tooltip ada
+yang tidak. Pelanggan (lewat `StatTile`) jadi acuan; `ui-rules.md` §2 dan §5
+sekarang menulis aturannya secara eksplisit, bukan cuma komentar di satu file.
+
+- **`InvoiceStatCards` (Penjualan) pindah ke `<StatTile>` bersama**, berhenti
+  pakai `StatCard` lokalnya sendiri. Itu sumber "Card Penjualan huruf besar
+  semua" — labelnya `uppercase tracking-wide`, bingkainya `rounded-xl`, beda
+  dari `StatTile`-nya Pelanggan/Pembelian yang `rounded-2xl` dan sentence case.
+- **`StatTile` dapat prop `tone` (`plain` | `danger` | `success`)**, diserap
+  dari `StatCard` Penjualan supaya warna merah/hijau pada Lewat jatuh tempo dan
+  Tertagih tidak hilang saat pindah komponen. Tone mewarnai angkanya, bukan
+  kartunya.
+- **`SummaryCard` di Keuangan → Ringkasan (`FinanceDashboardScreen`) diluruskan
+  ke aturan `StatTile`** — labelnya ikut `uppercase tracking-wide` dan
+  angkanya `text-2xl font-extrabold`, beda dari kartu Kas & Bank satu tab di
+  sebelahnya yang sudah langsung pakai `StatTile`. Komponennya sendiri TETAP
+  `SummaryCard`, bukan dipindah ke `<StatTile>` — ia bawa ikon, baris delta
+  ("↗ 12,3% vs periode sebelumnya"), dan tautan drill-through yang `StatTile`
+  tidak punya — tapi sekarang label dan beratnya sama persis.
+- **Ditulis di `ui-rules.md`:** kartu ringkasan wajib lewat `<StatTile>` /
+  `<PendingStatTile>` (atau komponen sendiri yang **menyamai** tipografinya
+  kalau butuh fitur lebih — contoh sahnya `GroomingStatCard` dan `SummaryCard`
+  di atas), label selalu sentence case, dan subteks yang butuh penjelasan
+  lebih panjang masuk tooltip (ikon `Info` + `title`/`aria-label`), bukan
+  ditambah jadi baris ketiga di bawah angka. Aturan huruf besar ini **tidak**
+  menyentuh small-caps `<dt>`, header tabel, atau caption modul (mis. "Jurnal
+  umum", "Daftar transaksi") — itu peran lain yang sudah konsisten dari awal.
+- **Pembelian dan Kas & Bank tidak berubah** — sudah lebih dulu benar karena
+  langsung memakai `StatTile`.
+- **Disisir seluruh layar** (grep `uppercase`, pola nilai besar
+  `text-{xl,2xl,3xl} font-{bold,extrabold,semibold} tabular-nums`, dan setiap
+  pemanggil `StatTile`) untuk kartu ringkasan lain yang mungkin menyimpang.
+  Dua di atas satu-satunya yang menyimpang; sisanya (Booking Hari Ini, Komisi,
+  Laporan Membership, Catalog/Stock Correction header, Grooming) sudah
+  memakai `StatTile` langsung.
+
+---
+
 ## [Unreleased] — Ukuran & jenis bulu wajib di form hewan
 
 23 September 2026, atas permintaan. Kebalikan dari aturan awal: keduanya dulu opsional,
