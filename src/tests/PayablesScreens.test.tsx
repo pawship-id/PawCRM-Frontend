@@ -435,7 +435,11 @@ describe("PayablesScreen", () => {
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Jatuh tempo" }));
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Jatuh tempo" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
@@ -453,9 +457,10 @@ describe("PayablesScreen", () => {
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Jatuh tempo" }));
 
     const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Jatuh tempo" }));
     await user.click(within(panel).getByLabelText("Urutkan"));
     await user.click(
       await screen.findByRole("option", { name: "Jatuh tempo terdekat" }),
@@ -472,42 +477,46 @@ describe("PayablesScreen", () => {
   });
 
   /**
-   * THE LENS IS NOT IN THE PANEL, and Reset must not reach it. Reset clears what
-   * the panel holds; the view is a row of pills outside it that somebody set on
-   * purpose, and throwing the screen back to "Belum lunas" would undo a choice
-   * the button does not appear to be about.
+   * THE LENS IS IN THE PANEL NOW (2 October 2026, on request), so Reset reaches
+   * it exactly as it reaches every other field — back to "Belum lunas", the
+   * screen's own default, not left wherever it was set.
    */
-  it("leaves the view alone when the panel is reset", async () => {
+  it("resets the view along with everything else", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Lunas" }));
 
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Reset" }));
+    await user.click(within(panel).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Lunas" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
       expect(calls[calls.length - 1][0]).toMatchObject({ status: "paid" });
     });
-    expect(screen.getByRole("button", { name: "Lunas" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).toMatchObject({ outstanding: true });
+    });
   });
 
   /**
-   * The ordering is not counted in the trigger's badge, and neither is the view
-   * — that one narrows the list but is never hidden, so a number covering it
-   * would double-count the one filter that needs no announcing.
+   * THE ORDERING IS NEVER COUNTED — every list has one, so it is never "on".
+   * THE VIEW IS COUNTED NOW (2 October 2026), unlike when it stood outside the
+   * panel as a pill row: it is one more field the button conceals, same as
+   * Supplier or Cabang.
    */
-  it("counts neither the ordering nor the view in the filter badge", async () => {
+  it("counts the view but not the ordering in the filter badge", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Jatuh tempo" }));
 
     const panel = await openFilters(user);
     await user.click(within(panel).getByLabelText("Urutkan"));
@@ -520,6 +529,19 @@ describe("PayablesScreen", () => {
     });
     expect(screen.getByRole("button", { name: "Filter" })).not.toHaveTextContent(
       "(",
+    );
+
+    const second = await openFilters(user);
+    await user.click(within(second).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Jatuh tempo" }));
+    await user.click(within(second).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).toMatchObject({ overdue: true });
+    });
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
     );
   });
 
@@ -534,7 +556,11 @@ describe("PayablesScreen", () => {
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Minggu ini" }));
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Minggu ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
@@ -614,7 +640,11 @@ describe("PayablesScreen", () => {
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Lunas" }));
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Lunas" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
