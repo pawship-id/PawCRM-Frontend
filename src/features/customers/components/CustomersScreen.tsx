@@ -50,16 +50,6 @@ export function CustomersScreen() {
         </div>
       ) : (
         <>
-          {/*
-            The mockup states the order above every table, and it is worth
-            keeping: a list nobody can see the sort of is a list people re-sort
-            in their heads. The wording follows what the API actually does
-            (createdAt descending), not the mockup's "kunjungan terakhir" — that
-            would need a visit date this database does not store yet.
-          */}
-          <p className="-mb-2 text-[13px] text-muted">
-            Diurutkan dari yang terbaru ditambahkan
-          </p>
           <CustomersTable
             customers={customers}
             loading={loading}
@@ -90,9 +80,9 @@ export function CustomersScreen() {
             title="Profil pelanggan dibuka dari baris, bukan dari menu"
           >
             <p className="text-sm text-muted">
-              Klik baris mana pun untuk membuka profilnya. Ikon di kolom terakhir
-              jalan pintas untuk chat WhatsApp, ubah, dan hapus — supaya tidak
-              perlu buka profil dulu untuk hal kecil.
+              Klik baris mana pun untuk membuka profilnya. Ikon di kolom
+              terakhir jalan pintas untuk chat WhatsApp, ubah, dan hapus —
+              supaya tidak perlu buka profil dulu untuk hal kecil.
             </p>
           </Card>
         </>

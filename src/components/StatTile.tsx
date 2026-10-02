@@ -1,6 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
+import { InfoTooltip } from "./InfoTooltip";
+
 /**
  * One number under a page title — the mockup's `.kartu`, as the module headers
  * use it.
@@ -29,11 +31,18 @@ import { cn } from "@/lib/utils";
  * Lewat jatuh tempo / Tertagih and drifted into its own uppercase label and
  * radius along the way. A red panel in a row of four turns a dashboard into an
  * alarm; a red numeral says the same thing while the row stays scannable.
+ *
+ * `hint` IS THE ⓘ, OPTIONAL (2 October 2026) — most callers' labels are
+ * self-explanatory and omit it; it exists for the ones that aren't ("berapa
+ * persen dari apa", "dihitung sejak kapan"), so the formula lives next to the
+ * number instead of nowhere. Always `<InfoTooltip>` (ui-rules §9), never a
+ * second caption line.
  */
 export function StatTile({
   label,
   value,
   caption,
+  hint,
   loading = false,
   error = false,
   dense = false,
@@ -45,6 +54,8 @@ export function StatTile({
   value: string;
   /** What the number means, in a few words. */
   caption?: string;
+  /** The longer "what is this and how is it worked out", opened from the ⓘ. */
+  hint?: string;
   loading?: boolean;
   error?: boolean;
   /**
@@ -86,7 +97,10 @@ export function StatTile({
           across two lines in a 145 px tile, and a row of tiles where half the
           headings wrap reads as broken rather than as dense.
         */}
-        <p className="text-xs font-semibold text-muted">{label}</p>
+        <p className="flex items-center gap-1 text-xs font-semibold text-muted">
+          {label}
+          {hint && <InfoTooltip hint={hint} />}
+        </p>
         <p
           className={cn(
             "mt-1.5 text-xl font-bold tabular-nums text-foreground",
@@ -111,7 +125,10 @@ export function StatTile({
           "outline-none transition hover:border-primary/50 hover:shadow-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
       )}
     >
-      <p className="text-sm text-muted">{label}</p>
+      <p className="flex items-center gap-1.5 text-sm text-muted">
+        {label}
+        {hint && <InfoTooltip hint={hint} />}
+      </p>
       <p
         className={cn(
           "mt-2 text-3xl font-semibold tabular-nums text-foreground",

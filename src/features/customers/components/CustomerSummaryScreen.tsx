@@ -125,6 +125,7 @@ export function CustomerSummaryScreen() {
               label="Pelanggan baru periode ini"
               value={NUMBER.format(stats?.newCustomers.count ?? 0)}
               caption={`${stats?.newCustomers.days ?? 30} hari terakhir`}
+              hint="Pelanggan yang didaftarkan dalam jangka waktu di atas, dihitung dari tanggal daftar."
               delta={growth(stats)}
               loading={statsLoading}
               error={statsError}

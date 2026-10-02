@@ -23,6 +23,18 @@ export interface CustomersQuery {
   customerTypeId: string;
   /** "" = both, otherwise Perorangan or Perusahaan. */
   kind: CustomerKind | "";
+  /**
+   * "" = any status, otherwise active-only or inactive-only.
+   *
+   * DEFAULTS TO `true`, UNLIKE `BranchesQuery.active`'S `""` (2 October 2026,
+   * on request) — the register opens on "Aktif" and a reader asks for
+   * "Semua status" to see more, rather than opening on everything and being
+   * asked to narrow it. A customer going inactive is also the far more common
+   * path here than it is for the tenant's handful of branches, so a table
+   * that defaulted to "Semua" would routinely mix the two in a way the
+   * branches list, with the much smaller inactive share, does not.
+   */
+  active: boolean | "";
   includeDeleted: boolean;
 }
 
@@ -34,6 +46,7 @@ const DEFAULT_QUERY: CustomersQuery = {
   vipTier: "",
   customerTypeId: "",
   kind: "",
+  active: true,
   includeDeleted: false,
 };
 
@@ -112,6 +125,7 @@ export function useCustomers(): UseCustomersResult {
       customerTypeId:
         settled.customerTypeId === "" ? undefined : settled.customerTypeId,
       kind: settled.kind === "" ? undefined : settled.kind,
+      isActive: settled.active === "" ? undefined : settled.active,
       includeDeleted: settled.includeDeleted || undefined,
     };
 

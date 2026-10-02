@@ -1418,8 +1418,9 @@ export type VipTier = "bronze" | "silver" | "gold" | "platinum";
  * recorded with just a name. `deletedAt` is the soft-delete axis (removed,
  * restorable). `createdBy` and `sv` are server-owned audit/versioning fields the
  * UI does not edit; they are omitted here rather than typed loosely — add them
- * when a screen needs them. Mirrors the Branch shape, minus the `isActive` axis
- * (a customer has no open/closed state).
+ * when a screen needs them. Mirrors the Branch shape — including `isActive`
+ * now (2 October 2026): a customer can be switched off without being deleted,
+ * the same orthogonal pair a branch has.
  */
 /** Perorangan or Perusahaan — a closed enum, unlike the tenant's own Kategori. */
 export type CustomerKind = "individual" | "company";
@@ -1483,6 +1484,17 @@ export interface Customer {
    */
   location?: GeoLocation;
   vipTier: VipTier | null;
+  /**
+   * Whether this customer appears in another module's picker (POS, booking,
+   * the sales invoice form) — orthogonal to `deletedAt`, the same pair
+   * `Branch.isActive` is (2 October 2026).
+   *
+   * ⚠️ ABSENT ON A CUSTOMER WRITTEN BEFORE THE FIELD EXISTED, same reason as
+   * `notifications` above. Never compare this directly — `isCustomerActive()`
+   * in `CustomerVipBadge.tsx` is the one place that resolves it, and absent
+   * reads as active.
+   */
+  isActive?: boolean;
   /** Soft-delete marker; non-null means deleted (restorable), null means live. */
   deletedAt: string | null;
   createdAt: string;
@@ -1501,6 +1513,11 @@ export interface CustomerListQuery {
   search?: string;
   /** Include soft-deleted customers (default false on the backend). */
   includeDeleted?: boolean;
+  /**
+   * Omitted = don't filter ("Semua status"); `true`/`false` narrow to
+   * active-only or inactive-only. Every cross-module picker sends `true`.
+   */
+  isActive?: boolean;
 }
 
 /**
@@ -1586,6 +1603,8 @@ export interface CreateCustomerInput {
   notes?: string | null;
   /** Partial: a form that flips one switch may send one key. */
   notifications?: Partial<CustomerNotifications>;
+  /** Defaults to `true` on the server when omitted. */
+  isActive?: boolean;
 }
 
 /**
@@ -1606,6 +1625,7 @@ export interface UpdateCustomerInput {
   picName?: string | null;
   notes?: string | null;
   notifications?: Partial<CustomerNotifications>;
+  isActive?: boolean;
 }
 
 /* ------------------------------------------------------------------- POS */

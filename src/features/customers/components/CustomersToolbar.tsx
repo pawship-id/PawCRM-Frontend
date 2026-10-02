@@ -10,6 +10,7 @@ import {
   FilterSelect,
   FilterToggle,
   FilterTrigger,
+  triState,
   withAll,
 } from "@/components";
 
@@ -30,11 +31,12 @@ import type { CustomersQuery } from "../hooks/useCustomers";
  * between them should not have to notice which arrangement each screen picked —
  * and search taking the whole row is what narrowing a list of names starts with.
  *
- * FOUR FIELDS IN THE PANEL, AND ALL FOUR NARROW SOMETHING — Kategori and Jenis
+ * FIVE FIELDS IN THE PANEL, AND ALL FIVE NARROW SOMETHING — Kategori and Jenis
  * went live with the form's own fields on 27 September 2026, and the Kategori
- * list is the tenant's own from Pengaturan › Tipe pelanggan. Four fields is
- * comfortably over the floor §8 sets for a panel; it was the neighbourhood
- * argument that carried it when there were two.
+ * list is the tenant's own from Pengaturan › Tipe pelanggan. Status joined
+ * them on 2 October 2026, the day the customer gained an `isActive` axis.
+ * Five fields is comfortably over the floor §8 sets for a panel; it was the
+ * neighbourhood argument that carried it when there were two.
  *
  * NO CREATE BUTTON — it moved up to CustomerModuleHeader when the module grew a
  * tab bar, because the button belongs to the page rather than to the narrowing
@@ -59,14 +61,20 @@ interface CustomerFilters {
   vipTier: CustomersQuery["vipTier"];
   customerTypeId: CustomersQuery["customerTypeId"];
   kind: CustomersQuery["kind"];
+  active: CustomersQuery["active"];
   includeDeleted: boolean;
 }
 
-/** What Reset returns to — the query's own defaults, not "empty". */
+/**
+ * What Reset returns to — the query's own defaults, not "empty". `active`
+ * resets to `true`, matching `DEFAULT_QUERY` (2 October 2026): the register
+ * opens on "Aktif", so Reset puts it back there rather than to "Semua status".
+ */
 const CLEARED: CustomerFilters = {
   vipTier: "",
   customerTypeId: "",
   kind: "",
+  active: true,
   includeDeleted: false,
 };
 
@@ -79,6 +87,17 @@ const KINDS = withAll<CustomersQuery["kind"]>(
   "Semua jenis",
 );
 
+/**
+ * Aktif / Nonaktif / Semua — the same `triState` shape `BranchesToolbar` uses
+ * for the identical question, carrying real `boolean | ""` values rather than
+ * a second round of string sentinels.
+ */
+const STATUSES = triState({
+  all: "Semua status",
+  yes: "Aktif",
+  no: "Nonaktif",
+});
+
 export function CustomersToolbar({
   query,
   onChange,
@@ -90,6 +109,7 @@ export function CustomersToolbar({
     vipTier: query.vipTier,
     customerTypeId: query.customerTypeId,
     kind: query.kind,
+    active: query.active,
     includeDeleted: query.includeDeleted,
   };
 
@@ -105,6 +125,7 @@ export function CustomersToolbar({
     if (next.customerTypeId !== query.customerTypeId)
       patch.customerTypeId = next.customerTypeId;
     if (next.kind !== query.kind) patch.kind = next.kind;
+    if (next.active !== query.active) patch.active = next.active;
     if (next.includeDeleted !== query.includeDeleted)
       patch.includeDeleted = next.includeDeleted;
 
@@ -161,11 +182,19 @@ function CustomerFilterPanel({
    * How many filters are narrowing the list right now. The badge is what makes
    * a collapsed bar safe: a hidden filter is one people forget is on and then
    * read the wrong numbers from.
+   *
+   * `active` COUNTS AGAINST `true`, NOT `""` — unlike every other field here,
+   * its own neutral state is "Aktif" (`DEFAULT_QUERY.active`), not "not
+   * filtering". The register already opens narrowed to active customers, so
+   * that narrowing is the baseline nothing has to pay the badge back for;
+   * only leaving it — "Semua status" or "Nonaktif" — is a choice this row
+   * should admit to.
    */
   const count = [
     applied.vipTier !== "",
     applied.customerTypeId !== "",
     applied.kind !== "",
+    applied.active !== true,
     applied.includeDeleted,
   ].filter(Boolean).length;
 
@@ -236,6 +265,21 @@ function CustomerFilterPanel({
           value={draft.kind}
           options={KINDS}
           onChange={(kind) => patch({ kind })}
+        />
+
+        {/*
+          AKTIF / NONAKTIF / SEMUA (2 October 2026) — the same question
+          `BranchesToolbar` asks, now that a customer carries the same
+          `isActive` axis a branch does. See `isCustomerActive` in
+          `CustomerVipBadge.tsx`.
+        */}
+        <FilterSelect
+          layout="field"
+          label="Status"
+          ariaLabel="Filter status aktif"
+          value={draft.active}
+          options={STATUSES}
+          onChange={(active) => patch({ active })}
         />
 
         <FilterToggle

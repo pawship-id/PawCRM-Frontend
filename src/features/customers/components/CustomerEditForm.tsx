@@ -12,6 +12,8 @@ import {
   Spinner,
   validateLocationFields,
 } from "@/components";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
 import { swalToast } from "@/lib/swal";
@@ -30,7 +32,11 @@ import {
   customerToForm,
   type CustomerFormValue,
 } from "./CustomerFormFields";
-import { CustomerVipBadge, CustomerStatusBadge } from "./CustomerVipBadge";
+import {
+  CustomerVipBadge,
+  CustomerStatusBadge,
+  isCustomerActive,
+} from "./CustomerVipBadge";
 
 /**
  * Edit an existing customer. Mirrors BranchEditForm: the details (name, email,
@@ -94,7 +100,10 @@ export function CustomerEditForm({ id }: { id: string }) {
           </h1>
           {customer && (
             <>
-              <CustomerStatusBadge deleted={customer.deletedAt !== null} />
+              <CustomerStatusBadge
+                isActive={customer.isActive}
+                deleted={customer.deletedAt !== null}
+              />
               {customer.vipTier && <CustomerVipBadge tier={customer.vipTier} />}
             </>
           )}
@@ -165,6 +174,14 @@ function DetailsSection({
   const [value, setValue] = useState<CustomerFormValue>(() =>
     customerToForm(customer),
   );
+  /*
+    KEPT OUTSIDE `CustomerFormValue` (2 October 2026), the same way
+    `BranchEditForm` keeps `isActive` beside its other fields rather than
+    inside them: `CustomerFormValue`/`customerToForm`/`customerFormToPayload`
+    are the shape `CustomerCreateForm` shares, and a brand-new customer has no
+    "switch this one off" to offer — only an existing one does.
+  */
+  const [isActive, setIsActive] = useState(() => isCustomerActive(customer));
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -202,12 +219,13 @@ function DetailsSection({
         out of it is a cleared field that never clears, because `""` and
         "unchanged" look alike.
       */
-      const updated = await customerService.update(
-        customer._id,
-        customerFormToPayload(value),
-      );
+      const updated = await customerService.update(customer._id, {
+        ...customerFormToPayload(value),
+        isActive,
+      });
       onUpdated(updated);
       setValue(customerToForm(updated));
+      setIsActive(isCustomerActive(updated));
       swalToast("Perubahan pelanggan tersimpan.");
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
@@ -238,6 +256,18 @@ function DetailsSection({
         errors={fieldErrors}
         disabled={disabled}
       />
+
+      <div className="flex items-center gap-2.5">
+        <Checkbox
+          id="customer-active"
+          checked={isActive}
+          disabled={disabled}
+          onCheckedChange={(checked) => setIsActive(checked === true)}
+        />
+        <Label htmlFor="customer-active" className="font-normal">
+          Aktif — pelanggan ini muncul di daftar pilihan pelanggan
+        </Label>
+      </div>
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button

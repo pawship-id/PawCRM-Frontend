@@ -154,7 +154,10 @@ export function CustomerProfileScreen({ id }: { id: string }) {
                 {customer.code}
               </Badge>
             )}
-            <CustomerStatusBadge deleted={deleted} />
+            <CustomerStatusBadge
+              isActive={customer.isActive}
+              deleted={deleted}
+            />
             {customer.vipTier && <CustomerVipBadge tier={customer.vipTier} />}
             <Badge variant="outline" className="font-normal text-muted">
               Sejak {day(customer.createdAt)}

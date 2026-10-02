@@ -3,7 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { EllipsisVertical, Eye, Pencil, Trash2, RotateCcw } from "lucide-react";
+import {
+  EllipsisVertical,
+  Eye,
+  Pencil,
+  Power,
+  PowerOff,
+  Trash2,
+  RotateCcw,
+} from "lucide-react";
 
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
@@ -15,6 +23,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -28,10 +37,17 @@ import {
 import { Can, usePermissions } from "@/features/permissions";
 import type { Customer } from "@/types/api";
 
-import { CustomerVipBadge, CustomerStatusBadge } from "./CustomerVipBadge";
+import {
+  CustomerVipBadge,
+  CustomerStatusBadge,
+  isCustomerActive,
+} from "./CustomerVipBadge";
 
 /** The row action that opens a confirm dialog, plus the customer it targets. */
-type PendingAction = { kind: "delete" | "restore"; customer: Customer } | null;
+type PendingAction = {
+  kind: "delete" | "restore" | "deactivate" | "activate";
+  customer: Customer;
+} | null;
 
 /** "12 Jan 2025" — the mockup's Bergabung column, from `createdAt`. */
 function joinedOn(iso: string): string {
@@ -72,6 +88,14 @@ function joinedOn(iso: string): string {
  * clearing up duplicates does it, and taking a working button away to match a
  * drawing is a loss. It is icon-only here and spelled out in the profile's danger
  * zone, so the row stays quiet without hiding anything.
+ *
+ * NONAKTIFKAN / AKTIFKAN JOINED THE MENU (2 October 2026), the same two axes
+ * `SuppliersTable` already has: Hapus/Pulihkan is the soft delete, its own
+ * endpoints and its own permission; Nonaktifkan/Aktifkan is an ordinary
+ * `isActive` patch gated on `customers:update` — the same grant Ubah already
+ * needs — and only hides the customer from another module's picker (POS,
+ * booking, the sales invoice form). A deleted row offers neither: restoring
+ * first is what makes them meaningful again.
  *
  * Read data flows in via props (from useCustomers); the lifecycle actions (delete,
  * restore) are owned here because they are local to a row: each opens a
@@ -119,12 +143,18 @@ export function CustomersTable({
     try {
       const { kind, customer } = pending;
       if (kind === "delete") await customerService.remove(customer._id);
-      else await customerService.restore(customer._id);
+      else if (kind === "restore") await customerService.restore(customer._id);
+      else {
+        // Deactivating is an ordinary field edit, not its own verb — see the
+        // service. "activate" and "deactivate" differ only in the value sent,
+        // the same shape SuppliersTable already uses for its own isActive.
+        await customerService.update(customer._id, {
+          isActive: kind === "activate",
+        });
+      }
       setPending(null);
       onChanged();
-      swalToast(
-        kind === "delete" ? "Pelanggan dihapus." : "Pelanggan dipulihkan.",
-      );
+      swalToast(TOASTS[kind](customer.name));
     } catch (error) {
       // `reason` first — deleting a customer that still has pets is refused with
       // a 409 whose message is only the headline; the count of what is in the way
@@ -165,6 +195,7 @@ export function CustomersTable({
           <TableBody>
             {customers.map((customer) => {
               const deleted = customer.deletedAt !== null;
+              const active = isCustomerActive(customer);
               return (
                 <TableRow
                   key={customer._id}
@@ -267,7 +298,10 @@ export function CustomersTable({
                     )}
                   </TableCell>
                   <TableCell>
-                    <CustomerStatusBadge deleted={deleted} />
+                    <CustomerStatusBadge
+                      isActive={customer.isActive}
+                      deleted={deleted}
+                    />
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-muted">
                     {joinedOn(customer.createdAt)}
@@ -345,7 +379,26 @@ export function CustomersTable({
                                     </Link>
                                   </DropdownMenuItem>
                                 </Can>
+                                <Can feature="customers" action="update">
+                                  <DropdownMenuItem
+                                    onSelect={() =>
+                                      setPending({
+                                        kind: active ? "deactivate" : "activate",
+                                        customer,
+                                      })
+                                    }
+                                  >
+                                    {active ? <PowerOff /> : <Power />}
+                                    {active ? "Nonaktifkan" : "Aktifkan"}
+                                  </DropdownMenuItem>
+                                </Can>
                                 <Can feature="customers" action="delete">
+                                  {/* Separated and tinted: deleting is the one
+                                      item here that is not a toggle, and it
+                                      sits next to one that looks like it does
+                                      the same thing — the same separator
+                                      SuppliersTable draws for the same reason. */}
+                                  <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     variant="destructive"
                                     onSelect={() =>
@@ -372,30 +425,84 @@ export function CustomersTable({
 
       {pending && (
         <ConfirmDialog
-          title={
-            pending.kind === "delete" ? "Hapus pelanggan" : "Pulihkan pelanggan"
-          }
-          confirmLabel={pending.kind === "delete" ? "Hapus" : "Pulihkan"}
+          title={DIALOGS[pending.kind].title}
+          confirmLabel={DIALOGS[pending.kind].confirmLabel}
           destructive={pending.kind === "delete"}
           busy={busy}
           error={actionError}
           onConfirm={runAction}
           onCancel={closeDialog}
         >
-          {pending.kind === "delete" ? (
-            <>
-              Hapus <strong>{pending.customer.name}</strong>? Datanya
-              disembunyikan dari daftar dan emailnya bebas dipakai lagi. Bisa
-              dipulihkan nanti.
-            </>
-          ) : (
-            <>
-              Pulihkan <strong>{pending.customer.name}</strong>? Ini gagal kalau
-              emailnya sudah dipakai pelanggan lain.
-            </>
-          )}
+          {DIALOGS[pending.kind].body(pending.customer.name)}
         </ConfirmDialog>
       )}
     </>
   );
 }
+
+const TOASTS: Record<NonNullable<PendingAction>["kind"], (name: string) => string> =
+  {
+    delete: (name) => `${name} dihapus.`,
+    restore: (name) => `${name} dipulihkan.`,
+    deactivate: (name) => `${name} dinonaktifkan.`,
+    activate: (name) => `${name} diaktifkan lagi.`,
+  };
+
+/**
+ * Each dialog says what will happen, not just what the row will look like —
+ * the difference between deactivating and deleting a customer is invisible
+ * in the list (both make them stop appearing as a picker option), so the
+ * wording is the only thing that tells a user which one they are about to
+ * do. Mirrors SuppliersTable's own DIALOGS map.
+ */
+const DIALOGS: Record<
+  NonNullable<PendingAction>["kind"],
+  {
+    title: string;
+    confirmLabel: string;
+    body: (name: string) => React.ReactNode;
+  }
+> = {
+  delete: {
+    title: "Hapus pelanggan",
+    confirmLabel: "Hapus",
+    body: (name) => (
+      <>
+        Hapus <strong>{name}</strong>? Datanya disembunyikan dari daftar dan
+        emailnya bebas dipakai lagi. Bisa dipulihkan nanti.
+      </>
+    ),
+  },
+  restore: {
+    title: "Pulihkan pelanggan",
+    confirmLabel: "Pulihkan",
+    body: (name) => (
+      <>
+        Pulihkan <strong>{name}</strong>? Ini gagal kalau emailnya sudah
+        dipakai pelanggan lain.
+      </>
+    ),
+  },
+  deactivate: {
+    title: "Nonaktifkan pelanggan",
+    confirmLabel: "Nonaktifkan",
+    body: (name) => (
+      <>
+        Nonaktifkan <strong>{name}</strong>? Pelanggan ini tidak akan muncul
+        lagi sebagai pilihan di kasir, booking, atau faktur penjualan.
+        Datanya dan riwayatnya tidak dihapus, dan bisa diaktifkan lagi kapan
+        saja.
+      </>
+    ),
+  },
+  activate: {
+    title: "Aktifkan pelanggan",
+    confirmLabel: "Aktifkan",
+    body: (name) => (
+      <>
+        Aktifkan <strong>{name}</strong> lagi? Pelanggan ini akan muncul
+        kembali sebagai pilihan di kasir, booking, dan faktur penjualan.
+      </>
+    ),
+  },
+};

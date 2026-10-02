@@ -52,10 +52,6 @@ export function PetsScreen() {
         </div>
       ) : (
         <>
-          {/* See CustomersScreen — the order the API returns, stated. */}
-          <p className="-mb-2 text-[13px] text-muted">
-            Diurutkan dari yang terbaru ditambahkan
-          </p>
           <PetsTable
             pets={pets}
             loading={loading}

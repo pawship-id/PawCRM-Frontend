@@ -7,6 +7,95 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Nonaktifkan / Aktifkan pelanggan langsung dari baris tabel
+
+2 Oktober 2026, atas permintaan lanjutan. Kolom Aksi di tabel Pelanggan
+sekarang punya pilihan "Nonaktifkan"/"Aktifkan", pola yang sama persis
+dengan `SuppliersTable` (satu `isActive` patch biasa, bukan verb-nya
+sendiri) — gated di `customers:update`, izin yang sama dengan "Ubah". Ada
+dialog konfirmasi di kedua arah yang bilang apa yang sebenarnya berubah
+(pelanggan hilang/muncul lagi dari pilihan di kasir, booking, faktur
+penjualan — bukan dihapus), supaya bedanya dengan Hapus/Pulihkan jelas
+walau di daftar keduanya kelihatan sama (pelanggan berhenti muncul).
+Dipisah dengan garis dari Hapus di menunya, sama seperti Supplier.
+
+---
+
+## [Unreleased] — Pelanggan dapat sumbu `isActive`, terpisah dari `deletedAt`
+
+2 Oktober 2026, atas permintaan. Sampai sekarang pelanggan hanya punya satu
+sumbu siklus hidup (`deletedAt`, soft-delete). Sekarang ada yang kedua,
+persis pasangan yang sudah dipakai Cabang (`isActive`/`deletedAt` di
+`branch.model.js`): `isActive: false` berarti pelanggan ini tetap nyata dan
+riwayatnya utuh, tapi disembunyikan dari pilihan pelanggan di modul lain
+(kasir, booking, faktur) — beda dari `deletedAt` yang berarti pelanggan itu
+dihapus dan bisa dipulihkan.
+
+- **Backend** (`PawCRM-Backend`): field `isActive` (`Boolean`, default
+  `true`) di `customer.model.js`, dengan index
+  `{ tenantId, isActive, deletedAt }` (tidak seperti Cabang yang sengaja
+  tidak punya index ini — jumlah pelanggan per tenant jauh lebih banyak
+  daripada jumlah cabang). Query `isActive: true` di `customer.repository.js`
+  sengaja memakai `{ isActive: { $ne: false } }`, bukan `{ isActive: true }`
+  persis — karena pembacaan repo pakai `.lean()` yang melewati default
+  Mongoose, setiap pelanggan yang sudah ada SEBELUM field ini ada akan
+  terbaca tanpa field `isActive` sama sekali, dan harus tetap dianggap aktif.
+  Dibuktikan dengan 5 test baru di `customerFormFields.db.test.js` yang jalan
+  ke MongoDB sungguhan, termasuk kasus dokumen lama itu secara eksplisit.
+  `countForStats` ("Jumlah pelanggan") sengaja TIDAK disentuh — dia sudah
+  hanya menghitung `deletedAt: null` dan mengabaikan filter lain, persis
+  sesuai permintaan.
+- **4 tempat di frontend yang menarik pelanggan sebagai pilihan** sekarang
+  mengirim `isActive: true`: dialog cari pelanggan (dipakai kasir, booking,
+  grooming, antar-jemput), pemilihan pelanggan di form faktur Penjualan, dan
+  pemilihan pemilik saat mendaftarkan hewan baru.
+- **Tabel Pelanggan**: filter baru "Status" (Aktif/Nonaktif/Semua), pola yang
+  sama dengan filter Cabang. Default-nya "Aktif" (bukan "Semua" seperti
+  Cabang) — pelanggan nonaktif jauh lebih sering terjadi daripada cabang
+  nonaktif, jadi daftarnya sengaja dibuka sudah tersaring.
+- **Badge status pelanggan** (`CustomerStatusBadge`) sekarang tiga keadaan —
+  Aktif / Nonaktif / Terhapus — bukan dua. Sekalian dibetulkan ke token
+  `bg-tint-*` (ui-rules §9); sebelumnya pakai `bg-success/12` dkk., aritmetika
+  opacity yang aturan itu sendiri melarang.
+- **Form ubah pelanggan**: checkbox "Aktif — pelanggan ini muncul di daftar
+  pilihan pelanggan", gaya yang sama dengan Cabang/Gudang. Tidak ada di form
+  tambah pelanggan baru — pelanggan baru selalu mulai aktif, sama seperti
+  cabang baru.
+
+2 Oktober 2026, atas permintaan. `CustomerModuleHeader.tsx`: breadcrumb di
+bawah judul "Pelanggan" (yang isinya cuma mengulang kata "Pelanggan") diganti
+satu kalimat — "Satu profil pemilik, banyak hewan, satu riwayat — satu basis
+data untuk seluruh cabang." — dengan gaya yang sama dipakai `PageHeading`
+Purchasing (`mt-1 max-w-2xl text-sm text-muted`).
+
+---
+
+## [Unreleased] — Tooltip di 4 kartu register Pelanggan, dan satu lagi di Ringkasan
+
+2 Oktober 2026, atas permintaan: 4 kartu di tab "Pelanggan" ("Jumlah hewan",
+"Jumlah pelanggan", "Pelanggan baru bulan ini", "Transaksi N hari terakhir")
+sekarang punya tooltip ⓘ yang jelasin angkanya itu apa dan dari mana
+rumusnya — singkat, satu kalimat per kartu. "Pelanggan baru periode ini" di
+tab Ringkasan (`CustomerSummaryScreen.tsx`) dikasih tooltip yang sama
+bunyinya, karena metriknya sama persis.
+
+- **`StatTile` dapat prop `hint` opsional**, diteruskan ke `InfoTooltip` di
+  sebelah labelnya — sama persis dengan pola yang sudah dipakai `SummaryTile`
+  di tab Ringkasan. Karena `StatTile` dipakai di banyak modul (Pembelian,
+  Inventori, Grooming, Membership, Booking, Komisi, Kas & Bank), modul lain
+  bisa langsung pakai `hint` ini kalau butuh, tanpa bikin pola baru.
+- **`CustomerModuleHeader.tsx`** — isi tooltip 4 kartunya:
+  - Jumlah hewan: "Total hewan peliharaan yang terdaftar, tidak termasuk yang
+    dihapus."
+  - Jumlah pelanggan: "Total pelanggan terdaftar, tidak termasuk yang
+    dihapus."
+  - Pelanggan baru bulan ini: "Pelanggan yang didaftarkan dalam jangka waktu
+    di bawah angka ini, dihitung dari tanggal daftar."
+  - Transaksi N hari terakhir: "Pelanggan yang bertransaksi dalam jangka
+    waktu di atas, dibagi seluruh pelanggan terdaftar."
+
+---
+
 ## [Unreleased] — `InfoTooltip`: satu komponen ⓘ untuk semua layar
 
 2 Oktober 2026. Dimulai dari permintaan sempit — subteks kartu "Rata-rata

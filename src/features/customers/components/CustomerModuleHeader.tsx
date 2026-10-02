@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import { Breadcrumb, PageTabs, StatTile, type PageTab } from "@/components";
+import { PageTabs, StatTile, type PageTab } from "@/components";
 import { usePermissions } from "@/features/permissions";
 
 import {
@@ -23,7 +23,9 @@ import {
  *
  * THE TITLE IS "Pelanggan" ON EVERY TAB, deliberately — the tab says which list
  * you are looking at, the title says which module you are in. The mockup does
- * the same, and it is why the breadcrumb has one level rather than two.
+ * the same. NO BREADCRUMB BELOW IT (2 October 2026, on request) — a one-level
+ * trail that only ever said "Pelanggan" again was repeating the title, not
+ * locating it; a one-line sentence under the title earns that space better.
  *
  * WHAT IS NOT HERE: the mockup's Cabang/Gudang scope row. A customer has no
  * branch in this database — the register is tenant-wide, exactly as the product
@@ -116,10 +118,13 @@ export function CustomerModuleHeader({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start gap-4">
         <div>
-          <Breadcrumb items={[{ label: "Pelanggan" }]} />
-          <h1 className="mt-1 text-2xl font-extrabold text-foreground">
+          <h1 className="text-2xl font-extrabold text-foreground">
             Pelanggan
           </h1>
+          <p className="mt-1 max-w-2xl text-sm text-muted">
+            Satu profil pemilik, banyak hewan, satu riwayat — satu basis data
+            untuk seluruh cabang.
+          </p>
         </div>
         {action && <div className="ml-auto flex flex-none gap-2">{action}</div>}
       </div>
@@ -151,6 +156,7 @@ export function CustomerModuleHeader({
               label="Jumlah hewan"
               value={NUMBER.format(counts.pets.total)}
               caption={perOwner(counts.pets, counts.customers)}
+              hint="Total hewan peliharaan yang terdaftar, tidak termasuk yang dihapus."
               loading={counts.pets.loading}
               error={counts.pets.error}
             />
@@ -161,6 +167,7 @@ export function CustomerModuleHeader({
                 label="Jumlah pelanggan"
                 value={NUMBER.format(counts.customers.data?.total ?? 0)}
                 caption="tidak termasuk yang dihapus"
+                hint="Total pelanggan terdaftar, tidak termasuk yang dihapus."
                 loading={counts.customers.loading}
                 error={counts.customers.error}
               />
@@ -170,6 +177,7 @@ export function CustomerModuleHeader({
                   counts.customers.data?.newCustomers.count ?? 0,
                 )}
                 caption={`${counts.customers.data?.newCustomers.days ?? 30} hari terakhir`}
+                hint="Pelanggan yang didaftarkan dalam jangka waktu di bawah angka ini, dihitung dari tanggal daftar."
                 loading={counts.customers.loading}
                 error={counts.customers.error}
               />
@@ -177,6 +185,7 @@ export function CustomerModuleHeader({
                 label={`Transaksi ${counts.customers.data?.activeCustomers.days ?? 90} hari terakhir`}
                 value={activeShare(counts.customers)}
                 caption="dari seluruh pelanggan terdaftar"
+                hint="Pelanggan yang bertransaksi dalam jangka waktu di atas, dibagi seluruh pelanggan terdaftar."
                 loading={counts.customers.loading}
                 error={counts.customers.error}
               />
