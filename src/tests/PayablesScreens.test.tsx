@@ -1276,21 +1276,23 @@ describe("PurchasingHub — the Ringkasan tab", () => {
   }
 
   /*
-    THE THREE CARDS ARE THE SERVER'S, from one endpoint that knows about a cabang
-    and a period — which `/outstanding`, the one this screen used to read, does
-    not. Nothing on the page is added up in the browser.
+    THE CARD ROW IS PayablesStatCards NOW (2 October 2026) — the same
+    four-card strip Faktur carries, fed from THIS tab's own cabang/period-
+    scoped summary rather than the whole book `/outstanding` answers. "Hutang
+    terbayar periode ini" is gone from the page in the swap — see the hub's
+    own doc for why — so there is nothing here asserting `summary.paid`
+    reached a card; the period's own scoping is covered below instead.
   */
-  it("draws the balance, the bill count and what was paid this period", async () => {
+  it("draws the balance and the due-soon bucket from its own scoped summary", async () => {
     asMock(purchaseInvoiceService.summary).mockResolvedValue(payablesSummary());
 
     renderWithAuth(<PurchasingHub />);
 
     expect(await screen.findByText("Rp 9.500.000")).toBeInTheDocument();
     expect(screen.getByText("12 faktur")).toBeInTheDocument();
-    expect(screen.getByText(/dari 5 supplier/)).toBeInTheDocument();
-    // The one FLOW on the page: money that actually left inside the period.
-    expect(screen.getByText("Rp 18.700.000")).toBeInTheDocument();
-    expect(screen.getByText("6 pembayaran ke 4 faktur")).toBeInTheDocument();
+    expect(screen.getByText("Jatuh tempo ≤ 7 hari")).toBeInTheDocument();
+    expect(screen.getByText("Pembelian periode")).toBeInTheDocument();
+    expect(screen.getByText("Barang belum diterima")).toBeInTheDocument();
   });
 
   it("opens on this month and scopes every request by the cabang", async () => {

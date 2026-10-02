@@ -15,10 +15,13 @@ import type { PayablesSummaryQuery } from "../hooks/usePayablesSummary";
  * genuinely purchasing's: which dates the range bounds.
  *
  * THE TWO CONTROLS STILL NARROW DIFFERENT THINGS — the cabang scopes everything,
- * both cards and both worklists, while the period touches only "Hutang terbayar"
- * because the other two cards are balances. The line that used to say so under
- * the row was dropped on request; the caption on each card is where that now
- * lives, beside the figure it is about.
+ * both cards and both worklists, while the period narrows only `summary.paid`.
+ * THAT FIGURE IS NO LONGER DRAWN, since `PayablesStatCards` replaced this tab's
+ * own three-card row (2 October 2026, on request) with a four-card strip that
+ * has no "money paid this period" card — see that component's own doc. The
+ * period control stays regardless: nobody has asked for it to go, and it still
+ * narrows the request this screen makes even though nothing on screen visibly
+ * answers to it right now.
  *
  * "Tanggal bayar", NOT "Tanggal faktur": the identical-looking control on the
  * Faktur tab bounds the day the VENDOR issued a bill; here it bounds the day

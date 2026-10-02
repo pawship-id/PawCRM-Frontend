@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { Card, StatTile } from "@/components";
+import { Card } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { useBranchOptions } from "@/features/inventory/hooks/useBranchOptions";
 import { usePermissions } from "@/features/permissions";
@@ -16,22 +16,27 @@ import {
   type PayablesWorklist,
 } from "../hooks/usePayablesSummary";
 import { PayablesScopeCard } from "./PayablesScopeCard";
+import { PayablesStatCards, type PayablesStatFigures } from "./PayablesStatCards";
 import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
 
 /**
  * The Pembelian › Ringkasan tab — what is owed, and what has to be paid next.
  *
- * THE MOCKUP'S OWN SHAPE (`buloo-navigation-v3`, pembelian › Ringkasan): three
- * cards, then the two worklists, then the note about consignment. Every part of
- * it is a decision worth recording:
+ * THE MOCKUP'S OWN SHAPE (`buloo-navigation-v3`, pembelian › Ringkasan): a
+ * card row, then the two worklists, then the note about consignment. Every
+ * part of it is a decision worth recording:
  *
- *   THREE CARDS, NOT FOUR, and two of them are counts rather than money.
- *   "Total hutang supplier" is a BALANCE — every unpaid bill, whenever it was
- *   raised — while "Hutang belum lunas" counts the documents behind that same
- *   balance, in a different unit so the pair cannot read as one figure printed
- *   twice. "Hutang terbayar periode ini" is the only FLOW: money that actually
- *   left inside the period, which is why it is the only card the date range
- *   touches.
+ *   THE CARD ROW IS `PayablesStatCards` NOW (2 October 2026, on request) — the
+ *   same four-card strip the Faktur tab carries, promoted here when this screen
+ *   was asked for it instead of keeping its own three. ONE FIGURE WAS DROPPED
+ *   IN THE SWAP: "Hutang terbayar periode ini", the only FLOW among the old
+ *   three (money that actually left inside the period) and the one figure with
+ *   no equivalent among the new four. It is still fetched — `summary.paid`,
+ *   below — just no longer drawn anywhere on this tab. Nobody has asked for it
+ *   back yet; if it returns, say so here. ONE CONSEQUENCE FOLLOWS: the period
+ *   half of `PayablesScopeCard` narrowed only that figure, so it currently
+ *   narrows nothing visible on this tab — only the cabang half still does,
+ *   scoping both cards and both worklists.
  *
  *   THE SECTION-CARD GRID IS GONE. This screen used to open with five links —
  *   Supplier, Kategori Supplier, Penerimaan, Faktur, Retur — above the
@@ -74,9 +79,19 @@ export function PurchasingHub() {
     );
   }
 
-  const paidCaption = summary
-    ? `${summary.paid.paymentCount} pembayaran ke ${summary.paid.invoiceCount} faktur`
-    : "";
+  const figures: PayablesStatFigures | null = summary
+    ? {
+        outstanding: {
+          amount: summary.outstanding.amount,
+          invoiceCount: summary.outstanding.invoiceCount,
+        },
+        dueSoon: {
+          amount: summary.dueSoon.amount,
+          invoiceCount: summary.dueSoon.invoiceCount,
+          horizonDays: summary.dueSoon.horizonDays,
+        },
+      }
+    : null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -90,47 +105,13 @@ export function PurchasingHub() {
         onChange={setQuery}
       />
 
-      <section
-        aria-label="Ringkasan utang supplier"
-        className="grid grid-cols-1 gap-4 lg:grid-cols-3"
-      >
-        <StatTile
-          label="Total hutang supplier"
-          value={formatMoney(summary?.outstanding.amount ?? null)}
-          caption={
-            summary
-              ? `Saldo berjalan · ${summary.outstanding.supplierCount} supplier`
-              : "Saldo berjalan, seluruh supplier"
-          }
-          loading={loading && !summary}
-          error={summaryFailed}
-        />
-        {/*
-          A COUNT, NOT THE SAME MONEY AGAIN. It answers "how many bills is that",
-          which is what decides whether the balance is one big invoice or thirty
-          small ones — a different job from the card beside it.
-        */}
-        <StatTile
-          label="Hutang belum lunas"
-          value={
-            summary ? `${summary.outstanding.invoiceCount} faktur` : "0 faktur"
-          }
-          caption={
-            summary
-              ? `dari ${summary.outstanding.supplierCount} supplier · termasuk yang belum jatuh tempo`
-              : ""
-          }
-          loading={loading && !summary}
-          error={summaryFailed}
-        />
-        <StatTile
-          label="Hutang terbayar periode ini"
-          value={formatMoney(summary?.paid.amount ?? null)}
-          caption={paidCaption}
-          loading={loading && !summary}
-          error={summaryFailed}
-        />
-      </section>
+      {/* No onDueSoonClick: this tab has no invoice table of its own to drill
+          into, unlike Faktur's — see PayablesStatCards' own doc. */}
+      <PayablesStatCards
+        figures={figures}
+        loading={loading && !summary}
+        failed={summaryFailed}
+      />
 
       <Worklist
         title="Hutang lewat jatuh tempo"

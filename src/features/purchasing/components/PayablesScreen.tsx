@@ -2,13 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import {
-  Alert,
-  Pagination,
-  PendingStatTile,
-  Spinner,
-  StatTile,
-} from "@/components";
+import { Alert, Pagination, Spinner } from "@/components";
 import { usePermissions } from "@/features/permissions";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { formatMoney } from "@/utils/decimal";
@@ -16,43 +10,29 @@ import type { SupplierOutstandingSummary } from "@/types/api";
 
 import { usePurchaseInvoices } from "../hooks/usePurchaseInvoices";
 import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
+import { PayablesStatCards, type PayablesStatFigures } from "./PayablesStatCards";
 import { PayablesTable } from "./PayablesTable";
 import { PayablesToolbar } from "./PayablesToolbar";
 
-/** The default, before the real summary (and its own `horizonDays`) has loaded. */
-const DEFAULT_HORIZON_DAYS = 7;
-
 /**
- * What the tenant owes its suppliers, and which of it is late — now carrying the
- * BO mockup's own four-card strip (`buloo-navigation-v3`, Pembelian tab),
- * added 1 October 2026 on request, ABOVE THE SEARCH BOX THE MOCKUP DRAWS IT
- * OVER.
+ * What the tenant owes its suppliers, and which of it is late.
  *
- * TWO OF THE FOUR CARDS ARE REAL. "Utang belum lunas" and "Jatuh tempo ≤N hari"
- * are the same two aggregates the old header figure and due-soon banner already
- * read — see `SupplierOutstandingSummary` below — just promoted into the strip
- * the mockup draws, so this screen stopped saying the same number in two places.
+ * THE FOUR-CARD STRIP IS `PayablesStatCards` (1 October 2026, promoted to a
+ * shared component 2 October 2026 when Ringkasan was asked for the same row —
+ * see that component's own doc for what each card is and isn't). This screen's
+ * job is only to adapt `SupplierOutstandingSummary` — the whole book, unscoped
+ * — into the shape that component takes.
  *
- * TWO OF THE FOUR ARE `PendingStatTile`, NOT INVENTED. "Pembelian periode" would
- * need a sum of invoice VALUE by issue date, which no endpoint computes today —
- * `/purchase-invoices/summary`'s `paid` is payments made, not invoices raised.
- * "Barang belum diterima" has no backing concept at all: a purchase invoice's
- * `goodsReceiptId` is required and one-to-one (see the backend model), so every
- * invoice in this schema is already created FROM a completed receipt — there is
- * no partial or pending receiving state to count. Badging both "Segera" says so
- * rather than quietly dropping them or faking a number.
+ * THE OVERDUE BANNER SURVIVES, because it answers a question the cards do not:
+ * what is ALREADY late. "Jatuh tempo ≤N hari" is deliberately the NOT-YET-LATE
+ * bucket, so dropping the banner would leave the one number this shop acts on
+ * first with no home. It also still carries the one call to action on this
+ * screen: the overdue bucket is a view of the list right below it.
  *
- * THE OVERDUE BANNER SURVIVES, because it answers a question neither new card
- * does: what is ALREADY late. "Jatuh tempo ≤N hari" is deliberately the
- * NOT-YET-LATE bucket (see `SupplierOutstandingSummary.totalDueSoonInvoices`),
- * so dropping the banner would leave the one number this shop acts on first with
- * no home. It also still carries the one call to action on this screen: the
- * overdue bucket is a view of the list right below it.
- *
- * THE FIGURES ARE UNFILTERED ON PURPOSE, same as before. They answer "what do we
- * owe, ever", a different question from the one the toolbar beneath the cards is
- * asking. Quietly re-scoping them to the current filter would make the same
- * number mean two things depending on which chip is selected.
+ * THE FIGURES ARE UNFILTERED ON PURPOSE. They answer "what do we owe, ever", a
+ * different question from the one the toolbar beneath the cards is asking.
+ * Quietly re-scoping them to the current filter would make the same number mean
+ * two things depending on which chip is selected.
  */
 export function PayablesScreen() {
   const { can } = usePermissions();
@@ -82,50 +62,36 @@ export function PayablesScreen() {
   }, []);
 
   const overdueCount = summary?.totalOverdueInvoices ?? 0;
-  const dueSoonCount = summary?.totalDueSoonInvoices ?? 0;
-  const horizonDays = summary?.horizonDays ?? DEFAULT_HORIZON_DAYS;
+
+  const figures: PayablesStatFigures | null = summary
+    ? {
+        outstanding: {
+          amount: summary.totalOutstanding,
+          invoiceCount: summary.totalInvoices,
+        },
+        dueSoon: {
+          amount: summary.totalDueSoonOutstanding,
+          invoiceCount: summary.totalDueSoonInvoices,
+          horizonDays: summary.horizonDays,
+        },
+      }
+    : null;
 
   return (
     <div className="flex flex-col gap-6">
       <PurchasingModuleHeader />
 
       {/* The mockup's strip, over the search box below it. */}
-      <section
-        aria-label="Ringkasan faktur pembelian"
-        className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
-      >
-        <PendingStatTile
-          label="Pembelian periode"
-          blockedBy="Total nilai faktur yang diterbitkan periode ini belum dihitung di ringkasan ini."
-        />
-        <StatTile
-          label="Utang belum lunas"
-          value={summary ? formatMoney(summary.totalOutstanding) : "—"}
-          caption={summary ? `${summary.totalInvoices} faktur` : undefined}
-          loading={!summary && !summaryFailed}
-          error={summaryFailed}
-        />
-        <StatTile
-          label={`Jatuh tempo ≤ ${horizonDays} hari`}
-          value={summary ? `${dueSoonCount} faktur` : "—"}
-          caption={
-            summary ? formatMoney(summary.totalDueSoonOutstanding) : undefined
-          }
-          loading={!summary && !summaryFailed}
-          error={summaryFailed}
-          // Drills into the same bucket, when there is one to drill into — see
-          // ui-rules on the mockup's `.mcard.click` and `StatTile`'s own doc.
-          onClick={
-            dueSoonCount > 0 && query.view !== "dueSoon"
-              ? () => setQuery({ view: "dueSoon" })
-              : undefined
-          }
-        />
-        <PendingStatTile
-          label="Barang belum diterima"
-          blockedBy="Setiap faktur pembelian dibuat dari penerimaan yang sudah lengkap — belum ada status barang belum diterima."
-        />
-      </section>
+      <PayablesStatCards
+        figures={figures}
+        loading={!summary && !summaryFailed}
+        failed={summaryFailed}
+        // Withheld once the list already shows the bucket — a control that
+        // leads nowhere new is noise.
+        onDueSoonClick={
+          query.view !== "dueSoon" ? () => setQuery({ view: "dueSoon" }) : undefined
+        }
+      />
 
       {overdueCount > 0 && summary && (
         <div className="rounded-lg border border-danger/40 bg-danger/5 px-4 py-3 text-sm">
