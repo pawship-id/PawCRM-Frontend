@@ -13,13 +13,10 @@ import type { Customer, CustomerStats, DormantCustomer } from "@/types/api";
 import { formatMoney } from "@/utils/decimal";
 import { whatsAppLink } from "@/utils/phone";
 
+import { day, DORMANT_DAYS } from "../labels";
 import { CustomerModuleHeader } from "./CustomerModuleHeader";
 
-/** The windows each worklist offers, matching the mockup's own selects. */
-const DORMANT_DAYS = [30, 60, 90, 120, 150].map((days) => ({
-  value: days,
-  label: `${days} hari`,
-}));
+/** The windows "Pelanggan baru" offers, matching the mockup's own select. */
 const NEW_DAYS = [7, 14, 30, 60].map((days) => ({
   value: days,
   label: `${days} hari`,
@@ -34,14 +31,6 @@ const ONE_DECIMAL = new Intl.NumberFormat("id-ID", {
   minimumFractionDigits: 1,
   maximumFractionDigits: 1,
 });
-
-function day(iso: string): string {
-  return new Date(iso).toLocaleDateString("id-ID", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 function daysSince(iso: string): number {
   return Math.floor((Date.now() - new Date(iso).getTime()) / DAY_MS);
@@ -307,6 +296,7 @@ function Panel({
   control,
   count,
   tone = "plain",
+  seeAll,
   children,
 }: {
   icon: React.ReactNode;
@@ -314,6 +304,13 @@ function Panel({
   control?: React.ReactNode;
   count?: number;
   tone?: "plain" | "warn";
+  /**
+   * The footer link out to the full list (2 October 2026) — present as soon
+   * as the worklist has ANY row, not only once it overflows the ten shown
+   * (on request): a reader with one dormant customer should be able to reach
+   * the same full-list screen as a reader with fifty.
+   */
+  seeAll?: { href: string; label: string };
   children: React.ReactNode;
 }) {
   return (
@@ -337,6 +334,16 @@ function Panel({
         )}
       </div>
       <div className="mt-2">{children}</div>
+      {seeAll && (
+        <div className="mt-2 border-t border-border/70 pt-2 text-right">
+          <Link
+            href={seeAll.href}
+            className="text-xs font-medium text-primary hover:text-primary-hover"
+          >
+            {seeAll.label} →
+          </Link>
+        </div>
+      )}
     </section>
   );
 }
@@ -398,6 +405,7 @@ function CustomerName({ id, children }: { id: string; children: string }) {
 function DormantPanel() {
   const [days, setDays] = useState(60);
   const [rows, setRows] = useState<DormantCustomer[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -412,6 +420,7 @@ function DormantPanel() {
       .then((result) => {
         if (!active) return;
         setRows(result.items);
+        setTotal(result.pagination.total);
         setError(null);
       })
       .catch(() => {
@@ -431,7 +440,15 @@ function DormantPanel() {
       tone="warn"
       icon={<PawPrint className="size-4" />}
       title="Pelanggan tidak aktif ≥"
-      count={loading || error ? undefined : rows.length}
+      count={loading || error ? undefined : total}
+      seeAll={
+        !loading && !error && total > 0
+          ? {
+              href: `/dashboard/master/customers/dormant?days=${days}`,
+              label: "Lihat semua",
+            }
+          : undefined
+      }
       control={
         <FilterSelect
           layout="bar"
@@ -489,6 +506,14 @@ function NewCustomersPanel() {
   const [days, setDays] = useState(14);
   const [rows, setRows] = useState<Customer[]>([]);
   const [total, setTotal] = useState<number | null>(null);
+  /*
+    THE EXACT INSTANT THE FETCH USED, not recomputed at render — reading
+    `Date.now()` in a render body trips `react-hooks/purity` (see
+    `utils/date.ts`), and recomputing it for "Lihat semua" would in any case
+    drift a few milliseconds from what the rows above it were actually
+    filtered against.
+  */
+  const [cutoffIso, setCutoffIso] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -518,6 +543,7 @@ function NewCustomersPanel() {
           ),
         );
         setTotal(stats.newCustomers.count);
+        setCutoffIso(new Date(cutoff).toISOString());
         setError(null);
       })
       .catch(() => {
@@ -537,6 +563,14 @@ function NewCustomersPanel() {
       icon={<User className="size-4" />}
       title="Pelanggan baru dalam"
       count={loading || error ? undefined : (total ?? rows.length)}
+      seeAll={
+        !loading && !error && total !== null && total > 0 && cutoffIso
+          ? {
+              href: `/dashboard/master/customers?createdSince=${encodeURIComponent(cutoffIso)}`,
+              label: "Lihat semua",
+            }
+          : undefined
+      }
       control={
         <>
           <FilterSelect
@@ -586,13 +620,6 @@ function NewCustomersPanel() {
               );
             })}
           </ul>
-
-          {total !== null && total > rows.length && (
-            <p className="mt-2 text-xs text-muted">
-              Menampilkan {rows.length} dari {total} pelanggan baru. Sisanya ada
-              di tab Pelanggan.
-            </p>
-          )}
 
           {/*
             THE MOCKUP'S "Tandai sudah dihubungi" IS NOT HERE, and it is not an

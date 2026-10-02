@@ -36,6 +36,14 @@ export interface CustomersQuery {
    */
   active: boolean | "";
   includeDeleted: boolean;
+  /**
+   * `""` = not filtering. Set only by a deep link (2 October 2026) — the
+   * Ringkasan tab's "Pelanggan baru" card, whose "Lihat semua" carries the
+   * ISO cutoff it was measured from. No toolbar control of its own; the
+   * toolbar's chip is how it comes off, the same shape `documentId` takes on
+   * the Transaksi screen (`CashTransactionsQuery`).
+   */
+  createdSince: string;
 }
 
 const PAGE_SIZE = 20;
@@ -48,6 +56,7 @@ const DEFAULT_QUERY: CustomersQuery = {
   kind: "",
   active: true,
   includeDeleted: false,
+  createdSince: "",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */
@@ -78,9 +87,19 @@ interface UseCustomersResult {
  * explicit `refetch` the row actions call after they mutate a customer. Any
  * filter change (search/tier/deleted) resets to page 1 so the user is never
  * stranded on an out-of-range page.
+ *
+ * `initial` SEEDS THE STATE, NOT A PROP THE SCREEN RE-READS (2 October 2026)
+ * — the same lazy-`useState` merge `useCashTransactions` uses for its own
+ * deep links. The server page parses `?createdSince=` and hands the result in
+ * once; after that this hook owns the query like any other filter.
  */
-export function useCustomers(): UseCustomersResult {
-  const [query, setQueryState] = useState<CustomersQuery>(DEFAULT_QUERY);
+export function useCustomers(
+  initial: Partial<CustomersQuery> = {},
+): UseCustomersResult {
+  const [query, setQueryState] = useState<CustomersQuery>(() => ({
+    ...DEFAULT_QUERY,
+    ...initial,
+  }));
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<Customer>["pagination"]>(EMPTY_PAGE);
@@ -127,6 +146,7 @@ export function useCustomers(): UseCustomersResult {
       kind: settled.kind === "" ? undefined : settled.kind,
       isActive: settled.active === "" ? undefined : settled.active,
       includeDeleted: settled.includeDeleted || undefined,
+      createdSince: settled.createdSince || undefined,
     };
 
     customerService

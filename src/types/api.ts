@@ -1518,6 +1518,13 @@ export interface CustomerListQuery {
    * active-only or inactive-only. Every cross-module picker sends `true`.
    */
   isActive?: boolean;
+  /**
+   * ISO datetime. Only ever arrives via the Ringkasan tab's "Pelanggan baru"
+   * card — its "Lihat semua" carries the exact cutoff the card was measured
+   * from (2 October 2026). No toolbar control sets this; there is no
+   * "registered since" filter of the register's own.
+   */
+  createdSince?: string;
 }
 
 /**
@@ -1578,10 +1585,17 @@ export interface DormantCustomer {
   daysSinceLastVisit: number;
 }
 
-/** What GET /api/customers/dormant answers, window included. */
+/**
+ * What GET /api/customers/dormant answers, window included.
+ *
+ * `pagination` JOINED `days`/`items` (2 October 2026) — the Ringkasan panel
+ * still asks for its own capped page and ignores the field; the "Lihat
+ * semua" page is the caller that reads it.
+ */
 export interface DormantCustomerList {
   days: number;
   items: DormantCustomer[];
+  pagination: PageResult<never>["pagination"];
 }
 
 /**

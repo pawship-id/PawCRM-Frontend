@@ -106,6 +106,7 @@ beforeEach(() => {
   mockedCustomerService.dormant.mockResolvedValue({
     days: 60,
     items: [dormant()],
+    pagination: { page: 1, limit: 10, total: 1, totalPages: 1 },
   });
   mockedCustomerService.list.mockResolvedValue(listOf([customer()], 23));
 });
@@ -185,6 +186,45 @@ describe("customer summary tab", () => {
     });
   });
 
+  it("links out to the full dormant list, carrying the chosen window (2 October 2026)", async () => {
+    renderWithAuth(<CustomerSummaryScreen />);
+    await screen.findByText("Dewi Anggraini");
+
+    const panel = screen
+      .getByText("Pelanggan tidak aktif ≥")
+      .closest("section");
+    if (!panel) throw new Error("Panel section not found");
+
+    const seeAll = within(panel).getByRole("link", { name: /Lihat semua/ });
+    expect(seeAll).toHaveAttribute(
+      "href",
+      "/dashboard/master/customers/dormant?days=60",
+    );
+  });
+
+  it("offers no link out when there is nobody dormant to see more of", async () => {
+    mockedCustomerService.dormant.mockResolvedValue({
+      days: 60,
+      items: [],
+      pagination: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    });
+
+    renderWithAuth(<CustomerSummaryScreen />);
+    await screen.findByText(/Tidak ada pelanggan yang tertinggal/);
+
+    // Scoped to THIS panel — "Pelanggan baru" renders its own "Lihat semua"
+    // from the same default mocks, and a global query would pass by matching
+    // the wrong one.
+    const panel = screen
+      .getByText("Pelanggan tidak aktif ≥")
+      .closest("section");
+    if (!panel) throw new Error("Panel section not found");
+
+    expect(
+      within(panel).queryByRole("link", { name: /Lihat semua/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("asks the server again when the reader widens the window", async () => {
     renderWithAuth(<CustomerSummaryScreen />);
     await screen.findByText("Dewi Anggraini");
@@ -214,6 +254,7 @@ describe("customer summary tab", () => {
           daysSinceLastVisit: 400,
         }),
       ],
+      pagination: { page: 1, limit: 10, total: 1, totalPages: 1 },
     });
 
     renderWithAuth(<CustomerSummaryScreen />);
@@ -233,7 +274,11 @@ describe("customer summary tab", () => {
   });
 
   it("says nobody is overdue rather than drawing an empty box", async () => {
-    mockedCustomerService.dormant.mockResolvedValue({ days: 60, items: [] });
+    mockedCustomerService.dormant.mockResolvedValue({
+      days: 60,
+      items: [],
+      pagination: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    });
 
     renderWithAuth(<CustomerSummaryScreen />);
 
@@ -242,13 +287,26 @@ describe("customer summary tab", () => {
     ).toBeVisible();
   });
 
-  it("counts new customers from the server, and says the rows are a sample", async () => {
+  it("counts new customers from the server, and links out to the rest (2 October 2026)", async () => {
     renderWithAuth(<CustomerSummaryScreen />);
 
     expect(await screen.findByText("Fajar Ramadhan")).toBeVisible();
-    // One row drawn, twenty-three counted — said out loud, or the panel reads as
-    // "one new customer this fortnight".
-    expect(screen.getByText(/Menampilkan 1 dari 23/)).toBeVisible();
+
+    const panel = screen.getByText("Pelanggan baru dalam").closest("section");
+    if (!panel) throw new Error("Panel section not found");
+
+    // The badge counts the server's total — twenty-three — not the one row
+    // drawn, or the panel reads as "one new customer this fortnight".
+    expect(within(panel).getByText("23")).toBeVisible();
+    // "Lihat semua" carries the exact cutoff the panel filtered its own rows
+    // against, so the register page it opens narrows to the same customers.
+    const seeAll = within(panel).getByRole("link", { name: /Lihat semua/ });
+    expect(seeAll).toHaveAttribute(
+      "href",
+      expect.stringMatching(
+        /^\/dashboard\/master\/customers\?createdSince=/,
+      ),
+    );
     // The panel's own window, asked for by the panel — not the tiles' default.
     expect(mockedCustomerService.stats).toHaveBeenCalledWith({
       newWithinDays: 14,

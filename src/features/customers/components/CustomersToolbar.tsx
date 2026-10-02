@@ -132,12 +132,27 @@ export function CustomersToolbar({
     if (Object.keys(patch).length > 0) onChange(patch);
   }
 
+  // Set only by the Ringkasan tab's "Lihat semua" link, never a control here
+  // — the chip is the only way it comes off. Same shape `documentId` takes
+  // on the Transaksi screen (`CashTransactionsToolbar`).
+  const chips = query.createdSince
+    ? [
+        {
+          key: "createdSince",
+          label: "Pelanggan baru (dari Ringkasan)",
+          onRemove: () => onChange({ createdSince: "" }),
+        },
+      ]
+    : undefined;
+
   return (
     <FilterBar
       // Search leads the row and takes what is left of it: with the filters
       // behind one button there is nothing else on the line that grows.
       searchPlacement="leading"
       searchClassName="min-w-[12rem] flex-1"
+      chips={chips}
+      onClearAll={() => onChange({ createdSince: "" })}
       search={
         <FilterSearch
           value={query.search}

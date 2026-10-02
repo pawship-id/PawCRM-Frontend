@@ -7,7 +7,7 @@ import { Alert, Card, Spinner, Pagination } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 
-import { useCustomers } from "../hooks/useCustomers";
+import { useCustomers, type CustomersQuery } from "../hooks/useCustomers";
 import { CustomerModuleHeader } from "./CustomerModuleHeader";
 import { CustomersToolbar } from "./CustomersToolbar";
 import { CustomersTable } from "./CustomersTable";
@@ -21,9 +21,18 @@ import { CustomersTable } from "./CustomersTable";
  * title, same tabs and same tiles as the Hewan tab, which is what makes two
  * routes read as one page. Only the button's destination changes with the tab.
  */
-export function CustomersScreen() {
+export function CustomersScreen({
+  /**
+   * What `?createdSince=` parsed to, read by the server page and handed down
+   * — see `customersQueryFromParams`. Seeds `useCustomers`'s first render;
+   * the hook owns the query from then on.
+   */
+  initialQuery,
+}: {
+  initialQuery?: Partial<CustomersQuery>;
+} = {}) {
   const { customers, pagination, query, loading, error, setQuery, refetch } =
-    useCustomers();
+    useCustomers(initialQuery);
 
   return (
     <div className="flex flex-col gap-6">

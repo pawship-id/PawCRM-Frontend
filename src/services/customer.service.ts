@@ -38,6 +38,7 @@ export const customerService = {
         search: query.search,
         includeDeleted: query.includeDeleted,
         isActive: query.isActive,
+        createdSince: query.createdSince,
       },
     }),
 
@@ -60,11 +61,12 @@ export const customerService = {
 
   /**
    * GET /customers/dormant — who has not been in for `days`, longest absent
-   * first. The Ringkasan tab's worklist; capped by the server at 50.
+   * first. The Ringkasan tab's worklist calls it with a fixed `limit` and no
+   * `page`; the dedicated "Lihat semua" list (2 October 2026) is what pages it.
    */
-  dormant: (query: { days?: number; limit?: number } = {}) =>
+  dormant: (query: { days?: number; page?: number; limit?: number } = {}) =>
     apiClient.get<DormantCustomerList>("/customers/dormant", {
-      query: { days: query.days, limit: query.limit },
+      query: { days: query.days, page: query.page, limit: query.limit },
     }),
 
   /** GET /customers/:id — a single customer. */

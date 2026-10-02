@@ -30,3 +30,11 @@ export { CustomerEditForm } from "./components/CustomerEditForm";
  */
 export { CustomerSearchDialog } from "./components/CustomerSearchDialog";
 export { CustomerQuickAddDialog } from "./components/CustomerQuickAddDialog";
+/**
+ * The dedicated "Lihat semua pelanggan tidak aktif" list, reached only from
+ * the Ringkasan tab's panel — not one of the module's tabs. See its own file.
+ */
+export { DormantCustomersScreen } from "./components/DormantCustomersScreen";
+/** The server page's URL parser for `?createdSince=` — see its own file. */
+export { customersQueryFromParams } from "./query";
+export type { CustomersQuery } from "./hooks/useCustomers";

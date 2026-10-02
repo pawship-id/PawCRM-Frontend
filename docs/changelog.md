@@ -7,6 +7,75 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — URL halaman "Pelanggan tidak aktif" ikut berubah saat filter diganti
+
+2 Oktober 2026, laporan bug, diperbaiki dua kali. Buka "Lihat semua" dari kartu
+"Pelanggan tidak aktif ≥ 60 hari" (URL `?days=60`), ganti filternya ke 30 hari
+di halaman itu sendiri — datanya ikut tersaring 30 hari, tapi URL tetap
+`?days=60`. Reload atau kirim link di titik itu balik ke 60 hari, tidak sama
+dengan yang terlihat di layar.
+
+- **Percobaan pertama (`router.replace` di samping `setQuery`) masih salah**,
+  dan laporan lanjutan dari BO menunjukkannya: tabel kelihatan berubah
+  duluan, baru menyusul URL-nya — karena keduanya memang dua jalur yang
+  jalan sendiri-sendiri, tidak terikat satu sama lain, jadi urutan siapa
+  selesai duluan tidak terjamin.
+- **Perbaikan sebenarnya: URL jadi satu-satunya sumber kebenaran.**
+  `changeDays` sekarang CUMA memanggil `router.replace` — tidak lagi
+  mengubah state lokal sama sekali. `dormant/page.tsx` diberi
+  `key={JSON.stringify(initialQuery)}` pada `<DormantCustomersScreen>` (pola
+  yang sama dipakai halaman Kas & Bank dan halaman Pelanggan), jadi begitu
+  `?days=` di URL benar-benar berubah, React membuang habis komponen lama
+  dan memasang yang baru dari nol — `useDormantCustomers` mulai dengan
+  `loading: true`, jadi tabel dan URL hanya bisa berubah BERSAMAAN, tidak
+  ada lagi yang mendahului.
+- **`router.replace(..., { scroll: false })`, bukan `push`** — ganti jendela
+  adalah MODE layar ini, bukan tempat baru yang dituju, jadi tidak boleh
+  numpuk histori tombol Back. Pola yang sama `ServiceSettingsScreen` dan
+  `ReceiptForm` pakai untuk alasan serupa.
+- **`useTransition` menutup jeda sebelum remount-nya kejadian.** Di antara
+  klik dan halaman baru benar-benar sampai, komponen LAMA (data lama, URL
+  lama) masih yang tampil di layar — `isPending` dari `useTransition` dipakai
+  supaya filter-nya kelihatan sedang bekerja (dan dinonaktifkan sementara,
+  tidak bisa diklik dua kali) daripada diam seperti kliknya tidak kena.
+- **`useDormantCustomers.ts` tetap tidak disentuh** — hook ini tetap tidak
+  bergantung pada router, sama seperti setiap hook list lain di app ini;
+  yang mengurus alamat URL adalah komponen layarnya, bukan hook datanya.
+- Tidak perlu `useSearchParams()` atau `Suspense` — halaman ini cuma MENULIS
+  ke URL, nilai awalnya sudah datang sebagai prop dari server page.
+
+---
+
+## [Unreleased] — "Lihat semua" dari Ringkasan Pelanggan: dua kartu, dua tujuan
+
+2 Oktober 2026, atas permintaan. Kartu "Pelanggan tidak aktif ≥" dan
+"Pelanggan baru dalam" di tab Ringkasan sekarang punya tautan "Lihat semua"
+begitu ada minimal 1 data (bukan menunggu lebih dari 10) — kartunya sendiri
+tetap menampilkan 10 teratas saja.
+
+- **"Pelanggan baru" numpang ke halaman Pelanggan yang sudah ada**
+  (`/dashboard/master/customers?createdSince=...`), bukan halaman baru.
+  Backend dapat filter `createdSince` sungguhan di `GET /customers` (dulu
+  panelnya cuma mengambil 10 baris pertama lalu menyaring sendiri di
+  browser, bukan filter beneran di server). Filter ini cuma bisa dipasang
+  lewat tautan ini — tidak ada kontrolnya sendiri di toolbar — dan muncul
+  sebagai chip yang bisa dihapus, pola yang sama dengan `documentId` di
+  layar Transaksi Kas & Bank.
+- **"Pelanggan tidak aktif" dapat halaman sendiri**
+  (`/dashboard/master/customers/dormant`), karena "terakhir kapan
+  transaksi" bukan kolom atau filter yang dimiliki tabel Pelanggan biasa —
+  datanya dari endpoint `/customers/dormant` yang terpisah. Halaman ini
+  tidak masuk daftar tab modul Pelanggan dan tidak ada di sidebar, sama
+  seperti halaman "Stok minus" Inventory — dibuka seperlunya dari kartu
+  Ringkasan saja.
+- **`GET /customers/dormant` sekarang benar-benar bisa di-page**, bukan
+  cuma dibatasi `limit` (dulu maksimal 50, tanpa `page` sama sekali).
+  Dikerjakan lewat `$facet` di agregasinya, pola yang sama dipakai
+  `productStockRepository.findNegativeStock` untuk masalah serupa
+  (mengurutkan dari field hasil `$lookup`).
+- **Komponen `Panel` di Ringkasan dapat prop `seeAll`** — satu tautan footer
+  dipakai kedua kartu, bukan ditulis dua kali.
+
 ## [Unreleased] — Nonaktifkan / Aktifkan pelanggan langsung dari baris tabel
 
 2 Oktober 2026, atas permintaan lanjutan. Kolom Aksi di tabel Pelanggan
