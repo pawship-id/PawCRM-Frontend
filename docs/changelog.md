@@ -7,6 +7,75 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — `InfoTooltip`: satu komponen ⓘ untuk semua layar
+
+2 Oktober 2026. Dimulai dari permintaan sempit — subteks kartu "Rata-rata
+belanja / pelanggan" di `/dashboard/master/customers/ringkasan`
+("Omzet periode ÷ pelanggan yang transaksi periode ini") dipindah dari baris
+ketiga di bawah angka ke tooltip ⓘ-nya — dan berkembang jadi komponen bersama
+begitu dua bug ikut ketahuan: tooltip-nya sendiri tidak pernah terbuka di HP,
+dan begitu dibetulkan jadi klik, isinya mepet ke pinggir tanpa padding.
+
+- **`InfoTooltip` (baru), diekspor dari `@/components`.** Dipromosikan dari
+  `SummaryTile` setelah dipakai lagi di tempat yang sama — label, ⓘ, isi.
+  **Di web: hover langsung membuka tooltip-nya, sama seperti tooltip pada
+  umumnya.** Deteksinya pakai media query `(hover: hover) and (pointer: fine)`
+  (kemampuan perangkat), bukan lebar layar — supaya laptop layar sentuh atau
+  jendela desktop yang disempitkan tidak salah dianggap HP. **Di HP/tablet:
+  tap ikonnya untuk membuka**, karena perangkat itu tidak punya hover sama
+  sekali. Fokus keyboard juga membukanya, supaya pengguna keyboard dapat
+  jawaban yang sama tanpa harus menekan apa pun.
+- **Dikasih padding** (`p-3`) — sebelum ini isinya mepet langsung ke pinggir
+  kotak, bug yang sama persis yang pernah kejadian di `PosDiscountPopover`
+  (28 September 2026) karena `PopoverContent` di `ui/popover.tsx` memang tidak
+  punya padding bawaan. Sekarang ada satu komponen yang membawa perbaikan itu
+  untuk semua pemakainya sekaligus.
+- **Lebarnya dijaga di layar sempit**: `w-72 max-w-[calc(100vw-2rem)]`, supaya
+  tooltip tidak terpotong di tepi HP yang sempit (dicoba sampai ~320px).
+- **`SummaryTile` di `CustomerSummaryScreen.tsx` dipindah ke `InfoTooltip`**,
+  dan `caption`-nya dibuat opsional — kartu yang penjelasannya dipindah semua
+  ke `hint` ("Rata-rata belanja / pelanggan") tidak lagi menyisakan baris
+  kosong, tapi tetap menunjukkan "gagal dimuat" kalau datanya gagal dimuat.
+- **Isi tooltip "Rata-rata belanja / pelanggan" dipotong lagi**, pada
+  permintaan yang sama hari itu: sempat jadi dua kalimat begitu rumusnya dan
+  rationale lama digabung, dan itu lebih panjang dari yang pantas untuk satu
+  ⓘ. Sekarang cuma rumusnya — "Omzet periode ÷ pelanggan yang transaksi
+  periode ini." — tanpa kalimat kedua soal kenapa pelanggan yang dipakai cuma
+  yang aktif.
+- **Cincin fokus oranye di ikon ⓘ dihapus**, juga pada permintaan yang sama:
+  ring 3px ala §7 (navy border + halo oranye) di sekeliling lingkaran sekecil
+  itu kelihatan seperti alarm, bukan status fokus — dan sebenarnya tidak
+  diperlukan, karena fokus sudah langsung membuka tooltip-nya, konfirmasi yang
+  jauh lebih jelas daripada sebuah ring. Sekarang fokus cukup menggelapkan
+  warna ikonnya. **Kursornya juga diubah jadi tangan** (`cursor-pointer`) —
+  `<button>` polos di app ini defaultnya kursor panah, bukan tangan.
+- **Deteksi hover diganti, supaya hover SELALU memunculkan tooltip-nya** —
+  permintaan terakhir hari itu. Sebelumnya `InfoTooltip` menebak kemampuan
+  perangkat sekali lewat `matchMedia("(hover: hover) and (pointer: fine)")`,
+  lalu memakai tebakan itu untuk semua hover berikutnya; kalau tebakannya
+  salah di satu perangkat (laptop layar sentuh, mesin virtual, jendela
+  preview), hover jadi diam saja untuk sisa sesi itu. Sekarang baca
+  `event.pointerType` langsung dari setiap event pointer — "mouse" vs
+  "touch"/"pen" — jadi keputusannya dicek ulang setiap kali, bukan ditebak di
+  awal.
+- **Bug lanjutannya ketemu dan dibetulkan: hover pertama muncul, hover kedua
+  tidak, hover ketiga muncul lagi.** Penyebabnya `Popover.Content` dari Radix
+  — meski `modal={false}` — tetap memindahkan fokus DOM ke dalam kontennya
+  saat terbuka, dan MENGEMBALIKAN fokus ke tombol ⓘ saat tertutup. Pengembalian
+  fokus itu memicu `onFocus` tombolnya sendiri — handler yang sama dipakai
+  hover untuk membuka — jadi setiap kali tertutup karena mouse menjauh,
+  tooltip-nya diam-diam terbuka lagi sesaat kemudian, dan itu yang bikin hover
+  berikutnya kelihatan "tidak ngaruh". Sekarang `onOpenAutoFocus` dan
+  `onCloseAutoFocus` di-`preventDefault()` — cuma hover dan fokus keyboard
+  yang boleh mengatur buka/tutup.
+- **Ditulis di `ui-rules.md` §9** sebagai aturan tetap: ⓘ apa pun di produk
+  wajib lewat `InfoTooltip`, tidak boleh dibuat ulang per layar.
+- **Belum disentuh:** `InvoiceScopeCard` di Penjualan masih pakai `title`
+  mentah untuk daftar cabang/gudang-nya — dicatat di `ui-rules.md` §15 sebagai
+  hutang yang sama, diperbaiki kalau nanti ada yang masuk ke file itu.
+
+---
+
 ## [Unreleased] — Card ringkasan: satu komponen, satu aturan huruf
 
 2 Oktober 2026, atas masukan BO: tiap layar kelihatan beda — ada yang labelnya

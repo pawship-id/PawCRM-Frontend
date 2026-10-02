@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Info, PawPrint, Plus, User } from "lucide-react";
+import { PawPrint, Plus, User } from "lucide-react";
 
-import { Alert, FilterSelect, Spinner } from "@/components";
+import { Alert, FilterSelect, InfoTooltip, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
@@ -132,16 +132,23 @@ export function CustomerSummaryScreen() {
             <SummaryTile
               label="Rata-rata belanja / pelanggan"
               value={formatMoney(stats?.activeCustomers.averageSpend ?? null)}
-              caption="Omzet periode ÷ pelanggan yang transaksi periode ini"
-              hint="Dihitung dari pelanggan yang benar-benar transaksi periode ini, bukan seluruh pelanggan terdaftar — supaya angkanya tidak kedilusi oleh pelanggan yang lama tidak datang."
+              /*
+                THE FORMULA MOVED OFF THE CARD AND INTO THE ⓘ (2 October
+                2026, on request) — it used to sit under the value as a third
+                line (`caption`). KEPT SHORT, on a second request the same
+                day: the tooltip ran to two sentences once the old `hint`
+                (the denominator rationale) was folded in underneath it, and
+                that's more than an ⓘ popover should hold. The formula alone
+                answers "what is this number", which is what the ⓘ is for.
+              */
+              hint="Omzet periode ÷ pelanggan yang transaksi periode ini."
               loading={statsLoading}
               error={statsError}
             />
             <SummaryTile
               label={`Repeat rate (${stats?.activeCustomers.days ?? 90} hari terakhir)`}
               value={share(stats?.activeCustomers.repeatShare)}
-              caption={`Pelanggan dengan ≥2 transaksi dalam ${stats?.activeCustomers.days ?? 90} hari terakhir`}
-              hint="Sengaja pakai jendela tetap dan bukan periode yang dipilih: di jendela sesempit seminggu hampir tidak ada pelanggan yang transaksi dua kali, jadi angkanya akan selalu mendekati nol."
+              hint={`Pelanggan dengan ≥ 2 transaksi dalam ${stats?.activeCustomers.days ?? 90} hari terakhir`}
               loading={statsLoading}
               error={statsError}
             />
@@ -197,6 +204,10 @@ export function CustomerSummaryScreen() {
  * people quote wrongly, and "23 pelanggan baru" means nothing without last
  * month's 19 beside it. The shell is deliberately identical, so a reader moving
  * between tabs does not see two kinds of card.
+ *
+ * `caption` IS OPTIONAL (2 October 2026) — the denominator still has to be
+ * stated somewhere, it just doesn't have to be a permanent third line; see
+ * "Rata-rata belanja / pelanggan", which now says it once, in `hint`.
  */
 function SummaryTile({
   label,
@@ -209,8 +220,8 @@ function SummaryTile({
 }: {
   label: string;
   value: string;
-  caption: string;
-  /** The long "why this number is what it is", on the ⓘ. */
+  caption?: string;
+  /** The long "why this number is what it is", opened from the ⓘ. */
   hint?: string;
   delta?: { pct: number; label: string } | null;
   loading: boolean;
@@ -220,26 +231,19 @@ function SummaryTile({
     <div className="rounded-2xl border border-border bg-surface p-5">
       <p className="flex items-center gap-1.5 text-sm text-muted">
         {label}
-        {/*
-          A LUCIDE ICON, not the mockup's hand-drawn "i" in a circle: that one
-          is 10px type, which ui-rules §1.6 bans outright. `title` carries the
-          explanation on hover and `aria-label` says the same thing out loud.
-        */}
-        {hint && (
-          <Info
-            className="size-3.5 flex-none cursor-help text-muted"
-            aria-label={hint}
-          >
-            <title>{hint}</title>
-          </Info>
-        )}
+        {hint && <InfoTooltip hint={hint} />}
       </p>
       <p className="mt-2 text-3xl font-semibold tabular-nums text-foreground">
         {loading || error ? "—" : value}
       </p>
-      <p className="mt-1 text-xs text-muted">
-        {error ? "gagal dimuat" : caption}
-      </p>
+      {/* `error` still has to say so even on a tile with no caption of its own
+          (Rata-rata belanja's denominator moved into `hint`) — a card that
+          goes silent on failure is worse than one with an empty line. */}
+      {(caption || error) && (
+        <p className="mt-1 text-xs text-muted">
+          {error ? "gagal dimuat" : caption}
+        </p>
+      )}
       {!loading && !error && delta && (
         <p
           className={`mt-2 text-xs font-bold tabular-nums ${
@@ -461,18 +465,14 @@ function DormantPanel() {
             return (
               <WorkRow
                 key={row._id}
-                name={
-                  <CustomerName id={row._id}>{row.name}</CustomerName>
-                }
+                name={<CustomerName id={row._id}>{row.name}</CustomerName>}
                 meta={
                   (row.lastVisitAt
                     ? `Terakhir ${day(row.lastVisitAt)} · ${row.daysSinceLastVisit} hari lalu`
                     : `Belum pernah belanja · terdaftar ${day(row.createdAt)}`) +
                   (row.phone ? ` · ${row.phone}` : "")
                 }
-                action={
-                  chat && <RowAction href={chat}>Hubungi</RowAction>
-                }
+                action={chat && <RowAction href={chat}>Hubungi</RowAction>}
               />
             );
           })}
@@ -619,7 +619,10 @@ function NewCustomersPanel() {
 
 function MembershipPanel() {
   return (
-    <Panel icon={<User className="size-4" />} title="Membership mendekati habis">
+    <Panel
+      icon={<User className="size-4" />}
+      title="Membership mendekati habis"
+    >
       <div className="flex flex-wrap items-center gap-3 py-2">
         <Badge variant="outline">Segera</Badge>
         <p className="text-sm text-muted">

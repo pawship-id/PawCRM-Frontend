@@ -32,7 +32,7 @@ The fastest way to be consistent here. Check this table before writing markup.
 | a bare `<input type="date">` pair with an `s/d` between them | `<FilterDateRange>` | It bounds the two ends against each other and holds a draft until Terapkan. |
 | `rounded-xl border border-border bg-surface` | `<Card>` from `@/components` | Hand-written 52 times. |
 | a hand-rolled stat/summary tile — a label, a big number, a caption | `<StatTile>` / `<PendingStatTile>` from `@/components` | Penjualan grew its own copy with an `uppercase` label; Keuangan's Ringkasan tab grew another with that plus a heavier value weight. Pembelian built on `StatTile` straight and never drifted. Both fixed 2 October 2026 — same label casing, same `text-3xl font-semibold` value, even where (Keuangan's `SummaryCard`, Grooming's `GroomingStatCard`) the tile legitimately keeps its own component for an icon, a delta line, or a press-to-filter state `StatTile` doesn't have. §5 |
-| extra inline text under a card's caption, for an explanation that needs more words | a `lucide-react` `Info` icon next to the label, with the explanation in its `title` + `aria-label` | The caption stays short and inline; a longer "why" goes in a tooltip instead of stacking a third line under every tile. See `CustomerSummaryScreen.tsx`'s `SummaryTile`. There is no shared `Tooltip` component — the native `title` attribute is the convention until one exists. |
+| extra inline text under a card's caption, for an explanation that needs more words | `<InfoTooltip hint="…">` from `@/components` | The caption stays short and inline; a longer "why" — or a formula that used to be the caption itself — opens from the ⓘ instead of stacking a third line under every tile. **Not a native `title` attribute**: `title` never opens on a touch screen, so a hint built on it is silently unreachable on every phone and tablet. Full behaviour in §9. `InvoiceScopeCard`'s scope list still uses a raw `title` on a `<dd>` — on the migration list (§15), not a sweep to open unasked. |
 | `Breadcrumb` + `h1` + `p` assembled by hand | `<PageHeading>` | ~25 pages hand-roll it in 3 drifted variants. |
 | a new `XxxStatusBadge` in a feature folder | `<StatusBadge tone label>` (spec'd) | 15 exist with 3 incompatible tinting conventions. §9 |
 | `Swal.fire(...)` | `swalToast()` from `@/lib/swal` | One themed entry point. §9 |
@@ -336,6 +336,17 @@ Tones: `neutral`, `info`, `success`, `warning`, `danger`, `brand`. Use the `bg-t
 
 The badge label is **always a string**, never colour alone and never an icon alone.
 
+### The ⓘ tooltip
+
+**Always `<InfoTooltip hint="…">` from `@/components` — never a hand-rolled `Info` icon, and never a native `title` attribute.** One component, so the interaction is the same everywhere it appears.
+
+- **A mouse hovers it open, every time; a touch screen or a keyboard taps/focuses it open.** `InfoTooltip` tells the two apart from `event.pointerType` on the pointer event itself (`"mouse"` vs `"touch"`/`"pen"`), not a `matchMedia("(hover: hover) …")` guess taken once about the device — a guess can misreport on a hybrid touchscreen laptop or a preview frame, and once it does, hover is wrong for the rest of the session. Reading the actual event means hover cannot silently stop working. It opens on focus unconditionally too, so a keyboard-only reader gets the same answer without needing to activate anything. Building this by hand gets it wrong in one direction or the other — either a desktop reader has to click an (i) that every other hover tooltip on the web just opens under the pointer, or a touch reader gets a hint built on `title`, which **never opens on a touch screen** and is silently unreachable on every phone and tablet.
+- **Padding is not optional.** `PopoverContent` in `ui/popover.tsx` (vendored, leave its internals alone) ships with none — `PosDiscountPopover` hit the exact "text flush against the border" bug on 28 September 2026. `InfoTooltip` carries the fix (`p-3`, `w-72 max-w-[calc(100vw-2rem)]` so it can't run past a narrow phone's edge) once, centrally.
+- `hint` is the full explanation, in sentences — it is the only place that text appears, so don't also leave it as a `caption` under the value "just in case" (§2).
+- The trigger is a real `<button>`, 14px icon, hit area grown with `-m-1.5 p-1.5` so it doesn't push the text it sits beside — short of the 44px floor (§1.5), the judgement call a control in a dense row already makes elsewhere (§15, the `WarehouseProductPicker` note).
+- **Focus darkens the icon instead of ringing it** — the one exception to §7's usual navy-border-plus-orange-halo pair. A 3px orange ring around something this small and round reads as an alarm, not a focus state, and it would be redundant here anyway: focus already opens the popover, which is a far louder confirmation than a ring could be. `cursor-pointer` is explicit on the trigger too — a bare `<button>` defaults to the arrow cursor in this app, not the hand §1 assumes everywhere clickable.
+- **Both `PopoverContent` auto-focus hooks are suppressed** (`onOpenAutoFocus` / `onCloseAutoFocus`, both `preventDefault()`). Radix's `Popover.Content` moves real DOM focus into itself on open and back onto the trigger on close even when `modal` is false — that close-time refocus fired the trigger's own `onFocus`, which hover also uses to open, so every close-by-mouseleave silently reopened the tooltip a beat later and left the first hover after that out of step: first hover worked, the second did nothing, the third did. Hover and focus are the only two things allowed to drive `open` here.
+
 ### Which feedback surface
 
 | Surface | Use when |
@@ -510,6 +521,8 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 
 **Built** — `src/components/form/`, exported from `@/components`: `FormField`, `FormActionBar`, `TextareaField`, `SelectField`, `CheckRow` / `CheckRowGroup`, plus `FIELD_HEIGHT`. The searchable full-width picker is **`FilterSelect layout="form"`**, not a form-layer control of its own — see §16. `TextField` now renders through `FormField` — its call sites are unchanged. Rules in §16, anatomy in [`docs/ui-component-specs.md`](./ui-component-specs.md). **Five forms migrated — all of Inventory, and all of them consistent.** `StockAdjustmentForm`, `OpeningStockForm`, `StockTransferForm`, `CategoryForm` and `ProductForm` each carry a `FormActionBar` at the head of the form, none of them pinned. The other 15 are untouched, and they are Purchasing, Keuangan and Master.
 
+**Built** — `InfoTooltip`, exported from `@/components` (2 October 2026, promoted out of `CustomerSummaryScreen`'s `SummaryTile`). The ⓘ tooltip, full behaviour in §9.
+
 **Decided but not yet built** — specs exist in [`docs/ui-component-specs.md`](./ui-component-specs.md). Build them when the work calls for one, don't invent a parallel version: `StatusBadge`, `EmptyState`, and a promoted `PageHeading`.
 
 **Migration list** — existing code that violates these rules. Fix opportunistically when you are already in the file; do not open a sweep without being asked:
@@ -528,6 +541,7 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 - 49 files reaching sweetalert through `lib/swal.ts` → a tokened toast, then drop the dependency
 - every module but `memberships` still puts a FAILED ACT in an `<Alert>` (§9) → `swalToast(…, "error", 6000)`, keeping the load-failure Alerts exactly as they are. `features/memberships/errors.ts` is the shape to copy. Opportunistic; the API messages behind a module have to be Indonesian first, or the swap only moves English into a toast
 - English UI strings in customers / users / roles / branches / warehouses → Bahasa. (`Pagination` is done — 25 Aug: "Halaman 2 dari 5", "Sebelumnya"/"Berikutnya", and its `unitPlural` default changed from `${unit}s`, which appended an English plural to an Indonesian noun for every caller that omitted it.)
+- 1 scope-list tooltip still on a raw `title` attribute — `InvoiceScopeCard`'s `<dd>` (cabang/gudang list collapsed to a count) → the `Popover` + `<button>` pattern §2 now specifies, same as `CustomerSummaryScreen`'s `SummaryTile` (fixed 2 October 2026). `title` doesn't open on a touch screen, so this one is currently unreachable on mobile.
 
 **Open questions — record an answer here, don't guess in code:**
 
