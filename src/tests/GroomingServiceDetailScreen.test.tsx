@@ -100,7 +100,7 @@ const SERVICE = {
   variants: [
     {
       petType: null,
-      sizeCategory: "small",
+      sizeCategory: "opt-size-kecil",
       furType: null,
       price: "89000.0000",
       durationMin: 45,
@@ -108,7 +108,7 @@ const SERVICE = {
     },
     {
       petType: null,
-      sizeCategory: "medium",
+      sizeCategory: "opt-size-sedang",
       furType: null,
       price: "129000.0000",
       durationMin: 60,
@@ -333,9 +333,9 @@ describe("GroomingServiceDetailScreen", () => {
       hasVariants: true,
       variantAxes: ["sizeCategory"],
       variants: [
-        { petType: null, sizeCategory: "small", furType: null, price: "89000", durationMin: 45, isActive: true },
-        { petType: null, sizeCategory: "medium", furType: null, price: "129000", durationMin: 60, isActive: false },
-        { petType: null, sizeCategory: "large", furType: null, price: "150000", durationMin: 90, isActive: true },
+        { petType: null, sizeCategory: "opt-size-kecil", furType: null, price: "89000", durationMin: 45, isActive: true },
+        { petType: null, sizeCategory: "opt-size-sedang", furType: null, price: "129000", durationMin: 60, isActive: false },
+        { petType: null, sizeCategory: "opt-size-besar", furType: null, price: "150000", durationMin: 90, isActive: true },
       ],
     });
   });
@@ -401,7 +401,6 @@ describe("GroomingServiceDetailScreen", () => {
   */
   const XL = makePetOption({
     type: "size",
-    code: "xl",
     label: "Ekstra besar",
     sortOrder: 3,
   });
@@ -410,7 +409,7 @@ describe("GroomingServiceDetailScreen", () => {
     primePetOptions(petOptionService.list, [
       XL,
       ...PET_OPTION_FIXTURES.map((option) =>
-        option.type === "size" && option.code === "medium"
+        option.type === "size" && option.label === "Sedang"
           ? { ...option, isActive: false }
           : option,
       ),

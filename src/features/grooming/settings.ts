@@ -88,17 +88,23 @@ function own<T>(record: Record<string, T>, key: string): T | undefined {
  * screen. A retired size nobody priced has nothing to show, and an empty box
  * for it would hold up the save for a size no new animal can be given.
  *
- * A DELETED OR UNKNOWN CODE IS NEVER A ROW, and its nominal is not dropped
+ * A DELETED OR UNKNOWN SIZE IS NEVER A ROW, and its nominal is not dropped
  * either — see `draftToSettings`.
+ *
+ * KEYED BY THE OPTION'S `_id` since 25 September 2026, which is what
+ * `sizeNominal` stores now. The field is still called `code` on
+ * `CommissionSize` because that is what a row of this table is to its caller —
+ * the value it saves under — and renaming it would touch every screen for no
+ * behaviour.
  */
 export function commissionSizes(
-  options: Pick<PetOption, "code" | "label" | "isActive">[],
+  options: Pick<PetOption, "_id" | "label" | "isActive">[],
   stored: Record<string, number>,
 ): CommissionSize[] {
   return options
-    .filter((option) => option.isActive || own(stored, option.code) !== undefined)
+    .filter((option) => option.isActive || own(stored, option._id) !== undefined)
     .map((option) => ({
-      code: option.code,
+      code: option._id,
       label: option.label,
       retired: !option.isActive,
     }));

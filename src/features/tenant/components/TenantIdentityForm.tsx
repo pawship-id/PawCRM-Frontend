@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 
-import { Alert, Card, SelectField, TextField } from "@/components";
-import { Button as UIButton } from "@/components/ui/button";
+import { Alert, Card, FormActionBar, SelectField, TextField } from "@/components";
 import { Can } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
@@ -56,10 +55,24 @@ import {
  */
 export function TenantIdentityForm({
   tenant,
+  cancelHref,
   onSaved,
 }: {
   tenant: Tenant;
-  /** Called after a successful save; the parent re-reads the tenant. */
+  /**
+   * Where Batal returns to — a route, passed in rather than hardcoded.
+   *
+   * This form lives in `features/tenant` and the page it is reached from lives
+   * in `features/settings`; a literal "/dashboard/pengaturan/umum" here would
+   * put one feature's routing table inside another's, where the settings paths
+   * module could not keep it in step.
+   */
+  cancelHref: string;
+  /**
+   * Called after a successful save. The caller decides what that means — the
+   * settings screen leaves for `cancelHref`, so there is nothing left on screen
+   * to re-read.
+   */
   onSaved: () => void;
 }) {
   const stored = {
@@ -86,6 +99,15 @@ export function TenantIdentityForm({
   const [saving, setSaving] = useState(false);
 
   const nameError = name.trim() === "" ? "Nama usaha tidak boleh kosong" : undefined;
+
+  /**
+   * Why Simpan is off, in one phrase (§16). "Belum ada yang diubah" is the
+   * common one and the one worth saying: a greyed button on a form somebody has
+   * only read reads as broken until it says so.
+   */
+  const blockedReason = nameError
+    ? "Nama usaha masih kosong"
+    : "Belum ada yang diubah";
 
   const changed =
     name !== stored.name ||
@@ -170,6 +192,19 @@ export function TenantIdentityForm({
         }
       >
         <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+          {/*
+            AT THE HEAD OF THE FORM, per ui-rules §16 — Batal (secondary) left,
+            Simpan (primary) right. No `title`: the page heading above already
+            reads "Identitas usaha", so the bar is the buttons alone.
+          */}
+          <FormActionBar
+            submitLabel="Simpan identitas"
+            submitting={saving}
+            disabled={!changed || Boolean(nameError)}
+            blockedReason={blockedReason}
+            cancelHref={cancelHref}
+          />
+
           <TextField
             label="Nama usaha"
             name="name"
@@ -237,16 +272,6 @@ export function TenantIdentityForm({
             menggeser jam tutup shift dan batas laporan harian. Transaksi lama
             tidak ikut bergeser.
           </Alert>
-
-          <div className="flex justify-end">
-            <UIButton
-              type="submit"
-              size="lg"
-              disabled={saving || !changed || Boolean(nameError)}
-            >
-              {saving ? "Menyimpan…" : "Simpan identitas"}
-            </UIButton>
-          </div>
         </form>
       </Can>
     </Card>

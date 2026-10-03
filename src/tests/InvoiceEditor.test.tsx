@@ -128,7 +128,7 @@ beforeEach(() => {
     settings: { taxRate: 11, priceIncludesTax: true },
   } as never);
   asMock(petService.list).mockResolvedValue(
-    page([{ _id: "pet1", name: "Miko", species: "dog" }]),
+    page([{ _id: "pet1", name: "Miko", species: "opt-species-anjing" }]),
   );
   asMock(customerInvoiceService.update).mockResolvedValue(invoice());
 });
@@ -317,7 +317,7 @@ describe("InvoiceEditor", () => {
           variants: [
             {
               petType: null,
-              sizeCategory: "medium",
+              sizeCategory: "opt-size-sedang",
               furType: null,
               price: "150000.0000",
               durationMin: 60,
@@ -328,7 +328,7 @@ describe("InvoiceEditor", () => {
       ]),
     );
     asMock(petService.list).mockResolvedValue(
-      page([{ _id: "pet1", name: "Miko", species: "dog", size: "medium" }]),
+      page([{ _id: "pet1", name: "Miko", species: "opt-species-anjing", size: "opt-size-sedang" }]),
     );
     const user = userEvent.setup();
     renderEditor();

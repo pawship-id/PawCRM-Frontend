@@ -9,6 +9,7 @@ import type { GroomerCapacityDay, GroomingSettings, Tenant } from "@/types/api";
 
 import {
   makePetOption,
+  petOptionId,
   PET_OPTION_FIXTURES,
   primePetOptions,
 } from "./helpers/petOptions";
@@ -45,7 +46,6 @@ jest.mock("@/services/user.service");
  */
 const XL = makePetOption({
   type: "size",
-  code: "xl",
   label: "Ekstra besar",
   sortOrder: 3,
 });
@@ -55,8 +55,17 @@ const GROOMING: GroomingSettings = {
     service: {
       mode: "size_nominal",
       percent: 0,
-      // "jumbo" is not one of the tenant's options — a size since deleted.
-      sizeNominal: { small: 30000, medium: 45000, large: 60000, jumbo: 80000 },
+      /*
+        KEYED BY THE SIZE OPTION'S `_id` (25 September 2026). "Jumbo" is not one
+        of the tenant's options — a size since deleted, kept so the save can be
+        shown not to drop it.
+      */
+      sizeNominal: {
+        [petOptionId("size", "Kecil")]: 30000,
+        [petOptionId("size", "Sedang")]: 45000,
+        [petOptionId("size", "Besar")]: 60000,
+        [petOptionId("size", "Jumbo")]: 80000,
+      },
     },
     addon: { enabled: false, mode: "percentage", percent: 0, fixed: 0 },
     travel: { enabled: false, mode: "percentage", percent: 0, fixed: 0 },
@@ -121,7 +130,13 @@ describe("GroomingSettingsScreen — nominal per size", () => {
     expect(
       (tenantService.updateSettings as jest.Mock).mock.calls[0][0].grooming.commission
         .service.sizeNominal,
-    ).toEqual({ small: 30000, medium: 45000, large: 60000, jumbo: 80000, xl: 55000 });
+    ).toEqual({
+      [petOptionId("size", "Kecil")]: 30000,
+      [petOptionId("size", "Sedang")]: 45000,
+      [petOptionId("size", "Besar")]: 60000,
+      [petOptionId("size", "Jumbo")]: 80000,
+      [petOptionId("size", "Ekstra besar")]: 55000,
+    });
   });
 
   it("holds up the save while an added size is still empty", async () => {

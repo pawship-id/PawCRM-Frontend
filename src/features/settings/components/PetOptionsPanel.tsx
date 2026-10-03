@@ -22,9 +22,7 @@ import { PetOptionsTable } from "./PetOptionsTable";
 
 /** Which dialog is open: none, add to the current list, or rename that option. */
 type DialogState =
-  | { mode: "create" }
-  | { mode: "rename"; option: PetOption }
-  | null;
+  { mode: "create" } | { mode: "rename"; option: PetOption } | null;
 
 /**
  * The tenant's own words for an animal — one section of Pengaturan › Layanan.
@@ -140,7 +138,9 @@ export function PetOptionsPanel({
         </div>
       ) : error && options.length === 0 ? null : rows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-12 text-center">
-          <p className="font-semibold text-foreground">Belum ada {words.noun}.</p>
+          <p className="font-semibold text-foreground">
+            Belum ada {words.noun}.
+          </p>
           {hiddenDeleted > 0 && (
             <p className="mt-1 text-sm text-muted">
               {hiddenDeleted} {words.noun} yang dihapus disembunyikan — nyalakan
@@ -165,10 +165,11 @@ export function PetOptionsPanel({
             key={type}
             type={type}
             rows={rows}
-            /* A breed's animal, named from this same load. */
-            speciesLabel={(code) =>
+            /* A breed's animal, named from this same load — matched by `_id`. */
+            speciesLabel={(speciesId) =>
               options.find(
-                (option) => option.type === "species" && option.code === code,
+                (option) =>
+                  option.type === "species" && option._id === speciesId,
               )?.label ?? null
             }
             loading={loading}
@@ -189,20 +190,30 @@ export function PetOptionsPanel({
         <PetOptionFormDialog
           key={dialog.mode === "rename" ? dialog.option._id : `create-${type}`}
           type={dialog.mode === "rename" ? dialog.option.type : type}
-          /* The tenant's animals, from the list this panel already holds. */
+          /*
+            The tenant's animals, from the list this panel already holds —
+            VALUED BY `_id` since 25 September 2026, which is what a breed
+            stores. A retired species stays in the list only for the breed that
+            already names it, so an edit does not silently widen it to every
+            animal.
+          */
           speciesChoices={options
             .filter(
               (option) =>
                 option.type === "species" &&
                 option.deletedAt === null &&
                 (option.isActive ||
-                  option.code ===
-                    (dialog.mode === "rename" ? dialog.option.speciesCode : null)),
+                  option._id ===
+                    (dialog.mode === "rename"
+                      ? dialog.option.speciesId
+                      : null)),
             )
             .sort(byOrder)
             .map((option) => ({
-              value: option.code,
-              label: option.isActive ? option.label : `${option.label} (nonaktif)`,
+              value: option._id,
+              label: option.isActive
+                ? option.label
+                : `${option.label} (nonaktif)`,
             }))}
           option={dialog.mode === "rename" ? dialog.option : undefined}
           onClose={() => setDialog(null)}

@@ -63,8 +63,14 @@ export function PetOptionFormDialog({
   const words = PET_OPTION_TYPE_WORDS[type];
 
   const [label, setLabel] = useState(option?.label ?? "");
-  /* A breed says which animal it is for — "" means every animal. */
-  const [speciesCode, setSpeciesCode] = useState(option?.speciesCode ?? "");
+  /*
+    A breed says which animal it is for — "" means every animal.
+
+    AN OPTION `_id`, not a code (25 September 2026): the link between two rows
+    of this collection points at identity, so `speciesChoices` hands this select
+    the species' ids and they are sent back untouched.
+  */
+  const [speciesId, setSpeciesId] = useState(option?.speciesId ?? "");
 
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -86,7 +92,7 @@ export function PetOptionFormDialog({
     // An untouched save closes: there is nothing to send, and the server would
     // answer an empty patch with a 400.
     const speciesChanged =
-      type === "breed" && (speciesCode || null) !== (option?.speciesCode ?? null);
+      type === "breed" && (speciesId || null) !== (option?.speciesId ?? null);
     if (editing && trimmed === option.label && !speciesChanged) {
       onClose();
       return;
@@ -100,13 +106,13 @@ export function PetOptionFormDialog({
       if (editing) {
         await petOptionService.update(option._id, {
           ...(trimmed === option.label ? {} : { label: trimmed }),
-          ...(speciesChanged ? { speciesCode: speciesCode || null } : {}),
+          ...(speciesChanged ? { speciesId: speciesId || null } : {}),
         });
       } else {
         await petOptionService.create({
           type,
           label: trimmed,
-          ...(type === "breed" ? { speciesCode: speciesCode || null } : {}),
+          ...(type === "breed" ? { speciesId: speciesId || null } : {}),
         });
       }
       onSaved();
@@ -141,7 +147,11 @@ export function PetOptionFormDialog({
       }}
     >
       <DialogContent showCloseButton={!busy}>
-        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+        <form
+          onSubmit={handleSubmit}
+          noValidate
+          className="flex flex-col gap-4"
+        >
           <DialogHeader>
             <DialogTitle>
               {editing ? `Ubah nama ${words.noun}` : `Tambah ${words.noun}`}
@@ -179,8 +189,8 @@ export function PetOptionFormDialog({
           {type === "breed" && (
             <SelectField
               label="Jenis hewan"
-              value={speciesCode}
-              onChange={setSpeciesCode}
+              value={speciesId}
+              onChange={setSpeciesId}
               options={[
                 { value: "", label: "Semua hewan" },
                 ...speciesChoices.map((choice) => ({

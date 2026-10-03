@@ -3818,13 +3818,16 @@ export type ServiceLocation = "in_home" | "in_store";
  * One priced combination of the axes a service declares. Only the fields named
  * in the service's `variantAxes` are populated; the rest are null.
  *
- * The values are the PET's own vocabulary, deliberately: `PetSpecies`,
- * `PetSize` and `PetFurType` are the same enums a pet profile records.
+ * The values are the PET's own vocabulary, deliberately — and since
+ * 25 September 2026 they are its `_id`s, the same `PetOptionId` a pet profile
+ * records. They were codes; both ends of the comparison are ids now, so
+ * `utils/serviceVariant.ts` matches `pet.species` against `variant.petType`
+ * without translating either.
  */
 export interface ServiceVariant {
-  petType: PetSpecies | null;
-  sizeCategory: PetSize | null;
-  furType: PetFurType | null;
+  petType: PetOptionId | null;
+  sizeCategory: PetOptionId | null;
+  furType: PetOptionId | null;
   /** The zone this row prices, when the service varies by `"zone"`. */
   zoneId?: string | null;
   /** One value per "Dipilih staf" axis the service declares. */
@@ -3952,7 +3955,7 @@ export interface ServiceListQuery {
    * Services that can be sold for this animal: priced regardless of species,
    * or with a variant for this one.
    */
-  petType?: PetSpecies;
+  petType?: PetOptionId;
   /** Free-text over name / code. */
   search?: string;
   includeDeleted?: boolean;
@@ -3960,7 +3963,7 @@ export interface ServiceListQuery {
 
 /** One variant as the form sends it — the same shape, price as typed. */
 export interface ServiceVariantInput {
-  petType?: PetSpecies | null;
+  petType?: PetOptionId | null;
   sizeCategory?: PetSize | null;
   furType?: PetFurType | null;
   zoneId?: string | null;
@@ -4071,23 +4074,28 @@ export type PetOptionType = "species" | "breed" | "size" | "furType";
  * One word in a tenant's vocabulary for an animal, as GET /api/pet-options
  * returns it (14 September 2026).
  *
- * `code` IS WHAT OTHER DOCUMENTS STORE — `pet.species`, a variant's
- * `sizeCategory`, a key of `sizeNominal` — and it never changes. `label` is what
- * a screen shows, and is free to. Never render a code where a label is wanted:
- * use `usePetOptions().label(type, code)`.
+ * THERE IS NO `code` (25 September 2026). Everything that named an option —
+ * a pet, a service variant's axis, a key of `sizeNominal`, a booking's frozen
+ * `petSize`, and a breed's own `speciesId` — holds its `_id`. `label` is the
+ * only word, and it is free to change; render it with
+ * `usePetOptions().label(type, id)` rather than anything stored.
  */
 export interface PetOption {
   _id: string;
   tenantId: string;
   type: PetOptionType;
-  code: string;
   label: string;
   /**
-   * WHICH ANIMAL A BREED IS FOR (18 September 2026) — a `species` option's code.
-   * Only a breed carries one; null means the shop has not said, and the breed is
-   * then offered for every animal.
+   * WHICH ANIMAL A BREED IS FOR (18 September 2026) — a `species` option's
+   * `_id`, an id rather than a code since 25 September 2026. Only a breed
+   * carries one; null means the shop has not said, and the breed is then
+   * offered for every animal.
+   *
+   * THE SAME CURRENCY THE PICKERS DEAL IN, which is the point of the change:
+   * `usePetPickers` compares it against the selected species' id directly,
+   * where it used to translate that id back to a code first.
    */
-  speciesCode?: string | null;
+  speciesId?: string | null;
   /** Position within its list, ascending — sizes go smallest first. */
   sortOrder: number;
   /**
@@ -4124,8 +4132,8 @@ export interface PetOptionListQuery {
 export interface CreatePetOptionInput {
   type: PetOptionType;
   label: string;
-  /** Only on a `breed` — see `PetOption.speciesCode`. */
-  speciesCode?: string | null;
+  /** Only on a `breed` — see `PetOption.speciesId`. */
+  speciesId?: string | null;
   code?: string;
   sortOrder?: number;
   isActive?: boolean;
@@ -4137,7 +4145,7 @@ export interface CreatePetOptionInput {
  */
 export interface UpdatePetOptionInput {
   label?: string;
-  speciesCode?: string | null;
+  speciesId?: string | null;
   sortOrder?: number;
   isActive?: boolean;
 }
@@ -4244,6 +4252,14 @@ export interface UpdateServiceStepInput {
  * pet.model.js; since 14 September 2026 the lists are tenant data
  * (`petoptions`), so any string the tenant has made an option is legal. The
  * names are kept so a reader still sees WHICH list a field draws from.
+ *
+ * ⚠️ ALMOST NOTHING USES THESE ANY MORE (25 September 2026). A service
+ * variant's axes, `bookings.petSize` and the `sizeNominal` keys all moved to
+ * `PetOptionId`, along with the pet itself. What is left is an invoice line's
+ * `petSpecies`, which is a SNAPSHOT of a word rather than a pointer.
+ *
+ * Prefer `PetOptionId` for anything that names a row. These four remain for the
+ * few places that store a word as it was at the time.
  */
 export type PetSpecies = string;
 
@@ -4255,6 +4271,29 @@ export type PetFurType = string;
 
 /** A `size` option code. */
 export type PetSize = string;
+
+/**
+ * A pet-option's `_id` — what a PET stores for its species, breed, size and
+ * coat since 25 September 2026.
+ *
+ * ─── WHY A PET AND A VARIANT DISAGREE ──────────────────────────────────────
+ *
+ * The four lists have a CRUD screen behind them now, and a code is the wrong
+ * key for a pet to hold: it is a second identity for a row that already has
+ * one, and holding it made the code immutable for everybody. An id survives any
+ * edit the settings screen offers.
+ *
+ * A SERVICE VARIANT KEPT ITS CODES, and so did every frozen fact — a booking's
+ * `petSize`, an invoice line's `petSpecies`, a `sizeNominal` key. A price grid
+ * is the tenant's own vocabulary; the rest are HISTORY, which is allowed to
+ * outlive the row it was copied from. The server resolves a pet's ids back to
+ * codes wherever those meet (`PetRepository#findVariantFactsByIds`), so nothing
+ * on this side has to.
+ *
+ * `usePetOptions().label()` and `.code()` accept either and resolve both, so a
+ * screen showing a pet and a variant side by side needs one helper.
+ */
+export type PetOptionId = string;
 
 /**
  * `unknown` is a REAL value, not a missing one: a rescue arrives unsexed and
@@ -4377,11 +4416,34 @@ export interface Pet {
   tenantId: string;
   customerId: string;
   name: string;
-  species: PetSpecies;
+  /** An option's `_id`, not its code — see `PetOptionId`. */
+  species: PetOptionId;
   sex: PetSex;
-  breed: PetBreed | null;
-  furType: PetFurType | null;
-  size: PetSize | null;
+  breed: PetOptionId | null;
+  furType: PetOptionId | null;
+  size: PetOptionId | null;
+  /**
+   * THE TENANT'S WORD FOR EACH OF THE FOUR, resolved by the server on every
+   * read (25 September 2026).
+   *
+   * A code degraded to something readable when the client could not resolve it;
+   * an id degrades to nothing, so the label rides along and a row renders
+   * correctly from the response alone — the same argument `petSpeciesLabel` on
+   * an invoice line makes. `null` when the field is unset, or when the option
+   * has been hard-deleted since: a pet is not worth hiding over a word.
+   */
+  speciesLabel: string | null;
+  breedLabel: string | null;
+  furTypeLabel: string | null;
+  sizeLabel: string | null;
+  /*
+    `speciesCode`, `breedCode`, `furTypeCode` AND `sizeCode` ARE GONE
+    (25 September 2026). They rode along beside the labels for one day, so the
+    browser could price a variant while a variant's axes were still keyed by
+    code. Those axes hold pet-option ids now — as do `bookings.petSize` and the
+    `sizeNominal` keys — so `utils/serviceVariant.ts` compares `pet.species` to
+    `variant.petType` directly and there is nothing left to resolve.
+  */
   /** ISO date. The birth date, never an age — an age is wrong the day after it is written. */
   birthDate: string | null;
   weightKg: number | null;
@@ -4415,10 +4477,17 @@ export interface PetListQuery {
   limit?: number;
   /** The filter this endpoint exists for — one customer's animals. */
   customerId?: string;
-  species?: PetSpecies;
+  /** A species option's `_id` — see `PetOptionId`. */
+  species?: PetOptionId;
   /** `true` for a booking picker, which wants only pets still in the tenant's care. */
   isActive?: boolean;
-  /** Free-text over name / breed. */
+  /**
+   * Free-text over the name and the breed's WORD.
+   *
+   * The breed half is resolved server-side: a pet stores a breed's id, so the
+   * term is matched against the option labels first and the pets filtered by
+   * what comes back.
+   */
   search?: string;
   /**
    * One tag, matched exactly — "which animals need two people on a Saturday".
@@ -4469,11 +4538,12 @@ export interface PetTimelineQuery {
 export interface CreatePetInput {
   customerId: string;
   name: string;
-  species: PetSpecies;
+  /** An option's `_id` — see `PetOptionId`. */
+  species: PetOptionId;
   sex?: PetSex;
-  breed?: PetBreed | null;
-  furType?: PetFurType | null;
-  size?: PetSize | null;
+  breed?: PetOptionId | null;
+  furType?: PetOptionId | null;
+  size?: PetOptionId | null;
   birthDate?: string | null;
   weightKg?: number | null;
   color?: string | null;
@@ -4495,11 +4565,11 @@ export interface CreatePetInput {
  */
 export interface UpdatePetInput {
   name?: string;
-  species?: PetSpecies;
+  species?: PetOptionId;
   sex?: PetSex;
-  breed?: PetBreed | null;
-  furType?: PetFurType | null;
-  size?: PetSize | null;
+  breed?: PetOptionId | null;
+  furType?: PetOptionId | null;
+  size?: PetOptionId | null;
   birthDate?: string | null;
   weightKg?: number | null;
   color?: string | null;

@@ -59,7 +59,7 @@ const animal = (id: string, name: string) =>
   ({
     _id: id,
     name,
-    size: "medium",
+    size: "opt-size-sedang",
     breed: null,
     furType: null,
     weightKg: 6,
@@ -262,7 +262,7 @@ describe("AntarJemputBookingForm", () => {
         tripOrigin: { address: "Jl. Mawar No. 12", lat: -7.2395, lng: 112.7521 },
         tripDestination: { address: "Jl. Sudirman 10", lat: -7.2575, lng: 112.7521 },
         passengerPetIds: ["pet-1"],
-        passengers: [{ _id: "pet-1", name: "Bruno", petSize: "small" }],
+        passengers: [{ _id: "pet-1", name: "Bruno", petSize: "opt-size-kecil" }],
         linkedBookingIds: [],
         internalNotes: null,
         service: {

@@ -9,7 +9,11 @@ import { ApiError } from "@/services/api-error";
 import { petOptionService } from "@/services/petOption.service";
 import type { PetOption } from "@/types/api";
 
-import { PET_OPTION_FIXTURES, makePetOption } from "./helpers/petOptions";
+import {
+  PET_OPTION_FIXTURES,
+  makePetOption,
+  petOptionId,
+} from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/petOption.service");
@@ -58,8 +62,8 @@ function listing(items: PetOption[]) {
   });
 }
 
-const size = (code: string) =>
-  PET_OPTION_FIXTURES.find((o) => o.type === "size" && o.code === code)!;
+const size = (label: string) =>
+  PET_OPTION_FIXTURES.find((o) => o.type === "size" && o.label === label)!;
 
 function pill(name: string) {
   return within(
@@ -101,7 +105,6 @@ describe("PetOptionsScreen", () => {
       ...[...PET_OPTION_FIXTURES].reverse(),
       makePetOption({
         type: "size",
-        code: "giant",
         label: "Raksasa",
         sortOrder: 3,
         deletedAt: "2026-09-10T00:00:00.000Z",
@@ -145,12 +148,22 @@ describe("PetOptionsScreen", () => {
   it("names a breed's animal in its own column, and stores the choice", async () => {
     listing([
       ...PET_OPTION_FIXTURES.filter((option) => option.type !== "breed"),
-      makePetOption({ type: "breed", code: "poodle", label: "Poodle", speciesCode: "dog" }),
-      makePetOption({ type: "breed", code: "mix", label: "Mix", sortOrder: 1 }),
+      makePetOption({
+        type: "breed",
+        label: "Poodle",
+        speciesId: petOptionId("species", "Anjing"),
+      }),
+      makePetOption({ type: "breed", label: "Mix", sortOrder: 1 }),
     ]);
-    jest.mocked(petOptionService.create).mockResolvedValue(
-      makePetOption({ type: "breed", code: "persia", label: "Persia", speciesCode: "cat" }),
-    );
+    jest
+      .mocked(petOptionService.create)
+      .mockResolvedValue(
+        makePetOption({
+          type: "breed",
+          label: "Persia",
+          speciesId: petOptionId("species", "Kucing"),
+        }),
+      );
 
     renderWithAuth(<PetOptionsScreen />);
     await screen.findByText("Kucing");
@@ -164,15 +177,21 @@ describe("PetOptionsScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /Tambah ras/ }));
     const dialog = screen.getByRole("dialog");
     await userEvent.type(within(dialog).getByLabelText(/^Nama ras/), "Persia");
-    await userEvent.click(within(dialog).getByRole("combobox", { name: "Jenis hewan" }));
-    await userEvent.click(await screen.findByRole("option", { name: "Kucing" }));
-    await userEvent.click(within(dialog).getByRole("button", { name: /Tambah ras/ }));
+    await userEvent.click(
+      within(dialog).getByRole("combobox", { name: "Jenis hewan" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Kucing" }),
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: /Tambah ras/ }),
+    );
 
     await waitFor(() =>
       expect(petOptionService.create).toHaveBeenCalledWith({
         type: "breed",
         label: "Persia",
-        speciesCode: "cat",
+        speciesId: petOptionId("species", "Kucing"),
       }),
     );
   });
@@ -180,10 +199,14 @@ describe("PetOptionsScreen", () => {
   it("only asks for an animal on a breed — a size has none", async () => {
     await renderOnSizes();
 
-    await userEvent.click(screen.getByRole("button", { name: /Tambah ukuran/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /Tambah ukuran/ }),
+    );
 
     expect(
-      within(screen.getByRole("dialog")).queryByRole("combobox", { name: "Jenis hewan" }),
+      within(screen.getByRole("dialog")).queryByRole("combobox", {
+        name: "Jenis hewan",
+      }),
     ).not.toBeInTheDocument();
   });
 
@@ -215,14 +238,15 @@ describe("PetOptionsScreen", () => {
     jest.mocked(petOptionService.create).mockResolvedValue(
       makePetOption({
         type: "size",
-        code: "ekstra-besar",
         label: "Ekstra besar",
         sortOrder: 3,
       }),
     );
 
     await renderOnSizes();
-    await userEvent.click(screen.getByRole("button", { name: "Tambah ukuran" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Tambah ukuran" }),
+    );
 
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveTextContent(/namanya masih bisa diubah kapan saja/i);
@@ -249,13 +273,17 @@ describe("PetOptionsScreen", () => {
     await renderOnSizes();
 
     const menu = await openRowMenu("Kecil");
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /Ubah nama/ }));
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /Ubah nama/ }),
+    );
 
     const dialog = screen.getByRole("dialog");
     /* The code is what pets and variants store; nobody reads it while working,
        so it is not on the dialog or the table (18 September 2026). */
     expect(within(dialog).queryByLabelText("Kode")).not.toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: "Kode" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: "Kode" }),
+    ).not.toBeInTheDocument();
 
     const name = within(dialog).getByLabelText(/Nama ukuran/);
     await userEvent.clear(name);
@@ -265,7 +293,7 @@ describe("PetOptionsScreen", () => {
     );
 
     await waitFor(() =>
-      expect(petOptionService.update).toHaveBeenCalledWith("opt-size-small", {
+      expect(petOptionService.update).toHaveBeenCalledWith("opt-size-kecil", {
         label: "Mungil",
       }),
     );
@@ -283,21 +311,27 @@ describe("PetOptionsScreen", () => {
     await screen.findByText("Kucing");
 
     const menu = await openRowMenu("Kucing");
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /Hapus/ }));
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /Hapus/ }),
+    );
 
     const dialog = screen.getByRole("dialog");
     // Said before the click, not only after the refusal.
-    expect(dialog).toHaveTextContent(/ditolak selama masih ada hewan atau layanan/);
+    expect(dialog).toHaveTextContent(
+      /ditolak selama masih ada hewan atau layanan/,
+    );
     expect(dialog).toHaveTextContent(/Nonaktifkan/);
 
-    await userEvent.click(within(dialog).getByRole("button", { name: "Hapus" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Hapus" }),
+    );
 
     expect(
       await within(dialog).findByText(
         /3 pet\(s\) and 1 service\(s\) still use 'Kucing'/,
       ),
     ).toBeInTheDocument();
-    expect(petOptionService.remove).toHaveBeenCalledWith("opt-species-cat");
+    expect(petOptionService.remove).toHaveBeenCalledWith("opt-species-kucing");
     expect(invalidatePetOptions).not.toHaveBeenCalled();
   });
 
@@ -306,20 +340,23 @@ describe("PetOptionsScreen", () => {
 
     // Nothing above the smallest.
     const top = await openRowMenu("Kecil");
-    expect(within(top).getByRole("menuitem", { name: /Naikkan/ })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    expect(
+      within(top).getByRole("menuitem", { name: /Naikkan/ }),
+    ).toHaveAttribute("aria-disabled", "true");
     await userEvent.keyboard("{Escape}");
 
     const menu = await openRowMenu("Sedang");
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /Naikkan/ }));
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /Naikkan/ }),
+    );
 
-    await waitFor(() => expect(petOptionService.update).toHaveBeenCalledTimes(2));
-    expect(petOptionService.update).toHaveBeenCalledWith("opt-size-medium", {
+    await waitFor(() =>
+      expect(petOptionService.update).toHaveBeenCalledTimes(2),
+    );
+    expect(petOptionService.update).toHaveBeenCalledWith("opt-size-sedang", {
       sortOrder: 0,
     });
-    expect(petOptionService.update).toHaveBeenCalledWith("opt-size-small", {
+    expect(petOptionService.update).toHaveBeenCalledWith("opt-size-kecil", {
       sortOrder: 1,
     });
     await waitFor(() => expect(petOptionService.list).toHaveBeenCalledTimes(2));
@@ -329,9 +366,9 @@ describe("PetOptionsScreen", () => {
   it("renumbers when the two rows share a sortOrder, so the move still lands", async () => {
     // All three at 0: shown in label order, and a swap of 0 for 0 moves nothing.
     listing([
-      makePetOption({ type: "species", code: "cat", label: "Kucing" }),
-      makePetOption({ type: "species", code: "dog", label: "Anjing" }),
-      makePetOption({ type: "species", code: "rabbit", label: "Kelinci" }),
+      makePetOption({ type: "species", label: "Kucing" }),
+      makePetOption({ type: "species", label: "Anjing" }),
+      makePetOption({ type: "species", label: "Kelinci" }),
     ]);
 
     renderWithAuth(<PetOptionsScreen />);
@@ -339,24 +376,28 @@ describe("PetOptionsScreen", () => {
     expect(namesInTable()).toEqual(["Anjing", "Kelinci", "Kucing"]);
 
     const menu = await openRowMenu("Kucing");
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /Naikkan/ }));
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /Naikkan/ }),
+    );
 
-    await waitFor(() => expect(petOptionService.update).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(petOptionService.update).toHaveBeenCalledTimes(2),
+    );
     // Anjing is already at 0 and is not written.
-    expect(petOptionService.update).toHaveBeenCalledWith("opt-species-cat", {
+    expect(petOptionService.update).toHaveBeenCalledWith("opt-species-kucing", {
       sortOrder: 1,
     });
-    expect(petOptionService.update).toHaveBeenCalledWith("opt-species-rabbit", {
-      sortOrder: 2,
-    });
+    expect(petOptionService.update).toHaveBeenCalledWith(
+      petOptionId("species", "Kelinci"),
+      { sortOrder: 2 },
+    );
   });
 
   it("retires and reactivates without deleting", async () => {
     listing([
-      makePetOption({ type: "species", code: "cat", label: "Kucing" }),
+      makePetOption({ type: "species", label: "Kucing" }),
       makePetOption({
         type: "species",
-        code: "dog",
         label: "Anjing",
         sortOrder: 1,
         isActive: false,
@@ -374,7 +415,7 @@ describe("PetOptionsScreen", () => {
       within(menu).getByRole("menuitem", { name: /Nonaktifkan/ }),
     );
     await waitFor(() =>
-      expect(petOptionService.update).toHaveBeenCalledWith("opt-species-cat", {
+      expect(petOptionService.update).toHaveBeenCalledWith("opt-species-kucing", {
         isActive: false,
       }),
     );
@@ -394,10 +435,9 @@ describe("PetOptionsScreen", () => {
   it("offers Pulihkan, and only that, on a deleted row", async () => {
     jest.mocked(petOptionService.restore).mockResolvedValue(size("small"));
     listing([
-      makePetOption({ type: "species", code: "cat", label: "Kucing" }),
+      makePetOption({ type: "species", label: "Kucing" }),
       makePetOption({
         type: "species",
-        code: "dog",
         label: "Anjing",
         deletedAt: "2026-09-10T00:00:00.000Z",
       }),
@@ -409,10 +449,12 @@ describe("PetOptionsScreen", () => {
 
     const menu = await openRowMenu("Anjing");
     expect(within(menu).getAllByRole("menuitem")).toHaveLength(1);
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /Pulihkan/ }));
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /Pulihkan/ }),
+    );
 
     await waitFor(() =>
-      expect(petOptionService.restore).toHaveBeenCalledWith("opt-species-dog"),
+      expect(petOptionService.restore).toHaveBeenCalledWith("opt-species-anjing"),
     );
     expect(invalidatePetOptions).toHaveBeenCalled();
   });
@@ -461,9 +503,13 @@ describe("PetOptionsScreen", () => {
     await screen.findByText("Kucing");
 
     const menu = await openRowMenu("Kucing");
-    expect(within(menu).getByRole("menuitem", { name: /Hapus/ })).toBeInTheDocument();
     expect(
-      within(menu).queryByRole("menuitem", { name: /Ubah nama|Naikkan|Nonaktifkan/ }),
+      within(menu).getByRole("menuitem", { name: /Hapus/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu).queryByRole("menuitem", {
+        name: /Ubah nama|Naikkan|Nonaktifkan/,
+      }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Tambah jenis hewan" }),

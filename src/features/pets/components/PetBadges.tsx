@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { usePetOptions } from "@/hooks/usePetOptions";
-import type { PetSpecies } from "@/types/api";
+import type { PetOptionId } from "@/types/api";
 
 /**
  * Badges for a pet row.
@@ -29,17 +29,33 @@ import type { PetSpecies } from "@/types/api";
  *
  * NO LABEL MAP HERE, and there used to be three. Species, breeds, sizes and
  * coats became tenant data on 14 September 2026 (`petoptions`), so the word for
- * `dog` is whatever this shop calls it — `usePetOptions().label()` is the one
- * place that knows, falling back to the seeded word and then the code. A
- * sentence that needs the word (the print card, the booking work screen) calls
- * the same hook rather than a helper exported from here.
+ * `dog` is whatever this shop calls it. A sentence that needs the word (the
+ * print card, the booking work screen) resolves it the same two ways.
+ *
+ * `label` IS THE SERVER'S ANSWER AND IS PREFERRED (25 September 2026). A pet
+ * stores the option's `_id` now, and `usePetOptions().label()` cannot name one
+ * until the tenant's list has loaded — which would leave this badge empty on
+ * first paint, where a code used to at least read as itself. The response
+ * carries the resolved word, so the hook is the fallback rather than the
+ * source.
  */
-export function PetSpeciesBadge({ species }: { species: PetSpecies }) {
+export function PetSpeciesBadge({
+  species,
+  label: resolved,
+}: {
+  /** The option's `_id`. */
+  species: PetOptionId;
+  /** `pet.speciesLabel` — what the server resolved on read. */
+  label?: string | null;
+}) {
   const { label } = usePetOptions();
+  const word = resolved ?? label("species", species);
+
+  if (!word) return null;
 
   return (
     <Badge variant="outline" className="border-transparent bg-navy-100 text-primary">
-      {label("species", species)}
+      {word}
     </Badge>
   );
 }

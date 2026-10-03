@@ -96,7 +96,7 @@ export function PetInfoTab({ pet }: { pet: Pet }) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <PetSpeciesBadge species={pet.species} />
+          <PetSpeciesBadge species={pet.species} label={pet.speciesLabel} />
           <PetStatusBadge isActive={pet.isActive} deleted={pet.deletedAt !== null} />
         </div>
 
@@ -140,9 +140,16 @@ export function PetInfoTab({ pet }: { pet: Pet }) {
             )
           }
         />
-        <Row label="Ras" value={label("breed", pet.breed) ?? "—"} />
-        <Row label="Ukuran" value={label("size", pet.size) ?? "—"} />
-        <Row label="Jenis bulu" value={label("furType", pet.furType) ?? "—"} />
+        {/*
+          THE SERVER'S WORD FIRST, the cached list second — see PetSpeciesBadge
+          for why an id cannot fall back to itself the way a code could.
+        */}
+        <Row label="Ras" value={pet.breedLabel ?? label("breed", pet.breed) ?? "—"} />
+        <Row label="Ukuran" value={pet.sizeLabel ?? label("size", pet.size) ?? "—"} />
+        <Row
+          label="Jenis bulu"
+          value={pet.furTypeLabel ?? label("furType", pet.furType) ?? "—"}
+        />
         <Row label="Kelamin" value={SEX_LABELS[pet.sex] ?? pet.sex} />
         <Row
           label="Lahir"

@@ -50,6 +50,13 @@ type Priced = Pick<
  * `petType` IS `species` ON THE ANIMAL — the one rename between the two
  * collections, written here once. Reading `pet.petType` would find undefined on
  * every animal ever stored, and the bug would look like "variants do not work".
+ *
+ * ─── BOTH ENDS ARE PET-OPTION IDS (25 September 2026) ───────────────────────
+ *
+ * For one day `pet.species` held an `_id` while a variant's axes still held a
+ * CODE, and this table pointed at `speciesCode`/`sizeCode`/`furTypeCode` —
+ * fields the server resolved on read purely to bridge the two. The axes hold
+ * ids now, those fields are gone, and the pet's own values are what match.
  */
 const AXIS_TO_PET_FIELD: Record<ServiceVariantAxis, keyof Pet> = {
   petType: "species",

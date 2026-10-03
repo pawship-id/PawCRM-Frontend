@@ -30,6 +30,9 @@ import {
   makeVariantOption,
   primeVariantOptions,
 } from "./helpers/variantOptions";
+import { petOptionService } from "@/services/petOption.service";
+
+import { petOptionFields, primePetOptions } from "./helpers/petOptions";
 
 jest.mock("@/services/booking.service");
 jest.mock("@/services/customer.service");
@@ -45,6 +48,7 @@ jest.mock("@/services/branch.service");
 jest.mock("@/services/businessLine.service");
 jest.mock("@/services/variantOption.service");
 jest.mock("@/services/zone.service");
+jest.mock("@/services/petOption.service");
 /* The house pattern: the toast is chrome, and the real Swal drags a timer into
    every test that saves. */
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
@@ -86,8 +90,11 @@ const customer = {
 const pet = {
   _id: "pet-1",
   name: "Bruno",
-  /* A pet with no size cannot be booked since 13 September 2026. */
-  size: "medium",
+  /*
+    A pet with no size cannot be booked since 13 September 2026 — and since
+    25 September the field holds the option's id, with the code beside it.
+  */
+  ...petOptionFields({ size: "Sedang" }),
   preferences: { text: null, tags: [] },
   medical: {
     allergies: [],
@@ -119,6 +126,13 @@ const created = {
 beforeEach(() => {
   jest.clearAllMocks();
   push.mockClear();
+  /*
+    THE TENANT'S VOCABULARY, loaded the way the app loads it. A variant's axes
+    are pet-option IDS since 25 September 2026, and an id becomes a word only
+    through this list — there is no table of seeded labels to fall back on any
+    more.
+  */
+  primePetOptions(petOptionService.list);
   customers.list.mockResolvedValue(page([customer]));
   pets.list.mockResolvedValue(page([pet]));
   services.list.mockResolvedValue(page([service()]));
@@ -256,8 +270,8 @@ describe("BookingForm", () => {
     });
     pets.list.mockResolvedValue(
       page([
-        { _id: "pet-1", name: "Mochi", size: "small" } as Pet,
-        { _id: "pet-2", name: "Coco", size: "medium" } as Pet,
+        { _id: "pet-1", name: "Mochi", ...petOptionFields({ size: "Kecil" }) } as Pet,
+        { _id: "pet-2", name: "Coco", ...petOptionFields({ size: "Sedang" }) } as Pet,
       ]),
     );
     services.list.mockResolvedValue(
@@ -385,8 +399,8 @@ describe("BookingForm", () => {
   it("shows a finish time from the longest groomer, not the sum", async () => {
     pets.list.mockResolvedValue(
       page([
-        { _id: "pet-1", name: "Mochi", size: "small" } as Pet,
-        { _id: "pet-2", name: "Coco", size: "medium" } as Pet,
+        { _id: "pet-1", name: "Mochi", ...petOptionFields({ size: "Kecil" }) } as Pet,
+        { _id: "pet-2", name: "Coco", ...petOptionFields({ size: "Sedang" }) } as Pet,
       ]),
     );
     services.list.mockResolvedValue(
@@ -948,7 +962,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
 
   it("prices a variant service from the animal's own size", async () => {
     pets.list.mockResolvedValue(
-      page([{ _id: "pet-1", name: "Bruno", size: "large" } as unknown as Pet]),
+      page([{ _id: "pet-1", name: "Bruno", ...petOptionFields({ size: "Besar" }) } as unknown as Pet]),
     );
     services.list.mockResolvedValue(
       page([
@@ -959,8 +973,8 @@ describe("BookingForm — layanan, add-on dan varian", () => {
           hasVariants: true,
           variantAxes: ["sizeCategory"],
           variants: [
-            { petType: null, sizeCategory: "small", furType: null, price: "100000.0000" },
-            { petType: null, sizeCategory: "large", furType: null, price: "180000.0000" },
+            { petType: null, sizeCategory: "opt-size-kecil", furType: null, price: "100000.0000" },
+            { petType: null, sizeCategory: "opt-size-besar", furType: null, price: "180000.0000" },
           ],
         } as unknown as Partial<Service>),
       ]),
@@ -984,7 +998,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
     // The server would refuse it; the button says which animal rather than
     // letting somebody press Simpan and read it off a banner.
     pets.list.mockResolvedValue(
-      page([{ _id: "pet-1", name: "Bruno", size: null } as unknown as Pet]),
+      page([{ _id: "pet-1", name: "Bruno", ...petOptionFields({}) } as unknown as Pet]),
     );
     services.list.mockResolvedValue(
       page([
@@ -995,7 +1009,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
           hasVariants: true,
           variantAxes: ["sizeCategory"],
           variants: [
-            { petType: null, sizeCategory: "small", furType: null, price: "100000.0000" },
+            { petType: null, sizeCategory: "opt-size-kecil", furType: null, price: "100000.0000" },
           ],
         } as unknown as Partial<Service>),
       ]),
@@ -1017,7 +1031,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
       server refuses ANY booking for one without it — not only a service priced
       by size. The card names the animal and links to its form; Simpan says why.
     */
-    pets.list.mockResolvedValue(page([{ ...pet, size: null } as unknown as Pet]));
+    pets.list.mockResolvedValue(page([{ ...pet, ...petOptionFields({}) } as unknown as Pet]));
 
     renderWithAuth(<BookingForm />);
     await pickCustomer();
@@ -1040,7 +1054,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
       draft: navigating away loses the customer and every service ticked so far.
     */
     pets.list.mockResolvedValue(
-      page([{ _id: "pet-1", name: "Bruno", size: null } as unknown as Pet]),
+      page([{ _id: "pet-1", name: "Bruno", ...petOptionFields({}) } as unknown as Pet]),
     );
     services.list.mockResolvedValue(
       page([
@@ -1051,7 +1065,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
           hasVariants: true,
           variantAxes: ["sizeCategory"],
           variants: [
-            { petType: null, sizeCategory: "small", furType: null, price: "100000.0000" },
+            { petType: null, sizeCategory: "opt-size-kecil", furType: null, price: "100000.0000" },
           ],
         } as unknown as Partial<Service>),
       ]),
@@ -1084,7 +1098,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
       variants: [
         {
           petType: null,
-          sizeCategory: "small",
+          sizeCategory: "opt-size-kecil",
           furType: null,
           price: "100000.0000",
           durationMin: 60,
@@ -1092,7 +1106,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
         },
         {
           petType: null,
-          sizeCategory: "large",
+          sizeCategory: "opt-size-besar",
           furType: null,
           price: "180000.0000",
           durationMin: 120,
@@ -1103,7 +1117,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
 
   it("refuses a new line on a switched-off variant, naming the service and the animal", async () => {
     pets.list.mockResolvedValue(
-      page([{ _id: "pet-1", name: "Bruno", size: "large" } as unknown as Pet]),
+      page([{ _id: "pet-1", name: "Bruno", ...petOptionFields({ size: "Besar" }) } as unknown as Pet]),
     );
     services.list.mockResolvedValue(page([bySize({ isActive: false })]));
 
@@ -1123,7 +1137,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
 
   it("shows the animal's own variant length, and finishes by it", async () => {
     pets.list.mockResolvedValue(
-      page([{ _id: "pet-1", name: "Bruno", size: "large" } as unknown as Pet]),
+      page([{ _id: "pet-1", name: "Bruno", ...petOptionFields({ size: "Besar" }) } as unknown as Pet]),
     );
     services.list.mockResolvedValue(page([bySize({ isActive: true })]));
 
@@ -1152,8 +1166,8 @@ describe("BookingForm — telling one card from another", () => {
   beforeEach(() => {
     pets.list.mockResolvedValue(
       page([
-        { _id: "pet-1", name: "Mochi", size: "small" } as Pet,
-        { _id: "pet-2", name: "Coco", size: "medium" } as Pet,
+        { _id: "pet-1", name: "Mochi", ...petOptionFields({ size: "Kecil" }) } as Pet,
+        { _id: "pet-2", name: "Coco", ...petOptionFields({ size: "Sedang" }) } as Pet,
       ]),
     );
   });
@@ -1295,8 +1309,8 @@ describe("BookingForm — telling one card from another", () => {
  * costs the whole booking.
  */
 describe("BookingForm — re-reading an animal that was just corrected", () => {
-  const withoutSize = { _id: "pet-1", name: "Bruno", size: null } as unknown as Pet;
-  const withSize = { _id: "pet-1", name: "Bruno", size: "large" } as unknown as Pet;
+  const withoutSize = { _id: "pet-1", name: "Bruno", ...petOptionFields({}) } as unknown as Pet;
+  const withSize = { _id: "pet-1", name: "Bruno", ...petOptionFields({ size: "Besar" }) } as unknown as Pet;
 
   const variantService = () =>
     service({
@@ -1306,7 +1320,7 @@ describe("BookingForm — re-reading an animal that was just corrected", () => {
       hasVariants: true,
       variantAxes: ["sizeCategory"],
       variants: [
-        { petType: null, sizeCategory: "large", furType: null, price: "180000.0000" },
+        { petType: null, sizeCategory: "opt-size-besar", furType: null, price: "180000.0000" },
       ],
     } as unknown as Partial<Service>);
 
@@ -1333,8 +1347,8 @@ describe("BookingForm — re-reading an animal that was just corrected", () => {
   it("re-reads them when an animal is picked, too", async () => {
     pets.list.mockResolvedValue(
       page([
-        { _id: "pet-1", name: "Mochi", size: "small" } as Pet,
-        { _id: "pet-2", name: "Coco", size: "medium" } as Pet,
+        { _id: "pet-1", name: "Mochi", ...petOptionFields({ size: "Kecil" }) } as Pet,
+        { _id: "pet-2", name: "Coco", ...petOptionFields({ size: "Sedang" }) } as Pet,
       ]),
     );
 
@@ -1654,7 +1668,7 @@ describe("BookingForm — mengubah booking", () => {
           variants: [
             {
               petType: null,
-              sizeCategory: "medium",
+              sizeCategory: "opt-size-sedang",
               furType: null,
               price: "150000.0000",
               durationMin: 90,

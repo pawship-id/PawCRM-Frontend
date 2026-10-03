@@ -239,8 +239,10 @@ export function PetCardPrintScreen({ petId }: { petId: string }) {
           <div className="mr-auto">
             <h1 className="text-3xl font-extrabold leading-tight">{pet.name}</h1>
             <p className="text-sm">
-              {label("species", pet.species)}
-              {pet.breed ? ` · ${label("breed", pet.breed)}` : ""}
+              {pet.speciesLabel ?? label("species", pet.species)}
+              {pet.breed
+                ? ` · ${pet.breedLabel ?? label("breed", pet.breed)}`
+                : ""}
               {` · ${SEX_LABELS[pet.sex] ?? pet.sex}`}
               {pet.weightKg ? ` · ${pet.weightKg} kg` : ""}
             </p>

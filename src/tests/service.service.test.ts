@@ -36,7 +36,7 @@ const EVERY_FILTER: Required<ServiceListQuery> = {
   branchId: "5a7f1f77bcf86cd7994390bb",
   isActive: false,
   location: "in_home",
-  petType: "cat",
+  petType: "opt-species-kucing",
   search: "mandi",
   includeDeleted: true,
 };

@@ -32,7 +32,11 @@ import { warehouseService } from "@/services/warehouse.service";
 
 import type { Branch, Service, Tenant, Warehouse, Zone } from "@/types/api";
 
-import { PET_OPTION_FIXTURES, makePetOption } from "./helpers/petOptions";
+import {
+  PET_OPTION_FIXTURES,
+  makePetOption,
+  petOptionId,
+} from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 import { primeServiceSteps } from "./helpers/serviceSteps";
 
@@ -618,7 +622,6 @@ describe("ServiceSettingsScreen", () => {
         ...PET_OPTION_FIXTURES,
         makePetOption({
           type: "size",
-          code: "giant",
           label: "Raksasa",
           deletedAt: "2026-09-10T00:00:00.000Z",
         }),
@@ -776,7 +779,7 @@ describe("ServiceSettingsScreen", () => {
 
     await waitFor(() =>
       expect(petOptionService.update).toHaveBeenCalledWith(
-        expect.stringContaining("small"),
+        petOptionId("size", "Kecil"),
         { label: "Mini" },
       ),
     );

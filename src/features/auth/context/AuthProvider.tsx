@@ -34,6 +34,16 @@ export interface AuthContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   /** End the session and clear local auth state. */
   signOut: () => Promise<void>;
+  /**
+   * End EVERY session this user holds — this browser and any other — and clear
+   * local auth state. Resolves with how many were revoked.
+   *
+   * ALONGSIDE `signOut` RATHER THAN A FLAG ON IT, because they answer different
+   * questions: one is "I am done here", the other is "I do not trust who else is
+   * signed in as me". A boolean argument would let a stray `true` sign a shop's
+   * whole counter out of a shift.
+   */
+  signOutEverywhere: () => Promise<number>;
   /** Re-fetch the current user (e.g. after a profile edit). */
   refresh: () => Promise<void>;
   /** Optimistically replace the cached user after a successful mutation. */
@@ -183,18 +193,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("authenticated");
   }, []);
 
+  /** Drops everything this provider holds about the signed-in user. */
+  const clearSession = useCallback(() => {
+    clearAuthHint();
+    setUserState(null);
+    setSession(null);
+    setPermissions([]);
+    setIsSuperAdmin(false);
+    setStatus("unauthenticated");
+  }, []);
+
   const signOut = useCallback(async () => {
     try {
       await authService.logout();
     } finally {
-      clearAuthHint();
-      setUserState(null);
-      setSession(null);
-      setPermissions([]);
-      setIsSuperAdmin(false);
-      setStatus("unauthenticated");
+      clearSession();
     }
-  }, []);
+  }, [clearSession]);
+
+  /*
+    THE LOCAL CLEAR IS NOT IN A `finally` HERE, unlike signOut's — deliberately.
+    A failed `logout` still means this browser should forget the user: the worst
+    case is a cookie the server would have revoked anyway. A failed `logout-all`
+    means the OTHER sessions are probably still alive, and signing this one out
+    while telling nobody would leave the user believing they had locked everyone
+    out. The error propagates instead, and the card says so.
+  */
+  const signOutEverywhere = useCallback(async () => {
+    const { revokedCount } = await authService.logoutAll();
+    clearSession();
+    return revokedCount;
+  }, [clearSession]);
 
   const setUser = useCallback((next: User) => setUserState(next), []);
 
@@ -214,6 +243,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isSuperAdmin,
       signIn,
       signOut,
+      signOutEverywhere,
       refresh,
       setUser,
       switchBranch,
@@ -226,6 +256,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isSuperAdmin,
       signIn,
       signOut,
+      signOutEverywhere,
       refresh,
       setUser,
       switchBranch,

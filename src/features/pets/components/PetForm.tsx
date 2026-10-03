@@ -18,14 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { ApiError } from "@/services/api-error";
 import { petService } from "@/services/pet.service";
 import { swalToast } from "@/lib/swal";
-import type {
-  Pet,
-  PetBreed,
-  PetFurType,
-  PetSex,
-  PetSize,
-  PetSpecies,
-} from "@/types/api";
+import type { Pet, PetOptionId, PetSex } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
 
 import { usePetPickers } from "../hooks/usePetPickers";
@@ -144,11 +137,16 @@ export function PetForm({ petId }: { petId?: string }) {
 
   const [customerId, setCustomerId] = useState("");
   const [name, setName] = useState("");
-  const [species, setSpecies] = useState<PetSpecies | "">("");
+  /*
+    THE FOUR PICKERS HOLD OPTION IDS (25 September 2026) — `PetOptionId`, not a
+    code. `usePetPickers` builds their items with `by: "id"`, so what a select
+    reports back is exactly what `POST /api/pets` takes.
+  */
+  const [species, setSpecies] = useState<PetOptionId | "">("");
   const [sex, setSex] = useState<PetSex>("unknown");
-  const [breed, setBreed] = useState<PetBreed | "">("");
-  const [furType, setFurType] = useState<PetFurType | "">("");
-  const [size, setSize] = useState<PetSize | "">("");
+  const [breed, setBreed] = useState<PetOptionId | "">("");
+  const [furType, setFurType] = useState<PetOptionId | "">("");
+  const [size, setSize] = useState<PetOptionId | "">("");
   const [birthDate, setBirthDate] = useState("");
   const [weightKg, setWeightKg] = useState("");
   const [color, setColor] = useState("");
@@ -274,7 +272,7 @@ export function PetForm({ petId }: { petId?: string }) {
     // field that never had a value must not read as a change.
     const payload = {
       name: trimmedName,
-      species: species as PetSpecies,
+      species: species as PetOptionId,
       sex,
       breed: breed || null,
       furType: furType || null,
@@ -411,7 +409,7 @@ export function PetForm({ petId }: { petId?: string }) {
               label="Jenis"
               value={species}
               onChange={(next) => {
-                setSpecies(next as PetSpecies);
+                setSpecies(next as PetOptionId);
                 setSpeciesError(null);
               }}
               options={pickerOptions("species", pet?.species)}
@@ -463,7 +461,7 @@ export function PetForm({ petId }: { petId?: string }) {
             <SelectField
               label="Ras"
               value={breed}
-              onChange={(next) => setBreed(next as PetBreed)}
+              onChange={(next) => setBreed(next as PetOptionId)}
               /* Only this animal's breeds — see `breedOptions`. */
               options={breedOptions(species, pet?.breed)}
               placeholder={optionsLoading ? "Memuat…" : "Pilih ras"}
@@ -490,7 +488,7 @@ export function PetForm({ petId }: { petId?: string }) {
               label="Ukuran"
               value={size}
               onChange={(next) => {
-                setSize(next as PetSize);
+                setSize(next as PetOptionId);
                 setSizeError(null);
               }}
               options={pickerOptions("size", pet?.size)}
@@ -503,7 +501,7 @@ export function PetForm({ petId }: { petId?: string }) {
               label="Jenis bulu"
               value={furType}
               onChange={(next) => {
-                setFurType(next as PetFurType);
+                setFurType(next as PetOptionId);
                 setFurTypeError(null);
               }}
               options={pickerOptions("furType", pet?.furType)}
