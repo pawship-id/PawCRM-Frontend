@@ -7,6 +7,71 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — "Jumlah hewan" ikut update tanpa reload setelah tambah hewan baru
+
+3 Oktober 2026, atas permintaan: pastikan "Jumlah pelanggan" ikut update
+otomatis saat tambah pelanggan baru, dan "Jumlah hewan" saat tambah hewan
+baru — lanjutan dari perbaikan hapus/pulihkan kemarin.
+
+- **"Jumlah pelanggan" ternyata sudah benar** begitu dicek — `/master/customers`
+  sudah `force-dynamic` dan form tambah pelanggan ada di route BERBEDA
+  (`/master/customers/new`), jadi pindah ke sana lalu kembali ke daftar
+  memang memasang `CustomersScreen` dari nol, otomatis minta ulang datanya.
+  Ditambah komentar di `CustomerCreateForm.tsx` menjelaskan ini, tapi tidak
+  ada kode yang perlu diubah.
+- **"Jumlah hewan" ternyata memang ada celah**: `/master/pets/page.tsx` LUPA
+  diberi `export const dynamic = "force-dynamic"` yang dipunyai halaman
+  Pelanggan — tanpa itu, Next.js menganggap halaman ini "statis" dan bisa
+  menyajikan salinan ter-cache (sampai 5 menit) pada kunjungan ulang biasa,
+  bukan cuma lewat tombol Back browser. Satu baris ditambahkan,
+  menyamakan dengan halaman Pelanggan.
+- **`router.refresh()` SENGAJA TIDAK DIPAKAI** sebagai perbaikan — sempat
+  dipertimbangkan, tapi dokumentasi Next.js bawaan paket ini bilang jelas:
+  `router.refresh()` "does not lose unaffected client-side React (e.g.
+  useState)" — kartu register ini dihitung lewat `useEffect` di client
+  (`useRegistryCounts`), bukan data dari server-render, jadi `refresh()`
+  tidak akan memaksa hook itu minta ulang. Baris itu tidak akan memperbaiki
+  apa-apa di sini, cuma menambah kode tanpa efek.
+- **Keterbatasan yang masih ada, didokumentasikan apa adanya**: menekan
+  tombol **Back** di browser (bukan tombol "Batal"/navigasi dalam aplikasi)
+  setelah membuat pelanggan/hewan baru tetap bisa menampilkan halaman daftar
+  versi lama sesaat, karena Next.js sengaja menyimpan salinan halaman untuk
+  navigasi Back/Forward supaya tidak ada lompatan tampilan atau scroll
+  position hilang — ini perilaku Next.js sendiri, bukan sesuatu yang
+  `force-dynamic` atau `router.refresh()` bisa matikan. Reload manual tetap
+  memperbaikinya, dan ini bukan jalur yang dipakai siapa pun yang menekan
+  tombol "Simpan" lalu memakai tautan di aplikasi.
+
+---
+
+## [Unreleased] — "Jumlah pelanggan"/"Jumlah hewan" ikut update tanpa reload setelah hapus
+
+3 Oktober 2026, laporan bug: hapus satu pelanggan di tabel Pelanggan, baris di
+tabel langsung hilang, tapi kartu "Jumlah pelanggan" di atasnya tetap
+menunjukkan angka lama sampai halamannya di-reload manual.
+
+- **Penyebabnya**: `CustomerModuleHeader` (empat kartu register di atas tiap
+  tab) menghitung sendiri lewat `useRegistryCounts`, request-nya sendiri,
+  sekali waktu mount — tidak pernah terhubung ke tabel pelanggan/hewan di
+  bawahnya. Menghapus (atau memulihkan) baris cuma memanggil `refetch`
+  milik tabelnya sendiri, kartu di header tidak pernah diberitahu.
+- **`useRegistryCounts` dapat parameter baru, `refreshKey`** — nilai apa pun
+  yang berubah di situ bikin hook ini minta ulang kedua angka. `CustomerModuleHeader`
+  meneruskannya lewat prop dengan nama yang sama.
+- **`CustomersScreen.tsx` dan `PetsScreen.tsx` (tab Pelanggan dan tab Hewan,
+  sama-sama pakai header ini) sekarang punya `handleRowChanged`** — gabungan
+  `refetch()` tabel DAN menambah `refreshKey` satu angka, dipasang sebagai
+  `onChanged` tabelnya. Satu klik hapus/pulihkan, dua tempat sama-sama ikut
+  berubah, tanpa reload.
+- **Ketemu bug regresi di `DormantCustomersScreen.tsx` sambil mengerjakan
+  ini** — baris total ("N pelanggan tidak aktif ≥ X hari") ternyata hilang
+  total dari komponennya, korban dari satu edit sebelumnya (`busy`
+  refactor) yang tidak sengaja membuang blok itu saat menulis ulang bagian
+  di sekitarnya. Ketahuan dari test yang gagal, bukan dari laporan — sudah
+  dikembalikan.
+
+---
+
 ## [Unreleased] — Chip "Pelanggan baru" di tabel Pelanggan sekarang benar-benar menghapus `?createdSince=`
 
 2 Oktober 2026, laporan bug: buka "Lihat semua" dari kartu "Pelanggan baru

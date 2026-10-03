@@ -1,5 +1,6 @@
 "use client";
 
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
@@ -14,8 +15,12 @@ import { PetsTable } from "./PetsTable";
 
 /**
  * The Hewan tab of the Pelanggan module. Owns the list query (usePets) and wires
- * the toolbar, table and pager together. Row mutations call `refetch` so the list
- * reflects the change.
+ * the toolbar, table and pager together. Row mutations call `handleRowChanged`,
+ * which refetches the list AND bumps the header's `refreshKey` — the same fix
+ * `CustomersScreen` carries for "Jumlah pelanggan", here for "Jumlah hewan"
+ * (2 October 2026, fixing a bug report): `CustomerModuleHeader` counts the
+ * register in its own request, with no subscription to this tab's table, so a
+ * deleted or restored row used to leave the tile above it stale until a reload.
  *
  * IT WEARS THE CUSTOMER MODULE'S HEADER, which is the whole point of the tab
  * bar: the rail has one row for Pelanggan now, and this route is one of its
@@ -26,6 +31,12 @@ import { PetsTable } from "./PetsTable";
 export function PetsScreen() {
   const { pets, pagination, query, loading, error, setQuery, refetch } =
     usePets();
+
+  const [headerRefreshKey, setHeaderRefreshKey] = useState(0);
+  const handleRowChanged = useCallback(() => {
+    refetch();
+    setHeaderRefreshKey((key) => key + 1);
+  }, [refetch]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -40,6 +51,7 @@ export function PetsScreen() {
             </Button>
           </Can>
         }
+        refreshKey={headerRefreshKey}
       />
 
       <PetsToolbar query={query} onChange={setQuery} />
@@ -55,7 +67,7 @@ export function PetsScreen() {
           <PetsTable
             pets={pets}
             loading={loading}
-            onChanged={refetch}
+            onChanged={handleRowChanged}
             search={query.search}
           />
           <Pagination

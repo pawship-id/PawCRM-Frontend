@@ -75,10 +75,20 @@ const STATS_UNGRANTED: CustomerStatsState = {
  *
  * DELETED ROWS ARE OUT on both sides — `includeDeleted` defaults to false on the
  * pet list, and the stats endpoint counts only live customers.
+ *
+ * `refreshKey` IS THE ONLY WAY EITHER NUMBER MOVES AFTER THE FIRST FETCH
+ * (2 October 2026, fixing a bug report) — this hook has no subscription to
+ * the table below it, so deleting (or restoring) a row there left these
+ * tiles reading the count from before the click until the whole page was
+ * reloaded. The screen that owns both the table and this header bumps a
+ * counter it hands in as `refreshKey` after a mutation; it means nothing on
+ * its own; it is here only to belong to the effect's dependency array; any
+ * value that changes refetches both tiles.
  */
 export function useRegistryCounts(
   mayReadCustomers: boolean,
   mayReadPets: boolean,
+  refreshKey?: unknown,
 ): RegistryCounts {
   const [customers, setCustomers] =
     useState<CustomerStatsState>(STATS_PENDING);
@@ -123,7 +133,7 @@ export function useRegistryCounts(
     return () => {
       active = false;
     };
-  }, [mayReadCustomers, mayReadPets]);
+  }, [mayReadCustomers, mayReadPets, refreshKey]);
 
   return { customers, pets };
 }

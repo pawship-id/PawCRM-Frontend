@@ -58,9 +58,19 @@ export function CustomerModuleHeader({
    * requests would be the same endpoint twice.
    */
   tiles,
+  /**
+   * Bump this (any new value — a counter is enough) after the tab below has
+   * mutated a customer or a pet, so the register's own four tiles catch up
+   * without a reload (2 October 2026, fixing a bug report: deleting a
+   * customer left "Jumlah pelanggan" reading the old count until the page
+   * was refreshed). Unused while a tab supplies its own `tiles`, which fetch
+   * nothing here to refresh.
+   */
+  refreshKey,
 }: {
   action?: ReactNode;
   tiles?: ReactNode;
+  refreshKey?: unknown;
 }) {
   const { can } = usePermissions();
   const mayReadCustomers = can("customers", "read");
@@ -70,6 +80,7 @@ export function CustomerModuleHeader({
   const counts = useRegistryCounts(
     mayReadCustomers && !ownTiles,
     mayReadPets && !ownTiles,
+    refreshKey,
   );
 
   const tabs: PageTab[] = [

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
@@ -16,8 +16,10 @@ import { CustomersTable } from "./CustomersTable";
 
 /**
  * The Pelanggan tab of the Pelanggan module. Owns the list query (useCustomers)
- * and wires the toolbar, table and pager together. Row mutations call `refetch`
- * so the list reflects the change.
+ * and wires the toolbar, table and pager together. Row mutations call
+ * `handleRowChanged`, which refetches the list AND bumps the header's
+ * `refreshKey` — a delete or a restore here moves "Jumlah pelanggan" too,
+ * not just the rows under it.
  *
  * THE HEADER AND THE CREATE BUTTON ARE THE MODULE'S, NOT THIS SCREEN'S — same
  * title, same tabs and same tiles as the Hewan tab, which is what makes two
@@ -36,6 +38,21 @@ export function CustomersScreen({
   const router = useRouter();
   const { customers, pagination, query, loading, error, setQuery, refetch } =
     useCustomers(initialQuery);
+
+  /*
+    MAKES "Jumlah pelanggan" NOTICE A DELETE WITHOUT A RELOAD (2 October
+    2026, fixing a bug report). `CustomerModuleHeader` counts the register in
+    its own request, independent of the table below it — the two have never
+    shared state, so a row disappearing here used to leave the tile above it
+    reading the count from before the click. The header refetches whenever
+    `refreshKey` changes to a new value, so bumping it is the whole fix; what
+    it's bumped TO carries no meaning of its own.
+  */
+  const [headerRefreshKey, setHeaderRefreshKey] = useState(0);
+  const handleRowChanged = useCallback(() => {
+    refetch();
+    setHeaderRefreshKey((key) => key + 1);
+  }, [refetch]);
 
   /*
     KEEPS THE CHIP'S "×" HONEST (2 October 2026, fixing a bug report).
@@ -78,6 +95,7 @@ export function CustomersScreen({
             </Button>
           </Can>
         }
+        refreshKey={headerRefreshKey}
       />
 
       <CustomersToolbar query={query} onChange={setQuery} />
@@ -93,7 +111,7 @@ export function CustomersScreen({
           <CustomersTable
             customers={customers}
             loading={loading}
-            onChanged={refetch}
+            onChanged={handleRowChanged}
             search={query.search}
           />
           <Pagination

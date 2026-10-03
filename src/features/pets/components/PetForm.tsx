@@ -209,6 +209,17 @@ export function PetForm({ petId }: { petId?: string }) {
     };
   }, [petId]);
 
+  /*
+    `/master/pets` IS A DIFFERENT ROUTE from this form's own
+    `/master/pets/new` (or `/master/pets/:id`), so landing there mounts a
+    genuinely fresh `PetsScreen` — and `master/pets/page.tsx` is
+    `force-dynamic` (3 October 2026, fixing a bug report) — so
+    `CustomerModuleHeader`'s "Jumlah hewan" re-fetches rather than showing
+    the count from before this pet existed. See that page's own comment for
+    the gap this closed: without the directive, an ordinary return visit
+    within 5 minutes could serve a cached copy of the whole page with no
+    fresh mount and no fresh fetch at all.
+  */
   function goBack() {
     router.push(LIST_PATH);
   }

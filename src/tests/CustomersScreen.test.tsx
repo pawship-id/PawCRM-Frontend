@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { CustomersScreen } from "@/features/customers";
@@ -20,6 +20,7 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 jest.mock("@/services/customer.service");
 jest.mock("@/services/customerType.service");
 jest.mock("@/services/pet.service");
+jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 const replace = jest.fn();
 // `router` IS BUILT ONCE, INSIDE THE FACTORY — not a fresh object on every
@@ -149,5 +150,43 @@ describe("the \"Pelanggan baru\" chip, from the Ringkasan drill", () => {
       screen.queryByText("Pelanggan baru (dari Ringkasan)"),
     ).not.toBeInTheDocument();
     expect(replace).not.toHaveBeenCalled();
+  });
+});
+
+/*
+  THE BUG THIS SECOND SUITE GUARDS: `CustomerModuleHeader`'s "Jumlah
+  pelanggan" tile counts the register in its own request, with no
+  subscription to the table underneath it — deleting a row here used to
+  leave the tile reading the count from before the click until the whole
+  page was reloaded.
+*/
+describe("deleting a row refreshes the header's own count", () => {
+  it("re-fetches the register stats, not just the table", async () => {
+    mockedCustomerService.list.mockResolvedValue(listOf([customer()], 1));
+    mockedCustomerService.remove.mockResolvedValue(customer({ deletedAt: "2026-10-03T00:00:00.000Z" }));
+
+    renderWithAuth(<CustomersScreen />);
+
+    await screen.findByText("Rina Wijaya");
+    // The header's own fetch, from mount — one call before anything happens.
+    expect(mockedCustomerService.stats).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Aksi untuk Rina Wijaya" }),
+    );
+    await userEvent.click(
+      within(screen.getByRole("menu")).getByText("Hapus"),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Hapus" }));
+
+    await waitFor(() =>
+      expect(mockedCustomerService.remove).toHaveBeenCalledWith(customer()._id),
+    );
+    // The thing this suite exists to prove: a second call, not reuse of the
+    // first answer — "Jumlah pelanggan" asks again rather than trusting a
+    // number that is now one customer too high.
+    await waitFor(() =>
+      expect(mockedCustomerService.stats).toHaveBeenCalledTimes(2),
+    );
   });
 });
