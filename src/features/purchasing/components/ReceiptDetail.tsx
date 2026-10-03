@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 
 import { Alert, Card, Spinner } from "@/components";
@@ -13,6 +14,8 @@ import type { GoodsReceiptDetail as Receipt } from "@/types/api";
 import { useGoodsReceipt } from "../hooks/useGoodsReceipt";
 import { useReceiptLots } from "../hooks/useReceiptLots";
 import { useReceiptReturns } from "../hooks/useReceiptReturns";
+import { ReceiptStatusBadge } from "./ReceiptStatusBadge";
+import { ReceiveReceiptDialog } from "./ReceiveReceiptDialog";
 import { SupplierTypeBadge } from "./SupplierTypeBadge";
 
 function formatDate(iso: string): string {
@@ -61,9 +64,7 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
           Nomor ini tidak ada, atau bukan milik tenant Anda.
         </p>
         <Button variant="outline" asChild className="mt-4">
-          <Link href="/dashboard/purchasing/receipts">
-            ← Semua penerimaan
-          </Link>
+          <Link href="/dashboard/purchasing/receipts">← Semua penerimaan</Link>
         </Button>
       </div>
     );
@@ -84,14 +85,22 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
     );
   }
 
-  return <ReceiptBody receipt={receipt} />;
+  return <ReceiptBody receipt={receipt} onReceived={refetch} />;
 }
 
 /**
  * Split from the guard clauses above so the hooks that decorate a LOADED receipt
  * — its lots, its returns — are not called conditionally.
  */
-function ReceiptBody({ receipt }: { receipt: Receipt }) {
+function ReceiptBody({
+  receipt,
+  onReceived,
+}: {
+  receipt: Receipt;
+  onReceived: () => void;
+}) {
+  const [receiving, setReceiving] = useState(false);
+  const pending = receipt.status === "pending";
   const consignment = receipt.purchaseType === "konsinyasi";
 
   const batchIds = receipt.items
@@ -119,17 +128,59 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
             blank until the backfill has run. */}
         <Field label="Cabang" value={receipt.branchName ?? "—"} />
         <Field label="Gudang" value={receipt.warehouseName ?? "—"} />
-        <Field label="Tanggal terima" value={formatDate(receipt.receiptDate)} />
+        <Field
+          label="Tanggal terima"
+          value={formatDate(receipt.receivedAt ?? receipt.receiptDate)}
+        />
         <Field label="Dicatat oleh" value={receipt.createdByName ?? "—"} />
-        <div className="ml-auto">
-          <p className="text-[10px] font-medium tracking-widest text-muted uppercase">
-            Jenis
-          </p>
-          <div className="mt-1">
-            <SupplierTypeBadge type={receipt.purchaseType} />
+        <div className="ml-auto flex gap-6">
+          <div>
+            <p className="text-[10px] font-medium tracking-widest text-muted uppercase">
+              Status
+            </p>
+            <div className="mt-1">
+              <ReceiptStatusBadge status={receipt.status} />
+            </div>
+          </div>
+          <div>
+            <p className="text-[10px] font-medium tracking-widest text-muted uppercase">
+              Jenis
+            </p>
+            <div className="mt-1">
+              <SupplierTypeBadge type={receipt.purchaseType} />
+            </div>
           </div>
         </div>
       </div>
+
+      {/* PENDING: nothing is posted. Said plainly, with the one action that
+          changes it, because stock and the payable do not include this delivery
+          until somebody confirms the goods are on the shelf. */}
+      {pending && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-secondary/40 bg-secondary/10 px-4 py-3 text-sm text-secondary-foreground">
+          <span>
+            <b>Barang belum diterima.</b> Stok, lot, HPP
+            {consignment ? "" : ", dan utang"} belum tercatat — semuanya baru
+            masuk saat barang diterima.
+          </span>
+          <Can feature="goodsReceipts" action="create">
+            <Button className="ml-auto" onClick={() => setReceiving(true)}>
+              Terima barang
+            </Button>
+          </Can>
+        </div>
+      )}
+
+      {receiving && (
+        <ReceiveReceiptDialog
+          receipt={receipt}
+          onClose={() => setReceiving(false)}
+          onReceived={() => {
+            setReceiving(false);
+            onReceived();
+          }}
+        />
+      )}
 
       {returns.length > 0 && (
         <Alert variant="info">
@@ -340,17 +391,15 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
       )}
 
       {/* ------------------------------------------------- utang & dokumentasi */}
-      {consignment ? (
+      {pending ? null : consignment ? (
         <div className="rounded-lg border border-secondary/40 bg-secondary/10 px-4 py-3 text-sm text-secondary-foreground">
-          <b>Konsinyasi — belum ada utang.</b> Barang sudah masuk gudang dan bisa
-          dijual, tapi masih milik supplier sampai laku. Tidak ada jurnal yang
-          dibuat karena belum ada yang dibeli.
+          <b>Konsinyasi — belum ada utang.</b> Barang sudah masuk gudang dan
+          bisa dijual, tapi masih milik supplier sampai laku. Tidak ada jurnal
+          yang dibuat karena belum ada yang dibeli.
         </div>
       ) : receipt.invoiceId ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-success/40 bg-success/5 px-4 py-3 text-sm">
-          <span>
-            Faktur supplier sudah difilekan untuk penerimaan ini.
-          </span>
+          <span>Faktur supplier sudah difilekan untuk penerimaan ini.</span>
           <Button variant="ghost" size="sm" asChild className="ml-auto">
             <Link href={`/dashboard/purchasing/payables/${receipt.invoiceId}`}>
               Lihat faktur →
@@ -366,8 +415,8 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
           <span>
             <b>Utang sudah tercatat, faktur supplier belum dicatat.</b>{" "}
             Penerimaan beli putus langsung mengkredit akun 2101 saat diposting.
-            Nomor faktur dan tanggal jatuh tempo baru muncul setelah tagihan dari
-            supplier dicatat.
+            Nomor faktur dan tanggal jatuh tempo baru muncul setelah tagihan
+            dari supplier dicatat.
           </span>
           {/* Deep-links with the delivery preselected — `?receipt=` is read by
               the page and handed to the form, the same shape the returns flow
@@ -387,7 +436,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
       <div className="flex flex-wrap items-center gap-2">
         {/* Consignment has nothing to return AGAINST: the goods were never
             bought, so sending them back reverses no purchase and no debt. */}
-        {!consignment && (
+        {!consignment && !pending && (
           <Can feature="purchaseReturns" action="create">
             <Button variant="outline" asChild>
               <Link
@@ -403,12 +452,15 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
         </Button>
       </div>
 
-      <p className="text-xs text-muted">
-        Penerimaan ini <b>tidak bisa diedit atau dihapus</b>. Ia sudah menaikkan
-        stok, membuat lot, dan menggeser HPP — mengubahnya berarti membatalkan
-        ketiganya, padahal penjualan mungkin sudah dihargai memakai HPP itu.
-        Koreksinya lewat retur, yang membalik di harga beli asli.
-      </p>
+      {!pending && (
+        <p className="text-xs text-muted">
+          Penerimaan ini <b>tidak bisa diedit atau dihapus</b>. Ia sudah
+          menaikkan stok, membuat lot, dan menggeser HPP — mengubahnya berarti
+          membatalkan ketiganya, padahal penjualan mungkin sudah dihargai
+          memakai HPP itu. Koreksinya lewat retur, yang membalik di harga beli
+          asli.
+        </p>
+      )}
     </div>
   );
 }

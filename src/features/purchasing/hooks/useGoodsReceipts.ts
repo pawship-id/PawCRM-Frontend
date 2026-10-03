@@ -8,6 +8,7 @@ import type {
   GoodsReceiptListQuery,
   GoodsReceiptListRow,
   GoodsReceiptSort,
+  GoodsReceiptStatus,
   PageResult,
   PurchaseType,
 } from "@/types/api";
@@ -32,6 +33,8 @@ export interface GoodsReceiptsQuery {
   branchId: string;
   /** "" = both purchase types. */
   purchaseType: PurchaseType | "";
+  /** "" = pending and received alike. */
+  status: GoodsReceiptStatus | "";
   /** `yyyy-mm-dd`, as the date inputs hold them. "" = unbounded. */
   dateFrom: string;
   dateTo: string;
@@ -52,6 +55,7 @@ const DEFAULT_QUERY: GoodsReceiptsQuery = {
   warehouseId: "",
   branchId: "",
   purchaseType: "",
+  status: "",
   dateFrom: "",
   dateTo: "",
   sort: "newest",
@@ -143,6 +147,7 @@ export function useGoodsReceipts(
       warehouseId: settled.warehouseId || undefined,
       branchId: settled.branchId || undefined,
       purchaseType: settled.purchaseType === "" ? undefined : settled.purchaseType,
+      status: settled.status === "" ? undefined : settled.status,
       dateFrom: settled.dateFrom || undefined,
       dateTo: settled.dateTo || undefined,
       sort: settled.sort,

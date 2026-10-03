@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Alert, Pagination, Spinner } from "@/components";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { formatMoney } from "@/utils/decimal";
+import type { GoodsReceiptStatus } from "@/types/api";
 
 import { useGoodsReceipts } from "../hooks/useGoodsReceipts";
 import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
@@ -26,9 +27,14 @@ import { ReceiptsToolbar } from "./ReceiptsToolbar";
  * different question from the one the filters below are asking, and quietly
  * re-scoping it to the current filter would make the same number mean two things.
  */
-export function ReceiptsScreen() {
+export function ReceiptsScreen({
+  initialStatus,
+}: {
+  /** From `?status=` — the "Barang belum diterima" card links here. */
+  initialStatus?: GoodsReceiptStatus;
+}) {
   const { receipts, pagination, query, loading, error, setQuery } =
-    useGoodsReceipts();
+    useGoodsReceipts(initialStatus ? { status: initialStatus } : {});
 
   const [totalPurchased, setTotalPurchased] = useState<string | null>(null);
 

@@ -5412,9 +5412,16 @@ export type PurchaseType = "beli_putus" | "konsinyasi";
  * cannot disagree with the two it came from. The list projects the lines away,
  * so `itemCount` stands in for them.
  */
+/**
+ * `pending` — filed, goods not confirmed on the shelf, nothing posted.
+ * `received` — confirmed; stock, lots and the ledger are posted.
+ */
+export type GoodsReceiptStatus = "pending" | "received";
+
 export interface GoodsReceiptListRow {
   _id: string;
   receiptNumber: string;
+  status: GoodsReceiptStatus;
   supplierId: string;
   supplierName: string | null;
   warehouseId: string;
@@ -5475,6 +5482,7 @@ export type GoodsReceiptSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
  * an absent one: somebody eventually builds a toggle for it.
  */
 export interface GoodsReceiptListQuery {
+  status?: GoodsReceiptStatus;
   page?: number;
   limit?: number;
   /** Free-text over receipt number / notes. */
@@ -5572,6 +5580,9 @@ export interface GoodsReceiptDetailItem {
 export interface GoodsReceiptDetail {
   _id: string;
   receiptNumber: string;
+  status: GoodsReceiptStatus;
+  /** When the goods were confirmed on the shelf; null while pending. */
+  receivedAt: string | null;
   supplierId: string;
   supplierName: string | null;
   warehouseId: string;
@@ -5654,34 +5665,28 @@ export interface CreateGoodsReceiptInput {
   /** FORBIDDEN on `konsinyasi` — nothing was bought, so there is no input VAT. */
   taxAmount?: string;
   notes?: string;
-  /**
-   * THE SUPPLIER'S BILL, when it came with the goods.
-   *
-   * OPTIONAL, and the two real cases are why: the faktur is in the clerk's hand
-   * while they unload — the ordinary one, and the one this turns into a single
-   * save — or the van brings only a surat jalan and the bill follows days later.
-   * Absent, the delivery posts exactly as it always did and the bill is filed
-   * afterwards through POST /purchase-invoices.
-   *
-   * ABSENT IS NOT "NO DEBT". A `beli_putus` receipt credits `2101 Utang
-   * Supplier` when it posts, invoice or no invoice; what this adds is the
-   * vendor's paperwork on top of the payable — their number, and a due date.
-   *
-   * FORBIDDEN on `konsinyasi`, refused rather than ignored — nothing has been
-   * bought, so there is no debt for a bill to document.
-   *
-   * THE AMOUNTS ARE NOT HERE. `subtotal` and `taxAmount` must equal the
-   * receipt's to the minor unit, so the server takes them from the delivery
-   * itself; what is left is what a person can only read off the vendor's paper.
-   */
+  items: CreateGoodsReceiptItemInput[];
+}
+
+/**
+ * What receiving a pending delivery adds — `POST /goods-receipts/:id/receive`.
+ * The lines are not sent: what is received is exactly what was filed.
+ *
+ * THE SUPPLIER'S BILL MOVED HERE from the create body: a bill is filed against
+ * goods that have arrived. Optional — the faktur may follow days later through
+ * POST /purchase-invoices. Absent is not "no debt": a `beli_putus` receipt
+ * credits Utang Usaha when it posts either way. Forbidden on `konsinyasi`.
+ */
+export interface ReceiveGoodsReceiptInput {
+  /** ISO. When the goods were confirmed on the shelf; defaults to now. */
+  receivedAt?: string;
   invoice?: {
     /** The VENDOR'S own number, from their document. Unique per vendor. */
     invoiceNumber: string;
-    /** Defaults to `receiptDate`. What the payment terms are counted from. */
+    /** Defaults to `receivedAt`. What the payment terms are counted from. */
     invoiceDate?: string;
     notes?: string;
   };
-  items: CreateGoodsReceiptItemInput[];
 }
 
 /**

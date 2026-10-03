@@ -1,16 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { Alert, Pagination, Spinner } from "@/components";
 import { usePermissions } from "@/features/permissions";
+import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { formatMoney } from "@/utils/decimal";
 import type { SupplierOutstandingSummary } from "@/types/api";
 
 import { usePurchaseInvoices } from "../hooks/usePurchaseInvoices";
 import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
-import { PayablesStatCards, type PayablesStatFigures } from "./PayablesStatCards";
+import {
+  PayablesStatCards,
+  type PayablesStatFigures,
+} from "./PayablesStatCards";
 import { PayablesTable } from "./PayablesTable";
 import { PayablesToolbar } from "./PayablesToolbar";
 
@@ -35,6 +40,7 @@ import { PayablesToolbar } from "./PayablesToolbar";
  * two things depending on which chip is selected.
  */
 export function PayablesScreen() {
+  const router = useRouter();
   const { can } = usePermissions();
   const { invoices, pagination, query, loading, error, setQuery } =
     usePurchaseInvoices();
@@ -61,6 +67,25 @@ export function PayablesScreen() {
     };
   }, []);
 
+  // The whole book, like the figures beside it. Its own request: a failure here
+  // blanks one card, never the strip.
+  const [pendingReceipts, setPendingReceipts] = useState<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    goodsReceiptService
+      .pendingCount()
+      .then((result) => {
+        if (active) setPendingReceipts(result?.count ?? null);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const overdueCount = summary?.totalOverdueInvoices ?? 0;
 
   const figures: PayablesStatFigures | null = summary
@@ -74,6 +99,7 @@ export function PayablesScreen() {
           invoiceCount: summary.totalDueSoonInvoices,
           horizonDays: summary.horizonDays,
         },
+        pendingReceipts,
       }
     : null;
 
@@ -83,13 +109,18 @@ export function PayablesScreen() {
 
       {/* The mockup's strip, over the search box below it. */}
       <PayablesStatCards
+        onPendingReceiptsClick={() =>
+          router.push("/dashboard/purchasing/receipts?status=pending")
+        }
         figures={figures}
         loading={!summary && !summaryFailed}
         failed={summaryFailed}
         // Withheld once the list already shows the bucket — a control that
         // leads nowhere new is noise.
         onDueSoonClick={
-          query.view !== "dueSoon" ? () => setQuery({ view: "dueSoon" }) : undefined
+          query.view !== "dueSoon"
+            ? () => setQuery({ view: "dueSoon" })
+            : undefined
         }
       />
 

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import type { PayablesSummary, PurchaseInvoiceListRow } from "@/types/api";
 
@@ -43,6 +44,8 @@ export interface UsePayablesSummaryResult {
   setQuery: (patch: Partial<PayablesSummaryQuery>) => void;
   summary: PayablesSummary | null;
   summaryFailed: boolean;
+  /** Deliveries still `pending`, for the chosen cabang; null until known. */
+  pendingReceipts: number | null;
   overdue: PayablesWorklist;
   dueSoon: PayablesWorklist;
   loading: boolean;
@@ -98,6 +101,7 @@ export function usePayablesSummary(
     useState<PayablesSummaryQuery>(DEFAULT_PAYABLES_QUERY);
   const [summary, setSummary] = useState<PayablesSummary | null>(null);
   const [summaryFailed, setSummaryFailed] = useState(false);
+  const [pendingReceipts, setPendingReceipts] = useState<number | null>(null);
   const [overdue, setOverdue] = useState<PayablesWorklist>(EMPTY);
   const [dueSoon, setDueSoon] = useState<PayablesWorklist>(EMPTY);
   const [loading, setLoading] = useState(enabled);
@@ -141,8 +145,18 @@ export function usePayablesSummary(
         dueSoon: true,
         limit: PREVIEW_ROWS,
       }),
-    ]).then(([summaryResult, overdueResult, dueSoonResult]) => {
+      // Scoped by the same cabang as everything else on the tab; the period does
+      // not touch it — a delivery still on the way is on the way whatever month
+      // it is.
+      goodsReceiptService.pendingCount({ branchId }),
+    ]).then(([summaryResult, overdueResult, dueSoonResult, pendingResult]) => {
       if (!active) return;
+
+      setPendingReceipts(
+        pendingResult.status === "fulfilled"
+          ? (pendingResult.value?.count ?? null)
+          : null,
+      );
 
       const figures =
         summaryResult.status === "fulfilled" ? summaryResult.value : null;
@@ -189,6 +203,7 @@ export function usePayablesSummary(
     setQuery,
     summary,
     summaryFailed,
+    pendingReceipts,
     overdue,
     dueSoon,
     loading,

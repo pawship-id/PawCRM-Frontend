@@ -19,6 +19,12 @@ export interface PayablesStatFigures {
    * card stays "Segera" there.
    */
   invoiced?: { amount: string; invoiceCount: number };
+  /**
+   * Deliveries filed but not yet confirmed on the shelf (`status: "pending"`).
+   * Null while loading or when that request alone failed — the card then reads
+   * "—" rather than a zero that claims nothing is on the way.
+   */
+  pendingReceipts: number | null;
 }
 
 /**
@@ -35,12 +41,12 @@ export interface PayablesStatFigures {
  * period, which `/outstanding` cannot answer — so a caller without it (Faktur)
  * gets the "Segera" tile instead of a number from the wrong scope.
  *
- * "BARANG BELUM DITERIMA" IS A `PendingStatTile`, NOT INVENTED. It has no backing
- * concept at all: a purchase invoice's `goodsReceiptId` is required and
- * one-to-one (see the backend model), so every invoice in this schema is already
- * created FROM a completed receipt — there is no partial or pending receiving
- * state to count. Badging it "Segera" says so rather than quietly dropping it or
- * faking a number.
+ * "BARANG BELUM DITERIMA" IS REAL TOO (3 October 2026): a goods receipt now has
+ * a `status` — `pending` when filed, `received` once somebody confirms the goods
+ * are on the shelf — and this is `/goods-receipts/pending-count`. Both tabs show
+ * it; Ringkasan scopes it by cabang like its balances, Faktur counts the whole
+ * book. A pending delivery has posted no stock and no payable, which is exactly
+ * why it is worth a card: it is goods the books do not know about yet.
  *
  * NO HOOK IN HERE, DELIBERATELY. `PayablesScreen` and `PurchasingHub` scope the
  * same two aggregates differently ON PURPOSE — Faktur's figures are the whole
@@ -68,6 +74,7 @@ export function PayablesStatCards({
   loading,
   failed,
   onDueSoonClick,
+  onPendingReceiptsClick,
   periodScoped = false,
 }: {
   /** Null while loading or after the request failed. */
@@ -76,6 +83,11 @@ export function PayablesStatCards({
   failed: boolean;
   /** Faktur drills into its own list; Ringkasan has none to offer. */
   onDueSoonClick?: () => void;
+  /**
+   * Opens the receipts list narrowed to `pending`. Withheld while the count is
+   * zero or unknown — there is nothing to look at behind it.
+   */
+  onPendingReceiptsClick?: () => void;
   /**
    * The figures came from `/summary`, which carries `invoiced`. An explicit flag
    * rather than "`figures.invoiced` exists", so the card does not flip from a
@@ -129,9 +141,25 @@ export function PayablesStatCards({
         // `StatTile`'s, on the mockup's `.mcard.click`.
         onClick={dueSoonCount > 0 ? onDueSoonClick : undefined}
       />
-      <PendingStatTile
+      <StatTile
         label="Barang belum diterima"
-        blockedBy="Setiap faktur pembelian dibuat dari penerimaan yang sudah lengkap — belum ada status barang belum diterima."
+        value={
+          figures?.pendingReceipts != null
+            ? `${figures.pendingReceipts} penerimaan`
+            : "—"
+        }
+        caption={
+          figures?.pendingReceipts != null
+            ? "belum masuk stok & utang"
+            : undefined
+        }
+        loading={loading}
+        error={failed}
+        onClick={
+          (figures?.pendingReceipts ?? 0) > 0
+            ? onPendingReceiptsClick
+            : undefined
+        }
       />
     </section>
   );

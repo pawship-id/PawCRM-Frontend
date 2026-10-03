@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
 import { Card } from "@/components";
@@ -16,7 +17,10 @@ import {
   type PayablesWorklist,
 } from "../hooks/usePayablesSummary";
 import { PayablesScopeCard } from "./PayablesScopeCard";
-import { PayablesStatCards, type PayablesStatFigures } from "./PayablesStatCards";
+import {
+  PayablesStatCards,
+  type PayablesStatFigures,
+} from "./PayablesStatCards";
 import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
 
 /**
@@ -60,11 +64,20 @@ import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
  * and a line saying where to look instead, and issues no requests at all.
  */
 export function PurchasingHub() {
+  const router = useRouter();
   const { can } = usePermissions();
   const mayReadInvoices = can("purchaseInvoices", "read");
 
-  const { query, setQuery, summary, summaryFailed, overdue, dueSoon, loading } =
-    usePayablesSummary(mayReadInvoices);
+  const {
+    query,
+    setQuery,
+    summary,
+    summaryFailed,
+    pendingReceipts,
+    overdue,
+    dueSoon,
+    loading,
+  } = usePayablesSummary(mayReadInvoices);
   const { branches } = useBranchOptions(mayReadInvoices);
 
   if (!mayReadInvoices) {
@@ -91,6 +104,7 @@ export function PurchasingHub() {
           horizonDays: summary.dueSoon.horizonDays,
         },
         invoiced: summary.invoiced,
+        pendingReceipts,
       }
     : null;
 
@@ -109,6 +123,9 @@ export function PurchasingHub() {
       {/* No onDueSoonClick: this tab has no invoice table of its own to drill
           into, unlike Faktur's — see PayablesStatCards' own doc. */}
       <PayablesStatCards
+        onPendingReceiptsClick={() =>
+          router.push("/dashboard/purchasing/receipts?status=pending")
+        }
         figures={figures}
         loading={loading && !summary}
         failed={summaryFailed}
@@ -308,8 +325,7 @@ function WorkRow({ invoice }: { invoice: PurchaseInvoiceListRow }) {
           {invoice.supplierName ?? "—"}
         </p>
         <p className="truncate text-xs text-muted tabular-nums">
-          Jatuh tempo {due} · {when} ·{" "}
-          {formatMoney(invoice.outstandingAmount)}
+          Jatuh tempo {due} · {when} · {formatMoney(invoice.outstandingAmount)}
         </p>
       </div>
       <Link

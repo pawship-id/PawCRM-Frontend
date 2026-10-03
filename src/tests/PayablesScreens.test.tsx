@@ -197,6 +197,8 @@ function receiptDetail(): GoodsReceiptDetail {
   return {
     _id: RECEIPT_ID,
     receiptNumber: "GR-260806-001",
+    status: "received",
+    receivedAt: null,
     supplierId: "s1",
     supplierName: "PT Sumber Pangan",
     warehouseId: "wh1",
@@ -236,6 +238,7 @@ function receiptRow(): GoodsReceiptListRow {
   return {
     _id: RECEIPT_ID,
     receiptNumber: "GR-260806-001",
+    status: "received",
     supplierId: "s1",
     supplierName: "PT Sumber Pangan",
     warehouseId: "wh1",
@@ -324,6 +327,7 @@ beforeEach(() => {
   );
   asMock(purchaseInvoiceService.getById).mockResolvedValue(detail());
   asMock(goodsReceiptService.getById).mockResolvedValue(receiptDetail());
+  asMock(goodsReceiptService.pendingCount).mockResolvedValue({ count: 3 });
   asMock(goodsReceiptService.list).mockResolvedValue({
     items: [],
     pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
@@ -1297,6 +1301,29 @@ describe("PurchasingHub — the Ringkasan tab", () => {
     expect(screen.getByText("Rp 26.400.000")).toBeInTheDocument();
     expect(screen.getByText("9 faktur")).toBeInTheDocument();
     expect(screen.getByText("Barang belum diterima")).toBeInTheDocument();
+    // Deliveries filed but not yet confirmed on the shelf, off pending-count.
+    expect(await screen.findByText("3 penerimaan")).toBeInTheDocument();
+  });
+
+  it("opens the receipts list narrowed to pending from the card", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchasingHub />);
+
+    await user.click(await screen.findByText("3 penerimaan"));
+
+    expect(push).toHaveBeenCalledWith(
+      "/dashboard/purchasing/receipts?status=pending",
+    );
+  });
+
+  it("scopes the pending-delivery count by the chosen cabang", async () => {
+    renderWithAuth(<PurchasingHub />);
+
+    await waitFor(() =>
+      expect(goodsReceiptService.pendingCount).toHaveBeenCalledWith({
+        branchId: "",
+      }),
+    );
   });
 
   it("opens on this month and scopes every request by the cabang", async () => {
