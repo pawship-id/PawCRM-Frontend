@@ -325,11 +325,11 @@ describe("customer summary tab", () => {
     ).toBeVisible();
   });
 
-  it("marks the follow-up flag and membership expiry as not built", async () => {
+  it("marks membership expiry as not built, and offers no contacted marker on new customers", async () => {
     renderWithAuth(<CustomerSummaryScreen />);
 
     await screen.findByText("Fajar Ramadhan");
-    expect(screen.getByText(/belum punya catatan follow-up/)).toBeVisible();
+    expect(screen.queryByText(/sudah dihubungi/)).not.toBeInTheDocument();
     expect(screen.getByText(/Membership belum ada di sistem/)).toBeVisible();
   });
 

@@ -58,10 +58,12 @@ function daysSince(iso: string): number {
  * the day they were registered, because an inner join would have dropped exactly
  * the most neglected contacts a shop has.
  *
- * WHAT IS BADGED RATHER THAN BUILT: the mockup's "sudah dihubungi" marker and
- * its membership-expiry worklist. There is no follow-up field on a customer and
- * no membership in the system; a button that forgot itself on reload would be
- * worse than none.
+ * WHAT IS BADGED RATHER THAN BUILT: the mockup's membership-expiry worklist.
+ * There is no membership in the system.
+ *
+ * "PELANGGAN BARU DALAM" ONLY SHOWS WHO JOINED. The mockup's "Tandai sudah
+ * dihubungi" was dropped on request (3 October 2026) rather than built, and the
+ * "Segera" note about it removed — do not add it back as a tidy-up.
  */
 export function CustomerSummaryScreen() {
   const [stats, setStats] = useState<CustomerStats | null>(null);
@@ -620,23 +622,6 @@ function NewCustomersPanel() {
               );
             })}
           </ul>
-
-          {/*
-            THE MOCKUP'S "Tandai sudah dihubungi" IS NOT HERE, and it is not an
-            oversight: a customer has no follow-up field, so the button would
-            forget itself on the next reload — and a worklist that loses what you
-            ticked is worse than one that never claimed to keep it.
-          */}
-          <div
-            aria-disabled="true"
-            className="mt-2 flex items-center gap-2 text-xs text-muted opacity-70"
-          >
-            <Badge variant="outline" className="font-normal">
-              Segera
-            </Badge>
-            Penandaan &ldquo;sudah dihubungi&rdquo; belum ada — pelanggan belum
-            punya catatan follow-up di sistem.
-          </div>
         </>
       )}
     </Panel>
