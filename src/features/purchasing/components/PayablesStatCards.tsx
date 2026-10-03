@@ -13,6 +13,12 @@ const DEFAULT_HORIZON_DAYS = 7;
 export interface PayablesStatFigures {
   outstanding: { amount: string; invoiceCount: number };
   dueSoon: { amount: string; invoiceCount: number; horizonDays: number };
+  /**
+   * Bills raised inside the period. Optional: only `/summary` answers it —
+   * Faktur's `/outstanding` knows no period — so that tab leaves it off and the
+   * card stays "Segera" there.
+   */
+  invoiced?: { amount: string; invoiceCount: number };
 }
 
 /**
@@ -21,19 +27,20 @@ export interface PayablesStatFigures {
  * Faktur tab alone until Ringkasan was asked for the same row, the standing
  * rule for promoting a feature component (ui-rules §14, "a second caller").
  *
- * TWO OF THE FOUR CARDS ARE REAL. "Utang belum lunas" and "Jatuh tempo ≤N hari"
- * are `outstanding` and `dueSoon` off `/purchase-invoices/summary` (or its
+ * THREE OF THE FOUR CARDS CAN BE REAL. "Utang belum lunas" and "Jatuh tempo ≤N
+ * hari" are `outstanding` and `dueSoon` off `/purchase-invoices/summary` (or its
  * `/outstanding` sibling, which answers the same two questions unscoped) — see
- * `PayablesStatFigures`.
+ * `PayablesStatFigures`. "Pembelian periode" is `invoiced` off `/summary` only
+ * (3 October 2026): the sum of invoice VALUE by invoice date inside the tab's
+ * period, which `/outstanding` cannot answer — so a caller without it (Faktur)
+ * gets the "Segera" tile instead of a number from the wrong scope.
  *
- * TWO ARE `PendingStatTile`, NOT INVENTED, on both tabs. "Pembelian periode"
- * would need a sum of invoice VALUE by issue date, which no endpoint computes
- * today — `summary`'s `paid` is payments made, not invoices raised. "Barang
- * belum diterima" has no backing concept at all: a purchase invoice's
- * `goodsReceiptId` is required and one-to-one (see the backend model), so every
- * invoice in this schema is already created FROM a completed receipt — there is
- * no partial or pending receiving state to count. Badging both "Segera" says so
- * rather than quietly dropping them or faking a number.
+ * "BARANG BELUM DITERIMA" IS A `PendingStatTile`, NOT INVENTED. It has no backing
+ * concept at all: a purchase invoice's `goodsReceiptId` is required and
+ * one-to-one (see the backend model), so every invoice in this schema is already
+ * created FROM a completed receipt — there is no partial or pending receiving
+ * state to count. Badging it "Segera" says so rather than quietly dropping it or
+ * faking a number.
  *
  * NO HOOK IN HERE, DELIBERATELY. `PayablesScreen` and `PurchasingHub` scope the
  * same two aggregates differently ON PURPOSE — Faktur's figures are the whole
@@ -61,6 +68,7 @@ export function PayablesStatCards({
   loading,
   failed,
   onDueSoonClick,
+  periodScoped = false,
 }: {
   /** Null while loading or after the request failed. */
   figures: PayablesStatFigures | null;
@@ -68,6 +76,12 @@ export function PayablesStatCards({
   failed: boolean;
   /** Faktur drills into its own list; Ringkasan has none to offer. */
   onDueSoonClick?: () => void;
+  /**
+   * The figures came from `/summary`, which carries `invoiced`. An explicit flag
+   * rather than "`figures.invoiced` exists", so the card does not flip from a
+   * "Segera" tile to a loading one when the request lands.
+   */
+  periodScoped?: boolean;
 }) {
   const horizonDays = figures?.dueSoon.horizonDays ?? DEFAULT_HORIZON_DAYS;
   const dueSoonCount = figures?.dueSoon.invoiceCount ?? 0;
@@ -77,10 +91,24 @@ export function PayablesStatCards({
       aria-label="Ringkasan faktur pembelian"
       className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4"
     >
-      <PendingStatTile
-        label="Pembelian periode"
-        blockedBy="Total nilai faktur yang diterbitkan periode ini belum dihitung di ringkasan ini."
-      />
+      {periodScoped ? (
+        <StatTile
+          label="Pembelian periode"
+          value={figures?.invoiced ? formatMoney(figures.invoiced.amount) : "—"}
+          caption={
+            figures?.invoiced
+              ? `${figures.invoiced.invoiceCount} faktur`
+              : undefined
+          }
+          loading={loading}
+          error={failed}
+        />
+      ) : (
+        <PendingStatTile
+          label="Pembelian periode"
+          blockedBy="Total nilai faktur yang diterbitkan periode ini belum dihitung di ringkasan ini."
+        />
+      )}
       <StatTile
         label="Utang belum lunas"
         value={figures ? formatMoney(figures.outstanding.amount) : "—"}

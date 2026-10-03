@@ -90,6 +90,7 @@ export function PurchasingHub() {
           invoiceCount: summary.dueSoon.invoiceCount,
           horizonDays: summary.dueSoon.horizonDays,
         },
+        invoiced: summary.invoiced,
       }
     : null;
 
@@ -111,6 +112,7 @@ export function PurchasingHub() {
         figures={figures}
         loading={loading && !summary}
         failed={summaryFailed}
+        periodScoped
       />
 
       <Worklist

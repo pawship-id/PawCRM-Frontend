@@ -188,6 +188,7 @@ function payablesSummary(
     overdue: { amount: "0.0000", invoiceCount: 0 },
     dueSoon: { amount: "0.0000", invoiceCount: 0, horizonDays: 7 },
     paid: { amount: "18700000.0000", paymentCount: 6, invoiceCount: 4 },
+    invoiced: { amount: "26400000.0000", invoiceCount: 9 },
     ...overrides,
   };
 }
@@ -1292,6 +1293,9 @@ describe("PurchasingHub — the Ringkasan tab", () => {
     expect(screen.getByText("12 faktur")).toBeInTheDocument();
     expect(screen.getByText("Jatuh tempo ≤ 7 hari")).toBeInTheDocument();
     expect(screen.getByText("Pembelian periode")).toBeInTheDocument();
+    // The period's own billed value, off `summary.invoiced` — a real figure now.
+    expect(screen.getByText("Rp 26.400.000")).toBeInTheDocument();
+    expect(screen.getByText("9 faktur")).toBeInTheDocument();
     expect(screen.getByText("Barang belum diterima")).toBeInTheDocument();
   });
 

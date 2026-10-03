@@ -5307,6 +5307,8 @@ export interface PayablesSummary {
     /** Distinct bills that received one — three instalments on one bill is one. */
     invoiceCount: number;
   };
+  /** Bills RAISED in the period, by invoice date — value, not payments. */
+  invoiced: { amount: string; invoiceCount: number };
 }
 
 export interface SupplierOutstandingSummary {
