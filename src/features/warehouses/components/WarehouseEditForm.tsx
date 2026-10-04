@@ -33,6 +33,7 @@ import type { Branch, Warehouse } from "@/types/api";
 import { useWarehouseBranches } from "../hooks/useWarehouseBranches";
 import { WarehouseStatusBadge } from "./WarehouseStatusBadge";
 import { WarehouseBranchSelect } from "./WarehouseBranchSelect";
+import { WarehousePinButton } from "./WarehousePinButton";
 
 /**
  * Edit an existing warehouse. Mirrors BranchEditForm: the details (name, branch,
@@ -261,7 +262,18 @@ function DetailsSection({
           />
         </div>
 
-        {/* Row 3: the map pin */}
+        {/* Row 3: the map pin — picked from the map, or typed below */}
+        <div className="sm:col-span-2">
+          <WarehousePinButton
+            address={address}
+            location={location}
+            disabled={disabled}
+            onPick={(point) => {
+              setAddress(point.address);
+              setLocation(point.location);
+            }}
+          />
+        </div>
         <LocationFields
           value={location}
           onChange={setLocation}

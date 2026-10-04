@@ -26,6 +26,7 @@ import {
 
 import { useWarehouseBranches } from "../hooks/useWarehouseBranches";
 import { WarehouseBranchSelect } from "./WarehouseBranchSelect";
+import { WarehousePinButton } from "./WarehousePinButton";
 
 /**
  * Create a warehouse via POST /warehouses, then return to the list.
@@ -139,7 +140,17 @@ export function WarehouseCreateForm() {
           />
         </div>
 
-        {/* Row 3: the map pin */}
+        {/* Row 3: the map pin — picked from the map, or typed below */}
+        <div className="sm:col-span-2">
+          <WarehousePinButton
+            address={address}
+            location={location}
+            onPick={(point) => {
+              setAddress(point.address);
+              setLocation(point.location);
+            }}
+          />
+        </div>
         <LocationFields
           value={location}
           onChange={setLocation}
