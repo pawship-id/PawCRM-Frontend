@@ -338,6 +338,12 @@ export type JournalSourceType =
   | "expense"
   /** Money in that is not a sale, recorded the same way. */
   | "other_income"
+  /**
+   * The opening balance of Kas & Bank — `Dr <each cash/bank account> / Cr 3101`,
+   * dated the day before the tenant's start date. Written only by Pengaturan ›
+   * Data awal.
+   */
+  | "opening_balance"
   | "manual";
 
 /**
@@ -625,3 +631,42 @@ export interface CreateFixedCostInput {
 }
 
 export type UpdateFixedCostInput = Partial<CreateFixedCostInput>;
+
+/**
+ * Saldo awal kas & bank — `GET /api/opening-balance/cash-bank`.
+ *
+ * The accounts come WITH their saved amounts (zero where nothing is saved), so
+ * the form is one list rather than a list joined to a second. Money is a decimal
+ * string, as everywhere.
+ */
+export interface CashBankOpeningAccount {
+  id: string;
+  code: string;
+  name: string;
+  amount: string;
+}
+
+export interface CashBankOpening {
+  /** `YYYY-MM-DD`; null until a balance has been saved. */
+  startDate: string | null;
+  /** The live journal entry behind the saved balance, if any. */
+  entry: { id: string; entryNumber: string; branchId: string } | null;
+  accounts: CashBankOpeningAccount[];
+  total: string;
+  /**
+   * `YYYY-MM-DD` of the first thing the books hold other than this balance. The
+   * start date may not be later than this.
+   */
+  firstEntryDate: string | null;
+}
+
+export interface SaveCashBankOpeningInput {
+  startDate: string;
+  lines: Array<{ accountId: string; amount: string }>;
+}
+
+export interface SaveCashBankOpeningResult {
+  entryId: string;
+  entryNumber: string;
+  total: string;
+}

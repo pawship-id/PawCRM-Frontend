@@ -8,6 +8,7 @@
  * to no other feature. Pages import from here, never from deep component paths.
  */
 export { GeneralSettingsScreen } from "./components/GeneralSettingsScreen";
+export { CashBankOpeningScreen } from "./components/CashBankOpeningScreen";
 export { InitialDataScreen } from "./components/InitialDataScreen";
 export { ServiceSettingsScreen } from "./components/ServiceSettingsScreen";
 export {

@@ -6,7 +6,9 @@ import { ArrowRight, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
+import { formatMoney } from "@/utils/decimal";
 
+import { useCashBankOpening } from "../hooks/useCashBankOpening";
 import { useSetupCounts, type SetupCount } from "../hooks/useSetupCounts";
 import { SETTINGS_PATHS } from "../paths";
 import { SettingsPageHeader } from "./SettingsHeader";
@@ -26,10 +28,10 @@ import { SettingsPageHeader } from "./SettingsHeader";
  * status reports what was counted ("selesai · 248 produk") rather than asserting
  * a completeness nobody ever wrote down.
  *
- * THE LAST THREE ARE LOCKED, and not because this screen is enforcing an
- * ordering rule: their screens do not exist. Saldo awal kas & bank, piutang &
- * utang awal and ekuitas awal have no route to send anybody to, so the rows say
- * so rather than offering a link into nothing.
+ * THE LAST TWO ARE LOCKED, and not because this screen is enforcing an
+ * ordering rule: their screens do not exist. Piutang & utang awal and ekuitas
+ * awal have no route to send anybody to, so the rows say so rather than
+ * offering a link into nothing. Saldo awal kas & bank was unlocked on 4 October.
  *
  * WHAT THE MOCKUP HAS AND THIS DOES NOT: per-branch progress ("2 dari 4
  * cabang"). Every count here is tenant-wide, because none of these endpoints
@@ -72,6 +74,9 @@ export function InitialDataScreen() {
   const mayReadProducts = can("products", "read");
   const mayReadCustomers = can("customers", "read");
   const mayReadSuppliers = can("suppliers", "read");
+
+  const mayReadOpening = can("openingBalances", "read");
+  const cashBank = useCashBankOpening(mayReadOpening);
 
   const counts = useSetupCounts({
     branches: mayReadBranches,
@@ -142,9 +147,17 @@ export function InitialDataScreen() {
     {
       title: "Saldo awal kas & bank",
       description: "Saldo tiap akun kas dan bank pada tanggal mulai.",
-      status: "belum tersedia",
-      done: false,
-      locked: true,
+      href: mayReadOpening ? SETTINGS_PATHS.dataAwalKasBank : undefined,
+      status: !mayReadOpening
+        ? "tidak bisa dilihat"
+        : cashBank.loading
+          ? "…"
+          : cashBank.error
+            ? "gagal dimuat"
+            : cashBank.opening?.entry
+              ? `selesai · ${formatMoney(cashBank.opening.total)}`
+              : "belum diisi",
+      done: !!cashBank.opening?.entry,
     },
     {
       title: "Piutang & utang awal",

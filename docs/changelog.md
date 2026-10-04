@@ -7,6 +7,28 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Saldo awal kas & bank punya layar
+
+4 Oktober 2026. Baris "Saldo awal kas & bank" di Pengaturan › Data awal tidak
+lagi terkunci: **Buka** menuju `/dashboard/pengaturan/data-awal/kas-bank`.
+
+- **Layar baru `CashBankOpeningScreen`**: satu tanggal mulai, satu isian per akun
+  Kas & Bank, total di bawah. Simpan pertama langsung; **mengubah saldo yang
+  sudah tersimpan meminta konfirmasi** yang menyebut catatan lama dibatalkan lalu
+  dicatat ulang. Penolakan server (mis. sudah ada transaksi sebelum tanggal itu)
+  tampil apa adanya dan isian tidak hilang. Tanpa `openingBalances:update`
+  layar hanya-baca.
+- **Data awal**: status baris itu "belum diisi" → "selesai · Rp …"; hanya dua
+  langkah yang masih terkunci (Piutang & utang awal, Ekuitas awal). Peran tanpa
+  `openingBalances:read` melihat "tidak bisa dilihat" dan tidak memanggil API.
+- Jurnal: sumber baru **Saldo awal** (`opening_balance`) di filter dan label.
+- Tes: `CashBankOpeningScreen.test.tsx` (6) dan `SettingsScreens.test.tsx`
+  disesuaikan.
+- **Catatan:** 10 suite lain (varian layanan, ukuran komisi, form hewan) gagal
+  di mesin ini dan tidak menyentuh file ini; belum diselidiki.
+
+---
+
 ## [Unreleased] — "Jumlah hewan" ikut update tanpa reload setelah tambah hewan baru
 
 3 Oktober 2026, atas permintaan: pastikan "Jumlah pelanggan" ikut update

@@ -34,6 +34,7 @@ const SOURCES: JournalSourceType[] = [
   "commission_payment",
   "expense",
   "other_income",
+  "opening_balance",
   "manual",
 ];
 
