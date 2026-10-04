@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-import { Card } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { useBranchOptions } from "@/features/inventory/hooks/useBranchOptions";
 import { usePermissions } from "@/features/permissions";
@@ -16,6 +15,7 @@ import {
   usePayablesSummary,
   type PayablesWorklist,
 } from "../hooks/usePayablesSummary";
+import { ConsignmentDebtSection } from "./ConsignmentDebtSection";
 import { PayablesScopeCard } from "./PayablesScopeCard";
 import {
   PayablesStatCards,
@@ -27,7 +27,7 @@ import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
  * The Pembelian › Ringkasan tab — what is owed, and what has to be paid next.
  *
  * THE MOCKUP'S OWN SHAPE (`buloo-navigation-v3`, pembelian › Ringkasan): a
- * card row, then the two worklists, then the note about consignment. Every
+ * card row, then the two worklists, then the consignment debt. Every
  * part of it is a decision worth recording:
  *
  *   THE CARD ROW IS `PayablesStatCards` NOW (2 October 2026, on request) — the
@@ -49,10 +49,11 @@ import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
  *   the mockup draws none. What they carried that the tabs do not — a row count
  *   each — was never what somebody opens this tab to find out.
  *
- *   THE WORKLIST OF CONSIGNMENT DEBT IS NOT BUILT, and the closing note says so
- *   rather than leaving a gap. Consignment exists here as a supplier TYPE and
- *   nothing more: no goods are billed on sale, so a panel claiming to list that
- *   debt would list nothing and mean nothing.
+ *   THE CONSIGNMENT DEBT SECTION CLOSES THE TAB. It used to be a note saying the
+ *   list was not built; it is now `ConsignmentDebtSection` — per supplier, what
+ *   has sold at the harga setor, what was already "disetor", and the Setor
+ *   action. It is fed by its own request so the rest of the tab survives its
+ *   failure.
  *
  * NOTHING ON THIS PAGE IS ADDED UP IN THE BROWSER. Every count and every rupiah
  * figure is the server's aggregation over the whole book; the five rows under
@@ -160,25 +161,12 @@ export function PurchasingHub() {
         moreLabel="faktur lain juga jatuh tempo minggu ini"
       />
 
-      <Card>
-        <p className="text-base font-bold text-foreground">
-          Belum termasuk konsinyasi
-        </p>
-        <p className="mt-1 text-sm text-muted">
-          Utang konsinyasi per supplier belum ada di sini. Konsinyasi baru
-          berupa <b>tipe supplier</b> di master — barang yang terjual belum
-          otomatis menerbitkan tagihan ke pemiliknya, jadi daftarnya akan kosong
-          dan menyesatkan. Menyusul begitu fiturnya sendiri ada. Tipe tiap
-          supplier bisa dilihat di{" "}
-          <Link
-            href="/dashboard/purchasing/suppliers"
-            className="text-primary underline-offset-2 hover:underline"
-          >
-            tab Supplier
-          </Link>
-          .
-        </p>
-      </Card>
+      {/* Scoped by the same cabang as everything above; its own request, so a
+          failure here leaves the rest of the tab standing. */}
+      <ConsignmentDebtSection
+        enabled={mayReadInvoices}
+        branchId={query.branchId}
+      />
     </div>
   );
 }

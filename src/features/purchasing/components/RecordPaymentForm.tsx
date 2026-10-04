@@ -1,21 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { Alert, Button, TextField } from "@/components";
 import { Button as UIButton } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
-import { paymentChannelService } from "@/services/paymentChannel.service";
 import {
   divideRound,
   formatMoney,
@@ -23,34 +14,9 @@ import {
   toDecimalString,
   toMinor,
 } from "@/utils/decimal";
-import type {
-  PaymentChannel,
-  PaymentMethod,
-  PurchaseInvoiceDetail,
-} from "@/types/api";
+import type { PaymentMethod, PurchaseInvoiceDetail } from "@/types/api";
 
-/**
- * The four rails, and the account each one credits.
- *
- * The account is spelled out in the hint rather than previewed as a journal,
- * because it is the one consequence of this choice a clerk cannot see anywhere
- * else on the screen — and unlike the goods-receipt form there is no preview
- * endpoint to ask. The mapping is fixed server-side, so stating it is safe.
- */
-/** The method's own word, for the sentence shown when no channel matches it. */
-const METHOD_LABEL: Record<PaymentMethod, string> = {
-  cash: "tunai",
-  transfer: "transfer",
-  qris: "QRIS",
-  giro: "giro",
-};
-
-const METHODS: Array<{ value: PaymentMethod; label: string }> = [
-  { value: "transfer", label: "Transfer bank" },
-  { value: "cash", label: "Tunai" },
-  { value: "qris", label: "QRIS" },
-  { value: "giro", label: "Giro" },
-];
+import { PaymentAccountFields } from "./PaymentAccountFields";
 
 /** `yyyy-mm-dd` for today, as a date input holds it. */
 function today(): string {
@@ -91,35 +57,7 @@ export function RecordPaymentForm({
 }) {
   const [amount, setAmount] = useState("");
   const [method, setMethod] = useState<PaymentMethod>("transfer");
-  const [channels, setChannels] = useState<PaymentChannel[]>([]);
   const [channelId, setChannelId] = useState("");
-
-  /*
-    Re-read whenever the METHOD changes, and filtered to channels that can pay
-    OUT. Fetching every channel once and filtering here would work until a
-    tenant had more than a page of them — and would put the direction rule in two
-    places, where the browser's copy is the one that drifts.
-  */
-  useEffect(() => {
-    let active = true;
-
-    paymentChannelService
-      .list({ isActive: true, type: method, usableFor: "out", limit: 100 })
-      .then((result) => {
-        if (!active) return;
-        setChannels(result.items);
-        // One account per method is the ordinary case; pre-selecting it removes
-        // a tap from every payment.
-        setChannelId(result.items.length === 1 ? result.items[0]._id : "");
-      })
-      .catch(() => {
-        if (active) setChannels([]);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [method]);
   const [at, setAt] = useState(today());
   const [ref, setRef] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -220,70 +158,15 @@ export function RecordPaymentForm({
         hint={`Maksimal ${formatMoney(invoice.outstandingAmount)}`}
       />
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="payment-method">Metode</Label>
-        <Select
-          value={method}
-          disabled={saving}
-          onValueChange={(value) => setMethod(value as PaymentMethod)}
-        >
-          <SelectTrigger id="payment-method" aria-label="Metode">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {METHODS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted">
-          Menentukan jenis pembayaran. Rekeningnya dipilih di bawah.
-        </p>
-      </div>
-
-      {/*
-        WHICH ACCOUNT THE MONEY LEAVES — the whole point of this field.
-
-        It used to be derived from the method alone: transfer, QRIS and giro all
-        credited "1102 Bank", so a shop with three rekening could not tell which
-        one paid a supplier — while the selling side, which names its channels,
-        answered exactly that.
-
-        The list is filtered to channels that can PAY OUT and that match the
-        chosen method, so it can only ever offer something the server accepts.
-      */}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="payment-channel">Keluar dari</Label>
-        {channels.length === 0 ? (
-          <p className="text-sm text-danger">
-            Belum ada rekening {METHOD_LABEL[method]} untuk pembayaran keluar.
-            Tambah dulu di Kas &amp; Bank.
-          </p>
-        ) : (
-          <Select
-            value={channelId}
-            disabled={saving}
-            onValueChange={setChannelId}
-          >
-            <SelectTrigger id="payment-channel" aria-label="Keluar dari">
-              <SelectValue placeholder="Pilih rekening" />
-            </SelectTrigger>
-            <SelectContent>
-              {channels.map((channel) => (
-                <SelectItem key={channel._id} value={channel._id}>
-                  {channel.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <p className="text-xs text-muted">
-          Rekening ini yang dikreditkan di jurnal, jadi rekonsiliasinya bisa
-          ditelusuri per rekening.
-        </p>
-      </div>
+      {/* Metode + which rekening the money leaves — shared with the
+          consignment Setor dialog, see PaymentAccountFields. */}
+      <PaymentAccountFields
+        method={method}
+        channelId={channelId}
+        onMethodChange={setMethod}
+        onChannelChange={setChannelId}
+        disabled={saving}
+      />
 
       {/* The day the money MOVED, not the day this row was typed. A transfer
           sent on the 31st and recorded on the 2nd is the previous month's cash

@@ -6062,6 +6062,64 @@ export interface CreatePurchaseInvoiceInput {
 }
 
 /**
+ * One supplier's consignment debt — GET /api/consignment-settlements/outstanding.
+ *
+ * Money is decimal strings. `sold` is what the shop owes the consignor for the
+ * units that have SOLD (units × harga setor); `settled` is what has been paid
+ * ("disetor") so far; `outstanding` is the difference. Only suppliers with
+ * activity appear, sorted by `outstanding` descending.
+ */
+export interface ConsignmentOutstandingRow {
+  supplierId: string;
+  supplierName: string;
+  sold: string;
+  settled: string;
+  outstanding: string;
+}
+
+export interface ConsignmentOutstanding {
+  items: ConsignmentOutstandingRow[];
+  totals: { sold: string; settled: string; outstanding: string };
+}
+
+/** One payment to a consignor — GET /api/consignment-settlements. */
+export interface ConsignmentSettlement {
+  _id: string;
+  number: string;
+  supplierId: string;
+  supplierName: string;
+  amount: string;
+  at: string;
+  accountName?: string | null;
+  ref?: string | null;
+  notes?: string | null;
+}
+
+export interface ConsignmentSettlementListQuery {
+  supplierId?: string;
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * POST /api/consignment-settlements — "Setor" to a consignor.
+ *
+ * The payment-account pair (`method` + `channelId`) is EXACTLY what
+ * `RecordPaymentInput` sends. NOT IDEMPOTENT: callers lock submit for the whole
+ * flight. The server answers 400 when `amount` exceeds what is outstanding.
+ */
+export interface CreateConsignmentSettlementInput {
+  supplierId: string;
+  branchId?: string;
+  amount: string;
+  at?: string;
+  method: PaymentMethod;
+  channelId: string;
+  ref?: string;
+  notes?: string;
+}
+
+/**
  * POST /api/purchase-invoices/:id/payments — pay a supplier.
  *
  * NOT IDEMPOTENT: a double-submitted form records the money leaving twice, on

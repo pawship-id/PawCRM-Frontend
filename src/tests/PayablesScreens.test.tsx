@@ -9,6 +9,8 @@ import {
   PurchasingHub,
 } from "@/features/purchasing";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
+import { consignmentSettlementService } from "@/services/consignmentSettlement.service";
+import { swalToast } from "@/lib/swal";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { supplierService } from "@/services/supplier.service";
 import { branchService } from "@/services/branch.service";
@@ -27,6 +29,7 @@ import type {
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/purchaseInvoice.service");
+jest.mock("@/services/consignmentSettlement.service");
 jest.mock("@/services/goodsReceipt.service");
 jest.mock("@/services/supplier.service");
 jest.mock("@/services/branch.service");
@@ -315,6 +318,10 @@ beforeEach(() => {
   } as any);
   jest.clearAllMocks();
 
+  asMock(consignmentSettlementService.outstanding).mockResolvedValue({
+    items: [],
+    totals: { sold: "0.0000", settled: "0.0000", outstanding: "0.0000" },
+  });
   asMock(purchaseInvoiceService.list).mockResolvedValue(page([]));
   asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
     summary({ totalOutstanding: "0.0000", totalInvoices: 0 }),
@@ -1616,17 +1623,193 @@ describe("PurchasingHub — the Ringkasan tab", () => {
     expect(within(scope).getByText("Periode")).toBeInTheDocument();
   });
 
-  /*
-    THE PANEL THE MOCKUP DOES NOT GET, and the note that says why: consignment is
-    a supplier TYPE here and nothing more, so a list of consignment debt would be
-    empty and misleading rather than informative.
-  */
-  it("says the consignment worklist is not built, rather than leaving a gap", async () => {
+  it("shows the consignment empty state with its one explanatory line", async () => {
+    renderWithAuth(<PurchasingHub />);
+
+    expect(await screen.findByText("Utang konsinyasi")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Belum ada barang konsinyasi yang terjual."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/baru muncul saat barang terjual, sebesar harga setor/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Belum termasuk konsinyasi")).toBeNull();
+  });
+});
+
+/**
+ * Utang konsinyasi — what the shop owes consignors for goods that SOLD, and the
+ * "Setor" that pays it. Radix selects are not driven: the lone pay-out channel is
+ * pre-selected by the shared payment fields, and the tests assert on payloads.
+ */
+describe("PurchasingHub — Utang konsinyasi", () => {
+  const OUTSTANDING = {
+    items: [
+      {
+        supplierId: "sup-1",
+        supplierName: "CV Titip Jaya",
+        sold: "500000.0000",
+        settled: "200000.0000",
+        outstanding: "300000.0000",
+      },
+      {
+        supplierId: "sup-2",
+        supplierName: "UD Lunas",
+        sold: "100000.0000",
+        settled: "100000.0000",
+        outstanding: "0.0000",
+      },
+    ],
+    totals: {
+      sold: "600000.0000",
+      settled: "300000.0000",
+      outstanding: "300000.0000",
+    },
+  };
+
+  beforeEach(() => {
+    asMock(consignmentSettlementService.outstanding).mockResolvedValue(
+      OUTSTANDING,
+    );
+  });
+
+  async function openDialog() {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchasingHub />);
+    await user.click(await screen.findByRole("button", { name: "Setor" }));
+    const dialog = await screen.findByRole("dialog");
+    // The channel list has to have landed so a channel is selected.
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText("Keluar dari")).toBeInTheDocument(),
+    );
+    return { user, dialog };
+  }
+
+  it("renders one row per supplier, scoped by the tab's cabang", async () => {
+    renderWithAuth(<PurchasingHub />);
+
+    expect(await screen.findByText("CV Titip Jaya")).toBeInTheDocument();
+    expect(screen.getByText("Rp 500.000")).toBeInTheDocument();
+    expect(screen.getByText("Rp 200.000")).toBeInTheDocument();
+    expect(screen.getByText("Rp 300.000")).toBeInTheDocument();
+    expect(screen.getByText("UD Lunas")).toBeInTheDocument();
+    expect(consignmentSettlementService.outstanding).toHaveBeenCalledWith({
+      branchId: "",
+    });
+  });
+
+  it("offers Setor only on rows that still owe something", async () => {
+    renderWithAuth(<PurchasingHub />);
+
+    await screen.findByText("UD Lunas");
+    expect(screen.getAllByRole("button", { name: "Setor" })).toHaveLength(1);
+  });
+
+  it("is hidden, and requests nothing, without purchaseInvoices:read", async () => {
+    renderWithAuth(<PurchasingHub />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "suppliers", actions: ["read"] }],
+    });
+
+    await screen.findByText(/hanya untuk peran yang boleh membaca faktur/);
+    expect(screen.queryByText("Utang konsinyasi")).toBeNull();
+    expect(consignmentSettlementService.outstanding).not.toHaveBeenCalled();
+  });
+
+  it("hides Setor without purchaseInvoices:pay but still lists the debt", async () => {
+    renderWithAuth(<PurchasingHub />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "purchaseInvoices", actions: ["read"] }],
+    });
+
+    expect(await screen.findByText("CV Titip Jaya")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Setor" })).toBeNull();
+  });
+
+  it("keeps the rest of the tab when the consignment read fails", async () => {
+    asMock(consignmentSettlementService.outstanding).mockRejectedValue(
+      new Error("boom"),
+    );
     renderWithAuth(<PurchasingHub />);
 
     expect(
-      await screen.findByText("Belum termasuk konsinyasi"),
+      await screen.findByText(/Utang konsinyasi gagal dimuat/),
     ).toBeInTheDocument();
+    expect(
+      await screen.findByText("Hutang lewat jatuh tempo"),
+    ).toBeInTheDocument();
+  });
+
+  it("defaults the amount to the sisa utang and refuses more than it", async () => {
+    const { user, dialog } = await openDialog();
+
+    const amount = within(dialog).getByLabelText("Nominal setor");
+    expect(amount).toHaveValue("300000.0000");
+
+    await user.clear(amount);
+    await user.type(amount, "300001");
+
+    expect(
+      within(dialog).getByText(/Melebihi sisa utang Rp 300.000/),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: "Simpan setoran" }),
+    ).toBeDisabled();
+    expect(consignmentSettlementService.create).not.toHaveBeenCalled();
+  });
+
+  it("sends the payment-account pair and refetches on success", async () => {
+    asMock(consignmentSettlementService.create).mockResolvedValue({
+      _id: "cs-1",
+      number: "SET-001",
+      supplierId: "sup-1",
+      supplierName: "CV Titip Jaya",
+      amount: "100000.0000",
+      at: "2026-10-04",
+    });
+    const { user, dialog } = await openDialog();
+
+    const amount = within(dialog).getByLabelText("Nominal setor");
+    await user.clear(amount);
+    await user.type(amount, "100000");
+    await user.type(within(dialog).getByLabelText("Nomor referensi"), " TRX-9 ");
+    await user.type(within(dialog).getByLabelText("Catatan"), "Setor Oktober");
+    await user.click(
+      within(dialog).getByRole("button", { name: "Simpan setoran" }),
+    );
+
+    await waitFor(() =>
+      expect(consignmentSettlementService.create).toHaveBeenCalledWith({
+        supplierId: "sup-1",
+        amount: "100000",
+        at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        method: "transfer",
+        channelId: "chan-bca",
+        ref: "TRX-9",
+        notes: "Setor Oktober",
+      }),
+    );
+    expect(swalToast).toHaveBeenCalledWith(expect.stringMatching(/Setor/));
+    await waitFor(() =>
+      expect(consignmentSettlementService.outstanding).toHaveBeenCalledTimes(2),
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("shows the API's refusal inside the dialog and keeps it open", async () => {
+    asMock(consignmentSettlementService.create).mockRejectedValue(
+      new ApiError("Jumlah melebihi sisa utang konsinyasi.", 400),
+    );
+    const { user, dialog } = await openDialog();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Simpan setoran" }),
+    );
+
+    expect(
+      await within(dialog).findByText(/melebihi sisa utang konsinyasi/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });
 

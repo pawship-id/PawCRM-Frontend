@@ -337,8 +337,8 @@ export function PurchaseReturnDetail({ returnId }: { returnId: string }) {
             explaining here; a draft has simply not posted yet. */}
         {!purchaseReturn.journalEntryId && !isDraft && (
           <p className="mt-4 text-xs text-muted">
-            Tidak ada jurnal untuk retur ini — barangnya konsinyasi (belum pernah
-            dibeli, jadi tidak ada utang yang dikurangi) atau nilainya nol. Stok
+            Tidak ada jurnal untuk retur ini — barangnya konsinyasi (belum terjual,
+            jadi belum ada utang yang dikurangi) atau nilainya nol. Stok
             tetap keluar dan HPP tetap dibalik.
           </p>
         )}

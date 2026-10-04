@@ -38,7 +38,7 @@ const COOPERATION = [
     badge: "b-orange" as const,
     what: "Barang dititipkan; yang tidak laku bisa dikembalikan.",
     books:
-      "Penerimaan barang tidak mencatat utang sama sekali. Yang jadi kewajiban adalah barang yang sudah terjual.",
+      "Penerimaan barang tidak membuat jurnal. Utang muncul saat barang terjual, sebesar harga setor, lalu dilunasi lewat Setor di Ringkasan Pembelian.",
   },
   {
     label: "Keduanya",

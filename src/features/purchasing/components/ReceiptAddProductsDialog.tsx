@@ -81,7 +81,7 @@ export function ReceiptAddProductsDialog({
           </DialogTitle>
           <DialogDescription>
             Cari lalu centang produk yang datang dari supplier ini, boleh
-            beberapa sekaligus. Qty dan harga belinya diisi di form setelah ini.{" "}
+            beberapa sekaligus. Qty dan harganya ({consignment ? "harga setor" : "harga beli"}) diisi di form setelah ini.{" "}
             {consignment
               ? "Yang tampil hanya produk yang ditandai konsinyasi (titipan)."
               : "Produk yang ditandai konsinyasi (titipan) tidak ditampilkan di sini."}
