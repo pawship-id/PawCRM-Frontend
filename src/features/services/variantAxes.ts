@@ -12,7 +12,12 @@ import type {
   VariantOption,
   Zone,
 } from "@/types/api";
-import { AXIS_OPTION_TYPE, isPetAxis, variantValueOn } from "@/utils/serviceVariant";
+import {
+  AXIS_LABEL,
+  AXIS_OPTION_TYPE,
+  isPetAxis,
+  variantValueOn,
+} from "@/utils/serviceVariant";
 
 /**
  * The values a service's price can vary by, and the combinations they make.
@@ -204,9 +209,16 @@ export function variantAxisValues(
       }));
 
     const listed = new Set(values.map((entry) => entry.value));
-    for (const code of priced) {
-      if (listed.has(code)) continue;
+    for (const id of priced) {
+      if (listed.has(id)) continue;
 
+      /*
+        A VALUE PRICED ON AN OPTION THIS LIST DOES NOT HOLD — hard-deleted, or
+        belonging to another tenant's row in a stale draft. It keeps its place
+        in the grid so the price is not silently dropped, and shows whatever
+        word can still be found; a raw id would be noise, so it falls back to
+        the option-type's name rather than printing one.
+      */
       const word =
         labelOf?.(type, code) ??
         options.find((option) => option.type === type && option._id === code)

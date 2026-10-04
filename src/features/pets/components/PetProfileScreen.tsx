@@ -272,7 +272,11 @@ export function PetProfileScreen({ petId }: { petId: string }) {
       <PetSummaryCard pet={pet} />
 
       {/*
-        MEMBERSHIP SITS ABOVE THE TABS, beside the summary card, for the reason
+        
+        
+        
+        
+        SITS ABOVE THE TABS, beside the summary card, for the reason
         that card does: it answers "what has this animal already been promised",
         and a front desk asking it is not going to hunt for the right tab first.
         It is also the panel with a BUTTON on it — Terbitkan, Perpanjang — and a

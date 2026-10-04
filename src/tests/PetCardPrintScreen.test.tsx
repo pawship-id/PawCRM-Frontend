@@ -26,7 +26,7 @@ const pet = (overrides: Partial<Pet> = {}): Pet =>
     _id: "pet-1",
     customerId: "cust-1",
     name: "Bruno",
-    species: "dog",
+    species: "opt-species-anjing",
     sex: "male",
     breed: "Golden Retriever",
     weightKg: 24,

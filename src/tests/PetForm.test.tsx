@@ -9,6 +9,8 @@ import { petOptionService } from "@/services/petOption.service";
 import {
   PET_OPTION_FIXTURES,
   makePetOption,
+  petOptionFields,
+  petOptionId,
   primePetOptions,
 } from "./helpers/petOptions";
 
@@ -35,18 +37,23 @@ const petFixture = {
   tenantId: "507f1f77bcf86cd799439011",
   customerId: CUSTOMER_ID,
   name: "Bella",
-  species: "dog" as const,
   sex: "female" as const,
-  breed: "domestic" as const,
   /*
-    ⚠️ BOTH FILLED IN, and that is not incidental detail. Ukuran and Jenis bulu
-    became REQUIRED on 23 September 2026, so a fixture with either blank is a pet
-    the edit screen refuses to save — every test below that submits would fail on
-    two fields it is not about. A pet registered under the current rule has both.
-    The pet that does NOT is its own test.
+    THE FOUR OPTION FIELDS, AS IDS, with the label and code the server resolves
+    beside each (25 September 2026) — see `petOptionFields`.
+
+    ⚠️ UKURAN AND JENIS BULU ARE BOTH FILLED IN, and that is not incidental
+    detail. Both became REQUIRED on 23 September 2026, so a fixture with either
+    blank is a pet the edit screen refuses to save — every test below that
+    submits would fail on two fields it is not about. A pet registered under the
+    current rule has both. The pet that does NOT is its own test.
   */
-  furType: "short hair" as const,
-  size: "medium" as const,
+  ...petOptionFields({
+    species: "Anjing",
+    breed: "Domestic",
+    furType: "Bulu pendek",
+    size: "Sedang",
+  }),
   birthDate: "2022-03-14T00:00:00.000Z",
   weightKg: 12.4,
   color: null,
@@ -166,10 +173,7 @@ describe("PetForm — registering", () => {
     await renderNew();
 
     await userEvent.type(screen.getByLabelText(/nama hewan/i), "Bella");
-    await userEvent.type(
-      screen.getByLabelText(/tanggal lahir/i),
-      "2999-01-01",
-    );
+    await userEvent.type(screen.getByLabelText(/tanggal lahir/i), "2999-01-01");
     await userEvent.click(
       screen.getByRole("button", { name: /daftarkan hewan/i }),
     );
@@ -209,13 +213,11 @@ describe("PetForm — registering", () => {
       ...PET_OPTION_FIXTURES,
       makePetOption({
         type: "species",
-        code: "kelinci",
         label: "Kelinci",
         sortOrder: 2,
       }),
       makePetOption({
         type: "species",
-        code: "hamster",
         label: "Hamster",
         sortOrder: 3,
         isActive: false,
@@ -228,7 +230,9 @@ describe("PetForm — registering", () => {
     await waitFor(() => expect(picker).toBeEnabled());
     await userEvent.click(picker);
 
-    expect(await screen.findByRole("option", { name: "Kelinci" })).toBeVisible();
+    expect(
+      await screen.findByRole("option", { name: "Kelinci" }),
+    ).toBeVisible();
     expect(screen.getByRole("option", { name: "Kucing" })).toBeVisible();
     expect(
       screen.queryByRole("option", { name: /hamster/i }),
@@ -253,13 +257,17 @@ describe("PetForm — registering", () => {
     const species = screen.getByRole("combobox", { name: "Jenis" });
     await waitFor(() => expect(species).toBeEnabled());
     await userEvent.click(species);
-    await userEvent.click(await screen.findByRole("option", { name: "Kucing" }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Kucing" }),
+    );
 
     await userEvent.click(screen.getByRole("combobox", { name: "Ras" }));
 
     expect(await screen.findByRole("option", { name: "Persia" })).toBeVisible();
     expect(screen.getByRole("option", { name: "Mix" })).toBeVisible();
-    expect(screen.queryByRole("option", { name: "Poodle" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Poodle" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows our own sentence when the customer list fails, never the server's", async () => {
@@ -305,7 +313,6 @@ describe("PetForm — editing", () => {
       ...PET_OPTION_FIXTURES,
       makePetOption({
         type: "species",
-        code: "kelinci",
         label: "Kelinci",
         sortOrder: 2,
         isActive: false,
@@ -313,7 +320,8 @@ describe("PetForm — editing", () => {
     ]);
     mockedPetService.getById.mockResolvedValue({
       ...petFixture,
-      species: "kelinci",
+      species: petOptionId("species", "Kelinci"),
+      speciesLabel: "Kelinci",
     });
 
     render(<PetForm petId={PET_ID} />);
@@ -322,12 +330,14 @@ describe("PetForm — editing", () => {
     const picker = screen.getByRole("combobox", { name: "Jenis" });
     await waitFor(() => expect(picker).toHaveTextContent("Kelinci (nonaktif)"));
 
-    await userEvent.click(screen.getByRole("button", { name: /simpan hewan/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan hewan/i }),
+    );
 
     await waitFor(() =>
       expect(mockedPetService.update).toHaveBeenCalledWith(
         PET_ID,
-        expect.objectContaining({ species: "kelinci" }),
+        expect.objectContaining({ species: petOptionId("species", "Kelinci") }),
       ),
     );
   });
@@ -362,7 +372,9 @@ describe("PetForm — editing", () => {
     await screen.findByDisplayValue("Bella");
     await userEvent.clear(screen.getByLabelText(/nama hewan/i));
     await userEvent.type(screen.getByLabelText(/nama hewan/i), "Milo");
-    await userEvent.click(screen.getByRole("button", { name: /simpan hewan/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan hewan/i }),
+    );
 
     await waitFor(() =>
       expect(mockedPetService.update).toHaveBeenCalledWith(
@@ -403,7 +415,9 @@ describe("PetForm — editing", () => {
     await screen.findByDisplayValue("Bella");
     await userEvent.clear(screen.getByLabelText(/nama hewan/i));
     await userEvent.type(screen.getByLabelText(/nama hewan/i), "Milo");
-    await userEvent.click(screen.getByRole("button", { name: /simpan hewan/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan hewan/i }),
+    );
 
     await waitFor(() => expect(mockedPetService.update).toHaveBeenCalled());
 
@@ -434,9 +448,10 @@ describe("PetForm — editing", () => {
     render(<PetForm petId={PET_ID} />);
 
     await screen.findByDisplayValue("Bella");
-    expect(
-      screen.getByRole("img", { name: "Foto Bella" }),
-    ).toHaveAttribute("src", "https://cdn.test/thumb.webp");
+    expect(screen.getByRole("img", { name: "Foto Bella" })).toHaveAttribute(
+      "src",
+      "https://cdn.test/thumb.webp",
+    );
     // The button says REPLACE rather than choose, which is how the slot shows
     // it is already filled.
     expect(
@@ -465,7 +480,9 @@ describe("PetForm — editing", () => {
     render(<PetForm petId={PET_ID} />);
 
     await screen.findByDisplayValue("Bella");
-    await userEvent.click(screen.getByRole("button", { name: /simpan hewan/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan hewan/i }),
+    );
 
     expect(await screen.findByText(/pilih ukurannya/i)).toBeVisible();
     expect(screen.getByText(/pilih jenis bulunya/i)).toBeVisible();

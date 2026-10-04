@@ -81,8 +81,8 @@ export function PetOptionsTable({
   /** One type's options in display order — deleted ones only when shown. */
   rows: PetOption[];
   /**
-   * The tenant's word for a species code — a breed's "Hewan" column. From the
-   * SCREEN'S OWN list, not a second load of the same one.
+   * The tenant's word for a species, BY ITS `_id` — a breed's "Hewan" column.
+   * From the SCREEN'S OWN list, not a second load of the same one.
    */
   speciesLabel?: (id: string) => string | null;
   loading: boolean;
@@ -195,7 +195,9 @@ export function PetOptionsTable({
                 on every one of these four lists.
               */}
               <TableHead>Status</TableHead>
-              {showActions && <TableHead className="text-right">Aksi</TableHead>}
+              {showActions && (
+                <TableHead className="text-right">Aksi</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -246,7 +248,8 @@ export function PetOptionsTable({
                                   <DropdownMenuItem
                                     onSelect={() =>
                                       void run(
-                                        () => petOptionService.restore(option._id),
+                                        () =>
+                                          petOptionService.restore(option._id),
                                         `${words.title} dipulihkan.`,
                                       )
                                     }
@@ -285,9 +288,12 @@ export function PetOptionsTable({
                                       onSelect={() =>
                                         void run(
                                           () =>
-                                            petOptionService.update(option._id, {
-                                              isActive: !option.isActive,
-                                            }),
+                                            petOptionService.update(
+                                              option._id,
+                                              {
+                                                isActive: !option.isActive,
+                                              },
+                                            ),
                                           option.isActive
                                             ? `${words.title} dinonaktifkan.`
                                             : `${words.title} diaktifkan.`,
@@ -346,9 +352,9 @@ export function PetOptionsTable({
           onCancel={closeDelete}
         >
           Hapus <strong>{pendingDelete.label}</strong> dari daftar {words.noun}?
-          Hapusnya ditolak selama masih ada {words.heldBy} yang memakainya. Kalau
-          cuma mau berhenti menawarkannya, pilih <strong>Nonaktifkan</strong>{" "}
-          saja — data yang sudah ada tetap aman.
+          Hapusnya ditolak selama masih ada {words.heldBy} yang memakainya.
+          Kalau cuma mau berhenti menawarkannya, pilih{" "}
+          <strong>Nonaktifkan</strong> saja — data yang sudah ada tetap aman.
         </ConfirmDialog>
       )}
     </>

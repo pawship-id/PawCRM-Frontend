@@ -18,6 +18,7 @@ import type {
   Service,
   ServiceVariant,
 } from "@/types/api";
+import { petOptionFields } from "./helpers/petOptions";
 
 /**
  * The one place the form's shape and the API's meet.
@@ -339,7 +340,12 @@ describe("bookingDraft — when the customer gets their animals back", () => {
     [ADDON]: { _id: ADDON, durationMin: 15, price: "1" } as Service,
   };
   const serviceOf = (id: string) => services[id] ?? null;
-  const petOf = (id: string) => ({ _id: id, size: "small" }) as Pet;
+  /*
+    `petOptionFields` rather than `size: "opt-size-kecil"` — a pet stores the option's
+    id and the variant seam reads the `sizeCode` beside it (25 September 2026).
+  */
+  const petOf = (id: string) =>
+    ({ _id: id, ...petOptionFields({ size: "Kecil" }) }) as Pet;
 
   it("takes the longest groomer, not the sum", () => {
     expect(
@@ -383,7 +389,7 @@ describe("bookingDraft — when the customer gets their animals back", () => {
       variants: [
         {
           petType: null,
-          sizeCategory: "large",
+          sizeCategory: "opt-size-besar",
           furType: null,
           price: "180000.0000",
           durationMin: 150,
@@ -396,7 +402,7 @@ describe("bookingDraft — when the customer gets their animals back", () => {
       longestGroomerMinutes(
         [card()],
         () => variant,
-        (id) => ({ _id: id, size: "large" }) as Pet,
+        (id) => ({ _id: id, ...petOptionFields({ size: "Besar" }) }) as Pet,
       ),
     ).toBe(150);
   });

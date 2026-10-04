@@ -9,6 +9,7 @@ import type { GroomerCapacityDay, GroomingSettings, Tenant } from "@/types/api";
 
 import {
   makePetOption,
+  petOptionId,
   PET_OPTION_FIXTURES,
   primePetOptions,
 } from "./helpers/petOptions";
@@ -45,7 +46,6 @@ jest.mock("@/services/user.service");
  */
 const XL = makePetOption({
   type: "size",
-  code: "xl",
   label: "Ekstra besar",
   sortOrder: 3,
 });

@@ -409,7 +409,7 @@ describe("GroomingServicesScreen", () => {
     // A species the tenant added — the list is not a cat and a dog written in.
     primePetOptions(petOptionService.list, [
       ...PET_OPTION_FIXTURES,
-      makePetOption({ type: "species", code: "rabbit", label: "Kelinci", sortOrder: 2 }),
+      makePetOption({ type: "species", label: "Kelinci", sortOrder: 2 }),
     ]);
 
     renderWithAuth(<GroomingServicesScreen />);

@@ -157,15 +157,31 @@ function byOrder(a: PetOption, b: PetOption) {
 /**
  * The tenant's species, breeds, sizes and coats.
  *
- *   choices(type, keep?) — what a picker offers: ACTIVE options in order, plus
- *                          any code in `keep` the record already holds that is
- *                          retired, deleted or unknown, marked `retired`. Pass
- *                          the stored value as `keep` on an edit form, or the
- *                          select renders a value it has no item for and the
- *                          next save silently clears it.
- *   label(type, code)    — the word for a stored code: the tenant's label, else
- *                          the seeded default, else the code itself. Never
- *                          blank for a non-empty code.
+ * ─── A STORED VALUE IS AN ID OR A CODE, DEPENDING ON WHO STORED IT ──────────
+ *
+ * Since 25 September 2026 a PET holds an option's `_id` (`pet.species`), while
+ * a SERVICE VARIANT still holds its `code` (`variant.sizeCategory`), and so do
+ * the frozen facts on a booking, an invoice line and a commission row. Only the
+ * pet moved.
+ *
+ * `label`, `code` and `find` therefore accept EITHER and resolve both, so a
+ * caller does not have to know which side of that line its value came from —
+ * and so a screen reading a pet and a variant side by side needs one helper
+ * rather than two. `choices` is the exception: it decides what a form will
+ * SAVE, which is a real choice, so it is passed explicitly.
+ *
+ *   choices(type, keep?, { by }) — what a picker offers: ACTIVE options in
+ *                          order, plus anything in `keep` the record already
+ *                          holds that is retired, deleted or unknown, marked
+ *                          `retired`. Pass the stored value as `keep` on an
+ *                          edit form, or the select renders a value it has no
+ *                          item for and the next save silently clears it.
+ *                          Values are always the option's `_id`.
+ *   label(type, value)   — the tenant's word for a stored id, or null when
+ *                          nothing matches: a raw id is not a word, and there
+ *                          is no seeded table to fall back to.
+ *   find(type, value)    — the whole option, for anything the two above do
+ *                          not cover.
  *   ordered(type)        — every live option of one type (active and retired)
  *                          in order, for a screen laid out per value — the
  *                          commission-per-size rows, a price grid.
@@ -214,7 +230,7 @@ export function usePetOptions() {
 
       return match?.label ?? DEFAULT_PET_OPTION_LABELS[type][id] ?? id;
     },
-    [live, state.options],
+    [find],
   );
 
   const choices = useCallback(
@@ -222,6 +238,13 @@ export function usePetOptions() {
       type: PetOptionType,
       keep: Array<string | null | undefined> = [],
     ): PetOptionChoice[] => {
+      /*
+        ALWAYS THE `_id` since 25 September 2026. There used to be a `by` option
+        — `"id"` for a pet field, `"code"` for a variant axis — and both ends
+        hold ids now, so the choice had one answer left.
+      */
+      const valueOf = (option: PetOption) => option._id;
+
       const active: PetOptionChoice[] = ordered(type)
         .filter((option) => option.isActive)
         .map((option) => ({
@@ -231,6 +254,11 @@ export function usePetOptions() {
         }));
 
       const offered = new Set(active.map((choice) => choice.value));
+      /*
+        A KEPT VALUE IS RESOLVED BEFORE IT IS COMPARED. An edit form passes the
+        stored id; if the option is active it is already in `active` under that
+        same id and must not be added twice.
+      */
       const kept = [...new Set(keep)]
         .filter((id): id is string => Boolean(id) && !offered.has(id!))
         .map((id) => ({
@@ -241,7 +269,7 @@ export function usePetOptions() {
 
       return [...active, ...kept];
     },
-    [ordered, label],
+    [ordered, label, find],
   );
 
   const reload = useCallback(() => load(true), []);
@@ -253,6 +281,7 @@ export function usePetOptions() {
     error: state.error,
     choices,
     label,
+    find,
     ordered,
     reload,
   };

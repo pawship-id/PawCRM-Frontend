@@ -18,6 +18,7 @@ import type { Service, ServiceKind } from "@/types/api";
 
 import {
   makePetOption,
+  petOptionId,
   PET_OPTION_FIXTURES,
   primePetOptions,
 } from "./helpers/petOptions";
@@ -787,13 +788,12 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
   */
   const XL = makePetOption({
     type: "size",
-    code: "xl",
     label: "Ekstra besar",
     sortOrder: 3,
   });
 
   const LONG_HAIR_RETIRED = PET_OPTION_FIXTURES.map((option) =>
-    option.code === "long hair" ? { ...option, isActive: false } : option,
+    option.label === "Bulu panjang" ? { ...option, isActive: false } : option,
   );
 
   const priceRows = () =>

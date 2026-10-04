@@ -90,6 +90,12 @@ function own<T>(record: Record<string, T>, key: string): T | undefined {
  *
  * A DELETED OR UNKNOWN ID IS NEVER A ROW, and its nominal is not dropped
  * either — see `draftToSettings`.
+ *
+ * KEYED BY THE OPTION'S `_id` since 25 September 2026, which is what
+ * `sizeNominal` stores now. The field is still called `code` on
+ * `CommissionSize` because that is what a row of this table is to its caller —
+ * the value it saves under — and renaming it would touch every screen for no
+ * behaviour.
  */
 export function commissionSizes(
   options: Pick<PetOption, "_id" | "label" | "isActive">[],

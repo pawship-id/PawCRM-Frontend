@@ -19,12 +19,23 @@ import type { PetOptionType } from "@/types/api";
 export function usePetPickers() {
   const { options, choices, label, loading, error } = usePetOptions();
 
+  /*
+    EVERY CHOICE IS AN OPTION `_id` (25 September 2026). `choices` took a `by`
+    flag for one day — `"id"` here, `"code"` for a service variant's axis — and
+    the axes hold ids too now, so there is one currency and no flag.
+  */
   const pickerOptions = useCallback(
     (type: PetOptionType, stored?: string | null): PetOptionChoice[] => {
       if (!loading) return choices(type, [stored]);
 
       return stored
-        ? [{ value: stored, label: label(type, stored) ?? stored, retired: false }]
+        ? [
+            {
+              value: stored,
+              label: label(type, stored) ?? stored,
+              retired: false,
+            },
+          ]
         : [];
     },
     [choices, label, loading],
@@ -43,7 +54,10 @@ export function usePetPickers() {
    * a pet's species must not silently blank its breed.
    */
   const breedOptions = useCallback(
-    (species: string | null | undefined, stored?: string | null): PetOptionChoice[] => {
+    (
+      species: string | null | undefined,
+      stored?: string | null,
+    ): PetOptionChoice[] => {
       const all = pickerOptions("breed", stored);
       if (!species) return all;
 

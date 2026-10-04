@@ -169,7 +169,11 @@ export function PetOptionFormDialog({
       }}
     >
       <DialogContent showCloseButton={!busy}>
-        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+        <form
+          onSubmit={handleSubmit}
+          noValidate
+          className="flex flex-col gap-4"
+        >
           <DialogHeader>
             <DialogTitle>
               {editing ? `Ubah nama ${words.noun}` : `Tambah ${words.noun}`}

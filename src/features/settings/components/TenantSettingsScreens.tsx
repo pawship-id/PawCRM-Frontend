@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useRouter } from "next/navigation";
 
 import { Alert, Button, Spinner } from "@/components";
 import {
@@ -13,7 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { Tenant } from "@/types/api";
 
-import type { SettingsTab } from "../paths";
+import { SETTINGS_TABS, type SettingsTab } from "../paths";
 import { SettingsPageHeader } from "./SettingsHeader";
 
 /**
@@ -76,7 +77,22 @@ export function TenantSettingsPage({
   );
 }
 
+/**
+ * IT LEAVES AFTER SAVING, unlike the three switch pages below — on request
+ * (25 September 2026). Identitas is a form somebody opens, fills in and is done
+ * with, so returning to Umum is the end of the errand; the others are one
+ * switch each, flipped and re-read in place.
+ *
+ * SO IT DOES NOT `refetch`. The page it lands on mounts its own `useTenant` and
+ * reads the tenant fresh, and re-reading here would fire a request against a
+ * screen that is already unmounting.
+ *
+ * `push`, NOT `replace`: the reader arrived here from Umum by choice, and Back
+ * should return them to the form rather than skipping over it.
+ */
 export function IdentitySettingsScreen() {
+  const router = useRouter();
+
   return (
     <TenantSettingsPage
       tab="umum"
@@ -84,8 +100,12 @@ export function IdentitySettingsScreen() {
       description="Berlaku untuk seluruh cabang. Alamat yang tercetak di struk diatur per cabang, bukan di sini."
       fullWidth
     >
-      {(tenant, refetch) => (
-        <TenantIdentityForm tenant={tenant} onSaved={refetch} />
+      {(tenant) => (
+        <TenantIdentityForm
+          tenant={tenant}
+          cancelHref={SETTINGS_TABS.umum}
+          onSaved={() => router.push(SETTINGS_TABS.umum)}
+        />
       )}
     </TenantSettingsPage>
   );

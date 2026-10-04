@@ -44,14 +44,14 @@ function PetRow({ pet }: { pet: Pet }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate font-medium text-foreground">{pet.name}</span>
-          <PetSpeciesBadge species={pet.species} />
+          <PetSpeciesBadge species={pet.species} label={pet.speciesLabel} />
           {/* Only when it is NOT the ordinary state — a "Dirawat" badge on every
               row would be noise on a list where that is true of almost all. */}
           {!pet.isActive && <PetStatusBadge isActive={false} deleted={false} />}
         </div>
         <p className="mt-0.5 truncate text-xs text-muted">
           {[
-            label("breed", pet.breed),
+            pet.breedLabel ?? label("breed", pet.breed),
             pet.weightKg === null ? null : `${pet.weightKg} kg`,
           ]
             .filter(Boolean)

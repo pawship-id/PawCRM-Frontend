@@ -12,6 +12,9 @@ jest.mock("@/lib/swal", () => ({
   swalToast: jest.fn(),
 }));
 
+/** Where Batal goes — Pengaturan › Umum, the tab this page is reached from. */
+const CANCEL_HREF = "/dashboard/pengaturan/umum";
+
 function makeTenant(overrides: Partial<Tenant> = {}): Tenant {
   return {
     _id: "t1",
@@ -46,7 +49,11 @@ describe("TenantIdentityForm", () => {
     const onSaved = jest.fn();
 
     renderWithAuth(
-      <TenantIdentityForm tenant={makeTenant()} onSaved={onSaved} />,
+      <TenantIdentityForm
+        cancelHref={CANCEL_HREF}
+        tenant={makeTenant()}
+        onSaved={onSaved}
+      />,
     );
 
     await userEvent.type(
@@ -72,6 +79,7 @@ describe("TenantIdentityForm", () => {
 
     renderWithAuth(
       <TenantIdentityForm
+        cancelHref={CANCEL_HREF}
         tenant={makeTenant({ legalName: "PT Salah Ketik" })}
         onSaved={jest.fn()}
       />,
@@ -85,7 +93,11 @@ describe("TenantIdentityForm", () => {
 
   it("keeps Simpan shut until something changes, and while the name is empty", async () => {
     renderWithAuth(
-      <TenantIdentityForm tenant={makeTenant()} onSaved={jest.fn()} />,
+      <TenantIdentityForm
+        cancelHref={CANCEL_HREF}
+        tenant={makeTenant()}
+        onSaved={jest.fn()}
+      />,
     );
 
     const save = screen.getByRole("button", { name: /Simpan/ });
@@ -101,14 +113,20 @@ describe("TenantIdentityForm", () => {
   it("shows the values, not a form, to a role that may only read", async () => {
     renderWithAuth(
       <TenantIdentityForm
+        cancelHref={CANCEL_HREF}
         tenant={makeTenant({ taxId: "01.234.567.8-901.000" })}
         onSaved={jest.fn()}
       />,
-      { isSuperAdmin: false, permissions: [{ feature: "tenants", actions: ["read"] }] },
+      {
+        isSuperAdmin: false,
+        permissions: [{ feature: "tenants", actions: ["read"] }],
+      },
     );
 
     expect(screen.getByText("01.234.567.8-901.000")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Simpan/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Simpan/ }),
+    ).not.toBeInTheDocument();
   });
 
   /**
@@ -123,7 +141,11 @@ describe("TenantIdentityForm", () => {
         .mockResolvedValue(makeTenant());
 
       renderWithAuth(
-        <TenantIdentityForm tenant={makeTenant()} onSaved={jest.fn()} />,
+        <TenantIdentityForm
+          cancelHref={CANCEL_HREF}
+          tenant={makeTenant()}
+          onSaved={jest.fn()}
+        />,
       );
 
       await userEvent.click(screen.getByLabelText("Zona waktu"));
@@ -139,13 +161,19 @@ describe("TenantIdentityForm", () => {
 
     it("offers only Rupiah, since no second currency exists yet", async () => {
       renderWithAuth(
-        <TenantIdentityForm tenant={makeTenant()} onSaved={jest.fn()} />,
+        <TenantIdentityForm
+          cancelHref={CANCEL_HREF}
+          tenant={makeTenant()}
+          onSaved={jest.fn()}
+        />,
       );
 
       await userEvent.click(screen.getByLabelText("Mata uang"));
 
       expect(screen.getAllByRole("option")).toHaveLength(1);
-      expect(screen.getByRole("option", { name: "Rupiah (IDR)" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("option", { name: "Rupiah (IDR)" }),
+      ).toBeInTheDocument();
     });
 
     it("sends the fiscal year's start month as a number, not its label", async () => {
@@ -154,7 +182,11 @@ describe("TenantIdentityForm", () => {
         .mockResolvedValue(makeTenant());
 
       renderWithAuth(
-        <TenantIdentityForm tenant={makeTenant()} onSaved={jest.fn()} />,
+        <TenantIdentityForm
+          cancelHref={CANCEL_HREF}
+          tenant={makeTenant()}
+          onSaved={jest.fn()}
+        />,
       );
 
       await userEvent.click(screen.getByLabelText("Tahun buku"));
@@ -170,7 +202,11 @@ describe("TenantIdentityForm", () => {
 
     it("pre-selects the schema's own defaults for a tenant that never saved either", async () => {
       renderWithAuth(
-        <TenantIdentityForm tenant={makeTenant()} onSaved={jest.fn()} />,
+        <TenantIdentityForm
+          cancelHref={CANCEL_HREF}
+          tenant={makeTenant()}
+          onSaved={jest.fn()}
+        />,
       );
 
       expect(screen.getByLabelText("Format tanggal")).toHaveTextContent(
@@ -184,6 +220,7 @@ describe("TenantIdentityForm", () => {
     it("shows the friendly labels, not the raw values, to a role that may only read", () => {
       renderWithAuth(
         <TenantIdentityForm
+          cancelHref={CANCEL_HREF}
           tenant={makeTenant({
             timezone: "Asia/Jayapura",
             dateFormat: "YYYY-MM-DD",
@@ -191,7 +228,10 @@ describe("TenantIdentityForm", () => {
           })}
           onSaved={jest.fn()}
         />,
-        { isSuperAdmin: false, permissions: [{ feature: "tenants", actions: ["read"] }] },
+        {
+          isSuperAdmin: false,
+          permissions: [{ feature: "tenants", actions: ["read"] }],
+        },
       );
 
       expect(screen.getByText("Asia/Jayapura (WIT)")).toBeInTheDocument();
@@ -207,7 +247,11 @@ describe("TenantIdentityForm", () => {
       .mockRejectedValue(new ApiError("NPWP terlalu panjang", 400));
 
     renderWithAuth(
-      <TenantIdentityForm tenant={makeTenant()} onSaved={jest.fn()} />,
+      <TenantIdentityForm
+        cancelHref={CANCEL_HREF}
+        tenant={makeTenant()}
+        onSaved={jest.fn()}
+      />,
     );
 
     await userEvent.type(screen.getByLabelText(/NPWP/), "123");
@@ -222,5 +266,77 @@ describe("TenantIdentityForm", () => {
       ),
     );
     expect(screen.getByRole("button", { name: /Simpan/ })).toBeEnabled();
+  });
+  it("offers Batal as a link back to Pengaturan › Umum", () => {
+    renderWithAuth(
+      <TenantIdentityForm
+        cancelHref={CANCEL_HREF}
+        tenant={makeTenant()}
+        onSaved={jest.fn()}
+      />,
+    );
+
+    // A LINK, not a button: leaving a form is a navigation, and a link is what
+    // a middle-click and "open in new tab" expect.
+    expect(screen.getByRole("link", { name: "Batal" })).toHaveAttribute(
+      "href",
+      CANCEL_HREF,
+    );
+  });
+
+  it("calls onSaved so the screen can leave, after a successful save", async () => {
+    jest.spyOn(tenantService, "updateIdentity").mockResolvedValue(makeTenant());
+    const onSaved = jest.fn();
+
+    renderWithAuth(
+      <TenantIdentityForm
+        cancelHref={CANCEL_HREF}
+        tenant={makeTenant()}
+        onSaved={onSaved}
+      />,
+    );
+
+    await userEvent.type(screen.getByLabelText(/NPWP/), "123");
+    await userEvent.click(screen.getByRole("button", { name: /Simpan/ }));
+
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not call onSaved when the save is refused", async () => {
+    jest
+      .spyOn(tenantService, "updateIdentity")
+      .mockRejectedValue(new ApiError("NPWP terlalu panjang", 400));
+    const onSaved = jest.fn();
+
+    renderWithAuth(
+      <TenantIdentityForm
+        cancelHref={CANCEL_HREF}
+        tenant={makeTenant()}
+        onSaved={onSaved}
+      />,
+    );
+
+    await userEvent.type(screen.getByLabelText(/NPWP/), "123");
+    await userEvent.click(screen.getByRole("button", { name: /Simpan/ }));
+
+    // The screen leaves on onSaved, so calling it here would navigate away from
+    // a form whose changes were never stored.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Simpan/ })).toBeEnabled(),
+    );
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  it("says why Simpan is off before anything is edited", () => {
+    renderWithAuth(
+      <TenantIdentityForm
+        cancelHref={CANCEL_HREF}
+        tenant={makeTenant()}
+        onSaved={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /Simpan/ })).toBeDisabled();
+    expect(screen.getByText(/Belum ada yang diubah/)).toBeInTheDocument();
   });
 });

@@ -401,7 +401,6 @@ describe("GroomingServiceDetailScreen", () => {
   */
   const XL = makePetOption({
     type: "size",
-    code: "xl",
     label: "Ekstra besar",
     sortOrder: 3,
   });
@@ -410,7 +409,7 @@ describe("GroomingServiceDetailScreen", () => {
     primePetOptions(petOptionService.list, [
       XL,
       ...PET_OPTION_FIXTURES.map((option) =>
-        option.type === "size" && option.code === "medium"
+        option.type === "size" && option.label === "Sedang"
           ? { ...option, isActive: false }
           : option,
       ),

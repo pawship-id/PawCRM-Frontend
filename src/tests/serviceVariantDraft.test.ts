@@ -19,7 +19,11 @@ import {
 } from "@/features/grooming/serviceVariantDraft";
 import type { PetOption, Service } from "@/types/api";
 
-import { makePetOption, PET_OPTION_FIXTURES } from "./helpers/petOptions";
+import {
+  makePetOption,
+  petOptionId,
+  PET_OPTION_FIXTURES,
+} from "./helpers/petOptions";
 import { makeVariantOption } from "./helpers/variantOptions";
 
 /**
@@ -37,8 +41,8 @@ const BY_SIZE = {
   variantAxes: ["sizeCategory"],
   serviceLocations: ["in_store"],
   variants: [
-    { petType: null, sizeCategory: "small", furType: null, price: "89000.0000", durationMin: 45, isActive: true },
-    { petType: null, sizeCategory: "medium", furType: null, price: "129000.0000", durationMin: 60, isActive: false },
+    { petType: null, sizeCategory: "opt-size-kecil", furType: null, price: "89000.0000", durationMin: 45, isActive: true },
+    { petType: null, sizeCategory: "opt-size-sedang", furType: null, price: "129000.0000", durationMin: 60, isActive: false },
   ],
 } as unknown as Service;
 
@@ -110,7 +114,7 @@ describe("serviceVariantDraft", () => {
     const draft = seedDraft(BY_SIZE);
 
     expect(draft.place).toBe("store");
-    expect(draft.rows["medium|"]).toEqual({
+    expect(draft.rows[`${petOptionId("size", "Sedang")}|`]).toEqual({
       price: "129.000",
       duration: "60",
       active: false,
@@ -121,10 +125,10 @@ describe("serviceVariantDraft", () => {
 
     // "129000" and "129.000" are one price — not a change.
     expect(
-      draftSignature(updateRow(draft, "medium|", { price: "129000" }), TABLE),
+      draftSignature(updateRow(draft, `${petOptionId("size", "Sedang")}|`, { price: "129000" }), TABLE),
     ).toBe(draftSignature(draft, TABLE));
     expect(
-      draftSignature(updateRow(draft, "medium|", { price: "130000" }), TABLE),
+      draftSignature(updateRow(draft, `${petOptionId("size", "Sedang")}|`, { price: "130000" }), TABLE),
     ).not.toBe(draftSignature(draft, TABLE));
   });
 
@@ -189,9 +193,9 @@ describe("serviceVariantDraft", () => {
         ?.filter((variant) => variant.sizeCategory === size)
         .map((variant) => variant.price);
 
-    expect(priceOf("small")).toEqual(["100000", "100000"]);
-    expect(priceOf("medium")).toEqual(["125000", "125000"]);
-    expect(priceOf("large")).toEqual(["150000", "150000"]);
+    expect(priceOf(petOptionId("size", "Kecil"))).toEqual(["100000", "100000"]);
+    expect(priceOf(petOptionId("size", "Sedang"))).toEqual(["125000", "125000"]);
+    expect(priceOf(petOptionId("size", "Besar"))).toEqual(["150000", "150000"]);
   });
 });
 
@@ -207,8 +211,8 @@ describe("variant axis values — the tenant's lists", () => {
     const both = buildVariantCombos(["sizeCategory", "furType"], table);
     expect(both).toHaveLength(8);
     expect(both.slice(-2).map((combo) => combo.key)).toEqual([
-      "xl|long hair|",
-      "xl|short hair|",
+      `${petOptionId("size", "Ekstra besar")}|${petOptionId("furType", "Bulu panjang")}|`,
+      `${petOptionId("size", "Ekstra besar")}|${petOptionId("furType", "Bulu pendek")}|`,
     ]);
     expect(both.some((combo) => combo.retired)).toBe(false);
 
@@ -219,10 +223,10 @@ describe("variant axis values — the tenant's lists", () => {
     expect(
       patch.variants?.map((variant) => [variant.sizeCategory, variant.price]),
     ).toEqual([
-      ["small", "100000"],
-      ["medium", "125000"],
-      ["large", "150000"],
-      ["xl", "175000"],
+      [petOptionId("size", "Kecil"), "100000"],
+      [petOptionId("size", "Sedang"), "125000"],
+      [petOptionId("size", "Besar"), "150000"],
+      [petOptionId("size", "Ekstra besar"), "175000"],
     ]);
   });
 
@@ -230,26 +234,31 @@ describe("variant axis values — the tenant's lists", () => {
     const options = withOption({ ...OPTIONS[5], isActive: false });
     expect(OPTIONS[5]._id).toBe("medium");
 
+    /* An id no live option has any more — hard-deleted out from under a price. */
+    const HUGE = petOptionId("size", "Raksasa");
     const stored = [
       ...BY_SIZE.variants,
-      // A code no live option has any more.
-      { petType: null, sizeCategory: "huge", furType: null },
+      { petType: null, sizeCategory: HUGE, furType: null },
     ];
-    const table = variantAxisValues(options, stored, (_type, code) =>
-      code === "huge" ? "Raksasa" : null,
+    const table = variantAxisValues(options, stored, (_type, id) =>
+      id === HUGE ? "Raksasa" : null,
     );
 
     expect(table.sizeCategory).toEqual([
-      { value: "small", label: "Kecil", retired: false },
-      { value: "medium", label: "Sedang (nonaktif)", retired: true },
-      { value: "large", label: "Besar", retired: false },
-      { value: "huge", label: "Raksasa (nonaktif)", retired: true },
+      { value: petOptionId("size", "Kecil"), label: "Kecil", retired: false },
+      {
+        value: petOptionId("size", "Sedang"),
+        label: "Sedang (nonaktif)",
+        retired: true,
+      },
+      { value: petOptionId("size", "Besar"), label: "Besar", retired: false },
+      { value: HUGE, label: "Raksasa (nonaktif)", retired: true },
     ]);
 
     // A service that never priced it is not offered it.
     expect(
       variantAxisValues(options).sizeCategory.map((entry) => entry.value),
-    ).toEqual(["small", "large"]);
+    ).toEqual([petOptionId("size", "Kecil"), petOptionId("size", "Besar")]);
   });
 
   it("saves a retired value's row with the rest rather than dropping it", () => {
@@ -260,7 +269,7 @@ describe("variant axis values — the tenant's lists", () => {
       buildVariantCombos(["sizeCategory"], table).map((combo) => combo.retired),
     ).toEqual([false, true, false]);
 
-    const draft = updateRow(seedDraft(BY_SIZE), "large|", {
+    const draft = updateRow(seedDraft(BY_SIZE), `${petOptionId("size", "Besar")}|`, {
       price: "150.000",
       duration: "90",
     });
@@ -273,9 +282,9 @@ describe("variant axis values — the tenant's lists", () => {
         variant.isActive,
       ]),
     ).toEqual([
-      ["small", "89000", true],
-      ["medium", "129000", false],
-      ["large", "150000", true],
+      [petOptionId("size", "Kecil"), "89000", true],
+      [petOptionId("size", "Sedang"), "129000", false],
+      [petOptionId("size", "Besar"), "150000", true],
     ]);
   });
 
@@ -328,7 +337,7 @@ describe("variant axis values — the tenant's lists", () => {
     expect(draftProblem(atLimit, hundred)).toBeNull();
     // A staff axis sends its value on every row.
     expect(draftPatch(atLimit, hundred).variants?.[0]).toMatchObject({
-      sizeCategory: "small",
+      sizeCategory: "opt-size-kecil",
       choices: [{ optionId: TIER_KEY, code: "t1" }],
     });
   });
