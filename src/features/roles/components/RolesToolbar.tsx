@@ -34,7 +34,7 @@ export function RolesToolbar({
       actions={
         <Can feature="roles" action="create">
           <Button asChild>
-            <Link href="/dashboard/master/roles/new">
+            <Link href="/dashboard/pengaturan/peran/new">
               <Plus className="size-4" />
               Peran baru
             </Link>

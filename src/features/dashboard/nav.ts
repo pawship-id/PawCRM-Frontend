@@ -1,62 +1,59 @@
 import type { ComponentType, SVGProps } from "react";
-import {
-  DashboardIcon,
-  BookingIcon,
-  InventoryIcon,
-  PosIcon,
-  SalesIcon,
-  MasterDataIcon,
-  UsersIcon,
-  BranchIcon,
-  WarehouseIcon,
-  CustomerIcon,
-  RolesIcon,
-  AuditLogIcon,
-  FinanceIcon,
-  EcommerceSyncIcon,
-  ReportsIcon,
-  HotelIcon,
-  ProductIcon,
-  CategoryIcon,
-  StockCardIcon,
-  BatchIcon,
-  OpnameIcon,
-  TransferIcon,
-  AdjustmentIcon,
-  OpeningStockIcon,
-  PurchasingIcon,
-  SupplierIcon,
-  ReceiptIcon,
-  PayableIcon,
-  PurchaseReturnIcon,
-  AccountTreeIcon,
-  JournalIcon,
-} from "@/components/icons";
 /*
-  From lucide directly, not from components/icons — ui-rules §11 is retiring that
-  file, so a NEW item should not add to it.
+  lucide-react only, per ui-rules §11 — the hand-rolled @/components/icons set
+  is on the migration list and already collides with lucide on ChevronDownIcon.
+  This file used to import 32 icons from there; the rail rebuild is the moment
+  to stop, since every row here is being rewritten anyway.
 
   PawPrint despite §12's "no paw prints as bullets": that rule is about paw
-  prints used as decoration, and this is the functional icon identifying a
-  module. A species-specific alternative (Dog, Cat) would pick a side the
-  register deliberately does not.
+  prints used as decoration, and this is the functional icon identifying the
+  services module. A species-specific alternative (Dog, Cat) would pick a side
+  the register deliberately does not.
 */
-import { PawPrint, Scissors, Landmark } from "lucide-react";
+import {
+  ArrowRightLeft,
+  Bed,
+  Boxes,
+  Calculator,
+  CalendarDays,
+  Car,
+  ChartColumn,
+  ClipboardList,
+  House,
+  Package,
+  PackagePlus,
+  PawPrint,
+  Scissors,
+  ScrollText,
+  Settings,
+  ShoppingCart,
+  Truck,
+  Users,
+  Wallet,
+} from "lucide-react";
 import type {
   Action,
   Feature,
   PermissionRequirement,
 } from "@/features/permissions";
+import { SETTINGS_ROOT, SETTINGS_TABS } from "@/features/settings/paths";
 
 type Icon = ComponentType<SVGProps<SVGSVGElement>>;
 
 /**
- * The admin sidebar navigation — the single source of truth for both the
- * Sidebar links and the active-route logic. Add a section here and it appears
- * everywhere; nothing else enumerates these routes.
+ * The admin navigation — the single source of truth for both the Sidebar rows
+ * and the active-route logic. Add a section here and it appears everywhere;
+ * nothing else enumerates these routes.
  *
- * An item is either a LEAF (has `href`) or a GROUP (has `children`, an
- * expandable dropdown such as Master Data).
+ * Three levels, not two: SECTIONS ("Utama", "Operasional"…) group the ITEMS,
+ * and an item is either a LEAF (has `href`) or a GROUP (has `children`, an
+ * expandable submenu such as Inventori). The section labels are printed in the
+ * rail as small grey headings with a rule above them — they carry no route and
+ * are not clickable.
+ *
+ * The five sections follow the mockup (buloo-navbar-v3.html) and read as the
+ * shape of the business rather than of the codebase: what you open all day, the
+ * animals, the money moving in and out, the books, and the things you set once.
  */
 export interface NavChild {
   label: string;
@@ -69,11 +66,28 @@ export interface NavChild {
    */
   exact?: boolean;
   /**
+   * Extra route prefixes that light this row up as well as `href` does.
+   *
+   * For a row whose screen carries TABS THAT ARE ROUTES and one of those tabs
+   * lives outside its own prefix — Produk & Varian's Kategori tab is
+   * /dashboard/inventory/categories, a sibling of /products rather than a child.
+   * Without this the rail shows nothing selected on a screen it opened itself.
+   */
+  match?: string[];
+  /**
    * The permission a user must hold for this link to appear. Omitted means
-   * "always visible" — sections without a catalog feature yet (POS…) carry no
+   * "always visible" — sections without a catalog feature yet (Kasir…) carry no
    * requirement.
    */
   permission?: PermissionRequirement;
+  /**
+   * Count shown as a pill on the row. NOTHING SETS THIS YET, on purpose: the
+   * mockup draws badges on six rows, and there is no endpoint behind any of
+   * them. The rail already knows how to render one, so wiring a real count is a
+   * one-line change here — a made-up number in the menu would be worse than no
+   * number.
+   */
+  badge?: number;
 }
 
 export interface NavItem {
@@ -81,7 +95,7 @@ export interface NavItem {
   icon: Icon;
   /** Present on a leaf item — the route it links to. */
   href?: string;
-  /** Present on a group — the dropdown children. */
+  /** Present on a group — the submenu children. */
   children?: NavChild[];
   /**
    * Match the pathname exactly rather than by prefix. The dashboard home shares
@@ -89,408 +103,480 @@ export interface NavItem {
    */
   exact?: boolean;
   /**
+   * Extra route prefixes that light this row up as well as `href` does — see
+   * NavChild.match, which is the same field for a submenu row.
+   *
+   * The leaf case is Pelanggan: its Hewan tab lives at /dashboard/master/pets,
+   * which no amount of prefix-matching on /dashboard/master/customers covers.
+   *
+   * Prefix-matched like `href`, so a tab's own detail routes (…/pets/[id]) keep
+   * the row lit too.
+   */
+  match?: string[];
+  /**
    * The permission a leaf must hold to appear. Omitted means always visible. A
    * GROUP needs no requirement of its own: it shows when it has a visible child.
    */
   permission?: PermissionRequirement;
+  /**
+   * ANY ONE of these grants shows the row — for a leaf whose TABS are gated
+   * separately, where no single permission describes the module.
+   *
+   * ONLY LEGAL WHEN `href` IS REACHABLE BY EVERYONE THE ROW IS SHOWN TO, which
+   * in practice means an ungated hub. Pembelian qualifies: its href is the
+   * landing page, which gates each of its own cards and refuses nothing. A row
+   * whose href is itself gated must keep a single `permission` matching that
+   * href — Pelanggan, Produk & Varian, Koreksi Stok and Stok all do — because
+   * "any grant" would otherwise hand somebody a menu row that opens on a
+   * refusal, which is worse than no row at all.
+   *
+   * Mutually exclusive with `permission` in practice; if both are set, both must
+   * pass.
+   */
+  permissionAny?: PermissionRequirement[];
+  /** See NavChild.badge — unset for the same reason. */
+  badge?: number;
 }
 
-export const NAV_ITEMS: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: DashboardIcon, exact: true },
+export interface NavSection {
+  /** The grey heading above the rows. Not a route, not clickable. */
+  label: string;
+  items: NavItem[];
+}
+
+/**
+ * WHY SOME MOCKUP LEAVES ARE STILL GROUPS HERE.
+ *
+ * buloo-navbar-v3 draws Pelanggan, Penjualan, Pembelian and Inventori as single
+ * rows whose screens carry tabs (Faktur / Piutang / E-commerce / Retur…). Those
+ * tabbed screens do not exist yet, and collapsing the menu to match would leave
+ * the routes that DO exist — /purchasing/receipts, seven inventory screens —
+ * reachable only by typing a URL. So each is a group over its real routes today,
+ * and shrinks to a leaf when its tabbed screen is built.
+ *
+ * PELANGGAN ALREADY MADE THAT TRIP: its screen carries the mockup's tab bar, so
+ * the group collapsed back into the single row the mockup asks for. It is the
+ * worked example the other three follow.
+ *
+ * PENGATURAN MADE IT TOO (22 September 2026): four tabs — Umum, Layanan,
+ * Keuangan, Pengguna & Sistem — and every page under /dashboard/pengaturan, so
+ * the ten-child group it used to be is one row again.
+ */
+export const NAV_SECTIONS: NavSection[] = [
   {
-    label: "Booking",
-    href: "/dashboard/booking",
-    icon: BookingIcon,
-    /*
-      GATED NOW THAT THE SCREEN IS REAL. While Booking was a placeholder the
-      link cost nothing to show; the list behind it is gated `bookings:read` on
-      every route, so without this a user who cannot read bookings would see the
-      menu, click it, and be told the list "tidak bisa dimuat" — which reads as
-      a fault rather than a permission they do not have.
-    */
-    permission: { feature: "bookings", action: "read" },
-  },
-  /**
-   * Inventory is a GROUP rather than a leaf: the module has five screens that
-   * split cleanly into master data (products) and stock activity (the other
-   * four), and burying them behind one landing page made the daily screens two
-   * clicks away instead of one.
-   *
-   * Ordered by how the data flows rather than alphabetically — you define a
-   * product, then watch its card, then manage its lots, then count it, then
-   * move it, and only then correct it by hand. A reader learning the module
-   * top-down learns it in the right order.
-   */
-  {
-    label: "Inventory",
-    icon: InventoryIcon,
-    children: [
+    label: "Utama",
+    items: [
+      { label: "Beranda", href: "/dashboard", icon: House, exact: true },
       {
         /**
-         * The hub, first — the one screen in the module the menu used to have no
-         * way of reaching at all, so the alert lists it exists for (perlu
-         * restock, mendekati kedaluwarsa) could only be found by typing the URL.
-         *
-         * Ungated, unlike its siblings, because it has no single feature behind
-         * it: every card and both lists gate themselves, so the page is already
-         * exactly as much as the role may read. filterNavItems ignores it when
-         * deciding whether the group survives — see there.
-         *
-         * `exact`, because its href is the prefix of every sibling's: without it
-         * this row would be highlighted on all seven screens below it.
+         * Gated on READING transactions rather than opening a shift: somebody
+         * who may look at the day's sales but not ring one up should still
+         * reach the screen, where the Buka Kasir form is what they will not be
+         * offered.
          */
-        label: "Ringkasan",
-        href: "/dashboard/inventory",
-        icon: InventoryIcon,
-        exact: true,
-      },
-      {
-        label: "Produk & Varian",
-        href: "/dashboard/inventory/products",
-        icon: ProductIcon,
-        permission: { feature: "products", action: "read" },
-      },
-      {
-        // Directly under products, and above the stock screens, because it is
-        // the other half of the catalogue rather than an activity: you cannot
-        // file a product without one.
-        label: "Kategori",
-        href: "/dashboard/inventory/categories",
-        icon: CategoryIcon,
-        permission: { feature: "categories", action: "read" },
-      },
-      {
-        label: "Kartu Stok",
-        href: "/dashboard/inventory/stock-card",
-        icon: StockCardIcon,
-        permission: { feature: "stockMovements", action: "read" },
-      },
-      {
-        label: "Batch & Expired",
-        href: "/dashboard/inventory/batches",
-        icon: BatchIcon,
-        permission: { feature: "productBatches", action: "read" },
-      },
-      {
-        label: "Stok Opname",
-        href: "/dashboard/inventory/opname",
-        icon: OpnameIcon,
-        /**
-         * Gated on `stockOpnames:read`, NOT on the ledger's `create`.
-         *
-         * Counting the shelves is Staff work — it is most of the labour an
-         * opname costs — and the seeded Staff role deliberately holds
-         * create/read/update here while holding only `read` on the ledger. Gating
-         * this on `stockMovements:create` would have hidden the whole feature
-         * from exactly the people who do it, while showing it to anyone who can
-         * post a manual adjustment. The two are different privileges.
-         */
-        permission: { feature: "stockOpnames", action: "read" },
-      },
-      {
-        /**
-         * GATED ON `create` THOUGH THE PAGE ONLY NEEDS `read` — the same call
-         * Penyesuaian Stok makes below, and for the same reason. This route
-         * opens on a list now, which anybody who may page the stock card may
-         * read, but a menu row is an invitation and the screen's one action is a
-         * write. Reading it by URL still works.
-         */
-        label: "Transfer Stok",
-        href: "/dashboard/inventory/transfers",
-        icon: TransferIcon,
-        permission: { feature: "stockMovements", action: "create" },
-      },
-      {
-        /**
-         * Day one, and it sits directly above the adjustment for that reason:
-         * these two are the pair somebody chooses between, and the wrong choice
-         * is invisible until a P&L is read. Opening stock posts
-         * `opening_balance` and credits 3101 Modal / Saldo Awal; an adjustment
-         * credits 5201 Kerugian Persediaan, which is right for goods that
-         * vanished and absurd for a shop's starting inventory. Adjacent rather
-         * than merged: two named destinations are easier to aim at than one row
-         * that could be either.
-         *
-         * Gated on `products:create` rather than on `stockMovements:create` —
-         * the SAME grant that already posts an opening balance inside a product
-         * create. It is the continuation of registering a catalogue, not a
-         * correction to the ledger, and the seeded Staff role (products:read)
-         * is untouched.
-         */
-        label: "Stok Awal",
-        href: "/dashboard/inventory/opening-stock",
-        icon: OpeningStockIcon,
-        permission: { feature: "products", action: "create" },
-      },
-      {
-        /**
-         * Last, and that is the ordering doing its job rather than an
-         * afterthought. An adjustment is the correction of last resort: a real
-         * discrepancy is found by an opname, and goods that moved are moved by a
-         * transfer. Putting it above either would offer the shortcut before the
-         * procedure.
-         *
-         * NO LONGER THE DAY-ONE ROUTE. It used to be described here as how
-         * opening stock is entered, which was true only because nothing else
-         * could: a manual adjustment credits 5201 Kerugian Persediaan, so a
-         * tenant's whole starting inventory arrived as a negative expense. Stok
-         * Awal above posts it to capital.
-         *
-         * GATED ON `create` THOUGH THE PAGE ONLY NEEDS `read`. The route opens
-         * on a list now, which anybody who may page the stock card may read —
-         * but a menu row is an invitation, and inviting a role that cannot write
-         * to a screen whose one action is a write is an invitation to a disabled
-         * button. Reading it by URL still works, which is what the reports and
-         * the stock card's links rely on.
-         */
-        label: "Penyesuaian Stok",
-        href: "/dashboard/inventory/adjustments",
-        icon: AdjustmentIcon,
-        permission: { feature: "stockMovements", action: "create" },
+        label: "Kasir",
+        href: "/dashboard/pos",
+        icon: Calculator,
+        permission: { feature: "posTransactions", action: "read" },
       },
     ],
   },
-  /**
-   * Purchasing — the supply side, ordered the way a purchase actually unfolds:
-   * you set up a supplier, receive their goods, owe them money, and sometimes
-   * send some of it back.
-   *
-   * Kept separate from Inventory rather than folded into it, because the two
-   * answer different questions and are usually done by different people. Stock
-   * screens ask "what do we have"; these ask "who did we buy it from and what do
-   * we still owe". They meet at exactly one point — a goods receipt raises stock
-   * — and that seam is thin enough not to justify one menu.
-   */
   {
-    label: "Purchasing",
-    icon: PurchasingIcon,
-    children: [
+    label: "Operasional",
+    items: [
+      {
+        label: "Layanan",
+        icon: PawPrint,
+        children: [
+          {
+            /**
+             * Kalender (renamed from Hari Ini, 17 Sep 2026) — the day board, every line of business on one screen
+             * (`TodayScreen`, from `buloo-hari-ini-v1.html`). Prefix-matched
+             * (no `exact`) so /kalender, /new and /[id] keep the row lit.
+             *
+             * Gated `bookings:read`, the same grant every booking route
+             * enforces — without it a user who cannot read bookings would see
+             * the menu, click it, and be told the list "tidak bisa dimuat",
+             * which reads as a fault rather than a permission they do not have.
+             */
+            label: "Kalender",
+            href: "/dashboard/booking",
+            icon: CalendarDays,
+            permission: { feature: "bookings", action: "read" },
+          },
+          {
+            label: "Grooming",
+            href: "/dashboard/layanan/grooming",
+            icon: Scissors,
+          },
+          { label: "Hotel", href: "/dashboard/hotel", icon: Bed },
+          {
+            label: "Antar-Jemput",
+            href: "/dashboard/layanan/antar-jemput",
+            icon: Car,
+          },
+        ],
+      },
       {
         /**
-         * Same shape as the Inventory hub, and `exact` for the same reason: its
-         * href is the prefix of every sibling's, so prefix matching would light
-         * this row up on all four screens below it.
+         * A LEAF, the way the mockup draws it — the two-child group it used to
+         * be is gone.
          *
-         * Ungated, like the Inventory hub — the page gates each section itself,
-         * and the group still disappears entirely when no gated child survives.
+         * Pelanggan and Hewan are two TABS on one screen now (see
+         * CustomerModuleHeader), so the rail is back to one row and the tab bar
+         * carries the split. `match` is what keeps that row lit while the Hewan
+         * tab is open: the tab is a real route under a different prefix, and
+         * without it the menu would go dark on half of its own module.
+         *
+         * Gated on `customers:read` — the grant its own href enforces. Every
+         * seeded role holding `pets:read` holds it too (Owner, Manager, Staff),
+         * so no role loses its way to the animal register; a hand-made role
+         * granted pets alone would reach /dashboard/master/pets by URL only.
          */
-        label: "Ringkasan",
+        label: "Pelanggan",
+        /*
+          IT OPENS ON RINGKASAN, not on the register (28 September 2026, on
+          request). Ringkasan is the module's FRONT PAGE and the first tab —
+          who has stopped coming, who has just arrived — which is what somebody
+          opens the module to find out. The register is where you go when you
+          already know whose name you are after.
+
+          SAME GRANT EITHER WAY, so this does not break the rule above that a
+          gated href must match the row's own `permission`: the Ringkasan route
+          is gated on `customers:read` exactly as the register is.
+        */
+        href: "/dashboard/master/customers/ringkasan",
+        icon: Users,
+        permission: { feature: "customers", action: "read" },
+        /*
+          THE REGISTER IS A `match` NOW, and it has to be: `href` is prefix
+          matched, and `/…/customers/ringkasan` is not a prefix of
+          `/…/customers`, so without this the row would go dark the moment the
+          reader opened the Pelanggan tab. Listed as a prefix, it also covers
+          Membership, Riwayat and every customer detail route in one entry.
+        */
+        match: ["/dashboard/master/customers", "/dashboard/master/pets"],
+      },
+    ],
+  },
+  {
+    label: "Transaksi",
+    items: [
+      {
+        /**
+         * A LEAF, as the mockup draws it, with its five tabs on the screen (see
+         * SalesModuleHeader): Ringkasan, Faktur, Piutang, E-commerce, Retur.
+         *
+         * THE HREF OPENS RINGKASAN, which took `/dashboard/sales` on 29
+         * September 2026 (on request). The invoice list moved a segment down to
+         * `/dashboard/sales/invoice`, so this row still needs no `match` for it:
+         * every sales document is under the prefix this href already covers.
+         *
+         * `match` reaches OUT OF ITS OWN PREFIX for exactly one of them.
+         * E-commerce lives at /dashboard/ecommerce-sync — it predates this
+         * module and is not a sales document — so no prefix of this href covers
+         * it, and without the entry the rail would go dark on a tab it opened.
+         *
+         * Gated on `customerInvoices:read`, the grant its href enforces. Who
+         * owes a shop money is among the most commercially sensitive material
+         * here, so the row goes with that grant rather than with the two
+         * ungated placeholder tabs riding along inside it.
+         */
+        label: "Penjualan",
+        href: "/dashboard/sales",
+        icon: ShoppingCart,
+        permission: { feature: "customerInvoices", action: "read" },
+        match: ["/dashboard/ecommerce-sync"],
+      },
+      /**
+       * Pembelian — the supply side, and ONE ROW rather than the six-child group
+       * it used to be. Every screen in the module is a tab of it now (see
+       * PurchasingModuleHeader), in the order a purchase actually unfolds: the
+       * landing page, then the vendor, then their goods arriving, then what is
+       * owed for them, then what goes back. Kategori Supplier left this list on
+       * 1 October 2026 along with its tab — it is opened from a card on
+       * Pengaturan › Umum now, so `supplierCategories:read` describes nothing
+       * reachable under /dashboard/purchasing any more.
+       *
+       * Kept separate from Inventori rather than folded into it, because the two
+       * answer different questions and are usually done by different people.
+       * Stock screens ask "what do we have"; these ask "who did we buy it from
+       * and what do we still owe".
+       *
+       * NO `match` IS NEEDED, unlike the other tabbed rows: every tab lives
+       * under /dashboard/purchasing, so this href's own prefix already covers
+       * them. And no `exact` either, for the same reason — the row should light
+       * up on all five.
+       *
+       * `permissionAny` RATHER THAN ONE `permission`, and this row is the reason
+       * that field exists: four of its five tabs are gated on four different
+       * features, so no single grant describes the module. It is legal here
+       * because the href is the ungated hub — every card on it gates itself, so
+       * whoever the row is shown to lands somewhere they may read. The four
+       * grants below are exactly the four the hub's cards carry.
+       */
+      {
+        label: "Pembelian",
         href: "/dashboard/purchasing",
-        icon: PurchasingIcon,
-        exact: true,
+        icon: Truck,
+        permissionAny: [
+          { feature: "suppliers", action: "read" },
+          { feature: "goodsReceipts", action: "read" },
+          { feature: "purchaseInvoices", action: "read" },
+          { feature: "purchaseReturns", action: "read" },
+        ],
       },
+      /**
+       * Ordered by how the data flows rather than alphabetically — you define a
+       * product, then watch its card, then manage its lots, then count it, then
+       * move it, and only then correct it by hand. A reader learning the module
+       * top-down learns it in the right order.
+       */
       {
-        label: "Supplier",
-        href: "/dashboard/purchasing/suppliers",
-        icon: SupplierIcon,
-        permission: { feature: "suppliers", action: "read" },
-      },
-      {
-        /**
-         * Directly under Supplier, because it is that list's setup screen — the
-         * same neighbouring the Inventory group gives Kategori under Produk.
-         *
-         * `CategoryIcon`, shared with the product Kategori item, and that is the
-         * intended reading: the two are the same kind of thing (a label set a
-         * tenant maintains), told apart by which group they sit in rather than
-         * by a second icon nobody would learn.
-         *
-         * Gated on its own feature, not on `suppliers`: a role that may read the
-         * vendor list does not automatically get its taxonomy.
-         */
-        label: "Kategori Supplier",
-        href: "/dashboard/purchasing/supplier-categories",
-        icon: CategoryIcon,
-        permission: { feature: "supplierCategories", action: "read" },
-      },
-      {
-        label: "Penerimaan Barang",
-        href: "/dashboard/purchasing/receipts",
-        icon: ReceiptIcon,
-        permission: { feature: "goodsReceipts", action: "read" },
-      },
-      {
-        label: "Faktur Pembelian",
-        href: "/dashboard/purchasing/payables",
-        icon: PayableIcon,
-        permission: { feature: "purchaseInvoices", action: "read" },
-      },
-      {
-        label: "Retur ke Supplier",
-        href: "/dashboard/purchasing/returns",
-        icon: PurchaseReturnIcon,
-        permission: { feature: "purchaseReturns", action: "read" },
+        label: "Inventori",
+        icon: Package,
+        children: [
+          {
+            /**
+             * The hub, first — the one screen in the module the menu used to
+             * have no way of reaching at all, so the alert lists it exists for
+             * (perlu restock, mendekati kedaluwarsa) could only be found by
+             * typing the URL.
+             *
+             * Ungated, unlike its siblings, because it has no single feature
+             * behind it: every card and both lists gate themselves, so the page
+             * is already exactly as much as the role may read. filterNavItems
+             * ignores it when deciding whether the group survives — see there.
+             *
+             * `exact`, because its href is the prefix of every sibling's.
+             */
+            label: "Ringkasan",
+            href: "/dashboard/inventory",
+            icon: Package,
+            exact: true,
+          },
+          {
+            /**
+             * ONE ROW FOR THE WHOLE CATALOGUE, as the mockup draws it. Kategori
+             * used to be a row of its own directly beneath this one; it is a TAB
+             * on this screen now (see CatalogModuleHeader), which is the shape
+             * the two always had — you cannot file a product without one, and
+             * neither list is read for long without the other.
+             *
+             * `match` keeps the row lit on that tab: /inventory/categories is a
+             * SIBLING of /inventory/products, not a child, so no prefix of this
+             * href will ever cover it.
+             *
+             * Gated on `products:read`, the grant its href enforces. A role
+             * holding `categories:read` alone now reaches the category list by
+             * URL only — the seeded roles grant the two together (Owner,
+             * Manager, and Staff read both).
+             */
+            label: "Produk & Varian",
+            href: "/dashboard/inventory/products",
+            icon: Boxes,
+            permission: { feature: "products", action: "read" },
+            match: ["/dashboard/inventory/categories"],
+          },
+          {
+            /**
+             * ONE ROW FOR BOTH READINGS OF THE SAME STOCK, as the mockup draws
+             * it. Kartu Stok answers "what happened to this product" and Batch &
+             * Expired answers "what is on the shelf and how long has it got" —
+             * a shop checking one almost always checks the other, and the rail
+             * listed them as two subjects. They are tabs of one screen now (see
+             * StockModuleHeader).
+             *
+             * `match` keeps the row lit on that second tab: /inventory/batches is
+             * a SIBLING of /inventory/stock-card, so no prefix of this href
+             * covers it.
+             *
+             * Gated on `stockMovements:read`, the grant its href enforces. The
+             * seeded roles that hold it also hold `productBatches:read`, so no
+             * role loses its way to the lot report; a hand-made role granted
+             * batches alone reaches /inventory/batches by URL only.
+             */
+            label: "Stok",
+            href: "/dashboard/inventory/stock-card",
+            icon: ScrollText,
+            permission: { feature: "stockMovements", action: "read" },
+            match: ["/dashboard/inventory/batches"],
+          },
+          {
+            /**
+             * ONE ROW FOR BOTH WAYS A CORRECTION IS MADE, as the mockup draws it
+             * — and as the mockup explains it: "Opname menghasilkan koreksi.
+             * Keduanya dokumen yang sama, cuma cara membuatnya beda." Penyesuaian
+             * Stok used to be a row of its own at the bottom of this group; it is
+             * a TAB on this screen now (see StockCorrectionModuleHeader).
+             *
+             * `match` keeps the row lit on that tab: /inventory/adjustments is a
+             * SIBLING of /inventory/opname, so no prefix of this href covers it.
+             *
+             * Gated on `stockOpnames:read`, NOT on the ledger's `create`.
+             * Counting the shelves is Staff work — it is most of the labour an
+             * opname costs — and the seeded Staff role deliberately holds
+             * create/read/update here while holding only `read` on the ledger.
+             * Gating this on `stockMovements:create` would have hidden the whole
+             * feature from exactly the people who do it, while showing it to
+             * anyone who can post a manual adjustment.
+             *
+             * WHAT THAT COSTS, stated plainly: the old Penyesuaian Stok row was
+             * gated on `stockMovements:create` on purpose — a menu row is an
+             * invitation and that screen's one action is a write. Its tab is
+             * gated on `read` now, so a role holding the ledger's read but no
+             * count grant loses this row entirely and reaches the adjustment list
+             * by URL, while Staff (who holds both) is newly offered a list it was
+             * always allowed to read. The create button inside is still gated on
+             * create.
+             */
+            label: "Koreksi Stok",
+            href: "/dashboard/inventory/opname",
+            icon: ClipboardList,
+            permission: { feature: "stockOpnames", action: "read" },
+            match: ["/dashboard/inventory/adjustments"],
+          },
+          {
+            /**
+             * GATED ON `create` THOUGH THE PAGE ONLY NEEDS `read` — the same
+             * call Penyesuaian Stok makes below, and for the same reason. This
+             * route opens on a list, which anybody who may page the stock card
+             * may read, but a menu row is an invitation and the screen's one
+             * action is a write. Reading it by URL still works.
+             */
+            label: "Transfer Stok",
+            href: "/dashboard/inventory/transfers",
+            icon: ArrowRightLeft,
+            permission: { feature: "stockMovements", action: "create" },
+          },
+          {
+            /**
+             * Day one — and it stands alone at the end of the group now, which
+             * is a LOSS worth recording rather than a tidy-up. It used to sit
+             * directly above Penyesuaian Stok because those two are the pair
+             * somebody chooses between and the wrong choice is invisible until a
+             * P&L is read: opening stock posts `opening_balance` and credits
+             * 3101 Modal Disetor, while an adjustment credits 5201 Kerugian
+             * Persediaan — right for goods that vanished, absurd for a shop's
+             * starting inventory. The adjustment moved into Koreksi Stok, so the
+             * adjacency that made the pair legible is gone and the two forms are
+             * on their own to tell them apart.
+             *
+             * The mockup does not list this screen at all: stock awal is a step
+             * of Pengaturan › Data Awal there. When that hub is built, this row
+             * leaves Inventori and the loss above stops mattering.
+             *
+             * Gated on `products:create` rather than `stockMovements:create` —
+             * the SAME grant that already posts an opening balance inside a
+             * product create. It is the continuation of registering a catalogue,
+             * not a correction to the ledger.
+             */
+            label: "Stok Awal",
+            href: "/dashboard/inventory/opening-stock",
+            icon: PackagePlus,
+            permission: { feature: "products", action: "create" },
+          },
+        ],
       },
     ],
   },
-  /**
-   * Gated on READING transactions rather than opening a shift: somebody who may
-   * look at the day's sales but not ring one up should still reach the screen,
-   * where the Buka Kasir form is what they will not be offered.
-   */
-  {
-    // "Kasir", not "POS" — ui-rules §12 lists POS among the words the product
-    // does not use. The route keeps its identifier.
-    label: "Kasir",
-    href: "/dashboard/pos",
-    icon: PosIcon,
-    permission: { feature: "posTransactions", action: "read" },
-  },
-  /**
-   * A LEAF, not a group. The module has one destination — the receivables list —
-   * and a dropdown over a single entry is a click that answers nothing. It grows
-   * a Ringkasan and a create route with PCR-030.
-   *
-   * GATED, which it was not before: until the screen existed there was nothing
-   * behind this link to protect, and docs/features/permission-gating.md lists it
-   * among the sections without a catalog feature. It has one now, and who owes a
-   * shop money is not something every role should see.
-   */
-  {
-    label: "Sales & Invoice",
-    href: "/dashboard/sales",
-    icon: SalesIcon,
-    permission: { feature: "customerInvoices", action: "read" },
-  },
-  /**
-   * Keuangan — a GROUP rather than a leaf, now that the module has screens.
-   *
-   * Ordered the way double-entry bookkeeping is learned and the way the data
-   * depends: the chart of accounts first, because a journal line has nowhere to
-   * land without it, then the ledger those accounts are posted to. Reports
-   * (laba rugi, neraca, arus kas) are queries over the ledger and will slot in
-   * below it when they exist — they are deliberately not listed yet.
-   */
   {
     label: "Keuangan",
-    icon: FinanceIcon,
-    children: [
+    items: [
+      /**
+       * Ordered the way double-entry bookkeeping is learned and the way the data
+       * depends: the chart of accounts first, because a journal line has nowhere
+       * to land without it, then the ledger those accounts are posted to, then
+       * the reports that read it.
+       */
       {
-        // The hub, `exact` for the same reason the Inventory and Purchasing
-        // ones are: its href is the prefix of every sibling's, so prefix
-        // matching would light this row up on all of them. Ungated like those
-        // two — the page gates each card itself.
-        label: "Ringkasan",
+        /**
+         * A LEAF with the module's tabs — Ringkasan, Transaksi, Kas & Bank,
+         * Komisi, Daftar Akun, Jurnal (see AccountingModuleHeader).
+         *
+         * THREE OF THE SEVEN OLD ROWS ARE NOT TABS, and their screens are NOT
+         * deleted. Laba Rugi, Neraca and Arus Kas are cards in the Laporan hub
+         * (ReportsHub) since 22 September 2026, when the v3 mockup took the link
+         * cards off Ringkasan. Lini Bisnis is reached from Ringkasan's "Laba per
+         * lini bisnis" panel ("Kelola lini bisnis"); the mockup files it under
+         * `Pengaturan › Keuangan`, which is not built yet.
+         *
+         * NO `match` NEEDED. Komisi moved to /dashboard/keuangan/komisi, inside
+         * this href's own prefix; its old address under /dashboard/reports
+         * redirects there on the server, so the rail never renders on it.
+         *
+         * `permissionAny` for the same reason Pembelian has it: the href is the
+         * ungated landing page, and no single grant describes a module whose tabs
+         * are gated on three different features. `users:read` is deliberately NOT
+         * among them — it is the payroll grant that opens the Komisi tab, and an
+         * HR account with no finance grant has no business being offered the
+         * whole finance module.
+         */
+        label: "Keuangan",
         href: "/dashboard/keuangan",
-        icon: FinanceIcon,
-        exact: true,
+        icon: Wallet,
+        permissionAny: [
+          { feature: "paymentChannels", action: "read" },
+          { feature: "journalEntries", action: "read" },
+          // Transaksi Keuangan — a Staff account that records petty cash and
+          // holds no ledger grant still needs the way in.
+          { feature: "cashTransactions", action: "read" },
+          /*
+            `chartOfAccounts:read` LEFT THIS LIST on 20 September 2026, when
+            Daftar Akun moved to Pengaturan. It was here because the screen was a
+            tab of this module; it is not any more, so the grant alone no longer
+            opens anything under /keuangan — and a Keuangan row that led to a hub
+            of cards the reader may not open is a row that only disappoints.
+            Somebody holding it now sees Pengaturan › Daftar Akun instead.
+          */
+        ],
       },
       {
-        label: "Daftar Akun",
-        href: "/dashboard/keuangan/chart-of-accounts",
-        icon: AccountTreeIcon,
-        permission: { feature: "chartOfAccounts", action: "read" },
-      },
-      {
-        // Straight after the chart, because a channel's whole purpose is the
-        // account it points at — you cannot map one before the accounts exist.
-        label: "Kas & Bank",
-        href: "/dashboard/keuangan/kas-bank",
-        icon: Landmark,
-        permission: { feature: "paymentChannels", action: "read" },
-      },
-      {
-        label: "Jurnal Umum",
-        href: "/dashboard/keuangan/journal-entries",
-        icon: JournalIcon,
-        permission: { feature: "journalEntries", action: "read" },
-      },
-      // The two reports sit between the ledger and the setup rows, because that
-      // is the order they are used in: the ledger is what is recorded, these are
-      // what it is read as, and Lini Bisnis is configuration visited twice a
-      // year. Both are gated on `journalEntries` — a report is the ledger folded,
-      // so there is no narrower grant that would make sense.
-      {
-        label: "Laba Rugi",
-        href: "/dashboard/keuangan/laba-rugi",
-        icon: FinanceIcon,
-        permission: { feature: "journalEntries", action: "read" },
-      },
-      {
-        label: "Arus Kas",
-        href: "/dashboard/keuangan/arus-kas",
-        icon: FinanceIcon,
-        permission: { feature: "journalEntries", action: "read" },
-      },
-      {
-        // Last of the four: the chart and the ledger are opened daily, while the
-        // lines of business are set up once and revisited when the shop adds a
-        // service.
-        label: "Lini Bisnis",
-        href: "/dashboard/keuangan/business-lines",
-        icon: FinanceIcon,
-        permission: { feature: "businessLines", action: "read" },
+        /**
+         * A LEAF, not a group, unlike its four neighbours — and deliberately so.
+         * The sub-reports are reached from ReportsHub, which gates each card on
+         * the grant its own destination enforces; listing them here would
+         * duplicate that gating in a second place and get it wrong.
+         */
+        label: "Laporan",
+        href: "/dashboard/reports",
+        icon: ChartColumn,
       },
     ],
   },
   {
-    label: "E-commerce Sync",
-    href: "/dashboard/ecommerce-sync",
-    icon: EcommerceSyncIcon,
-  },
-  { label: "Reports", href: "/dashboard/reports", icon: ReportsIcon },
-  { label: "Hotel", href: "/dashboard/hotel", icon: HotelIcon },
-  {
-    label: "Master Data",
-    icon: MasterDataIcon,
-    children: [
+    label: "Sistem",
+    items: [
       {
-        label: "User",
-        href: "/dashboard/master/users",
-        icon: UsersIcon,
-        permission: { feature: "users", action: "read" },
-      },
-      {
-        label: "Branch",
-        href: "/dashboard/master/branches",
-        icon: BranchIcon,
-        permission: { feature: "branches", action: "read" },
-      },
-      {
-        // Directly under Branch: a warehouse is its sibling, not its child —
-        // stock location vs. bookkeeping unit — and the pair is read together.
-        // Labelled in English like its Master Data siblings (User, Branch,
-        // Customer), not "Gudang" like the Indonesian Inventory group.
-        label: "Warehouse",
-        href: "/dashboard/master/warehouses",
-        icon: WarehouseIcon,
-        permission: { feature: "warehouses", action: "read" },
-      },
-      {
-        label: "Customer",
-        href: "/dashboard/master/customers",
-        icon: CustomerIcon,
-        permission: { feature: "customers", action: "read" },
-      },
-      {
-        // Directly under Customer, because that is the relationship: every pet
-        // belongs to one, and the register is unreadable without knowing whose
-        // animals you are looking at.
-        label: "Hewan",
-        href: "/dashboard/master/pets",
-        icon: PawPrint,
-        permission: { feature: "pets", action: "read" },
-      },
-      {
-        // Beside Hewan rather than under Inventory → Produk, because the split is
-        // about who edits: the groomer who prices a bath is not the person
-        // pricing sacks of feed, and the RBAC catalogue makes the same split.
-        label: "Layanan",
-        href: "/dashboard/master/layanan",
-        icon: Scissors,
-        permission: { feature: "services", action: "read" },
-      },
-      {
-        label: "Roles",
-        href: "/dashboard/master/roles",
-        icon: RolesIcon,
-        permission: { feature: "roles", action: "read" },
-      },
-      {
-        label: "Audit Log",
-        href: "/dashboard/master/audit-logs",
-        icon: AuditLogIcon,
-        permission: { feature: "auditLogs", action: "read" },
+        /**
+         * ONE ROW SINCE 22 SEPTEMBER 2026, as the mockup draws it
+         * (`buloo-navigation-v3`): its screen carries four tabs — Umum, Layanan,
+         * Keuangan, Pengguna & Sistem — and every page they open lives under
+         * /dashboard/pengaturan, so prefix-matching `href`'s parent keeps the
+         * row lit on all of them. It used to be a group of ten children, which
+         * is what the tabs replaced.
+         *
+         * `permissionAny`, NOT `permission`: the href is Umum, an ungated page
+         * whose sections gate themselves, so the row may show for anybody
+         * holding at least one grant a Pengaturan page reads. A role holding
+         * none of them — the old group's rule — still gets no row.
+         */
+        label: "Pengaturan",
+        href: SETTINGS_TABS.umum,
+        icon: Settings,
+        match: [SETTINGS_ROOT],
+        permissionAny: [
+          { feature: "tenants", action: "read" },
+          { feature: "branches", action: "read" },
+          { feature: "warehouses", action: "read" },
+          { feature: "services", action: "read" },
+          { feature: "chartOfAccounts", action: "read" },
+          { feature: "paymentChannels", action: "read" },
+          { feature: "businessLines", action: "read" },
+          { feature: "users", action: "read" },
+          { feature: "roles", action: "read" },
+          { feature: "auditLogs", action: "read" },
+        ],
       },
     ],
   },
@@ -500,20 +586,31 @@ export const NAV_ITEMS: NavItem[] = [
 export type CanFn = (feature: Feature, action: Action) => boolean;
 
 /**
- * Narrows NAV_ITEMS to what `can` permits: a leaf is dropped when its
+ * Narrows one section's items to what `can` permits: a leaf is dropped when its
  * `permission` is not granted; a group keeps only its permitted children and is
- * itself dropped when no GATED child survives. Items with no `permission`
- * always pass. Pure — the Sidebar memoizes it against the current `can`.
+ * itself dropped when no GATED child survives. Items with no `permission` always
+ * pass. Pure — the Sidebar memoizes it against the current `can`.
  *
  * A group's survival is decided by its gated children alone. An ungated child
- * (the Inventory hub) rides along with whatever else the role may see, but
- * cannot on its own keep a group open: a role with no inventory grant at all
- * would then get an Inventory menu whose one destination is a landing page
- * telling it, seven times over, that it may not read any of this.
+ * (the Inventori hub, the Grooming placeholder) rides along with whatever else
+ * the role may see, but cannot on its own keep a group open: a role with no
+ * inventory grant at all would then get an Inventori menu whose one destination
+ * is a landing page telling it, seven times over, that it may not read any of
+ * this.
  */
 export function filterNavItems(items: NavItem[], can: CanFn): NavItem[] {
   const allowed = (req?: PermissionRequirement) =>
     !req || can(req.feature, req.action);
+
+  /**
+   * A leaf survives when its own `permission` passes AND, if it names a set,
+   * when at least one of `permissionAny` does. An empty set would be read as
+   * "nobody" rather than as "no requirement", which is why the length check is
+   * here rather than a bare `.some()`.
+   */
+  const leafAllowed = (item: NavItem) =>
+    allowed(item.permission) &&
+    (!item.permissionAny?.length || item.permissionAny.some(allowed));
 
   return items.reduce<NavItem[]>((visible, item) => {
     if (item.children) {
@@ -523,9 +620,25 @@ export function filterNavItems(items: NavItem[], can: CanFn): NavItem[] {
       if (children.some((child) => child.permission)) {
         visible.push({ ...item, children });
       }
-    } else if (allowed(item.permission)) {
+    } else if (leafAllowed(item)) {
       visible.push(item);
     }
+    return visible;
+  }, []);
+}
+
+/**
+ * The same filter over the whole rail, dropping any section left with no items.
+ * A section label is a heading with a rule above it; one printed over nothing
+ * reads as a menu that failed to load.
+ */
+export function filterNavSections(
+  sections: NavSection[],
+  can: CanFn,
+): NavSection[] {
+  return sections.reduce<NavSection[]>((visible, section) => {
+    const items = filterNavItems(section.items, can);
+    if (items.length) visible.push({ ...section, items });
     return visible;
   }, []);
 }
@@ -541,12 +654,25 @@ export function isActiveHref(
     : pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/**
+ * Whether a submenu row is the active one — its own href, or any of the extra
+ * prefixes its tabbed screen reaches (NavChild.match).
+ *
+ * The `match` prefixes are never `exact`: a tab's own detail routes belong to
+ * the same row as the tab.
+ */
+export function isActiveChild(child: NavChild, pathname: string): boolean {
+  return (
+    isActiveHref(child.href, pathname, child.exact) ||
+    (child.match ?? []).some((href) => isActiveHref(href, pathname))
+  );
+}
+
 /** Whether a nav item (leaf or group) is active for the given pathname. */
 export function isActive(item: NavItem, pathname: string): boolean {
   if (item.children) {
-    return item.children.some((child) =>
-      isActiveHref(child.href, pathname, child.exact),
-    );
+    return item.children.some((child) => isActiveChild(child, pathname));
   }
-  return item.href ? isActiveHref(item.href, pathname, item.exact) : false;
+  if (item.href && isActiveHref(item.href, pathname, item.exact)) return true;
+  return (item.match ?? []).some((href) => isActiveHref(href, pathname));
 }

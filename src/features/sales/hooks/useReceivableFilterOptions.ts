@@ -2,64 +2,41 @@
 
 import { useEffect, useState } from "react";
 
-import { branchService } from "@/services/branch.service";
-import { customerService } from "@/services/customer.service";
-import type { Branch, Customer } from "@/types/api";
+import { customerInvoiceService } from "@/services/customerInvoice.service";
+import type { CustomerInvoiceFilterOptions } from "@/types/api";
 
-/** One page each; a tenant has tens of branches, not thousands. */
-const BRANCH_LIMIT = 100;
-
-/**
- * Customers are not tens. A shop with three years of walk-ins has thousands, and
- * the picker is a dropdown rather than a search-as-you-type — so this is
- * deliberately the FIRST page rather than "all of them", and the filter is a
- * convenience over the regulars rather than a directory.
- *
- * WHY THAT IS ACCEPTABLE HERE: the customers who appear on a receivables screen
- * are the ones a shop gives credit to, which is a short list by nature. Somebody
- * looking for a debtor outside it opens that customer's own page.
- */
-const CUSTOMER_LIMIT = 100;
-
-interface ReceivableFilterOptions {
-  customers: Customer[];
-  branches: Branch[];
-}
+const EMPTY: CustomerInvoiceFilterOptions = {
+  branches: [],
+  warehouses: [],
+  creators: [],
+};
 
 /**
- * The two dropdowns the receivables list filters by.
+ * The cabang, gudang and kasir the Penjualan list can be filtered by.
  *
- * DELIBERATELY UNFILTERED — no `isActive`, no live-only. This feeds a READ, and
- * a customer removed last month still owes what they owed: a filter that cannot
- * name them is a filter that cannot find their debts. The same holds for a
- * branch that has since shut — its books still carry them. The same argument
- * `useReceiptFilterOptions` makes on the buying side.
+ * FROM `/customer-invoices/filter-options`, NOT FROM THE MASTER LISTS. Two
+ * reasons, and the second is the one that forced it:
  *
- * NO `loading` AND NO `error`. A filter whose options have not arrived yet shows
- * "Semua pelanggan", which is the correct answer for an unset filter anyway, and
- * a failure leaves the list unfiltered rather than blocking a screen whose own
- * data loaded fine. `customers:read` and `branches:read` are separate permissions
- * from `customerInvoices:read`, so a role may legitimately hold one and not the
- * others.
+ *   - only values that appear on an invoice come back, so no option empties the
+ *     table the moment it is picked;
+ *   - `/branches` and `/users` are gated on `branches:read` and `users:read`,
+ *     which a collections role reading this screen very often lacks. Its Kasir
+ *     filter used to be impossible to fill for exactly the people who use it.
+ *
+ * NO `loading` AND NO `error`. A filter whose options have not arrived shows
+ * "Semua …", which is the right answer for an unset filter anyway, and a failure
+ * leaves the list unfiltered rather than blocking a screen whose rows loaded.
  */
-export function useReceivableFilterOptions(): ReceivableFilterOptions {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [branches, setBranches] = useState<Branch[]>([]);
+export function useReceivableFilterOptions(): CustomerInvoiceFilterOptions {
+  const [options, setOptions] = useState<CustomerInvoiceFilterOptions>(EMPTY);
 
   useEffect(() => {
     let active = true;
 
-    customerService
-      .list({ limit: CUSTOMER_LIMIT })
+    customerInvoiceService
+      .filterOptions()
       .then((result) => {
-        if (active) setCustomers(result.items);
-      })
-      .catch(() => undefined);
-
-    branchService
-      .list({ limit: BRANCH_LIMIT })
-      .then((result) => {
-        if (active) setBranches(result.items);
+        if (active) setOptions(result);
       })
       .catch(() => undefined);
 
@@ -68,5 +45,5 @@ export function useReceivableFilterOptions(): ReceivableFilterOptions {
     };
   }, []);
 
-  return { customers, branches };
+  return options;
 }

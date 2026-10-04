@@ -227,3 +227,133 @@ describe("tax-inclusive versus tax-exclusive pricing", () => {
     expect(preview.grandTotal).toBe("99900.0000");
   });
 });
+
+/**
+ * EACH LINE'S SLICE OF THE TAX — the form's Pajak column.
+ *
+ * The server taxes the WHOLE document and allocates the tax back down by each
+ * line's net after both discounts; these are that rule's cases, so the column
+ * reads what the saved invoice will freeze per line.
+ */
+/*
+  OTHER CHARGES (14 September 2026) — the server's step 5: added after both
+  discounts, inside the taxed base. The same cases `invoicePricing.test.js`
+  asserts, so the form cannot quote a delivery the bill then prices differently.
+*/
+describe("other charges", () => {
+  it("adds a charge after the discounts, which do not touch it", () => {
+    const preview = previewInvoice(
+      [{ qty: "1", unitPrice: "100000" }],
+      { mode: "percent", value: "10" },
+      { otherCharges: [{ amount: "20000" }] },
+    );
+
+    expect(preview.invoiceDiscount).toBe("10000.0000");
+    expect(preview.otherCharges).toBe("20000.0000");
+    expect(preview.grandTotal).toBe("110000.0000");
+  });
+
+  it("taxes a charge on top when prices exclude tax", () => {
+    const preview = previewInvoice([{ qty: "1", unitPrice: "100000" }], null, {
+      priceIncludesTax: false,
+      taxRate: 11,
+      otherCharges: [{ amount: "20000" }],
+    });
+
+    expect(preview.taxAdded).toBe("13200.0000");
+    expect(preview.grandTotal).toBe("133200.0000");
+  });
+
+  it("leaves the charge its own share of an inclusive tax", () => {
+    // 133.200 gross holds 13.200 PPN; the line is worth 111.000 of it → 11.000.
+    const preview = previewInvoice([{ qty: "1", unitPrice: "111000" }], null, {
+      priceIncludesTax: true,
+      taxRate: 11,
+      otherCharges: [{ amount: "22200" }],
+    });
+
+    expect(preview.lineTaxes).toEqual(["11000.0000"]);
+    expect(preview.grandTotal).toBe("133200.0000");
+  });
+});
+
+describe("the tax on each line", () => {
+  it("unwinds the tax inside an inclusive price", () => {
+    const preview = previewInvoice([{ qty: "1", unitPrice: "111000" }], null, {
+      priceIncludesTax: true,
+      taxRate: 11,
+    });
+
+    expect(preview.lineTaxes).toEqual(["11000.0000"]);
+  });
+
+  /*
+    BY NET VALUE AFTER BOTH DISCOUNTS. A 10% invoice discount leaves 810.000 and
+    90.000; 11% of the 900.000 left is 99.000, split 89.100 / 9.900.
+  */
+  it("allocates the document's added tax by what each line is worth", () => {
+    const preview = previewInvoice(
+      [
+        { qty: "1", unitPrice: "900000" },
+        { qty: "1", unitPrice: "100000" },
+      ],
+      { mode: "percent", value: "10" },
+      { priceIncludesTax: false, taxRate: 11 },
+    );
+
+    expect(preview.lineTaxes).toEqual(["89100.0000", "9900.0000"]);
+    expect(preview.taxAdded).toBe("99000.0000");
+  });
+
+  /*
+    LARGEST REMAINDER, like the server: three equal lines and a tax that does not
+    divide by three hand the two leftover minor units to the earliest lines, and
+    the parts still sum to exactly the whole.
+  */
+  it("keeps the parts summing to the document's tax", () => {
+    const preview = previewInvoice(
+      [
+        { qty: "1", unitPrice: "33333.3333" },
+        { qty: "1", unitPrice: "33333.3333" },
+        { qty: "1", unitPrice: "33333.3333" },
+      ],
+      null,
+      { priceIncludesTax: false, taxRate: 11 },
+    );
+
+    expect(preview.taxAdded).toBe("11000.0000");
+    expect(preview.lineTaxes).toEqual(["3666.6667", "3666.6667", "3666.6666"]);
+  });
+
+  /*
+    INCLUSIVE, WITH BOTH KINDS OF DISCOUNT — the branch where the gross and the
+    discounts are unwound separately, and the likeliest to drift by a minor unit.
+    The figures are what the server's `priceInvoice` returns for these inputs.
+  */
+  it("matches the server on inclusive prices after both discounts", () => {
+    const preview = previewInvoice(
+      [
+        {
+          qty: "2",
+          unitPrice: "150000",
+          discount: { mode: "percent", value: "7.5" },
+        },
+        {
+          qty: "1",
+          unitPrice: "45000",
+          discount: { mode: "amount", value: "5000" },
+        },
+      ],
+      { mode: "percent", value: "10" },
+      { priceIncludesTax: true, taxRate: 11 },
+    );
+
+    expect(preview.lineTaxes).toEqual(["24750.0000", "3567.5676"]);
+  });
+
+  it("is zero on every line when the tenant charges no tax", () => {
+    const preview = previewInvoice([{ qty: "2", unitPrice: "50000" }]);
+
+    expect(preview.lineTaxes).toEqual(["0.0000"]);
+  });
+});

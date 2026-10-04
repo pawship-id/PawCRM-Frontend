@@ -16,7 +16,7 @@ import type { GeoLocation, GeoLocationInput } from "@/types/api";
  * until it lands. Every form therefore talks to this component through a
  * `{ lat, lng }` value object and never to two loose input strings, so the
  * picker replaces the INSIDE of this file — a Places autocomplete and a
- * draggable marker — while BranchCreateForm, BranchEditForm and both warehouse
+ * draggable marker — while BranchEditForm and both warehouse
  * forms stay exactly as they are.
  *
  * The value is held as STRINGS, not numbers. Number-typed state cannot hold

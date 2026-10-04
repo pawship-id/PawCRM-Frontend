@@ -14,24 +14,48 @@ import type { Crumb } from "@/components";
  */
 export const ACCOUNTING_CRUMBS = {
   hub: { label: "Keuangan", href: "/dashboard/keuangan" },
+  /**
+   * Kas & Bank — and the trail a transaction hangs from, since Transaksi became
+   * its first sub-tab rather than a tab of its own.
+   */
+  cashBank: {
+    label: "Kas & Bank",
+    href: "/dashboard/keuangan/kas-bank",
+  },
   profitLoss: {
     label: "Laba Rugi",
     href: "/dashboard/keuangan/laba-rugi",
+  },
+  balanceSheet: {
+    label: "Neraca",
+    href: "/dashboard/keuangan/neraca",
   },
   cashflow: {
     label: "Arus Kas",
     href: "/dashboard/keuangan/arus-kas",
   },
+  /**
+   * THE ONE ENTRY THAT IS NOT UNDER /keuangan — the chart of accounts moved to
+   * Pengaturan on 20 September 2026, per the BO mockup. It stays in this map
+   * because it is still the accounting feature's screen and half a dozen files
+   * link to it from inside the module; the old address redirects.
+   */
   accounts: {
     label: "Daftar Akun",
-    href: "/dashboard/keuangan/chart-of-accounts",
+    href: "/dashboard/pengaturan/daftar-akun",
   },
   journal: {
-    label: "Jurnal Umum",
+    // "Jurnal", the tab's own name — the mockup's trail and the tab it came
+    // from read the same word (21 September 2026).
+    label: "Jurnal",
     href: "/dashboard/keuangan/journal-entries",
   },
+  /**
+   * Also under Pengaturan since 22 September 2026, beside Daftar Akun — the
+   * mockup files it there. Same reason `accounts` is in this map.
+   */
   businessLines: {
     label: "Lini Bisnis",
-    href: "/dashboard/keuangan/business-lines",
+    href: "/dashboard/pengaturan/lini-bisnis",
   },
 } satisfies Record<string, Crumb>;

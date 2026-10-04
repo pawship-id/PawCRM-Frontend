@@ -12,6 +12,7 @@
  * movement and HPP rows verbatim, so redeclaring them here would be a second
  * definition of the same payload that drifts the first time the gateway changes.
  */
+import type { CashflowType } from "./accounting";
 import type { MediaAsset, PreviewHpp, PreviewMovementRow } from "./inventory";
 
 /**
@@ -70,6 +71,10 @@ export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
 export interface ValidationDetail {
   field: string;
   message: string;
+  /** A price refused for a missing "Dipilih staf" choice — which card (17 September 2026). */
+  optionId?: string;
+  /** A price refused because the customer's zone is unknown — why. */
+  zoneReason?: "customer_location_missing" | "branch_location_missing" | "outside_zones";
 }
 
 /** Payload of GET /api/health. */
@@ -201,7 +206,29 @@ export interface User {
    * all read it. Before it existed they read "every active user".
    */
   isGroomer: boolean;
+  /**
+   * Drives the antar-jemput van (21 September 2026) — the roster a ride's PIC
+   * is picked from, as `isGroomer` is for a bath. Optional for older responses.
+   */
+  isDriver?: boolean;
+  /**
+   * How senior this groomer is — shown beside the name on a session's crew
+   * ("Sinta · Senior"). A label only; `null` when nobody has set it.
+   */
+  groomerLevel: GroomerLevel | null;
+  /**
+   * ⚠️ NO LONGER READ BY THE SERVER (13 September 2026). Commission is one rule
+   * for the whole shop now — `TenantSettings.grooming.commission` — and nothing
+   * in this app sets it. Still typed because old users come back carrying it.
+   */
   commissionRate: CommissionRate | null;
+  /**
+   * THIS GROOMER'S MINUTES PER DAY, when they differ from the shop's
+   * `grooming.capacity.defaultMinutes`. `null` follows the default — which is
+   * what most groomers do, and why an override is the exception rather than a
+   * copy of the default on every row.
+   */
+  dailyCapacityMin: number | null;
   availability: UserAvailability;
   status: "active" | "suspended";
   emailVerifiedAt: string | null;
@@ -358,7 +385,14 @@ export interface UpdateUserInput {
    */
   /** See `User.isGroomer` — what they do in the shop, not what they may do here. */
   isGroomer?: boolean;
+  /** See `User.isDriver`. */
+  isDriver?: boolean;
+  /** `null` clears it. See `User.groomerLevel`. */
+  groomerLevel?: GroomerLevel | null;
+  /** Ignored by the server since 13 September 2026 — see `User.commissionRate`. */
   commissionRate?: CommissionRateInput | null;
+  /** Integer 1–1440; `null` puts this groomer back on the shop's default. */
+  dailyCapacityMin?: number | null;
   /**
    * MERGED, unlike the rate. Its two keys are independent, so writing the weekly
    * pattern must not wipe next month's leave.
@@ -521,6 +555,167 @@ export interface TenantSettings {
    * until a receipt or an opname puts them right.
    */
   allowNegativeStock?: boolean;
+
+  /**
+   * Layanan › Grooming › Pengaturan — commission and daily capacity.
+   *
+   * ⚠️ ABSENT ON A TENANT THAT HAS NEVER SAVED IT. Fill the defaults in on the
+   * client (`withGroomingDefaults`); the server does the same when it reads.
+   *
+   * ⚠️ WRITTEN WHOLE. `PATCH /tenants/me` refuses a partial grooming object with
+   * a 400, so every key goes back every time.
+   */
+  grooming?: GroomingSettings;
+
+  /**
+   * Layanan › Antar-Jemput › Pengaturan — what a ride pays its driver (21
+   * September 2026). Absent until saved once; WRITTEN WHOLE like `grooming`.
+   */
+  antarJemput?: AntarJemputSettings;
+
+  /**
+   * Pengaturan › Nomor dokumen — what this tenant asked to differ about the
+   * shape of its document numbers, keyed by series (23 September 2026).
+   *
+   * OVERRIDES, NOT THE SERIES. The server's registry owns which series exist,
+   * their separators and their branch qualifiers, and supplies every default;
+   * only what a tenant changed lands here. Read the merged result from
+   * `GET /tenants/me/numbering` rather than reconstructing it.
+   *
+   * ⚠️ WRITTEN WHOLE, like `grooming`: the server flattens `settings` one level,
+   * so a partial map drops every series it leaves out.
+   */
+  numbering?: Record<string, DocumentNumberOverride>;
+
+  /**
+   * Pengaturan › Notifikasi — which automatic messages the shop wants.
+   *
+   * ⚠️ NOTHING SENDS THEM YET. The shape is stored because the decisions are the
+   * shop's and do not change with the provider; the screen says so plainly.
+   * Absent on a tenant that never saved it, and every switch defaults to off.
+   */
+  notifications?: NotificationSettings;
+}
+
+/** One series' overrides. Every field optional — the rest stays the registry's. */
+export interface DocumentNumberOverride {
+  /** A-Z and 0-9, up to 6 characters. Uppercased server-side. */
+  prefix?: string;
+  reset?: DocumentNumberReset;
+  /** Minimum digits in the sequence, 1–8. A longer number is never truncated. */
+  padding?: number;
+}
+
+export type DocumentNumberReset = "never" | "yearly" | "monthly" | "daily";
+
+/**
+ * One series as this tenant will issue it — `GET /tenants/me/numbering`. The
+ * registry's default with the tenant's overrides merged over it.
+ */
+export interface DocumentNumberSeries {
+  /** The permanent series key — "customerInvoice", "booking". */
+  key: string;
+  /** What this tenant issues now: the registry's shape with its overrides merged. */
+  prefix: string;
+  reset: DocumentNumberReset;
+  padding: number;
+  /**
+   * What we would use if the tenant said nothing.
+   *
+   * AN OVERRIDE IS THE DIFFERENCE FROM THIS, never from the merged shape above:
+   * a form comparing against the merged one would send an empty map the second
+   * time somebody pressed Simpan, silently dropping every override.
+   */
+  defaults: {
+    prefix: string;
+    reset: DocumentNumberReset;
+    padding: number;
+  };
+  /** What joins the segments — "-", or "/" for an invoice. Not a tenant's to change. */
+  separator: string;
+  /** How the period is written: "2026-09", or "2609" on an invoice. Ours too. */
+  scopeStyle: "long" | "short";
+  /** False for the series whose shape is ours: the four bukti kas & bank, and the till's own. */
+  editable: boolean;
+  /** True when this tenant changed something about it. */
+  overridden: boolean;
+  /** Sequence 1 of today's bucket — a preview of the SHAPE, not a peek at the counter. */
+  example: string;
+}
+
+/** Which automatic messages a shop wants. Nothing sends them yet. */
+export interface NotificationSettings {
+  bookingReminder?: boolean;
+  membershipExpiry?: boolean;
+  receivableDue?: boolean;
+  payableDue?: boolean;
+  fixedCostDue?: boolean;
+  lowStock?: boolean;
+  promo?: boolean;
+}
+
+/** One rule of a ride's commission — a percentage, or a flat rupiah amount. */
+export interface AntarJemputCommissionRule {
+  mode: "percentage" | "fixed";
+  /** 0–100, up to 2 decimals. */
+  percent: number;
+  /** Whole rupiah. */
+  fixed: number;
+}
+
+/**
+ * The ride's rule — split across its tahapan by the service's weights, exactly
+ * as grooming's is. A rate of 0 is "no commission": there is no switch.
+ */
+export interface AntarJemputSettings {
+  commission: {
+    service: AntarJemputCommissionRule;
+    addon: AntarJemputCommissionRule;
+  };
+}
+
+/** An add-on's or a trip's commission — a percentage, or a flat amount. */
+export interface GroomingFlatCommissionRule {
+  enabled: boolean;
+  mode: "percentage" | "fixed";
+  /** 0–100, up to 2 decimals. */
+  percent: number;
+  /** Whole rupiah, 0–100.000.000. */
+  fixed: number;
+}
+
+/**
+ * ONE RULE FOR THE WHOLE SHOP — decided 13 September 2026, replacing the
+ * per-staff `commissionRate`.
+ *
+ * The service's commission is split across its tahapan by the service's own
+ * `sessionWeights`, and evenly between the people on one tahapan.
+ */
+export interface GroomingSettings {
+  commission: {
+    service: {
+      mode: "percentage" | "size_nominal";
+      percent: number;
+      /**
+       * Whole rupiah, KEYED BY SIZE-OPTION CODE — one key per size the tenant
+       * has (14 September 2026; it was exactly small/medium/large). A size with
+       * no key earns nothing. The server accepts any code-shaped key.
+       */
+      sizeNominal: Record<string, number>;
+    };
+    addon: GroomingFlatCommissionRule;
+    /**
+     * STORED, NOT COMPUTED. Zones and trips do not exist yet, so nothing earns
+     * this today; the rule is kept so it is ready when they do.
+     */
+    travel: GroomingFlatCommissionRule;
+  };
+  capacity: {
+    /** Integer 1–1440 — a groomer's minutes per day unless they override it. */
+    defaultMinutes: number;
+    /** `warn` asks before overbooking; `block` refuses the booking. */
+    overLimit: "warn" | "block";
+  };
 }
 
 /**
@@ -533,13 +728,57 @@ export interface TenantSettings {
  */
 export interface Tenant {
   _id: string;
+  /** The name on the sign — what the shop is called. */
   name: string;
+  /**
+   * The name on the paper: "PT Anabul Sejahtera Bersama" beside a `name` of
+   * "Anabul Group". Printed on invoices, which fall back to `name` when it is
+   * null — a sole trader has no second name to give.
+   */
+  legalName?: string | null;
+  /**
+   * NPWP, stored as typed. Printed, never computed with.
+   *
+   * OPTIONAL, like `legalName` above: both arrived on 22 September 2026, and
+   * repository reads use `.lean()`, which skips Mongoose defaults — so a tenant
+   * written before then comes back without the keys at all.
+   */
+  taxId?: string | null;
   slug: string;
   logoUrl: string | null;
-  /** IANA zone (e.g. "Asia/Jakarta") — the zone the tenant's day is measured in. */
+  /**
+   * The zone the tenant's day is measured in — one of the three official
+   * Indonesian zones (see `TIMEZONES`). Typed as `string` rather than the
+   * closed union: the enum only started being enforced on 23 September 2026,
+   * so a tenant written earlier could in principle carry something else, and a
+   * value display must not throw on it.
+   */
   timezone: string;
-  /** ISO 4217. Only "IDR" exists today; typed as a string for the next one. */
+  /**
+   * ISO 4217. Only "IDR" exists today — see `CURRENCIES`. `string`, like
+   * `timezone`, for the same reason: the enum is enforced going forward, not
+   * retrofitted onto history.
+   */
   currency: string;
+  /**
+   * How this tenant's dates are written back to it — a format token a date
+   * library reads, not a label (23 September 2026). See `DATE_FORMATS`.
+   *
+   * ⚠️ NOTHING RENDERS DATES WITH THIS YET. Stored because the choice is the
+   * shop's own and does not change with whichever screen reads it first — the
+   * same reasoning `settings.notifications` was stored on before any sender
+   * existed. OPTIONAL: `.lean()` reads skip Mongoose defaults, so a tenant
+   * written before this field existed comes back without the key.
+   */
+  dateFormat?: string;
+  /**
+   * Which month this tenant's fiscal (book) year starts in — 1, 4 or 7. See
+   * `FISCAL_YEAR_START_MONTHS`.
+   *
+   * ⚠️ NOTHING READS THIS YET, for the same reason as `dateFormat`. OPTIONAL
+   * for the same reason too.
+   */
+  fiscalYearStartMonth?: number;
   subscription: TenantSubscription;
   settings: TenantSettings;
   /** Schema version, stamped on write so a migration can find older shapes. */
@@ -606,9 +845,30 @@ export interface Branch {
    */
   code: string | null;
   address: string | null;
+  /**
+   * The city, separately from the free-text address it cannot be parsed out of.
+   *
+   * OPTIONAL for the reason `location` is read defensively: it arrived on
+   * 22 September 2026 and list reads use `.lean()`, so a branch written before
+   * then comes back without the key.
+   */
+  city?: string | null;
   phone: string | null;
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter: string | null;
+  /**
+   * When the doors are open — `HH:mm` in the tenant's timezone, both or neither.
+   * Null means UNRECORDED, not closed, and nothing enforces them yet: the
+   * booking validator that will read them is why they are stored as times rather
+   * than as a sentence.
+   */
+  openTime?: string | null;
+  closeTime?: string | null;
+  /**
+   * Which days those hours apply to. `[]` means unrecorded — a branch open no
+   * day at all is what `isActive: false` says, and says better.
+   */
+  operatingDays?: OperatingDay[];
   /**
    * Where the branch actually is, independent of the `address` text. Present on
    * every document written by the current schema — but read it defensively, as
@@ -622,6 +882,74 @@ export interface Branch {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Body of PATCH /tenants/me when a business edits WHO IT IS (22 September
+ * 2026), joined by its locale preferences on 23 September 2026 — timezone,
+ * currency, date format and fiscal year start are the shop's own choice, not
+ * something Buloo sets on its behalf. Every field optional, at least one
+ * required. `""` clears the nullable ones.
+ */
+export interface TenantIdentityInput {
+  name?: string;
+  legalName?: string | null;
+  taxId?: string | null;
+  logoUrl?: string | null;
+  timezone?: Timezone;
+  currency?: string;
+  dateFormat?: DateFormat;
+  fiscalYearStartMonth?: FiscalYearStartMonth;
+}
+
+/**
+ * The three official Indonesian time zones — the whole list this product
+ * offers (23 September 2026). A closed enum, not a free IANA string: a tenant
+ * cannot mistype "Asia/Jakart" into a picker that only names three zones.
+ */
+export const TIMEZONES = [
+  "Asia/Jakarta",
+  "Asia/Makassar",
+  "Asia/Jayapura",
+] as const;
+
+export type Timezone = (typeof TIMEZONES)[number];
+
+/** ISO 4217. Only "IDR" exists today. */
+export const CURRENCIES = ["IDR"] as const;
+
+/**
+ * How a date is written back to the reader — a format token a date library
+ * reads, not a label. ⚠️ Nothing renders dates with this yet; see
+ * `Tenant.dateFormat`.
+ */
+export const DATE_FORMATS = [
+  "DD MMM YYYY",
+  "DD/MM/YYYY",
+  "YYYY-MM-DD",
+] as const;
+
+export type DateFormat = (typeof DATE_FORMATS)[number];
+
+/**
+ * Which month a fiscal year may start in. ⚠️ Nothing reads this yet; see
+ * `Tenant.fiscalYearStartMonth`.
+ */
+export const FISCAL_YEAR_START_MONTHS = [1, 4, 7] as const;
+
+export type FiscalYearStartMonth = (typeof FISCAL_YEAR_START_MONTHS)[number];
+
+/** The seven day codes a branch's `operatingDays` is drawn from, Monday first. */
+export const OPERATING_DAYS = [
+  "mon",
+  "tue",
+  "wed",
+  "thu",
+  "fri",
+  "sat",
+  "sun",
+] as const;
+
+export type OperatingDay = (typeof OPERATING_DAYS)[number];
 
 /** Query parameters accepted by GET /api/branches. All optional. */
 export interface BranchListQuery {
@@ -643,7 +971,12 @@ export interface CreateBranchInput {
   /** A-Z and 0-9 only, 2–8 characters. Uppercased server-side. */
   code?: string | null;
   address?: string | null;
+  city?: string | null;
   phone?: string | null;
+  /** `HH:mm`, both or neither — the backend refuses one on its own. */
+  openTime?: string | null;
+  closeTime?: string | null;
+  operatingDays?: OperatingDay[];
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
@@ -660,7 +993,12 @@ export interface UpdateBranchInput {
   /** `""` or `null` clears it. Uppercased server-side. */
   code?: string | null;
   address?: string | null;
+  city?: string | null;
   phone?: string | null;
+  /** `HH:mm`, both or neither — the backend refuses one on its own. */
+  openTime?: string | null;
+  closeTime?: string | null;
+  operatingDays?: OperatingDay[];
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
@@ -705,6 +1043,12 @@ export interface Warehouse {
   picName: string | null;
   picPhone: string | null;
   isActive: boolean;
+  /**
+   * Is there a till here? False even on the warehouse created with a branch — a
+   * till is switched on deliberately. Nothing gates the POS on it yet; the
+   * tenant profile counts it, and the subscription will be priced on it.
+   */
+  hasPos?: boolean;
   /** True for the warehouse auto-created with a branch. Read-only: DELETE refuses. */
   isDefault: boolean;
   /** Soft-delete marker; non-null means deleted (restorable), null means live. */
@@ -740,6 +1084,8 @@ export interface CreateWarehouseInput {
   picName?: string | null;
   picPhone?: string | null;
   isActive?: boolean;
+  /** Is there a till here? See Warehouse.hasPos. */
+  hasPos?: boolean;
 }
 
 /**
@@ -755,6 +1101,8 @@ export interface UpdateWarehouseInput {
   picName?: string | null;
   picPhone?: string | null;
   isActive?: boolean;
+  /** Is there a till here? See Warehouse.hasPos. */
+  hasPos?: boolean;
 }
 
 /**
@@ -818,6 +1166,15 @@ export interface Category {
   salesAccountId: string | null;
   cogsAccountId: string | null;
   inventoryAccountId: string | null;
+  /**
+   * HOW MANY LIVE PRODUCTS ARE FILED UNDER IT — present only when the read
+   * asked for it (`withProductCount`), which the till's pill row does and
+   * nothing else (28 September 2026).
+   *
+   * ACTIVE products, not merely undeleted: it exists to RANK, and a category
+   * whose stock has all been retired has nothing to sell.
+   */
+  productCount?: number;
   /**
    * The category this one sits under, or `null` for a top-level category.
    *
@@ -885,6 +1242,11 @@ export const SUB_LEVEL_ONLY = "sub";
 export interface CategoryListQuery {
   page?: number;
   limit?: number;
+  /**
+   * Adds `productCount` to each row. Opt-in: it costs an aggregation over the
+   * products collection, and most readers want a name and an id.
+   */
+  withProductCount?: boolean;
   /**
    * Product only, and the API refuses anything else on this resource. Kept
    * because the field predates the second kind and clients were already sending
@@ -1056,17 +1418,83 @@ export type VipTier = "bronze" | "silver" | "gold" | "platinum";
  * recorded with just a name. `deletedAt` is the soft-delete axis (removed,
  * restorable). `createdBy` and `sv` are server-owned audit/versioning fields the
  * UI does not edit; they are omitted here rather than typed loosely — add them
- * when a screen needs them. Mirrors the Branch shape, minus the `isActive` axis
- * (a customer has no open/closed state).
+ * when a screen needs them. Mirrors the Branch shape — including `isActive`
+ * now (2 October 2026): a customer can be switched off without being deleted,
+ * the same orthogonal pair a branch has.
  */
+/** Perorangan or Perusahaan — a closed enum, unlike the tenant's own Kategori. */
+export type CustomerKind = "individual" | "company";
+
+/**
+ * Which automatic messages a customer agreed to.
+ *
+ * ⚠️ NOTHING SENDS ANY OF THEM YET, the same state Pengaturan › Notifikasi is
+ * in. Stored now because consent has to be true from the day it was given.
+ */
+export interface CustomerNotifications {
+  bookingReminder: boolean;
+  membershipRenewal: boolean;
+  promo: boolean;
+}
+
 export interface Customer {
   _id: string;
   tenantId: string;
+  /**
+   * The customer's own number — "CUST-0001", allocated by the server when the
+   * record is created (27 September 2026). Never sent by a client: whatever a
+   * form put here is overwritten.
+   *
+   * `null` on customers registered before the series existed, until
+   * `seeds/backfillCustomerCodes.js` has been run — the screens show a dash for
+   * those rather than inventing a number the shop never printed.
+   */
+  code: string | null;
   name: string;
   email: string | null;
   phone: string | null;
   address: string | null;
+  /** Perorangan or Perusahaan. Every customer has one; it defaults to individual. */
+  kind: CustomerKind;
+  /**
+   * The tenant's own category, from Pengaturan › Tipe pelanggan — the id to
+   * PATCH with, and the name to print, side by side.
+   *
+   * A CATEGORY THE TENANT HAS RETIRED still reads back with its name: the label
+   * still describes this customer, only new filings under it are refused.
+   */
+  customerTypeId: string | null;
+  customerTypeName: string | null;
+  /** NPWP and the contact person — shown by the form for a company only. */
+  taxId: string | null;
+  picName: string | null;
+  /** What the shop needs to remember. Read at the till and on a booking card. */
+  notes: string | null;
+  /**
+   * ⚠️ ABSENT ON A CUSTOMER WRITTEN BEFORE THE FIELD — the API reads with
+   * `.lean()`, which skips the schema defaults behind it, exactly as `location`
+   * below is absent for its own reason. Never read a flag off this directly;
+   * `customerNotifications()` resolves it against the model's defaults.
+   */
+  notifications?: CustomerNotifications;
+  /**
+   * The address's coordinates (17 September 2026) — what a service priced by
+   * Zona is quoted from, measured to the transaction's branch. `{lat: null,
+   * lng: null}` = no pin. Absent on a customer read before the field existed.
+   */
+  location?: GeoLocation;
   vipTier: VipTier | null;
+  /**
+   * Whether this customer appears in another module's picker (POS, booking,
+   * the sales invoice form) — orthogonal to `deletedAt`, the same pair
+   * `Branch.isActive` is (2 October 2026).
+   *
+   * ⚠️ ABSENT ON A CUSTOMER WRITTEN BEFORE THE FIELD EXISTED, same reason as
+   * `notifications` above. Never compare this directly — `isCustomerActive()`
+   * in `CustomerVipBadge.tsx` is the one place that resolves it, and absent
+   * reads as active.
+   */
+  isActive?: boolean;
   /** Soft-delete marker; non-null means deleted (restorable), null means live. */
   deletedAt: string | null;
   createdAt: string;
@@ -1078,10 +1506,96 @@ export interface CustomerListQuery {
   page?: number;
   limit?: number;
   vipTier?: VipTier;
+  /** The toolbar's Kategori and Jenis — narrowed on the server, never here. */
+  customerTypeId?: string;
+  kind?: CustomerKind;
   /** Free-text over name / email / phone. */
   search?: string;
   /** Include soft-deleted customers (default false on the backend). */
   includeDeleted?: boolean;
+  /**
+   * Omitted = don't filter ("Semua status"); `true`/`false` narrow to
+   * active-only or inactive-only. Every cross-module picker sends `true`.
+   */
+  isActive?: boolean;
+  /**
+   * ISO datetime. Only ever arrives via the Ringkasan tab's "Pelanggan baru"
+   * card — its "Lihat semua" carries the exact cutoff the card was measured
+   * from (2 October 2026). No toolbar control sets this; there is no
+   * "registered since" filter of the register's own.
+   */
+  createdSince?: string;
+}
+
+/**
+ * What GET /api/customers/stats answers — the numbers on the Pelanggan header's
+ * tiles (27 September 2026).
+ *
+ * THE WINDOW COMES BACK WITH THE ANSWER. Both figures are measured over a number
+ * of days the caller may change, so a tile that drew "30 hari terakhir" from a
+ * constant could caption a 60-day figure. It says which window it used.
+ */
+export interface CustomerStats {
+  /** Live customers on the books, ignoring whatever the list is filtered by. */
+  total: number;
+  /**
+   * Arrivals in the window, and in the window of the same length before it —
+   * what the Ringkasan tab's "vs periode lalu" is measured against.
+   */
+  newCustomers: { days: number; count: number; previousCount: number };
+  /**
+   * What the register did inside the window: who bought, how much of it came
+   * back, and what they spent.
+   *
+   * THE SHARES ARE NULL ON AN EMPTY REGISTER, and `averageSpend` is null when
+   * nobody bought anything — 0 of 0 is a question with no answer, not 0% and not
+   * Rp 0.
+   *
+   * `revenue` and `averageSpend` are decimal STRINGS, like every other amount
+   * from this API: they never pass through a float, and the average is divided
+   * on the server so it cannot disagree with the two figures it came from.
+   */
+  activeCustomers: {
+    days: number;
+    count: number;
+    share: number | null;
+    revenue: string;
+    averageSpend: string | null;
+    /** Customers with a second settled sale inside the window. */
+    repeatCount: number;
+    /** Those as a share of the whole register, not of the active customers. */
+    repeatShare: number | null;
+  };
+}
+
+/** One row of GET /api/customers/dormant — a customer worth ringing. */
+export interface DormantCustomer {
+  _id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  vipTier: VipTier | null;
+  createdAt: string;
+  /** Their last settled sale. ABSENT when they have never bought anything. */
+  lastVisitAt?: string | null;
+  /**
+   * Counted by the server, from the clock that set the cutoff — measured from
+   * the last visit, or from the day they were registered when there is none.
+   */
+  daysSinceLastVisit: number;
+}
+
+/**
+ * What GET /api/customers/dormant answers, window included.
+ *
+ * `pagination` JOINED `days`/`items` (2 October 2026) — the Ringkasan panel
+ * still asks for its own capped page and ignores the field; the "Lihat
+ * semua" page is the caller that reads it.
+ */
+export interface DormantCustomerList {
+  days: number;
+  items: DormantCustomer[];
+  pagination: PageResult<never>["pagination"];
 }
 
 /**
@@ -1094,7 +1608,17 @@ export interface CreateCustomerInput {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  location?: GeoLocationInput | null;
   vipTier?: VipTier | null;
+  kind?: CustomerKind;
+  customerTypeId?: string | null;
+  taxId?: string | null;
+  picName?: string | null;
+  notes?: string | null;
+  /** Partial: a form that flips one switch may send one key. */
+  notifications?: Partial<CustomerNotifications>;
+  /** Defaults to `true` on the server when omitted. */
+  isActive?: boolean;
 }
 
 /**
@@ -1107,7 +1631,15 @@ export interface UpdateCustomerInput {
   email?: string | null;
   phone?: string | null;
   address?: string | null;
+  location?: GeoLocationInput | null;
   vipTier?: VipTier | null;
+  kind?: CustomerKind;
+  customerTypeId?: string | null;
+  taxId?: string | null;
+  picName?: string | null;
+  notes?: string | null;
+  notifications?: Partial<CustomerNotifications>;
+  isActive?: boolean;
 }
 
 /* ------------------------------------------------------------------- POS */
@@ -1181,7 +1713,13 @@ export interface PosXReport {
 }
 
 /** What a cart line is. A service consumes no stock and posts no HPP. */
-export type PosItemKind = "product" | "service";
+/**
+ * `membership` JOINED THE LIST ON 29 SEPTEMBER 2026 — a package sold as a line
+ * of its own. It holds no stock, earns no groomer commission, has its own
+ * revenue account, and is the only line whose completion CREATES something the
+ * customer keeps: a card, minted when the sale is paid.
+ */
+export type PosItemKind = "product" | "service" | "membership";
 
 /** How a discount was expressed. Both are stored — see PosDiscount. */
 export type PosDiscountMode = "percent" | "amount";
@@ -1200,6 +1738,25 @@ export interface PosDiscount {
   value: string;
   resolvedAmount: string;
   approvedBy: string | null;
+  /**
+   * WHERE THIS DISCOUNT CAME FROM (29 September 2026).
+   *
+   *   manual     — somebody typed it.
+   *   membership — a benefit on the animal's card was applied. The amount was
+   *                priced by the server from the card's frozen plan; the cashier
+   *                chose only WHETHER to apply it.
+   *
+   * A `membership` discount is NOT EDITABLE on the line and does not consume the
+   * cashier's approval ceiling: it is not their discretion, it is an entitlement
+   * the customer already bought. To change it, remove it and re-apply.
+   *
+   * Optional only because older fixtures lack it; absent means `manual`.
+   */
+  source?: "manual" | "membership";
+  membershipId?: string | null;
+  benefitId?: string | null;
+  /** Frozen onto the line so a reprinted receipt can name it without a lookup. */
+  benefitLabel?: string | null;
 }
 
 /** One line in the basket. `name` and `unitPrice` are snapshots. */
@@ -1211,6 +1768,16 @@ export interface PosItem {
   qty: string;
   unitPrice: string;
   /**
+   * WHAT THE CATALOGUE SAID, when the cashier typed something else
+   * (28 September 2026). Null on every ordinary line, which is nearly all of
+   * them — its presence IS the flag that this line was re-priced.
+   *
+   * It cannot be looked up later: a shelf price moves, so the figure has to be
+   * frozen at the moment of sale for the question "sold below list?" to stay
+   * answerable. Optional only because older fixtures lack it.
+   */
+  listPrice?: string | null;
+  /**
    * `qty × unitPrice`, GROSS — before this line's own discount.
    *
    * Read, never recomputed. Multiplying qty by price here would round
@@ -1219,18 +1786,71 @@ export interface PosItem {
    */
   lineTotal: string;
   discount: PosDiscount | null;
+  /**
+   * HOW MUCH OF `discount` IS THE BOOKING'S "DISKON SELURUH BOOKING" — a PART of
+   * it, never beside it (15 September 2026). The till shows `discount` less this
+   * on the line and this under the booking, and sends the line's own part back.
+   * Optional only because older fixtures lack it.
+   */
+  bookingDiscount?: string | null;
+  /**
+   * HOW MUCH OF `discount` A MEMBERSHIP BENEFIT PAID FOR — a PART of it, never
+   * beside it, exactly like `bookingDiscount` above (29 September 2026). A line
+   * may carry a benefit AND a discount the cashier typed on top of it.
+   */
+  membershipDiscount?: string | null;
+  /** The card this line minted, once the sale is paid. Membership lines only. */
+  membershipId?: string | null;
   hppAtTime: string | null;
+  /**
+   * THE BOOKING BEHIND THIS LINE — and since one booking is one animal and one
+   * main service, it points at exactly that pair. The main service and its
+   * add-ons share it, which is what the basket groups on.
+   */
   bookingId: string | null;
   /**
-   * The booking ROW this line came from — PCR-040.
+   * THE MAIN SERVICE THIS LINE HANGS OFF — a CATALOGUE service id, matched
+   * against another line's `refId`.
    *
-   * `bookingId` alone is no longer enough: a booking is a visit now, and taking
-   * Coco's line out of the basket must release Coco's row and leave Mochi's
-   * claimed. Null on lines pulled before the migration, where the server falls
-   * back to releasing the whole booking.
+   * Null on a main service, on every retail line, and on an add-on sold on its
+   * own at the till. Set on an add-on pulled in with its parent, so the basket
+   * can draw "Extra Handling" underneath the bath instead of as a third thing
+   * the customer bought.
+   *
+   * ⚠️ NOT A LINE ID. A cart line has no stable identity — the server rebuilds
+   * every line from the payload on each write — so the link is by service, and
+   * a booking holds at most one row per (animal, service). Match on
+   * `bookingId` + `petId` + this, never on this alone.
    */
-  bookingItemId: string | null;
+  parentServiceId: string | null;
+  /** What a walk-in service was priced on beyond the pet (17 September 2026). */
+  variantChoices?: VariantChoiceSnapshot[];
+  zone?: ZoneSnapshot | null;
+  /**
+   * THE JOURNEY THIS LINE IS (24 September 2026) — which way the van is going
+   * and the two doors it drives between.
+   *
+   * Set only on an antar-jemput line rung up at the counter. Null on every
+   * other line, and on a ride PULLED from the diary: that one carries its
+   * booking's own ends and is never re-asked.
+   *
+   * ⚠️ AN ADD-ON ON A RIDE CARRIES A COPY of its main line's, because the
+   * server keys a line's draft booking by the direction too — a pickup and a
+   * delivery off one service for one animal are two bookings.
+   */
+  trip?: PosItemTrip | null;
+  /**
+   * The bookings this ride serves — a grooming the van is fetching for. Empty
+   * on everything else, and the multiplier of a `per_pet` fare.
+   */
+  linkedBookingIds?: string[];
   petId: string | null;
+  /**
+   * EVERY ANIMAL IN THE VAN — on an antar-jemput line rung up at the counter,
+   * and nothing else. Such a line has `petId: null`, exactly as the booking it
+   * raises keeps its animals in `passengerPets`.
+   */
+  passengerPetIds?: string[];
   petName: string | null;
   groomerName: string | null;
   /**
@@ -1273,6 +1893,12 @@ export interface PosPayment {
   amount: string;
   change: string | null;
   reference: string | null;
+  /**
+   * The numbered cash transaction this line became (BKM/BBM…) — "POS hanya
+   * channel". Absent on a settlement recorded before that existed, and on a
+   * store-credit line, which moves no money.
+   */
+  cashTransactionId?: string | null;
 }
 
 /** Every figure, computed once when the basket settles. Null until then. */
@@ -1421,8 +2047,34 @@ export type PosStockState = "ok" | "low" | "out";
  * carry null, because a badge saying "in stock" on a grooming invites the
  * question of how many are left.
  */
+/**
+ * An add-on a service may be sold with, priced the same way the service is.
+ *
+ * ⚠️ THE SAME THREE FIELDS `Service` CARRIES, and deliberately the same types —
+ * `priceForPet` takes either, so the till and the booking form resolve a price
+ * through one function rather than two that can drift.
+ */
+export interface PosCatalogAddon {
+  _id: string;
+  name: string;
+  price: string | null;
+  hasVariants: boolean;
+  variantAxes: VariantAxisKey[];
+  variants: ServiceVariant[];
+}
+
 export interface PosCatalogItem {
   kind: PosItemKind;
+  /**
+   * ON A MEMBERSHIP TILE ONLY (29 September 2026) — how long the package runs,
+   * and how many benefits come with it.
+   *
+   * The two questions a cashier is asked at the counter: "berapa lama?" and
+   * "dapat apa saja?". A tile that could answer neither would send them to
+   * another screen in the middle of a sale.
+   */
+  durationDays?: number | null;
+  benefitCount?: number;
   _id: string;
   name: string;
   code: string | null;
@@ -1473,6 +2125,52 @@ export interface PosCatalogItem {
   isConsignment?: boolean;
   /** Null unless this is a parent. */
   variantCount: number | null;
+  /**
+   * ─── WHAT A SERVICE COSTS DEPENDS ON THE ANIMAL ──────────────────────────
+   *
+   * A service in variant mode carries NO top-level `price` — the axes it varies
+   * by are the pet's own facts (species, size, coat), so the figure is looked up
+   * from the animal on the table. Without these the tile drew an em-dash where a
+   * price goes and the cashier could not find out what a grooming cost until it
+   * was already in the basket.
+   *
+   * ⚠️ NOT `variantCount`, which is a PRODUCT parent's count of things to sell. A
+   * service's variants are a pricing axis, not separate items.
+   *
+   * Absent on every product tile and on a server older than this field.
+   */
+  hasVariants?: boolean;
+  variantAxes?: VariantAxisKey[];
+  variants?: ServiceVariant[];
+  /**
+   * WHICH KIND OF SERVICE THIS TILE IS — "grooming", "hotel",
+   * "pickup-delivery" (24 September 2026).
+   *
+   * The till reads it for ONE thing: "pickup-delivery" is the tile that asks
+   * which way the van is going and between which two doors, instead of going
+   * straight into the basket. Before this, a ride's direction was only ever a
+   * variant select — a price with nowhere to drive to.
+   *
+   * Null on an add-on and on a service saved before the field existed.
+   */
+  serviceKind?: ServiceKind | null;
+  /**
+   * How it is charged. On a ride it is the multiplier: `per_pet` is the
+   * catalogue's price once per booking the van serves, `per_visit` once
+   * however many ride.
+   */
+  billingUnit?: ServiceBillingUnit;
+  /**
+   * The add-ons this service may be sold with, resolved to names and prices.
+   *
+   * ONLY THE ONES THAT STILL EXIST AND ARE STILL OFFERED — a service retired
+   * since it was attached is dropped rather than listed and refused, because a
+   * checkbox the server will reject is worse than one that is not there.
+   *
+   * Each is the SAME shape as a main service, so an add-on may itself be priced
+   * by the animal. Empty on a service nobody attached anything to.
+   */
+  addons?: PosCatalogAddon[];
   stock: { qty: string; state: PosStockState } | null;
   /**
    * WHETHER THE TILL MAY ADD THIS RIGHT NOW — which is NOT `stock.state !==
@@ -1587,9 +2285,32 @@ export interface PosReceiptItem {
   unitPrice: string;
   lineTotal: string;
   discount: { resolvedAmount: string } | null;
+  /**
+   * THE CARD'S SHARE OF `discount` (1 October 2026) — null on a line no
+   * membership benefit paid for. What lets the totals below tell "Diskon
+   * item" (cashier-typed) apart from "Diskon membership" (a card's giveaway),
+   * the way the till's own basket does.
+   */
+  membershipDiscount?: string | null;
   /** FR-8's sub-line, denormalised at sale time so a reprint survives a rename. */
   petName: string | null;
   groomerName: string | null;
+  /** What a walk-in service was priced on beyond the pet — names and labels only. */
+  variantChoices?: Pick<VariantChoiceSnapshot, "name" | "label">[];
+  zone?: Pick<ZoneSnapshot, "name" | "distanceKm"> | null;
+  /**
+   * The add-ons attached to THIS service, printed inside its line rather than
+   * beside it — the same shape the basket shows, so the paper says what the
+   * cashier just checked on screen.
+   *
+   * GROUPED BY THE SERVER, once, because four things render this payload — the
+   * preview, the print sheet, the PDF and the public page — and a receipt that
+   * grouped differently in any of them would be a different document.
+   *
+   * ALWAYS EMPTY ON A NESTED ONE: nesting is one deep by construction (an add-on
+   * has no add-ons — see the booking model), and on every retail line.
+   */
+  addons: PosReceiptItem[];
 }
 
 /**
@@ -1749,6 +2470,8 @@ export interface CreateReturnInput {
   items: PosReturnItemInput[];
   refundMethod: "cash" | "store_credit";
   refundChannelId?: string;
+  /** Required by the server when the refund channel `requiresReference`. */
+  refundReference?: string;
   reason: string;
 }
 
@@ -1808,17 +2531,69 @@ export interface PosItemInput {
   kind: PosItemKind;
   refId: string;
   qty?: string;
+  /**
+   * A PRICE TYPED OVER THE CATALOGUE'S (28 September 2026). Refused with 403
+   * unless the cashier holds `posTransactions:setPrice`.
+   *
+   * ⚠️ SEND IT ON EVERY WRITE once a line carries one, exactly as
+   * `variantChoices` is sent: the server rebuilds each line from this payload,
+   * so an override left out of the next write — changing the quantity of some
+   * other line — silently reverts that line to the shelf price.
+   *
+   * Omitted means "whatever the catalogue says", which is nearly every line.
+   */
+  unitPrice?: string;
   discount?: {
     mode: PosDiscountMode;
     value: string;
     approvedBy?: string;
   } | null;
+  /**
+   * WHICH CARD, AND WHICH BENEFIT ON IT (29 September 2026) — and NOTHING about
+   * what it is worth.
+   *
+   * The server reads the card, its frozen plan and the ledger, and prices the
+   * benefit itself. SENT BACK ON EVERY WRITE like `variantChoices` and
+   * `unitPrice`: the server rebuilds each line from this payload, so a benefit
+   * left out of the next write silently drops off that line.
+   */
+  benefit?: { membershipId: string; benefitId: string } | null;
+  /** On a `membership` line: when cover starts. Default is the day it is paid. */
+  membershipStartDate?: string;
+  /** On a `membership` line: the card this one renews. */
+  renewFromId?: string;
   bookingId?: string | null;
-  /** The booking row this line came from — see `PosCartItem.bookingItemId`. */
-  bookingItemId?: string | null;
   petId?: string | null;
   petName?: string | null;
   groomerName?: string | null;
+  /** The "Dipilih staf" values a walk-in service is priced on; an add-on inherits its main line's. */
+  variantChoices?: VariantChoice[];
+  /**
+   * The journey an antar-jemput line is — see `PosItemTrip`.
+   *
+   * SENT BACK ON EVERY WRITE, like `variantChoices`: the server rebuilds each
+   * line from this payload, and a fare re-measured without the two ends would
+   * be a different number for a journey nobody re-agreed.
+   */
+  trip?: PosItemTripInput | null;
+  /** The bookings this ride serves. Only on a ride. */
+  linkedBookingIds?: string[];
+  /** Every animal in the van. Only on a ride, which has no `petId`. */
+  passengerPetIds?: string[];
+}
+
+/** One counter line's journey, as a response carries it. */
+export interface PosItemTrip {
+  leg: TripLeg;
+  origin: TripPoint | null;
+  destination: TripPoint | null;
+}
+
+/** The same going out — the pin is not optional, because a fare is a band of distance. */
+export interface PosItemTripInput {
+  leg: TripLeg;
+  origin: TripPointInput;
+  destination: TripPointInput;
 }
 
 /**
@@ -1852,11 +2627,22 @@ export interface UpdateCartInput {
 /** Where a booking stands. Mirrors BOOKING_STATUSES in booking.model.js. */
 export type BookingStatus =
   | "draft"
-  | "check_in"
+  | "requested"
   | "confirmed"
+  /* The two trip legs — only on a booking that asked to be fetched or taken home. */
+  | "pickup"
+  | "arrived"
   | "in_progress"
   | "completed"
-  | "cancelled";
+  | "delivery"
+  | "return_to_pawrents"
+  | "cancelled"
+  /*
+    RECORDED, NEVER RESTED IN. A reschedule moves the date and leaves the booking
+    on `confirmed`; this value appears in `statusHistory` so the trail can say
+    the appointment moved, and never in `booking.status`.
+  */
+  | "rescheduled";
 
 /**
  * How the booking came to exist.
@@ -1871,118 +2657,6 @@ export type BookingStatus =
  * reaches a day sheet instead of existing only as a line on a bill.
  */
 export type BookingOrigin = "booking" | "pos_adhoc" | "invoice_adhoc";
-
-/**
- * One service on a booking.
- *
- * `name` and `price` are a SNAPSHOT taken when the booking was made — a booking
- * is a quote. Reading the price through `serviceId` at payment time would
- * silently reprice every outstanding booking the moment the catalogue changed.
- *
- * `price` is a decimal STRING, never a number.
- */
-export interface BookingItem {
-  /**
-   * The row's own id — new in PCR-040, and what a cart or invoice line points at
-   * so taking one line out releases THAT animal's row and leaves the others
-   * claimed.
-   */
-  _id: string;
-  /**
-   * WHOSE ROW THIS IS. The animal moved off the booking header in PCR-040: one
-   * visit may bring Mochi and Coco, and each row says which.
-   */
-  petId: string;
-  /** Resolved on read, like every other name here. Null when the pet is gone. */
-  petName: string | null;
-  serviceId: string;
-  /**
-   * NULL ON A MAIN SERVICE; on an add-on, the row it hangs off.
-   *
-   * An add-on is a ROW of its own — it carries its own price and duration, so it
-   * bills as a line and prints as a line. The screen groups them back under
-   * their parent for display; the API keeps them flat, because every other
-   * reader (the calendar, the clash check, commission) wants them that way.
-   */
-  parentItemId: string | null;
-  name: string;
-  /**
-   * THE KIND OF WORK — "Grooming", "Hotel", "Day Care" — as TEXT.
-   *
-   * ⚠️ NOT `Service["serviceType"]`, which is `main` | `addon`. Same name, two
-   * meanings, one join apart: on a booking row this is the kind of work, and
-   * whether a line is an add-on is said by `parentItemId` instead.
-   *
-   * READ FROM THE SERVICE'S LINE OF BUSINESS and stored as its NAME, so the
-   * booking is not coupled to the catalogue's accounting dimension. A SNAPSHOT
-   * like `name` and `price`: renaming a line must not rewrite last month's day
-   * sheets. Null on rows written before the field, and on a service whose line
-   * has since been deleted.
-   */
-  serviceType: string | null;
-  price: string;
-  /**
-   * How long this row takes, in minutes. Snapshotted from the service and
-   * overridable — a nervous dog genuinely takes longer than the catalogue says.
-   *
-   * NULL WHEN THE CATALOGUE CARRIES NONE, and a calendar draws such a row at a
-   * default height rather than refusing to draw it: a booking nobody can see is
-   * worse than one drawn at the wrong height.
-   */
-  durationMin: number | null;
-  /** Anything special about THIS animal on THIS visit. */
-  notes: string | null;
-  /** When this row was dropped into a POS cart. Null = still billable. */
-  pulledToCartAt: string | null;
-  /** When this row was claimed by an invoice. Null = still billable. */
-  pulledToInvoiceAt: string | null;
-  /** null = FR-3's "Belum ditentukan". Assignment is a scheduling question. */
-  groomerUserId: string | null;
-  /**
-   * The groomer's name, RESOLVED ON READ by the server.
-   *
-   * NEVER NULL, and that is the point: an unassigned groomer comes back as
-   * "Belum ditentukan" (FR-3's edge case), decided once on the server rather
-   * than three times — in the bridge, the cart line and the receipt — where the
-   * three would eventually disagree about what an empty slot is called.
-   */
-  groomerName: string;
-  /**
-   * THE EXTRA HANDS ON THIS SESSION — resolved to `{ _id, name }` on read.
-   *
-   * SCHEDULING ONLY. They count against their own day in the clash check, and
-   * they earn nothing: commission is computed for `groomerUserId` alone. A pair
-   * rather than two index-aligned arrays, because the screen renders and removes
-   * them together.
-   */
-  assistantGroomers: { _id: string; name: string }[];
-  /**
-   * WHY THE GROOMER ON THIS ROW CANNOT WORK THE DAY IT IS BOOKED FOR — null in
-   * the ordinary case.
-   *
-   * COMPUTED ON READ, never stored: leave is set AFTER a booking is made, which
-   * is the entire problem, so a flag stamped at write time would be stale
-   * exactly when it matters.
-   *
-   * IT REFUSES NOTHING. The booking stands and the shop decides — move the
-   * groomer, or ring the customer.
-   */
-  groomerOffReason?: string | null;
-  /**
-   * HOW FAR THIS ONE ANIMAL'S SERVICE HAS GOT — `pending | in_progress | done`.
-   *
-   * THREE RUNGS, NOT THE BOOKING'S FIVE. `draft` and `check_in` are not about a
-   * service: check-in is the ANIMAL arriving, one fact per visit rather than one
-   * per service, and copying the ladder would mean marking Coco arrived twice
-   * because she is having two things done.
-   *
-   * The BOOKING's status is derived from these — see `#deriveBookingStatus`.
-   */
-  workStatus?: BookingWorkStatus;
-  /** When the work actually started and finished. Correctable, and audited. */
-  startedAt?: string | null;
-  finishedAt?: string | null;
-}
 
 /**
  * One move in a booking's life, as the API returns it.
@@ -2008,6 +2682,15 @@ export interface BookingStatusEvent {
    */
   byName: string | null;
   /**
+   * The role that person held — "ops", "groomer" — so a trail read after the
+   * fact says whether whoever moved this was at the counter or at the table.
+   *
+   * NULL EVEN WHEN THE NAME IS NOT, for the seeded Owner: it reaches every
+   * permission by bypass rather than an assigned role, so there is genuinely
+   * none to show.
+   */
+  byRoleName: string | null;
+  /**
    * True when this rung was filled in behind a skipped step rather than chosen.
    *
    * A receptionist who takes an animal straight to check-in has confirmed the
@@ -2019,12 +2702,19 @@ export interface BookingStatusEvent {
 }
 
 /**
- * A booking, as returned by GET /api/bookings. One animal, one day, one or more
- * services.
+ * A booking, as returned by GET /api/bookings — ONE ANIMAL, ONE MAIN SERVICE.
  *
- * ONE BOOKING IS ONE PET. FR-3 groups POS cart lines by booking and labels each
- * group with the animal's name, so a booking covering two pets would produce a
- * group that cannot be labelled.
+ * ─── ONE NUMBER, ONE PAIR ──────────────────────────────────────────────────
+ *
+ * The add-ons ride under the service, and the sessions under it are who works
+ * it. An owner bringing two dogs gets two bookings; the same dog having a bath
+ * and a hotel stay is two bookings as well. Everything a screen acts on — the
+ * status, the billing claim, the notes, the album, what was handed over — is
+ * about this one pair, so nothing here needs a second id to say which animal
+ * it means.
+ *
+ * Bookings saved together are tied by `groupId`, and `GET /bookings/:id` lists
+ * the others in `group[]`.
  */
 export interface Booking {
   _id: string;
@@ -2041,45 +2731,204 @@ export interface Booking {
    * happens.
    */
   bookingNumber: string | null;
+  /**
+   * THE BOOKINGS SAVED TOGETHER SHARE IT — one save of the form is one group,
+   * and a booking made on its own is a group of one.
+   *
+   * It is what the list filters on after a save that made several, and what a
+   * per-visit transport fee will be counted across later. Nothing is billed
+   * from it yet.
+   */
+  groupId: string;
   customerId: string;
-  /** Where the work happens — `in_store` unless the visit is a house call. */
-  location: BookingLocation;
-  pickupRequested: boolean;
-  deliveryRequested: boolean;
-  tripAddress: string | null;
-  /** What the owner handed over, per animal. See `BookingBelonging`. */
-  belongings: BookingBelonging[];
   /**
-   * THE ANIMALS ON THIS VISIT — plural since PCR-040.
-   *
-   * Distinct, in row order. Anything that needs them apart reads this; anything
-   * that wants one string reads `petName` below.
-   */
-  pets: BookingPet[];
-  /**
-   * The animals' names JOINED — "Mochi, Coco" — resolved on read.
-   *
-   * IT USED TO BE ONE NAME, and it is kept as a label rather than dropped
-   * because a day-sheet column wants one string. Null on a booking with no rows
-   * at all; never null merely because there are two animals, which would blank
-   * the column on exactly the bookings PCR-040 was built for.
-   *
-   * A LABEL, NOT A RECORD. A pet renamed between the appointment and the counter
-   * appears under its new name. (The price on `items[]` is the opposite and IS
-   * frozen: a booking is a quote.)
-   */
-  petName: string | null;
-  /**
-   * The owner's name, RESOLVED ON READ — same rule as `petName`.
+   * The owner's name, RESOLVED ON READ.
    *
    * A booking list is read as a day sheet ("whose dog is at ten"), and an id
    * there is a row nobody can act on.
    */
   customerName: string | null;
   /**
-   * WHO CREATED THE BOOKING, resolved on read — the same rule as `petName` and
-   * `customerName`. Null when nothing human made it (a migration, a scheduled
-   * job), never a placeholder.
+   * NULL ON A RIDE (23 September 2026), and only there. An antar-jemput booking
+   * carries several animals and promotes none of them — they are `passengers`.
+   */
+  petId: string | null;
+  /**
+   * RESOLVED ON READ — a LABEL, NOT A RECORD. A pet renamed between the
+   * appointment and the counter appears under its new name. (The price on
+   * `service` is the opposite and IS frozen: a booking is a quote.)
+   */
+  petName: string | null;
+  /**
+   * The size commission is read against. A booking cannot be written for an
+   * animal without one (400); `null` survives only on bookings older than that.
+   */
+  petSize: PetSize | null;
+  status: BookingStatus;
+  /**
+   * Every status this booking has reached, oldest first.
+   *
+   * ⚠️ A LOG, NOT A STATUS. Nothing decides from it; it answers "what happened"
+   * — "jam berapa hewannya datang", "siapa yang membatalkan".
+   *
+   * EMPTY ON BOOKINGS MADE BEFORE THE TRAIL EXISTED, and left that way on
+   * purpose. Read an empty array as "tidak tercatat", never as "never moved".
+   */
+  statusHistory: BookingStatusEvent[];
+  /**
+   * WHERE IT MAY GO NEXT — the server's answer, not a list the client filters.
+   * The two trip rungs depend on this booking's own van, and a client that
+   * recomputed the ladder would offer "Pickup" on a visit with none booked.
+   */
+  nextStatuses: BookingStatus[];
+  cancelReason: string | null;
+  scheduledAt: string;
+  origin: BookingOrigin;
+  /** Set by the POS when this booking is paid for. */
+  posTransactionId: string | null;
+  /** Where the work happens — `in_store` unless the visit is a house call. */
+  location: BookingLocation;
+  /**
+   * The trip, PER BOOKING. Bookings saved together start with the same answer;
+   * after that each can be changed on its own. Both are forced to false on an
+   * `in_home` booking — the salon is already going to the animal.
+   */
+  pickupRequested: boolean;
+  deliveryRequested: boolean;
+  /**
+   * Where the animal is, on a booking that only ASKS to be collected. Null
+   * means the customer's stored address, not "no address".
+   *
+   * ⚠️ A RIDE USES `tripOrigin` / `tripDestination` INSTEAD — see below.
+   */
+  tripAddress: string | null;
+  /**
+   * ─── THE TWO ENDS OF A RIDE (23 September 2026) ───────────────────────────
+   *
+   * Both are written down and both carry a pin, because the fare is a band of
+   * the distance BETWEEN THEM: a ride whose address is typed for this one trip
+   * is priced from that address, not from the customer record's pin.
+   *
+   * Null on every booking that is not a ride. On a ride the server requires
+   * both, each with `lat` and `lng`. Optional only because older fixtures lack
+   * them, like `tripLeg` below.
+   */
+  tripOrigin?: TripPoint | null;
+  tripDestination?: TripPoint | null;
+  /**
+   * ─── ANTAR-JEMPUT (21 September 2026) ─────────────────────────────────────
+   *
+   * `tripLeg` is set only on a booking whose main service IS the ride, and a
+   * null here is what "not an antar-jemput booking" means. On one,
+   * `tripAddress` is the customer's end; the other end is the branch.
+   * Optional only because older fixtures lack them.
+   */
+  /**
+   * A MEMBERSHIP BENEFIT THIS BOOKING MEANS TO USE (30 September 2026).
+   *
+   * A PLAN, NOT A SPEND — nothing is deducted here. The quota moves when the
+   * booking is BILLED, and the till re-reads the card at that moment: a booking
+   * is a promise, and one that ate a customer's weekly free bath and was then
+   * cancelled would have taken something from somebody who received nothing.
+   *
+   * NO LABEL COMES BACK, deliberately: a stored one would be either forgeable
+   * client text or a card read per booking to decorate a board. The till names
+   * the benefit where the name changes what somebody does.
+   */
+  plannedBenefit?: { membershipId: string; benefitId: string } | null;
+  tripLeg?: TripLeg | null;
+  /**
+   * EVERY ANIMAL IN THE VAN (23 September 2026) — all of them, not "the others".
+   *
+   * A ride has NO `petId` and no `petName`: it used to promote whichever animal
+   * the form listed first, which nothing chose and which froze that one's size
+   * while the rest were read live. `passengerPetIds` is the plain list the form
+   * posts back; `passengers` is the same list named, each with the size it was
+   * when the ride was booked. Both are empty on every booking that is not a ride.
+   */
+  passengerPetIds?: string[];
+  passengers?: BookingPassenger[];
+  /**
+   * THE BOOKINGS THIS RIDE SERVES (23 September 2026) — set only on a ride, and
+   * what a `per_pet` fare is multiplied by, since one booking is one animal.
+   * An animal riding along with no booking of its own is in `passengers` and
+   * costs nothing here — being in the van is not being billed for.
+   */
+  linkedBookingIds?: string[];
+  /** Those bookings in full — `GET /bookings/:id` only, like `group`. */
+  linked?: BookingGroupMember[];
+  /**
+   * EVERY LIVE RIDE THIS BOOKING HAS — on a grooming booking, the van that
+   * brings it and takes it home. Read, never stored on the grooming: a ride of
+   * the same visit, or one that names this booking in `linkedBookingIds`, which
+   * is how two bookings from different visits share one van.
+   */
+  trips?: BookingTrip[];
+  /** The one main service, with its add-ons and sessions under it. */
+  service: BookingMainService;
+  /**
+   * A LABEL: the first person on the first live session, or "Belum
+   * ditentukan". NEVER NULL — an empty slot is named once, on the server, rather
+   * than three times on three screens that would eventually disagree.
+   */
+  groomerName: string;
+  /** What the owner handed over with this animal. See `BookingBelonging`. */
+  belongings: BookingBelonging[];
+  /**
+   * ─── TWO NOTES, TWO AUDIENCES ─────────────────────────────────────────────
+   *
+   * This was one field, and it held operational instructions: "takut hairdryer,
+   * mandi duluan". A shop that also wanted to tell the OWNER something had
+   * nowhere to put it but the same box — shown to the customer it leaks,
+   * hidden from them the advice never arrives.
+   *
+   * Staff-facing, never shown to the customer — the same contract
+   * `Pet.internalNotes` carries, and named to match it.
+   */
+  internalNotes: string | null;
+  /**
+   * What the shop wants the OWNER to read — advice, a warning about the coat.
+   *
+   * NOTHING SHOWS IT TO A CUSTOMER YET. No struk, no invoice line, no WhatsApp
+   * message carries it; it is stored and shown to staff, labelled so nobody
+   * writes an internal remark into it.
+   */
+  customerNotes: string | null;
+  /** About THIS APPOINTMENT, not about the animal. */
+  notes: string | null;
+  /**
+   * ⚠️ THE BOOKING'S OWN ALBUM — a DIFFERENT array from
+   * `service.sessions[].media[]`, not a view of it.
+   *
+   * A turn's photos are evidence for that stretch of work and live beside its
+   * clock and its crew; these are about the VISIT — what the dog came in like,
+   * what it left like. `kind` here is only `before` / `after` / `other`.
+   */
+  media: SessionMedia[];
+  /** When this booking was dropped into a POS cart. Null = still billable. */
+  pulledToCartAt: string | null;
+  /** When this booking was claimed by an invoice. Null = still billable. */
+  pulledToInvoiceAt: string | null;
+  /** DERIVED from the two claims above. Draw a badge from it. */
+  billingState: BookingBillingState;
+  /** The service plus its live add-ons. Null only before a summary has run. */
+  totalAmount: string | null;
+  /** The service's minutes plus its live add-ons'. */
+  totalDurationMin: number | null;
+  /**
+   * "DISKON SELURUH BOOKING" — `mode`/`value` as typed for the whole save,
+   * `resolvedAmount` THIS booking's share of it. Optional, like the two below,
+   * only because older fixtures lack them.
+   */
+  bookingDiscount?: InvoiceDiscount | null;
+  /** Every discount this booking carries. `totalAmount` stays before discount. */
+  discountAmount?: string | null;
+  /** What the bill comes to — `totalAmount` less `discountAmount`. */
+  netAmount?: string | null;
+  createdBy: string | null;
+  /**
+   * WHO CREATED THE BOOKING, resolved on read. Null when nothing human made it
+   * (a migration, a scheduled job), never a placeholder.
    */
   createdByName: string | null;
   /**
@@ -2088,114 +2937,298 @@ export interface Booking {
    * assigned role, so there is genuinely no role to show.
    */
   createdByRoleName: string | null;
-  items: BookingItem[];
-  scheduledAt: string;
-  status: BookingStatus;
-  /**
-   * Every status it has reached, oldest first.
-   *
-   * EMPTY ON BOOKINGS MADE BEFORE THE TRAIL EXISTED, and left that way on
-   * purpose — back-filling one invented instant per booking would be worse than
-   * saying nothing. Read an empty array as "tidak tercatat", never as "never
-   * moved".
-   */
-  statusHistory: BookingStatusEvent[];
-  origin: BookingOrigin;
-  /** Set by the POS when this booking is paid for. */
-  posTransactionId: string | null;
-  /** What the whole visit comes to — the sum of its rows. */
-  totalAmount: string | null;
-  /**
-   * How long the visit takes: the LONGEST groomer's workload, not the sum.
-   *
-   * Two groomers work at the same time — Mochi with Sinta for 90 minutes and
-   * Coco with Rio for 60 means the customer waits 90, not 150.
-   */
-  totalDurationMin: number | null;
-  /** How many distinct animals, for the "2 hewan" badge. */
-  petCount: number;
-  /**
-   * HOW MUCH OF THIS VISIT HAS BEEN BILLED.
-   *
-   * `partial` IS THE VALUE PCR-040 CREATED: Coco went home ungroomed and Mochi
-   * was paid for. Before multi-pet this could not be expressed at all.
-   *
-   * A SUMMARY OF THE ROWS. Draw a badge from it; never decide from it whether
-   * something may be billed — that question belongs to the row.
-   */
-  billingState: BookingBillingState;
-  notes: string | null;
-  cancelReason: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * ONLY ON `GET /bookings/:id` — the other LIVE bookings saved in the same
+   * group. Absent on a list row, empty on a booking made on its own.
+   */
+  group?: BookingGroupMember[];
+  /**
+   * ONLY ON `GET /bookings/:id` — bookings BILLED WITH this one (one invoice,
+   * one till basket) that are not in its group (21 September 2026).
+   */
+  related?: BookingRelated[];
 }
 
-/** One animal on a booking, for the header's `pets` list. */
-/** One service on a visit, with its add-ons under it — see `BookingPet`. */
-export interface BookingPetService {
-  /** The stored row's id: what an invoice line or a POS line points at. */
-  itemId: string;
-  serviceId: string;
-  name: string;
-  /** The kind of work — "Grooming", "Hotel". Not main/addon. */
-  serviceType: string | null;
-  price: string;
-  durationMin: number | null;
-  groomerUserId: string | null;
-  groomerName: string | null;
-  /** Set when the person named cannot work the day this is booked for. */
-  groomerOffReason: string | null;
-  assistantGroomers: { _id: string; name: string }[];
-  workStatus: BookingWorkStatus;
-  startedAt: string | null;
-  finishedAt: string | null;
-  notes: string | null;
-  pulledToCartAt: string | null;
-  pulledToInvoiceAt: string | null;
-  addons: {
-    itemId: string;
-    serviceId: string;
-    name: string;
-    price: string;
-    durationMin: number | null;
-    pulledToCartAt: string | null;
-    pulledToInvoiceAt: string | null;
-  }[];
+/** An antar-jemput booking's direction: the door to the branch, or back. */
+export type TripLeg = "pickup" | "delivery";
+
+/**
+ * ONE END OF A TRIP — flat, the way the API sends and takes it.
+ *
+ * `lat`/`lng` are nullable in a RESPONSE, because a booking written before
+ * this field existed has none; a request must carry both.
+ */
+export interface TripPoint {
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
+}
+
+/** One end as a request carries it — the pin is not optional going out. */
+export interface TripPointInput {
+  address?: string | null;
+  lat: number;
+  lng: number;
+}
+
+/** Another ride of the same visit, as `Booking.trips` carries it. */
+export interface BookingTrip {
+  _id: string;
+  bookingNumber: string | null;
+  tripLeg: TripLeg;
+  status: BookingStatus;
+  scheduledAt: string;
 }
 
 /**
- * ONE ANIMAL ON THE VISIT, WITH WHAT IS BEING DONE TO IT.
+ * ONE PERSON'S TURN AT A SERVICE — PCR-042.
  *
- * ─── A VIEW, NOT THE STORED SHAPE ──────────────────────────────────────────
+ * A "Full Grooming" is not one act by one person: the bath is Sinta's, the blow
+ * dry is Rio's, the nail clip happens after lunch. Each is a session, with its
+ * own clock, its own notes and its own photos.
  *
- * The API stores one document per sellable line — that is what an invoice line
- * and a POS line each point at, what `commissionrecords` is unique per, and what
- * the calendar, the clash check and the pet timeline find by index. This is the
- * same rows grouped the way every screen reads them, built on the way out.
- *
- * `petId` / `petName` HAVE ALWAYS BEEN HERE and are unchanged; `services` is
- * added beside them, so a day sheet that wants only the names keeps working.
- * The flat `Booking["items"]` is also untouched.
+ * ⚠️ THIS IS THE ONLY PLACE A GROOMER IS NAMED. The `groomerUserId` /
+ * `assistantGroomers` pair that used to sit on the service is gone — it existed
+ * because commission was unique per service, so a second person could not be
+ * paid. Every session earns.
  */
-export interface BookingPet {
-  petId: string;
-  petName: string | null;
-  services: BookingPetService[];
+export interface BookingSession {
+  sessionId: string;
+  /** "mandi", "blow dry". Free text the shop chooses — not an enum yet. */
+  sessionName: string;
+  /**
+   * WHO IS ON THIS TURN — everybody standing at the table for it. Everybody here
+   * is counted busy by the clash check, and each earns their `sharePercent` of
+   * the turn's commission. Empty is a real state — such a turn cannot be started.
+   *
+   * `sharePercent` IS THE SERVER'S ANSWER, in whole per cent: the split set on
+   * the turn when it fits the crew and adds up to 100, otherwise an even split
+   * rounded down with the last person taking the rest (33 · 33 · 34).
+   * Optional only because older responses and fixtures lack it — a screen falls
+   * back to the even split.
+   *
+   * `offReason` IS PER PERSON and computed on read: leave changes after a
+   * booking is made, so a stamped-at-write flag would be stale exactly when it
+   * matters. It refuses nothing — the shop decides whether to move the groomer
+   * or ring the customer.
+   */
+  groomers: {
+    _id: string;
+    name: string;
+    level?: GroomerLevel | null;
+    sharePercent?: number;
+    offReason: string | null;
+  }[];
+  status: BookingWorkStatus;
+  startedAt: string | null;
+  finishedAt: string | null;
+  /** What the shop is willing to show the owner about this turn. */
+  notesSession: string | null;
+  /** For whoever handles the animal next. Never shown to a customer. */
+  notesInternalSession: string | null;
+  media: SessionMedia[];
+  /**
+   * This tahapan's share of the service's commission, in per cent — snapshotted
+   * from `Service.sessionWeights` when the booking was written. `null` when the
+   * service splits evenly.
+   */
+  commissionWeight: number | null;
 }
 
-/** How much of a visit has been billed — see `Booking.billingState`. */
-export type BookingBillingState = "unbilled" | "partial" | "billed";
+/**
+ * WHEN IN THE WORK A PHOTO WAS TAKEN.
+ *
+ * ⚠️ NOT `mediaType`, which is image/video. This is the axis a grooming gallery
+ * is actually read on — the matted coat, the finished cut, everything else.
+ *
+ * `other` IS THE DEFAULT AND THE HONEST ONE. A shot taken mid-groom is neither a
+ * before nor an after, and forcing a choice while somebody is holding a wet dog
+ * produces a gallery where half the labels are wrong.
+ */
+export type SessionMediaKind =
+  | "before"
+  | "after"
+  | "other"
+  /**
+   * ⚠️ ONE PER TURN — `session_Mandi`. A photo uploaded from a session's own
+   * card is filed under its turn, and the Album IGNORES these: they are working
+   * evidence for that stretch of work, not the visit's gallery, and mixing them
+   * in would bury three visit photos under nine working ones.
+   *
+   * THE TURN'S NAME IS SNAPSHOTTED INTO THE VALUE. Renaming a turn afterwards
+   * does not retitle photos already filed under the old name.
+   */
+  | `session_${string}`;
+
+/** The three the Album is made of — everything else is a turn's own evidence. */
+export const ALBUM_MEDIA_KINDS = ["before", "after", "other"] as const;
+
+export type AlbumMediaKind = (typeof ALBUM_MEDIA_KINDS)[number];
+
+/**
+ * A photo or clip on one turn: the shared asset, plus the two things a gallery
+ * of grooming work is read for beyond the picture itself.
+ *
+ * ⚠️ `uploadedByName` IS RESOLVED BY THE API, and `uploadedBy` — an id — is not
+ * what any screen should draw. The pair travels together for the same reason
+ * `groomers[]` carries `_id` and `name`.
+ */
+export interface SessionMedia extends MediaAsset {
+  kind: SessionMediaKind;
+  uploadedBy?: string | null;
+  uploadedByName: string | null;
+  uploadedAt?: string | null;
+}
+
+/**
+ * THE MAIN SERVICE ON A BOOKING — exactly one — with its add-ons and sessions.
+ *
+ * `name` and `price` are a SNAPSHOT taken when the booking was made — a booking
+ * is a quote. Reading the price through `serviceId` at payment time would
+ * silently reprice every outstanding booking the moment the catalogue changed.
+ */
+export interface BookingMainService {
+  serviceId: string;
+  name: string;
+  /**
+   * THE KIND OF WORK — "Grooming", "Hotel", "Day Care" — as TEXT.
+   *
+   * ⚠️ NOT `Service["serviceType"]`, which is `main` | `addon`. Same name, two
+   * meanings, one join apart. A SNAPSHOT like `name` and `price`: renaming a
+   * line of business must not rewrite last month's day sheets.
+   */
+  serviceType: string | null;
+  /**
+   * The catalogue's `billingUnit` when booked (21 September 2026) — on a ride,
+   * `per_pet` prices it for every animal in the van. Null on older bookings.
+   */
+  billingUnit?: ServiceBillingUnit | null;
+  /**
+   * What this line BILLS AT — the catalogue's quote, unless somebody holding
+   * `bookings:setPrice` typed another (15 September 2026). Commission reads it.
+   */
+  price: string;
+  /**
+   * The catalogue's quote when the line was written. Equal to `price` when
+   * nobody typed one; null on bookings the till or an invoice raised. Optional
+   * only because older responses and fixtures lack it — so are the two below.
+   */
+  catalogPrice?: string | null;
+  /** This line's own discount, as typed and resolved. */
+  discount?: InvoiceDiscount | null;
+  /**
+   * WHAT THE BILL TAKES OFF THIS LINE — its own discount plus its part of the
+   * booking's share of "Diskon seluruh booking". The till and the invoice pull
+   * exactly this as a nominal line discount.
+   */
+  discountAmount?: string | null;
+  /**
+   * How long it takes, in minutes. Snapshotted and overridable — a nervous dog
+   * genuinely takes longer than the catalogue says. NULL WHEN THE CATALOGUE
+   * CARRIES NONE; a calendar draws such a booking at a default height.
+   */
+  durationMin: number | null;
+  /**
+   * The whole service's rung — `pending | in_progress | done`. The sessions
+   * beneath it carry one of their own; this one summarises them.
+   */
+  status: BookingWorkStatus;
+  statusHistory: { status: BookingWorkStatus; at: string; by: string | null }[];
+  /** A summary across every session — first to start, last to finish. */
+  startedAt: string | null;
+  finishedAt: string | null;
+  /** Who is doing it, in how many turns. Empty means nobody is assigned yet. */
+  sessions: BookingSession[];
+  addons: BookingAddon[];
+  /**
+   * What it was priced on beyond the pet (17 September 2026) — the "Dipilih
+   * staf" values, and the zone with the distance it was measured at. Absent on
+   * older bookings.
+   */
+  variantChoices?: VariantChoiceSnapshot[];
+  zone?: ZoneSnapshot | null;
+}
+
+/**
+ * An add-on ticked under the main service.
+ *
+ * It carries its own price and duration, so it bills and prints as a line of
+ * its own — but nobody chose "Parfum" by itself, so every screen draws it under
+ * the service. `itemId` is stable, like a session id.
+ */
+export interface BookingAddon {
+  itemId: string;
+  serviceId: string;
+  name: string;
+  price: string;
+  /** As on `BookingMainService`. */
+  catalogPrice?: string | null;
+  discount?: InvoiceDiscount | null;
+  discountAmount?: string | null;
+  durationMin: number | null;
+  /** Its own "Dipilih staf" values — inherited from the main service unless changed. */
+  variantChoices?: VariantChoiceSnapshot[];
+}
+
+/**
+ * ONE ANIMAL IN THE VAN, named (23 September 2026) — with the size it was when
+ * the ride was booked, which is a snapshot and not the profile's value today.
+ */
+export interface BookingPassenger {
+  _id: string;
+  name: string | null;
+  petSize: string | null;
+}
+
+/**
+ * Another booking saved in the same group — what the "Satu kunjungan" card
+ * lists. Just enough to name it and link to it.
+ */
+export interface BookingGroupMember {
+  _id: string;
+  bookingNumber: string | null;
+  /** NULL ON A RIDE — see `passengers`, which is where its animals are. */
+  petId: string | null;
+  petName: string | null;
+  /** A ride's animals. Empty on every other booking. */
+  passengers?: BookingPassenger[];
+  serviceName: string;
+  /** The line of business, as the booking snapshotted it. */
+  serviceType?: string | null;
+  status: BookingStatus;
+  scheduledAt: string;
+  pickupRequested: boolean;
+  deliveryRequested: boolean;
+  /** Set when that booking is a ride. */
+  tripLeg?: TripLeg | null;
+}
+
+/** A booking billed together with this one — see `Booking.related`. */
+export interface BookingRelated extends BookingGroupMember {
+  via: "invoice" | "pos";
+  /** The invoice or sale number, when it has one. */
+  documentNumber: string | null;
+}
+
+/**
+ * Whether a booking has been billed — derived from its two claims.
+ *
+ * No `partial`: one booking is one animal and one service, so it is either on a
+ * basket or a bill, or it is not.
+ */
+export type BookingBillingState = "unbilled" | "billed";
 
 /**
  * One block on the calendar — FR-3.
  *
- * A BLOCK IS A ROW, NOT A BOOKING. Since PCR-040 a visit may bring Mochi and
- * Coco with different groomers, so one booking appears in two columns at once.
- * Rows of one visit share `bookingId`, which is what lets the screen tie them
- * together and open the whole booking from either.
+ * A BLOCK IS A SESSION, NOT A BOOKING. A bath worked by Sinta and then Rio is
+ * two blocks in two columns; both carry `bookingId`, which is what opens the
+ * booking from either. A booking with no session yet is one block of its own.
  */
 export interface BookingCalendarEntry {
-  /** The ROW's id. */
+  /** The session's id — or the booking's, when it has no session yet. */
   _id: string;
   bookingId: string;
   bookingNumber: string | null;
@@ -2211,13 +3244,22 @@ export interface BookingCalendarEntry {
   durationMin: number | null;
   groomerUserId: string | null;
   groomerName: string | null;
-  /** See `BookingItem.groomerOffReason` — the groomer went on leave since. */
+  /** Why this groomer cannot work that day, computed on read — usually null. */
   groomerOffReason?: string | null;
-  petId: string;
+  /** Null on a ride, whose animals are named together in `petName`. */
+  petId: string | null;
+  /** On a ride, every animal in the van, comma-separated (23 September 2026). */
   petName: string | null;
+  /** Set when this block is a ride — it changes the status WORD, not the rung. */
+  tripLeg?: TripLeg | null;
   customerName: string | null;
   serviceName: string;
-  notes: string | null;
+  /**
+   * THE INTERNAL ONE ONLY — a calendar block is a staff day sheet. The
+   * customer-facing note is a message for the owner and the API does not send
+   * it here.
+   */
+  internalNotes: string | null;
 }
 
 /** GET /api/bookings/calendar. */
@@ -2262,7 +3304,42 @@ export interface BookingCalendarQuery {
 export interface GroomerAvailability {
   _id: string;
   fullName: string;
+  /** For the picker's "Sinta · Senior". Optional for older responses. */
+  groomerLevel?: GroomerLevel | null;
   offReason: string | null;
+}
+
+/**
+ * How senior a groomer is. Mirrors GROOMER_LEVELS in user.model.js — lowest
+ * first. A label only: nothing reads it for money or permissions.
+ */
+export const GROOMER_LEVELS = ["junior", "senior"] as const;
+
+export type GroomerLevel = (typeof GROOMER_LEVELS)[number];
+
+export const GROOMER_LEVEL_LABELS: Record<GroomerLevel, string> = {
+  junior: "Junior",
+  senior: "Senior",
+};
+
+/**
+ * GET /api/bookings/capacity?date= — each groomer's minutes that day.
+ *
+ * `dailyCapacityMin` is what is STORED on the user (null = follows the default);
+ * `capacityMin` is what APPLIES. The screen edits the first and draws the second.
+ */
+export interface GroomerCapacityDay {
+  date: string;
+  defaultMinutes: number;
+  overLimit: "warn" | "block";
+  groomers: {
+    _id: string;
+    fullName: string;
+    offReason: string | null;
+    dailyCapacityMin: number | null;
+    capacityMin: number;
+    usedMin: number;
+  }[];
 }
 
 /** A booking row that a proposed leave would strand — FR-4 kriteria 4.9. */
@@ -2312,25 +3389,168 @@ export interface CommissionRecapQuery {
   groomerUserId?: string;
 }
 
-/** Query parameters accepted by GET /api/bookings. All optional. */
 /**
- * The result of taking a month's commission to the ledger.
+ * Where one row of the Komisi screen stands (21 September 2026).
  *
- * `posted: false` IS A SUCCESS, not a failure — "nothing to close" is a true and
- * useful answer to "close September". The other fields are absent when it is
- * false, because nothing was written to describe.
+ *   pending  — Menunggu Persetujuan: billed and done, nobody approved it yet
+ *   approved — Disetujui: may be paid
+ *   paid     — Dibayar: settled by one cash transaction
+ *   reversed — Dibatalkan: its invoice (or booking) was cancelled
+ *   mixed    — the row's turns disagree; shown as such, never picked for payment
  */
-export interface CommissionCloseResult {
-  posted: boolean;
-  period: string;
+export type CommissionStatus =
+  | "pending"
+  | "approved"
+  | "paid"
+  | "reversed"
+  | "mixed";
+
+/** A row's address — one booking × one groomer. */
+export interface CommissionRowKey {
+  bookingId: string;
+  groomerUserId: string;
+}
+
+/**
+ * ONE ROW OF THE KOMISI SCREEN — a booking × groomer, which may be several turns
+ * (tahapan) of that booking. `amount` is what will be paid: the hand-set figure
+ * when `overridden`, otherwise what the rule computed (`computedAmount`).
+ */
+export interface CommissionRow extends CommissionRowKey {
+  /** `bookingId:groomerUserId` — stable across pages, used for selection. */
+  key: string;
+  groomerName: string | null;
+  branchId: string | null;
+  branchName: string | null;
+  bookingNumber: string | null;
+  bookingDate: string | null;
+  petName: string | null;
+  serviceName: string | null;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+  /** The service's price — the mockup's "Nilai Layanan". */
+  basisAmount: string;
+  amount: string;
+  computedAmount: string;
+  overridden: boolean;
+  status: CommissionStatus;
+}
+
+/** GET /api/reports/commissions/records. */
+export interface CommissionRowsResult {
+  rows: CommissionRow[];
+  page: number;
+  limit: number;
+  total: number;
+  /** Over the context bar's scope, ignoring status and search. */
+  cards: { total: string; paid: string; pending: string };
+}
+
+export type CommissionSort =
+  | "bookingDate"
+  | "groomer"
+  | "branch"
+  | "basisAmount"
+  | "amount"
+  | "status";
+
+export interface CommissionRowsQuery {
   branchId?: string;
-  reason?: string;
-  closeId?: string;
-  journalEntryId?: string;
-  entryNumber?: string;
-  amount?: string;
-  recordCount?: number;
-  groomerCount?: number;
+  /** `"__none__"` for "no line of business". */
+  businessLineId?: string;
+  /** `YYYY-MM-DD`, the booking's date in the shop's zone. */
+  dateFrom?: string;
+  dateTo?: string;
+  status?: CommissionStatus | "";
+  q?: string;
+  sort?: CommissionSort;
+  dir?: "asc" | "desc";
+  page?: number;
+  limit?: number;
+}
+
+/** One turn of the row — the mockup's "Rincian per Tahapan". */
+export interface CommissionStage {
+  recordId: string;
+  sessionName: string | null;
+  /** The tahapan's share of the service, per cent. */
+  sharePercent: number | null;
+  crewSize: number | null;
+  crewSharePercent: number | null;
+  /**
+   * This tahapan's part of the commission pool — pool × `sharePercent`, before
+   * the crew split. Null on records from before the pool was stored.
+   */
+  stagePool: string | null;
+  /**
+   * Add-ons paid to this tahapan whole (22 September 2026) — part of
+   * `stagePool`, on top of its bobot share of `pool.shared`. Absent on an
+   * older server.
+   */
+  directAddon?: string;
+  rateType: "percentage" | "fixed" | "matrix" | "size_nominal";
+  rateValue: number;
+  amount: string;
+  status: Exclude<CommissionStatus, "mixed">;
+}
+
+/** GET /api/reports/commissions/records/:bookingId/:groomerUserId. */
+export interface CommissionDetail extends CommissionRow {
+  /**
+   * The pool the tahapan share: the service's commission (`rateType`/`rateValue`
+   * of the service price) plus the add-ons'. Null on pre-rule records.
+   */
+  pool: {
+    /** The booked service — "Basic Grooming". */
+    serviceName: string | null;
+    rateType: CommissionStage["rateType"];
+    rateValue: number;
+    service: string;
+    addon: string;
+    /**
+     * One line per earning add-on. EMPTY when an older record's add-ons cannot
+     * be named any more — `addon` then stands alone.
+     */
+    addons: {
+      name: string | null;
+      /** The tahapan it was paid to (22 September 2026) — empty when it was in the shared pool. */
+      sessionNames?: string[];
+      price: string;
+      rateType: "percentage" | "fixed";
+      rateValue: number;
+      commission: string;
+    }[];
+    total: string;
+    /**
+     * What the tahapan share by bobot: `total` less the add-ons paid to one
+     * tahapan whole (22 September 2026). Absent on an older server.
+     */
+    shared?: string;
+  } | null;
+  stages: CommissionStage[];
+  override: { reason: string | null; at: string | null } | null;
+  approvedAt: string | null;
+  reversal: { at: string | null; reason: string | null } | null;
+  payment: {
+    id: string;
+    number: string | null;
+    at: string;
+    cashAccountName: string | null;
+    journalEntryId: string | null;
+    entryNumber: string | null;
+  } | null;
+}
+
+/** One payment written by POST /api/reports/commissions/pay. */
+export interface CommissionPayment extends CommissionRowKey {
+  groomerName: string;
+  bookingNumber: string | null;
+  branchId: string;
+  paymentId: string;
+  number: string | null;
+  journalEntryId: string;
+  entryNumber: string | null;
+  amount: string;
 }
 
 /**
@@ -2363,27 +3583,15 @@ export interface MyCommission {
   outstanding: CommissionOutstanding;
 }
 
-/** The result of paying one groomer what the books say is owed. */
-export interface CommissionPaymentResult {
-  paymentId: string;
-  journalEntryId: string;
-  entryNumber: string;
-  groomerUserId: string;
-  groomerName: string | null;
-  periods: string[];
-  amount: string;
-  recordCount: number;
-}
-
+/** Query parameters accepted by GET /api/bookings. All optional. */
 export interface BookingListQuery {
   page?: number;
   limit?: number;
   customerId?: string;
   petId?: string;
-  /**
-   * Whose work. Like `petId`, a question about ROWS — the server resolves it to
-   * booking ids and intersects it with `petId` when both are asked.
-   */
+  /** The bookings saved together — where a save that made several lands. */
+  groupId?: string;
+  /** Whose work — anybody on any of the booking's sessions. */
   groomerUserId?: string;
   branchId?: string;
   /** One status or several — a day sheet usually wants more than one. */
@@ -2424,42 +3632,25 @@ export interface BookingUnbilledSummary {
 }
 
 /**
- * Body of POST /api/bookings.
+ * GET /api/bookings/service-counts — bookings per catalogue service.
  *
- * An item carries NO PRICE: it is read from the catalogue and snapshotted by the
- * server, because a price a client can set is a discount a client can grant.
- *
- * `branchId` is optional — the server falls back to the session's current branch.
+ * BOOKINGS — one per animal, so two dogs having the same bath count twice.
+ * An add-on counts where it was ticked. Draft and cancelled work is left out.
+ * Every asked id is a key, `0` when nothing used it.
  */
+export interface ServiceBookingCounts {
+  counts: Record<string, number>;
+}
+
 /**
- * One row of a booking, as the API accepts it — PCR-040.
- *
- * `petId` MOVED HERE from beside `customerId`. A booking is a VISIT now, and
- * each row says whose animal it is for.
- *
- * NOTE WHAT IS ABSENT: a price. It is read from the catalogue by the server and
- * never accepted from a client, because a price a client can set is a discount a
- * client can grant. `durationMin` IS accepted, and the asymmetry is deliberate:
- * it is a receptionist recording that this nervous dog takes longer than the
- * catalogue thinks, which is not the same kind of fact at all.
+ * What a booking count may be narrowed to — the catalogue's Cabang and Periode.
+ * Calendar dates; the server expands them in the tenant's timezone. All
+ * optional: without them the count is all-time, across every branch.
  */
-export interface BookingItemInput {
-  petId: string;
-  serviceId: string;
-  groomerUserId?: string | null;
-  /** Omit to follow the catalogue. 1–1440. */
-  durationMin?: number | null;
-  notes?: string | null;
-  /**
-   * The add-ons ticked under this service — sent on the PARENT, stored as rows.
-   *
-   * Each must be a service filed `serviceType: "addon"` AND listed in this
-   * service's own `addonServiceIds`; the server refuses anything else. It mints
-   * the ids and the `parentItemId` link, so the client never invents one. The
-   * add-on takes the parent's animal and groomer, and its own price and duration
-   * from the catalogue.
-   */
-  addonServiceIds?: string[];
+export interface ServiceBookingCountScope {
+  branchId?: string;
+  scheduledFrom?: string;
+  scheduledTo?: string;
 }
 
 /**
@@ -2478,7 +3669,7 @@ export interface BookingItemInput {
 export type BookingLocation = "in_store" | "in_home";
 
 /**
- * One thing the owner handed over with an animal — barang bawaan pawrents.
+ * One thing the owner handed over with the animal — barang bawaan pawrents.
  *
  * TWO DATES, NOT A `returned` FLAG. `checkedInAt: null` means it was written
  * down when the booking was taken and never actually handed over, which is not
@@ -2487,7 +3678,6 @@ export type BookingLocation = "in_store" | "in_home";
  */
 export interface BookingBelonging {
   _id: string;
-  petId: string;
   name: string;
   checkedInAt: string | null;
   checkedOutAt: string | null;
@@ -2495,20 +3685,94 @@ export interface BookingBelonging {
   checkedOutBy: string | null;
 }
 
-/** What a create or edit sends. `checkedOutAt` is not accepted on a create. */
+/**
+ * What an edit sends. `_id` keeps a stored item's check-in when the list is
+ * sent back; a new one has none.
+ */
 export interface BookingBelongingInput {
-  petId: string;
+  _id?: string;
   name: string;
   checkedInAt?: string | null;
-  checkedOutAt?: string | null;
 }
 
+/**
+ * ONE BOOKING IN A CREATE — one animal, one MAIN service.
+ *
+ * NOTE WHAT IS ABSENT: a price. It is read from the catalogue by the server and
+ * never accepted from a client, because a price a client can set is a discount a
+ * client can grant. `durationMin` IS accepted, and the asymmetry is deliberate:
+ * it is a receptionist recording that this nervous dog takes longer than the
+ * catalogue thinks, which is not the same kind of fact at all.
+ */
+export interface CreateBookingEntry {
+  /**
+   * OMITTED ON A RIDE, and required everywhere else. A card that sends both
+   * this and `tripLeg` is refused: the van's animals are `passengerPetIds`.
+   */
+  petId?: string;
+  /** Must be a MAIN service — an add-on goes in `addonServiceIds`. */
+  serviceId: string;
+  /**
+   * ─── PRICE AND DISCOUNT (15 September 2026) ───────────────────────────────
+   *
+   * Absent or null follows the catalogue. A price different from the quote, or
+   * any discount, is refused (403) without `bookings:setPrice`. A price EQUAL to
+   * the quote is not a typed price, so the form may always send what it shows.
+   */
+  price?: string | null;
+  discount?: TypedDiscountInput | null;
+  /** Only for add-ons ticked in `addonServiceIds`. */
+  addonPricing?: {
+    serviceId: string;
+    price?: string | null;
+    discount?: TypedDiscountInput | null;
+    /** Overrides the main service's choices for this add-on only. */
+    variantChoices?: VariantChoice[];
+  }[];
+  /**
+   * The "Dipilih staf" values the service is priced on (17 September 2026) —
+   * one per card the service declares. Add-ons inherit them.
+   */
+  variantChoices?: VariantChoice[];
+  /**
+   * The add-ons ticked under the service. Each must be filed `serviceType:
+   * "addon"` AND listed in the service's own `addonServiceIds`; the server
+   * refuses anything else.
+   */
+  addonServiceIds?: string[];
+  /** Omit to follow the catalogue. 1–1440. */
+  durationMin?: number | null;
+  /** Null is FR-3's "Belum ditentukan" — a real state, not a gap. */
+  groomerUserId?: string | null;
+  /** Only on a ride — see `Booking.tripLeg`. */
+  tripLeg?: TripLeg | null;
+  /**
+   * EVERY animal on the ride. Required on a ride (at least one) and refused
+   * without `tripLeg` — a ride card sends no `petId` at all.
+   */
+  passengerPetIds?: string[];
+  /**
+   * The bookings this ride serves; refused without `tripLeg`. The same
+   * customer's, still live, and never another ride. A `per_pet` fare is the
+   * catalogue's price once per booking here.
+   */
+  linkedBookingIds?: string[];
+  internalNotes?: string | null;
+  customerNotes?: string | null;
+  belongings?: { name: string; checkedInAt?: string | null }[];
+}
+
+/**
+ * Body of POST /api/bookings — ONE SAVE, 1–10 BOOKINGS, ONE GROUP.
+ *
+ * The header is what the bookings share: who, where, when, and the trip. Each
+ * entry is one booking. The server writes them in one transaction and checks
+ * clashes and capacity across the entries as well as against the diary.
+ */
 export interface CreateBookingInput {
   customerId: string;
-  items: BookingItemInput[];
-  forceClash?: boolean;
+  branchId: string;
   scheduledAt: string;
-  branchId?: string;
   status?: BookingStatus;
   origin?: BookingOrigin;
   notes?: string | null;
@@ -2517,28 +3781,78 @@ export interface CreateBookingInput {
    * does not list this location in its own `serviceLocations` is refused.
    */
   location?: BookingLocation;
-  /**
-   * ONE TRIP PER VISIT, not per animal — a van goes to an address, and two of
-   * one customer's dogs travel in the same one. Both are forced to false on an
-   * `in_home` booking: the salon is already going to the animal.
-   */
+  /** Written onto every booking of the group; editable per booking after. */
   pickupRequested?: boolean;
   deliveryRequested?: boolean;
   /** Null means the customer's stored address, not "no address". */
   tripAddress?: string | null;
-  belongings?: BookingBelongingInput[];
+  /** The two ends of a ride — required together on an antar-jemput save. */
+  tripOrigin?: TripPointInput | null;
+  tripDestination?: TripPointInput | null;
+  /**
+   * "Save it anyway" — FR-4 kriteria 4.6. A CLASH IS A WARNING, NOT A REFUSAL;
+   * the server refuses this flag without `bookings:overrideClash`. LEAVE IS NOT
+   * OVERRIDABLE.
+   */
+  forceClash?: boolean;
+  /** Join an existing group (the same customer's) instead of starting one. */
+  groupId?: string;
+  /**
+   * "Diskon seluruh booking", measured against what the entries come to after
+   * their own discounts and split across them by that figure. Needs
+   * `bookings:setPrice`.
+   */
+  bookingDiscount?: TypedDiscountInput | null;
+  bookings: CreateBookingEntry[];
+}
+
+/** `201` from POST /api/bookings — the group, and every booking it made. */
+export interface CreateBookingResult {
+  groupId: string;
+  bookings: Booking[];
 }
 
 /**
- * Body of PATCH /api/bookings/:id.
+ * Body of PATCH /api/bookings/:id — ONE booking, flat.
  *
  * `status` IS DELIBERATELY ABSENT — it moves through its own route, because a
- * transition has rules a `$set` cannot express.
+ * transition has rules a `$set` cannot express. A billed booking, or one whose
+ * work is completed, may not have its service or price changed; the server
+ * answers 409. Changing `customerId` takes the booking out of its group.
  */
 export interface UpdateBookingInput {
   customerId?: string;
-  items?: BookingItemInput[];
-  forceClash?: boolean;
+  petId?: string;
+  serviceId?: string;
+  addonServiceIds?: string[];
+  /** New "Dipilih staf" values — re-quotes the line in its agreed zone. */
+  variantChoices?: VariantChoice[];
+  /**
+   * ─── A PRICE AND A DISCOUNT ON AN EDIT (24 September 2026) ────────────────
+   *
+   * They were create-only, so correcting a fare meant cancelling the booking
+   * and writing it again. Both need `bookings:setPrice`, asked for only when
+   * the payload carries one — an edit that moved the driver does not.
+   *
+   * ⚠️ `null` IS A REAL VALUE, not "leave it alone": it puts the line back on
+   * the catalogue. Omit the field to carry the typed price forward.
+   */
+  price?: string | null;
+  discount?: TypedDiscountInput | null;
+  /** The same, per add-on. Sent whole — a row left out keeps what it had. */
+  addonPricing?: {
+    serviceId: string;
+    price?: string | null;
+    discount?: TypedDiscountInput | null;
+  }[];
+  durationMin?: number | null;
+  groomerUserId?: string | null;
+  internalNotes?: string | null;
+  customerNotes?: string | null;
+  /**
+   * SENT WHOLESALE: what this list holds IS the booking's belongings afterwards.
+   */
+  belongings?: BookingBelongingInput[];
   scheduledAt?: string;
   branchId?: string;
   notes?: string | null;
@@ -2546,14 +3860,16 @@ export interface UpdateBookingInput {
   pickupRequested?: boolean;
   deliveryRequested?: boolean;
   tripAddress?: string | null;
-  /**
-   * SENT WHOLESALE, like `items`: what this list holds IS the booking's
-   * belongings afterwards. Ticking one back out is this route with the whole
-   * list — `checkedOutAt` is accepted here, unlike on a create.
-   */
-  belongings?: BookingBelongingInput[];
+  /** The two ends of a ride — required together on an antar-jemput save. */
+  tripOrigin?: TripPointInput | null;
+  tripDestination?: TripPointInput | null;
+  tripLeg?: TripLeg | null;
+  /** Who is in the van. Does NOT re-quote — see `linkedBookingIds`. */
+  passengerPetIds?: string[];
+  /** The bookings the ride serves. Re-quotes a `per_pet` ride. */
+  linkedBookingIds?: string[];
+  forceClash?: boolean;
 }
-
 /**
  * The four kinds of real money movement a POS sale can settle through. Mirrors
  * CHANNEL_TYPES in paymentChannel.model.js.
@@ -2681,6 +3997,95 @@ export type ServiceType = "main" | "addon";
  */
 export type ServiceVariantAxis = "petType" | "sizeCategory" | "furType";
 
+/**
+ * ANY KEY A SERVICE'S `variantAxes` MAY HOLD (17 September 2026): one of the
+ * pet's three facts (`ServiceVariantAxis`), `"zone"`, or the id of a "Dipilih
+ * staf" card — see `VariantOption.axisKey`.
+ */
+export type VariantAxisKey = ServiceVariantAxis | "zone" | (string & {});
+
+/** One "Dipilih staf" value a variant is priced on, or a line was sold on. */
+export interface VariantChoice {
+  /** The card's id. */
+  optionId: string;
+  /** One of the card's `values[].code`. */
+  code: string;
+}
+
+/** A choice as a sold line remembers it — the card's name and the value's word. */
+export interface VariantChoiceSnapshot extends VariantChoice {
+  name: string;
+  label: string;
+}
+
+/** The zone a sold line was priced in, and the distance it was measured at. */
+export interface ZoneSnapshot {
+  zoneId: string;
+  name: string;
+  distanceKm: number | null;
+}
+
+/** Where a card's values come from — see `VariantOption`. */
+export type VariantOptionSource = "species" | "size" | "furType" | "zone" | "staff";
+
+/** A value of a "Dipilih staf" card. */
+export interface VariantOptionValue {
+  code: string;
+  label: string;
+  sortOrder: number;
+  /** Retired: kept for services already priced on it, not offered to new ones. */
+  isActive: boolean;
+}
+
+/**
+ * One Opsi Varian card, as GET /api/variant-options returns it.
+ *
+ * `species` / `size` / `furType` — "Otomatis" from the pet; values are the
+ * tenant's pet options of that type. `zone` — "Otomatis" from the customer's
+ * pin and the branch; values are zones. `staff` — "Dipilih staf" at booking,
+ * till and invoice; the only source whose values are on the card.
+ */
+export interface VariantOption {
+  _id: string;
+  tenantId: string;
+  name: string;
+  nameKey: string;
+  description: string | null;
+  source: VariantOptionSource;
+  /** The pet's three — seeded, never deleted. */
+  builtIn: boolean;
+  values: VariantOptionValue[];
+  sortOrder: number;
+  /** What a service's `variantAxes` uses for this card. */
+  axisKey: VariantAxisKey;
+  /**
+   * The kinds of service this card is offered for (22 September 2026) — EMPTY
+   * MEANS EVERY KIND. A filter for the service form, not a rule the server
+   * enforces. Optional for older responses.
+   */
+  serviceKinds?: ServiceKind[];
+  /** Live services declaring this axis. */
+  serviceCount: number;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * What the product itself sells — Grooming, Hotel, Antar-Jemput — fixed words,
+ * unlike the tenant's own business lines (22 September 2026, hardcoded on
+ * request). Mirrors SERVICE_KINDS in variantOption.model.js.
+ */
+export const SERVICE_KINDS = ["grooming", "hotel", "pickup-delivery"] as const;
+
+export type ServiceKind = (typeof SERVICE_KINDS)[number];
+
+export const SERVICE_KIND_LABELS: Record<ServiceKind, string> = {
+  grooming: "Grooming",
+  hotel: "Hotel",
+  "pickup-delivery": "Antar-Jemput",
+};
+
 /** Where a service is performed. Mirrors SERVICE_LOCATIONS. */
 export type ServiceLocation = "in_home" | "in_store";
 
@@ -2688,16 +4093,41 @@ export type ServiceLocation = "in_home" | "in_store";
  * One priced combination of the axes a service declares. Only the fields named
  * in the service's `variantAxes` are populated; the rest are null.
  *
- * The values are the PET's own vocabulary, deliberately: `PetSpecies`,
- * `PetSize` and `PetFurType` are the same enums a pet profile records.
+ * The values are the PET's own vocabulary, deliberately — and since
+ * 25 September 2026 they are its `_id`s, the same `PetOptionId` a pet profile
+ * records. They were codes; both ends of the comparison are ids now, so
+ * `utils/serviceVariant.ts` matches `pet.species` against `variant.petType`
+ * without translating either.
  */
 export interface ServiceVariant {
-  petType: PetSpecies | null;
-  sizeCategory: PetSize | null;
-  furType: PetFurType | null;
+  petType: PetOptionId | null;
+  sizeCategory: PetOptionId | null;
+  furType: PetOptionId | null;
+  /** The zone this row prices, when the service varies by `"zone"`. */
+  zoneId?: string | null;
+  /** One value per "Dipilih staf" axis the service declares. */
+  choices?: VariantChoice[];
   /** Decimal as a string, e.g. "120000.0000". */
   price: string;
+  /**
+   * This variant's own length, in minutes (13 September 2026). A variant
+   * service has no service-level `durationMin`. Null only on a variant stored
+   * before the field whose service had no duration either.
+   */
+  durationMin: number | null;
+  /**
+   * Whether this variant may be sold. An inactive one is still SHOWN, but
+   * cannot be chosen — the server refuses a new line for it.
+   */
+  isActive: boolean;
 }
+
+/**
+ * How a service is charged — mirrors BILLING_UNITS in service.model.js.
+ * `per_visit` is stored and shown; billing still charges per animal until the
+ * antar-jemput feature that needs it arrives.
+ */
+export type ServiceBillingUnit = "per_pet" | "per_visit";
 
 export interface Service {
   _id: string;
@@ -2715,20 +4145,57 @@ export interface Service {
    * true, where each variant carries its own price instead.
    */
   price: string | null;
+  /**
+   * A FLAT service's length, in minutes. NULL when `hasVariants` is true — each
+   * variant carries its own (13 September 2026). Read an animal's length with
+   * `priceForPet`, which picks the right one.
+   */
   durationMin: number | null;
+  /** Per animal or per visit — see `ServiceBillingUnit`. */
+  billingUnit: ServiceBillingUnit;
+  /**
+   * Grooming, Hotel or Antar-Jemput (22 September 2026) — which Opsi Varian
+   * cards the service is offered. Null on an add-on, and on a service saved
+   * before the field until it is answered.
+   */
+  serviceKind?: ServiceKind | null;
+  /**
+   * AN ADD-ON's kinds — which main services offer it (22 September 2026).
+   * Empty is every kind. Always empty on a main service.
+   */
+  serviceKinds?: ServiceKind[];
   description: string | null;
   /** Whether the price depends on the pet — see `variants`. */
   hasVariants: boolean;
-  variantAxes: ServiceVariantAxis[];
+  variantAxes: VariantAxisKey[];
   variants: ServiceVariant[];
   /** The stops a booking of this service moves through. */
   sessions: string[];
+  /**
+   * EACH TAHAPAN'S SHARE OF THE COMMISSION, in per cent, position for position
+   * with `sessions`. `[]` splits evenly; otherwise integers 0–100 summing to
+   * exactly 100 — the server refuses anything else.
+   */
+  sessionWeights: number[];
   /** `true` means every branch, now and as new ones open — `branchIds` is []. */
   allBranches: boolean;
   branchIds: string[];
   serviceType: ServiceType;
   /** Only a `main` service carries these, and only ids of `addon` services. */
   addonServiceIds: string[];
+  /**
+   * ─── AN ADD-ON'S OWN SETTINGS (17 September 2026) ─────────────────────────
+   * Only an `addon` carries values; the server resets them on a `main`
+   * service. Edited on Master › Layanan › Add-on.
+   *
+   * An add-on's TAHAPAN are its `sessions` since 22 September 2026, several
+   * allowed — it was one `addonStepId`.
+   *
+   * Whether selling it earns commission. Copied onto a booking when booked.
+   */
+  commissionable: boolean;
+  /** Whether it may be chosen without a main service. Pickers do not read it yet. */
+  soldSeparately: boolean;
   /** What the price covers, for a storefront to list — not the description. */
   included: string[];
   serviceLocations: ServiceLocation[];
@@ -2751,9 +4218,30 @@ export interface ServiceListQuery {
   categoryId?: string;
   /** "Every addon" — the addon picker's list. */
   serviceType?: ServiceType;
+  /**
+   * WHICH KELOMPOK LAYANAN — grooming / hotel / pickup-delivery
+   * (29 September 2026).
+   *
+   * Matches a MAIN service's own `serviceKind` and an ADD-ON's `serviceKinds`
+   * list alike, and an add-on that declares no kinds matches every value —
+   * "offered with everything" is what an empty list means there. Added for the
+   * membership benefit form's cascading picker, where choosing a kelompok
+   * narrows the services offered below it.
+   */
+  serviceKind?: string;
   /** Only services offered at that branch, `allBranches` ones included. */
   branchId?: string;
   isActive?: boolean;
+  /**
+   * Where the work is done. `in_store` includes a service with no location
+   * stored — one priced before the field existed was a shop service.
+   */
+  location?: ServiceLocation;
+  /**
+   * Services that can be sold for this animal: priced regardless of species,
+   * or with a variant for this one.
+   */
+  petType?: PetOptionId;
   /** Free-text over name / code. */
   search?: string;
   includeDeleted?: boolean;
@@ -2761,26 +4249,39 @@ export interface ServiceListQuery {
 
 /** One variant as the form sends it — the same shape, price as typed. */
 export interface ServiceVariantInput {
-  petType?: PetSpecies | null;
+  petType?: PetOptionId | null;
   sizeCategory?: PetSize | null;
   furType?: PetFurType | null;
+  zoneId?: string | null;
+  choices?: VariantChoice[];
   price: string;
+  /** Required: a variant service has no service-level duration. */
+  durationMin: number;
+  /** Omitted = on. */
+  isActive?: boolean;
 }
 
 /**
- * Body of POST /api/services. `name`, `code`, `businessLineId`, `durationMin`
- * and `serviceLocations` are required; `tenantId` and `createdBy` come from the
+ * Body of POST /api/services. `name`, `code`, `businessLineId` and
+ * `serviceLocations` are required; `tenantId` and `createdBy` come from the
  * session.
  *
  * `price` MUST be sent as a string. A numeric one is a 400 — see the Service
  * type. It is required unless `hasVariants` is true, and FORBIDDEN when it is:
  * a service is priced flat or per variant, never both.
+ *
+ * `durationMin` FOLLOWS THE PRICE: required on a flat service, forbidden when
+ * `hasVariants` is true — each variant then carries its own.
  */
 export interface CreateServiceInput {
   name: string;
   code: string;
   businessLineId: string;
-  durationMin: number;
+  durationMin?: number;
+  billingUnit?: ServiceBillingUnit;
+  serviceKind?: ServiceKind | null;
+  /** An add-on's kinds — empty is every kind. */
+  serviceKinds?: ServiceKind[];
   serviceLocations: ServiceLocation[];
   price?: string;
   image?: MediaAsset | null;
@@ -2788,9 +4289,11 @@ export interface CreateServiceInput {
   categoryId?: string | null;
   description?: string | null;
   hasVariants?: boolean;
-  variantAxes?: ServiceVariantAxis[];
+  variantAxes?: VariantAxisKey[];
   variants?: ServiceVariantInput[];
   sessions?: string[];
+  /** See `Service.sessionWeights`. `[]` = split evenly. */
+  sessionWeights?: number[];
   allBranches?: boolean;
   branchIds?: string[];
   serviceType?: ServiceType;
@@ -2821,16 +4324,25 @@ export interface UpdateServiceInput {
   salesAccountId?: string | null;
   categoryId?: string | null;
   price?: string;
+  /** A flat service's minutes. Refused beside `hasVariants: true`. */
   durationMin?: number;
+  billingUnit?: ServiceBillingUnit;
+  serviceKind?: ServiceKind | null;
+  /** An add-on's kinds — empty is every kind. */
+  serviceKinds?: ServiceKind[];
   description?: string | null;
   hasVariants?: boolean;
-  variantAxes?: ServiceVariantAxis[];
+  variantAxes?: VariantAxisKey[];
   variants?: ServiceVariantInput[];
   sessions?: string[];
+  /** See `Service.sessionWeights`. `[]` = split evenly. */
+  sessionWeights?: number[];
   allBranches?: boolean;
   branchIds?: string[];
   serviceType?: ServiceType;
   addonServiceIds?: string[];
+  commissionable?: boolean;
+  soldSeparately?: boolean;
   included?: string[];
   serviceLocations?: ServiceLocation[];
   pickupDeliveryAvailable?: boolean;
@@ -2839,21 +4351,240 @@ export interface UpdateServiceInput {
 }
 
 /**
- * The animal species a pet may be. Mirrors PET_SPECIES in pet.model.js — a
- * closed list, because it decides which services and prices a booking may offer.
- * Scoped to cat and dog for now — see the model for why the list stays this
- * short rather than growing in place.
+ * Which of the four lists a pet option belongs to — named after the pet field
+ * that stores it. Mirrors PET_OPTION_TYPES in petOption.model.js.
  */
-export type PetSpecies = "cat" | "dog";
+export type PetOptionType = "species" | "breed" | "size" | "furType";
 
-/** Mirrors PET_BREEDS in pet.model.js. `domestic` is the mixed-breed answer. */
-export type PetBreed = "domestic" | "poodle";
+/**
+ * One word in a tenant's vocabulary for an animal, as GET /api/pet-options
+ * returns it (14 September 2026).
+ *
+ * THERE IS NO `code` (25 September 2026). Everything that named an option —
+ * a pet, a service variant's axis, a key of `sizeNominal`, a booking's frozen
+ * `petSize`, and a breed's own `speciesId` — holds its `_id`. `label` is the
+ * only word, and it is free to change; render it with
+ * `usePetOptions().label(type, id)` rather than anything stored.
+ */
+export interface PetOption {
+  _id: string;
+  tenantId: string;
+  type: PetOptionType;
+  /**
+   * LEGACY, AND ONLY EVER READ (25 September 2026). The field is gone from the
+   * schema; documents written before that day still carry it, so `.lean()`
+   * hands it back and `usePetOptions().label` tries it as a fallback. Nothing
+   * sends it and nothing new has one.
+   */
+  code?: string;
+  label: string;
+  /**
+   * WHICH ANIMAL A BREED IS FOR (18 September 2026) — a `species` option's
+   * `_id` (a code until 25 September 2026). Only a breed carries one; null
+   * means the shop has not said, and the breed is offered for every animal.
+   */
+  speciesId?: string | null;
+  /** Position within its list, ascending — sizes go smallest first. */
+  sortOrder: number;
+  /**
+   * Still offered. A retired option is refused for a NEW choice, but a pet or a
+   * variant that already holds it keeps it and saves unchanged.
+   */
+  isActive: boolean;
+  createdBy: string | null;
+  /** Soft-delete marker; refused by the API while a live pet or service uses the code. */
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
-/** Mirrors PET_FUR_TYPES in pet.model.js. */
-export type PetFurType = "long hair" | "short hair";
+/**
+ * Query parameters accepted by GET /api/pet-options. Reading needs a session
+ * and no permission — every screen that records an animal reads this list.
+ */
+export interface PetOptionListQuery {
+  page?: number;
+  limit?: number;
+  type?: PetOptionType;
+  /** Omit for both states. */
+  isActive?: boolean;
+  /** Free text over the label. */
+  search?: string;
+  includeDeleted?: boolean;
+}
 
-/** Mirrors PET_SIZES in pet.model.js. */
-export type PetSize = "small" | "medium" | "large";
+/**
+ * Body of POST /api/pet-options. `sortOrder` defaults to the end of the list.
+ *
+ * NO `code`: the server stopped deriving one on 25 September 2026, and the Joi
+ * schema strips anything it does not name — which is how `speciesCode` went on
+ * being sent and silently dropped for two days.
+ */
+export interface CreatePetOptionInput {
+  type: PetOptionType;
+  label: string;
+  /** Only on a `breed` — see `PetOption.speciesId`. */
+  speciesId?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/**
+ * Body of PATCH /api/pet-options/:id. No `type`: which list an option belongs
+ * to is settled when it is created. The label IS freely editable — every
+ * document that names an option holds its `_id`, so renaming rewrites nothing.
+ */
+export interface UpdatePetOptionInput {
+  label?: string;
+  speciesId?: string | null;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/**
+ * One TAHAPAN on the tenant's list, as GET /api/service-steps returns it
+ * (14 September 2026) — what a service's `sessions` pick from.
+ *
+ * SERVICES STORE THE NAME, not this id: `Service.sessions` is still `string[]`
+ * and a booking still copies the name onto each turn. Renaming a step rewrites
+ * the services of its line (`renamedServiceCount`), never a booking.
+ */
+export interface ServiceStep {
+  _id: string;
+  tenantId: string;
+  /* No kind: ONE LIST PER TENANT, every service picks from it (22 Sep 2026). */
+  name: string;
+  /** The lowercased name the list is unique on — "Mandi" and "mandi" are one step. */
+  nameKey: string;
+  /** Position in the picker, ascending. */
+  sortOrder: number;
+  /** Retired steps cannot be added to a service; a service holding one keeps it. */
+  isActive: boolean;
+  createdBy: string | null;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Live services listing this step. Present on list reads. */
+  serviceCount?: number;
+  /** On a PATCH that renamed it: how many services were rewritten. */
+  renamedServiceCount?: number;
+}
+
+/**
+ * An antar-jemput distance band, per tenant, as /api/zones returns it
+ * (17 September 2026).
+ *
+ * THE RANGE IS HALF-OPEN — `[minKm, maxKm)`: "1–3" holds 1 up to 2.999, not 3,
+ * so the next zone may start at exactly 3. No two live zones of a tenant
+ * overlap; the server answers 409 naming the zone hit.
+ */
+export interface Zone {
+  _id: string;
+  tenantId: string;
+  name: string;
+  /** The lowercased name the list is unique on. */
+  nameKey: string;
+  description: string | null;
+  /** Inclusive, in km. */
+  minKm: number;
+  /** Exclusive, in km. Always above `minKm`. */
+  maxKm: number;
+  createdBy: string | null;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ZoneListQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  includeDeleted?: boolean;
+}
+
+export interface CreateZoneInput {
+  name: string;
+  description?: string | null;
+  minKm: number;
+  maxKm: number;
+}
+
+export type UpdateZoneInput = Partial<CreateZoneInput>;
+
+/** Query parameters accepted by GET /api/service-steps (`services:read`). */
+export interface ServiceStepListQuery {
+  page?: number;
+  limit?: number;
+  isActive?: boolean;
+  search?: string;
+  includeDeleted?: boolean;
+}
+
+/**
+ * Body of POST /api/service-steps (`services:update` — so the Tahapan card can
+ * add a missing step on the spot). 409 when the list already has the name.
+ */
+export interface CreateServiceStepInput {
+  /** ≤ 60 characters — what a booking turn can hold. */
+  name: string;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/** Body of PATCH /api/service-steps/:id. No `businessLineId`. */
+export interface UpdateServiceStepInput {
+  name?: string;
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
+/**
+ * A `species` option CODE. These four were closed unions mirroring enums on
+ * pet.model.js; since 14 September 2026 the lists are tenant data
+ * (`petoptions`), so any string the tenant has made an option is legal. The
+ * names are kept so a reader still sees WHICH list a field draws from.
+ *
+ * ⚠️ ALMOST NOTHING USES THESE ANY MORE (25 September 2026). A service
+ * variant's axes, `bookings.petSize` and the `sizeNominal` keys all moved to
+ * `PetOptionId`, along with the pet itself. What is left is an invoice line's
+ * `petSpecies`, which is a SNAPSHOT of a word rather than a pointer.
+ *
+ * Prefer `PetOptionId` for anything that names a row. These four remain for the
+ * few places that store a word as it was at the time.
+ */
+export type PetSpecies = string;
+
+/** A `breed` option code. `domestic` is the seeded mixed-breed answer. */
+export type PetBreed = string;
+
+/** A `furType` option code. */
+export type PetFurType = string;
+
+/** A `size` option code. */
+export type PetSize = string;
+
+/**
+ * A pet-option's `_id` — what a PET stores for its species, breed, size and
+ * coat since 25 September 2026.
+ *
+ * ─── WHY A PET AND A VARIANT DISAGREE ──────────────────────────────────────
+ *
+ * The four lists have a CRUD screen behind them now, and a code is the wrong
+ * key for a pet to hold: it is a second identity for a row that already has
+ * one, and holding it made the code immutable for everybody. An id survives any
+ * edit the settings screen offers.
+ *
+ * A SERVICE VARIANT KEPT ITS CODES, and so did every frozen fact — a booking's
+ * `petSize`, an invoice line's `petSpecies`, a `sizeNominal` key. A price grid
+ * is the tenant's own vocabulary; the rest are HISTORY, which is allowed to
+ * outlive the row it was copied from. The server resolves a pet's ids back to
+ * codes wherever those meet (`PetRepository#findVariantFactsByIds`), so nothing
+ * on this side has to.
+ *
+ * `usePetOptions().label()` and `.code()` accept either and resolve both, so a
+ * screen showing a pet and a variant side by side needs one helper.
+ */
+export type PetOptionId = string;
 
 /**
  * `unknown` is a REAL value, not a missing one: a rescue arrives unsexed and
@@ -2945,7 +4676,12 @@ export interface PetTimelineEntry {
   status?: BookingStatus;
   durationMin?: number | null;
   groomerName?: string | null;
-  notes?: string | null;
+  /**
+   * THE INTERNAL ONE ONLY. The timeline is what a groomer reads before touching
+   * an animal it has not met; a message written for the owner about one visit
+   * would turn a handling history into a mailbox.
+   */
+  internalNotes?: string | null;
 }
 
 /**
@@ -2971,11 +4707,34 @@ export interface Pet {
   tenantId: string;
   customerId: string;
   name: string;
-  species: PetSpecies;
+  /** An option's `_id`, not its code — see `PetOptionId`. */
+  species: PetOptionId;
   sex: PetSex;
-  breed: PetBreed | null;
-  furType: PetFurType | null;
-  size: PetSize | null;
+  breed: PetOptionId | null;
+  furType: PetOptionId | null;
+  size: PetOptionId | null;
+  /**
+   * THE TENANT'S WORD FOR EACH OF THE FOUR, resolved by the server on every
+   * read (25 September 2026).
+   *
+   * A code degraded to something readable when the client could not resolve it;
+   * an id degrades to nothing, so the label rides along and a row renders
+   * correctly from the response alone — the same argument `petSpeciesLabel` on
+   * an invoice line makes. `null` when the field is unset, or when the option
+   * has been hard-deleted since: a pet is not worth hiding over a word.
+   */
+  speciesLabel: string | null;
+  breedLabel: string | null;
+  furTypeLabel: string | null;
+  sizeLabel: string | null;
+  /*
+    `speciesCode`, `breedCode`, `furTypeCode` AND `sizeCode` ARE GONE
+    (25 September 2026). They rode along beside the labels for one day, so the
+    browser could price a variant while a variant's axes were still keyed by
+    code. Those axes hold pet-option ids now — as do `bookings.petSize` and the
+    `sizeNominal` keys — so `utils/serviceVariant.ts` compares `pet.species` to
+    `variant.petType` directly and there is nothing left to resolve.
+  */
   /** ISO date. The birth date, never an age — an age is wrong the day after it is written. */
   birthDate: string | null;
   weightKg: number | null;
@@ -3009,10 +4768,17 @@ export interface PetListQuery {
   limit?: number;
   /** The filter this endpoint exists for — one customer's animals. */
   customerId?: string;
-  species?: PetSpecies;
+  /** A species option's `_id` — see `PetOptionId`. */
+  species?: PetOptionId;
   /** `true` for a booking picker, which wants only pets still in the tenant's care. */
   isActive?: boolean;
-  /** Free-text over name / breed. */
+  /**
+   * Free-text over the name and the breed's WORD.
+   *
+   * The breed half is resolved server-side: a pet stores a breed's id, so the
+   * term is matched against the option labels first and the pets filtered by
+   * what comes back.
+   */
   search?: string;
   /**
    * One tag, matched exactly — "which animals need two people on a Saturday".
@@ -3040,7 +4806,8 @@ export interface UpdatePetPreferencesInput {
  * two apart.
  */
 export interface UpdatePetMedicalInput {
-  allergies?: Omit<PetAllergy, "note"> & { note?: string | null }[] | PetAllergy[];
+  allergies?:
+    (Omit<PetAllergy, "note"> & { note?: string | null }[]) | PetAllergy[];
   conditions?: PetCondition[];
   medications?: PetMedication[];
   vaccinations?: PetVaccination[];
@@ -3062,11 +4829,12 @@ export interface PetTimelineQuery {
 export interface CreatePetInput {
   customerId: string;
   name: string;
-  species: PetSpecies;
+  /** An option's `_id` — see `PetOptionId`. */
+  species: PetOptionId;
   sex?: PetSex;
-  breed?: PetBreed | null;
-  furType?: PetFurType | null;
-  size?: PetSize | null;
+  breed?: PetOptionId | null;
+  furType?: PetOptionId | null;
+  size?: PetOptionId | null;
   birthDate?: string | null;
   weightKg?: number | null;
   color?: string | null;
@@ -3088,11 +4856,11 @@ export interface CreatePetInput {
  */
 export interface UpdatePetInput {
   name?: string;
-  species?: PetSpecies;
+  species?: PetOptionId;
   sex?: PetSex;
-  breed?: PetBreed | null;
-  furType?: PetFurType | null;
-  size?: PetSize | null;
+  breed?: PetOptionId | null;
+  furType?: PetOptionId | null;
+  size?: PetOptionId | null;
   birthDate?: string | null;
   weightKg?: number | null;
   color?: string | null;
@@ -3561,6 +5329,54 @@ export interface SupplierOutstandingRow {
   dueSoonOutstanding: string;
 }
 
+/**
+ * GET /api/purchase-invoices/summary — the three cards over the Pembelian ›
+ * Ringkasan tab.
+ *
+ * TWO HALVES THAT ANSWER DIFFERENT QUESTIONS, the same split the sales summary
+ * makes on the other side of the ledger:
+ *
+ *   `outstanding`, `overdue`, `dueSoon` — BALANCES. What is owed today, narrowed
+ *   only by the cabang scope. A bill raised in July is still owed while a screen
+ *   shows September, so a period must not touch these.
+ *
+ *   `paid` — A FLOW. What actually left inside the period, counted by
+ *   `payments.at` (the day the money moved) rather than by when it was typed in.
+ *
+ * `period` IS THE RANGE THE SERVER RESOLVED, in the tenant's timezone, and null
+ * when no dates were asked for. Caption from `fromDate` / `toDate`, never by
+ * formatting the instants in the browser.
+ *
+ * NOTE THE DATES MEAN SOMETHING ELSE HERE than on the invoice list: there they
+ * bound `invoiceDate` (when the vendor issued the bill), here they bound the
+ * payments.
+ */
+export interface PayablesSummary {
+  asOf: string;
+  period: {
+    from: string | null;
+    to: string | null;
+    fromDate: string | null;
+    toDate: string | null;
+  } | null;
+  outstanding: {
+    amount: string;
+    invoiceCount: number;
+    /** How many vendors are still owed anything — the aggregation's row count. */
+    supplierCount: number;
+  };
+  overdue: { amount: string; invoiceCount: number };
+  dueSoon: { amount: string; invoiceCount: number; horizonDays: number };
+  paid: {
+    amount: string;
+    paymentCount: number;
+    /** Distinct bills that received one — three instalments on one bill is one. */
+    invoiceCount: number;
+  };
+  /** Bills RAISED in the period, by invoice date — value, not payments. */
+  invoiced: { amount: string; invoiceCount: number };
+}
+
 export interface SupplierOutstandingSummary {
   items: SupplierOutstandingRow[];
   totalOutstanding: string;
@@ -3662,9 +5478,16 @@ export type PurchaseType = "beli_putus" | "konsinyasi";
  * cannot disagree with the two it came from. The list projects the lines away,
  * so `itemCount` stands in for them.
  */
+/**
+ * `pending` — filed, goods not confirmed on the shelf, nothing posted.
+ * `received` — confirmed; stock, lots and the ledger are posted.
+ */
+export type GoodsReceiptStatus = "pending" | "received";
+
 export interface GoodsReceiptListRow {
   _id: string;
   receiptNumber: string;
+  status: GoodsReceiptStatus;
   supplierId: string;
   supplierName: string | null;
   warehouseId: string;
@@ -3725,6 +5548,7 @@ export type GoodsReceiptSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
  * an absent one: somebody eventually builds a toggle for it.
  */
 export interface GoodsReceiptListQuery {
+  status?: GoodsReceiptStatus;
   page?: number;
   limit?: number;
   /** Free-text over receipt number / notes. */
@@ -3815,13 +5639,16 @@ export interface GoodsReceiptDetailItem {
  *
  * `invoiceId` IS NULL UNTIL THE SUPPLIER'S BILL IS FILED through
  * POST /api/purchase-invoices, and permanently null for consignment. It is NOT
- * the debt: a `beli_putus` receipt credits `2101 Utang Supplier` the moment it
+ * the debt: a `beli_putus` receipt credits `2101 Utang Usaha` the moment it
  * posts. What the invoice adds is the vendor's own document number and a due
  * date. A screen that reads a null here as "nothing is owed" is wrong.
  */
 export interface GoodsReceiptDetail {
   _id: string;
   receiptNumber: string;
+  status: GoodsReceiptStatus;
+  /** When the goods were confirmed on the shelf; null while pending. */
+  receivedAt: string | null;
   supplierId: string;
   supplierName: string | null;
   warehouseId: string;
@@ -3904,34 +5731,28 @@ export interface CreateGoodsReceiptInput {
   /** FORBIDDEN on `konsinyasi` — nothing was bought, so there is no input VAT. */
   taxAmount?: string;
   notes?: string;
-  /**
-   * THE SUPPLIER'S BILL, when it came with the goods.
-   *
-   * OPTIONAL, and the two real cases are why: the faktur is in the clerk's hand
-   * while they unload — the ordinary one, and the one this turns into a single
-   * save — or the van brings only a surat jalan and the bill follows days later.
-   * Absent, the delivery posts exactly as it always did and the bill is filed
-   * afterwards through POST /purchase-invoices.
-   *
-   * ABSENT IS NOT "NO DEBT". A `beli_putus` receipt credits `2101 Utang
-   * Supplier` when it posts, invoice or no invoice; what this adds is the
-   * vendor's paperwork on top of the payable — their number, and a due date.
-   *
-   * FORBIDDEN on `konsinyasi`, refused rather than ignored — nothing has been
-   * bought, so there is no debt for a bill to document.
-   *
-   * THE AMOUNTS ARE NOT HERE. `subtotal` and `taxAmount` must equal the
-   * receipt's to the minor unit, so the server takes them from the delivery
-   * itself; what is left is what a person can only read off the vendor's paper.
-   */
+  items: CreateGoodsReceiptItemInput[];
+}
+
+/**
+ * What receiving a pending delivery adds — `POST /goods-receipts/:id/receive`.
+ * The lines are not sent: what is received is exactly what was filed.
+ *
+ * THE SUPPLIER'S BILL MOVED HERE from the create body: a bill is filed against
+ * goods that have arrived. Optional — the faktur may follow days later through
+ * POST /purchase-invoices. Absent is not "no debt": a `beli_putus` receipt
+ * credits Utang Usaha when it posts either way. Forbidden on `konsinyasi`.
+ */
+export interface ReceiveGoodsReceiptInput {
+  /** ISO. When the goods were confirmed on the shelf; defaults to now. */
+  receivedAt?: string;
   invoice?: {
     /** The VENDOR'S own number, from their document. Unique per vendor. */
     invoiceNumber: string;
-    /** Defaults to `receiptDate`. What the payment terms are counted from. */
+    /** Defaults to `receivedAt`. What the payment terms are counted from. */
     invoiceDate?: string;
     notes?: string;
   };
-  items: CreateGoodsReceiptItemInput[];
 }
 
 /**
@@ -4104,6 +5925,17 @@ export interface PurchaseInvoicePayment {
   /** Null when that user has been deleted since. */
   byUserName: string | null;
   journalEntryId: string;
+  /**
+   * The bukti kas/bank number (`BBK/CBS/2609/0001`). `paymentId` is the cash
+   * transaction's id, so the row opens `/dashboard/keuangan/transaksi/:id` —
+   * which is where a supplier payment is now changed or cancelled.
+   *
+   * Optional (and null on migrated history) because older payloads lack it.
+   */
+  paymentNumber?: string | null;
+  /** Set when the payment was cancelled. The row stays; it no longer counts. */
+  voidedAt?: string | null;
+  isVoided?: boolean;
 }
 
 /**
@@ -4622,13 +6454,30 @@ export interface CustomerInvoicePayment {
    * would reject the second instalment as a duplicate of the first.
    */
   paymentId: string;
+  /**
+   * THE HUMAN-FACING NUMBER — `PMT-2026-0001`. `paymentId` is the key a link and
+   * the ledger's idempotency are built from; this is the label a shop reads back
+   * to a customer or writes on a bank reconciliation sheet.
+   *
+   * NULL ON A PAYMENT RECORDED BEFORE THIS FIELD EXISTED. Nothing backfills
+   * one — a screen showing this falls back to the amount for those rows.
+   */
+  paymentNumber: string | null;
   /** The day the money MOVED, which is what dates the journal entry. */
   at: string;
   amount: string;
-  method: CustomerPaymentMethod;
-  channelId: string;
-  /** Null when the channel was retired since; the payment still arrived there. */
+  /** Null on a payment booked straight to a Kas & Bank account. */
+  method: CustomerPaymentMethod | null;
+  channelId: string | null;
+  /**
+   * Where the money landed, by name: the channel's, or — on a payment booked
+   * straight to an account — the account's. Null when the channel was retired
+   * since; the payment still arrived there.
+   */
   channelName: string | null;
+  /** The Kas & Bank account the entry debited. */
+  cashAccountId?: string | null;
+  cashAccountName?: string | null;
   ref: string | null;
   byUserId: string | null;
   byUserName: string | null;
@@ -4661,6 +6510,18 @@ export interface CustomerInvoicePayment {
   /** The entry that UNDID it, beside the one that made it. */
   reversalJournalEntryId: string | null;
   reversalJournalEntryNumber: string | null;
+  /**
+   * Where the money was taken — at the till or keyed in the back office.
+   *
+   * Since "POS hanya channel" a till sale carries its payments as rows too, so
+   * a settled cash sale no longer has an empty history. Optional because older
+   * payloads lack it.
+   */
+  recordedVia?: CashTransactionRecordedVia;
+  /** The channel's MDR taken off this payment. "0.0000" on cash and transfer. */
+  mdrAmount?: string;
+  /** How many times it was changed (Fase 5). 0 on an untouched payment. */
+  revisionCount?: number;
 }
 
 /**
@@ -4716,8 +6577,10 @@ export interface CustomerInvoiceListRow {
 }
 
 /** GET /api/customer-invoices/:id — the row, plus its payments and labels. */
-export interface CustomerInvoiceDetail
-  extends Omit<CustomerInvoiceListRow, "paymentCount"> {
+export interface CustomerInvoiceDetail extends Omit<
+  CustomerInvoiceListRow,
+  "paymentCount"
+> {
   /** Who raised it. Null for a till-born invoice, or a user deleted since. */
   createdByName: string | null;
   payments: CustomerInvoicePayment[];
@@ -4837,13 +6700,87 @@ export interface CustomerInvoiceDetail
    * Empty on an invoice that bills only goods.
    */
   bookings: InvoiceBooking[];
+  /**
+   * The customer's phone as stored, and the same number in `wa.me` form — the
+   * digits with no `+` — for the WhatsApp button. Both null on a walk-in, a
+   * deleted customer, or a number the server cannot read as one.
+   */
+  customerPhone?: string | null;
+  customerWhatsApp?: string | null;
+  /**
+   * The unguessable name this invoice answers to at `/faktur/:token` — the
+   * customer's own copy, no login. The WhatsApp button links it. Null on an
+   * invoice raised before links existed, until the backend backfill has run.
+   */
+  publicToken?: string | null;
+  /**
+   * Every edit of this invoice, oldest first. Empty on one never edited — see
+   * `UpdateCustomerInvoiceInput`.
+   */
+  revisions?: Array<{
+    at: string;
+    by: string | null;
+    previousTotal: string;
+    total: string;
+  }>;
 }
 
-/** One appointment an invoice covers, as the execution panel draws it. */
+/**
+ * GET /public/invoices/:token — one invoice as its CUSTOMER sees it, no session.
+ *
+ * AN ALLOWLIST, not the detail payload: only what the printed faktur shows. No
+ * ids of any kind, no cost of goods, no journal entries, no credit position.
+ * `payments` holds only those that still count, so it carries no `isVoided`.
+ */
+export interface PublicCustomerInvoice {
+  invoiceNumber: string;
+  status: CustomerInvoiceStatus;
+  invoiceDate: string;
+  dueDate: string;
+  customerName: string | null;
+  branchName: string | null;
+  items: Array<
+    Pick<
+      CustomerInvoiceItem,
+      "name" | "sku" | "petName" | "qty" | "unitPrice" | "lineTotal"
+    >
+  >;
+  totals: Pick<
+    CustomerInvoiceTotals,
+    "subtotal" | "itemDiscount" | "invoiceDiscount" | "dpp" | "tax" | "grandTotal"
+  > | null;
+  otherCharges: Array<{ label: string; amount: string }>;
+  total: string;
+  paidAmount: string;
+  outstandingAmount: string;
+  payments: Array<
+    Pick<CustomerInvoicePayment, "paymentNumber" | "at" | "amount" | "channelName">
+  >;
+  notes: string | null;
+  voidReason: string | null;
+  /** The shop's name for the header, and its footer note — usually where to pay. */
+  /**
+   * Who is billing, and where to pay. `legalName` and `taxId` since
+   * 22 September 2026 — the sheet prints the legal name and falls back to
+   * `name`; both are null for a shop that gave neither.
+   */
+  tenant: {
+    name: string;
+    legalName?: string | null;
+    taxId?: string | null;
+    invoiceFooterNote: string | null;
+  };
+}
+
+/**
+ * One appointment an invoice covers, as the execution panel draws it.
+ *
+ * ONE ANIMAL, ONE MAIN SERVICE — the same pair a `Booking` is, cut down to what
+ * a bill needs to show about the work behind it.
+ */
 export interface InvoiceBooking {
   _id: string;
   bookingNumber: string | null;
-  status: BookingStatus;
   /**
    * `invoice_adhoc` means the invoice RAISED it — the service was typed in and
    * nobody had booked it. `booking` means it existed first and was billed here.
@@ -4859,14 +6796,26 @@ export interface InvoiceBooking {
    * is a record of what was agreed.
    */
   petName: string | null;
-  items: InvoiceBookingItem[];
-}
-
-/** One service on an invoice's booking. */
-export interface InvoiceBookingItem {
-  serviceId: string | null;
-  name: string;
-  price: string;
+  status: BookingStatus;
+  /** The main service and the add-ons ticked under it. */
+  service: {
+    serviceId: string | null;
+    name: string;
+    price: string;
+    /**
+     * This line's part of "Diskon seluruh booking" — inside the invoice line's
+     * discount, not beside it (15 September 2026). Null when there is none;
+     * optional only because older fixtures lack it.
+     */
+    bookingShare?: string | null;
+    addons: {
+      serviceId: string | null;
+      name: string;
+      price: string;
+      bookingShare?: string | null;
+    }[];
+  };
+  /** The first person on the first live session, or null when nobody is. */
   groomerUserId: string | null;
   /** Never null — an unfilled slot resolves to "Belum ditentukan" server-side. */
   groomerName: string;
@@ -4925,7 +6874,18 @@ export interface InvoiceJournalEntry {
 }
 
 /** What an invoice line sells. */
-export type InvoiceItemKind = "product" | "service";
+/**
+ * `membership` JOINED THE LIST ON 29 SEPTEMBER 2026 — a package billed as a line
+ * of its own. It holds no stock, has its own accounts (credited to the unearned
+ * liability until the bill is paid), and mints a CARD when the money arrives.
+ *
+ * IT CANNOT BE ADDED OR RE-PRICED IN THE INVOICE EDITOR, and does not need to
+ * be: the editor only offers products and services in its picker, and a KEPT
+ * line is sent back by `fromIndex` for the server to re-read rather than
+ * re-priced in the browser. Widening this type is what stops it claiming the
+ * server can only ever send two kinds.
+ */
+export type InvoiceItemKind = "product" | "service" | "membership";
 
 /** How a discount was typed. `amount` is a rupiah figure, not a percentage. */
 export type InvoiceDiscountMode = "percent" | "amount";
@@ -4955,6 +6915,16 @@ export interface InvoiceDiscount {
   mode: InvoiceDiscountMode;
   value: string;
   resolvedAmount: string;
+  /**
+   * WHERE IT CAME FROM (29 September 2026). `membership` means a benefit on the
+   * animal's card paid for part or all of it — priced by the server from the
+   * card's frozen plan, not typed by anybody.
+   */
+  source?: "manual" | "membership";
+  membershipId?: string | null;
+  benefitId?: string | null;
+  /** Frozen onto the line so a reprinted bill can name it without a lookup. */
+  benefitLabel?: string | null;
 }
 
 /** One line of an invoice, as stored. Prices are snapshots. */
@@ -4966,6 +6936,17 @@ export interface CustomerInvoiceItem {
   qty: string;
   unitPrice: string;
   discount: InvoiceDiscount | null;
+  /**
+   * HOW MUCH OF `discount` A MEMBERSHIP BENEFIT PAID FOR (29 September 2026) —
+   * a PART of it, never beside it, exactly like the booking share.
+   *
+   * A line may carry a benefit AND a discount somebody typed on top of it, so
+   * reading `discount.resolvedAmount` as "what the card gave" would overstate
+   * the programme's cost every time both are present.
+   */
+  membershipDiscount?: string | null;
+  /** The card this line minted, once the bill was paid. Membership lines only. */
+  membershipId?: string | null;
   /** `qty × unitPrice`, BEFORE this line's own discount. */
   lineTotal: string;
   /** The cost the consumed lots carried. Null on a service. */
@@ -4991,14 +6972,18 @@ export interface CustomerInvoiceItem {
    */
   bookingId: string | null;
   /**
-   * The booking ROW this line came from — PCR-040.
+   * THE MAIN SERVICE THIS LINE HANGS OFF, as a CATALOGUE service id — the till's
+   * `parentServiceId` under the same name. Null on a main service, a product,
+   * and an add-on billed on its own.
    *
-   * `bookingId` alone is no longer enough: a booking is a visit now, and taking
-   * Coco's line out of the basket must release Coco's row and leave Mochi's
-   * claimed. Null on lines pulled before the migration, where the server falls
-   * back to releasing the whole booking.
+   * RESOLVED BY THE SERVER, never sent: it files an add-on under the service on
+   * the same animal that offers it. Optional because invoices raised before it
+   * existed do not carry the key.
    */
-  bookingItemId: string | null;
+  parentServiceId?: string | null;
+  /** What a typed service line was priced on beyond the pet (17 September 2026). */
+  variantChoices?: VariantChoiceSnapshot[];
+  zone?: ZoneSnapshot | null;
   /** Whose animal the service is for. Null on a product line. */
   petId: string | null;
   /**
@@ -5009,6 +6994,24 @@ export interface CustomerInvoiceItem {
   petName: string | null;
   /** Who did the work, as at issue. Null when the slot was never filled. */
   groomerName: string | null;
+  /**
+   * The animal's species, RESOLVED ON READ — unlike `petName`, which is the
+   * name as billed. A species is not something a bill agreed to; it labels the
+   * group the line sits in. Null on a product line, or when the pet is gone.
+   */
+  petSpecies?: PetSpecies | null;
+  /**
+   * The species' WORD ("Kucing"), resolved on read beside `petSpecies`. Species
+   * are tenant data now, and the public invoice page has no session to look the
+   * code up with — so the server says it. Null when unresolvable; show the code.
+   */
+  petSpeciesLabel?: string | null;
+  /**
+   * The booking's number, RESOLVED ON READ for every line with a `bookingId` —
+   * a till sale's too, whose bookings `bookings[]` does not carry. Null on a
+   * line with no booking, or one deleted since.
+   */
+  bookingNumber?: string | null;
 }
 
 /** The money, frozen when the invoice was issued — or when the sale settled. */
@@ -5027,6 +7030,62 @@ export interface CustomerInvoiceTotals {
    * customer paid, so a total without it is one the rows above do not add up to.
    */
   otherCharges?: string | null;
+  /**
+   * The rate `tax` was charged at, as a percentage — frozen at issue so a line
+   * can say "PPN 11%" after the tenant's setting has moved. Null on invoices
+   * issued before it was stored, and on a till sale.
+   */
+  taxRate?: number | null;
+}
+
+/**
+ * PATCH /api/customer-invoices/:id — the whole revised list of lines.
+ *
+ * `fromIndex` MARKS A KEPT LINE: the index of the stored line it continues. A
+ * kept line keeps its frozen price, animal and booking; only `qty` and
+ * `discount` move. A row without it is a new line, priced from the catalogue.
+ * A stored line no row names is taken off.
+ */
+export interface UpdateInvoiceItemInput extends CreateInvoiceItemInput {
+  fromIndex?: number;
+}
+
+export interface UpdateCustomerInvoiceInput {
+  items: UpdateInvoiceItemInput[];
+  /** Absent keeps the typed discount; null removes it. */
+  invoiceDiscount?: TypedDiscountInput | null;
+  /** Absent keeps the stored charges; an array — even empty — replaces them. */
+  otherCharges?: PosCharge[];
+  dueDate?: string;
+  /** Only read when the invoice shipped nothing before and now does. */
+  warehouseId?: string;
+  notes?: string | null;
+}
+
+/** The actions an invoice's own activity log can hold. */
+export type InvoiceActivityAction =
+  | "invoice_create"
+  | "invoice_update"
+  | "invoice_payment_record"
+  | "invoice_payment_void"
+  | "invoice_void";
+
+/** One entry of GET /api/customer-invoices/:id/activity. */
+export interface InvoiceActivityEntry {
+  _id: string;
+  /** An open vocabulary server-side; unknown values render generically. */
+  action: InvoiceActivityAction | string;
+  at: string;
+  /** Null when the user has since been deleted. */
+  actorName: string | null;
+  /** What the audit row recorded — amounts as decimal strings. */
+  metadata: Record<string, unknown>;
+  /**
+   * True for the one entry read off the DOCUMENT rather than the trail: a till
+   * invoice is never audited as created, so its creation is taken from its own
+   * timestamps.
+   */
+  fromDocument: boolean;
 }
 
 /**
@@ -5054,6 +7113,15 @@ export interface CreateInvoiceItemInput {
   qty: string;
   discount?: TypedDiscountInput | null;
   /**
+   * WHICH CARD AND WHICH BENEFIT (30 September 2026) — never what it is worth.
+   *
+   * The server reads the card, its frozen plan and the redemption ledger and
+   * prices the benefit itself. A payload that could name its own benefit amount
+   * could write a free invoice, so the amount is deliberately absent from this
+   * shape; what the form quoted only ever drove its own preview.
+   */
+  benefit?: { membershipId: string; benefitId: string } | null;
+  /**
    * WHOSE ANIMAL, on a service line — PCR-035, and the prerequisite for the rest
    * of it. A booking needs a pet, and a grooming typed straight onto an invoice
    * has none, so without this the service is billed and appears on no day sheet.
@@ -5062,6 +7130,8 @@ export interface CreateInvoiceItemInput {
    * accepting one would raise an appointment for a bag of food.
    */
   petId?: string;
+  /** The "Dipilih staf" values a service line is priced on; an add-on inherits its main line's. */
+  variantChoices?: VariantChoice[];
 }
 
 /**
@@ -5079,6 +7149,11 @@ export interface CreateCustomerInvoiceInput {
   warehouseId?: string;
   items: CreateInvoiceItemInput[];
   invoiceDiscount?: TypedDiscountInput | null;
+  /**
+   * Ongkir, packaging — the till's `otherCharges`, same shape. Each amount is
+   * positive; added after the discounts and taxed like a line.
+   */
+  otherCharges?: PosCharge[];
   invoiceDate?: string;
   dueDate?: string;
   termDays?: number;
@@ -5100,14 +7175,35 @@ export interface CreateCustomerInvoiceInput {
  */
 export interface CustomerInvoiceListQuery {
   page?: number;
+  /** Up to 200 on this list — twice the API-wide ceiling. */
   limit?: number;
-  /** Free-text over invoice number / notes. NOT the customer's name — that
-   *  lives in another collection; filter by `customerId` instead. */
+  /**
+   * Free text over the invoice number, the notes AND the customer's name. The
+   * name half is resolved server-side into customer ids, not joined per row.
+   */
   search?: string;
   customerId?: string;
+  /** The SCOPE — whose books. Also narrows the belum-lunas / overdue cards. */
   branchId?: string;
+  /** The filter panel's cabang, any of them. ANDed with `branchId`. */
+  branchIds?: string[];
+  /** Where the goods left from. A scope, like `branchId`. */
+  warehouseId?: string;
+  /** The filter panel's gudang, any of them. ANDed with `warehouseId`; also a scope. */
+  warehouseIds?: string[];
+  /** Who raised the invoice — the panel's Kasir / Admin. */
+  createdBy?: string[];
   status?: CustomerInvoiceStatus;
+  /** Any of these, OR'd. `overdue` is outstanding AND past due. */
+  statuses?: CustomerInvoiceStatusFilter[];
+  /**
+   * A named period over `invoiceDate`, resolved in the TENANT's timezone. Never
+   * sent beside `dateFrom` / `dateTo` — the server refuses both at once.
+   */
+  period?: InvoicePeriod;
   source?: CustomerInvoiceSource;
+  /** The filter panel's Sumber, any of them, OR'd. ANDed with `source`. */
+  sources?: CustomerInvoiceSource[];
   /** `status ∈ {unpaid, partial}` — excludes `void`, which owes nothing. */
   outstanding?: boolean;
   overdue?: boolean;
@@ -5119,9 +7215,8 @@ export interface CustomerInvoiceListQuery {
   dateFrom?: string;
   dateTo?: string;
   /**
-   * `totalHighest` / `totalLowest` order by what was BILLED, not by what is
-   * still owed: `total` is stored, the outstanding amount is derived per row and
-   * no index can serve it.
+   * `total…` orders by what was BILLED; `outstanding…` by what is still OWED,
+   * derived in the pipeline with a void invoice counted as owing nothing.
    */
   sort?:
     | "dueSoonest"
@@ -5129,7 +7224,127 @@ export interface CustomerInvoiceListQuery {
     | "newest"
     | "oldest"
     | "totalHighest"
-    | "totalLowest";
+    | "totalLowest"
+    | "outstandingHighest"
+    | "outstandingLowest";
+}
+
+/** What the list's Status filter may ask for — a status, or lateness. */
+export type CustomerInvoiceStatusFilter = CustomerInvoiceStatus | "overdue";
+
+/** The periods the server can resolve by name, in the tenant's timezone. */
+export type InvoicePeriod = "today" | "week" | "month";
+
+/** One card: a rupiah figure and how many invoices it came from. */
+export interface CustomerInvoiceSummaryFigure {
+  amount: string;
+  invoiceCount: number;
+}
+
+/**
+ * GET /api/customer-invoices/summary — the four cards over the list.
+ *
+ * TWO HALVES, ANSWERING DIFFERENT QUESTIONS:
+ *
+ *   `revenue`, `collected` — what the TABLE adds up to, under the list's whole
+ *   filter. Void invoices are matched but count as neither. `collected` is
+ *   `paidAmount`, so a cash sale the till booked as paid counts.
+ *
+ *   `outstanding`, `overdue` — what is OWED, narrowed only by the branch and
+ *   warehouse scope. A July debt is still owed while the table shows September.
+ *
+ * `period` IS THE RANGE THE SERVER RESOLVED, in the tenant's timezone — null when
+ * the query had no dates at all. `fromDate` / `toDate` are that range as the
+ * tenant's CALENDAR DAYS (`yyyy-mm-dd`): caption from those, never by formatting
+ * the instants in the browser, which names the wrong day west of the tenant.
+ */
+export interface CustomerInvoiceListSummary {
+  asOf: string;
+  period: {
+    from: string | null;
+    to: string | null;
+    fromDate: string | null;
+    toDate: string | null;
+  } | null;
+  revenue: CustomerInvoiceSummaryFigure;
+  collected: CustomerInvoiceSummaryFigure;
+  outstanding: CustomerInvoiceSummaryFigure;
+  overdue: CustomerInvoiceSummaryFigure;
+}
+
+/**
+ * The axes `GET /api/customer-invoices/summary/breakdown/:axis` can split a
+ * period's omzet by — the Ringkasan tab's three panels.
+ *
+ *   category     — the catalogue category on the product or service each invoice
+ *                  LINE sold (`products.categoryId` / `services.categoryId`).
+ *   businessLine — the lini usaha on those same rows (`businessLineId`).
+ *   customerType — the Kategori pelanggan on the customer the INVOICE was raised
+ *                  for (`customers.customerTypeId`).
+ */
+export type RevenueBreakdownAxis =
+  | "category"
+  | "businessLine"
+  | "customerType";
+
+/**
+ * GET /api/customer-invoices/summary/breakdown/:axis — where the period's omzet
+ * came from. The Ringkasan tab's bars.
+ *
+ * TAKES THE LIST'S OWN FILTER, exactly as `/summary` does, so every panel and
+ * the Omzet card above them answer one question. `period` is echoed back for the
+ * same reason it is there.
+ *
+ * `basis` IS WHAT THE BARS ADD UP TO, and it is not the same for every axis:
+ *
+ *   "invoice" — `total` sums exactly to the Omzet card. Only `customerType`,
+ *               because a customer's category belongs to the whole document.
+ *   "line"    — the invoice LINES after their own discounts, which is SHORT of
+ *               the omzet: an invoice-level discount, the other charges (ongkir,
+ *               packaging) and the tax belong to no single catalogue row and are
+ *               deliberately not split across them.
+ *
+ * A GROUP WITH `id: null` IS THE UNNAMED BUCKET — a service with no category, a
+ * customer with no type, or a master row hard-deleted since. `name` is null when
+ * the record itself could not be read; both are the screen's to label, because
+ * inventing a name here would make them the same thing.
+ */
+export interface RevenueBreakdown {
+  asOf: string;
+  period: CustomerInvoiceListSummary["period"];
+  axis: RevenueBreakdownAxis;
+  basis: "invoice" | "line";
+  /** Σ of every group's amount, as a decimal string. */
+  total: string;
+  /** Largest first — the order the bars are drawn in, decided by the server. */
+  groups: Array<{
+    id: string | null;
+    name: string | null;
+    amount: string;
+    /** Null on the `customerType` axis, which counts documents instead. */
+    lineCount: number | null;
+    /** Null on the two line axes, which count lines. */
+    invoiceCount: number | null;
+  }>;
+}
+
+/**
+ * GET /api/customer-invoices/filter-options — the values that actually appear on
+ * this tenant's invoices, labelled. Gated on `customerInvoices:read` only.
+ */
+export interface CustomerInvoiceFilterOptions {
+  branches: Array<{ _id: string; name: string }>;
+  /**
+   * `branchId` — the gudang's OWN cabang (its master record), null when none is
+   * named. `branchIds` — every cabang it has actually billed under.
+   */
+  warehouses: Array<{
+    _id: string;
+    name: string;
+    branchId: string | null;
+    branchIds: string[];
+  }>;
+  creators: Array<{ _id: string; name: string }>;
 }
 
 /** One customer's debt, from GET /api/customer-invoices/outstanding. */
@@ -5216,13 +7431,334 @@ export interface RecordCustomerPaymentInput {
   /** Strictly positive, and never more than `outstandingAmount`. */
   amount: string;
   /**
-   * What KIND of payment this is. Distinct from `channelId`, which says which
-   * ACCOUNT it landed in; the server checks the two agree.
+   * The Kas & Bank account the money landed in — what the back office sends
+   * (BO, 22 Sep 2026). Kas or bank, and so BKM or BBM, comes from the account.
+   * No method: outside the till there is no method to pick.
    */
-  method: CustomerPaymentMethod;
-  /** The account the money arrived in — must be usable `in`. */
-  channelId: string;
+  accountId?: string;
+  /**
+   * THE OLDER SHAPE, still accepted: a payment channel and the method it must
+   * agree with. Exactly one of `accountId` or `channelId` is sent.
+   */
+  method?: CustomerPaymentMethod;
+  channelId?: string;
   /** Defaults to now. The day the money MOVED, which dates the ledger entry. */
   at?: string;
   ref?: string;
+}
+
+/* ============================================================================
+   Cash transactions — Transaksi Keuangan (/api/cash-transactions)
+   ========================================================================== */
+
+/**
+ * WHAT A MOVEMENT OF MONEY WAS FOR. One collection holds every numbered bukti
+ * kas/bank: receipts against an invoice, payments to a supplier or a groomer,
+ * the till's payments, and the two kinds a person records by hand here —
+ * `expense` and `other_income`.
+ *
+ * `pos_refund` is money handed back on a till return. It is read-only on every
+ * screen: the return owns it.
+ */
+export type CashTransactionKind =
+  | "customer_payment"
+  | "supplier_payment"
+  | "commission_payment"
+  | "expense"
+  | "other_income"
+  | "pos_refund";
+
+export type CashTransactionDirection = "in" | "out";
+
+/** `void` is the API's word; every screen says "dibatalkan". */
+export type CashTransactionStatus = "posted" | "void";
+
+/** Where it was keyed in — the till or the back office. Not a kind. */
+export type CashTransactionRecordedVia = "backoffice" | "pos";
+
+export type CashTransactionSort =
+  | "newest"
+  | "oldest"
+  | "amountHighest"
+  | "amountLowest"
+  /** By the branch's NAME — the server joins the branch in for these two only. */
+  | "branchAsc"
+  | "branchDesc";
+
+export type CashTransactionDocumentType =
+  | "customer_invoice"
+  | "purchase_invoice"
+  | "pos_return";
+
+/**
+ * One account line of an `expense` / `other_income` — what the money became.
+ * Null `businessLineId` is the shared bucket ("Bersama").
+ */
+export interface CashTransactionLine {
+  accountId: string;
+  accountCode: string | null;
+  accountName: string | null;
+  amount: string;
+  businessLineId: string | null;
+  businessLineName: string | null;
+  /**
+   * Which Detil Akun of `accountId` this line was booked to, and its name.
+   *
+   * Null whenever the account carries no rules to choose from, which is every
+   * line written before allocation existed — the laba rugi reads those as the
+   * shared bucket they always were.
+   */
+  allocationId: string | null;
+  allocationName: string | null;
+  memo: string | null;
+}
+
+/**
+ * One edit, kept (Fase 5). `before` is what the transaction said until then;
+ * `journalEntryId` is the entry that was current before the edit and
+ * `reversalJournalEntryId` the entry that undid it.
+ */
+export interface CashTransactionRevision {
+  at: string;
+  by: string | null;
+  byName: string | null;
+  reason: string | null;
+  before: {
+    at: string;
+    amount: string;
+    /** Absent on revisions recorded before 20 September 2026. */
+    cashAccountId?: string | null;
+    cashAccountName?: string | null;
+    channelId: string | null;
+    channelName: string | null;
+    ref: string | null;
+    note: string | null;
+  };
+  journalEntryId: string | null;
+  journalEntryNumber: string | null;
+  reversalJournalEntryId: string | null;
+  reversalJournalEntryNumber: string | null;
+}
+
+/**
+ * One numbered movement of money — a SOURCE DOCUMENT, not a second ledger.
+ *
+ * Every one posts a journal entry; changing or cancelling one posts a reversal
+ * and never edits the old entry. Money fields are decimal strings.
+ */
+export interface CashTransaction {
+  _id: string;
+  /**
+   * `BKM/CBS/2609/0001` (cash in) · `BKK/…` (cash out) · `BBM/…` (bank in) ·
+   * `BBK/…` (bank out) · legacy `PMT-2026-0001` · null on migrated history.
+   * NEVER CHANGES ON EDIT, which is why an edit may not move cash ↔ bank.
+   */
+  number: string | null;
+  direction: CashTransactionDirection;
+  kind: CashTransactionKind;
+  recordedVia: CashTransactionRecordedVia;
+  status: CashTransactionStatus;
+  isVoided: boolean;
+  branchId: string;
+  branchName: string | null;
+  at: string;
+  amount: string;
+  /** The channel's MDR. Masuk bersih = `netAmount`. */
+  mdrAmount: string;
+  netAmount: string;
+  /**
+   * At the till only: what the customer handed over and the change given back.
+   * `amount` is what stayed. Null on everything recorded in the back office.
+   */
+  tenderedAmount?: string | null;
+  changeAmount?: string | null;
+  /**
+   * WHERE THE MONEY SAT — the ledger account, on every row that has one.
+   *
+   * Since 20 September 2026 a back-office transaction names an ACCOUNT and has
+   * no channel at all; a till payment fills this in from its channel's account,
+   * so the Akun Kas/Bank column is about the same thing on every row.
+   * `cashAccountName` falls back to the channel's name for history written
+   * before the field existed.
+   */
+  cashAccountId: string | null;
+  cashAccountCode: string | null;
+  cashAccountName: string | null;
+  /**
+   * THE OTHER SIDE — what the money was for, opposite the kas/bank account.
+   *
+   * An array because one transaction can name several: an expense typed by hand
+   * carries a line per account. A document payment has exactly one entry, and a
+   * row whose accounts have since been deleted has none.
+   */
+  counterAccounts: Array<{ id: string; code: string; name: string }>;
+  /** The till's button, where there was one. Null on anything typed by hand. */
+  channelId: string | null;
+  channelType: PaymentChannelType | null;
+  channelName: string | null;
+  method: string | null;
+  ref: string | null;
+  note: string | null;
+  document: {
+    type: CashTransactionDocumentType;
+    id: string;
+    number: string | null;
+  } | null;
+  party: {
+    type: CashTransactionPartyType | null;
+    id: string | null;
+    name: string | null;
+  } | null;
+  commission: {
+    groomerUserId: string;
+    /**
+     * The booking this payment settled — one commission, one payment, since
+     * 21 September 2026. Null on the per-groomer payouts written before.
+     */
+    bookingId?: string | null;
+    periods: string[];
+    recordCount: number;
+  } | null;
+  /** Only `expense` / `other_income`. */
+  lines: CashTransactionLine[] | null;
+  posTransactionId: string | null;
+  shiftId: string | null;
+  journalEntryId: string | null;
+  journalEntryNumber: string | null;
+  voidedAt: string | null;
+  voidedBy: string | null;
+  voidedByName: string | null;
+  voidReason: string | null;
+  reversalJournalEntryId: string | null;
+  reversalJournalEntryNumber: string | null;
+  revisions: CashTransactionRevision[];
+  /** Migrated history whose journal was not rebuilt — read-only. */
+  legacy: boolean;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Σ of POSTED transactions over the whole filter, not the page. */
+export interface CashTransactionTotals {
+  in: { amount: string; count: number };
+  out: { amount: string; count: number };
+}
+
+export interface CashTransactionListResponse extends PageResult<CashTransaction> {
+  totals: CashTransactionTotals;
+}
+
+/** One channel's movement over a filter. Σ of POSTED transactions only. */
+export interface CashTransactionChannelTotals {
+  /** `null` is migrated history, recorded before the field existed. */
+  channelId: string | null;
+  in: { amount: string; count: number };
+  out: { amount: string; count: number };
+}
+
+/**
+ * GET /api/cash-transactions/summary — the Kas & Bank table.
+ *
+ * A CHANNEL WITH NO MOVEMENT IS ABSENT, not present with zeros: key by
+ * `channelId` and read a miss as zero. That is what keeps the response short on
+ * a tenant with a long list of channels.
+ */
+export interface CashTransactionChannelSummary {
+  channels: CashTransactionChannelTotals[];
+}
+
+/**
+ * WHICH REGISTER A TRANSACTION'S OTHER SIDE CAME FROM — `PARTY_TYPES` on the
+ * server. A party with no type is a name somebody typed: a landlord, PLN, an
+ * advertiser, none of which a shop keeps a record of.
+ */
+export type CashTransactionPartyType = "customer" | "supplier" | "user";
+
+/** GET /api/cash-transactions. `kind` goes out comma-joined. */
+export interface CashTransactionListQuery {
+  page?: number;
+  /** ≤ 100; default 20 server-side. */
+  limit?: number;
+  sort?: CashTransactionSort;
+  dateFrom?: string;
+  dateTo?: string;
+  direction?: CashTransactionDirection;
+  kind?: CashTransactionKind | CashTransactionKind[];
+  branchId?: string;
+  channelId?: string;
+  /** The kas/bank account the money moved through — matches `cashAccountId`. */
+  accountId?: string;
+  status?: CashTransactionStatus;
+  partyId?: string;
+  documentType?: CashTransactionDocumentType;
+  documentId?: string;
+  recordedVia?: CashTransactionRecordedVia;
+  shiftId?: string;
+  /** Number, party name, ref, note, document number. */
+  search?: string;
+}
+
+export interface CashTransactionLineInput {
+  accountId: string;
+  amount: string;
+  businessLineId?: string | null;
+  /** Must name a live rule OF `accountId` — the server checks the pairing. */
+  allocationId?: string | null;
+  memo?: string;
+}
+
+/** POST /api/cash-transactions — the two kinds a person records by hand. */
+export interface CreateCashTransactionInput {
+  kind: "expense" | "other_income";
+  branchId: string;
+  at?: string;
+  /**
+   * The Kas & Bank ACCOUNT the money moves through — active, and filed under
+   * `accountCategory: "cash_bank"`. Replaced `channelId` on 20 September 2026:
+   * a channel is the button a cashier presses, and this form is the back
+   * office's. Its `cashType` decides the BKM/BKK or BBM/BBK series.
+   */
+  accountId: string;
+  ref?: string;
+  note?: string;
+  /**
+   * WHO THE MONEY CAME FROM OR WENT TO, in one of two shapes.
+   *
+   * `partyType` + `partyId` name a row in one of the three registers, and the
+   * server snapshots its name — that is the pair the picker sends, and the two
+   * must arrive together or not at all. `partyName` alone is the escape hatch
+   * for somebody no register holds: PLN, the landlord, an ad platform.
+   */
+  partyType?: CashTransactionPartyType;
+  partyId?: string;
+  partyName?: string;
+  cashflowType?: CashflowType;
+  /** 1–20 lines; their sum is the amount. */
+  lines: CashTransactionLineInput[];
+}
+
+/**
+ * PATCH /api/cash-transactions/:id — at least one of at/amount/accountId/
+ * channelId/ref/note/lines, and never `accountId` and `channelId` together.
+ * `amount` is refused on expense/other_income (send `lines`), and `lines` on
+ * every other kind.
+ */
+export interface UpdateCashTransactionInput {
+  at?: string;
+  amount?: string;
+  /** Moves the cash side to another Kas & Bank account. Refused on a till row. */
+  accountId?: string;
+  /** Re-points a row that HAS a channel at a different one. */
+  channelId?: string;
+  ref?: string;
+  note?: string;
+  lines?: CashTransactionLineInput[];
+  reason?: string;
+}
+
+/** POST /api/cash-transactions/:id/void — 1–200 chars. */
+export interface CancelCashTransactionInput {
+  reason: string;
 }

@@ -207,6 +207,29 @@ export function formatMoneyPrecise(value: string | null | undefined): string {
   }).format(Number(toDecimalString(minor)))}`;
 }
 
+const ONE_DECIMAL = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 });
+
+/**
+ * "Rp 3,1 jt" — for a summary tile, where the full "Rp 3.145.000" does not fit
+ * and is not what anybody reads a summary for. A table keeps the full amount.
+ *
+ * `Number` HERE IS DISPLAY ONLY. Every sum was taken in minor units first; this
+ * rounds a finished figure to one decimal, which a double does exactly enough.
+ */
+export function formatMoneyShort(value: string | null | undefined): string {
+  const minor = toMinor(value ?? "");
+  if (minor === null) return "—";
+
+  const rupiah = Number(minor) / 10_000;
+  const size = Math.abs(rupiah);
+
+  if (size >= 999_500_000) return `Rp ${ONE_DECIMAL.format(rupiah / 1e9)} M`;
+  if (size >= 999_500) return `Rp ${ONE_DECIMAL.format(rupiah / 1e6)} jt`;
+  if (size >= 1_000) return `Rp ${Math.round(rupiah / 1_000)} rb`;
+
+  return formatMoney(value);
+}
+
 /** `a × b` on two decimal strings, returned as a decimal string. */
 export function multiplyDecimals(a: string, b: string): string {
   const left = toMinor(a) ?? 0n;

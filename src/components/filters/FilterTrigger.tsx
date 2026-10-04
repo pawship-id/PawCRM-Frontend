@@ -35,20 +35,26 @@ export interface FilterTriggerProps
   /** Leading icon, e.g. a calendar on the date range. */
   icon?: React.ReactNode;
   /**
-   * "inline" — the bar's `Gudang: Semua ⌄`, sized to its content.
-   * "field" — inside a `FilterField`, where the name is already drawn above:
-   * full width, value only, chevron pushed to the far edge.
-   */
-  /**
    * "inline" — a trigger on a `FilterBar`, reading `Gudang: Semua ⌄`, 40px.
+   * "bar"    — the same trigger sized the same way, VALUE ONLY: the name is
+   *            drawn beside it by the caller. 40px.
    * "field"  — a full-width labelled row inside a `FilterPanel`, still 40px.
    * "form"   — the same full-width row standing in a FORM, 44px.
    *
-   * The third one is a HEIGHT, not a new shape. docs/ui-rules.md §8 pins filter
+   * "form" is a HEIGHT, not a new shape. docs/ui-rules.md §8 pins filter
    * controls at 40 and §16 pins form controls at 44, and this shell serves both
    * — seven forms already open their Gudang, Pemasok and Akun pickers from it.
+   *
+   * "bar" IS A LABEL PLACEMENT, and it is the third one rather than a second
+   * control. §8's grammar is `Label: Value ⌄` and "inline" stays the default
+   * that every bar in the product uses; "bar" exists for a CONTEXT bar — a
+   * card of two or three filters that scope a whole page, where the names read
+   * as captions down a row (`Cabang [Semua] | Lini Usaha [Semua] | Periode …`)
+   * rather than as prefixes inside each pill. Same shell, same 40px, same
+   * popover, same focus pair — only the label moves outside the border, which
+   * is what "field" already does vertically.
    */
-  layout?: "inline" | "field" | "form";
+  layout?: "inline" | "bar" | "field" | "form";
   /**
    * Whether the choice is currently wrong — a form-mode concern this shell did
    * not have while it was only ever a filter. A filter cannot be invalid; a
@@ -88,7 +94,9 @@ export const FilterTrigger = React.forwardRef<
         // `group` so the label and chevron can react to this button's own
         // data-active / data-state (Radix sets the latter via asChild).
         "group inline-flex min-w-0 items-center gap-2 rounded-md border border-border bg-surface px-3 text-sm transition",
-        layout === "inline" ? "max-w-60 shrink-0" : "w-full justify-between",
+        layout === "inline" || layout === "bar"
+          ? "max-w-60 shrink-0"
+          : "w-full justify-between",
         // 44 in a form, 40 everywhere else. See the `layout` prop.
         layout === "form" ? "h-11" : "h-10",
         "hover:border-input-hover",
@@ -110,6 +118,8 @@ export const FilterTrigger = React.forwardRef<
         <span className="truncate font-medium">{label}</span>
       ) : (
         <>
+          {/* "bar" and "field" both draw the name outside the border — beside
+              the control and above it respectively. See the `layout` prop. */}
           {layout === "inline" && (
             <span className="shrink-0 text-muted group-data-[active=true]:text-primary">
               {label}:

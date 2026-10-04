@@ -14,75 +14,35 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatMoney } from "@/utils/decimal";
+import { formatMoney, sumDecimals } from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
 import { useBookingBridge } from "../hooks/useBookingBridge";
-import { AddServiceTab } from "./AddServiceTab";
+import { AddServiceTab, type AddServiceChoice } from "./AddServiceTab";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
 /** The two halves of the modal. FR-3 requires both to be reachable every time. */
 type Tab = "pull" | "adhoc";
 
 /**
- * The bookings, gathered under the animal each is for (FR-3).
+ * What pulling this booking puts in the basket: the service plus its add-ons.
  *
- * "Daftar booking dikelompokkan per hewan peliharaan" — a customer with two dogs
- * booked for the same morning otherwise reads as four indistinguishable rows,
- * and the cashier has to open each one to find out whose it is.
- *
- * TWO BOOKINGS FOR ONE ANIMAL STAY TWO ROWS inside its group. That is the PRD's
- * own edge case ("keduanya tetap ditampilkan sebagai baris terpisah, tidak
- * digabung otomatis"): they may be a morning bath and an afternoon nail trim,
- * and merging them would make the cashier untangle one line into two invoices.
- *
- * ORDER IS PRESERVED — the server sorts by `scheduledAt`, so the animal arriving
- * first heads the list.
+ * `totalAmount` is the server's own summary and wins when it is there. It is
+ * null only on a booking no summary has run on yet, and then the parts are
+ * added up here — IN MINOR UNITS, because these figures reached the screen as
+ * decimal strings so they would never pass through a float.
  */
-function groupByPet(
-  bookings: Booking[],
-): Array<{ petId: string; petName: string; bookings: Booking[] }> {
-  const groups: ReturnType<typeof groupByPet> = [];
-
-  /*
-    GROUPED BY THE ROW'S ANIMAL, NOT THE BOOKING'S — K2.
-
-    A visit may bring Mochi and Coco, so one booking appears under BOTH headings.
-    That is deliberate and it is what the decision bought: a cashier can see
-    Coco's grooming under Coco's name and bill it without touching Mochi's.
-  */
-  bookings.forEach((booking) => {
-    const pets = booking.pets.length
-      ? booking.pets
-      : [{ petId: booking.customerId, petName: booking.petName }];
-
-    pets.forEach((pet) => {
-      const existing = groups.find((group) => group.petId === pet.petId);
-
-      if (existing) {
-        existing.bookings.push(booking);
-        return;
-      }
-
-      groups.push({
-        petId: pet.petId,
-        // Null only when the reference is broken — a pet deleted outright. Named
-        // rather than left blank, because a group with no title is a group
-        // nobody can act on.
-        petName: pet.petName ?? "Hewan tidak diketahui",
-        bookings: [booking],
-      });
-    });
-  });
-
-  return groups;
-}
-
-/** The sum of a booking's items, as a decimal string the formatter can read. */
 function bookingTotal(booking: Booking): string {
-  return booking.items
-    .reduce((total, item) => total + Number(item.price), 0)
-    .toFixed(4);
+  /* AFTER the booking's own discounts (15 September 2026) — the basket pulls
+     them as line discounts, so this is what it will add. */
+  return (
+    booking.netAmount ??
+    booking.totalAmount ??
+    sumDecimals([
+      booking.service.price,
+      ...booking.service.addons.map((addon) => addon.price),
+    ])
+  );
 }
 
 /**
@@ -139,9 +99,7 @@ export function BookingBridgeDialog({
    *
    * CHOICES, NOT BOOKINGS. Nothing has been written yet — see `AddServiceTab`.
    */
-  onAdd: (
-    choices: Array<{ petId: string; petName: string; serviceIds: string[] }>,
-  ) => void;
+  onAdd: (choices: AddServiceChoice[]) => void;
 }) {
   /*
     `refetch` is gone with the ad-hoc tab's write. That tab used to create a
@@ -165,9 +123,7 @@ export function BookingBridgeDialog({
   const [ticked, setTicked] = useState<Set<string>>(new Set());
 
   const activeTab: Tab =
-    tab ??
-    initialTab ??
-    (!loading && bookings.length === 0 ? "adhoc" : "pull");
+    tab ?? initialTab ?? (!loading && bookings.length === 0 ? "adhoc" : "pull");
 
   /** Closing forgets everything — the next customer starts clean. */
   function handleOpenChange(next: boolean) {
@@ -196,10 +152,12 @@ export function BookingBridgeDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Layanan untuk {customerName ?? "pelanggan ini"}</DialogTitle>
+          <DialogTitle>
+            Layanan untuk {customerName ?? "pelanggan ini"}
+          </DialogTitle>
           <DialogDescription>
-            Tarik booking yang sudah ada, atau tambahkan layanan baru langsung di
-            sini.
+            Tarik booking yang sudah ada, atau tambahkan layanan baru langsung
+            di sini.
           </DialogDescription>
         </DialogHeader>
 
@@ -250,95 +208,117 @@ export function BookingBridgeDialog({
             </div>
           ) : (
             <>
-              <div className="flex max-h-80 flex-col gap-4 overflow-y-auto">
-                {groupByPet(bookings).map((group) => (
-                  <section key={group.petId} className="flex flex-col gap-2">
-                    {/* The animal heads its own bookings — FR-3's grouping. */}
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {group.petName}
-                    </h3>
+              {/*
+                ONE ROW PER BOOKING, headed by its animal (FR-3's "dikelompokkan
+                per hewan"). A booking is one animal and one main service, so the
+                name on the row is the whole answer to "whose is this" — a
+                customer with two dogs reads as two named rows, not as four
+                indistinguishable ones.
 
-                    <ul className="flex flex-col gap-2">
-                      {group.bookings.map((booking) => (
-                        <li key={booking._id}>
-                          <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-surface-hover">
-                            <Checkbox
-                              checked={ticked.has(booking._id)}
-                              onCheckedChange={() => toggle(booking._id)}
-                              /* Named by its own row: every checkbox here is
-                                 otherwise announced identically. */
-                              aria-label={`Tarik ${booking.bookingNumber ?? "booking tanpa nomor"} untuk ${group.petName}`}
-                              className="mt-0.5"
-                            />
-                            <span className="min-w-0 flex-1">
-                              {/*
-                                THE NUMBER AND THE STATUS, side by side, and both
-                                are new answers to one question: the list is no
-                                longer all one thing.
+                TWO BOOKINGS FOR ONE ANIMAL STAY TWO ROWS. That is the PRD's own
+                edge case ("keduanya tetap ditampilkan sebagai baris terpisah,
+                tidak digabung otomatis"): they may be a morning bath and an
+                afternoon nail trim, and merging them would make the cashier
+                untangle one line into two invoices.
 
-                                Since the bridge started offering every status but
-                                `cancelled`, a row can be a grooming already on the
-                                table, one finished an hour ago, or an appointment
-                                nobody confirmed. The cashier is about to charge
-                                for it either way, but "Selesai" and "Draf" are
-                                different conversations across a counter.
+                ORDER IS PRESERVED — the server sorts by `scheduledAt`, so the
+                animal arriving first heads the list.
+              */}
+              <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto">
+                {bookings.map((booking) => {
+                  // Null only when the reference is broken — a pet deleted
+                  // outright. Named rather than left blank, because a row with
+                  // no animal is a row nobody can act on.
+                  const petName = booking.petName ?? "Hewan tidak diketahui";
+                  const { service } = booking;
 
-                                A DRAFT HAS NO NUMBER — it earns one when it is
-                                paid for (see the model) — so the number is not
-                                assumed to be there. It read `null` on screen for
-                                exactly as long as it took to look.
-                              */}
-                              <span className="flex items-center gap-2">
-                                <span className="text-xs tabular-nums text-warning">
-                                  {booking.bookingNumber ?? "Belum bernomor"}
-                                </span>
-                                <BookingStatusBadge status={booking.status} />
+                  return (
+                    <li key={booking._id}>
+                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-surface-hover">
+                        <Checkbox
+                          checked={ticked.has(booking._id)}
+                          onCheckedChange={() => toggle(booking._id)}
+                          /* Named by its own row: every checkbox here is
+                             otherwise announced identically. */
+                          aria-label={`Tarik ${booking.bookingNumber ?? "booking tanpa nomor"} untuk ${petName}`}
+                          className="mt-0.5"
+                        />
+                        <span className="min-w-0 flex-1">
+                          {/*
+                            THE ANIMAL, THE NUMBER AND THE STATUS, side by side.
+                            The list is not all one thing: since the bridge
+                            started offering every status but `cancelled`, a row
+                            can be a grooming already on the table, one finished
+                            an hour ago, or an appointment nobody confirmed. The
+                            cashier is about to charge for it either way, but
+                            "Completed" and "Draft" are different conversations
+                            across a counter.
+
+                            A DRAFT HAS NO NUMBER — it earns one when it is paid
+                            for (see the model) — so the number is not assumed to
+                            be there. It read `null` on screen for exactly as
+                            long as it took to look.
+                          */}
+                          <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <span className="text-sm font-semibold text-foreground">
+                              {petName}
+                            </span>
+                            <span className="text-xs tabular-nums text-warning">
+                              {booking.bookingNumber ?? "Belum bernomor"}
+                            </span>
+                            <BookingStatusBadge status={booking.status} />
+                          </span>
+
+                          <span className="mt-1 flex items-baseline justify-between gap-3">
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium text-foreground">
+                                {service.name}
                               </span>
-                              <span className="mt-1 block">
-                                {booking.items.map((item) => (
-                                  <span
-                                    /*
-                                      THE ROW'S OWN ID, not the service's.
-
-                                      Since PCR-040 one booking may carry the
-                                      same service twice — Mochi and Coco both
-                                      having a Full Service — and `serviceId`
-                                      then repeats. React warned about duplicate
-                                      keys and is entitled to drop or duplicate
-                                      either row.
-                                    */
-                                    key={item._id}
-                                    className="flex items-baseline justify-between gap-3"
-                                  >
-                                    <span className="min-w-0">
-                                      <span className="block truncate text-sm font-medium text-foreground">
-                                        {item.name}
-                                      </span>
-                                      {/*
-                                        WHO IS DOING IT. Never blank: the server
-                                        sends "Belum ditentukan" for an
-                                        unassigned slot (FR-3's edge case), so a
-                                        cashier can see the gap rather than
-                                        guess at an empty line.
-                                      */}
-                                      <span className="block truncate text-xs text-muted">
-                                        {item.groomerName}
-                                      </span>
-                                    </span>
-                                    <span className="shrink-0 text-sm tabular-nums text-muted">
-                                      {formatMoney(item.price)}
-                                    </span>
-                                  </span>
-                                ))}
+                              {/*
+                                WHO IS DOING IT. Never blank: the server sends
+                                "Belum ditentukan" for an unassigned slot (FR-3's
+                                edge case), so a cashier can see the gap rather
+                                than guess at an empty line.
+                              */}
+                              <span className="block truncate text-xs text-muted">
+                                {booking.groomerName}
                               </span>
                             </span>
-                          </label>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                ))}
-              </div>
+                            <span className="shrink-0 text-sm tabular-nums text-muted">
+                              {formatMoney(service.price)}
+                            </span>
+                          </span>
+
+                          {/*
+                            THE ADD-ONS, UNDER THE SERVICE they were done to —
+                            the same shape the basket draws once they are pulled,
+                            so the cashier checks one picture twice rather than
+                            two. Each keeps its own price, because each bills as
+                            a line of its own.
+                          */}
+                          {service.addons.length > 0 && (
+                            <span className="mt-1 ml-1 flex flex-col gap-0.5 border-l border-border pl-2">
+                              {service.addons.map((addon) => (
+                                <span
+                                  key={addon.itemId}
+                                  className="flex items-baseline justify-between gap-3"
+                                >
+                                  <span className="min-w-0 truncate text-xs text-foreground">
+                                    {`+ ${addon.name}`}
+                                  </span>
+                                  <span className="shrink-0 text-xs tabular-nums text-muted">
+                                    {formatMoney(addon.price)}
+                                  </span>
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
 
               <DialogFooter>
                 <Button
@@ -356,10 +336,11 @@ export function BookingBridgeDialog({
                   Tarik ke keranjang
                   {ticked.size > 0 &&
                     ` · ${formatMoney(
-                      bookings
-                        .filter((b) => ticked.has(b._id))
-                        .reduce((sum, b) => sum + Number(bookingTotal(b)), 0)
-                        .toFixed(4),
+                      sumDecimals(
+                        bookings
+                          .filter((b) => ticked.has(b._id))
+                          .map(bookingTotal),
+                      ),
                     )}`}
                 </Button>
               </DialogFooter>

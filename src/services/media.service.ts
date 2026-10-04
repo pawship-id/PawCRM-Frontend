@@ -41,7 +41,22 @@ export type MediaUploadPurpose =
   | "product"
   | "category"
   | "service"
-  | "description";
+  /*
+    A PET'S ONE PHOTO. Its own segment, not `category`: the sweeper matches a
+    key against the collection its segment names, and the claim that keeps this
+    one is `petRepository.existsByPhotoKey`.
+  */
+  | "pet"
+  | "description"
+  /*
+    ⚠️ A SEGMENT OF ITS OWN FOR GROOMING PHOTOS, and it is not cosmetic. The
+    server maps `purpose` to a storage-key segment that `sweepOrphanMedia`
+    reads: it deletes what nothing claims, so a session photo filed under
+    `product` would be checked against the product collection, found nowhere,
+    and removed. The claim that keeps them is
+    `bookingRepository.existsByMediaKey`.
+  */
+  | "booking";
 
 export interface UploadOptions {
   purpose?: MediaUploadPurpose;
@@ -94,7 +109,9 @@ export const mediaService = {
         try {
           payload = JSON.parse(request.responseText);
         } catch {
-          reject(new ApiError("Server response could not be read", request.status));
+          reject(
+            new ApiError("Server response could not be read", request.status),
+          );
           return;
         }
 

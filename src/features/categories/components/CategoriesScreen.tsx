@@ -1,13 +1,26 @@
 "use client";
 
-import { Alert, Breadcrumb, Pagination, Spinner } from "@/components";
+import Link from "next/link";
+import { Plus } from "lucide-react";
+
+import { Alert, Pagination, Spinner } from "@/components";
+import { Button } from "@/components/ui/button";
+import { CatalogModuleHeader } from "@/features/inventory";
+import { Can } from "@/features/permissions";
 
 import { useCategories } from "../hooks/useCategories";
 import { CategoriesTable } from "./CategoriesTable";
 import { CategoriesToolbar } from "./CategoriesToolbar";
 
 /**
- * The Inventory → Kategori screen. Owns the list query and nothing else.
+ * The Kategori tab of the Produk & Varian module. Owns the list query and
+ * nothing else.
+ *
+ * IT WEARS THE CATALOGUE MODULE'S HEADER, which is the point of the tab bar: the
+ * rail has one row for Produk & Varian now, and this route is one of its tabs.
+ * Importing from `@/features/inventory` rather than copying the header is the
+ * same call PetsScreen makes for the Pelanggan module's — the module owns it,
+ * and its public surface is where it is borrowed from.
  *
  * IT USED TO OWN A DIALOG TOO — one slot shared by the create button and every
  * row's rename action, so that only one could be open at a time. Both now
@@ -27,20 +40,21 @@ export function CategoriesScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Breadcrumb
-          items={[
-            { label: "Inventory", href: "/dashboard/inventory" },
-            { label: "Kategori" },
-          ]}
-        />
-        <h1 className="mt-1 text-2xl font-extrabold text-foreground">Kategori</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Pengelompokan produk di katalog dan laporan. Sebuah kategori hanya
-          punya nama, deskripsi, dan gambar — harga, stok, dan aturan lainnya
-          ada di produknya.
-        </p>
-      </div>
+      <CatalogModuleHeader
+        action={
+          <Can feature="categories" action="create">
+            {/* `asChild` so the Link IS the button — nesting an <a> inside a
+                <button> is invalid markup and gives a screen reader two
+                controls where there is one. */}
+            <Button asChild>
+              <Link href="/dashboard/inventory/categories/new">
+                <Plus className="size-4" />
+                Kategori baru
+              </Link>
+            </Button>
+          </Can>
+        }
+      />
 
       <CategoriesToolbar query={query} onChange={setQuery} />
 

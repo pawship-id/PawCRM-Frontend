@@ -38,6 +38,17 @@ jest.mock("next/navigation", () => ({
 }));
 
 /**
+ * The module header — the title and the six-tab row — is reduced to the one
+ * thing this screen puts INTO it: its headline figure, where it has one. The
+ * tab row needs a router this suite has no reason to stand up, and the header's
+ * own behaviour has its own suite (PurchasingModuleHeader.test.tsx).
+ */
+jest.mock("@/features/purchasing/components/PurchasingModuleHeader", () => ({
+  PurchasingModuleHeader: ({ action }: { action?: React.ReactNode }) =>
+    action ?? null,
+}));
+
+/**
  * The purchase-return screens, against mocked services.
  *
  * WHAT THESE TESTS GUARD. These screens replaced a prototype that ran on an
@@ -155,6 +166,8 @@ function receiptDetail(
   return {
     _id: RECEIPT_ID,
     receiptNumber: "GR-260806-001",
+    status: "received",
+    receivedAt: null,
     supplierId: "s1",
     supplierName: "PT Sumber Pangan",
     warehouseId: "wh1",
@@ -197,6 +210,7 @@ function receiptRow(
   return {
     _id: RECEIPT_ID,
     receiptNumber: "GR-260806-001",
+    status: "received",
     supplierId: "s1",
     supplierName: "PT Sumber Pangan",
     warehouseId: "wh1",
@@ -252,14 +266,14 @@ function preview(
       {
         accountId: "acc-payable",
         accountCode: "2101",
-        accountName: "Utang Supplier",
+        accountName: "Utang Usaha",
         debit: "60000.0000",
         credit: "0",
       },
       {
         accountId: "acc-inventory",
         accountCode: "1201",
-        accountName: "Persediaan Barang Dagangan",
+        accountName: "Persediaan Barang",
         debit: "0",
         credit: "60000.0000",
       },
@@ -652,7 +666,7 @@ describe("PurchaseReturnDetail", () => {
       await screen.findByText(/HPP dihitung ulang dengan HARGA BELI ASLI/i),
     ).toBeInTheDocument();
     // Labelled from the payload — no client-side account guessing.
-    expect(screen.getByText("Utang Supplier")).toBeInTheDocument();
+    expect(screen.getByText("Utang Usaha")).toBeInTheDocument();
     expect(screen.getByText("2101")).toBeInTheDocument();
   });
 

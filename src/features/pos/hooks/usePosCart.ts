@@ -7,9 +7,13 @@ import { ApiError } from "@/services/api-error";
 import type {
   PosCatalogItem,
   PosItemInput,
+  PosItemTripInput,
   PosTransaction,
   UpdateCartInput,
+  VariantChoice,
 } from "@/types/api";
+
+import { ownDiscountOf } from "../bookingDiscount";
 
 /**
  * A discount the till is trying to apply and the server has refused pending
@@ -31,9 +35,32 @@ interface UsePosCartResult {
   /** Set when the server refused a discount for lack of approval. */
   pendingApproval: PendingApproval | null;
   open: (cart: PosTransaction | null) => void;
-  addItem: (tile: PosCatalogItem) => Promise<void>;
+  /**
+   * ⚠️ RESOLVES `false` WHEN THE SERVER REFUSED IT — as do `addServices` and
+   * `addMembership`. Gate any "… ditambahkan" toast on it; the basket's banner
+   * carries the reason. See `send`.
+   */
+  addItem: (tile: PosCatalogItem) => Promise<boolean>;
+  /** Sells one membership package to one animal — see the implementation. */
+  addMembership: (planId: string, petId: string) => Promise<boolean>;
   setQty: (index: number, qty: string) => Promise<void>;
-  removeItem: (index: number) => Promise<void>;
+  /** Type a price over the catalogue's; `null` puts the line back to it. */
+  setLinePrice: (index: number, unitPrice: string | null) => Promise<void>;
+  /**
+   * Takes lines out of the basket — one, or a run of them in ONE write.
+   *
+   * A LIST, because an add-on has no bin of its own: it is taken off with the
+   * service it hangs off, and both must go in the same request. Calling this
+   * twice in a row would not do it — every mutation here sends the WHOLE basket,
+   * so the second call would be built from a basket the first had not returned
+   * yet, and would put the add-on straight back.
+   */
+  removeItem: (index: number | number[]) => Promise<void>;
+  /** Apply or remove a membership benefit on one line — see the implementation. */
+  setItemBenefit: (
+    index: number,
+    benefit: { membershipId: string; benefitId: string } | null,
+  ) => Promise<void>;
   setItemDiscount: (
     index: number,
     discount: UpdateCartInput["cartDiscount"],
@@ -87,14 +114,62 @@ interface UsePosCartResult {
    * forge onto somebody else's receipt.
    */
   addServices: (
-    choices: Array<{ petId: string; serviceIds: string[] }>,
-  ) => Promise<void>;
+    choices: Array<{
+      petId: string;
+      serviceIds: string[];
+      /**
+       * The "Dipilih staf" values these services are priced on — "Lokasi: Di
+       * Rumah" (17 September 2026). Sent on every line of the animal: the
+       * server reads only the cards each service declares, and an add-on would
+       * inherit the main line's anyway.
+       */
+      variantChoices?: VariantChoice[];
+      /**
+       * THE JOURNEY, on an antar-jemput service (24 September 2026).
+       *
+       * SENT ON EVERY LINE OF THE ANIMAL, like the choices: an add-on on a ride
+       * rides on the main line's journey, and the server keys a line's draft
+       * booking by the direction too — an add-on without one would hang off a
+       * booking going the other way.
+       */
+      ride?: {
+        trip: PosItemTripInput;
+        linkedBookingIds: string[];
+        passengerPetIds: string[];
+      } | null;
+    }>,
+  ) => Promise<boolean>;
   pullBookings: (bookingIds: string[]) => Promise<void>;
-  patch: (input: UpdateCartInput) => Promise<void>;
+  patch: (input: UpdateCartInput) => Promise<boolean>;
   /** Retry the refused patch with an approver attached. */
   approve: (approverUserId: string) => Promise<void>;
   dismissApproval: () => void;
   clear: () => void;
+}
+
+/**
+ * What a refused cart write says to the cashier.
+ *
+ * A PRICE THE SERVER COULD NOT RESOLVE BEYOND THE PET (17 September 2026) —
+ * "Pilih Lokasi untuk Grooming Rumah dulu", or "Koordinat alamat pelanggan
+ * belum diisi — harga … ditentukan dari zona" — arrives as a 400 whose headline
+ * is written for a developer and whose `details[0]` is written for the counter.
+ * The detail is the sentence shown; everything else keeps the old rule.
+ */
+function cartWriteError(err: unknown): string {
+  if (!(err instanceof ApiError)) return "Terjadi kesalahan. Coba lagi.";
+
+  const pricing = Array.isArray(err.details)
+    ? err.details.find(
+        (detail) =>
+          detail.field === "variantChoices" ||
+          (detail as { zoneReason?: string }).zoneReason !== undefined,
+      )
+    : undefined;
+
+  if (pricing?.message) return pricing.message;
+
+  return err.reason ?? err.message;
 }
 
 /**
@@ -142,9 +217,22 @@ export function usePosCart(): UsePosCartResult {
    * A CART IS CREATED LAZILY, on the first item rather than when the screen
    * loads: opening the till would otherwise leave an empty row behind every time
    * somebody looked at the catalogue and walked away.
+   *
+   * ─── IT ANSWERS WHETHER THE WRITE LANDED (30 September 2026) ───────────────
+   *
+   * It used to resolve the same way whether the server accepted the patch or
+   * refused it — the failure went into `error` and the promise resolved — so
+   * every `void cart.addItem(tile).then(() => swalToast("… ditambahkan"))` in
+   * the till announced a success it had not checked. A cashier saw "Gratis
+   * Grooming Lengkap (VIP) untuk Bruno ditambahkan" over a basket holding
+   * nothing but the refusal that stopped it.
+   *
+   * REPORTED, NOT THROWN. The call sites are `void`-ed fire-and-forget patches;
+   * making this reject would turn every refusal into an unhandled rejection.
+   * `false` is the whole contract: the banner still carries the WHY.
    */
   const send = useCallback(
-    async (input: UpdateCartInput) => {
+    async (input: UpdateCartInput): Promise<boolean> => {
       setBusy(true);
       setError(null);
 
@@ -153,6 +241,7 @@ export function usePosCart(): UsePosCartResult {
         const updated = await posService.updateCart(target._id, input);
         setCart(updated);
         setPendingApproval(null);
+        return true;
       } catch (err) {
         /*
           A DISCOUNT AWAITING APPROVAL IS NOT A FAILURE, it is a request. The
@@ -180,12 +269,15 @@ export function usePosCart(): UsePosCartResult {
             message: err.reason ?? err.message,
           });
         } else {
-          setError(
-            err instanceof ApiError
-              ? (err.reason ?? err.message)
-              : "Terjadi kesalahan. Coba lagi.",
-          );
+          setError(cartWriteError(err));
         }
+
+        /*
+          A DISCOUNT AWAITING APPROVAL IS FALSE TOO. Nothing was written, and the
+          caller's toast would be announcing a line the basket does not hold —
+          the dialog is what carries this one forward.
+        */
+        return false;
       } finally {
         setBusy(false);
       }
@@ -227,19 +319,105 @@ export function usePosCart(): UsePosCartResult {
         kind: item.kind,
         refId: item.refId,
         qty: item.qty,
-        discount: item.discount
+        /*
+          A TYPED PRICE IS RE-SENT, OR IT EVAPORATES (28 September 2026).
+
+          The server rebuilds every line from this payload on each write, so an
+          override left out of the next one — stepping the quantity of a bag of
+          feed three lines down — would quietly put this line back to the shelf
+          price with nothing on screen saying so.
+
+          `listPrice` IS THE FLAG. It is non-null only when the two differ, so
+          this sends a price exactly for the lines that have one and leaves
+          every ordinary line alone — which matters, because sending a price at
+          all is what makes the server ask for `posTransactions:setPrice`.
+        */
+        ...(item.listPrice ? { unitPrice: item.unitPrice } : {}),
+        /*
+          THE LINE'S OWN DISCOUNT, never the whole of it. A booking's share of
+          "Diskon seluruh booking" rides inside the stored figure, and the server
+          adds it back from the booking — sending it too would count it twice.
+        */
+        discount: (() => {
+          const own = ownDiscountOf(item);
+          return own
+            ? {
+                mode: own.mode,
+                value: own.value,
+                ...(own.approvedBy ? { approvedBy: own.approvedBy } : {}),
+              }
+            : null;
+        })(),
+        /*
+          THE MEMBERSHIP BENEFIT, SENT BACK (30 September 2026). Same reason as
+          the typed price above and the journey below: the server rebuilds every
+          line from this payload on each write, so a benefit left out of the
+          next one would quietly fall off the moment the cashier stepped the
+          quantity of a bag of feed three lines down — and the customer would be
+          charged full price for something they had already been told was free.
+
+          `discount.source` IS THE FLAG, the way `listPrice` is the flag for an
+          overridden price: it is `membership` only on a line a card paid for.
+          TWO IDS AND NOTHING ELSE go back — the server re-reads the card and
+          re-prices it, so a stale amount on this side can never become money.
+        */
+        ...(item.discount?.source === "membership" &&
+        item.discount.membershipId &&
+        item.discount.benefitId
           ? {
-              mode: item.discount.mode,
-              value: item.discount.value,
-              ...(item.discount.approvedBy
-                ? { approvedBy: item.discount.approvedBy }
-                : {}),
+              benefit: {
+                membershipId: item.discount.membershipId,
+                benefitId: item.discount.benefitId,
+              },
             }
-          : null,
+          : {}),
         bookingId: item.bookingId,
         petId: item.petId,
         petName: item.petName,
         groomerName: item.groomerName,
+        /*
+          WHAT THE LINE WAS PRICED ON, SENT BACK (17 September 2026). The server
+          rebuilds every line from this payload on each write, so a walk-in
+          grooming at home whose "Lokasi" were left out would be refused — or
+          re-priced — the moment the cashier changed the quantity of a bag of
+          feed. The snapshot's name and label are for reading; the server wants
+          only the pair.
+        */
+        ...(item.variantChoices?.length
+          ? {
+              variantChoices: item.variantChoices.map(({ optionId, code }) => ({
+                optionId,
+                code,
+              })),
+            }
+          : {}),
+        /*
+          THE JOURNEY THE LINE IS, SENT BACK (24 September 2026). Same reason as
+          the choices above: the server rebuilds every line from this payload on
+          each write, and a ride whose two ends were left out would be re-priced
+          from the customer's stored pin the moment somebody changed the
+          quantity of a bag of feed — a different fare, for a journey nobody
+          re-agreed. The response nests each end; the wire is flat.
+        */
+        ...(item.trip
+          ? {
+              trip: {
+                leg: item.trip.leg,
+                origin: {
+                  address: item.trip.origin?.address ?? null,
+                  lat: item.trip.origin?.lat as number,
+                  lng: item.trip.origin?.lng as number,
+                },
+                destination: {
+                  address: item.trip.destination?.address ?? null,
+                  lat: item.trip.destination?.lat as number,
+                  lng: item.trip.destination?.lng as number,
+                },
+              },
+              linkedBookingIds: item.linkedBookingIds ?? [],
+              passengerPetIds: item.passengerPetIds ?? [],
+            }
+          : {}),
       })),
     [cart],
   );
@@ -273,26 +451,76 @@ export function usePosCart(): UsePosCartResult {
         items.push({ kind: tile.kind, refId: tile._id, qty: "1" });
       }
 
-      await send({ items });
+      return send({ items });
+    },
+    [itemsAsInput, send],
+  );
+
+  /**
+   * A MEMBERSHIP PACKAGE, FOR ONE ANIMAL (30 September 2026).
+   *
+   * Its own path because it is its own `kind`. The till asks whose animal it is
+   * with the SAME dialog a service uses, and that shared dialog is exactly how
+   * this went wrong: `onPick` fed every answer to `addServices`, which stamps
+   * `kind: "service"` on what it is given, so a package's id was looked up in
+   * the service catalogue and came back "Service not found".
+   *
+   * `petId` IS THE POINT, not a detail. A card belongs to an animal; the server
+   * refuses a package line without one, because there would be nobody to mint
+   * the card for.
+   */
+  const addMembership = useCallback(
+    async (planId: string, petId: string) => {
+      const items = itemsAsInput();
+      // One card per line — never bumped, never merged. Two cards is two lines.
+      items.push({ kind: "membership", refId: planId, petId, qty: "1" });
+
+      return send({ items });
     },
     [itemsAsInput, send],
   );
 
   const addServices = useCallback(
-    async (choices: Array<{ petId: string; serviceIds: string[] }>) => {
-      const lines = choices.flatMap(({ petId, serviceIds }) =>
-        // One line per animal per service (FR-3) — never bumped, never merged.
-        serviceIds.map((refId) => ({
-          kind: "service" as const,
-          refId,
-          qty: "1",
-          petId,
-        })),
+    async (
+      choices: Array<{
+        petId: string;
+        serviceIds: string[];
+        variantChoices?: VariantChoice[];
+        ride?: {
+          trip: PosItemTripInput;
+          linkedBookingIds: string[];
+          passengerPetIds: string[];
+        } | null;
+      }>,
+    ) => {
+      const lines: PosItemInput[] = choices.flatMap(
+        ({ petId, serviceIds, variantChoices, ride }) =>
+          // One line per animal per service (FR-3) — never bumped, never merged.
+          serviceIds.map((refId) => ({
+            kind: "service" as const,
+            refId,
+            /*
+              ⚠️ A RIDE HAS NO `petId` — one van carries several animals, and
+              they go in `passengerPetIds`, the same shape the booking it raises
+              keeps them in. A ride PULLED from the diary has neither, and its
+              animals are its booking's.
+            */
+            ...(ride ? { petId: null } : { petId }),
+            qty: "1",
+            ...(variantChoices?.length ? { variantChoices } : {}),
+            ...(ride
+              ? {
+                  trip: ride.trip,
+                  linkedBookingIds: ride.linkedBookingIds,
+                  passengerPetIds: ride.passengerPetIds,
+                }
+              : {}),
+          })),
       );
 
-      if (lines.length === 0) return;
+      if (lines.length === 0) return false;
 
-      await send({ items: [...itemsAsInput(), ...lines] });
+      return send({ items: [...itemsAsInput(), ...lines] });
     },
     [itemsAsInput, send],
   );
@@ -308,8 +536,39 @@ export function usePosCart(): UsePosCartResult {
   );
 
   const removeItem = useCallback(
-    async (index: number) => {
-      const items = itemsAsInput().filter((_, i) => i !== index);
+    async (index: number | number[]) => {
+      const dropped = new Set(Array.isArray(index) ? index : [index]);
+      const items = itemsAsInput().filter((_, i) => !dropped.has(i));
+      await send({ items });
+    },
+    [itemsAsInput, send],
+  );
+
+  /**
+   * Type a price over the catalogue's, or put the line back to it.
+   *
+   * `null` IS THE WAY BACK. Sending no `unitPrice` at all is what makes the
+   * server re-read the catalogue, so "reset" is the absence of the field rather
+   * than a second verb — and the cashier gets the shelf price of TODAY, which
+   * is the only honest answer to "what should this cost".
+   */
+  const setLinePrice = useCallback(
+    async (index: number, unitPrice: string | null) => {
+      const items = itemsAsInput();
+      if (!items[index]) return;
+
+      /*
+        REBUILT WITHOUT THE FIELD, rather than set to undefined: `itemsAsInput`
+        adds `unitPrice` only for a line that already carries an override, and
+        clearing one has to REMOVE it — an explicit `undefined` would serialise
+        the key away anyway, but leaves a payload whose shape says "I meant to
+        send this" to anyone reading it.
+      */
+      const next = { ...items[index] };
+      delete next.unitPrice;
+      if (unitPrice !== null) next.unitPrice = unitPrice;
+      items[index] = next;
+
       await send({ items });
     },
     [itemsAsInput, send],
@@ -320,6 +579,40 @@ export function usePosCart(): UsePosCartResult {
       const items = itemsAsInput();
       if (!items[index]) return;
       items[index] = { ...items[index], discount: discount ?? null };
+      await send({ items });
+    },
+    [itemsAsInput, send],
+  );
+
+  /**
+   * Apply or remove a membership benefit on one line (29 September 2026).
+   *
+   * ─── IT SENDS A NAME, NOT A NUMBER ────────────────────────────────────────
+   *
+   * `{ membershipId, benefitId }` and nothing else. The server reads the card,
+   * its frozen plan and the redemption ledger, and prices the benefit itself —
+   * so a till that had been tampered with, or that was simply looking at a
+   * stale quote, cannot decide what the shop gives away.
+   *
+   * ─── REBUILT WITHOUT THE FIELD WHEN REMOVED ───────────────────────────────
+   *
+   * The same discipline `setLinePrice` uses above: the server rebuilds every
+   * line from this payload, so removing a benefit has to mean the key is
+   * ABSENT, not present and null-ish.
+   */
+  const setItemBenefit = useCallback(
+    async (
+      index: number,
+      benefit: { membershipId: string; benefitId: string } | null,
+    ) => {
+      const items = itemsAsInput();
+      if (!items[index]) return;
+
+      const next = { ...items[index] };
+      delete next.benefit;
+      if (benefit) next.benefit = benefit;
+      items[index] = next;
+
       await send({ items });
     },
     [itemsAsInput, send],
@@ -435,9 +728,12 @@ export function usePosCart(): UsePosCartResult {
     openIfEmpty,
     addItem,
     addServices,
+    addMembership,
     setQty,
+    setLinePrice,
     removeItem,
     setItemDiscount,
+    setItemBenefit,
     setCartDiscount,
     setCharges,
     setNote,

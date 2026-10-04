@@ -135,6 +135,30 @@ describe("ReportsHub", () => {
   });
 
   /**
+   * THE HUB IS THE STATEMENTS' ONLY DOOR since 22 September 2026, when they left
+   * Keuangan › Ringkasan with the v3 mockup. All three read the ledger.
+   */
+  it("offers the three financial statements to a ledger reader, and only them", () => {
+    renderWithAuth(<ReportsHub />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "journalEntries", actions: ["read"] }],
+    });
+
+    expect(screen.getByRole("link", { name: /Laba Rugi/ })).toHaveAttribute(
+      "href",
+      "/dashboard/keuangan/laba-rugi",
+    );
+    expect(screen.getByRole("link", { name: /Neraca/ })).toHaveAttribute(
+      "href",
+      "/dashboard/keuangan/neraca",
+    );
+    expect(screen.getByRole("link", { name: /Arus Kas/ })).toHaveAttribute(
+      "href",
+      "/dashboard/keuangan/arus-kas",
+    );
+  });
+
+  /**
    * A card that leads to a 403 is worse than no card, so each names the grant its
    * destination actually enforces.
    */

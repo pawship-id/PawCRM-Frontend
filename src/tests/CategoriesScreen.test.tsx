@@ -11,6 +11,20 @@ import type { MediaAsset } from "@/types/inventory";
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 
+/**
+ * The module header — the title, the tab row and the three catalogue counts —
+ * is reduced to the one thing this screen puts INTO it: the create affordance.
+ *
+ * Stubbed because it issues count queries through the SAME `productService.list`
+ * and `categoryService.list` mocks this file makes assertions about, and a
+ * `toHaveBeenCalledTimes(1)` here is about the LIST query, not about a tile. Its
+ * own behaviour has its own suite (CatalogModuleHeader.test.tsx).
+ */
+jest.mock("@/features/inventory/components/CatalogModuleHeader", () => ({
+  CatalogModuleHeader: ({ action }: { action?: React.ReactNode }) =>
+    action ?? null,
+}));
+
 // Mutations fire a SweetAlert2 toast on success; mock the library so no real
 // dialog is created during the test.
 jest.mock("sweetalert2", () => ({
@@ -266,7 +280,9 @@ describe("CategoriesScreen", () => {
     );
 
     const panel = await openFilters();
-    await userEvent.click(within(panel).getByRole("button", { name: "Urutkan" }));
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Urutkan" }),
+    );
     await userEvent.click(screen.getByRole("option", { name: "Nama A–Z" }));
     await userEvent.click(
       within(panel).getByRole("button", { name: "Terapkan" }),
@@ -300,7 +316,9 @@ describe("CategoriesScreen", () => {
     // Every list has an ordering, so counting it would put a (1) over a screen
     // showing everything and teach people to ignore the number.
     panel = await openFilters();
-    await userEvent.click(within(panel).getByRole("button", { name: "Urutkan" }));
+    await userEvent.click(
+      within(panel).getByRole("button", { name: "Urutkan" }),
+    );
     await userEvent.click(screen.getByRole("option", { name: "Terlama" }));
     await userEvent.click(
       within(panel).getByRole("button", { name: "Terapkan" }),

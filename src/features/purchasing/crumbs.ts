@@ -1,4 +1,5 @@
 import type { Crumb } from "@/components";
+import { SETTINGS_PATHS, SETTINGS_TABS } from "@/features/settings/paths";
 
 /**
  * The ancestors every purchasing trail is built from.
@@ -18,11 +19,20 @@ import type { Crumb } from "@/components";
  * current one. See components/Breadcrumb.
  */
 export const PURCHASING_CRUMBS = {
-  hub: { label: "Purchasing", href: "/dashboard/purchasing" },
+  hub: { label: "Pembelian", href: "/dashboard/purchasing" },
+  /**
+   * WHERE THE KATEGORI SUPPLIER PAGES HANG FROM (1 October 2026, on request),
+   * in place of `hub`: the tab was dropped from Pembelian and the screen is
+   * opened from a card on Pengaturan › Umum instead, so a trail still beginning
+   * "Pembelian" would offer a first step back to a module that no longer lists
+   * it anywhere. Supplier itself kept its tab and still trails from `hub`.
+   */
+  settings: { label: "Pengaturan", href: SETTINGS_TABS.umum },
   suppliers: { label: "Supplier", href: "/dashboard/purchasing/suppliers" },
+  /** The list moved to `SETTINGS_PATHS.kategoriSupplier`; its forms follow. */
   supplierCategories: {
     label: "Kategori Supplier",
-    href: "/dashboard/purchasing/supplier-categories",
+    href: SETTINGS_PATHS.kategoriSupplier,
   },
   receipts: {
     label: "Penerimaan Barang",

@@ -3,11 +3,18 @@ import userEvent from "@testing-library/user-event";
 
 import { CustomerPetsSection } from "@/features/pets";
 import { petService } from "@/services/pet.service";
+import { petOptionService } from "@/services/petOption.service";
 import type { Pet } from "@/types/api";
 
+import {
+  petOptionFields,
+  petOptionId,
+  primePetOptions,
+} from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/pet.service");
+jest.mock("@/services/petOption.service");
 
 const mockedPetService = petService as jest.Mocked<typeof petService>;
 
@@ -18,11 +25,9 @@ const pet = (overrides: Partial<Pet> = {}): Pet => ({
   tenantId: "507f1f77bcf86cd799439011",
   customerId: CUSTOMER_ID,
   name: "Bella",
-  species: "dog",
   sex: "female",
-  breed: "domestic",
-  furType: null,
-  size: null,
+  /* The ids a pet stores, with the label and code the server resolves. */
+  ...petOptionFields({ species: "Anjing", breed: "Domestic" }),
   birthDate: null,
   weightKg: 12.4,
   color: null,
@@ -54,7 +59,19 @@ function listReturns(items: Pet[], total = items.length) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  primePetOptions(petOptionService.list);
 });
+
+/**
+ * Opens the dialog's species picker once the tenant's lists have arrived — the
+ * three pickers stay disabled while they load, and a click on a disabled
+ * trigger opens nothing.
+ */
+async function openPicker(name: RegExp) {
+  const picker = screen.getByRole("combobox", { name });
+  await waitFor(() => expect(picker).toBeEnabled());
+  await userEvent.click(picker);
+}
 
 describe("CustomerPetsSection", () => {
   it("asks only for this customer's animals", async () => {
@@ -70,7 +87,10 @@ describe("CustomerPetsSection", () => {
   });
 
   it("lists the pets with their species", async () => {
-    listReturns([pet(), pet({ _id: "b", name: "Milo", species: "cat" })]);
+    listReturns([
+      pet(),
+      pet({ _id: "b", name: "Milo", ...petOptionFields({ species: "Kucing" }) }),
+    ]);
 
     renderWithAuth(<CustomerPetsSection customerId={CUSTOMER_ID} />);
 
@@ -105,9 +125,7 @@ describe("CustomerPetsSection", () => {
 
     renderWithAuth(<CustomerPetsSection customerId={CUSTOMER_ID} />);
 
-    expect(
-      await screen.findByText(/belum ada hewan terdaftar/i),
-    ).toBeVisible();
+    expect(await screen.findByText(/belum ada hewan terdaftar/i)).toBeVisible();
   });
 
   it("states how many are not shown when the owner has more than a page", async () => {
@@ -127,17 +145,27 @@ describe("CustomerPetsSection", () => {
     );
 
     await screen.findByText(/belum ada hewan terdaftar/i);
-    await userEvent.click(screen.getByRole("button", { name: /tambah hewan/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /tambah hewan/i }),
+    );
 
     expect(await screen.findByRole("dialog")).toBeVisible();
     // The owner is stated in the dialog, so nobody has to trust it is implied.
     expect(screen.getByText(/ibu rina/i)).toBeVisible();
 
     await userEvent.type(screen.getByLabelText(/nama hewan/i), "Bella");
+    /* ⚠️ ANCHORED. "Jenis bulu" joined the dialog on 7 Sep 2026, so /jenis/i now
+       matches two comboboxes. */
+    await openPicker(/^jenis$/i);
     await userEvent.click(
-      screen.getByRole("combobox", { name: /jenis/i }),
+      await screen.findByRole("option", { name: "Anjing" }),
     );
-    await userEvent.click(await screen.findByRole("option", { name: "Anjing" }));
+
+    /*
+      SIZE AND COAT ARE OPTIONAL, and this case leaves them alone: they reach the
+      API as NULL rather than being omitted, because "belum diisi" is a real
+      state the pricing rule reads.
+    */
     await userEvent.click(
       screen.getByRole("button", { name: /^tambah hewan$/i }),
     );
@@ -147,12 +175,72 @@ describe("CustomerPetsSection", () => {
         expect.objectContaining({
           customerId: CUSTOMER_ID,
           name: "Bella",
-          species: "dog",
+          // IDS, NOT CODES (27 September 2026): the picker's value is the pet
+          // option's `_id`, which is the only thing POST /api/pets accepts.
+          species: "opt-species-dog",
+          size: null,
+          furType: null,
         }),
       ),
     );
     // Two calls: the initial load and the one after the create.
     await waitFor(() => expect(mockedPetService.list).toHaveBeenCalledTimes(2));
+  });
+
+  /*
+    ─── THE TWO FIELDS A PRICE MAY DEPEND ON ──────────────────────────────────
+
+    The dialog asked for a name and a species, and everything else was "later" —
+    right while everything else was ras, berat, microchip. Size and coat are not
+    that: they are what a variant-priced grooming is priced BY, so a pet quick-
+    added without them could not be quoted at all. The till added the animal,
+    refused the service it was added for, and sent the cashier to the full form
+    anyway — with the customer still standing there.
+  */
+  it("takes the animal's size and coat, so a variant price can be worked out", async () => {
+    listReturns([]);
+    mockedPetService.create.mockResolvedValue(pet() as never);
+
+    renderWithAuth(
+      <CustomerPetsSection customerId={CUSTOMER_ID} customerName="Ibu Rina" />,
+    );
+
+    await screen.findByText(/belum ada hewan terdaftar/i);
+    await userEvent.click(
+      screen.getByRole("button", { name: /tambah hewan/i }),
+    );
+    await screen.findByRole("dialog");
+
+    await userEvent.type(screen.getByLabelText(/nama hewan/i), "Bella");
+    await openPicker(/^jenis$/i);
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Anjing" }),
+    );
+
+    await openPicker(/ukuran/i);
+    await userEvent.click(await screen.findByRole("option", { name: "Besar" }));
+
+    /* The tenant's word — the seeded "Bulu panjang", not the "Berbulu panjang"
+       this dialog once hardcoded. */
+    await openPicker(/jenis bulu/i);
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Bulu panjang" }),
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /^tambah hewan$/i }),
+    );
+
+    await waitFor(() =>
+      expect(mockedPetService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Bella",
+          species: "opt-species-dog",
+          size: "opt-size-large",
+          furType: "opt-furType-long-hair",
+        }),
+      ),
+    );
   });
 
   it("offers no add button for a deleted customer", async () => {

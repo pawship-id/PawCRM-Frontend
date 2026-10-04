@@ -7,12 +7,13 @@ import Link from "next/link";
 import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { useTenant } from "@/features/tenant";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import type { Customer, Pet, PetTimelineEntry } from "@/types/api";
 
-import { speciesLabel } from "./PetBadges";
+import { PetAvatar } from "./PetAvatar";
 
 import "@/features/pos/print/receipt.css";
 
@@ -69,6 +70,12 @@ function day(iso: string | null): string {
  */
 export function PetCardPrintScreen({ petId }: { petId: string }) {
   const { tenant } = useTenant();
+  /*
+    THE SHOP'S WORDS for species and breed — tenant data since 14 Sep 2026. A
+    list that has not arrived by print time still prints: `label()` falls back
+    to the seeded word, then to the code.
+  */
+  const { label } = usePetOptions();
 
   const [pet, setPet] = useState<Pet | null>(null);
   const [owner, setOwner] = useState<Customer | null>(null);
@@ -208,11 +215,34 @@ export function PetCardPrintScreen({ petId }: { petId: string }) {
         className="mx-auto w-full max-w-[210mm] bg-white p-8 text-black"
       >
         <header className="flex items-start justify-between gap-4 border-b-2 border-black pb-3">
-          <div>
+          {/*
+            ONLY WHEN THERE IS ONE, unlike the screen surfaces. The initial-letter
+            placeholder earns its place in a list of twenty rows, where it tells
+            them apart; on a sheet with the name set in 30 px directly beside it,
+            an empty circle holding one letter is ink spent saying nothing.
+
+            NAMED HERE, decorative everywhere else: on paper the photo IS how a
+            groomer matches the card to the animal in front of them, and a card
+            read aloud from a screen reader still needs to say a photo is on it.
+          */}
+          {pet.photo && (
+            <PetAvatar
+              pet={pet}
+              size="lg"
+              alt={`Foto ${pet.name}`}
+              /* Black, not `border-border`: this sheet is printed, and the token
+                 is a light grey that a mono printer renders as nothing. */
+              className="border-2 border-black"
+            />
+          )}
+
+          <div className="mr-auto">
             <h1 className="text-3xl font-extrabold leading-tight">{pet.name}</h1>
             <p className="text-sm">
-              {speciesLabel(pet.species)}
-              {pet.breed ? ` · ${pet.breed}` : ""}
+              {pet.speciesLabel ?? label("species", pet.species)}
+              {pet.breed
+                ? ` · ${pet.breedLabel ?? label("breed", pet.breed)}`
+                : ""}
               {` · ${SEX_LABELS[pet.sex] ?? pet.sex}`}
               {pet.weightKg ? ` · ${pet.weightKg} kg` : ""}
             </p>

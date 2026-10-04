@@ -5,7 +5,6 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 
 import {
   Alert,
-  Breadcrumb,
   Card,
   ConfirmDialog,
   FilterBar,
@@ -22,12 +21,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
+import { SettingsPageHeader } from "@/features/settings/components/SettingsHeader";
 import { ApiError } from "@/services/api-error";
 import { businessLineService } from "@/services/businessLine.service";
 import type { BusinessLine } from "@/services/businessLine.service";
 import { swalToast } from "@/lib/swal";
 
-import { ACCOUNTING_CRUMBS } from "../crumbs";
 import { useBusinessLines } from "../hooks/useBusinessLines";
 import { BusinessLineFormDialog } from "./BusinessLineFormDialog";
 
@@ -86,17 +85,11 @@ export function BusinessLinesScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Breadcrumb items={[ACCOUNTING_CRUMBS.hub, { label: "Lini Bisnis" }]} />
-        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-          Lini Bisnis
-        </h1>
-        <p className="mt-1 max-w-2xl text-[15px] text-muted">
-          Unit usaha yang laba ruginya dibaca terpisah — Grooming, Penitipan,
-          Retail. Lini dipasang ke akun di Daftar Akun, jadi setiap posting ke
-          akun itu ikut lininya.
-        </p>
-      </div>
+      <SettingsPageHeader
+        tab="keuangan"
+        title="Lini Bisnis"
+        description="Unit usaha yang laba ruginya dibaca terpisah — Grooming, Penitipan, Retail. Lini dipasang ke akun di Daftar Akun, jadi setiap posting ke akun itu ikut lininya."
+      />
 
       <FilterBar
         searchPlacement="leading"

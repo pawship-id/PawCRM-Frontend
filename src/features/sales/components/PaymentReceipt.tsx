@@ -7,7 +7,10 @@ import type {
   Tenant,
 } from "@/types/api";
 
-const METHOD_LABEL: Record<CustomerInvoicePayment["method"], string> = {
+const METHOD_LABEL: Record<
+  NonNullable<CustomerInvoicePayment["method"]>,
+  string
+> = {
   transfer: "Transfer bank",
   cash: "Tunai",
   qris: "QRIS",
@@ -79,6 +82,14 @@ export function PaymentReceipt({
         </div>
         <div className="text-right">
           <p className="text-lg font-bold">KWITANSI</p>
+          {/* Its own number where it has one — null on a payment recorded
+              before the series existed, and the sheet says nothing there
+              rather than inventing a reference nobody quoted. */}
+          {payment.paymentNumber && (
+            <p className="text-sm font-semibold tabular-nums">
+              {payment.paymentNumber}
+            </p>
+          )}
           <p className="text-xs text-muted">Bukti penerimaan pembayaran</p>
         </div>
       </div>
@@ -93,10 +104,16 @@ export function PaymentReceipt({
         <Row label="Untuk pembayaran faktur">
           <span className="tabular-nums">{invoice.invoiceNumber}</span>
         </Row>
-        <Row label="Metode">
-          {METHOD_LABEL[payment.method]}
-          {payment.channelName ? ` — ${payment.channelName}` : ""}
-        </Row>
+        {/* A payment booked straight to an account has no method; the row
+            then names the account the money landed in. */}
+        {payment.method ? (
+          <Row label="Metode">
+            {METHOD_LABEL[payment.method]}
+            {payment.channelName ? ` — ${payment.channelName}` : ""}
+          </Row>
+        ) : (
+          <Row label="Masuk ke">{payment.channelName ?? "—"}</Row>
+        )}
         {payment.ref && (
           <Row label="No. referensi">
             <span className="tabular-nums">{payment.ref}</span>

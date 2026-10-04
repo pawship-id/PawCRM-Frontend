@@ -1,0 +1,238 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { ApiError } from "@/services/api-error";
+import { branchService } from "@/services/branch.service";
+import { cashTransactionService } from "@/services/cashTransaction.service";
+import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import type { ChartOfAccount } from "@/types/accounting";
+import type {
+  Branch,
+  CashTransaction,
+  CashTransactionTotals,
+  PageResult,
+} from "@/types/api";
+
+import { CASH_ACCOUNT_CATEGORY } from "@/features/accounting";
+
+import { sourceKinds } from "../labels";
+import {
+  DEFAULT_CASH_TRANSACTIONS_QUERY,
+  type CashTransactionsQuery,
+} from "../query";
+
+/**
+ * What the rows-per-page control offers.
+ *
+ * STARTS AT 25, like Faktur Penjualan (20 September 2026, on request) — the two
+ * lists with a page size are read by the same person in the same sitting, and
+ * 10 rows of a cash book is half a screen.
+ *
+ * IT STOPS AT 100 WHERE FAKTUR GOES TO 200, and that is the server's rule, not a
+ * taste: `LIST_MAX_LIMIT` is 100 on `cashTransaction.model.js` and 200 on
+ * `customerInvoice.model.js`, so a 200 here would be rejected by Joi before the
+ * query ran. Raise it there first if it ever needs to match.
+ */
+export const CASH_TRANSACTION_PAGE_SIZES = [25, 50, 100];
+
+const EMPTY_PAGE: PageResult<CashTransaction>["pagination"] = {
+  page: 1,
+  limit: DEFAULT_CASH_TRANSACTIONS_QUERY.limit,
+  total: 0,
+  totalPages: 0,
+};
+
+/** Σ 0 in and Σ 0 out — a real answer, for a filter nothing can match. */
+const EMPTY_TOTALS: CashTransactionTotals = {
+  in: { amount: "0.0000", count: 0 },
+  out: { amount: "0.0000", count: 0 },
+};
+
+export interface UseCashTransactionsResult {
+  transactions: CashTransaction[];
+  pagination: PageResult<CashTransaction>["pagination"];
+  /**
+   * Posted money in and out over the WHOLE filter — or null while a new filter
+   * is in flight or after a failure. Null, not zero: a card reading Rp 0 for a
+   * figure nobody fetched states a fact about somebody's cash that is untrue.
+   */
+  totals: CashTransactionTotals | null;
+  query: CashTransactionsQuery;
+  /** Filter options. Empty when the user cannot read them — never an error. */
+  branches: Branch[];
+  /** For labelling the Akun Kas/Bank filter — inactive ones included. */
+  cashAccounts: ChartOfAccount[];
+  loading: boolean;
+  error: string | null;
+  /** Merge a change; anything but `page` returns to page 1. */
+  setQuery: (patch: Partial<CashTransactionsQuery>) => void;
+  refetch: () => void;
+}
+
+/**
+ * The Transaksi Keuangan list, from GET /cash-transactions.
+ *
+ * EVERY FILTER IS SERVER-SIDE — the collection grows with every sale. ONE
+ * REQUEST carries the rows and the totals, so the cards and the table cannot be
+ * scoped differently.
+ *
+ * THE TOTALS CLEAR ON A FILTER CHANGE, not on a page turn: they do not depend on
+ * the page, and a stale figure under a new filter looks exactly like a right one.
+ *
+ * Branches and kas/bank accounts only label filters, so they are fetched once and fail
+ * quietly — a user may read transactions without `branches:read`.
+ */
+export function useCashTransactions(
+  initial: Partial<CashTransactionsQuery> = {},
+): UseCashTransactionsResult {
+  const [query, setQueryState] = useState<CashTransactionsQuery>(() => ({
+    ...DEFAULT_CASH_TRANSACTIONS_QUERY,
+    ...initial,
+  }));
+  const [transactions, setTransactions] = useState<CashTransaction[]>([]);
+  const [pagination, setPagination] = useState(EMPTY_PAGE);
+  const [totals, setTotals] = useState<CashTransactionTotals | null>(null);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [cashAccounts, setCashAccounts] = useState<ChartOfAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [nonce, setNonce] = useState(0);
+
+  const settled = useDebouncedQuery(query);
+  const lastFilterKey = useRef<string | null>(null);
+
+  const setQuery = useCallback((patch: Partial<CashTransactionsQuery>) => {
+    setQueryState((prev) => {
+      const next = { ...prev, ...patch };
+      if (patch.page === undefined) next.page = 1;
+      return next;
+    });
+  }, []);
+
+  const refetch = useCallback(() => setNonce((n) => n + 1), []);
+
+  useEffect(() => {
+    let active = true;
+
+    branchService
+      .list({ limit: 100 })
+      .then((result) => {
+        if (active) setBranches(result.items);
+      })
+      .catch(() => undefined);
+
+    // Inactive accounts included: last year's rows still name them.
+    chartOfAccountsService
+      .list({ accountCategory: CASH_ACCOUNT_CATEGORY, limit: 100 })
+      .then((result) => {
+        if (active) setCashAccounts(result.items);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const search = settled.search.trim();
+
+    /*
+      SUMBER IS EXPANDED HERE, because the server filters by `kind` and Sumber
+      is a group of kinds ("Manual" is expense + other_income).
+
+      A SOURCE WITH NO KINDS MATCHES NOTHING, and the request is not made at all.
+      `transfer` is the only one today — the mockup draws it and this system has
+      no such transaction. Sending no `kind` would ask for EVERY kind, which is
+      the opposite answer; sending `kind: []` would do the same, since the API
+      reads an absent filter and an empty one alike. Short-circuiting also keeps
+      a dead option from costing a round trip.
+    */
+    const kinds = settled.source ? sourceKinds(settled.source) : undefined;
+    const matchesNothing = kinds !== undefined && kinds.length === 0;
+
+    // Everything that narrows the set — the page, its size and the ordering do
+    // not. `totals` are Σ over the whole filtered set, so they survive all three.
+    const filterKey = JSON.stringify({
+      ...settled,
+      search,
+      page: undefined,
+      limit: undefined,
+      sort: undefined,
+    });
+
+    // The sanctioned fetch-effect shape (useJournalEntries): flag the load,
+    // then synchronize with the server, `active` guarding the late setStates.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+    setError(null);
+    if (filterKey !== lastFilterKey.current) setTotals(null);
+    lastFilterKey.current = filterKey;
+
+    if (matchesNothing) {
+      setTransactions([]);
+      setPagination({ ...EMPTY_PAGE, limit: settled.limit });
+      setTotals(EMPTY_TOTALS);
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    cashTransactionService
+      .list({
+        page: settled.page,
+        limit: settled.limit,
+        sort: settled.sort,
+        search: search || undefined,
+        direction: settled.direction || undefined,
+        kind: kinds ? [...kinds] : undefined,
+        dateFrom: settled.dateFrom || undefined,
+        dateTo: settled.dateTo || undefined,
+        branchId: settled.branchId || undefined,
+        accountId: settled.accountId || undefined,
+        status: settled.status || undefined,
+        documentId: settled.documentId || undefined,
+      })
+      .then((result) => {
+        if (!active) return;
+        setTransactions(result.items);
+        setPagination(result.pagination);
+        setTotals(result.totals ?? null);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setTransactions([]);
+        setPagination(EMPTY_PAGE);
+        setTotals(null);
+        setError(
+          err instanceof ApiError
+            ? err.fullMessage
+            : "Gagal memuat transaksi. Coba lagi.",
+        );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [settled, nonce]);
+
+  return {
+    transactions,
+    pagination,
+    totals,
+    query,
+    branches,
+    cashAccounts,
+    loading,
+    error,
+    setQuery,
+    refetch,
+  };
+}

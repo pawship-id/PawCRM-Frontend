@@ -1,5 +1,9 @@
 import { apiClient } from "./api-client";
-import type { ChartOfAccount, ChartOfAccountNode } from "@/types/accounting";
+import type {
+  AccountAllocation,
+  ChartOfAccount,
+  ChartOfAccountNode,
+} from "@/types/accounting";
 import type { PageResult } from "@/types/api";
 
 /**
@@ -40,6 +44,12 @@ export interface ChartOfAccountListQuery {
   search?: string;
   /** `income`, `asset`, … — narrows the list to one class. */
   accountType?: ChartOfAccount["accountType"];
+  /**
+   * The finer filter, and the one the screens use — `persediaan` rather than
+   * `asset`. Both are offered because they answer different questions: a
+   * payment channel wants any asset, a neraca section wants one category.
+   */
+  accountCategory?: ChartOfAccount["accountCategory"];
   isActive?: boolean;
 }
 
@@ -53,6 +63,7 @@ export interface ChartOfAccountListQuery {
  */
 export interface ChartOfAccountTreeQuery {
   accountType?: ChartOfAccount["accountType"];
+  accountCategory?: ChartOfAccount["accountCategory"];
   isActive?: boolean;
 }
 
@@ -71,13 +82,34 @@ export interface ChartOfAccountTreeQuery {
 export interface ChartOfAccountPayload {
   code: string;
   name: string;
-  accountType: ChartOfAccount["accountType"];
+  /**
+   * WHAT REPLACED `accountType` HERE, and the reason this interface changed at
+   * all: the class is derived on the server and no longer accepted in a body.
+   * Sending one is not an error — the backend's validation strips unknown keys
+   * — it simply has no effect, which is worse than a rejection to debug. So it
+   * is not on the type.
+   */
+  accountCategory: ChartOfAccount["accountCategory"];
+  /**
+   * Kas or bank — accepted only on a `cash_bank` account, and the server refuses
+   * it on any other category. Omitted on a create it defaults to `bank`; omitted
+   * on a PATCH the account keeps what it has.
+   */
+  cashType?: ChartOfAccount["cashType"];
   parentAccountId: string | null;
   /**
-   * `null` is a VALUE here too — it is how the line is CLEARED, where omitting
-   * the key on a PATCH leaves it in place.
+   * The account's Detil Akun, sent AS A WHOLE LIST.
+   *
+   * `[]` is a VALUE — it clears every rule and returns the account to Belum
+   * Dipetakan — where omitting the key on a PATCH leaves the rules alone, which
+   * is what an ordinary rename has to do. Both are requests somebody makes, so
+   * they cannot share a spelling.
+   *
+   * Keep the `_id` on a rule that already has one: it is how the server tells a
+   * rename from a delete-and-recreate, and a rule journal entries name cannot be
+   * recreated (409).
    */
-  businessLineId: string | null;
+  allocations?: AccountAllocation[];
   /** Defaults to true on the server — for a chart imported ahead of go-live. */
   isActive?: boolean;
 }
@@ -105,6 +137,7 @@ export const chartOfAccountsService = {
         limit: Math.min(query.limit ?? MAX_PAGE_LIMIT, MAX_PAGE_LIMIT),
         search: query.search,
         accountType: query.accountType,
+        accountCategory: query.accountCategory,
         isActive: query.isActive,
       },
     }),
@@ -126,6 +159,7 @@ export const chartOfAccountsService = {
     apiClient.get<ChartOfAccountNode[]>("/chart-of-accounts/tree", {
       query: {
         accountType: query.accountType,
+        accountCategory: query.accountCategory,
         isActive: query.isActive,
       },
     }),
@@ -151,10 +185,16 @@ export const chartOfAccountsService = {
    * changes nothing as a client bug. Callers compare against the current values
    * and skip the request entirely when nothing moved.
    *
-   * On a SEEDED account (`isDefault`), `code` and `accountType` come back 403 —
-   * every posting resolves its target by code, so renumbering 1201 would
+   * On a SEEDED account (`isDefault`), `code` and `accountCategory` come back
+   * 403 — every posting resolves its target by code, so renumbering 1201 would
    * silently redirect every inventory entry in the tenant. `name`, `isActive`
    * and the parent stay editable.
+   *
+   * ONE MORE REFUSAL ON AN ORDINARY ACCOUNT: a 409 when the new category would
+   * change the CLASS of an account that already has journal lines. Moving
+   * `biaya` → `biaya_lainnya` is fine at any time; `biaya` → `pendapatan` is
+   * not, because the class decides the normal balance and every closed period
+   * would quietly change its answer.
    */
   update: (id: string, payload: Partial<ChartOfAccountPayload>) =>
     apiClient.patch<ChartOfAccount>(`/chart-of-accounts/${id}`, payload),

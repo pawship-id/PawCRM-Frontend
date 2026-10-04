@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { CustomersTable } from "@/features/customers/components/CustomersTable";
@@ -10,6 +10,12 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/customer.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
+/*
+  The row navigates to the customer's profile when clicked, so the table reaches
+  for `useRouter` — which throws outside an app-router tree. The repo's
+  convention for this is a per-file stub; see WarehousesTable.test.tsx.
+*/
+jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 
 const mockedCustomerService = customerService as jest.Mocked<
   typeof customerService
@@ -18,10 +24,24 @@ const mockedCustomerService = customerService as jest.Mocked<
 const customer: Customer = {
   _id: "5a7f1f77bcf86cd799439022",
   tenantId: "507f1f77bcf86cd799439011",
+  code: "CUST-0001",
   name: "Ibu Rina",
   email: null,
   phone: "0812-3456-7890",
   address: null,
+  // The Pelanggan form's fields (27 September 2026). An ordinary private
+  // customer with no category — what the register is mostly made of.
+  kind: "individual" as const,
+  customerTypeId: null,
+  customerTypeName: null,
+  taxId: null,
+  picName: null,
+  notes: null,
+  notifications: {
+    bookingReminder: true,
+    membershipRenewal: true,
+    promo: false,
+  },
   vipTier: null,
   deletedAt: null,
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -40,6 +60,26 @@ const customer: Customer = {
  * leaves somebody staring at a button that will not work with nothing on screen
  * explaining why.
  */
+/**
+ * Open the row's kebab, press Hapus, then confirm in the dialog.
+ *
+ * THE ROW ACTIONS MOVED INTO A MENU on 28 September 2026, so this is three
+ * steps rather than two. The trigger is still found BY ITS ACCESSIBLE NAME —
+ * icon-only controls are why `aria-label` exists — and it now names the
+ * customer ("Aksi untuk Ibu Rina") rather than the action. If this helper stops
+ * finding it, the label is missing, and that is a real accessibility
+ * regression rather than a test detail.
+ */
+async function openDeleteDialogAndConfirm() {
+  await userEvent.click(
+    screen.getByRole("button", { name: "Aksi untuk Ibu Rina" }),
+  );
+  await userEvent.click(
+    within(screen.getByRole("menu")).getByRole("menuitem", { name: /^hapus$/i }),
+  );
+  await userEvent.click(screen.getByRole("button", { name: /^hapus$/i }));
+}
+
 describe("deleting a customer that still has pets", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -61,10 +101,7 @@ describe("deleting a customer that still has pets", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /delete/i }));
-    await userEvent.click(
-      screen.getByRole("button", { name: /^delete$/i, hidden: false }),
-    );
+    await openDeleteDialogAndConfirm();
 
     expect(await screen.findByText(/3 pet\(s\) still belong/i)).toBeVisible();
   });
@@ -85,10 +122,7 @@ describe("deleting a customer that still has pets", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /delete/i }));
-    await userEvent.click(
-      screen.getByRole("button", { name: /^delete$/i, hidden: false }),
-    );
+    await openDeleteDialogAndConfirm();
 
     await waitFor(() => expect(mockedCustomerService.remove).toHaveBeenCalled());
     expect(onChanged).not.toHaveBeenCalled();
@@ -107,10 +141,7 @@ describe("deleting a customer that still has pets", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /delete/i }));
-    await userEvent.click(
-      screen.getByRole("button", { name: /^delete$/i, hidden: false }),
-    );
+    await openDeleteDialogAndConfirm();
 
     expect(await screen.findByText(/customer not found/i)).toBeVisible();
   });

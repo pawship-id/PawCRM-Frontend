@@ -8,7 +8,21 @@
  * click that answers nothing — and no create form, because there is no
  * `POST /api/customer-invoices` to submit to yet (PCR-030).
  */
+/**
+ * The module's shared chrome — the title and the four-tab row every screen under
+ * Penjualan wears, including its two placeholder tabs.
+ */
+export { SalesModuleHeader } from "./components/SalesModuleHeader";
+/**
+ * The Ringkasan tab — the module's composition page, beside the list rather
+ * than over it: Faktur says what each bill's status is, this says where the
+ * period's omzet came from.
+ */
+export { SalesSummaryScreen } from "./components/SalesSummaryScreen";
 export { ReceivablesScreen } from "./components/ReceivablesScreen";
 export { InvoiceDetail } from "./components/InvoiceDetail";
+export { InvoicePaymentDetail } from "./components/InvoicePaymentDetail";
 export { InvoicePrintScreen } from "./components/InvoicePrintScreen";
 export { InvoiceCreateForm } from "./components/InvoiceCreateForm";
+/** The one screen here a CUSTOMER opens — /faktur/:token, outside the dashboard. */
+export { PublicInvoiceScreen } from "./components/PublicInvoiceScreen";

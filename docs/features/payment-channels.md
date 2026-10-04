@@ -1,7 +1,7 @@
 # Payment Channels
 
-Keuangan → **Kas & Bank**. The named places money can arrive when a cashier takes payment,
-each mapped to the account it debits.
+Pengaturan → **Channel Pembayaran**. The named places money can arrive when a cashier takes
+payment, each mapped to the account it debits.
 
 Backend: `PawCRM-Backend/src/models/paymentChannel.model.js` and `/api/payment-channels`.
 Fase 5 of the POS module — the last prerequisite before POS core.
@@ -12,14 +12,32 @@ Fase 5 of the POS module — the last prerequisite before POS core.
 
 | Route | Component | Permission |
 | --- | --- | --- |
-| `/dashboard/keuangan/kas-bank` | `PaymentChannelsScreen` | `paymentChannels:read` |
-| `/dashboard/keuangan/kas-bank/new` | `PaymentChannelForm` | `paymentChannels:create` |
-| `/dashboard/keuangan/kas-bank/[id]` | `PaymentChannelForm` | `paymentChannels:update` |
+| `/dashboard/pengaturan/channel-pembayaran` | `PaymentChannelsScreen` | `paymentChannels:read` |
+| `/dashboard/pengaturan/channel-pembayaran/new` | `PaymentChannelForm` | `paymentChannels:create` |
+| `/dashboard/pengaturan/channel-pembayaran/[id]` | `PaymentChannelForm` | `paymentChannels:update` |
 
-**In Keuangan, not Master Data**, and straight after Daftar Akun. What is being edited is a
-mapping to the chart of accounts — the row's whole purpose is the account it debits, and
-the person who knows which account is right is the one who reads the ledger. You cannot map
-a channel before the accounts exist, which is why it sits directly below them.
+**In Pengaturan, straight after Daftar Akun.** What is being edited is a mapping to the
+chart of accounts — the row's whole purpose is the account it debits, and the person who
+knows which account is right is the one who reads the ledger. You cannot map a channel
+before the accounts exist, which is why it sits directly below them.
+
+A channel is configured once and then referred to — by the POS payment panel, by the
+supplier payment picker — which is what every other row in this nav group is.
+
+### It lived under Keuangan → Kas & Bank between 16 and 20 September 2026
+
+For those four days this screen *was* Kas & Bank: the table carried Masuk, Keluar and Saldo
+columns beside each channel. **It reverted on request**, and the columns did not come with
+it, because a saldo per channel could never be summed — several channels can point at one
+account, so the balance had to be printed on one row and cross-referenced on the rest.
+
+Kas & Bank kept the question it is named for and answers it **per ledger account** now
+(`features/accounting/KasBankScreen`, `CashBankAccountsTable`), where a column of balances
+adds up. The two screens no longer overlap: one is the register of buttons a cashier sees,
+the other is where the money is.
+
+Both old addresses `redirect`, and `/keuangan/kas-bank/[id]` carries the id across — a
+bookmark to one channel should land on that channel's form, not on a list of six.
 
 ---
 
@@ -92,9 +110,9 @@ case.
 **The list and both pickers cap at 100**, the API's own page limit — asking for more is a
 `400`, not a bigger page. For a settings screen this is not a real ceiling: a tenant has a
 handful of channels, two or three bank accounts and a couple of drawers. A tenant past it
-is one whose Kas & Bank setup needs a conversation, not a second page.
+is one whose channel setup needs a conversation, not a second page.
 
-**Account and branch labels are fetched once by the screen** and handed to the table as
-maps. A lookup per row would be six requests for six channels, and the table would have to
+**Account and branch labels are fetched once by `usePaymentChannelList`** and handed to the
+table as maps. A lookup per row would be six requests for six channels, and the table would have to
 own loading states for data it does not otherwise care about. A missing label renders as a
 dash rather than an error — the list is perfectly readable without it.

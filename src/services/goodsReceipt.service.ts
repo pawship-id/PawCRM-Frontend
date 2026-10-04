@@ -6,6 +6,7 @@ import type {
   GoodsReceiptListRow,
   GoodsReceiptPreview,
   PageResult,
+  ReceiveGoodsReceiptInput,
   SupplierPurchaseSummary,
 } from "@/types/api";
 
@@ -50,6 +51,7 @@ export const goodsReceiptService = {
         warehouseId: query.warehouseId,
         branchId: query.branchId,
         purchaseType: query.purchaseType,
+        status: query.status,
         invoiced: query.invoiced,
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
@@ -70,7 +72,7 @@ export const goodsReceiptService = {
    * POST /goods-receipts — receive a delivery (201). THE IRREVERSIBLE ONE.
    *
    * Moves the stock, recomputes the weighted average cost, and — for a
-   * `beli_putus` purchase — credits `2101 Utang Supplier`. All of it in one
+   * `beli_putus` purchase — credits `2101 Utang Usaha`. All of it in one
    * transaction with the document itself.
    *
    * NOT IDEMPOTENT ACROSS REQUESTS, and callers must handle that themselves: a
@@ -95,6 +97,15 @@ export const goodsReceiptService = {
    * delivery do to my cost basis and my books", and a role that may not receive
    * goods has no business asking.
    */
+  receive: (id: string, input: ReceiveGoodsReceiptInput = {}) =>
+    apiClient.post<GoodsReceiptDetail>(`/goods-receipts/${id}/receive`, input),
+
+  /** Deliveries still `pending`, optionally for one cabang. */
+  pendingCount: (query: { branchId?: string } = {}) =>
+    apiClient.get<{ count: number }>("/goods-receipts/pending-count", {
+      query: { branchId: query.branchId || undefined },
+    }),
+
   preview: (input: CreateGoodsReceiptInput) =>
     apiClient.post<GoodsReceiptPreview>("/goods-receipts/preview", input),
 

@@ -11,10 +11,11 @@ export const metadata: Metadata = { title: "Ubah Booking · Buloo" };
 /**
  * Correcting a booking — the same form that took it.
  *
- * WHAT MAY BE CHANGED: the owner, the animals and their services, the groomers,
- * the time, the branch, the notes. WHAT MAY NOT: the status, which moves through
- * the buttons on the booking's own page because a transition has rules a `$set`
- * cannot express; and any grooming already pulled to a basket or a bill.
+ * ONE BOOKING, SO ONE CARD. WHAT MAY BE CHANGED: the owner, the animal and its
+ * service, the groomer, the time, the branch, the notes. WHAT MAY NOT: the
+ * status, which moves through the buttons on the booking's own page because a
+ * transition has rules a `$set` cannot express; and a service already pulled to
+ * a basket or a bill.
  *
  * GATED ON `update`, NOT `create`. Reception may take bookings all day and still
  * have no business rewriting one somebody else agreed — and `update` is the

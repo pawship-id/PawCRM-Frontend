@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { EllipsisVertical, History } from "lucide-react";
+import { CalendarClock, ChevronDown, EllipsisVertical } from "lucide-react";
 
 import { Alert, TextareaField } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Can } from "@/features/permissions";
+import { Can, usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
@@ -28,12 +28,17 @@ import type { Booking, BookingStatus } from "@/types/api";
 
 import {
   BOOKING_STATUS_ACTIONS,
+  bookingStatusAction,
+  canReschedule,
   canCancel,
   forwardStatuses,
   impliedStatuses,
 } from "../statusFlow";
-import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
-import { BookingHistoryDialog } from "./BookingHistoryDialog";
+import {
+  BookingStatusBadge,
+  bookingStatusLabel,
+} from "./BookingStatusBadge";
+import { BookingRescheduleDialog } from "./BookingRescheduleDialog";
 
 /** Mirrors NOTES_MAX_LENGTH in booking.model.js. */
 const REASON_MAX_LENGTH = 500;
@@ -68,38 +73,89 @@ export function BookingStatusActions({
   booking,
   onChanged,
   variant = "compact",
+  dense = false,
 }: {
+  /** ONE booking — one animal, one service — and the status is its own. */
   booking: Booking;
-  /** Called after a successful move so the list can re-ask the server. */
-  onChanged: () => void;
+  /**
+   * Called after a successful move, WITH THE BOOKING THE SERVER JUST RETURNED.
+   *
+   * ⚠️ THE ARGUMENT IS THE POINT. `PATCH /status` answers with the same document
+   * `GET /bookings/:id` would — `#named` on the server builds both — so a screen
+   * showing one booking can put the answer straight into state instead of
+   * re-asking. A list still ignores it and re-queries; a detail page that
+   * re-queried was re-fetching the customer, the animal and the branch to learn
+   * something it had already been told, and paying for it with a full-page
+   * loading flash on every press.
+   *
+   * A `() => void` handler is still assignable here, so the list call sites are
+   * unchanged.
+   */
+  onChanged: (booking: Booking) => void;
   /**
    * "compact" (default) — the ellipsis menu used on the day sheet and the
    * booking overview, where a whole row of these sits per line.
    *
    * "prominent" — a big primary button for the very next rung, plus a
-   * secondary "Status lain" trigger for everything else (skip-ahead moves,
-   * the trail, cancelling). Built for the per-animal work page, where this is
-   * the one booking-level action on the whole screen.
+   * secondary "Other statuses" trigger for everything else (skip-ahead moves,
+   * cancelling). Built for the booking's own page, where this is the one
+   * status action on the whole screen.
    *
-   * BOTH VARIANTS SHARE EVERY LINE OF STATE BELOW THIS POINT — the confirm
+   * "status" — the current status badge IS the trigger, with a chevron: the
+   * Grooming board's Status column (`buloo-grooming-v3.html`), where the badge
+   * and the control sit in one cell. With nothing to offer it is the bare badge
+   * — a chevron that opens onto nothing reads as broken (see `hasMenu`).
+   *
+   * EVERY VARIANT SHARES EVERY LINE OF STATE BELOW THIS POINT — the confirm
    * dialog, the implied-rungs note, the cancel reason, the error handling.
    * Only the trigger markup differs; duplicating the dialog logic for a second
    * look is exactly the "two sources of truth" shape this module keeps
    * producing bugs from.
    */
-  variant?: "compact" | "prominent";
+  variant?: "compact" | "prominent" | "status";
+  /**
+   * "prominent" AT 32 PX INSTEAD OF 40, so its two buttons sit on ONE line in a
+   * side panel — Hari Ini's rail is 21 rem, and at `lg` the pair wraps onto two
+   * rows with a ragged edge under the heading.
+   *
+   * ONLY THE SIZE CHANGES. The primary is still the next rung and the secondary
+   * still opens the rest; a panel that offered different moves from the
+   * booking's own page would be a second state machine to keep in step.
+   */
+  dense?: boolean;
 }) {
   const [next, setNext] = useState<BookingStatus | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
 
-  const forward = forwardStatuses(booking.status);
-  const cancellable = canCancel(booking.status);
+  /*
+    THE BOOKING, NOT ITS STATUS. Which rung comes next depends on whether anybody
+    asked to be fetched or driven home — a menu built from the status alone would
+    offer "Mulai penjemputan" on a visit with no van booked.
+  */
+  const forward = forwardStatuses(booking);
+  const cancellable = canCancel(booking);
+  /* Read here as well as through `Can`, and only to decide whether the trigger
+     that OPENS the menu is worth drawing — see `hasMenu`. */
+  const { can, canAny } = usePermissions();
+  /*
+    MOVING THE DATE IS NOT A RUNG, so it is not in `forward`. It sits beside
+    cancellation as the other thing that can happen to an appointment which is
+    not it advancing — and like cancellation it needs a second piece of
+    information, so it opens a dialog rather than firing on click.
+  */
+  const reschedulable = canReschedule(booking);
 
-  /** What a human calls this row. A draft has no number yet. */
-  const label = booking.bookingNumber ?? "booking ini";
+  /*
+    WHAT A HUMAN CALLS THIS ROW — the number and the animal. A day sheet lists
+    Mochi's and Coco's bookings one under the other, and "BK-260910-001 · Mochi"
+    is what a toast has to say for somebody to know which one just moved.
+  */
+  const label =
+    [booking.bookingNumber, booking.petName].filter(Boolean).join(" · ") ||
+    "booking ini";
 
   function close() {
     // Never close mid-write: nobody would be told whether the move landed.
@@ -116,7 +172,7 @@ export function BookingStatusActions({
     setError(null);
 
     try {
-      await bookingService.changeStatus(
+      const updated = await bookingService.changeStatus(
         booking._id,
         next,
         // Stored only on a cancellation, and only when there was something to
@@ -126,8 +182,8 @@ export function BookingStatusActions({
 
       setNext(null);
       setReason("");
-      onChanged();
-      swalToast(`${label} · ${BOOKING_STATUS_LABELS[next]}.`);
+      onChanged(updated);
+      swalToast(`${label} · ${bookingStatusLabel(next, booking)}.`);
     } catch (caught) {
       /*
         `reason` FIRST. A 409 here is the interesting failure — somebody else
@@ -144,14 +200,14 @@ export function BookingStatusActions({
     }
   }
 
-  const implied = next ? impliedStatuses(booking.status, next) : [];
+  const implied = next ? impliedStatuses(booking, next) : [];
 
   /*
     THE VERY NEXT RUNG, for the prominent variant's primary button.
 
-    `forward` IS ALREADY IN LADDER ORDER — `BOOKING_TRANSITIONS[status]` is
-    written that way in the model, check_in before in_progress before
-    completed — so its first entry is the one rung directly ahead. The rest are
+    `forward` IS ALREADY IN LADDER ORDER — `transitionsFor` slices the booking's
+    own ladder, arrived before in_progress before completed — so its first entry
+    is the one rung directly ahead. The rest are
     the skip-ahead moves the ladder also allows (PCR's "a status skipped is
     still one the booking passed through"), and belong in the menu, not the
     headline button.
@@ -159,91 +215,140 @@ export function BookingStatusActions({
   const [primaryMove, ...laterMoves] = forward;
   const menuMoves = variant === "prominent" ? laterMoves : forward;
 
+  /*
+    ─── NO TRIGGER FOR AN EMPTY MENU ───────────────────────────────────────────
+
+    A booking that has finished has no rungs left — `transitionsFor` returns
+    nothing past the end of the ladder — and cannot be rescheduled, so
+    "Other statuses ▾" opened onto nothing at all. A control that answers a
+    click with a blank panel reads as broken, and it invited the press twice:
+    once to find out, once to be sure.
+
+    ⚠️ IT ASKS THE PERMISSIONS TOO, not just the ladder. Both groups inside the
+    menu are wrapped in `Can`, so a role that may only READ saw a trigger with
+    moves behind it that never rendered. Counting the rows the LADDER offers
+    would have left that case exactly as it was — which is the whole reason this
+    reads `usePermissions` rather than the arrays alone.
+
+    THE "Status history" ROW USED TO PAPER OVER THIS. It was ungated and always
+    present, so the menu was never empty; removing it is what made an empty one
+    reachable.
+  */
+  const hasMenu =
+    (menuMoves.length > 0 && canAny("bookings", ["advanceStatus", "update"])) ||
+    (reschedulable && can("bookings", "update")) ||
+    (cancellable && can("bookings", "cancel"));
+
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
         {variant === "prominent" && primaryMove && (
           <Can feature="bookings" action={["advanceStatus", "update"]}>
-            <Button size="lg" onClick={() => setNext(primaryMove)}>
-              {BOOKING_STATUS_ACTIONS[primaryMove]} →
+            <Button
+              size={dense ? "sm" : "lg"}
+              onClick={() => setNext(primaryMove)}
+            >
+              {bookingStatusAction(primaryMove, booking)} →
             </Button>
           </Can>
         )}
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            {variant === "prominent" ? (
-              <Button variant="secondary" size="lg">
-                Status lain ▾
-              </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                // The icon carries no name, so the label says which row this
-                // menu belongs to — twenty identical "Aksi" buttons teach a
-                // screen-reader user nothing.
-                aria-label={`Aksi untuk ${label}`}
-              >
-                <EllipsisVertical className="size-4" />
-              </Button>
-            )}
-          </DropdownMenuTrigger>
+        {variant === "status" && !hasMenu && (
+          <BookingStatusBadge status={booking.status} tripLeg={booking.tripLeg} />
+        )}
 
-          <DropdownMenuContent align="end">
-            {menuMoves.length > 0 && (
-              /*
+        {hasMenu && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              {variant === "prominent" ? (
+                <Button variant="secondary" size={dense ? "sm" : "lg"}>
+                  Other statuses ▾
+                </Button>
+              ) : variant === "status" ? (
+                <button
+                  type="button"
+                  aria-label={`Status ${label}: ${bookingStatusLabel(booking.status, booking)}`}
+                  className="inline-flex min-h-9 items-center gap-1 rounded-full pr-1.5 transition hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                >
+                  <BookingStatusBadge status={booking.status} tripLeg={booking.tripLeg} />
+                  <ChevronDown className="size-4 text-muted" aria-hidden />
+                </button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  // The icon carries no name, so the label says which row this
+                  // menu belongs to — twenty identical "Aksi" buttons teach a
+                  // screen-reader user nothing.
+                  aria-label={`Aksi untuk ${label}`}
+                >
+                  <EllipsisVertical className="size-4" />
+                </Button>
+              )}
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent align="end">
+              {menuMoves.length > 0 && (
+                /*
                 EITHER GRANT, matching the API. `advanceStatus` is the
                 groomer's — check a dog in, mark it done — and `update` is the
                 stronger one a receptionist already holds. Gating on the
                 narrow one alone would have hidden these items from every role
                 that has only ever had `update`.
               */
-              <Can feature="bookings" action={["advanceStatus", "update"]}>
-                {menuMoves.map((status) => (
-                  <DropdownMenuItem
-                    key={status}
-                    onSelect={() => setNext(status)}
-                  >
-                    {BOOKING_STATUS_ACTIONS[status]}
+                <Can feature="bookings" action={["advanceStatus", "update"]}>
+                  {menuMoves.map((status) => (
+                    <DropdownMenuItem
+                      key={status}
+                      onSelect={() => setNext(status)}
+                    >
+                      {bookingStatusAction(status, booking)}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                </Can>
+              )}
+
+              {/*
+            `update`, NOT `cancel`. Rearranging a day is an edit to what was
+            agreed; gating it on the cancel grant would mean a receptionist who
+            may move bookings cannot, while one who may only end them can.
+          */}
+              {reschedulable && (
+                <Can feature="bookings" action="update">
+                  <DropdownMenuItem onSelect={() => setRescheduleOpen(true)}>
+                    <CalendarClock />
+                    Reschedule
                   </DropdownMenuItem>
-                ))}
-                <DropdownMenuSeparator />
-              </Can>
-            )}
+                </Can>
+              )}
 
-            {/* Ungated: the trail is a read, and seeing the row is the only grant
-              reading its history needs. */}
-          <DropdownMenuItem onSelect={() => setHistoryOpen(true)}>
-            <History />
-            Riwayat status
-          </DropdownMenuItem>
-
-          {cancellable && (
-            <Can feature="bookings" action="cancel">
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                variant="destructive"
-                onSelect={() => setNext("cancelled")}
-              >
-                {BOOKING_STATUS_ACTIONS.cancelled}
-              </DropdownMenuItem>
-            </Can>
-          )}
-        </DropdownMenuContent>
-        </DropdownMenu>
+              {cancellable && (
+                <Can feature="bookings" action="cancel">
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => setNext("cancelled")}
+                  >
+                    {BOOKING_STATUS_ACTIONS.cancelled}
+                  </DropdownMenuItem>
+                </Can>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {next && (
         <Dialog open onOpenChange={(open) => !open && close()}>
           <DialogContent showCloseButton={!busy}>
             <DialogHeader>
-              <DialogTitle>{BOOKING_STATUS_ACTIONS[next]}</DialogTitle>
+              <DialogTitle>{bookingStatusAction(next, booking)}</DialogTitle>
               <DialogDescription>
-                {label}
-                {booking.petName ? ` · ${booking.petName}` : ""} — statusnya
-                menjadi {BOOKING_STATUS_LABELS[next]}. Perpindahan status tidak
-                bisa dibatalkan.
+                {/* `label` CARRIES THE NUMBER AND THE ANIMAL — exactly the scope
+                    of what is about to happen. */}
+                {label} — statusnya menjadi {bookingStatusLabel(next, booking)}.
+                Perpindahan status tidak bisa dibatalkan.
               </DialogDescription>
             </DialogHeader>
 
@@ -261,7 +366,7 @@ export function BookingStatusActions({
                 Sekalian tercatat sebagai{" "}
                 <b className="font-medium text-foreground">
                   {implied
-                    .map((status) => BOOKING_STATUS_LABELS[status])
+                    .map((status) => bookingStatusLabel(status, booking))
                     .join(" dan ")}
                 </b>{" "}
                 pada jam yang sama.
@@ -270,15 +375,28 @@ export function BookingStatusActions({
 
             {next === "completed" && (
               /*
-                COMPLETING IS NOT BEING PAID. The till stamps the sale when money
-                lands; marking it here only says the work is done, and a
-                completed booking is no longer offered to the kasir — so anybody
-                doing this to a job that has not been paid for should know they
-                have just taken it off the counter's list.
+                COMPLETING IS NOT BEING PAID, and it is not the end of the line
+                at the counter either. The till stamps the sale when money lands;
+                marking it here only says the work is done.
+
+                ⚠️ THIS USED TO SAY THE BOOKING WOULD LEAVE THE KASIR'S LIST, and
+                that has not been true since the bridge started offering every
+                status but `cancelled` — see `useBookingBridge` and the row
+                comment in `BookingBridgeDialog`, which lists "one already
+                finished" among what a cashier sees. The warning named the wrong
+                consequence, so somebody checking it against the till found the
+                booking still there and learnt to skip the note.
+
+                WHAT ACTUALLY CLOSES is the money: `hasCompletedWork` freezes the
+                service, the price and the crew, because commission is computed
+                from here (booking.service.js — `updateBooking`,
+                `#assertCrewEditable`, `assignGroomer`). That is the thing worth
+                saying before somebody presses the button.
               */
               <p className="text-sm text-muted">
-                Menandai selesai di sini tidak mencatat pembayaran. Booking yang
-                sudah selesai tidak muncul lagi di kasir.
+                {booking.tripLeg
+                  ? "Menandai sampai di sini tidak mencatat pembayaran — perjalanannya tetap ada di daftar kasir. Yang berubah: layanan, harga dan drivernya tidak bisa diubah lagi."
+                  : "Menandai selesai di sini tidak mencatat pembayaran — booking-nya tetap ada di daftar kasir. Yang berubah: layanan, harga dan groomernya tidak bisa diubah lagi."}
               </p>
             )}
 
@@ -318,11 +436,20 @@ export function BookingStatusActions({
         </Dialog>
       )}
 
-      <BookingHistoryDialog
-        booking={booking}
-        open={historyOpen}
-        onOpenChange={setHistoryOpen}
-      />
+      {/*
+        MOUNTED ONLY WHILE OPEN. It seeds its two fields from
+        `booking.scheduledAt` on first render, so a dialog that stayed mounted
+        would keep showing the old date after a reschedule until the whole
+        screen remounted.
+      */}
+      {rescheduleOpen && (
+        <BookingRescheduleDialog
+          booking={booking}
+          open
+          onOpenChange={setRescheduleOpen}
+          onChanged={onChanged}
+        />
+      )}
     </>
   );
 }

@@ -182,6 +182,15 @@ X-Report and the Z-Report net it out of `expectedCash` and show it on its own li
 figure with no explanation is one nobody trusts, and this is the shape of variance that looks
 like theft and is not.
 
+**The money can also go back by transfer** (12 Sep). The Retur form offers every active channel
+of the branch that can pay out and is **cash or transfer** — a merchant QRIS or EDC cannot hand
+money back and a giro is not written at a counter. A transfer refund is a `BBK` document from
+that account and is **not** netted out of `expectedCash`; the hint under the picker says which
+of the two the chosen channel does. A lone cash drawer is still pre-selected, even with a bank
+account beside it. When the chosen channel `requiresReference`, a **No. referensi** field
+appears and Proses retur waits for it — the same rule as the payment lines; it is sent as
+`refundReference` and becomes the refund document's `ref`.
+
 ---
 
 ## Closing (FR-9)

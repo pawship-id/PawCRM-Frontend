@@ -22,7 +22,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Can } from "@/features/permissions";
 import type { Category } from "@/types/api";
 import type {
   ProductSort,
@@ -32,14 +31,17 @@ import type {
 
 import type { WarehouseScope } from "../utils/catalogue";
 import type { ProductsQuery } from "../hooks/useProducts";
-import { NewProductMenu } from "./NewProductMenu";
 
 /**
- * The catalogue's controls: one row — search, one Filter button, one create
- * menu — with every filter and the sort order inside the panel.
+ * The catalogue's controls: one row — search and one Filter button — with every
+ * filter and the sort order inside the panel.
  *
  * Purely presentational: it renders the current query and reports changes up to
  * useProducts.
+ *
+ * NO CREATE MENU — it moved up to CatalogModuleHeader when the module grew a tab
+ * bar, because it belongs to the page rather than to the narrowing controls, and
+ * each tab creates a different thing.
  *
  * ONE BUTTON RATHER THAN A ROW OF TRIGGERS, at every width. Rule §8 hands a
  * quick bar to a screen of four-or-fewer single-selects, and this screen has six
@@ -187,10 +189,6 @@ export function ProductsToolbar({
       // names are long.
       searchPlacement="leading"
       searchClassName="min-w-[12rem] flex-1"
-      // Below sm the row cannot hold all three, so the create button takes a
-      // line of its own — and takes all of it. A button hugging its label at
-      // one end of an otherwise empty row reads as something left behind.
-      actionsClassName="max-sm:w-full"
       search={
         <FilterSearch
           value={query.search}
@@ -199,11 +197,6 @@ export function ProductsToolbar({
           ariaLabel="Cari produk"
           fill
         />
-      }
-      actions={
-        <Can feature="products" action="create">
-          <NewProductMenu />
-        </Can>
       }
     >
       <CatalogueFilterPanel

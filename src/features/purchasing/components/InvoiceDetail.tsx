@@ -312,7 +312,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           goods receipt when it posted; the invoice deliberately posts nothing,
           because a second AP entry would book the same obligation twice. */}
       <p className="text-xs text-muted">
-        Utang atas penerimaan ini sudah dikreditkan ke <b>2101 Utang Supplier</b>{" "}
+        Utang atas penerimaan ini sudah dikreditkan ke <b>2101 Utang Usaha</b>{" "}
         sejak barang diterima — faktur ini yang membawa nomor tagihan dan tanggal
         jatuh temponya. Dicatat oleh {invoice.createdByName ?? "—"}.
       </p>

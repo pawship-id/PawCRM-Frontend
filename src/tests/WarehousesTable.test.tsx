@@ -56,7 +56,7 @@ describe("WarehousesTable", () => {
     expect(screen.getByText("Jl. Sudirman 1")).toBeInTheDocument();
     expect(screen.getByText("Budi")).toBeInTheDocument();
     expect(screen.getByText("021-555-1234")).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByText("Aktif")).toBeInTheDocument();
   });
 
   it("labels an unassigned warehouse as central rather than blank", () => {
@@ -69,7 +69,7 @@ describe("WarehousesTable", () => {
       />,
     );
 
-    expect(screen.getByText(/central \(no branch\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/pusat \(tanpa cabang\)/i)).toBeInTheDocument();
   });
 
   it("shows the empty state when there are no warehouses", () => {
@@ -82,7 +82,7 @@ describe("WarehousesTable", () => {
       />,
     );
     expect(
-      screen.getByText(/no warehouses match the current filters/i),
+      screen.getByText(/tidak ada gudang yang cocok dengan filter ini/i),
     ).toBeInTheDocument();
   });
 
@@ -101,11 +101,11 @@ describe("WarehousesTable", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /delete/i }));
+    await userEvent.click(screen.getByRole("button", { name: /hapus/i }));
 
     const dialog = screen.getByRole("dialog");
     await userEvent.click(
-      within(dialog).getByRole("button", { name: /^delete$/i }),
+      within(dialog).getByRole("button", { name: /^hapus$/i }),
     );
 
     expect(remove).toHaveBeenCalledWith("w1");
@@ -130,10 +130,10 @@ describe("WarehousesTable", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /delete/i }));
+    await userEvent.click(screen.getByRole("button", { name: /hapus/i }));
     const dialog = screen.getByRole("dialog");
     await userEvent.click(
-      within(dialog).getByRole("button", { name: /^delete$/i }),
+      within(dialog).getByRole("button", { name: /^hapus$/i }),
     );
 
     expect(
@@ -153,12 +153,12 @@ describe("WarehousesTable", () => {
       />,
     );
 
-    expect(screen.getByText("Default")).toBeInTheDocument();
+    expect(screen.getByText("Bawaan cabang")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /delete/i }),
+      screen.queryByRole("button", { name: /hapus/i }),
     ).not.toBeInTheDocument();
     // Editing one is still allowed — only the delete is refused.
-    expect(screen.getByRole("link", { name: /edit/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /ubah/i })).toBeInTheDocument();
   });
 
   it("hides the Actions column when the role has no warehouse actions", () => {
@@ -176,7 +176,7 @@ describe("WarehousesTable", () => {
     );
 
     expect(
-      screen.queryByRole("columnheader", { name: /actions/i }),
+      screen.queryByRole("columnheader", { name: /aksi/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -195,11 +195,11 @@ describe("WarehousesTable", () => {
     );
 
     expect(
-      screen.getByRole("columnheader", { name: /actions/i }),
+      screen.getByRole("columnheader", { name: /aksi/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /edit/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /ubah/i })).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /delete/i }),
+      screen.queryByRole("button", { name: /hapus/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -214,11 +214,11 @@ describe("WarehousesTable", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: /restore/i }),
+      screen.getByRole("button", { name: /pulihkan/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Deleted")).toBeInTheDocument();
+    expect(screen.getByText("Terhapus")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /^delete$/i }),
+      screen.queryByRole("button", { name: /^hapus$/i }),
     ).not.toBeInTheDocument();
   });
 });

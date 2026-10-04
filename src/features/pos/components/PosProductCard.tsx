@@ -1,12 +1,19 @@
 "use client";
 
-import { Plus, Layers, Package as PackageIcon, Scissors } from "lucide-react";
+import {
+  IdCard,
+  Plus,
+  Layers,
+  Package as PackageIcon,
+  Scissors,
+} from "lucide-react";
 
 import { HighlightText } from "@/components";
 
 import { PosStockBadge } from "./PosStockBadge";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/utils/decimal";
+import { priceRange } from "@/utils/serviceVariant";
 import type { PosCatalogItem } from "@/types/api";
 
 /**
@@ -50,7 +57,17 @@ function PosProductThumbnail({ item }: { item: PosCatalogItem }) {
   const src = item.image?.thumbUrl ?? item.image?.mediumUrl ?? item.image?.url;
 
   if (!src) {
-    const Icon = item.kind === "service" ? Scissors : PackageIcon;
+    /*
+      THREE ICONS NOW. A package is neither a thing nor a service performed, and
+      a cashier scanning the grid has to be able to tell at a glance that this
+      tile will ask which animal it is for and sell a year of cover.
+    */
+    const Icon =
+      item.kind === "membership"
+        ? IdCard
+        : item.kind === "service"
+          ? Scissors
+          : PackageIcon;
 
     return (
       <div className="flex aspect-square w-full items-center justify-center rounded-lg bg-secondary/25">
@@ -185,9 +202,20 @@ export function PosProductCard({
       </div>
 
       <div className="flex items-center justify-between gap-2">
-        {/* A parent quotes no price — its variants carry them. */}
-        <span className="text-sm font-semibold tabular-nums text-foreground">
-          {isParent ? `${item.variantCount} varian` : formatMoney(item.price)}
+        {/*
+          A PARENT QUOTES NO PRICE — its variants carry them.
+
+          AND NEITHER DOES A SERVICE PRICED BY THE ANIMAL, which is a different
+          case with the same symptom: the tile is drawn before anybody has chosen
+          a dog, so there is no single figure to show. It read "—", which is
+          honest and useless — a cashier cannot tell an unpriced service from one
+          that depends on the animal, and has nothing to quote over the counter.
+          The RANGE says both: that it varies, and between what and what.
+        */}
+        <span className="truncate text-sm font-semibold tabular-nums text-foreground">
+          {isParent
+            ? `${item.variantCount} varian`
+            : (priceRange(item, formatMoney) ?? formatMoney(item.price))}
         </span>
 
         {isParent ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -18,6 +18,8 @@ import {
 } from "@/components";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { usePermissions } from "@/features/permissions";
+import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
 import { businessLineService } from "@/services/businessLine.service";
@@ -26,22 +28,45 @@ import { swalToast } from "@/lib/swal";
 import type {
   Branch,
   Service,
+  ServiceBillingUnit,
   ServiceLocation,
+  ServiceKind,
   ServiceType,
-  ServiceVariantAxis,
+  VariantAxisKey,
   ServiceVariantInput,
 } from "@/types/api";
+import { SERVICE_KIND_LABELS, SERVICE_KINDS } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
 
+import { invalidateVariantOptions } from "@/hooks/useVariantOptions";
+import { useVariantAxisValues } from "../hooks/useVariantAxisValues";
 import {
+  axisDefsForKind,
   buildVariantCombos,
   comboKey,
+  MAX_VARIANTS,
+} from "../variantAxes";
+import { ServiceKindsField } from "./ServiceKindsField";
+import {
+  clearServiceFormOrigin,
+  readServiceFormOrigin,
+  type ServiceFormOrigin,
+} from "../formOrigin";
+import {
   LOCATION_LABELS,
   ServiceAddonPicker,
   ServiceBranchScope,
   ServiceVariantEditor,
+  SessionWeightsEditor,
+  sessionWeightsError,
+  sessionWeightsPayload,
+  ServiceStepsField,
   StringListField,
 } from "./ServiceFormFields";
+import { sessionsRefusal } from "./ServiceStepPicker";
+// Deep, not the barrel: the grooming index imports this feature back.
+import { GROOMING_CATALOG_PATH } from "@/features/grooming/paths";
+import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
 
 /** Backend caps — NAME_MAX_LENGTH and friends in service.model.js. */
 const NAME_MAX_LENGTH = 160;
@@ -49,7 +74,6 @@ const CODE_MAX_LENGTH = 40;
 const DESCRIPTION_MAX_LENGTH = 500;
 const MAX_DURATION_MIN = 1440;
 const MAX_SESSIONS = 50;
-const SESSION_MAX_LENGTH = 120;
 const MAX_INCLUDED_ITEMS = 30;
 const INCLUDED_ITEM_MAX_LENGTH = 200;
 
@@ -79,11 +103,36 @@ const SERVICE_LOCATION_ORDER: ServiceLocation[] = ["in_store", "in_home"];
  */
 const WHOLE_RUPIAH = /^\d+$/;
 
-const LIST_PATH = "/dashboard/master/layanan";
+/**
+ * Grooming › Layanan & Harga — the one list of services since the catalogue-wide
+ * list was removed (13 September 2026), whatever line the service belongs to. A
+ * create lands here; an edit lands on the service's detail page under it — see
+ * `goBack`.
+ */
+const LIST_PATH = GROOMING_CATALOG_PATH;
+
+const BILLING_UNIT_OPTIONS: { value: ServiceBillingUnit; label: string }[] = [
+  { value: "per_pet", label: "Per hewan" },
+  { value: "per_visit", label: "Per kunjungan" },
+];
 
 /** "150000.0000" → "150000" — a counter should not read past the decimals. */
 function trimStoredPrice(price: string): string {
   return price.replace(/\.?0+$/, "");
+}
+
+/**
+ * Minutes as typed → a whole number the API accepts, or the sentence saying why
+ * not. Null input is "not filled in".
+ */
+function durationProblem(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed === "") return "empty";
+
+  const minutes = Number(trimmed);
+  return Number.isInteger(minutes) && minutes >= 1 && minutes <= MAX_DURATION_MIN
+    ? null
+    : "range";
 }
 
 /**
@@ -106,12 +155,38 @@ function trimStoredPrice(price: string): string {
  *
  * FLAT OR PER-VARIANT, NEVER BOTH, which is the server's own rule (see
  * `ServiceService.#prepareVariantConfig`). The switch decides which half of the
- * card is shown, and the payload carries only that half: `price` alone, or
- * `variantAxes` + `variants` alone.
+ * card is shown, and the payload carries only that half: `price` + `durationMin`
+ * alone, or `variantAxes` + `variants` alone.
+ *
+ * ─── THE DURATION FOLLOWS THE PRICE (13 September 2026) ────────────────────
+ *
+ * A flat service has one duration. A variant service has none of its own: each
+ * variant row carries its minutes beside its price, and its own Aktif — a
+ * variant switched off stays in the grid but cannot be chosen at booking or at
+ * the till.
+ *
+ * ─── THE ROWS COME FROM THE TENANT'S PET OPTIONS (14 September 2026) ───────
+ *
+ * Which species, sizes and coats a price splits by is the shop's own list now,
+ * not three constants beside the form. Two consequences are handled here:
+ *
+ *  - A VALUE THIS SERVICE PRICES STAYS A ROW after its option is retired or
+ *    deleted — marked "(nonaktif)" — because dropping the row would drop its
+ *    price on the next save. The server accepts it for the same reason.
+ *  - THE GRID CAN OUTGROW THE SERVER. Four species, five sizes and three coats
+ *    is sixty rows against a MAX_VARIANTS of twenty. Simpan says so and stays
+ *    off until an axis is unticked, rather than sending a save to be refused.
  */
-export function ServiceForm({ serviceId }: { serviceId?: string }) {
+export function ServiceForm({
+  serviceId,
+}: {
+  serviceId?: string;
+}) {
   const editing = serviceId !== undefined;
   const router = useRouter();
+  // Adding a missing tahapan to the list is `services:update`, which a
+  // role opening this form to CREATE a service may not hold.
+  const mayAddSteps = usePermissions().can("services", "update");
 
   const [service, setService] = useState<Service | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -128,20 +203,67 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
+  /* NO DEFAULT, from any module (22 September 2026) — the owner's choice every time. */
   const [businessLineId, setBusinessLineId] = useState("");
   const [image, setImage] = useState<MediaAsset | null>(null);
   const [serviceType, setServiceType] = useState<ServiceType>("main");
+  /*
+    A NEW ADD-ON, from "Tambah add-on" on Master › Layanan › Add-on — told
+    through the tab, not `?jenis=addon` (22 September 2026). Jenis layanan is
+    then not drawn and the save sends `addon`. An edit shows the stored type.
+  */
+  const [addonFromOrigin, setAddonFromOrigin] = useState(false);
+  /*
+    A NEW SERVICE FROM A MODULE'S "Layanan baru" (22 September 2026, on
+    request): Grooming's is a grooming main service, Antar-Jemput's an
+    antar-jemput one. Both Kelompok layanan and Jenis layanan are then settled
+    and not drawn — the owner only picks the line of business — and the form is
+    titled by the module ("Layanan Grooming baru").
+  */
+  const [kindFromOrigin, setKindFromOrigin] = useState(false);
+  const serviceTypeFixed = !editing && (addonFromOrigin || kindFromOrigin);
   const [durationMin, setDurationMin] = useState("");
+  const [billingUnit, setBillingUnit] = useState<ServiceBillingUnit>("per_pet");
+  /*
+    KELOMPOK LAYANAN (22 September 2026) — Grooming, Hotel, Antar-Jemput. Saved
+    on the service, so its Opsi Varian list no longer depends on which page the
+    form was opened from. Only a MAIN service has one; an add-on is shared.
+  */
+  const [serviceKind, setServiceKind] = useState<ServiceKind | "">("");
+  /*
+    WHICH MODULE OPENED THE FORM — left in the tab by `ServiceFormLink`, read
+    once (formOrigin.ts). A ref for the load below, which answers after mount;
+    state for the list a save returns to.
+  */
+  const originRef = useRef<ServiceFormOrigin | null | undefined>(undefined);
+  const [listPath, setListPath] = useState(LIST_PATH);
+  const originOf = () => {
+    if (originRef.current === undefined) originRef.current = readServiceFormOrigin();
+    return originRef.current;
+  };
+  const [kindError, setKindError] = useState<string | null>(null);
   const [description, setDescription] = useState("");
 
   const [hasVariants, setHasVariants] = useState(false);
   const [price, setPrice] = useState("");
-  const [variantAxes, setVariantAxes] = useState<ServiceVariantAxis[]>([]);
+  const [variantAxes, setVariantAxes] = useState<VariantAxisKey[]>([]);
   const [variantPrices, setVariantPrices] = useState<Record<string, string>>(
+    {},
+  );
+  /* Combo key → minutes as typed. */
+  const [variantDurations, setVariantDurations] = useState<
+    Record<string, string>
+  >({});
+  /* Combo key → on/off. Absent reads as on. */
+  const [variantActive, setVariantActive] = useState<Record<string, boolean>>(
     {},
   );
 
   const [sessions, setSessions] = useState<string[]>([]);
+  /* Session name → per cent as typed. All empty = split evenly. */
+  const [sessionWeights, setSessionWeights] = useState<Record<string, string>>(
+    {},
+  );
   const [included, setIncluded] = useState<string[]>([]);
   const [serviceLocations, setServiceLocations] = useState<ServiceLocation[]>([
     "in_store",
@@ -151,6 +273,12 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const [branchIds, setBranchIds] = useState<string[]>([]);
   const [addonServiceIds, setAddonServiceIds] = useState<string[]>([]);
   const [taxExempt, setTaxExempt] = useState(false);
+  // An add-on's own settings — the same two switches as Pengaturan › Layanan ›
+  // Add-on. Defaults are the server's: earns commission, not sold on its own.
+  const [commissionable, setCommissionable] = useState(true);
+  const [soldSeparately, setSoldSeparately] = useState(false);
+  /* An add-on's "Dipakai di layanan" — empty is every kind (22 September 2026). */
+  const [addonKinds, setAddonKinds] = useState<ServiceKind[]>([]);
   const [isActive, setIsActive] = useState(true);
 
   const [nameError, setNameError] = useState<string | null>(null);
@@ -161,13 +289,71 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const [durationError, setDurationError] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [branchError, setBranchError] = useState<string | null>(null);
+  const [weightError, setWeightError] = useState<string | null>(null);
+  const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const combos = useMemo(
-    () => buildVariantCombos(variantAxes),
-    [variantAxes],
+  /*
+    BUILT FROM THE STORED VARIANTS, not the typed ones: a retired value is kept
+    because the record holds it, not because somebody filled in its box. On a
+    create there is no record, so only active options are offered.
+  */
+  const {
+    valuesFor,
+    axes: axisDefs,
+    loading: axisValuesLoading,
+  } = useVariantAxisValues();
+  const axisValues = useMemo(
+    () => valuesFor(service?.variants),
+    [valuesFor, service],
   );
+  const combos = useMemo(
+    () => buildVariantCombos(variantAxes, axisValues),
+    [variantAxes, axisValues],
+  );
+
+  /*
+    WHY SIMPAN IS OFF BEFORE ANYBODY PRESSES IT — the two variant-grid reasons
+    no amount of typing fixes. Rows generated from a list still loading would be
+    missing the values yet to arrive, and more than MAX_VARIANTS rows is a save
+    the server refuses whole.
+  */
+  const variantBlock =
+    !hasVariants || variantAxes.length === 0
+      ? null
+      : axisValuesLoading
+        ? "jenis hewan, ukuran, dan bulu masih dimuat"
+        : combos.length > MAX_VARIANTS
+          ? `${combos.length} varian, maksimal ${MAX_VARIANTS} per layanan`
+          : null;
+
+  /*
+    THE MODULE'S ANSWER, ON MOUNT: the list to return to and — for a new
+    service — its Kelompok layanan and Jenis layanan, settled. An edit takes
+    its kind from the loaded service instead (below), falling back to this.
+  */
+  useEffect(() => {
+    const origin = originOf();
+    if (!origin) return;
+    if ("addon" in origin) {
+      if (!editing) {
+        // The tab is read after mount so the server and first render agree.
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setServiceType("addon");
+        setAddonFromOrigin(true);
+      }
+      return;
+    }
+    setListPath(origin.listPath);
+    if (!editing) {
+      setServiceType("main");
+      setServiceKind(origin.serviceKind);
+      setKindFromOrigin(true);
+    }
+    // Read once — `originOf` caches, and `editing` never changes under a form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -258,21 +444,67 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         // "150000.0000" to see the price they typed.
         setPrice(result.price === null ? "" : trimStoredPrice(result.price));
         setDurationMin(
-          result.durationMin === null ? "" : String(result.durationMin),
+          result.durationMin === null || result.durationMin === undefined
+            ? ""
+            : String(result.durationMin),
+        );
+        setBillingUnit(result.billingUnit ?? "per_pet");
+        /* An old service has none — it starts on the module's, for the owner to confirm. */
+        const origin = originOf();
+        setServiceKind(
+          result.serviceKind ??
+            (origin && "serviceKind" in origin ? origin.serviceKind : ""),
         );
         setDescription(result.description ?? "");
         const axes = result.variantAxes ?? [];
+        const storedVariants = result.variants ?? [];
         setHasVariants(result.hasVariants ?? false);
         setVariantAxes(axes);
         setVariantPrices(
           Object.fromEntries(
-            (result.variants ?? []).map((variant) => [
+            storedVariants.map((variant) => [
               comboKey(axes, variant),
               trimStoredPrice(variant.price),
             ]),
           ),
         );
-        setSessions(result.sessions ?? []);
+        setVariantDurations(
+          Object.fromEntries(
+            storedVariants.map((variant) => [
+              comboKey(axes, variant),
+              variant.durationMin === null || variant.durationMin === undefined
+                ? ""
+                : String(variant.durationMin),
+            ]),
+          ),
+        );
+        setVariantActive(
+          Object.fromEntries(
+            storedVariants.map((variant) => [
+              comboKey(axes, variant),
+              variant.isActive !== false,
+            ]),
+          ),
+        );
+        const storedSessions = result.sessions ?? [];
+        const storedWeights = result.sessionWeights ?? [];
+        setSessions(storedSessions);
+        /*
+          WEIGHTS THAT DO NOT LINE UP WITH THE SESSIONS ARE DROPPED, not
+          guessed at. Which number belonged to which tahapan is unknowable once
+          the lengths differ, and the empty editor says "dibagi rata" — which is
+          what the server does with such a service anyway.
+        */
+        setSessionWeights(
+          storedWeights.length > 0 && storedWeights.length === storedSessions.length
+            ? Object.fromEntries(
+                storedSessions.map((session, index) => [
+                  session,
+                  String(storedWeights[index]),
+                ]),
+              )
+            : {},
+        );
         setIncluded(result.included ?? []);
         // Not `[]`: an old service has no locations stored, and leaving the
         // field empty would make Simpan fail on a rule the user never set.
@@ -285,6 +517,9 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         setBranchIds(result.branchIds ?? []);
         setAddonServiceIds(result.addonServiceIds ?? []);
         setTaxExempt(result.taxExempt);
+        setCommissionable(result.commissionable ?? true);
+        setSoldSeparately(result.soldSeparately ?? false);
+        setAddonKinds(result.serviceKinds ?? []);
         setIsActive(result.isActive);
       })
       .catch((error) => {
@@ -301,11 +536,32 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
     };
   }, [serviceId]);
 
+  /*
+    AN EDIT GOES BACK TO THE SERVICE, a create to the list. Somebody who pressed
+    Ubah on a service's detail page expects to land on that page again, not to
+    go looking for the row they came from.
+  */
   function goBack() {
-    router.push(LIST_PATH);
+    /* The form's journey ends here, saved or not — its origin is used up. */
+    clearServiceFormOrigin();
+    /*
+      AN ADD-ON ALWAYS GOES BACK TO MASTER › LAYANAN › ADD-ON, created or
+      edited — it has no page in a module (22 September 2026), and a module's
+      detail path would only send it back here.
+    */
+    if (serviceType === "addon") {
+      router.push(serviceSettingsPath("addon"));
+      return;
+    }
+    router.push(editing ? `${listPath}/${serviceId}` : listPath);
   }
 
-  function toggleAxis(axis: ServiceVariantAxis, checked: boolean) {
+  /** Batal leaves without saving, to the same place a save goes. */
+  function cancel() {
+    goBack();
+  }
+
+  function toggleAxis(axis: VariantAxisKey, checked: boolean) {
     setVariantError(null);
     setVariantAxes((current) =>
       checked
@@ -325,7 +581,8 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (saving) return;
+    // Enter in a price box submits too; the bar's reason is already on screen.
+    if (saving || variantBlock) return;
 
     const trimmedName = name.trim();
     const trimmedPrice = price.trim();
@@ -341,6 +598,10 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
     }
     if (!businessLineId) {
       setLineError("Pilih lini bisnisnya dulu.");
+      invalid = true;
+    }
+    if (serviceType === "main" && !serviceKind) {
+      setKindError("Pilih kelompok layanannya dulu.");
       invalid = true;
     }
 
@@ -361,10 +622,13 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
     /*
       FLAT OR PER-VARIANT, NEVER BOTH — the server's rule, checked here so the
-      answer arrives before a round trip. Every generated row must carry a price:
-      a blank one is a combination the till could not quote.
+      answer arrives before a round trip. Every generated row must carry a price
+      and a duration: a blank price is a combination the till could not quote,
+      and a blank duration one the calendar would have to guess.
     */
     let variants: ServiceVariantInput[] = [];
+    let duration: number | null = null;
+
     if (hasVariants) {
       if (variantAxes.length === 0) {
         setVariantError("Pilih minimal satu dasar pembeda harga.");
@@ -383,51 +647,67 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
           "Isi angka saja, tanpa titik atau koma. Contoh: 150000",
         );
         invalid = true;
+      } else if (
+        combos.some(
+          (combo) => durationProblem(variantDurations[combo.key] ?? "") === "empty",
+        )
+      ) {
+        setVariantError(
+          "Semua baris varian harus punya durasi — kalender dan pengecekan bentrok membacanya.",
+        );
+        invalid = true;
+      } else if (
+        combos.some((combo) => durationProblem(variantDurations[combo.key] ?? ""))
+      ) {
+        setVariantError(
+          `Durasi varian diisi menit antara 1 dan ${MAX_DURATION_MIN}.`,
+        );
+        invalid = true;
       } else {
         variants = combos.map((combo) => ({
           petType: combo.petType,
           sizeCategory: combo.sizeCategory,
           furType: combo.furType,
+          // Only on a service that varies by them — a pet-priced row stays as it was.
+          ...(combo.zoneId ? { zoneId: combo.zoneId } : {}),
+          ...(combo.choices.length > 0 ? { choices: combo.choices } : {}),
           price: (variantPrices[combo.key] ?? "").trim(),
+          durationMin: Number((variantDurations[combo.key] ?? "").trim()),
+          isActive: variantActive[combo.key] !== false,
         }));
       }
-    } else if (trimmedPrice === "") {
-      setPriceError("Harga wajib diisi.");
-      invalid = true;
-    } else if (!WHOLE_RUPIAH.test(trimmedPrice)) {
-      setPriceError("Isi angka saja, tanpa titik atau koma. Contoh: 150000");
-      invalid = true;
-    }
+    } else {
+      if (trimmedPrice === "") {
+        setPriceError("Harga wajib diisi.");
+        invalid = true;
+      } else if (!WHOLE_RUPIAH.test(trimmedPrice)) {
+        setPriceError("Isi angka saja, tanpa titik atau koma. Contoh: 150000");
+        invalid = true;
+      }
 
-    /*
-      ─── REQUIRED SINCE 3 SEPTEMBER 2026 ───────────────────────────────────────
+      /*
+        ─── REQUIRED SINCE 3 SEPTEMBER 2026 ─────────────────────────────────────
 
-      The calendar has to draw a block, the clash check has to know when somebody
-      is free again, and "selesai sekitar" has to add up. A service with no
-      duration makes all three GUESS at half an hour — and a guess on a calendar
-      is read as fact by everybody downstream.
-
-      IT WAS NULLABLE FOR A GOOD REASON, and that reason expired. The field
-      shipped two phases before the booking module so a duration added later would
-      not mean backfilling every service a tenant had already priced. The module
-      is here; the field has readers.
-    */
-    const duration =
-      durationMin.trim() === "" ? null : Number(durationMin.trim());
-    if (duration === null) {
-      setDurationError(
-        "Wajib diisi — kalender dan pengecekan bentrok membacanya.",
-      );
-      invalid = true;
-    } else if (
-      !Number.isInteger(duration) ||
-      duration < 1 ||
-      duration > MAX_DURATION_MIN
-    ) {
-      setDurationError(
-        `Isi menit antara 1 dan ${MAX_DURATION_MIN}. Lebih dari sehari itu penitipan, dihitung per malam.`,
-      );
-      invalid = true;
+        The calendar has to draw a block, the clash check has to know when
+        somebody is free again, and "selesai sekitar" has to add up. A service
+        with no duration makes all three GUESS at half an hour — and a guess on a
+        calendar is read as fact by everybody downstream. On a variant service
+        each row carries its own, checked above.
+      */
+      const problem = durationProblem(durationMin);
+      if (problem === "empty") {
+        setDurationError(
+          "Wajib diisi — kalender dan pengecekan bentrok membacanya.",
+        );
+        invalid = true;
+      } else if (problem) {
+        setDurationError(
+          `Isi menit antara 1 dan ${MAX_DURATION_MIN}. Lebih dari sehari itu penitipan, dihitung per malam.`,
+        );
+        invalid = true;
+      } else {
+        duration = Number(durationMin.trim());
+      }
     }
 
     if (serviceLocations.length === 0) {
@@ -441,6 +721,12 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
       setBranchError(
         "Pilih minimal satu cabang, atau centang “Semua cabang”.",
       );
+      invalid = true;
+    }
+
+    const weightsProblem = sessionWeightsError(sessions, sessionWeights);
+    if (weightsProblem) {
+      setWeightError(weightsProblem);
       invalid = true;
     }
 
@@ -461,8 +747,10 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         to create from this screen.
       */
       ...(image || editing ? { image } : {}),
-      durationMin: duration as number,
       description: description.trim() || null,
+      billingUnit,
+      /* An add-on belongs to no one kind; a main service to exactly one. */
+      serviceKind: serviceType === "main" ? serviceKind || null : null,
       hasVariants,
       /*
         EXACTLY ONE HALF OF THE PRICING IS SENT, and the unused half is OMITTED
@@ -471,12 +759,17 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         first version produced a bare "Validation failed": the refusal named
         `variantAxes`, which this form only draws inside the variant editor, so
         on a flat-priced service nothing appeared at all.
+
+        THE DURATION RIDES WITH ITS HALF: a variant service sends none of its
+        own, because the server refuses one beside per-variant minutes.
       */
       ...(hasVariants
         ? { variantAxes, variants }
         : // Sent exactly as typed. Never Number(price).
-          { price: trimmedPrice }),
+          { price: trimmedPrice, durationMin: duration as number }),
       sessions,
+      // `[]` IS AN ANSWER — "split evenly" — and is sent as one.
+      sessionWeights: sessionWeightsPayload(sessions, sessionWeights),
       included,
       serviceLocations,
       pickupDeliveryAvailable,
@@ -486,6 +779,13 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
       // An add-on may not carry add-ons of its own — the server empties the
       // list anyway, and sending it would ask for something it refuses to mean.
       addonServiceIds: serviceType === "main" ? addonServiceIds : [],
+      /*
+        ONLY FOR AN ADD-ON. A main service sends neither, so saving one never
+        writes them; the server would reset them on a main service anyway.
+      */
+      ...(serviceType === "addon"
+        ? { commissionable, soldSeparately, serviceKinds: addonKinds }
+        : {}),
       taxExempt,
     };
 
@@ -496,6 +796,8 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         await serviceService.create(payload);
       }
 
+      // "N layanan" on the Opsi Varian cards counts this service now.
+      invalidateVariantOptions();
       goBack();
       swalToast(
         editing ? "Layanan diperbarui." : `Layanan ${trimmedName} dibuat.`,
@@ -507,10 +809,24 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         setCodeError(`Kode "${trimmedCode}" sudah dipakai layanan lain.`);
       } else if (error instanceof ApiError && error.status === 400) {
         const detail = error.details?.[0];
-        if (detail?.field === "businessLineId") {
+        /*
+          A REFUSED TAHAPAN — not on the list, retired, or listed twice.
+          The server's sentences are Bahasa and name the tahapan, so they go
+          under the field as sent; the list is reloaded because a refusal means
+          it changed since this form read it.
+        */
+        const refusal = sessionsRefusal(error);
+        if (refusal) {
+          setSessionsError(refusal);
+          invalidateServiceSteps();
+        } else if (detail?.field === "businessLineId") {
           setLineError("Lini bisnis ini tidak ditemukan lagi. Pilih yang lain.");
         } else if (detail?.field === "branchIds") {
           setBranchError(detail.message);
+        } else if (detail?.field?.endsWith("sessionWeights")) {
+          setWeightError(error.reason ?? detail.message);
+        } else if (detail?.field === "durationMin") {
+          setDurationError(error.reason ?? detail.message);
         } else if (
           detail?.field === "variants" ||
           detail?.field === "variantAxes"
@@ -564,11 +880,23 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
       <FormActionBar
-        title={editing ? "Ubah layanan" : "Layanan baru"}
+        title={
+          editing
+            ? "Ubah layanan"
+            : serviceType === "addon"
+              ? "Add-on baru"
+              : kindFromOrigin && serviceKind
+                ? `Layanan ${SERVICE_KIND_LABELS[serviceKind]} baru`
+                : "Layanan baru"
+        }
         meta={editing ? (service?.name ?? undefined) : undefined}
-        submitLabel={editing ? "Simpan layanan" : "Buat layanan"}
+        submitLabel={
+          editing ? "Simpan layanan" : serviceType === "addon" ? "Buat add-on" : "Buat layanan"
+        }
         submitting={saving}
-        onCancel={goBack}
+        disabled={variantBlock !== null}
+        blockedReason={variantBlock}
+        onCancel={cancel}
       />
 
       {formError && <Alert variant="error">{formError}</Alert>}
@@ -610,6 +938,57 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
             required
           />
 
+          {/*
+            THE ORDER IS THE QUESTIONS' ORDER (22 September 2026, on request):
+            Jenis layanan first — an add-on has no Kelompok layanan — then
+            Kelompok layanan, then Lini bisnis.
+          */}
+          {!serviceTypeFixed && (
+            <SelectField
+              label="Jenis layanan"
+              value={serviceType}
+              onChange={(next) => setServiceType(next as ServiceType)}
+              options={[
+                { value: "main", label: "Layanan utama" },
+                { value: "addon", label: "Add-on" },
+              ]}
+              hint="Layanan utama dipesan langsung. Add-on cuma bisa ditempelkan ke layanan utama."
+              disabled={saving}
+              required
+            />
+          )}
+
+          {/*
+            NOT "Jenis layanan" — that is Layanan utama / Add-on, above. This is
+            which part of the product sells it, and it decides which Opsi Varian
+            cards are offered under Harga & durasi.
+          */}
+          {serviceType === "main" && !kindFromOrigin && (
+            <SelectField
+              label="Kelompok layanan"
+              value={serviceKind}
+              onChange={(next) => {
+                /*
+                  RADIX HANDS BACK "" when the value arrives after mount (the
+                  module's answer, read from the tab) — there is no empty
+                  choice here, so an empty one is never somebody's pick.
+                */
+                if (!next) return;
+                setServiceKind(next as ServiceKind);
+                setKindError(null);
+              }}
+              options={SERVICE_KINDS.map((kind) => ({
+                value: kind,
+                label: SERVICE_KIND_LABELS[kind],
+              }))}
+              placeholder="Pilih kelompok layanan"
+              hint="Menentukan opsi varian yang ditawarkan di bagian harga."
+              error={kindError ?? undefined}
+              disabled={saving}
+              required
+            />
+          )}
+
           <div className="flex flex-col gap-1.5">
             <FilterSelect
               layout="form"
@@ -633,19 +1012,6 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
             </p>
           </div>
 
-          <SelectField
-            label="Jenis layanan"
-            value={serviceType}
-            onChange={(next) => setServiceType(next as ServiceType)}
-            options={[
-              { value: "main", label: "Layanan utama" },
-              { value: "addon", label: "Add-on" },
-            ]}
-            hint="Layanan utama dipesan langsung. Add-on cuma bisa ditempelkan ke layanan utama."
-            disabled={saving}
-            required
-          />
-
           <ImageField
             value={image}
             onChange={setImage}
@@ -659,26 +1025,25 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
       <Card
         title="Harga & durasi"
-        description="Harga bisa satu untuk semua, atau beda-beda per varian. Durasi dibaca kalender dan pengecekan bentrok."
+        description="Harga dan durasi bisa satu untuk semua, atau beda-beda per varian. Durasi dibaca kalender dan pengecekan bentrok."
       >
         <div className="flex flex-col gap-5">
-          <TextField
-            label="Durasi (menit)"
-            name="durationMin"
-            type="number"
-            min={1}
-            max={MAX_DURATION_MIN}
-            value={durationMin}
-            onChange={(event) => {
-              setDurationMin(event.target.value);
-              setDurationError(null);
-            }}
-            error={durationError ?? undefined}
-            placeholder="90"
-            hint="Dipakai kalender dan pengecekan bentrok."
+          {/*
+            ─── PER HEWAN OR PER KUNJUNGAN (13 September 2026) ─────────────────
+
+            STORED, NOT YET BILLED BY. The antar-jemput feature that charges a
+            visit once, however many animals ride along, is still to come; until
+            then every service is charged per animal, and the hint says so rather
+            than letting somebody believe the choice already moves a bill.
+          */}
+          <SelectField
+            label="Ditagih"
+            value={billingUnit}
+            onChange={(next) => setBillingUnit(next as ServiceBillingUnit)}
+            options={BILLING_UNIT_OPTIONS}
+            hint="Per kunjungan: hewan yang datang bareng cuma bayar sekali, mis. antar-jemput. Sampai fitur antar-jemput tersedia, tagihannya masih dihitung per hewan."
             disabled={saving}
             required
-            className="sm:max-w-xs"
           />
 
           <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
@@ -687,8 +1052,9 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
                 Harga beda per varian
               </Label>
               <p className="mt-1 max-w-prose text-xs text-muted">
-                Nyalakan kalau harganya tergantung hewannya — tipe, ukuran, atau
-                jenis bulu. Kalau mati, satu harga berlaku untuk semua.
+                Nyalakan kalau harga dan durasinya tergantung hewannya — tipe,
+                ukuran, atau jenis bulu. Kalau mati, satu harga dan satu durasi
+                berlaku untuk semua.
               </p>
             </div>
             <Switch
@@ -697,6 +1063,7 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
               onCheckedChange={(next) => {
                 setHasVariants(next);
                 setPriceError(null);
+                setDurationError(null);
                 setVariantError(null);
               }}
               disabled={saving}
@@ -706,8 +1073,22 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
           {hasVariants ? (
             <ServiceVariantEditor
               axes={variantAxes}
+              /*
+                ONLY THIS KIND'S OPTIONS (22 September 2026): Ukuran for a
+                grooming, Zona and Arah for a ride — plus whatever is ticked.
+              */
+              axisDefs={axisDefsForKind(
+                axisDefs,
+                serviceType === "main" ? serviceKind || null : null,
+                variantAxes,
+              )}
+              kindName={serviceKind ? SERVICE_KIND_LABELS[serviceKind] : null}
+              onReloadOptions={invalidateVariantOptions}
               prices={variantPrices}
+              durations={variantDurations}
+              active={variantActive}
               combos={combos}
+              loading={axisValuesLoading}
               error={variantError ?? undefined}
               disabled={saving}
               onToggleAxis={toggleAxis}
@@ -715,46 +1096,93 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
                 setVariantError(null);
                 setVariantPrices((current) => ({ ...current, [key]: value }));
               }}
+              onDurationChange={(key, value) => {
+                setVariantError(null);
+                setVariantDurations((current) => ({ ...current, [key]: value }));
+              }}
+              onActiveChange={(key, next) =>
+                setVariantActive((current) => ({ ...current, [key]: next }))
+              }
             />
           ) : (
-            <TextField
-              label="Harga"
-              name="price"
-              // `inputMode` rather than type=number: a number input in some
-              // browsers silently reformats and loses what was typed, and this
-              // value must reach the API exactly as written.
-              inputMode="numeric"
-              value={price}
-              onChange={(event) => {
-                setPrice(event.target.value);
-                setPriceError(null);
-              }}
-              error={priceError ?? undefined}
-              placeholder="150000"
-              hint="Boleh 0 — layanan gratis itu hal yang nyata."
-              disabled={saving}
-              required
-              className="sm:max-w-xs"
-            />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <TextField
+                label="Harga"
+                name="price"
+                // `inputMode` rather than type=number: a number input in some
+                // browsers silently reformats and loses what was typed, and this
+                // value must reach the API exactly as written.
+                inputMode="numeric"
+                value={price}
+                onChange={(event) => {
+                  setPrice(event.target.value);
+                  setPriceError(null);
+                }}
+                error={priceError ?? undefined}
+                placeholder="150000"
+                hint="Boleh 0 — layanan gratis itu hal yang nyata."
+                disabled={saving}
+                required
+              />
+              <TextField
+                label="Durasi (menit)"
+                name="durationMin"
+                type="number"
+                min={1}
+                max={MAX_DURATION_MIN}
+                value={durationMin}
+                onChange={(event) => {
+                  setDurationMin(event.target.value);
+                  setDurationError(null);
+                }}
+                error={durationError ?? undefined}
+                placeholder="90"
+                hint="Dipakai kalender dan pengecekan bentrok."
+                disabled={saving}
+                required
+              />
+            </div>
           )}
         </div>
       </Card>
 
       <Card
         title="Isi layanan"
-        description="Sesi dipakai kalender untuk memecah pengerjaannya. Termasuk dipakai etalase untuk menyebut apa saja yang didapat pelanggan."
+        description="Tahapan dipakai kalender untuk memecah pengerjaannya, dan bobotnya menentukan bagian komisi tiap tahapan. Termasuk dipakai etalase untuk menyebut apa saja yang didapat pelanggan."
       >
         <div className="flex flex-col gap-6">
-          <StringListField
-            label="Sesi"
-            hint="Tahapan pengerjaannya, mis. Mandi → Gunting → Selesai."
-            placeholder="mis. Mandi"
-            values={sessions}
-            maxItems={MAX_SESSIONS}
-            maxLength={SESSION_MAX_LENGTH}
-            disabled={saving}
-            onChange={setSessions}
-          />
+          <div className="flex flex-col gap-4">
+            <ServiceStepsField
+              sessions={sessions}
+              // The server keeps what this service stored, retired or not.
+              kept={service?.sessions ?? []}
+              maxItems={MAX_SESSIONS}
+              mayAddToList={mayAddSteps}
+              error={sessionsError ?? undefined}
+              disabled={saving}
+              onChange={(update) => {
+                setSessions(update);
+                setWeightError(null);
+                setSessionsError(null);
+              }}
+            />
+
+            {/*
+              UNDER THE LIST IT SPLITS. Commission is one rule for the whole shop
+              (Layanan › Grooming › Pengaturan); how a service's share is divided
+              between its tahapan is this service's business.
+            */}
+            <SessionWeightsEditor
+              sessions={sessions}
+              weights={sessionWeights}
+              error={weightError ?? undefined}
+              disabled={saving}
+              onChange={(next) => {
+                setSessionWeights(next);
+                setWeightError(null);
+              }}
+            />
+          </div>
 
           <div className="border-t border-border pt-6">
             <StringListField
@@ -850,13 +1278,78 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
           description="Layanan tambahan yang bisa dicentang bareng layanan ini di kasir."
         >
           <ServiceAddonPicker
-            addons={addons.filter((addon) => addon._id !== serviceId)}
+            /*
+              ONLY THIS KIND'S ADD-ONS (22 September 2026) — the ones for every
+              kind, the ones naming this Kelompok layanan, and whatever is
+              already ticked. No kind chosen yet: all of them.
+            */
+            addons={addons.filter(
+              (addon) =>
+                addon._id !== serviceId &&
+                (addonServiceIds.includes(addon._id) ||
+                  !serviceKind ||
+                  (addon.serviceKinds ?? []).length === 0 ||
+                  (addon.serviceKinds ?? []).includes(serviceKind)),
+            )}
             loading={addonsLoading}
             loadError={addonsError}
             selected={addonServiceIds}
             disabled={saving}
             onChange={setAddonServiceIds}
           />
+        </Card>
+      )}
+
+      {/*
+        ONLY ON AN ADD-ON — the mirror of the card above. Also editable on
+        Pengaturan › Layanan › Add-on; both write the same two fields.
+      */}
+      {serviceType === "addon" && (
+        <Card
+          title="Pengaturan add-on"
+          description="Berlaku untuk add-on ini saja. Nilai komisinya diatur sekali di setiap modul layanan."
+        >
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <Label htmlFor="service-commissionable">Kena komisi</Label>
+                <p className="mt-1 max-w-prose text-xs text-muted">
+                  Nyalakan kalau groomer dapat komisi dari add-on ini. Booking
+                  yang sudah dibuat tidak ikut berubah.
+                </p>
+              </div>
+              <Switch
+                id="service-commissionable"
+                checked={commissionable}
+                onCheckedChange={setCommissionable}
+                disabled={saving}
+              />
+            </div>
+
+            <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
+              <div className="min-w-0">
+                <Label htmlFor="service-sold-separately">Dijual terpisah</Label>
+                <p className="mt-1 max-w-prose text-xs text-muted">
+                  Nyalakan kalau add-on ini boleh dipilih tanpa layanan utama.
+                </p>
+              </div>
+              <Switch
+                id="service-sold-separately"
+                checked={soldSeparately}
+                onCheckedChange={setSoldSeparately}
+                disabled={saving}
+              />
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <ServiceKindsField
+                what="Add-on"
+                value={addonKinds}
+                onChange={setAddonKinds}
+                disabled={saving}
+              />
+            </div>
+          </div>
         </Card>
       )}
 

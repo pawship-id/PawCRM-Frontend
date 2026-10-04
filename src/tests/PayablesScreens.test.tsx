@@ -19,6 +19,7 @@ import type {
   GoodsReceiptDetail,
   GoodsReceiptListRow,
   PurchaseInvoiceDetail,
+  PayablesSummary,
   PurchaseInvoiceListRow,
   SupplierOutstandingSummary,
 } from "@/types/api";
@@ -36,6 +37,17 @@ jest.mock("@/services/productBatch.service");
 const push = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: (href: string) => push(href) }),
+}));
+
+/**
+ * The module header — the title and the six-tab row — is reduced to the one
+ * thing this screen puts INTO it: its headline figure, where it has one. The
+ * tab row needs a router this suite has no reason to stand up, and the header's
+ * own behaviour has its own suite (PurchasingModuleHeader.test.tsx).
+ */
+jest.mock("@/features/purchasing/components/PurchasingModuleHeader", () => ({
+  PurchasingModuleHeader: ({ action }: { action?: React.ReactNode }) =>
+    action ?? null,
 }));
 
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
@@ -150,10 +162,43 @@ function summary(
   };
 }
 
+/**
+ * `GET /purchase-invoices/summary` — the Ringkasan tab's three cards.
+ *
+ * A DIFFERENT SHAPE FROM `summary()` ABOVE, which is `/outstanding`: this one is
+ * scoped by cabang, carries what was PAID inside a period beside the balances,
+ * and counts the suppliers still owed anything.
+ */
+function payablesSummary(
+  overrides: Partial<PayablesSummary> = {},
+): PayablesSummary {
+  return {
+    asOf: "2026-09-15T03:00:00.000Z",
+    period: {
+      from: "2026-09-01T00:00:00.000Z",
+      to: "2026-09-15T16:59:59.999Z",
+      fromDate: "2026-09-01",
+      toDate: "2026-09-15",
+    },
+    outstanding: {
+      amount: "9500000.0000",
+      invoiceCount: 12,
+      supplierCount: 5,
+    },
+    overdue: { amount: "0.0000", invoiceCount: 0 },
+    dueSoon: { amount: "0.0000", invoiceCount: 0, horizonDays: 7 },
+    paid: { amount: "18700000.0000", paymentCount: 6, invoiceCount: 4 },
+    invoiced: { amount: "26400000.0000", invoiceCount: 9 },
+    ...overrides,
+  };
+}
+
 function receiptDetail(): GoodsReceiptDetail {
   return {
     _id: RECEIPT_ID,
     receiptNumber: "GR-260806-001",
+    status: "received",
+    receivedAt: null,
     supplierId: "s1",
     supplierName: "PT Sumber Pangan",
     warehouseId: "wh1",
@@ -193,6 +238,7 @@ function receiptRow(): GoodsReceiptListRow {
   return {
     _id: RECEIPT_ID,
     receiptNumber: "GR-260806-001",
+    status: "received",
     supplierId: "s1",
     supplierName: "PT Sumber Pangan",
     warehouseId: "wh1",
@@ -273,8 +319,15 @@ beforeEach(() => {
   asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
     summary({ totalOutstanding: "0.0000", totalInvoices: 0 }),
   );
+  asMock(purchaseInvoiceService.summary).mockResolvedValue(
+    payablesSummary({
+      outstanding: { amount: "0.0000", invoiceCount: 0, supplierCount: 0 },
+      paid: { amount: "0.0000", paymentCount: 0, invoiceCount: 0 },
+    }),
+  );
   asMock(purchaseInvoiceService.getById).mockResolvedValue(detail());
   asMock(goodsReceiptService.getById).mockResolvedValue(receiptDetail());
+  asMock(goodsReceiptService.pendingCount).mockResolvedValue({ count: 3 });
   asMock(goodsReceiptService.list).mockResolvedValue({
     items: [],
     pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
@@ -329,9 +382,10 @@ describe("PayablesScreen", () => {
   /**
    * The whole book, from `/outstanding` — not a sum of the page. A total that
    * grew as the user paged would be worse than none, because it looks
-   * authoritative.
+   * authoritative. Lands on the "Utang belum lunas" card now (1 October 2026),
+   * not a headline figure in the header.
    */
-  it("takes the headline total from the summary endpoint", async () => {
+  it("takes the Utang belum lunas card from the summary endpoint", async () => {
     asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
       summary({ totalOutstanding: "9500000.0000", totalInvoices: 12 }),
     );
@@ -340,7 +394,7 @@ describe("PayablesScreen", () => {
     renderWithAuth(<PayablesScreen />);
 
     expect(await screen.findByText("Rp 9.500.000")).toBeInTheDocument();
-    expect(screen.getByText("12 faktur belum lunas")).toBeInTheDocument();
+    expect(screen.getByText("12 faktur")).toBeInTheDocument();
   });
 
   /**
@@ -386,7 +440,11 @@ describe("PayablesScreen", () => {
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Jatuh tempo" }));
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Jatuh tempo" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
@@ -404,9 +462,10 @@ describe("PayablesScreen", () => {
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Jatuh tempo" }));
 
     const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Jatuh tempo" }));
     await user.click(within(panel).getByLabelText("Urutkan"));
     await user.click(
       await screen.findByRole("option", { name: "Jatuh tempo terdekat" }),
@@ -423,42 +482,46 @@ describe("PayablesScreen", () => {
   });
 
   /**
-   * THE LENS IS NOT IN THE PANEL, and Reset must not reach it. Reset clears what
-   * the panel holds; the view is a row of pills outside it that somebody set on
-   * purpose, and throwing the screen back to "Belum lunas" would undo a choice
-   * the button does not appear to be about.
+   * THE LENS IS IN THE PANEL NOW (2 October 2026, on request), so Reset reaches
+   * it exactly as it reaches every other field — back to "Belum lunas", the
+   * screen's own default, not left wherever it was set.
    */
-  it("leaves the view alone when the panel is reset", async () => {
+  it("resets the view along with everything else", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Lunas" }));
 
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Reset" }));
+    await user.click(within(panel).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Lunas" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
       expect(calls[calls.length - 1][0]).toMatchObject({ status: "paid" });
     });
-    expect(screen.getByRole("button", { name: "Lunas" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).toMatchObject({ outstanding: true });
+    });
   });
 
   /**
-   * The ordering is not counted in the trigger's badge, and neither is the view
-   * — that one narrows the list but is never hidden, so a number covering it
-   * would double-count the one filter that needs no announcing.
+   * THE ORDERING IS NEVER COUNTED — every list has one, so it is never "on".
+   * THE VIEW IS COUNTED NOW (2 October 2026), unlike when it stood outside the
+   * panel as a pill row: it is one more field the button conceals, same as
+   * Supplier or Cabang.
    */
-  it("counts neither the ordering nor the view in the filter badge", async () => {
+  it("counts the view but not the ordering in the filter badge", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Jatuh tempo" }));
 
     const panel = await openFilters(user);
     await user.click(within(panel).getByLabelText("Urutkan"));
@@ -471,6 +534,19 @@ describe("PayablesScreen", () => {
     });
     expect(screen.getByRole("button", { name: "Filter" })).not.toHaveTextContent(
       "(",
+    );
+
+    const second = await openFilters(user);
+    await user.click(within(second).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Jatuh tempo" }));
+    await user.click(within(second).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).toMatchObject({ overdue: true });
+    });
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
     );
   });
 
@@ -485,7 +561,11 @@ describe("PayablesScreen", () => {
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Minggu ini" }));
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Minggu ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
@@ -498,7 +578,7 @@ describe("PayablesScreen", () => {
     });
   });
 
-  it("states the due-soon note with the server's own window", async () => {
+  it("states the due-soon card with the server's own window", async () => {
     asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
       summary({
         totalDueSoonInvoices: 4,
@@ -510,15 +590,16 @@ describe("PayablesScreen", () => {
     renderWithAuth(<PayablesScreen />);
 
     expect(
-      await screen.findByText("4 faktur jatuh tempo dalam 14 hari"),
+      await screen.findByText("Jatuh tempo ≤ 14 hari"),
     ).toBeInTheDocument();
+    expect(screen.getByText("4 faktur")).toBeInTheDocument();
     expect(screen.getByText(/Rp 1\.250\.000/)).toBeInTheDocument();
   });
 
-  // The note is the only headline here with a way to act on it — the bucket it
-  // describes is a view of the list underneath, asked of the server with the
-  // same definition.
-  it("switches the list to the due-soon bucket from the note", async () => {
+  // The due-soon card is the one stat tile here with a way to act on it — it is
+  // a view of the list underneath, asked of the server with the same
+  // definition.
+  it("switches the list to the due-soon bucket from the card", async () => {
     const user = userEvent.setup();
     asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
       summary({
@@ -529,22 +610,34 @@ describe("PayablesScreen", () => {
 
     renderWithAuth(<PayablesScreen />);
 
-    await user.click(await screen.findByText("Lihat daftarnya →"));
+    // The card's own label carries "≤", which the toolbar's plain "Jatuh
+    // tempo" pill does not — disambiguating the two without depending on
+    // DOM order.
+    await user.click(
+      await screen.findByRole("button", { name: /Jatuh tempo ≤/ }),
+    );
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
       expect(calls[calls.length - 1][0]).toMatchObject({ dueSoon: true });
     });
-    // Gone once the list already shows it — a link to where you are is noise.
-    expect(screen.queryByText("Lihat daftarnya →")).not.toBeInTheDocument();
+    // No longer a button once the list already shows it — a control that leads
+    // nowhere new is noise.
+    expect(
+      screen.queryByRole("button", { name: /Jatuh tempo ≤/ }),
+    ).not.toBeInTheDocument();
   });
 
-  it("hides the due-soon note when nothing falls due", async () => {
+  it("shows a plain due-soon card when nothing falls due", async () => {
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
 
-    expect(screen.queryByText(/faktur jatuh tempo dalam/)).not.toBeInTheDocument();
+    // Still on the page — this is a card now, not a conditional banner — but
+    // not a button, since there is nothing behind it to switch the list to.
+    expect(
+      screen.queryByRole("button", { name: /Jatuh tempo ≤/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("sends an exact status for the status views", async () => {
@@ -552,7 +645,11 @@ describe("PayablesScreen", () => {
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Lunas" }));
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Lunas" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
@@ -997,6 +1094,75 @@ describe("InvoiceDetail", () => {
   });
 });
 
+describe("PaymentHistory — each payment is a cash transaction", () => {
+  const payment = {
+    paymentId: "pay1",
+    paymentNumber: "BBK/CBS/2608/0007",
+    at: "2026-08-20T00:00:00.000Z",
+    amount: "66500.0000",
+    method: "transfer" as const,
+    ref: "TRF/998877",
+    byUserId: "u1",
+    byUserName: "Sari",
+    journalEntryId: "je9",
+    isVoided: false,
+    voidedAt: null,
+  };
+
+  it("shows its number and opens it in Transaksi Keuangan", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        paidAmount: "66500.0000",
+        outstandingAmount: "100000.0000",
+        status: "partial",
+        payments: [payment],
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("BBK/CBS/2608/0007")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Buka di Transaksi Keuangan/ }),
+    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/pay1");
+  });
+
+  it("marks a cancelled payment and strikes its amount through", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        payments: [
+          { ...payment, isVoided: true, voidedAt: "2026-08-21T00:00:00.000Z" },
+        ],
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("dibatalkan")).toBeInTheDocument();
+    expect(
+      screen
+        .getAllByText("Rp 66.500")
+        .some((node) => node.classList.contains("line-through")),
+    ).toBe(true);
+  });
+
+  it("does not link a role that cannot read cash transactions", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({ payments: [payment] }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "purchaseInvoices", actions: ["read", "pay"] }],
+    });
+
+    expect(await screen.findByText("BBK/CBS/2608/0007")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Buka di Transaksi Keuangan/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 /* ------------------------------------------------------------ file a bill */
 
 describe("FileInvoiceForm", () => {
@@ -1109,18 +1275,191 @@ describe("FileInvoiceForm", () => {
 
 /* -------------------------------------------------------------------- hub */
 
-describe("PurchasingHub payables panels", () => {
+describe("PurchasingHub — the Ringkasan tab", () => {
   function panel(title: string): HTMLElement {
     return screen.getByText(title).closest("section")!;
   }
 
+  /*
+    THE CARD ROW IS PayablesStatCards NOW (2 October 2026) — the same
+    four-card strip Faktur carries, fed from THIS tab's own cabang/period-
+    scoped summary rather than the whole book `/outstanding` answers. "Hutang
+    terbayar periode ini" is gone from the page in the swap — see the hub's
+    own doc for why — so there is nothing here asserting `summary.paid`
+    reached a card; the period's own scoping is covered below instead.
+  */
+  it("draws the balance and the due-soon bucket from its own scoped summary", async () => {
+    asMock(purchaseInvoiceService.summary).mockResolvedValue(payablesSummary());
+
+    renderWithAuth(<PurchasingHub />);
+
+    expect(await screen.findByText("Rp 9.500.000")).toBeInTheDocument();
+    expect(screen.getByText("12 faktur")).toBeInTheDocument();
+    expect(screen.getByText("Jatuh tempo ≤ 7 hari")).toBeInTheDocument();
+    expect(screen.getByText("Pembelian periode")).toBeInTheDocument();
+    // The period's own billed value, off `summary.invoiced` — a real figure now.
+    expect(screen.getByText("Rp 26.400.000")).toBeInTheDocument();
+    expect(screen.getByText("9 faktur")).toBeInTheDocument();
+    expect(screen.getByText("Barang belum diterima")).toBeInTheDocument();
+    // Deliveries filed but not yet confirmed on the shelf, off pending-count.
+    expect(await screen.findByText("3 penerimaan")).toBeInTheDocument();
+  });
+
+  it("opens the receipts list narrowed to pending from the card", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchasingHub />);
+
+    await user.click(await screen.findByText("3 penerimaan"));
+
+    expect(push).toHaveBeenCalledWith(
+      "/dashboard/purchasing/receipts?status=pending",
+    );
+  });
+
+  it("scopes the pending-delivery count by the chosen cabang", async () => {
+    renderWithAuth(<PurchasingHub />);
+
+    await waitFor(() =>
+      expect(goodsReceiptService.pendingCount).toHaveBeenCalledWith({
+        branchId: "",
+      }),
+    );
+  });
+
+  it("opens on this month and scopes every request by the cabang", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchasingHub />);
+
+    await waitFor(() => expect(purchaseInvoiceService.summary).toHaveBeenCalled());
+
+    /*
+      THE MONTH GOES OVER THE WIRE AS ITS NAME, never as two dates this screen
+      worked out: "Bulan ini" is the TENANT's month, and a browser in another
+      timezone would bound it a few hours off.
+    */
+    expect(asMock(purchaseInvoiceService.summary).mock.calls[0][0]).toEqual({
+      branchId: "",
+      period: "month",
+    });
+
+    await user.click(screen.getByRole("button", { name: "Cabang" }));
+    await user.click(await screen.findByRole("option", { name: "Cabang Pusat" }));
+
+    // The cabang says whose books — so it narrows the cards AND the two
+    // worklists, which would otherwise list another branch's bills under it.
+    await waitFor(() =>
+      expect(purchaseInvoiceService.summary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ branchId: BRANCH_ID }),
+      ),
+    );
+    expect(purchaseInvoiceService.list).toHaveBeenCalledWith(
+      expect.objectContaining({ branchId: BRANCH_ID, overdue: true, limit: 5 }),
+    );
+  });
+
+  /*
+    THE PERIOD CHIPS APPLY ON CLICK — no Filter button, no Terapkan (29 September
+    2026, on request). Two controls that fit on one line do not earn a modal.
+  */
+  it("switches period on a chip, and sends no dates for Semua", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchasingHub />);
+
+    await waitFor(() => expect(purchaseInvoiceService.summary).toHaveBeenCalled());
+
+    await user.click(screen.getByRole("button", { name: "Minggu ini" }));
+    await waitFor(() =>
+      expect(purchaseInvoiceService.summary).toHaveBeenLastCalledWith({
+        branchId: "",
+        period: "week",
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Semua" }));
+    // "Semua" is the absence of a period, not a period named "all" — the API
+    // has no such value, and sending one would 400.
+    await waitFor(() =>
+      expect(purchaseInvoiceService.summary).toHaveBeenLastCalledWith({
+        branchId: "",
+      }),
+    );
+  });
+
+  it("reveals the two dates in the card under Custom, applied on Terapkan", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchasingHub />);
+
+    await waitFor(() => expect(purchaseInvoiceService.summary).toHaveBeenCalled());
+    expect(screen.queryByText("Rentang khusus")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Custom" }));
+
+    // Open in the card — no trigger to press first, because the chip already
+    // said a range is being typed.
+    expect(await screen.findByText("Rentang khusus")).toBeInTheDocument();
+
+    const from = screen.getByLabelText("Tanggal bayar dari");
+    const to = screen.getByLabelText("Tanggal bayar sampai");
+    await user.type(from, "2026-09-01");
+    await user.type(to, "2026-09-30");
+
+    /*
+      NOTHING WENT OVER THE WIRE WHILE TYPING — only the two reads the chips
+      themselves caused (opening on Bulan ini, then switching to Custom). A date
+      input reports a half-typed year as a real value, so applying on every
+      keystroke would query "0002-09-01" and answer with an empty month before
+      anybody had finished.
+    */
+    expect(purchaseInvoiceService.summary).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(purchaseInvoiceService.summary).toHaveBeenLastCalledWith({
+        branchId: "",
+        dateFrom: "2026-09-01",
+        dateTo: "2026-09-30",
+      }),
+    );
+  });
+
+  it("empties the range on Reset without leaving Custom", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchasingHub />);
+
+    await waitFor(() => expect(purchaseInvoiceService.summary).toHaveBeenCalled());
+    await user.click(screen.getByRole("button", { name: "Custom" }));
+
+    await user.type(
+      await screen.findByLabelText("Tanggal bayar dari"),
+      "2026-09-01",
+    );
+    await user.click(screen.getByRole("button", { name: "Terapkan" }));
+    await waitFor(() =>
+      expect(purchaseInvoiceService.summary).toHaveBeenLastCalledWith(
+        expect.objectContaining({ dateFrom: "2026-09-01" }),
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+
+    // Reset empties the range; it does not undo the choice to type one, so the
+    // inputs stay on screen and the query is still the Custom one — with both
+    // ends unbounded, which the server reads as every date.
+    await waitFor(() =>
+      expect(purchaseInvoiceService.summary).toHaveBeenLastCalledWith({
+        branchId: "",
+        dateFrom: "",
+        dateTo: "",
+      }),
+    );
+    expect(screen.getByText("Rentang khusus")).toBeInTheDocument();
+  });
+
   it("takes the overdue count and total from the summary endpoint", async () => {
-    asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
-      summary({
-        totalOutstanding: "9500000.0000",
-        totalInvoices: 12,
-        totalOverdueInvoices: 7,
-        totalOverdueOutstanding: "2750000.0000",
+    asMock(purchaseInvoiceService.summary).mockResolvedValue(
+      payablesSummary({
+        overdue: { amount: "2750000.0000", invoiceCount: 7 },
       }),
     );
     asMock(purchaseInvoiceService.list).mockResolvedValue(
@@ -1132,11 +1471,12 @@ describe("PurchasingHub payables panels", () => {
     // The whole bucket, not the rows shown — "1" beside one of seven rows would
     // say the job was nearly done.
     await waitFor(() =>
-      expect(within(panel("Lewat jatuh tempo")).getByText("7")).
-        toBeInTheDocument(),
+      expect(
+        within(panel("Hutang lewat jatuh tempo")).getByText("7"),
+      ).toBeInTheDocument(),
     );
     expect(
-      within(panel("Lewat jatuh tempo")).getByText("Rp 2.750.000"),
+      within(panel("Hutang lewat jatuh tempo")).getByText("Rp 2.750.000"),
     ).toBeInTheDocument();
   });
 
@@ -1146,14 +1486,12 @@ describe("PurchasingHub payables panels", () => {
    * `dueBefore` bounds only the far end of the window, so a due-soon read
    * expressed with it comes back with everything overdue mixed in — and the two
    * panels are read side by side, where a bill in both is counted twice by
-   * whoever adds up the week. This hook used to fetch fifty rows and drop the
-   * late ones here; `?dueSoon=true` is the same question asked where the answer
-   * can actually be paged.
+   * whoever adds up the week.
    */
   it("asks the server for the due-soon bucket rather than filtering here", async () => {
     renderWithAuth(<PurchasingHub />);
 
-    await screen.findByText("Jatuh tempo minggu ini");
+    await screen.findByText("Hutang jatuh tempo minggu ini");
 
     await waitFor(() =>
       expect(purchaseInvoiceService.list).toHaveBeenCalledWith({
@@ -1161,8 +1499,8 @@ describe("PurchasingHub payables panels", () => {
         limit: 5,
       }),
     );
-    // The overdue panel's read is the complement of it, and neither carries a
-    // window: the horizon lives on the server.
+    // The overdue read is its exact complement, and neither carries a window:
+    // the horizon lives on the server.
     expect(purchaseInvoiceService.list).toHaveBeenCalledWith({
       overdue: true,
       limit: 5,
@@ -1170,11 +1508,9 @@ describe("PurchasingHub payables panels", () => {
   });
 
   it("takes the due-soon count and total from the summary endpoint", async () => {
-    asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
-      summary({
-        totalInvoices: 12,
-        totalDueSoonInvoices: 4,
-        totalDueSoonOutstanding: "1250000.0000",
+    asMock(purchaseInvoiceService.summary).mockResolvedValue(
+      payablesSummary({
+        dueSoon: { amount: "1250000.0000", invoiceCount: 4, horizonDays: 7 },
       }),
     );
     asMock(purchaseInvoiceService.list).mockImplementation(async (query) =>
@@ -1197,11 +1533,13 @@ describe("PurchasingHub payables panels", () => {
 
     await waitFor(() =>
       expect(
-        within(panel("Jatuh tempo minggu ini")).getByText("CV Mitra Ternak"),
+        within(panel("Hutang jatuh tempo minggu ini")).getByText(
+          /CV Mitra Ternak/,
+        ),
       ).toBeInTheDocument(),
     );
 
-    const soon = panel("Jatuh tempo minggu ini");
+    const soon = panel("Hutang jatuh tempo minggu ini");
     // The whole bucket beside one row of it, and a total nothing here summed.
     expect(within(soon).getByText("4")).toBeInTheDocument();
     expect(within(soon).getByText("Rp 1.250.000")).toBeInTheDocument();
@@ -1213,13 +1551,17 @@ describe("PurchasingHub payables panels", () => {
    * default changes.
    */
   it("captions the panel with the horizon the server reported", async () => {
-    asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
-      summary({ horizonDays: 14 }),
+    asMock(purchaseInvoiceService.summary).mockResolvedValue(
+      payablesSummary({
+        dueSoon: { amount: "0.0000", invoiceCount: 0, horizonDays: 14 },
+      }),
     );
 
     renderWithAuth(<PurchasingHub />);
 
-    expect(await screen.findByText("14 hari ke depan")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/jatuh tempo dalam 14 hari/),
+    ).toBeInTheDocument();
   });
 
   it("issues no payables requests for a role that may not read them", async () => {
@@ -1228,22 +1570,62 @@ describe("PurchasingHub payables panels", () => {
       permissions: [{ feature: "suppliers", actions: ["read"] }],
     });
 
-    await screen.findByText("Supplier");
-
-    expect(screen.queryByText("Faktur Pembelian")).not.toBeInTheDocument();
-    expect(screen.queryByText("Lewat jatuh tempo")).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/hanya untuk peran yang boleh membaca faktur/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Hutang lewat jatuh tempo")).not.toBeInTheDocument();
     expect(purchaseInvoiceService.list).not.toHaveBeenCalled();
-    expect(purchaseInvoiceService.outstandingSummary).not.toHaveBeenCalled();
+    expect(purchaseInvoiceService.summary).not.toHaveBeenCalled();
   });
 
   it("says so plainly when nothing is due", async () => {
     renderWithAuth(<PurchasingHub />);
 
     expect(
-      await screen.findByText("Tidak ada faktur yang lewat jatuh tempo."),
+      await screen.findByText("Tidak ada hutang yang lewat jatuh tempo."),
     ).toBeInTheDocument();
+    // Awaited, not read synchronously: the sentence names the server's horizon,
+    // so it cannot be written until the figures arrive — until then the panel
+    // says nothing about a window rather than naming one it is guessing at.
     expect(
-      screen.getByText(/Tidak ada faktur yang jatuh tempo dalam 7 hari/),
+      await screen.findByText(/Tidak ada hutang yang jatuh tempo dalam 7 hari/),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    THE SCOPE CARD IS READ-ONLY, and it is the one place the two filters are
+    VISIBLE. A panel hides what it holds, and a hidden filter is one people forget
+    is on and then read the wrong numbers from — which is why the card spells both
+    out and carries the only Reset.
+  */
+  it("shows both controls outright rather than behind a Filter button", async () => {
+    renderWithAuth(<PurchasingHub />);
+
+    const scope = screen.getByLabelText("Lingkup data");
+    // Nothing is concealed, so there is no badge to remind anybody of it and
+    // nothing for a Reset to put back.
+    expect(screen.queryByRole("button", { name: /^Filter/ })).not.toBeInTheDocument();
+    expect(within(scope).getByRole("button", { name: "Cabang" })).toHaveTextContent(
+      "Semua cabang",
+    );
+    // Opened on Bulan Ini, and the pressed chip says which.
+    expect(within(scope).getByRole("button", { name: "Bulan ini" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(within(scope).getByText("Periode")).toBeInTheDocument();
+  });
+
+  /*
+    THE PANEL THE MOCKUP DOES NOT GET, and the note that says why: consignment is
+    a supplier TYPE here and nothing more, so a list of consignment debt would be
+    empty and misleading rather than informative.
+  */
+  it("says the consignment worklist is not built, rather than leaving a gap", async () => {
+    renderWithAuth(<PurchasingHub />);
+
+    expect(
+      await screen.findByText("Belum termasuk konsinyasi"),
     ).toBeInTheDocument();
   });
 });

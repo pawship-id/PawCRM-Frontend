@@ -47,7 +47,7 @@ const FIELDS = [
     label: "Akun penjualan",
     empty: "Belum ada akun pendapatan",
     /** What the field means when nothing is chosen and the category is a root. */
-    fallback: "4101 Penjualan Barang",
+    fallback: "4101 Pendapatan Penjualan",
     type: "pendapatan",
   },
   {

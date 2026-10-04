@@ -81,7 +81,7 @@ const DEMO_BATCH_LABELS = {
 } as const;
 
 const ACCOUNT = {
-  inventory: { code: "1201", name: "Persediaan Barang Dagangan" },
+  inventory: { code: "1201", name: "Persediaan Barang" },
   cogs: { code: "5101", name: "Harga Pokok Penjualan" },
   loss: { code: "5201", name: "Kerugian Persediaan" },
 } as const;
@@ -1545,7 +1545,7 @@ export function firstStockProduct(products: Product[]): Product | undefined {
  */
 
 const ACCOUNT_TAX_IN = { code: "1301", name: "PPN Masukan" };
-const ACCOUNT_PAYABLE = { code: "2101", name: "Utang Supplier" };
+const ACCOUNT_PAYABLE = { code: "2101", name: "Utang Usaha" };
 const ACCOUNT_CASH = { code: "1101", name: "Kas" };
 const ACCOUNT_BANK = { code: "1102", name: "Bank" };
 

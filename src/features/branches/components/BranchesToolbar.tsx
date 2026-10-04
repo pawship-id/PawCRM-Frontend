@@ -1,8 +1,5 @@
 "use client";
 
-import Link from "next/link";
-import { Plus } from "lucide-react";
-
 import {
   FilterBar,
   FilterSearch,
@@ -10,13 +7,12 @@ import {
   FilterToggle,
   triState,
 } from "@/components";
-import { Button } from "@/components/ui/button";
-import { Can } from "@/features/permissions";
 import type { BranchesQuery } from "../hooks/useBranches";
 
 /**
- * The list controls: free-text search, an active/inactive filter, a "show
- * deleted" toggle, and the entry point to the create screen. Purely
+ * The list controls: free-text search, an active/inactive filter and a "show
+ * deleted" toggle. NO CREATE BUTTON since 22 September 2026: a branch is its own
+ * subscription and the Buloo team switches it on (mockup `buloo-navigation-v3`). Purely
  * presentational: it renders the current query and reports changes up to
  * useBranches via `onChange`.
  *
@@ -47,16 +43,6 @@ export function BranchesToolbar({
           placeholder="Cari nama atau alamat"
           ariaLabel="Cari cabang"
         />
-      }
-      actions={
-        <Can feature="branches" action="create">
-          <Button asChild>
-            <Link href="/dashboard/master/branches/new">
-              <Plus className="size-4" />
-              Cabang baru
-            </Link>
-          </Button>
-        </Can>
       }
     >
       <FilterSelect

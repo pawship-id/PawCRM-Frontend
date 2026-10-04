@@ -7,6 +7,857 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — "Jumlah hewan" ikut update tanpa reload setelah tambah hewan baru
+
+3 Oktober 2026, atas permintaan: pastikan "Jumlah pelanggan" ikut update
+otomatis saat tambah pelanggan baru, dan "Jumlah hewan" saat tambah hewan
+baru — lanjutan dari perbaikan hapus/pulihkan kemarin.
+
+- **"Jumlah pelanggan" ternyata sudah benar** begitu dicek — `/master/customers`
+  sudah `force-dynamic` dan form tambah pelanggan ada di route BERBEDA
+  (`/master/customers/new`), jadi pindah ke sana lalu kembali ke daftar
+  memang memasang `CustomersScreen` dari nol, otomatis minta ulang datanya.
+  Ditambah komentar di `CustomerCreateForm.tsx` menjelaskan ini, tapi tidak
+  ada kode yang perlu diubah.
+- **"Jumlah hewan" ternyata memang ada celah**: `/master/pets/page.tsx` LUPA
+  diberi `export const dynamic = "force-dynamic"` yang dipunyai halaman
+  Pelanggan — tanpa itu, Next.js menganggap halaman ini "statis" dan bisa
+  menyajikan salinan ter-cache (sampai 5 menit) pada kunjungan ulang biasa,
+  bukan cuma lewat tombol Back browser. Satu baris ditambahkan,
+  menyamakan dengan halaman Pelanggan.
+- **`router.refresh()` SENGAJA TIDAK DIPAKAI** sebagai perbaikan — sempat
+  dipertimbangkan, tapi dokumentasi Next.js bawaan paket ini bilang jelas:
+  `router.refresh()` "does not lose unaffected client-side React (e.g.
+  useState)" — kartu register ini dihitung lewat `useEffect` di client
+  (`useRegistryCounts`), bukan data dari server-render, jadi `refresh()`
+  tidak akan memaksa hook itu minta ulang. Baris itu tidak akan memperbaiki
+  apa-apa di sini, cuma menambah kode tanpa efek.
+- **Keterbatasan yang masih ada, didokumentasikan apa adanya**: menekan
+  tombol **Back** di browser (bukan tombol "Batal"/navigasi dalam aplikasi)
+  setelah membuat pelanggan/hewan baru tetap bisa menampilkan halaman daftar
+  versi lama sesaat, karena Next.js sengaja menyimpan salinan halaman untuk
+  navigasi Back/Forward supaya tidak ada lompatan tampilan atau scroll
+  position hilang — ini perilaku Next.js sendiri, bukan sesuatu yang
+  `force-dynamic` atau `router.refresh()` bisa matikan. Reload manual tetap
+  memperbaikinya, dan ini bukan jalur yang dipakai siapa pun yang menekan
+  tombol "Simpan" lalu memakai tautan di aplikasi.
+
+---
+
+## [Unreleased] — "Jumlah pelanggan"/"Jumlah hewan" ikut update tanpa reload setelah hapus
+
+3 Oktober 2026, laporan bug: hapus satu pelanggan di tabel Pelanggan, baris di
+tabel langsung hilang, tapi kartu "Jumlah pelanggan" di atasnya tetap
+menunjukkan angka lama sampai halamannya di-reload manual.
+
+- **Penyebabnya**: `CustomerModuleHeader` (empat kartu register di atas tiap
+  tab) menghitung sendiri lewat `useRegistryCounts`, request-nya sendiri,
+  sekali waktu mount — tidak pernah terhubung ke tabel pelanggan/hewan di
+  bawahnya. Menghapus (atau memulihkan) baris cuma memanggil `refetch`
+  milik tabelnya sendiri, kartu di header tidak pernah diberitahu.
+- **`useRegistryCounts` dapat parameter baru, `refreshKey`** — nilai apa pun
+  yang berubah di situ bikin hook ini minta ulang kedua angka. `CustomerModuleHeader`
+  meneruskannya lewat prop dengan nama yang sama.
+- **`CustomersScreen.tsx` dan `PetsScreen.tsx` (tab Pelanggan dan tab Hewan,
+  sama-sama pakai header ini) sekarang punya `handleRowChanged`** — gabungan
+  `refetch()` tabel DAN menambah `refreshKey` satu angka, dipasang sebagai
+  `onChanged` tabelnya. Satu klik hapus/pulihkan, dua tempat sama-sama ikut
+  berubah, tanpa reload.
+- **Ketemu bug regresi di `DormantCustomersScreen.tsx` sambil mengerjakan
+  ini** — baris total ("N pelanggan tidak aktif ≥ X hari") ternyata hilang
+  total dari komponennya, korban dari satu edit sebelumnya (`busy`
+  refactor) yang tidak sengaja membuang blok itu saat menulis ulang bagian
+  di sekitarnya. Ketahuan dari test yang gagal, bukan dari laporan — sudah
+  dikembalikan.
+
+---
+
+## [Unreleased] — Chip "Pelanggan baru" di tabel Pelanggan sekarang benar-benar menghapus `?createdSince=`
+
+2 Oktober 2026, laporan bug: buka "Lihat semua" dari kartu "Pelanggan baru
+dalam N hari" (URL `?createdSince=...`), lalu klik "×" di chip "Pelanggan
+baru (dari Ringkasan)" — tabel benar kembali menampilkan semua pelanggan,
+tapi URL tetap `?createdSince=...`. Bug yang sama persis dengan yang baru
+dibetulkan di halaman "Pelanggan tidak aktif", di komponen yang beda, belum
+sempat ikut dibetulkan waktu itu.
+
+- **`CustomersScreen.tsx` sekarang menulis balik URL** lewat `useEffect` yang
+  mengamati `query.createdSince` dan memanggil `router.replace` begitu
+  nilainya berubah — balik ke `/dashboard/master/customers` polos kalau
+  kosong. `skipFirst` (via `useRef`) mencegah penulisan ulang yang sia-sia
+  pas render pertama, karena URL-nya saat itu memang sudah benar (baru saja
+  diresolve oleh server page).
+- **Beda caranya dari perbaikan "Pelanggan tidak aktif".** Di sana, filter
+  `days` memang HARUS lewat remount (`key` berubah) karena seluruh data
+  halaman bergantung padanya. Di sini `createdSince` cuma salah satu dari
+  banyak filter lokal (pencarian, tier, kategori, dll) — me-remount seluruh
+  layar tiap kali chip ini berubah akan ikut membuang filter lain yang
+  sedang dipakai pengguna. Jadi di sini `router.replace` cukup dipanggil
+  langsung di samping `setQuery`: berbeda dengan dormant, tabelnya sendiri
+  tidak pernah menunggu server re-render — sudah lebih dulu tersaring instan
+  lewat state klien, jadi tidak ada risiko balapan antara tabel dan URL.
+- **Ketemu bug di test double-nya juga sambil di sana**: mock `useRouter()`
+  di `DormantCustomersScreen.test.tsx` mengembalikan objek baru setiap
+  dipanggil, beda dari `next/navigation` asli yang stabil — tidak kelihatan
+  dampaknya sampai test baru untuk halaman ini butuh assert "`replace` belum
+  terpanggil" pas render pertama. Dibetulkan di kedua file test sekaligus.
+
+---
+
+## [Unreleased] — URL halaman "Pelanggan tidak aktif" ikut berubah saat filter diganti
+
+2 Oktober 2026, laporan bug, diperbaiki dua kali. Buka "Lihat semua" dari kartu
+"Pelanggan tidak aktif ≥ 60 hari" (URL `?days=60`), ganti filternya ke 30 hari
+di halaman itu sendiri — datanya ikut tersaring 30 hari, tapi URL tetap
+`?days=60`. Reload atau kirim link di titik itu balik ke 60 hari, tidak sama
+dengan yang terlihat di layar.
+
+- **Percobaan pertama (`router.replace` di samping `setQuery`) masih salah**,
+  dan laporan lanjutan dari BO menunjukkannya: tabel kelihatan berubah
+  duluan, baru menyusul URL-nya — karena keduanya memang dua jalur yang
+  jalan sendiri-sendiri, tidak terikat satu sama lain, jadi urutan siapa
+  selesai duluan tidak terjamin.
+- **Perbaikan sebenarnya: URL jadi satu-satunya sumber kebenaran.**
+  `changeDays` sekarang CUMA memanggil `router.replace` — tidak lagi
+  mengubah state lokal sama sekali. `dormant/page.tsx` diberi
+  `key={JSON.stringify(initialQuery)}` pada `<DormantCustomersScreen>` (pola
+  yang sama dipakai halaman Kas & Bank dan halaman Pelanggan), jadi begitu
+  `?days=` di URL benar-benar berubah, React membuang habis komponen lama
+  dan memasang yang baru dari nol — `useDormantCustomers` mulai dengan
+  `loading: true`, jadi tabel dan URL hanya bisa berubah BERSAMAAN, tidak
+  ada lagi yang mendahului.
+- **`router.replace(..., { scroll: false })`, bukan `push`** — ganti jendela
+  adalah MODE layar ini, bukan tempat baru yang dituju, jadi tidak boleh
+  numpuk histori tombol Back. Pola yang sama `ServiceSettingsScreen` dan
+  `ReceiptForm` pakai untuk alasan serupa.
+- **`useTransition` menutup jeda sebelum remount-nya kejadian.** Di antara
+  klik dan halaman baru benar-benar sampai, komponen LAMA (data lama, URL
+  lama) masih yang tampil di layar — `isPending` dari `useTransition` dipakai
+  supaya filter-nya kelihatan sedang bekerja (dan dinonaktifkan sementara,
+  tidak bisa diklik dua kali) daripada diam seperti kliknya tidak kena.
+- **`useDormantCustomers.ts` tetap tidak disentuh** — hook ini tetap tidak
+  bergantung pada router, sama seperti setiap hook list lain di app ini;
+  yang mengurus alamat URL adalah komponen layarnya, bukan hook datanya.
+- Tidak perlu `useSearchParams()` atau `Suspense` — halaman ini cuma MENULIS
+  ke URL, nilai awalnya sudah datang sebagai prop dari server page.
+
+---
+
+## [Unreleased] — "Lihat semua" dari Ringkasan Pelanggan: dua kartu, dua tujuan
+
+2 Oktober 2026, atas permintaan. Kartu "Pelanggan tidak aktif ≥" dan
+"Pelanggan baru dalam" di tab Ringkasan sekarang punya tautan "Lihat semua"
+begitu ada minimal 1 data (bukan menunggu lebih dari 10) — kartunya sendiri
+tetap menampilkan 10 teratas saja.
+
+- **"Pelanggan baru" numpang ke halaman Pelanggan yang sudah ada**
+  (`/dashboard/master/customers?createdSince=...`), bukan halaman baru.
+  Backend dapat filter `createdSince` sungguhan di `GET /customers` (dulu
+  panelnya cuma mengambil 10 baris pertama lalu menyaring sendiri di
+  browser, bukan filter beneran di server). Filter ini cuma bisa dipasang
+  lewat tautan ini — tidak ada kontrolnya sendiri di toolbar — dan muncul
+  sebagai chip yang bisa dihapus, pola yang sama dengan `documentId` di
+  layar Transaksi Kas & Bank.
+- **"Pelanggan tidak aktif" dapat halaman sendiri**
+  (`/dashboard/master/customers/dormant`), karena "terakhir kapan
+  transaksi" bukan kolom atau filter yang dimiliki tabel Pelanggan biasa —
+  datanya dari endpoint `/customers/dormant` yang terpisah. Halaman ini
+  tidak masuk daftar tab modul Pelanggan dan tidak ada di sidebar, sama
+  seperti halaman "Stok minus" Inventory — dibuka seperlunya dari kartu
+  Ringkasan saja.
+- **`GET /customers/dormant` sekarang benar-benar bisa di-page**, bukan
+  cuma dibatasi `limit` (dulu maksimal 50, tanpa `page` sama sekali).
+  Dikerjakan lewat `$facet` di agregasinya, pola yang sama dipakai
+  `productStockRepository.findNegativeStock` untuk masalah serupa
+  (mengurutkan dari field hasil `$lookup`).
+- **Komponen `Panel` di Ringkasan dapat prop `seeAll`** — satu tautan footer
+  dipakai kedua kartu, bukan ditulis dua kali.
+
+## [Unreleased] — Nonaktifkan / Aktifkan pelanggan langsung dari baris tabel
+
+2 Oktober 2026, atas permintaan lanjutan. Kolom Aksi di tabel Pelanggan
+sekarang punya pilihan "Nonaktifkan"/"Aktifkan", pola yang sama persis
+dengan `SuppliersTable` (satu `isActive` patch biasa, bukan verb-nya
+sendiri) — gated di `customers:update`, izin yang sama dengan "Ubah". Ada
+dialog konfirmasi di kedua arah yang bilang apa yang sebenarnya berubah
+(pelanggan hilang/muncul lagi dari pilihan di kasir, booking, faktur
+penjualan — bukan dihapus), supaya bedanya dengan Hapus/Pulihkan jelas
+walau di daftar keduanya kelihatan sama (pelanggan berhenti muncul).
+Dipisah dengan garis dari Hapus di menunya, sama seperti Supplier.
+
+---
+
+## [Unreleased] — Pelanggan dapat sumbu `isActive`, terpisah dari `deletedAt`
+
+2 Oktober 2026, atas permintaan. Sampai sekarang pelanggan hanya punya satu
+sumbu siklus hidup (`deletedAt`, soft-delete). Sekarang ada yang kedua,
+persis pasangan yang sudah dipakai Cabang (`isActive`/`deletedAt` di
+`branch.model.js`): `isActive: false` berarti pelanggan ini tetap nyata dan
+riwayatnya utuh, tapi disembunyikan dari pilihan pelanggan di modul lain
+(kasir, booking, faktur) — beda dari `deletedAt` yang berarti pelanggan itu
+dihapus dan bisa dipulihkan.
+
+- **Backend** (`PawCRM-Backend`): field `isActive` (`Boolean`, default
+  `true`) di `customer.model.js`, dengan index
+  `{ tenantId, isActive, deletedAt }` (tidak seperti Cabang yang sengaja
+  tidak punya index ini — jumlah pelanggan per tenant jauh lebih banyak
+  daripada jumlah cabang). Query `isActive: true` di `customer.repository.js`
+  sengaja memakai `{ isActive: { $ne: false } }`, bukan `{ isActive: true }`
+  persis — karena pembacaan repo pakai `.lean()` yang melewati default
+  Mongoose, setiap pelanggan yang sudah ada SEBELUM field ini ada akan
+  terbaca tanpa field `isActive` sama sekali, dan harus tetap dianggap aktif.
+  Dibuktikan dengan 5 test baru di `customerFormFields.db.test.js` yang jalan
+  ke MongoDB sungguhan, termasuk kasus dokumen lama itu secara eksplisit.
+  `countForStats` ("Jumlah pelanggan") sengaja TIDAK disentuh — dia sudah
+  hanya menghitung `deletedAt: null` dan mengabaikan filter lain, persis
+  sesuai permintaan.
+- **4 tempat di frontend yang menarik pelanggan sebagai pilihan** sekarang
+  mengirim `isActive: true`: dialog cari pelanggan (dipakai kasir, booking,
+  grooming, antar-jemput), pemilihan pelanggan di form faktur Penjualan, dan
+  pemilihan pemilik saat mendaftarkan hewan baru.
+- **Tabel Pelanggan**: filter baru "Status" (Aktif/Nonaktif/Semua), pola yang
+  sama dengan filter Cabang. Default-nya "Aktif" (bukan "Semua" seperti
+  Cabang) — pelanggan nonaktif jauh lebih sering terjadi daripada cabang
+  nonaktif, jadi daftarnya sengaja dibuka sudah tersaring.
+- **Badge status pelanggan** (`CustomerStatusBadge`) sekarang tiga keadaan —
+  Aktif / Nonaktif / Terhapus — bukan dua. Sekalian dibetulkan ke token
+  `bg-tint-*` (ui-rules §9); sebelumnya pakai `bg-success/12` dkk., aritmetika
+  opacity yang aturan itu sendiri melarang.
+- **Form ubah pelanggan**: checkbox "Aktif — pelanggan ini muncul di daftar
+  pilihan pelanggan", gaya yang sama dengan Cabang/Gudang. Tidak ada di form
+  tambah pelanggan baru — pelanggan baru selalu mulai aktif, sama seperti
+  cabang baru.
+
+2 Oktober 2026, atas permintaan. `CustomerModuleHeader.tsx`: breadcrumb di
+bawah judul "Pelanggan" (yang isinya cuma mengulang kata "Pelanggan") diganti
+satu kalimat — "Satu profil pemilik, banyak hewan, satu riwayat — satu basis
+data untuk seluruh cabang." — dengan gaya yang sama dipakai `PageHeading`
+Purchasing (`mt-1 max-w-2xl text-sm text-muted`).
+
+---
+
+## [Unreleased] — Tooltip di 4 kartu register Pelanggan, dan satu lagi di Ringkasan
+
+2 Oktober 2026, atas permintaan: 4 kartu di tab "Pelanggan" ("Jumlah hewan",
+"Jumlah pelanggan", "Pelanggan baru bulan ini", "Transaksi N hari terakhir")
+sekarang punya tooltip ⓘ yang jelasin angkanya itu apa dan dari mana
+rumusnya — singkat, satu kalimat per kartu. "Pelanggan baru periode ini" di
+tab Ringkasan (`CustomerSummaryScreen.tsx`) dikasih tooltip yang sama
+bunyinya, karena metriknya sama persis.
+
+- **`StatTile` dapat prop `hint` opsional**, diteruskan ke `InfoTooltip` di
+  sebelah labelnya — sama persis dengan pola yang sudah dipakai `SummaryTile`
+  di tab Ringkasan. Karena `StatTile` dipakai di banyak modul (Pembelian,
+  Inventori, Grooming, Membership, Booking, Komisi, Kas & Bank), modul lain
+  bisa langsung pakai `hint` ini kalau butuh, tanpa bikin pola baru.
+- **`CustomerModuleHeader.tsx`** — isi tooltip 4 kartunya:
+  - Jumlah hewan: "Total hewan peliharaan yang terdaftar, tidak termasuk yang
+    dihapus."
+  - Jumlah pelanggan: "Total pelanggan terdaftar, tidak termasuk yang
+    dihapus."
+  - Pelanggan baru bulan ini: "Pelanggan yang didaftarkan dalam jangka waktu
+    di bawah angka ini, dihitung dari tanggal daftar."
+  - Transaksi N hari terakhir: "Pelanggan yang bertransaksi dalam jangka
+    waktu di atas, dibagi seluruh pelanggan terdaftar."
+
+---
+
+## [Unreleased] — `InfoTooltip`: satu komponen ⓘ untuk semua layar
+
+2 Oktober 2026. Dimulai dari permintaan sempit — subteks kartu "Rata-rata
+belanja / pelanggan" di `/dashboard/master/customers/ringkasan`
+("Omzet periode ÷ pelanggan yang transaksi periode ini") dipindah dari baris
+ketiga di bawah angka ke tooltip ⓘ-nya — dan berkembang jadi komponen bersama
+begitu dua bug ikut ketahuan: tooltip-nya sendiri tidak pernah terbuka di HP,
+dan begitu dibetulkan jadi klik, isinya mepet ke pinggir tanpa padding.
+
+- **`InfoTooltip` (baru), diekspor dari `@/components`.** Dipromosikan dari
+  `SummaryTile` setelah dipakai lagi di tempat yang sama — label, ⓘ, isi.
+  **Di web: hover langsung membuka tooltip-nya, sama seperti tooltip pada
+  umumnya.** Deteksinya pakai media query `(hover: hover) and (pointer: fine)`
+  (kemampuan perangkat), bukan lebar layar — supaya laptop layar sentuh atau
+  jendela desktop yang disempitkan tidak salah dianggap HP. **Di HP/tablet:
+  tap ikonnya untuk membuka**, karena perangkat itu tidak punya hover sama
+  sekali. Fokus keyboard juga membukanya, supaya pengguna keyboard dapat
+  jawaban yang sama tanpa harus menekan apa pun.
+- **Dikasih padding** (`p-3`) — sebelum ini isinya mepet langsung ke pinggir
+  kotak, bug yang sama persis yang pernah kejadian di `PosDiscountPopover`
+  (28 September 2026) karena `PopoverContent` di `ui/popover.tsx` memang tidak
+  punya padding bawaan. Sekarang ada satu komponen yang membawa perbaikan itu
+  untuk semua pemakainya sekaligus.
+- **Lebarnya dijaga di layar sempit**: `w-72 max-w-[calc(100vw-2rem)]`, supaya
+  tooltip tidak terpotong di tepi HP yang sempit (dicoba sampai ~320px).
+- **`SummaryTile` di `CustomerSummaryScreen.tsx` dipindah ke `InfoTooltip`**,
+  dan `caption`-nya dibuat opsional — kartu yang penjelasannya dipindah semua
+  ke `hint` ("Rata-rata belanja / pelanggan") tidak lagi menyisakan baris
+  kosong, tapi tetap menunjukkan "gagal dimuat" kalau datanya gagal dimuat.
+- **Isi tooltip "Rata-rata belanja / pelanggan" dipotong lagi**, pada
+  permintaan yang sama hari itu: sempat jadi dua kalimat begitu rumusnya dan
+  rationale lama digabung, dan itu lebih panjang dari yang pantas untuk satu
+  ⓘ. Sekarang cuma rumusnya — "Omzet periode ÷ pelanggan yang transaksi
+  periode ini." — tanpa kalimat kedua soal kenapa pelanggan yang dipakai cuma
+  yang aktif.
+- **Cincin fokus oranye di ikon ⓘ dihapus**, juga pada permintaan yang sama:
+  ring 3px ala §7 (navy border + halo oranye) di sekeliling lingkaran sekecil
+  itu kelihatan seperti alarm, bukan status fokus — dan sebenarnya tidak
+  diperlukan, karena fokus sudah langsung membuka tooltip-nya, konfirmasi yang
+  jauh lebih jelas daripada sebuah ring. Sekarang fokus cukup menggelapkan
+  warna ikonnya. **Kursornya juga diubah jadi tangan** (`cursor-pointer`) —
+  `<button>` polos di app ini defaultnya kursor panah, bukan tangan.
+- **Deteksi hover diganti, supaya hover SELALU memunculkan tooltip-nya** —
+  permintaan terakhir hari itu. Sebelumnya `InfoTooltip` menebak kemampuan
+  perangkat sekali lewat `matchMedia("(hover: hover) and (pointer: fine)")`,
+  lalu memakai tebakan itu untuk semua hover berikutnya; kalau tebakannya
+  salah di satu perangkat (laptop layar sentuh, mesin virtual, jendela
+  preview), hover jadi diam saja untuk sisa sesi itu. Sekarang baca
+  `event.pointerType` langsung dari setiap event pointer — "mouse" vs
+  "touch"/"pen" — jadi keputusannya dicek ulang setiap kali, bukan ditebak di
+  awal.
+- **Bug lanjutannya ketemu dan dibetulkan: hover pertama muncul, hover kedua
+  tidak, hover ketiga muncul lagi.** Penyebabnya `Popover.Content` dari Radix
+  — meski `modal={false}` — tetap memindahkan fokus DOM ke dalam kontennya
+  saat terbuka, dan MENGEMBALIKAN fokus ke tombol ⓘ saat tertutup. Pengembalian
+  fokus itu memicu `onFocus` tombolnya sendiri — handler yang sama dipakai
+  hover untuk membuka — jadi setiap kali tertutup karena mouse menjauh,
+  tooltip-nya diam-diam terbuka lagi sesaat kemudian, dan itu yang bikin hover
+  berikutnya kelihatan "tidak ngaruh". Sekarang `onOpenAutoFocus` dan
+  `onCloseAutoFocus` di-`preventDefault()` — cuma hover dan fokus keyboard
+  yang boleh mengatur buka/tutup.
+- **Ditulis di `ui-rules.md` §9** sebagai aturan tetap: ⓘ apa pun di produk
+  wajib lewat `InfoTooltip`, tidak boleh dibuat ulang per layar.
+- **Belum disentuh:** `InvoiceScopeCard` di Penjualan masih pakai `title`
+  mentah untuk daftar cabang/gudang-nya — dicatat di `ui-rules.md` §15 sebagai
+  hutang yang sama, diperbaiki kalau nanti ada yang masuk ke file itu.
+
+---
+
+## [Unreleased] — Card ringkasan: satu komponen, satu aturan huruf
+
+2 Oktober 2026, atas masukan BO: tiap layar kelihatan beda — ada yang labelnya
+huruf besar semua, ada yang tidak, dan subteks ada yang ditaruh di tooltip ada
+yang tidak. Pelanggan (lewat `StatTile`) jadi acuan; `ui-rules.md` §2 dan §5
+sekarang menulis aturannya secara eksplisit, bukan cuma komentar di satu file.
+
+- **`InvoiceStatCards` (Penjualan) pindah ke `<StatTile>` bersama**, berhenti
+  pakai `StatCard` lokalnya sendiri. Itu sumber "Card Penjualan huruf besar
+  semua" — labelnya `uppercase tracking-wide`, bingkainya `rounded-xl`, beda
+  dari `StatTile`-nya Pelanggan/Pembelian yang `rounded-2xl` dan sentence case.
+- **`StatTile` dapat prop `tone` (`plain` | `danger` | `success`)**, diserap
+  dari `StatCard` Penjualan supaya warna merah/hijau pada Lewat jatuh tempo dan
+  Tertagih tidak hilang saat pindah komponen. Tone mewarnai angkanya, bukan
+  kartunya.
+- **`SummaryCard` di Keuangan → Ringkasan (`FinanceDashboardScreen`) diluruskan
+  ke aturan `StatTile`** — labelnya ikut `uppercase tracking-wide` dan
+  angkanya `text-2xl font-extrabold`, beda dari kartu Kas & Bank satu tab di
+  sebelahnya yang sudah langsung pakai `StatTile`. Komponennya sendiri TETAP
+  `SummaryCard`, bukan dipindah ke `<StatTile>` — ia bawa ikon, baris delta
+  ("↗ 12,3% vs periode sebelumnya"), dan tautan drill-through yang `StatTile`
+  tidak punya — tapi sekarang label dan beratnya sama persis.
+- **Ditulis di `ui-rules.md`:** kartu ringkasan wajib lewat `<StatTile>` /
+  `<PendingStatTile>` (atau komponen sendiri yang **menyamai** tipografinya
+  kalau butuh fitur lebih — contoh sahnya `GroomingStatCard` dan `SummaryCard`
+  di atas), label selalu sentence case, dan subteks yang butuh penjelasan
+  lebih panjang masuk tooltip (ikon `Info` + `title`/`aria-label`), bukan
+  ditambah jadi baris ketiga di bawah angka. Aturan huruf besar ini **tidak**
+  menyentuh small-caps `<dt>`, header tabel, atau caption modul (mis. "Jurnal
+  umum", "Daftar transaksi") — itu peran lain yang sudah konsisten dari awal.
+- **Pembelian dan Kas & Bank tidak berubah** — sudah lebih dulu benar karena
+  langsung memakai `StatTile`.
+- **Disisir seluruh layar** (grep `uppercase`, pola nilai besar
+  `text-{xl,2xl,3xl} font-{bold,extrabold,semibold} tabular-nums`, dan setiap
+  pemanggil `StatTile`) untuk kartu ringkasan lain yang mungkin menyimpang.
+  Dua di atas satu-satunya yang menyimpang; sisanya (Booking Hari Ini, Komisi,
+  Laporan Membership, Catalog/Stock Correction header, Grooming) sudah
+  memakai `StatTile` langsung.
+
+---
+## [Unreleased] — Opsi hewan dikenali lewat id, `code` dihapus
+
+25 September 2026. Sisi frontend dari perubahan backend dengan nama yang sama.
+
+- **`PetOption.code` hilang dari tipe**, begitu pula `Pet.speciesCode` dan tiga
+  saudaranya. `ServiceVariant.petType | sizeCategory | furType` sekarang
+  `PetOptionId`.
+- **`usePetOptions` menyusut.** `find()` mencocokkan `_id` saja, `choices()`
+  kehilangan flag `by` (dulu `"id"` untuk field hewan, `"code"` untuk sumbu
+  varian — keduanya id sekarang), dan `code()` dihapus karena tidak ada
+  sumbernya lagi. `DEFAULT_PET_OPTION_LABELS` dan `looksLikeId` ikut hilang:
+  `label()` mengembalikan `null` untuk id yang tidak dikenal, karena id mentah
+  bukan kata.
+- **`utils/serviceVariant.ts` membandingkan langsung.** Tabelnya menunjuk
+  `pet.species`/`size`/`furType`, bukan lagi `speciesCode`/`sizeCode`/`furTypeCode`.
+- **Ikon Kucing/Anjing di detail booking diganti telapak.** Dulu dipilih dari
+  code `cat`; tanpa code tidak ada patokan stabil — `_id` beda per tenant, dan
+  mencocokkan LABEL akan rusak begitu ada yang rename atau memakai bahasa lain.
+  Menebak salah lebih buruk daripada tidak menebak: kucing di bawah ikon anjing
+  terbaca sebagai kartu hewan yang keliru. **Kata di sebelah nama sudah
+  menyebut hewannya** — itu yang sejak awal memikul beban ini.
+- **Kolom harga per ukuran** (`commissionSizes`) dikunci `_id`; field-nya masih
+  bernama `code` di `CommissionSize` karena itu memang "nilai yang disimpan
+  baris ini" bagi pemanggilnya.
+
+## [Unreleased] — Ras menunjuk jenis hewannya pakai id
+
+25 September 2026. Sisi frontend dari perubahan backend dengan nama yang sama.
+
+- **`PetOption.speciesCode` → `speciesId`** di tipe, dialog, panel dan tabel
+  Pengaturan › Layanan › Ras. Pemilih "Jenis hewan" sekarang bernilai `_id`
+  jenis hewan, bukan kodenya.
+- **`usePetPickers` menyusut.** Filter ras dulu memetakan `_id` ras ke
+  `speciesCode`, lalu menerjemahkan jenis hewan yang sedang dipilih dari id
+  kembali ke kode sebelum bisa membandingkan — dua ujung satu relasi ditulis
+  dalam dua mata uang. Sekarang keduanya id dan dibandingkan langsung; `code`
+  tidak lagi dipanggil di hook ini.
+- **Kolom "Hewan" di tabel Ras** menampilkan "—" untuk jenis hewan yang tidak
+  dikenali, bukan nilai mentahnya. Kode dulu masih terbaca sebagai kata; id
+  tidak, dan mencetaknya di kolom berisi nama hewan cuma jadi derau.
+- **Jenis hewan nonaktif tetap muncul** di pemilih, tapi hanya untuk ras yang
+  memang sudah menunjuknya — supaya mengubah nama ras tidak diam-diam
+  melebarkannya ke semua hewan.
+
+## [Unreleased] — Ukuran & jenis bulu wajib di form hewan
+
+23 September 2026, atas permintaan. Kebalikan dari aturan awal: keduanya dulu opsional,
+dan layar yang butuh baru memintanya saat butuh (`requireTraits`, `PetFixLink`).
+
+- **`PetForm`:** Ukuran dan Jenis bulu sekarang `required`, dengan pesan per field
+  ("Pilih ukurannya." / "Pilih jenis bulunya."). Deskripsi kartu Ciri-ciri tidak lagi
+  bilang "semuanya opsional" — sekarang menyebut alasannya: harga grooming dihitung dari
+  keduanya.
+- **API sengaja tidak ikut diperketat.** `pet.validation.js` tetap menerima null, karena
+  `PetQuickAddDialog` dengan `requireTraits` mati (kasir, layar pelanggan) memang
+  mengirim null — memperketat server akan mematikan kasir.
+- **⚠️ Hewan lama harus dilengkapi dulu.** Pet yang didaftarkan sebelum aturan ini punya
+  kedua field kosong, jadi membuka datanya untuk ubah berat akan diminta isi ukuran dan
+  jenis bulu dulu. Itu memang maksud aturannya, dan alasan `PetFixLink` tetap ada.
+- **`PetQuickAddDialog` tidak diubah.**
+
+---
+
+## [Unreleased] — Foto hewan
+
+23 September 2026. Backend-nya sudah ada sejak lama (`pets.photo`, validasi, pembersihan
+aset, klaim sweeper); yang kurang cuma layar.
+
+- **Form hewan:** `ImageField` di kartu Ciri-ciri, paling atas — foto itu ciri-ciri paling
+  langsung. Diunggah saat dipotong, `purpose="pet"`.
+- **Foto dikirim sebagai diff**, beda dari field lain di form ini yang dikirim utuh. Aset
+  yang sudah tersimpan tidak punya `token` (dibuang server sebelum disimpan), jadi
+  mengirim ulang yang tidak berubah akan **menggagalkan setiap simpan** hewan yang punya
+  foto — dan API menghapus byte yang hilang dari sebuah update. Dikirim hanya kalau
+  `storageKey` berubah; `null` berarti fotonya dilepas.
+- **`PetAvatar`** (baru, diekspor dari fitur): di kolom Nama daftar hewan, di sebelah judul
+  profil, dan di kartu cetak. Tanpa foto jatuh ke **huruf depan nama**, bukan paw print
+  (ui-rules §12) — satu ikon yang sama di dua puluh baris tidak membedakan apa-apa.
+  Dekoratif buat screen reader kecuali kartu cetak, yang menamainya.
+- **`purpose: "pet"`** ditambahkan di `MediaUploadPurpose` dan `PURPOSE_SEGMENTS` server,
+  supaya asetnya masuk segmen sendiri seperti category/service/booking.
+
+---
+
+## [Unreleased] — Jurnal mengikuti mockup
+
+21 September 2026, dari `Buloo - jurnal (2).html`. Akses tidak berubah (mockup menandai
+Jurnal khusus Owner; itu sengaja belum diikuti).
+
+- **Daftar:** bar konteks modul (Cabang, Periode) di atas; satu kartu "Jurnal umum" berisi
+  pencarian (no. jurnal, keterangan, **no. sumber, cabang**), filter Sumber, tabel yang
+  diurut dari **header kolom** (Tanggal, No. jurnal, Keterangan, Cabang, Nilai), dan
+  `ListFooter` 25/50/100. Kelompok per bulan dan kotak Entri/Total debit dihapus; kolom
+  Status tetap. Baris bisa diklik. Tombol "Tambah jurnal manual" pindah ke kepala halaman.
+- **Tambah jurnal manual:** `FormActionBar`, callout "Untuk penyesuaian non-kas saja",
+  Tanggal · Cabang (baru, dikirim sebagai `branchId`), Keterangan, lalu tabel baris
+  Akun · Detil · Keterangan · Debit · Kredit dengan baris Total dan catatan seimbang.
+  Akun Kas & Bank tidak ditawarkan; pilihan akun dikelompokkan per kategori.
+- **Detail:** judul "Jurnal — <no>", tombol "Kembali ke Jurnal", callout dokumen sumber
+  dengan tautan "Buka <no> →" (dari `source.document`).
+- Label sumber `manual` sekarang **"Jurnal manual"**; crumb `Jurnal Umum` → **`Jurnal`**.
+
+---
+
+## [Unreleased] — Channel Pembayaran pindah ke Pengaturan, Kas & Bank jadi tabel akun
+
+20 September 2026, atas permintaan. Empat hari sebelumnya Channel Pembayaran diserap
+jadi badan layar Kas & Bank (lihat entri 16 September); ini mengembalikannya jadi layar
+pengaturan tersendiri — tapi **kolom uangnya tidak ikut kembali**.
+
+### Channel Pembayaran
+
+- Rutenya jadi **`/dashboard/pengaturan/channel-pembayaran`** (`/new` dan `/[id]` ikut),
+  di sidebar persis di bawah Daftar Akun yang pindah lebih dulu hari itu. Itu memang
+  pasangannya: channel adalah tempat uang masuk, baris di atasnya adalah akun yang
+  menampungnya, dan tidak ada yang mengubah satu tanpa melihat yang lain.
+- **Rute lama `redirect()`** — `/keuangan/kas-bank/new` dan `/keuangan/kas-bank/[id]`,
+  dengan id dibawa menyeberang. Bookmark ke satu channel harus mendarat di form channel
+  itu, bukan di daftar berisi enam baris tanpa petunjuk mana yang dimaksud.
+- **Tanpa kolom Masuk, Keluar dan Saldo.** Hilangnya justru intinya: beberapa channel
+  bisa menunjuk satu akun, jadi kolom saldo per channel tidak pernah boleh dijumlahkan —
+  dulu diakali dengan menulis saldo sekali lalu "ikut <channel pembawa>" di baris
+  sisanya. Layar pengaturan juga tidak punya periode, jadi angka pergerakan tidak punya
+  rentang untuk dibicarakan.
+- Yang tersisa adalah yang memang diedit orang: nama yang dibaca kasir, tab tempatnya
+  duduk, cabang pemiliknya, dan akun yang didebit. **MDR tetap di bawah nama**, bukan
+  kolom — hanya QRIS dan EDC yang boleh punya, dan kolom yang isinya kebanyakan strip
+  adalah kolom yang lebih baik tidak ada.
+- Bar filternya **quick bar** (ui-rules §8): pencarian + satu toggle "Tampilkan
+  terhapus", keduanya berlaku di tempat. Toggle itu satu-satunya jalan pulih bagi
+  channel yang sudah dihapus, jadi ia kontrol yang terlihat — bukan query parameter yang
+  harus diketahui orang.
+- Hook baru **`usePaymentChannelList`** (`useCashAccounts` dihapus). File
+  `hooks/usePaymentChannels.ts` sudah lama tidak berisi hook apa pun, jadi sekalian jadi
+  **`labels.ts`**; isinya tetap `CHANNEL_TYPE_LABELS` dan `CHANNEL_TYPE_ORDER` yang
+  dipinjam panel pembayaran POS.
+
+### Kas & Bank menjawab per akun
+
+- Tabelnya sekarang berisi **akun buku besar** berkategori `cash_bank`, bukan channel —
+  `features/accounting/CashBankAccountsTable`, disuapi `useCashBankAccounts`. Masuk dan
+  keluar dari `journalEntryService.movement`, saldo dari `balances`. Baris yang isinya
+  akun punya saldo masing-masing, jadi **kolomnya boleh dijumlahkan**, dan aturan "ikut
+  channel pembawa" hilang bersama masalah yang melahirkannya.
+- Akun yang sebulan itu tidak dilewati uang **tetap dapat baris**, terbaca nol. Akun yang
+  tidak disebut `movement` artinya diam, bukan hilang.
+- **Gerbangnya ikut pindah:** tabel itu dibuka `chartOfAccounts:read`, bukan
+  `paymentChannels:read`. Peran yang hanya bisa membaca transaksi tetap dapat daftarnya,
+  dan reads milik tabel tidak ikut jalan untuknya.
+- `KasBankScreen` pindah rumah ke `features/accounting` — ia layar akuntansi sekarang —
+  dan menyimpan **satu pointer** ke Pengaturan › Channel Pembayaran untuk orang yang
+  datang mencari layar lama. Pointer, bukan form.
+- **`GET /api/cash-transactions/summary` jadi tanpa pemanggil di frontend.** Endpoint-nya
+  tetap hidup dan tetap ada tesnya; wrapper-nya di `cashTransaction.service.ts` sengaja
+  disimpan dengan catatan kenapa, supaya tidak terbaca sebagai sisa yang lupa dihapus.
+
+### Tes
+
+- **`PaymentChannelsScreen.test.tsx` baru (10 tes)** — perilaku channel yang dulu diuji di
+  `KasBankScreen.test.tsx` dan ikut terhapus waktu tabelnya berganti isi: label akun per
+  baris, `branchId: null` terbaca "Semua cabang", baris tetap hidup dengan strip waktu
+  bagan akun gagal dibaca, "Tidak aktif" vs "Terhapus" beserta tombol Pulihkan,
+  pencarian yang menunggu ketikan berhenti, toggle yang justru tidak menunggu, retry, dan
+  tombol "Channel baru" yang hilang untuk peran read-only. Satu tes menjaga agar kolom
+  Masuk/Keluar/Saldo tidak kembali.
+- `KasBankScreen.test.tsx` ditulis ulang di bagian tabelnya; `CashTransactionsScreen` dan
+  `PaymentChannelForm` menyesuaikan mock dan alamat barunya.
+
+---
+
+## [Unreleased] — Daftar Akun pindah ke Pengaturan, dan sorting pindah ke header
+
+20 September 2026, atas permintaan. Dua hal yang sebelumnya ditandai "tidak diambil"
+karena bentrok aturan, sekarang diputuskan diambil.
+
+### Pindah ke Pengaturan
+
+- Rutenya jadi **`/dashboard/pengaturan/daftar-akun`** (`/new` dan `/[id]/edit` ikut).
+  Segmennya Bahasa, mengikuti tetangganya `pengaturan/umum` dan `pengaturan/data-awal`.
+- **Rute lama `redirect()`, tidak dihapus** — alamat itu dipakai tab Keuangan, panel
+  impor inventori, dan apa pun yang dibookmark orang sejak layarnya rilis. 404 akan
+  menghukum mereka atas perpindahan yang bukan mereka lakukan. Redirect `[id]/edit`
+  membawa id-nya: link ke satu akun adalah yang paling mungkin dibookmark.
+- **Bukan tab Keuangan lagi.** Komentar di `AccountingModuleHeader` sejak 12 September
+  memang sudah menulis bahwa mockup menaruhnya di Pengaturan dan tab itu cuma sementara
+  sampai seksinya ada. Ringkasan Keuangan tetap punya kartunya, sama seperti tiga layar
+  non-tab yang lain.
+- **Sidebar:** baris "Daftar Akun" di grup Pengaturan, gated `chartOfAccounts:read` —
+  dan grant itu **keluar** dari `permissionAny` baris Keuangan. Tidak ada lagi yang bisa
+  dibaca di bawah `/keuangan` dengan grant itu saja, dan baris yang menuju hub berisi
+  kartu yang tidak boleh dibuka pembacanya cuma bikin kecewa.
+- **Judulnya h1 polos tanpa breadcrumb**, seperti Umum dan Data Awal: `/dashboard/
+  pengaturan` tidak punya halaman sendiri, jadi satu-satunya leluhur yang bisa disebut
+  breadcrumb adalah halaman yang tidak bisa dibuka siapa pun. Form `/new` dan `/[id]/
+  edit` tetap punya breadcrumb, dengan "Pengaturan" sebagai label — bukan link.
+
+### Sorting dari header kolom
+
+- **Kolom "Tipe akun" baru**, di sebelah Kategori: Aset · Kewajiban · Ekuitas ·
+  Pendapatan · Beban. Teks polos, bukan badge — dua badge dalam satu baris terbaca
+  sebagai dua status setara, padahal kategorinya yang dipilih tenant dan kelasnya cuma
+  turunan. Urutannya abjad — Aset, Beban, Ekuitas, Kewajiban, Pendapatan.
+  Pembungkus tabelnya ikut jadi `overflow-x-auto` — tujuh kolom tidak muat di layar
+  ponsel, dan `overflow-hidden` akan memotongnya tanpa cara mencapainya.
+- **Kode, Nama akun, Kategori dan Tipe akun bisa diklik.** Klik pertama menaik, klik kedua membalik.
+  Panahnya ada di setiap header yang bisa diurutkan — pudar kalau kolom itu bukan yang
+  aktif — supaya barisnya mengatakan kolom mana yang bisa diklik, bukan cuma mana yang
+  sedang aktif. `aria-sort` membawa fakta yang sama ke pembaca layar.
+- **Kategori dan Tipe akun sama-sama diurutkan ABJAD, dari kata yang tampil** — bukan
+  dari key yang disimpan, dan bukan dari nomor kategorinya. Key-nya berbeda urutan di
+  beberapa tempat (`hpp` jatuh di antara `hutang_lainnya` dan `investasi…`, padahal
+  labelnya "Harga Pokok Penjualan" ada di depan), dan nomor kategori adalah logika yang
+  tidak kelihatan: kolomnya menampilkan kata, nomornya tidak ada di baris itu. Di dalam
+  satu kategori atau satu tipe, urutannya jatuh ke kode — dan tie-break itu tetap menaik
+  di kedua arah, jadi kelompoknya yang terbalik, bukan isinya.
+- **Filter "Tipe akun"** di panel, di atas Kategori: coarse dulu, baru fine. **Picker
+  kategorinya menyempit mengikuti tipe yang dipilih** — keduanya bukan filter bebas
+  (setiap kategori milik tepat satu tipe), jadi menawarkan "Cash & Bank" di bawah tipe
+  "Beban" berarti menawarkan pasangan yang tidak akan pernah cocok dengan satu baris pun,
+  dan pembacanya akan menyalahkan daftarnya, bukan kombinasinya. Kategori yang tidak lagi
+  muat dengan tipe barunya ikut dikosongkan, bukan dibiarkan terpasang tapi tidak
+  ditawarkan. Isinya urutan persamaan akuntansi — sama seperti judul grup di picker form
+  akun, dan sengaja beda dari kolom tabelnya yang abjad: yang satu daftar tetap berisi
+  lima pilihan, yang satu mengurutkan baris yang sedang dipindai orang.
+- **Field "Urutkan" dihapus dari panel filter**, dan `Reset` tidak lagi menyentuh
+  urutan: tombol Reset di dalam panel filter tidak boleh diam-diam mengurutkan ulang
+  tabel yang diurutkan orang dari header yang kelihatan.
+- **`docs/ui-rules.md` §8 ikut diperbarui.** Aturannya berbunyi "sorting adalah field di
+  panel, bukan kontrol tersendiri" — sekarang dengan satu pengecualian tercatat, lengkap
+  dengan alasannya dan larangan menyebarkannya ke layar lain sebagai rapi-rapi. Tanpa
+  itu, sesi berikutnya akan "memperbaikinya" kembali.
+
+---
+
+## [Unreleased] — Kategori akun punya nomor
+
+20 September 2026, atas permintaan, mengikuti chart of accounts Jubelio.
+
+- **`CATEGORY_CODE`** — nomor rujukan per kategori: `110` Cash & Bank, `111` Piutang
+  Dagang, `112` Persediaan, `113` Aset Lancar Lainnya, `120` Aset Tetap, `121` Investasi
+  Jangka Panjang, `220` Hutang Dagang, `221` Hutang Lainnya, `222` Hutang Jangka Panjang,
+  `330` Modal, `440` Pendapatan, `550` Harga Pokok Penjualan, `660` Biaya,
+  `770` Pendapatan Lainnya, `880` Biaya Lainnya.
+- **Picker Kategori akun di form akun sekarang berbunyi `110 - Cash & Bank`**, nomornya
+  di depan: orang yang mengisi akun biasanya sedang membaca chart di kertas dan memindai
+  ke bawah kolom angka, dan nomornya juga yang membuat "Hutang Lainnya" dan "Hutang
+  Jangka Panjang" bisa dibedakan sekilas. Berlaku di `/new` dan `/[id]/edit` sekaligus —
+  keduanya `ChartOfAccountForm`.
+- **Bukan awalan kode akun, dan tidak akan pernah jadi itu.** Digit depan sebuah AKUN
+  menamai kelasnya (1 aset, 2 kewajiban, 3 modal, 4 pendapatan, 5/6 beban) — itu sebabnya
+  `1101 Kas`, `1201 Persediaan` dan `1301 PPN Masukan` sama-sama mulai dari 1 padahal
+  kategorinya berbeda. Dua penomoran yang sengaja berdiri sendiri: tenant yang menomori
+  ulang chart-nya tidak boleh bisa menomori ulang seksi laporan tanpa sengaja.
+- **Tidak disimpan di mana pun.** `accountCategory` tetap menyimpan key-nya (`cash_bank`);
+  nomornya dibaca dari key itu di tempat yang menampilkannya, jadi mengoreksinya nanti
+  adalah perubahan kode, bukan migrasi atas setiap dokumen akun.
+- Urutannya menaik mengikuti `ACCOUNT_CATEGORIES` — yang memang urutan baca laporan — jadi
+  setiap picker yang menyusuri array itu sudah urut nomor tanpa menyortir. Ada tesnya,
+  supaya kategori yang ditambah di posisi salah ketahuan.
+- Badge kategori di tabel dan filter panel **tetap nama polos**, tanpa nomor: di badge
+  nomor jadi noise, dan di kalimat prosa terbaca seperti salah ketik.
+
+---
+
+## [Unreleased] — Daftar Akun: Aturan Alokasi
+
+19 September 2026, dari mockup BO `buloo-daftar-akun-v1`.
+
+- **Daftar Akun jadi tabel datar berhalaman**, bukan pohon bergrup 15 kategori.
+  Alasannya satu: baris sekarang bisa dibuka untuk mengedit Detil Akun-nya, dan chevron
+  kedua yang melipat sub-akun akan jadi dua kontrol yang bentuknya identik dan kerjanya
+  tidak berhubungan. Hirarkinya bertahan sebagai **indentasi** kolom Kode — satu-satunya
+  hal yang pohon itu tunjukkan. Judul kategori ikut hilang karena grup yang terpotong
+  batas halaman lebih membingungkan daripada tidak ada grup; kategorinya tetap sebagai
+  kolom dan filter.
+- **Kolom Aturan Alokasi** dengan panel edit di dalam barisnya — nama detil, tipe
+  alokasi, lini, cabang, dan switch Aktif.
+  - **Panelnya draf, ada Simpan dan Batal** — ini satu-satunya tempat yang sengaja beda
+    dari mockup, yang menulis tiap ketikan. Aturannya divalidasi satu sama lain (tidak
+    boleh dua yang menuju segmen sama, tidak boleh dua yang senama), jadi daftar yang
+    setengah diketik adalah daftar yang memang ditolak server.
+  - **Satu baris terbuka pada satu waktu**: dua draf terbuka adalah dua draf yang bisa
+    dilupakan, dan Simpan yang kedua akan terlihat seperti menyimpan keduanya.
+  - Tiga keadaan yang sengaja dibedakan: **Tidak berlaku** (akun neraca), **Tidak perlu
+    alokasi** (tenant 1 lini 1 cabang), dan **Belum dipetakan** — badge oranye, satu-
+    satunya hal oranye di layar ini, karena §4: oranye berarti ada yang harus dikerjakan.
+- **Pilihannya menyusut mengikuti bentuk tenant**, dengan kalimat penjelas: 1 lini →
+  Direct disembunyikan; 1 cabang → Shared-Lokasi & Shared-Overall digabung jadi
+  "Shared"; 1 lini + 1 cabang → kolomnya berbunyi "Tidak perlu alokasi". Satu jalur
+  kode, cuma daftar pilihannya yang lebih pendek (`allocationLabels.ts`).
+- **"Nonaktifkan akun" / "Aktifkan akun" jadi baris di menu Aksi.** Menonaktifkan akun
+  adalah edit yang paling sering dilakukan di layar ini dan dulu perlu satu page load,
+  satu form dan satu save. Tidak ada yang hilang saat dinonaktifkan, jadi tidak pakai
+  dialog konfirmasi — baris menu yang sama membatalkannya.
+  - **Bukan di badge statusnya**, walau itu satu klik lebih cepat. Badge yang bisa
+    ditekan tidak bisa dibedakan dari badge yang cuma melaporkan, jadi membaca kolom
+    Status jadi sesuatu yang bisa merusak kalau salah pencet. Baris menu bernama
+    mengatakan apa yang akan terjadi sebelum terjadi.
+  - **Menonaktifkan ikut menyalakan filter "Tampilkan akun nonaktif" kalau sedang mati.**
+    Tanpa itu baris yang baru saja diubah lenyap persis saat diubah — membawa serta
+    satu-satunya cara membatalkannya, tanpa ada yang memberi tahu bahwa filternya
+    penyebabnya. Badge `Filter (n)` ikut naik dan toast-nya menyebutkannya.
+- **Filter Tipe Alokasi** di panel, dengan "Belum dipetakan" memimpin daftarnya — itu
+  satu-satunya nilai yang menjawab pertanyaan dengan pekerjaan di belakangnya.
+- **Field "Lini bisnis" hilang dari form akun.** Pemetaannya pindah ke daftar; akun
+  Pendapatan/Beban baru lahir Belum Dipetakan.
+- **Jurnal Umum manual: field Detil akun** per baris, muncul hanya kalau akun yang
+  dipilih punya aturan aktif. Ditambahkan 20 September setelah ketahuan tertinggal:
+  backend sudah menerima `allocationId`, formnya tidak pernah mengirimnya — jadi setiap
+  beban yang diposting lewat jurnal manual mendarat di kolom Bersama tanpa cara menyebut
+  lini mana yang menanggungnya, padahal jurnal manual adalah jalan keluar untuk setiap
+  biaya yang tidak muat di form lain. Detail jurnal ikut menampilkan kolomnya.
+- **Transaksi Keuangan: kolom Detil akun** di baris beban/pendapatan. Terpilih otomatis
+  kalau akunnya cuma punya satu; **Lini bisnis tidak lagi diisi otomatis dari akun** —
+  baris yang menyebut lininya sendiri dianggap final oleh laporan dan mendarat utuh di
+  cabang jurnalnya, sementara aturan `direct` tanpa cabang justru dibagi. Mengisinya
+  otomatis akan diam-diam membatalkan aturan yang jadi sumbernya.
+- **Lini Bisnis: checklist cabang** — dipakai `shared_lokasi`. Kosongkan semua berarti
+  lini ini ada di semua cabang, dan itu dikatakan di layar.
+- **Laba Rugi: switch "Bagikan beban bersama ke tiap lini".** Bukan filter — tidak
+  mengubah entri mana yang dibaca, tapi entri yang sama dilaporkan sebagai apa — jadi
+  tempatnya di luar toolbar dan berlaku saat diklik, supaya dua jawabannya bisa
+  dibandingkan bolak-balik. Default mati. Ada peringatan di laporan kalau sebagian
+  pembagian jatuh ke bagi-rata.
+
+**Dua hal dari mockup yang tidak diambil, karena `docs/ui-rules.md` mengikat:** sort
+dengan klik header (§8: "Sorting is a field in the panel, not a control of its own") —
+tetap di panel filter; dan modal Tambah/Edit akun (§16 menyebut Akun sebagai Form
+Entitas, satu halaman dengan FormActionBar) — tetap halaman `/new` dan `/[id]/edit`.
+Kolom **Sumber** ("Bawaan sistem") dipadatkan jadi ikon gembok di sebelah kode, bukan
+dibuang: tabelnya tetap lima kolom seperti mockup, tapi tetap ada yang memberi tahu akun
+mana yang kodenya terkunci sebelum server menolak mengubahnya.
+
+---
+
+## [Unreleased] — Hari Ini: papan harian semua layanan
+
+16 September 2026, atas permintaan. Dari mockup `buloo-hari-ini-v1.html`.
+
+**`/dashboard/booking` sekarang adalah "Hari Ini"** (`TodayScreen`) — satu layar
+operasional berisi seluruh lini layanan pada hari yang sedang dibuka, dengan tiga
+tampilan: Harian, Mingguan, dan Bulanan.
+
+- **Kolomnya dibaca dari harinya, bukan didaftar di kode.** Satu kolom per lini
+  bisnis, diambil dari `service.serviceType` yang disimpan tiap booking. Lini
+  yang tidak ada bookingnya hari itu tidak digambar sama sekali — petshop yang
+  belum membuka hotel tidak pernah melihat kolom hotel.
+- **Kolom Hotel dan Antar-Jemput tetap terpasang, dalam keadaan mati** dan
+  berlabel "Segera" (16 September 2026, atas permintaan): yang membaca layar ini
+  tiap pagi perlu tahu di mana penitipan dan antar-jemput nanti muncul, dan kolom
+  yang hilang sama sekali tidak mengatakan itu. Keduanya tidak diisi baris palsu.
+  Kolom Hotel yang mati otomatis tidak muncul kalau tenant memang punya lini
+  bernama Hotel — kolom aslinya yang dipakai, tidak pernah dua-duanya.
+- **Kolom Antar-Jemput yang tadinya hidup dicabut.** Ia sempat berisi booking
+  yang perlu dijemput/diantar/dikerjakan di rumah, dibaca dari flag di booking.
+  Permintaan jemput-antar sekarang terbaca di panel rinciannya ("Dijemput ·
+  Diantar pulang" beserta alamat), dan `tripsOn` disimpan sebagai query yang akan
+  dipakai kolom itu ketika perjalanan sudah jadi catatan sendiri.
+- **Isi kartu:** nama hewan dan jam di baris pertama, **nama layanan** di
+  bawahnya, lalu chip **status · groomer · durasi** (16 September 2026, atas
+  permintaan). Nama pelanggan tidak lagi di kartu — papan harian menjawab "apa
+  yang dikerjakan dan siapa yang pegang", pemiliknya ada di panel. Di kartu
+  Antar-Jemput baris keduanya tetap alamat, karena di sana pekerjaannya adalah
+  perjalanan itu. Kalau belum ada groomernya, chipnya berbunyi "Belum
+  ditentukan".
+- **Kartu dikelompokkan Pagi / Siang, tanpa jam.** Sistem ini tidak punya blok
+  sesi; batasnya jam 12 dan itu murni bantuan membaca, bukan jam buka toko.
+- **Tombol status di panel berukuran kecil dan sebaris** (`BookingStatusActions`
+  varian `prominent` + `dense`, 16 September 2026, atas permintaan): di rail
+  selebar 21rem, ukuran `lg` membuat "Mark completed →" dan "Other statuses ▾"
+  turun dua baris. Yang berubah hanya ukurannya — langkah yang ditawarkan tetap
+  sama dengan halaman booking. Label terpanjang ("Return to pawrents →") masih
+  bisa turun baris, dan itu memang dibiarkan.
+- **Panel kanan** menampilkan satu booking: layanan, jadwal, durasi, groomer,
+  status faktur, nilai, catatan internal, kontrol status, tahapan (Mulai /
+  Selesai / Ganti PIC), dan jalan ke detail bookingnya.
+- **Kartu ringkasan** memakai beban ("beban 4j 30m"), bukan kapasitas. Tidak ada
+  satu pun sumber yang menyatakan jam kerja seorang groomer — alasan yang sama
+  dengan kalender jam.
+- **Kartu ringkasan ada di kolom kiri, satu baris, sejajar dengan panel kanan** —
+  seperti `.grid2` di mockup. Bukan pita selebar halaman: pita akan mendorong
+  panel turun setinggi satu kartu dari hal-hal yang jadi isinya. Lebarnya
+  `auto-fit minmax(8.75rem, 1fr)`, jadi lima kartu muat sebaris di samping panel
+  21rem pada layar 1440, dan membungkus sendiri kalau ruangnya kurang. `StatTile`
+  dan `PendingStatTile` dapat varian `dense` untuk itu (padding lebih rapat,
+  angka 20px) — label tetap sentence case karena huruf besar 13px pecah dua baris
+  di kartu selebar 145px.
+- **Tiga kartu mockup yang datanya belum ada tetap dipasang, dalam keadaan mati**
+  dan berlabel "Segera" (`PendingStatTile`): Okupansi hotel, Masuk / keluar, dan
+  Perjalanan. Bukan angka karangan dan bukan strip — strip terbaca sebagai gagal
+  memuat. "Perjalanan" mati atas permintaan meski jumlahnya sebetulnya bisa
+  dihitung dari `pickupRequested` / `deliveryRequested` / `location`; angkanya
+  tetap terlihat di kolom Antar-Jemput dan di bawah tanggal, dan kartunya menunggu
+  antar-jemput jadi catatan sendiri (jam berangkat, driver, zona, tarif).
+- **Filter** (§8: panel, dua multi-select): Layanan dan PIC, pilihannya dibaca
+  dari rentang yang sedang dimuat.
+- **"Booking baru"** membuka dua pintu: Grooming (`/dashboard/layanan/grooming/new`)
+  dan Layanan lain (`/dashboard/booking/new`).
+
+**Daftar booking berpaginasi yang dulu ada di `/dashboard/booking` dihapus**
+(`BookingsScreen`, `BookingsTable`, `BookingsToolbar`, `useBookings`). Pencarian
+per hewan/nomor, lensa "Belum ditagih", dan saringan status hidup di papan per
+lini — Layanan › Grooming. Form yang menyimpan beberapa booking sekaligus kini
+mendarat di `?tanggal=` (harinya), bukan `?groupId=`. Kalender jam per groomer
+tetap ada di `/dashboard/booking/kalender`, dengan tombol di bar tanggal.
+
+**Yang tidak digambar karena datanya belum ada:** okupansi kamar dalam persen,
+jam check-in/check-out, driver, zona dan tarif perjalanan, serta tombol Chat
+(booking tidak menyimpan nomor telepon).
+
+**Dipindahkan supaya dipakai bersama, bukan disalin:** `billingOf` dan label
+faktur ke `features/booking/billing.ts`, helper tanggal ke
+`features/booking/day.ts`, `formatMoneyShort` ke `utils/decimal.ts`, pemuatan
+semua halaman booking ke `features/booking/listAll.ts`, tahapan sesi ke
+`BookingSessionSteps`, dan daftar centang dalam panel filter ke
+`FilterCheckList` di `@/components`.
+
+## [Unreleased] — Kru sesi: persen komisi dan level groomer
+
+14 September 2026, atas permintaan.
+
+**Kontrol groomer di tiap sesi booking dibentuk ulang** (`SessionCrew`). Tiap
+orang tampil sebagai satu baris: "Sinta · Senior", kotak persen bagian komisinya,
+lalu tombol ×. Di bawah daftar ada pilihan "+ Tambah groomer…" tanpa label
+terpisah.
+
+- **Persen selalu bilangan bulat:** bagi rata dibulatkan ke bawah dan groomer
+  terakhir mengambil sisanya (33 · 33 · 34). Kalau yang diketik ada komanya
+  ("37,5"), angkanya dibulatkan ke bawah.
+- **Menyimpan persen:** tersimpan saat kotak ditinggalkan atau Enter ditekan.
+- **Header kartu sesi:** menampilkan tiap nama beserta persennya, mis. "Sinta
+  33% · Dedi 33% · Rina 34%".
+- **Dua orang:** kotak yang satunya otomatis diisi sisanya.
+- **Tiga orang atau lebih:** total harus 100 dulu. Kalau belum, muncul "Total
+  bagian …% — harus 100%." dan tidak ada yang dikirim.
+- **Satu orang:** kotaknya nonaktif karena tidak ada yang dibagi.
+- **Sesi selesai, atau tanpa izin ubah:** persen hanya ditampilkan sebagai teks.
+- **Kru berubah:** menambah atau menghapus orang membuat server membagi rata lagi.
+
+**Level groomer** (`User.groomerLevel`: Junior / Senior) bisa diatur di bagian
+Roster pengguna, dan hanya muncul kalau "Groomer" dicentang. Label yang sama
+dipakai di baris kru dan di pilihan groomer. Copy tombol tambah memakai Bahasa
+("+ Tambah groomer…"), bukan "Assign groomer" seperti di mockup, sesuai ui-rules
+§12.
+
+## [Unreleased] — Booking: satu hewan, satu layanan utama
+
+14 September 2026, atas permintaan. Kontraknya ada di
+`Booking-Satu-Hewan-Implementation-Plan.md` di root repo. Satu booking (satu
+nomor) sekarang = satu hewan + satu layanan utama + add-on-nya. Pemilik yang
+membawa dua hewan mendapat dua booking yang tertaut lewat `groupId`.
+
+**Tipe dan service.** `Booking` tidak lagi punya `pets[]`, `items[]`, `petCount`,
+atau `billingState: "partial"`. Isinya sekarang `petId`/`petName`, `status`,
+`service` tunggal (dengan `sessions` dan `addons`), `groomerName`, `groupId`, dan
+`group[]` di detail. `BookingPet`, `BookingPetService`, `BookingItem`,
+`BookingItemInput`, `petItemId`, dan `bookingItemId` di baris kasir/faktur
+dihapus. Rute yang berganti nama: `setNotes` (`/:id/notes`), `setMedia`
+(`/:id/media`), `advanceSessionWork` / `correctSessionTimes`
+(`/:id/sessions/:sessionId/work|times`). Status, barang bawaan, dan groomer
+tidak lagi mengirim `petId`/`serviceId`. `create` mengembalikan
+`{ groupId, bookings }`.
+
+**Form.** Mode buat punya banyak kartu, dan tiap kartu = satu booking: hewan,
+**satu** layanan utama, add-on, durasi, groomer, dua catatan, barang bawaan.
+Maksimal 10 kartu. Hewan yang sama boleh muncul dengan layanan lain, tetapi
+tidak dengan layanan yang sama. Kalau yang tersimpan satu booking, form membuka
+detailnya; kalau lebih, form membuka daftar `?groupId=` dengan chip "Satu
+kunjungan". Mode ubah hanya punya satu kartu. Tombol di dua mode sekarang
+"Simpan booking" (§16).
+
+**Detail jadi satu halaman.** `BookingDetailScreen` sekarang juga memuat isi
+`BookingPetWorkScreen`: status, sesi, catatan, album, titipan, dan riwayat.
+Ditambah kartu "Satu kunjungan" yang berisi saudara satu grup dan tersembunyi
+kalau kosong. `/booking/[id]/hewan/[petId]` kini `redirect()` ke
+`/booking/[id]`. Dihapus: `BookingPetWorkScreen`, `BookingPetGroupCard`,
+`BookingPetRowCard`, `BookingPetNotesCard` (diganti `BookingCard` dan
+`BookingNotesCard`).
+
+**Daftar, papan, kalender, kasir, faktur.** Satu baris per booking. Papan
+grooming tetap memakai kontrol di baris. Dialog tarik booking di kasir
+menampilkan satu baris per booking, dan keranjang mengelompokkan per
+`bookingId`. Panel faktur membaca `service` + `addons` dengan satu badge status
+per booking.
+
+Belum ada: biaya antar jemput dan pilihan layanan transport (plan §2).
+
 ## [Unreleased] — Favicon jadi ikon Buloo
 
 Tab browser masih menampilkan segitiga bawaan Next.js. Sekarang ikon `b` navy —

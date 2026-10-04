@@ -17,6 +17,13 @@ export const PERMISSION_CATALOG = {
   branches: ["create", "read", "update", "delete", "restore"],
   warehouses: ["create", "read", "update", "delete", "restore"],
   businessLines: ["create", "read", "update", "delete", "restore"],
+  /**
+   * A tenant's own labels for the kind of customer it is dealing with
+   * (Reguler, Reseller, Grosir, …) — Pengaturan › Tipe pelanggan
+   * (24 September 2026). No `delete`/`restore`: nothing references a
+   * customer type yet, so there is nothing a delete could strand.
+   */
+  customerTypes: ["create", "read", "update"],
   categories: ["create", "read", "update", "delete", "restore"],
   products: ["create", "read", "update", "delete", "restore"],
   // The stock ledger is append-only, so it has no `update`, `delete` or
@@ -119,6 +126,41 @@ export const PERMISSION_CATALOG = {
    * it posted still has a document behind it.
    */
   customerInvoices: ["create", "read", "update", "pay", "void"],
+  /**
+   * Transaksi Keuangan — every numbered movement of money. `create` records an
+   * expense or other income; `update` and `void` correct and cancel any payment,
+   * and are supervisory.
+   */
+  cashTransactions: ["read", "create", "update", "void"],
+  /*
+    Biaya Tetap. `post` IS ITS OWN GRANT and the important one: everything else
+    edits a plan that has never touched the ledger, while `post` writes a real
+    transaction and its journal entry. Mirrors the server's catalog.
+  */
+  fixedCosts: ["read", "create", "update", "delete", "post"],
+  /**
+   * The membership catalogue. Benefits have no feature of their own because
+   * they have no routes of their own — a benefit is edited by PATCHing the plan
+   * that holds it, so one grant over the plan is one grant over its benefits.
+   */
+  membershipPlans: ["create", "read", "update", "delete", "restore"],
+  /**
+   * Membership cards. NOT the uniform five, and the two odd ones carry the
+   * authority the others do not:
+   *
+   *   create — ISSUES a card outside any transaction: giving a package away
+   *            rather than honouring one already paid for. Managers, not the
+   *            counter.
+   *   redeem — SPENDS a benefit. Every cashier has it, because honouring an
+   *            entitlement is the counter's daily work. Gated separately for the
+   *            same reason `posTransactions:discountOverride` is: applying a
+   *            benefit is giving money away, but the person allowed to honour an
+   *            entitlement is not automatically allowed to mint one.
+   *
+   * No `delete`: a card is business history the moment it is issued, and one
+   * sold by mistake is cancelled, which leaves a trail.
+   */
+  petMemberships: ["create", "read", "update", "cancel", "redeem"],
   chartOfAccounts: ["create", "read", "update", "delete", "restore"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is
   // its own action because correcting the ledger is a different privilege from
@@ -147,6 +189,15 @@ export const PERMISSION_CATALOG = {
    * hears that a pet died is the same person who edits the row.
    */
   pets: ["create", "read", "update", "delete", "restore"],
+
+  /**
+   * The species, breeds, sizes and coats a tenant describes animals with —
+   * Pengaturan › Layanan › Data hewan (14 September 2026).
+   *
+   * NO `read`: GET /api/pet-options needs only a session, because every screen
+   * that records an animal reads it. Only changing the lists is gated.
+   */
+  petOptions: ["create", "update", "delete", "restore"],
 
   /**
    * The catalogue of what a tenant sells the DOING of — grooming, penitipan.
@@ -194,6 +245,11 @@ export const PERMISSION_CATALOG = {
    * (kriteria 4.6), but pressing through one is a decision that should belong to
    * somebody senior. It was MISSING from this list while the server has had it
    * since FR-4: the role editor could not grant what the API was checking.
+   *
+   * `setPrice` IS TYPING A PRICE OR A DISCOUNT on a booking (15 September 2026).
+   * The till and the invoice bill that price, so without its own grant a booking
+   * would be a way round the cashier's discount limit. Without it the grooming
+   * booking form shows the catalogue's price, read-only.
    */
   bookings: [
     "create",
@@ -202,6 +258,7 @@ export const PERMISSION_CATALOG = {
     "advanceStatus",
     "cancel",
     "overrideClash",
+    "setPrice",
   ],
 
   /**

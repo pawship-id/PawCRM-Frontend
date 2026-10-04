@@ -186,7 +186,7 @@ function previewOf(
       },
       {
         accountCode: "1201",
-        accountName: "Persediaan Barang Dagangan",
+        accountName: "Persediaan Barang",
         debit: null,
         credit: "800000.0000",
       },
@@ -1418,7 +1418,7 @@ describe("JournalPreview", () => {
           },
           {
             accountCode: "2101",
-            accountName: "Utang Supplier",
+            accountName: "Utang Usaha",
             debit: null,
             credit: "160000.0000",
           },
@@ -1430,7 +1430,7 @@ describe("JournalPreview", () => {
     expect(within(debitRow).getByText("Rp 160.000")).toBeInTheDocument();
     expect(within(debitRow).getByText("—")).toBeInTheDocument();
 
-    const creditRow = screen.getByText("Utang Supplier").closest("tr")!;
+    const creditRow = screen.getByText("Utang Usaha").closest("tr")!;
     expect(within(creditRow).getByText("Rp 160.000")).toBeInTheDocument();
 
     expect(screen.queryByText("Rp 0")).not.toBeInTheDocument();
@@ -1453,13 +1453,13 @@ describe("JournalPreview", () => {
           },
           {
             accountCode: "1201",
-            accountName: "Persediaan Barang Dagangan",
+            accountName: "Persediaan Barang",
             debit: "2000000.0000",
             credit: "0",
           },
           {
             accountCode: "2101",
-            accountName: "Utang Supplier",
+            accountName: "Utang Usaha",
             debit: "0",
             credit: "2160000.0000",
           },
@@ -1469,7 +1469,7 @@ describe("JournalPreview", () => {
 
     const hotelRow = screen.getByText("Persediaan Hotel").closest("tr")!;
     const retailRow = screen
-      .getByText("Persediaan Barang Dagangan")
+      .getByText("Persediaan Barang")
       .closest("tr")!;
 
     expect(within(hotelRow).getByText("Rp 160.000")).toBeInTheDocument();
@@ -1484,7 +1484,7 @@ describe("JournalPreview", () => {
 /**
  * OPENING STOCK — the screen whose whole reason for existing is the ACCOUNT it
  * posts to. Its quantities are the same ones an adjustment would write; what
- * differs is that they land on 3101 Modal / Saldo Awal instead of on 5201
+ * differs is that they land on 3101 Modal Disetor instead of on 5201
  * Kerugian Persediaan, which is the difference between a shop's day-one
  * inventory and a shop that appears to have earned a profit selling nothing.
  *

@@ -59,9 +59,13 @@ export interface BatchesQuery {
 export const DEFAULT_BATCHES_QUERY: BatchesQuery = {
   branchId: "",
   warehouseId: "",
-  // 30 days is the API's own default horizon, and the number the "perhatian"
-  // tile is labelled with.
-  horizon: "30",
+  /*
+    EVERY LOT, not the 30-day alert list. Decided 12 Sep 2026 on request: a
+    30-day default hid every lot with a later expiry or none at all, and read as
+    "this product has no batch". The alert question is still one pick away, and
+    the "Perhatian — 30 hari" tile keeps answering it on its own.
+  */
+  horizon: "all",
   includeSpent: false,
   search: "",
   expiryFrom: "",

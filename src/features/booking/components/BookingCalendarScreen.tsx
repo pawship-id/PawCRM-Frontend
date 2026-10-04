@@ -12,11 +12,15 @@ import {
   namedOptions,
 } from "@/components";
 import { Button } from "@/components/ui/button";
+import { bookingDetailPath } from "@/features/antar-jemput/paths";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { bookingService } from "@/services/booking.service";
 import type { BookingCalendar, BookingCalendarEntry, BookingStatus } from "@/types/api";
 
-import { BOOKING_STATUS_LABELS } from "./BookingStatusBadge";
+import {
+  BOOKING_STATUS_LABELS,
+  bookingStatusLabel,
+} from "./BookingStatusBadge";
 
 type View = "harian" | "mingguan";
 
@@ -87,11 +91,19 @@ function hoursMinutes(minutes: number): string {
  */
 const STATUS_TONE: Record<BookingStatus, string> = {
   draft: "border-border bg-surface-hover text-muted",
+  /* Waiting on the SHOP to answer — the one thing on a day sheet that is. */
+  requested: "border-warning bg-tint-warning text-foreground",
   confirmed: "border-primary/40 bg-navy-100 text-primary",
-  check_in: "border-primary bg-navy-100 text-primary",
+  /* The two trip legs read as travel rather than as a state of the animal. */
+  pickup: "border-info bg-tint-info text-info",
+  arrived: "border-primary bg-navy-100 text-primary",
   in_progress: "border-warning bg-tint-warning text-foreground",
   completed: "border-success bg-tint-success text-foreground",
+  delivery: "border-info bg-tint-info text-info",
+  return_to_pawrents: "border-success bg-tint-success text-foreground",
   cancelled: "border-danger bg-tint-danger text-danger-ink",
+  /* Never on a block — a booking is never in it. Present for the exhaustive map. */
+  rescheduled: "border-border bg-surface-hover text-muted",
 };
 
 /**
@@ -147,12 +159,12 @@ const longDay = (value: string) =>
 /**
  * The day sheet, drawn — FR-3 / PCR-042.
  *
- * A BLOCK IS A ROW, NOT A BOOKING. Since PCR-040 a visit may bring Mochi and
- * Coco with different groomers, so one booking shows up in two columns at once.
- * Blocks of one visit carry the same `bookingId` and are outlined together, and
- * clicking either opens the whole visit.
+ * A BLOCK IS A SESSION, NOT A BOOKING. Mochi's bath is Sinta's and the blow dry
+ * is Rio's, so one booking shows up in two columns at once. Both blocks carry
+ * the same `bookingId`, and clicking either opens that booking. A booking with
+ * no session yet is one block of its own.
  *
- * "BELUM DITENTUKAN" IS A COLUMN, and it is last. A row nobody is assigned to is
+ * "BELUM DITENTUKAN" IS A COLUMN, and it is last. Work nobody is assigned to is
  * the ordinary state of a booking taken over the phone; leaving it off the
  * calendar would hide exactly the work that still needs somebody put on it.
  *
@@ -508,7 +520,7 @@ function Block({
       <span className="block truncate">{entry.serviceName}</span>
       {/* THE STATUS AS WORDS. Colour is never the only difference. */}
       <span className="block truncate opacity-80">
-        {BOOKING_STATUS_LABELS[entry.status]}
+        {bookingStatusLabel(entry.status, entry)}
         {entry.durationMin === null && " · durasi belum diisi"}
       </span>
     </button>
@@ -575,11 +587,8 @@ function WeekView({
 }
 
 /**
- * What one block is.
- *
- * IT OPENS THE WHOLE VISIT, not just the row that was clicked: Mochi's block
- * names Coco too, because the customer is collecting both and the person reading
- * this is about to talk to them.
+ * What one block is — the animal, the service, the time and who is on it — and
+ * the way into the booking it belongs to.
  */
 function DetailPanel({
   entry,
@@ -605,20 +614,25 @@ function DetailPanel({
             {entry.customerName ?? "—"}
             {entry.bookingNumber ? ` · ${entry.bookingNumber}` : ""}
           </p>
-          {entry.notes && (
-            <p className="mt-1 text-xs text-muted">{entry.notes}</p>
+          {/*
+            THE INTERNAL NOTE. A block is a staff day sheet — "takut hairdryer"
+            is what belongs on it. The customer-facing note is a message for the
+            owner, and the API does not send it to this endpoint at all.
+          */}
+          {entry.internalNotes && (
+            <p className="mt-1 text-xs text-muted">{entry.internalNotes}</p>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {/*
             THE WAY OUT OF THE CALENDAR AND INTO THE BOOKING. A block answers
             "who is where at ten"; the questions that follow it — what else is on
-            this visit, has it been billed, what is this animal allergic to —
+            this booking, has it been billed, what is this animal allergic to —
             live on the booking, and making somebody find it by number would be
             a search for something they are already looking at.
           */}
           <Button asChild variant="secondary" size="sm">
-            <Link href={`/dashboard/booking/${entry.bookingId}`}>
+            <Link href={bookingDetailPath({ _id: entry.bookingId, tripLeg: entry.tripLeg })}>
               Buka booking
             </Link>
           </Button>

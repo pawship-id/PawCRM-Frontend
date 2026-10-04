@@ -27,6 +27,7 @@ const EVERY_FILTER: Required<BookingListQuery> = {
   limit: 20,
   customerId: "5a7f1f77bcf86cd799439011",
   petId: "5a7f1f77bcf86cd799439022",
+  groupId: "5a7f1f77bcf86cd799439055",
   groomerUserId: "5a7f1f77bcf86cd799439033",
   branchId: "5a7f1f77bcf86cd799439044",
   status: "confirmed",

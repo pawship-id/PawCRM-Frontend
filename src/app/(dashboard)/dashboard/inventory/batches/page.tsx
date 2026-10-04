@@ -1,31 +1,31 @@
 import type { Metadata } from "next";
 
-import { Breadcrumb } from "@/components";
-import { BatchesScreen } from "@/features/inventory";
+import { BatchesScreen, StockModuleHeader } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Batch & Expired · Buloo" };
+export const metadata: Metadata = {
+  title: "Batch & Expired · Stok · Buloo",
+};
 
+/**
+ * The Batch & Expired tab of the Stok module.
+ *
+ * THE HEADER SITS OUTSIDE THE PERMISSION GATE, deliberately: a reader who may
+ * not read lots still gets the module's title and its tab row, so the refusal
+ * below reads as "not this tab" rather than as a broken page. The header draws
+ * no Batch & Expired tab for them either — it gates each tab itself.
+ *
+ * THE OLD SUBTITLE IS GONE — it said the list was "diurutkan dari yang paling
+ * dekat kedaluwarsa", which the toolbar's Urutkan field has been able to change
+ * for a while now. A heading that states a sort somebody can turn off is a
+ * heading that starts lying on the second click.
+ */
 export default function BatchesPage() {
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Breadcrumb
-          items={[
-            { label: "Inventory", href: "/dashboard/inventory" },
-            { label: "Batch & Expired" },
-          ]}
-        />
-        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-          Batch &amp; Expired
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Semua lot di seluruh gudang, diurutkan dari yang paling dekat
-          kedaluwarsa. Yang sudah lewat tanggal muncul paling atas.
-        </p>
-      </div>
+      <StockModuleHeader />
 
-      {/* The nav already hides this link from a role without the grant; this
+      {/* The nav already hides this module from a role without the grant; this
           covers direct URL entry. */}
       <RequirePermission feature="productBatches">
         <BatchesScreen />

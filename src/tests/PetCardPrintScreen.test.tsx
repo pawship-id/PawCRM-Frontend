@@ -4,12 +4,19 @@ import userEvent from "@testing-library/user-event";
 import { PetCardPrintScreen } from "@/features/pets";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
+import { petOptionService } from "@/services/petOption.service";
 import type { Pet } from "@/types/api";
 
+import {
+  PET_OPTION_FIXTURES,
+  makePetOption,
+  primePetOptions,
+} from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/pet.service");
 jest.mock("@/services/customer.service");
+jest.mock("@/services/petOption.service");
 
 const pets = petService as jest.Mocked<typeof petService>;
 const customers = customerService as jest.Mocked<typeof customerService>;
@@ -19,7 +26,7 @@ const pet = (overrides: Partial<Pet> = {}): Pet =>
     _id: "pet-1",
     customerId: "cust-1",
     name: "Bruno",
-    species: "dog",
+    species: "opt-species-anjing",
     sex: "male",
     breed: "Golden Retriever",
     weightKg: 24,
@@ -41,6 +48,7 @@ const pet = (overrides: Partial<Pet> = {}): Pet =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  primePetOptions(petOptionService.list);
   pets.getById.mockResolvedValue(pet());
   pets.timeline.mockResolvedValue({
     entries: [
@@ -82,6 +90,25 @@ describe("PetCardPrintScreen", () => {
     });
     expect(heading).toBeInTheDocument();
     expect(screen.getByText(/sampo berparfum/i)).toBeInTheDocument();
+  });
+
+  it("names the species in the shop's own word", async () => {
+    /*
+      SPECIES ARE TENANT DATA since 14 Sep 2026. A shop that renamed `dog`
+      prints its own word on the card, not the seeded "Anjing".
+    */
+    primePetOptions(
+      petOptionService.list,
+      PET_OPTION_FIXTURES.map((option) =>
+        option.type === "species" && option.code === "dog"
+          ? { ...option, label: "Guguk" }
+          : option,
+      ),
+    );
+
+    renderWithAuth(<PetCardPrintScreen petId="pet-1" />);
+
+    expect(await screen.findByText(/Guguk/)).toBeInTheDocument();
   });
 
   it("carries the two phone numbers somebody would need in a hurry", async () => {

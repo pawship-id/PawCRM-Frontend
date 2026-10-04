@@ -99,6 +99,9 @@ describe("BusinessLinesScreen", () => {
       expect(create).toHaveBeenCalledWith({
         name: "Grooming",
         color: expect.stringMatching(/^#[0-9A-Fa-f]{6}$/),
+        // Empty means EVERY branch — see the model. A new line is offered to the
+        // whole company until somebody narrows it.
+        branchIds: [],
       }),
     );
   });

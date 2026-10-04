@@ -2,13 +2,30 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Pencil, Trash2, RotateCcw } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  EllipsisVertical,
+  Eye,
+  Pencil,
+  Power,
+  PowerOff,
+  Trash2,
+  RotateCcw,
+} from "lucide-react";
 
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
 import { swalToast } from "@/lib/swal";
 import { ConfirmDialog, HighlightText } from "@/components";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -20,19 +37,70 @@ import {
 import { Can, usePermissions } from "@/features/permissions";
 import type { Customer } from "@/types/api";
 
-import { CustomerVipBadge, CustomerStatusBadge } from "./CustomerVipBadge";
+import {
+  CustomerVipBadge,
+  CustomerStatusBadge,
+  isCustomerActive,
+} from "./CustomerVipBadge";
 
 /** The row action that opens a confirm dialog, plus the customer it targets. */
-type PendingAction = { kind: "delete" | "restore"; customer: Customer } | null;
+type PendingAction = {
+  kind: "delete" | "restore" | "deactivate" | "activate";
+  customer: Customer;
+} | null;
+
+/** "12 Jan 2025" — the mockup's Bergabung column, from `createdAt`. */
+function joinedOn(iso: string): string {
+  return new Date(iso).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 /**
- * The customer list table (shadcn/ui Table) with its row actions.
+ * The customer list table, in the shape the mockup draws (buloo-navigation-v3,
+ * `pelangganDaftar`): who they are, how to reach them, and the two shortcuts —
+ * chat and edit — that mean a small job does not need the profile open.
  *
- * Read data flows in via props (from useCustomers); the lifecycle actions
- * (delete, restore) are owned here because they are local to a row: each opens a
+ * THE ROW IS THE WAY IN. Clicking anywhere on it opens the profile, which is what
+ * the mockup's callout promises: a customer's page is reached from their row, not
+ * from a menu. The NAME IS ALSO A REAL LINK, and that is not redundancy — the row
+ * handler is a mouse affordance, while the link is what a keyboard tabs to and
+ * what a screen reader announces as a destination. The handler ignores clicks that
+ * landed on a control, and clicks that bubbled out of the confirm dialog's portal,
+ * so the chat and edit buttons still do their own job — GroomingBookingsTable's
+ * two guards, for the same two reasons.
+ *
+ * EVERY COLUMN THE MOCKUP DRAWS IS REAL NOW (27 September 2026). Kategori is
+ * `customerTypeName`, filed from Pengaturan › Tipe pelanggan — it arrives beside
+ * its id on every row, so the table prints a word while the form edits a
+ * reference. Kode is allocated by the shared counter when a customer is
+ * registered.
+ *
+ * A DASH IN THE KODE CELL IS NOT A FAILED LOAD. Customers registered before the
+ * series existed carry no code until `seeds/backfillCustomerCodes.js` has been
+ * run against that deployment, and inventing one for them would look exactly
+ * like a number the shop had printed on a card years ago.
+ *
+ * DELETE STAYS ON THE ROW, unlike the mockup, which moves it into the form. The
+ * mockup is right that deleting is not list work, but the list is where somebody
+ * clearing up duplicates does it, and taking a working button away to match a
+ * drawing is a loss. It is icon-only here and spelled out in the profile's danger
+ * zone, so the row stays quiet without hiding anything.
+ *
+ * NONAKTIFKAN / AKTIFKAN JOINED THE MENU (2 October 2026), the same two axes
+ * `SuppliersTable` already has: Hapus/Pulihkan is the soft delete, its own
+ * endpoints and its own permission; Nonaktifkan/Aktifkan is an ordinary
+ * `isActive` patch gated on `customers:update` — the same grant Ubah already
+ * needs — and only hides the customer from another module's picker (POS,
+ * booking, the sales invoice form). A deleted row offers neither: restoring
+ * first is what makes them meaningful again.
+ *
+ * Read data flows in via props (from useCustomers); the lifecycle actions (delete,
+ * restore) are owned here because they are local to a row: each opens a
  * ConfirmDialog, calls the matching service method, and then asks the parent to
- * refetch via `onChanged`. Edit is a plain link to the per-customer route.
- * Mirrors BranchesTable.
+ * refetch via `onChanged`. Mirrors PetsTable.
  */
 export function CustomersTable({
   customers,
@@ -46,19 +114,20 @@ export function CustomersTable({
   /** Active search term, highlighted in the searchable cells (name, email, phone). */
   search?: string;
 }) {
+  const router = useRouter();
   const [pending, setPending] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const { can } = usePermissions();
 
-  // Show the Actions column only when at least one CURRENTLY-LISTED row would
-  // render a button — so a restore-only role sees the column while "show
-  // deleted" is on (deleted rows → Restore) but not while it is off (live rows
-  // → Edit/Delete, which that role lacks). Mirrors the per-button gating below.
+  /*
+    A LIVE ROW ALWAYS HAS ONE — Detail, which needs no grant beyond the
+    `customers:read` this table already required (28 September 2026). Only a
+    DELETED row can come up empty: there is no profile to open for one, so the
+    column is worth drawing only if it can be restored.
+  */
   const rowHasActions = (customer: Customer) =>
-    customer.deletedAt !== null
-      ? can("customers", "restore")
-      : can("customers", "update") || can("customers", "delete");
+    customer.deletedAt === null || can("customers", "restore");
   const showActions = customers.some(rowHasActions);
 
   function closeDialog() {
@@ -74,10 +143,18 @@ export function CustomersTable({
     try {
       const { kind, customer } = pending;
       if (kind === "delete") await customerService.remove(customer._id);
-      else await customerService.restore(customer._id);
+      else if (kind === "restore") await customerService.restore(customer._id);
+      else {
+        // Deactivating is an ordinary field edit, not its own verb — see the
+        // service. "activate" and "deactivate" differ only in the value sent,
+        // the same shape SuppliersTable already uses for its own isActive.
+        await customerService.update(customer._id, {
+          isActive: kind === "activate",
+        });
+      }
       setPending(null);
       onChanged();
-      swalToast(kind === "delete" ? "Customer deleted." : "Customer restored.");
+      swalToast(TOASTS[kind](customer.name));
     } catch (error) {
       // `reason` first — deleting a customer that still has pets is refused with
       // a 409 whose message is only the headline; the count of what is in the way
@@ -85,7 +162,7 @@ export function CustomersTable({
       setActionError(
         error instanceof ApiError
           ? (error.reason ?? error.message)
-          : "Something went wrong. Please try again.",
+          : "Terjadi kesalahan. Coba lagi.",
       );
     } finally {
       setBusy(false);
@@ -94,105 +171,248 @@ export function CustomersTable({
 
   if (!loading && customers.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center text-sm text-muted-foreground">
-        No customers match the current filters.
+      <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center text-sm text-muted">
+        Belum ada pelanggan yang cocok dengan filter ini.
       </div>
     );
   }
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <Table className={loading ? "opacity-60" : undefined}>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>VIP tier</TableHead>
+              <TableHead>Kode</TableHead>
+              <TableHead>Pelanggan</TableHead>
+              <TableHead>Kontak</TableHead>
+              <TableHead>Kategori</TableHead>
               <TableHead>Status</TableHead>
-              {showActions && (
-                <TableHead className="text-right">Actions</TableHead>
-              )}
+              <TableHead>Bergabung</TableHead>
+              {showActions && <TableHead className="text-right">Aksi</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
             {customers.map((customer) => {
               const deleted = customer.deletedAt !== null;
+              const active = isCustomerActive(customer);
               return (
-                <TableRow key={customer._id}>
+                <TableRow
+                  key={customer._id}
+                  className="cursor-pointer"
+                  onClick={(event) => {
+                    /*
+                      TWO GUARDS, BOTH BORROWED FROM GroomingBookingsTable.
+
+                      React bubbles events out of PORTALS, so a press inside the
+                      confirm dialog this row opens would otherwise reach here
+                      and navigate away from the question being answered.
+
+                      And a click on a control inside the row is that control's,
+                      not the row's — otherwise opening the kebab would also
+                      navigate.
+                    */
+                    const target = event.target as HTMLElement;
+                    if (!event.currentTarget.contains(target)) return;
+                    if (target.closest("a, button, input, label")) return;
+                    router.push(`/dashboard/master/customers/${customer._id}`);
+                  }}
+                >
                   <TableCell>
-                    <div className="font-medium text-foreground">
-                      <HighlightText text={customer.name} query={search} />
+                    {customer.code ? (
+                      // tabular-nums, never font-mono — ui-rules §5. Keeps the
+                      // column from shifting as the digits differ in width.
+                      <span className="tabular-nums text-muted">
+                        <HighlightText text={customer.code} query={search} />
+                      </span>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/dashboard/master/customers/${customer._id}`}
+                        className="font-medium text-foreground underline-offset-2 hover:underline"
+                      >
+                        <HighlightText text={customer.name} query={search} />
+                      </Link>
+                      {/*
+                        THE TIER RIDES WITH THE NAME, where the mockup puts the
+                        membership chip. It is a property of the person rather
+                        than a column anybody sorts by, and most customers have
+                        none — a column of dashes for the sake of one badge.
+                      */}
+                      {/*
+                        A COMPANY SAYS SO BESIDE ITS NAME, which is where the
+                        mockup puts it and where it is useful: "Toko Hewan Mitra
+                        Jaya" reads as a shop either way, but plenty of companies
+                        are registered under a person's name. Individuals get no
+                        badge — a label on 95% of the rows is noise.
+                      */}
+                      {customer.kind === "company" && (
+                        <Badge
+                          variant="outline"
+                          className="border-transparent bg-tint-warning text-warning"
+                        >
+                          Perusahaan
+                        </Badge>
+                      )}
+                      {customer.vipTier && (
+                        <CustomerVipBadge tier={customer.vipTier} />
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="text-muted-foreground">
+                    {/*
+                      PHONE ABOVE EMAIL, both in one cell, as the mockup has it:
+                      this is a shop that rings and WhatsApps people, so the
+                      number is the contact and the address is the footnote.
+                      tabular-nums keeps the digits from dancing between rows.
+                    */}
+                    <div className="tabular-nums text-foreground">
+                      {customer.phone ? (
+                        <HighlightText text={customer.phone} query={search} />
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted">
                       {customer.email ? (
                         <HighlightText text={customer.email} query={search} />
                       ) : (
                         "—"
                       )}
-                    </span>
+                    </div>
                   </TableCell>
                   <TableCell>
-                    <span className="text-muted-foreground">
-                      {customer.phone ? (
-                        <HighlightText text={customer.phone} query={search} />
-                      ) : (
-                        "—"
-                      )}
-                    </span>
+                    {customer.customerTypeName ? (
+                      <Badge
+                        variant="outline"
+                        className="border-transparent bg-tint-info text-info"
+                      >
+                        {customer.customerTypeName}
+                      </Badge>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <CustomerVipBadge tier={customer.vipTier} />
+                    <CustomerStatusBadge
+                      isActive={customer.isActive}
+                      deleted={deleted}
+                    />
                   </TableCell>
-                  <TableCell>
-                    <CustomerStatusBadge deleted={deleted} />
+                  <TableCell className="whitespace-nowrap text-muted">
+                    {joinedOn(customer.createdAt)}
                   </TableCell>
                   {showActions && (
                     <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        {deleted ? (
-                          <Can feature="customers" action="restore">
+                      {/*
+                        ONE KEBAB PER ROW (28 September 2026, on request),
+                        matching BranchesTable and PetOptionsTable — the pattern
+                        this app already uses for a row with several things to
+                        do. It replaced three icon-only buttons, which is also
+                        what gives the wide columns beside it their width back.
+
+                        DETAIL IS UNGATED beyond the `customers:read` this table
+                        already required, so a reader opens the menu and finds
+                        exactly one row rather than a button opening onto
+                        nothing.
+
+                        ⚠️ CHAT IS NOT HERE, and deliberately: it lives on the
+                        profile alone now (on request). It was the one action in
+                        this cell that left the app entirely, and putting it a
+                        keystroke away from Hapus in a menu is worse than having
+                        it as its own icon — the reason it is gone rather than
+                        moved into the list below.
+                      */}
+                      <div className="flex items-center justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                setPending({ kind: "restore", customer })
-                              }
+                              className="size-9"
+                              disabled={busy}
+                              // Names the row: twenty identical "Aksi" buttons
+                              // tell a screen reader nothing.
+                              aria-label={`Aksi untuk ${customer.name}`}
                             >
-                              <RotateCcw className="size-4" />
-                              Restore
+                              <EllipsisVertical className="size-4" />
                             </Button>
-                          </Can>
-                        ) : (
-                          <>
-                            <Can feature="customers" action="update">
-                              <Button variant="ghost" size="sm" asChild>
-                                <Link
-                                  href={`/dashboard/master/customers/${customer._id}`}
+                          </DropdownMenuTrigger>
+
+                          <DropdownMenuContent align="end">
+                            {deleted ? (
+                              /*
+                                A DELETED CUSTOMER HAS NO PROFILE to open and
+                                nothing to edit — restoring is the only move
+                                left, so it is the only row here.
+                              */
+                              <Can feature="customers" action="restore">
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    setPending({ kind: "restore", customer })
+                                  }
                                 >
-                                  <Pencil className="size-4" />
-                                  Edit
-                                </Link>
-                              </Button>
-                            </Can>
-                            <Can feature="customers" action="delete">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-danger hover:bg-danger/10 hover:text-danger"
-                                onClick={() =>
-                                  setPending({ kind: "delete", customer })
-                                }
-                              >
-                                <Trash2 className="size-4" />
-                                Delete
-                              </Button>
-                            </Can>
-                          </>
-                        )}
+                                  <RotateCcw />
+                                  Pulihkan
+                                </DropdownMenuItem>
+                              </Can>
+                            ) : (
+                              <>
+                                <DropdownMenuItem asChild>
+                                  <Link
+                                    href={`/dashboard/master/customers/${customer._id}`}
+                                  >
+                                    <Eye />
+                                    Detail
+                                  </Link>
+                                </DropdownMenuItem>
+                                <Can feature="customers" action="update">
+                                  <DropdownMenuItem asChild>
+                                    <Link
+                                      href={`/dashboard/master/customers/${customer._id}/edit`}
+                                    >
+                                      <Pencil />
+                                      Ubah
+                                    </Link>
+                                  </DropdownMenuItem>
+                                </Can>
+                                <Can feature="customers" action="update">
+                                  <DropdownMenuItem
+                                    onSelect={() =>
+                                      setPending({
+                                        kind: active ? "deactivate" : "activate",
+                                        customer,
+                                      })
+                                    }
+                                  >
+                                    {active ? <PowerOff /> : <Power />}
+                                    {active ? "Nonaktifkan" : "Aktifkan"}
+                                  </DropdownMenuItem>
+                                </Can>
+                                <Can feature="customers" action="delete">
+                                  {/* Separated and tinted: deleting is the one
+                                      item here that is not a toggle, and it
+                                      sits next to one that looks like it does
+                                      the same thing — the same separator
+                                      SuppliersTable draws for the same reason. */}
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onSelect={() =>
+                                      setPending({ kind: "delete", customer })
+                                    }
+                                  >
+                                    <Trash2 />
+                                    Hapus
+                                  </DropdownMenuItem>
+                                </Can>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </TableCell>
                   )}
@@ -205,30 +425,84 @@ export function CustomersTable({
 
       {pending && (
         <ConfirmDialog
-          title={
-            pending.kind === "delete" ? "Delete customer" : "Restore customer"
-          }
-          confirmLabel={pending.kind === "delete" ? "Delete" : "Restore"}
+          title={DIALOGS[pending.kind].title}
+          confirmLabel={DIALOGS[pending.kind].confirmLabel}
           destructive={pending.kind === "delete"}
           busy={busy}
           error={actionError}
           onConfirm={runAction}
           onCancel={closeDialog}
         >
-          {pending.kind === "delete" ? (
-            <>
-              Delete <strong>{pending.customer.name}</strong>? They will be
-              hidden from the list and their email freed for reuse. You can
-              restore them later.
-            </>
-          ) : (
-            <>
-              Restore <strong>{pending.customer.name}</strong>? This may fail if
-              their email has since been taken by another customer.
-            </>
-          )}
+          {DIALOGS[pending.kind].body(pending.customer.name)}
         </ConfirmDialog>
       )}
     </>
   );
 }
+
+const TOASTS: Record<NonNullable<PendingAction>["kind"], (name: string) => string> =
+  {
+    delete: (name) => `${name} dihapus.`,
+    restore: (name) => `${name} dipulihkan.`,
+    deactivate: (name) => `${name} dinonaktifkan.`,
+    activate: (name) => `${name} diaktifkan lagi.`,
+  };
+
+/**
+ * Each dialog says what will happen, not just what the row will look like —
+ * the difference between deactivating and deleting a customer is invisible
+ * in the list (both make them stop appearing as a picker option), so the
+ * wording is the only thing that tells a user which one they are about to
+ * do. Mirrors SuppliersTable's own DIALOGS map.
+ */
+const DIALOGS: Record<
+  NonNullable<PendingAction>["kind"],
+  {
+    title: string;
+    confirmLabel: string;
+    body: (name: string) => React.ReactNode;
+  }
+> = {
+  delete: {
+    title: "Hapus pelanggan",
+    confirmLabel: "Hapus",
+    body: (name) => (
+      <>
+        Hapus <strong>{name}</strong>? Datanya disembunyikan dari daftar dan
+        emailnya bebas dipakai lagi. Bisa dipulihkan nanti.
+      </>
+    ),
+  },
+  restore: {
+    title: "Pulihkan pelanggan",
+    confirmLabel: "Pulihkan",
+    body: (name) => (
+      <>
+        Pulihkan <strong>{name}</strong>? Ini gagal kalau emailnya sudah
+        dipakai pelanggan lain.
+      </>
+    ),
+  },
+  deactivate: {
+    title: "Nonaktifkan pelanggan",
+    confirmLabel: "Nonaktifkan",
+    body: (name) => (
+      <>
+        Nonaktifkan <strong>{name}</strong>? Pelanggan ini tidak akan muncul
+        lagi sebagai pilihan di kasir, booking, atau faktur penjualan.
+        Datanya dan riwayatnya tidak dihapus, dan bisa diaktifkan lagi kapan
+        saja.
+      </>
+    ),
+  },
+  activate: {
+    title: "Aktifkan pelanggan",
+    confirmLabel: "Aktifkan",
+    body: (name) => (
+      <>
+        Aktifkan <strong>{name}</strong> lagi? Pelanggan ini akan muncul
+        kembali sebagai pilihan di kasir, booking, dan faktur penjualan.
+      </>
+    ),
+  },
+};

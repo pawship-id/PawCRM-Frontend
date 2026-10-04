@@ -15,9 +15,9 @@ import { LandingScreen } from "@/features/landing";
  * cost a `GET /auth/me` that can only ever 401.
  */
 export const metadata: Metadata = {
-  title: "Buloo — Dicatat sekali di kasir, sampai ke laba rugi sendiri",
+  title: "Buloo Jualan — Jualannya rapi, tokonya tumbuh",
   description:
-    "Kasir, booking grooming, stok, pembelian, faktur, dan pembukuan petshop dalam satu alur. Begitu kasir menekan Bayar, stoknya berkurang dan jurnalnya sudah tertulis.",
+    "Analitik pelanggan, halaman toko sendiri, dan keuangan per cabang untuk petshop. Kasir, booking, dan stok jalan di satu alur.",
 };
 
 export default function Home() {

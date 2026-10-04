@@ -1,13 +1,9 @@
-import type { Metadata } from "next";
-import { BranchesScreen } from "@/features/branches";
-import { RequirePermission } from "@/features/permissions";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Branch · Master Data · Buloo" };
-
-export default function MasterBranchesPage() {
-  return (
-    <RequirePermission feature="branches">
-      <BranchesScreen />
-    </RequirePermission>
-  );
+/**
+ * Moved to Pengaturan on 22 September 2026, when the settings rail became one
+ * row with four tabs (mockup `buloo-navigation-v3`). Kept so old links land.
+ */
+export default function MovedBranchesPage() {
+  redirect("/dashboard/pengaturan/cabang");
 }

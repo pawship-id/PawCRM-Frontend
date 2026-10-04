@@ -1,30 +1,11 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { Card } from "@/components";
-import { BranchCreateForm } from "@/features/branches";
-import { RequirePermission } from "@/features/permissions";
-
-export const metadata: Metadata = {
-  title: "New branch · Master Data · Buloo",
-};
-
+/**
+ * GONE, NOT MOVED (22 September 2026). A tenant no longer creates its own
+ * branches: each one is its own subscription and is switched on by the Buloo
+ * team, as the mockup (`buloo-navigation-v3`) draws it. The list says who to
+ * ask; old links land there.
+ */
 export default function NewBranchPage() {
-  return (
-    <RequirePermission feature="branches" action="create">
-      <div className="flex flex-col gap-6">
-        <div>
-          <h1 className="text-2xl font-extrabold text-foreground">
-            Create Branch
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            Add a new clinic or store location.
-          </p>
-        </div>
-
-        <Card>
-          <BranchCreateForm />
-        </Card>
-      </div>
-    </RequirePermission>
-  );
+  redirect("/dashboard/pengaturan/cabang");
 }

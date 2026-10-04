@@ -41,7 +41,10 @@ export const FULL_REACH_USER = {
   warehouseAccess: [],
   /* Most staff are not groomers — the model's own default. */
   isGroomer: false,
+  groomerLevel: null,
   commissionRate: null,
+  /* Follows the shop's default capacity — most groomers do. */
+  dailyCapacityMin: null,
   availability: { weeklyOff: [], leaveDates: [] },
   status: "active",
   emailVerifiedAt: null,
@@ -71,12 +74,15 @@ export function renderWithAuth(
     user = FULL_REACH_USER,
     session = BRANCHED_SESSION,
     switchBranch = jest.fn(),
+    signOutEverywhere = jest.fn(),
   }: {
     permissions?: PermissionGrant[];
     isSuperAdmin?: boolean;
     user?: User | null;
     session?: SessionContext | null;
     switchBranch?: jest.Mock;
+    /* Overridable like `switchBranch`, for the one card that calls it. */
+    signOutEverywhere?: jest.Mock;
   } = {},
 ) {
   const value: AuthContextValue = {
@@ -87,6 +93,7 @@ export function renderWithAuth(
     isSuperAdmin,
     signIn: jest.fn(),
     signOut: jest.fn(),
+    signOutEverywhere,
     refresh: jest.fn(),
     setUser: jest.fn(),
     switchBranch,

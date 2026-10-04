@@ -40,6 +40,7 @@ const receipt = (overrides: Partial<PosReceipt> = {}): PosReceipt => ({
       discount: null,
       petName: null,
       groomerName: null,
+      addons: [],
     },
   ],
   otherCharges: [],
@@ -97,7 +98,14 @@ describe("ReceiptPreview — FR-8", () => {
     expect(screen.queryByText(/undefined/)).not.toBeInTheDocument();
   });
 
-  it("shows the pet and groomer sub-line", () => {
+  /*
+    WHICH ANIMAL — AND NOT WHO GROOMED IT. FR-8 asks for "hewan + groomer" and
+    the shop asked for the groomer back off it: a receipt is what the CUSTOMER
+    checks, and who held the clippers is a rostering fact on a slip that travels
+    to whoever they forward it to. The name is still snapshotted on the sale and
+    still shown in the basket — this is the printed sheet only.
+  */
+  it("names the animal on a service line, and not the groomer", () => {
     renderWithAuth(
       <ReceiptPreview
         receipt={receipt({
@@ -112,6 +120,7 @@ describe("ReceiptPreview — FR-8", () => {
               discount: null,
               petName: "Bruno",
               groomerName: "Rina",
+              addons: [],
             },
           ],
         })}
@@ -119,7 +128,73 @@ describe("ReceiptPreview — FR-8", () => {
       />,
     );
 
-    expect(screen.getByText("Bruno · Rina")).toBeInTheDocument();
+    /* One row, not two — the animal is in the title beside the service. */
+    expect(screen.getByText("Bruno - Grooming Full")).toBeInTheDocument();
+    expect(screen.queryByText(/Rina/)).not.toBeInTheDocument();
+  });
+
+  /*
+    ─── AN ADD-ON IS NOT A THIRD PURCHASE ──────────────────────────────────────
+
+    It printed as a line of its own, so a customer checking the paper against
+    what they agreed to read three things bought where two services were sold.
+    It now prints under the bath it was done to, and the service's figure is what
+    the two come to — the same shape the basket showed the cashier a moment
+    earlier, because a receipt that grouped the lines the same way but figured
+    them differently would be the worst of both.
+  */
+  it("prints an add-on on its own row under the service, each at its own price", () => {
+    renderWithAuth(
+      <ReceiptPreview
+        receipt={receipt({
+          items: [
+            {
+              kind: "service",
+              name: "Basic Grooming",
+              sku: null,
+              qty: "1.0000",
+              unitPrice: "120000.0000",
+              lineTotal: "120000.0000",
+              discount: null,
+              petName: "Cici",
+              groomerName: "Rio",
+              addons: [
+                {
+                  kind: "service",
+                  name: "Extra Handling",
+                  sku: null,
+                  qty: "1.0000",
+                  unitPrice: "20000.0000",
+                  lineTotal: "20000.0000",
+                  discount: null,
+                  petName: "Cici",
+                  groomerName: "Rio",
+                  addons: [],
+                },
+              ],
+            },
+          ],
+        })}
+        size="80"
+      />,
+    );
+
+    /*
+      EACH ROW CARRIES ITS OWN FIGURE. The add-on has a row, so folding its
+      20.000 into the service's number as well would show the customer the same
+      charge twice — once inside 140.000 and once underneath it. The basket does
+      sum, because there the add-on is detail inside the service's line rather
+      than a row; both add up to the same subtotal.
+    */
+    expect(screen.getByText("Rp 120.000")).toBeInTheDocument();
+    expect(screen.queryByText("Rp 140.000")).not.toBeInTheDocument();
+    expect(screen.getByText("+ Extra Handling")).toBeInTheDocument();
+    expect(screen.getByText("Rp 20.000")).toBeInTheDocument();
+    /* THE ANIMAL IS SAID ONCE, in the service's title. An add-on inherits its
+       parent's pet by construction, and repeating it would print the same word
+       twice. */
+    expect(screen.getByText("Cici - Basic Grooming")).toBeInTheDocument();
+    expect(screen.queryByText(/Cici - Extra/)).not.toBeInTheDocument();
   });
 
   it("says so on a voided sale", () => {
@@ -789,5 +864,119 @@ describe("ReceiptDialog — what the print CSS depends on", () => {
     await user.click(await screen.findByRole("button", { name: /^cetak$/i }));
 
     expect(document.querySelector("[data-print-root]")).not.toBeNull();
+  });
+});
+
+/**
+ * "DISKON MEMBERSHIP" ON THE PRINTED SLIP (1 October 2026, on request) — the
+ * receipt's twin of the till's own Rincian biaya split.
+ *
+ * It used to fold a card's giveaway into the same "Diskon item" figure as
+ * whatever the cashier typed — one number answering two different questions.
+ */
+describe("ReceiptPreview — Diskon membership", () => {
+  const receiptWithBenefit = (overrides: Partial<PosReceipt> = {}) =>
+    receipt({
+      items: [
+        {
+          kind: "service",
+          name: "Full Grooming - In Store",
+          sku: null,
+          qty: "1.0000",
+          unitPrice: "169000.0000",
+          lineTotal: "169000.0000",
+          discount: { resolvedAmount: "169000.0000" },
+          membershipDiscount: "169000.0000",
+          petName: "Bruno",
+          groomerName: null,
+          addons: [],
+        },
+        {
+          kind: "product",
+          name: "Sampo Kutu",
+          sku: null,
+          qty: "1.0000",
+          unitPrice: "50000.0000",
+          lineTotal: "45000.0000",
+          discount: { resolvedAmount: "5000.0000" },
+          membershipDiscount: null,
+          petName: null,
+          groomerName: null,
+          addons: [],
+        },
+      ],
+      totals: {
+        subtotal: "219000.0000",
+        itemDiscount: "174000.0000",
+        cartDiscount: "0.0000",
+        otherCharges: "0.0000",
+        dpp: "40540.5405",
+        tax: "4459.4595",
+        grandTotal: "45000.0000",
+        credit: "0.0000",
+      },
+      ...overrides,
+    });
+
+  it("keeps a card's giveaway out of Diskon item, in its own line", async () => {
+    renderWithAuth(<ReceiptPreview receipt={receiptWithBenefit()} size="80" />);
+
+    expect(
+      (await screen.findByText("Diskon item")).parentElement?.textContent,
+    ).toContain("Rp 5.000");
+    expect(
+      screen.getByText("Diskon membership").parentElement?.textContent,
+    ).toContain("Rp 169.000");
+  });
+
+  it("adds an add-on's own giveaway into the same total", async () => {
+    renderWithAuth(
+      <ReceiptPreview
+        receipt={receiptWithBenefit({
+          items: [
+            {
+              kind: "service",
+              name: "Full Grooming - In Store",
+              sku: null,
+              qty: "1.0000",
+              unitPrice: "169000.0000",
+              lineTotal: "169000.0000",
+              discount: { resolvedAmount: "169000.0000" },
+              membershipDiscount: "150000.0000",
+              petName: "Bruno",
+              groomerName: null,
+              addons: [
+                {
+                  kind: "service",
+                  name: "Parfum",
+                  sku: null,
+                  qty: "1.0000",
+                  unitPrice: "19000.0000",
+                  lineTotal: "0.0000",
+                  discount: { resolvedAmount: "19000.0000" },
+                  membershipDiscount: "19000.0000",
+                  petName: null,
+                  groomerName: null,
+                  addons: [],
+                },
+              ],
+            },
+          ],
+        })}
+        size="80"
+      />,
+    );
+
+    expect(
+      screen.getByText("Diskon membership").parentElement?.textContent,
+    ).toContain("Rp 169.000");
+  });
+
+  it("says nothing when no line was paid by a card", async () => {
+    renderWithAuth(<ReceiptPreview receipt={receipt()} size="80" />);
+
+    await waitFor(() =>
+      expect(screen.queryByText("Diskon membership")).not.toBeInTheDocument(),
+    );
   });
 });

@@ -802,7 +802,7 @@ describe("CategoryForm", () => {
       render(<CategoryForm />);
 
       expect(
-        await screen.findByText(/pakai 4101 Penjualan Barang/i),
+        await screen.findByText(/pakai 4101 Pendapatan Penjualan/i),
       ).toBeInTheDocument();
 
       await pickParent("Makanan");

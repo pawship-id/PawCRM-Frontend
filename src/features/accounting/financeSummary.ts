@@ -1,6 +1,9 @@
 import type { DatePreset } from "@/components";
-import type { ChartOfAccount, JournalEntry } from "@/types/accounting";
-import type { AccountBalance, JournalSummary } from "@/services/journalEntry.service";
+import type {
+  ProfitLossResult,
+  ProfitLossRow,
+} from "@/services/journalEntry.service";
+import type { AccountCategory } from "@/types/accounting";
 import { toDecimalString, toMinor } from "@/utils/decimal";
 
 /**
@@ -9,27 +12,33 @@ import { toDecimalString, toMinor } from "@/utils/decimal";
  * THIS FILE USED TO FOLD THE WHOLE LEDGER. Revenue, expense, net profit, the
  * per-line split and the cash position were all sums over `JournalEntry[]`,
  * because the API offered no way to ask for them. It does now —
- * `GET /journal-entries/summary` and `/balances` — so all of that is gone, and
- * what is left is the one thing the server has no opinion about: how a ledger
- * entry reads as a row in a "transaksi terakhir" table.
+ * `GET /journal-entries/summary`, `/trend` and `/balances` — so all of that is
+ * gone, and what is left is arithmetic no server should be asked for: a
+ * percentage, a label, and the calendar dates a picker offers.
  *
- * WHY THE PROJECTION STAYED CLIENT-SIDE. It is a reshape of ten records, not
- * arithmetic over thousands, and it encodes a presentation decision — that a POS
- * sale is ONE row showing the revenue rather than two showing revenue and its
- * cost. An endpoint that made that choice would be making it for every future
- * client.
+ * THE ENTRY→ROW PROJECTION WENT WITH THE TABLE IT FED. Ringkasan no longer
+ * carries a "transaksi terakhir" list — that is the Transaksi tab, over
+ * `/cash-transactions` — so `financeTransactions` had no caller left. It is in
+ * the history if a screen ever wants the ledger folded that way again.
  *
  * MONEY IS A DECIMAL STRING throughout, parsed with utils/decimal in BigInt
  * minor units. Nothing here touches a float.
  */
 
 /**
- * Kas and Bank — the two account codes the cash card sums.
+ * Kas and Bank — the CATEGORY the cash card sums.
  *
- * Codes, not ids: these are the seeded accounts every tenant gets, and a code
- * survives the account being renamed. The backend knows the same two.
+ * IT WAS TWO HARDCODED CODES until 18 September 2026 (`["1101", "1102"]`), and
+ * that was wrong in a way nobody could see from the card: a tenant that added
+ * "1105 Bank Mandiri" — an ordinary thing to do the day you open a second
+ * account — had its money silently left out of the figure the shop reads first.
+ *
+ * A category is the honest question. The chart of accounts knows which accounts
+ * are cash because somebody said so when they created them, and that answer
+ * follows the tenant's own chart instead of a pair of numbers in this file.
  */
-export const CASH_ACCOUNT_CODES = ["1101", "1102"];
+export const CASH_ACCOUNT_CATEGORY = "cash_bank" as const;
+
 
 /** The bucket a P&L line with no business line falls into. */
 export const SHARED_LINE_LABEL = "Bersama (HQ)";
@@ -68,29 +77,15 @@ export interface FinanceQuery {
   branchId: string;
   /** `""` = every line, which is when `byBusinessLine` is worth reading. */
   businessLineId: string;
-}
-
-/** One row of the dashboard's transaction table — a ledger entry, folded. */
-export interface FinanceTransaction {
-  entry: JournalEntry;
-  /** Which side of the P&L this entry moved. */
-  type: "income" | "expense";
   /**
-   * True when it moved that side DOWNWARDS — a return, a reversal, a credited
-   * cost.
+   * Laba rugi only: divide the shared costs across the lines using the
+   * allocation rules on each account.
    *
-   * Kept apart from `type` rather than folded into a signed amount, because the
-   * two answer different questions: `type` says which half of the P&L moved,
-   * this says which way. A row carrying only a negative number would render a
-   * refund as "Pemasukan −Rp 180.000", which reads as a mistake.
+   * OFF BY DEFAULT. The undivided report is the one every previous month was
+   * read as, so it stays the thing the screen opens on and the toggle is how
+   * somebody asks the other question.
    */
-  reversal: boolean;
-  /** Always positive: the direction lives in `type` and `reversal`. */
-  amount: string;
-  /** The income or expense accounts the amount landed on. */
-  accounts: ChartOfAccount[];
-  /** Business line ids touched; `null` for an unattributed one. */
-  businessLineIds: Array<string | null>;
+  allocation?: boolean;
 }
 
 /* ------------------------------------------------------------------ helpers */
@@ -132,129 +127,199 @@ export function formatPercent(value: number | null): string {
   }).format(value)}%`;
 }
 
-/* ------------------------------------------------------------------- cash */
+/* ------------------------------------------------------------- P&L reading */
 
-/**
- * The cash and bank position — the sum of the balances the API returned.
- *
- * Summed here rather than asked for, because `/balances` answers per account and
- * the card wants one number; adding two decimal strings in BigInt is exact and
- * the alternative would be an endpoint that returns a total nobody can check.
- */
-export function cashPosition(accounts: AccountBalance[]): string {
-  return toDecimalString(
-    accounts.reduce((total, account) => total + minor(account.balance), 0n),
+/*
+  RINGKASAN READS THE LABA RUGI, NOT `/summary` (22 September 2026). The v3
+  mockup asks for HPP and biaya per lini and for the largest expense accounts,
+  and `/summary` folds by account CLASS — HPP and biaya are both `expense` there.
+  `/profit-loss` is BO's own statement, already split by category and by line,
+  so every figure below is read off one response the Laba Rugi screen also
+  renders. The two screens cannot disagree about a period because they are the
+  same answer.
+*/
+
+/** A category's row, or zeros when the response somehow lacks it. */
+function categoryRow(
+  result: ProfitLossResult,
+  category: AccountCategory,
+): ProfitLossRow {
+  return (
+    result.categories.find((row) => row.accountCategory === category) ?? {
+      lines: [],
+      total: "0",
+    }
   );
 }
 
-/* ------------------------------------------------------------- P&L reading */
+/** One line's cell of a row — `"0"` when the line did not move there. */
+function cellOf(row: ProfitLossRow, businessLineId: string | null): string {
+  return (
+    row.lines.find((cell) => cell.businessLineId === businessLineId)?.amount ??
+    "0"
+  );
+}
 
-export interface LineFigures {
+export interface ProfitLossHeadline {
+  /**
+   * Pendapatan at list price — every income account that grew, BEFORE the
+   * contra accounts (4191 Diskon, 4192 Retur) take their share.
+   *
+   * NOT AN ESTIMATE, unlike the mockup's flat 11%. Those two accounts carry a
+   * debit balance inside the pendapatan category, so the accounts with a
+   * negative total are exactly the deductions, and the ones with a positive
+   * total are the gross.
+   */
+  grossRevenue: string;
+  /** Diskon + retur, as a positive figure. */
+  deductions: string;
+  /** The pendapatan category — what the laba rugi calls revenue. */
+  netRevenue: string;
+  hpp: string;
+  grossProfit: string;
+  /** The `biaya` category — operating costs. */
+  operatingExpense: string;
+  /** Pendapatan lainnya − biaya lainnya. Usually zero, and hidden when it is. */
+  otherNet: string;
+  netProfit: string;
+  /** Net profit ÷ net revenue. Null when nothing was sold. */
+  marginPct: number | null;
+}
+
+/** The consolidated column of the laba rugi, read as the Ringkasan cards. */
+export function profitLossHeadline(result: ProfitLossResult): ProfitLossHeadline {
+  let gross = 0n;
+  let deductions = 0n;
+
+  for (const account of result.accounts) {
+    if (account.accountCategory !== "pendapatan") continue;
+    const total = minor(account.total);
+    if (total >= 0n) gross += total;
+    else deductions -= total;
+  }
+
+  const netRevenue = categoryRow(result, "pendapatan").total;
+  const netProfit = result.results.netProfit.total;
+
+  return {
+    grossRevenue: toDecimalString(gross),
+    deductions: toDecimalString(deductions),
+    netRevenue,
+    hpp: categoryRow(result, "hpp").total,
+    grossProfit: result.results.grossProfit.total,
+    operatingExpense: categoryRow(result, "biaya").total,
+    otherNet: toDecimalString(
+      minor(categoryRow(result, "pendapatan_lainnya").total) -
+        minor(categoryRow(result, "biaya_lainnya").total),
+    ),
+    netProfit,
+    marginPct: marginPct(netProfit, netRevenue),
+  };
+}
+
+export interface LineProfit {
   businessLineId: string | null;
   label: string;
   revenue: string;
-  expense: string;
+  hpp: string;
+  /**
+   * EVERYTHING BETWEEN LABA KOTOR AND LABA BERSIH — biaya, plus biaya lainnya,
+   * minus pendapatan lainnya. Derived as `revenue − hpp − net` so the row always
+   * reads across: a Biaya column of `biaya` alone would leave a line with other
+   * income whose four figures do not add up, and nobody trusts a table that
+   * does not add up.
+   */
+  cost: string;
   net: string;
-  /** Net ÷ revenue as a percentage. Null when the line booked no revenue. */
-  netMarginPct: number | null;
+  /** Net ÷ revenue. Null for a line that sold nothing, the shared bucket above all. */
+  marginPct: number | null;
 }
 
 /**
- * The summary's per-line rows, labelled and with their margins worked out.
+ * The laba rugi's columns as rows — "Laba per lini bisnis".
  *
- * The arithmetic that is left — a percentage — is display arithmetic, and doing
- * it here rather than on the server is what keeps `/summary` a statement of
- * fact rather than of presentation.
+ * THINNEST MARGIN FIRST, as the mockup orders it: the line that needs looking
+ * at leads. A line with no revenue has no margin to rank, so it — and the
+ * unattributed bucket, which never has any — sorts after every line that does.
  */
-export function lineFigures(
-  summary: JournalSummary,
+export function lineProfits(
+  result: ProfitLossResult,
   names: Map<string, string>,
-): LineFigures[] {
-  return summary.byBusinessLine.map((row) => ({
-    businessLineId: row.businessLineId,
-    label: lineLabel(row.businessLineId, names),
-    revenue: row.revenue,
-    expense: row.expense,
-    net: row.net,
-    netMarginPct: marginPct(row.net, row.revenue),
-  }));
+): LineProfit[] {
+  const revenue = categoryRow(result, "pendapatan");
+  const hpp = categoryRow(result, "hpp");
+  const net = result.results.netProfit;
+
+  return net.lines
+    .map((cell) => {
+      const id = cell.businessLineId;
+      const lineRevenue = cellOf(revenue, id);
+      const lineHpp = cellOf(hpp, id);
+      return {
+        businessLineId: id,
+        label: lineLabel(id, names),
+        revenue: lineRevenue,
+        hpp: lineHpp,
+        cost: toDecimalString(
+          minor(lineRevenue) - minor(lineHpp) - minor(cell.amount),
+        ),
+        net: cell.amount,
+        marginPct: marginPct(cell.amount, lineRevenue),
+      };
+    })
+    .sort((a, b) => {
+      if (a.marginPct === null) return b.marginPct === null ? 0 : 1;
+      if (b.marginPct === null) return -1;
+      return a.marginPct - b.marginPct;
+    });
 }
 
-/* ------------------------------------------------------------ transactions */
+export interface ExpenseShare {
+  accountId: string;
+  code: string;
+  name: string;
+  amount: string;
+  /** Share of every expense account's total, 0–100. */
+  sharePct: number;
+}
+
+/** How many accounts "Beban terbesar" lists before it stops. */
+export const TOP_EXPENSES = 5;
 
 /**
- * Ledger entries as transaction rows — the entries that moved the P&L, folded to
- * one row each.
+ * The expense accounts that cost the most — "Beban terbesar periode ini".
  *
- * ONLY P&L ENTRIES. A goods receipt and a supplier payment are real
- * transactions, but neither is income or expense — booking stock is an asset
- * swap and paying a bill settles a liability — so a row for them would need an
- * empty "Tipe" column. This table sits under the revenue, expense and profit
- * cards and answers "what made those numbers"; the complete list, balance-sheet
- * movements included, is the Jurnal Umum screen the header links to.
- *
- * ONE ROW PER ENTRY, not per line. A POS recap credits revenue and debits HPP in
- * the same entry; splitting it in two would show a sale and a cost that look
- * like separate events. The row carries the revenue side, because that is the
- * transaction — the HPP is its consequence.
- *
- * AN ENTRY WHOSE ACCOUNTS ARE NOT IN `accountsById` IS DROPPED, not guessed at.
- * That happens when the chart of accounts failed to load, and a row that cannot
- * say whether it was income or expense is worse than an absent one.
+ * BIAYA AND BIAYA LAINNYA, NOT HPP. HPP is what the goods cost and moves with
+ * sales; the question here is where the running costs go, which is what the
+ * mockup lists (Gaji, Sewa, Utilitas). An account whose total is zero or
+ * negative — a refund that outweighed the spend — is not a cost to rank.
  */
-export function financeTransactions(
-  entries: JournalEntry[],
-  accountsById: Map<string, ChartOfAccount>,
-): FinanceTransaction[] {
-  const rows: FinanceTransaction[] = [];
+export function largestExpenses(
+  result: ProfitLossResult,
+  limit: number = TOP_EXPENSES,
+): ExpenseShare[] {
+  const costs = result.accounts.filter(
+    (account) =>
+      (account.accountCategory === "biaya" ||
+        account.accountCategory === "biaya_lainnya") &&
+      minor(account.total) > 0n,
+  );
+  const whole = costs.reduce((sum, account) => sum + minor(account.total), 0n);
 
-  for (const entry of entries) {
-    let revenue = 0n;
-    let expense = 0n;
-    const incomeAccounts: ChartOfAccount[] = [];
-    const expenseAccounts: ChartOfAccount[] = [];
-    const incomeLines = new Set<string | null>();
-    const expenseLines = new Set<string | null>();
-
-    for (const line of entry.lines) {
-      const account = accountsById.get(line.accountId);
-      if (!account) continue;
-
-      const debit = minor(line.debit);
-      const credit = minor(line.credit);
-
-      if (account.accountType === "income") {
-        revenue += credit - debit;
-        if (!incomeAccounts.some((item) => item._id === account._id)) {
-          incomeAccounts.push(account);
-        }
-        incomeLines.add(line.businessLineId);
-      } else if (account.accountType === "expense") {
-        expense += debit - credit;
-        if (!expenseAccounts.some((item) => item._id === account._id)) {
-          expenseAccounts.push(account);
-        }
-        expenseLines.add(line.businessLineId);
-      }
-    }
-
-    // Revenue decides the row when the entry has both sides: a sale with its
-    // HPP is a sale. An entry that moved neither is not a row here at all.
-    const income = revenue !== 0n;
-    const amount = income ? revenue : expense;
-    if (amount === 0n) continue;
-
-    rows.push({
-      entry,
-      type: income ? "income" : "expense",
-      reversal: amount < 0n,
-      amount: toDecimalString(amount < 0n ? -amount : amount),
-      accounts: income ? incomeAccounts : expenseAccounts,
-      businessLineIds: [...(income ? incomeLines : expenseLines)],
-    });
-  }
-
-  return rows;
+  return costs
+    .sort((a, b) => {
+      const left = minor(a.total);
+      const right = minor(b.total);
+      return right > left ? 1 : right < left ? -1 : 0;
+    })
+    .slice(0, limit)
+    .map((account) => ({
+      accountId: account.accountId,
+      code: account.code,
+      name: account.name,
+      amount: account.total,
+      sharePct: marginPct(account.total, toDecimalString(whole)) ?? 0,
+    }));
 }
 
 /* --------------------------------------------------------------- periods */
@@ -296,6 +361,30 @@ export function previousMonthRange(now: Date): Period {
 }
 
 /**
+ * Monday to Sunday of the week `now` falls in — "Minggu ini".
+ *
+ * THE INDONESIAN WORKING WEEK, and the same one the SERVER means: `rangeOf`
+ * in PawCRM-Backend/src/utils/period.js cuts a named "week" Monday-to-Sunday
+ * too. A client that started its week on Sunday would ask for a range the
+ * backend would happily answer and nobody could reconcile with a report.
+ *
+ * A WHOLE WEEK, NOT "SO FAR" — it ends on Sunday even on a Wednesday, again
+ * matching the server. An entry dated for Friday is in this week, and cutting
+ * at today would hide it until Friday arrived.
+ */
+export function weekRange(now: Date): Period {
+  const monday = new Date(now);
+  // getDay() is 0 on Sunday, so Sunday is six days after ITS Monday, not before
+  // the next one.
+  monday.setDate(monday.getDate() - ((now.getDay() + 6) % 7));
+
+  const sunday = new Date(monday);
+  sunday.setDate(sunday.getDate() + 6);
+
+  return { dateFrom: isoDate(monday), dateTo: isoDate(sunday) };
+}
+
+/**
  * A `Date` as the calendar date it is *here*.
  *
  * Local parts rather than `toISOString()`: the latter is UTC and shifts the day
@@ -306,6 +395,103 @@ export function isoDate(date: Date): string {
   const month = `${date.getMonth() + 1}`.padStart(2, "0");
   const day = `${date.getDate()}`.padStart(2, "0");
   return `${date.getFullYear()}-${month}-${day}`;
+}
+
+/**
+ * The period a Ringkasan card compares itself against — "vs periode sebelumnya".
+ *
+ * NULL UNLESS BOTH ENDS ARE SET. "Semua" has no before, and a range open at
+ * one end has no length to repeat; a delta against either would be invented.
+ *
+ * A WHOLE CALENDAR MONTH COMPARES TO THE WHOLE MONTH BEFORE IT, not to the
+ * same number of days: "Bulan ini" in September is 30 days, and the 30 days
+ * before it are 2–31 August — a comparison that quietly drops the 1st. Any
+ * other range repeats its own length immediately before it, so "7 hari" is
+ * compared with the seven days that preceded them.
+ *
+ * Calendar-date arithmetic in UTC, because these are dates rather than
+ * instants and a local-time `Date` crossing a DST change would lose an hour
+ * and, at midnight, a day.
+ */
+export function previousPeriod(dateFrom: string, dateTo: string): Period | null {
+  if (!dateFrom || !dateTo) return null;
+
+  const parse = (iso: string) => {
+    const [year, month, day] = iso.slice(0, 10).split("-").map(Number);
+    return new Date(Date.UTC(year, month - 1, day));
+  };
+  const format = (date: Date) => date.toISOString().slice(0, 10);
+
+  const from = parse(dateFrom);
+  const to = parse(dateTo);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || to < from) {
+    return null;
+  }
+
+  const lastOfMonth = new Date(
+    Date.UTC(to.getUTCFullYear(), to.getUTCMonth() + 1, 0),
+  );
+  const wholeMonth =
+    from.getUTCDate() === 1 &&
+    from.getUTCFullYear() === to.getUTCFullYear() &&
+    from.getUTCMonth() === to.getUTCMonth() &&
+    to.getUTCDate() === lastOfMonth.getUTCDate();
+
+  if (wholeMonth) {
+    const month = from.getUTCMonth() === 0 ? 12 : from.getUTCMonth();
+    const year =
+      from.getUTCMonth() === 0 ? from.getUTCFullYear() - 1 : from.getUTCFullYear();
+    return monthRange(year, month);
+  }
+
+  const DAY = 86_400_000;
+  const length = Math.round((to.getTime() - from.getTime()) / DAY) + 1;
+  const prevTo = new Date(from.getTime() - DAY);
+  const prevFrom = new Date(prevTo.getTime() - (length - 1) * DAY);
+  return { dateFrom: format(prevFrom), dateTo: format(prevTo) };
+}
+
+/**
+ * How far `current` moved from `previous`, as a percentage of the previous
+ * figure's SIZE — so a loss that shrank reads as an improvement, not as a
+ * negative change of a negative number.
+ *
+ * NULL WHEN THE PREVIOUS PERIOD WAS ZERO: growth from nothing is not a
+ * percentage, and "∞%" or "+100%" would both be a number nobody can use.
+ */
+export function changePct(current: string, previous: string): number | null {
+  const before = minor(previous);
+  if (before === 0n) return null;
+  const size = before < 0n ? -before : before;
+  return Number(((minor(current) - before) * 1000n) / size) / 10;
+}
+
+/** How many days the Ringkasan tab's trend chart draws. */
+export const TREND_DAYS = 7;
+
+/**
+ * The last `days` calendar days ending today — the trend chart's window.
+ *
+ * IT DOES NOT FOLLOW THE PERIOD FILTER, and the card says so. A chart is a shape
+ * over time, and a shape needs a fixed number of points to be a shape: "Bulan
+ * lalu" would draw thirty, "Hari ini" one, and "Semua" as many as the tenant has
+ * history — three different pictures under one heading, only one of which is
+ * readable. Branch and business line DO narrow it, because those change whose
+ * money is being drawn rather than how many points there are.
+ *
+ * Inclusive of today, so `TREND_DAYS` of 7 is today and the six days before it —
+ * the same arithmetic `reportPresets`' "7 hari" chip does, and deliberately the
+ * same answer.
+ *
+ * TAKES `now` RATHER THAN READING THE CLOCK, for the reason `currentMonthRange`
+ * spells out: a client component that read `Date.now()` while rendering would
+ * disagree with the HTML the server sent.
+ */
+export function trendWindow(now: Date, days: number = TREND_DAYS): Period {
+  const start = new Date(now);
+  start.setDate(start.getDate() - (days - 1));
+
+  return { dateFrom: isoDate(start), dateTo: isoDate(now) };
 }
 
 /**
@@ -334,6 +520,7 @@ export function reportPresets(now: Date): DatePreset[] {
 
   return [
     { label: "Hari ini", from: today, to: today },
+    { label: "Minggu ini", ...month(weekRange(now)) },
     { label: "7 hari", from: back(7), to: today },
     { label: "30 hari", from: back(30), to: today },
     { label: "Bulan ini", ...month(currentMonthRange(now)) },

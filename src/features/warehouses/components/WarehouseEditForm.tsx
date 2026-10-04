@@ -60,7 +60,7 @@ export function WarehouseEditForm({ id }: { id: string }) {
         setLoadError(
           error instanceof ApiError
             ? error.fullMessage
-            : "Could not load this warehouse.",
+            : "Data gudang ini tidak bisa dimuat.",
         );
       });
     return () => {
@@ -74,7 +74,7 @@ export function WarehouseEditForm({ id }: { id: string }) {
       <div>
         <div className="flex items-center gap-3">
           <h1 className="text-2xl font-extrabold text-foreground">
-            Edit Warehouse
+            Ubah gudang
           </h1>
           {warehouse && (
             <>
@@ -85,9 +85,9 @@ export function WarehouseEditForm({ id }: { id: string }) {
               {warehouse.isDefault && (
                 <Badge
                   variant="outline"
-                  className="border-transparent bg-muted/40 text-muted"
+                  className="border-transparent bg-tint-neutral text-muted"
                 >
-                  Default
+                  Bawaan cabang
                 </Badge>
               )}
             </>
@@ -95,8 +95,8 @@ export function WarehouseEditForm({ id }: { id: string }) {
         </div>
         <p className="mt-1 text-sm text-muted">
           {warehouse
-            ? `Update ${warehouse.name}'s details and availability.`
-            : "Update this warehouse's details and availability."}
+            ? `Ubah data dan ketersediaan ${warehouse.name}.`
+            : "Ubah data dan ketersediaan gudang ini."}
         </p>
       </div>
 
@@ -104,15 +104,15 @@ export function WarehouseEditForm({ id }: { id: string }) {
         <Alert variant="error">{loadError}</Alert>
       ) : !warehouse ? (
         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted">
-          <Spinner /> Loading form edit warehouse...
+          <Spinner /> Memuat form gudang…
         </div>
       ) : (
         <>
           {branchError && <Alert variant="info">{branchError}</Alert>}
 
           <Card
-            title="Details"
-            description="Name, branch, contact and availability."
+            title="Data gudang"
+            description="Nama, cabang, kontak, dan ketersediaan."
           >
             <DetailsSection
               warehouse={warehouse}
@@ -122,8 +122,8 @@ export function WarehouseEditForm({ id }: { id: string }) {
           </Card>
 
           <Card
-            title="Danger zone"
-            description="Remove this warehouse or restore a removed one."
+            title="Zona berbahaya"
+            description="Hapus gudang ini, atau pulihkan yang sudah dihapus."
           >
             <DangerSection warehouse={warehouse} onUpdated={setWarehouse} />
           </Card>
@@ -158,6 +158,7 @@ function DetailsSection({
   const [picName, setPicName] = useState(warehouse.picName ?? "");
   const [picPhone, setPicPhone] = useState(warehouse.picPhone ?? "");
   const [isActive, setIsActive] = useState(warehouse.isActive);
+  const [hasPos, setHasPos] = useState(warehouse.hasPos === true);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -193,16 +194,17 @@ function DetailsSection({
         picName: picName.trim() === "" ? null : picName.trim(),
         picPhone: picPhone.trim() === "" ? null : picPhone.trim(),
         isActive,
+        hasPos,
       });
       onUpdated(updated);
-      swalToast("Warehouse updated.");
+      swalToast("Gudang tersimpan.");
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
         setFieldErrors(error.fieldErrors);
       } else if (error instanceof ApiError) {
         setFormError(error.fullMessage);
       } else {
-        setFormError("Something went wrong. Please try again.");
+        setFormError("Ada yang tidak beres. Coba lagi, ya.");
       }
     } finally {
       setSaving(false);
@@ -214,21 +216,22 @@ function DetailsSection({
       {formError && <Alert variant="error">{formError}</Alert>}
       {disabled && (
         <Alert variant="info">
-          This warehouse is deleted. Restore it in the danger zone to edit.
+          Gudang ini sudah dihapus. Pulihkan dulu di zona berbahaya untuk bisa
+          diubah.
         </Alert>
       )}
       {warehouse.isDefault && !disabled && (
         <Alert variant="info">
-          This is the default warehouse of its branch. It can be renamed and
-          edited freely, but not deleted — every branch must keep one stock
-          location. Deactivate it instead if it is out of use.
+          Ini gudang bawaan cabangnya. Namanya dan datanya bebas diubah, tapi
+          tidak bisa dihapus — tiap cabang wajib punya satu tempat stok. Kalau
+          sudah tidak dipakai, nonaktifkan saja.
         </Alert>
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Row 1: name & branch */}
         <TextField
-          label="Warehouse name"
+          label="Nama gudang"
           name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -247,13 +250,13 @@ function DetailsSection({
         {/* Row 2: address (full width) */}
         <div className="sm:col-span-2">
           <TextField
-            label="Address"
+            label="Alamat"
             name="address"
-            placeholder="Optional"
+            placeholder="Opsional"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             error={fieldErrors.address}
-            hint="Leave blank to remove."
+            hint="Kosongkan untuk menghapus isinya."
             disabled={disabled}
           />
         </div>
@@ -268,24 +271,24 @@ function DetailsSection({
 
         {/* Row 4: the person accountable for stock here */}
         <TextField
-          label="PIC name"
+          label="Nama PIC"
           name="picName"
-          placeholder="Optional"
+          placeholder="Opsional"
           value={picName}
           onChange={(e) => setPicName(e.target.value)}
           error={fieldErrors.picName}
-          hint="Leave blank to remove."
+          hint="Kosongkan untuk menghapus isinya."
           disabled={disabled}
         />
         <TextField
-          label="PIC phone"
+          label="Telepon PIC"
           type="tel"
           name="picPhone"
-          placeholder="Optional"
+          placeholder="Opsional"
           value={picPhone}
           onChange={(e) => setPicPhone(e.target.value)}
           error={fieldErrors.picPhone}
-          hint="Leave blank to remove."
+          hint="Kosongkan untuk menghapus isinya."
           disabled={disabled}
         />
       </div>
@@ -298,7 +301,26 @@ function DetailsSection({
           onCheckedChange={(checked) => setIsActive(checked === true)}
         />
         <Label htmlFor="warehouse-active" className="font-normal">
-          Active — this warehouse accepts stock movement
+          Aktif — gudang ini menerima mutasi stok
+        </Label>
+      </div>
+
+
+      {/*
+        IS THERE A TILL HERE? A warehouse is a place stock sits; only some are
+        places a customer pays at. Nothing gates the POS on it yet — the tenant
+        profile counts it, and the subscription will be priced on it — so the
+        caption says what it is FOR rather than implying it closes a till.
+      */}
+      <div className="flex items-center gap-2.5">
+        <Checkbox
+          id="warehouse-pos"
+          checked={hasPos}
+          disabled={disabled}
+          onCheckedChange={(checked) => setHasPos(checked === true)}
+        />
+        <Label htmlFor="warehouse-pos" className="font-normal">
+          Ada kasir di gudang ini — dihitung sebagai kasir aktif di profil usaha
         </Label>
       </div>
 
@@ -307,9 +329,9 @@ function DetailsSection({
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/master/warehouses")}
+          onClick={() => router.push("/dashboard/pengaturan/gudang")}
         >
-          Cancel
+          Batal
         </Button>
         <Button
           type="submit"
@@ -317,7 +339,7 @@ function DetailsSection({
           disabled={disabled}
           className="w-full sm:w-auto"
         >
-          Save changes
+          Simpan gudang
         </Button>
       </div>
     </form>
@@ -355,21 +377,21 @@ function DangerSection({
     try {
       if (pending === "delete") {
         await warehouseService.remove(warehouse._id);
-        router.push("/dashboard/master/warehouses");
-        swalToast("Warehouse deleted.");
+        router.push("/dashboard/pengaturan/gudang");
+        swalToast("Gudang dihapus.");
         return;
       }
       const updated = await warehouseService.restore(warehouse._id);
       onUpdated(updated);
       setPending(null);
-      swalToast("Warehouse restored.");
+      swalToast("Gudang dipulihkan.");
     } catch (err) {
       setError(
         // fullMessage: the 409 guards explain themselves in the reason, and
         // "Cannot delete warehouse" alone leaves nothing to act on.
         err instanceof ApiError
           ? err.fullMessage
-          : "Something went wrong. Please try again.",
+          : "Ada yang tidak beres. Coba lagi, ya.",
       );
     } finally {
       setBusy(false);
@@ -381,9 +403,9 @@ function DangerSection({
   if (!deleted && warehouse.isDefault) {
     return (
       <p className="text-sm text-muted">
-        This warehouse was created with its branch and cannot be deleted — every
-        branch must keep one stock location. Deactivate it in the details above
-        if it is out of use.
+        Gudang ini dibuat bersama cabangnya dan tidak bisa dihapus — tiap cabang
+        wajib punya satu tempat stok. Kalau sudah tidak dipakai, nonaktifkan saja
+        di bagian data gudang di atas.
       </p>
     );
   }
@@ -392,7 +414,7 @@ function DangerSection({
     <div className="flex flex-wrap items-center gap-3">
       {deleted ? (
         <Button variant="secondary" onClick={() => setPending("restore")}>
-          Restore warehouse
+          Pulihkan gudang
         </Button>
       ) : (
         <Button
@@ -400,14 +422,14 @@ function DangerSection({
           className="bg-danger text-danger-foreground hover:bg-danger/90"
           onClick={() => setPending("delete")}
         >
-          Delete warehouse
+          Hapus gudang
         </Button>
       )}
 
       {pending && (
         <ConfirmDialog
-          title={pending === "delete" ? "Delete warehouse" : "Restore warehouse"}
-          confirmLabel={pending === "delete" ? "Delete" : "Restore"}
+          title={pending === "delete" ? "Hapus gudang" : "Pulihkan gudang"}
+          confirmLabel={pending === "delete" ? "Hapus" : "Pulihkan"}
           destructive={pending === "delete"}
           busy={busy}
           error={error}
@@ -416,15 +438,15 @@ function DangerSection({
         >
           {pending === "delete" ? (
             <>
-              Delete <strong>{warehouse.name}</strong>? It will be hidden from
-              the list and its name freed for reuse. A warehouse that still holds
-              stock or has movement history cannot be deleted — deactivate it
-              instead.
+              Hapus <strong>{warehouse.name}</strong>? Gudang ini akan hilang
+              dari daftar dan namanya bisa dipakai lagi. Gudang yang masih
+              menyimpan stok atau punya riwayat mutasi tidak bisa dihapus —
+              nonaktifkan saja.
             </>
           ) : (
             <>
-              Restore <strong>{warehouse.name}</strong>? This may fail if its
-              name has since been taken by another warehouse.
+              Pulihkan <strong>{warehouse.name}</strong>? Bisa gagal kalau
+              namanya sudah dipakai gudang lain.
             </>
           )}
         </ConfirmDialog>

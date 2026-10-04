@@ -40,7 +40,7 @@ function today(): string {
  * File the supplier's bill against a delivery — POST /purchase-invoices.
  *
  * WHAT THIS DOES NOT DO IS CREATE THE DEBT, and the heading says so. A
- * `beli_putus` receipt credited `2101 Utang Supplier` the moment it posted, so
+ * `beli_putus` receipt credited `2101 Utang Usaha` the moment it posted, so
  * this writes no journal entry at all. What it adds is the vendor's own invoice
  * number, the date they issued it, and the due date the server derives from
  * their payment terms — the three things the payable was missing.

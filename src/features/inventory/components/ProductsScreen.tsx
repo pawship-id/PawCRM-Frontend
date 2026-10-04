@@ -2,10 +2,13 @@
 
 import { useState } from "react";
 
-import { Alert, Breadcrumb, Pagination, Spinner } from "@/components";
+import { Alert, Pagination, Spinner } from "@/components";
+import { Can } from "@/features/permissions";
 
 import { useCatalogLookups } from "../hooks/useCatalogLookups";
 import { useProducts } from "../hooks/useProducts";
+import { CatalogModuleHeader } from "./CatalogModuleHeader";
+import { NewProductMenu } from "./NewProductMenu";
 import { ProductsTable } from "./ProductsTable";
 import { ProductsToolbar } from "./ProductsToolbar";
 
@@ -16,6 +19,12 @@ import { ProductsToolbar } from "./ProductsToolbar";
  * and wires them to the table and the pager. Row mutations call `refetch`, so
  * the list reflects a delete or a restore without a reload. Mirrors
  * CustomersScreen; what is specific to this screen is the WAREHOUSE selector.
+ *
+ * THE HEADING IS THE MODULE'S, NOT THIS SCREEN'S — same title, same tabs and
+ * same tiles as the Kategori tab, which is what makes two routes read as one
+ * page. The create menu moved up into it with the heading: it belongs to the
+ * page rather than to the narrowing controls, and each tab creates a different
+ * thing.
  *
  * THE WAREHOUSE IS A VIEW, NOT A FILTER. Every product arrives carrying its
  * quantities for every warehouse it has any in, so switching location re-reads
@@ -54,21 +63,13 @@ export function ProductsScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Breadcrumb
-          items={[
-            { label: "Inventory", href: "/dashboard/inventory" },
-            { label: "Produk & Varian" },
-          ]}
-        />
-        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-          Produk &amp; Varian
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted">
-          Produk satuan, produk dengan varian dua tingkat (ukuran × rasa), dan
-          bundle.
-        </p>
-      </div>
+      <CatalogModuleHeader
+        action={
+          <Can feature="products" action="create">
+            <NewProductMenu />
+          </Can>
+        }
+      />
 
       <ProductsToolbar
         query={query}

@@ -7,7 +7,7 @@ import {
 } from "@/features/accounting";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Jurnal baru · Buloo" };
+export const metadata: Metadata = { title: "Tambah jurnal manual · Buloo" };
 
 export default function NewJournalEntryPage() {
   return (
@@ -18,18 +18,12 @@ export default function NewJournalEntryPage() {
             items={[
               ACCOUNTING_CRUMBS.hub,
               ACCOUNTING_CRUMBS.journal,
-              { label: "Jurnal baru" },
+              { label: "Tambah jurnal manual" },
             ]}
           />
           <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-            Jurnal baru
+            Tambah jurnal manual
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted">
-            Untuk koreksi yang tidak punya dokumen di belakangnya — memindahkan
-            nilai dari akun yang salah ke akun yang benar. Penjualan, pembelian
-            dan opname mencatat sendiri lewat menunya masing-masing, jadi
-            keperluan itu tidak perlu diketik di sini.
-          </p>
         </div>
 
         <JournalEntryCreateForm />

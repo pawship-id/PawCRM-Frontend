@@ -65,7 +65,7 @@ export function WarehousesTable({
   // A branch must always keep a stock location, so the backend refuses to delete
   // its default warehouse — unconditionally, whatever else is true of it.
   // Offering a button whose only outcome is a 409 is worse than not offering it;
-  // the "Default" badge carries the explanation instead.
+  // the "Bawaan cabang" badge carries the explanation instead.
   const canDelete = (warehouse: Warehouse) =>
     !warehouse.isDefault && can("warehouses", "delete");
 
@@ -96,7 +96,7 @@ export function WarehousesTable({
       setPending(null);
       onChanged();
       swalToast(
-        kind === "delete" ? "Warehouse deleted." : "Warehouse restored.",
+        kind === "delete" ? "Gudang dihapus." : "Gudang dipulihkan.",
       );
     } catch (error) {
       setActionError(
@@ -104,7 +104,7 @@ export function WarehousesTable({
         // ("still holds stock for 3 product(s)…") in the reason.
         error instanceof ApiError
           ? error.fullMessage
-          : "Something went wrong. Please try again.",
+          : "Ada yang tidak beres. Coba lagi, ya.",
       );
     } finally {
       setBusy(false);
@@ -113,25 +113,27 @@ export function WarehousesTable({
 
   if (!loading && warehouses.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center text-sm text-muted-foreground">
-        No warehouses match the current filters.
+      <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center text-sm text-muted">
+        Tidak ada gudang yang cocok dengan filter ini.
+        <br />
+        Coba ubah filternya, atau reset untuk melihat semuanya.
       </div>
     );
   }
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <Table className={loading ? "opacity-60" : undefined}>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Branch</TableHead>
-              <TableHead>Address</TableHead>
+              <TableHead>Nama</TableHead>
+              <TableHead>Cabang</TableHead>
+              <TableHead>Alamat</TableHead>
               <TableHead>PIC</TableHead>
-              <TableHead>State</TableHead>
+              <TableHead>Status</TableHead>
               {showActions && (
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="text-right">Aksi</TableHead>
               )}
             </TableRow>
           </TableHeader>
@@ -149,24 +151,24 @@ export function WarehousesTable({
                       {warehouse.isDefault && (
                         <Badge
                           variant="outline"
-                          className="border-transparent bg-muted/40 text-muted"
-                          title="Created with its branch. Every branch must keep one stock location, so this warehouse cannot be deleted — deactivate it instead."
+                          className="border-transparent bg-tint-neutral text-muted"
+                          title="Dibuat bersama cabangnya. Tiap cabang wajib punya satu tempat stok, jadi gudang ini tidak bisa dihapus — nonaktifkan saja."
                         >
-                          Default
+                          Bawaan cabang
                         </Badge>
                       )}
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="text-muted-foreground">
+                    <span className="text-muted">
                       {/* No branch is a real configuration, not missing data: a
                           central warehouse serves every branch and belongs to
                           none. */}
-                      {branch ?? "Central (no branch)"}
+                      {branch ?? "Pusat (tanpa cabang)"}
                     </span>
                   </TableCell>
                   <TableCell>
-                    <span className="text-muted-foreground">
+                    <span className="text-muted">
                       {warehouse.address ? (
                         <HighlightText text={warehouse.address} query={search} />
                       ) : (
@@ -176,14 +178,14 @@ export function WarehousesTable({
                   </TableCell>
                   <TableCell>
                     {warehouse.picName ? (
-                      <div className="text-muted-foreground">
+                      <div className="text-muted">
                         <HighlightText text={warehouse.picName} query={search} />
                         {warehouse.picPhone && (
                           <div className="text-xs">{warehouse.picPhone}</div>
                         )}
                       </div>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-muted">—</span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -205,7 +207,7 @@ export function WarehousesTable({
                               }
                             >
                               <RotateCcw className="size-4" />
-                              Restore
+                              Pulihkan
                             </Button>
                           </Can>
                         ) : (
@@ -213,10 +215,10 @@ export function WarehousesTable({
                             <Can feature="warehouses" action="update">
                               <Button variant="ghost" size="sm" asChild>
                                 <Link
-                                  href={`/dashboard/master/warehouses/${warehouse._id}`}
+                                  href={`/dashboard/pengaturan/gudang/${warehouse._id}`}
                                 >
                                   <Pencil className="size-4" />
-                                  Edit
+                                  Ubah
                                 </Link>
                               </Button>
                             </Can>
@@ -230,7 +232,7 @@ export function WarehousesTable({
                                 }
                               >
                                 <Trash2 className="size-4" />
-                                Delete
+                                Hapus
                               </Button>
                             )}
                           </>
@@ -248,9 +250,9 @@ export function WarehousesTable({
       {pending && (
         <ConfirmDialog
           title={
-            pending.kind === "delete" ? "Delete warehouse" : "Restore warehouse"
+            pending.kind === "delete" ? "Hapus gudang" : "Pulihkan gudang"
           }
-          confirmLabel={pending.kind === "delete" ? "Delete" : "Restore"}
+          confirmLabel={pending.kind === "delete" ? "Hapus" : "Pulihkan"}
           destructive={pending.kind === "delete"}
           busy={busy}
           error={actionError}
@@ -259,15 +261,15 @@ export function WarehousesTable({
         >
           {pending.kind === "delete" ? (
             <>
-              Delete <strong>{pending.warehouse.name}</strong>? It will be hidden
-              from the list and its name freed for reuse. A warehouse that still
-              holds stock or has movement history cannot be deleted — deactivate
-              it instead.
+              Hapus <strong>{pending.warehouse.name}</strong>? Gudang ini akan
+              hilang dari daftar dan namanya bisa dipakai lagi. Gudang yang masih
+              menyimpan stok atau punya riwayat mutasi tidak bisa dihapus —
+              nonaktifkan saja.
             </>
           ) : (
             <>
-              Restore <strong>{pending.warehouse.name}</strong>? This may fail if
-              its name has since been taken by another warehouse.
+              Pulihkan <strong>{pending.warehouse.name}</strong>? Bisa gagal
+              kalau namanya sudah dipakai gudang lain.
             </>
           )}
         </ConfirmDialog>

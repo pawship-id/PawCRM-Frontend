@@ -1,15 +1,20 @@
-import type { Metadata } from "next";
-import { ServicesScreen } from "@/features/services";
-import { RequirePermission } from "@/features/permissions";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Layanan · Master Data · Buloo",
-};
+/**
+ * Moved to Pengaturan on 22 September 2026, when the settings rail became one
+ * row with four tabs (mockup `buloo-navigation-v3`). Kept so old links land.
+ */
+export default async function MovedServiceSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const { bagian } = await searchParams;
+  const section = Array.isArray(bagian) ? bagian[0] : bagian;
 
-export default function MasterServicesPage() {
-  return (
-    <RequirePermission feature="services">
-      <ServicesScreen />
-    </RequirePermission>
+  redirect(
+    section
+      ? `/dashboard/pengaturan/layanan?bagian=${encodeURIComponent(section)}`
+      : "/dashboard/pengaturan/layanan",
   );
 }

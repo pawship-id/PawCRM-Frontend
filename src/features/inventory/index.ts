@@ -7,10 +7,26 @@
  * stock opname (list + sheet), the adjustment form and the transfer form.
  */
 export { InventoryHub } from "./components/InventoryHub";
+/**
+ * The catalogue module's shared chrome — the header carrying the title, the tab
+ * row and what the catalogue adds up to. Borrowed by the Kategori tab, which is
+ * a route in `features/categories` but a TAB of this module.
+ */
+export { CatalogModuleHeader } from "./components/CatalogModuleHeader";
+/**
+ * The Koreksi Stok module's chrome, worn by both its tabs — the count sheets and
+ * the hand-typed adjustments.
+ */
+export { StockCorrectionModuleHeader } from "./components/StockCorrectionModuleHeader";
 export { ProductsScreen } from "./components/ProductsScreen";
 export { ProductDetail } from "./components/ProductDetail";
 export { ProductForm } from "./components/ProductForm";
 export { ImportScreen } from "./components/ImportScreen";
+/**
+ * The Stok module's chrome, worn by both its tabs — the stock card index and the
+ * lot report.
+ */
+export { StockModuleHeader } from "./components/StockModuleHeader";
 export { StockProductsScreen } from "./components/StockProductsScreen";
 export { StockCardScreen } from "./components/StockCardScreen";
 export { BatchesScreen } from "./components/BatchesScreen";

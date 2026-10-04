@@ -1,116 +1,164 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { BookingDetailScreen } from "@/features/booking";
+import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
+import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
-import { ApiError } from "@/services/api-error";
-import type {
-  Booking,
-  BookingItem,
-  BookingPetService,
-  Pet,
-} from "@/types/api";
+import { petOptionService } from "@/services/petOption.service";
+import type { Booking, BookingSession } from "@/types/api";
 
+import { primePetOptions } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/booking.service");
 jest.mock("@/services/pet.service");
+jest.mock("@/services/petOption.service");
+jest.mock("@/services/customer.service");
 jest.mock("@/services/branch.service");
+jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
+
+/*
+  THE SCREEN NAVIGATES NOW (23 September 2026) — a ride is sent to its own page
+  at `/dashboard/layanan/antar-jemput/:id`, so the router has to be here.
+
+  ⚠️ ONE OBJECT, NOT A FRESH ONE PER CALL. Next's own `useRouter` is stable, and
+  the load effect depends on it; a mock that built a new object each render made
+  that effect re-run on every render — `setLoading(true)`, re-render, repeat —
+  and the page never left its spinner.
+*/
+const replace = jest.fn();
+const router = { replace, push: jest.fn(), refresh: jest.fn() };
+jest.mock("next/navigation", () => ({
+  useRouter: () => router,
+  usePathname: () => "/dashboard/booking/bk-1",
+}));
 
 const bookings = bookingService as jest.Mocked<typeof bookingService>;
 const pets = petService as jest.Mocked<typeof petService>;
+const customers = customerService as jest.Mocked<typeof customerService>;
 const branches = branchService as jest.Mocked<typeof branchService>;
 
-const MOCHI = "pet-mochi";
-const COCO = "pet-coco";
+/** One turn at the service. `mandi` by default, with one person on it. */
+const session = (over: Partial<BookingSession> = {}): BookingSession => ({
+  sessionId: "se-1",
+  sessionName: "mandi",
+  groomers: [{ _id: "user-1", name: "Mbak Sari", offReason: null }],
+  status: "pending",
+  startedAt: null,
+  finishedAt: null,
+  notesSession: null,
+  notesInternalSession: null,
+  media: [],
+  commissionWeight: null,
+  ...over,
+});
 
-const item = (overrides: Partial<BookingItem> = {}): BookingItem =>
-  ({
-    _id: "row-mochi",
-    petId: MOCHI,
-    petName: "Mochi",
-    serviceId: "svc-1",
-    name: "Full Grooming",
-    price: "150000.0000",
-    durationMin: 90,
-    notes: null,
-    pulledToCartAt: null,
-    pulledToInvoiceAt: null,
-    groomerUserId: "user-1",
-    groomerName: "Sinta",
-    ...overrides,
-  }) as BookingItem;
+type Overrides = Omit<Partial<Booking>, "service"> & {
+  service?: Partial<Booking["service"]>;
+};
 
 /**
- * The grouped view the API builds on read — one entry per animal, that animal's
- * services inside it, add-ons under each. Derived from the same rows the flat
- * `items` holds, because that is exactly what the server does: a fixture where
- * the two disagree would test a screen against data the API cannot produce.
+ * ONE BOOKING — Mochi, one Full Grooming, one turn — in the shape `GET
+ * /bookings/:id` sends. `in_progress` by default, because a turn can only be
+ * worked once the booking is on the table, and most cases below press Mulai.
  */
-const petGroup = (
-  petId: string,
-  petName: string,
-  services: Partial<BookingPetService>[] = [{}],
-) =>
+const booking = ({ service, ...over }: Overrides = {}): Booking =>
   ({
-    petId,
-    petName,
-    services: services.map((service) => ({
-      itemId: "row-mochi",
+    _id: "bk-1",
+    tenantId: "t1",
+    branchId: "branch-1",
+    bookingNumber: "BK-260903-001",
+    groupId: "grp-1",
+    customerId: "cust-1",
+    customerName: "Bu Lisa",
+    petId: "pet-1",
+    petName: "Mochi",
+    petSize: "opt-size-kecil",
+    status: "in_progress",
+    statusHistory: [],
+    nextStatuses: [],
+    cancelReason: null,
+    scheduledAt: "2026-09-03T02:00:00.000Z",
+    origin: "booking",
+    posTransactionId: null,
+    location: "in_store",
+    pickupRequested: false,
+    deliveryRequested: false,
+    tripAddress: null,
+    service: {
       serviceId: "svc-1",
-      name: "Full Grooming",
+      name: "Grooming Full Service",
       serviceType: "Grooming",
       price: "150000.0000",
       durationMin: 90,
-      groomerUserId: "user-1",
-      groomerName: "Sinta",
-      groomerOffReason: null,
-      assistantGroomers: [],
-      workStatus: "pending",
+      status: "pending",
+      statusHistory: [],
       startedAt: null,
       finishedAt: null,
-      notes: null,
-      pulledToCartAt: null,
-      pulledToInvoiceAt: null,
+      sessions: [session()],
       addons: [],
       ...service,
-    })),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  }) as any;
-
-const booking = (overrides: Partial<Booking> = {}): Booking =>
-  ({
-    _id: "bk-1",
-    bookingNumber: "BK-260902-001",
-    branchId: "b1",
-    customerId: "cust-1",
-    customerName: "Bu Lisa",
-    pets: [
-      petGroup(MOCHI, "Mochi"),
-      petGroup(COCO, "Coco", [{ itemId: "row-coco" }]),
-    ],
-    petName: "Mochi, Coco",
-    petCount: 2,
-    items: [item(), item({ _id: "row-coco", petId: COCO, petName: "Coco" })],
-    scheduledAt: "2026-09-02T03:00:00.000Z",
-    status: "confirmed",
-    statusHistory: [],
-    origin: "booking",
-    posTransactionId: null,
-    totalAmount: "300000.0000",
-    totalDurationMin: 90,
-    billingState: "unbilled",
+    },
+    groomerName: "Mbak Sari",
+    belongings: [],
+    internalNotes: null,
+    customerNotes: null,
     notes: null,
-    cancelReason: null,
-    ...overrides,
+    media: [],
+    pulledToCartAt: null,
+    pulledToInvoiceAt: null,
+    billingState: "unbilled",
+    totalAmount: null,
+    totalDurationMin: null,
+    createdBy: "user-9",
+    createdByName: "Fitria",
+    createdByRoleName: "Staff",
+    createdAt: "2026-08-30T04:52:00.000Z",
+    updatedAt: "2026-08-30T04:52:00.000Z",
+    group: [],
+    ...over,
   }) as Booking;
 
-const pet = (id: string, name: string, overrides: Partial<Pet> = {}): Pet =>
-  ({
-    _id: id,
-    name,
+const PARFUM = {
+  itemId: "ad-1",
+  serviceId: "svc-addon",
+  name: "Parfum",
+  price: "20000.0000",
+  durationMin: 10,
+};
+
+const LADDER_ONLY = [
+  { feature: "bookings", actions: ["read", "advanceStatus"] },
+];
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  /* The words for species, size and coat — tenant data, read via usePetOptions. */
+  primePetOptions(petOptionService.list);
+  bookings.getById.mockResolvedValue(booking());
+  bookings.advanceSessionWork.mockResolvedValue(booking());
+  bookings.setSessionCrew.mockResolvedValue(booking());
+  bookings.changeStatus.mockResolvedValue(booking());
+  bookings.checkBelonging.mockResolvedValue(booking());
+  /* Who may be booked that day — read by the crew editor, best effort. */
+  bookings.availability.mockResolvedValue([
+    { _id: "user-1", fullName: "Mbak Sari", offReason: null },
+  ] as never);
+  customers.getById.mockResolvedValue({
+    _id: "cust-1",
+    name: "Bu Lisa",
+    phone: "0812-3456-7890",
+  } as never);
+  branches.getById.mockResolvedValue({
+    _id: "branch-1",
+    name: "Cibubur",
+  } as never);
+  pets.getById.mockResolvedValue({
+    _id: "pet-1",
+    name: "Mochi",
     preferences: { text: null, tags: [] },
     medical: {
       allergies: [],
@@ -119,186 +167,157 @@ const pet = (id: string, name: string, overrides: Partial<Pet> = {}): Pet =>
       vaccinations: [],
       vet: { clinicName: null, phone: null },
     },
-    ...overrides,
-  }) as unknown as Pet;
-
-beforeEach(() => {
-  jest.clearAllMocks();
-  bookings.getById.mockResolvedValue(booking());
-  /* The page names the branch, which `useBranchScope` looks up. */
-  branches.list.mockResolvedValue({
-    items: [{ _id: "b1", name: "Cibubur" }],
-    pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
   } as never);
-  pets.list.mockResolvedValue({
-    items: [pet(MOCHI, "Mochi"), pet(COCO, "Coco")],
-    pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
-  });
 });
 
+const show = (options = {}) =>
+  renderWithAuth(<BookingDetailScreen id="bk-1" />, options);
+
+/** Opens a folded turn by its name. The row being worked on opens itself. */
+async function openSession(name = /^mandi/i) {
+  await userEvent.click(await screen.findByRole("button", { name }));
+}
+
 /**
- * ONE BOOKING, WHOLE — the screen the module was missing.
+ * ONE BOOKING, WHOLE — `/dashboard/booking/:id`.
  *
- * The list answers "did that grooming get recorded"; the calendar answers "who
- * is where at ten". Neither answers the question somebody asks with a customer
- * on the phone: what exactly is this booking, and where does it stand.
+ * A booking is one animal and one main service, so the overview and the work
+ * sheet that used to live under `/hewan/:petId` are one page now.
  */
-describe("BookingDetailScreen", () => {
-  it("names the booking and who it is for", async () => {
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+describe("BookingDetailScreen — the header", () => {
+  it("has exactly one h1, and it is the booking number", async () => {
+    show();
 
-    expect(await screen.findByText("BK-260902-001")).toBeInTheDocument();
-    expect(screen.getByText(/Bu Lisa/)).toBeInTheDocument();
+    const headings = await screen.findAllByRole("heading", { level: 1 });
+
+    expect(headings).toHaveLength(1);
+    expect(headings[0]).toHaveTextContent("BK-260903-001");
   });
 
-  /*
-    ROWS, NOT A BOOKING. Since PCR-040 a visit may bring Mochi and Coco to two
-    people at two prices, billed separately — and a page that summed them into
-    one line would hide the thing the module was rebuilt for.
-  */
-  it("shows one block per animal", async () => {
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
-
-    expect(await screen.findByText("Mochi")).toBeInTheDocument();
-    expect(screen.getByText("Coco")).toBeInTheDocument();
-  });
-
-  /*
-    PER ROW, because that is where the marker lives since K3 — and it is what
-    makes a half-billed visit legible instead of merely possible.
-  */
-  it("shows an add-on under the service it was added to, not as a line of its own", async () => {
-    /*
-      THE COMPLAINT THIS ANSWERS. Nobody chooses "Parfum" by itself, and showing
-      it beside the bath made it look as though somebody had. It is still its own
-      STORED row — that is how it bills and prints on its own line, and how it can
-      carry its own commission — but the screen reads the grouped view the API
-      builds, where it hangs off its parent.
-    */
-    bookings.getById.mockResolvedValue(
-      booking({
-        pets: [
-          petGroup(MOCHI, "Mochi", [
-            {
-              addons: [
-                {
-                  itemId: "row-parfum",
-                  serviceId: "svc-addon",
-                  name: "Parfum",
-                  price: "20000.0000",
-                  durationMin: 10,
-                  pulledToCartAt: null,
-                  pulledToInvoiceAt: null,
-                },
-              ],
-            },
-          ]),
-        ],
-      }),
-    );
-
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
-
-    /* One animal, one service — and the add-on inside it rather than beside. */
-    expect(await screen.findByText(/\+ Parfum/)).toBeInTheDocument();
-    expect(screen.getAllByText(/Full Grooming/)).toHaveLength(1);
-  });
-
-  it("adds the add-ons into the animal's total", async () => {
-    // A total that ignored them would disagree with the bill.
-    bookings.getById.mockResolvedValue(
-      booking({
-        pets: [
-          petGroup(MOCHI, "Mochi", [
-            {
-              addons: [
-                {
-                  itemId: "row-parfum",
-                  serviceId: "svc-addon",
-                  name: "Parfum",
-                  price: "20000.0000",
-                  durationMin: 10,
-                  pulledToCartAt: null,
-                  pulledToInvoiceAt: null,
-                },
-              ],
-            },
-          ]),
-        ],
-      }),
-    );
-
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
-
-    // 150.000 + 20.000
-    expect(await screen.findByText(/Rp\s?170[.,]000/)).toBeInTheDocument();
-  });
-
-  it("says which rows have been billed and which have not", async () => {
-    bookings.getById.mockResolvedValue(
-      booking({
-        billingState: "partial",
-        /* The claim lives on the ROW (K3), and the screen reads it through the
-           grouped view the API builds from those same rows. */
-        pets: [
-          petGroup(MOCHI, "Mochi", [
-            { pulledToCartAt: "2026-09-02T04:00:00.000Z" },
-          ]),
-          petGroup(COCO, "Coco", [{ itemId: "row-coco" }]),
-        ],
-        items: [
-          item({ pulledToCartAt: "2026-09-02T04:00:00.000Z" }),
-          item({ _id: "row-coco", petId: COCO, petName: "Coco" }),
-        ],
-      }),
-    );
-
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
-
-    expect(await screen.findByText(/sudah di kasir/i)).toBeInTheDocument();
-    expect(screen.getByText(/belum ditagih/i)).toBeInTheDocument();
-    expect(screen.getByText(/sebagian sudah ditagih/i)).toBeInTheDocument();
-  });
-
-  /*
-    FR-5 KRITERIA 5.14 — the same card the booking form shows, so whoever opens
-    this booking before a hand-off reads exactly what the person who took it
-    read.
-  */
-  it("warns about a severe allergy on the animal's own block", async () => {
-    pets.list.mockResolvedValue({
-      items: [
-        pet(MOCHI, "Mochi", {
-          medical: {
-            allergies: [
-              { name: "Sampo strawberry", severity: "severe", note: null },
-            ],
-            conditions: [],
-            medications: [],
-            vaccinations: [],
-            vet: { clinicName: null, phone: null },
-          },
-        } as Partial<Pet>),
-        pet(COCO, "Coco"),
-      ],
-      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
-    });
-
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
-
-    const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Sampo strawberry");
-  });
-
-  /* A DRAFT HAS NO NUMBER — saying so beats a blank or an invented one. */
   it("says a draft has no number rather than showing a blank", async () => {
     bookings.getById.mockResolvedValue(
       booking({ bookingNumber: null, status: "draft" }),
     );
 
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+    show();
 
-    expect(await screen.findByText(/booking \(draf\)/i)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /booking \(draf\)/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("says what the service was priced on beyond the animal — the choice and the zone", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        service: {
+          variantChoices: [
+            { optionId: "vo-lokasi", code: "rumah", name: "Lokasi", label: "Di Rumah" },
+          ],
+          zone: { zoneId: "zone-a", name: "Zona A", distanceKm: 2.1 },
+          addons: [
+            {
+              ...PARFUM,
+              variantChoices: [
+                { optionId: "vo-lokasi", code: "rumah", name: "Lokasi", label: "Di Rumah" },
+                { optionId: "vo-wangi", code: "vanila", name: "Aroma", label: "Vanila" },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    show();
+
+    expect(await screen.findByText("Lokasi: Di Rumah · Zona A · 2,1 km")).toBeInTheDocument();
+    /* The add-on's own choice only — the inherited Lokasi is not repeated. */
+    expect(screen.getByText("Aroma: Vanila")).toBeInTheDocument();
+  });
+
+  it("names the animal, the service, and whose it is with their number", async () => {
+    show();
+
+    await screen.findByText("BK-260903-001");
+    expect(screen.getAllByText(/Mochi/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Grooming Full Service/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Bu Lisa/).length).toBeGreaterThan(0);
+    expect(
+      (await screen.findAllByText(/0812-3456-7890/)).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("shows the booking's status and billing as words", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        status: "completed",
+        billingState: "billed",
+        pulledToInvoiceAt: "2026-09-03T06:00:00.000Z",
+      }),
+    );
+
+    show();
+
+    expect(await screen.findByText("Completed")).toBeInTheDocument();
+    expect(screen.getByText("Sudah ditagih")).toBeInTheDocument();
+  });
+
+  it("says a basket holds it, rather than that it was paid, until the till settles", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({ pulledToCartAt: "2026-09-03T04:00:00.000Z" }),
+    );
+
+    show();
+
+    expect(await screen.findByText(/ada di keranjang/i)).toBeInTheDocument();
+  });
+
+  it("says who wrote the booking down, with their role", async () => {
+    show();
+
+    expect(
+      await screen.findByText(/dibuat .* Fitria \(staff\)/i),
+    ).toBeInTheDocument();
+  });
+
+  it("offers Ubah, pointing at the edit route for this booking", async () => {
+    show();
+
+    const edit = await screen.findByRole("link", { name: /^ubah$/i });
+    expect(edit).toHaveAttribute("href", "/dashboard/booking/bk-1/edit");
+  });
+
+  it.each(["completed", "return_to_pawrents", "cancelled"] as const)(
+    "offers no Ubah on a %s booking",
+    async (status) => {
+      /* The server refuses a PATCH once the work is completed; a cancelled
+         booking has nowhere left to go. */
+      bookings.getById.mockResolvedValue(booking({ status }));
+
+      show();
+
+      await screen.findByText("BK-260903-001");
+      expect(
+        screen.queryByRole("link", { name: /^ubah$/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("link", { name: /edit layanan/i }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it("shows a groomer the status moves but not the edit button", async () => {
+    /* `advanceStatus` without `update`: a groomer checks a dog in and marks it
+       done, and has no business repricing it. */
+    bookings.getById.mockResolvedValue(booking({ status: "confirmed" }));
+
+    show({ isSuperAdmin: false, permissions: LADDER_ONLY });
+
+    await screen.findByText("BK-260903-001");
+    expect(
+      screen.queryByRole("link", { name: /^ubah$/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /mark arrived →/i }),
+    ).toBeInTheDocument();
   });
 
   it("shows why a cancelled booking was called off", async () => {
@@ -306,164 +325,662 @@ describe("BookingDetailScreen", () => {
       booking({ status: "cancelled", cancelReason: "Pelanggan batal" }),
     );
 
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+    show();
 
     expect(await screen.findByText(/pelanggan batal/i)).toBeInTheDocument();
   });
 
-  it("offers Ubah, pointing at the edit route for this booking", async () => {
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+  it("links Cetak at the printable pet card", async () => {
+    show();
 
-    const edit = await screen.findByRole("link", { name: /^ubah$/i });
-    expect(edit).toHaveAttribute("href", "/dashboard/booking/bk-1/edit");
+    expect(await screen.findByRole("link", { name: /cetak/i })).toHaveAttribute(
+      "href",
+      "/dashboard/master/pets/pet-1/print",
+    );
   });
 
-  it.each(["completed", "cancelled"] as const)(
-    "offers no Ubah on a %s booking",
-    async (status) => {
-      /*
-        THE TWO FROZEN STATES. Both have nowhere left to go on the ladder, and
-        the server answers 409 to a PATCH on either — so a button here would
-        send somebody to a form that cannot save. The server is still the one
-        refusing; this only stops the walk.
-      */
-      bookings.getById.mockResolvedValue(booking({ status }));
-
-      renderWithAuth(<BookingDetailScreen id="bk-1" />);
-
-      await screen.findByText(/BK-260902-001/);
-      expect(
-        screen.queryByRole("link", { name: /^ubah$/i }),
-      ).not.toBeInTheDocument();
-    },
-  );
-
-  it("shows a groomer the status moves but not the edit button", async () => {
-    /*
-      THE SPLIT, FROM THE SCREEN'S SIDE — `bookings:advanceStatus` without
-      `bookings:update`. A groomer checks a dog in and marks it done; the edit
-      form changes the services and re-quotes every unbilled row at today's
-      prices, which is not their decision to make.
-    */
-    renderWithAuth(<BookingDetailScreen id="bk-1" />, {
-      isSuperAdmin: false,
-      permissions: [{ feature: "bookings", actions: ["read", "advanceStatus"] }],
-    });
-
-    await screen.findByText(/BK-260902-001/);
+  it("builds a working wa.me link from a locally-formatted number", async () => {
+    show();
 
     expect(
-      screen.queryByRole("link", { name: /^ubah$/i }),
-    ).not.toBeInTheDocument();
+      await screen.findByRole("link", { name: /whatsapp/i }),
+    ).toHaveAttribute("href", "https://wa.me/6281234567890");
+  });
 
-    /*
-      AND THE LADDER IS STILL THEIRS — asserted on a FORWARD MOVE, not on
-      "Riwayat status", which is ungated and would pass even if the split had
-      hidden every action a groomer needs.
-    */
-    await userEvent.click(
-      screen.getByRole("button", { name: /tindakan|aksi|status/i }),
+  it("offers no WhatsApp button when the customer has no number", async () => {
+    customers.getById.mockResolvedValue({
+      _id: "cust-1",
+      name: "Bu Lisa",
+      phone: null,
+    } as never);
+
+    show();
+
+    await screen.findByText("BK-260903-001");
+    await waitFor(() => expect(customers.getById).toHaveBeenCalled());
+    expect(
+      screen.queryByRole("link", { name: /whatsapp/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    ─── A RIDE IS NOT THIS DOCUMENT (23 September 2026) ─────────────────────
+
+    It goes to `/dashboard/layanan/antar-jemput/:id`. Answered HERE, after the
+    read, because half the links that reach a booking — a commission row, an
+    invoice line — hold nothing but an id and cannot know which page to aim at.
+  */
+  it("sends a ride to its own page in the Antar-Jemput module", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({ _id: "bk-aj", tripLeg: "pickup", petId: null, petName: null }),
     );
-    expect(await screen.findByText(/check-in/i)).toBeInTheDocument();
-    expect(screen.queryByText(/batalkan booking/i)).not.toBeInTheDocument();
+
+    renderWithAuth(<BookingDetailScreen id="bk-aj" />);
+
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        "/dashboard/layanan/antar-jemput/bk-aj",
+      ),
+    );
+  });
+
+  it("leaves an ordinary booking where it is", async () => {
+    show();
+
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("says plainly when the booking is not there", async () => {
     bookings.getById.mockRejectedValue(new ApiError("Not found", 404));
 
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+    show();
 
-    expect(await screen.findByText(/tidak ditemukan/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/tidak ada, atau bukan milik toko/i),
+    ).toBeInTheDocument();
   });
 
-  /*
-    THE ANIMALS' RECORDS ARE A COURTESY. Failing to read them costs the warning
-    boxes, never the booking — a page that refused to render because a pet lookup
-    failed would hide the work somebody opened it to see.
-  */
-  it("still renders the rows when the pet lookup fails", async () => {
-    pets.list.mockRejectedValue(new Error("offline"));
+  it("still shows the work when the pet, customer and branch cannot be read", async () => {
+    pets.getById.mockRejectedValue(new Error("offline"));
+    customers.getById.mockRejectedValue(new Error("offline"));
+    branches.getById.mockRejectedValue(new Error("offline"));
 
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+    show();
 
-    expect(await screen.findByText("Mochi")).toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/profil hewan tidak bisa dimuat/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^mandi/i })).toBeInTheDocument();
+  });
+});
+
+describe("BookingDetailScreen — the status track", () => {
+  it("has one segment per rung the booking walks, and none for draft", async () => {
+    bookings.getById.mockResolvedValue(booking({ status: "in_progress" }));
+
+    show();
+
+    /* requested, confirmed, arrived, in_progress, completed, return_to_pawrents */
+    expect(
+      await screen.findByRole("img", { name: "4 dari 6 tahap: In Progress" }),
+    ).toBeInTheDocument();
   });
 
-  /*
-    ─── THE GROOMER WENT ON LEAVE AFTER THIS WAS BOOKED ──────────────────────
-
-    The roster screen warns when the leave is SET (kriteria 4.9), but that
-    warning fires once and is gone when the page closes. Until 3 September 2026
-    the booking remembered nothing: on Thursday morning it still read "Sinta",
-    and the only person who knew was whoever had ticked the box days before.
-  */
-  it("warns that the groomer is off, and says what to do about it", async () => {
+  it("grows the track when a van was booked", async () => {
     bookings.getById.mockResolvedValue(
       booking({
-        /* The warning travels with the SERVICE — a grouped view that dropped it
-           would hide the one thing this booking must say out loud. */
-        pets: [
-          petGroup("pet-1", "Bruno", [
-            { itemId: "it-1", groomerOffReason: "Libur setiap Kamis" },
-          ]),
-        ],
-      } as never),
+        status: "confirmed",
+        pickupRequested: true,
+        deliveryRequested: true,
+      }),
     );
 
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+    show();
+
+    expect(
+      await screen.findByRole("img", { name: "2 dari 8 tahap: Confirmed" }),
+    ).toBeInTheDocument();
+  });
+
+  it("names the last move and who made it under Status sejak", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        statusHistory: [
+          {
+            status: "in_progress",
+            at: new Date("2026-09-03T10:15:00").toISOString(),
+            by: "user-2",
+            byName: "Rio",
+            byRoleName: "Groomer",
+            implied: false,
+          },
+        ],
+      }),
+    );
+
+    show();
+
+    /* Scoped to the block: the trail in the rail names the same move too. */
+    const since = (await screen.findByText("Status sejak")).parentElement!;
+    expect(within(since).getByText(/^10\.15 · Rio \(groomer\)$/)).toBeInTheDocument();
+  });
+
+  it("moving the booking updates the page from the answer, without re-reading it", async () => {
+    bookings.getById.mockResolvedValue(booking({ status: "confirmed" }));
+    bookings.changeStatus.mockResolvedValue(booking({ status: "arrived" }));
+
+    show();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /mark arrived →/i }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /^mark arrived$/i }),
+    );
+
+    /* ⚠️ THE BADGE MOVED — asserted first, because "no second fetch" is
+       trivially true of a page that also did not update. */
+    expect(await screen.findByText("Arrived")).toBeInTheDocument();
+    expect(bookings.changeStatus).toHaveBeenCalledWith("bk-1", "arrived", null);
+    expect(bookings.getById).toHaveBeenCalledTimes(1);
+  });
+
+  it("warns that something is unfinished before completing, and stops once it is done", async () => {
+    show();
+
+    expect(
+      await screen.findByText(/layanan belum selesai/i),
+    ).toBeInTheDocument();
+  });
+
+  it("says nothing is blocking once every turn is done", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({ service: { sessions: [session({ status: "done" })] } }),
+    );
+
+    show();
+
+    await screen.findByText("BK-260903-001");
+    expect(screen.queryByText(/layanan belum selesai/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("BookingDetailScreen — the Kunjungan card", () => {
+  it("shows the total the API sent", async () => {
+    bookings.getById.mockResolvedValue(booking({ totalAmount: "274000.0000" }));
+
+    show();
+
+    expect(await screen.findByText("Rp 274.000")).toBeInTheDocument();
+  });
+
+  it("hangs the add-on off its service, and counts it when no total was computed", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({ service: { addons: [PARFUM] } }),
+    );
+
+    show();
+
+    expect(await screen.findByText(/\+ Parfum/)).toBeInTheDocument();
+    // 150.000 + 20.000
+    expect(screen.getByText(/Rp\s?170[.,]000/)).toBeInTheDocument();
+  });
+
+  it("says when the visit ends, not only when it starts", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        scheduledAt: new Date("2026-09-05T20:30:00").toISOString(),
+        totalDurationMin: 121,
+      }),
+    );
+
+    show();
+
+    // 20.30 + 121 menit.
+    expect(await screen.findByText(/20\.30 – 22\.31/)).toBeInTheDocument();
+  });
+
+  it("names the branch it was booked to", async () => {
+    show();
+
+    expect(await screen.findByText("Cibubur")).toBeInTheDocument();
+  });
+
+  it("spells out that there is no trip rather than leaving it blank", async () => {
+    show();
+
+    expect(await screen.findByText("Tidak ada")).toBeInTheDocument();
+  });
+
+  it("names the trip and where it goes when there is one", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        pickupRequested: true,
+        deliveryRequested: true,
+        tripAddress: "Jl. Kenanga 5",
+      }),
+    );
+
+    show();
+
+    expect(
+      await screen.findByText("Jemput & antar pulang"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Jl. Kenanga 5")).toBeInTheDocument();
+  });
+
+  it("offers the way to correct the price, and keeps it from somebody who may not", async () => {
+    const { unmount } = show();
+
+    expect(
+      await screen.findByRole("link", { name: /edit layanan/i }),
+    ).toHaveAttribute("href", "/dashboard/booking/bk-1/edit");
+
+    unmount();
+    show({ isSuperAdmin: false, permissions: LADDER_ONLY });
+
+    await screen.findByText("BK-260903-001");
+    expect(
+      screen.queryByRole("link", { name: /edit layanan/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("warns about a severe allergy from the animal's profile", async () => {
+    pets.getById.mockResolvedValue({
+      _id: "pet-1",
+      name: "Mochi",
+      preferences: { text: null, tags: [] },
+      medical: {
+        allergies: [{ name: "Sampo strawberry", severity: "severe", note: null }],
+        conditions: [],
+        medications: [],
+        vaccinations: [],
+        vet: { clinicName: null, phone: null },
+      },
+    } as never);
+
+    show();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Sampo strawberry",
+    );
+  });
+});
+
+describe("BookingDetailScreen — the turns", () => {
+  it("keeps turns folded, and opens the one being worked on", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        service: {
+          sessions: [
+            session(),
+            session({
+              sessionId: "se-2",
+              sessionName: "blow dry",
+              status: "in_progress",
+              startedAt: new Date().toISOString(),
+            }),
+          ],
+        },
+      }),
+    );
+
+    show();
+
+    expect(
+      await screen.findByRole("button", { name: /^mandi/i }),
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.getByRole("button", { name: /^blow dry/i }),
+    ).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("starts a turn through its session route, and the button becomes the one that finishes it", async () => {
+    bookings.advanceSessionWork.mockResolvedValue(
+      booking({
+        service: {
+          sessions: [
+            session({
+              status: "in_progress",
+              startedAt: new Date().toISOString(),
+            }),
+          ],
+        },
+      }),
+    );
+
+    show();
+    await openSession();
+
+    await userEvent.click(screen.getByRole("button", { name: "Mulai" }));
+
+    await waitFor(() =>
+      expect(bookings.advanceSessionWork).toHaveBeenCalledWith(
+        "bk-1",
+        "se-1",
+        "in_progress",
+      ),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Selesai" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no way to reopen finished work", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({ service: { sessions: [session({ status: "done" })] } }),
+    );
+
+    show();
+    await openSession();
+
+    expect(
+      screen.queryByRole("button", { name: /buka lagi/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^(mulai|selesai)$/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each(["draft", "requested", "confirmed", "arrived"] as const)(
+    "keeps Mulai disabled while the booking is %s, and says why",
+    async (status) => {
+      bookings.getById.mockResolvedValue(booking({ status }));
+
+      show();
+      await openSession();
+
+      expect(screen.getByRole("button", { name: "Mulai" })).toBeDisabled();
+      expect(
+        screen.getByText(/sudah in progress/i),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it("names the crew once the rung is no longer the blocker", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({ service: { sessions: [session({ groomers: [] })] } }),
+    );
+
+    show();
+    await openSession();
+
+    expect(screen.getByText(/tentukan groomernya dulu/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Mulai" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("names each person with their part of the turn in the session header", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        service: {
+          sessions: [
+            session({
+              groomers: [
+                { _id: "user-1", name: "Sinta", offReason: null, sharePercent: 33 },
+                { _id: "user-2", name: "Dedi", offReason: null, sharePercent: 33 },
+                { _id: "user-3", name: "Rina", offReason: null, sharePercent: 34 },
+              ],
+            }),
+          ],
+        },
+      }),
+    );
+
+    show();
+
+    expect(
+      await screen.findByText("Sinta 33% · Dedi 33% · Rina 34%"),
+    ).toBeInTheDocument();
+  });
+
+  it("carries the leave warning, and says what to do about it", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        service: {
+          sessions: [
+            session({
+              status: "in_progress",
+              groomers: [
+                { _id: "user-1", name: "Mbak Sari", offReason: "Libur setiap Kamis" },
+              ],
+            }),
+          ],
+        },
+      }),
+    );
+
+    show();
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent(/libur setiap kamis/i);
-    /*
-      IT SAYS WHAT TO DO. A warning whose only content is "this is wrong" leaves
-      the reader to invent the remedy; there are exactly two here.
-    */
     expect(alert).toHaveTextContent(/ganti groomer atau hubungi pelanggan/i);
   });
 
-  it("says nothing when the groomer is working that day", async () => {
-    /*
-      NULL, NOT A REASSURANCE. A note on every booking that its groomer is
-      available is noise on the ninety-nine that are fine, and noise is what
-      makes the hundredth unreadable.
-    */
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+  it("adds a turn by name only, without naming a service", async () => {
+    show();
 
-    await screen.findByText(/BK-260902-001/);
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /tambah sesi/i }),
+    );
+    await userEvent.type(
+      screen.getByLabelText(/nama sesi baru/i),
+      "blow dry",
+    );
+    await userEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() =>
+      expect(bookings.setSessionCrew).toHaveBeenCalledWith("bk-1", {
+        sessionName: "blow dry",
+      }),
+    );
   });
 
-  it("sends each animal's block to that animal's work page", async () => {
-    /*
-      THE WAY INTO THE WORK. Status lives on the ROWS now, so moving it happens
-      on a page about ONE animal — there must be no doubt whose button was
-      pressed. This page stays the overview.
-    */
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+  it.each(["completed", "return_to_pawrents"] as const)(
+    "offers no new turn once the booking is %s",
+    async (status) => {
+      bookings.getById.mockResolvedValue(booking({ status }));
 
-    /* ONE PER ANIMAL — the fixture has two, and so must the links. */
-    const links = await screen.findAllByRole("link", { name: /pekerjaan/i });
-    expect(links.length).toBeGreaterThan(1);
+      show();
 
-    const targets = links.map((link) => link.getAttribute("href"));
-    expect(new Set(targets).size).toBe(targets.length);
-    targets.forEach((href) => {
-      expect(href).toMatch(/^\/dashboard\/booking\/bk-1\/hewan\/.+/);
-    });
-  });
+      await screen.findByText("BK-260903-001");
+      expect(
+        screen.queryByRole("button", { name: /tambah sesi/i }),
+      ).not.toBeInTheDocument();
+    },
+  );
+});
 
-  it("keeps the profile link, and keeps the two apart in words", async () => {
-    /*
-      TWO DIFFERENT PAGES: "pekerjaan" is this visit, "profil" is the animal's
-      whole life. Confusing them sends somebody looking for today's grooming in
-      a list of last year's.
-    */
-    renderWithAuth(<BookingDetailScreen id="bk-1" />);
+describe("BookingDetailScreen — the rail and the cards beside the work", () => {
+  it("carries the booking's two notes, editable", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({ internalNotes: "Takut hairdryer" }),
+    );
 
-    await screen.findAllByRole("link", { name: /pekerjaan/i });
+    show();
+
     expect(
-      screen.getAllByRole("link", { name: /^profil/i }).length,
-    ).toBeGreaterThan(0);
+      await screen.findByDisplayValue("Takut hairdryer"),
+    ).toBeInTheDocument();
+  });
+
+  it("carries the titipan list, and ticks a thing back out from here", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        belongings: [
+          {
+            _id: "bel-1",
+            name: "Carrier biru",
+            checkedInAt: "2026-09-03T02:00:00.000Z",
+            checkedOutAt: null,
+            checkedInBy: null,
+            checkedOutBy: null,
+          },
+        ],
+      }),
+    );
+
+    show();
+
+    expect(await screen.findByText("1 belum kembali")).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText(/carrier biru keluar/i));
+
+    await waitFor(() =>
+      expect(bookings.checkBelonging).toHaveBeenCalledWith("bk-1", "bel-1", {
+        checkedOut: true,
+      }),
+    );
+  });
+
+  it("lists the other bookings of the same visit, each linking to its own page", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        group: [
+          {
+            _id: "bk-2",
+            bookingNumber: "BK-260903-002",
+            petId: "pet-2",
+            petName: "Coco",
+            serviceName: "Potong Kuku",
+            status: "confirmed",
+            scheduledAt: "2026-09-03T02:00:00.000Z",
+            pickupRequested: false,
+            deliveryRequested: false,
+          },
+          {
+            _id: "bk-3",
+            bookingNumber: null,
+            petId: "pet-1",
+            petName: "Mochi",
+            serviceName: "Penitipan",
+            status: "draft",
+            scheduledAt: "2026-09-03T02:00:00.000Z",
+            pickupRequested: false,
+            deliveryRequested: false,
+          },
+        ],
+      }),
+    );
+
+    show();
+
+    /* "Satu kunjungan" grew into "Booking terkait" (21 September 2026). */
+    const card = (await screen.findByText("Booking terkait")).closest(
+      "section, div[class*='rounded']",
+    ) as HTMLElement;
+
+    expect(screen.getByText("2 booking")).toBeInTheDocument();
+    expect(within(card).getAllByText("Satu kunjungan")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: /coco/i })).toHaveAttribute(
+      "href",
+      "/dashboard/booking/bk-2",
+    );
+    /* The same animal with a second service is a sibling too. */
+    expect(
+      within(card).getByRole("link", { name: /penitipan/i }),
+    ).toHaveAttribute("href", "/dashboard/booking/bk-3");
+    expect(within(card).getByText(/Potong Kuku · BK-260903-002/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["an empty group", []],
+    ["no group at all", undefined],
+  ])("says nothing is related for %s, and offers the way to relate one", async (_label, group) => {
+    bookings.getById.mockResolvedValue(booking({ group }));
+
+    show();
+
+    await screen.findByText("BK-260903-001");
+    expect(screen.queryByText("Satu kunjungan")).not.toBeInTheDocument();
+    expect(screen.getByText(/Belum terkait dengan booking lain/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /tautkan booking/i })).toBeInTheDocument();
+  });
+
+  /*
+    ─── NOTHING IS ADDED TO A BOOKING FROM HERE (24 September 2026) ──────────
+
+    "+ Antar-jemput" opened the ride form started from this booking. The shop
+    asked for it back on 21 September and asked for it off today, on one rule:
+    once a booking is CREATED, this card only relates what already exists.
+  */
+  it("offers no way to add a ride to a booking that already exists", async () => {
+    bookings.getById.mockResolvedValue(booking({ group: [] }));
+
+    show();
+
+    await screen.findByText("BK-260903-001");
+    expect(
+      screen.queryByRole("link", { name: /antar-jemput/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets a booking of the visit go, and re-reads this one", async () => {
+    const member = {
+      _id: "bk-2",
+      bookingNumber: "BK-260903-002",
+      petId: "pet-1",
+      petName: "Mochi",
+      serviceName: "Antar-Jemput",
+      status: "confirmed" as const,
+      scheduledAt: "2026-09-03T01:30:00.000Z",
+      pickupRequested: false,
+      deliveryRequested: false,
+      tripLeg: "pickup" as const,
+    };
+    bookings.getById
+      .mockResolvedValueOnce(booking({ group: [member] }))
+      .mockResolvedValueOnce(booking({ group: [] }));
+    bookings.setGroup.mockResolvedValue(booking({ _id: "bk-2" }));
+
+    show();
+
+    expect(await screen.findByText("Jemput · Mochi")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: /lepas BK-260903-002 dari kunjungan ini/i }),
+    );
+
+    await waitFor(() => expect(bookings.setGroup).toHaveBeenCalledWith("bk-2", null));
+    await waitFor(() =>
+      expect(screen.queryByText("Jemput · Mochi")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("names what one invoice billed beside it, which cannot be let go", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        related: [
+          {
+            _id: "bk-9",
+            bookingNumber: "BK-260903-009",
+            petId: "pet-1",
+            petName: "Mochi",
+            serviceName: "Antar-Jemput",
+            status: "completed",
+            scheduledAt: "2026-09-03T08:00:00.000Z",
+            pickupRequested: false,
+            deliveryRequested: false,
+            tripLeg: "delivery",
+            via: "invoice",
+            documentNumber: "INV-100381",
+          },
+        ],
+      }),
+    );
+
+    show();
+
+    expect(await screen.findByText("Satu faktur · INV-100381")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /lepas/i })).not.toBeInTheDocument();
+  });
+
+  it("points at the commission report rather than showing the money", async () => {
+    show();
+
+    expect(
+      await screen.findByRole("link", { name: /laporan › komisi/i }),
+    ).toHaveAttribute("href", "/dashboard/reports/commissions");
   });
 });

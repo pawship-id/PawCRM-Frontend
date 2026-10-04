@@ -28,8 +28,9 @@ import {
   validateAddress,
   validatePhone,
 } from "@/utils/validation";
-import type { Branch } from "@/types/api";
+import type { Branch, OperatingDay } from "@/types/api";
 
+import { OperatingDaysField } from "./OperatingDaysField";
 import { BranchStatusBadge } from "./BranchStatusBadge";
 
 /**
@@ -76,7 +77,7 @@ export function BranchEditForm({ id }: { id: string }) {
         setLoadError(
           error instanceof ApiError
             ? error.message
-            : "Could not load this branch.",
+            : "Data cabang ini tidak bisa dimuat.",
         );
       });
     return () => {
@@ -89,7 +90,7 @@ export function BranchEditForm({ id }: { id: string }) {
       {/* The header stays visible while the body loads. */}
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-extrabold text-foreground">Edit Branch</h1>
+          <h1 className="text-2xl font-extrabold text-foreground">Ubah cabang</h1>
           {branch && (
             <BranchStatusBadge
               isActive={branch.isActive}
@@ -99,8 +100,8 @@ export function BranchEditForm({ id }: { id: string }) {
         </div>
         <p className="mt-1 text-sm text-muted">
           {branch
-            ? `Update ${branch.name}'s details and availability.`
-            : "Update this branch's details and availability."}
+            ? `Ubah data dan ketersediaan ${branch.name}.`
+            : "Ubah data dan ketersediaan cabang ini."}
         </p>
       </div>
 
@@ -113,15 +114,15 @@ export function BranchEditForm({ id }: { id: string }) {
       ) : (
         <>
           <Card
-            title="Details"
-            description="Name, contact and availability."
+            title="Data cabang"
+            description="Nama, kontak, dan ketersediaan."
           >
             <DetailsSection branch={branch} onUpdated={setBranch} />
           </Card>
 
           <Card
-            title="Danger zone"
-            description="Remove this branch or restore a removed one."
+            title="Zona berbahaya"
+            description="Hapus cabang ini, atau pulihkan yang sudah dihapus."
           >
             <DangerSection branch={branch} onUpdated={setBranch} />
           </Card>
@@ -144,6 +145,12 @@ function DetailsSection({
   const [code, setCode] = useState(branch.code ?? "");
   const [name, setName] = useState(branch.name);
   const [address, setAddress] = useState(branch.address ?? "");
+  const [city, setCity] = useState(branch.city ?? "");
+  const [openTime, setOpenTime] = useState(branch.openTime ?? "");
+  const [closeTime, setCloseTime] = useState(branch.closeTime ?? "");
+  const [operatingDays, setOperatingDays] = useState<OperatingDay[]>(
+    branch.operatingDays ?? [],
+  );
   const [phone, setPhone] = useState(branch.phone ?? "");
   const [receiptFooter, setReceiptFooter] = useState(branch.receiptFooter ?? "");
   // toLocationFieldsValue tolerates a missing pin, so a branch document written
@@ -172,6 +179,15 @@ function DetailsSection({
     if (codeError) nextErrors.code = codeError;
     if (addressError) nextErrors.address = addressError;
     if (phoneError) nextErrors.phone = phoneError;
+    /*
+      BOTH OR NEITHER, which the server enforces too: an opening time with no
+      closing one describes nothing. Caught here so the message names the empty
+      box instead of arriving as a 400 about the pair.
+    */
+    if (Boolean(openTime) !== Boolean(closeTime)) {
+      const missing = openTime ? "closeTime" : "openTime";
+      nextErrors[missing] = "Isi jam buka dan jam tutupnya sekaligus";
+    }
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
@@ -181,6 +197,10 @@ function DetailsSection({
         name: name.trim(),
         code: code.trim() === "" ? null : code.trim(),
         address: address.trim() === "" ? null : address.trim(),
+        city: city.trim() === "" ? null : city.trim(),
+        openTime: openTime === "" ? null : openTime,
+        closeTime: closeTime === "" ? null : closeTime,
+        operatingDays,
         phone: phone.trim() === "" ? null : phone.trim(),
         receiptFooter:
           receiptFooter.trim() === "" ? null : receiptFooter.trim(),
@@ -188,7 +208,7 @@ function DetailsSection({
         isActive,
       });
       onUpdated(updated);
-      swalToast("Branch updated.");
+      swalToast("Cabang tersimpan.");
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
         setFieldErrors(error.fieldErrors);
@@ -214,7 +234,7 @@ function DetailsSection({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Row 1: name & phone */}
         <TextField
-          label="Branch name"
+          label="Nama cabang"
           name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -223,14 +243,14 @@ function DetailsSection({
           required
         />
         <TextField
-          label="Phone"
+          label="Telepon"
           type="tel"
           name="phone"
-          placeholder="Optional"
+          placeholder="Opsional"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           error={fieldErrors.phone}
-          hint="Leave blank to remove."
+          hint="Kosongkan untuk menghapus isinya."
           disabled={disabled}
         />
 
@@ -253,16 +273,67 @@ function DetailsSection({
           disabled={disabled}
         />
 
-        {/* Row 2: address (full width) */}
+        {/* Row 2: address (full width), then the city it is in */}
         <div className="sm:col-span-2">
           <TextField
-            label="Address"
+            label="Alamat"
             name="address"
-            placeholder="Optional"
+            placeholder="Opsional"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             error={fieldErrors.address}
-            hint="Leave blank to remove."
+            hint="Kosongkan untuk menghapus isinya."
+            disabled={disabled}
+          />
+        </div>
+
+        {/*
+          A FIELD OF ITS OWN, not the tail of the address line: an address is
+          written however the shop writes it, and a list grouped by city cannot
+          be built on its last comma-separated fragment.
+        */}
+        <TextField
+          label="Kota"
+          name="city"
+          placeholder="mis. Surabaya"
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+          error={fieldErrors.city}
+          disabled={disabled}
+        />
+
+        <div />
+
+        {/*
+          Row 3: when the doors are open. Both times or neither — see the guard
+          in handleSubmit. Nothing enforces them yet; they are read on the tenant
+          profile, and the booking validator that will read them is why they are
+          stored as times rather than as a sentence.
+        */}
+        <TextField
+          label="Jam buka"
+          name="openTime"
+          type="time"
+          value={openTime}
+          onChange={(e) => setOpenTime(e.target.value)}
+          error={fieldErrors.openTime}
+          disabled={disabled}
+        />
+        <TextField
+          label="Jam tutup"
+          name="closeTime"
+          type="time"
+          value={closeTime}
+          onChange={(e) => setCloseTime(e.target.value)}
+          error={fieldErrors.closeTime}
+          hint="Boleh lewat tengah malam — 20:00 sampai 02:00 tetap diterima."
+          disabled={disabled}
+        />
+
+        <div className="sm:col-span-2">
+          <OperatingDaysField
+            value={operatingDays}
+            onChange={setOperatingDays}
             disabled={disabled}
           />
         </div>
@@ -309,7 +380,7 @@ function DetailsSection({
           onCheckedChange={(checked) => setIsActive(checked === true)}
         />
         <Label htmlFor="branch-active" className="font-normal">
-          Active — this branch is open and available for use
+          Aktif — cabang ini buka dan bisa dipakai
         </Label>
       </div>
 
@@ -318,9 +389,17 @@ function DetailsSection({
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/master/branches")}
+          /*
+            BACK TO THE BRANCH, not to the list (28 September 2026). This form
+            is reached from `/cabang/:id`, so dropping the reader at the list
+            costs them the page they were reading. A DELETE still goes to the
+            list, below — that branch has no page left to go back to.
+          */
+          onClick={() =>
+            router.push(`/dashboard/pengaturan/cabang/${branch._id}`)
+          }
         >
-          Cancel
+          Batal
         </Button>
         <Button
           type="submit"
@@ -328,7 +407,7 @@ function DetailsSection({
           disabled={disabled}
           className="w-full sm:w-auto"
         >
-          Save changes
+          Simpan cabang
         </Button>
       </div>
     </form>
@@ -366,19 +445,19 @@ function DangerSection({
     try {
       if (pending === "delete") {
         await branchService.remove(branch._id);
-        router.push("/dashboard/master/branches");
-        swalToast("Branch deleted.");
+        router.push("/dashboard/pengaturan/cabang");
+        swalToast("Cabang dihapus.");
         return;
       }
       const updated = await branchService.restore(branch._id);
       onUpdated(updated);
       setPending(null);
-      swalToast("Branch restored.");
+      swalToast("Cabang dipulihkan.");
     } catch (err) {
       setError(
         err instanceof ApiError
           ? err.message
-          : "Something went wrong. Please try again.",
+          : "Ada yang tidak beres. Coba lagi, ya.",
       );
     } finally {
       setBusy(false);
@@ -389,7 +468,7 @@ function DangerSection({
     <div className="flex flex-wrap items-center gap-3">
       {deleted ? (
         <Button variant="secondary" onClick={() => setPending("restore")}>
-          Restore branch
+          Pulihkan cabang
         </Button>
       ) : (
         <Button
@@ -397,14 +476,14 @@ function DangerSection({
           className="bg-danger text-danger-foreground hover:bg-danger/90"
           onClick={() => setPending("delete")}
         >
-          Delete branch
+          Hapus cabang
         </Button>
       )}
 
       {pending && (
         <ConfirmDialog
-          title={pending === "delete" ? "Delete branch" : "Restore branch"}
-          confirmLabel={pending === "delete" ? "Delete" : "Restore"}
+          title={pending === "delete" ? "Hapus cabang" : "Pulihkan cabang"}
+          confirmLabel={pending === "delete" ? "Hapus" : "Pulihkan"}
           destructive={pending === "delete"}
           busy={busy}
           error={error}
@@ -413,13 +492,13 @@ function DangerSection({
         >
           {pending === "delete" ? (
             <>
-              Delete <strong>{branch.name}</strong>? It will be hidden from the
-              list and its name freed for reuse. You can restore it later.
+              Hapus <strong>{branch.name}</strong>? Cabang ini akan hilang dari
+              daftar dan namanya bisa dipakai lagi. Masih bisa dipulihkan nanti.
             </>
           ) : (
             <>
-              Restore <strong>{branch.name}</strong>? This may fail if its name
-              has since been taken by another branch.
+              Pulihkan <strong>{branch.name}</strong>? Bisa gagal kalau namanya
+              sudah dipakai cabang lain.
             </>
           )}
         </ConfirmDialog>

@@ -7,6 +7,7 @@ import { Plus, Pencil } from "lucide-react";
 import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
+import { usePetOptions } from "@/hooks/usePetOptions";
 import type { Pet } from "@/types/api";
 
 import { usePets } from "../hooks/usePets";
@@ -35,19 +36,22 @@ import { PetQuickAddDialog } from "./PetQuickAddDialog";
 
 /** One page of pets is what this section shows. See the note below the list. */
 function PetRow({ pet }: { pet: Pet }) {
+  /* The breed is a CODE; the word is the tenant's. */
+  const { label } = usePetOptions();
+
   return (
     <li className="flex items-center gap-3 border-b border-border py-3 last:border-b-0">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate font-medium text-foreground">{pet.name}</span>
-          <PetSpeciesBadge species={pet.species} />
+          <PetSpeciesBadge species={pet.species} label={pet.speciesLabel} />
           {/* Only when it is NOT the ordinary state — a "Dirawat" badge on every
               row would be noise on a list where that is true of almost all. */}
           {!pet.isActive && <PetStatusBadge isActive={false} deleted={false} />}
         </div>
         <p className="mt-0.5 truncate text-xs text-muted">
           {[
-            pet.breed,
+            pet.breedLabel ?? label("breed", pet.breed),
             pet.weightKg === null ? null : `${pet.weightKg} kg`,
           ]
             .filter(Boolean)

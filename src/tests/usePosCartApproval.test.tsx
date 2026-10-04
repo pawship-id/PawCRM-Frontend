@@ -131,3 +131,89 @@ describe("failures that are not 409 at all", () => {
     expect(result.current.pendingApproval).toBeNull();
   });
 });
+
+/**
+ * ─── A CART WRITE SAYS WHETHER IT LANDED ────────────────────────────────────
+ *
+ * THE BUG THIS EXISTS FOR reached a real till too. `send` put every refusal in
+ * `error` and resolved anyway, so the screen's
+ * `void cart.addItem(tile).then(() => swalToast("… ditambahkan"))` announced a
+ * success it had never checked: a cashier selling Bruno a membership saw
+ * "Gratis Grooming Lengkap (VIP) untuk Bruno ditambahkan" over a basket holding
+ * nothing but the refusal that stopped it.
+ */
+describe("what a cart write reports back", () => {
+  it("answers true when the server took it", async () => {
+    const hook = renderHook(() => usePosCart());
+    let landed: boolean | undefined;
+
+    await act(async () => {
+      landed = await hook.result.current.patch(ADD_SERVICE);
+    });
+
+    expect(landed).toBe(true);
+  });
+
+  it("answers false when the server refused it, so no toast is owed", async () => {
+    mockedPos.updateCart.mockRejectedValue(
+      new ApiError("Service not found", 400, {
+        details: [{ field: "refId", message: "This service is no longer available" }],
+      }),
+    );
+
+    const hook = renderHook(() => usePosCart());
+    let landed: boolean | undefined;
+
+    await act(async () => {
+      landed = await hook.result.current.patch(ADD_SERVICE);
+    });
+
+    expect(landed).toBe(false);
+    await waitFor(() => expect(hook.result.current.error).not.toBeNull());
+  });
+
+  /* A held patch wrote nothing either — the dialog carries it, not a toast. */
+  it("answers false when the patch is held for an approver", async () => {
+    mockedPos.updateCart.mockRejectedValue(
+      new ApiError("This discount needs approval", 409, {
+        details: [{ field: "approvedBy", message: "Above 10% needs an approver" }],
+      }),
+    );
+
+    const hook = renderHook(() => usePosCart());
+    let landed: boolean | undefined;
+
+    await act(async () => {
+      landed = await hook.result.current.patch({
+        cartDiscount: { mode: "percent", value: "50" },
+      });
+    });
+
+    expect(landed).toBe(false);
+  });
+});
+
+/**
+ * ─── A MEMBERSHIP PACKAGE IS NOT A SERVICE ──────────────────────────────────
+ *
+ * The till asks whose animal a package is for with the SAME dialog a service
+ * uses, and that is where this went wrong: every answer went to `addServices`,
+ * which stamps `kind: "service"` on what it is handed. A package's id was then
+ * looked up in the service catalogue and came back "Service not found" — with a
+ * success toast over it.
+ */
+describe("selling a membership package", () => {
+  it("sends it as a membership line, naming the animal it is for", async () => {
+    const hook = renderHook(() => usePosCart());
+
+    await act(async () => {
+      await hook.result.current.addMembership("plan-1", "pet-1");
+    });
+
+    expect(mockedPos.updateCart).toHaveBeenCalledWith("cart-1", {
+      items: [
+        { kind: "membership", refId: "plan-1", petId: "pet-1", qty: "1" },
+      ],
+    });
+  });
+});

@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 
 import { Alert, Spinner, Pagination } from "@/components";
+import { SettingsPageHeader } from "@/features/settings/components/SettingsHeader";
 
 import { useUsers } from "../hooks/useUsers";
 import { useLookups } from "../hooks/useLookups";
@@ -10,7 +11,7 @@ import { UsersToolbar } from "./UsersToolbar";
 import { UsersTable } from "./UsersTable";
 
 /**
- * The Master Data → User list screen. Owns the list query (useUsers) and the
+ * Pengaturan › Pengguna, the user list screen. Owns the list query (useUsers) and the
  * role lookup used to label the Role column, and wires the toolbar, table and
  * pager together. Row mutations call `refetch` so the list reflects the change.
  */
@@ -26,12 +27,11 @@ export function UsersScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-foreground">Users</h1>
-        <p className="mt-1 text-sm text-muted">
-          Manage staff accounts, their roles and branch access.
-        </p>
-      </div>
+      <SettingsPageHeader
+        tab="sistem"
+        title="Pengguna"
+        description="Staf, perannya, dan status akunnya. Peran menentukan fitur yang boleh dibuka; akses cabang menentukan data yang terlihat."
+      />
 
       <UsersToolbar query={query} onChange={setQuery} />
 

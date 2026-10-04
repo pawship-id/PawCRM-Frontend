@@ -16,6 +16,9 @@ import { swalToast } from "@/lib/swal";
 import type { Booking, PosShift, PosTransaction } from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
+import { petOptionService } from "@/services/petOption.service";
+
+import { petOptionFields, primePetOptions } from "./helpers/petOptions";
 
 jest.mock("@/services/pos.service");
 jest.mock("@/services/booking.service");
@@ -26,6 +29,7 @@ jest.mock("@/services/branch.service");
 jest.mock("@/services/customer.service");
 jest.mock("@/services/pet.service");
 jest.mock("@/services/service.service");
+jest.mock("@/services/petOption.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 const mockedPos = posService as jest.Mocked<typeof posService>;
@@ -54,34 +58,38 @@ const booking = (overrides: Partial<Booking> = {}): Booking =>
     tenantId: "t1",
     branchId: "b1",
     bookingNumber: "BK-260826-001",
+    groupId: "grp-1",
     customerId: "cust-1",
-    // AFTER PCR-040 the animals are on the rows; the header lists them.
-    pets: [{ petId: PET_ID, petName: "Bruno" }],
-    petCount: 1,
+    customerName: "Ibu Rina",
+    // One booking is one animal and one main service.
+    petId: PET_ID,
+    petName: "Bruno",
+    petSize: "opt-size-sedang",
+    service: {
+      serviceId: "svc-1",
+      name: "Grooming Full Service",
+      serviceType: "Grooming",
+      price: "150000.0000",
+      durationMin: null,
+      status: "pending",
+      statusHistory: [],
+      startedAt: null,
+      finishedAt: null,
+      sessions: [],
+      addons: [],
+    },
+    groomerName: "Belum ditentukan",
+    nextStatuses: [],
+    statusHistory: [],
+    belongings: [],
+    internalNotes: null,
+    customerNotes: null,
+    media: [],
+    pulledToCartAt: null,
+    pulledToInvoiceAt: null,
     totalAmount: "150000.0000",
     totalDurationMin: null,
     billingState: "unbilled",
-    petName: "Bruno",
-    customerName: "Ibu Rina",
-    items: [
-      {
-        _id: "row-1",
-        petId: PET_ID,
-        petName: "Bruno",
-        serviceId: "svc-1",
-        name: "Grooming Full Service",
-        price: "150000.0000",
-        durationMin: null,
-        notes: null,
-        pulledToCartAt: null,
-        pulledToInvoiceAt: null,
-        groomerUserId: null,
-        groomerName: "Belum ditentukan",
-        bookingStatus: "draft",
-        bookingOwned: true,
-        bookingNumber: null,
-      },
-    ],
     scheduledAt: "2026-08-26T03:00:00.000Z",
     status: "confirmed",
     origin: "booking",
@@ -163,6 +171,13 @@ const pulledCart = () =>
 
 beforeEach(() => {
   mockedPos.currentShift.mockResolvedValue(shift);
+  /*
+    THE TENANT'S VOCABULARY, loaded the way the app loads it. A variant's axes
+    are pet-option IDS since 25 September 2026, and an id becomes a word only
+    through this list — there is no table of seeded labels to fall back on any
+    more.
+  */
+  primePetOptions(petOptionService.list);
   // The shift bar's running figures (FR-9) — read on every render of the till.
   mockedPos.xReport.mockResolvedValue({
     shift: shift,
@@ -274,7 +289,7 @@ describe("PosScreen — FR-3's banner", () => {
 });
 
 describe("PosScreen — pulling a booking into the basket", () => {
-  it("opens the bridge, grouped under the animal's name", async () => {
+  it("opens the bridge, each booking named by its animal", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);
 
@@ -282,7 +297,7 @@ describe("PosScreen — pulling a booking into the basket", () => {
     await user.click(await screen.findByRole("button", { name: "Tarik" }));
 
     expect(
-      await screen.findByRole("heading", { name: "Bruno" }),
+      await screen.findByRole("checkbox", { name: /BK-260826-001 untuk Bruno/ }),
     ).toBeInTheDocument();
     expect(screen.getByText("BK-260826-001")).toBeInTheDocument();
   });
@@ -331,6 +346,121 @@ describe("PosScreen — pulling a booking into the basket", () => {
 
     await waitFor(() =>
       expect(mockedBookings.bridge.mock.calls.length).toBeGreaterThan(before),
+    );
+  });
+
+  /*
+    A BOOKING WITH ADD-ONS PULLS AS ITS SERVICE PLUS ONE LINE PER ADD-ON, all on
+    the one booking. The server builds the lines; the basket groups them on
+    `bookingId` and tucks the add-on under its service. What goes back on the
+    next write carries the booking on every line and no row id — one booking is
+    one animal and one service, so `bookingId` already says which.
+  */
+  it("pulls a booking's add-ons onto the same booking, and sends no row id back", async () => {
+    const user = userEvent.setup();
+    const ADDON_ID = "svc-addon";
+
+    mockedBookings.bridge.mockResolvedValue([
+      booking({
+        service: {
+          ...booking().service,
+          addons: [
+            {
+              itemId: "addon-1",
+              serviceId: ADDON_ID,
+              name: "Extra Handling",
+              price: "20000.0000",
+              durationMin: 15,
+            },
+          ],
+        },
+        totalAmount: "170000.0000",
+      }),
+    ]);
+
+    const pulled = {
+      ...pulledCart().items[0],
+      parentServiceId: null,
+      bookingStatus: "confirmed" as const,
+      bookingOwned: false,
+      bookingNumber: "BK-260826-001",
+    };
+    mockedPos.pullBookings.mockResolvedValue(
+      cart({
+        bookingIds: [BOOKING_ID],
+        items: [
+          pulled,
+          {
+            ...pulled,
+            refId: ADDON_ID,
+            name: "Extra Handling",
+            unitPrice: "20000.0000",
+            lineTotal: "20000.0000",
+            parentServiceId: "svc-1",
+          },
+        ],
+      }),
+    );
+    mockedPos.catalog.mockResolvedValue({
+      items: [
+        {
+          kind: "product",
+          _id: "p1",
+          name: "Royal Canin 2kg",
+          code: "RC-2KG",
+          barcode: null,
+          price: "300000.0000",
+          categoryId: null,
+          unit: null,
+          variantCount: null,
+          image: null,
+          stock: { qty: "5.0000", state: "ok" },
+        },
+      ],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await user.click(await screen.findByRole("button", { name: "Tarik" }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: /BK-260826-001/ }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: /tarik ke keranjang/i }),
+    );
+
+    // Under the grooming, not beside it — nesting only happens within a group.
+    expect(await screen.findByText("+ Extra Handling")).toBeInTheDocument();
+    expect(
+      screen.getByText("Bruno - Grooming Full Service"),
+    ).toBeInTheDocument();
+
+    mockedPos.updateCart.mockClear();
+    await user.click(screen.getByRole("button", { name: /royal canin/i }));
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+    const [, body] = mockedPos.updateCart.mock.calls[0];
+    const bookingLines = (body.items ?? []).filter((item) => item.bookingId);
+
+    expect(bookingLines).toEqual([
+      expect.objectContaining({
+        kind: "service",
+        refId: "svc-1",
+        bookingId: BOOKING_ID,
+        petId: PET_ID,
+      }),
+      expect.objectContaining({
+        kind: "service",
+        refId: ADDON_ID,
+        bookingId: BOOKING_ID,
+        petId: PET_ID,
+      }),
+    ]);
+    bookingLines.forEach((item) =>
+      expect(item).not.toHaveProperty("bookingItemId"),
     );
   });
 });
@@ -388,7 +518,7 @@ describe("PosScreen — the way in that does not need a banner", () => {
     await user.click(await screen.findByRole("button", { name: "Tarik" }));
 
     expect(
-      await screen.findByRole("heading", { name: "Bruno" }),
+      await screen.findByRole("checkbox", { name: /untuk Bruno/ }),
     ).toBeInTheDocument();
   });
 
@@ -420,6 +550,7 @@ describe("PosCart — the pulled lines", () => {
         onQtyChange={jest.fn()}
         onRemove={jest.fn()}
         onItemDiscount={jest.fn()}
+      onLinePrice={jest.fn()}
         onCartDiscount={jest.fn()}
         onCharges={jest.fn()}
         onNote={jest.fn()}
@@ -445,7 +576,7 @@ describe("PosCart — the pulled lines", () => {
   it("gives a pulled service no quantity stepper", async () => {
     render(pulledCart());
 
-    await screen.findByText("Grooming Full Service");
+    await screen.findByText("Bruno - Grooming Full Service");
     expect(
       screen.queryByRole("button", { name: /kurangi grooming/i }),
     ).not.toBeInTheDocument();
@@ -520,7 +651,9 @@ describe("PosCart — the pulled lines", () => {
       }),
     );
 
-    await screen.findByText("Mandi");
+    /* The line's title carries the animal too, so the two group headers are
+       still the only bare "Bruno" on the screen. */
+    await screen.findByText("Bruno - Mandi");
     // Two headers, not one merged group.
     expect(screen.getAllByText("Bruno")).toHaveLength(2);
   });
@@ -620,12 +753,7 @@ describe("PosCart — a line whose service has already started", () => {
     discount: null,
     hppAtTime: null,
     bookingId: "bk-1",
-    /*
-      A CART LINE, not a booking header. It names the ROW it came from since
-      PCR-040, so taking this line out releases Bruno's row and leaves any other
-      animal on the same visit claimed.
-    */
-    bookingItemId: "row-1",
+    parentServiceId: null,
     petId: PET_ID,
     petName: "Bruno",
     groomerName: "Belum ditentukan",
@@ -645,6 +773,7 @@ describe("PosCart — a line whose service has already started", () => {
         onQtyChange={jest.fn()}
         onRemove={jest.fn()}
         onItemDiscount={jest.fn()}
+      onLinePrice={jest.fn()}
         onCartDiscount={jest.fn()}
         onCharges={jest.fn()}
         onNote={jest.fn()}
@@ -667,7 +796,7 @@ describe("PosCart — a line whose service has already started", () => {
     render(
       line({
         bookingOwned: true,
-        bookingStatus: "check_in",
+        bookingStatus: "arrived",
         bookingNumber: "BK-260826-001",
       }),
     );
@@ -736,7 +865,7 @@ describe("PosCart — a line whose service has already started", () => {
     render(
       line({
         bookingOwned: true,
-        bookingStatus: "check_in",
+        bookingStatus: "arrived",
         bookingNumber: "BK-260826-001",
       }),
     );
@@ -755,7 +884,7 @@ describe("PosCart — a line whose service has already started", () => {
     render(
       line({
         bookingOwned: true,
-        bookingStatus: "check_in",
+        bookingStatus: "arrived",
         bookingNumber: "BK-260826-001",
       }),
     );
@@ -805,12 +934,7 @@ describe("PosScreen — changing who the basket is for", () => {
     discount: null,
     hppAtTime: null,
     bookingId: "bk-1",
-    /*
-      A CART LINE, not a booking header. It names the ROW it came from since
-      PCR-040, so taking this line out releases Bruno's row and leaves any other
-      animal on the same visit claimed.
-    */
-    bookingItemId: "row-1",
+    parentServiceId: null,
     petId: PET_ID,
     petName: "Bruno",
     groomerName: "Belum ditentukan",
@@ -841,7 +965,7 @@ describe("PosScreen — changing who the basket is for", () => {
     withPetLine();
 
     renderWithAuth(<PosScreen />);
-    await screen.findByText("Grooming Full Service");
+    await screen.findByText("Bruno - Grooming Full Service");
 
     await user.click(screen.getByRole("button", { name: /ganti/i }));
     await user.click(await screen.findByText("Ibu Rina"));
@@ -856,7 +980,7 @@ describe("PosScreen — changing who the basket is for", () => {
     withPetLine();
 
     renderWithAuth(<PosScreen />);
-    await screen.findByText("Grooming Full Service");
+    await screen.findByText("Bruno - Grooming Full Service");
 
     await user.click(screen.getByRole("button", { name: /ganti/i }));
     await user.click(await screen.findByText("Ibu Rina"));
@@ -877,7 +1001,7 @@ describe("PosScreen — changing who the basket is for", () => {
     withPetLine();
 
     renderWithAuth(<PosScreen />);
-    await screen.findByText("Grooming Full Service");
+    await screen.findByText("Bruno - Grooming Full Service");
 
     await user.click(screen.getByRole("button", { name: /ganti/i }));
     await user.click(await screen.findByText("Ibu Rina"));
@@ -899,7 +1023,7 @@ describe("PosScreen — changing who the basket is for", () => {
     withPetLine();
 
     renderWithAuth(<PosScreen />);
-    await screen.findByText("Grooming Full Service");
+    await screen.findByText("Bruno - Grooming Full Service");
 
     await user.click(screen.getByRole("button", { name: /ganti/i }));
     await user.click(await screen.findByText("Ibu Rina"));
@@ -947,12 +1071,8 @@ describe("PosScreen — the banner follows the basket", () => {
     discount: null,
     hppAtTime: null,
     bookingId: BOOKING_ID,
-    // AFTER PCR-040 the animals are on the rows; the header lists them.
-    pets: [{ petId: PET_ID, petName: "Bruno" }],
-    petCount: 1,
-    totalAmount: "150000.0000",
-    totalDurationMin: null,
-    billingState: "unbilled",
+    parentServiceId: null,
+    petId: PET_ID,
     petName: "Bruno",
     groomerName: "Belum ditentukan",
     bookingStatus: "confirmed",
@@ -972,7 +1092,7 @@ describe("PosScreen — the banner follows the basket", () => {
     mockedPos.updateCart.mockResolvedValue(cart({ items: [] }));
 
     renderWithAuth(<PosScreen />);
-    await screen.findByText("Grooming Full Service");
+    await screen.findByText("Bruno - Grooming Full Service");
 
     const before = mockedBookings.bridge.mock.calls.length;
     await user.click(screen.getByRole("button", { name: /hapus grooming/i }));
@@ -1156,6 +1276,303 @@ describe("PosScreen — a service tapped in the grid", () => {
         ]),
       }),
     );
+  });
+
+  /*
+    ─── A SERVICE PRICED BY THE ANIMAL SHOWS ITS PRICE ONCE THERE IS ONE ──────
+
+    A service in variant mode carries no price of its own, so the tile drew an
+    em-dash and the cashier could not find out what a grooming cost until it was
+    already in the basket. The figure lands the moment an animal is chosen,
+    because that is the moment the question has an answer.
+
+    A PREVIEW, NOT THE CHARGE — the server re-resolves it from the same pet on
+    every cart write. What it buys is knowing before you tap.
+  */
+  it("prices a variant service for the animal that was chosen", async () => {
+    mockedPos.catalog.mockResolvedValue({
+      items: [
+        {
+          ...SERVICE_TILE,
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "opt-size-kecil",
+              furType: null,
+              price: "120000.0000",
+            },
+            {
+              petType: null,
+              sizeCategory: "opt-size-besar",
+              furType: null,
+              price: "140000.0000",
+            },
+          ],
+        },
+      ],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({ size: "Besar" }) }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await tapTile(user);
+    await screen.findByRole("heading", { name: /untuk hewan yang mana/i });
+
+    /* Bruno is large — 140.000, not the 120.000 of the first variant. */
+    expect(await screen.findByText("Rp 140.000")).toBeInTheDocument();
+    /*
+      AND WHICH VARIANT IT CAME FROM. The number alone cannot be checked: a
+      cashier looking at 140.000 has no way to tell whether the till read Bruno
+      as large or as medium, and the first time that matters is when a customer
+      disputes the bill.
+    */
+    expect(screen.getByText("Besar")).toBeInTheDocument();
+  });
+
+  /*
+    IT SAYS WHICH FACT IS MISSING, and refuses rather than sending a basket the
+    server is about to reject. "Belum ada harga" is a dead end; "Lengkapi ukuran
+    Bruno dulu" is the next step.
+  */
+  it("refuses, naming the missing fact, when the animal cannot be priced", async () => {
+    mockedPos.catalog.mockResolvedValue({
+      items: [
+        {
+          ...SERVICE_TILE,
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "opt-size-kecil",
+              furType: null,
+              price: "120000.0000",
+            },
+          ],
+        },
+      ],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      /* No size recorded — the one fact this service is priced by. */
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({}) }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await tapTile(user);
+    await screen.findByRole("heading", { name: /untuk hewan yang mana/i });
+
+    /*
+      AND IT IS A WAY OUT, not just a refusal. Naming the fact is better than
+      "belum ada harga"; naming it AND linking to the one form that holds it is
+      the step after — in a NEW TAB, because the cashier is mid-basket and
+      navigating away to fill in a size would throw that away.
+    */
+    const fix = await screen.findByRole("link", {
+      name: /lengkapi ukuran bruno/i,
+    });
+
+    expect(fix).toHaveAttribute(
+      "href",
+      `/dashboard/master/pets/${PET_ID}/edit`,
+    );
+    expect(fix).toHaveAttribute("target", "_blank");
+
+    expect(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    ).toBeDisabled();
+  });
+
+  /*
+    A VARIANT SWITCHED OFF IS NOT A MISSING PRICE (13 September 2026). The till
+    refuses a new line for it, so the button holds — and the sentence says the
+    variant is off, rather than sending the cashier to add one that exists.
+  */
+  it("refuses a variant that is switched off, in its own words", async () => {
+    mockedPos.catalog.mockResolvedValue({
+      items: [
+        {
+          ...SERVICE_TILE,
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "opt-size-besar",
+              furType: null,
+              price: "140000.0000",
+              durationMin: 120,
+              isActive: false,
+            },
+          ],
+        },
+      ],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({ size: "Besar" }) }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await tapTile(user);
+    await screen.findByRole("heading", { name: /untuk hewan yang mana/i });
+
+    expect(
+      await screen.findByText(
+        /varian grooming full service untuk bruno sedang nonaktif/i,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Varian nonaktif")).toBeInTheDocument();
+    expect(screen.queryByText("Rp 140.000")).not.toBeInTheDocument();
+    expect(screen.queryByText(/belum punya harga/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    ).toBeDisabled();
+  });
+
+  /*
+    ─── THE FACT THEY JUST WENT AND FILLED IN ─────────────────────────────────
+
+    The link sends the cashier to the animal's form in another tab, and the price
+    here depends on exactly the field they went to fill in. Coming back to a
+    dialog still saying "Lengkapi ukuran" — about a size they had just typed —
+    reads as the till being broken, and the only way out was to close the dialog
+    and start again.
+
+    RE-ASKED WHEN THE TAB COMES BACK, quietly: the animal that was chosen stays
+    chosen, and nothing about the ordinary visit — where nobody edited anything —
+    changes on screen.
+  */
+  it("picks up the animal's new facts when the tab comes back", async () => {
+    mockedPos.catalog.mockResolvedValue({
+      items: [
+        {
+          ...SERVICE_TILE,
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "opt-size-besar",
+              furType: null,
+              price: "140000.0000",
+            },
+          ],
+        },
+      ],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      /* No size yet — the cashier is about to go and record one. */
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({}) }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await tapTile(user);
+    await screen.findByRole("heading", { name: /untuk hewan yang mana/i });
+    await screen.findByRole("link", { name: /lengkapi ukuran bruno/i });
+
+    /* Filled in on the other tab. */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (petService as any).list.mockResolvedValue({
+      items: [{ _id: PET_ID, name: "Bruno", ...petOptionFields({ size: "Besar" }) }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    });
+
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(await screen.findByText("Rp 140.000")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /lengkapi ukuran bruno/i }),
+    ).not.toBeInTheDocument();
+    /* Still the same animal, still chosen — nothing was reset underneath. */
+    expect(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    ).toBeEnabled();
+  });
+
+  /*
+    ─── AN ADD-ON IS ASKED FOR WHERE IT IS CHEAP TO ASK ───────────────────────
+
+    "Extra Handling" is done to the bath in front of the cashier. Tapping it
+    separately off the grid is a second trip through this dialog for something
+    that is not a second purchase.
+  */
+  it("offers the service's add-ons and sends the ticked ones with it", async () => {
+    mockedPos.catalog.mockResolvedValue({
+      items: [
+        {
+          ...SERVICE_TILE,
+          addons: [
+            {
+              _id: "svc-addon",
+              name: "Extra Handling",
+              price: "20000.0000",
+              hasVariants: false,
+              variantAxes: [],
+              variants: [],
+            },
+          ],
+        },
+      ],
+      pagination: { page: 1, limit: 8, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await pickCustomer(user);
+    await tapTile(user);
+    await screen.findByRole("heading", { name: /untuk hewan yang mana/i });
+
+    await user.click(await screen.findByRole("checkbox"));
+
+    mockedPos.updateCart.mockClear();
+    await user.click(
+      screen.getByRole("button", { name: /tambah ke keranjang/i }),
+    );
+
+    await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
+    const [, body] = mockedPos.updateCart.mock.calls[0];
+
+    /* Two lines, the service first — the server files the second under it. */
+    expect((body.items ?? []).map((item) => item.refId)).toEqual([
+      "svc-1",
+      "svc-addon",
+    ]);
   });
 
   it("adds the line with the animal on it once answered", async () => {

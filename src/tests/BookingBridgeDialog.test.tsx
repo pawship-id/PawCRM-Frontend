@@ -5,13 +5,25 @@ import { BookingBridgeDialog } from "@/features/booking";
 import { bookingService } from "@/services/booking.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
+import { variantOptionService } from "@/services/variantOption.service";
+import { zoneService } from "@/services/zone.service";
 import type { Booking } from "@/types/api";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
+import {
+  BUILT_IN_VARIANT_OPTIONS,
+  makeVariantOption,
+  primeVariantOptions,
+} from "./helpers/variantOptions";
+import { petOptionFields } from "./helpers/petOptions";
 
 jest.mock("@/services/booking.service");
 jest.mock("@/services/pet.service");
 jest.mock("@/services/service.service");
+jest.mock("@/services/customer.service");
+jest.mock("@/services/branch.service");
+jest.mock("@/services/variantOption.service");
+jest.mock("@/services/zone.service");
 
 const mockedBookings = bookingService as jest.Mocked<typeof bookingService>;
 const mockedPets = petService as jest.Mocked<typeof petService>;
@@ -26,58 +38,54 @@ const booking = (overrides: Partial<Booking> = {}): Booking => ({
   tenantId: "507f1f77bcf86cd799439011",
   branchId: "5a7f1f77bcf86cd7994390b1",
   bookingNumber: "BK-260824-001",
+  groupId: "5a7f1f77bcf86cd799439181",
   customerId: CUSTOMER_ID,
-  /* The visit's own shape: a salon booking with no trip and nothing handed in. */
+  customerName: "Ibu Rina",
+  /* One booking is one animal and one main service. */
+  petId: PET_ID,
+  petName: "Bruno",
+  petSize: "opt-size-sedang",
+  status: "confirmed",
+  statusHistory: [],
+  nextStatuses: [],
+  cancelReason: null,
+  /* A salon booking with no trip and nothing handed in. */
   location: "in_store",
   pickupRequested: false,
   deliveryRequested: false,
   tripAddress: null,
+  service: {
+    serviceId: SERVICE_ID,
+    name: "Grooming Full Service",
+    /* The kind of work, snapshotted as text — NOT main/addon. */
+    serviceType: "Grooming",
+    price: "150000.0000",
+    durationMin: null,
+    status: "pending",
+    statusHistory: [],
+    startedAt: null,
+    finishedAt: null,
+    sessions: [],
+    addons: [],
+  },
+  // Never blank — the server names an unassigned slot (FR-3's edge case).
+  groomerName: "Belum ditentukan",
   belongings: [],
-  createdByName: null,
-  createdByRoleName: null,
-  /*
-    AFTER PCR-040 the animals live on the rows and the header lists them; the
-    services are grouped under each on the way out. This dialog reads the flat
-    `items` — the group is empty here because the shape, not the contents, is
-    what it needs.
-  */
-  pets: [{ petId: PET_ID, petName: "Bruno", services: [] }],
-  petCount: 1,
+  internalNotes: null,
+  customerNotes: null,
+  notes: null,
+  media: [],
+  pulledToCartAt: null,
+  pulledToInvoiceAt: null,
+  billingState: "unbilled",
   totalAmount: "150000.0000",
   totalDurationMin: null,
-  billingState: "unbilled",
-  items: [
-    {
-      _id: "5a7f1f77bcf86cd799439151",
-      petId: PET_ID,
-      petName: "Bruno",
-    /* Null on a main service — an add-on names the row it hangs off. */
-    parentItemId: null,
-    /* Nobody helping: this row is one groomer's, which is the ordinary case. */
-    assistantGroomers: [],
-    /* The kind of work, snapshotted as text — NOT main/addon. See BookingItem. */
-    serviceType: "Grooming",
-      serviceId: SERVICE_ID,
-      name: "Grooming Full Service",
-      price: "150000.0000",
-      durationMin: null,
-      notes: null,
-      pulledToCartAt: null,
-      pulledToInvoiceAt: null,
-      groomerUserId: null,
-      // Never null — the server names an unassigned slot (FR-3's edge case).
-      groomerName: "Belum ditentukan",
-    },
-  ],
-  petName: "Bruno",
-  customerName: "Ibu Rina",
   scheduledAt: "2026-08-24T02:00:00.000Z",
-  status: "confirmed",
-  statusHistory: [],
   origin: "booking",
   posTransactionId: null,
-  notes: null,
-  cancelReason: null,
+  createdBy: null,
+  createdByName: null,
+  createdByRoleName: null,
   createdAt: "2026-08-24T00:00:00.000Z",
   updatedAt: "2026-08-24T00:00:00.000Z",
   ...overrides,
@@ -93,6 +101,7 @@ function page<T>(items: T[]) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  primeVariantOptions(variantOptionService.list, zoneService.list);
   mockedPets.list.mockResolvedValue(
     page([{ _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID }]),
   );
@@ -214,7 +223,7 @@ describe("BookingBridgeDialog — pulling", () => {
   /*
     THE LIST IS NO LONGER ALL ONE THING. Since the bridge started offering every
     status but `cancelled`, a row can be a grooming already finished or a draft
-    nobody confirmed — and "Selesai" and "Draf" are different conversations
+    nobody confirmed — and "Selesai" and "Draft" are different conversations
     across a counter, so the row says which it is.
   */
   it("says what state each booking is in", async () => {
@@ -223,7 +232,70 @@ describe("BookingBridgeDialog — pulling", () => {
     ]);
     open();
 
-    expect(await screen.findByText("Sedang dikerjakan")).toBeVisible();
+    expect(await screen.findByText("In Progress")).toBeVisible();
+  });
+
+  /*
+    ONE ROW PER BOOKING, and a booking is one animal and one main service — so
+    the row names the animal, and the add-ons sit under the service they were
+    done to, each with its own price. Pulling it charges the lot.
+  */
+  it("draws one row per booking, with its add-ons under the service", async () => {
+    const user = userEvent.setup();
+    const target = booking({
+      service: {
+        ...booking().service,
+        addons: [
+          {
+            itemId: "5a7f1f77bcf86cd799439191",
+            serviceId: "5a7f1f77bcf86cd7994390e9",
+            name: "Extra Handling",
+            price: "20000.0000",
+            durationMin: 15,
+          },
+        ],
+      },
+      totalAmount: "170000.0000",
+    });
+    mockedBookings.bridge.mockResolvedValue([target]);
+    open();
+
+    const row = await screen.findByRole("checkbox", {
+      name: "Tarik BK-260824-001 untuk Bruno",
+    });
+    expect(screen.getByText("Grooming Full Service")).toBeVisible();
+    expect(screen.getByText("+ Extra Handling")).toBeVisible();
+    expect(screen.getByText("Rp 20.000")).toBeVisible();
+
+    await user.click(row);
+
+    // The service AND its add-on — what the basket is about to gain.
+    expect(
+      screen.getByRole("button", { name: /tarik ke keranjang · rp 170\.000/i }),
+    ).toBeEnabled();
+  });
+
+  /*
+    FR-3's edge case: "hewan yang sama muncul di 2 booking berbeda pada hari yang
+    sama — keduanya tetap ditampilkan sebagai baris terpisah". A morning bath and
+    an afternoon nail trim are two bookings, and two things to tick.
+  */
+  it("keeps two bookings for one animal as two rows", async () => {
+    mockedBookings.bridge.mockResolvedValue([
+      booking(),
+      booking({
+        _id: "5a7f1f77bcf86cd799439102",
+        bookingNumber: "BK-260824-002",
+      }),
+    ]);
+    open();
+
+    expect(
+      await screen.findByRole("checkbox", { name: /BK-260824-001 untuk Bruno/ }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("checkbox", { name: /BK-260824-002 untuk Bruno/ }),
+    ).toBeVisible();
   });
 
   /*
@@ -264,6 +336,8 @@ describe("BookingBridgeDialog — pulling", () => {
 });
 
 describe("BookingBridgeDialog — the ad-hoc tab", () => {
+  const SECOND_PET_ID = "5a7f1f77bcf86cd7994390d9";
+
   beforeEach(() => {
     mockedBookings.bridge.mockResolvedValue([]);
   });
@@ -298,6 +372,211 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
       { petId: PET_ID, petName: "Bella", serviceIds: [SERVICE_ID] },
     ]);
     expect(mockedBookings.create).not.toHaveBeenCalled();
+  });
+
+  /*
+    ─── A SERVICE PRICED BY THE ANIMAL SHOWED NOTHING AT ALL ──────────────────
+
+    The list read `service.price`, which a variant-priced service does not have —
+    the axes it varies by are the pet's own facts. So every row of one showed an
+    em-dash, and `Number(null ?? 0)` made the running total read Rp 0 with two
+    groomings ticked. The tab was unusable for exactly the shop that prices by
+    size.
+  */
+  it("prices each service for the animal the list is for", async () => {
+    mockedPets.list.mockResolvedValue(
+      page([
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, ...petOptionFields({ size: "Besar" }) },
+      ]),
+    );
+    mockedServices.list.mockResolvedValue(
+      page([
+        {
+          _id: SERVICE_ID,
+          name: "Grooming Full Service",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "opt-size-kecil",
+              furType: null,
+              price: "120000.0000",
+            },
+            {
+              petType: null,
+              sizeCategory: "opt-size-besar",
+              furType: null,
+              price: "150000.0000",
+            },
+          ],
+        },
+      ]),
+    );
+
+    openAdhoc();
+
+    /* Bella is large — 150.000, not the 120.000 of the first variant. */
+    expect(await screen.findByText("Rp 150.000")).toBeInTheDocument();
+    /*
+      AND IT COUNTS, in all three places the figure appears: the row, the
+      summary beside the animal's name, and the running total. It read Rp 0 with
+      the service ticked.
+    */
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /grooming full service/i }),
+    );
+    expect(screen.getAllByText("Rp 150.000")).toHaveLength(3);
+  });
+
+  /*
+    ─── THE SUMMARY BREAKS THE TOTAL DOWN ─────────────────────────────────────
+
+    It named what each animal was having and left every figure on the rows above,
+    so on a two-dog visit the only number in sight was the total — and Rp 260.000
+    for two groomings of the SAME NAME could not be checked by anybody reading
+    it. The same service costs a different amount for a small dog and a large
+    one, which is exactly what this box is for.
+  */
+  it("prices each animal's line in the summary, so the total can be checked", async () => {
+    mockedPets.list.mockResolvedValue(
+      page([
+        { _id: PET_ID, name: "Cici", customerId: CUSTOMER_ID, ...petOptionFields({ size: "Kecil" }) },
+        {
+          _id: SECOND_PET_ID,
+          name: "Cilang",
+          customerId: CUSTOMER_ID,
+          ...petOptionFields({ size: "Besar" }),
+        },
+      ]),
+    );
+    mockedServices.list.mockResolvedValue(
+      page([
+        {
+          _id: SERVICE_ID,
+          name: "Basic Grooming",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "opt-size-kecil",
+              furType: null,
+              price: "120000.0000",
+            },
+            {
+              petType: null,
+              sizeCategory: "opt-size-besar",
+              furType: null,
+              price: "140000.0000",
+            },
+          ],
+        },
+      ]),
+    );
+
+    openAdhoc();
+
+    /* With two animals none is pre-selected — the question is which one. */
+    await userEvent.click(await screen.findByRole("button", { name: "Cici" }));
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /basic grooming/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Cilang" }));
+    await userEvent.click(
+      screen.getByRole("checkbox", { name: /basic grooming/i }),
+    );
+
+    /* THE SAME NAME, TWO FIGURES — which is the whole point of showing them. */
+    expect(screen.getByText("Rp 120.000")).toBeInTheDocument();
+    /* 140.000 twice: Cilang's summary line and the row she is looking at. */
+    expect(screen.getAllByText("Rp 140.000").length).toBeGreaterThan(1);
+    /* And they add up to what the button quotes. */
+    expect(screen.getByText("Rp 260.000")).toBeInTheDocument();
+  });
+
+  /*
+    AND IT REFUSES, NAMING THE MISSING FACT, rather than offering a tick the
+    server is about to reject with a message about an axis nobody was asked
+    about.
+  */
+  it("cannot tick a service the animal cannot be priced for", async () => {
+    mockedPets.list.mockResolvedValue(
+      page([
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, ...petOptionFields({}) },
+      ]),
+    );
+    mockedServices.list.mockResolvedValue(
+      page([
+        {
+          _id: SERVICE_ID,
+          name: "Grooming Full Service",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "opt-size-kecil",
+              furType: null,
+              price: "120000.0000",
+            },
+          ],
+        },
+      ]),
+    );
+
+    openAdhoc();
+
+    expect(
+      await screen.findByRole("checkbox", { name: /grooming full service/i }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("link", { name: /lengkapi ukuran bella/i }),
+    ).toHaveAttribute("href", `/dashboard/master/pets/${PET_ID}/edit`);
+  });
+
+  /*
+    NOR ONE WHOSE VARIANT IS SWITCHED OFF (13 September 2026) — the till refuses
+    a new line for it. The reason is on the row, in words.
+  */
+  it("cannot tick a service whose variant for the animal is switched off", async () => {
+    mockedPets.list.mockResolvedValue(
+      page([
+        { _id: PET_ID, name: "Bella", customerId: CUSTOMER_ID, ...petOptionFields({ size: "Besar" }) },
+      ]),
+    );
+    mockedServices.list.mockResolvedValue(
+      page([
+        {
+          _id: SERVICE_ID,
+          name: "Grooming Full Service",
+          price: null,
+          hasVariants: true,
+          variantAxes: ["sizeCategory"],
+          variants: [
+            {
+              petType: null,
+              sizeCategory: "opt-size-besar",
+              furType: null,
+              price: "150000.0000",
+              durationMin: 120,
+              isActive: false,
+            },
+          ],
+        },
+      ]),
+    );
+
+    openAdhoc();
+
+    expect(
+      await screen.findByRole("checkbox", { name: /grooming full service/i }),
+    ).toBeDisabled();
+    expect(screen.getByText(/varian nonaktif/i)).toBeInTheDocument();
+    expect(screen.queryByText("Rp 150.000")).not.toBeInTheDocument();
   });
 
   it("sends no price — the server prices the line", async () => {
@@ -338,10 +617,9 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
   it("pre-selects the only pet, removing a click from every walk-in", async () => {
     open();
 
-    expect(await screen.findByRole("button", { name: "Bella" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
+    expect(
+      await screen.findByRole("button", { name: "Bella" }),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 });
 
@@ -368,7 +646,11 @@ describe("BookingBridgeDialog — several animals in one opening", () => {
     );
     mockedServices.list.mockResolvedValue(
       page([
-        { _id: SERVICE_ID, name: "Grooming Full Service", price: "150000.0000" },
+        {
+          _id: SERVICE_ID,
+          name: "Grooming Full Service",
+          price: "150000.0000",
+        },
         { _id: SERVICE_B, name: "Potong kuku", price: "25000.0000" },
       ]),
     );
@@ -380,7 +662,9 @@ describe("BookingBridgeDialog — several animals in one opening", () => {
     serviceName: RegExp,
   ) => {
     await user.click(await screen.findByRole("button", { name: petName }));
-    await user.click(await screen.findByRole("checkbox", { name: serviceName }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: serviceName }),
+    );
   };
 
   it("hands back one entry per animal, in a single call", async () => {
@@ -488,40 +772,75 @@ describe("BookingBridgeDialog — several animals in one opening", () => {
       screen.getByRole("button", { name: /tambah ke keranjang/i }),
     ).toBeDisabled();
   });
+});
 
-  it("gives each row its own key, even when two share a service", async () => {
-    /*
-      REPORTED FROM THE TILL, 3 September 2026: React warned about two children
-      with the same key. The rows were keyed on `serviceId`, and since PCR-040
-      one booking may carry the same service twice — Mochi and Coco both having a
-      Full Service. React is entitled to drop or duplicate either row.
+/* ─── A WALK-IN PRICED BY A "DIPILIH STAF" CARD (17 September 2026) ────────── */
+describe("BookingBridgeDialog — opsi dipilih staf", () => {
+  const LOKASI = "vo-lokasi";
 
-      RENDERED WITHOUT A WARNING is the assertion: the key itself is not
-      observable, so this watches the console the way the browser did.
-    */
-    const warn = jest.spyOn(console, "error").mockImplementation(() => {});
+  beforeEach(() => {
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: [
+        ...BUILT_IN_VARIANT_OPTIONS,
+        makeVariantOption({
+          _id: LOKASI,
+          name: "Lokasi",
+          source: "staff",
+          axisKey: LOKASI,
+          sortOrder: 3,
+          values: [
+            { code: "toko", label: "Di Toko", sortOrder: 0, isActive: true },
+            { code: "rumah", label: "Di Rumah", sortOrder: 1, isActive: true },
+          ],
+        }),
+      ],
+    });
+    mockedServices.list.mockResolvedValue(
+      page([
+        {
+          _id: SERVICE_ID,
+          name: "Grooming Full Service",
+          price: null,
+          hasVariants: true,
+          variantAxes: [LOKASI],
+          variants: [
+            { petType: null, sizeCategory: null, furType: null, choices: [{ optionId: LOKASI, code: "toko" }], price: "120000.0000" },
+            { petType: null, sizeCategory: null, furType: null, choices: [{ optionId: LOKASI, code: "rumah" }], price: "175000.0000" },
+          ],
+        },
+      ]),
+    );
+  });
 
-    const base = booking();
+  it("lets the service be ticked, asks for Lokasi, and hands the choice back", async () => {
+    const onAdd = openAdhoc();
 
-    mockedBookings.bridge.mockResolvedValue([
-      {
-        ...base,
-        /* SAME service, two animals — exactly what `serviceId` could not key. */
-        items: [
-          { ...base.items[0], _id: "it-1", petName: "Mochi" },
-          { ...base.items[0], _id: "it-2", petName: "Coco" },
-        ],
-      },
-    ] as never);
+    await userEvent.click(
+      await screen.findByRole("checkbox", { name: /grooming full service/i }),
+    );
 
-    open();
-
-    await screen.findByText("BK-260824-001");
-
+    /* Not answered yet: the till would refuse it, so the tab says so. */
+    await userEvent.click(screen.getByRole("button", { name: /tambah ke keranjang/i }));
+    /* On the row, and in the tab's error. */
     expect(
-      warn.mock.calls.some((call) => String(call[0]).includes("same key")),
-    ).toBe(false);
+      await screen.findByText("Bella: Pilih Lokasi untuk Grooming Full Service dulu."),
+    ).toBeInTheDocument();
+    expect(onAdd).not.toHaveBeenCalled();
 
-    warn.mockRestore();
+    await userEvent.click(screen.getByRole("combobox", { name: /lokasi/i }));
+    await userEvent.click(await screen.findByRole("option", { name: "Di Rumah" }));
+
+    expect((await screen.findAllByText("Rp 175.000")).length).toBeGreaterThan(0);
+
+    await userEvent.click(screen.getByRole("button", { name: /tambah ke keranjang/i }));
+
+    expect(onAdd).toHaveBeenCalledWith([
+      {
+        petId: PET_ID,
+        petName: "Bella",
+        serviceIds: [SERVICE_ID],
+        variantChoices: [{ optionId: LOKASI, code: "rumah" }],
+      },
+    ]);
   });
 });

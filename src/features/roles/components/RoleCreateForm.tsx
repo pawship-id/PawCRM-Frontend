@@ -57,7 +57,7 @@ export function RoleCreateForm() {
         permissions: selectionToGrants(selection),
       });
       // Redirect first, then fire the toast so it rides along on the list screen.
-      router.push("/dashboard/master/roles");
+      router.push("/dashboard/pengaturan/peran");
       swalToast(`${created.name} has been created.`);
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
@@ -115,7 +115,7 @@ export function RoleCreateForm() {
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/master/roles")}
+          onClick={() => router.push("/dashboard/pengaturan/peran")}
         >
           Cancel
         </Button>

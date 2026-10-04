@@ -33,8 +33,11 @@ const EVERY_FILTER: Required<ServiceListQuery> = {
   businessLineId: "5a7f1f77bcf86cd799439077",
   categoryId: "5a7f1f77bcf86cd799439088",
   serviceType: "addon",
+  serviceKind: "grooming",
   branchId: "5a7f1f77bcf86cd7994390bb",
   isActive: false,
+  location: "in_home",
+  petType: "opt-species-kucing",
   search: "mandi",
   includeDeleted: true,
 };

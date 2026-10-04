@@ -1,14 +1,9 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { BusinessLinesScreen } from "@/features/accounting";
-import { RequirePermission } from "@/features/permissions";
-
-export const metadata: Metadata = { title: "Lini Bisnis · Buloo" };
-
-export default function BusinessLinesPage() {
-  return (
-    <RequirePermission feature="businessLines">
-      <BusinessLinesScreen />
-    </RequirePermission>
-  );
+/**
+ * Moved to Pengaturan on 22 September 2026, when the settings rail became one
+ * row with four tabs (mockup `buloo-navigation-v3`). Kept so old links land.
+ */
+export default function MovedBusinessLinesPage() {
+  redirect("/dashboard/pengaturan/lini-bisnis");
 }

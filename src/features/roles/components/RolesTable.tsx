@@ -164,7 +164,7 @@ export function RolesTable({
                         <>
                           <Can feature="roles" action="update">
                             <Button variant="ghost" size="sm" asChild>
-                              <Link href={`/dashboard/master/roles/${role._id}`}>
+                              <Link href={`/dashboard/pengaturan/peran/${role._id}`}>
                                 <Pencil className="size-4" />
                                 Edit
                               </Link>

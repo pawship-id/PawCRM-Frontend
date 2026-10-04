@@ -1,24 +1,30 @@
 "use client";
 
 import { Alert, Pagination, Spinner } from "@/components";
+import { SettingsPageHeader } from "@/features/settings";
 
-import { PURCHASING_CRUMBS } from "../crumbs";
 import { useSupplierCategories } from "../hooks/useSupplierCategories";
-import { PageHeading } from "./PageHeading";
 import { SupplierCategoriesTable } from "./SupplierCategoriesTable";
 import { SupplierCategoriesToolbar } from "./SupplierCategoriesToolbar";
 
 /**
- * The Purchasing → Kategori Supplier screen. Owns the list query and nothing
- * else; the row actions live on the table and the two write verbs are routes of
- * their own (`/new` and `/:id`).
+ * The Kategori Supplier screen. Owns the list query and nothing else; the row
+ * actions live on the table and the two write verbs are routes of their own
+ * (`/new` and `/:id`).
  *
- * IN PURCHASING RATHER THAN NEXT TO THE PRODUCT KATEGORI SCREEN, even though
- * the two share a collection on the backend. The screens are used by different
- * people for different jobs: a product category is filled in while entering an
- * item, a supplier category while setting up a vendor. Grouping by storage
- * rather than by use would put a purchasing setup screen inside Inventory,
- * where nobody doing purchasing would look for it.
+ * REACHED FROM PENGATURAN › UMUM, NOT FROM A PEMBELIAN TAB (1 October 2026, on
+ * request) — hence `SettingsPageHeader` rather than `PurchasingModuleHeader`.
+ * The component and its two forms stayed in `features/purchasing`, where the
+ * collection and its service live; only the way in, and the URL
+ * (`SETTINGS_PATHS.kategoriSupplier`), moved.
+ *
+ * STILL GROUPED BY WHO USES IT, not by storage, which is why it is not simply
+ * folded into the product Kategori screen even though the two share a
+ * collection on the backend: a product category is filled in while entering an
+ * item, a supplier category while setting up a vendor. That reasoning is also
+ * why it sits in Pengaturan rather than Inventory now that it has left
+ * Pembelian — a vendor label set is master data somebody edits rarely, same as
+ * Tipe supplier beside it.
  */
 export function SupplierCategoriesScreen() {
   const { categories, pagination, query, loading, error, setQuery, refetch } =
@@ -26,14 +32,11 @@ export function SupplierCategoriesScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeading
-        crumbs={[PURCHASING_CRUMBS.hub, { label: "Kategori Supplier" }]}
+      <SettingsPageHeader
         title="Kategori Supplier"
-      >
-        Pengelompokan supplier — misalnya distributor, agen, atau peternak
-        lokal. Isinya cuma nama; termin, NPWP, dan sisa utang ada di data
-        suppliernya.
-      </PageHeading>
+        tab="umum"
+        description="Kelompok seperti Makanan, Perlengkapan, atau Obat — dipakai untuk memilah supplier, bukan untuk harga atau pajak."
+      />
 
       <SupplierCategoriesToolbar query={query} onChange={setQuery} />
 

@@ -46,6 +46,7 @@ import { useBranchScope, warehousesForBranch } from "../hooks/useBranchScope";
 import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
 import { qtyAtWarehouse } from "../utils/ledger";
 import { AdjustmentAddProductsDialog } from "./AdjustmentAddProductsDialog";
+import { StockEntryKindHint } from "./StockEntryKindHint";
 
 /**
  * A manual stock adjustment — one numbered document, however many products.
@@ -492,6 +493,11 @@ export function StockAdjustmentForm() {
         />
 
         {formError && <Alert variant="error">{formError}</Alert>}
+
+        {/* The other document, named before anything is typed — see
+            StockEntryKindHint. The rail used to make this pair legible by
+            standing them next to each other; it no longer does. */}
+        <StockEntryKindHint kind="adjustment" />
 
         <Card
           title="Keterangan dokumen"

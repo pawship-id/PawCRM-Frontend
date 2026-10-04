@@ -13,12 +13,29 @@ export type {
 } from "./LocationFields";
 export { Alert } from "./Alert";
 export { Breadcrumb } from "./Breadcrumb";
+export { PageTabs } from "./PageTabs";
+export { StatTile, PendingStatTile } from "./StatTile";
+export { InfoTooltip } from "./InfoTooltip";
+/**
+ * The scope row a summary tab wears — cabang, periode, and the custom range the
+ * last chip reveals. Shared by Penjualan › Ringkasan and Pembelian › Ringkasan.
+ */
+export {
+  ScopeCard,
+  ScopeField,
+  ScopePeriodCard,
+  type ScopePeriod,
+  type ScopePeriodCardProps,
+} from "./ScopePeriodCard";
+export type { PageTab, PageTabsProps } from "./PageTabs";
 export type { BreadcrumbProps, Crumb } from "./Breadcrumb";
 export { Card } from "./Card";
 export { ImageField } from "./ImageField";
 export { Spinner } from "./Spinner";
 export { HighlightText } from "./HighlightText";
 export { Pagination } from "./Pagination";
+export { ListFooter } from "./ListFooter";
+export { JournalLink } from "./JournalLink";
 export { ConfirmDialog } from "./ConfirmDialog";
 export {
   InternalBatchCodeDisplay,

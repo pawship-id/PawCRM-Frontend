@@ -1,5 +1,6 @@
 import { apiClient } from "./api-client";
 import type {
+  PayablesSummary,
   CreatePurchaseInvoiceInput,
   PageResult,
   PurchaseInvoiceDetail,
@@ -22,7 +23,7 @@ import type {
  * correction visible.
  *
  * WHAT `create` DOES NOT DO IS CREATE THE DEBT. A `beli_putus` goods receipt
- * credits `2101 Utang Supplier` the moment it posts, so filing an invoice writes
+ * credits `2101 Utang Usaha` the moment it posts, so filing an invoice writes
  * no journal entry at all. What it adds is the vendor's own number, the issue
  * date, and the due date derived from their payment terms. A screen that reads a
  * receipt's null `invoiceId` as "nothing is owed" is wrong.
@@ -95,7 +96,7 @@ export const purchaseInvoiceService = {
    * POST /purchase-invoices/:id/payments — pay a supplier (201). THE ONE THAT
    * MOVES MONEY.
    *
-   * Posts `Dr 2101 Utang Supplier / Cr 1101 Kas or 1102 Bank` in the same
+   * Posts `Dr 2101 Utang Usaha / Cr 1101 Kas or 1102 Bank` in the same
    * transaction as the payment itself, and the entry is immutable.
    *
    * NOT IDEMPOTENT, and callers must handle that themselves: there is no
@@ -132,6 +133,31 @@ export const purchaseInvoiceService = {
    * A supplier who owes nothing is absent from `items`, not present with zeros;
    * callers key by `supplierId` and read a miss as zero.
    */
+  /**
+   * GET /purchase-invoices/summary — the Ringkasan tab's three cards.
+   *
+   * THE DATES BOUND THE PAYMENTS, not the invoices, which is the one thing to
+   * know before reusing this call: the balances it returns beside them ignore
+   * the period entirely. See `PayablesSummary`.
+   */
+  summary: (
+    query: {
+      branchId?: string;
+      /** A named period, cut in the TENANT's timezone. Never beside the dates. */
+      period?: "today" | "week" | "month";
+      dateFrom?: string;
+      dateTo?: string;
+    } = {},
+  ) =>
+    apiClient.get<PayablesSummary>("/purchase-invoices/summary", {
+      query: {
+        branchId: query.branchId || undefined,
+        period: query.period,
+        dateFrom: query.dateFrom || undefined,
+        dateTo: query.dateTo || undefined,
+      },
+    }),
+
   outstandingSummary: (query: { supplierId?: string } = {}) =>
     apiClient.get<SupplierOutstandingSummary>(
       "/purchase-invoices/outstanding",

@@ -12,6 +12,10 @@ export {
   type DatePreset,
   type FilterDateRangeProps,
 } from "./FilterDateRange";
+export {
+  FilterCheckList,
+  type FilterCheckListProps,
+} from "./FilterCheckList";
 export { FilterField, type FilterFieldProps } from "./FilterField";
 export {
   FilterMultiSelect,

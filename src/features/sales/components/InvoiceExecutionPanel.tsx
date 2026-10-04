@@ -17,11 +17,11 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { userService } from "@/services/user.service";
+import { formatMoney } from "@/utils/decimal";
 import type {
   Booking,
   CustomerInvoiceDetail,
-  InvoiceBookingItem,
-  BookingStatus,
+  InvoiceBooking,
 } from "@/types/api";
 
 /**
@@ -65,6 +65,37 @@ const FETCH_LIMIT = 100;
 /** The "nobody yet" row. Radix Select forbids `value=""`, hence a sentinel. */
 const UNASSIGNED = "belum-ditentukan";
 
+/** The fields of an invoice's booking that the two actions can move. */
+export type InvoiceBookingPatch = Pick<
+  InvoiceBooking,
+  "status" | "service" | "groomerUserId" | "groomerName"
+>;
+
+/**
+ * A Booking document cut down to the invoice's view of it.
+ *
+ * `groomerUserId` IS READ THE WAY THE SERVER'S `groomerName` IS: the first
+ * person on the first session. The two travel together, and a picker showing one
+ * person beside a label naming another would be two answers to one question.
+ */
+function toPatch(booking: Booking): InvoiceBookingPatch {
+  return {
+    status: booking.status,
+    groomerName: booking.groomerName,
+    groomerUserId: booking.service.sessions[0]?.groomers[0]?._id ?? null,
+    service: {
+      serviceId: booking.service.serviceId,
+      name: booking.service.name,
+      price: booking.service.price,
+      addons: booking.service.addons.map((addon) => ({
+        serviceId: addon.serviceId,
+        name: addon.name,
+        price: addon.price,
+      })),
+    },
+  };
+}
+
 function formatWhen(iso: string | null): string {
   if (!iso) return "—";
 
@@ -90,10 +121,7 @@ export function InvoiceExecutionPanel({
    * would quietly overwrite the panel's fields with a document that does not
    * carry all of them.
    */
-  onChanged: (
-    id: string,
-    patch: { status: BookingStatus; items: InvoiceBookingItem[] },
-  ) => void;
+  onChanged: (id: string, patch: InvoiceBookingPatch) => void;
 }) {
   const { can } = usePermissions();
   const mayAct = can("bookings", "update");
@@ -155,7 +183,7 @@ export function InvoiceExecutionPanel({
 
     try {
       const updated = await work();
-      onChanged(id, { status: updated.status, items: updated.items });
+      onChanged(id, toPatch(updated));
     } catch (error: unknown) {
       swalToast(
         error instanceof ApiError
@@ -191,7 +219,6 @@ export function InvoiceExecutionPanel({
         */
         const open =
           booking.status !== "completed" && booking.status !== "cancelled";
-        const groomerId = booking.items[0]?.groomerUserId ?? null;
 
         return (
           <div
@@ -225,10 +252,28 @@ export function InvoiceExecutionPanel({
               </div>
             </div>
 
+            {/*
+              THE MAIN SERVICE, THEN ITS ADD-ONS beneath it — nobody chose
+              "Parfum" by itself, so it is drawn under the service it came with.
+            */}
             <ul className="flex flex-col gap-0.5 text-sm text-muted">
-              {booking.items.map((item, index) => (
-                <li key={`${item.serviceId}-${index}`}>
-                  {item.name} · {item.groomerName}
+              <li className="flex justify-between gap-3">
+                <span>
+                  {booking.service.name} · {booking.groomerName}
+                </span>
+                <span className="tabular-nums">
+                  {formatMoney(booking.service.price)}
+                </span>
+              </li>
+              {booking.service.addons.map((addon, index) => (
+                <li
+                  key={`${addon.serviceId}-${index}`}
+                  className="flex justify-between gap-3 pl-4"
+                >
+                  <span>{addon.name}</span>
+                  <span className="tabular-nums">
+                    {formatMoney(addon.price)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -244,7 +289,7 @@ export function InvoiceExecutionPanel({
                 */}
                 {groomers.length > 0 && (
                   <Select
-                    value={groomerId ?? UNASSIGNED}
+                    value={booking.groomerUserId ?? UNASSIGNED}
                     disabled={working}
                     onValueChange={(value) =>
                       run(booking._id, () =>

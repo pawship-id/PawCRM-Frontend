@@ -1,15 +1,9 @@
-import type { Metadata } from "next";
-import { AuditLogsScreen } from "@/features/audit-logs";
-import { RequirePermission } from "@/features/permissions";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  title: "Audit Log · Master Data · Buloo",
-};
-
-export default function MasterAuditLogsPage() {
-  return (
-    <RequirePermission feature="auditLogs">
-      <AuditLogsScreen />
-    </RequirePermission>
-  );
+/**
+ * Moved to Pengaturan on 22 September 2026, when the settings rail became one
+ * row with four tabs (mockup `buloo-navigation-v3`). Kept so old links land.
+ */
+export default function MovedAuditLogsPage() {
+  redirect("/dashboard/pengaturan/riwayat");
 }

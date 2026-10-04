@@ -10,13 +10,12 @@ import { RequirePermission } from "@/features/permissions";
 export const metadata: Metadata = { title: "Booking Baru · Buloo" };
 
 /**
- * Taking a booking — PCR-041.
+ * Taking bookings — one card per booking, one animal and one main service each.
  *
- * A PAGE RATHER THAN A DIALOG ON THE LIST, and it was the second of those until
- * a booking could hold several animals. Three animals is three cards of five
- * controls each; a dialog holding that is a form scrolling inside a scrolling
- * page, with the save button and the running total sliding out of reach of the
- * fields they describe.
+ * A PAGE RATHER THAN A DIALOG ON THE LIST. Three animals is three cards of
+ * several controls each; a dialog holding that is a form scrolling inside a
+ * scrolling page, with the save button and the running total sliding out of
+ * reach of the fields they describe.
  *
  * GATED ON `create`, NOT `read`. A booking consumes a number from the branch's
  * series the moment it leaves draft, and the till bills from it; a role that may
@@ -32,8 +31,9 @@ export default function NewBookingPage() {
           and nesting a second produces invalid HTML that React reports as a
           hydration error. */}
       <PageHeading crumbs={[...BOOKING_CRUMBS, { label: "Booking baru" }]} title="Booking baru">
-        Satu kunjungan, satu booking. Beberapa hewan sekaligus boleh — tambahkan
-        barisnya di bawah.
+        Satu booking untuk satu hewan dan satu layanan utama. Datang dengan
+        beberapa hewan? Tambahkan kartunya di bawah — semuanya tersimpan sebagai
+        satu kunjungan.
       </PageHeading>
       <BookingForm />
     </RequirePermission>

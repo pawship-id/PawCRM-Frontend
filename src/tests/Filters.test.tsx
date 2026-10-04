@@ -188,6 +188,85 @@ describe("FilterSelect", () => {
     // reason twenty-two call sites carried casts.
     expect(onChange).toHaveBeenCalledWith(false);
   });
+
+  /**
+   * GROUPED OPTIONS — `FilterOption.group`, for a picker drawn from several
+   * registers at once (Pelanggan / Supplier / Staf on Tambah transaksi).
+   */
+  describe("grouped options", () => {
+    const CONTACTS: FilterOption<string>[] = [
+      { value: "c1", label: "Pet Shop Melati", group: "Pelanggan" },
+      { value: "s1", label: "CV Grooming Supplies", group: "Supplier" },
+      { value: "u1", label: "Sari", group: "Staf" },
+      { value: "other", label: "Nama lain…", group: "Tidak terdaftar" },
+    ];
+
+    const renderContacts = () =>
+      render(
+        <FilterSelect
+          label="Penerima"
+          value=""
+          options={CONTACTS}
+          onChange={jest.fn()}
+        />,
+      );
+
+    it("draws a heading wherever the group changes, in the order given", async () => {
+      const user = userEvent.setup();
+      renderContacts();
+
+      await user.click(screen.getByLabelText("Penerima"));
+
+      expect(
+        (await screen.findAllByRole("group")).map((row) =>
+          row.getAttribute("aria-label"),
+        ),
+      ).toEqual(["Pelanggan", "Supplier", "Staf", "Tidak terdaftar"]);
+      // The rows keep their own names — the heading is not part of them.
+      expect(
+        screen.getByRole("option", { name: "Pet Shop Melati" }),
+      ).toBeInTheDocument();
+    });
+
+    /**
+     * `<li role="option">` inside another `<li>` is invalid HTML and React
+     * refuses to hydrate it — the first cut of this shipped exactly that. The
+     * group has to be a nested LIST.
+     */
+    it("nests each group in a list, never an option inside an option", async () => {
+      const user = userEvent.setup();
+      renderContacts();
+
+      await user.click(screen.getByLabelText("Penerima"));
+
+      const option = await screen.findByRole("option", { name: "Sari" });
+      expect(option.parentElement?.tagName).toBe("UL");
+      expect(option.parentElement).toHaveAttribute("role", "group");
+      // The invalid shape is an `li` that is a CHILD of an `li`; one nested
+      // inside it through a list is both valid and the right ARIA.
+      expect(document.querySelectorAll("li > li").length).toBe(0);
+    });
+
+    it("narrows by the group as well as the label", async () => {
+      const user = userEvent.setup();
+      render(
+        <FilterSelect
+          label="Penerima"
+          value=""
+          options={CONTACTS}
+          searchable
+          onChange={jest.fn()}
+        />,
+      );
+
+      await user.click(screen.getByLabelText("Penerima"));
+      await user.type(await screen.findByLabelText("Cari penerima"), "staf");
+
+      expect(
+        (await screen.findAllByRole("option")).map((row) => row.textContent),
+      ).toEqual(["Sari"]);
+    });
+  });
 });
 
 describe("FilterMultiSelect", () => {

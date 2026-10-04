@@ -1,16 +1,9 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { WarehousesScreen } from "@/features/warehouses";
-import { RequirePermission } from "@/features/permissions";
-
-export const metadata: Metadata = {
-  title: "Warehouse · Master Data · Buloo",
-};
-
-export default function MasterWarehousesPage() {
-  return (
-    <RequirePermission feature="warehouses">
-      <WarehousesScreen />
-    </RequirePermission>
-  );
+/**
+ * Moved to Pengaturan on 22 September 2026, when the settings rail became one
+ * row with four tabs (mockup `buloo-navigation-v3`). Kept so old links land.
+ */
+export default function MovedWarehousesPage() {
+  redirect("/dashboard/pengaturan/gudang");
 }

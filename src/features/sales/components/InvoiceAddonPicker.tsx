@@ -1,0 +1,234 @@
+"use client";
+
+import { useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { formatMoney } from "@/utils/decimal";
+import { priceForPet, type PriceLookup } from "@/utils/serviceVariant";
+import type { Pet, Service } from "@/types/api";
+
+/**
+ * "+ Add-on" on a main service's row in Faktur baru — the ticks the till asks
+ * in `PosServicePetDialog`, asked where this form picks the animal: on the row.
+ *
+ * A MODAL, NOT A POPOVER (decided 14 September 2026 on request). The popover was
+ * narrow enough to push each price under its name, and it applied every tick the
+ * moment it was made. The modal holds the ticks as a draft — Simpan add-on puts
+ * them on the bill, Batal leaves the bill as it was — the same shape as the
+ * "Tambah barang atau jasa" dialog beside it.
+ *
+ * ONLY AFTER THE ROW HAS SAID WHO IT IS FOR. An add-on may be priced by size or
+ * coat, so before that there is no honest figure to put beside a tick.
+ *
+ * ⚠️ "WHO" IS NOT ALWAYS A `petId` (24 September 2026). An antar-jemput row has
+ * none — one van carries several animals, and they live in `passengerPetIds` —
+ * so gating on the pet locked the add-ons of every ride with "Pilih hewan
+ * dulu", over a cell that has no pet picker at all. `whose` is the words the
+ * row can already say; `pet` is only for the default quote, which a row with
+ * one animal uses and a van never does.
+ *
+ * AN ADD-ON NOBODY CAN PRICE CANNOT BE TICKED, and neither can a switched-off
+ * variant — the server refuses both. One already on the bill can still be
+ * unticked after the animal changed, so a line that lost its price can come off.
+ *
+ * PRICED BEYOND THE PET TOO (17 September 2026), when the form passes
+ * `quoteOf`: the customer's zone and the service row's "Dipilih staf" values,
+ * which an add-on inherits. An add-on still waiting only on a choice of its own
+ * CAN be ticked — its row asks for that choice — while a zone nobody can say
+ * cannot.
+ *
+ * WHAT A SAVE DOES IS THE FORM'S BUSINESS (`onSave`): it puts exactly those
+ * add-ons under this row, for this row's animal. The server files them under the
+ * service again from the catalogue — nothing here is sent as a parent.
+ */
+export function InvoiceAddonPicker({
+  idPrefix,
+  serviceName,
+  whose,
+  pet,
+  pendingLabel = "Pilih hewan dulu",
+  offered,
+  tickedIds,
+  onSave,
+  quoteOf,
+  problemOf,
+  disabled = false,
+}: {
+  /** Unique per row — a customer with two cats has two of these. */
+  idPrefix: string;
+  serviceName: string;
+  /**
+   * WHO THIS ROW IS FOR, in words — "Miko", or "Cici, Comoo" for a van. Null
+   * while the row has not said, which is what closes the button.
+   */
+  whose: string | null;
+  /** The row's one animal, when it has one — only the default quote reads it. */
+  pet?: Pet;
+  /** What to say while `whose` is null — a ride asks for a journey, not a pet. */
+  pendingLabel?: string;
+  /** The active add-ons this service lists, in catalogue order. */
+  offered: Service[];
+  /** Add-ons already on the bill under this row. */
+  tickedIds: string[];
+  /** Every add-on that should be under the row, in catalogue order. */
+  onSave: (addonIds: string[]) => void;
+  /** The add-on's price for this row — defaults to the animal alone. */
+  quoteOf?: (addon: Service) => PriceLookup;
+  /** Why a quote beyond the pet cannot be made — `useVariantQuote().problemOf`. */
+  problemOf?: (addon: Service, lookup: PriceLookup) => string | null;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled={disabled || !whose}
+        aria-label={
+          tickedIds.length > 0
+            ? `Add-on untuk ${serviceName} (${tickedIds.length} dipilih)`
+            : `Add-on untuk ${serviceName}`
+        }
+        onClick={() => setOpen(true)}
+      >
+        {tickedIds.length > 0 ? `+ Add-on (${tickedIds.length})` : "+ Add-on"}
+      </Button>
+
+      {!whose && <span className="text-xs text-muted">{pendingLabel}</span>}
+
+      {/* MOUNTED ONLY WHILE OPEN, so every opening starts its draft from what
+          the bill carries now rather than from a draft somebody cancelled. */}
+      {open && whose && (
+        <AddonDialog
+          idPrefix={idPrefix}
+          serviceName={serviceName}
+          whose={whose}
+          offered={offered}
+          tickedIds={tickedIds}
+          onSave={onSave}
+          quoteOf={quoteOf ?? ((addon) => priceForPet(addon, pet))}
+          problemOf={problemOf}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function AddonDialog({
+  idPrefix,
+  serviceName,
+  whose,
+  offered,
+  tickedIds,
+  onSave,
+  quoteOf,
+  problemOf,
+  onClose,
+}: {
+  idPrefix: string;
+  serviceName: string;
+  whose: string;
+  offered: Service[];
+  tickedIds: string[];
+  onSave: (addonIds: string[]) => void;
+  quoteOf: (addon: Service) => PriceLookup;
+  problemOf?: (addon: Service, lookup: PriceLookup) => string | null;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState<Set<string>>(() => new Set(tickedIds));
+
+  function toggle(id: string) {
+    setDraft((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{`Add-on ${serviceName}`}</DialogTitle>
+          <DialogDescription>
+            {`Untuk ${whose} — harganya sudah menurut hewannya. Yang dicentang masuk ke faktur di bawah ${serviceName}.`}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-72 overflow-y-auto rounded-lg border border-border">
+          {offered.map((addon) => {
+            const quote = quoteOf(addon);
+            /* Asked on the add-on's own row once it is on the bill. */
+            const choiceLater = !quote.price && quote.missingChoice !== null;
+            const beyond = problemOf?.(addon, quote) ?? null;
+            const checked = draft.has(addon._id);
+            const id = `${idPrefix}-addon-${addon._id}`;
+
+            return (
+              <div
+                key={addon._id}
+                className="flex items-center gap-3 border-b border-border/60 px-3 py-2.5 last:border-0"
+              >
+                <Checkbox
+                  id={id}
+                  checked={checked}
+                  disabled={
+                    !checked && ((!quote.price && !choiceLater) || quote.inactive)
+                  }
+                  onCheckedChange={() => toggle(addon._id)}
+                />
+                <Label
+                  htmlFor={id}
+                  className="flex flex-1 cursor-pointer flex-wrap items-baseline gap-x-3 font-normal"
+                >
+                  <span className="text-sm text-foreground">{addon.name}</span>
+                  <span className="ml-auto text-sm text-muted tabular-nums">
+                    {quote.inactive
+                      ? "Varian nonaktif"
+                      : quote.price
+                        ? `+ ${formatMoney(quote.price)}`
+                        : (beyond ?? "Belum ada harga")}
+                  </span>
+                </Label>
+              </div>
+            );
+          })}
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Batal
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              onSave(
+                offered
+                  .filter((addon) => draft.has(addon._id))
+                  .map((addon) => addon._id),
+              );
+              onClose();
+            }}
+          >
+            Simpan add-on
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

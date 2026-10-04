@@ -303,6 +303,28 @@ describe("FormActionBar", () => {
       "Simpan faktur",
     ]);
   });
+
+  it("without a title is only the buttons, and still says why Simpan is off", () => {
+    render(
+      <form>
+        <FormActionBar
+          submitLabel="Simpan faktur"
+          cancelHref="/dashboard/sales"
+          disabled
+          blockedReason="Pilih pelanggan dulu"
+        />
+      </form>,
+    );
+
+    expect(screen.queryByRole("heading")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Batal" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Simpan faktur" }),
+    ).toBeDisabled();
+    expect(screen.getByText(/belum bisa disimpan/i)).toHaveTextContent(
+      /pilih pelanggan dulu/i,
+    );
+  });
 });
 
 describe("the form layer as one system", () => {

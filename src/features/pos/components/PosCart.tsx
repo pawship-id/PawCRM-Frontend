@@ -4,9 +4,19 @@ import { Bookmark, ShoppingCart } from "lucide-react";
 
 import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
-import { formatMoney } from "@/utils/decimal";
+import {
+  formatMoney,
+  isPositive,
+  subtractDecimals,
+  sumDecimals,
+} from "@/utils/decimal";
+import { usePermissions } from "@/features/permissions";
 import type { PosDiscountMode, PosItem, PosTransaction } from "@/types/api";
 
+import { bookingShareOf, membershipShareOf } from "../bookingDiscount";
+import type { BenefitQuoteResponse } from "@/types/membership";
+
+import { PosBenefitSection } from "./PosBenefitSection";
 import { PosCartLine } from "./PosCartLine";
 import { PosCustomerSection } from "./PosCustomerSection";
 import { PosDiscountPopover } from "./PosDiscountPopover";
@@ -14,17 +24,18 @@ import { PosNoteEditor } from "./PosNoteEditor";
 import { PosOtherChargesEditor } from "./PosOtherChargesEditor";
 
 /**
- * One run of consecutive lines that belong together.
+ * The basket's lines, gathered per booking.
  *
  * `bookingId` NULL IS RETAIL and gets no header — a bag of feed does not belong
  * to an appointment, and wrapping it in a titled box would invent a group nobody
- * asked for.
+ * asked for. Retail lines are gathered by RUN, in the order the cart stores them.
  *
- * GROUPED BY RUN, NOT BY KEY. Two bookings for the same animal on the same day
- * must stay two groups (FR-3's edge case: "keduanya tetap ditampilkan sebagai
- * baris terpisah, tidak digabung otomatis"), and lines keep the order the cart
- * stores them in — so a group is a stretch of adjacent lines sharing a booking,
- * never a bucket collected from across the basket.
+ * ONE GROUP PER BOOKING, wherever its lines sit. A booking is one animal and one
+ * main service, so the service and every add-on on it belong under one header —
+ * including an add-on tapped later that landed after a bag of feed. Two bookings
+ * for the same animal on the same day are two ids and so stay two groups (FR-3's
+ * edge case: "keduanya tetap ditampilkan sebagai baris terpisah, tidak digabung
+ * otomatis").
  *
  * The ORIGINAL INDEX travels with every line, because every callback below —
  * remove, quantity, discount — addresses a line by its position in the cart. A
@@ -32,56 +43,87 @@ import { PosOtherChargesEditor } from "./PosOtherChargesEditor";
  */
 function groupLines(items: PosItem[]): Array<{
   bookingId: string | null;
-  /**
-   * EVERY ANIMAL ON THIS BOOKING, not the first one.
-   *
-   * It took `item.petName` off the FIRST line and called that the group's
-   * animal. Since PCR-040 a visit may bring Mochi and Coco, and the header then
-   * read "Mochi" over two services — one of which was Coco's. The cashier is
-   * being asked to check the basket against the animals in front of them, and
-   * the header was quietly wrong about half of it.
-   *
-   * DISTINCT AND IN LINE ORDER, so two services for one animal still say the
-   * animal once — repeating it would make a one-pet visit look like two.
-   */
-  petNames: string[];
+  /** The booking's animal — every line of one booking names the same one. */
+  petName: string | null;
+  /** Null while the booking is a draft; it earns a number when it is paid. */
+  bookingNumber: string | null;
   lines: Array<{ item: PosItem; index: number }>;
 }> {
   const groups: ReturnType<typeof groupLines> = [];
 
-  const remember = (group: (typeof groups)[number], item: PosItem) => {
-    if (item.petName && !group.petNames.includes(item.petName)) {
-      group.petNames.push(item.petName);
-    }
-  };
-
   items.forEach((item, index) => {
     const bookingId = item.bookingId ?? null;
     const last = groups[groups.length - 1];
+    const existing =
+      bookingId === null
+        ? last?.bookingId === null
+          ? last
+          : undefined
+        : groups.find((group) => group.bookingId === bookingId);
 
-    if (last && last.bookingId === bookingId && bookingId !== null) {
-      last.lines.push({ item, index });
-      remember(last, item);
+    if (existing) {
+      existing.lines.push({ item, index });
+      existing.petName ??= item.petName ?? null;
+      existing.bookingNumber ??= item.bookingNumber ?? null;
       return;
     }
 
-    if (last && last.bookingId === null && bookingId === null) {
-      last.lines.push({ item, index });
-      remember(last, item);
-      return;
-    }
-
-    const group = {
+    groups.push({
       bookingId,
-      petNames: [] as string[],
+      petName: item.petName ?? null,
+      bookingNumber: item.bookingNumber ?? null,
       lines: [{ item, index }],
-    };
-
-    remember(group, item);
-    groups.push(group);
+    });
   });
 
   return groups;
+}
+
+/**
+ * One group's lines with each add-on tucked under the service it hangs off.
+ *
+ * "Extra Handling" arrived in the basket as a line of its own — it has its own
+ * price and it bills as a line — and the cashier read three rows where two
+ * services were sold. It is not a third purchase; it is something done to the
+ * bath.
+ *
+ * MATCHED ON THE SERVICE, NOT ON A LINE ID. A cart line has no stable identity —
+ * the server rebuilds every line from the payload on each write — so
+ * `parentServiceId` names the CATALOGUE service its parent is for. A group is
+ * one booking, and a booking has one main service, so the service settles it.
+ *
+ * AN ORPHAN STAYS A LINE OF ITS OWN, and that is the case this must not lose:
+ * an add-on bought on its own at the till carries no parent at all, and one
+ * whose service was deleted out of the basket has a parent that is no longer
+ * there. Either way it is still billed, and a line that vanished from the screen
+ * while staying on the receipt is the worst outcome available.
+ *
+ * THE ORIGINAL INDEX TRAVELS ON, unchanged — every callback addresses a line by
+ * its position in the cart, and a nested view that renumbered them would delete
+ * the wrong row.
+ */
+function nestAddons(lines: Array<{ item: PosItem; index: number }>): Array<{
+  item: PosItem;
+  index: number;
+  addons: Array<{ item: PosItem; index: number }>;
+}> {
+  const nested = lines.map((line) => ({ ...line, addons: [] as typeof lines }));
+
+  /* Keyed on the PARENT's own service, which is what an add-on points at. */
+  const byService = new Map(
+    nested.map((line) => [String(line.item.refId), line]),
+  );
+
+  return nested.filter((line) => {
+    if (!line.item.parentServiceId) return true;
+
+    const parent = byService.get(String(line.item.parentServiceId));
+
+    if (!parent || parent === line) return true;
+
+    parent.addons.push({ item: line.item, index: line.index });
+    return false;
+  });
 }
 
 /**
@@ -106,8 +148,11 @@ export function PosCart({
   busy,
   error,
   onQtyChange,
+  onLinePrice,
   onRemove,
   onItemDiscount,
+  onItemBenefit,
+  benefitQuote,
   onCartDiscount,
   onCharges,
   onNote,
@@ -121,11 +166,34 @@ export function PosCart({
   busy: boolean;
   error: string | null;
   onQtyChange: (index: number, qty: string) => void;
-  onRemove: (index: number) => void;
+  /** One line, or a service and the add-ons under it — see `PosCartLine`. */
+  onRemove: (index: number | number[]) => void;
+  /**
+   * Apply or remove a membership benefit on one line (29 September 2026).
+   *
+   * OPTIONAL, so a caller that has not wired the quote yet simply renders no
+   * chips rather than a control that cannot work — the same shape `maySetPrice`
+   * takes for a cashier who may not re-price.
+   */
+  onItemBenefit?: (
+    index: number,
+    benefit: { membershipId: string; benefitId: string } | null,
+  ) => void;
+  /**
+   * THE WHOLE QUOTE, not a per-line map (30 September 2026).
+   *
+   * The benefits moved off the rows into one section under Diskon keranjang —
+   * see `PosBenefitSection` — and that section lists EVERY benefit, including
+   * the ones no line matches. A map keyed by line could not express those at
+   * all: a benefit with nothing to land on has no line to be keyed by.
+   */
+  benefitQuote?: BenefitQuoteResponse | null;
   onItemDiscount: (
     index: number,
     discount: { mode: PosDiscountMode; value: string } | null,
   ) => void;
+  /** Typing a price over the catalogue's; `null` puts the line back to it. */
+  onLinePrice: (index: number, unitPrice: string | null) => void;
   onCartDiscount: (
     discount: { mode: PosDiscountMode; value: string } | null,
   ) => void;
@@ -141,6 +209,7 @@ export function PosCart({
   /** FR-3's booking banner and button, or nothing without a customer. */
   bookingSlot?: React.ReactNode;
 }) {
+  const { can } = usePermissions();
   const items = cart?.items ?? [];
   const totals = cart?.runningTotals;
   const empty = items.length === 0;
@@ -200,38 +269,39 @@ export function PosCart({
                 booking/ID dan nama hewan". Retail lines get no header — see
                 `groupLines`.
 
-                THE NUMBER IS NOT ON THE LINE. A cart item carries `bookingId`,
-                not `bookingNumber`, so the header shows the animal's name and
-                the booking's short id. Snapshotting the number onto every line
-                would repeat it once per service to save one lookup.
+                THE NUMBER WHEN THERE IS ONE. A draft this basket raised has
+                none until the sale is paid, so its short id stands in — a
+                header with a blank where the number goes reads as broken.
               */}
               {group.bookingId && (
                 <div className="flex items-baseline justify-between gap-2 bg-surface px-3 py-1.5">
-                  {/*
-                    ALL OF THEM, joined. A visit with two animals reads "Mochi,
-                    Coco" — which is what tells the cashier the two services
-                    below are not both for the same dog.
-                  */}
                   <span className="truncate text-xs font-medium text-foreground">
-                    {group.petNames.length > 0
-                      ? group.petNames.join(", ")
-                      : "Hewan tidak diketahui"}
+                    {group.petName ?? "Hewan tidak diketahui"}
                   </span>
                   <span className="shrink-0 text-xs tabular-nums text-muted">
-                    Booking ·{group.bookingId.slice(-6)}
+                    {group.bookingNumber ??
+                      `Booking ·${group.bookingId.slice(-6)}`}
                   </span>
                 </div>
               )}
 
-              {group.lines.map(({ item, index }) => (
+              {nestAddons(group.lines).map(({ item, index, addons }) => (
                 <PosCartLine
                   key={`${item.kind}-${item.refId}-${index}`}
                   item={item}
                   index={index}
+                  addons={addons}
                   disabled={busy}
                   onQtyChange={onQtyChange}
                   onRemove={onRemove}
                   onDiscountChange={onItemDiscount}
+                  onPriceChange={onLinePrice}
+                  /*
+                    READ FROM THE GRANT, not passed down as a flag somebody
+                    might forget to set: a price box drawn for a cashier the
+                    server will refuse is a control that exists to fail.
+                  */
+                  maySetPrice={can("posTransactions", "setPrice")}
                 />
               ))}
             </div>
@@ -268,21 +338,107 @@ export function PosCart({
               </dd>
             </div>
 
-            {totals.itemDiscount !== "0.0000" && (
-              <div className="flex justify-between">
-                <dt className="text-muted">Diskon item</dt>
-                <dd className="tabular-nums text-success">
-                  −{formatMoney(totals.itemDiscount)}
-                </dd>
-              </div>
-            )}
+            {/*
+              THE SERVER'S ITEM DISCOUNT, SPLIT THREE WAYS — the lines' own
+              typed discount, the bookings' shares of "Diskon seluruh booking",
+              and what a membership card paid for. The three always add up to
+              `totals.itemDiscount`. The booking share is shown HERE ONLY, once
+              for the whole basket — not under each booking, which read as a
+              second discount per animal (15 September 2026).
+
+              ⚠️ A CARD'S GIVEAWAY IS NOT "DISKON ITEM" (1 October 2026, on
+              request). It used to be folded into the same figure as whatever the
+              cashier typed — one number answering two different questions: "how
+              much did we choose to give away" and "how much had the customer
+              already paid for". `own` now excludes it, so Diskon item is
+              CASHIER-TYPED DISCOUNTS ONLY; a card's part gets its own line below,
+              with which lines it paid for.
+            */}
+            {(() => {
+              const shares = sumDecimals((cart?.items ?? []).map(bookingShareOf));
+              const membershipShares = sumDecimals(
+                (cart?.items ?? []).map((item) => membershipShareOf(item) ?? "0"),
+              );
+              const own = subtractDecimals(
+                subtractDecimals(totals.itemDiscount, shares),
+                membershipShares,
+              );
+              const membershipLines = (cart?.items ?? [])
+                .map((item, index) => ({ item, index }))
+                .filter(({ item }) => membershipShareOf(item) !== null);
+
+              return (
+                <>
+                  {isPositive(own) && (
+                    <div className="flex justify-between">
+                      <dt className="text-muted">Diskon item</dt>
+                      <dd className="tabular-nums text-success">
+                        −{formatMoney(own)}
+                      </dd>
+                    </div>
+                  )}
+                  {isPositive(shares) && (
+                    <div className="flex justify-between">
+                      <dt className="text-muted">Diskon booking</dt>
+                      <dd className="tabular-nums text-success">
+                        −{formatMoney(shares)}
+                      </dd>
+                    </div>
+                  )}
+                  {isPositive(membershipShares) && (
+                    <div>
+                      <div className="flex justify-between">
+                        <dt className="text-muted">Diskon membership</dt>
+                        <dd className="tabular-nums text-success">
+                          −{formatMoney(membershipShares)}
+                        </dd>
+                      </div>
+                      {/*
+                        WHICH LINES IT PAID FOR — the question a number alone
+                        cannot answer once a basket holds more than one.
+                      */}
+                      <ul className="mt-0.5 flex flex-col gap-0.5 pl-4">
+                        {membershipLines.map(({ item, index }) => (
+                          <li
+                            key={`${item.kind}-${item.refId}-${index}`}
+                            className="flex justify-between gap-2 text-xs text-muted"
+                          >
+                            <span className="min-w-0 truncate">
+                              {item.petName
+                                ? `${item.petName} - ${item.name}`
+                                : item.name}
+                            </span>
+                            <span className="shrink-0 tabular-nums">
+                              −{formatMoney(membershipShareOf(item)!)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             <div className="flex items-center justify-between">
               <dt className="flex items-center gap-1 text-muted">
                 Diskon keranjang
+                {/*
+                  NOTHING LEFT TO DISCOUNT (1 October 2026, on request) — the
+                  same rule as a line's own discount button. A basket already at
+                  nought cannot be cut further; the server would floor it there
+                  anyway.
+                  ⚠️ ONLY WHEN NOTHING WAS TYPED. A basket at nought BECAUSE the
+                  cashier typed 100% off must keep its control, or the discount
+                  they just entered is one they can never take back off.
+                */}
                 <PosDiscountPopover
                   value={cart?.cartDiscount ?? null}
-                  disabled={busy}
+                  disabled={
+                    busy ||
+                    (!cart?.cartDiscount &&
+                      (totals.payable ?? totals.net) === "0.0000")
+                  }
                   label="Diskon keranjang"
                   onApply={onCartDiscount}
                 />
@@ -293,6 +449,19 @@ export function PosCart({
                   : `−${formatMoney(totals.cartDiscount)}`}
               </dd>
             </div>
+
+            {/* UNDER DISKON KERANJANG, where the owner asked for it — the two
+                are the same kind of thing: money coming off the whole basket
+                rather than off one row. */}
+            {onItemBenefit && (
+              <PosBenefitSection
+                quote={benefitQuote ?? null}
+                items={cart?.items ?? []}
+                disabled={busy}
+                onApply={(index, benefit) => onItemBenefit(index, benefit)}
+                onRemove={(index) => onItemBenefit(index, null)}
+              />
+            )}
 
             {totals.otherCharges !== "0.0000" && (
               <div className="flex justify-between">

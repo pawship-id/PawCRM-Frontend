@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 
 import {
   Alert,
-  Breadcrumb,
   FilterSelect,
   Pagination,
   Spinner,
@@ -16,6 +15,7 @@ import { usePermissions } from "@/features/permissions";
 
 import { useCatalogLookups } from "../hooks/useCatalogLookups";
 import { useStockProducts } from "../hooks/useStockProducts";
+import { StockModuleHeader } from "./StockModuleHeader";
 import { StockProductsTable } from "./StockProductsTable";
 import { StockProductsToolbar } from "./StockProductsToolbar";
 
@@ -110,56 +110,52 @@ export function StockProductsScreen() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <Breadcrumb
-            items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
-              { label: "Kartu stok" },
-            ]}
-          />
-          <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-            Kartu stok
-          </h1>
-          {/*
-            The caption names the scope the figures are for, which is the one
-            misreading this table invites — and it names the mismatch too: a
-            total spans locations, a card never does.
-          */}
-          <p className="mt-1 max-w-2xl text-sm text-muted">
-            Cari produknya, lalu buka kartu stoknya. Stok dan nilainya dihitung
-            {warehouseName
-              ? ` untuk ${warehouseName}`
-              : reach === null
-                ? " untuk semua gudang"
-                : " untuk semua gudang yang bisa Anda akses"}
-            ; kartu stoknya sendiri selalu dibaca per gudang.
-          </p>
-        </div>
+      <StockModuleHeader
+        /* The Gudang selector rides in the header's action slot, where it used
+           to sit beside this screen's own title — it is the one control that
+           decides what every number below means, so it stays at the top. */
+        action={
+          // Hidden until the lookup answers: an empty dropdown that fills in a
+          // moment later is a control people click twice.
+          lookups.warehouses.length > 0 ? (
+            <FilterSelect
+              label="Gudang"
+              ariaLabel="Gudang"
+              value={warehouseId}
+              options={withAll(
+                namedOptions(lookups.warehouses, (warehouse) =>
+                  warehouse.isActive
+                    ? warehouse.name
+                    : `${warehouse.name} (nonaktif)`,
+                ),
+                "Semua gudang",
+              )}
+              // Not a filter — nothing is narrowed by choosing a warehouse, the
+              // rows simply report it. `active` navy would claim otherwise.
+              active={false}
+              align="end"
+              onChange={setWarehouseId}
+            />
+          ) : null
+        }
+      />
 
-        {/* Hidden until the lookup answers: an empty dropdown that fills in a
-            moment later is a control people click twice. */}
-        {lookups.warehouses.length > 0 && (
-          <FilterSelect
-            label="Gudang"
-            ariaLabel="Gudang"
-            value={warehouseId}
-            options={withAll(
-              namedOptions(lookups.warehouses, (warehouse) =>
-                warehouse.isActive
-                  ? warehouse.name
-                  : `${warehouse.name} (nonaktif)`,
-              ),
-              "Semua gudang",
-            )}
-            // Not a filter — nothing is narrowed by choosing a warehouse, the
-            // rows simply report it. `active` navy would claim otherwise.
-            active={false}
-            align="end"
-            onChange={setWarehouseId}
-          />
-        )}
-      </div>
+      {/*
+        The caption names the scope the figures are for, which is the one
+        misreading this table invites — and it names the mismatch too: a total
+        spans locations, a card never does. It sits under the header rather than
+        in it: the other three tabs of this module have no such warning, and a
+        module header is what every tab shares.
+      */}
+      <p className="max-w-2xl text-sm text-muted">
+        Cari produknya, lalu buka kartu stoknya. Stok dan nilainya dihitung
+        {warehouseName
+          ? ` untuk ${warehouseName}`
+          : reach === null
+            ? " untuk semua gudang"
+            : " untuk semua gudang yang bisa Anda akses"}
+        ; kartu stoknya sendiri selalu dibaca per gudang.
+      </p>
 
       <StockProductsToolbar
         query={query}

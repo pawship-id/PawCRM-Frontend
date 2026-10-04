@@ -69,7 +69,10 @@ export function useInvoiceLookups(): InvoiceLookups {
       try {
         const [customers, branches, warehouses, products, services, tenant] =
           await Promise.all([
-            customerService.list({ limit: MAX_LIMIT }),
+            // isActive: a customer switched off should not be offerable on a
+            // new invoice, same as an inactive warehouse/product/service below
+            // (2 October 2026).
+            customerService.list({ limit: MAX_LIMIT, isActive: true }),
             branchService.list({ limit: MAX_LIMIT }),
             warehouseService.list({ isActive: true }),
             /*

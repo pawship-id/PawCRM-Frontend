@@ -57,7 +57,7 @@ export function WarehousesToolbar({
       actions={
         <Can feature="warehouses" action="create">
           <Button asChild>
-            <Link href="/dashboard/master/warehouses/new">
+            <Link href="/dashboard/pengaturan/gudang/new">
               <Plus className="size-4" />
               Gudang baru
             </Link>

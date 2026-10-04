@@ -129,6 +129,60 @@
   --surface-selected: var(--navy-100);
 
   /*
+   * CHART SERIES — two marks that have to stay tellable apart, and nothing else.
+   *
+   * NOT `--primary` AND `--secondary`, although they are a step away from both,
+   * and the distance is the whole reason these exist. Those two carry meaning in
+   * this product: navy is the working colour, and orange means A HUMAN MUST ACT
+   * (ui-rules §4). A line on a chart means neither — it is an identity channel,
+   * and reusing the action colour for it would spend orange's one job on a
+   * decoration. Naming them separately also keeps a chart from drifting the day
+   * somebody retunes a button.
+   *
+   * ONE STEP OFF THE BRAND STEPS, because the brand steps FAIL the checks a
+   * categorical palette has to pass. `--navy-700` is too dark and too grey to be
+   * a mark (lightness 0.354 against a 0.43–0.77 band, chroma 0.092 against a 0.1
+   * floor), and `--orange-500` is 2.27:1 on white — under the 3:1 non-text floor.
+   * `--navy-600` and `--orange-600` both land inside the band, clear 3:1 on a
+   * white card, and separate by ΔE 29 under protanopia and 35.9 in normal vision.
+   * Verified with the dataviz validator, not by eye; re-run it before changing
+   * either value.
+   *
+   * DARK MODE IS DELIBERATELY NOT STEPPED HERE. Dark is prepared and not shipped
+   * (ui-rules §15) and `--navy-600` is 2.28:1 against the dark card, so these two
+   * need their own steps chosen and validated against `#1b3157` when somebody
+   * ships it. Left inheriting the light values rather than guessed at, so the
+   * open question stays visible instead of looking answered.
+   */
+  --chart-gross: var(--navy-600);
+  --chart-net: var(--orange-600);
+
+  /*
+   * CATEGORICAL SERIES — one per lini bisnis on Keuangan › Ringkasan's stacked
+   * "Pendapatan 7 hari per lini bisnis" (22 September 2026).
+   *
+   * FIXED ORDER, NEVER CYCLED. Slot n belongs to the tenant's n-th business line
+   * (the order /business-lines returns), so a line keeps its colour whatever the
+   * filter or the week — colour follows the entity, never its rank. A sixth line
+   * does not get a generated hue; it folds into --chart-other with the
+   * unattributed bucket.
+   *
+   * The first two are the gross/net steps above, so the product still has one
+   * navy and one orange mark. Validated as an adjacent-pair palette with the
+   * dataviz validator: lightness band, chroma floor, CVD ΔE ≥ 10.9 (deutan),
+   * normal-vision ΔE ≥ 22.5 — all PASS. Slots 2, 3 and 5 are under 3:1 on
+   * white, which is why the chart always carries a legend and a table view.
+   * Re-run the validator before changing any value or the order.
+   */
+  --chart-line-1: var(--navy-600);
+  --chart-line-2: var(--orange-600);
+  --chart-line-3: #1baf7a;
+  --chart-line-4: #4a3aa7;
+  --chart-line-5: #e87ba4;
+  /* "Lainnya" — neutral on purpose: it is a remainder, not an identity. */
+  --chart-other: #a3adbf;
+
+  /*
    * MARKETING SURFACE. The deepest navy, used as a ground rather than as ink —
    * today only by the landing page's footer at `/`. It has its own name because
    * §3 asks components for a semantic token, and "the darkest thing on the page"
@@ -252,6 +306,16 @@
   --color-orange-100: var(--orange-100);
   --color-slate-500: var(--slate-500);
 
+  /* Chart series — see :root above. */
+  --color-chart-gross: var(--chart-gross);
+  --color-chart-net: var(--chart-net);
+  --color-chart-line-1: var(--chart-line-1);
+  --color-chart-line-2: var(--chart-line-2);
+  --color-chart-line-3: var(--chart-line-3);
+  --color-chart-line-4: var(--chart-line-4);
+  --color-chart-line-5: var(--chart-line-5);
+  --color-chart-other: var(--chart-other);
+
   /* shadcn/ui token bindings (see :root above). */
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
@@ -300,6 +364,25 @@
   h3,
   h4 {
     @apply font-display tracking-tight;
+  }
+
+  /**
+   * Smooth in-page anchors, opted into per page.
+   *
+   * NOT UNCONDITIONAL ON `html`. `scroll-behavior` belongs to the scrolling box,
+   * and the document's is shared by every route — the App Router resets scroll
+   * to the top on navigation, so making this global would animate a slow glide
+   * up the page on every click in the dashboard. A page with anchors in it sets
+   * the attribute while it is mounted; nothing else pays for it.
+   *
+   * `no-preference`, not the `reduce` block below, because that block only
+   * shortens animations and transitions — a smooth scroll is neither, and
+   * somebody who asked for less motion should get the jump.
+   */
+  @media (prefers-reduced-motion: no-preference) {
+    html[data-smooth-scroll] {
+      scroll-behavior: smooth;
+    }
   }
 
   /* Honoured globally — don't re-implement it per component. */

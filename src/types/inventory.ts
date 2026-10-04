@@ -1837,7 +1837,7 @@ export interface ExpiringBatchesResult {
  * value lands on.
  *
  * `adjustment` credits 5201 Kerugian Persediaan — goods that vanished, broke, or
- * were used by the shop. `opening_balance` credits 3101 Modal / Saldo Awal —
+ * were used by the shop. `opening_balance` credits 3101 Modal Disetor —
  * goods a tenant already owned, bought from nobody in this system.
  */
 export type StockEntryKind = "adjustment" | "opening_balance";

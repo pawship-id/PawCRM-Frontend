@@ -22,6 +22,25 @@ const DEV_API_BASE_URL = "http://localhost:5000/api";
 const DEFAULT_WHATSAPP_NUMBER = "62895358614848";
 
 /**
+ * The browser key for the Google Maps JavaScript API and the Geocoding API,
+ * behind the "Pilih dari peta" picker on an antar-jemput address.
+ *
+ * OPTIONAL BY DESIGN, and the picker checks it. A fresh clone has no
+ * `.env.local`, and a map that renders Google's grey "this page didn't load
+ * correctly" watermark is worse than an option that says it is not set up yet —
+ * the two typed-in registers and the manual pair still fill every address.
+ *
+ * NEXT_PUBLIC_, therefore public: the key ships in the client bundle and is
+ * visible to anyone using the site. That is how Maps browser keys work, and it
+ * is why the key MUST carry an HTTP-referrer restriction and an API restriction
+ * in Google Cloud Console — see `.env.example`. Without them the key is a bill
+ * anyone can run up.
+ */
+function resolveGoogleMapsApiKey(): string {
+  return (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "").trim();
+}
+
+/**
  * Resolves the backend base URL.
  *
  * Outside production the local backend is a safe default, so a fresh clone
@@ -72,6 +91,8 @@ export const env = {
   apiBaseUrl: resolveApiBaseUrl(),
   /** Buloo's WhatsApp number, digits only — ready to append to `wa.me/`. */
   whatsappNumber: resolveWhatsappNumber(),
+  /** Browser key for Maps JS + Geocoding. Empty string means "not configured". */
+  googleMapsApiKey: resolveGoogleMapsApiKey(),
   isProduction: process.env.NODE_ENV === "production",
   isDevelopment: process.env.NODE_ENV === "development",
 } as const;

@@ -4,9 +4,19 @@ import userEvent from "@testing-library/user-event";
 import { PetForm } from "@/features/pets";
 import { petService } from "@/services/pet.service";
 import { customerService } from "@/services/customer.service";
+import { petOptionService } from "@/services/petOption.service";
+
+import {
+  PET_OPTION_FIXTURES,
+  makePetOption,
+  petOptionFields,
+  petOptionId,
+  primePetOptions,
+} from "./helpers/petOptions";
 
 jest.mock("@/services/pet.service");
 jest.mock("@/services/customer.service");
+jest.mock("@/services/petOption.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 const push = jest.fn();
@@ -27,11 +37,23 @@ const petFixture = {
   tenantId: "507f1f77bcf86cd799439011",
   customerId: CUSTOMER_ID,
   name: "Bella",
-  species: "dog" as const,
   sex: "female" as const,
-  breed: "domestic" as const,
-  furType: null,
-  size: null,
+  /*
+    THE FOUR OPTION FIELDS, AS IDS, with the label and code the server resolves
+    beside each (25 September 2026) — see `petOptionFields`.
+
+    ⚠️ UKURAN AND JENIS BULU ARE BOTH FILLED IN, and that is not incidental
+    detail. Both became REQUIRED on 23 September 2026, so a fixture with either
+    blank is a pet the edit screen refuses to save — every test below that
+    submits would fail on two fields it is not about. A pet registered under the
+    current rule has both. The pet that does NOT is its own test.
+  */
+  ...petOptionFields({
+    species: "Anjing",
+    breed: "Domestic",
+    furType: "Bulu pendek",
+    size: "Sedang",
+  }),
   birthDate: "2022-03-14T00:00:00.000Z",
   weightKg: 12.4,
   color: null,
@@ -55,6 +77,7 @@ const petFixture = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  primePetOptions(petOptionService.list);
   /*
     A LOCKED OWNER FIELD NOW FETCHES THE ONE CUSTOMER BY ID so it can show a
     NAME. Without this the edit screen rendered the raw `customerId` — which is
@@ -70,10 +93,24 @@ beforeEach(() => {
       {
         _id: CUSTOMER_ID,
         tenantId: "507f1f77bcf86cd799439011",
+        code: "CUST-0001",
         name: "Ibu Rina",
         email: null,
         phone: "0812-3456-7890",
         address: null,
+        // The Pelanggan form's fields (27 September 2026). An ordinary private
+        // customer with no category — what the register is mostly made of.
+        kind: "individual" as const,
+        customerTypeId: null,
+        customerTypeName: null,
+        taxId: null,
+        picName: null,
+        notes: null,
+        notifications: {
+          bookingReminder: true,
+          membershipRenewal: true,
+          promo: false,
+        },
         vipTier: null,
         deletedAt: null,
         createdAt: "2026-01-01T00:00:00.000Z",
@@ -111,14 +148,32 @@ describe("PetForm — registering", () => {
     expect(mockedPetService.create).not.toHaveBeenCalled();
   });
 
+  /*
+    UKURAN AND JENIS BULU ARE ANSWERS, NOT OFFERS (23 September 2026, on request)
+    — a variant-priced grooming is priced BY size and coat, so a pet registered
+    without them cannot be quoted until somebody comes back to this form.
+
+    ⚠️ THE API STILL ACCEPTS NEITHER. The rule is the form's, not the server's:
+    the quick-add dialog with `requireTraits` off legitimately sends null, and
+    tightening `pet.validation.js` would break the till.
+  */
+  it("refuses to submit without a size and a coat, pointing at each", async () => {
+    await renderNew();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /daftarkan hewan/i }),
+    );
+
+    expect(await screen.findByText(/pilih ukurannya/i)).toBeVisible();
+    expect(screen.getByText(/pilih jenis bulunya/i)).toBeVisible();
+    expect(mockedPetService.create).not.toHaveBeenCalled();
+  });
+
   it("refuses a birth date in the future, pointing at the field", async () => {
     await renderNew();
 
     await userEvent.type(screen.getByLabelText(/nama hewan/i), "Bella");
-    await userEvent.type(
-      screen.getByLabelText(/tanggal lahir/i),
-      "2999-01-01",
-    );
+    await userEvent.type(screen.getByLabelText(/tanggal lahir/i), "2999-01-01");
     await userEvent.click(
       screen.getByRole("button", { name: /daftarkan hewan/i }),
     );
@@ -146,6 +201,73 @@ describe("PetForm — registering", () => {
 
     const [query] = mockedCustomerService.list.mock.calls[0];
     expect(query?.limit).toBeLessThanOrEqual(100);
+  });
+
+  /*
+    THE SPECIES ARE THE SHOP'S OWN LIST since 14 Sep 2026, not a hardcoded cat
+    and dog. A species the tenant added is offered; one it retired is not — a
+    retired option stops being chosen for a new animal.
+  */
+  it("offers the species the shop added, and not the ones it retired", async () => {
+    primePetOptions(petOptionService.list, [
+      ...PET_OPTION_FIXTURES,
+      makePetOption({
+        type: "species",
+        label: "Kelinci",
+        sortOrder: 2,
+      }),
+      makePetOption({
+        type: "species",
+        label: "Hamster",
+        sortOrder: 3,
+        isActive: false,
+      }),
+    ]);
+
+    await renderNew();
+
+    const picker = screen.getByRole("combobox", { name: "Jenis" });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await userEvent.click(picker);
+
+    expect(
+      await screen.findByRole("option", { name: "Kelinci" }),
+    ).toBeVisible();
+    expect(screen.getByRole("option", { name: "Kucing" })).toBeVisible();
+    expect(
+      screen.queryByRole("option", { name: /hamster/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  /*
+    A BREED BELONGS TO AN ANIMAL (18 September 2026). A cat's form stops
+    offering "Golden Retriever"; a breed that says nothing stays offered for
+    every animal, which is what every breed was before the field.
+  */
+  it("offers only the chosen animal's breeds, and the ones that say nothing", async () => {
+    primePetOptions(petOptionService.list, [
+      ...PET_OPTION_FIXTURES.filter((option) => option.type !== "breed"),
+      makePetOption({ type: "breed", code: "poodle", label: "Poodle", speciesId: "opt-species-dog" }),
+      makePetOption({ type: "breed", code: "persia", label: "Persia", speciesId: "opt-species-cat", sortOrder: 1 }),
+      makePetOption({ type: "breed", code: "mix", label: "Mix", sortOrder: 2 }),
+    ]);
+
+    await renderNew();
+
+    const species = screen.getByRole("combobox", { name: "Jenis" });
+    await waitFor(() => expect(species).toBeEnabled());
+    await userEvent.click(species);
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Kucing" }),
+    );
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Ras" }));
+
+    expect(await screen.findByRole("option", { name: "Persia" })).toBeVisible();
+    expect(screen.getByRole("option", { name: "Mix" })).toBeVisible();
+    expect(
+      screen.queryByRole("option", { name: "Poodle" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows our own sentence when the customer list fails, never the server's", async () => {
@@ -181,6 +303,45 @@ describe("PetForm — editing", () => {
     expect(screen.getByDisplayValue("2022-03-14")).toBeVisible();
   });
 
+  /*
+    A RETIRED VALUE THE PET ALREADY HOLDS STAYS ON THE FORM. Without it the
+    select has no item for its value, renders blank, and the next save clears a
+    fact nobody chose to change — while the server would have accepted it.
+  */
+  it("keeps a retired species the pet already has, marked nonaktif", async () => {
+    primePetOptions(petOptionService.list, [
+      ...PET_OPTION_FIXTURES,
+      makePetOption({
+        type: "species",
+        label: "Kelinci",
+        sortOrder: 2,
+        isActive: false,
+      }),
+    ]);
+    mockedPetService.getById.mockResolvedValue({
+      ...petFixture,
+      species: petOptionId("species", "Kelinci"),
+      speciesLabel: "Kelinci",
+    });
+
+    render(<PetForm petId={PET_ID} />);
+
+    await screen.findByDisplayValue("Bella");
+    const picker = screen.getByRole("combobox", { name: "Jenis" });
+    await waitFor(() => expect(picker).toHaveTextContent("Kelinci (nonaktif)"));
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan hewan/i }),
+    );
+
+    await waitFor(() =>
+      expect(mockedPetService.update).toHaveBeenCalledWith(
+        PET_ID,
+        expect.objectContaining({ species: petOptionId("species", "Kelinci") }),
+      ),
+    );
+  });
+
   it("locks the owner — reassigning would move the pet's history", async () => {
     render(<PetForm petId={PET_ID} />);
 
@@ -211,7 +372,9 @@ describe("PetForm — editing", () => {
     await screen.findByDisplayValue("Bella");
     await userEvent.clear(screen.getByLabelText(/nama hewan/i));
     await userEvent.type(screen.getByLabelText(/nama hewan/i), "Milo");
-    await userEvent.click(screen.getByRole("button", { name: /simpan hewan/i }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan hewan/i }),
+    );
 
     await waitFor(() =>
       expect(mockedPetService.update).toHaveBeenCalledWith(
@@ -221,4 +384,116 @@ describe("PetForm — editing", () => {
     );
     expect(push).toHaveBeenCalledWith("/dashboard/master/pets");
   });
+
+  /*
+    ⚠️ THE PHOTO IS THE ONE FIELD SENT AS A DIFF, and this is what stops it being
+    "tidied up" back into the payload with everything else. Two separate failures
+    hide behind that:
+
+      1. THE SAVE WOULD FAIL OUTRIGHT for any pet that has a picture. The API
+         strips the upload's `token` before storing, so the asset a GET returns
+         has none — and `MediaService.assertOwned` refuses an asset without one.
+      2. THE BYTES WOULD BE AT RISK. The API deletes what an update drops, so
+         sending the field on a patch that did not touch it is one dropped
+         connection away from losing the photo.
+  */
+  it("leaves the photo out of a patch that did not touch it", async () => {
+    mockedPetService.getById.mockResolvedValue({
+      ...petFixture,
+      photo: {
+        mediaType: "image",
+        url: "https://cdn.test/full.webp",
+        storageKey: "tenant-1/pet/2026/09/abc.webp",
+        driver: "local",
+        mimeType: "image/webp",
+        thumbUrl: "https://cdn.test/thumb.webp",
+      },
+    } as never);
+
+    render(<PetForm petId={PET_ID} />);
+
+    await screen.findByDisplayValue("Bella");
+    await userEvent.clear(screen.getByLabelText(/nama hewan/i));
+    await userEvent.type(screen.getByLabelText(/nama hewan/i), "Milo");
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan hewan/i }),
+    );
+
+    await waitFor(() => expect(mockedPetService.update).toHaveBeenCalled());
+
+    const [, payload] = mockedPetService.update.mock.calls[0];
+    // Absent, not null — `null` is how a photo is taken OFF, so the two cannot
+    // be conflated here.
+    expect(payload).not.toHaveProperty("photo");
+  });
+
+  /*
+    THE PICTURE SURVIVES A SAVE somebody makes for another reason. The edit
+    screen loads it, so a shop owner who opens a pet to fix its weight sees the
+    photo already there rather than an empty slot that looks like it was lost.
+  */
+  it("loads the stored photo into the field", async () => {
+    mockedPetService.getById.mockResolvedValue({
+      ...petFixture,
+      photo: {
+        mediaType: "image",
+        url: "https://cdn.test/full.webp",
+        storageKey: "tenant-1/pet/2026/09/abc.webp",
+        driver: "local",
+        mimeType: "image/webp",
+        thumbUrl: "https://cdn.test/thumb.webp",
+      },
+    } as never);
+
+    render(<PetForm petId={PET_ID} />);
+
+    await screen.findByDisplayValue("Bella");
+    expect(screen.getByRole("img", { name: "Foto Bella" })).toHaveAttribute(
+      "src",
+      "https://cdn.test/thumb.webp",
+    );
+    // The button says REPLACE rather than choose, which is how the slot shows
+    // it is already filled.
+    expect(
+      screen.getByRole("button", { name: /ganti gambar/i }),
+    ).toBeInTheDocument();
+  });
+
+  /*
+    ⚠️ AN OLDER PET HAS TO ANSWER THEM BEFORE IT CAN BE SAVED. Ukuran and Jenis
+    bulu were optional until 23 September 2026, so a pet registered before that
+    loads with both blank — and somebody opening it to fix a weight is asked for
+    a size and a coat first.
+
+    THAT IS THE RULE DOING WHAT IT WAS ASKED TO DO, not a bug, and it is pinned
+    here so the behaviour is a decision somebody can find rather than a surprise
+    a shop reports. It is also why `PetFixLink` still exists and still points at
+    this form.
+  */
+  it("blocks a pet registered before the rule until its blanks are answered", async () => {
+    mockedPetService.getById.mockResolvedValue({
+      ...petFixture,
+      size: null,
+      furType: null,
+    } as never);
+
+    render(<PetForm petId={PET_ID} />);
+
+    await screen.findByDisplayValue("Bella");
+    await userEvent.click(
+      screen.getByRole("button", { name: /simpan hewan/i }),
+    );
+
+    expect(await screen.findByText(/pilih ukurannya/i)).toBeVisible();
+    expect(screen.getByText(/pilih jenis bulunya/i)).toBeVisible();
+    expect(mockedPetService.update).not.toHaveBeenCalled();
+  });
+
+  /*
+    NOT PINNED HERE: that a create omits `photo` when nobody picked one. No test
+    in this suite completes a create — the owner is a dialog-based picker with no
+    harness for it — and standing that up for one `not.toHaveProperty` is more
+    machinery than the assertion is worth. The create path is one spread in
+    `handleSubmit` beside the patch's, which is what these two cover.
+  */
 });

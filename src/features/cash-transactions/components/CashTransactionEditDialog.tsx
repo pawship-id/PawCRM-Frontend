@@ -1,0 +1,624 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
+import {
+  Alert,
+  FilterSelect,
+  FormActionBar,
+  Spinner,
+  TextField,
+  TextareaField,
+} from "@/components";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { swalToast } from "@/lib/swal";
+import { cn } from "@/lib/utils";
+import { ApiError } from "@/services/api-error";
+import { cashTransactionService } from "@/services/cashTransaction.service";
+import { paymentChannelService } from "@/services/paymentChannel.service";
+import { cashTypeOf } from "@/types/accounting";
+import type {
+  CashTransaction,
+  PaymentChannel,
+  UpdateCashTransactionInput,
+} from "@/types/api";
+import { isDecimal, toMinor, trimDecimal } from "@/utils/decimal";
+
+import { cashBankAccounts } from "../hooks/useCashBankAccountOptions";
+import { accountsForKind, useLineLookups } from "../hooks/useLineLookups";
+import {
+  cashTransactionTitle,
+  channelClassOf,
+  hasLines,
+  kindLabel,
+  lockedReason,
+  toDateInputValue,
+  todayValue,
+} from "../labels";
+import {
+  CashLinesEditor,
+  draftLinesFrom,
+  linesProblem,
+  linesSignature,
+  toLineInputs,
+  type DraftLine,
+} from "./CashLinesEditor";
+
+/** The server's cap on `reason`. */
+const REASON_MAX_LENGTH = 200;
+
+/**
+ * UBAH — change one transaction in place (D4). SHARED: the detail page opens it
+ * with the transaction it holds; the invoice's payment page opens it with only
+ * the payment's id (`paymentId` IS the transaction's id) and it loads the rest.
+ *
+ * WHAT IT SAYS BEFORE ANYTHING IS TYPED: the number stays, and the journal is
+ * reversed and posted again. Somebody who expects an edit to rewrite history
+ * should learn otherwise here, not from two new rows in Jurnal Umum.
+ *
+ * AKUN KAS/BANK, EXCEPT AT THE TILL. Since 20 September 2026 the cash side of a
+ * transaction is a ledger account, so this dialog moves one by naming another
+ * account — and the channel picker survives for exactly one case: a row a
+ * CASHIER recorded (`recordedVia: "pos"`). A shift is reconciled against the
+ * buttons that were pressed, so re-filing such a row onto a bare account would
+ * leave the shift's total unexplainable; it is moved by its channel, which is
+ * the thing that was actually wrong. The server refuses the other way round.
+ *
+ * EITHER PICKER OFFERS THE SAME CLASS ONLY — kas stays kas, bank stays bank.
+ * Crossing kas ↔ bank would leave a BKM number on bank money; the server refuses
+ * it, and the picker never offers the refusal.
+ *
+ * Sends only what changed. Server 400/409s stay in the dialog, verbatim.
+ */
+export function CashTransactionEditDialog({
+  open,
+  transaction,
+  transactionId,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  /** The transaction, when the caller already holds it. */
+  transaction?: CashTransaction | null;
+  /** Otherwise its id — loaded each time the dialog opens. */
+  transactionId?: string | null;
+  onClose: () => void;
+  /** Handed the transaction the write returned. */
+  onSaved: (updated: CashTransaction) => void;
+}) {
+  const [loaded, setLoaded] = useState<CashTransaction | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const needsLoad = open && !transaction && Boolean(transactionId);
+
+  useEffect(() => {
+    if (!needsLoad || !transactionId) return;
+    let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoaded(null);
+    setLoadError(null);
+
+    cashTransactionService
+      .getById(transactionId)
+      .then((result) => {
+        if (active) setLoaded(result);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setLoadError(
+          err instanceof ApiError
+            ? err.fullMessage
+            : "Gagal memuat transaksi. Coba lagi.",
+        );
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [needsLoad, transactionId]);
+
+  const target = transaction ?? loaded;
+  const wide = target ? hasLines(target.kind) : false;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <DialogContent
+        className={cn("max-h-[90vh] overflow-y-auto", wide && "sm:max-w-4xl")}
+      >
+        {target ? (
+          <CashTransactionEditForm
+            key={`${target._id}-${target.updatedAt}`}
+            transaction={target}
+            onClose={onClose}
+            onSaved={onSaved}
+          />
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>Ubah transaksi</DialogTitle>
+              <DialogDescription>Memuat data transaksi.</DialogDescription>
+            </DialogHeader>
+            {loadError ? (
+              <Alert variant="error">{loadError}</Alert>
+            ) : (
+              <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted">
+                <Spinner /> Memuat transaksi…
+              </div>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="secondary" onClick={onClose}>
+                Kembali
+              </Button>
+            </DialogFooter>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * THE FORM ITSELF, WITHOUT DECIDING WHERE IT SITS.
+ *
+ * `chrome` is the only thing two callers disagree about: in a dialog the title
+ * and the buttons are Radix's header and footer; on a PAGE the heading belongs
+ * to the route and the buttons belong at the head of the form, in a
+ * `FormActionBar` (§16). Everything between them — the fields, the rules, the
+ * patch — is the same code, which is the point of the prop.
+ */
+export function CashTransactionEditForm({
+  transaction,
+  chrome = "dialog",
+  onClose,
+  onSaved,
+}: {
+  transaction: CashTransaction;
+  chrome?: "dialog" | "page";
+  onClose: () => void;
+  onSaved: (updated: CashTransaction) => void;
+}) {
+  const asPage = chrome === "page";
+  const withLines = hasLines(transaction.kind);
+  // The server pays exactly what its books say is owed — see CommissionRecapScreen.
+  const amountLocked = transaction.kind === "commission_payment";
+  const originalDate = toDateInputValue(transaction.at);
+  const locked = lockedReason(transaction);
+  /*
+    THE ONE ROW THAT STILL MOVES BY ITS CHANNEL — see the header. Judged on how
+    it was RECORDED, not on whether it happens to carry a channel: an invoice
+    settled from the back office through a bank channel is ordinary back-office
+    money and moves to another account like anything else.
+  */
+  const viaTill = transaction.recordedVia === "pos";
+
+  const [date, setDate] = useState(originalDate);
+  const [amount, setAmount] = useState(trimDecimal(transaction.amount));
+  const [channelId, setChannelId] = useState(transaction.channelId ?? "");
+  const [accountId, setAccountId] = useState(transaction.cashAccountId ?? "");
+  const [ref, setRef] = useState(transaction.ref ?? "");
+  const [note, setNote] = useState(transaction.note ?? "");
+  const [lines, setLines] = useState<DraftLine[]>(() =>
+    draftLinesFrom(transaction.lines),
+  );
+  const [reason, setReason] = useState("");
+  const [channels, setChannels] = useState<PaymentChannel[]>([]);
+  const [channelsLoading, setChannelsLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  /*
+    THE CHART IS READ ON EVERY EDIT NOW, not only for the two kinds with rows:
+    the Akun Kas/Bank picker is built from it, and so is the kas/bank class of a
+    transaction that has no channel to read one off. One request either way.
+  */
+  const lookups = useLineLookups(!locked);
+
+  useEffect(() => {
+    if (locked || !viaTill) return;
+    let active = true;
+
+    paymentChannelService
+      .list({
+        isActive: true,
+        usableFor: transaction.direction,
+        branchId: transaction.branchId,
+        limit: 100,
+      })
+      .then((result) => {
+        if (active) setChannels(result.items);
+      })
+      .catch(() => {
+        if (active) setChannels([]);
+      })
+      .finally(() => {
+        if (active) setChannelsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [locked, viaTill, transaction.direction, transaction.branchId]);
+
+  /*
+    KAS OR BANK, from whichever of the two recorded it — the channel's type on a
+    till row, the account's own jenis on everything else. The picker below offers
+    only the accounts on this side of that line.
+  */
+  const cashAccountsAll = useMemo(
+    () => cashBankAccounts(lookups.accounts),
+    [lookups.accounts],
+  );
+  const currentAccount = cashAccountsAll.find(
+    (account) => account._id === transaction.cashAccountId,
+  );
+  const channelClass = transaction.channelType
+    ? channelClassOf(transaction.channelType)
+    : cashTypeOf(currentAccount);
+
+  const accountOptions = useMemo(() => {
+    const options = cashAccountsAll
+      .filter((account) => cashTypeOf(account) === channelClass)
+      .map((account) => ({
+        value: account._id,
+        label: `${account.code} · ${account.name}`,
+      }));
+    // The account it already uses stays choosable even if since retired —
+    // keeping it is not a change.
+    if (
+      transaction.cashAccountId &&
+      !options.some((option) => option.value === transaction.cashAccountId)
+    ) {
+      options.unshift({
+        value: transaction.cashAccountId,
+        label: transaction.cashAccountName ?? "Akun saat ini",
+      });
+    }
+    return options;
+  }, [
+    cashAccountsAll,
+    channelClass,
+    transaction.cashAccountId,
+    transaction.cashAccountName,
+  ]);
+
+  const channelOptions = useMemo(() => {
+    const options = channels
+      .filter((channel) => channelClassOf(channel.type) === channelClass)
+      .map((channel) => ({ value: channel._id, label: channel.name }));
+    // The channel it already uses stays choosable even if since retired —
+    // keeping it is not a change.
+    if (
+      transaction.channelId &&
+      !options.some((option) => option.value === transaction.channelId)
+    ) {
+      options.unshift({
+        value: transaction.channelId,
+        label: transaction.channelName ?? "Channel saat ini",
+      });
+    }
+    return options;
+  }, [channels, channelClass, transaction.channelId, transaction.channelName]);
+
+  if (locked) {
+    return (
+      <>
+        {!asPage && (
+          <DialogHeader>
+            <DialogTitle>Ubah transaksi</DialogTitle>
+            <DialogDescription>
+              {cashTransactionTitle(transaction)}
+            </DialogDescription>
+          </DialogHeader>
+        )}
+        <Alert variant="info">Transaksi ini tidak bisa diubah. {locked}</Alert>
+        <div className="flex justify-end">
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Kembali
+          </Button>
+        </div>
+      </>
+    );
+  }
+
+  /** Every rule the dialog owns, and the patch it would send — no state written. */
+  function build(): { patch: UpdateCashTransactionInput; problem: string | null } {
+    const patch: UpdateCashTransactionInput = {};
+
+    if (date === "") return { patch, problem: "Tanggal belum diisi" };
+    if (date > todayValue()) {
+      return { patch, problem: "Tanggal tidak boleh di masa depan" };
+    }
+    if (date !== originalDate) patch.at = date;
+
+    if (!withLines && !amountLocked) {
+      const trimmed = amount.trim();
+      const minor = trimmed !== "" && isDecimal(trimmed) ? toMinor(trimmed) : null;
+      if (minor === null || minor <= 0n) {
+        return { patch, problem: "Jumlah harus angka lebih dari nol" };
+      }
+      if (minor !== toMinor(transaction.amount)) patch.amount = trimmed;
+    }
+
+    if (viaTill) {
+      if (!channelId) return { patch, problem: "Channel belum dipilih" };
+      if (channelId !== (transaction.channelId ?? "")) patch.channelId = channelId;
+    } else {
+      if (!accountId) return { patch, problem: "Akun kas/bank belum dipilih" };
+      if (accountId !== (transaction.cashAccountId ?? "")) {
+        patch.accountId = accountId;
+      }
+    }
+
+    if (ref.trim() !== (transaction.ref ?? "")) patch.ref = ref.trim();
+    if (note.trim() !== (transaction.note ?? "")) patch.note = note.trim();
+
+    if (withLines) {
+      const problem = linesProblem(lines);
+      if (problem) return { patch, problem };
+      const inputs = toLineInputs(lines);
+      if (linesSignature(inputs) !== linesSignature(transaction.lines ?? [])) {
+        patch.lines = inputs;
+      }
+    }
+
+    if (Object.keys(patch).length === 0) {
+      return { patch, problem: "Belum ada yang diubah" };
+    }
+    if (reason.trim()) patch.reason = reason.trim();
+
+    return { patch, problem: null };
+  }
+
+  const { patch: draftPatch, problem } = build();
+
+  /*
+    WHAT THIS EDIT WILL ACTUALLY DO TO THE LEDGER — the same split the server
+    makes in `cashTransaction.service.update`.
+
+    `note` IS THE ONLY FIELD THE LEDGER NEVER SEES, so a note-only edit posts
+    nothing at all. `ref` is NOT on that list and the omission is deliberate:
+    the server writes it into the cash line's memo, so changing it genuinely
+    changes what the entry says. `reason` is metadata about the edit itself.
+  */
+  const ledgerKeys: (keyof UpdateCashTransactionInput)[] = [
+    "at",
+    "amount",
+    "channelId",
+    "accountId",
+    "ref",
+    "lines",
+  ];
+  const touchesLedger = ledgerKeys.some((key) => draftPatch[key] !== undefined);
+  const noteOnly =
+    !touchesLedger && Object.keys(draftPatch).length > 0;
+
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    const { patch, problem: blocked } = build();
+    if (blocked || saving) return;
+
+    setSaving(true);
+    setServerError(null);
+
+    try {
+      const updated = await cashTransactionService.update(transaction._id, patch);
+      swalToast(`Perubahan ${cashTransactionTitle(updated)} tersimpan.`);
+      onSaved(updated);
+      onClose();
+    } catch (caught) {
+      setServerError(
+        caught instanceof ApiError
+          ? caught.fullMessage
+          : "Gagal menyimpan perubahan. Coba lagi.",
+      );
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+      {/* §16: on a page the buttons sit at the HEAD of the form, and the route
+          already names the document — so the bar carries no title. */}
+      {asPage ? (
+        <FormActionBar
+          submitLabel="Simpan transaksi"
+          submitting={saving}
+          disabled={problem !== null}
+          blockedReason={problem}
+          onCancel={onClose}
+          cancelLabel="Batal"
+        />
+      ) : (
+        <DialogHeader>
+          <DialogTitle>Ubah transaksi</DialogTitle>
+          <DialogDescription>
+            {cashTransactionTitle(transaction)} · {kindLabel(transaction.kind)}
+          </DialogDescription>
+        </DialogHeader>
+      )}
+
+      {/*
+        IT SAYS WHAT THIS EDIT WILL DO, not what an edit does in general (21
+        September 2026, on request). The unconditional version was written when
+        every edit reversed; since a note-only edit posts nothing, leaving it
+        would have promised two journal entries for correcting a typo.
+      */}
+      <div className="rounded-lg border border-border bg-surface-hover px-4 py-3 text-sm">
+        Nomor{" "}
+        <b className="tabular-nums">{transaction.number ?? "transaksi ini"}</b>{" "}
+        tetap sama.{" "}
+        {noteOnly ? (
+          <>
+            Mengubah catatan saja <b>tidak membuat jurnal</b> — buku besar tidak
+            pernah mencatat catatan. Perubahannya tetap masuk riwayat perubahan.
+          </>
+        ) : (
+          <>
+            Mengubah <b>akun, nominal, tanggal, atau no. referensi</b> membuat
+            jurnal yang berlaku sekarang <b>dibalik</b> dan jurnal baru{" "}
+            <b>diposting ulang</b> — keduanya tetap terlihat di Jurnal Umum dan
+            di riwayat perubahan. Mengubah catatan saja tidak membuat jurnal.
+          </>
+        )}
+      </div>
+
+      {serverError && <Alert variant="error">{serverError}</Alert>}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <TextField
+          label="Tanggal"
+          name="edit-at"
+          type="date"
+          value={date}
+          max={todayValue()}
+          required
+          disabled={saving}
+          onChange={(event) => setDate(event.target.value)}
+        />
+
+        {!withLines && (
+          <TextField
+            label="Jumlah"
+            name="edit-amount"
+            inputMode="decimal"
+            value={amount}
+            required
+            disabled={saving || amountLocked}
+            className="tabular-nums"
+            hint={
+              amountLocked
+                ? "Jumlah komisi dihitung dari pembukuan dan tidak bisa diubah."
+                : undefined
+            }
+            onChange={(event) => setAmount(event.target.value)}
+          />
+        )}
+
+        <div>
+          {viaTill ? (
+            <FilterSelect
+              layout="form"
+              label="Channel"
+              ariaLabel="Channel"
+              value={channelId}
+              options={channelOptions}
+              active={false}
+              placeholder={channelsLoading ? "Memuat channel…" : "Pilih channel"}
+              required
+              disabled={saving}
+              onChange={setChannelId}
+            />
+          ) : (
+            <FilterSelect
+              layout="form"
+              label="Akun Kas/Bank"
+              ariaLabel="Akun Kas/Bank"
+              value={accountId}
+              options={accountOptions}
+              active={false}
+              searchable
+              placeholder={lookups.loading ? "Memuat akun…" : "Pilih akun"}
+              required
+              disabled={saving || lookups.loading}
+              onChange={setAccountId}
+            />
+          )}
+          <p className="mt-1.5 text-xs text-muted">
+            {viaTill
+              ? "Transaksi dari kasir dipindah lewat channelnya, supaya total shift tetap cocok."
+              : channelClass === "cash"
+                ? "Hanya akun kas. Pindah ke rekening bank berarti batalkan transaksi ini lalu catat ulang."
+                : "Hanya akun bank. Pindah ke kas berarti batalkan transaksi ini lalu catat ulang."}
+          </p>
+        </div>
+
+        <TextField
+          label="No. referensi"
+          name="edit-ref"
+          value={ref}
+          maxLength={100}
+          disabled={saving}
+          onChange={(event) => setRef(event.target.value)}
+        />
+
+        <div className="sm:col-span-2">
+          <TextareaField
+            label="Catatan"
+            name="edit-note"
+            value={note}
+            rows={2}
+            maxLength={500}
+            disabled={saving}
+            onChange={(event) => setNote(event.target.value)}
+          />
+        </div>
+      </div>
+
+      {withLines &&
+        (lookups.loading ? (
+          <div className="flex items-center gap-2 py-4 text-sm text-muted">
+            <Spinner /> Memuat daftar akun…
+          </div>
+        ) : lookups.error ? (
+          <Alert variant="error">{lookups.error}</Alert>
+        ) : (
+          <CashLinesEditor
+            kind={transaction.kind as "expense" | "other_income"}
+            lines={lines}
+            onChange={setLines}
+            accounts={accountsForKind(
+              lookups.accounts,
+              transaction.kind as "expense" | "other_income",
+            )}
+            businessLines={lookups.businessLines}
+            disabled={saving}
+          />
+        ))}
+
+      <TextareaField
+        label="Alasan perubahan"
+        name="edit-reason"
+        value={reason}
+        rows={2}
+        maxLength={REASON_MAX_LENGTH}
+        disabled={saving}
+        hint="Opsional — tersimpan di riwayat perubahan."
+        onChange={(event) => setReason(event.target.value)}
+      />
+
+      {!asPage && (
+        <DialogFooter className="items-center">
+          {problem && !saving && (
+            <p className="mr-auto text-xs text-muted">
+              Belum bisa disimpan: <b className="font-semibold">{problem}</b>
+            </p>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onClose}
+            disabled={saving}
+          >
+            Kembali
+          </Button>
+          <Button type="submit" disabled={problem !== null || saving}>
+            {saving ? "Menyimpan…" : "Simpan transaksi"}
+          </Button>
+        </DialogFooter>
+      )}
+    </form>
+  );
+}

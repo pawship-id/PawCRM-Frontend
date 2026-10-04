@@ -22,7 +22,8 @@ import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import type { PaymentChannel } from "@/types/api";
 
-import { CHANNEL_TYPE_LABELS } from "../hooks/usePaymentChannels";
+import { CHANNEL_TYPE_LABELS } from "../labels";
+import type { PaymentChannelRow } from "../hooks/usePaymentChannelList";
 
 type PendingAction = {
   kind: "delete" | "restore";
@@ -30,29 +31,41 @@ type PendingAction = {
 } | null;
 
 /**
- * The channel list table.
+ * Channel Pembayaran — every named place money can arrive, and the account it
+ * lands in.
+ *
+ * NO MONEY COLUMNS (20 September 2026). This table carried Masuk, Keluar and
+ * Saldo while it was the body of Kas & Bank; it lost them when it moved to
+ * Pengaturan, and the loss is the point. A saldo per channel could never be
+ * summed — several channels share one account — and a settings screen has no
+ * period for a movement to be about. Both figures are on Kas & Bank now, filed
+ * by account, where a column of them adds up.
+ *
+ * WHAT IS LEFT IS WHAT A PERSON EDITS: the name a cashier reads, the tab it sits
+ * under, the branch it belongs to, and the account it debits. That is the whole
+ * of a channel.
  *
  * ONE FLAT TABLE, not four grouped sections. The server already returns them
  * ordered by tab, so the Tipe column reads as a grouping without the markup —
- * and a settings screen for six rows does not need four headings to scan.
+ * and six rows do not need four headings to scan.
+ *
+ * MDR SITS UNDER THE NAME rather than in a column. It is blank on most rows —
+ * only QRIS and EDC may carry a rate — and a column that is mostly dashes is a
+ * column worth not having.
  */
 export function PaymentChannelsTable({
-  channels,
+  rows,
   loading,
   onChanged,
   search,
-  accountLabels,
-  branchLabels,
 }: {
-  channels: PaymentChannel[];
+  /** Channel and its labels — see `usePaymentChannelList`. */
+  rows: PaymentChannelRow[];
   loading: boolean;
   onChanged: () => void;
   search?: string;
-  /** accountId → "1102 · Bank". Missing ids fall back to a dash. */
-  accountLabels: Map<string, string>;
-  /** branchId → branch name. */
-  branchLabels: Map<string, string>;
 }) {
+  const channels = rows.map((row) => row.channel);
   const [pending, setPending] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -109,21 +122,36 @@ export function PaymentChannelsTable({
         <Table className={loading ? "opacity-60" : undefined}>
           <TableHeader>
             <TableRow>
-              <TableHead>Tipe</TableHead>
               <TableHead>Nama</TableHead>
-              <TableHead>Akun</TableHead>
+              <TableHead>Tipe</TableHead>
               <TableHead>Cabang</TableHead>
-              <TableHead className="text-right">MDR</TableHead>
+              <TableHead>Akun</TableHead>
               <TableHead>Status</TableHead>
               {showActions && <TableHead className="text-right">Aksi</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {channels.map((channel) => {
+            {rows.map((row) => {
+              const { channel } = row;
               const deleted = channel.deletedAt !== null;
 
               return (
                 <TableRow key={channel._id}>
+                  <TableCell>
+                    <div className="font-medium text-foreground">
+                      <HighlightText text={channel.name} query={search} />
+                    </div>
+                    {channel.mdrPercent > 0 && (
+                      <span className="text-xs text-muted">
+                        MDR {channel.mdrPercent}%
+                      </span>
+                    )}
+                    {channel.requiresReference && (
+                      <span className="block text-xs text-muted">
+                        Wajib no. referensi
+                      </span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
@@ -132,27 +160,14 @@ export function PaymentChannelsTable({
                       {CHANNEL_TYPE_LABELS[channel.type]}
                     </Badge>
                   </TableCell>
-                  <TableCell>
-                    <div className="font-medium text-foreground">
-                      <HighlightText text={channel.name} query={search} />
-                    </div>
-                    {channel.requiresReference && (
-                      <span className="text-xs text-muted">
-                        Wajib no. referensi
-                      </span>
-                    )}
-                  </TableCell>
                   <TableCell className="text-muted">
-                    {accountLabels.get(channel.accountId) ?? "—"}
+                    {/* Null is a real answer — this channel works everywhere —
+                        and a dash there would read as unset. */}
+                    {row.branchName ?? "Semua cabang"}
                   </TableCell>
-                  <TableCell className="text-muted">
-                    {channel.branchId === null
-                      ? "Semua cabang"
-                      : (branchLabels.get(channel.branchId) ?? "—")}
-                  </TableCell>
-                  {/* tabular-nums so the column does not shift — ui-rules §5. */}
-                  <TableCell className="text-right tabular-nums text-muted">
-                    {channel.mdrPercent > 0 ? `${channel.mdrPercent}%` : "—"}
+                  {/* tabular-nums so the codes line up — ui-rules §5. */}
+                  <TableCell className="tabular-nums whitespace-nowrap text-muted">
+                    {row.accountLabel ?? "—"}
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -192,7 +207,7 @@ export function PaymentChannelsTable({
                             <Can feature="paymentChannels" action="update">
                               <Button variant="ghost" size="sm" asChild>
                                 <Link
-                                  href={`/dashboard/keuangan/kas-bank/${channel._id}`}
+                                  href={`/dashboard/pengaturan/channel-pembayaran/${channel._id}`}
                                 >
                                   <Pencil className="size-4" />
                                   Ubah

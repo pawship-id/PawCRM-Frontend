@@ -1,53 +1,35 @@
 import { toDecimalString, toMinor } from "@/utils/decimal";
+import type {
+  AccountBalance,
+  ProfitLossResult,
+  ProfitLossRow,
+} from "@/services/journalEntry.service";
+import type { AccountCategory } from "@/types/accounting";
 
-import {
-  CASHFLOW_ROWS,
-  FIXTURE_LINES,
-  PROFIT_LOSS_ROWS,
-  type CashflowFixtureRow,
-  type ProfitLossFixtureRow,
-  type ProfitLossGroupKey,
-} from "./data/reportFixtures";
+import { ACCOUNT_CATEGORY_LABEL } from "./labels";
 import { SHARED_LINE_LABEL, SHARED_LINE_NONE } from "./financeSummary";
 
 /**
- * The fold that turns ledger rows into the two reports — Laba Rugi per lini and
- * Arus Kas.
+ * The arrangement that turns a report's API response into the table a screen
+ * draws — Laba Rugi per lini and Arus Kas.
  *
- * THIS IS STANDING IN FOR THE SERVER, and it should not outlive it. Every
- * function here does arithmetic on money in a browser, which is exactly what
- * `/journal-entries/summary` and `/balances` were added to stop
- * (PawCRM-Backend/docs/finance-dashboard-gaps.md §2). It is acceptable only
- * because it folds a fixture of a dozen rows rather than a tenant's ledger; the
- * moment `GET /journal-entries/profit-loss` exists, the screens read its
- * response and this file loses its reason to be.
+ * WHAT CHANGED HERE, 18 September 2026. This file used to fold a FIXTURE and
+ * carried a note saying it should not outlive the endpoint, because every
+ * function in it was doing arithmetic on money in a browser
+ * (PawCRM-Backend/docs/finance-dashboard-gaps.md §2). Both endpoints now exist,
+ * and the fixture is gone:
  *
- * WHAT SURVIVES THE SWAP is the SHAPE below, not the arithmetic. `ProfitLossMatrix`
- * is what the endpoint should return — columns first, then groups of accounts,
- * then the two derived result rows — so wiring it up later is a change of source
- * rather than a change of screen.
+ *   Laba Rugi → `GET /journal-entries/profit-loss`, which returns the five
+ *               groups, every account that moved, and the three subtotals
+ *               already derived from each other.
+ *   Arus Kas  → two reads of `GET /journal-entries/balances`, one at each end of
+ *               the period, filtered to `accountCategory: "cash_bank"`.
  *
- * EXACT ARITHMETIC THROUGHOUT. Amounts are decimal strings and every sum goes
- * through BigInt minor units; `Number` never touches a rupiah. The one place a
- * float appears is the percentage, which is a display value and rounded as one.
+ * SO NOTHING HERE ADDS UP MONEY ANY MORE — except the one subtraction Arus Kas
+ * needs, and that one is stated below with its reason. What is left is
+ * ARRANGEMENT: which column a cell belongs in, which rows are empty, what a
+ * group is called. That is a view's job and it stays here.
  */
-
-/** Sums decimal strings exactly. Local rather than imported so it can subtract too. */
-function total(values: Array<string | undefined>): string {
-  return toDecimalString(
-    values.reduce<bigint>((acc, value) => acc + (toMinor(value ?? "0") ?? 0n), 0n),
-  );
-}
-
-/** `a − b`, exactly. */
-function minus(a: string, b: string): string {
-  return toDecimalString((toMinor(a) ?? 0n) - (toMinor(b) ?? 0n));
-}
-
-/** Element-wise `a − b` over two equal-length rows of cells. */
-function minusRow(a: string[], b: string[]): string[] {
-  return a.map((value, index) => minus(value, b[index] ?? "0"));
-}
 
 /* -------------------------------------------------------------- laba rugi */
 
@@ -71,34 +53,46 @@ export interface MatrixAccount extends MatrixRow {
 }
 
 export interface MatrixGroup extends MatrixRow {
-  key: ProfitLossGroupKey;
+  key: AccountCategory;
   label: string;
   accounts: MatrixAccount[];
+  /**
+   * Whether the group is SUBTRACTED in the formula, which is what decides
+   * whether it prints with a leading minus. The amounts themselves stay
+   * positive: a report prints "Beban Sewa 15.000.000", not "−15.000.000", until
+   * it is being taken away from something.
+   */
+  negative: boolean;
 }
 
 export interface ProfitLossMatrix {
   columns: ReportColumn[];
-  /** Pendapatan, HPP, Beban Operasional — always all three, even when empty. */
+  /** Always all five, in report order, even when a group is empty. */
   groups: MatrixGroup[];
   /** Pendapatan − HPP. */
   grossProfit: MatrixRow;
-  /** Laba kotor − beban operasional. */
+  /** Laba kotor − biaya. */
+  operatingProfit: MatrixRow;
+  /** Laba usaha + pendapatan lainnya − biaya lainnya. */
   netProfit: MatrixRow;
   /** The base every margin percentage is taken against. */
   revenue: MatrixRow;
 }
 
 /**
- * Group headings, in the order a laba rugi is read.
+ * The five groups in the order the report is read, and which side each is on.
  *
- * The order is the report's grammar rather than a preference: laba kotor only
- * means anything printed between HPP and beban operasional, so the array below
- * is what makes the result rows land where an accountant expects them.
+ * THE ORDER IS THE REPORT'S GRAMMAR rather than a preference: laba kotor only
+ * means anything printed between HPP and Biaya, and laba usaha only between
+ * Biaya and the two "Lainnya" buckets. It matches PROFIT_LOSS_CATEGORIES on the
+ * server, which is what the response is ordered by.
  */
-const GROUPS: Array<{ key: ProfitLossGroupKey; label: string }> = [
-  { key: "revenue", label: "Pendapatan" },
-  { key: "cogs", label: "Beban Pokok Penjualan (HPP)" },
-  { key: "opex", label: "Beban Operasional" },
+const GROUPS: Array<{ key: AccountCategory; negative: boolean }> = [
+  { key: "pendapatan", negative: false },
+  { key: "hpp", negative: true },
+  { key: "biaya", negative: true },
+  { key: "pendapatan_lainnya", negative: false },
+  { key: "biaya_lainnya", negative: true },
 ];
 
 export interface ReportQuery {
@@ -115,67 +109,80 @@ export interface ReportQuery {
  * thing about this report that is not obvious. Narrowing to Grooming does not
  * hide the accounts grooming does not touch — it shows the same chart with one
  * column, so "what did grooming cost us" is answered line by line against the
- * same list somebody just read for the whole shop.
+ * same list somebody just read for the whole shop. It is also why the screen
+ * does NOT send `businessLineId` to the API: the response has to carry every
+ * column for the consolidated total to stay comparable.
  *
- * A ROW WITH NOTHING IN IT IS DROPPED, though, and only after the column filter
- * has been applied: a chart of accounts a tenant has grown for years would
- * otherwise print forty empty rows around the six that moved.
+ * `branchId` IS sent to the API, because that one genuinely selects a different
+ * set of entries rather than a different view of the same ones.
+ *
+ * A ROW WITH NOTHING IN IT IS DROPPED, and only after the column filter has been
+ * applied: a chart a tenant has grown for years would otherwise print forty
+ * empty rows around the six that moved. Whether an account is empty is a
+ * question about the columns chosen, not about the account.
  */
 export function profitLossMatrix(
-  query: ReportQuery,
-  rows: ProfitLossFixtureRow[] = PROFIT_LOSS_ROWS,
-  lines: Array<{ _id: string; name: string }> = FIXTURE_LINES,
+  result: ProfitLossResult,
+  lines: Array<{ _id: string; name: string }>,
+  businessLineId: string,
 ): ProfitLossMatrix {
-  const columns = reportColumns(query.businessLineId, lines);
+  const columns = reportColumns(businessLineId, lines);
 
-  /** One account's cells, once the cabang and the columns are settled. */
-  const cellsFor = (row: ProfitLossFixtureRow): string[] =>
-    columns.map((column) => {
-      const key = column.id ?? "";
-      const branches = query.branchId
-        ? [query.branchId]
-        : Object.keys(row.amounts);
+  /** A response row's cells, in column order. Absent line → an explicit zero. */
+  const cellsOf = (row: ProfitLossRow): string[] => {
+    const byLine = new Map(
+      row.lines.map((cell) => [cell.businessLineId ?? "", cell.amount]),
+    );
+    return columns.map((column) => byLine.get(column.id ?? "") ?? "0.0000");
+  };
 
-      return total(branches.map((branch) => row.amounts[branch]?.[key]));
-    });
+  /**
+   * A row's consolidated total.
+   *
+   * RE-SUMMED FROM THE VISIBLE CELLS rather than taken from `row.total`, and
+   * this is the one place that matters: `row.total` spans every line, so with a
+   * column filter applied the screen would show one column of Grooming beside a
+   * "Total Konsolidasi" that quietly included retail. The unfiltered case sums
+   * to exactly the server's own figure.
+   */
+  const rowOf = (row: ProfitLossRow): MatrixRow => {
+    const cells = cellsOf(row);
+    return { cells, total: sum(cells) };
+  };
 
-  const groups: MatrixGroup[] = GROUPS.map(({ key, label }) => {
-    const accounts: MatrixAccount[] = rows
-      .filter((row) => row.group === key)
-      .map((row) => {
-        const cells = cellsFor(row);
-        return { code: row.code, name: row.name, cells, total: total(cells) };
-      })
-      // Dropped after the fold, not before it: whether an account is empty is a
-      // question about the cabang and the columns chosen, not about the account.
-      .filter((account) => account.total !== "0.0000");
+  const byCategory = new Map(
+    result.categories.map((group) => [group.accountCategory, group]),
+  );
+
+  const groups: MatrixGroup[] = GROUPS.map(({ key, negative }) => {
+    const group = byCategory.get(key);
+    const accounts: MatrixAccount[] = result.accounts
+      .filter((account) => account.accountCategory === key)
+      .map((account) => ({
+        code: account.code,
+        name: account.name,
+        ...rowOf(account),
+      }))
+      .filter((account) => !isZero(account.total));
 
     return {
       key,
-      label,
+      label: ACCOUNT_CATEGORY_LABEL[key],
+      negative,
       accounts,
-      cells: columns.map((_, index) =>
-        total(accounts.map((account) => account.cells[index])),
-      ),
-      total: total(accounts.map((account) => account.total)),
+      ...(group
+        ? rowOf(group)
+        : { cells: columns.map(() => "0.0000"), total: "0.0000" }),
     };
   });
-
-  const [revenue, cogs, opex] = groups;
-  const grossProfit: MatrixRow = {
-    cells: minusRow(revenue.cells, cogs.cells),
-    total: minus(revenue.total, cogs.total),
-  };
 
   return {
     columns,
     groups,
-    grossProfit,
-    netProfit: {
-      cells: minusRow(grossProfit.cells, opex.cells),
-      total: minus(grossProfit.total, opex.total),
-    },
-    revenue: { cells: revenue.cells, total: revenue.total },
+    grossProfit: rowOf(result.results.grossProfit),
+    operatingProfit: rowOf(result.results.operatingProfit),
+    netProfit: rowOf(result.results.netProfit),
+    revenue: groups[0],
   };
 }
 
@@ -235,88 +242,125 @@ export interface CashflowReport {
 /**
  * Kas dan bank over the period: where it started, what moved, where it ended.
  *
- * SALDO AKHIR IS DERIVED HERE AND NOWHERE ELSE, so the identity printed in the
- * card note — Saldo Akhir = Saldo Awal + Inflow − Outflow — is the definition
- * rather than a claim about it. A stored closing balance is a second source of
- * truth that starts disagreeing with its own inputs.
+ * BUILT FROM TWO TRIAL BALANCES, one at each end, rather than from an endpoint
+ * of its own. `balances` is cumulative from inception and returns both SIDES, so
+ * the period's movement is the difference between the two reads — inflow is
+ * `debit(akhir) − debit(awal)`, outflow the same on the credit side. An endpoint
+ * that answered this directly would be a third way of asking one question the
+ * ledger already answers twice.
  *
- * AN ACCOUNT WITH NO ACTIVITY AT THIS CABANG IS DROPPED, not shown as a row of
- * zeros: a bank account the branch does not hold is not a balance of nothing, it
- * is not that branch's account.
+ * THE SUBTRACTION IS THE ONE PIECE OF ARITHMETIC LEFT IN THIS FILE. It is exact
+ * — BigInt minor units, never `Number` — and it is here rather than on the
+ * server because neither read knows about the other.
+ *
+ * SALDO AKHIR IS DERIVED, so the identity printed in the card note — Saldo Akhir
+ * = Saldo Awal + Inflow − Outflow — is the definition rather than a claim about
+ * it. It comes out equal to the closing read's own `balance`, which is what
+ * makes the two reads a check on each other rather than two sources of truth.
+ *
+ * AN ACCOUNT WITH NO OPENING BALANCE AND NO MOVEMENT IS DROPPED: a bank account
+ * the branch does not hold is not a balance of nothing, it is not that branch's
+ * account. One that is held and simply did not move stays, as a row of zeros
+ * around a real saldo awal.
  */
 export function cashflowReport(
-  branchId: string,
-  rows: CashflowFixtureRow[] = CASHFLOW_ROWS,
+  opening: AccountBalance[],
+  closing: AccountBalance[],
 ): CashflowReport {
-  /** Which cabang hold this account — the filter's, or all of them. */
-  const held = (row: CashflowFixtureRow) =>
-    (branchId ? [branchId] : Object.keys(row.amounts)).filter(
-      (branch) => row.amounts[branch],
-    );
+  const openingByAccount = new Map(
+    opening.map((account) => [account.accountId, account]),
+  );
 
-  // Dropped BEFORE the fold, unlike the P&L's empty rows: an account the chosen
-  // cabang does not hold is not a balance of zero, it is not that branch's
-  // account. Whether it moved is a different question, and one a held account
-  // may legitimately answer "no" to while still belonging in the table.
-  const folded = rows
-    .filter((row) => held(row).length > 0)
-    .map((row) => {
-      const branches = held(row);
-      const saldoAwal = total(
-        branches.map((branch) => row.amounts[branch]?.saldoAwal),
+  // Driven by the CLOSING read, which is the superset in every ordinary case: an
+  // account can acquire its first posting during the period, but one that had a
+  // balance before it cannot lose its history.
+  const seen = new Map(closing.map((account) => [account.accountId, account]));
+  for (const account of opening) {
+    if (!seen.has(account.accountId)) seen.set(account.accountId, account);
+  }
+
+  const rows = [...seen.values()]
+    .map((account) => {
+      const before = openingByAccount.get(account.accountId);
+      const isClosing = closing.some(
+        (row) => row.accountId === account.accountId,
       );
-      const inflow = total(
-        branches.map((branch) => row.amounts[branch]?.inflow),
+
+      const saldoAwal = before?.balance ?? "0.0000";
+      const inflow = minus(
+        isClosing ? account.debit : "0.0000",
+        before?.debit ?? "0.0000",
       );
-      const outflow = total(
-        branches.map((branch) => row.amounts[branch]?.outflow),
+      const outflow = minus(
+        isClosing ? account.credit : "0.0000",
+        before?.credit ?? "0.0000",
       );
 
       return {
-        code: row.code,
-        name: row.name,
+        code: account.code,
+        name: account.name,
         saldoAwal,
         inflow,
         outflow,
-        saldoAkhir: minus(total([saldoAwal, inflow]), outflow),
+        saldoAkhir: minus(sum([saldoAwal, inflow]), outflow),
       };
-    });
+    })
+    .filter(
+      (row) =>
+        !isZero(row.saldoAwal) || !isZero(row.inflow) || !isZero(row.outflow),
+    )
+    // By account number, the order a chart of accounts is read in. The two reads
+    // arrive sorted; merging them can interleave.
+    .sort((a, b) => a.code.localeCompare(b.code, "id", { numeric: true }));
 
   const totals = {
-    saldoAwal: total(folded.map((row) => row.saldoAwal)),
-    inflow: total(folded.map((row) => row.inflow)),
-    outflow: total(folded.map((row) => row.outflow)),
-    saldoAkhir: total(folded.map((row) => row.saldoAkhir)),
+    saldoAwal: sum(rows.map((row) => row.saldoAwal)),
+    inflow: sum(rows.map((row) => row.inflow)),
+    outflow: sum(rows.map((row) => row.outflow)),
+    saldoAkhir: sum(rows.map((row) => row.saldoAkhir)),
     netFlow: minus(
-      total(folded.map((row) => row.inflow)),
-      total(folded.map((row) => row.outflow)),
+      sum(rows.map((row) => row.inflow)),
+      sum(rows.map((row) => row.outflow)),
     ),
   };
 
-  const closing = toMinor(totals.saldoAkhir) ?? 0n;
+  const closingTotal = toMinor(totals.saldoAkhir) ?? 0n;
 
   return {
-    rows: folded.map((row) => ({
+    rows: rows.map((row) => ({
       ...row,
       // ×1000 then ÷10 in BigInt, the same way `marginPct` keeps one decimal
       // without dividing money by money in floating point.
       share:
-        closing === 0n
+        closingTotal === 0n
           ? null
-          : Number(((toMinor(row.saldoAkhir) ?? 0n) * 1000n) / closing) / 10,
+          : Number(((toMinor(row.saldoAkhir) ?? 0n) * 1000n) / closingTotal) /
+            10,
     })),
     totals,
   };
 }
 
+/* ----------------------------------------------------------------- exact */
+
+/** Sums decimal strings exactly, through BigInt minor units. */
+function sum(values: Array<string | undefined>): string {
+  return toDecimalString(
+    values.reduce<bigint>((acc, value) => acc + (toMinor(value ?? "0") ?? 0n), 0n),
+  );
+}
+
+/** `a − b`, exactly. */
+function minus(a: string, b: string): string {
+  return toDecimalString((toMinor(a) ?? 0n) - (toMinor(b) ?? 0n));
+}
+
 /**
- * The fixture surface, re-exported so a screen imports its data from one place.
- *
- * One import to delete per screen when the endpoint lands, rather than two.
+ * Whether a money string is zero — compared in MINOR UNITS, not against the
+ * literal "0.0000". The server writes that spelling, but a value that has been
+ * through a subtraction here can be "-0.0000", and a row dropped by string
+ * comparison but kept by arithmetic is the kind of mismatch nobody finds.
  */
-export {
-  FIXTURE_BRANCHES,
-  FIXTURE_LINES,
-  FIXTURE_PERIOD_LABEL,
-  type ProfitLossGroupKey,
-} from "./data/reportFixtures";
+function isZero(value: string): boolean {
+  return (toMinor(value) ?? 0n) === 0n;
+}

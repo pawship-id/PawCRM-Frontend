@@ -120,7 +120,7 @@ describe("MyCommissionScreen", () => {
       await screen.findByText(/tidak ada yang menunggu dibayar/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/setelah pemilik menutup bulannya/i),
+      screen.getByText(/setelah komisinya disetujui/i),
     ).toBeInTheDocument();
   });
 

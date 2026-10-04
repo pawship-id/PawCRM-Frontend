@@ -7,7 +7,12 @@ import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/utils/decimal";
 import type { PosItem, PosDiscountMode } from "@/types/api";
 
+import { ownDiscountOf } from "../bookingDiscount";
+import { variantDetailOf } from "../variantDetail";
+import { PosBenefitChip } from "./PosBenefitChip";
 import { PosDiscountPopover } from "./PosDiscountPopover";
+import { PosLinePrice } from "./PosLinePrice";
+import { netOf, PosLineTotal } from "./PosLineTotal";
 
 /**
  * One line in the basket.
@@ -24,22 +29,64 @@ import { PosDiscountPopover } from "./PosDiscountPopover";
 export function PosCartLine({
   item,
   index,
+  addons = [],
   onQtyChange,
   onRemove,
   onDiscountChange,
+  onPriceChange,
+  maySetPrice = false,
   disabled = false,
 }: {
   item: PosItem;
   index: number;
+  /**
+   * The add-ons attached to THIS service, drawn inside its line rather than
+   * beside it.
+   *
+   * "Extra Handling" is not a third thing the customer bought — it is something
+   * done to the bath — and a basket that lists it as a line of its own asks the
+   * cashier to check three rows against two services. Each still carries its own
+   * price and its own controls, because each is still billed and may still be
+   * taken off.
+   *
+   * EMPTY FOR EVERYTHING ELSE: retail lines, add-ons themselves (nesting is one
+   * deep by construction — see the booking model), and a service nobody attached
+   * anything to.
+   */
+  addons?: Array<{ item: PosItem; index: number }>;
   onQtyChange: (index: number, qty: string) => void;
-  onRemove: (index: number) => void;
+  /**
+   * Takes lines out — a LIST when a service goes, because its add-ons go with
+   * it. They have no bin of their own, so a service removed on its own would
+   * leave them in the basket as lines nothing can reach: `nestAddons` stands an
+   * add-on whose parent is gone back up as a top-level line, and that line has
+   * no way to be removed either.
+   */
+  onRemove: (index: number | number[]) => void;
   onDiscountChange: (
     index: number,
     discount: { mode: PosDiscountMode; value: string } | null,
   ) => void;
+  /**
+   * Typing a price over the catalogue's — `null` puts the line back to it.
+   *
+   * ABSENT MEANS THE PRICE IS READ-ONLY, which is how every caller that has
+   * nothing to do with re-pricing keeps the line exactly as it was.
+   */
+  onPriceChange?: (index: number, unitPrice: string | null) => void;
+  /** `posTransactions:setPrice`. See PosLinePrice. */
+  maySetPrice?: boolean;
   disabled?: boolean;
 }) {
   const qty = Number(item.qty);
+  /*
+    ONLY A PRODUCT IS STEPPED. Stated as a positive rather than as "not a
+    service", because the list of kinds grew on 29 September 2026 and a negative
+    test does not grow with it: a MEMBERSHIP line fell into the product branch
+    and got a −/+ stepper, while the server forces one package per line — a
+    control that did nothing, on the screen where every pixel is read at speed.
+  */
+  const stepsQty = item.kind === "product";
   const isService = item.kind === "service";
 
   /**
@@ -59,6 +106,12 @@ export function PosCartLine({
    * `cancelled`, and almost none of those is `draft` — so a pulled grooming
    * could be neither discounted nor taken back out.
    */
+  const detail = variantDetailOf(item);
+  const addonDetail = (addon: PosItem) => {
+    const own = variantDetailOf(addon);
+    return own !== detail ? own : null;
+  };
+
   const locked =
     item.bookingOwned &&
     item.bookingStatus !== null &&
@@ -68,21 +121,71 @@ export function PosCartLine({
     <div className="border-b border-border px-3 py-2 last:border-b-0">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
+          {/*
+            THE ANIMAL IN THE TITLE — "Cici - Basic Grooming", the same as the
+            printed sheet.
+
+            It was a sub-line of its own, so on a two-dog visit the two things a
+            cashier pairs up — whose grooming, and how much — sat a row apart.
+            Named here, the top row answers both, and the basket and the struk
+            read the same way.
+
+            A RETAIL LINE HAS NO ANIMAL and keeps its own name.
+          */}
           <span className="block truncate text-sm font-medium text-foreground">
-            {item.name}
+            {item.petName ? `${item.petName} - ${item.name}` : item.name}
           </span>
 
           {/*
-            The animal and the groomer, when the line carries them. This is the
-            traceability the PRD asks for made visible at the till: a cashier who
-            can see "Bruno · Rina" on the line can catch the wrong pet before the
-            receipt prints, which is the only moment it is cheap to catch.
+            WHAT IT WAS PRICED ON BEYOND THE ANIMAL — "Lokasi: Di Rumah · Zona
+            A". Two groomings for one dog can differ by 50.000 on where they are
+            done, and the figure below cannot say which one this is.
           */}
-          {(item.petName || item.groomerName) && (
+          {detail && (
             <span className="mt-0.5 block truncate text-xs text-muted">
-              {[item.petName, item.groomerName].filter(Boolean).join(" · ")}
+              {detail}
             </span>
           )}
+
+          {/*
+            ─── WHERE THE VAN ACTUALLY GOES (24 September 2026) ──────────────
+
+            The line above already says the direction — "Arah: Jemput" is a
+            priced variant like any other — and a direction is not an
+            instruction: two jemput lines on one basket, for two doors, are
+            indistinguishable without the addresses.
+
+            ONE LINE, BOTH ENDS, truncated. A basket row is not the place to
+            read a full address; it is the place to notice that this one is the
+            wrong house.
+          */}
+          {item.trip && (
+            <span className="mt-0.5 block truncate text-xs text-muted">
+              {item.trip.origin?.address ?? "Alamat asal"} →{" "}
+              {item.trip.destination?.address ?? "Alamat tujuan"}
+            </span>
+          )}
+
+          {/* WHAT THE FARE WAS MULTIPLIED BY. Silent on a ride serving one
+              booking or none — there is no arithmetic to explain. */}
+          {(item.linkedBookingIds?.length ?? 0) > 1 && (
+            <span className="mt-0.5 block text-xs text-muted">
+              Menangani {item.linkedBookingIds?.length} booking
+            </span>
+          )}
+
+          {/*
+            NO GROOMER HERE. Who is doing the work lives on the booking's detail
+            screen, which is where it is decided and where it can be changed; a
+            till line is what is being CHARGED for, and the animal is the only
+            part of the attribution a cashier has to check against the customer
+            in front of them.
+
+            THE NAME IS STILL ON THE LINE — `groomerName` is snapshotted onto
+            the sale and travels with it, so commission and attribution are
+            untouched. This is the basket's rendering only, and the receipt drops
+            it too.
+          */}
 
           {/*
             SAID OUT LOUD, not only on hover. A till is touched, not pointed at,
@@ -98,32 +201,105 @@ export function PosCartLine({
           )}
 
           <span className="mt-0.5 block text-xs tabular-nums text-muted">
-            {formatMoney(item.unitPrice)}
-            {item.discount && (
+            <PosLinePrice
+              item={item}
+              label={`Harga ${item.name}`}
+              editable={maySetPrice && onPriceChange !== undefined}
+              disabled={disabled}
+              onChange={(unitPrice) => onPriceChange?.(index, unitPrice)}
+            />
+            {/*
+              ITS OWN DISCOUNT ONLY — the booking's share of "Diskon seluruh
+              booking" is shown once, under the booking (see `PosCart`).
+            */}
+            {ownDiscountOf(item) && (
               <>
                 {" · "}
                 <span className="text-success">
-                  −{formatMoney(item.discount.resolvedAmount)}
+                  −{formatMoney(ownDiscountOf(item)!.resolvedAmount)}
                 </span>
               </>
             )}
           </span>
         </div>
 
-        <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-          {formatMoney(item.lineTotal)}
-        </span>
+        {/*
+          ITS OWN PRICE, NOT THE PAIR'S — the same rule as the struk. The
+          add-on carries its own figure directly below, so adding it in here
+          would show the same 20.000 twice: once inside this number and once
+          under it. The two screens now agree, and both add up to the same
+          subtotal.
+        */}
+        <PosLineTotal item={item} />
       </div>
+
+      {/*
+        UNDER THE SERVICE, INDENTED, and with no border of its own — the whole
+        point is that this does not read as another purchase. The left rule ties
+        the run to the service above it, which is what the cashier is checking:
+        "the bath, plus handling".
+
+        EACH KEEPS ITS PRICE, and that price is not folded into the service's
+        figure above — see there. What each does NOT keep is a control of its
+        own: the discount and the bin belong to the service.
+      */}
+      {addons.length > 0 && (
+        <ul className="mt-1.5 ml-1 flex flex-col gap-1 border-l border-border pl-2">
+          {addons.map(({ item: addon, index: addonIndex }) => (
+            <li
+              key={`${addon.refId}-${addonIndex}`}
+              className="flex items-center justify-between gap-2"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs text-foreground">
+                  {/* A plus, not a bullet: it says "on top of", which is what an
+                      add-on is and what its price is doing to the total. */}
+                  {`+ ${addon.name}`}
+                </span>
+                {/* Only when it differs from the service's — an add-on
+                    inherits the main line's choices, and repeating them under
+                    every add-on is noise. */}
+                {addonDetail(addon) && (
+                  <span className="block truncate text-xs text-muted">
+                    {addonDetail(addon)}
+                  </span>
+                )}
+                {ownDiscountOf(addon) && (
+                  <span className="block text-xs tabular-nums text-success">
+                    −{formatMoney(ownDiscountOf(addon)!.resolvedAmount)}
+                  </span>
+                )}
+              </span>
+
+              {/*
+                NO CONTROLS OF ITS OWN — the discount and the bin belong to the
+                SERVICE, and an add-on is priced and taken off with the thing it
+                is attached to. Two icon buttons per add-on put four controls in
+                a block that sells one grooming, and the two that mattered got
+                harder to find.
+              */}
+              <span className="shrink-0 text-xs tabular-nums text-muted">
+                {formatMoney(addon.lineTotal)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          {isService ? (
-            /* A word, not a bare "1" — §1.3. */
+          {!stepsQty ? (
+            /*
+              A WORD, NOT A BARE "1" — §1.3. Both unstepped kinds get one, and
+              each says which it is: a cashier scanning the basket has to be
+              able to tell a grooming from a year of membership without reading
+              the name twice.
+            */
             <Badge
               variant="outline"
               className="border-transparent bg-secondary"
             >
-              Layanan
+              {isService ? "Layanan" : "Membership"}
             </Badge>
           ) : (
             <>
@@ -160,6 +336,20 @@ export function PosCartLine({
               </Button>
             </>
           )}
+
+          {/*
+            BESIDE "LAYANAN" (1 October 2026, on request) — both are marks about
+            the line rather than controls on it, so they sit together on the
+            side that names what this row is, not the side that acts on it.
+          */}
+          {item.discount?.source === "membership" && (
+            <PosBenefitChip
+              applied={{
+                benefitLabel: item.discount.benefitLabel ?? null,
+                amount: item.membershipDiscount ?? "0",
+              }}
+            />
+          )}
         </div>
 
         <div className="flex items-center gap-1">
@@ -170,10 +360,26 @@ export function PosCartLine({
             the same over-reach as locking the bin: it left a cashier unable to
             give 10% off a grooming that was already on the table.
           */}
+          {/*
+            BEFORE THE DISCOUNT CONTROL, and the order is the order the money
+            comes off: the benefit first, then whatever the cashier types on
+            what is left (decision 7). A cashier reading the row left to right
+            reads it in the same sequence the server prices it.
+          */}
+          {/*
+            NOTHING LEFT TO DISCOUNT (1 October 2026, on request). A line a card
+            already took to nothing cannot be cut further — the server would
+            floor it at zero anyway — so the control says so rather than opening
+            a panel whose every entry changes no figure.
+            ⚠️ ONLY WHEN NOTHING WAS TYPED. A line at zero BECAUSE the cashier
+            typed 100% must keep its control, or the discount they just entered
+            is one they can never take back off.
+          */}
           <PosDiscountPopover
-            value={item.discount}
-            disabled={disabled}
+            value={ownDiscountOf(item)}
+            disabled={disabled || (!ownDiscountOf(item) && netOf(item) === "0.0000")}
             label={`Diskon ${item.name}`}
+            subject={item.name}
             onApply={(discount) => onDiscountChange(index, discount)}
           />
           {/*
@@ -195,7 +401,9 @@ export function PosCartLine({
               className="size-8 text-danger"
               disabled={disabled || locked}
               aria-label={`Hapus ${item.name}`}
-              onClick={() => onRemove(index)}
+              onClick={() =>
+                onRemove([index, ...addons.map((addon) => addon.index)])
+              }
             >
               <Trash2 className="size-4" />
             </Button>

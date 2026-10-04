@@ -1,24 +1,41 @@
 import {
-  NAV_ITEMS,
+  NAV_SECTIONS,
   filterNavItems,
+  filterNavSections,
+  isActive,
+  isActiveChild,
   isActiveHref,
   type CanFn,
+  type NavItem,
 } from "@/features/dashboard/nav";
 
 /**
- * The nav filter is the pure core of the sidebar gating: given a `can`
- * predicate it decides which sections survive. Testing it directly (rather than
- * through the Sidebar) keeps the permission logic honest without rendering.
+ * The nav filter is the pure core of the sidebar gating: given a `can` predicate
+ * it decides which rows survive. Testing it directly (rather than through the
+ * Sidebar) keeps the permission logic honest without rendering.
  */
-describe("filterNavItems", () => {
-  const denyAll: CanFn = () => false;
-  const allowAll: CanFn = () => true;
+const denyAll: CanFn = () => false;
+const allowAll: CanFn = () => true;
 
-  it("keeps items with no permission requirement (Dashboard…)", () => {
-    const labels = filterNavItems(NAV_ITEMS, denyAll).map((i) => i.label);
+/** Every item across every section, which is what the old flat NAV_ITEMS was. */
+function itemsOf(can: CanFn): NavItem[] {
+  return filterNavSections(NAV_SECTIONS, can).flatMap(
+    (section) => section.items,
+  );
+}
+
+function groupChildren(can: CanFn, label: string): string[] | undefined {
+  return itemsOf(can)
+    .find((item) => item.label === label)
+    ?.children?.map((child) => child.label);
+}
+
+describe("filterNavItems", () => {
+  it("keeps items with no permission requirement (Beranda…)", () => {
+    const labels = itemsOf(denyAll).map((i) => i.label);
     // Every ungated leaf survives; the gated ones are dropped.
-    expect(labels).toContain("Dashboard");
-    expect(labels).not.toContain("Master Data");
+    expect(labels).toContain("Beranda");
+    expect(labels).not.toContain("Pengaturan");
   });
 
   /*
@@ -27,82 +44,153 @@ describe("filterNavItems", () => {
     route, so an ungated menu would send a user who cannot read bookings to a
     screen that reports a load failure rather than a permission.
   */
-  it("hides Booking from somebody who cannot read bookings", () => {
-    const labels = filterNavItems(NAV_ITEMS, denyAll).map((i) => i.label);
-    expect(labels).not.toContain("Booking");
+  it("hides the booking list from somebody who cannot read bookings", () => {
+    expect(groupChildren(denyAll, "Layanan")).toBeUndefined();
   });
 
-  it("shows Booking to somebody who can", () => {
+  it("shows it to somebody who can, with its placeholder siblings", () => {
     const onlyBookings: CanFn = (feature, action) =>
       feature === "bookings" && action === "read";
-    const labels = filterNavItems(NAV_ITEMS, onlyBookings).map((i) => i.label);
-    expect(labels).toContain("Booking");
+    // The three placeholder screens are ungated, so they ride along with the
+    // one grant that keeps the group open.
+    expect(groupChildren(onlyBookings, "Layanan")).toEqual([
+      "Kalender",
+      "Grooming",
+      "Hotel",
+      "Antar-Jemput",
+    ]);
   });
 
-  it("hides the Master Data group when no child is permitted", () => {
-    const master = filterNavItems(NAV_ITEMS, denyAll).find(
-      (i) => i.label === "Master Data",
-    );
-    expect(master).toBeUndefined();
+  it("hides Pengaturan from a role holding none of its grants", () => {
+    expect(itemsOf(denyAll).find((i) => i.label === "Pengaturan")).toBeUndefined();
   });
 
-  it("shows Master Data with only the permitted children", () => {
+  /*
+    ONE ROW WITH FOUR TABS since 22 September 2026 (mockup
+    `buloo-navigation-v3`). Any one grant a Pengaturan page reads opens it — the
+    href is Umum, which gates its own sections — and every page under
+    /dashboard/pengaturan keeps it lit.
+  */
+  it("carries Pengaturan as one row, lit on every page under it", () => {
     const onlyUsers: CanFn = (feature, action) =>
       feature === "users" && action === "read";
-    const master = filterNavItems(NAV_ITEMS, onlyUsers).find(
-      (i) => i.label === "Master Data",
-    );
-    expect(master?.children?.map((c) => c.label)).toEqual(["User"]);
+    const settings = itemsOf(onlyUsers).find((i) => i.label === "Pengaturan");
+
+    expect(settings?.children).toBeUndefined();
+    expect(settings?.href).toBe("/dashboard/pengaturan/umum");
+    expect(isActive(settings!, "/dashboard/pengaturan/pengguna/u-1")).toBe(true);
+    expect(isActive(settings!, "/dashboard/pengaturan/layanan")).toBe(true);
+    expect(isActive(settings!, "/dashboard/keuangan")).toBe(false);
   });
 
-  it("shows every Master Data child when all are permitted", () => {
-    const master = filterNavItems(NAV_ITEMS, allowAll).find(
-      (i) => i.label === "Master Data",
-    );
-    expect(master?.children?.map((c) => c.label)).toEqual([
-      "User",
-      "Branch",
-      "Warehouse",
-      "Customer",
-      // Directly under Customer, because that is the relationship: every pet
-      // belongs to one, and the register is unreadable without knowing whose
-      // animals you are looking at.
-      "Hewan",
-      // Beside Hewan rather than under Inventory → Produk: the split is about
-      // who edits, and the RBAC catalogue makes the same one.
-      "Layanan",
-      "Roles",
-      "Audit Log",
-    ]);
+  /*
+    THE CATALOGUE IS ONE ROW. Kategori was a row of its own directly beneath
+    Produk & Varian; it is a tab on that screen now, so the rail carries one row
+    and `match` keeps it lit on the sibling route the tab points at.
+  */
+  it("carries the catalogue as one row, with Kategori folded into it", () => {
+    const children = groupChildren(allowAll, "Inventori");
+    expect(children).toContain("Produk & Varian");
+    expect(children).not.toContain("Kategori");
   });
 
-  it("lists every Inventory screen, in the order the data flows", () => {
-    const inventory = filterNavItems(NAV_ITEMS, allowAll).find(
-      (i) => i.label === "Inventory",
+  it("keeps Produk & Varian lit on the Kategori tab and its detail routes", () => {
+    const catalogue = groupOf("Inventori")?.children?.find(
+      (child) => child.label === "Produk & Varian",
     );
+    if (!catalogue) throw new Error("Produk & Varian is missing from the rail");
+    expect(isActiveChild(catalogue, "/dashboard/inventory/products")).toBe(
+      true,
+    );
+    expect(isActiveChild(catalogue, "/dashboard/inventory/categories")).toBe(
+      true,
+    );
+    expect(
+      isActiveChild(catalogue, "/dashboard/inventory/categories/507f1f"),
+    ).toBe(true);
+    // A sibling under the same /inventory prefix must not borrow the row.
+    expect(isActiveChild(catalogue, "/dashboard/inventory/batches")).toBe(
+      false,
+    );
+  });
 
-    // Define a product, watch its card, manage its lots, count it, move it,
-    // correct it. Penyesuaian is LAST on purpose: a real discrepancy is found by
-    // an opname and goods that moved are moved by a transfer, so offering the
-    // by-hand correction above either would offer the shortcut before the
-    // procedure.
+  it("hides the catalogue row from a role that cannot read products", () => {
+    // The row is the product list's, so it goes with that grant — and with it
+    // goes the menu route to the category list, which every seeded role holding
+    // categories:read also holds products:read for.
+    const onlyCategories: CanFn = (feature, action) =>
+      feature === "categories" && action === "read";
+    expect(groupChildren(onlyCategories, "Inventori")).toBeUndefined();
+  });
+
+  it("lists every Inventori screen, in the order the data flows", () => {
+    // Define a product, watch its card, manage its lots, count it, move it.
     //
-    // Stok Awal sits DIRECTLY ABOVE the adjustment, and the adjacency is the
-    // point: these two are the pair somebody chooses between, and the wrong
-    // choice is invisible until a P&L is read. Opening stock credits 3101 Modal
-    // / Saldo Awal; an adjustment credits 5201 Kerugian Persediaan, which turns
-    // a shop's starting inventory into a negative expense.
-    expect(inventory?.children?.map((c) => c.label)).toEqual([
+    // Stok Awal is LAST and alone, which the mockup's shape cost us: it used to
+    // sit directly above Penyesuaian Stok, and the adjacency was the point —
+    // those two are the pair somebody chooses between, and the wrong choice is
+    // invisible until a P&L is read (opening stock credits 3101 Modal / Saldo
+    // Awal; an adjustment credits 5201 Kerugian Persediaan, which turns a shop's
+    // starting inventory into a negative expense). The adjustment is a tab of
+    // Koreksi Stok now. The mockup does not list Stok Awal here at all — it is a
+    // step of Pengaturan › Data Awal there — so this row is on its way out.
+    expect(groupChildren(allowAll, "Inventori")).toEqual([
       "Ringkasan",
+      // Neither Kategori nor Penyesuaian Stok is missing — each is a TAB of the
+      // row that absorbed it.
       "Produk & Varian",
-      "Kategori",
-      "Kartu Stok",
-      "Batch & Expired",
-      "Stok Opname",
+      // Kartu Stok and Batch & Expired, folded into one row with two tabs.
+      "Stok",
+      "Koreksi Stok",
       "Transfer Stok",
       "Stok Awal",
-      "Penyesuaian Stok",
     ]);
+  });
+
+  /*
+    STOK IS ONE ROW. Kartu Stok reads a product's history, Batch & Expired reads
+    what is on the shelf and how long it has got — two readings of the same
+    stock, so two tabs of one screen.
+  */
+  it("keeps Stok lit on the Batch & Expired tab and on one product's card", () => {
+    const stock = groupOf("Inventori")?.children?.find(
+      (child) => child.label === "Stok",
+    );
+    if (!stock) throw new Error("Stok is missing from the rail");
+
+    expect(isActiveChild(stock, "/dashboard/inventory/stock-card")).toBe(true);
+    // One product's card is what the index exists to open — same tab.
+    expect(isActiveChild(stock, "/dashboard/inventory/stock-card/507f1f")).toBe(
+      true,
+    );
+    expect(isActiveChild(stock, "/dashboard/inventory/batches")).toBe(true);
+    expect(isActiveChild(stock, "/dashboard/inventory/transfers")).toBe(false);
+  });
+
+  /*
+    KOREKSI STOK IS ONE ROW. An opname and a hand-typed adjustment end as the
+    same correction in the ledger — one arrives by walking the shelves, the other
+    by somebody typing what broke — so they are two tabs of one screen, and
+    `match` keeps the row lit on the sibling route the second tab points at.
+  */
+  it("keeps Koreksi Stok lit on the Penyesuaian tab and its detail routes", () => {
+    const corrections = groupOf("Inventori")?.children?.find(
+      (child) => child.label === "Koreksi Stok",
+    );
+    if (!corrections) throw new Error("Koreksi Stok is missing from the rail");
+
+    expect(isActiveChild(corrections, "/dashboard/inventory/opname")).toBe(true);
+    expect(isActiveChild(corrections, "/dashboard/inventory/adjustments")).toBe(
+      true,
+    );
+    expect(
+      isActiveChild(corrections, "/dashboard/inventory/adjustments/new"),
+    ).toBe(true);
+    // Stok Awal is the OTHER screen StockEntriesScreen serves, and it keeps its
+    // own row — it must not borrow this one.
+    expect(
+      isActiveChild(corrections, "/dashboard/inventory/opening-stock"),
+    ).toBe(false);
   });
 
   it("hides the three write screens from a read-only stock role", () => {
@@ -112,30 +200,23 @@ describe("filterNavItems", () => {
     const readOnlyStock: CanFn = (feature, action) =>
       feature === "stockMovements" && action === "read";
 
-    const inventory = filterNavItems(NAV_ITEMS, readOnlyStock).find(
-      (i) => i.label === "Inventory",
-    );
-
-    expect(inventory?.children?.map((c) => c.label)).toEqual([
+    expect(groupChildren(readOnlyStock, "Inventori")).toEqual([
       "Ringkasan",
-      "Kartu Stok",
+      "Stok",
     ]);
   });
 
-  it("drops the Inventory group entirely for a role with no stock grant", () => {
+  it("drops the Inventori group entirely for a role with no stock grant", () => {
     // The hub link is ungated, so it survives the child filter — but it must not
     // be enough to keep the group open by itself, or a role that may read
     // nothing here gets a menu leading to a page that says exactly that.
-    const inventory = filterNavItems(NAV_ITEMS, denyAll).find(
-      (i) => i.label === "Inventory",
-    );
-    expect(inventory).toBeUndefined();
+    expect(itemsOf(denyAll).find((i) => i.label === "Inventori")).toBeUndefined();
   });
 
-  it("marks the Inventory hub active only on its own route", () => {
-    // Its href is the prefix of all seven siblings, so prefix matching would
+  it("marks the Inventori hub active only on its own route", () => {
+    // Its href is the prefix of all eight siblings, so prefix matching would
     // light this row up on every screen in the module.
-    const hub = NAV_ITEMS.find((i) => i.label === "Inventory")?.children?.[0];
+    const hub = groupOf("Inventori")?.children?.[0];
     expect(hub?.href).toBe("/dashboard/inventory");
     expect(isActiveHref(hub!.href, "/dashboard/inventory", hub!.exact)).toBe(
       true,
@@ -145,119 +226,215 @@ describe("filterNavItems", () => {
     ).toBe(false);
   });
 
-  it("leads Purchasing with its hub, then the order a purchase unfolds", () => {
-    const purchasing = filterNavItems(NAV_ITEMS, allowAll).find(
-      (i) => i.label === "Purchasing",
-    );
-
-    expect(purchasing?.children?.map((c) => c.label)).toEqual([
-      "Ringkasan",
-      "Supplier",
-      // Directly under Supplier because it is that list's setup screen — the
-      // same place Kategori sits under Produk in the Inventory group. It comes
-      // before Penerimaan Barang rather than after it: nothing about a purchase
-      // starts here, it is what the vendor list is organised with.
-      "Kategori Supplier",
-      "Penerimaan Barang",
-      "Faktur Pembelian",
-      "Retur ke Supplier",
-    ]);
+  /*
+    PELANGGAN IS A LEAF AGAIN. It was a two-child group only while the tabbed
+    screen the mockup draws did not exist; that screen exists now, so the rail is
+    back to the single row — and `match` is what keeps it lit while the reader is
+    on the tab that lives outside its own href.
+  */
+  it("carries Pelanggan as one row, opening on Ringkasan", () => {
+    const pelanggan = groupOf("Pelanggan");
+    expect(pelanggan?.children).toBeUndefined();
+    /*
+      THE FRONT PAGE, NOT THE REGISTER (28 September 2026, on request):
+      Ringkasan is the module's first tab and what somebody opens it to find
+      out. The register is a screen you go to already knowing a name.
+    */
+    expect(pelanggan?.href).toBe("/dashboard/master/customers/ringkasan");
   });
 
-  it("drops the Purchasing group for a role with no purchasing grant", () => {
-    // The hub link is ungated and survives the child filter, exactly as the
-    // Inventory one does — and must not keep the group open by itself.
-    const purchasing = filterNavItems(NAV_ITEMS, denyAll).find(
-      (i) => i.label === "Purchasing",
-    );
-    expect(purchasing).toBeUndefined();
+  it("keeps the Pelanggan row lit on every one of its tabs", () => {
+    const pelanggan = groupOf("Pelanggan")!;
+    expect(isActive(pelanggan, "/dashboard/master/customers/ringkasan")).toBe(true);
+    /*
+      THE REGISTER IS THE ONE THAT WOULD HAVE GONE DARK. `href` is prefix
+      matched and `/…/customers/ringkasan` is not a prefix of `/…/customers`,
+      so the row only stays lit here because the register is listed in `match`.
+    */
+    expect(isActive(pelanggan, "/dashboard/master/customers")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/master/customers/507f1f")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/master/customers/membership")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/master/pets")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/master/pets/507f1f")).toBe(true);
+    // A sibling under the same /master prefix must not borrow the row.
+    expect(isActive(pelanggan, "/dashboard/master/users")).toBe(false);
   });
 
-  it("marks the Purchasing hub active only on its own route", () => {
-    const hub = NAV_ITEMS.find((i) => i.label === "Purchasing")?.children?.[0];
-    expect(hub?.href).toBe("/dashboard/purchasing");
-    expect(isActiveHref(hub!.href, "/dashboard/purchasing", hub!.exact)).toBe(
-      true,
-    );
+  it("hides Pelanggan from a role that cannot read customers", () => {
+    // The row is the customer list's, so it goes with that grant — and with it
+    // goes the menu route to the animal register, which every seeded role that
+    // holds pets:read also holds customers:read for.
+    const onlyPets: CanFn = (feature, action) =>
+      feature === "pets" && action === "read";
+    expect(itemsOf(onlyPets).find((i) => i.label === "Pelanggan")).toBeUndefined();
+  });
+
+  /*
+    PENJUALAN IS ONE ROW, and the only one whose tabs reach outside its own
+    prefix: E-commerce predates this module and keeps its route.
+  */
+  it("carries Penjualan as one row, lit on its E-commerce tab too", () => {
+    const sales = itemsOf(allowAll).find((i) => i.label === "Penjualan");
+    expect(sales?.children).toBeUndefined();
+    expect(sales?.href).toBe("/dashboard/sales");
+
+    expect(isActive(sales!, "/dashboard/sales")).toBe(true);
+    // Its own placeholder tabs and detail routes ride on the href's prefix.
+    expect(isActive(sales!, "/dashboard/sales/piutang")).toBe(true);
+    expect(isActive(sales!, "/dashboard/ecommerce-sync")).toBe(true);
+  });
+
+  /*
+    PEMBELIAN IS ONE ROW. All six of its screens are tabs of it now, so what the
+    rail owes is no longer an order of children — it is a row that survives for
+    anyone with ANY purchasing grant, and dies for somebody with none.
+  */
+  it("carries Pembelian as one row pointing at its hub", () => {
+    const purchasing = itemsOf(allowAll).find((i) => i.label === "Pembelian");
+    expect(purchasing?.children).toBeUndefined();
+    expect(purchasing?.href).toBe("/dashboard/purchasing");
+    // No `match` and no `exact`: every tab lives under this href's own prefix,
+    // so it lights up on all six and on their detail routes.
+    expect(purchasing?.exact).toBeUndefined();
+    expect(purchasing?.match).toBeUndefined();
+  });
+
+  it("shows Pembelian to a role holding ANY ONE of its grants", () => {
+    // The row's href is the ungated hub, which gates each of its own cards — so
+    // whoever it is shown to lands somewhere they may read. That is the whole
+    // condition `permissionAny` is legal under.
+    const onlyReturns: CanFn = (feature, action) =>
+      feature === "purchaseReturns" && action === "read";
+    const onlySuppliers: CanFn = (feature, action) =>
+      feature === "suppliers" && action === "read";
+
+    expect(itemsOf(onlyReturns).find((i) => i.label === "Pembelian")).toBeDefined();
     expect(
-      isActiveHref(hub!.href, "/dashboard/purchasing/suppliers", hub!.exact),
-    ).toBe(false);
+      itemsOf(onlySuppliers).find((i) => i.label === "Pembelian"),
+    ).toBeDefined();
   });
 
-  it("orders Keuangan as the accounts the ledger needs, then the ledger", () => {
-    // A journal line has nowhere to land without an account, so the COA comes
-    // first — the menu teaches the dependency.
-    const finance = filterNavItems(NAV_ITEMS, allowAll).find(
-      (i) => i.label === "Keuangan",
-    );
-
-    expect(finance?.children?.map((c) => c.label)).toEqual([
-      "Ringkasan",
-      "Daftar Akun",
-      // Straight after the chart, because a channel's whole purpose is the
-      // account it points at.
-      "Kas & Bank",
-      "Jurnal Umum",
-      // The two reports read the ledger above them, so they follow it rather
-      // than lead — the menu is in the order the work happens.
-      "Laba Rugi",
-      "Arus Kas",
-      // Last: set up once and revisited when the shop adds a service, where the
-      // rows above it are opened daily.
-      "Lini Bisnis",
-    ]);
+  it("drops Pembelian for a role with no purchasing grant at all", () => {
+    // The hub is ungated, and must not be enough to keep the row on its own: a
+    // role that may read nothing here would get a menu leading to a landing page
+    // that says exactly that, five times over.
+    expect(itemsOf(denyAll).find((i) => i.label === "Pembelian")).toBeUndefined();
   });
 
-  it("shows Keuangan with only the ledger for a journal-only role", () => {
-    // The hub rides along ungated; the COA link does not, because reading the
-    // ledger says nothing about being allowed to read the chart of accounts.
-    //
-    // The two reports DO come along, and that is the grant working as intended
-    // rather than a leak: a laba rugi is the ledger folded, so anybody who may
-    // page the entries could add them up themselves.
+  /*
+    KEUANGAN IS ONE ROW WITH ITS TABS — Ringkasan, Transaksi, Kas & Bank,
+    Komisi, Daftar Akun, Jurnal. Three of its seven old rows are not tabs and are
+    NOT deleted: Lini Bisnis, Laba Rugi and Arus Kas keep their routes and are
+    reached from the Ringkasan tab's card list until `Pengaturan › Keuangan` and
+    `Laporan` are built.
+  */
+  it("carries Keuangan as one row pointing at its hub", () => {
+    const finance = itemsOf(allowAll).find((i) => i.label === "Keuangan");
+    expect(finance?.children).toBeUndefined();
+    expect(finance?.href).toBe("/dashboard/keuangan");
+    // Komisi moved INSIDE this prefix (/dashboard/keuangan/komisi), so no
+    // `match` is owed — unlike Penjualan, whose E-commerce tab sits outside.
+    expect(finance?.match).toBeUndefined();
+  });
+
+  it("shows Keuangan to a role holding either of its finance grants", () => {
     const onlyJournal: CanFn = (feature, action) =>
       feature === "journalEntries" && action === "read";
+    const onlyChannels: CanFn = (feature, action) =>
+      feature === "paymentChannels" && action === "read";
 
-    const finance = filterNavItems(NAV_ITEMS, onlyJournal).find(
-      (i) => i.label === "Keuangan",
-    );
-
-    expect(finance?.children?.map((c) => c.label)).toEqual([
-      "Ringkasan",
-      "Jurnal Umum",
-      "Laba Rugi",
-      "Arus Kas",
-    ]);
-  });
-
-  it("drops the Keuangan group for a role with no accounting grant", () => {
-    const finance = filterNavItems(NAV_ITEMS, denyAll).find(
-      (i) => i.label === "Keuangan",
-    );
-    expect(finance).toBeUndefined();
-  });
-
-  it("marks the Keuangan hub active only on its own route", () => {
-    const hub = NAV_ITEMS.find((i) => i.label === "Keuangan")?.children?.[0];
-    expect(hub?.href).toBe("/dashboard/keuangan");
-    expect(isActiveHref(hub!.href, "/dashboard/keuangan", hub!.exact)).toBe(
-      true,
-    );
+    expect(itemsOf(onlyJournal).find((i) => i.label === "Keuangan")).toBeDefined();
     expect(
-      isActiveHref(
-        hub!.href,
-        "/dashboard/keuangan/journal-entries",
-        hub!.exact,
-      ),
-    ).toBe(false);
+      itemsOf(onlyChannels).find((i) => i.label === "Keuangan"),
+    ).toBeDefined();
   });
 
-  it("does not mutate the source NAV_ITEMS", () => {
-    const before = NAV_ITEMS.find((i) => i.label === "Master Data")?.children
-      ?.length;
-    filterNavItems(NAV_ITEMS, () => false);
-    const after = NAV_ITEMS.find((i) => i.label === "Master Data")?.children
-      ?.length;
+  /**
+   * THE CHART OF ACCOUNTS LEFT KEUANGAN on 20 September 2026 — it is under
+   * Pengaturan now, per the BO mockup.
+   *
+   * So the grant that opens it stopped opening Keuangan: nothing under
+   * /keuangan is readable with it any more, and a row leading to a hub of cards
+   * the reader may not open is a row that only disappoints. The two halves are
+   * asserted together, because the point is the MOVE and not either fact alone.
+   */
+  it("moves the chart-of-accounts grant from Keuangan to Pengaturan", () => {
+    const onlyAccounts: CanFn = (feature, action) =>
+      feature === "chartOfAccounts" && action === "read";
+
+    const items = itemsOf(onlyAccounts);
+
+    expect(items.find((i) => i.label === "Keuangan")).toBeUndefined();
+
+    expect(items.find((i) => i.label === "Pengaturan")).toBeDefined();
+  });
+
+  it("does not offer Keuangan on the payroll grant alone", () => {
+    // `users:read` opens the Komisi TAB, because the recap is payroll data. It
+    // is deliberately not in the row's own set: an HR account with no finance
+    // grant has no business being handed the whole finance module.
+    const onlyUsers: CanFn = (feature, action) =>
+      feature === "users" && action === "read";
+
+    expect(itemsOf(onlyUsers).find((i) => i.label === "Keuangan")).toBeUndefined();
+  });
+
+  it("drops Keuangan for a role with no finance grant at all", () => {
+    expect(itemsOf(denyAll).find((i) => i.label === "Keuangan")).toBeUndefined();
+  });
+
+  it("does not mutate the source NAV_SECTIONS", () => {
+    const before = groupOf("Inventori")?.children?.length;
+    filterNavSections(NAV_SECTIONS, denyAll);
+    const after = groupOf("Inventori")?.children?.length;
     expect(after).toBe(before);
   });
 });
+
+/**
+ * The section layer, which is what the rail draws its headings from. A heading
+ * printed over nothing reads as a menu that failed to load, so an emptied
+ * section has to disappear along with its items.
+ */
+describe("filterNavSections", () => {
+  it("names the five sections in the order the rail draws them", () => {
+    expect(filterNavSections(NAV_SECTIONS, allowAll).map((s) => s.label)).toEqual(
+      ["Utama", "Operasional", "Transaksi", "Keuangan", "Sistem"],
+    );
+  });
+
+  it("drops a section once every item in it is filtered away", () => {
+    // Deny-all leaves Utama (Beranda is ungated) and Keuangan (Laporan is), and
+    // nothing else: the other three sections are groups whose survival needs a
+    // gated child.
+    expect(filterNavSections(NAV_SECTIONS, denyAll).map((s) => s.label)).toEqual([
+      "Utama",
+      "Keuangan",
+    ]);
+  });
+
+  it("filters the items inside a surviving section", () => {
+    const utama = filterNavSections(NAV_SECTIONS, denyAll).find(
+      (s) => s.label === "Utama",
+    );
+    // Kasir is gated on posTransactions:read; Beranda is not gated at all.
+    expect(utama?.items.map((i) => i.label)).toEqual(["Beranda"]);
+  });
+
+  it("is filterNavItems applied per section", () => {
+    // The two must not drift: the section filter exists only to drop empties.
+    const perSection = filterNavSections(NAV_SECTIONS, allowAll).flatMap(
+      (s) => s.items.map((i) => i.label),
+    );
+    const flat = NAV_SECTIONS.flatMap((s) =>
+      filterNavItems(s.items, allowAll).map((i) => i.label),
+    );
+    expect(perSection).toEqual(flat);
+  });
+});
+
+function groupOf(label: string) {
+  return NAV_SECTIONS.flatMap((section) => section.items).find(
+    (item) => item.label === label,
+  );
+}

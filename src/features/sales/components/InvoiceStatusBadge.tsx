@@ -32,11 +32,16 @@ const TONE: Record<CustomerInvoiceStatus, string> = {
   void: "bg-tint-neutral text-muted",
 };
 
+/*
+  THE MOCKUP'S WORDS since the September 2026 list layout — and the same words
+  the list's Status filter offers, so filtering by "Lunas sebagian" finds rows
+  that say it. `void` reads "batal": the word a shop uses for a cancelled bill.
+*/
 const LABEL: Record<CustomerInvoiceStatus, string> = {
-  unpaid: "belum dibayar",
-  partial: "dp sebagian",
+  unpaid: "belum lunas",
+  partial: "lunas sebagian",
   paid: "lunas",
-  void: "void",
+  void: "batal",
 };
 
 export function InvoiceStatusBadge({
@@ -73,7 +78,9 @@ export function InvoiceSourceBadge({ source }: { source: "manual" | "pos_bridge"
           : "bg-tint-neutral text-muted",
       )}
     >
-      {source === "pos_bridge" ? "dari kasir" : "manual"}
+      {/* The mockup's words: the origin named, not described — "Kasir", not
+          "dari kasir". Same chip on the list and on the detail. */}
+      {source === "pos_bridge" ? "Kasir" : "Manual"}
     </Badge>
   );
 }

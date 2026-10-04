@@ -7,17 +7,39 @@ import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { PetQuickAddDialog } from "@/features/pets";
+import { useAuth } from "@/features/auth/hooks/useAuth";
+import { PetFixLink, PetQuickAddDialog } from "@/features/pets";
+import { useVariantQuote, VariantChoicePicker } from "@/features/services";
+import { usePetOptions } from "@/hooks/usePetOptions";
+import { branchService } from "@/services/branch.service";
+import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
-import { formatMoney } from "@/utils/decimal";
-import type { Pet, Service } from "@/types/api";
+import { formatMoney, sumDecimals } from "@/utils/decimal";
+import { variantLabelForPet, variesByZone } from "@/utils/serviceVariant";
+import type { GeoLocation, Pet, Service, VariantChoice } from "@/types/api";
+
+import { choicesFor } from "../variantLine";
 
 /** The API's page cap. Asking for more is a 400, not a bigger page. */
 const FETCH_LIMIT = 100;
 
 /** Shared empty set, so an untouched pet does not allocate one per render. */
 const EMPTY: ReadonlySet<string> = new Set();
+const NO_CHOICES: VariantChoice[] = [];
+
+/** What one animal is having, as the till's cart takes it. */
+export interface AddServiceChoice {
+  petId: string;
+  petName: string;
+  serviceIds: string[];
+  /**
+   * The "Dipilih staf" values the services are priced on (17 September 2026) —
+   * only the cards the ticked services declare; absent when none do. Each
+   * service line carries them; an add-on inherits its main line's.
+   */
+  variantChoices?: VariantChoice[];
+}
 
 /**
  * FR-3's second tab: charge for a service with no appointment behind it.
@@ -57,10 +79,16 @@ const EMPTY: ReadonlySet<string> = new Set();
  */
 export function AddServiceTab({
   customerId,
+  branchId,
   busy = false,
   onAdd,
 }: {
   customerId: string;
+  /**
+   * The branch the zone is measured from. Omitted, the till's own — the
+   * session's branch, which is exactly what a till stands in.
+   */
+  branchId?: string | null;
   /** True while the cart write this tab started is still in flight. */
   busy?: boolean;
   /**
@@ -69,9 +97,7 @@ export function AddServiceTab({
    * A LIST, because one opening may cover a customer's whole household — and it
    * reaches the server as ONE cart patch, so either all of it lands or none does.
    */
-  onAdd: (
-    choices: Array<{ petId: string; petName: string; serviceIds: string[] }>,
-  ) => void;
+  onAdd: (choices: AddServiceChoice[]) => void;
 }) {
   const [pets, setPets] = useState<Pet[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -91,6 +117,59 @@ export function AddServiceTab({
   const [formError, setFormError] = useState<string | null>(null);
 
   const [petsNonce, setPetsNonce] = useState(0);
+  // Names the variant caption in the tenant's words.
+  const { label: petOptionLabel } = usePetOptions();
+
+  /*
+    ─── PRICED BEYOND THE PET (17 September 2026) ─────────────────────────────
+
+    A service priced by Zona is measured from the till's branch to the
+    customer's pin; one priced by a "Dipilih staf" card waits on the cashier's
+    answer, kept per animal. Both pins are best effort: without one the zone
+    cannot be said, and the row says so rather than guessing.
+  */
+  const { session } = useAuth();
+  const zoneBranchId = branchId ?? session?.currentBranchId ?? null;
+  const [branchPin, setBranchPin] = useState<GeoLocation | null>(null);
+  const [customerPin, setCustomerPin] = useState<GeoLocation | null>(null);
+  const [choices, setChoices] = useState<Map<string, VariantChoice[]>>(new Map());
+  const variant = useVariantQuote({ branchPin, customerPin });
+
+  useEffect(() => {
+    let active = true;
+
+    Promise.resolve()
+      .then(() => customerService.getById(customerId))
+      .then((customer) => {
+        if (active) setCustomerPin(customer?.location ?? null);
+      })
+      .catch(() => {
+        if (active) setCustomerPin(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [customerId]);
+
+  useEffect(() => {
+    if (!zoneBranchId) return;
+
+    let active = true;
+
+    Promise.resolve()
+      .then(() => branchService.getById(zoneBranchId))
+      .then((branch) => {
+        if (active) setBranchPin(branch?.location ?? null);
+      })
+      .catch(() => {
+        if (active) setBranchPin(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [zoneBranchId]);
 
   useEffect(() => {
     let active = true;
@@ -103,7 +182,24 @@ export function AddServiceTab({
       .then(([petPage, servicePage]) => {
         if (!active) return;
         setPets(petPage.items);
-        setServices(servicePage.items);
+        /*
+          ⚠️ ANTAR-JEMPUT IS NOT OFFERED HERE (24 September 2026).
+
+          A journey needs a direction and two pinned addresses before it has a
+          price at all, and this tab is a grid of tick-boxes with nowhere to put
+          them — the server refuses such a line ("Pilih arah dan alamat … dulu")
+          and the cashier could not act on the refusal from this dialog.
+
+          The GRID TILE asks all three and is the way in. Hidden rather than
+          shown-and-refused: a tick-box the server will reject is worse than one
+          that is not there, which is the same rule the catalogue's add-on list
+          follows.
+        */
+        setServices(
+          servicePage.items.filter(
+            (one) => one.serviceKind !== "pickup-delivery",
+          ),
+        );
         // One pet is the overwhelming case; pre-selecting it removes a click
         // from every walk-in.
         if (petPage.items.length === 1) {
@@ -161,12 +257,39 @@ export function AddServiceTab({
    * somebody else's receipt.
    */
   function submit() {
-    const choices = [...ticked.entries()]
-      .map(([id, serviceIds]) => ({
-        petId: id,
-        petName: pets.find((pet) => pet._id === id)?.name ?? "",
-        serviceIds: [...serviceIds],
-      }))
+    /* A ZONE NOBODY CAN MEASURE, OR A CARD NOBODY ANSWERED — the till would refuse it. */
+    for (const [id, serviceIds] of ticked.entries()) {
+      for (const serviceId of serviceIds) {
+        const service = services.find((entry) => entry._id === serviceId);
+        const problem = service ? variant.problemOf(service, priceFor(id, serviceId)) : null;
+        if (problem) {
+          const petName = pets.find((pet) => pet._id === id)?.name;
+          setFormError(petName ? `${petName}: ${problem}.` : `${problem}.`);
+          return;
+        }
+      }
+    }
+
+    const picked: AddServiceChoice[] = [...ticked.entries()]
+      .map(([id, serviceIds]) => {
+        const declared = [...serviceIds].flatMap((serviceId) =>
+          choicesFor(
+            services.find((service) => service._id === serviceId),
+            choices.get(id) ?? NO_CHOICES,
+          ),
+        );
+        /* One per card, however many ticked services declare it. */
+        const variantChoices = [
+          ...new Map(declared.map((choice) => [choice.optionId, choice])).values(),
+        ];
+
+        return {
+          petId: id,
+          petName: pets.find((pet) => pet._id === id)?.name ?? "",
+          serviceIds: [...serviceIds],
+          ...(variantChoices.length > 0 ? { variantChoices } : {}),
+        };
+      })
       /*
         A pet added and then removed from the list between ticking and confirming
         is not something to fail over — it is one entry dropped from a request
@@ -174,12 +297,12 @@ export function AddServiceTab({
       */
       .filter((choice) => choice.petName !== "");
 
-    if (choices.length === 0) {
+    if (picked.length === 0) {
       setFormError("Centang dulu layanannya.");
       return;
     }
 
-    onAdd(choices);
+    onAdd(picked);
   }
 
   if (loading) {
@@ -194,25 +317,93 @@ export function AddServiceTab({
     return <Alert variant="error">{loadError}</Alert>;
   }
 
-  const priceOf = (serviceId: string) =>
-    Number(services.find((service) => service._id === serviceId)?.price ?? 0);
+  /**
+   * What a service costs FOR ONE ANIMAL.
+   *
+   * ─── IT READ `service.price`, WHICH A VARIANT SERVICE DOES NOT HAVE ────────
+   *
+   * A service priced by size carries no price of its own — the axes it varies by
+   * are the pet's own facts. So every row of one showed an em-dash, and
+   * `Number(null ?? 0)` made the running total read Rp 0 with two groomings
+   * ticked. The list was unusable for exactly the shop that prices by size.
+   *
+   * A PREVIEW, like everywhere else: the server re-resolves it from the same pet
+   * when it prices the cart, and no figure here is ever sent.
+   */
+  function priceFor(petId: string, serviceId: string) {
+    return variant.quote(
+      services.find((service) => service._id === serviceId),
+      pets.find((pet) => pet._id === petId),
+      choices.get(petId) ?? NO_CHOICES,
+    );
+  }
 
-  /** Everything ticked, for every animal — what the basket is about to gain. */
-  const total = [...ticked.values()]
-    .flatMap((set) => [...set])
-    .reduce((sum, serviceId) => sum + priceOf(serviceId), 0)
-    .toFixed(4);
+  /*
+    THE FIGURE THAT COUNTS TOWARDS THE BASKET — null on a switched-off variant
+    (13 September 2026). Its price still comes back from the resolver, but the
+    till refuses the line, so adding it to a total would quote a charge that can
+    never be rung up.
+  */
+  const sellablePrice = (petId: string, serviceId: string) => {
+    const quote = priceFor(petId, serviceId);
+    return quote.inactive ? null : quote.price;
+  };
+
+  /**
+   * Everything ticked, for every animal — what the basket is about to gain.
+   *
+   * SUMMED PER ANIMAL, because the same grooming costs a different amount for a
+   * small dog and a large one; a total that priced the service once would be
+   * wrong on every multi-pet visit this tab exists for.
+   *
+   * IN MINOR UNITS. These figures reached the screen as decimal strings so they
+   * would never pass through a float; adding them back up with `Number` — which
+   * is what this did — reintroduces the error in the one place somebody checks.
+   */
+  const total = sumDecimals(
+    [...ticked.entries()].flatMap(([petId, set]) =>
+      [...set].map((serviceId) => sellablePrice(petId, serviceId)),
+    ),
+  );
+
+  /** The animal the list below is for, and what it is priced as. */
+  const activePet = pets.find((pet) => pet._id === petId) ?? null;
+  /* The "Dipilih staf" cards the active animal's ticked services declare. */
+  const choiceCards = variant.cardsFor(
+    [...forActivePet].map((id) => services.find((service) => service._id === id)),
+  );
+  const activeVariant = activePet
+    ? variantLabelForPet(
+        services.find((service) => service.hasVariants) ?? null,
+        activePet,
+        petOptionLabel,
+      )
+    : null;
 
   /** One line per animal, so nothing chosen is out of sight behind a pill. */
   const summary = [...ticked.entries()].map(([id, set]) => ({
     petId: id,
     petName: pets.find((pet) => pet._id === id)?.name ?? "—",
+    /*
+      ⚠️ THE NAME AND THE PRICE TOGETHER, and the price is the ANIMAL'S.
+
+      The summary named what each animal was having and left the figures on the
+      rows above — so on a two-dog visit the only number in sight was the total,
+      and Rp 260.000 for two groomings of the same name could not be broken down
+      by anybody reading it. The same service costs a different amount for a
+      small dog and a large one, which is exactly what this box is for.
+    */
     services: [...set]
-      .map(
-        (serviceId) =>
-          services.find((service) => service._id === serviceId)?.name ?? "",
-      )
-      .filter(Boolean),
+      .map((serviceId) => ({
+        name: services.find((service) => service._id === serviceId)?.name ?? "",
+        price: sellablePrice(id, serviceId),
+      }))
+      .filter((one) => one.name !== ""),
+    /* What this animal comes to, so the total below can be checked against its
+       parts rather than taken on trust. */
+    total: sumDecimals(
+      [...set].map((serviceId) => sellablePrice(id, serviceId)),
+    ),
   }));
 
   return (
@@ -278,35 +469,124 @@ export function AddServiceTab({
 
       <div className="flex flex-col gap-2">
         <Label>
-          Layanan{petId && ` untuk ${pets.find((pet) => pet._id === petId)?.name ?? ""}`}
+          Layanan{activePet && ` untuk ${activePet.name}`}
+          {/*
+            WHICH VARIANT THE FIGURES BELOW ARE, said once for the whole list
+            rather than on every row. A number nobody can trace to a size is a
+            number nobody can check, and the first time that matters is when a
+            customer disputes the bill.
+          */}
+          {activeVariant && (
+            <span className="ml-2 text-xs font-normal text-muted">
+              {activeVariant}
+            </span>
+          )}
         </Label>
         {services.length === 0 ? (
           <p className="text-sm text-muted">
-            Belum ada layanan yang bisa dijual. Tambahkan dulu di Master Data →
-            Layanan.
+            Belum ada layanan yang bisa dijual. Tambahkan dulu di Layanan ›
+            Grooming › Layanan &amp; Harga.
           </p>
         ) : (
           <ul className="flex max-h-64 flex-col gap-1 overflow-y-auto">
-            {services.map((service) => (
-              <li key={service._id}>
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-surface-hover">
-                  <Checkbox
-                    checked={forActivePet.has(service._id)}
-                    onCheckedChange={() => toggle(service._id)}
-                    aria-label={service.name}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
-                    {service.name}
-                  </span>
-                  <span className="shrink-0 text-sm tabular-nums text-muted">
-                    {formatMoney(service.price)}
-                  </span>
-                </label>
-              </li>
-            ))}
+            {services.map((service) => {
+              const quote = petId
+                ? priceFor(petId, service._id)
+                : {
+                    price: service.price,
+                    missingAxis: null,
+                    missingZone: false,
+                    missingChoice: null,
+                    durationMin: null,
+                    inactive: false,
+                  };
+              const checked = forActivePet.has(service._id);
+              /* The zone, or a missing zone, in words. A missing choice is answered below once ticked. */
+              const waiting = quote.missingChoice
+                ? checked
+                  ? variant.problemOf(service, quote)
+                  : "Pilih opsinya setelah dicentang."
+                : variant.problemOf(service, quote);
+
+              return (
+                <li key={service._id}>
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 hover:bg-surface-hover">
+                    <Checkbox
+                      checked={checked}
+                      /*
+                        A SERVICE NOBODY CAN PRICE CANNOT BE TICKED. The server
+                        refuses the whole patch on it, and the refusal names an
+                        axis the receptionist was never asked about.
+
+                        NOR ONE WHOSE VARIANT IS SWITCHED OFF (13 September
+                        2026) — the till refuses a new line for it. A box
+                        already ticked stays untickable, so a list re-read under
+                        the cashier cannot strand a tick they cannot undo.
+                      */
+                      disabled={
+                        (!quote.price && !quote.missingChoice && !checked) ||
+                        (quote.inactive && !checked)
+                      }
+                      onCheckedChange={() => toggle(service._id)}
+                      aria-label={service.name}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-foreground">
+                        {service.name}
+                      </span>
+                      {/* The way out, named: which fact is missing, on whom. */}
+                      {!quote.price && quote.missingAxis && activePet && (
+                        <span className="block text-xs text-warning">
+                          <PetFixLink
+                            pet={activePet}
+                            axis={quote.missingAxis}
+                          />
+                        </span>
+                      )}
+                      {!quote.price && waiting && (
+                        <span className="block text-xs text-warning">{waiting}</span>
+                      )}
+                      {quote.price && variant.zone.ok && variesByZone(service) && (
+                        <span className="block text-xs text-muted tabular-nums">
+                          {variant.zoneText}
+                        </span>
+                      )}
+                      {/* Why the box is grey, in words — §1.3. */}
+                      {quote.inactive && (
+                        <span className="block text-xs text-warning">
+                          Varian nonaktif — aktifkan variannya di katalog untuk
+                          menjualnya.
+                        </span>
+                      )}
+                    </span>
+                    <span className="shrink-0 text-sm tabular-nums text-muted">
+                      {quote.price && !quote.inactive
+                        ? formatMoney(quote.price)
+                        : "—"}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
+
+      {/*
+        "LOKASI: DI RUMAH" for the animal in front of the cashier — one select per
+        card its ticked services are priced on.
+      */}
+      {activePet && choiceCards.length > 0 && (
+        <VariantChoicePicker
+          cards={choiceCards}
+          value={choices.get(activePet._id) ?? NO_CHOICES}
+          onChange={(next) => {
+            setFormError(null);
+            setChoices((prev) => new Map(prev).set(activePet._id, next));
+          }}
+          disabled={busy}
+        />
+      )}
 
       {/*
         WHAT EVERY ANIMAL IS HAVING, all of it at once.
@@ -323,8 +603,31 @@ export function AddServiceTab({
               <dt className="shrink-0 font-medium text-foreground">
                 {row.petName}
               </dt>
-              <dd className="min-w-0 flex-1 text-muted">
-                {row.services.join(", ")}
+              <dd className="min-w-0 flex-1">
+                {row.services.map((one) => (
+                  <span
+                    key={one.name}
+                    className="flex items-baseline justify-between gap-2"
+                  >
+                    <span className="min-w-0 truncate text-muted">
+                      {one.name}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-muted">
+                      {one.price ? formatMoney(one.price) : "—"}
+                    </span>
+                  </span>
+                ))}
+
+                {/* ONE ANIMAL'S SUBTOTAL, only when it has more than one service
+                    — over a single line it would print the same figure twice. */}
+                {row.services.length > 1 && (
+                  <span className="flex items-baseline justify-between gap-2 border-t border-border pt-0.5">
+                    <span className="text-xs text-muted">Subtotal</span>
+                    <span className="shrink-0 tabular-nums text-foreground">
+                      {formatMoney(row.total)}
+                    </span>
+                  </span>
+                )}
               </dd>
             </div>
           ))}

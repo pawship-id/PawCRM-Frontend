@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 
 import {
   Alert,
@@ -16,7 +15,6 @@ import {
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button as UIButton } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -236,7 +234,7 @@ function duplicateMessage(name: string | undefined): string {
  * authority on every number here, whether or not its workings are on display.
  *
  * BELI PUTUS vs KONSINYASI changes what the form even means. Outright, the goods
- * become the tenant's, the ledger is posted and `2101 Utang Supplier` is
+ * become the tenant's, the ledger is posted and `2101 Utang Usaha` is
  * credited. Consigned, they sit in the warehouse still belonging to the supplier
  * — stock rises, but nothing is owed and nothing is journalled, because nothing
  * has been bought. `taxAmount` is not merely hidden for consignment, it is
@@ -289,17 +287,6 @@ export function ReceiptForm({
   const [receiptDate, setReceiptDate] = useState(today);
   const [taxAmount, setTaxAmount] = useState("");
   const [notes, setNotes] = useState("");
-  /**
-   * WHETHER THIS SAVE ALSO FILES THE VENDOR'S BILL — asked outright.
-   *
-   * OFF BY DEFAULT, because on it demands two more required fields the moment
-   * the form opens, and a delivery whose faktur has not arrived is an ordinary
-   * delivery rather than an unfinished one. Ticking it is a deliberate act, and
-   * the two boxes appear only then.
-   */
-  const [fileInvoice, setFileInvoice] = useState(false);
-  const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState(today);
   const [lines, setLines] = useState<LineDraft[]>([]);
   /**
    * The products the rows are ABOUT, kept here rather than looked up in a
@@ -458,47 +445,6 @@ export function ReceiptForm({
    */
   const lots = useWarehouseBatches(effectiveWarehouseId);
 
-  /**
-   * Whether this save will file a bill as well as a delivery.
-   *
-   * THE TICK BOX IS THE ANSWER, not the state of the fields under it. A form
-   * that inferred the intent from "is the number box empty" cannot tell a
-   * delivery whose faktur has not arrived from one where somebody was
-   * interrupted mid-word — so it can only either nag about an empty box that is
-   * legitimately empty, or drop a half-typed number silently. Asked outright,
-   * both boxes below become plainly required and blank means blank.
-   *
-   * Never on konsinyasi, whatever the box says: nothing has been bought, and the
-   * API refuses the field there rather than ignoring it.
-   */
-  const filingInvoice = !consignment && fileInvoice;
-
-  /**
-   * When the vendor expects to be paid — `tanggal faktur + termin`, the same
-   * arithmetic the server freezes onto the document.
-   *
-   * SHOWN, NOT SENT. `dueDate` is derived server-side from the supplier's terms
-   * precisely so a clerk cannot grant themselves terms the vendor never agreed
-   * to; this is a preview of that answer, computed from the terms already loaded
-   * with the supplier list. Null when either half is unknown, which is honest —
-   * a due date guessed from a missing term would be a date somebody plans around.
-   */
-  const dueDate = useMemo(() => {
-    const terms = suppliers.find(
-      (item) => item._id === supplier,
-    )?.paymentTermDays;
-    if (terms === undefined || invoiceDate === "") return null;
-
-    const at = new Date(`${invoiceDate}T00:00:00`);
-    if (Number.isNaN(at.getTime())) return null;
-
-    at.setDate(at.getDate() + terms);
-    return at.toLocaleDateString("id-ID", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  }, [suppliers, supplier, invoiceDate]);
 
   /**
    * WHY PRODUCTS CANNOT BE PICKED YET, or null once they can.
@@ -559,21 +505,6 @@ export function ReceiptForm({
       // ignore it. Omitted when blank so an untouched field is not "0".
       ...(consignment || trimmedTax === "" ? {} : { taxAmount: trimmedTax }),
       ...(notes.trim() === "" ? {} : { notes: notes.trim() }),
-      /**
-       * Omitted entirely rather than sent empty, and omitted on consignment
-       * however full the boxes are — the API forbids the key there, it does not
-       * ignore it. A value typed under *Beli putus* is kept in state, not
-       * destroyed, so toggling back restores it: the same treatment `costOf`
-       * gives the purchase price.
-       */
-      ...(filingInvoice
-        ? {
-            invoice: {
-              invoiceNumber: invoiceNumber.trim(),
-              invoiceDate,
-            },
-          }
-        : {}),
       items: lines.map((line) => {
         const product = productById.get(line.productId);
         /**
@@ -625,9 +556,6 @@ export function ReceiptForm({
     notes,
     lines,
     productById,
-    filingInvoice,
-    invoiceNumber,
-    invoiceDate,
   ]);
 
   /**
@@ -690,9 +618,6 @@ export function ReceiptForm({
    * see and fix in the form; the server has the final word on the rest.
    */
   const previewEnabled =
-    // A half-filled bill is a payload the server refuses; asking it about one
-    // buys a red panel quoting a field the clerk is still filling in.
-    (!filingInvoice || (invoiceNumber.trim() !== "" && invoiceDate !== "")) &&
     Boolean(supplier) &&
     Boolean(effectiveWarehouseId) &&
     lines.length > 0 &&
@@ -926,21 +851,6 @@ export function ReceiptForm({
       next.taxAmount = "Gunakan angka, maksimal 4 desimal.";
     }
 
-    /**
-     * BOTH REQUIRED, BUT ONLY ONCE THE BOX IS TICKED. Untick it and neither is
-     * asked for at all — that is the whole point of asking outright. Ticked,
-     * they are the two things the server cannot derive: the number is the
-     * vendor's own, and the date is what their payment terms are counted from.
-     */
-    if (filingInvoice) {
-      if (invoiceNumber.trim() === "") {
-        next.invoiceNumber = "Nomor faktur wajib diisi.";
-      }
-      if (invoiceDate === "") {
-        next.invoiceDate = "Tanggal faktur wajib diisi.";
-      }
-    }
-
     setFieldErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -960,12 +870,9 @@ export function ReceiptForm({
       const receipt = await goodsReceiptService.create(payload);
 
       swalToast(
-        consignment
-          ? `${receipt.receiptNumber} tersimpan — stok naik, belum ada utang.`
-          : filingInvoice
-            ? `${receipt.receiptNumber} tersimpan — HPP dan utang diperbarui, faktur ${invoiceNumber.trim()} ikut tercatat.`
-            : `${receipt.receiptNumber} tersimpan — HPP dan utang diperbarui.`,
+        `${receipt.receiptNumber} tersimpan — belum diterima. Stok dan utang baru tercatat saat barang diterima.`,
       );
+      // `replace`      );
       // `replace`, not `push`: the create form must not be reachable by going
       // back, because going back to it and submitting again receives the goods
       // a second time.
@@ -1021,8 +928,8 @@ export function ReceiptForm({
           </div>
           <p className="mt-1.5 text-xs text-muted">
             {consignment
-              ? "Barang masuk gudang tapi masih milik supplier — tidak ada utang dan tidak ada jurnal, dan harga belinya nol karena belum ada yang dibeli. Setiap baris punya lot sendiri — kode batch terisi otomatis kalau dikosongkan."
-              : "Barang jadi milik toko saat diterima — utang ke supplier langsung tercatat dan jurnal diposting."}
+              ? "Barang titipan tetap milik supplier — tidak ada utang dan tidak ada jurnal, dan harga belinya nol karena belum ada yang dibeli. Disimpan dulu sebagai belum diterima; stok baru naik saat barang diterima. Setiap baris punya lot sendiri — kode batch terisi otomatis kalau dikosongkan."
+              : "Disimpan dulu sebagai belum diterima. Saat barang diterima, ia jadi milik toko — stok naik, utang ke supplier tercatat, dan jurnal diposting."}
           </p>
         </div>
 
@@ -1652,126 +1559,6 @@ export function ReceiptForm({
           )}
         </Card>
 
-        {/* ------------------------------------------------ the vendor's own bill */}
-        {/* CONSIGNMENT HAS NO BILL. Nothing has been bought, so there is no debt
-            for a faktur to document — and the API refuses the field there rather
-            than ignoring it. Hidden rather than disabled: a greyed card for a
-            document that will never exist is a question, not an answer. */}
-        {!consignment && (
-          <Card
-            title={
-              <span className="flex flex-wrap items-center gap-2">
-                Faktur pembelian
-                <Badge variant="outline">opsional</Badge>
-              </span>
-            }
-          >
-            <div className="flex items-start gap-2">
-              <Checkbox
-                id="fileInvoice"
-                checked={fileInvoice}
-                onCheckedChange={(checked) => setFileInvoice(checked === true)}
-                disabled={saving}
-              />
-              <div>
-                <Label htmlFor="fileInvoice">
-                  Sekalian buat faktur pembelian
-                </Label>
-
-                {/* WHAT EACH ANSWER MEANS, said before the choice rather than
-                    discovered after it — and the unticked half is the one that
-                    has to be spelled out, because a box left empty reads as
-                    "nothing happens" when what actually happens is a debt.
-
-                    THE DEBT IS NOT WHAT THIS DECIDES. A beli-putus receipt
-                    credits 2101 Utang Supplier the moment it posts, tick or no
-                    tick; the faktur is the vendor's paperwork on top of it. A
-                    clerk who reads the empty box as "belum ada utang" would
-                    leave a payable nobody is watching, so the text names it. */}
-                <p className="mt-1 text-xs text-muted">
-                  <b>Dicentang:</b> faktur supplier langsung tercatat bersama
-                  penerimaan ini — nomor, tanggal, dan jatuh tempo ikut
-                  tersimpan sekali simpan.
-                </p>
-                <p className="mt-1 text-xs text-muted">
-                  <b>Tidak dicentang:</b> barang tetap masuk dan{" "}
-                  <b>utang ke supplier tetap tercatat</b> — yang belum ada hanya
-                  dokumen fakturnya, jadi nomor faktur dan tanggal jatuh tempo
-                  masih kosong. Pakai ini kalau van cuma bawa surat jalan;
-                  fakturnya dibuat nanti di halaman{" "}
-                  <Link
-                    href="/dashboard/purchasing/payables/new"
-                    className="underline underline-offset-4"
-                  >
-                    Faktur pembelian
-                  </Link>
-                  .
-                </p>
-              </div>
-            </div>
-
-            {/* The boxes appear only once they are asked for. Rendered rather
-                than disabled: two greyed fields under an unticked box are a
-                question about a document that is not being created. */}
-            {fileInvoice && (
-              <div className="mt-4 grid gap-4 border-t border-border/60 pt-4 sm:grid-cols-2">
-                <TextField
-                  label="No. faktur supplier"
-                  name="invoiceNumber"
-                  value={invoiceNumber}
-                  onChange={(event) => setInvoiceNumber(event.target.value)}
-                  placeholder="mis. INV/2026/014"
-                  maxLength={60}
-                  disabled={saving}
-                  required
-                  error={fieldErrors.invoiceNumber}
-                  /* THE VENDOR'S NUMBER, NOT OURS — the one numbered field in
-                     the system somebody types, because it is what they will
-                     quote when they chase payment. */
-                  hint="Nomor yang tercetak di faktur supplier, bukan nomor dari sistem."
-                />
-
-                <TextField
-                  label="Tanggal faktur"
-                  name="invoiceDate"
-                  type="date"
-                  value={invoiceDate}
-                  onChange={(event) => setInvoiceDate(event.target.value)}
-                  disabled={saving}
-                  required
-                  error={fieldErrors.invoiceDate}
-                  /* The date on the vendor's paper, which is NOT always the day
-                     the goods came — and it is the one the terms count from, so
-                     a wrong one moves the due date. */
-                  hint={
-                    dueDate
-                      ? `Jatuh tempo ${dueDate}, dihitung dari termin supplier.`
-                      : "Tanggal yang tercetak di faktur — jatuh tempo dihitung dari sini."
-                  }
-                />
-              </div>
-            )}
-
-            {/* THE RECONCILIATION, SAID OUT LOUD. The bill must equal the
-                delivery to the rupiah — the payable is already on the books at
-                these numbers — so the form shows what it is about to bill rather
-                than asking somebody to retype it into boxes whose only possible
-                wrong answer is a 400. */}
-            {filingInvoice && (
-              <p className="mt-4 border-t border-border/60 pt-3 text-xs text-muted">
-                Faktur ini akan menagih{" "}
-                <b className="tabular-nums text-foreground">
-                  {formatMoney(preview?.grandTotal ?? localSubtotal)}
-                </b>{" "}
-                — persis nilai penerimaan ini, karena utangnya sudah tercatat di
-                angka itu. Kalau faktur supplier berbeda, selisihnya
-                diselesaikan lewat retur pembelian, bukan dengan mengubah angka
-                di sini.
-              </p>
-            )}
-          </Card>
-        )}
-
         {/* --------------------------------------------------- what will happen */}
         {previewError && <Alert variant="error">{previewError}</Alert>}
 
@@ -1900,7 +1687,7 @@ export function ReceiptForm({
 
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" disabled={saving || lines.length === 0}>
-            {saving ? "Menyimpan…" : "Simpan & terima barang"}
+            {saving ? "Menyimpan…" : "Simpan penerimaan"}
           </Button>
           <Button
             type="button"

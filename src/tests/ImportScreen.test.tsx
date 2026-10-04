@@ -615,7 +615,7 @@ describe("ImportScreen", () => {
         Penyesuaian Stok, the only route that existed, which credits 5201
         Kerugian Persediaan: an import of a day-one catalogue would have booked
         the whole of it as a negative expense. Stok Awal posts the same
-        quantities to 3101 Modal / Saldo Awal, and the products it names have
+        quantities to 3101 Modal Disetor, and the products it names have
         by definition never moved, so they qualify.
       */
       expect(screen.getByRole("link", { name: /stok awal/i })).toHaveAttribute(

@@ -16,6 +16,7 @@ import {
 import { formatMoney } from "@/utils/decimal";
 import type { GoodsReceiptListRow } from "@/types/api";
 
+import { ReceiptStatusBadge } from "./ReceiptStatusBadge";
 import { SupplierTypeBadge } from "./SupplierTypeBadge";
 
 /** `2026-08-06T…` → `06 Agu 2026`. The only date format this module shows. */
@@ -39,7 +40,7 @@ function formatDate(iso: string): string {
  * THE FAKTUR COLUMN IS WHERE THE TWO PURCHASE TYPES VISIBLY DIVERGE, and it is
  * the fastest way to answer "why does this delivery not appear in my payables"
  * without opening anything. It is NOT, however, a debt indicator: a `beli_putus`
- * receipt credits `2101 Utang Supplier` the moment it posts, and `invoiceId`
+ * receipt credits `2101 Utang Usaha` the moment it posts, and `invoiceId`
  * stays null until the vendor's own bill is filed against it. The column says
  * whether the supplier's document has arrived, not whether money is owed — which
  * is why the empty state reads "belum difakturkan" rather than "tanpa utang".
@@ -83,6 +84,7 @@ export function ReceiptsTable({
             <TableHead>Cabang</TableHead>
             <TableHead>Gudang</TableHead>
             <TableHead>Jenis</TableHead>
+            <TableHead>Status</TableHead>
             <TableHead className="text-right">Item</TableHead>
             <TableHead className="text-right">Nilai</TableHead>
             <TableHead>Faktur</TableHead>
@@ -121,6 +123,10 @@ export function ReceiptsTable({
 
               <TableCell>
                 <SupplierTypeBadge type={receipt.purchaseType} />
+              </TableCell>
+
+              <TableCell>
+                <ReceiptStatusBadge status={receipt.status} />
               </TableCell>
 
               <TableCell className="text-right tabular-nums text-xs">

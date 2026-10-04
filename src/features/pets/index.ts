@@ -12,16 +12,27 @@
 export { PetsScreen } from "./components/PetsScreen";
 export { PetForm } from "./components/PetForm";
 export { PetQuickAddDialog } from "./components/PetQuickAddDialog";
+/**
+ * `PetFixLink` is exported for the same reason: a service priced by the animal
+ * cannot be quoted while a fact about that animal is missing, and BOTH the
+ * booking form and the till's service picker have to offer the same way out.
+ */
+export { PetFixLink } from "./components/PetFixLink";
 /** One customer's animals — rendered by the customers feature's edit screen. */
 export { CustomerPetsSection } from "./components/CustomerPetsSection";
 export { PetCardPrintScreen } from "./components/PetCardPrintScreen";
-export {
-  PetSpeciesBadge,
-  PetStatusBadge,
-  speciesLabel,
-  sizeLabel,
-  furTypeLabel,
-} from "./components/PetBadges";
+/*
+  NO `speciesLabel` / `sizeLabel` / `furTypeLabel` any more. Those words are
+  tenant data now — read them with `usePetOptions().label()` from
+  `@/hooks/usePetOptions`, which every feature can reach without importing this
+  one.
+*/
+export { PetSpeciesBadge, PetStatusBadge } from "./components/PetBadges";
+/**
+ * The pet's photo, for any feature that names an animal — the booking work
+ * screen and the till's pet picker are the ones likely to want it next.
+ */
+export { PetAvatar } from "./components/PetAvatar";
 export { usePets, type PetsQuery } from "./hooks/usePets";
 export { PetSummaryCard } from "./components/PetSummaryCard";
 export { PetProfileScreen } from "./components/PetProfileScreen";

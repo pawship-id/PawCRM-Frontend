@@ -1,9 +1,32 @@
 "use client";
 
-import { formatMoney, formatQty } from "@/utils/decimal";
-import type { PublicReceipt } from "@/types/api";
+import {
+  formatMoney,
+  formatQty,
+  isPositive,
+  subtractDecimals,
+  sumDecimals,
+} from "@/utils/decimal";
+import type { PosReceiptItem, PublicReceipt } from "@/types/api";
 
 import type { ReceiptSize } from "../deviceSettings";
+import { variantDetailOf } from "../variantDetail";
+
+/**
+ * What a membership card paid for, across every line AND every add-on under
+ * it — the total the receipt's "Diskon membership" row prints.
+ *
+ * FLATTENED, because an add-on's own giveaway is nested one level under its
+ * service (`#nestAddons` on the server) and would otherwise be missed.
+ */
+function membershipDiscountOf(items: PosReceiptItem[]): string {
+  return sumDecimals(
+    items.flatMap((item) => [
+      item.membershipDiscount ?? "0.0000",
+      ...item.addons.map((addon) => addon.membershipDiscount ?? "0.0000"),
+    ]),
+  );
+}
 
 function paidAtLabel(paidAt: string | null): string {
   if (!paidAt) return "";
@@ -118,11 +141,38 @@ export function ReceiptPreview({
         {receipt.items.map((item, index) => (
           <li key={`${item.name}-${index}`}>
             <div className="flex justify-between gap-2">
-              <span className="min-w-0 flex-1">{item.name}</span>
+              {/*
+                THE ANIMAL IN THE TITLE — "Cici - Basic Grooming".
+
+                It was a sub-line of its own beneath the price, which on a
+                two-dog visit put the two things a customer pairs up — whose
+                grooming, and how much — two rows apart, with the quantity line
+                between them. Named here, one row answers both.
+
+                A RETAIL LINE HAS NO ANIMAL and simply keeps its own name; a bag
+                of feed belongs to nobody in particular.
+              */}
+              <span className="min-w-0 flex-1">
+                {item.petName ? `${item.petName} - ${item.name}` : item.name}
+              </span>
               <span className="tabular-nums">
+                {/*
+                  ITS OWN PRICE, NOT THE PAIR'S. The add-on prints on a row of
+                  its own directly beneath with its own figure, so adding it in
+                  here would show the customer the same 20.000 twice — once
+                  inside this number and once under it.
+
+                  THE BASKET SUMS AND THIS DOES NOT, on purpose: there the
+                  add-on is detail INSIDE the service's line, here it is a row.
+                  Both add up to the same subtotal.
+                */}
                 {formatMoney(item.lineTotal)}
               </span>
             </div>
+            {/* What it was priced on beyond the pet — "Lokasi: Di Rumah · Zona A". */}
+            {variantDetailOf(item) && (
+              <p className="text-xs text-muted">{variantDetailOf(item)}</p>
+            )}
             <div className="flex justify-between gap-2 text-xs text-muted">
               <span className="tabular-nums">
                 {formatQty(item.qty)} × {formatMoney(item.unitPrice)}
@@ -133,12 +183,36 @@ export function ReceiptPreview({
                 </span>
               )}
             </div>
-            {/* FR-8's sub-line: which animal, and who groomed it. */}
-            {(item.petName || item.groomerName) && (
-              <div className="text-xs text-muted">
-                {[item.petName, item.groomerName].filter(Boolean).join(" · ")}
+            {/*
+              THE ADD-ONS, INDENTED UNDER THEIR SERVICE. A row of its own, with
+              its own price — but pushed in, under the bath it was done to,
+              rather than standing level with it. "Extra Handling" read as a
+              third thing bought when it sat flush with the services.
+
+              NO ANIMAL AND NO GROOMER ON IT. An add-on inherits both from its
+              parent by construction, and the title above already names the
+              animal; the groomer is off the printed sheet entirely — FR-8 asks
+              for "hewan + groomer" and the shop asked for the groomer back off
+              it, since who held the clippers is a rostering fact on a slip that
+              travels to whoever the customer forwards it to. The name is still
+              snapshotted on the sale and still shown in the basket.
+            */}
+            {item.addons.map((addon, addonIndex) => (
+              <div
+                key={`${addon.name}-${addonIndex}`}
+                className="flex justify-between gap-2 pl-3 text-xs text-muted"
+              >
+                <span className="min-w-0 flex-1">{`+ ${addon.name}`}</span>
+                {addon.discount && (
+                  <span className="tabular-nums">
+                    −{formatMoney(addon.discount.resolvedAmount)}
+                  </span>
+                )}
+                <span className="tabular-nums">
+                  {formatMoney(addon.lineTotal)}
+                </span>
               </div>
-            )}
+            ))}
           </li>
         ))}
       </ul>
@@ -163,14 +237,37 @@ export function ReceiptPreview({
             <dt>Subtotal</dt>
             <dd className="tabular-nums">{formatMoney(totals.subtotal)}</dd>
           </div>
-          {totals.itemDiscount !== "0.0000" && (
-            <div className="flex justify-between">
-              <dt>Diskon item</dt>
-              <dd className="tabular-nums">
-                −{formatMoney(totals.itemDiscount)}
-              </dd>
-            </div>
-          )}
+          {/*
+            SPLIT FROM "DISKON ITEM" (1 October 2026, on request) — a card's
+            giveaway is not the same fact as a discount the cashier typed, and
+            `totals.itemDiscount` is frozen as their sum. The membership part is
+            worked out here, from what each line's own `membershipDiscount`
+            says, and subtracted back off for the cashier-typed figure — the
+            same split the till's own basket panel shows before payment.
+          */}
+          {(() => {
+            const membershipShare = membershipDiscountOf(receipt.items);
+            const own = subtractDecimals(totals.itemDiscount, membershipShare);
+
+            return (
+              <>
+                {isPositive(own) && (
+                  <div className="flex justify-between">
+                    <dt>Diskon item</dt>
+                    <dd className="tabular-nums">−{formatMoney(own)}</dd>
+                  </div>
+                )}
+                {isPositive(membershipShare) && (
+                  <div className="flex justify-between">
+                    <dt>Diskon membership</dt>
+                    <dd className="tabular-nums">
+                      −{formatMoney(membershipShare)}
+                    </dd>
+                  </div>
+                )}
+              </>
+            );
+          })()}
           {totals.cartDiscount !== "0.0000" && (
             <div className="flex justify-between">
               <dt>Diskon</dt>
