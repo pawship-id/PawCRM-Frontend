@@ -123,7 +123,7 @@ describe("CashTransactionDetail — what it shows", () => {
     expect(screen.getByText("Back office")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /INV\/CBS\/2609\/0012/ }),
-    ).toHaveAttribute("href", "/dashboard/sales/inv1");
+    ).toHaveAttribute("href", "/dashboard/sales/invoice/inv1");
     // The journal is reached from the ≡ menu now, not from a card of its own —
     // see "opens the journal in a dialog" below.
     expect(

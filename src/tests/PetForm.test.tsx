@@ -93,10 +93,24 @@ beforeEach(() => {
       {
         _id: CUSTOMER_ID,
         tenantId: "507f1f77bcf86cd799439011",
+        code: "CUST-0001",
         name: "Ibu Rina",
         email: null,
         phone: "0812-3456-7890",
         address: null,
+        // The Pelanggan form's fields (27 September 2026). An ordinary private
+        // customer with no category — what the register is mostly made of.
+        kind: "individual" as const,
+        customerTypeId: null,
+        customerTypeName: null,
+        taxId: null,
+        picName: null,
+        notes: null,
+        notifications: {
+          bookingReminder: true,
+          membershipRenewal: true,
+          promo: false,
+        },
         vipTier: null,
         deletedAt: null,
         createdAt: "2026-01-01T00:00:00.000Z",
@@ -233,18 +247,9 @@ describe("PetForm — registering", () => {
   it("offers only the chosen animal's breeds, and the ones that say nothing", async () => {
     primePetOptions(petOptionService.list, [
       ...PET_OPTION_FIXTURES.filter((option) => option.type !== "breed"),
-      makePetOption({
-        type: "breed",
-        label: "Poodle",
-        speciesId: petOptionId("species", "Anjing"),
-      }),
-      makePetOption({
-        type: "breed",
-        label: "Persia",
-        speciesId: petOptionId("species", "Kucing"),
-        sortOrder: 1,
-      }),
-      makePetOption({ type: "breed", label: "Mix", sortOrder: 2 }),
+      makePetOption({ type: "breed", code: "poodle", label: "Poodle", speciesId: "opt-species-dog" }),
+      makePetOption({ type: "breed", code: "persia", label: "Persia", speciesId: "opt-species-cat", sortOrder: 1 }),
+      makePetOption({ type: "breed", code: "mix", label: "Mix", sortOrder: 2 }),
     ]);
 
     await renderNew();

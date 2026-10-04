@@ -63,8 +63,8 @@ export const DEFAULT_GROOMING_SETTINGS: GroomingSettings = {
 
 /** One row of "Nominal per ukuran". */
 export interface CommissionSize {
-  /** The option's code — the key in `sizeNominal`. */
-  code: string;
+  /** The option's `_id` — the key in `sizeNominal` (a code until 25 Sep 2026). */
+  id: string;
   /** The tenant's word for it, without " (nonaktif)". */
   label: string;
   /** Retired: on screen only because a nominal is already stored for it. */
@@ -73,7 +73,7 @@ export interface CommissionSize {
 
 /**
  * `record[key]` only when the record itself holds it. "constructor" is a valid
- * size code, and a plain object answers it with a function.
+ * key, and a plain object answers it with a function.
  */
 function own<T>(record: Record<string, T>, key: string): T | undefined {
   return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
@@ -88,7 +88,7 @@ function own<T>(record: Record<string, T>, key: string): T | undefined {
  * screen. A retired size nobody priced has nothing to show, and an empty box
  * for it would hold up the save for a size no new animal can be given.
  *
- * A DELETED OR UNKNOWN SIZE IS NEVER A ROW, and its nominal is not dropped
+ * A DELETED OR UNKNOWN ID IS NEVER A ROW, and its nominal is not dropped
  * either — see `draftToSettings`.
  *
  * KEYED BY THE OPTION'S `_id` since 25 September 2026, which is what
@@ -104,7 +104,7 @@ export function commissionSizes(
   return options
     .filter((option) => option.isActive || own(stored, option._id) !== undefined)
     .map((option) => ({
-      code: option._id,
+      id: option._id,
       label: option.label,
       retired: !option.isActive,
     }));
@@ -376,8 +376,8 @@ export function validateDraft(
       after somebody breaks its box.
     */
     for (const size of sizes) {
-      if (parseRupiah(sizeNominalText(draft, size.code)) === null) {
-        errors[sizeErrorKey(size.code)] = RUPIAH_ERROR;
+      if (parseRupiah(sizeNominalText(draft, size.id)) === null) {
+        errors[sizeErrorKey(size.id)] = RUPIAH_ERROR;
       }
     }
   }
@@ -642,7 +642,7 @@ function sizeExample(
 ): ExampleLine {
   if (size === null) return { amount: null, basis: "belum ada ukuran hewan aktif" };
 
-  const amount = own(sizeNominal, size.code);
+  const amount = own(sizeNominal, size.id);
   return amount === undefined
     ? { amount: null, basis: `nominal ${size.label} belum diisi` }
     : { amount, basis: `nominal ${size.label}` };

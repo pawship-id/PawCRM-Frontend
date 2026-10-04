@@ -852,7 +852,7 @@ describe("SalesInvoiceList — row actions", () => {
 
     expect(
       await screen.findByRole("menuitem", { name: "Cetak faktur" }),
-    ).toHaveAttribute("href", `/dashboard/sales/${INVOICE_ID}/print`);
+    ).toHaveAttribute("href", `/dashboard/sales/invoice/${INVOICE_ID}/print`);
   });
 
   it("offers Batalkan on an invoice nothing has been paid against", async () => {
@@ -903,7 +903,7 @@ describe("SalesInvoiceList — row actions", () => {
 
     expect(
       await screen.findByRole("link", { name: /buat faktur/i }),
-    ).toHaveAttribute("href", "/dashboard/sales/new");
+    ).toHaveAttribute("href", "/dashboard/sales/invoice/new");
     unmount();
 
     renderWithAuth(<ReceivablesScreen />, {

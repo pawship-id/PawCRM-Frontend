@@ -31,6 +31,8 @@ The fastest way to be consistent here. Check this table before writing markup.
 | a `w-40` / `w-44` / `w-52` guess on a filter | nothing — width comes from content | One number, in `FilterTrigger.tsx`. |
 | a bare `<input type="date">` pair with an `s/d` between them | `<FilterDateRange>` | It bounds the two ends against each other and holds a draft until Terapkan. |
 | `rounded-xl border border-border bg-surface` | `<Card>` from `@/components` | Hand-written 52 times. |
+| a hand-rolled stat/summary tile — a label, a big number, a caption | `<StatTile>` / `<PendingStatTile>` from `@/components` | Penjualan grew its own copy with an `uppercase` label; Keuangan's Ringkasan tab grew another with that plus a heavier value weight. Pembelian built on `StatTile` straight and never drifted. Both fixed 2 October 2026 — same label casing, same `text-3xl font-semibold` value, even where (Keuangan's `SummaryCard`, Grooming's `GroomingStatCard`) the tile legitimately keeps its own component for an icon, a delta line, or a press-to-filter state `StatTile` doesn't have. §5 |
+| extra inline text under a card's caption, for an explanation that needs more words | `<InfoTooltip hint="…">` from `@/components` — or `<StatTile hint="…">`, which wires it to the label for you | The caption stays short and inline; a longer "why" — or a formula that used to be the caption itself — opens from the ⓘ instead of stacking a third line under every tile. **Not a native `title` attribute**: `title` never opens on a touch screen, so a hint built on it is silently unreachable on every phone and tablet. Full behaviour in §9. `InvoiceScopeCard`'s scope list still uses a raw `title` on a `<dd>` — on the migration list (§15), not a sweep to open unasked. |
 | `Breadcrumb` + `h1` + `p` assembled by hand | `<PageHeading>` | ~25 pages hand-roll it in 3 drifted variants. |
 | a new `XxxStatusBadge` in a feature folder | `<StatusBadge tone label>` (spec'd) | 15 exist with 3 incompatible tinting conventions. §9 |
 | `Swal.fire(...)` | `swalToast()` from `@/lib/swal` | One themed entry point. §9 |
@@ -112,6 +114,8 @@ Two families. `font-display` (Plus Jakarta Sans) for headings only; `font-sans` 
 - **Prices, quantities, dates, times, phone numbers, SKUs and document numbers get `tabular-nums`**, so digits don't jitter as they update and columns stay aligned.
 - **There are exactly two typefaces. There is no `font-mono`.** `--font-mono` is deliberately unbound in `globals.css`: a third family is a brand violation, and Inter's tabular figures already do the column-alignment job a monospace face was doing here.
 - Nothing below 13 px. `text-[10px]` is banned — it is the single worst offender in the current table headers.
+- **A stat/summary tile's label is sentence case. Never `uppercase`/`tracking-wide` on it.** The mockup sets these in small caps at 10 px; this product's floor is 13 px (§1.6), and a label like "OKUPANSI HOTEL" set in caps at 13 px wraps across two lines in a tile that was only ever drawn for one. `StatTile.tsx` carries the fuller rationale. Reach for the shared `<StatTile>` (§2) instead of re-deriving this per screen — that drift is exactly how Penjualan's and Keuangan Ringkasan's cards ended up louder than their neighbours (both fixed 2 October 2026).
+  **This does not reach the small-caps convention elsewhere** — a `<dt>` field label in a detail view, a table header, or a Card's small `text-xs … uppercase` caption (`JournalEntriesScreen`'s "Jurnal umum", `CashTransactionsScreen`'s "Daftar transaksi") are a different, already-consistent role and are not part of this rule.
 
 ---
 
@@ -187,7 +191,7 @@ Filter controls are 40 px tall, `rounded-md`, and read `Label: Value ⌄` — a 
 
 A panel exists so the table doesn't re-query three times while someone composes a query. A quick bar exists so one click gives one result. Choosing the wrong arrangement is the only way to get this wrong.
 
-**Module mapping:** Produk & Varian (6, incl. sort), Kategori (3, incl. sort), Batch & Expired (5, incl. sort), Stok Opname (5, incl. sort), Stok Awal (2) and Penyesuaian Stok (2), Supplier (4, incl. sort), Penerimaan Barang (5, incl. sort) and Retur ke Supplier (5, incl. sort) → filter panel at every width, one `Filter (n)` button beside search · Transfer Stok (1) → quick bar, the one Inventory list that keeps its filter on the row, because one field is below the floor set out below · Utang Supplier (5, incl. sort) → the same panel, with the view lens as a pill row outside it · Kartu Stok — the card (4, incl. sort) → filter panel beside search; Gudang stays outside it as a required input, not a filter, and Produk is no longer a control at all: it is the route · Kartu Stok — the index (4, incl. sort) → the same panel beside search; Gudang sits by the heading with a "Semua gudang" default, because it changes the numbers rather than which rows are on the page · Sales / Invoice / Booking when built (~8) → filter panel.
+**Module mapping:** Produk & Varian (6, incl. sort), Kategori (3, incl. sort), Batch & Expired (5, incl. sort), Stok Opname (5, incl. sort), Stok Awal (2) and Penyesuaian Stok (2), Supplier (4, incl. sort), Penerimaan Barang (5, incl. sort) and Retur ke Supplier (5, incl. sort) → filter panel at every width, one `Filter (n)` button beside search · Transfer Stok (1) → quick bar, the one Inventory list that keeps its filter on the row, because one field is below the floor set out below · Utang Supplier (6, incl. sort and status) → the same panel, the view lens folded in with everything else · Kartu Stok — the card (4, incl. sort) → filter panel beside search; Gudang stays outside it as a required input, not a filter, and Produk is no longer a control at all: it is the route · Kartu Stok — the index (4, incl. sort) → the same panel beside search; Gudang sits by the heading with a "Semua gudang" default, because it changes the numbers rather than which rows are on the page · Sales / Invoice / Booking when built (~8) → filter panel.
 
 **Transfer Stok (1) → quick bar**, and it is the one Inventory list that stayed on one. Its single Gudang select sits on the row and applies on click, because §8's floor is real: a filter behind a `Filter (1)` button is a button that hides one thing, which is strictly worse than showing it. The field matches **either end** of the transfer — one control, not a Dari and a Ke, since somebody asking what passed through Gudang Bazar rarely knows which end theirs was.
 
@@ -195,7 +199,9 @@ A panel exists so the table doesn't re-query three times while someone composes 
 
 Supplier is the one entry here decided by viewport rather than by field count: its filters fit a quick bar on a laptop and wrap onto three lines on a phone, and the collapse below would have meant two trees to keep in step. One panel at every width is one tree — the same reasoning that dropped the media query from Produk & Varian. Penerimaan Barang and Retur ke Supplier land in the same column twice over: on the count, and on their date range, since a control carrying its own Reset/Terapkan belongs in a panel whatever else is on the bar. **Every screen in Purchasing now uses the same arrangement**, which is the point — they are read one after another by the same person in the same sitting.
 
-**A pill row survives the panel.** Utang Supplier is the case that shows where the boundary is: its urgency lens (Jatuh tempo / Minggu ini / …) stays outside, applying on click, while everything else went behind the button. The lens is what the screen is opened to use, so putting it behind a button and a Terapkan would bury the one control that earns its place on the row. Two consequences follow and both are load-bearing: **Reset does not touch it** — Reset clears what the panel holds, and a Reset that also threw the screen back to its default view would undo a choice the button does not appear to be about — and **it is not in the `Filter (n)` count**, even though it genuinely narrows the list. The badge exists to pay back what a panel *conceals*; a pill row with the current pill filled in, sitting directly above the button, conceals nothing.
+**A pill row survives the panel — on the AR side.** Faktur Penjualan's status lens (Lunas / Belum lunas / …) stays outside the bar as a pill row, applying on click, while everything else went behind the button. The lens is what the screen is opened to use, so putting it behind a button and a Terapkan would bury the one control that earns its place on the row. Two consequences follow and both are load-bearing there: **Reset does not touch it** — Reset clears what the panel holds, and a Reset that also threw the screen back to its default view would undo a choice the button does not appear to be about — and **it is not in the `Filter (n)` count**, even though it genuinely narrows the list. The badge exists to pay back what a panel *conceals*; a pill row with the current pill filled in, sitting directly above the button, conceals nothing.
+
+**UTANG SUPPLIER'S OWN LENS MOVED INTO THE PANEL** (2 October 2026, on request), which is a recorded DIVERGENCE from its AR sibling above rather than an oversight — the two screens answer the same kind of question (what is owed, and to whom) and are now allowed to look different on this one point because that is specifically what was asked for. Both consequences the Transaksi exception already established (§16, Tambah transaksi's Tipe field) apply here too: the view is **counted** in `Filter (n)` now, and the panel's **Reset clears it** back to "Belum lunas", `usePurchaseInvoices`'s own default — neither is optional once a lens stops standing on its own row. **Do not use this to argue Faktur Penjualan should follow** — nothing about the AR screen changed, and a lens stays a pill row everywhere else unless it is asked to move, one screen at a time.
 
 **A quick bar is one line, and a phone has no line.** Below ~600 px every trigger collapses into a single `Filter` button opening a `FilterPanel` — the panel arrangement reached by viewport rather than by field count, and the fields inside it wait for Terapkan like any other panel's. Both arrangements are the same controls (`FilterSelect`'s `layout` prop), so render **one** list of fields and hand it a layout. Do not render both and hide one with `hidden md:flex`: two triggers named "Kategori" is one control to look at and two to a screen reader. Branch on `useMediaQuery`, whose fallback is the wide bar so the server never prerenders the collapsed one. **If the wide layout is already a panel, drop the branch** — the media query would only be choosing between one tree and itself, which is what Produk & Varian and Kategori both do now.
 
@@ -330,14 +336,54 @@ Tones: `neutral`, `info`, `success`, `warning`, `danger`, `brand`. Use the `bg-t
 
 The badge label is **always a string**, never colour alone and never an icon alone.
 
+### The ⓘ tooltip
+
+**Always `<InfoTooltip hint="…">` from `@/components` — never a hand-rolled `Info` icon, and never a native `title` attribute.** One component, so the interaction is the same everywhere it appears.
+
+- **A mouse hovers it open, every time; a touch screen or a keyboard taps/focuses it open.** `InfoTooltip` tells the two apart from `event.pointerType` on the pointer event itself (`"mouse"` vs `"touch"`/`"pen"`), not a `matchMedia("(hover: hover) …")` guess taken once about the device — a guess can misreport on a hybrid touchscreen laptop or a preview frame, and once it does, hover is wrong for the rest of the session. Reading the actual event means hover cannot silently stop working. It opens on focus unconditionally too, so a keyboard-only reader gets the same answer without needing to activate anything. Building this by hand gets it wrong in one direction or the other — either a desktop reader has to click an (i) that every other hover tooltip on the web just opens under the pointer, or a touch reader gets a hint built on `title`, which **never opens on a touch screen** and is silently unreachable on every phone and tablet.
+- **Padding is not optional.** `PopoverContent` in `ui/popover.tsx` (vendored, leave its internals alone) ships with none — `PosDiscountPopover` hit the exact "text flush against the border" bug on 28 September 2026. `InfoTooltip` carries the fix (`p-3`, `w-72 max-w-[calc(100vw-2rem)]` so it can't run past a narrow phone's edge) once, centrally.
+- `hint` is the full explanation, in sentences — it is the only place that text appears, so don't also leave it as a `caption` under the value "just in case" (§2).
+- The trigger is a real `<button>`, 14px icon, hit area grown with `-m-1.5 p-1.5` so it doesn't push the text it sits beside — short of the 44px floor (§1.5), the judgement call a control in a dense row already makes elsewhere (§15, the `WarehouseProductPicker` note).
+- **Focus darkens the icon instead of ringing it** — the one exception to §7's usual navy-border-plus-orange-halo pair. A 3px orange ring around something this small and round reads as an alarm, not a focus state, and it would be redundant here anyway: focus already opens the popover, which is a far louder confirmation than a ring could be. `cursor-pointer` is explicit on the trigger too — a bare `<button>` defaults to the arrow cursor in this app, not the hand §1 assumes everywhere clickable.
+- **Both `PopoverContent` auto-focus hooks are suppressed** (`onOpenAutoFocus` / `onCloseAutoFocus`, both `preventDefault()`). Radix's `Popover.Content` moves real DOM focus into itself on open and back onto the trigger on close even when `modal` is false — that close-time refocus fired the trigger's own `onFocus`, which hover also uses to open, so every close-by-mouseleave silently reopened the tooltip a beat later and left the first hover after that out of step: first hover worked, the second did nothing, the third did. Hover and focus are the only two things allowed to drive `open` here.
+
 ### Which feedback surface
 
 | Surface | Use when |
 | --- | --- |
-| `swalToast()` | it worked; there is nothing to decide |
-| `<Alert>` | inline, form-level, stays on screen while the problem persists |
+| `swalToast()` | it worked; there is nothing to decide — **and an act that failed**, see below |
+| `<Alert>` | the screen cannot show what it is for: a load that failed, a record that is not there |
 | `<ConfirmDialog>` | destructive or irreversible; needs an explicit yes |
 | raw `ui/dialog` | only when the body needs a form |
+
+### A FAILED ACT IS A TOAST; A SCREEN THAT CANNOT LOAD IS AN ALERT
+
+Decided 30 September 2026, on request, and it moved the boundary this table used
+to draw at "form-level". **What decides it is whether the screen still has
+something to show**, not whether a form is involved.
+
+- **An act somebody pressed that failed** — save, delete, restore, renew, cancel
+  — is `swalToast(message, "error", 6000)`. The screen behind it is intact and
+  still usable; a red bar pinned above it is a second thing to dismiss. Six
+  seconds, not the three a success gets: a refusal has to be read.
+- **A screen that cannot draw itself** stays an `<Alert>` and MUST NOT become a
+  toast. A list that failed to load, a record that is not there — some of these
+  ARE the whole page (`MembershipPlanDetail` returns the Alert instead of the
+  page). A toast there leaves a blank screen and then takes the only explanation
+  away with it.
+
+**Where a field error belongs is unchanged**: under its own input, via the
+control's `error` prop. The toast summarises — one problem is quoted whole, and
+several are counted ("Ada 3 isian yang belum benar — lihat tanda merah di
+formulir"), because five sentences in a toast that vanishes is how people learn
+not to read toasts.
+
+**BUILT IN `features/memberships` FIRST**, which is the only module that follows
+this today (`errors.ts` → `membershipFailure`). Every other module still puts its
+action failures in an `<Alert>`; they are on the migration list in §15, not a
+sweep to open unasked. **Server messages are translated where they are BORN** —
+the Joi schema's `.label()` and the service's own strings, both Indonesian — not
+mapped from English in the client; see `validations/common.validation.js`.
 
 **`Swal.fire` is banned outside `src/lib/swal.ts`.** No new sweetalert call sites — that module is the single seam through which the toasts get themed, and it is on the migration list to be replaced entirely.
 
@@ -475,6 +521,8 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 
 **Built** — `src/components/form/`, exported from `@/components`: `FormField`, `FormActionBar`, `TextareaField`, `SelectField`, `CheckRow` / `CheckRowGroup`, plus `FIELD_HEIGHT`. The searchable full-width picker is **`FilterSelect layout="form"`**, not a form-layer control of its own — see §16. `TextField` now renders through `FormField` — its call sites are unchanged. Rules in §16, anatomy in [`docs/ui-component-specs.md`](./ui-component-specs.md). **Five forms migrated — all of Inventory, and all of them consistent.** `StockAdjustmentForm`, `OpeningStockForm`, `StockTransferForm`, `CategoryForm` and `ProductForm` each carry a `FormActionBar` at the head of the form, none of them pinned. The other 15 are untouched, and they are Purchasing, Keuangan and Master.
 
+**Built** — `InfoTooltip`, exported from `@/components` (2 October 2026, promoted out of `CustomerSummaryScreen`'s `SummaryTile`). The ⓘ tooltip, full behaviour in §9. `StatTile` takes an optional `hint` and renders one next to its label — most callers have no need and leave it out.
+
 **Decided but not yet built** — specs exist in [`docs/ui-component-specs.md`](./ui-component-specs.md). Build them when the work calls for one, don't invent a parallel version: `StatusBadge`, `EmptyState`, and a promoted `PageHeading`.
 
 **Migration list** — existing code that violates these rules. Fix opportunistically when you are already in the file; do not open a sweep without being asked:
@@ -491,7 +539,9 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 - ~58 `text-muted-foreground`, 31 `bg-card`, 13 `text-destructive` outside `components/ui/` → app vocabulary
 - 9 files importing `@/components/icons` → lucide, then delete `icons.tsx`
 - 49 files reaching sweetalert through `lib/swal.ts` → a tokened toast, then drop the dependency
+- every module but `memberships` still puts a FAILED ACT in an `<Alert>` (§9) → `swalToast(…, "error", 6000)`, keeping the load-failure Alerts exactly as they are. `features/memberships/errors.ts` is the shape to copy. Opportunistic; the API messages behind a module have to be Indonesian first, or the swap only moves English into a toast
 - English UI strings in customers / users / roles / branches / warehouses → Bahasa. (`Pagination` is done — 25 Aug: "Halaman 2 dari 5", "Sebelumnya"/"Berikutnya", and its `unitPlural` default changed from `${unit}s`, which appended an English plural to an Indonesian noun for every caller that omitted it.)
+- 1 scope-list tooltip still on a raw `title` attribute — `InvoiceScopeCard`'s `<dd>` (cabang/gudang list collapsed to a count) → the `Popover` + `<button>` pattern §2 now specifies, same as `CustomerSummaryScreen`'s `SummaryTile` (fixed 2 October 2026). `title` doesn't open on a touch screen, so this one is currently unreachable on mobile.
 
 **Open questions — record an answer here, don't guess in code:**
 
@@ -691,9 +741,10 @@ stay on the page's context bar.
   and the panel's **Reset clears it**, because Reset clears what its own control
   conceals.
 
-  **This does not repeal the pill row elsewhere.** Utang Supplier's urgency lens
-  keeps its row and its two exemptions. What is repealed is using one where the
-  dimension's NAME is not otherwise on screen. If a pill row ever needs a visible
+  **This does not repeal the pill row elsewhere.** Faktur Penjualan's status
+  lens keeps its row and its two exemptions (Utang Supplier's own urgency lens
+  moved into its panel too, 2 October 2026 — see §8). What is repealed is using
+  one where the dimension's NAME is not otherwise on screen. If a pill row ever needs a visible
   caption, add the prop to `FilterPills` once and decide for every screen at the
   same time — do not grow a second arrangement one screen at a time.
 - **Sumber REPLACED Jenis**, and with it the panel's only multi-select. Jenis

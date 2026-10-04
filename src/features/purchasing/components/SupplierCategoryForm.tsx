@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Alert, Button, Card, Spinner, TextField } from "@/components";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { SETTINGS_PATHS } from "@/features/settings";
 import { ApiError } from "@/services/api-error";
 import { supplierCategoryService } from "@/services/supplierCategory.service";
 import { swalToast } from "@/lib/swal";
@@ -14,8 +15,11 @@ import type { SupplierCategory } from "@/types/api";
 /** Backend cap — NAME_MAX_LENGTH in category.model.js. */
 const NAME_MAX_LENGTH = 120;
 
-/** Where both verbs return to, and what Batal goes back to. */
-const LIST_PATH = "/dashboard/purchasing/supplier-categories";
+/**
+ * Where both verbs return to, and what Batal goes back to — Pengaturan › Umum's
+ * address since 1 October 2026, not Pembelian's.
+ */
+const LIST_PATH = SETTINGS_PATHS.kategoriSupplier;
 
 /**
  * Create or edit a supplier category, on a route of its own.

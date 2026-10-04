@@ -18,10 +18,24 @@ const mocked = customerService as jest.Mocked<typeof customerService>;
 const customer = (overrides: Partial<Customer> = {}): Customer => ({
   _id: "5a7f1f77bcf86cd799439022",
   tenantId: "507f1f77bcf86cd799439011",
+  code: "CUST-0001",
   name: "Ibu Rina Wijaya",
   email: null,
   phone: "0812-3456-7890",
   address: null,
+  // The Pelanggan form's fields (27 September 2026). An ordinary private
+  // customer with no category — what the register is mostly made of.
+  kind: "individual" as const,
+  customerTypeId: null,
+  customerTypeName: null,
+  taxId: null,
+  picName: null,
+  notes: null,
+  notifications: {
+    bookingReminder: true,
+    membershipRenewal: true,
+    promo: false,
+  },
   vipTier: null,
   deletedAt: null,
   createdAt: "2026-01-01T00:00:00.000Z",

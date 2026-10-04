@@ -1167,6 +1167,15 @@ export interface Category {
   cogsAccountId: string | null;
   inventoryAccountId: string | null;
   /**
+   * HOW MANY LIVE PRODUCTS ARE FILED UNDER IT — present only when the read
+   * asked for it (`withProductCount`), which the till's pill row does and
+   * nothing else (28 September 2026).
+   *
+   * ACTIVE products, not merely undeleted: it exists to RANK, and a category
+   * whose stock has all been retired has nothing to sell.
+   */
+  productCount?: number;
+  /**
    * The category this one sits under, or `null` for a top-level category.
    *
    * THE TREE IS EXACTLY TWO DEEP. A category with a `parentId` cannot itself
@@ -1233,6 +1242,11 @@ export const SUB_LEVEL_ONLY = "sub";
 export interface CategoryListQuery {
   page?: number;
   limit?: number;
+  /**
+   * Adds `productCount` to each row. Opt-in: it costs an aggregation over the
+   * products collection, and most readers want a name and an id.
+   */
+  withProductCount?: boolean;
   /**
    * Product only, and the API refuses anything else on this resource. Kept
    * because the field predates the second kind and clients were already sending
@@ -1404,16 +1418,65 @@ export type VipTier = "bronze" | "silver" | "gold" | "platinum";
  * recorded with just a name. `deletedAt` is the soft-delete axis (removed,
  * restorable). `createdBy` and `sv` are server-owned audit/versioning fields the
  * UI does not edit; they are omitted here rather than typed loosely — add them
- * when a screen needs them. Mirrors the Branch shape, minus the `isActive` axis
- * (a customer has no open/closed state).
+ * when a screen needs them. Mirrors the Branch shape — including `isActive`
+ * now (2 October 2026): a customer can be switched off without being deleted,
+ * the same orthogonal pair a branch has.
  */
+/** Perorangan or Perusahaan — a closed enum, unlike the tenant's own Kategori. */
+export type CustomerKind = "individual" | "company";
+
+/**
+ * Which automatic messages a customer agreed to.
+ *
+ * ⚠️ NOTHING SENDS ANY OF THEM YET, the same state Pengaturan › Notifikasi is
+ * in. Stored now because consent has to be true from the day it was given.
+ */
+export interface CustomerNotifications {
+  bookingReminder: boolean;
+  membershipRenewal: boolean;
+  promo: boolean;
+}
+
 export interface Customer {
   _id: string;
   tenantId: string;
+  /**
+   * The customer's own number — "CUST-0001", allocated by the server when the
+   * record is created (27 September 2026). Never sent by a client: whatever a
+   * form put here is overwritten.
+   *
+   * `null` on customers registered before the series existed, until
+   * `seeds/backfillCustomerCodes.js` has been run — the screens show a dash for
+   * those rather than inventing a number the shop never printed.
+   */
+  code: string | null;
   name: string;
   email: string | null;
   phone: string | null;
   address: string | null;
+  /** Perorangan or Perusahaan. Every customer has one; it defaults to individual. */
+  kind: CustomerKind;
+  /**
+   * The tenant's own category, from Pengaturan › Tipe pelanggan — the id to
+   * PATCH with, and the name to print, side by side.
+   *
+   * A CATEGORY THE TENANT HAS RETIRED still reads back with its name: the label
+   * still describes this customer, only new filings under it are refused.
+   */
+  customerTypeId: string | null;
+  customerTypeName: string | null;
+  /** NPWP and the contact person — shown by the form for a company only. */
+  taxId: string | null;
+  picName: string | null;
+  /** What the shop needs to remember. Read at the till and on a booking card. */
+  notes: string | null;
+  /**
+   * ⚠️ ABSENT ON A CUSTOMER WRITTEN BEFORE THE FIELD — the API reads with
+   * `.lean()`, which skips the schema defaults behind it, exactly as `location`
+   * below is absent for its own reason. Never read a flag off this directly;
+   * `customerNotifications()` resolves it against the model's defaults.
+   */
+  notifications?: CustomerNotifications;
   /**
    * The address's coordinates (17 September 2026) — what a service priced by
    * Zona is quoted from, measured to the transaction's branch. `{lat: null,
@@ -1421,6 +1484,17 @@ export interface Customer {
    */
   location?: GeoLocation;
   vipTier: VipTier | null;
+  /**
+   * Whether this customer appears in another module's picker (POS, booking,
+   * the sales invoice form) — orthogonal to `deletedAt`, the same pair
+   * `Branch.isActive` is (2 October 2026).
+   *
+   * ⚠️ ABSENT ON A CUSTOMER WRITTEN BEFORE THE FIELD EXISTED, same reason as
+   * `notifications` above. Never compare this directly — `isCustomerActive()`
+   * in `CustomerVipBadge.tsx` is the one place that resolves it, and absent
+   * reads as active.
+   */
+  isActive?: boolean;
   /** Soft-delete marker; non-null means deleted (restorable), null means live. */
   deletedAt: string | null;
   createdAt: string;
@@ -1432,10 +1506,96 @@ export interface CustomerListQuery {
   page?: number;
   limit?: number;
   vipTier?: VipTier;
+  /** The toolbar's Kategori and Jenis — narrowed on the server, never here. */
+  customerTypeId?: string;
+  kind?: CustomerKind;
   /** Free-text over name / email / phone. */
   search?: string;
   /** Include soft-deleted customers (default false on the backend). */
   includeDeleted?: boolean;
+  /**
+   * Omitted = don't filter ("Semua status"); `true`/`false` narrow to
+   * active-only or inactive-only. Every cross-module picker sends `true`.
+   */
+  isActive?: boolean;
+  /**
+   * ISO datetime. Only ever arrives via the Ringkasan tab's "Pelanggan baru"
+   * card — its "Lihat semua" carries the exact cutoff the card was measured
+   * from (2 October 2026). No toolbar control sets this; there is no
+   * "registered since" filter of the register's own.
+   */
+  createdSince?: string;
+}
+
+/**
+ * What GET /api/customers/stats answers — the numbers on the Pelanggan header's
+ * tiles (27 September 2026).
+ *
+ * THE WINDOW COMES BACK WITH THE ANSWER. Both figures are measured over a number
+ * of days the caller may change, so a tile that drew "30 hari terakhir" from a
+ * constant could caption a 60-day figure. It says which window it used.
+ */
+export interface CustomerStats {
+  /** Live customers on the books, ignoring whatever the list is filtered by. */
+  total: number;
+  /**
+   * Arrivals in the window, and in the window of the same length before it —
+   * what the Ringkasan tab's "vs periode lalu" is measured against.
+   */
+  newCustomers: { days: number; count: number; previousCount: number };
+  /**
+   * What the register did inside the window: who bought, how much of it came
+   * back, and what they spent.
+   *
+   * THE SHARES ARE NULL ON AN EMPTY REGISTER, and `averageSpend` is null when
+   * nobody bought anything — 0 of 0 is a question with no answer, not 0% and not
+   * Rp 0.
+   *
+   * `revenue` and `averageSpend` are decimal STRINGS, like every other amount
+   * from this API: they never pass through a float, and the average is divided
+   * on the server so it cannot disagree with the two figures it came from.
+   */
+  activeCustomers: {
+    days: number;
+    count: number;
+    share: number | null;
+    revenue: string;
+    averageSpend: string | null;
+    /** Customers with a second settled sale inside the window. */
+    repeatCount: number;
+    /** Those as a share of the whole register, not of the active customers. */
+    repeatShare: number | null;
+  };
+}
+
+/** One row of GET /api/customers/dormant — a customer worth ringing. */
+export interface DormantCustomer {
+  _id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  vipTier: VipTier | null;
+  createdAt: string;
+  /** Their last settled sale. ABSENT when they have never bought anything. */
+  lastVisitAt?: string | null;
+  /**
+   * Counted by the server, from the clock that set the cutoff — measured from
+   * the last visit, or from the day they were registered when there is none.
+   */
+  daysSinceLastVisit: number;
+}
+
+/**
+ * What GET /api/customers/dormant answers, window included.
+ *
+ * `pagination` JOINED `days`/`items` (2 October 2026) — the Ringkasan panel
+ * still asks for its own capped page and ignores the field; the "Lihat
+ * semua" page is the caller that reads it.
+ */
+export interface DormantCustomerList {
+  days: number;
+  items: DormantCustomer[];
+  pagination: PageResult<never>["pagination"];
 }
 
 /**
@@ -1450,6 +1610,15 @@ export interface CreateCustomerInput {
   address?: string | null;
   location?: GeoLocationInput | null;
   vipTier?: VipTier | null;
+  kind?: CustomerKind;
+  customerTypeId?: string | null;
+  taxId?: string | null;
+  picName?: string | null;
+  notes?: string | null;
+  /** Partial: a form that flips one switch may send one key. */
+  notifications?: Partial<CustomerNotifications>;
+  /** Defaults to `true` on the server when omitted. */
+  isActive?: boolean;
 }
 
 /**
@@ -1464,6 +1633,13 @@ export interface UpdateCustomerInput {
   address?: string | null;
   location?: GeoLocationInput | null;
   vipTier?: VipTier | null;
+  kind?: CustomerKind;
+  customerTypeId?: string | null;
+  taxId?: string | null;
+  picName?: string | null;
+  notes?: string | null;
+  notifications?: Partial<CustomerNotifications>;
+  isActive?: boolean;
 }
 
 /* ------------------------------------------------------------------- POS */
@@ -1537,7 +1713,13 @@ export interface PosXReport {
 }
 
 /** What a cart line is. A service consumes no stock and posts no HPP. */
-export type PosItemKind = "product" | "service";
+/**
+ * `membership` JOINED THE LIST ON 29 SEPTEMBER 2026 — a package sold as a line
+ * of its own. It holds no stock, earns no groomer commission, has its own
+ * revenue account, and is the only line whose completion CREATES something the
+ * customer keeps: a card, minted when the sale is paid.
+ */
+export type PosItemKind = "product" | "service" | "membership";
 
 /** How a discount was expressed. Both are stored — see PosDiscount. */
 export type PosDiscountMode = "percent" | "amount";
@@ -1556,6 +1738,25 @@ export interface PosDiscount {
   value: string;
   resolvedAmount: string;
   approvedBy: string | null;
+  /**
+   * WHERE THIS DISCOUNT CAME FROM (29 September 2026).
+   *
+   *   manual     — somebody typed it.
+   *   membership — a benefit on the animal's card was applied. The amount was
+   *                priced by the server from the card's frozen plan; the cashier
+   *                chose only WHETHER to apply it.
+   *
+   * A `membership` discount is NOT EDITABLE on the line and does not consume the
+   * cashier's approval ceiling: it is not their discretion, it is an entitlement
+   * the customer already bought. To change it, remove it and re-apply.
+   *
+   * Optional only because older fixtures lack it; absent means `manual`.
+   */
+  source?: "manual" | "membership";
+  membershipId?: string | null;
+  benefitId?: string | null;
+  /** Frozen onto the line so a reprinted receipt can name it without a lookup. */
+  benefitLabel?: string | null;
 }
 
 /** One line in the basket. `name` and `unitPrice` are snapshots. */
@@ -1566,6 +1767,16 @@ export interface PosItem {
   sku: string | null;
   qty: string;
   unitPrice: string;
+  /**
+   * WHAT THE CATALOGUE SAID, when the cashier typed something else
+   * (28 September 2026). Null on every ordinary line, which is nearly all of
+   * them — its presence IS the flag that this line was re-priced.
+   *
+   * It cannot be looked up later: a shelf price moves, so the figure has to be
+   * frozen at the moment of sale for the question "sold below list?" to stay
+   * answerable. Optional only because older fixtures lack it.
+   */
+  listPrice?: string | null;
   /**
    * `qty × unitPrice`, GROSS — before this line's own discount.
    *
@@ -1582,6 +1793,14 @@ export interface PosItem {
    * Optional only because older fixtures lack it.
    */
   bookingDiscount?: string | null;
+  /**
+   * HOW MUCH OF `discount` A MEMBERSHIP BENEFIT PAID FOR — a PART of it, never
+   * beside it, exactly like `bookingDiscount` above (29 September 2026). A line
+   * may carry a benefit AND a discount the cashier typed on top of it.
+   */
+  membershipDiscount?: string | null;
+  /** The card this line minted, once the sale is paid. Membership lines only. */
+  membershipId?: string | null;
   hppAtTime: string | null;
   /**
    * THE BOOKING BEHIND THIS LINE — and since one booking is one animal and one
@@ -1846,6 +2065,16 @@ export interface PosCatalogAddon {
 
 export interface PosCatalogItem {
   kind: PosItemKind;
+  /**
+   * ON A MEMBERSHIP TILE ONLY (29 September 2026) — how long the package runs,
+   * and how many benefits come with it.
+   *
+   * The two questions a cashier is asked at the counter: "berapa lama?" and
+   * "dapat apa saja?". A tile that could answer neither would send them to
+   * another screen in the middle of a sale.
+   */
+  durationDays?: number | null;
+  benefitCount?: number;
   _id: string;
   name: string;
   code: string | null;
@@ -2056,6 +2285,13 @@ export interface PosReceiptItem {
   unitPrice: string;
   lineTotal: string;
   discount: { resolvedAmount: string } | null;
+  /**
+   * THE CARD'S SHARE OF `discount` (1 October 2026) — null on a line no
+   * membership benefit paid for. What lets the totals below tell "Diskon
+   * item" (cashier-typed) apart from "Diskon membership" (a card's giveaway),
+   * the way the till's own basket does.
+   */
+  membershipDiscount?: string | null;
   /** FR-8's sub-line, denormalised at sale time so a reprint survives a rename. */
   petName: string | null;
   groomerName: string | null;
@@ -2295,11 +2531,37 @@ export interface PosItemInput {
   kind: PosItemKind;
   refId: string;
   qty?: string;
+  /**
+   * A PRICE TYPED OVER THE CATALOGUE'S (28 September 2026). Refused with 403
+   * unless the cashier holds `posTransactions:setPrice`.
+   *
+   * ⚠️ SEND IT ON EVERY WRITE once a line carries one, exactly as
+   * `variantChoices` is sent: the server rebuilds each line from this payload,
+   * so an override left out of the next write — changing the quantity of some
+   * other line — silently reverts that line to the shelf price.
+   *
+   * Omitted means "whatever the catalogue says", which is nearly every line.
+   */
+  unitPrice?: string;
   discount?: {
     mode: PosDiscountMode;
     value: string;
     approvedBy?: string;
   } | null;
+  /**
+   * WHICH CARD, AND WHICH BENEFIT ON IT (29 September 2026) — and NOTHING about
+   * what it is worth.
+   *
+   * The server reads the card, its frozen plan and the ledger, and prices the
+   * benefit itself. SENT BACK ON EVERY WRITE like `variantChoices` and
+   * `unitPrice`: the server rebuilds each line from this payload, so a benefit
+   * left out of the next write silently drops off that line.
+   */
+  benefit?: { membershipId: string; benefitId: string } | null;
+  /** On a `membership` line: when cover starts. Default is the day it is paid. */
+  membershipStartDate?: string;
+  /** On a `membership` line: the card this one renews. */
+  renewFromId?: string;
   bookingId?: string | null;
   petId?: string | null;
   petName?: string | null;
@@ -2561,6 +2823,19 @@ export interface Booking {
    * `tripAddress` is the customer's end; the other end is the branch.
    * Optional only because older fixtures lack them.
    */
+  /**
+   * A MEMBERSHIP BENEFIT THIS BOOKING MEANS TO USE (30 September 2026).
+   *
+   * A PLAN, NOT A SPEND — nothing is deducted here. The quota moves when the
+   * booking is BILLED, and the till re-reads the card at that moment: a booking
+   * is a promise, and one that ate a customer's weekly free bath and was then
+   * cancelled would have taken something from somebody who received nothing.
+   *
+   * NO LABEL COMES BACK, deliberately: a stored one would be either forgeable
+   * client text or a card read per booking to decorate a board. The till names
+   * the benefit where the name changes what somebody does.
+   */
+  plannedBenefit?: { membershipId: string; benefitId: string } | null;
   tripLeg?: TripLeg | null;
   /**
    * EVERY ANIMAL IN THE VAN (23 September 2026) — all of them, not "the others".
@@ -3943,6 +4218,17 @@ export interface ServiceListQuery {
   categoryId?: string;
   /** "Every addon" — the addon picker's list. */
   serviceType?: ServiceType;
+  /**
+   * WHICH KELOMPOK LAYANAN — grooming / hotel / pickup-delivery
+   * (29 September 2026).
+   *
+   * Matches a MAIN service's own `serviceKind` and an ADD-ON's `serviceKinds`
+   * list alike, and an add-on that declares no kinds matches every value —
+   * "offered with everything" is what an empty list means there. Added for the
+   * membership benefit form's cascading picker, where choosing a kelompok
+   * narrows the services offered below it.
+   */
+  serviceKind?: string;
   /** Only services offered at that branch, `allBranches` ones included. */
   branchId?: string;
   isActive?: boolean;
@@ -4084,16 +4370,18 @@ export interface PetOption {
   _id: string;
   tenantId: string;
   type: PetOptionType;
+  /**
+   * LEGACY, AND ONLY EVER READ (25 September 2026). The field is gone from the
+   * schema; documents written before that day still carry it, so `.lean()`
+   * hands it back and `usePetOptions().label` tries it as a fallback. Nothing
+   * sends it and nothing new has one.
+   */
+  code?: string;
   label: string;
   /**
    * WHICH ANIMAL A BREED IS FOR (18 September 2026) — a `species` option's
-   * `_id`, an id rather than a code since 25 September 2026. Only a breed
-   * carries one; null means the shop has not said, and the breed is then
-   * offered for every animal.
-   *
-   * THE SAME CURRENCY THE PICKERS DEAL IN, which is the point of the change:
-   * `usePetPickers` compares it against the selected species' id directly,
-   * where it used to translate that id back to a code first.
+   * `_id` (a code until 25 September 2026). Only a breed carries one; null
+   * means the shop has not said, and the breed is offered for every animal.
    */
   speciesId?: string | null;
   /** Position within its list, ascending — sizes go smallest first. */
@@ -4120,28 +4408,31 @@ export interface PetOptionListQuery {
   type?: PetOptionType;
   /** Omit for both states. */
   isActive?: boolean;
-  /** Free text over label and code. */
+  /** Free text over the label. */
   search?: string;
   includeDeleted?: boolean;
 }
 
 /**
- * Body of POST /api/pet-options. `code` is optional — the server derives one
- * from the label — and `sortOrder` defaults to the end of the list.
+ * Body of POST /api/pet-options. `sortOrder` defaults to the end of the list.
+ *
+ * NO `code`: the server stopped deriving one on 25 September 2026, and the Joi
+ * schema strips anything it does not name — which is how `speciesCode` went on
+ * being sent and silently dropped for two days.
  */
 export interface CreatePetOptionInput {
   type: PetOptionType;
   label: string;
   /** Only on a `breed` — see `PetOption.speciesId`. */
   speciesId?: string | null;
-  code?: string;
   sortOrder?: number;
   isActive?: boolean;
 }
 
 /**
- * Body of PATCH /api/pet-options/:id. No `code` and no `type`: other documents
- * store the code, so it is fixed for life.
+ * Body of PATCH /api/pet-options/:id. No `type`: which list an option belongs
+ * to is settled when it is created. The label IS freely editable — every
+ * document that names an option holds its `_id`, so renaming rewrites nothing.
  */
 export interface UpdatePetOptionInput {
   label?: string;
@@ -5038,6 +5329,54 @@ export interface SupplierOutstandingRow {
   dueSoonOutstanding: string;
 }
 
+/**
+ * GET /api/purchase-invoices/summary — the three cards over the Pembelian ›
+ * Ringkasan tab.
+ *
+ * TWO HALVES THAT ANSWER DIFFERENT QUESTIONS, the same split the sales summary
+ * makes on the other side of the ledger:
+ *
+ *   `outstanding`, `overdue`, `dueSoon` — BALANCES. What is owed today, narrowed
+ *   only by the cabang scope. A bill raised in July is still owed while a screen
+ *   shows September, so a period must not touch these.
+ *
+ *   `paid` — A FLOW. What actually left inside the period, counted by
+ *   `payments.at` (the day the money moved) rather than by when it was typed in.
+ *
+ * `period` IS THE RANGE THE SERVER RESOLVED, in the tenant's timezone, and null
+ * when no dates were asked for. Caption from `fromDate` / `toDate`, never by
+ * formatting the instants in the browser.
+ *
+ * NOTE THE DATES MEAN SOMETHING ELSE HERE than on the invoice list: there they
+ * bound `invoiceDate` (when the vendor issued the bill), here they bound the
+ * payments.
+ */
+export interface PayablesSummary {
+  asOf: string;
+  period: {
+    from: string | null;
+    to: string | null;
+    fromDate: string | null;
+    toDate: string | null;
+  } | null;
+  outstanding: {
+    amount: string;
+    invoiceCount: number;
+    /** How many vendors are still owed anything — the aggregation's row count. */
+    supplierCount: number;
+  };
+  overdue: { amount: string; invoiceCount: number };
+  dueSoon: { amount: string; invoiceCount: number; horizonDays: number };
+  paid: {
+    amount: string;
+    paymentCount: number;
+    /** Distinct bills that received one — three instalments on one bill is one. */
+    invoiceCount: number;
+  };
+  /** Bills RAISED in the period, by invoice date — value, not payments. */
+  invoiced: { amount: string; invoiceCount: number };
+}
+
 export interface SupplierOutstandingSummary {
   items: SupplierOutstandingRow[];
   totalOutstanding: string;
@@ -5139,9 +5478,16 @@ export type PurchaseType = "beli_putus" | "konsinyasi";
  * cannot disagree with the two it came from. The list projects the lines away,
  * so `itemCount` stands in for them.
  */
+/**
+ * `pending` — filed, goods not confirmed on the shelf, nothing posted.
+ * `received` — confirmed; stock, lots and the ledger are posted.
+ */
+export type GoodsReceiptStatus = "pending" | "received";
+
 export interface GoodsReceiptListRow {
   _id: string;
   receiptNumber: string;
+  status: GoodsReceiptStatus;
   supplierId: string;
   supplierName: string | null;
   warehouseId: string;
@@ -5202,6 +5548,7 @@ export type GoodsReceiptSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
  * an absent one: somebody eventually builds a toggle for it.
  */
 export interface GoodsReceiptListQuery {
+  status?: GoodsReceiptStatus;
   page?: number;
   limit?: number;
   /** Free-text over receipt number / notes. */
@@ -5299,6 +5646,9 @@ export interface GoodsReceiptDetailItem {
 export interface GoodsReceiptDetail {
   _id: string;
   receiptNumber: string;
+  status: GoodsReceiptStatus;
+  /** When the goods were confirmed on the shelf; null while pending. */
+  receivedAt: string | null;
   supplierId: string;
   supplierName: string | null;
   warehouseId: string;
@@ -5381,34 +5731,28 @@ export interface CreateGoodsReceiptInput {
   /** FORBIDDEN on `konsinyasi` — nothing was bought, so there is no input VAT. */
   taxAmount?: string;
   notes?: string;
-  /**
-   * THE SUPPLIER'S BILL, when it came with the goods.
-   *
-   * OPTIONAL, and the two real cases are why: the faktur is in the clerk's hand
-   * while they unload — the ordinary one, and the one this turns into a single
-   * save — or the van brings only a surat jalan and the bill follows days later.
-   * Absent, the delivery posts exactly as it always did and the bill is filed
-   * afterwards through POST /purchase-invoices.
-   *
-   * ABSENT IS NOT "NO DEBT". A `beli_putus` receipt credits `2101 Utang
-   * Supplier` when it posts, invoice or no invoice; what this adds is the
-   * vendor's paperwork on top of the payable — their number, and a due date.
-   *
-   * FORBIDDEN on `konsinyasi`, refused rather than ignored — nothing has been
-   * bought, so there is no debt for a bill to document.
-   *
-   * THE AMOUNTS ARE NOT HERE. `subtotal` and `taxAmount` must equal the
-   * receipt's to the minor unit, so the server takes them from the delivery
-   * itself; what is left is what a person can only read off the vendor's paper.
-   */
+  items: CreateGoodsReceiptItemInput[];
+}
+
+/**
+ * What receiving a pending delivery adds — `POST /goods-receipts/:id/receive`.
+ * The lines are not sent: what is received is exactly what was filed.
+ *
+ * THE SUPPLIER'S BILL MOVED HERE from the create body: a bill is filed against
+ * goods that have arrived. Optional — the faktur may follow days later through
+ * POST /purchase-invoices. Absent is not "no debt": a `beli_putus` receipt
+ * credits Utang Usaha when it posts either way. Forbidden on `konsinyasi`.
+ */
+export interface ReceiveGoodsReceiptInput {
+  /** ISO. When the goods were confirmed on the shelf; defaults to now. */
+  receivedAt?: string;
   invoice?: {
     /** The VENDOR'S own number, from their document. Unique per vendor. */
     invoiceNumber: string;
-    /** Defaults to `receiptDate`. What the payment terms are counted from. */
+    /** Defaults to `receivedAt`. What the payment terms are counted from. */
     invoiceDate?: string;
     notes?: string;
   };
-  items: CreateGoodsReceiptItemInput[];
 }
 
 /**
@@ -6530,7 +6874,18 @@ export interface InvoiceJournalEntry {
 }
 
 /** What an invoice line sells. */
-export type InvoiceItemKind = "product" | "service";
+/**
+ * `membership` JOINED THE LIST ON 29 SEPTEMBER 2026 — a package billed as a line
+ * of its own. It holds no stock, has its own accounts (credited to the unearned
+ * liability until the bill is paid), and mints a CARD when the money arrives.
+ *
+ * IT CANNOT BE ADDED OR RE-PRICED IN THE INVOICE EDITOR, and does not need to
+ * be: the editor only offers products and services in its picker, and a KEPT
+ * line is sent back by `fromIndex` for the server to re-read rather than
+ * re-priced in the browser. Widening this type is what stops it claiming the
+ * server can only ever send two kinds.
+ */
+export type InvoiceItemKind = "product" | "service" | "membership";
 
 /** How a discount was typed. `amount` is a rupiah figure, not a percentage. */
 export type InvoiceDiscountMode = "percent" | "amount";
@@ -6560,6 +6915,16 @@ export interface InvoiceDiscount {
   mode: InvoiceDiscountMode;
   value: string;
   resolvedAmount: string;
+  /**
+   * WHERE IT CAME FROM (29 September 2026). `membership` means a benefit on the
+   * animal's card paid for part or all of it — priced by the server from the
+   * card's frozen plan, not typed by anybody.
+   */
+  source?: "manual" | "membership";
+  membershipId?: string | null;
+  benefitId?: string | null;
+  /** Frozen onto the line so a reprinted bill can name it without a lookup. */
+  benefitLabel?: string | null;
 }
 
 /** One line of an invoice, as stored. Prices are snapshots. */
@@ -6571,6 +6936,17 @@ export interface CustomerInvoiceItem {
   qty: string;
   unitPrice: string;
   discount: InvoiceDiscount | null;
+  /**
+   * HOW MUCH OF `discount` A MEMBERSHIP BENEFIT PAID FOR (29 September 2026) —
+   * a PART of it, never beside it, exactly like the booking share.
+   *
+   * A line may carry a benefit AND a discount somebody typed on top of it, so
+   * reading `discount.resolvedAmount` as "what the card gave" would overstate
+   * the programme's cost every time both are present.
+   */
+  membershipDiscount?: string | null;
+  /** The card this line minted, once the bill was paid. Membership lines only. */
+  membershipId?: string | null;
   /** `qty × unitPrice`, BEFORE this line's own discount. */
   lineTotal: string;
   /** The cost the consumed lots carried. Null on a service. */
@@ -6737,6 +7113,15 @@ export interface CreateInvoiceItemInput {
   qty: string;
   discount?: TypedDiscountInput | null;
   /**
+   * WHICH CARD AND WHICH BENEFIT (30 September 2026) — never what it is worth.
+   *
+   * The server reads the card, its frozen plan and the redemption ledger and
+   * prices the benefit itself. A payload that could name its own benefit amount
+   * could write a free invoice, so the amount is deliberately absent from this
+   * shape; what the form quoted only ever drove its own preview.
+   */
+  benefit?: { membershipId: string; benefitId: string } | null;
+  /**
    * WHOSE ANIMAL, on a service line — PCR-035, and the prerequisite for the rest
    * of it. A booking needs a pet, and a grooming typed straight onto an invoice
    * has none, so without this the service is billed and appears on no day sheet.
@@ -6885,6 +7270,62 @@ export interface CustomerInvoiceListSummary {
   collected: CustomerInvoiceSummaryFigure;
   outstanding: CustomerInvoiceSummaryFigure;
   overdue: CustomerInvoiceSummaryFigure;
+}
+
+/**
+ * The axes `GET /api/customer-invoices/summary/breakdown/:axis` can split a
+ * period's omzet by — the Ringkasan tab's three panels.
+ *
+ *   category     — the catalogue category on the product or service each invoice
+ *                  LINE sold (`products.categoryId` / `services.categoryId`).
+ *   businessLine — the lini usaha on those same rows (`businessLineId`).
+ *   customerType — the Kategori pelanggan on the customer the INVOICE was raised
+ *                  for (`customers.customerTypeId`).
+ */
+export type RevenueBreakdownAxis =
+  | "category"
+  | "businessLine"
+  | "customerType";
+
+/**
+ * GET /api/customer-invoices/summary/breakdown/:axis — where the period's omzet
+ * came from. The Ringkasan tab's bars.
+ *
+ * TAKES THE LIST'S OWN FILTER, exactly as `/summary` does, so every panel and
+ * the Omzet card above them answer one question. `period` is echoed back for the
+ * same reason it is there.
+ *
+ * `basis` IS WHAT THE BARS ADD UP TO, and it is not the same for every axis:
+ *
+ *   "invoice" — `total` sums exactly to the Omzet card. Only `customerType`,
+ *               because a customer's category belongs to the whole document.
+ *   "line"    — the invoice LINES after their own discounts, which is SHORT of
+ *               the omzet: an invoice-level discount, the other charges (ongkir,
+ *               packaging) and the tax belong to no single catalogue row and are
+ *               deliberately not split across them.
+ *
+ * A GROUP WITH `id: null` IS THE UNNAMED BUCKET — a service with no category, a
+ * customer with no type, or a master row hard-deleted since. `name` is null when
+ * the record itself could not be read; both are the screen's to label, because
+ * inventing a name here would make them the same thing.
+ */
+export interface RevenueBreakdown {
+  asOf: string;
+  period: CustomerInvoiceListSummary["period"];
+  axis: RevenueBreakdownAxis;
+  basis: "invoice" | "line";
+  /** Σ of every group's amount, as a decimal string. */
+  total: string;
+  /** Largest first — the order the bars are drawn in, decided by the server. */
+  groups: Array<{
+    id: string | null;
+    name: string | null;
+    amount: string;
+    /** Null on the `customerType` axis, which counts documents instead. */
+    lineCount: number | null;
+    /** Null on the two line axes, which count lines. */
+    invoiceCount: number | null;
+  }>;
 }
 
 /**

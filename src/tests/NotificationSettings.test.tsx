@@ -134,6 +134,6 @@ describe("SupplierTypesScreen", () => {
 
     expect(
       screen.getByRole("link", { name: /Kategori Supplier/ }),
-    ).toHaveAttribute("href", "/dashboard/purchasing/supplier-categories");
+    ).toHaveAttribute("href", "/dashboard/pengaturan/kategori-supplier");
   });
 });

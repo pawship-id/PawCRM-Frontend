@@ -109,7 +109,9 @@ export function PetOwnerField({
     let active = true;
 
     customerService
-      .list({ limit: FETCH_LIMIT })
+      // isActive: an owner switched off should not be offerable when filing a
+      // pet under them (2 October 2026).
+      .list({ limit: FETCH_LIMIT, isActive: true })
       .then((result) => {
         if (!active) return;
         setOptions(

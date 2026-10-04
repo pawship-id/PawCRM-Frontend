@@ -36,15 +36,34 @@ import {
  * options the way the screen builds it from `usePetOptions()`.
  */
 
+/*
+  THE `_id` IS FORCED TO THE OLD CODE IN THIS SUITE, and only here.
+
+  `sizeNominal` is keyed by the option's `_id` (25 September 2026), so every
+  literal below would otherwise have to read `{ "opt-size-medium": 40000 }` —
+  which says nothing about which size is priced. Naming the ids "small" /
+  "medium" / "large" keeps the fixtures readable while still exercising the
+  real path: `commissionSizes` reads `_id`, not `code`.
+*/
+const asId = <T extends { code?: string }>(option: T) => ({
+  ...option,
+  _id: option.code as string,
+});
+
 /** Kecil, Sedang, Besar — what every tenant is seeded with, in order. */
-const SEEDED_SIZES = PET_OPTION_FIXTURES.filter((option) => option.type === "size");
+const SEEDED_SIZES = PET_OPTION_FIXTURES.filter(
+  (option) => option.type === "size",
+).map(asId);
 
 /** A size a shop added itself, after the seeded three. */
-const XL = makePetOption({
-  type: "size",
-  label: "Ekstra besar",
-  sortOrder: 3,
-});
+const XL = asId(
+  makePetOption({
+    type: "size",
+    code: "xl",
+    label: "Ekstra besar",
+    sortOrder: 3,
+  }),
+);
 
 const SIZES = commissionSizes(SEEDED_SIZES, {});
 const SIZES_WITH_XL = commissionSizes([...SEEDED_SIZES, XL], {});
@@ -180,10 +199,10 @@ describe("withGroomingDefaults", () => {
 describe("commissionSizes", () => {
   it("draws every active size in the tenant's order, a size the shop added included", () => {
     expect(SIZES_WITH_XL).toEqual([
-      { code: SIZE_ID.small, label: "Kecil", retired: false },
-      { code: SIZE_ID.medium, label: "Sedang", retired: false },
-      { code: SIZE_ID.large, label: "Besar", retired: false },
-      { code: SIZE_ID.xl, label: "Ekstra besar", retired: false },
+      { id: "small", label: "Kecil", retired: false },
+      { id: "medium", label: "Sedang", retired: false },
+      { id: "large", label: "Besar", retired: false },
+      { id: "xl", label: "Ekstra besar", retired: false },
     ]);
   });
 
@@ -193,13 +212,14 @@ describe("commissionSizes", () => {
     );
 
     expect(commissionSizes(options, PRICED)).toContainEqual({
-      code: SIZE_ID.large,
+      id: "large",
       label: "Besar",
       retired: true,
     });
-    expect(
-      commissionSizes(options, { [SIZE_ID.small]: 30000 }).map((size) => size.code),
-    ).toEqual([SIZE_ID.small, SIZE_ID.medium]);
+    expect(commissionSizes(options, { small: 30000 }).map((size) => size.id)).toEqual([
+      "small",
+      "medium",
+    ]);
   });
 });
 
@@ -255,11 +275,7 @@ describe("exampleCommission", () => {
     });
 
     const result = exampleCommission(perSize, SIZES);
-    expect(result.size).toEqual({
-      code: SIZE_ID.medium,
-      label: "Sedang",
-      retired: false,
-    });
+    expect(result.size).toEqual({ id: "medium", label: "Sedang", retired: false });
     expect(result.service).toEqual({ amount: 45_000, basis: "nominal Sedang" });
 
     // Adding a size at the end does not change the example's animal.

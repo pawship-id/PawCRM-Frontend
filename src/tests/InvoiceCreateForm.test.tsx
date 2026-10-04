@@ -23,6 +23,7 @@ import { petService } from "@/services/pet.service";
 import { ApiError } from "@/services/api-error";
 import { variantOptionService } from "@/services/variantOption.service";
 import { zoneService } from "@/services/zone.service";
+import { membershipService } from "@/services/membership.service";
 
 import {
   BUILT_IN_VARIANT_OPTIONS,
@@ -1499,7 +1500,7 @@ describe("what the form sends", () => {
     await submit();
 
     await waitFor(() =>
-      expect(push).toHaveBeenCalledWith("/dashboard/sales/inv1"),
+      expect(push).toHaveBeenCalledWith("/dashboard/sales/invoice/inv1"),
     );
   });
 
@@ -2751,5 +2752,405 @@ describe("an antar-jemput line", () => {
 
     await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
     expect(sent().items[0].linkedBookingIds).toEqual(["bk1"]);
+  });
+});
+
+/**
+ * ─── BENEFIT MEMBERSHIP, AS ITS OWN SECTION (1 October 2026, on request) ────
+ *
+ * Applying and removing a benefit moved off the row and into one section under
+ * Diskon faktur — the same move `PosBenefitSection` made at the till, for the
+ * same reason: a per-row offer could only show what happened to match a row
+ * already typed, which answered nothing for the other benefits a customer held.
+ */
+describe("Benefit membership on a faktur", () => {
+  async function fillService() {
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await addItem(/Grooming/, "Jasa");
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+  }
+
+  const benefit = (over: Record<string, unknown> = {}) => ({
+    id: "ben-1",
+    label: "Gratis Grooming Lengkap",
+    kind: "free_item",
+    scope: {
+      target: "service",
+      serviceIds: [],
+      productIds: [],
+      categoryIds: [],
+      serviceKinds: [],
+    },
+    quota: { total: null, perPeriod: null, period: null },
+    maxPerTransaction: 1,
+    usedTotal: 0,
+    usedThisPeriod: 0,
+    remainingTotal: null,
+    remainingThisPeriod: null,
+    nextAvailableAt: null,
+    periodLabel: null,
+    available: true,
+    reason: null,
+    ...over,
+  });
+
+  /*
+    ECHOES BACK WHATEVER `ref` THE FORM SENT, rather than a fixed one: a row's
+    key is the component's own bookkeeping, generated internally, and a static
+    fixture could never guess it. This is what lets "Pakai" land on the real
+    row the form is holding.
+  */
+  function primeBenefitQuote(benefits: unknown[]) {
+    jest.spyOn(membershipService, "quote").mockImplementation(
+      (async (input: { lines: Array<{ ref: string | null; petId: string | null }> }) => ({
+        cards: [
+          {
+            id: "mem-1",
+            number: "MBR-0007",
+            petId: "pet1",
+            planName: "Paket VIP",
+            status: "active",
+            benefits,
+          },
+        ],
+        lines: input.lines.map((line) => ({
+          ref: line.ref,
+          petId: line.petId,
+          candidates: [
+            {
+              membershipId: "mem-1",
+              membershipNumber: "MBR-0007",
+              planName: "Paket VIP",
+              benefitId: "ben-1",
+              benefitLabel: "Gratis Grooming Lengkap",
+              kind: "free_item",
+              discount: "150000.0000",
+            },
+          ],
+          recommended: null,
+        })),
+      })) as never,
+    );
+  }
+
+  beforeEach(() => {
+    primeBenefitQuote([benefit()]);
+  });
+
+  it("lists the benefit once a matching service line is typed", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+
+    expect(
+      await screen.findByRole("heading", { name: "Benefit membership" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Gratis Grooming Lengkap")).toBeInTheDocument();
+  });
+
+  it("applies it to the line from the section, not from the row", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Pakai" }),
+    );
+
+    /* The row gets the mark (the chip); the section gets "Lepas". Both carry
+       the same text — the heading above the list says it too. */
+    expect(
+      screen.getByRole("button", { name: "Lepas" }),
+    ).toBeInTheDocument();
+    expect(await screen.findAllByText("Benefit membership")).toHaveLength(2);
+  });
+
+  it("takes it back off from the section, and the row's mark goes with it", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Pakai" }),
+    );
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Lepas" }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Pakai" }),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("sends only the membership and benefit ids, never the quoted amount", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Pakai" }),
+    );
+
+    await submit();
+
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
+    expect(sent().items[0].benefit).toEqual({
+      membershipId: "mem-1",
+      benefitId: "ben-1",
+    });
+  });
+
+  it("says why a spent benefit cannot be used, without hiding it", async () => {
+    primeBenefitQuote([benefit({ available: false, reason: "quota_exhausted" })]);
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+
+    expect(await screen.findByText("Jatah sudah habis")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pakai" })).toBeDisabled();
+  });
+
+  it("draws no section at all when the customer holds no card", async () => {
+    jest
+      .spyOn(membershipService, "quote")
+      .mockResolvedValue({ cards: [], lines: [] } as never);
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("heading", { name: "Benefit membership" }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  /*
+    ─── IN THE RECAP, APART FROM "DISKON BARIS" (1 October 2026, on request) ──
+
+    The same split the till and the saved invoice's own recap show: a card's
+    giveaway is not the same fact as a discount typed on a row, and folding the
+    two into one "Diskon baris" figure answered a different question than the
+    one it was labelled with.
+  */
+  it("keeps the applied benefit out of Diskon baris, in its own recap line", async () => {
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Pakai" }),
+    );
+
+    /* "Diskon baris" is always shown in this form (even at zero) — so the
+       assertion is on its FIGURE, not on whether the row exists at all. */
+    expect(
+      await screen.findByText("Diskon membership"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Diskon baris").parentElement?.textContent).toContain(
+      "Rp 0",
+    );
+    expect(
+      screen.getByText("Diskon membership").parentElement?.textContent,
+    ).toContain("Rp 150.000");
+  });
+});
+
+/**
+ * ─── NOTHING LEFT TO DISCOUNT (1 October 2026, on request, matching the till) ─
+ *
+ * Once a benefit or a typed discount has already taken a row — or the whole
+ * bill — to nought, the discount control for it goes dead: the server floors a
+ * discount at what is left anyway, so a live-looking control there invites a
+ * click that changes nothing.
+ */
+describe("discount controls once there is nothing left to cut", () => {
+  async function fillService() {
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await addItem(/Grooming/, "Jasa");
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+  }
+
+  function primeFullBenefit() {
+    jest.spyOn(membershipService, "quote").mockImplementation(
+      (async (input: { lines: Array<{ ref: string | null; petId: string | null }> }) => ({
+        cards: [
+          {
+            id: "mem-1",
+            number: "MBR-0007",
+            petId: "pet1",
+            planName: "Paket VIP",
+            status: "active",
+            benefits: [
+              {
+                id: "ben-1",
+                label: "Gratis Grooming Lengkap",
+                kind: "free_item",
+                scope: {
+                  target: "service",
+                  serviceIds: [],
+                  productIds: [],
+                  categoryIds: [],
+                  serviceKinds: [],
+                },
+                quota: { total: null, perPeriod: null, period: null },
+                maxPerTransaction: 1,
+                usedTotal: 0,
+                usedThisPeriod: 0,
+                remainingTotal: null,
+                remainingThisPeriod: null,
+                nextAvailableAt: null,
+                periodLabel: null,
+                available: true,
+                reason: null,
+              },
+            ],
+          },
+        ],
+        lines: input.lines.map((line) => ({
+          ref: line.ref,
+          petId: line.petId,
+          candidates: [
+            {
+              membershipId: "mem-1",
+              membershipNumber: "MBR-0007",
+              planName: "Paket VIP",
+              benefitId: "ben-1",
+              benefitLabel: "Gratis Grooming Lengkap",
+              kind: "free_item",
+              // The whole Rp 150.000 line, same as "Grooming"'s price.
+              discount: "150000.0000",
+            },
+          ],
+          recommended: null,
+        })),
+      })) as never,
+    );
+  }
+
+  it("dies on the row once a benefit takes it to nought", async () => {
+    primeFullBenefit();
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Pakai" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Jenis diskon Grooming")).toBeDisabled();
+      expect(screen.getByLabelText("Diskon Grooming")).toBeDisabled();
+    });
+  });
+
+  /*
+    THE EXCEPTION THAT MAKES THIS SAFE: a row at nought because SOMEBODY TYPED
+    100% must stay editable — otherwise a discount just entered could never be
+    taken back off.
+  */
+  it("stays alive when the row is at nought from its own typed discount", async () => {
+    jest
+      .spyOn(membershipService, "quote")
+      .mockResolvedValue({ cards: [], lines: [] } as never);
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+
+    await userEvent.type(screen.getByLabelText("Diskon Grooming"), "100");
+
+    expect(screen.getByLabelText("Diskon Grooming")).toBeEnabled();
+    expect(screen.getByLabelText("Jenis diskon Grooming")).toBeEnabled();
+  });
+
+  it("dies on Diskon faktur once the whole bill is already at nought", async () => {
+    primeFullBenefit();
+    render(<InvoiceCreateForm />);
+    await fillService();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Pakai" }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Jenis diskon faktur")).toBeDisabled();
+      expect(screen.getByLabelText("Diskon faktur")).toBeDisabled();
+    });
+  });
+
+  it("stays alive on Diskon faktur when it is itself what emptied the bill", async () => {
+    jest
+      .spyOn(membershipService, "quote")
+      .mockResolvedValue({ cards: [], lines: [] } as never);
+
+    render(<InvoiceCreateForm />);
+    await fillService();
+
+    await userEvent.type(screen.getByLabelText("Diskon faktur"), "100");
+
+    expect(screen.getByLabelText("Diskon faktur")).toBeEnabled();
+    expect(screen.getByLabelText("Jenis diskon faktur")).toBeEnabled();
+  });
+});
+
+/**
+ * "+ TAMBAH BIAYA LAIN" ABOVE BENEFIT MEMBERSHIP (1 October 2026, on request).
+ *
+ * It used to sit under the section — the thing that ADDS to the bill below the
+ * thing that TAKES OFF it, in the one place on the form read as "what's left
+ * after everything above".
+ */
+describe("where Biaya lain sits", () => {
+  it("comes before Benefit membership in the recap", async () => {
+    jest.spyOn(membershipService, "quote").mockResolvedValue({
+      cards: [
+        {
+          id: "mem-1",
+          number: "MBR-0007",
+          petId: "pet1",
+          planName: "Paket VIP",
+          status: "active",
+          benefits: [
+            {
+              id: "ben-1",
+              label: "Gratis Grooming Lengkap",
+              kind: "free_item",
+              scope: {
+                target: "service",
+                serviceIds: [],
+                productIds: [],
+                categoryIds: [],
+                serviceKinds: [],
+              },
+              quota: { total: null, perPeriod: null, period: null },
+              maxPerTransaction: 1,
+              usedTotal: 0,
+              usedThisPeriod: 0,
+              remainingTotal: null,
+              remainingThisPeriod: null,
+              nextAvailableAt: null,
+              periodLabel: null,
+              available: true,
+              reason: null,
+            },
+          ],
+        },
+      ],
+      lines: [],
+    } as never);
+
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await addItem(/Grooming/, "Jasa");
+    await pick(/^Hewan untuk Grooming$/i, /Miko/);
+
+    const addChargeButton = await screen.findByRole("button", {
+      name: "+ Tambah biaya lain",
+    });
+    const benefitHeading = await screen.findByRole("heading", {
+      name: "Benefit membership",
+    });
+
+    expect(
+      addChargeButton.compareDocumentPosition(benefitHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });

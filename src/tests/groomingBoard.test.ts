@@ -7,7 +7,6 @@ import {
   matchesFilters,
   matchesLens,
   periodRange,
-  pickGroomingLine,
   sortRows,
   summariseDay,
   summarisePeriod,
@@ -84,18 +83,6 @@ function booking(over: Partial<Booking> = {}): Booking {
     ...over,
   } as Booking;
 }
-
-describe("pickGroomingLine", () => {
-  it("prefers the line named exactly Grooming over one that only contains it", () => {
-    const lines = [
-      { _id: "a", name: "Grooming Keliling", color: "#000000" },
-      { _id: "b", name: " grooming ", color: "#000000" },
-    ];
-
-    expect(pickGroomingLine(lines)?._id).toBe("b");
-    expect(pickGroomingLine([{ _id: "c", name: "Hotel", color: "#000000" }])).toBeNull();
-  });
-});
 
 describe("isGroomingService", () => {
   it("falls back to the snapshotted line name when the id is not in the catalogue", () => {

@@ -55,7 +55,7 @@ export function useReturnableReceipts(): UseReturnableReceiptsResult {
     setError(null);
 
     goodsReceiptService
-      .list({ limit: OPTION_LIMIT })
+      .list({ limit: OPTION_LIMIT, status: "received" })
       .then((result) => {
         if (!active) return;
         setReceipts(result.items);

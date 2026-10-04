@@ -165,11 +165,10 @@ export function PetOptionsPanel({
             key={type}
             type={type}
             rows={rows}
-            /* A breed's animal, named from this same load — matched by `_id`. */
-            speciesLabel={(speciesId) =>
+            /* A breed's animal, named from this same load. */
+            speciesLabel={(id) =>
               options.find(
-                (option) =>
-                  option.type === "species" && option._id === speciesId,
+                (option) => option.type === "species" && option._id === id,
               )?.label ?? null
             }
             loading={loading}
@@ -204,16 +203,12 @@ export function PetOptionsPanel({
                 option.deletedAt === null &&
                 (option.isActive ||
                   option._id ===
-                    (dialog.mode === "rename"
-                      ? dialog.option.speciesId
-                      : null)),
+                    (dialog.mode === "rename" ? dialog.option.speciesId : null)),
             )
             .sort(byOrder)
             .map((option) => ({
               value: option._id,
-              label: option.isActive
-                ? option.label
-                : `${option.label} (nonaktif)`,
+              label: option.isActive ? option.label : `${option.label} (nonaktif)`,
             }))}
           option={dialog.mode === "rename" ? dialog.option : undefined}
           onClose={() => setDialog(null)}

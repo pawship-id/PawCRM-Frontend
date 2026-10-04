@@ -9,17 +9,6 @@ import type { PageResult, SupplierCategory } from "@/types/api";
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 
-/**
- * The module header — the title and the six-tab row — is reduced to the one
- * thing this screen puts INTO it: its headline figure, where it has one. The
- * tab row needs a router this suite has no reason to stand up, and the header's
- * own behaviour has its own suite (PurchasingModuleHeader.test.tsx).
- */
-jest.mock("@/features/purchasing/components/PurchasingModuleHeader", () => ({
-  PurchasingModuleHeader: ({ action }: { action?: React.ReactNode }) =>
-    action ?? null,
-}));
-
 // Mutations fire a SweetAlert2 toast on success; mock the library so no real
 // dialog is created during the test.
 jest.mock("sweetalert2", () => ({
@@ -120,7 +109,7 @@ describe("SupplierCategoriesScreen", () => {
 
     expect(screen.getByRole("link", { name: /kategori baru/i })).toHaveAttribute(
       "href",
-      "/dashboard/purchasing/supplier-categories/new",
+      "/dashboard/pengaturan/kategori-supplier/new",
     );
   });
 
@@ -234,7 +223,7 @@ describe("SupplierCategoriesScreen", () => {
 
     expect(within(menu).getByRole("menuitem", { name: /edit/i })).toHaveAttribute(
       "href",
-      "/dashboard/purchasing/supplier-categories/sc1",
+      "/dashboard/pengaturan/kategori-supplier/sc1",
     );
   });
 

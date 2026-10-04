@@ -56,15 +56,15 @@ const GROOMING: GroomingSettings = {
       mode: "size_nominal",
       percent: 0,
       /*
-        KEYED BY THE SIZE OPTION'S `_id` (25 September 2026). "Jumbo" is not one
-        of the tenant's options — a size since deleted, kept so the save can be
-        shown not to drop it.
+        KEYED BY THE OPTION'S `_id` (25 September 2026), which here is what
+        `makePetOption` derives from the seeded codes. "jumbo" is not one of
+        the tenant's options at all — a size since deleted.
       */
       sizeNominal: {
-        [petOptionId("size", "Kecil")]: 30000,
-        [petOptionId("size", "Sedang")]: 45000,
-        [petOptionId("size", "Besar")]: 60000,
-        [petOptionId("size", "Jumbo")]: 80000,
+        "opt-size-small": 30000,
+        "opt-size-medium": 45000,
+        "opt-size-large": 60000,
+        jumbo: 80000,
       },
     },
     addon: { enabled: false, mode: "percentage", percent: 0, fixed: 0 },
@@ -131,11 +131,11 @@ describe("GroomingSettingsScreen — nominal per size", () => {
       (tenantService.updateSettings as jest.Mock).mock.calls[0][0].grooming.commission
         .service.sizeNominal,
     ).toEqual({
-      [petOptionId("size", "Kecil")]: 30000,
-      [petOptionId("size", "Sedang")]: 45000,
-      [petOptionId("size", "Besar")]: 60000,
-      [petOptionId("size", "Jumbo")]: 80000,
-      [petOptionId("size", "Ekstra besar")]: 55000,
+      "opt-size-small": 30000,
+      "opt-size-medium": 45000,
+      "opt-size-large": 60000,
+      jumbo: 80000,
+      "opt-size-xl": 55000,
     });
   });
 

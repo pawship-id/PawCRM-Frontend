@@ -16,6 +16,7 @@ import {
 import { formatMoney } from "@/utils/decimal";
 import type { GoodsReceiptListRow } from "@/types/api";
 
+import { ReceiptStatusBadge } from "./ReceiptStatusBadge";
 import { SupplierTypeBadge } from "./SupplierTypeBadge";
 
 /** `2026-08-06T…` → `06 Agu 2026`. The only date format this module shows. */
@@ -83,6 +84,7 @@ export function ReceiptsTable({
             <TableHead>Cabang</TableHead>
             <TableHead>Gudang</TableHead>
             <TableHead>Jenis</TableHead>
+            <TableHead>Status</TableHead>
             <TableHead className="text-right">Item</TableHead>
             <TableHead className="text-right">Nilai</TableHead>
             <TableHead>Faktur</TableHead>
@@ -121,6 +123,10 @@ export function ReceiptsTable({
 
               <TableCell>
                 <SupplierTypeBadge type={receipt.purchaseType} />
+              </TableCell>
+
+              <TableCell>
+                <ReceiptStatusBadge status={receipt.status} />
               </TableCell>
 
               <TableCell className="text-right tabular-nums text-xs">

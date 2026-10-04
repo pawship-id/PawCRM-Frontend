@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Alert, ConfirmDialog, Spinner } from "@/components";
 import { posService } from "@/services/pos.service";
@@ -11,6 +11,7 @@ import type { PosCatalogItem, PosTransaction } from "@/types/api";
 import { useAuth } from "@/features/auth";
 import { CustomerSearchDialog } from "@/features/customers";
 import { BookingBridgeDialog, useBookingBridge } from "@/features/booking";
+import { useBenefitQuote } from "@/features/memberships";
 
 import { usePosCart } from "../hooks/usePosCart";
 import { usePosShift } from "../hooks/usePosShift";
@@ -272,7 +273,18 @@ export function PosScreen() {
         not — a bag of feed belongs to whoever is paying, and stopping to ask
         would be a dialog on every scan.
       */
-      if (tile.kind === "service") {
+      /*
+        A MEMBERSHIP PACKAGE ASKS THE SAME QUESTION, for a stronger reason: a
+        card belongs to an ANIMAL, and a package line that cannot say whose
+        animal cannot mint a card at all. The server refuses one without a
+        `petId`; asking here is what stops that refusal landing after the
+        customer has already been told the total.
+
+        THE SAME DIALOG as a service's, deliberately. It is the same question —
+        "untuk hewan yang mana?" — and a second dialog asking it differently is
+        a second thing for a cashier to learn.
+      */
+      if (tile.kind === "service" || tile.kind === "membership") {
         setPendingService(tile);
 
         // No customer yet: that question comes first, and the tile waits.
@@ -298,7 +310,10 @@ export function PosScreen() {
       */
       void cart
         .addItem(tile)
-        .then(() => swalToast(`${tile.name} ditambahkan.`));
+        /* Hanya kalau memang masuk — lihat `send` di `usePosCart`. */
+        .then((ok) => {
+          if (ok) swalToast(`${tile.name} ditambahkan.`);
+        });
     },
     [cart],
   );
@@ -446,6 +461,51 @@ export function PosScreen() {
   }
 
   /*
+    ─── WHAT A MEMBERSHIP CARD COULD PAY FOR, ON THIS BASKET ────────────────
+
+    Asked of the server on every change to the lines, and asked as an OFFER: the
+    answer never touches a total. Applying one sends `{ membershipId,
+    benefitKey }` back on the line and lets the server price it for real — a
+    till that could name its own benefit amount could give away the shop.
+
+    ONLY LINES THAT NAME AN ANIMAL ARE ASKED ABOUT, because a card belongs to an
+    animal: a bag of food on the same receipt is nobody's. Membership lines are
+    left out too — a package is not something a benefit can be spent on.
+
+    `ref` IS THE POSITION, STRINGIFIED. The cart renumbers when a line is
+    removed, so both the question and the map below are rebuilt from the same
+    array the rows are drawn from.
+  */
+  const benefitLines = useMemo(
+    () =>
+      (cart.cart?.items ?? []).flatMap((item, index) =>
+        item.petId && item.kind !== "membership"
+          ? [
+              {
+                ref: String(index),
+                kind: item.kind as "service" | "product",
+                refId: item.refId,
+                petId: item.petId,
+                amount: item.lineTotal,
+                parentServiceId: item.parentServiceId ?? null,
+              },
+            ]
+          : [],
+      ),
+    [cart.cart],
+  );
+
+  /*
+    THE WHOLE QUOTE GOES DOWN, not a per-line map of offers (30 September 2026).
+    `PosBenefitSection` lists EVERY benefit — including the ones no line in the
+    basket matches — and a map keyed by line cannot express those at all.
+  */
+  const { quote: benefitQuote } = useBenefitQuote({
+    customerId: cart.cart?.customerId ?? null,
+    lines: benefitLines,
+  });
+
+  /*
     THE BRANCH COMES BEFORE THE SHIFT, and before the loading state — there is
     nothing to load until the session knows which shop this is. A user who
     reaches every branch signs in pointed at none, so this is the ordinary first
@@ -470,6 +530,7 @@ export function PosScreen() {
   if (!shift) {
     return <PosShiftGate onOpened={refetch} />;
   }
+
 
   return (
     <div className="flex flex-col gap-4">
@@ -498,10 +559,17 @@ export function PosScreen() {
           busy={cart.busy}
           error={cart.error}
           onQtyChange={(index, qty) => void cart.setQty(index, qty)}
+          onLinePrice={(index, unitPrice) =>
+            void cart.setLinePrice(index, unitPrice)
+          }
           onRemove={(index) => void cart.removeItem(index)}
           onItemDiscount={(index, discount) =>
             void cart.setItemDiscount(index, discount)
           }
+          onItemBenefit={(index, benefit) =>
+            void cart.setItemBenefit(index, benefit)
+          }
+          benefitQuote={benefitQuote}
           onCartDiscount={(discount) => void cart.setCartDiscount(discount)}
           onCharges={(charges) => void cart.setCharges(charges)}
           onNote={(note) => void cart.setNote(note)}
@@ -688,7 +756,7 @@ export function PosScreen() {
           }}
           onAdd={(choices) => {
             void (async () => {
-              await cart.addServices(choices);
+              if (!(await cart.addServices(choices))) return;
 
               /*
                 NAMES THE ANIMALS, not just a count. "3 layanan ditambahkan" for
@@ -778,6 +846,22 @@ export function PosScreen() {
           setPendingService(null);
 
           /*
+            A PACKAGE IS NOT A SERVICE, and this is the branch that says so. The
+            dialog is shared on purpose — "untuk hewan yang mana?" is one
+            question — but its answer used to go to `addServices` whatever was
+            being sold, which stamped `kind: "service"` on a membership plan's
+            id and earned a "Service not found" from the catalogue it was then
+            looked up in. Add-ons, variants and rides mean nothing here: a card
+            has one price, one animal and one line.
+          */
+          if (tile.kind === "membership") {
+            void cart.addMembership(tile._id, pet._id).then((ok) => {
+              if (ok) swalToast(`${tile.name} untuk ${pet.name} ditambahkan.`);
+            });
+            return;
+          }
+
+          /*
             THE SERVICE FIRST, THEN ITS ADD-ONS — one patch, one line each.
             `addServices` already takes several per animal, so nothing here has
             to know that an add-on is a different kind of line: the server reads
@@ -796,7 +880,11 @@ export function PosScreen() {
                 ride,
               },
             ])
-            .then(() => {
+            .then((ok) => {
+              /* Ditolak: keranjang sudah memasang alasannya, dan "ditambahkan"
+                 di atasnya hanya akan membantah panel itu. */
+              if (!ok) return;
+
               /*
                 NAMES THE ANIMAL, or COUNTS THEM on a van carrying several —
                 "Antar-Jemput untuk Bruno" would name one of three dogs, picked

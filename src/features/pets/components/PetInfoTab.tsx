@@ -1,20 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
-import { Can } from "@/features/permissions";
 import { usePetOptions } from "@/hooks/usePetOptions";
-import { customerService } from "@/services/customer.service";
+import { cn } from "@/lib/utils";
 import type { Pet } from "@/types/api";
 
-import { PetSpeciesBadge, PetStatusBadge } from "./PetBadges";
+import { petAgeText } from "../age";
 
 /*
-  SEX STAYS A MAP HERE — it is a closed enum on the model. Breed, size and coat
-  do not: they are the tenant's own lists since 14 Sep 2026, and their words come
-  from `usePetOptions().label()` below.
+  SEX STAYS A MAP HERE — it is a closed enum on the model. Species, breed, size
+  and coat do not: they are the tenant's own lists since 14 Sep 2026, and their
+  words come from `usePetOptions().label()` below.
 */
 const SEX_LABELS: Record<string, string> = {
   male: "Jantan",
@@ -34,26 +31,6 @@ function day(iso: string | null): string {
 }
 
 /**
- * How old the animal is TODAY, computed from the birth date.
- *
- * THE DATE IS WHAT IS STORED, and this is why: an age written down is wrong the
- * day after it is written. Shown beside the date rather than instead of it, so
- * the fact and the derived figure are both visible.
- */
-function age(iso: string | null): string | null {
-  if (!iso) return null;
-
-  const months = Math.floor(
-    (Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60 * 24 * 30.44),
-  );
-
-  if (months < 1) return "belum 1 bulan";
-  if (months < 24) return `${months} bulan`;
-
-  return `${Math.floor(months / 12)} tahun`;
-}
-
-/**
  * The pet's own details — READ, not edit.
  *
  * WHY IT IS NOT THE FORM. This tab used to mount `PetForm`, so "look at the
@@ -69,135 +46,167 @@ function age(iso: string | null): string | null {
  *   to know it is allergic to something. Mounting an edit form on the landing
  *   tab meant the whole page was gated on `update`.
  *
- * Editing has its own route now — `/dashboard/master/pets/:id/edit` — behind its
- * own gate, and the button to it is hidden from anybody who cannot use it.
+ * ─── THE MOCKUP'S `.dl`, NOT A GRID OF STACKED PAIRS (28 September 2026) ────
+ *
+ * A LABEL COLUMN AND A VALUE COLUMN, one row each, separated by rules — the
+ * shape `hewanDetailInfo` draws. It replaced two columns of label-above-value,
+ * and the reason is that this list is READ BY LOOKING FOR ONE ROW: a groomer
+ * wants the weight, and a single column of labels is one place to run an eye
+ * down. Fourteen stacked pairs in two columns have four places to look.
+ *
+ * ON A PHONE IT COLLAPSES to label-above-value, as the mockup's own media query
+ * does, and the rule moves to the label so the pair stays visibly one row.
+ *
+ * THE FIELD ORDER IS THE MOCKUP'S, which is not the old one: name and owner
+ * first — who this is — then species and breed, then the physical details, then
+ * the free text. `Nama` is repeated from the hero on purpose; the hero is the
+ * heading and this is the record.
+ *
+ * THE BADGES AND BOTH BUTTONS MOVED TO THE SCREEN. They were here, which meant
+ * "Ubah data hewan" vanished the moment somebody switched to Riwayat.
+ * `PetProfileScreen` holds them now — one in the hero, one in this card's own
+ * header, where the mockup puts it.
+ *
+ * `ownerName` ARRIVES AS A PROP: the hero says it too, and one fetch shared with
+ * the screen beats two requests for one customer. `null` means it has not landed
+ * yet — or did not; the row says so rather than showing an id.
  */
-export function PetInfoTab({ pet }: { pet: Pet }) {
-  const [ownerName, setOwnerName] = useState<string | null>(null);
+export function PetInfoTab({
+  pet,
+  ownerName,
+}: {
+  pet: Pet;
+  ownerName: string | null;
+}) {
   const { label } = usePetOptions();
-
-  useEffect(() => {
-    let active = true;
-
-    customerService
-      .getById(pet.customerId)
-      .then((customer) => {
-        if (active) setOwnerName(customer.name);
-      })
-      /* The row below falls back to saying so rather than showing an id. */
-      .catch(() => {});
-
-    return () => {
-      active = false;
-    };
-  }, [pet.customerId]);
+  const age = petAgeText(pet.birthDate);
+  const tags = pet.preferences?.tags ?? [];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <PetSpeciesBadge species={pet.species} label={pet.speciesLabel} />
-          <PetStatusBadge isActive={pet.isActive} deleted={pet.deletedAt !== null} />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {/*
-            UNGATED BEYOND `pets:read`, like the screen it sits on. The card is
-            for the groomer holding the dog, and a grant that kept it from them
-            would keep the allergy off the cage door — see the print page.
-          */}
-          <Button asChild variant="secondary" size="sm">
-            <Link href={`/dashboard/master/pets/${pet._id}/print`}>
-              Cetak kartu
+    <dl className="sm:grid sm:grid-cols-[190px_1fr]">
+      <Row label="Nama" value={pet.name} />
+      <Row
+        label="Pemilik"
+        value={
+          ownerName ? (
+            /* A LINK, because "whose dog is this" is usually followed by
+               "what else do they have" or "what do they owe". */
+            <Link
+              href={`/dashboard/master/customers/${pet.customerId}`}
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              {ownerName}
             </Link>
-          </Button>
-
-          <Can feature="pets" action="update">
-            <Button asChild variant="secondary" size="sm">
-              <Link href={`/dashboard/master/pets/${pet._id}/edit`}>
-                Ubah data hewan
-              </Link>
-            </Button>
-          </Can>
-        </div>
-      </div>
-
-      <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
+          ) : (
+            "Memuat…"
+          )
+        }
+      />
+      <Row label="Jenis" value={label("species", pet.species) ?? "—"} />
+      <Row label="Ras" value={label("breed", pet.breed) ?? "—"} />
+      <Row label="Kelamin" value={SEX_LABELS[pet.sex] ?? pet.sex} />
+      <Row label="Warna" value={pet.color ?? "—"} />
+      <Row label="Ukuran" value={label("size", pet.size) ?? "—"} />
+      <Row label="Jenis bulu" value={label("furType", pet.furType) ?? "—"} />
+      <Row
+        label="Tanggal lahir"
+        value={
+          pet.birthDate ? (
+            <>
+              {day(pet.birthDate)}
+              {/* THE DERIVED FIGURE AS A NOTE under the stored fact, as the
+                  mockup's `.note` — an age written into a record is wrong the
+                  day after it is written, so the date is what is kept. */}
+              {age && <span className="block text-xs text-muted">{age}</span>}
+            </>
+          ) : (
+            "—"
+          )
+        }
+      />
+      <Row
+        label="Berat"
+        value={
+          pet.weightKg !== null ? (
+            <span className="tabular-nums">{pet.weightKg} kg</span>
+          ) : (
+            "—"
+          )
+        }
+      />
+      <Row
+        label="Nomor microchip"
+        value={
+          pet.microchipNo ? (
+            <span className="tabular-nums">{pet.microchipNo}</span>
+          ) : (
+            "—"
+          )
+        }
+      />
+      <Row
+        label="Deskripsi"
+        value={pet.description ?? "—"}
+        /* Free text runs to paragraphs; the newlines somebody typed are the
+           structure they gave it. */
+        multiline
+      />
+      <Row
+        label="Catatan internal"
+        value={pet.internalNotes ?? "—"}
+        multiline
+      />
+      {tags.length > 0 && (
         <Row
-          label="Pemilik"
+          label="Tag"
           value={
-            ownerName ? (
-              /* A LINK, because "whose dog is this" is usually followed by
-                 "what else do they have" or "what do they owe". */
-              <Link
-                href={`/dashboard/master/customers/${pet.customerId}`}
-                className="text-primary underline-offset-2 hover:underline"
-              >
-                {ownerName}
-              </Link>
-            ) : (
-              "Memuat…"
-            )
+            <span className="flex flex-wrap gap-1.5">
+              {tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full bg-surface-hover px-2 py-0.5 text-xs font-medium text-muted"
+                >
+                  {tag}
+                </span>
+              ))}
+            </span>
           }
         />
-        {/*
-          THE SERVER'S WORD FIRST, the cached list second — see PetSpeciesBadge
-          for why an id cannot fall back to itself the way a code could.
-        */}
-        <Row label="Ras" value={pet.breedLabel ?? label("breed", pet.breed) ?? "—"} />
-        <Row label="Ukuran" value={pet.sizeLabel ?? label("size", pet.size) ?? "—"} />
-        <Row
-          label="Jenis bulu"
-          value={pet.furTypeLabel ?? label("furType", pet.furType) ?? "—"}
-        />
-        <Row label="Kelamin" value={SEX_LABELS[pet.sex] ?? pet.sex} />
-        <Row
-          label="Lahir"
-          value={
-            pet.birthDate
-              ? `${day(pet.birthDate)}${age(pet.birthDate) ? ` · ${age(pet.birthDate)}` : ""}`
-              : "—"
-          }
-        />
-        <Row
-          label="Berat"
-          value={pet.weightKg !== null ? `${pet.weightKg} kg` : "—"}
-        />
-        <Row label="Warna" value={pet.color ?? "—"} />
-        <Row label="Microchip" value={pet.microchipNo ?? "—"} />
-      </dl>
-
-      {pet.description && (
-        <div>
-          <dt className="text-xs text-muted">Deskripsi</dt>
-          <dd className="mt-0.5 whitespace-pre-wrap text-sm text-foreground">
-            {pet.description}
-          </dd>
-        </div>
       )}
-
-      {pet.internalNotes && (
-        <div>
-          <dt className="text-xs text-muted">Catatan internal</dt>
-          {/*
-            THE FREE-TEXT HALF, and it stays free text: temperament is a
-            sentence, and the note that saves a groomer's hand is the one that
-            was easy to write. What is structured lives under Medis.
-          */}
-          <dd className="mt-0.5 whitespace-pre-wrap text-sm text-foreground">
-            {pet.internalNotes}
-          </dd>
-        </div>
-      )}
-    </div>
+    </dl>
   );
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+/**
+ * One row of the list: a `dt` and a `dd` side by side.
+ *
+ * A FRAGMENT, NOT A WRAPPER `div`, because the two cells are the grid's own
+ * children — a wrapper would put both in one column and the label column would
+ * collapse. The rule lives on the top of each cell and comes off the first row
+ * via `first-of-type`, which is why they are siblings rather than nested.
+ */
+function Row({
+  label,
+  value,
+  multiline = false,
+}: {
+  label: string;
+  value: React.ReactNode;
+  multiline?: boolean;
+}) {
   return (
-    <div>
-      <dt className="text-xs text-muted">{label}</dt>
-      <dd className="text-sm text-foreground">{value}</dd>
-    </div>
+    <>
+      <dt className="border-t border-border pt-3 text-xs font-semibold text-muted first-of-type:border-t-0 sm:py-3">
+        {label}
+      </dt>
+      <dd
+        className={cn(
+          "pb-3 text-sm text-foreground sm:border-t sm:border-border sm:py-3 sm:first-of-type:border-t-0",
+          multiline && "whitespace-pre-wrap",
+        )}
+      >
+        {value}
+      </dd>
+    </>
   );
 }

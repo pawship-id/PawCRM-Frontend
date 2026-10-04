@@ -18,7 +18,7 @@ export interface PosCatalogState {
   search: string;
   /** "" = Semua, otherwise one category id, or the literal "service" pill. */
   categoryId: string;
-  /** "" = both kinds. The Layanan pill sets "service". */
+  /** "" = every kind. The Layanan pill sets "service", Membership sets "membership". */
   kind: PosItemKind | "";
 }
 

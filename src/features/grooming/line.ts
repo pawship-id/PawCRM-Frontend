@@ -1,4 +1,3 @@
-import type { BusinessLine } from "@/services/businessLine.service";
 import type { ServiceFormOrigin } from "@/features/services/formOrigin";
 import { SETTINGS_PATHS, serviceFormPath } from "@/features/settings/paths";
 import type { ServiceKind } from "@/types/api";
@@ -34,10 +33,11 @@ export interface ServiceLine {
   title: string;
   /** In a sentence: "Belum ada layanan grooming." */
   noun: string;
-  /** The line's name as a booking snapshots it, when the list cannot be read. */
+  /**
+   * This module's own name as a booking snapshots it into `service.serviceType`
+   * — the board's fallback when it cannot read the catalogue. See `GroomingScope`.
+   */
   fallbackName: string;
-  /** The tenant's line for this module, found by name — a line is a free label. */
-  pick: (lines: BusinessLine[]) => BusinessLine | null;
   paths: {
     root: string;
     catalog: string;
@@ -46,28 +46,11 @@ export interface ServiceLine {
   };
 }
 
-/** The first line named exactly one of `names`, else the first containing a fragment. */
-export function pickLineByName(
-  lines: BusinessLine[],
-  names: string[],
-  fragments: string[],
-): BusinessLine | null {
-  const named = (line: BusinessLine) =>
-    line.name.trim().toLowerCase().replace(/[\s_-]+/g, " ");
-
-  return (
-    lines.find((line) => names.includes(named(line))) ??
-    lines.find((line) => fragments.some((fragment) => named(line).includes(fragment))) ??
-    null
-  );
-}
-
 export const GROOMING_LINE: ServiceLine = {
   serviceKind: "grooming",
   title: "Grooming",
   noun: "grooming",
   fallbackName: "Grooming",
-  pick: (lines) => pickLineByName(lines, ["grooming"], ["groom"]),
   paths: {
     root: GROOMING_PATH,
     catalog: GROOMING_CATALOG_PATH,

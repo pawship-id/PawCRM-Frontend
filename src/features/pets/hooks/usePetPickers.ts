@@ -61,24 +61,17 @@ export function usePetPickers() {
       const all = pickerOptions("breed", stored);
       if (!species) return all;
 
-      /*
-        BOTH SIDES OF THE LINK ARE IDS (25 September 2026). `speciesId` on a
-        breed is the species row's own `_id`, which is exactly what this picker
-        already holds for the selected species — so the two are compared
-        directly. It used to store a CODE, and this function had to translate
-        the selected id back into one on every render before it could match.
-      */
-      const belongsToOf = new Map(
+      // Keyed by `_id`, the currency both sides speak since 25 September 2026:
+      // a choice's value is the breed's id, and the species it names is an id.
+      const speciesOf = new Map(
         options
           .filter((option) => option.type === "breed")
           .map((option) => [option._id, option.speciesId ?? null]),
       );
 
       return all.filter((choice) => {
-        const belongsTo = belongsToOf.get(choice.value) ?? null;
-        return (
-          belongsTo === null || belongsTo === species || choice.value === stored
-        );
+        const belongsTo = speciesOf.get(choice.value) ?? null;
+        return belongsTo === null || belongsTo === species || choice.value === stored;
       });
     },
     [options, pickerOptions],

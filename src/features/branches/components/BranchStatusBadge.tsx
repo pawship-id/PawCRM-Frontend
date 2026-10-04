@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 /**
  * A shadcn Badge for a branch's state. Deletion is a separate axis from
  * active/inactive (see branch.model.js), so a soft-deleted branch shows a
- * neutral "Deleted" badge instead of its active state. The brand feedback tokens
+ * neutral "Terhapus" badge instead of its active state. The brand feedback tokens
  * are applied as a className tint over the outline badge — matching StatusBadge
  * in the users feature.
  */
@@ -16,10 +16,10 @@ export function BranchStatusBadge({
   deleted?: boolean;
 }) {
   const { label, className } = deleted
-    ? { label: "Deleted", className: "bg-muted/40 text-muted" }
+    ? { label: "Terhapus", className: "bg-tint-neutral text-muted" }
     : isActive
-      ? { label: "Active", className: "bg-success/12 text-success" }
-      : { label: "Inactive", className: "bg-danger/12 text-danger" };
+      ? { label: "Aktif", className: "bg-tint-success text-success" }
+      : { label: "Nonaktif", className: "bg-tint-danger text-danger" };
 
   return (
     <Badge variant="outline" className={cn("border-transparent", className)}>

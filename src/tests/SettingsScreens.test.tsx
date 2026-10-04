@@ -241,7 +241,7 @@ describe("GeneralSettingsScreen", () => {
     expect(screen.getByText("Nonaktif")).toBeInTheDocument();
     expect(screen.getByText("Alamat belum diisi")).toBeInTheDocument();
 
-    const manage = screen.getAllByRole("link", { name: "Kelola" });
+    const manage = screen.getAllByRole("link", { name: "Detail" });
     expect(manage[0]).toHaveAttribute("href", "/dashboard/pengaturan/cabang/br-1");
     expect(
       screen.queryByRole("link", { name: /cabang baru/i }),
@@ -292,6 +292,68 @@ describe("GeneralSettingsScreen", () => {
     await screen.findByText("2 cabang · 3 gudang");
   });
 
+  /**
+   * THE ONLY WAY IN TO THE WAREHOUSE CRUD. Until 27 September 2026 nothing in
+   * the app linked /dashboard/pengaturan/gudang — the list, the create form and
+   * the edit form were all built and all unreachable — so this asserts the link
+   * itself, not just the label.
+   */
+  it("links Gudang, with the warehouse count beside it", async () => {
+    renderWithAuth(<GeneralSettingsScreen />);
+
+    const card = await screen.findByRole("link", { name: /Gudang/ });
+    expect(card).toHaveAttribute("href", "/dashboard/pengaturan/gudang");
+    expect(card).toHaveTextContent("3 gudang");
+  });
+
+  it("drops Gudang for a role without warehouses:read", async () => {
+    renderWithAuth(<GeneralSettingsScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "tenants", actions: ["read"] }],
+    });
+
+    await screen.findByRole("heading", { name: "Klinik Hewan Sehat" });
+    expect(
+      screen.queryByRole("link", { name: /Gudang/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  /**
+   * THE ONLY WAY IN TO KATEGORI SUPPLIER since 1 October 2026, when its
+   * Pembelian tab was dropped on request. The href is asserted, not just the
+   * label: this screen actually MOVED (unlike Supplier, which kept its tab and
+   * its purchasing address), so a card still pointing at the old
+   * /dashboard/purchasing/supplier-categories would 404.
+   */
+  it("links Kategori Supplier at its new Pengaturan address", async () => {
+    renderWithAuth(<GeneralSettingsScreen />);
+
+    const card = await screen.findByRole("link", {
+      name: /^Kategori Supplier/,
+    });
+    expect(card).toHaveAttribute(
+      "href",
+      "/dashboard/pengaturan/kategori-supplier",
+    );
+  });
+
+  it("drops Kategori Supplier for a role without supplierCategories:read", async () => {
+    renderWithAuth(<GeneralSettingsScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "tenants", actions: ["read"] }],
+    });
+
+    await screen.findByRole("heading", { name: "Klinik Hewan Sehat" });
+    expect(
+      screen.queryByRole("link", { name: /^Kategori Supplier/ }),
+    ).not.toBeInTheDocument();
+    // Tipe supplier stays — it is ungated, and explains the types rather than
+    // listing any vendor group.
+    expect(
+      screen.getByRole("link", { name: /Tipe supplier/ }),
+    ).toBeInTheDocument();
+  });
+
   it("drops Tipe pelanggan for a role without customerTypes:read", async () => {
     renderWithAuth(<GeneralSettingsScreen />, {
       isSuperAdmin: false,
@@ -311,8 +373,17 @@ describe("GeneralSettingsScreen", () => {
   /**
    * THE CARD ORDER (24 September 2026, on request): Tipe pelanggan and
    * Langganan & tagihan bookend the grid rather than sitting side by side,
+   * with Gudang ahead of both since 27 September 2026 — it is the one card
+   * that opens a list somebody edits rather than a single form,
    * which is only visible by DOM order — every card's href/label assertion
    * above would still pass if the grid were shuffled.
+   *
+   * KATEGORI SUPPLIER SITS DIRECTLY ABOVE TIPE SUPPLIER (1 October 2026, on
+   * request), which is the pairing it was added for: one groups vendors, the
+   * other names what a vendor's type means, and the two are read together. It
+   * is also the ONLY way into that screen now that Pembelian has no Kategori
+   * Supplier tab, so a card missing from this grid is a screen with no entry
+   * point — not merely a shuffled page.
    */
   it("draws the cards in the order asked for", async () => {
     const { container } = renderWithAuth(<GeneralSettingsScreen />);
@@ -330,7 +401,9 @@ describe("GeneralSettingsScreen", () => {
     ).map((node) => node.textContent);
 
     expect(titles).toEqual([
+      "Gudang",
       "Tipe pelanggan",
+      "Kategori Supplier",
       "Tipe supplier",
       "Nomor dokumen",
       "Notifikasi",
@@ -425,8 +498,15 @@ describe("GeneralSettingsScreen", () => {
     expect(
       screen.queryByRole("link", { name: /Faktur & dokumen/ }),
     ).not.toBeInTheDocument();
-    // No grant to edit a branch, no Kelola.
-    expect(screen.queryByRole("link", { name: "Kelola" })).not.toBeInTheDocument();
+    /*
+      THE BRANCH IS STILL REACHABLE, and that is the change of 28 September
+      2026. `/cabang/:id` is the read-only detail now, so a role holding only
+      `branches:read` is precisely who it is for — it used to be hidden from
+      them because the address led to an edit form they could not open.
+    */
+    expect(
+      screen.getAllByRole("link", { name: "Detail" })[0],
+    ).toHaveAttribute("href", "/dashboard/pengaturan/cabang/br-1");
 
     const tabs = screen.getByRole("navigation", { name: "Bagian pengaturan" });
     expect(

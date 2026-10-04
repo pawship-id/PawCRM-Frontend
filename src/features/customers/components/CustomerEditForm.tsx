@@ -5,17 +5,15 @@ import { useRouter } from "next/navigation";
 
 import {
   Alert,
+  Breadcrumb,
   Button,
   Card,
   ConfirmDialog,
-  LocationFields,
   Spinner,
-  TextField,
-  toGeoLocation,
-  toLocationFieldsValue,
   validateLocationFields,
-  type LocationFieldsValue,
 } from "@/components";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
 import { swalToast } from "@/lib/swal";
@@ -26,10 +24,19 @@ import {
   validateCustomerAddress,
 } from "@/utils/validation";
 import { CustomerPetsSection } from "@/features/pets";
-import type { Customer, VipTier } from "@/types/api";
+import type { Customer } from "@/types/api";
 
-import { VipTierSelect } from "./VipTierSelect";
-import { CustomerVipBadge, CustomerStatusBadge } from "./CustomerVipBadge";
+import {
+  CustomerFormFields,
+  customerFormToPayload,
+  customerToForm,
+  type CustomerFormValue,
+} from "./CustomerFormFields";
+import {
+  CustomerVipBadge,
+  CustomerStatusBadge,
+  isCustomerActive,
+} from "./CustomerVipBadge";
 
 /**
  * Edit an existing customer. Mirrors BranchEditForm: the details (name, email,
@@ -56,7 +63,7 @@ export function CustomerEditForm({ id }: { id: string }) {
         setLoadError(
           error instanceof ApiError
             ? error.message
-            : "Could not load this customer.",
+            : "Data pelanggan ini tidak bisa dimuat.",
         );
       });
     return () => {
@@ -66,23 +73,44 @@ export function CustomerEditForm({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* The header stays visible while the body loads. */}
+      {/*
+        The header stays visible while the body loads. THE TRAIL GOES BACK TO THE
+        PROFILE, not to the list: this route is one level under it now
+        (`/master/customers/:id/edit`), and somebody who came here from a customer's
+        page is returning to that page rather than to two hundred rows.
+      */}
       <div>
-        <div className="flex items-center gap-3">
+        <Breadcrumb
+          items={[
+            { label: "Pelanggan", href: "/dashboard/master/customers" },
+            ...(customer
+              ? [
+                  {
+                    label: customer.name,
+                    href: `/dashboard/master/customers/${customer._id}`,
+                  },
+                ]
+              : []),
+            { label: "Ubah" },
+          ]}
+        />
+        <div className="mt-1 flex items-center gap-3">
           <h1 className="text-2xl font-extrabold text-foreground">
-            Edit Customer
+            {customer ? `Ubah ${customer.name}` : "Ubah pelanggan"}
           </h1>
           {customer && (
             <>
-              <CustomerStatusBadge deleted={customer.deletedAt !== null} />
+              <CustomerStatusBadge
+                isActive={customer.isActive}
+                deleted={customer.deletedAt !== null}
+              />
               {customer.vipTier && <CustomerVipBadge tier={customer.vipTier} />}
             </>
           )}
         </div>
         <p className="mt-1 text-sm text-muted">
-          {customer
-            ? `Update ${customer.name}'s details and VIP tier.`
-            : "Update this customer's details and VIP tier."}
+          Data pemilik dan tier VIP-nya. Data hewan diubah dari kartunya
+          masing-masing.
         </p>
       </div>
 
@@ -90,11 +118,11 @@ export function CustomerEditForm({ id }: { id: string }) {
         <Alert variant="error">{loadError}</Alert>
       ) : !customer ? (
         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted">
-          <Spinner /> Loading form edit customer...
+          <Spinner /> Memuat data pelanggan…
         </div>
       ) : (
         <>
-          <Card title="Details" description="Contact details and VIP tier.">
+          <Card title="Identitas" description="Kontak dan tier VIP.">
             <DetailsSection customer={customer} onUpdated={setCustomer} />
           </Card>
 
@@ -116,8 +144,8 @@ export function CustomerEditForm({ id }: { id: string }) {
           </Card>
 
           <Card
-            title="Danger zone"
-            description="Remove this customer or restore a removed one."
+            title="Hapus pelanggan"
+            description="Menghapus pelanggan ini, atau memulihkan yang sudah dihapus."
           >
             <DangerSection customer={customer} onUpdated={setCustomer} />
           </Card>
@@ -137,15 +165,23 @@ function DetailsSection({
   onUpdated: (customer: Customer) => void;
 }) {
   const router = useRouter();
-  const [name, setName] = useState(customer.name);
-  const [email, setEmail] = useState(customer.email ?? "");
-  const [phone, setPhone] = useState(customer.phone ?? "");
-  const [address, setAddress] = useState(customer.address ?? "");
-  // The address's pin — what a service priced by Zona is quoted from (17 September 2026).
-  const [location, setLocation] = useState<LocationFieldsValue>(() =>
-    toLocationFieldsValue(customer.location),
+  /*
+    SEEDED ONCE, FROM THE CUSTOMER THIS SECTION WAS HANDED. Re-seeding on every
+    change of `customer` would throw away what somebody is typing the moment a
+    sibling section lifts a new copy up — which the danger zone does on every
+    restore.
+  */
+  const [value, setValue] = useState<CustomerFormValue>(() =>
+    customerToForm(customer),
   );
-  const [vipTier, setVipTier] = useState<VipTier | "">(customer.vipTier ?? "");
+  /*
+    KEPT OUTSIDE `CustomerFormValue` (2 October 2026), the same way
+    `BranchEditForm` keeps `isActive` beside its other fields rather than
+    inside them: `CustomerFormValue`/`customerToForm`/`customerFormToPayload`
+    are the shape `CustomerCreateForm` shares, and a brand-new customer has no
+    "switch this one off" to offer — only an existing one does.
+  */
+  const [isActive, setIsActive] = useState(() => isCustomerActive(customer));
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -153,42 +189,51 @@ function DetailsSection({
 
   const disabled = customer.deletedAt !== null;
 
+  function patch(change: Partial<CustomerFormValue>) {
+    setValue((prev) => ({ ...prev, ...change }));
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setFormError(null);
 
     const nextErrors: Record<string, string> = {};
-    const nameError = validateCustomerName(name);
-    const emailError = validateOptionalEmail(email);
-    const phoneError = validateCustomerPhone(phone);
-    const addressError = validateCustomerAddress(address);
+    const nameError = validateCustomerName(value.name);
+    const emailError = validateOptionalEmail(value.email);
+    const phoneError = validateCustomerPhone(value.phone);
+    const addressError = validateCustomerAddress(value.address);
     if (nameError) nextErrors.name = nameError;
     if (emailError) nextErrors.email = emailError;
     if (phoneError) nextErrors.phone = phoneError;
     if (addressError) nextErrors.address = addressError;
-    Object.assign(nextErrors, validateLocationFields(location));
+    Object.assign(nextErrors, validateLocationFields(value.location));
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
     setSaving(true);
     try {
+      /*
+        THE WHOLE FORM IS SENT, not a diff. The API takes any subset but rejects
+        an empty body, and working out which of a dozen fields moved is a second
+        source of truth about what the user changed — the bug that reliably falls
+        out of it is a cleared field that never clears, because `""` and
+        "unchanged" look alike.
+      */
       const updated = await customerService.update(customer._id, {
-        name: name.trim(),
-        email: email.trim() === "" ? null : email.trim(),
-        phone: phone.trim() === "" ? null : phone.trim(),
-        address: address.trim() === "" ? null : address.trim(),
-        location: toGeoLocation(location),
-        vipTier: vipTier === "" ? null : vipTier,
+        ...customerFormToPayload(value),
+        isActive,
       });
       onUpdated(updated);
-      swalToast("Customer updated.");
+      setValue(customerToForm(updated));
+      setIsActive(isCustomerActive(updated));
+      swalToast("Perubahan pelanggan tersimpan.");
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
         setFieldErrors(error.fieldErrors);
       } else if (error instanceof ApiError) {
         setFormError(error.message);
       } else {
-        setFormError("Something went wrong. Please try again.");
+        setFormError("Terjadi kesalahan. Coba lagi.");
       }
     } finally {
       setSaving(false);
@@ -200,76 +245,28 @@ function DetailsSection({
       {formError && <Alert variant="error">{formError}</Alert>}
       {disabled && (
         <Alert variant="info">
-          This customer is deleted. Restore them in the danger zone to edit.
+          Pelanggan ini sudah dihapus. Pulihkan dulu di bagian bawah halaman
+          sebelum datanya bisa diubah.
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {/* Row 1: name & email */}
-        <TextField
-          label="Customer name"
-          name="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          error={fieldErrors.name}
-          disabled={disabled}
-          required
-        />
-        <TextField
-          label="Email"
-          type="email"
-          name="email"
-          placeholder="Optional"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          error={fieldErrors.email}
-          hint="Leave blank to remove."
-          disabled={disabled}
-        />
+      <CustomerFormFields
+        value={value}
+        onChange={patch}
+        errors={fieldErrors}
+        disabled={disabled}
+      />
 
-        {/* Row 2: phone & VIP tier */}
-        <TextField
-          label="Phone"
-          type="tel"
-          name="phone"
-          placeholder="Optional"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          error={fieldErrors.phone}
-          hint="Leave blank to remove."
+      <div className="flex items-center gap-2.5">
+        <Checkbox
+          id="customer-active"
+          checked={isActive}
           disabled={disabled}
+          onCheckedChange={(checked) => setIsActive(checked === true)}
         />
-        <VipTierSelect
-          value={vipTier}
-          onChange={setVipTier}
-          error={fieldErrors.vipTier}
-          disabled={disabled}
-        />
-
-        {/* Row 3: address (full width) */}
-        <div className="sm:col-span-2">
-          <TextField
-            label="Address"
-            name="address"
-            placeholder="Optional"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            error={fieldErrors.address}
-            hint="Leave blank to remove."
-            disabled={disabled}
-          />
-        </div>
-
-        {/* Row 4: the address's pin — paste "lat, lng" from Google Maps. */}
-        <LocationFields
-          value={location}
-          onChange={setLocation}
-          errors={fieldErrors}
-          disabled={disabled}
-        />
-        <p className="text-xs text-muted sm:col-span-2">
-          Titik alamat dipakai untuk menentukan zona antar-jemput dari jarak ke cabang.
-        </p>
+        <Label htmlFor="customer-active" className="font-normal">
+          Aktif — pelanggan ini muncul di daftar pilihan pelanggan
+        </Label>
       </div>
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
@@ -277,9 +274,11 @@ function DetailsSection({
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/master/customers")}
+          onClick={() =>
+            router.push(`/dashboard/master/customers/${customer._id}`)
+          }
         >
-          Cancel
+          Batal
         </Button>
         <Button
           type="submit"
@@ -287,7 +286,7 @@ function DetailsSection({
           disabled={disabled}
           className="w-full sm:w-auto"
         >
-          Save changes
+          Simpan pelanggan
         </Button>
       </div>
     </form>
@@ -326,13 +325,13 @@ function DangerSection({
       if (pending === "delete") {
         await customerService.remove(customer._id);
         router.push("/dashboard/master/customers");
-        swalToast("Customer deleted.");
+        swalToast("Pelanggan dihapus.");
         return;
       }
       const updated = await customerService.restore(customer._id);
       onUpdated(updated);
       setPending(null);
-      swalToast("Customer restored.");
+      swalToast("Pelanggan dipulihkan.");
     } catch (err) {
       /*
         `reason` FIRST, and it is not cosmetic. Deleting a customer that still has
@@ -345,7 +344,7 @@ function DangerSection({
       setError(
         err instanceof ApiError
           ? (err.reason ?? err.message)
-          : "Something went wrong. Please try again.",
+          : "Terjadi kesalahan. Coba lagi.",
       );
     } finally {
       setBusy(false);
@@ -356,7 +355,7 @@ function DangerSection({
     <div className="flex flex-wrap items-center gap-3">
       {deleted ? (
         <Button variant="secondary" onClick={() => setPending("restore")}>
-          Restore customer
+          Pulihkan pelanggan
         </Button>
       ) : (
         <Button
@@ -364,14 +363,16 @@ function DangerSection({
           className="bg-danger text-danger-foreground hover:bg-danger/90"
           onClick={() => setPending("delete")}
         >
-          Delete customer
+          Hapus pelanggan
         </Button>
       )}
 
       {pending && (
         <ConfirmDialog
-          title={pending === "delete" ? "Delete customer" : "Restore customer"}
-          confirmLabel={pending === "delete" ? "Delete" : "Restore"}
+          title={
+            pending === "delete" ? "Hapus pelanggan" : "Pulihkan pelanggan"
+          }
+          confirmLabel={pending === "delete" ? "Hapus" : "Pulihkan"}
           destructive={pending === "delete"}
           busy={busy}
           error={error}
@@ -380,14 +381,13 @@ function DangerSection({
         >
           {pending === "delete" ? (
             <>
-              Delete <strong>{customer.name}</strong>? They will be hidden from
-              the list and their email freed for reuse. You can restore them
-              later.
+              Hapus <strong>{customer.name}</strong>? Datanya disembunyikan dari
+              daftar dan emailnya bebas dipakai lagi. Bisa dipulihkan nanti.
             </>
           ) : (
             <>
-              Restore <strong>{customer.name}</strong>? This may fail if their
-              email has since been taken by another customer.
+              Pulihkan <strong>{customer.name}</strong>? Ini gagal kalau emailnya
+              sudah dipakai pelanggan lain.
             </>
           )}
         </ConfirmDialog>

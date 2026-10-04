@@ -1,238 +1,218 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 
+import { Card } from "@/components";
 import { Badge } from "@/components/ui/badge";
+import { useBranchOptions } from "@/features/inventory/hooks/useBranchOptions";
 import { usePermissions } from "@/features/permissions";
-import type { Action, Feature } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import { daysUntil } from "@/utils/date";
 import { formatMoney } from "@/utils/decimal";
+import type { PurchaseInvoiceListRow } from "@/types/api";
 
-import { useHubCounts } from "../hooks/useHubCounts";
-import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
 import {
-  usePayablesPanels,
-  type PayablePanelData,
-} from "../hooks/usePayablesPanels";
-
-const SECTIONS: Array<{
-  href: string;
-  title: string;
-  description: string;
-  /** Mirrors the sidebar's gate for the same screen — see features/dashboard/nav.ts. */
-  feature: Feature;
-  action: Action;
-}> = [
-  {
-    href: "/dashboard/purchasing/suppliers",
-    title: "Supplier",
-    description:
-      "Mitra beli putus dan konsinyasi, beserta termin pembayaran masing-masing.",
-    feature: "suppliers",
-    action: "read",
-  },
-  {
-    href: "/dashboard/purchasing/supplier-categories",
-    title: "Kategori Supplier",
-    description:
-      "Pengelompokan supplier — distributor, agen, peternak lokal. Isinya cuma nama.",
-    feature: "supplierCategories",
-    action: "read",
-  },
-  {
-    href: "/dashboard/purchasing/receipts",
-    title: "Penerimaan Barang",
-    description:
-      "Barang masuk: menaikkan stok, membuat lot, memperbarui harga rata-rata.",
-    feature: "goodsReceipts",
-    action: "read",
-  },
-  {
-    href: "/dashboard/purchasing/payables",
-    title: "Faktur Pembelian",
-    description:
-      "Faktur dari penerimaan beli putus, pembayaran, dan sisa yang belum lunas.",
-    feature: "purchaseInvoices",
-    action: "read",
-  },
-  {
-    href: "/dashboard/purchasing/returns",
-    title: "Retur ke Supplier",
-    description:
-      "Kembalikan barang rusak atau salah kirim — utang ikut berkurang.",
-    feature: "purchaseReturns",
-    action: "read",
-  },
-];
+  usePayablesSummary,
+  type PayablesWorklist,
+} from "../hooks/usePayablesSummary";
+import { PayablesScopeCard } from "./PayablesScopeCard";
+import {
+  PayablesStatCards,
+  type PayablesStatFigures,
+} from "./PayablesStatCards";
+import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
 
 /**
- * The Purchasing landing screen: what has to be paid, and the way in to every
- * screen in the module.
+ * The Pembelian › Ringkasan tab — what is owed, and what has to be paid next.
  *
- * IT EXISTS FOR THE SECOND LIST. "Which invoices are already late" the payables
- * table answers well enough; "how much cash does this week need" it cannot,
- * because that is a date range nobody can filter to. A shop that only ever sees
- * the overdue list learns about a bill on the day it is already a problem, which
- * is the failure the module's payment terms exist to prevent.
+ * THE MOCKUP'S OWN SHAPE (`buloo-navigation-v3`, pembelian › Ringkasan): a
+ * card row, then the two worklists, then the note about consignment. Every
+ * part of it is a decision worth recording:
  *
- * NEITHER LIST IS ASSEMBLED HERE. Both are a server-side filter (`?overdue=` and
- * `?dueSoon=`) beside a server-side aggregation, so this screen renders what it
- * was handed — no row is dropped in the browser and no rupiah figure is added up
- * in one. See usePayablesPanels for what that replaced.
+ *   THE CARD ROW IS `PayablesStatCards` NOW (2 October 2026, on request) — the
+ *   same four-card strip the Faktur tab carries, promoted here when this screen
+ *   was asked for it instead of keeping its own three. ONE FIGURE WAS DROPPED
+ *   IN THE SWAP: "Hutang terbayar periode ini", the only FLOW among the old
+ *   three (money that actually left inside the period) and the one figure with
+ *   no equivalent among the new four. It is still fetched — `summary.paid`,
+ *   below — just no longer drawn anywhere on this tab. Nobody has asked for it
+ *   back yet; if it returns, say so here. ONE CONSEQUENCE FOLLOWS: the period
+ *   half of `PayablesScopeCard` narrowed only that figure, so it currently
+ *   narrows nothing visible on this tab — only the cabang half still does,
+ *   scoping both cards and both worklists.
  *
- * THE COUNTS ON THE SECTION CARDS ARE ROW COUNTS, never money. A count of
- * documents makes the "is there anything here" point without claiming to be an
- * account.
+ *   THE SECTION-CARD GRID IS GONE. This screen used to open with five links —
+ *   Supplier, Kategori Supplier, Penerimaan, Faktur, Retur — above the
+ *   worklists. The module's own tab row reaches all five, one click, always
+ *   visible; the cards were a second navigation of the same five screens, and
+ *   the mockup draws none. What they carried that the tabs do not — a row count
+ *   each — was never what somebody opens this tab to find out.
  *
- * EVERY FIGURE ON THIS SCREEN COMES FROM THE API — the section counts from
- * useHubCounts, the two panels and the payables count from the outstanding
- * summary. That is why every count can be null: each one is waiting on a request,
- * and null renders as "—" rather than as zero.
+ *   THE WORKLIST OF CONSIGNMENT DEBT IS NOT BUILT, and the closing note says so
+ *   rather than leaving a gap. Consignment exists here as a supplier TYPE and
+ *   nothing more: no goods are billed on sale, so a panel claiming to list that
+ *   debt would list nothing and mean nothing.
  *
- * THE COUNTS COME FROM THE PAGINATION, NOT FROM THE ROWS. Asking for one row and
- * reading `pagination.total` costs one small request and is right; asking for a
- * page and calling `.length` on it would silently cap at the page size and report
- * "20 retur" forever.
+ * NOTHING ON THIS PAGE IS ADDED UP IN THE BROWSER. Every count and every rupiah
+ * figure is the server's aggregation over the whole book; the five rows under
+ * each heading are a preview of a total computed elsewhere. See
+ * `usePayablesSummary`.
  *
- * EACH CARD IS GATED ON ITS OWN GRANT and the two lists on `purchaseInvoices`,
- * matching the sidebar exactly — a user whose menu has no Faktur Pembelian link
- * must not land on a page that opens with their supplier debt. Both hooks are
- * handed those same answers so a denied role issues no requests at all.
+ * GATED ON `purchaseInvoices:read` — what a shop owes, and to whom, is the
+ * commercially sensitive half of this module. A role without it sees the tab row
+ * and a line saying where to look instead, and issues no requests at all.
  */
 export function PurchasingHub() {
+  const router = useRouter();
   const { can } = usePermissions();
-
   const mayReadInvoices = can("purchaseInvoices", "read");
-  const { overdue, dueSoon, outstandingCount, horizonDays } =
-    usePayablesPanels(mayReadInvoices);
 
-  const { activeSuppliers, activeSupplierCategories, receipts, returns } =
-    useHubCounts({
-      suppliers: can("suppliers", "read"),
-      supplierCategories: can("supplierCategories", "read"),
-      receipts: can("goodsReceipts", "read"),
-      returns: can("purchaseReturns", "read"),
-    });
+  const {
+    query,
+    setQuery,
+    summary,
+    summaryFailed,
+    pendingReceipts,
+    overdue,
+    dueSoon,
+    loading,
+  } = usePayablesSummary(mayReadInvoices);
+  const { branches } = useBranchOptions(mayReadInvoices);
 
-  const sections = SECTIONS.filter((section) =>
-    can(section.feature, section.action),
-  );
+  if (!mayReadInvoices) {
+    return (
+      <div className="flex flex-col gap-6">
+        <PurchasingModuleHeader />
+        <p className="max-w-2xl text-sm text-muted">
+          Ringkasan utang supplier hanya untuk peran yang boleh membaca faktur
+          pembelian. Tab lain di atas tetap bisa dibuka sesuai izinmu.
+        </p>
+      </div>
+    );
+  }
 
-  const counts: Record<string, string> = {
-    "/dashboard/purchasing/suppliers":
-      activeSuppliers === null ? "—" : `${activeSuppliers} aktif`,
-    "/dashboard/purchasing/supplier-categories":
-      activeSupplierCategories === null
-        ? "—"
-        : `${activeSupplierCategories} aktif`,
-    "/dashboard/purchasing/receipts":
-      receipts === null ? "—" : `${receipts} penerimaan`,
-    "/dashboard/purchasing/payables":
-      outstandingCount === null
-        ? "—"
-        : `${outstandingCount} belum lunas`,
-    "/dashboard/purchasing/returns":
-      returns === null ? "—" : `${returns} retur`,
-  };
+  const figures: PayablesStatFigures | null = summary
+    ? {
+        outstanding: {
+          amount: summary.outstanding.amount,
+          invoiceCount: summary.outstanding.invoiceCount,
+        },
+        dueSoon: {
+          amount: summary.dueSoon.amount,
+          invoiceCount: summary.dueSoon.invoiceCount,
+          horizonDays: summary.dueSoon.horizonDays,
+        },
+        invoiced: summary.invoiced,
+        pendingReceipts,
+      }
+    : null;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <PurchasingModuleHeader />
 
-      {/* What the module header cannot say, because it is on every tab: what
-          THIS screen is. */}
-      <p className="max-w-2xl text-sm text-muted">
-        Termin tiap supplier yang menentukan kapan sebuah faktur jatuh tempo. Dua
-        daftar di bawah adalah faktur yang tanggalnya sudah lewat, dan yang lewat
-        minggu ini.
-      </p>
+      {/* What every figure below is ABOUT — and the two controls that set it.
+          No Filter button: see PayablesScopeCard for why the panel went. */}
+      <PayablesScopeCard
+        query={query}
+        branches={branches}
+        onChange={setQuery}
+      />
 
-      {/* Five cards now, so the wide row is `lg:grid-cols-3` rather than a
-          five-across line of narrow tiles nobody can read the descriptions in.
-          Two rows of two-and-three at `lg`, which is what the sm breakpoint
-          already does at its own width. */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {sections.map((section) => (
+      {/* No onDueSoonClick: this tab has no invoice table of its own to drill
+          into, unlike Faktur's — see PayablesStatCards' own doc. */}
+      <PayablesStatCards
+        onPendingReceiptsClick={() =>
+          router.push("/dashboard/purchasing/receipts?status=pending")
+        }
+        figures={figures}
+        loading={loading && !summary}
+        failed={summaryFailed}
+        periodScoped
+      />
+
+      <Worklist
+        title="Hutang lewat jatuh tempo"
+        data={overdue}
+        tone="danger"
+        totalLabel="Total tertunggak"
+        empty="Tidak ada hutang yang lewat jatuh tempo."
+        moreLabel="faktur lain juga sudah lewat tempo"
+      />
+
+      {/* The window is the server's and arrives with the figures, so the caption
+          states the days the numbers beside it were computed with rather than
+          naming one this screen keeps a constant for. */}
+      <Worklist
+        title="Hutang jatuh tempo minggu ini"
+        caption={
+          summary ? `${summary.dueSoon.horizonDays} hari ke depan` : undefined
+        }
+        data={dueSoon}
+        tone="warning"
+        totalLabel="Kas yang perlu disiapkan"
+        empty={
+          summary
+            ? `Tidak ada hutang yang jatuh tempo dalam ${summary.dueSoon.horizonDays} hari.`
+            : "Tidak ada hutang yang jatuh tempo dalam waktu dekat."
+        }
+        moreLabel="faktur lain juga jatuh tempo minggu ini"
+      />
+
+      <Card>
+        <p className="text-base font-bold text-foreground">
+          Belum termasuk konsinyasi
+        </p>
+        <p className="mt-1 text-sm text-muted">
+          Utang konsinyasi per supplier belum ada di sini. Konsinyasi baru
+          berupa <b>tipe supplier</b> di master — barang yang terjual belum
+          otomatis menerbitkan tagihan ke pemiliknya, jadi daftarnya akan kosong
+          dan menyesatkan. Menyusul begitu fiturnya sendiri ada. Tipe tiap
+          supplier bisa dilihat di{" "}
           <Link
-            key={section.href}
-            href={section.href}
-            className="group rounded-xl border border-border bg-surface p-5 transition hover:border-primary hover:shadow-sm"
+            href="/dashboard/purchasing/suppliers"
+            className="text-primary underline-offset-2 hover:underline"
           >
-            <p className="font-semibold text-foreground group-hover:text-primary-hover">
-              {section.title}
-            </p>
-            <p className="mt-1.5 text-sm text-muted">{section.description}</p>
-            <p className="mt-3 tabular-nums text-xs text-muted">
-              {counts[section.href]}
-            </p>
+            tab Supplier
           </Link>
-        ))}
-      </div>
-
-      {mayReadInvoices && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <PayablePanel
-            title="Lewat jatuh tempo"
-            data={overdue}
-            totalLabel="Total tertunggak"
-            urgent
-            empty="Tidak ada faktur yang lewat jatuh tempo."
-            moreLabel="faktur lain juga sudah lewat tempo"
-          />
-
-          {/* The window is the server's and arrives with the figures, so the
-              caption states the days the numbers beside it were computed with.
-              Until it does, the panel says nothing about a window rather than
-              naming one it is guessing at. */}
-          <PayablePanel
-            title="Jatuh tempo minggu ini"
-            caption={
-              horizonDays === null ? undefined : `${horizonDays} hari ke depan`
-            }
-            data={dueSoon}
-            totalLabel="Kas yang perlu disiapkan"
-            empty={
-              horizonDays === null
-                ? "Tidak ada faktur yang jatuh tempo dalam waktu dekat."
-                : `Tidak ada faktur yang jatuh tempo dalam ${horizonDays} hari.`
-            }
-            moreLabel="faktur lain juga jatuh tempo minggu ini"
-          />
-        </div>
-      )}
+          .
+        </p>
+      </Card>
     </div>
   );
 }
 
 /**
- * One list of invoices that need money, and every state it can be in.
+ * One list of bills that need money — the mockup's `.na` panel.
  *
  * THE BADGE AND THE TOTAL COVER THE WHOLE BUCKET, not the five rows shown. A
- * panel that said "3" beside three rows out of eleven would tell somebody the job
- * was nearly done — the same reason the Inventory alerts report the server's
- * count rather than `children.length`. Both figures come from the hook, which
- * gets them from the server's own aggregation; nothing here adds anything up.
+ * panel reading "3" beside three rows out of eleven would tell somebody the job
+ * was nearly done. Both figures come from the server's own aggregation; nothing
+ * here adds anything up.
  *
- * A NULL TOTAL RENDERS AS AN ABSENCE, never as zero. It now means only that the
- * summary request failed — both totals are exact when it arrives — and "Rp 0"
- * over eleven unpaid bills is a number somebody would act on.
+ * A NULL TOTAL RENDERS AS AN ABSENCE, never as zero — "Rp 0" over eleven unpaid
+ * bills is a number somebody would act on.
+ *
+ * THE TONE IS A FILL WITH ORDINARY INK (ui-rules §4), and the count says in a
+ * number what the colour says at a glance, so nothing here depends on seeing the
+ * colour at all.
  */
-function PayablePanel({
+function Worklist({
   title,
   caption,
   data,
+  tone,
   totalLabel,
-  urgent = false,
   empty,
   moreLabel,
 }: {
   title: string;
   caption?: string;
-  data: PayablePanelData;
+  data: PayablesWorklist;
+  /** "danger" is money already late; "warning" is money that still has time. */
+  tone: "danger" | "warning";
   totalLabel: string;
-  /** Colours the count and the amounts — reserved for money already late. */
-  urgent?: boolean;
   empty: string;
   /** Copy for the "+N more" line under a truncated list. */
   moreLabel: string;
@@ -241,73 +221,53 @@ function PayablePanel({
   const remaining = count - rows.length;
 
   return (
-    <section className="flex flex-col rounded-xl border border-border bg-surface">
-      <header className="flex items-baseline gap-2 border-b border-border px-5 py-3">
-        <h2 className="font-bold">{title}</h2>
+    <section
+      className={cn(
+        "rounded-xl border px-4 py-3",
+        tone === "danger"
+          ? "border-danger/40 bg-danger/5"
+          : "border-secondary/40 bg-secondary/10",
+      )}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <h2 className="text-sm font-bold text-foreground">{title}</h2>
         {caption && <span className="text-xs text-muted">{caption}</span>}
         <Badge
           variant="outline"
           className={cn(
-            "ml-auto tabular-nums",
-            urgent && count > 0 && "border-danger text-danger",
+            "ml-auto bg-surface tabular-nums",
+            tone === "danger" && count > 0 && "border-danger text-danger-ink",
           )}
         >
           {count}
         </Badge>
-      </header>
+      </div>
 
       {count === 0 ? (
-        <p className="px-5 py-10 text-center text-sm text-muted">{empty}</p>
+        <p className="py-3 text-sm text-muted">{empty}</p>
       ) : (
         <>
           {total !== null && (
-            <div className="flex items-baseline gap-3 border-b border-border bg-accent px-5 py-2.5">
-              <span className="text-xs text-muted">{totalLabel}</span>
+            <p className="mt-1 flex items-baseline gap-2 text-xs text-muted">
+              {totalLabel}
               <span
                 className={cn(
-                  "ml-auto tabular-nums text-[15px] font-semibold",
-                  urgent && "text-danger",
+                  "text-sm font-bold tabular-nums text-foreground",
+                  tone === "danger" && "text-danger-ink",
                 )}
               >
                 {formatMoney(total)}
               </span>
-            </div>
+            </p>
           )}
 
-          <ul className="divide-y divide-border/60">
+          <ul className="mt-2">
             {rows.map((invoice) => (
-              <li
-                key={invoice._id}
-                className="flex items-center gap-3 px-5 py-3"
-              >
-                <div className="min-w-0 flex-1">
-                  <Link
-                    href={`/dashboard/purchasing/payables/${invoice._id}`}
-                    className="block truncate text-sm font-medium hover:text-primary-hover"
-                  >
-                    {/* A supplier deleted since still has invoices, and those
-                        invoices are still owed — so the row renders with a
-                        placeholder rather than being dropped. */}
-                    {invoice.supplierName ?? "—"}
-                  </Link>
-                  <p className="truncate tabular-nums text-xs text-muted">
-                    {invoice.invoiceNumber}
-                  </p>
-                </div>
-                <span
-                  className={cn(
-                    "tabular-nums text-sm font-semibold",
-                    urgent && "text-danger",
-                  )}
-                >
-                  {formatMoney(invoice.outstandingAmount)}
-                </span>
-                <DueChip dueDate={invoice.dueDate} />
-              </li>
+              <WorkRow key={invoice._id} invoice={invoice} />
             ))}
           </ul>
 
-          <div className="flex items-center gap-3 border-t border-border px-5 py-2.5 text-xs text-muted">
+          <div className="flex flex-wrap items-center gap-3 border-t border-border/70 pt-2.5 text-xs text-muted">
             {remaining > 0 && (
               <span>
                 +{remaining} {moreLabel}
@@ -315,7 +275,7 @@ function PayablePanel({
             )}
             <Link
               href="/dashboard/purchasing/payables"
-              className="ml-auto font-medium text-primary hover:text-primary-hover"
+              className="ml-auto font-bold text-primary underline-offset-2 hover:underline"
             >
               Lihat semua utang →
             </Link>
@@ -327,40 +287,53 @@ function PayablePanel({
 }
 
 /**
- * How long until this one is due, or how long it has been late.
+ * One bill: who it is owed to, when it was due, how much is left, and the one
+ * action worth taking on it.
  *
- * "besok" and "hari ini" are spelled out rather than rendered as "1 hari" and
- * "0 hari": those are the two rows somebody acts on before closing the tab, and
- * a countdown is slower to read than the word.
+ * "Bayar" OPENS THE INVOICE rather than a dialog. Recording a payment needs the
+ * bill's own screen — which account it leaves, the method, what is still
+ * outstanding as of now — and a summary tab is not where that decision is made.
+ * The link is gated by the invoice screen itself, which holds the `pay` grant
+ * that this tab's `read` does not imply.
  */
-function DueChip({ dueDate }: { dueDate: string }) {
-  const remaining = daysUntil(dueDate);
+function WorkRow({ invoice }: { invoice: PurchaseInvoiceListRow }) {
+  const remaining = daysUntil(invoice.dueDate);
+  const due = new Date(invoice.dueDate).toLocaleDateString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 
-  if (remaining < 0) {
-    return (
-      <span className="whitespace-nowrap rounded-full border border-danger/30 bg-danger/10 px-2 py-0.5 text-[11px] text-danger">
-        telat {Math.abs(remaining)} hari
-      </span>
-    );
-  }
-
-  const label =
-    remaining === 0
-      ? "hari ini"
-      : remaining === 1
-        ? "besok"
-        : `${remaining} hari`;
+  const when =
+    remaining < 0
+      ? `telat ${Math.abs(remaining)} hari`
+      : remaining === 0
+        ? "jatuh tempo hari ini"
+        : remaining === 1
+          ? "besok"
+          : `${remaining} hari lagi`;
 
   return (
-    <span
-      className={cn(
-        "whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px]",
-        remaining <= 1
-          ? "border-secondary/45 bg-secondary/20 text-secondary-foreground"
-          : "border-border text-muted",
-      )}
-    >
-      {label}
-    </span>
+    <li className="flex flex-wrap items-center gap-3 border-t border-border/70 py-2.5 first:border-t-0">
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-bold text-foreground">
+          <span className="tabular-nums">{invoice.invoiceNumber}</span>
+          {" · "}
+          {/* A supplier deleted since still has invoices, and those invoices are
+              still owed — so the row renders with a placeholder rather than
+              being dropped. */}
+          {invoice.supplierName ?? "—"}
+        </p>
+        <p className="truncate text-xs text-muted tabular-nums">
+          Jatuh tempo {due} · {when} · {formatMoney(invoice.outstandingAmount)}
+        </p>
+      </div>
+      <Link
+        href={`/dashboard/purchasing/payables/${invoice._id}`}
+        className="flex-none text-xs font-bold text-warning underline-offset-2 hover:underline"
+      >
+        Bayar
+      </Link>
+    </li>
   );
 }

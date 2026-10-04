@@ -1,4 +1,7 @@
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+
+import { InfoTooltip } from "./InfoTooltip";
 
 /**
  * One number under a page title — the mockup's `.kartu`, as the module headers
@@ -17,20 +20,42 @@ import { Badge } from "@/components/ui/badge";
  * private tile. The catalogue header wanted the same three states and the same
  * shape, which is the rule for promotion (§14) and the point at which a copy
  * would have started drifting.
+ *
+ * `onClick` MAKES IT A BUTTON — the mockup's `.mcard.click` — for a tile that is
+ * also a view of a list elsewhere on the page (Faktur Pembelian's due-soon
+ * card drills into the same bucket the figures describe). Omit it for a plain
+ * figure; most callers do.
+ *
+ * `tone` COLOURS THE NUMBER, NEVER THE TILE — absorbed from Penjualan's own
+ * stat card (2 October 2026), which existed only to get a red/green figure for
+ * Lewat jatuh tempo / Tertagih and drifted into its own uppercase label and
+ * radius along the way. A red panel in a row of four turns a dashboard into an
+ * alarm; a red numeral says the same thing while the row stays scannable.
+ *
+ * `hint` IS THE ⓘ, OPTIONAL (2 October 2026) — most callers' labels are
+ * self-explanatory and omit it; it exists for the ones that aren't ("berapa
+ * persen dari apa", "dihitung sejak kapan"), so the formula lives next to the
+ * number instead of nowhere. Always `<InfoTooltip>` (ui-rules §9), never a
+ * second caption line.
  */
 export function StatTile({
   label,
   value,
   caption,
+  hint,
   loading = false,
   error = false,
   dense = false,
+  tone = "plain",
+  onClick,
 }: {
   label: string;
   /** Already formatted for reading — "412", "Rp 4,2 jt". */
   value: string;
   /** What the number means, in a few words. */
   caption?: string;
+  /** The longer "what is this and how is it worked out", opened from the ⓘ. */
+  hint?: string;
   loading?: boolean;
   error?: boolean;
   /**
@@ -40,37 +65,82 @@ export function StatTile({
    * them. Without it a tile 145 px wide breaks "Rp 3,8 jt" across two lines.
    */
   dense?: boolean;
+  /** Plain is the default; danger/success colour the value for a figure that is good or bad news. */
+  tone?: "plain" | "danger" | "success";
+  onClick?: () => void;
 }) {
+  const interactive = Boolean(onClick);
+  const Tag = interactive ? "button" : "div";
+  const interactiveProps = interactive
+    ? ({ type: "button", onClick } as const)
+    : {};
+  const toneClass =
+    tone === "danger"
+      ? "text-danger-ink"
+      : tone === "success"
+        ? "text-success"
+        : undefined;
+
   if (dense) {
     return (
-      <div className="rounded-xl border border-border bg-surface p-4">
+      <Tag
+        {...interactiveProps}
+        className={cn(
+          "rounded-xl border border-border bg-surface p-4 text-left",
+          interactive &&
+            "outline-none transition hover:border-primary/50 hover:shadow-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        )}
+      >
         {/*
           SENTENCE CASE, not the mockup's uppercase. Its labels are 10 px and
           ours cannot go below 13 (§1.6) — "OKUPANSI HOTEL" at 13 px breaks
           across two lines in a 145 px tile, and a row of tiles where half the
           headings wrap reads as broken rather than as dense.
         */}
-        <p className="text-xs font-semibold text-muted">{label}</p>
-        <p className="mt-1.5 text-xl font-bold tabular-nums text-foreground">
+        <p className="flex items-center gap-1 text-xs font-semibold text-muted">
+          {label}
+          {hint && <InfoTooltip hint={hint} />}
+        </p>
+        <p
+          className={cn(
+            "mt-1.5 text-xl font-bold tabular-nums text-foreground",
+            !(loading || error) && toneClass,
+          )}
+        >
           {loading || error ? "—" : value}
         </p>
-        <p className="mt-1 text-xs text-muted">
+        <p className="mt-1 text-xs text-muted tabular-nums">
           {error ? "gagal dimuat" : caption}
         </p>
-      </div>
+      </Tag>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-surface p-5">
-      <p className="text-sm text-muted">{label}</p>
-      <p className="mt-2 text-3xl font-semibold tabular-nums text-foreground">
+    <Tag
+      {...interactiveProps}
+      className={cn(
+        "rounded-2xl border border-border bg-surface p-5 text-left",
+        interactive &&
+          "outline-none transition hover:border-primary/50 hover:shadow-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
+      )}
+    >
+      <p className="flex items-center gap-1.5 text-sm text-muted">
+        {label}
+        {hint && <InfoTooltip hint={hint} />}
+      </p>
+      <p
+        className={cn(
+          "mt-2 text-3xl font-semibold tabular-nums text-foreground",
+          !(loading || error) && toneClass,
+        )}
+      >
         {loading || error ? "—" : value}
       </p>
-      <p className="mt-1 text-xs text-muted">
+      <p className="mt-1 text-xs text-muted tabular-nums">
         {error ? "gagal dimuat" : caption}
       </p>
-    </div>
+    </Tag>
   );
 }
 

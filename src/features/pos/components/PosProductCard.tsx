@@ -1,6 +1,12 @@
 "use client";
 
-import { Plus, Layers, Package as PackageIcon, Scissors } from "lucide-react";
+import {
+  IdCard,
+  Plus,
+  Layers,
+  Package as PackageIcon,
+  Scissors,
+} from "lucide-react";
 
 import { HighlightText } from "@/components";
 
@@ -51,7 +57,17 @@ function PosProductThumbnail({ item }: { item: PosCatalogItem }) {
   const src = item.image?.thumbUrl ?? item.image?.mediumUrl ?? item.image?.url;
 
   if (!src) {
-    const Icon = item.kind === "service" ? Scissors : PackageIcon;
+    /*
+      THREE ICONS NOW. A package is neither a thing nor a service performed, and
+      a cashier scanning the grid has to be able to tell at a glance that this
+      tile will ask which animal it is for and sell a year of cover.
+    */
+    const Icon =
+      item.kind === "membership"
+        ? IdCard
+        : item.kind === "service"
+          ? Scissors
+          : PackageIcon;
 
     return (
       <div className="flex aspect-square w-full items-center justify-center rounded-lg bg-secondary/25">

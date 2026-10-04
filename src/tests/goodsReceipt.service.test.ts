@@ -40,6 +40,7 @@ const EVERY_FILTER: Required<GoodsReceiptListQuery> = {
   warehouseId: "wh1",
   branchId: "br1",
   purchaseType: "konsinyasi",
+  status: "pending",
   invoiced: false,
   dateFrom: "2026-08-01",
   dateTo: "2026-08-31",
@@ -155,13 +156,43 @@ describe("goodsReceiptService", () => {
    * A posted receipt is immutable. If somebody adds one of these, they have to
    * delete this test to do it — and that is a conversation, not an accident.
    */
-  it("exposes no mutation beyond create", () => {
+  it("exposes no mutation beyond create and receive", () => {
     expect(Object.keys(goodsReceiptService).sort()).toEqual([
       "create",
       "getById",
       "list",
+      "pendingCount",
       "preview",
+      "receive",
       "summary",
     ]);
+  });
+
+  it("receives a delivery by id, posting the arrival date and invoice", async () => {
+    const post = jest.spyOn(apiClient, "post").mockResolvedValue({} as never);
+
+    await goodsReceiptService.receive("r1", {
+      receivedAt: "2026-10-03T00:00:00.000Z",
+      invoice: { invoiceNumber: "INV/1" },
+    });
+
+    expect(post).toHaveBeenCalledWith("/goods-receipts/r1/receive", {
+      receivedAt: "2026-10-03T00:00:00.000Z",
+      invoice: { invoiceNumber: "INV/1" },
+    });
+  });
+
+  it("asks for the pending count, scoped by cabang when one is given", async () => {
+    const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
+
+    await goodsReceiptService.pendingCount({ branchId: "br1" });
+    await goodsReceiptService.pendingCount({ branchId: "" });
+
+    expect(get).toHaveBeenNthCalledWith(1, "/goods-receipts/pending-count", {
+      query: { branchId: "br1" },
+    });
+    expect(get).toHaveBeenNthCalledWith(2, "/goods-receipts/pending-count", {
+      query: { branchId: undefined },
+    });
   });
 });

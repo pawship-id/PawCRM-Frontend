@@ -6,15 +6,31 @@ import { ApiError } from "@/services/api-error";
 import { petOptionService } from "@/services/petOption.service";
 import type { PetOption, PetOptionType } from "@/types/api";
 
-
+/**
+ * The words every tenant is seeded with — mirrors DEFAULT_PET_OPTIONS in
+ * petOption.model.js.
+ *
+ * THE LABEL OF LAST RESORT, not a list anybody picks from: what `label()` says
+ * before the tenant's own list has loaded, or when it cannot. A shop that has
+ * renamed "Kecil" sees its own word the moment the list arrives.
+ *
+ * KEYED BY THE OLD CODE, which is why it reaches less far than it used to: a
+ * stored value is an `_id` now (see `label()`), and no fixed table can name an
+ * id. It still answers for the residual codes on pre-25-September documents.
+ */
+export const DEFAULT_PET_OPTION_LABELS: Record<
+  PetOptionType,
+  Record<string, string>
+> = {
+  species: { cat: "Kucing", dog: "Anjing" },
+  breed: { domestic: "Domestic", poodle: "Poodle" },
+  size: { small: "Kecil", medium: "Sedang", large: "Besar" },
+  furType: { "long hair": "Bulu panjang", "short hair": "Bulu pendek" },
+};
 
 /** One entry a select can render. */
 export interface PetOptionChoice {
-  /**
-   * What gets saved — the option's `_id` for a PET field, its `code` for a
-   * service variant's axis. `choices(type, keep, { by })` picks which, and the
-   * default stays `code` because the price grid is the older caller.
-   */
+  /** The option's `_id` — what gets saved. */
   value: string;
   /** The word, with " (nonaktif)" appended when the option is retired. */
   label: string;
@@ -188,43 +204,31 @@ export function usePetOptions() {
     [live],
   );
 
-  /**
-   * The option behind a stored value — matched on `_id` FIRST, then on `code`.
-   *
-   * IN THAT ORDER because an id is unambiguous and a code is only unique within
-   * BY `_id` ALONE since 25 September 2026 — an option has no code to be found
-   * by any more, and every stored value in the app is an id.
-   *
-   * Live options win, then soft-deleted ones: a pet may point at a word the
-   * shop removed, and naming it beats showing an id.
-   */
-  const find = useCallback(
-    (type: PetOptionType, value: string | null | undefined) => {
-      if (!value) return null;
+/*
+    BY `_id`, NOT BY CODE (27 September 2026).
 
-      const matches = (option: PetOption) =>
-        option.type === type && option._id === value;
+    THE BACKEND MOVED ON 25 SEPTEMBER and this layer did not. A pet option has
+    no `code` field any more — `pets.species`, `pets.breed`, a service variant's
+    `petType` / `sizeCategory` / `furType` all store the option's `_id`, and the
+    Joi schemas accept nothing else. Matching on `code` here only appeared to
+    work because documents written BEFORE the migration still carry a leftover
+    `code` key that `.lean()` passes through untouched; every option created
+    since has none, and every stored value has been an id all along.
 
-      return live.find(matches) ?? state.options.find(matches) ?? null;
-    },
-    [live, state.options],
-  );
-
+    THE LEGACY CODE IS STILL TRIED, second. Those residual keys are real data on
+    a live database, and a value written as a code before the migration must
+    still find its word rather than render as raw text. It costs one miss.
+  */
   const label = useCallback(
-    (type: PetOptionType, value: string | null | undefined): string | null => {
-      if (!value) return null;
+    (type: PetOptionType, id: string | null | undefined): string | null => {
+      if (!id) return null;
 
-      const match = find(type, value);
-      if (match) return match.label;
+      const of = (option: PetOption) =>
+        option.type === type && (option._id === id || option.code === id);
 
-      /*
-        NOT FOUND — and since 25 September 2026 there is nothing to fall back
-        to. A stored value is an option `_id`, generated per tenant, so no table
-        of seeded words can name one; printing the raw id would put `66f1a2…` in
-        a column of animal names. Callers render the value's own placeholder
-        instead, which is why this returns null rather than the id.
-      */
-      return null;
+      const match = live.find(of) ?? state.options.find(of);
+
+      return match?.label ?? DEFAULT_PET_OPTION_LABELS[type][id] ?? id;
     },
     [find],
   );
@@ -244,7 +248,7 @@ export function usePetOptions() {
       const active: PetOptionChoice[] = ordered(type)
         .filter((option) => option.isActive)
         .map((option) => ({
-          value: valueOf(option),
+          value: option._id,
           label: option.label,
           retired: false,
         }));
@@ -256,20 +260,10 @@ export function usePetOptions() {
         same id and must not be added twice.
       */
       const kept = [...new Set(keep)]
-        .map((stored) => {
-          if (!stored) return null;
-          const match = find(type, stored);
-          return match ? valueOf(match) : stored;
-        })
-        .filter(
-          (value, index, all): value is string =>
-            Boolean(value) &&
-            !offered.has(value!) &&
-            all.indexOf(value) === index,
-        )
-        .map((value) => ({
-          value,
-          label: `${label(type, value) ?? value} (nonaktif)`,
+        .filter((id): id is string => Boolean(id) && !offered.has(id!))
+        .map((id) => ({
+          value: id,
+          label: `${label(type, id)} (nonaktif)`,
           retired: true,
         }));
 

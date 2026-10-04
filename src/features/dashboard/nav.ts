@@ -234,10 +234,28 @@ export const NAV_SECTIONS: NavSection[] = [
          * granted pets alone would reach /dashboard/master/pets by URL only.
          */
         label: "Pelanggan",
-        href: "/dashboard/master/customers",
+        /*
+          IT OPENS ON RINGKASAN, not on the register (28 September 2026, on
+          request). Ringkasan is the module's FRONT PAGE and the first tab —
+          who has stopped coming, who has just arrived — which is what somebody
+          opens the module to find out. The register is where you go when you
+          already know whose name you are after.
+
+          SAME GRANT EITHER WAY, so this does not break the rule above that a
+          gated href must match the row's own `permission`: the Ringkasan route
+          is gated on `customers:read` exactly as the register is.
+        */
+        href: "/dashboard/master/customers/ringkasan",
         icon: Users,
         permission: { feature: "customers", action: "read" },
-        match: ["/dashboard/master/pets"],
+        /*
+          THE REGISTER IS A `match` NOW, and it has to be: `href` is prefix
+          matched, and `/…/customers/ringkasan` is not a prefix of
+          `/…/customers`, so without this the row would go dark the moment the
+          reader opened the Pelanggan tab. Listed as a prefix, it also covers
+          Membership, Riwayat and every customer detail route in one entry.
+        */
+        match: ["/dashboard/master/customers", "/dashboard/master/pets"],
       },
     ],
   },
@@ -246,8 +264,13 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       {
         /**
-         * A LEAF, as the mockup draws it, with its four tabs on the screen (see
-         * SalesModuleHeader): Faktur, Piutang, E-commerce, Retur.
+         * A LEAF, as the mockup draws it, with its five tabs on the screen (see
+         * SalesModuleHeader): Ringkasan, Faktur, Piutang, E-commerce, Retur.
+         *
+         * THE HREF OPENS RINGKASAN, which took `/dashboard/sales` on 29
+         * September 2026 (on request). The invoice list moved a segment down to
+         * `/dashboard/sales/invoice`, so this row still needs no `match` for it:
+         * every sales document is under the prefix this href already covers.
          *
          * `match` reaches OUT OF ITS OWN PREFIX for exactly one of them.
          * E-commerce lives at /dashboard/ecommerce-sync — it predates this
@@ -269,8 +292,11 @@ export const NAV_SECTIONS: NavSection[] = [
        * Pembelian — the supply side, and ONE ROW rather than the six-child group
        * it used to be. Every screen in the module is a tab of it now (see
        * PurchasingModuleHeader), in the order a purchase actually unfolds: the
-       * landing page, then the vendor and how they are filed, then their goods
-       * arriving, then what is owed for them, then what goes back.
+       * landing page, then the vendor, then their goods arriving, then what is
+       * owed for them, then what goes back. Kategori Supplier left this list on
+       * 1 October 2026 along with its tab — it is opened from a card on
+       * Pengaturan › Umum now, so `supplierCategories:read` describes nothing
+       * reachable under /dashboard/purchasing any more.
        *
        * Kept separate from Inventori rather than folded into it, because the two
        * answer different questions and are usually done by different people.
@@ -280,14 +306,14 @@ export const NAV_SECTIONS: NavSection[] = [
        * NO `match` IS NEEDED, unlike the other tabbed rows: every tab lives
        * under /dashboard/purchasing, so this href's own prefix already covers
        * them. And no `exact` either, for the same reason — the row should light
-       * up on all six.
+       * up on all five.
        *
        * `permissionAny` RATHER THAN ONE `permission`, and this row is the reason
-       * that field exists: five of its six tabs are gated on five different
+       * that field exists: four of its five tabs are gated on four different
        * features, so no single grant describes the module. It is legal here
        * because the href is the ungated hub — every card on it gates itself, so
-       * whoever the row is shown to lands somewhere they may read. The six
-       * grants below are exactly the five the hub's cards carry.
+       * whoever the row is shown to lands somewhere they may read. The four
+       * grants below are exactly the four the hub's cards carry.
        */
       {
         label: "Pembelian",
@@ -295,7 +321,6 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: Truck,
         permissionAny: [
           { feature: "suppliers", action: "read" },
-          { feature: "supplierCategories", action: "read" },
           { feature: "goodsReceipts", action: "read" },
           { feature: "purchaseInvoices", action: "read" },
           { feature: "purchaseReturns", action: "read" },

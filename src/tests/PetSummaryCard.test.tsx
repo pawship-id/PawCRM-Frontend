@@ -3,9 +3,13 @@ import { render, screen } from "@testing-library/react";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/customer.service");
+jest.mock("@/services/pet.service");
+jest.mock("@/services/petOption.service");
 
 import { PetSummaryCard } from "@/features/pets";
 import type { Pet } from "@/types/api";
+
+import { primePetOptions } from "./helpers/petOptions";
 
 /**
  * WHAT A GROOMER READS BEFORE TOUCHING THE ANIMAL — FR-5 kriteria 5.13.
@@ -146,27 +150,39 @@ describe("PetSummaryCard", () => {
  * A form answers in field values, so the owner rendered as a disabled select
  * holding a customer id: somebody opening a profile to see whose dog this is
  * read `6a9797bacc28e96138ba7764`.
+ *
+ * IT MOUNTS THE WHOLE SCREEN rather than the Info tab alone, because the owner
+ * fetch moved up there on 28 September 2026 — the header names the owner too, so
+ * one request is shared instead of the header and the tab each making their own.
+ * A test of the tab in isolation would now pass with a screen that fetches
+ * nothing.
  */
-describe("PetInfoTab — the owner", () => {
+describe("PetProfileScreen — the owner", () => {
   it("shows the owner's name, never the id", async () => {
     const { customerService } = jest.requireMock("@/services/customer.service");
+    const { petService } = jest.requireMock("@/services/pet.service");
+    const { petOptionService } = jest.requireMock(
+      "@/services/petOption.service",
+    );
+
+    primePetOptions(petOptionService.list);
+    petService.getById.mockResolvedValue(
+      pet({ customerId: "cust-1", breed: "domestic" }),
+    );
     customerService.getById.mockResolvedValue({
       _id: "cust-1",
       name: "Ibu Rina",
     });
 
-    const { PetInfoTab } = jest.requireActual<
-      typeof import("@/features/pets/components/PetInfoTab")
-    >("@/features/pets/components/PetInfoTab");
+    const { PetProfileScreen } = jest.requireActual<
+      typeof import("@/features/pets/components/PetProfileScreen")
+    >("@/features/pets/components/PetProfileScreen");
 
     /* `Can` reads the session, so this one needs the provider. */
-    renderWithAuth(
-      <PetInfoTab
-        pet={pet({ customerId: "cust-1", breed: "domestic" }) as Pet}
-      />,
-    );
+    renderWithAuth(<PetProfileScreen petId="pet-1" />);
 
-    expect(await screen.findByText("Ibu Rina")).toBeInTheDocument();
+    /* Twice now — the header line and the Info tab's row. */
+    expect((await screen.findAllByText("Ibu Rina")).length).toBeGreaterThan(0);
     expect(screen.queryByText("cust-1")).not.toBeInTheDocument();
   });
 });

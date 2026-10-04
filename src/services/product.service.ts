@@ -100,7 +100,13 @@ export const productService = {
 
   /** GET /products/low-stock — at or below the restock threshold. */
   lowStock: (
-    query: { page?: number; limit?: number; warehouseId?: string } = {},
+    query: {
+      page?: number;
+      limit?: number;
+      warehouseId?: string;
+      /** Every gudang under this cabang, plus the branchless ones. */
+      branchId?: string;
+    } = {},
   ) =>
     apiClient.get<PageResult<Product & { qtyOnHand: string }>>(
       "/products/low-stock",
@@ -122,7 +128,13 @@ export const productService = {
    * while being a fraction of it. Negative, like every `value` here.
    */
   negativeStock: (
-    query: { page?: number; limit?: number; warehouseId?: string } = {},
+    query: {
+      page?: number;
+      limit?: number;
+      warehouseId?: string;
+      /** Every gudang under this cabang, plus the branchless ones. */
+      branchId?: string;
+    } = {},
   ) =>
     apiClient.get<NegativeStockResult>("/products/negative-stock", {
       query: { ...query },

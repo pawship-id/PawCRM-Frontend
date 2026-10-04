@@ -220,10 +220,11 @@ export function variantAxisValues(
         the option-type's name rather than printing one.
       */
       const word =
-        labelOf?.(type, id) ??
-        options.find((option) => option.type === type && option._id === id)?.label ??
-        AXIS_LABEL[axis];
-      values.push({ value: id, label: `${word}${RETIRED_SUFFIX}`, retired: true });
+        labelOf?.(type, code) ??
+        options.find((option) => option.type === type && option._id === code)
+          ?.label ??
+        code;
+      values.push({ value: code, label: `${word}${RETIRED_SUFFIX}`, retired: true });
     }
 
     table[axis] = values;

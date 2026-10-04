@@ -27,14 +27,42 @@ export function bookingShareOf(item: Pick<PosItem, "bookingDiscount">): string |
  * remainder, as whole rupiah: the stored figure is nominal by then, and the
  * popover takes a rupiah amount without decimals.
  */
+/**
+ * How much of `discount` a MEMBERSHIP BENEFIT paid for (29 September 2026).
+ *
+ * The same shape as `bookingShareOf` above and for the same reason: the server
+ * stores one combined figure on the line, and the till has to be able to show
+ * the parts separately — a cashier looking at "Rp 265.000" needs to know which
+ * of it was the card and which of it was theirs.
+ */
+export function membershipShareOf(
+  item: Pick<PosItem, "membershipDiscount">,
+): string | null {
+  return item.membershipDiscount && isPositive(item.membershipDiscount)
+    ? item.membershipDiscount
+    : null;
+}
+
+/**
+ * THE PART OF THE LINE'S DISCOUNT THE CASHIER ACTUALLY TYPED.
+ *
+ * Both shares come off: the booking's, and now the membership benefit's. This
+ * is what the discount popover is seeded with and what is sent back on the next
+ * write — feeding it the combined figure would make the till re-send the card's
+ * benefit as a typed discount, and the server would then apply the benefit
+ * again on top of it.
+ */
 export function ownDiscountOf(
-  item: Pick<PosItem, "discount" | "bookingDiscount">,
+  item: Pick<PosItem, "discount" | "bookingDiscount" | "membershipDiscount">,
 ): PosDiscount | null {
   const share = bookingShareOf(item);
+  const benefit = membershipShareOf(item);
 
-  if (!share || !item.discount) return item.discount;
+  if ((!share && !benefit) || !item.discount) return item.discount;
 
-  const own = subtractDecimals(item.discount.resolvedAmount, share);
+  let own = item.discount.resolvedAmount;
+  if (share) own = subtractDecimals(own, share);
+  if (benefit) own = subtractDecimals(own, benefit);
 
   if (!isPositive(own)) return null;
 

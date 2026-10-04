@@ -45,6 +45,8 @@ export function useLowStockAlert(
   enabled: boolean,
   /** Empty means every warehouse — see the note on the threshold above. */
   warehouseId = "",
+  /** Empty means every cabang; resolved server-side into its gudang. */
+  branchId = "",
 ): UseLowStockAlertResult {
   const [items, setItems] = useState<LowStockProduct[]>([]);
   const [total, setTotal] = useState(0);
@@ -64,7 +66,11 @@ export function useLowStockAlert(
     productService
       // `|| undefined` so "no warehouse" drops out of the query string rather
       // than reaching the API as an empty string it would reject as a 400.
-      .lowStock({ limit: LIMIT, warehouseId: warehouseId || undefined })
+      .lowStock({
+        limit: LIMIT,
+        warehouseId: warehouseId || undefined,
+        branchId: branchId || undefined,
+      })
       .then((result) => {
         if (!active) return;
         setItems(result.items);
@@ -87,7 +93,7 @@ export function useLowStockAlert(
     return () => {
       active = false;
     };
-  }, [enabled, warehouseId]);
+  }, [enabled, warehouseId, branchId]);
 
   return { items, total, loading, error };
 }

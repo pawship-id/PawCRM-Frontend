@@ -60,7 +60,7 @@ describe("a branch's opening hours", () => {
     await userEvent.type(screen.getByLabelText(/Jam tutup/), "20:00");
     await userEvent.click(screen.getByLabelText("Senin"));
     await userEvent.click(screen.getByLabelText("Selasa"));
-    await userEvent.click(screen.getByRole("button", { name: /Save/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Simpan/i }));
 
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith(
@@ -81,7 +81,7 @@ describe("a branch's opening hours", () => {
     await open();
 
     await userEvent.type(screen.getByLabelText(/Jam buka/), "09:00");
-    await userEvent.click(screen.getByRole("button", { name: /Save/i }));
+    await userEvent.click(screen.getByRole("button", { name: /Simpan/i }));
 
     expect(
       await screen.findByText("Isi jam buka dan jam tutupnya sekaligus"),

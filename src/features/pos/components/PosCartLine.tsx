@@ -9,7 +9,10 @@ import type { PosItem, PosDiscountMode } from "@/types/api";
 
 import { ownDiscountOf } from "../bookingDiscount";
 import { variantDetailOf } from "../variantDetail";
+import { PosBenefitChip } from "./PosBenefitChip";
 import { PosDiscountPopover } from "./PosDiscountPopover";
+import { PosLinePrice } from "./PosLinePrice";
+import { netOf, PosLineTotal } from "./PosLineTotal";
 
 /**
  * One line in the basket.
@@ -30,6 +33,8 @@ export function PosCartLine({
   onQtyChange,
   onRemove,
   onDiscountChange,
+  onPriceChange,
+  maySetPrice = false,
   disabled = false,
 }: {
   item: PosItem;
@@ -62,9 +67,26 @@ export function PosCartLine({
     index: number,
     discount: { mode: PosDiscountMode; value: string } | null,
   ) => void;
+  /**
+   * Typing a price over the catalogue's — `null` puts the line back to it.
+   *
+   * ABSENT MEANS THE PRICE IS READ-ONLY, which is how every caller that has
+   * nothing to do with re-pricing keeps the line exactly as it was.
+   */
+  onPriceChange?: (index: number, unitPrice: string | null) => void;
+  /** `posTransactions:setPrice`. See PosLinePrice. */
+  maySetPrice?: boolean;
   disabled?: boolean;
 }) {
   const qty = Number(item.qty);
+  /*
+    ONLY A PRODUCT IS STEPPED. Stated as a positive rather than as "not a
+    service", because the list of kinds grew on 29 September 2026 and a negative
+    test does not grow with it: a MEMBERSHIP line fell into the product branch
+    and got a −/+ stepper, while the server forces one package per line — a
+    control that did nothing, on the screen where every pixel is read at speed.
+  */
+  const stepsQty = item.kind === "product";
   const isService = item.kind === "service";
 
   /**
@@ -179,7 +201,13 @@ export function PosCartLine({
           )}
 
           <span className="mt-0.5 block text-xs tabular-nums text-muted">
-            {formatMoney(item.unitPrice)}
+            <PosLinePrice
+              item={item}
+              label={`Harga ${item.name}`}
+              editable={maySetPrice && onPriceChange !== undefined}
+              disabled={disabled}
+              onChange={(unitPrice) => onPriceChange?.(index, unitPrice)}
+            />
             {/*
               ITS OWN DISCOUNT ONLY — the booking's share of "Diskon seluruh
               booking" is shown once, under the booking (see `PosCart`).
@@ -195,16 +223,14 @@ export function PosCartLine({
           </span>
         </div>
 
-        <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
-          {/*
-            ITS OWN PRICE, NOT THE PAIR'S — the same rule as the struk. The
-            add-on carries its own figure directly below, so adding it in here
-            would show the same 20.000 twice: once inside this number and once
-            under it. The two screens now agree, and both add up to the same
-            subtotal.
-          */}
-          {formatMoney(item.lineTotal)}
-        </span>
+        {/*
+          ITS OWN PRICE, NOT THE PAIR'S — the same rule as the struk. The
+          add-on carries its own figure directly below, so adding it in here
+          would show the same 20.000 twice: once inside this number and once
+          under it. The two screens now agree, and both add up to the same
+          subtotal.
+        */}
+        <PosLineTotal item={item} />
       </div>
 
       {/*
@@ -262,13 +288,18 @@ export function PosCartLine({
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
-          {isService ? (
-            /* A word, not a bare "1" — §1.3. */
+          {!stepsQty ? (
+            /*
+              A WORD, NOT A BARE "1" — §1.3. Both unstepped kinds get one, and
+              each says which it is: a cashier scanning the basket has to be
+              able to tell a grooming from a year of membership without reading
+              the name twice.
+            */
             <Badge
               variant="outline"
               className="border-transparent bg-secondary"
             >
-              Layanan
+              {isService ? "Layanan" : "Membership"}
             </Badge>
           ) : (
             <>
@@ -305,6 +336,20 @@ export function PosCartLine({
               </Button>
             </>
           )}
+
+          {/*
+            BESIDE "LAYANAN" (1 October 2026, on request) — both are marks about
+            the line rather than controls on it, so they sit together on the
+            side that names what this row is, not the side that acts on it.
+          */}
+          {item.discount?.source === "membership" && (
+            <PosBenefitChip
+              applied={{
+                benefitLabel: item.discount.benefitLabel ?? null,
+                amount: item.membershipDiscount ?? "0",
+              }}
+            />
+          )}
         </div>
 
         <div className="flex items-center gap-1">
@@ -315,10 +360,26 @@ export function PosCartLine({
             the same over-reach as locking the bin: it left a cashier unable to
             give 10% off a grooming that was already on the table.
           */}
+          {/*
+            BEFORE THE DISCOUNT CONTROL, and the order is the order the money
+            comes off: the benefit first, then whatever the cashier types on
+            what is left (decision 7). A cashier reading the row left to right
+            reads it in the same sequence the server prices it.
+          */}
+          {/*
+            NOTHING LEFT TO DISCOUNT (1 October 2026, on request). A line a card
+            already took to nothing cannot be cut further — the server would
+            floor it at zero anyway — so the control says so rather than opening
+            a panel whose every entry changes no figure.
+            ⚠️ ONLY WHEN NOTHING WAS TYPED. A line at zero BECAUSE the cashier
+            typed 100% must keep its control, or the discount they just entered
+            is one they can never take back off.
+          */}
           <PosDiscountPopover
             value={ownDiscountOf(item)}
-            disabled={disabled}
+            disabled={disabled || (!ownDiscountOf(item) && netOf(item) === "0.0000")}
             label={`Diskon ${item.name}`}
+            subject={item.name}
             onApply={(discount) => onDiscountChange(index, discount)}
           />
           {/*

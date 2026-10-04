@@ -61,6 +61,8 @@ export function useUninvoicedReceipts(): UseUninvoicedReceiptsResult {
       .list({
         limit: OPTION_LIMIT,
         invoiced: false,
+        // A bill can only document goods that have arrived.
+        status: "received",
         purchaseType: "beli_putus",
       })
       .then((result) => {

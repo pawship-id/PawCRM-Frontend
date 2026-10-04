@@ -32,6 +32,8 @@ const EVERY_FILTER: Required<CategoryListQuery> = {
   isActive: false,
   includeDeleted: true,
   sort: "nameAsc",
+  // The till's pill row ranks categories by this; nothing else asks for it.
+  withProductCount: true,
 };
 
 describe("categoryService", () => {

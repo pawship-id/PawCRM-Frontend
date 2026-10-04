@@ -84,7 +84,7 @@ export function PetOptionsTable({
    * The tenant's word for a species, BY ITS `_id` — a breed's "Hewan" column.
    * From the SCREEN'S OWN list, not a second load of the same one.
    */
-  speciesLabel?: (speciesId: string) => string | null;
+  speciesLabel?: (id: string) => string | null;
   loading: boolean;
   onRename: (option: PetOption) => void;
   /** Re-read the screen's list and the app's shared one. */
@@ -216,15 +216,8 @@ export function PetOptionsTable({
                   </TableCell>
                   {type === "breed" && (
                     <TableCell className="text-sm text-muted">
-                      {/*
-                        A SPECIES THIS SCREEN CANNOT NAME reads "—", not its raw
-                        id: the code used to be a word a reader could recognise,
-                        an id is not, and printing one in a column of animal
-                        names would be noise. It means the species was deleted,
-                        which `deleteOption` now refuses to let happen.
-                      */}
                       {option.speciesId
-                        ? (speciesLabel?.(option.speciesId) ?? "—")
+                        ? (speciesLabel?.(option.speciesId) ?? "Semua hewan")
                         : "Semua hewan"}
                     </TableCell>
                   )}

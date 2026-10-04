@@ -7,6 +7,370 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — "Jumlah hewan" ikut update tanpa reload setelah tambah hewan baru
+
+3 Oktober 2026, atas permintaan: pastikan "Jumlah pelanggan" ikut update
+otomatis saat tambah pelanggan baru, dan "Jumlah hewan" saat tambah hewan
+baru — lanjutan dari perbaikan hapus/pulihkan kemarin.
+
+- **"Jumlah pelanggan" ternyata sudah benar** begitu dicek — `/master/customers`
+  sudah `force-dynamic` dan form tambah pelanggan ada di route BERBEDA
+  (`/master/customers/new`), jadi pindah ke sana lalu kembali ke daftar
+  memang memasang `CustomersScreen` dari nol, otomatis minta ulang datanya.
+  Ditambah komentar di `CustomerCreateForm.tsx` menjelaskan ini, tapi tidak
+  ada kode yang perlu diubah.
+- **"Jumlah hewan" ternyata memang ada celah**: `/master/pets/page.tsx` LUPA
+  diberi `export const dynamic = "force-dynamic"` yang dipunyai halaman
+  Pelanggan — tanpa itu, Next.js menganggap halaman ini "statis" dan bisa
+  menyajikan salinan ter-cache (sampai 5 menit) pada kunjungan ulang biasa,
+  bukan cuma lewat tombol Back browser. Satu baris ditambahkan,
+  menyamakan dengan halaman Pelanggan.
+- **`router.refresh()` SENGAJA TIDAK DIPAKAI** sebagai perbaikan — sempat
+  dipertimbangkan, tapi dokumentasi Next.js bawaan paket ini bilang jelas:
+  `router.refresh()` "does not lose unaffected client-side React (e.g.
+  useState)" — kartu register ini dihitung lewat `useEffect` di client
+  (`useRegistryCounts`), bukan data dari server-render, jadi `refresh()`
+  tidak akan memaksa hook itu minta ulang. Baris itu tidak akan memperbaiki
+  apa-apa di sini, cuma menambah kode tanpa efek.
+- **Keterbatasan yang masih ada, didokumentasikan apa adanya**: menekan
+  tombol **Back** di browser (bukan tombol "Batal"/navigasi dalam aplikasi)
+  setelah membuat pelanggan/hewan baru tetap bisa menampilkan halaman daftar
+  versi lama sesaat, karena Next.js sengaja menyimpan salinan halaman untuk
+  navigasi Back/Forward supaya tidak ada lompatan tampilan atau scroll
+  position hilang — ini perilaku Next.js sendiri, bukan sesuatu yang
+  `force-dynamic` atau `router.refresh()` bisa matikan. Reload manual tetap
+  memperbaikinya, dan ini bukan jalur yang dipakai siapa pun yang menekan
+  tombol "Simpan" lalu memakai tautan di aplikasi.
+
+---
+
+## [Unreleased] — "Jumlah pelanggan"/"Jumlah hewan" ikut update tanpa reload setelah hapus
+
+3 Oktober 2026, laporan bug: hapus satu pelanggan di tabel Pelanggan, baris di
+tabel langsung hilang, tapi kartu "Jumlah pelanggan" di atasnya tetap
+menunjukkan angka lama sampai halamannya di-reload manual.
+
+- **Penyebabnya**: `CustomerModuleHeader` (empat kartu register di atas tiap
+  tab) menghitung sendiri lewat `useRegistryCounts`, request-nya sendiri,
+  sekali waktu mount — tidak pernah terhubung ke tabel pelanggan/hewan di
+  bawahnya. Menghapus (atau memulihkan) baris cuma memanggil `refetch`
+  milik tabelnya sendiri, kartu di header tidak pernah diberitahu.
+- **`useRegistryCounts` dapat parameter baru, `refreshKey`** — nilai apa pun
+  yang berubah di situ bikin hook ini minta ulang kedua angka. `CustomerModuleHeader`
+  meneruskannya lewat prop dengan nama yang sama.
+- **`CustomersScreen.tsx` dan `PetsScreen.tsx` (tab Pelanggan dan tab Hewan,
+  sama-sama pakai header ini) sekarang punya `handleRowChanged`** — gabungan
+  `refetch()` tabel DAN menambah `refreshKey` satu angka, dipasang sebagai
+  `onChanged` tabelnya. Satu klik hapus/pulihkan, dua tempat sama-sama ikut
+  berubah, tanpa reload.
+- **Ketemu bug regresi di `DormantCustomersScreen.tsx` sambil mengerjakan
+  ini** — baris total ("N pelanggan tidak aktif ≥ X hari") ternyata hilang
+  total dari komponennya, korban dari satu edit sebelumnya (`busy`
+  refactor) yang tidak sengaja membuang blok itu saat menulis ulang bagian
+  di sekitarnya. Ketahuan dari test yang gagal, bukan dari laporan — sudah
+  dikembalikan.
+
+---
+
+## [Unreleased] — Chip "Pelanggan baru" di tabel Pelanggan sekarang benar-benar menghapus `?createdSince=`
+
+2 Oktober 2026, laporan bug: buka "Lihat semua" dari kartu "Pelanggan baru
+dalam N hari" (URL `?createdSince=...`), lalu klik "×" di chip "Pelanggan
+baru (dari Ringkasan)" — tabel benar kembali menampilkan semua pelanggan,
+tapi URL tetap `?createdSince=...`. Bug yang sama persis dengan yang baru
+dibetulkan di halaman "Pelanggan tidak aktif", di komponen yang beda, belum
+sempat ikut dibetulkan waktu itu.
+
+- **`CustomersScreen.tsx` sekarang menulis balik URL** lewat `useEffect` yang
+  mengamati `query.createdSince` dan memanggil `router.replace` begitu
+  nilainya berubah — balik ke `/dashboard/master/customers` polos kalau
+  kosong. `skipFirst` (via `useRef`) mencegah penulisan ulang yang sia-sia
+  pas render pertama, karena URL-nya saat itu memang sudah benar (baru saja
+  diresolve oleh server page).
+- **Beda caranya dari perbaikan "Pelanggan tidak aktif".** Di sana, filter
+  `days` memang HARUS lewat remount (`key` berubah) karena seluruh data
+  halaman bergantung padanya. Di sini `createdSince` cuma salah satu dari
+  banyak filter lokal (pencarian, tier, kategori, dll) — me-remount seluruh
+  layar tiap kali chip ini berubah akan ikut membuang filter lain yang
+  sedang dipakai pengguna. Jadi di sini `router.replace` cukup dipanggil
+  langsung di samping `setQuery`: berbeda dengan dormant, tabelnya sendiri
+  tidak pernah menunggu server re-render — sudah lebih dulu tersaring instan
+  lewat state klien, jadi tidak ada risiko balapan antara tabel dan URL.
+- **Ketemu bug di test double-nya juga sambil di sana**: mock `useRouter()`
+  di `DormantCustomersScreen.test.tsx` mengembalikan objek baru setiap
+  dipanggil, beda dari `next/navigation` asli yang stabil — tidak kelihatan
+  dampaknya sampai test baru untuk halaman ini butuh assert "`replace` belum
+  terpanggil" pas render pertama. Dibetulkan di kedua file test sekaligus.
+
+---
+
+## [Unreleased] — URL halaman "Pelanggan tidak aktif" ikut berubah saat filter diganti
+
+2 Oktober 2026, laporan bug, diperbaiki dua kali. Buka "Lihat semua" dari kartu
+"Pelanggan tidak aktif ≥ 60 hari" (URL `?days=60`), ganti filternya ke 30 hari
+di halaman itu sendiri — datanya ikut tersaring 30 hari, tapi URL tetap
+`?days=60`. Reload atau kirim link di titik itu balik ke 60 hari, tidak sama
+dengan yang terlihat di layar.
+
+- **Percobaan pertama (`router.replace` di samping `setQuery`) masih salah**,
+  dan laporan lanjutan dari BO menunjukkannya: tabel kelihatan berubah
+  duluan, baru menyusul URL-nya — karena keduanya memang dua jalur yang
+  jalan sendiri-sendiri, tidak terikat satu sama lain, jadi urutan siapa
+  selesai duluan tidak terjamin.
+- **Perbaikan sebenarnya: URL jadi satu-satunya sumber kebenaran.**
+  `changeDays` sekarang CUMA memanggil `router.replace` — tidak lagi
+  mengubah state lokal sama sekali. `dormant/page.tsx` diberi
+  `key={JSON.stringify(initialQuery)}` pada `<DormantCustomersScreen>` (pola
+  yang sama dipakai halaman Kas & Bank dan halaman Pelanggan), jadi begitu
+  `?days=` di URL benar-benar berubah, React membuang habis komponen lama
+  dan memasang yang baru dari nol — `useDormantCustomers` mulai dengan
+  `loading: true`, jadi tabel dan URL hanya bisa berubah BERSAMAAN, tidak
+  ada lagi yang mendahului.
+- **`router.replace(..., { scroll: false })`, bukan `push`** — ganti jendela
+  adalah MODE layar ini, bukan tempat baru yang dituju, jadi tidak boleh
+  numpuk histori tombol Back. Pola yang sama `ServiceSettingsScreen` dan
+  `ReceiptForm` pakai untuk alasan serupa.
+- **`useTransition` menutup jeda sebelum remount-nya kejadian.** Di antara
+  klik dan halaman baru benar-benar sampai, komponen LAMA (data lama, URL
+  lama) masih yang tampil di layar — `isPending` dari `useTransition` dipakai
+  supaya filter-nya kelihatan sedang bekerja (dan dinonaktifkan sementara,
+  tidak bisa diklik dua kali) daripada diam seperti kliknya tidak kena.
+- **`useDormantCustomers.ts` tetap tidak disentuh** — hook ini tetap tidak
+  bergantung pada router, sama seperti setiap hook list lain di app ini;
+  yang mengurus alamat URL adalah komponen layarnya, bukan hook datanya.
+- Tidak perlu `useSearchParams()` atau `Suspense` — halaman ini cuma MENULIS
+  ke URL, nilai awalnya sudah datang sebagai prop dari server page.
+
+---
+
+## [Unreleased] — "Lihat semua" dari Ringkasan Pelanggan: dua kartu, dua tujuan
+
+2 Oktober 2026, atas permintaan. Kartu "Pelanggan tidak aktif ≥" dan
+"Pelanggan baru dalam" di tab Ringkasan sekarang punya tautan "Lihat semua"
+begitu ada minimal 1 data (bukan menunggu lebih dari 10) — kartunya sendiri
+tetap menampilkan 10 teratas saja.
+
+- **"Pelanggan baru" numpang ke halaman Pelanggan yang sudah ada**
+  (`/dashboard/master/customers?createdSince=...`), bukan halaman baru.
+  Backend dapat filter `createdSince` sungguhan di `GET /customers` (dulu
+  panelnya cuma mengambil 10 baris pertama lalu menyaring sendiri di
+  browser, bukan filter beneran di server). Filter ini cuma bisa dipasang
+  lewat tautan ini — tidak ada kontrolnya sendiri di toolbar — dan muncul
+  sebagai chip yang bisa dihapus, pola yang sama dengan `documentId` di
+  layar Transaksi Kas & Bank.
+- **"Pelanggan tidak aktif" dapat halaman sendiri**
+  (`/dashboard/master/customers/dormant`), karena "terakhir kapan
+  transaksi" bukan kolom atau filter yang dimiliki tabel Pelanggan biasa —
+  datanya dari endpoint `/customers/dormant` yang terpisah. Halaman ini
+  tidak masuk daftar tab modul Pelanggan dan tidak ada di sidebar, sama
+  seperti halaman "Stok minus" Inventory — dibuka seperlunya dari kartu
+  Ringkasan saja.
+- **`GET /customers/dormant` sekarang benar-benar bisa di-page**, bukan
+  cuma dibatasi `limit` (dulu maksimal 50, tanpa `page` sama sekali).
+  Dikerjakan lewat `$facet` di agregasinya, pola yang sama dipakai
+  `productStockRepository.findNegativeStock` untuk masalah serupa
+  (mengurutkan dari field hasil `$lookup`).
+- **Komponen `Panel` di Ringkasan dapat prop `seeAll`** — satu tautan footer
+  dipakai kedua kartu, bukan ditulis dua kali.
+
+## [Unreleased] — Nonaktifkan / Aktifkan pelanggan langsung dari baris tabel
+
+2 Oktober 2026, atas permintaan lanjutan. Kolom Aksi di tabel Pelanggan
+sekarang punya pilihan "Nonaktifkan"/"Aktifkan", pola yang sama persis
+dengan `SuppliersTable` (satu `isActive` patch biasa, bukan verb-nya
+sendiri) — gated di `customers:update`, izin yang sama dengan "Ubah". Ada
+dialog konfirmasi di kedua arah yang bilang apa yang sebenarnya berubah
+(pelanggan hilang/muncul lagi dari pilihan di kasir, booking, faktur
+penjualan — bukan dihapus), supaya bedanya dengan Hapus/Pulihkan jelas
+walau di daftar keduanya kelihatan sama (pelanggan berhenti muncul).
+Dipisah dengan garis dari Hapus di menunya, sama seperti Supplier.
+
+---
+
+## [Unreleased] — Pelanggan dapat sumbu `isActive`, terpisah dari `deletedAt`
+
+2 Oktober 2026, atas permintaan. Sampai sekarang pelanggan hanya punya satu
+sumbu siklus hidup (`deletedAt`, soft-delete). Sekarang ada yang kedua,
+persis pasangan yang sudah dipakai Cabang (`isActive`/`deletedAt` di
+`branch.model.js`): `isActive: false` berarti pelanggan ini tetap nyata dan
+riwayatnya utuh, tapi disembunyikan dari pilihan pelanggan di modul lain
+(kasir, booking, faktur) — beda dari `deletedAt` yang berarti pelanggan itu
+dihapus dan bisa dipulihkan.
+
+- **Backend** (`PawCRM-Backend`): field `isActive` (`Boolean`, default
+  `true`) di `customer.model.js`, dengan index
+  `{ tenantId, isActive, deletedAt }` (tidak seperti Cabang yang sengaja
+  tidak punya index ini — jumlah pelanggan per tenant jauh lebih banyak
+  daripada jumlah cabang). Query `isActive: true` di `customer.repository.js`
+  sengaja memakai `{ isActive: { $ne: false } }`, bukan `{ isActive: true }`
+  persis — karena pembacaan repo pakai `.lean()` yang melewati default
+  Mongoose, setiap pelanggan yang sudah ada SEBELUM field ini ada akan
+  terbaca tanpa field `isActive` sama sekali, dan harus tetap dianggap aktif.
+  Dibuktikan dengan 5 test baru di `customerFormFields.db.test.js` yang jalan
+  ke MongoDB sungguhan, termasuk kasus dokumen lama itu secara eksplisit.
+  `countForStats` ("Jumlah pelanggan") sengaja TIDAK disentuh — dia sudah
+  hanya menghitung `deletedAt: null` dan mengabaikan filter lain, persis
+  sesuai permintaan.
+- **4 tempat di frontend yang menarik pelanggan sebagai pilihan** sekarang
+  mengirim `isActive: true`: dialog cari pelanggan (dipakai kasir, booking,
+  grooming, antar-jemput), pemilihan pelanggan di form faktur Penjualan, dan
+  pemilihan pemilik saat mendaftarkan hewan baru.
+- **Tabel Pelanggan**: filter baru "Status" (Aktif/Nonaktif/Semua), pola yang
+  sama dengan filter Cabang. Default-nya "Aktif" (bukan "Semua" seperti
+  Cabang) — pelanggan nonaktif jauh lebih sering terjadi daripada cabang
+  nonaktif, jadi daftarnya sengaja dibuka sudah tersaring.
+- **Badge status pelanggan** (`CustomerStatusBadge`) sekarang tiga keadaan —
+  Aktif / Nonaktif / Terhapus — bukan dua. Sekalian dibetulkan ke token
+  `bg-tint-*` (ui-rules §9); sebelumnya pakai `bg-success/12` dkk., aritmetika
+  opacity yang aturan itu sendiri melarang.
+- **Form ubah pelanggan**: checkbox "Aktif — pelanggan ini muncul di daftar
+  pilihan pelanggan", gaya yang sama dengan Cabang/Gudang. Tidak ada di form
+  tambah pelanggan baru — pelanggan baru selalu mulai aktif, sama seperti
+  cabang baru.
+
+2 Oktober 2026, atas permintaan. `CustomerModuleHeader.tsx`: breadcrumb di
+bawah judul "Pelanggan" (yang isinya cuma mengulang kata "Pelanggan") diganti
+satu kalimat — "Satu profil pemilik, banyak hewan, satu riwayat — satu basis
+data untuk seluruh cabang." — dengan gaya yang sama dipakai `PageHeading`
+Purchasing (`mt-1 max-w-2xl text-sm text-muted`).
+
+---
+
+## [Unreleased] — Tooltip di 4 kartu register Pelanggan, dan satu lagi di Ringkasan
+
+2 Oktober 2026, atas permintaan: 4 kartu di tab "Pelanggan" ("Jumlah hewan",
+"Jumlah pelanggan", "Pelanggan baru bulan ini", "Transaksi N hari terakhir")
+sekarang punya tooltip ⓘ yang jelasin angkanya itu apa dan dari mana
+rumusnya — singkat, satu kalimat per kartu. "Pelanggan baru periode ini" di
+tab Ringkasan (`CustomerSummaryScreen.tsx`) dikasih tooltip yang sama
+bunyinya, karena metriknya sama persis.
+
+- **`StatTile` dapat prop `hint` opsional**, diteruskan ke `InfoTooltip` di
+  sebelah labelnya — sama persis dengan pola yang sudah dipakai `SummaryTile`
+  di tab Ringkasan. Karena `StatTile` dipakai di banyak modul (Pembelian,
+  Inventori, Grooming, Membership, Booking, Komisi, Kas & Bank), modul lain
+  bisa langsung pakai `hint` ini kalau butuh, tanpa bikin pola baru.
+- **`CustomerModuleHeader.tsx`** — isi tooltip 4 kartunya:
+  - Jumlah hewan: "Total hewan peliharaan yang terdaftar, tidak termasuk yang
+    dihapus."
+  - Jumlah pelanggan: "Total pelanggan terdaftar, tidak termasuk yang
+    dihapus."
+  - Pelanggan baru bulan ini: "Pelanggan yang didaftarkan dalam jangka waktu
+    di bawah angka ini, dihitung dari tanggal daftar."
+  - Transaksi N hari terakhir: "Pelanggan yang bertransaksi dalam jangka
+    waktu di atas, dibagi seluruh pelanggan terdaftar."
+
+---
+
+## [Unreleased] — `InfoTooltip`: satu komponen ⓘ untuk semua layar
+
+2 Oktober 2026. Dimulai dari permintaan sempit — subteks kartu "Rata-rata
+belanja / pelanggan" di `/dashboard/master/customers/ringkasan`
+("Omzet periode ÷ pelanggan yang transaksi periode ini") dipindah dari baris
+ketiga di bawah angka ke tooltip ⓘ-nya — dan berkembang jadi komponen bersama
+begitu dua bug ikut ketahuan: tooltip-nya sendiri tidak pernah terbuka di HP,
+dan begitu dibetulkan jadi klik, isinya mepet ke pinggir tanpa padding.
+
+- **`InfoTooltip` (baru), diekspor dari `@/components`.** Dipromosikan dari
+  `SummaryTile` setelah dipakai lagi di tempat yang sama — label, ⓘ, isi.
+  **Di web: hover langsung membuka tooltip-nya, sama seperti tooltip pada
+  umumnya.** Deteksinya pakai media query `(hover: hover) and (pointer: fine)`
+  (kemampuan perangkat), bukan lebar layar — supaya laptop layar sentuh atau
+  jendela desktop yang disempitkan tidak salah dianggap HP. **Di HP/tablet:
+  tap ikonnya untuk membuka**, karena perangkat itu tidak punya hover sama
+  sekali. Fokus keyboard juga membukanya, supaya pengguna keyboard dapat
+  jawaban yang sama tanpa harus menekan apa pun.
+- **Dikasih padding** (`p-3`) — sebelum ini isinya mepet langsung ke pinggir
+  kotak, bug yang sama persis yang pernah kejadian di `PosDiscountPopover`
+  (28 September 2026) karena `PopoverContent` di `ui/popover.tsx` memang tidak
+  punya padding bawaan. Sekarang ada satu komponen yang membawa perbaikan itu
+  untuk semua pemakainya sekaligus.
+- **Lebarnya dijaga di layar sempit**: `w-72 max-w-[calc(100vw-2rem)]`, supaya
+  tooltip tidak terpotong di tepi HP yang sempit (dicoba sampai ~320px).
+- **`SummaryTile` di `CustomerSummaryScreen.tsx` dipindah ke `InfoTooltip`**,
+  dan `caption`-nya dibuat opsional — kartu yang penjelasannya dipindah semua
+  ke `hint` ("Rata-rata belanja / pelanggan") tidak lagi menyisakan baris
+  kosong, tapi tetap menunjukkan "gagal dimuat" kalau datanya gagal dimuat.
+- **Isi tooltip "Rata-rata belanja / pelanggan" dipotong lagi**, pada
+  permintaan yang sama hari itu: sempat jadi dua kalimat begitu rumusnya dan
+  rationale lama digabung, dan itu lebih panjang dari yang pantas untuk satu
+  ⓘ. Sekarang cuma rumusnya — "Omzet periode ÷ pelanggan yang transaksi
+  periode ini." — tanpa kalimat kedua soal kenapa pelanggan yang dipakai cuma
+  yang aktif.
+- **Cincin fokus oranye di ikon ⓘ dihapus**, juga pada permintaan yang sama:
+  ring 3px ala §7 (navy border + halo oranye) di sekeliling lingkaran sekecil
+  itu kelihatan seperti alarm, bukan status fokus — dan sebenarnya tidak
+  diperlukan, karena fokus sudah langsung membuka tooltip-nya, konfirmasi yang
+  jauh lebih jelas daripada sebuah ring. Sekarang fokus cukup menggelapkan
+  warna ikonnya. **Kursornya juga diubah jadi tangan** (`cursor-pointer`) —
+  `<button>` polos di app ini defaultnya kursor panah, bukan tangan.
+- **Deteksi hover diganti, supaya hover SELALU memunculkan tooltip-nya** —
+  permintaan terakhir hari itu. Sebelumnya `InfoTooltip` menebak kemampuan
+  perangkat sekali lewat `matchMedia("(hover: hover) and (pointer: fine)")`,
+  lalu memakai tebakan itu untuk semua hover berikutnya; kalau tebakannya
+  salah di satu perangkat (laptop layar sentuh, mesin virtual, jendela
+  preview), hover jadi diam saja untuk sisa sesi itu. Sekarang baca
+  `event.pointerType` langsung dari setiap event pointer — "mouse" vs
+  "touch"/"pen" — jadi keputusannya dicek ulang setiap kali, bukan ditebak di
+  awal.
+- **Bug lanjutannya ketemu dan dibetulkan: hover pertama muncul, hover kedua
+  tidak, hover ketiga muncul lagi.** Penyebabnya `Popover.Content` dari Radix
+  — meski `modal={false}` — tetap memindahkan fokus DOM ke dalam kontennya
+  saat terbuka, dan MENGEMBALIKAN fokus ke tombol ⓘ saat tertutup. Pengembalian
+  fokus itu memicu `onFocus` tombolnya sendiri — handler yang sama dipakai
+  hover untuk membuka — jadi setiap kali tertutup karena mouse menjauh,
+  tooltip-nya diam-diam terbuka lagi sesaat kemudian, dan itu yang bikin hover
+  berikutnya kelihatan "tidak ngaruh". Sekarang `onOpenAutoFocus` dan
+  `onCloseAutoFocus` di-`preventDefault()` — cuma hover dan fokus keyboard
+  yang boleh mengatur buka/tutup.
+- **Ditulis di `ui-rules.md` §9** sebagai aturan tetap: ⓘ apa pun di produk
+  wajib lewat `InfoTooltip`, tidak boleh dibuat ulang per layar.
+- **Belum disentuh:** `InvoiceScopeCard` di Penjualan masih pakai `title`
+  mentah untuk daftar cabang/gudang-nya — dicatat di `ui-rules.md` §15 sebagai
+  hutang yang sama, diperbaiki kalau nanti ada yang masuk ke file itu.
+
+---
+
+## [Unreleased] — Card ringkasan: satu komponen, satu aturan huruf
+
+2 Oktober 2026, atas masukan BO: tiap layar kelihatan beda — ada yang labelnya
+huruf besar semua, ada yang tidak, dan subteks ada yang ditaruh di tooltip ada
+yang tidak. Pelanggan (lewat `StatTile`) jadi acuan; `ui-rules.md` §2 dan §5
+sekarang menulis aturannya secara eksplisit, bukan cuma komentar di satu file.
+
+- **`InvoiceStatCards` (Penjualan) pindah ke `<StatTile>` bersama**, berhenti
+  pakai `StatCard` lokalnya sendiri. Itu sumber "Card Penjualan huruf besar
+  semua" — labelnya `uppercase tracking-wide`, bingkainya `rounded-xl`, beda
+  dari `StatTile`-nya Pelanggan/Pembelian yang `rounded-2xl` dan sentence case.
+- **`StatTile` dapat prop `tone` (`plain` | `danger` | `success`)**, diserap
+  dari `StatCard` Penjualan supaya warna merah/hijau pada Lewat jatuh tempo dan
+  Tertagih tidak hilang saat pindah komponen. Tone mewarnai angkanya, bukan
+  kartunya.
+- **`SummaryCard` di Keuangan → Ringkasan (`FinanceDashboardScreen`) diluruskan
+  ke aturan `StatTile`** — labelnya ikut `uppercase tracking-wide` dan
+  angkanya `text-2xl font-extrabold`, beda dari kartu Kas & Bank satu tab di
+  sebelahnya yang sudah langsung pakai `StatTile`. Komponennya sendiri TETAP
+  `SummaryCard`, bukan dipindah ke `<StatTile>` — ia bawa ikon, baris delta
+  ("↗ 12,3% vs periode sebelumnya"), dan tautan drill-through yang `StatTile`
+  tidak punya — tapi sekarang label dan beratnya sama persis.
+- **Ditulis di `ui-rules.md`:** kartu ringkasan wajib lewat `<StatTile>` /
+  `<PendingStatTile>` (atau komponen sendiri yang **menyamai** tipografinya
+  kalau butuh fitur lebih — contoh sahnya `GroomingStatCard` dan `SummaryCard`
+  di atas), label selalu sentence case, dan subteks yang butuh penjelasan
+  lebih panjang masuk tooltip (ikon `Info` + `title`/`aria-label`), bukan
+  ditambah jadi baris ketiga di bawah angka. Aturan huruf besar ini **tidak**
+  menyentuh small-caps `<dt>`, header tabel, atau caption modul (mis. "Jurnal
+  umum", "Daftar transaksi") — itu peran lain yang sudah konsisten dari awal.
+- **Pembelian dan Kas & Bank tidak berubah** — sudah lebih dulu benar karena
+  langsung memakai `StatTile`.
+- **Disisir seluruh layar** (grep `uppercase`, pola nilai besar
+  `text-{xl,2xl,3xl} font-{bold,extrabold,semibold} tabular-nums`, dan setiap
+  pemanggil `StatTile`) untuk kartu ringkasan lain yang mungkin menyimpang.
+  Dua di atas satu-satunya yang menyimpang; sisanya (Booking Hari Ini, Komisi,
+  Laporan Membership, Catalog/Stock Correction header, Grooming) sudah
+  memakai `StatTile` langsung.
+
+---
 ## [Unreleased] — Opsi hewan dikenali lewat id, `code` dihapus
 
 25 September 2026. Sisi frontend dari perubahan backend dengan nama yang sama.

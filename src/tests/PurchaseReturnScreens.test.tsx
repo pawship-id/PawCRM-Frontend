@@ -166,6 +166,8 @@ function receiptDetail(
   return {
     _id: RECEIPT_ID,
     receiptNumber: "GR-260806-001",
+    status: "received",
+    receivedAt: null,
     supplierId: "s1",
     supplierName: "PT Sumber Pangan",
     warehouseId: "wh1",
@@ -208,6 +210,7 @@ function receiptRow(
   return {
     _id: RECEIPT_ID,
     receiptNumber: "GR-260806-001",
+    status: "received",
     supplierId: "s1",
     supplierName: "PT Sumber Pangan",
     warehouseId: "wh1",

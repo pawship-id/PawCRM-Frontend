@@ -184,6 +184,72 @@ describe("Diskon booking", () => {
 });
 
 /*
+  "DISKON MEMBERSHIP" IN THE RECAP (1 October 2026, on request) — the saved
+  invoice's twin of the till's own Rincian biaya split, and of the create
+  form's.
+
+  It used to fold a card's giveaway into the same "Diskon item" figure as
+  whatever was typed on a row — one number answering two different questions.
+*/
+describe("Diskon membership", () => {
+  const withBenefit = () =>
+    invoice({
+      items: [
+        line({
+          kind: "service",
+          sku: null,
+          qty: "1.0000",
+          unitPrice: "169000.0000",
+          lineTotal: "169000.0000",
+          discount: {
+            mode: "amount",
+            value: "169000.0000",
+            resolvedAmount: "169000.0000",
+            approvedBy: null,
+            source: "membership",
+            membershipId: "mem-1",
+            benefitId: "ben-1",
+            benefitLabel: "Gratis Grooming Lengkap",
+          },
+          membershipDiscount: "169000.0000",
+          name: "Full Grooming - In Store",
+        }),
+        line({ qty: "1.0000", unitPrice: "50000.0000", lineTotal: "50000.0000", discount: {
+          mode: "amount",
+          value: "5000.0000",
+          resolvedAmount: "5000.0000",
+          approvedBy: null,
+        } }),
+      ],
+      totals: {
+        subtotal: "219000.0000",
+        itemDiscount: "174000.0000",
+        invoiceDiscount: "0.0000",
+        dpp: "40540.5405",
+        tax: "4459.4595",
+        grandTotal: "45000.0000",
+      },
+    });
+
+  it("keeps a card's giveaway out of Diskon item, in its own line", () => {
+    render(<InvoiceItemsTable invoice={withBenefit()} />);
+
+    expect(screen.getByText("Diskon item").parentElement?.textContent).toContain(
+      "Rp 5.000",
+    );
+    expect(
+      screen.getByText("Diskon membership").parentElement?.textContent,
+    ).toContain("Rp 169.000");
+  });
+
+  it("says nothing when no line was paid by a card", () => {
+    render(<InvoiceItemsTable invoice={invoice()} />);
+
+    expect(screen.queryByText("Diskon membership")).not.toBeInTheDocument();
+  });
+});
+
+/*
   ADD-ONS (14 September 2026). "Parfum" ticked under "Mandi Full" reads as part
   of the bath: directly under it, marked, whatever order the lines were stored
   in. The server resolved `parentServiceId`; the table only places the row.

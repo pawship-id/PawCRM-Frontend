@@ -1,25 +1,32 @@
 import type { Metadata } from "next";
-import { IdCard } from "lucide-react";
 
 import { CustomerModuleHeader } from "@/features/customers";
-import { ModuleTabPlaceholder } from "@/features/dashboard";
+import { MembershipPlansPanel, MembershipSubTabs } from "@/features/memberships";
+import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
   title: "Membership · Pelanggan · Buloo",
 };
 
 /**
- * The Membership tab. UNGATED, like the other placeholders in the app: there is
- * no membership feature in the RBAC catalogue to gate it on, and the page holds
- * no data to protect. It gains a `RequirePermission` the day it gains a list.
+ * The Membership tab — the CATALOGUE of packages a shop sells.
+ *
+ * GATED ON `membershipPlans:read`, unlike the placeholder it replaced: this one
+ * reads real packages and their prices, so it is a screen with something to
+ * protect.
+ *
+ * WHY THE CATALOGUE IS THE LANDING TAB rather than the cards: nothing can exist
+ * until a package does, and the first thing anybody does in this module is
+ * define what is for sale. The cards live one tab over.
  */
 export default function CustomerMembershipPage() {
   return (
-    <ModuleTabPlaceholder
-      header={<CustomerModuleHeader />}
-      title="Membership"
-      note="Paket keanggotaan, masa berlaku, dan pengingat perpanjangan. Untuk sekarang, tier VIP tiap pelanggan ada di tab Pelanggan."
-      icon={IdCard}
-    />
+    <RequirePermission feature="membershipPlans">
+      <div className="flex flex-col gap-6">
+        <CustomerModuleHeader />
+        <MembershipSubTabs />
+        <MembershipPlansPanel />
+      </div>
+    </RequirePermission>
   );
 }

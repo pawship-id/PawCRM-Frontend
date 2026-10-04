@@ -178,7 +178,7 @@ export function documentHref(
   document: NonNullable<CashTransaction["document"]>,
 ): string | null {
   if (document.type === "customer_invoice") {
-    return `/dashboard/sales/${document.id}`;
+    return `/dashboard/sales/invoice/${document.id}`;
   }
   if (document.type === "purchase_invoice") {
     return `/dashboard/purchasing/payables/${document.id}`;

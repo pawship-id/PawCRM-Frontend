@@ -10,7 +10,7 @@ jest.mock("next/navigation", () => ({
 }));
 
 /**
- * The head of the Penjualan module — four tabs, two of which open on "belum
+ * The head of the Penjualan module — five tabs, two of which open on "belum
  * tersedia", and one of which lives outside the module's own route prefix.
  */
 function tabNames() {
@@ -24,10 +24,26 @@ beforeEach(() => {
 });
 
 describe("SalesModuleHeader", () => {
-  it("draws the mockup's four tabs, every one of them a route", () => {
+  it("draws the mockup's five tabs, every one of them a route", () => {
     renderWithAuth(<SalesModuleHeader />);
 
-    expect(tabNames()).toEqual(["Faktur", "Piutang", "E-commerce", "Retur"]);
+    expect(tabNames()).toEqual([
+      "Ringkasan",
+      "Faktur",
+      "Piutang",
+      "E-commerce",
+      "Retur",
+    ]);
+    // Ringkasan IS the module's landing route since 29 September 2026; the
+    // invoices moved a segment down to make room for it.
+    expect(screen.getByRole("link", { name: "Ringkasan" })).toHaveAttribute(
+      "href",
+      "/dashboard/sales",
+    );
+    expect(screen.getByRole("link", { name: "Faktur" })).toHaveAttribute(
+      "href",
+      "/dashboard/sales/invoice",
+    );
     expect(screen.getByRole("link", { name: "Piutang" })).toHaveAttribute(
       "href",
       "/dashboard/sales/piutang",
@@ -40,7 +56,37 @@ describe("SalesModuleHeader", () => {
     );
   });
 
-  it("does not leave the Faktur tab lit on the tabs nested under it", () => {
+  it("lights Ringkasan on the module's landing route, not Faktur", () => {
+    // The rail's Penjualan row opens /dashboard/sales, and what it opens is this
+    // tab — the point of the move.
+    renderWithAuth(<SalesModuleHeader />);
+
+    expect(screen.getByRole("link", { name: "Ringkasan" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("link", { name: "Faktur" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
+  it("keeps Faktur lit on an invoice's own screens", () => {
+    // Prefix-matched on purpose: a bill's detail, its print view and one of its
+    // payments all live under /invoice, and a reader on any of them should see
+    // which tab they came from rather than a row with nothing marked.
+    pathname.mockReturnValue("/dashboard/sales/invoice/inv1/print");
+    renderWithAuth(<SalesModuleHeader />);
+
+    expect(screen.getByRole("link", { name: "Faktur" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("link", { name: "Ringkasan" })).not.toHaveAttribute(
+      "aria-current",
+    );
+  });
+
+  it("does not leave Ringkasan lit on the tabs nested under it", () => {
     pathname.mockReturnValue("/dashboard/sales/piutang");
     renderWithAuth(<SalesModuleHeader />);
 
@@ -48,7 +94,7 @@ describe("SalesModuleHeader", () => {
       "aria-current",
       "page",
     );
-    expect(screen.getByRole("link", { name: "Faktur" })).not.toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Ringkasan" })).not.toHaveAttribute(
       "aria-current",
     );
   });
@@ -63,7 +109,7 @@ describe("SalesModuleHeader", () => {
     );
   });
 
-  it("hides Faktur and Piutang from a role that cannot read invoices", () => {
+  it("hides Ringkasan, Faktur and Piutang from a role that cannot read invoices", () => {
     // Who owes the shop money is the sensitive half of this module; the two
     // ungated placeholders ride along because they hold nothing.
     renderWithAuth(<SalesModuleHeader />, {

@@ -6,6 +6,7 @@ import { customerService } from "@/services/customer.service";
 import { ApiError } from "@/services/api-error";
 import type {
   Customer,
+  CustomerKind,
   CustomerListQuery,
   PageResult,
   VipTier,
@@ -18,7 +19,31 @@ export interface CustomersQuery {
   search: string;
   /** "" = any tier, otherwise a specific VIP tier. */
   vipTier: VipTier | "";
+  /** "" = any category, otherwise one of the tenant's Tipe pelanggan. */
+  customerTypeId: string;
+  /** "" = both, otherwise Perorangan or Perusahaan. */
+  kind: CustomerKind | "";
+  /**
+   * "" = any status, otherwise active-only or inactive-only.
+   *
+   * DEFAULTS TO `true`, UNLIKE `BranchesQuery.active`'S `""` (2 October 2026,
+   * on request) — the register opens on "Aktif" and a reader asks for
+   * "Semua status" to see more, rather than opening on everything and being
+   * asked to narrow it. A customer going inactive is also the far more common
+   * path here than it is for the tenant's handful of branches, so a table
+   * that defaulted to "Semua" would routinely mix the two in a way the
+   * branches list, with the much smaller inactive share, does not.
+   */
+  active: boolean | "";
   includeDeleted: boolean;
+  /**
+   * `""` = not filtering. Set only by a deep link (2 October 2026) — the
+   * Ringkasan tab's "Pelanggan baru" card, whose "Lihat semua" carries the
+   * ISO cutoff it was measured from. No toolbar control of its own; the
+   * toolbar's chip is how it comes off, the same shape `documentId` takes on
+   * the Transaksi screen (`CashTransactionsQuery`).
+   */
+  createdSince: string;
 }
 
 const PAGE_SIZE = 20;
@@ -27,7 +52,11 @@ const DEFAULT_QUERY: CustomersQuery = {
   page: 1,
   search: "",
   vipTier: "",
+  customerTypeId: "",
+  kind: "",
+  active: true,
   includeDeleted: false,
+  createdSince: "",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */
@@ -58,9 +87,19 @@ interface UseCustomersResult {
  * explicit `refetch` the row actions call after they mutate a customer. Any
  * filter change (search/tier/deleted) resets to page 1 so the user is never
  * stranded on an out-of-range page.
+ *
+ * `initial` SEEDS THE STATE, NOT A PROP THE SCREEN RE-READS (2 October 2026)
+ * — the same lazy-`useState` merge `useCashTransactions` uses for its own
+ * deep links. The server page parses `?createdSince=` and hands the result in
+ * once; after that this hook owns the query like any other filter.
  */
-export function useCustomers(): UseCustomersResult {
-  const [query, setQueryState] = useState<CustomersQuery>(DEFAULT_QUERY);
+export function useCustomers(
+  initial: Partial<CustomersQuery> = {},
+): UseCustomersResult {
+  const [query, setQueryState] = useState<CustomersQuery>(() => ({
+    ...DEFAULT_QUERY,
+    ...initial,
+  }));
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<Customer>["pagination"]>(EMPTY_PAGE);
@@ -99,7 +138,15 @@ export function useCustomers(): UseCustomersResult {
       limit: PAGE_SIZE,
       search: settled.search.trim() || undefined,
       vipTier: settled.vipTier === "" ? undefined : settled.vipTier,
+      // "" means "not filtering", which is an ABSENT parameter rather than an
+      // empty one: sent as "" the server would look for a customer filed under
+      // the empty string and answer with nothing.
+      customerTypeId:
+        settled.customerTypeId === "" ? undefined : settled.customerTypeId,
+      kind: settled.kind === "" ? undefined : settled.kind,
+      isActive: settled.active === "" ? undefined : settled.active,
       includeDeleted: settled.includeDeleted || undefined,
+      createdSince: settled.createdSince || undefined,
     };
 
     customerService

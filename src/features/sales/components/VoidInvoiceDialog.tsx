@@ -145,7 +145,7 @@ export function VoidInvoiceDialog({
                   className="border-b border-border last:border-b-0"
                 >
                   <Link
-                    href={`/dashboard/sales/${invoice._id}/payments/${payment.paymentId}`}
+                    href={`/dashboard/sales/invoice/${invoice._id}/payments/${payment.paymentId}`}
                     className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-surface-hover focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
                   >
                     <span className="min-w-0 flex-1">

@@ -24,8 +24,15 @@ import {
   variesByZone,
   type PriceLookup,
 } from "@/utils/serviceVariant";
-import type { BusinessLine } from "@/services/businessLine.service";
-import type { Pet, Service, VariantOption } from "@/types/api";
+import {
+  SERVICE_KINDS,
+  SERVICE_KIND_LABELS,
+  type Pet,
+  type Service,
+  type ServiceKind,
+  type VariantOption,
+} from "@/types/api";
+import { BookingBenefitField } from "./BookingBenefitField";
 import { petServiceKey, UNASSIGNED } from "../bookingDraft";
 import type { BelongingDraft, BookingCardDraft } from "../bookingDraft";
 import type { VariantRefusal } from "../variantLine";
@@ -75,16 +82,15 @@ const noProblem = (): string | null => null;
  *
  * ─── IT FETCHES NOTHING ───────────────────────────────────────────────────
  *
- * Pets, services, business lines and groomers are loaded once by the form and
- * handed down. A card that fetched its own would ask four times over for a
- * customer with four dogs.
+ * Pets, services and groomers are loaded once by the form and handed down. A
+ * card that fetched its own would ask four times over for a customer with four
+ * dogs.
  */
 export function BookingCard({
   card,
   index,
   pets,
   services,
-  businessLines,
   groomers,
   disabled,
   removable,
@@ -102,7 +108,6 @@ export function BookingCard({
   index: number;
   pets: Pet[];
   services: Service[];
-  businessLines: BusinessLine[];
   /**
    * `disabled` CARRIES THE REASON — FR-4 kriteria 4.3. A greyed name with no
    * explanation tells a receptionist to phone somebody; "Libur setiap Rabu"
@@ -193,8 +198,7 @@ export function BookingCard({
   const mainServices = services.filter(
     (entry) =>
       entry.serviceType !== "addon" &&
-      (card.businessLineId === "" ||
-        entry.businessLineId === card.businessLineId),
+      (card.serviceKind === "" || entry.serviceKind === card.serviceKind),
   );
 
   /*
@@ -324,28 +328,26 @@ export function BookingCard({
           */}
           <div className="rounded-lg border border-border bg-background p-3">
             <div className="grid gap-3 sm:grid-cols-2">
-              {businessLines.length > 0 && (
-                <SelectField
-                  label="Tipe layanan"
-                  value={card.businessLineId}
-                  onChange={(value) =>
-                    /* The chosen service may not be of the new type; clearing it
-                       is kinder than leaving a name the list no longer offers. */
-                    onChange({
-                      businessLineId: value,
-                      serviceId: "",
-                      addonServiceIds: [],
-                      variantChoices: [],
-                    })
-                  }
-                  options={businessLines.map((entry) => ({
-                    value: entry._id,
-                    label: entry.name,
-                  }))}
-                  placeholder="Semua tipe"
-                  disabled={disabled || locked}
-                />
-              )}
+              <SelectField
+                label="Tipe layanan"
+                value={card.serviceKind}
+                onChange={(value) =>
+                  /* The chosen service may not be of the new type; clearing it
+                     is kinder than leaving a name the list no longer offers. */
+                  onChange({
+                    serviceKind: value as ServiceKind | "",
+                    serviceId: "",
+                    addonServiceIds: [],
+                    variantChoices: [],
+                  })
+                }
+                options={SERVICE_KINDS.map((kind) => ({
+                  value: kind,
+                  label: SERVICE_KIND_LABELS[kind],
+                }))}
+                placeholder="Semua tipe"
+                disabled={disabled || locked}
+              />
 
               <SelectField
                 label="Layanan"
@@ -452,6 +454,23 @@ export function BookingCard({
                 )}
               </p>
             )}
+
+            {/*
+              ─── MEMBERSHIP (30 September 2026) ──────────────────────────────
+
+              Shown only when this animal holds a card with a benefit that
+              covers what is being booked. A PLAN, not a spend: the badge under
+              it says so, because "pakai jatah gratisnya" agreed at the counter
+              and a quota actually deducted are two different promises, and a
+              customer told the wrong one at the till is the failure this whole
+              field exists to prevent.
+            */}
+            <BookingBenefitField
+              petId={card.petId}
+              serviceId={card.serviceId}
+              value={card.plannedBenefit}
+              onChange={(plannedBenefit) => onChange({ plannedBenefit })}
+            />
 
             {offeredAddons.length > 0 && (
               <div className="mt-3">

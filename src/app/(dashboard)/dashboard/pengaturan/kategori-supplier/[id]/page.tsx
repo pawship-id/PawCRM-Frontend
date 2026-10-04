@@ -16,8 +16,8 @@ export const metadata: Metadata = { title: "Ubah kategori supplier · Buloo" };
  * detail view to occupy `[id]` — it is a name and a status, so there is nothing
  * a read-only page would show that the list row does not. Suppliers themselves
  * split the two because they genuinely have both. Adding an `/edit` segment
- * here would leave `/supplier-categories/<id>` as a URL that 404s, which is
- * worse than no segment at all. Product categories make the same call.
+ * here would leave `/kategori-supplier/<id>` as a URL that 404s, which is worse
+ * than no segment at all. Product categories make the same call.
  *
  * `params` is a Promise in this version of Next — awaited before use, matching
  * every other dynamic route in the app.
@@ -34,7 +34,7 @@ export default async function EditSupplierCategoryPage({
       <div className="flex flex-col gap-6">
         <PageHeading
           crumbs={[
-            PURCHASING_CRUMBS.hub,
+            PURCHASING_CRUMBS.settings,
             PURCHASING_CRUMBS.supplierCategories,
             { label: "Ubah kategori" },
           ]}

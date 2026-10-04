@@ -88,7 +88,13 @@ export function CustomerSearchDialog({
     setError(null);
 
     customerService
-      .list({ limit: RESULT_LIMIT, search: search || undefined })
+      .list({
+        limit: RESULT_LIMIT,
+        search: search || undefined,
+        // A picker never offers a customer somebody switched off (2 October
+        // 2026) — see `isCustomerActive` in `CustomerVipBadge.tsx`.
+        isActive: true,
+      })
       .then((result) => {
         if (!active) return;
         setResults(result.items);

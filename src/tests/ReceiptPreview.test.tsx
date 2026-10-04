@@ -866,3 +866,117 @@ describe("ReceiptDialog — what the print CSS depends on", () => {
     expect(document.querySelector("[data-print-root]")).not.toBeNull();
   });
 });
+
+/**
+ * "DISKON MEMBERSHIP" ON THE PRINTED SLIP (1 October 2026, on request) — the
+ * receipt's twin of the till's own Rincian biaya split.
+ *
+ * It used to fold a card's giveaway into the same "Diskon item" figure as
+ * whatever the cashier typed — one number answering two different questions.
+ */
+describe("ReceiptPreview — Diskon membership", () => {
+  const receiptWithBenefit = (overrides: Partial<PosReceipt> = {}) =>
+    receipt({
+      items: [
+        {
+          kind: "service",
+          name: "Full Grooming - In Store",
+          sku: null,
+          qty: "1.0000",
+          unitPrice: "169000.0000",
+          lineTotal: "169000.0000",
+          discount: { resolvedAmount: "169000.0000" },
+          membershipDiscount: "169000.0000",
+          petName: "Bruno",
+          groomerName: null,
+          addons: [],
+        },
+        {
+          kind: "product",
+          name: "Sampo Kutu",
+          sku: null,
+          qty: "1.0000",
+          unitPrice: "50000.0000",
+          lineTotal: "45000.0000",
+          discount: { resolvedAmount: "5000.0000" },
+          membershipDiscount: null,
+          petName: null,
+          groomerName: null,
+          addons: [],
+        },
+      ],
+      totals: {
+        subtotal: "219000.0000",
+        itemDiscount: "174000.0000",
+        cartDiscount: "0.0000",
+        otherCharges: "0.0000",
+        dpp: "40540.5405",
+        tax: "4459.4595",
+        grandTotal: "45000.0000",
+        credit: "0.0000",
+      },
+      ...overrides,
+    });
+
+  it("keeps a card's giveaway out of Diskon item, in its own line", async () => {
+    renderWithAuth(<ReceiptPreview receipt={receiptWithBenefit()} size="80" />);
+
+    expect(
+      (await screen.findByText("Diskon item")).parentElement?.textContent,
+    ).toContain("Rp 5.000");
+    expect(
+      screen.getByText("Diskon membership").parentElement?.textContent,
+    ).toContain("Rp 169.000");
+  });
+
+  it("adds an add-on's own giveaway into the same total", async () => {
+    renderWithAuth(
+      <ReceiptPreview
+        receipt={receiptWithBenefit({
+          items: [
+            {
+              kind: "service",
+              name: "Full Grooming - In Store",
+              sku: null,
+              qty: "1.0000",
+              unitPrice: "169000.0000",
+              lineTotal: "169000.0000",
+              discount: { resolvedAmount: "169000.0000" },
+              membershipDiscount: "150000.0000",
+              petName: "Bruno",
+              groomerName: null,
+              addons: [
+                {
+                  kind: "service",
+                  name: "Parfum",
+                  sku: null,
+                  qty: "1.0000",
+                  unitPrice: "19000.0000",
+                  lineTotal: "0.0000",
+                  discount: { resolvedAmount: "19000.0000" },
+                  membershipDiscount: "19000.0000",
+                  petName: null,
+                  groomerName: null,
+                  addons: [],
+                },
+              ],
+            },
+          ],
+        })}
+        size="80"
+      />,
+    );
+
+    expect(
+      screen.getByText("Diskon membership").parentElement?.textContent,
+    ).toContain("Rp 169.000");
+  });
+
+  it("says nothing when no line was paid by a card", async () => {
+    renderWithAuth(<ReceiptPreview receipt={receipt()} size="80" />);
+
+    await waitFor(() =>
+      expect(screen.queryByText("Diskon membership")).not.toBeInTheDocument(),
+    );
+  });
+});

@@ -41,6 +41,13 @@ export const SETTINGS_PATHS = {
   nomorDokumen: `${ROOT}/nomor-dokumen`,
   notifikasi: `${ROOT}/notifikasi`,
   tipeSupplier: `${ROOT}/tipe-supplier`,
+  /**
+   * The register, not the explainer — `tipeSupplier` above is read-only and
+   * answers a different question. Moved off Pembelian's tab row on request
+   * (1 October 2026); briefly spelled "kategori-suplier" (one P) by mistake and
+   * corrected the same day.
+   */
+  kategoriSupplier: `${ROOT}/kategori-supplier`,
   tipePelanggan: `${ROOT}/tipe-pelanggan`,
   // Layanan — the service form lives under the hub it is reached from.
   layananBaru: `${ROOT}/layanan/new`,

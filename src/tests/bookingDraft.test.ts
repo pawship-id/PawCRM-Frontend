@@ -211,6 +211,11 @@ describe("bookingDraft — one card is one booking", () => {
       groomerUserId: "user-1",
       internalNotes: null,
       customerNotes: null,
+      /*
+        A PLAN, NOT A SPEND — sent as null when nobody chose one, so clearing a
+        benefit somebody changed their mind about reaches the server.
+      */
+      plannedBenefit: null,
       /* THE ID GOES BACK, so the stored item keeps its check-in. */
       belongings: [
         {
@@ -239,6 +244,8 @@ describe("bookingDraft — one card is one booking", () => {
         groomerUserId: null,
         internalNotes: null,
         customerNotes: null,
+        /* A plan, not a spend — null when nobody chose one. */
+        plannedBenefit: null,
         belongings: [],
       },
     ]);

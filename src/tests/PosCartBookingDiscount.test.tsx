@@ -85,6 +85,7 @@ const open = () =>
       onQtyChange={jest.fn()}
       onRemove={jest.fn()}
       onItemDiscount={jest.fn()}
+      onLinePrice={jest.fn()}
       onCartDiscount={jest.fn()}
       onCharges={jest.fn()}
       onHold={jest.fn()}
@@ -120,5 +121,235 @@ describe("PosCart — Diskon booking", () => {
     expect(screen.getByText("Diskon item").parentElement?.textContent).toContain(
       "Rp 5.000",
     );
+  });
+});
+
+/**
+ * "DISKON MEMBERSHIP" — a card's own line, apart from "Diskon item"
+ * (1 October 2026, on request).
+ *
+ * It used to be folded into "Diskon item" — one figure answering two different
+ * questions, "how much did we choose to give away" and "how much had the
+ * customer already paid for". A card's part now gets its own line, with which
+ * lines it paid for underneath; "Diskon item" is cashier-typed discounts only.
+ */
+const cartWithBenefit = () =>
+  ({
+    _id: "cart-2",
+    status: "active",
+    customer: null,
+    items: [
+      {
+        kind: "service",
+        refId: "svc-groom",
+        name: "Full Grooming - In Store",
+        sku: null,
+        qty: "1.0000",
+        unitPrice: "169000.0000",
+        lineTotal: "169000.0000",
+        discount: {
+          mode: "amount",
+          value: "169000.0000",
+          resolvedAmount: "169000.0000",
+          approvedBy: null,
+          source: "membership",
+          membershipId: "mem-1",
+          benefitId: "ben-1",
+          benefitLabel: "Gratis Grooming Lengkap",
+        },
+        membershipDiscount: "169000.0000",
+        bookingDiscount: null,
+        bookingId: null,
+        parentServiceId: null,
+        petId: "pet-bruno",
+        petName: "Bruno",
+      },
+      {
+        kind: "product",
+        refId: "prod-shampoo",
+        name: "Sampo Kutu",
+        sku: null,
+        qty: "1.0000",
+        unitPrice: "50000.0000",
+        lineTotal: "50000.0000",
+        discount: {
+          mode: "amount",
+          value: "5000.0000",
+          resolvedAmount: "5000.0000",
+          approvedBy: null,
+        },
+        membershipDiscount: null,
+        bookingDiscount: null,
+        bookingId: null,
+        parentServiceId: null,
+        petId: null,
+        petName: null,
+      },
+    ],
+    otherCharges: [],
+    cartDiscount: null,
+    note: null,
+    runningTotals: {
+      subtotal: "219000.0000",
+      itemDiscount: "174000.0000",
+      cartDiscount: "0.0000",
+      otherCharges: "0.0000",
+      net: "45000.0000",
+    },
+  }) as unknown as PosTransaction;
+
+const openWithBenefit = () =>
+  renderWithAuth(
+    <PosCart
+      cart={cartWithBenefit()}
+      busy={false}
+      error={null}
+      onQtyChange={jest.fn()}
+      onRemove={jest.fn()}
+      onItemDiscount={jest.fn()}
+      onLinePrice={jest.fn()}
+      onCartDiscount={jest.fn()}
+      onCharges={jest.fn()}
+      onHold={jest.fn()}
+      onCheckout={jest.fn()}
+      onNote={jest.fn()}
+      onPickCustomer={jest.fn()}
+      onClearCustomer={jest.fn()}
+    />,
+  );
+
+describe("PosCart — Diskon membership", () => {
+  it("keeps a card's giveaway out of Diskon item, in its own line", () => {
+    openWithBenefit();
+
+    /* Only the cashier's own 5.000 off the shampoo — the card's 169.000 is not
+       counted in here at all. */
+    expect(screen.getByText("Diskon item").parentElement?.textContent).toContain(
+      "Rp 5.000",
+    );
+    expect(
+      screen.getByText("Diskon membership").parentElement?.textContent,
+    ).toContain("Rp 169.000");
+  });
+
+  it("lists which line the card paid for, under the total", () => {
+    openWithBenefit();
+
+    /* It also names the line as the cart line's own title does — appears
+       twice, once on the row and once in this list. */
+    expect(
+      screen.getAllByText("Bruno - Full Grooming - In Store"),
+    ).toHaveLength(2);
+    /* The shampoo was the cashier's own discount, not the card's — it stays off
+       the "Diskon membership" list, even though it is still in the basket. */
+    const membershipList = screen
+      .getByText("Diskon membership")
+      .closest("div")?.nextElementSibling;
+    expect(membershipList?.textContent).not.toContain("Sampo Kutu");
+  });
+
+  /* No membership on the basket at all: the line does not appear as "Rp 0". */
+  it("says nothing when no line was paid by a card", () => {
+    open();
+
+    expect(screen.queryByText("Diskon membership")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * "DISKON KERANJANG" WHEN THE BASKET IS ALREADY AT NOUGHT (1 October 2026, on
+ * request) — the same rule item lines already follow: a basket the server
+ * would floor at zero anyway gets no control pretending it can be cut further.
+ */
+const cartAtNought = (cartDiscount: PosTransaction["cartDiscount"] = null) =>
+  ({
+    _id: "cart-3",
+    status: "active",
+    customer: null,
+    items: [
+      {
+        kind: "service",
+        refId: "svc-groom",
+        name: "Full Grooming - In Store",
+        sku: null,
+        qty: "1.0000",
+        unitPrice: "169000.0000",
+        lineTotal: "169000.0000",
+        discount: {
+          mode: "amount",
+          value: "169000.0000",
+          resolvedAmount: "169000.0000",
+          approvedBy: null,
+          source: "membership",
+          membershipId: "mem-1",
+          benefitId: "ben-1",
+          benefitLabel: "Gratis Grooming Lengkap",
+        },
+        membershipDiscount: "169000.0000",
+        bookingDiscount: null,
+        bookingId: null,
+        parentServiceId: null,
+        petId: "pet-bruno",
+        petName: "Bruno",
+      },
+    ],
+    otherCharges: [],
+    cartDiscount,
+    note: null,
+    runningTotals: {
+      subtotal: "169000.0000",
+      itemDiscount: "169000.0000",
+      cartDiscount: cartDiscount ? "0.0000" : "0.0000",
+      otherCharges: "0.0000",
+      net: "0.0000",
+      payable: "0.0000",
+    },
+  }) as unknown as PosTransaction;
+
+const openAtNought = (cartDiscount: PosTransaction["cartDiscount"] = null) =>
+  renderWithAuth(
+    <PosCart
+      cart={cartAtNought(cartDiscount)}
+      busy={false}
+      error={null}
+      onQtyChange={jest.fn()}
+      onRemove={jest.fn()}
+      onItemDiscount={jest.fn()}
+      onLinePrice={jest.fn()}
+      onCartDiscount={jest.fn()}
+      onCharges={jest.fn()}
+      onHold={jest.fn()}
+      onCheckout={jest.fn()}
+      onNote={jest.fn()}
+      onPickCustomer={jest.fn()}
+      onClearCustomer={jest.fn()}
+    />,
+  );
+
+describe("PosCart — Diskon keranjang at nought", () => {
+  it("disables it once the basket has nothing left to take off", () => {
+    openAtNought();
+
+    expect(
+      screen.getByRole("button", { name: "Diskon keranjang" }),
+    ).toBeDisabled();
+  });
+
+  /*
+    ONLY WHEN NOTHING WAS TYPED. A basket at nought BECAUSE the cashier typed
+    100% off must keep its control, or the discount they just entered is one
+    they can never take back off.
+  */
+  it("keeps it enabled when the nought is the cart discount's own doing", () => {
+    openAtNought({
+      mode: "percent",
+      value: "100",
+      resolvedAmount: "169000.0000",
+      approvedBy: null,
+    });
+
+    expect(
+      screen.getByRole("button", { name: "Diskon keranjang" }),
+    ).toBeEnabled();
   });
 });

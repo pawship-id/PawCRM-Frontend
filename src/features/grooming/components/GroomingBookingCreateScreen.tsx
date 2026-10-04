@@ -72,7 +72,7 @@ import {
 } from "@/features/antar-jemput/components/RideForGroomingSection";
 import { LEG_LABEL } from "@/features/antar-jemput/ride";
 
-import { useGroomingLine } from "../hooks/useGroomingLine";
+import { GROOMING_LINE } from "../line";
 import {
   badge,
   discountWords,
@@ -137,7 +137,6 @@ export function GroomingBookingCreateScreen() {
   const { can } = usePermissions();
   const mayPrice = can("bookings", "setPrice");
   const { label: optionLabel } = usePetOptions();
-  const line = useGroomingLine();
 
   const scope = useBranchScope();
   const [pickedBranch, setPickedBranch] = useState("");
@@ -280,15 +279,20 @@ export function GroomingBookingCreateScreen() {
     [services],
   );
 
-  /* The Grooming line's main services. Without a line, every main service. */
+  /*
+    The grooming services — BY KIND, NOT BY LINE (30 September 2026, on request).
+    `serviceKind` is a fixed word the service carries; a lini bisnis is a free
+    label, and a tenant that reports everything under one line was being offered
+    every main service it sells, van rides and hotel stays among them.
+  */
   const mainServices = useMemo(
     () =>
       services.filter(
         (service) =>
           service.serviceType === "main" &&
-          (!line.line || service.businessLineId === line.line._id),
+          service.serviceKind === GROOMING_LINE.serviceKind,
       ),
-    [services, line.line],
+    [services],
   );
 
   function chooseCustomer(next: Customer) {
@@ -587,12 +591,6 @@ export function GroomingBookingCreateScreen() {
 
         {loadError && <Alert variant="error">{loadError}</Alert>}
         {formError && <Alert variant="error">{formError}</Alert>}
-        {line.missing && (
-          <Alert variant="warning">
-            Belum ada lini bisnis bernama Grooming, jadi semua layanan utama
-            ditawarkan di sini.
-          </Alert>
-        )}
         {clash && (
           <Alert variant="warning">
             {clash} — tekan Simpan lagi kalau memang mau dijadwalkan bersamaan.

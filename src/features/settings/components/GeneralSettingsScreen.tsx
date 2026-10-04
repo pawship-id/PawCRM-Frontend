@@ -156,7 +156,6 @@ export function GeneralSettingsScreen() {
         <BranchesSection
           directory={directory}
           showWarehouses={mayReadWarehouses}
-          mayEdit={can("branches", "update")}
         />
       )}
 
@@ -165,11 +164,50 @@ export function GeneralSettingsScreen() {
         hint="Diatur sekali lalu ditinggal"
       >
         <div className="grid gap-4 sm:grid-cols-2">
+          {/*
+            GUDANG IS A CARD, not a link on the Cabang & gudang section above.
+            That section deliberately carries no list links (see its own note):
+            a tenant cannot add a branch, so a way in there led nowhere new.
+            A warehouse is the opposite — the tenant creates, renames and
+            deactivates its own, and until 27 September 2026 nothing in the app
+            pointed at /dashboard/pengaturan/gudang at all, so the CRUD sat
+            unreachable. The count comes from the directory the section already
+            loads, so the card costs no extra request.
+          */}
+          {mayReadWarehouses && (
+            <HubLinkCard
+              title="Gudang"
+              description="Tempat stok disimpan dan gudang mana yang punya kasir. Tambah, ubah, atau nonaktifkan."
+              href={SETTINGS_PATHS.gudang}
+              meta={
+                directory.loading || directory.error
+                  ? undefined
+                  : `${directory.warehouses.length} gudang`
+              }
+            />
+          )}
           {mayReadCustomerTypes && (
             <HubLinkCard
               title="Tipe pelanggan"
               description="Reguler, Reseller, Grosir — menempel di profil pelanggan dan jadi dasar aturan harga khusus nanti."
               href={SETTINGS_PATHS.tipePelanggan}
+            />
+          )}
+          {/*
+            THE REGISTER ITSELF, AND THE ONLY WAY IN (1 October 2026, on
+            request — corrected the same day from an earlier pass that moved
+            Supplier here instead): Kategori Supplier lost its Pembelian tab,
+            so this card is not a shortcut — it is the entry point, at its own
+            Pengaturan address (`SETTINGS_PATHS.kategoriSupplier`). It sits
+            beside Tipe supplier because the two are read together: one names
+            what a vendor's TYPE means, the other groups vendors by what they
+            sell. Supplier itself kept its Pembelian tab and has no card here.
+          */}
+          {can("supplierCategories", "read") && (
+            <HubLinkCard
+              title="Kategori Supplier"
+              description="Kelompok seperti Makanan, Perlengkapan, atau Obat — dipakai untuk memilah supplier."
+              href={SETTINGS_PATHS.kategoriSupplier}
             />
           )}
           {/*
@@ -409,11 +447,9 @@ function IdentityRow({
 function BranchesSection({
   directory,
   showWarehouses,
-  mayEdit,
 }: {
   directory: ReturnType<typeof useBranchDirectory>;
   showWarehouses: boolean;
-  mayEdit: boolean;
 }) {
   const { branches, warehouses, loading, error } = directory;
 
@@ -449,7 +485,6 @@ function BranchesSection({
               warehouses={
                 showWarehouses ? (byBranch.get(branch._id) ?? []) : null
               }
-              mayEdit={mayEdit}
             />
           ))}
         </ul>
@@ -477,12 +512,10 @@ function BranchesSection({
 function BranchRow({
   branch,
   warehouses,
-  mayEdit,
 }: {
   branch: Branch;
   /** Null when the role may not read warehouses — the line is left out. */
   warehouses: Warehouse[] | null;
-  mayEdit: boolean;
 }) {
   const contact = [branch.address, branch.city, branch.phone]
     .filter(Boolean)
@@ -510,14 +543,18 @@ function BranchRow({
         )}
         <p className="text-xs text-muted">{hours ?? "Jam buka belum diisi"}</p>
       </div>
-      {mayEdit && (
-        <Link
-          href={`${SETTINGS_PATHS.cabang}/${branch._id}`}
-          className="flex-none rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-surface-hover"
-        >
-          Kelola
-        </Link>
-      )}
+      {/*
+        UNGATED SINCE 28 SEPTEMBER 2026: that address is the branch's read-only
+        detail now, not its edit form, so `branches:update` is the wrong
+        question to ask before offering it. The row is already inside a section
+        gated on `branches:read`.
+      */}
+      <Link
+        href={`${SETTINGS_PATHS.cabang}/${branch._id}`}
+        className="flex-none rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-surface-hover"
+      >
+        Detail
+      </Link>
     </li>
   );
 }

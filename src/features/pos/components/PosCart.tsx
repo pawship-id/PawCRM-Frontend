@@ -10,9 +10,13 @@ import {
   subtractDecimals,
   sumDecimals,
 } from "@/utils/decimal";
+import { usePermissions } from "@/features/permissions";
 import type { PosDiscountMode, PosItem, PosTransaction } from "@/types/api";
 
-import { bookingShareOf } from "../bookingDiscount";
+import { bookingShareOf, membershipShareOf } from "../bookingDiscount";
+import type { BenefitQuoteResponse } from "@/types/membership";
+
+import { PosBenefitSection } from "./PosBenefitSection";
 import { PosCartLine } from "./PosCartLine";
 import { PosCustomerSection } from "./PosCustomerSection";
 import { PosDiscountPopover } from "./PosDiscountPopover";
@@ -144,8 +148,11 @@ export function PosCart({
   busy,
   error,
   onQtyChange,
+  onLinePrice,
   onRemove,
   onItemDiscount,
+  onItemBenefit,
+  benefitQuote,
   onCartDiscount,
   onCharges,
   onNote,
@@ -161,10 +168,32 @@ export function PosCart({
   onQtyChange: (index: number, qty: string) => void;
   /** One line, or a service and the add-ons under it — see `PosCartLine`. */
   onRemove: (index: number | number[]) => void;
+  /**
+   * Apply or remove a membership benefit on one line (29 September 2026).
+   *
+   * OPTIONAL, so a caller that has not wired the quote yet simply renders no
+   * chips rather than a control that cannot work — the same shape `maySetPrice`
+   * takes for a cashier who may not re-price.
+   */
+  onItemBenefit?: (
+    index: number,
+    benefit: { membershipId: string; benefitId: string } | null,
+  ) => void;
+  /**
+   * THE WHOLE QUOTE, not a per-line map (30 September 2026).
+   *
+   * The benefits moved off the rows into one section under Diskon keranjang —
+   * see `PosBenefitSection` — and that section lists EVERY benefit, including
+   * the ones no line matches. A map keyed by line could not express those at
+   * all: a benefit with nothing to land on has no line to be keyed by.
+   */
+  benefitQuote?: BenefitQuoteResponse | null;
   onItemDiscount: (
     index: number,
     discount: { mode: PosDiscountMode; value: string } | null,
   ) => void;
+  /** Typing a price over the catalogue's; `null` puts the line back to it. */
+  onLinePrice: (index: number, unitPrice: string | null) => void;
   onCartDiscount: (
     discount: { mode: PosDiscountMode; value: string } | null,
   ) => void;
@@ -180,6 +209,7 @@ export function PosCart({
   /** FR-3's booking banner and button, or nothing without a customer. */
   bookingSlot?: React.ReactNode;
 }) {
+  const { can } = usePermissions();
   const items = cart?.items ?? [];
   const totals = cart?.runningTotals;
   const empty = items.length === 0;
@@ -265,6 +295,13 @@ export function PosCart({
                   onQtyChange={onQtyChange}
                   onRemove={onRemove}
                   onDiscountChange={onItemDiscount}
+                  onPriceChange={onLinePrice}
+                  /*
+                    READ FROM THE GRANT, not passed down as a flag somebody
+                    might forget to set: a price box drawn for a cashier the
+                    server will refuse is a control that exists to fail.
+                  */
+                  maySetPrice={can("posTransactions", "setPrice")}
                 />
               ))}
             </div>
@@ -302,15 +339,33 @@ export function PosCart({
             </div>
 
             {/*
-              THE SERVER'S ITEM DISCOUNT, SPLIT THE WAY THE LINES SHOW IT — the
-              lines' own, then the bookings' shares of "Diskon seluruh booking".
-              The two always add up to `totals.itemDiscount`. The share is shown
-              HERE ONLY, once for the whole basket — not under each booking,
-              which read as a second discount per animal (15 September 2026).
+              THE SERVER'S ITEM DISCOUNT, SPLIT THREE WAYS — the lines' own
+              typed discount, the bookings' shares of "Diskon seluruh booking",
+              and what a membership card paid for. The three always add up to
+              `totals.itemDiscount`. The booking share is shown HERE ONLY, once
+              for the whole basket — not under each booking, which read as a
+              second discount per animal (15 September 2026).
+
+              ⚠️ A CARD'S GIVEAWAY IS NOT "DISKON ITEM" (1 October 2026, on
+              request). It used to be folded into the same figure as whatever the
+              cashier typed — one number answering two different questions: "how
+              much did we choose to give away" and "how much had the customer
+              already paid for". `own` now excludes it, so Diskon item is
+              CASHIER-TYPED DISCOUNTS ONLY; a card's part gets its own line below,
+              with which lines it paid for.
             */}
             {(() => {
               const shares = sumDecimals((cart?.items ?? []).map(bookingShareOf));
-              const own = subtractDecimals(totals.itemDiscount, shares);
+              const membershipShares = sumDecimals(
+                (cart?.items ?? []).map((item) => membershipShareOf(item) ?? "0"),
+              );
+              const own = subtractDecimals(
+                subtractDecimals(totals.itemDiscount, shares),
+                membershipShares,
+              );
+              const membershipLines = (cart?.items ?? [])
+                .map((item, index) => ({ item, index }))
+                .filter(({ item }) => membershipShareOf(item) !== null);
 
               return (
                 <>
@@ -330,6 +385,37 @@ export function PosCart({
                       </dd>
                     </div>
                   )}
+                  {isPositive(membershipShares) && (
+                    <div>
+                      <div className="flex justify-between">
+                        <dt className="text-muted">Diskon membership</dt>
+                        <dd className="tabular-nums text-success">
+                          −{formatMoney(membershipShares)}
+                        </dd>
+                      </div>
+                      {/*
+                        WHICH LINES IT PAID FOR — the question a number alone
+                        cannot answer once a basket holds more than one.
+                      */}
+                      <ul className="mt-0.5 flex flex-col gap-0.5 pl-4">
+                        {membershipLines.map(({ item, index }) => (
+                          <li
+                            key={`${item.kind}-${item.refId}-${index}`}
+                            className="flex justify-between gap-2 text-xs text-muted"
+                          >
+                            <span className="min-w-0 truncate">
+                              {item.petName
+                                ? `${item.petName} - ${item.name}`
+                                : item.name}
+                            </span>
+                            <span className="shrink-0 tabular-nums">
+                              −{formatMoney(membershipShareOf(item)!)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                 </>
               );
             })()}
@@ -337,9 +423,22 @@ export function PosCart({
             <div className="flex items-center justify-between">
               <dt className="flex items-center gap-1 text-muted">
                 Diskon keranjang
+                {/*
+                  NOTHING LEFT TO DISCOUNT (1 October 2026, on request) — the
+                  same rule as a line's own discount button. A basket already at
+                  nought cannot be cut further; the server would floor it there
+                  anyway.
+                  ⚠️ ONLY WHEN NOTHING WAS TYPED. A basket at nought BECAUSE the
+                  cashier typed 100% off must keep its control, or the discount
+                  they just entered is one they can never take back off.
+                */}
                 <PosDiscountPopover
                   value={cart?.cartDiscount ?? null}
-                  disabled={busy}
+                  disabled={
+                    busy ||
+                    (!cart?.cartDiscount &&
+                      (totals.payable ?? totals.net) === "0.0000")
+                  }
                   label="Diskon keranjang"
                   onApply={onCartDiscount}
                 />
@@ -350,6 +449,19 @@ export function PosCart({
                   : `−${formatMoney(totals.cartDiscount)}`}
               </dd>
             </div>
+
+            {/* UNDER DISKON KERANJANG, where the owner asked for it — the two
+                are the same kind of thing: money coming off the whole basket
+                rather than off one row. */}
+            {onItemBenefit && (
+              <PosBenefitSection
+                quote={benefitQuote ?? null}
+                items={cart?.items ?? []}
+                disabled={busy}
+                onApply={(index, benefit) => onItemBenefit(index, benefit)}
+                onRemove={(index) => onItemBenefit(index, null)}
+              />
+            )}
 
             {totals.otherCharges !== "0.0000" && (
               <div className="flex justify-between">

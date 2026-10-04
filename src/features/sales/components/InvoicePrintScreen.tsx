@@ -124,7 +124,7 @@ export function InvoicePrintScreen({ invoiceId }: { invoiceId: string }) {
           {error ?? "Faktur ini tidak ada, atau bukan milik toko Anda."}
         </Alert>
         <Button variant="secondary" asChild className="self-start">
-          <Link href="/dashboard/sales">Kembali ke daftar faktur</Link>
+          <Link href="/dashboard/sales/invoice">Kembali ke daftar faktur</Link>
         </Button>
       </div>
     );
@@ -146,7 +146,7 @@ export function InvoicePrintScreen({ invoiceId }: { invoiceId: string }) {
         <PageHeading
           crumbs={[
             ...SALES_CRUMBS,
-            { label: invoice.invoiceNumber, href: `/dashboard/sales/${invoiceId}` },
+            { label: invoice.invoiceNumber, href: `/dashboard/sales/invoice/${invoiceId}` },
             { label: "Cetak" },
           ]}
           title="Cetak Faktur"

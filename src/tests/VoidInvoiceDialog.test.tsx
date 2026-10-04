@@ -234,8 +234,8 @@ describe("while a payment still counts", () => {
 
     const links = screen.getAllByRole("link");
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
-      "/dashboard/sales/inv1/payments/pay2",
-      "/dashboard/sales/inv1/payments/pay1",
+      "/dashboard/sales/invoice/inv1/payments/pay2",
+      "/dashboard/sales/invoice/inv1/payments/pay1",
     ]);
     expect(links[1]).toHaveTextContent("PMT-2026-0001");
     expect(links[1]).toHaveTextContent("Rp 46.575");

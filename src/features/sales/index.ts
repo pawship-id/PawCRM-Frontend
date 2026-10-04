@@ -13,6 +13,12 @@
  * Penjualan wears, including its two placeholder tabs.
  */
 export { SalesModuleHeader } from "./components/SalesModuleHeader";
+/**
+ * The Ringkasan tab — the module's composition page, beside the list rather
+ * than over it: Faktur says what each bill's status is, this says where the
+ * period's omzet came from.
+ */
+export { SalesSummaryScreen } from "./components/SalesSummaryScreen";
 export { ReceivablesScreen } from "./components/ReceivablesScreen";
 export { InvoiceDetail } from "./components/InvoiceDetail";
 export { InvoicePaymentDetail } from "./components/InvoicePaymentDetail";

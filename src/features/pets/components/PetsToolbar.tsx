@@ -134,15 +134,12 @@ function PetFilterPanel({
   const species = withAll<PetsQuery["species"]>(
     loading
       ? []
-      : choices(
-          "species",
-          [
-            ...ordered("species")
-              .filter((option) => !option.isActive)
-              .map((option) => option._id),
-            draft.species,
-          ],
-        ),
+      : choices("species", [
+          ...ordered("species")
+            .filter((option) => !option.isActive)
+            .map((option) => option._id),
+          draft.species,
+        ]),
     "Semua jenis",
   );
 

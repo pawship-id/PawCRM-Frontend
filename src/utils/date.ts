@@ -60,3 +60,52 @@ export function isoDaysFromToday(days: number, from = new Date()): string {
     new Date(from.getFullYear(), from.getMonth(), from.getDate() + days),
   );
 }
+
+/* ------------------------------------------------- a range as one phrase */
+
+/** `9` → `Sep`, in the module's own month vocabulary (the table's dates use it). */
+function monthShort(month: number): string {
+  return new Date(2026, month - 1, 1).toLocaleDateString("id-ID", {
+    month: "short",
+  });
+}
+
+function partsOf(date: string) {
+  const [year, month, day] = date.split("-").map(Number);
+  return { year, month, day };
+}
+
+function fullDate(date: string): string {
+  const { year, month, day } = partsOf(date);
+  return `${day} ${monthShort(month)} ${year}`;
+}
+
+/**
+ * Two calendar days as one short phrase, sharing what they share.
+ *
+ *   same day    → `11 Sep 2026`
+ *   same month  → `1–30 Sep 2026`
+ *   same year   → `31 Agu – 6 Sep 2026`
+ *   otherwise   → `28 Des 2026 – 3 Jan 2027`
+ *
+ * READS `yyyy-mm-dd` STRINGS, NEVER INSTANTS. The day a range starts on is the
+ * tenant's calendar day; a `Date` formatted in the reader's timezone would name
+ * the day before for anybody west of the shop.
+ */
+export function formatDateRange(from: string | null, to: string | null): string {
+  if (!from && !to) return "Semua tanggal";
+  if (from && !to) return `Sejak ${fullDate(from)}`;
+  if (!from && to) return `Sampai ${fullDate(to)}`;
+
+  const a = partsOf(from!);
+  const b = partsOf(to!);
+
+  if (from === to) return fullDate(from!);
+  if (a.year === b.year && a.month === b.month) {
+    return `${a.day}–${b.day} ${monthShort(b.month)} ${b.year}`;
+  }
+  if (a.year === b.year) {
+    return `${a.day} ${monthShort(a.month)} – ${b.day} ${monthShort(b.month)} ${b.year}`;
+  }
+  return `${fullDate(from!)} – ${fullDate(to!)}`;
+}

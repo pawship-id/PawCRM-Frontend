@@ -43,6 +43,8 @@ export function useNegativeStockAlert(
   enabled: boolean,
   /** Empty means every warehouse. */
   warehouseId = "",
+  /** Empty means every cabang; resolved server-side into its gudang. */
+  branchId = "",
 ): UseNegativeStockAlertResult {
   const [items, setItems] = useState<NegativeStockRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -63,7 +65,11 @@ export function useNegativeStockAlert(
     productService
       // `|| undefined` so "no warehouse" drops out of the query string rather
       // than reaching the API as an empty string it would reject as a 400.
-      .negativeStock({ limit: LIMIT, warehouseId: warehouseId || undefined })
+      .negativeStock({
+        limit: LIMIT,
+        warehouseId: warehouseId || undefined,
+        branchId: branchId || undefined,
+      })
       .then((result) => {
         if (!active) return;
         setItems(result.items);
@@ -88,7 +94,7 @@ export function useNegativeStockAlert(
     return () => {
       active = false;
     };
-  }, [enabled, warehouseId]);
+  }, [enabled, warehouseId, branchId]);
 
   return { items, total, shortfall, loading, error };
 }

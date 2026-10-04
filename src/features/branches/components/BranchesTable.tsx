@@ -2,13 +2,19 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Pencil, Trash2, RotateCcw } from "lucide-react";
+import { EllipsisVertical, Eye, Pencil, Trash2, RotateCcw } from "lucide-react";
 
 import { ApiError } from "@/services/api-error";
 import { branchService } from "@/services/branch.service";
 import { swalToast } from "@/lib/swal";
 import { ConfirmDialog, HighlightText } from "@/components";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -54,10 +60,14 @@ export function BranchesTable({
   // render a button — so a restore-only role sees the column while "show
   // deleted" is on (deleted rows → Restore) but not while it is off (live rows
   // → Edit/Delete, which that role lacks). Mirrors the per-button gating below.
+  /*
+    A LIVE ROW ALWAYS HAS ONE — the Detail link, which needs no grant beyond
+    the `branches:read` this table already required (28 September 2026). Only a
+    DELETED row can still come up empty: there is no detail page to offer for
+    one, so the column is worth drawing only if it can be restored.
+  */
   const rowHasActions = (branch: Branch) =>
-    branch.deletedAt !== null
-      ? can("branches", "restore")
-      : can("branches", "update") || can("branches", "delete");
+    branch.deletedAt === null || can("branches", "restore");
   const showActions = branches.some(rowHasActions);
 
   function closeDialog() {
@@ -76,12 +86,12 @@ export function BranchesTable({
       else await branchService.restore(branch._id);
       setPending(null);
       onChanged();
-      swalToast(kind === "delete" ? "Branch deleted." : "Branch restored.");
+      swalToast(kind === "delete" ? "Cabang dihapus." : "Cabang dipulihkan.");
     } catch (error) {
       setActionError(
         error instanceof ApiError
           ? error.message
-          : "Something went wrong. Please try again.",
+          : "Ada yang tidak beres. Coba lagi, ya.",
       );
     } finally {
       setBusy(false);
@@ -90,24 +100,26 @@ export function BranchesTable({
 
   if (!loading && branches.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center text-sm text-muted-foreground">
-        No branches match the current filters.
+      <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center text-sm text-muted">
+        Tidak ada cabang yang cocok dengan filter ini.
+        <br />
+        Coba ubah filternya, atau reset untuk melihat semuanya.
       </div>
     );
   }
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <Table className={loading ? "opacity-60" : undefined}>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Address</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>State</TableHead>
+              <TableHead>Nama</TableHead>
+              <TableHead>Alamat</TableHead>
+              <TableHead>Telepon</TableHead>
+              <TableHead>Status</TableHead>
               {showActions && (
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="text-right">Aksi</TableHead>
               )}
             </TableRow>
           </TableHeader>
@@ -122,7 +134,7 @@ export function BranchesTable({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="text-muted-foreground">
+                    <span className="text-muted">
                       {branch.address ? (
                         <HighlightText text={branch.address} query={search} />
                       ) : (
@@ -131,7 +143,7 @@ export function BranchesTable({
                     </span>
                   </TableCell>
                   <TableCell>
-                    <span className="text-muted-foreground">
+                    <span className="text-muted">
                       {branch.phone ?? "—"}
                     </span>
                   </TableCell>
@@ -142,50 +154,87 @@ export function BranchesTable({
                     />
                   </TableCell>
                   {showActions && (
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      {deleted ? (
-                        <Can feature="branches" action="restore">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() =>
-                              setPending({ kind: "restore", branch })
-                            }
-                          >
-                            <RotateCcw className="size-4" />
-                            Restore
-                          </Button>
-                        </Can>
-                      ) : (
-                        <>
-                          <Can feature="branches" action="update">
-                            <Button variant="ghost" size="sm" asChild>
-                              <Link
-                                href={`/dashboard/pengaturan/cabang/${branch._id}`}
-                              >
-                                <Pencil className="size-4" />
-                                Edit
-                              </Link>
-                            </Button>
-                          </Can>
-                          <Can feature="branches" action="delete">
+                    <TableCell>
+                      {/*
+                        ONE KEBAB PER ROW (28 September 2026, on request),
+                        matching PetOptionsTable — the pattern this app already
+                        uses for a row with more than one thing to do.
+
+                        DETAIL IS UNGATED beyond the `branches:read` this table
+                        already required: `/cabang/:id` is the branch's
+                        read-only page. Only Ubah and Hapus ask for a grant, so
+                        a reader opens the menu and finds exactly one row in it
+                        rather than a menu button that opens onto nothing.
+                      */}
+                      <div className="flex items-center justify-end">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
-                              size="sm"
-                              className="text-danger hover:bg-danger/10 hover:text-danger"
-                              onClick={() =>
-                                setPending({ kind: "delete", branch })
-                              }
+                              className="size-9"
+                              disabled={busy}
+                              // Names the row: twenty identical "Aksi" buttons
+                              // tell a screen reader nothing.
+                              aria-label={`Aksi untuk ${branch.name}`}
                             >
-                              <Trash2 className="size-4" />
-                              Delete
+                              <EllipsisVertical className="size-4" />
                             </Button>
-                          </Can>
-                        </>
-                      )}
-                    </div>
-                  </TableCell>
+                          </DropdownMenuTrigger>
+
+                          <DropdownMenuContent align="end">
+                            {deleted ? (
+                              /*
+                                A DELETED BRANCH HAS NO DETAIL PAGE to open and
+                                nothing to edit — restoring it is the only move
+                                left, so it is the only row here.
+                              */
+                              <Can feature="branches" action="restore">
+                                <DropdownMenuItem
+                                  onSelect={() =>
+                                    setPending({ kind: "restore", branch })
+                                  }
+                                >
+                                  <RotateCcw />
+                                  Pulihkan
+                                </DropdownMenuItem>
+                              </Can>
+                            ) : (
+                              <>
+                                <DropdownMenuItem asChild>
+                                  <Link
+                                    href={`/dashboard/pengaturan/cabang/${branch._id}`}
+                                  >
+                                    <Eye />
+                                    Detail
+                                  </Link>
+                                </DropdownMenuItem>
+                                <Can feature="branches" action="update">
+                                  <DropdownMenuItem asChild>
+                                    <Link
+                                      href={`/dashboard/pengaturan/cabang/${branch._id}/edit`}
+                                    >
+                                      <Pencil />
+                                      Ubah
+                                    </Link>
+                                  </DropdownMenuItem>
+                                </Can>
+                                <Can feature="branches" action="delete">
+                                  <DropdownMenuItem
+                                    variant="destructive"
+                                    onSelect={() =>
+                                      setPending({ kind: "delete", branch })
+                                    }
+                                  >
+                                    <Trash2 />
+                                    Hapus
+                                  </DropdownMenuItem>
+                                </Can>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
                   )}
                 </TableRow>
               );
@@ -196,8 +245,8 @@ export function BranchesTable({
 
       {pending && (
         <ConfirmDialog
-          title={pending.kind === "delete" ? "Delete branch" : "Restore branch"}
-          confirmLabel={pending.kind === "delete" ? "Delete" : "Restore"}
+          title={pending.kind === "delete" ? "Hapus cabang" : "Pulihkan cabang"}
+          confirmLabel={pending.kind === "delete" ? "Hapus" : "Pulihkan"}
           destructive={pending.kind === "delete"}
           busy={busy}
           error={actionError}
@@ -206,14 +255,14 @@ export function BranchesTable({
         >
           {pending.kind === "delete" ? (
             <>
-              Delete <strong>{pending.branch.name}</strong>? It will be hidden
-              from the list and its name freed for reuse. You can restore it
-              later.
+              Hapus <strong>{pending.branch.name}</strong>? Cabang ini akan
+              hilang dari daftar dan namanya bisa dipakai lagi. Masih bisa
+              dipulihkan nanti.
             </>
           ) : (
             <>
-              Restore <strong>{pending.branch.name}</strong>? This may fail if
-              its name has since been taken by another branch.
+              Pulihkan <strong>{pending.branch.name}</strong>? Bisa gagal kalau
+              namanya sudah dipakai cabang lain.
             </>
           )}
         </ConfirmDialog>

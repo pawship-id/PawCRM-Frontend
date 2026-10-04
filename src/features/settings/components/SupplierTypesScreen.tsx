@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Card } from "@/components";
 import { Badge } from "@/components/ui/badge";
 
+import { SETTINGS_PATHS } from "../paths";
 import { SettingsPageHeader } from "./SettingsHeader";
 
 /**
@@ -20,8 +21,9 @@ import { SettingsPageHeader } from "./SettingsHeader";
  *
  * SO THE PAGE ANSWERS THE QUESTION THE CARD ASKS instead: which types exist,
  * what each does to the books, and where they are set — on the supplier itself.
- * A shop that wants to GROUP its vendors already has Kategori Supplier, in
- * Pembelian, and the page says so rather than leaving somebody to find out.
+ * A shop that wants to GROUP its vendors already has Kategori Supplier, right
+ * here in Pengaturan since 1 October 2026 (it used to be a Pembelian tab), and
+ * the page says so rather than leaving somebody to find out.
  */
 const COOPERATION = [
   {
@@ -111,10 +113,10 @@ export function SupplierTypesScreen() {
         <p className="text-sm text-muted">
           Kelompok seperti Makanan, Perlengkapan, atau Obat diatur di{" "}
           <Link
-            href="/dashboard/purchasing/supplier-categories"
+            href={SETTINGS_PATHS.kategoriSupplier}
             className="rounded font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
-            Pembelian › Kategori Supplier
+            Kategori Supplier
           </Link>
           , dan tenant boleh menambah sendiri sebanyak yang perlu.
         </p>

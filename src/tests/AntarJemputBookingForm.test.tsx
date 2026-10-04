@@ -76,6 +76,8 @@ const ride = {
   variantAxes: [],
   serviceType: "main",
   billingUnit: "per_visit",
+  /* What the Layanan picker narrows by — never the lini bisnis. */
+  serviceKind: "pickup-delivery",
   businessLineId: "line-aj",
   serviceLocations: ["in_home"],
   addonServiceIds: [],
@@ -92,6 +94,8 @@ const waiting = {
   price: "20000.0000",
   durationMin: 15,
   serviceType: "addon",
+  /* An add-on is shared across kinds, so the server stores null. */
+  serviceKind: null,
   addonServiceIds: [],
 } as unknown as Service;
 

@@ -92,14 +92,14 @@ export function WarehouseCreateForm() {
       });
       // Redirect first, then fire the toast so it rides along on the list screen.
       router.push("/dashboard/pengaturan/gudang");
-      swalToast(`${created.name} has been created.`);
+      swalToast(`${created.name} sudah dibuat.`);
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
         setFieldErrors(error.fieldErrors);
       } else if (error instanceof ApiError) {
         setFormError(error.fullMessage);
       } else {
-        setFormError("Something went wrong. Please try again.");
+        setFormError("Ada yang tidak beres. Coba lagi, ya.");
       }
       setSaving(false);
     }
@@ -113,7 +113,7 @@ export function WarehouseCreateForm() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Row 1: name & branch */}
         <TextField
-          label="Warehouse name"
+          label="Nama gudang"
           name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -130,9 +130,9 @@ export function WarehouseCreateForm() {
         {/* Row 2: address (full width) */}
         <div className="sm:col-span-2">
           <TextField
-            label="Address"
+            label="Alamat"
             name="address"
-            placeholder="Optional"
+            placeholder="Opsional"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
             error={fieldErrors.address}
@@ -148,20 +148,20 @@ export function WarehouseCreateForm() {
 
         {/* Row 4: the person accountable for stock here */}
         <TextField
-          label="PIC name"
+          label="Nama PIC"
           name="picName"
-          placeholder="Optional"
+          placeholder="Opsional"
           value={picName}
           onChange={(e) => setPicName(e.target.value)}
           error={fieldErrors.picName}
-          hint="Who a stock discrepancy is raised with."
+          hint="Orang yang dihubungi kalau stok tidak cocok."
         />
         <TextField
-          label="PIC phone"
+          label="Telepon PIC"
           type="tel"
           name="picPhone"
           autoComplete="tel"
-          placeholder="Optional"
+          placeholder="Opsional"
           value={picPhone}
           onChange={(e) => setPicPhone(e.target.value)}
           error={fieldErrors.picPhone}
@@ -175,7 +175,7 @@ export function WarehouseCreateForm() {
           onCheckedChange={(checked) => setIsActive(checked === true)}
         />
         <Label htmlFor="warehouse-active" className="font-normal">
-          Active — this warehouse accepts stock movement
+          Aktif — gudang ini menerima mutasi stok
         </Label>
       </div>
 
@@ -197,7 +197,7 @@ export function WarehouseCreateForm() {
         </Label>
       </div>
 
-      {/* Stacks on small screens (Create on top, Cancel below); row on sm+. */}
+      {/* Stacks on small screens (Simpan on top, Batal below); row on sm+. */}
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button
           type="button"
@@ -205,10 +205,10 @@ export function WarehouseCreateForm() {
           className="w-full sm:w-auto"
           onClick={() => router.push("/dashboard/pengaturan/gudang")}
         >
-          Cancel
+          Batal
         </Button>
         <Button type="submit" loading={saving} className="w-full sm:w-auto">
-          Create warehouse
+          Simpan gudang
         </Button>
       </div>
     </form>

@@ -8,14 +8,12 @@ import {
   FilterBar,
   FilterDateRange,
   FilterPanel,
-  FilterPills,
   FilterSearch,
   FilterSelect,
   FilterTrigger,
   namedOptions,
   withAll,
   type FilterOption,
-  type PillOption,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
@@ -55,13 +53,13 @@ import type {
  * express — `Tanggal faktur` bounds when the vendor ISSUED the bill, never when
  * it comes due.
  *
- * Rendered as a pill row rather than the segmented control it used to be: a
- * small-cardinality lens that is the first thing anyone reaches for is what a
- * pill row is for (docs/ui-rules.md §8). `tone` carries the urgency the old
- * `urgent` flag did.
+ * A FIELD IN THE PANEL NOW, not a pill row (2 October 2026, on request) — see
+ * the module doc for what that moved with it. `Faktur` on the Penjualan side
+ * (`ReceivablesToolbar`) kept its row; the two AP/AR screens are allowed to
+ * read differently here, this is the one that was asked to change.
  */
-const VIEWS: PillOption<PayablesView>[] = [
-  { value: "overdue", label: "Jatuh tempo", tone: "danger" },
+const VIEWS: FilterOption<PayablesView>[] = [
+  { value: "overdue", label: "Jatuh tempo" },
   { value: "dueSoon", label: "Minggu ini" },
   { value: "outstanding", label: "Belum lunas" },
   { value: "partial", label: "Sebagian" },
@@ -103,6 +101,7 @@ const SORTS: FilterOption<PurchaseInvoiceSort>[] = [
 
 /** Everything the panel edits, as one draft. */
 interface PayablesFilters {
+  view: PayablesView;
   supplierId: string;
   branchId: string;
   warehouseId: string;
@@ -115,15 +114,14 @@ interface PayablesFilters {
  * What Reset returns to — the query's own defaults, not "empty".
  *
  * The ordering is included: a list with no ordering is not a thing, so Reset
- * puts it back to the API's default rather than clearing it to nothing.
- *
- * THE VIEW IS NOT IN HERE, and that is deliberate. Reset clears what the PANEL
- * holds; the lens lives outside it, applies on click, and is the one control on
- * this screen somebody has always set on purpose. A Reset that also threw the
- * screen back to "Belum lunas" would undo a choice the button does not appear
- * to be about.
+ * puts it back to the API's default rather than clearing it to nothing. THE
+ * VIEW IS NOW IN HERE TOO (2 October 2026): it moved from a pill row outside
+ * the panel to a field inside it, and Reset clears what the panel holds —
+ * "Belum lunas" is `usePurchaseInvoices`'s own default, the same reasoning
+ * `sort: "newest"` already follows.
  */
 const CLEARED: PayablesFilters = {
+  view: "outstanding",
   supplierId: "",
   branchId: "",
   warehouseId: "",
@@ -133,24 +131,26 @@ const CLEARED: PayablesFilters = {
 };
 
 /**
- * The payables list controls: the view lens on its own row, then search, one
- * Filter button and the way to file a new supplier bill — with supplier, cabang,
- * gudang, the issue-date range and the ordering inside the panel.
+ * The payables list controls: search, one Filter button and the way to file a
+ * new supplier bill — with the view lens, supplier, cabang, gudang, the
+ * issue-date range and the ordering all inside the panel.
  *
  * Purely presentational — it renders the current query and reports changes up to
  * usePurchaseInvoices. Mirrors ReceiptsToolbar.
  *
- * THE LENS STAYS OUTSIDE THE PANEL. §8 is explicit: a dimension that is the
- * page's main lens, has small cardinality and is the first thing anyone reaches
- * for is a pill row, outside the bar, applying on click. Folding it into the
- * panel would put the one control this screen is opened to use behind a button
- * and a Terapkan.
+ * THE LENS MOVED INTO THE PANEL (2 October 2026, on request) — a reversal of
+ * the rule §8 states for a dimension this size: a lens with small cardinality
+ * that is the first thing anyone reaches for is ordinarily a pill row, outside
+ * the bar, applying on click, and that is still what `ReceivablesToolbar`
+ * (Penjualan's AR equivalent) does. Two things follow from the move, same as
+ * Transaksi's Tipe before it: the view is now **counted** in `Filter (n)` —
+ * see the panel below — and Reset clears it back to "Belum lunas" along with
+ * everything else, where it used to be the one control Reset left alone.
  *
- * WHAT WENT IN IS EVERYTHING ELSE, at every width — the arrangement Produk &
- * Varian and Penerimaan Barang both use. The date range decides it on its own:
- * a control carrying its own Reset/Terapkan belongs in a panel whatever else is
- * on the bar. On a phone the pills already take two rows, and a bar of triggers
- * under them pushed the table off the fold entirely.
+ * WHAT WENT IN IS EVERYTHING ELSE TOO, at every width — the arrangement Produk
+ * & Varian and Penerimaan Barang both use. The date range decides it on its
+ * own: a control carrying its own Reset/Terapkan belongs in a panel whatever
+ * else is on the bar.
  *
  * THE DATE RANGE BOUNDS `invoiceDate` — the day the SUPPLIER issued the bill,
  * not when it was keyed in and not when it falls due. That is the date printed
@@ -179,6 +179,7 @@ export function PayablesToolbar({
   const { suppliers, warehouses, branches } = useReceiptFilterOptions();
 
   const applied: PayablesFilters = {
+    view: query.view,
     supplierId: query.supplierId,
     branchId: query.branchId,
     warehouseId: query.warehouseId,
@@ -195,6 +196,7 @@ export function PayablesToolbar({
    */
   function apply(next: PayablesFilters) {
     const patch: Partial<PurchaseInvoicesQuery> = {};
+    if (next.view !== query.view) patch.view = next.view;
     if (next.supplierId !== query.supplierId) patch.supplierId = next.supplierId;
     if (next.branchId !== query.branchId) patch.branchId = next.branchId;
     if (next.warehouseId !== query.warehouseId)
@@ -207,61 +209,47 @@ export function PayablesToolbar({
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* The lens sits outside the bar: it is one click, always applied, and
-          never something you compose with the filters below it. It wraps onto a
-          second row on a phone rather than scrolling sideways — six short pills
-          are readable stacked, and a horizontally scrolling row hides the
-          rightmost option, which here is "Semua". */}
-      <FilterPills
-        ariaLabel="Tampilan faktur"
-        value={query.view}
-        options={VIEWS}
-        onChange={(view) => onChange({ view })}
-      />
-
-      <FilterBar
-        // Search leads the row and takes what is left of it: with the triggers
-        // collapsed there is nothing else on the line that grows, and what
-        // people type here is an invoice number off a vendor's paperwork.
-        searchPlacement="leading"
-        searchClassName="min-w-[12rem] flex-1"
-        // Below sm the row cannot hold all three, so the create button takes a
-        // line of its own — and takes all of it. A button hugging its label at
-        // one end of an otherwise empty row reads as something left behind.
-        actionsClassName="max-sm:w-full"
-        search={
-          <FilterSearch
-            value={query.search}
-            onChange={(search) => onChange({ search })}
-            // Names exactly the two fields the API searches — a placeholder
-            // promising a field the server does not match is a bug report
-            // waiting to be filed.
-            placeholder="Cari nomor faktur atau catatan…"
-            ariaLabel="Cari faktur"
-            fill
-          />
-        }
-        actions={
-          <Can feature="purchaseInvoices" action="create">
-            <Button asChild className="w-full">
-              <Link href="/dashboard/purchasing/payables/new">
-                <Plus className="size-4" />
-                Catat faktur supplier
-              </Link>
-            </Button>
-          </Can>
-        }
-      >
-        <PayablesFilterPanel
-          applied={applied}
-          suppliers={suppliers}
-          warehouses={warehouses}
-          branches={branches}
-          onApply={apply}
+    <FilterBar
+      // Search leads the row and takes what is left of it: with the triggers
+      // collapsed there is nothing else on the line that grows, and what
+      // people type here is an invoice number off a vendor's paperwork.
+      searchPlacement="leading"
+      searchClassName="min-w-[12rem] flex-1"
+      // Below sm the row cannot hold all three, so the create button takes a
+      // line of its own — and takes all of it. A button hugging its label at
+      // one end of an otherwise empty row reads as something left behind.
+      actionsClassName="max-sm:w-full"
+      search={
+        <FilterSearch
+          value={query.search}
+          onChange={(search) => onChange({ search })}
+          // Names exactly the two fields the API searches — a placeholder
+          // promising a field the server does not match is a bug report
+          // waiting to be filed.
+          placeholder="Cari nomor faktur atau catatan…"
+          ariaLabel="Cari faktur"
+          fill
         />
-      </FilterBar>
-    </div>
+      }
+      actions={
+        <Can feature="purchaseInvoices" action="create">
+          <Button asChild className="w-full">
+            <Link href="/dashboard/purchasing/payables/new">
+              <Plus className="size-4" />
+              Catat faktur supplier
+            </Link>
+          </Button>
+        </Can>
+      }
+    >
+      <PayablesFilterPanel
+        applied={applied}
+        suppliers={suppliers}
+        warehouses={warehouses}
+        branches={branches}
+        onApply={apply}
+      />
+    </FilterBar>
   );
 }
 
@@ -302,14 +290,14 @@ function PayablesFilterPanel({
    * somebody asked. THE ORDERING IS NOT COUNTED AT ALL: every list has one, so
    * it is never "on".
    *
-   * NEITHER IS THE VIEW, and that one is worth saying out loud because it is
-   * genuinely narrowing the list. It is not counted because it is not hidden:
-   * the badge exists to pay back what a panel conceals, and the lens is a row of
-   * pills with the current one filled in, sitting right above the button. A
-   * number covering a control the user can already see would double-count the
-   * only filter on this screen that never needs announcing.
+   * THE VIEW IS COUNTED NOW (2 October 2026), unlike when it stood outside the
+   * panel as a pill row: the badge exists to pay back what a panel CONCEALS, and
+   * a lens sitting behind the Filter button conceals exactly as much as any
+   * other field in here does. "Belum lunas" — `usePurchaseInvoices`'s own
+   * default — is what does not count, the same test every other field uses.
    */
   const count = [
+    applied.view !== "outstanding",
     applied.supplierId !== "",
     // COUNTED SEPARATELY, unlike the date range's two bounds. Cabang and Gudang
     // are two questions that happen to be related, not one question with two
@@ -409,6 +397,18 @@ function PayablesFilterPanel({
           options={SORTS}
           unsetValue="newest"
           onChange={(sort) => patch({ sort })}
+        />
+        {/* The former pill row, now a field: this is the dimension the screen
+            is opened to use, so it follows Urutkan rather than sitting among
+            the narrowing fields below it. */}
+        <FilterSelect
+          layout="field"
+          label="Status"
+          ariaLabel="Filter status"
+          value={draft.view}
+          options={VIEWS}
+          unsetValue="outstanding"
+          onChange={(view) => patch({ view })}
         />
         <FilterSelect
           layout="field"

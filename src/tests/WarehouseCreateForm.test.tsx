@@ -56,7 +56,7 @@ describe("WarehouseCreateForm", () => {
     render(<WarehouseCreateForm />);
 
     await userEvent.click(
-      screen.getByRole("button", { name: /create warehouse/i }),
+      screen.getByRole("button", { name: /simpan gudang/i }),
     );
 
     expect(create).not.toHaveBeenCalled();
@@ -67,10 +67,10 @@ describe("WarehouseCreateForm", () => {
     const create = jest.spyOn(warehouseService, "create");
     render(<WarehouseCreateForm />);
 
-    await userEvent.type(screen.getByLabelText(/warehouse name/i), "Gudang A");
-    await userEvent.type(screen.getByLabelText(/pic phone/i), "0812-abc");
+    await userEvent.type(screen.getByLabelText(/nama gudang/i), "Gudang A");
+    await userEvent.type(screen.getByLabelText(/telepon pic/i), "0812-abc");
     await userEvent.click(
-      screen.getByRole("button", { name: /create warehouse/i }),
+      screen.getByRole("button", { name: /simpan gudang/i }),
     );
 
     expect(create).not.toHaveBeenCalled();
@@ -83,10 +83,10 @@ describe("WarehouseCreateForm", () => {
       .mockResolvedValue({} as never);
     render(<WarehouseCreateForm />);
 
-    await userEvent.type(screen.getByLabelText(/warehouse name/i), "Gudang A");
-    await userEvent.type(screen.getByLabelText(/pic name/i), "Budi");
+    await userEvent.type(screen.getByLabelText(/nama gudang/i), "Gudang A");
+    await userEvent.type(screen.getByLabelText(/nama pic/i), "Budi");
     await userEvent.click(
-      screen.getByRole("button", { name: /create warehouse/i }),
+      screen.getByRole("button", { name: /simpan gudang/i }),
     );
 
     await waitFor(() =>
@@ -117,12 +117,12 @@ describe("WarehouseCreateForm", () => {
     render(<WarehouseCreateForm />);
 
     await userEvent.type(
-      screen.getByLabelText(/warehouse name/i),
+      screen.getByLabelText(/nama gudang/i),
       "Etalase Pusat",
     );
     await userEvent.click(screen.getByLabelText(/Ada kasir di gudang ini/));
     await userEvent.click(
-      screen.getByRole("button", { name: /create warehouse/i }),
+      screen.getByRole("button", { name: /simpan gudang/i }),
     );
 
     await waitFor(() =>
@@ -140,9 +140,9 @@ describe("WarehouseCreateForm", () => {
       );
     render(<WarehouseCreateForm />);
 
-    await userEvent.type(screen.getByLabelText(/warehouse name/i), "Gudang A");
+    await userEvent.type(screen.getByLabelText(/nama gudang/i), "Gudang A");
     await userEvent.click(
-      screen.getByRole("button", { name: /create warehouse/i }),
+      screen.getByRole("button", { name: /simpan gudang/i }),
     );
 
     expect(await screen.findByText(/already exists/i)).toBeInTheDocument();
@@ -159,9 +159,9 @@ describe("WarehouseCreateForm", () => {
     );
     render(<WarehouseCreateForm />);
 
-    await userEvent.type(screen.getByLabelText(/warehouse name/i), "Gudang A");
+    await userEvent.type(screen.getByLabelText(/nama gudang/i), "Gudang A");
     await userEvent.click(
-      screen.getByRole("button", { name: /create warehouse/i }),
+      screen.getByRole("button", { name: /simpan gudang/i }),
     );
 
     expect(

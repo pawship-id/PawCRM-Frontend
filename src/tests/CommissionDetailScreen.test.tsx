@@ -121,7 +121,7 @@ describe("CommissionDetailScreen", () => {
     expect(screen.getByText("Total terhitung")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "INV/BRT/2609/0001" })).toHaveAttribute(
       "href",
-      "/dashboard/sales/inv-1",
+      "/dashboard/sales/invoice/inv-1",
     );
   });
 

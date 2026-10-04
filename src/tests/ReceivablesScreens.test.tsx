@@ -635,7 +635,7 @@ describe("InvoiceDetail", () => {
     });
     expect(row).toHaveAttribute(
       "href",
-      "/dashboard/sales/inv1/payments/pay1",
+      "/dashboard/sales/invoice/inv1/payments/pay1",
     );
     // The payment's own number, above the amount.
     expect(within(row).getByText("PMT-2026-0001")).toBeInTheDocument();
@@ -1447,7 +1447,7 @@ describe("InvoiceDetail — Batalkan faktur, behind the ⋮", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /PMT-2026-0001/ }),
-    ).toHaveAttribute("href", "/dashboard/sales/inv1/payments/pay1");
+    ).toHaveAttribute("href", "/dashboard/sales/invoice/inv1/payments/pay1");
   });
 
   it("offers no menu to a role that may not cancel", async () => {

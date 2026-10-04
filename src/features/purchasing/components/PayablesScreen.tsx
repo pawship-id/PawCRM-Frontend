@@ -1,46 +1,46 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { Alert, Pagination, Spinner } from "@/components";
 import { usePermissions } from "@/features/permissions";
+import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { formatMoney } from "@/utils/decimal";
 import type { SupplierOutstandingSummary } from "@/types/api";
 
 import { usePurchaseInvoices } from "../hooks/usePurchaseInvoices";
 import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
+import {
+  PayablesStatCards,
+  type PayablesStatFigures,
+} from "./PayablesStatCards";
 import { PayablesTable } from "./PayablesTable";
 import { PayablesToolbar } from "./PayablesToolbar";
 
 /**
  * What the tenant owes its suppliers, and which of it is late.
  *
- * THE TWO HEADLINE FIGURES ARE THE WHOLE BOOK, not this page, and both come from
- * `/purchase-invoices/outstanding` in one request. That endpoint sums in the
- * database over everything unsettled; a client adding up the twenty rows it was
- * sent would show a total that grows as the user pages — worse than showing
- * nothing, because it looks authoritative.
+ * THE FOUR-CARD STRIP IS `PayablesStatCards` (1 October 2026, promoted to a
+ * shared component 2 October 2026 when Ringkasan was asked for the same row —
+ * see that component's own doc for what each card is and isn't). This screen's
+ * job is only to adapt `SupplierOutstandingSummary` — the whole book, unscoped
+ * — into the shape that component takes.
  *
- * THE OVERDUE BANNER IS WHY THE SUMMARY ENDPOINT CARRIES OVERDUE AT ALL. The
- * count alone could be had from `?overdue=true` through `pagination.total`, but
- * the rupiah figure could not: it would mean paging the entire overdue book, and
- * any answer short of that is a confident wrong number. Both halves now arrive
- * from one aggregation as of one instant, so the banner cannot claim more is
- * late than is owed.
+ * THE OVERDUE BANNER SURVIVES, because it answers a question the cards do not:
+ * what is ALREADY late. "Jatuh tempo ≤N hari" is deliberately the NOT-YET-LATE
+ * bucket, so dropping the banner would leave the one number this shop acts on
+ * first with no home. It also still carries the one call to action on this
+ * screen: the overdue bucket is a view of the list right below it.
  *
- * THE DUE-SOON NOTE IS THE SAME BARGAIN, one step earlier: money that still has
- * time. It is deliberately quieter than the overdue banner — nothing here is a
- * problem yet — and it is the one figure on this screen that comes with a way to
- * act on it, because the set it describes is a view of the list underneath it.
- * The window it names is the server's `horizonDays`, not a constant here.
- *
- * THE FIGURES ARE UNFILTERED ON PURPOSE. They answer "what do we owe, ever",
- * which is a different question from the one the toolbar is asking. Quietly
- * re-scoping them to the current filter would make the same number mean two
- * things depending on which chip is selected.
+ * THE FIGURES ARE UNFILTERED ON PURPOSE. They answer "what do we owe, ever", a
+ * different question from the one the toolbar beneath the cards is asking.
+ * Quietly re-scoping them to the current filter would make the same number mean
+ * two things depending on which chip is selected.
  */
 export function PayablesScreen() {
+  const router = useRouter();
   const { can } = usePermissions();
   const { invoices, pagination, query, loading, error, setQuery } =
     usePurchaseInvoices();
@@ -48,6 +48,7 @@ export function PayablesScreen() {
   const [summary, setSummary] = useState<SupplierOutstandingSummary | null>(
     null,
   );
+  const [summaryFailed, setSummaryFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -57,8 +58,27 @@ export function PayablesScreen() {
       .then((result) => {
         if (active) setSummary(result);
       })
-      // The list is the screen; a missing headline figure is not worth an error
-      // banner over data that loaded fine.
+      .catch(() => {
+        if (active) setSummaryFailed(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  // The whole book, like the figures beside it. Its own request: a failure here
+  // blanks one card, never the strip.
+  const [pendingReceipts, setPendingReceipts] = useState<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    goodsReceiptService
+      .pendingCount()
+      .then((result) => {
+        if (active) setPendingReceipts(result?.count ?? null);
+      })
       .catch(() => undefined);
 
     return () => {
@@ -67,39 +87,42 @@ export function PayablesScreen() {
   }, []);
 
   const overdueCount = summary?.totalOverdueInvoices ?? 0;
-  const dueSoonCount = summary?.totalDueSoonInvoices ?? 0;
+
+  const figures: PayablesStatFigures | null = summary
+    ? {
+        outstanding: {
+          amount: summary.totalOutstanding,
+          invoiceCount: summary.totalInvoices,
+        },
+        dueSoon: {
+          amount: summary.totalDueSoonOutstanding,
+          invoiceCount: summary.totalDueSoonInvoices,
+          horizonDays: summary.horizonDays,
+        },
+        pendingReceipts,
+      }
+    : null;
 
   return (
     <div className="flex flex-col gap-6">
-      {/* The headline figure rides in the header's action slot, which is where
-          it already sat — beside the title, at the top right. */}
-      <PurchasingModuleHeader
-        action={
-          <div className="max-sm:w-full sm:text-right">
-            <div className="flex items-baseline gap-3 max-sm:justify-between sm:block">
-              <p className="text-xs font-medium tracking-wide text-muted uppercase">
-                Total sisa utang
-              </p>
-              <p className="text-lg font-semibold tabular-nums">
-                {summary === null ? "—" : formatMoney(summary.totalOutstanding)}
-              </p>
-            </div>
-            <p className="text-xs text-muted">
-              {summary === null
-                ? "seluruh supplier"
-                : `${summary.totalInvoices} faktur belum lunas`}
-            </p>
-          </div>
+      <PurchasingModuleHeader />
+
+      {/* The mockup's strip, over the search box below it. */}
+      <PayablesStatCards
+        onPendingReceiptsClick={() =>
+          router.push("/dashboard/purchasing/receipts?status=pending")
+        }
+        figures={figures}
+        loading={!summary && !summaryFailed}
+        failed={summaryFailed}
+        // Withheld once the list already shows the bucket — a control that
+        // leads nowhere new is noise.
+        onDueSoonClick={
+          query.view !== "dueSoon"
+            ? () => setQuery({ view: "dueSoon" })
+            : undefined
         }
       />
-
-      {/* What the module header cannot say, because it is on every tab: what
-          THIS list is. */}
-      <p className="max-w-2xl text-sm text-muted">
-        Utang tercatat otomatis saat penerimaan beli putus diposting. Faktur
-        dari supplier dicatat terpisah — itu yang membawa nomor tagihan dan
-        tanggal jatuh temponya. Pembayaran boleh dicicil sampai lunas.
-      </p>
 
       {overdueCount > 0 && summary && (
         <div className="rounded-lg border border-danger/40 bg-danger/5 px-4 py-3 text-sm">
@@ -108,28 +131,17 @@ export function PayablesScreen() {
           </b>{" "}
           — total {formatMoney(summary.totalOverdueOutstanding)}. Prioritaskan
           pembayaran supaya pasokan tidak terganggu.
-        </div>
-      )}
-
-      {dueSoonCount > 0 && summary && (
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 rounded-lg border border-border bg-surface-hover px-4 py-3 text-sm">
-          <span>
-            <b>
-              {dueSoonCount} faktur jatuh tempo dalam {summary.horizonDays} hari
-            </b>{" "}
-            — siapkan {formatMoney(summary.totalDueSoonOutstanding)}.
-          </span>
-          {/* The one headline here that can be acted on: the same bucket the
-              figures describe is a view of the list below, asked of the server
-              with the same definition. */}
-          {query.view !== "dueSoon" && (
-            <button
-              type="button"
-              onClick={() => setQuery({ view: "dueSoon" })}
-              className="font-medium text-primary hover:text-primary-hover"
-            >
-              Lihat daftarnya →
-            </button>
+          {query.view !== "overdue" && (
+            <>
+              {" "}
+              <button
+                type="button"
+                onClick={() => setQuery({ view: "overdue" })}
+                className="font-medium text-primary hover:text-primary-hover"
+              >
+                Lihat daftarnya →
+              </button>
+            </>
           )}
         </div>
       )}

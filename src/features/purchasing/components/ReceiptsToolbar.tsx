@@ -20,6 +20,7 @@ import { Can } from "@/features/permissions";
 import type {
   Branch,
   GoodsReceiptSort,
+  GoodsReceiptStatus,
   PurchaseType,
   Supplier,
 } from "@/types/api";
@@ -74,6 +75,15 @@ const TYPES = withAll<PurchaseType | "">(
   "Semua jenis",
 );
 
+/** Whether the goods are on the shelf yet. */
+const STATUSES = withAll<GoodsReceiptStatus | "">(
+  [
+    { value: "pending", label: "Belum diterima" },
+    { value: "received", label: "Diterima" },
+  ],
+  "Semua status",
+);
+
 /**
  * The orderings the API accepts — GOODS_RECEIPT_SORTS in goodsReceipt.model.js.
  *
@@ -105,6 +115,7 @@ interface ReceiptFilters {
   branchId: string;
   warehouseId: string;
   purchaseType: GoodsReceiptsQuery["purchaseType"];
+  status: GoodsReceiptsQuery["status"];
   dateFrom: string;
   dateTo: string;
   sort: GoodsReceiptSort;
@@ -121,6 +132,7 @@ const CLEARED: ReceiptFilters = {
   branchId: "",
   warehouseId: "",
   purchaseType: "",
+  status: "",
   dateFrom: "",
   dateTo: "",
   sort: "newest",
@@ -140,6 +152,7 @@ export function ReceiptsToolbar({
     branchId: query.branchId,
     warehouseId: query.warehouseId,
     purchaseType: query.purchaseType,
+    status: query.status,
     dateFrom: query.dateFrom,
     dateTo: query.dateTo,
     sort: query.sort,
@@ -159,6 +172,7 @@ export function ReceiptsToolbar({
       patch.warehouseId = next.warehouseId;
     if (next.purchaseType !== query.purchaseType)
       patch.purchaseType = next.purchaseType;
+    if (next.status !== query.status) patch.status = next.status;
     if (next.dateFrom !== query.dateFrom) patch.dateFrom = next.dateFrom;
     if (next.dateTo !== query.dateTo) patch.dateTo = next.dateTo;
     if (next.sort !== query.sort) patch.sort = next.sort;
@@ -256,6 +270,7 @@ function ReceiptFilterPanel({
     applied.branchId !== "",
     applied.warehouseId !== "",
     applied.purchaseType !== "",
+    applied.status !== "",
     applied.dateFrom !== "" || applied.dateTo !== "",
   ].filter(Boolean).length;
 
@@ -386,6 +401,14 @@ function ReceiptFilterPanel({
           value={draft.purchaseType}
           options={TYPES}
           onChange={(purchaseType) => patch({ purchaseType })}
+        />
+        <FilterSelect
+          layout="field"
+          label="Status"
+          ariaLabel="Filter status penerimaan"
+          value={draft.status}
+          options={STATUSES}
+          onChange={(status) => patch({ status })}
         />
         <FilterDateRange
           layout="field"

@@ -156,7 +156,7 @@ export function ReceivablesTable({
         </TableHeader>
         <TableBody>
           {invoices.map((invoice) => {
-            const href = `/dashboard/sales/${invoice._id}`;
+            const href = `/dashboard/sales/invoice/${invoice._id}`;
             const lateBy = Math.abs(daysUntil(invoice.dueDate));
             const voided = invoice.status === "void";
             const collectable =

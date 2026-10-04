@@ -72,14 +72,6 @@ export function PurchaseReturnsScreen() {
     <div className="flex flex-col gap-6">
       <PurchasingModuleHeader />
 
-      {/* What the module header cannot say, because it is on every tab: what
-          THIS list is. */}
-      <p className="max-w-2xl text-sm text-muted">
-        Retur selalu ditarik dari penerimaan aslinya, sehingga harga beli asli
-        ikut terbawa — itulah yang membuat perhitungan HPP tetap benar setelah
-        barang dikembalikan.
-      </p>
-
       <PurchaseReturnsToolbar query={query} onChange={setQuery} />
 
       {error && <Alert variant="error">{error}</Alert>}

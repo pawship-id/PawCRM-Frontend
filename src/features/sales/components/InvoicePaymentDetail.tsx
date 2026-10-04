@@ -63,7 +63,7 @@ export function InvoicePaymentDetail({
   const [editOpen, setEditOpen] = useState(false);
   const { can } = usePermissions();
   const mayReadLedger = can("journalEntries", "read");
-  const invoiceHref = `/dashboard/sales/${invoiceId}`;
+  const invoiceHref = `/dashboard/sales/invoice/${invoiceId}`;
 
   if (loading) {
     return (
@@ -78,7 +78,7 @@ export function InvoicePaymentDetail({
       <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center">
         <p className="font-medium text-foreground">Faktur tidak ditemukan.</p>
         <Button variant="secondary" asChild>
-          <Link href="/dashboard/sales">← Semua faktur penjualan</Link>
+          <Link href="/dashboard/sales/invoice">← Semua faktur penjualan</Link>
         </Button>
       </div>
     );

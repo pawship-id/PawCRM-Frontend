@@ -1,5 +1,6 @@
 import { apiClient } from "./api-client";
 import type {
+  PayablesSummary,
   CreatePurchaseInvoiceInput,
   PageResult,
   PurchaseInvoiceDetail,
@@ -132,6 +133,31 @@ export const purchaseInvoiceService = {
    * A supplier who owes nothing is absent from `items`, not present with zeros;
    * callers key by `supplierId` and read a miss as zero.
    */
+  /**
+   * GET /purchase-invoices/summary — the Ringkasan tab's three cards.
+   *
+   * THE DATES BOUND THE PAYMENTS, not the invoices, which is the one thing to
+   * know before reusing this call: the balances it returns beside them ignore
+   * the period entirely. See `PayablesSummary`.
+   */
+  summary: (
+    query: {
+      branchId?: string;
+      /** A named period, cut in the TENANT's timezone. Never beside the dates. */
+      period?: "today" | "week" | "month";
+      dateFrom?: string;
+      dateTo?: string;
+    } = {},
+  ) =>
+    apiClient.get<PayablesSummary>("/purchase-invoices/summary", {
+      query: {
+        branchId: query.branchId || undefined,
+        period: query.period,
+        dateFrom: query.dateFrom || undefined,
+        dateTo: query.dateTo || undefined,
+      },
+    }),
+
   outstandingSummary: (query: { supplierId?: string } = {}) =>
     apiClient.get<SupplierOutstandingSummary>(
       "/purchase-invoices/outstanding",

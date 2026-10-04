@@ -43,6 +43,7 @@ export const categoryService = {
         isActive: query.isActive,
         includeDeleted: query.includeDeleted,
         sort: query.sort,
+        withProductCount: query.withProductCount,
       },
     }),
 

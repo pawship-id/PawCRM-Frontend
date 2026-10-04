@@ -175,8 +175,9 @@ describe("CustomerPetsSection", () => {
         expect.objectContaining({
           customerId: CUSTOMER_ID,
           name: "Bella",
-          /* The form saves the option's ID — see `usePetPickers`. */
-          species: petOptionId("species", "Anjing"),
+          // IDS, NOT CODES (27 September 2026): the picker's value is the pet
+          // option's `_id`, which is the only thing POST /api/pets accepts.
+          species: "opt-species-dog",
           size: null,
           furType: null,
         }),
@@ -234,9 +235,9 @@ describe("CustomerPetsSection", () => {
       expect(mockedPetService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Bella",
-          species: petOptionId("species", "Anjing"),
-          size: petOptionId("size", "Besar"),
-          furType: petOptionId("furType", "Bulu panjang"),
+          species: "opt-species-dog",
+          size: "opt-size-large",
+          furType: "opt-furType-long-hair",
         }),
       ),
     );
