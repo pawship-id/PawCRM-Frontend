@@ -115,7 +115,9 @@ const PET_AXIS_FALLBACK_NAME: Record<ServiceVariantAxis, string> = {
  * they cannot), the pet's three by their seeded names — what every form offered
  * before cards existed.
  */
-export function variantAxisDefs(cards: readonly VariantOption[] | null | undefined): VariantAxisDef[] {
+export function variantAxisDefs(
+  cards: readonly VariantOption[] | null | undefined,
+): VariantAxisDef[] {
   const live = (cards ?? []).filter((card) => card.deletedAt === null);
 
   if (live.length === 0) {
@@ -174,14 +176,14 @@ function byOrder(a: PetOption, b: PetOption) {
  *
  * A KEPT VALUE WHOSE OPTION STILL EXISTS KEEPS ITS PLACE in `sortOrder` — a
  * retired "Sedang" stays between Kecil and Besar, which is what "Isi bertingkat
- * per ukuran" steps through. A code with no live option at all (deleted, or
+ * per ukuran" steps through. A id with no live option at all (deleted, or
  * never one) goes last, named by `labelOf` when given — pass the hook's
  * `label`, which also knows deleted options and the seeded words.
  */
 export function variantAxisValues(
   options: readonly PetOption[],
   variants?: readonly StoredVariantValues[] | null,
-  labelOf?: (type: PetOptionType, code: string) => string | null,
+  labelOf?: (type: PetOptionType, id: string) => string | null,
   extra: { cards?: readonly VariantOption[]; zones?: readonly Zone[] } = {},
 ): VariantAxisValues {
   const table: VariantAxisValues = {};
@@ -204,7 +206,9 @@ export function variantAxisValues(
       .sort(byOrder)
       .map((option) => ({
         value: option._id,
-        label: option.isActive ? option.label : `${option.label}${RETIRED_SUFFIX}`,
+        label: option.isActive
+          ? option.label
+          : `${option.label}${RETIRED_SUFFIX}`,
         retired: !option.isActive,
       }));
 
@@ -220,11 +224,15 @@ export function variantAxisValues(
         the option-type's name rather than printing one.
       */
       const word =
-        labelOf?.(type, code) ??
-        options.find((option) => option.type === type && option._id === code)
+        labelOf?.(type, id) ??
+        options.find((option) => option.type === type && option._id === id)
           ?.label ??
-        code;
-      values.push({ value: code, label: `${word}${RETIRED_SUFFIX}`, retired: true });
+        id;
+      values.push({
+        value: id,
+        label: `${word}${RETIRED_SUFFIX}`,
+        retired: true,
+      });
     }
 
     table[axis] = values;
@@ -233,7 +241,9 @@ export function variantAxisValues(
   /* Zona — live zones nearest first, then a zone only a stored variant still prices. */
   const zones = extra.zones ?? [];
   const pricedZones = new Set(
-    (variants ?? []).map((variant) => variant.zoneId).filter((id): id is string => Boolean(id)),
+    (variants ?? [])
+      .map((variant) => variant.zoneId)
+      .filter((id): id is string => Boolean(id)),
   );
   if (zones.length > 0 || pricedZones.size > 0) {
     const values: VariantAxisValue[] = zones
@@ -244,7 +254,11 @@ export function variantAxisValues(
     for (const id of pricedZones) {
       if (listed.has(id)) continue;
       const word = zones.find((zone) => zone._id === id)?.name ?? "Zona";
-      values.push({ value: id, label: `${word}${DELETED_ZONE_SUFFIX}`, retired: true });
+      values.push({
+        value: id,
+        label: `${word}${DELETED_ZONE_SUFFIX}`,
+        retired: true,
+      });
     }
     table.zone = values;
   }
@@ -270,7 +284,12 @@ export function variantAxisValues(
       }));
     const listed = new Set(values.map((entry) => entry.value));
     for (const code of priced) {
-      if (!listed.has(code)) values.push({ value: code, label: `${code}${RETIRED_SUFFIX}`, retired: true });
+      if (!listed.has(code))
+        values.push({
+          value: code,
+          label: `${code}${RETIRED_SUFFIX}`,
+          retired: true,
+        });
     }
     table[card.axisKey] = values;
   }
@@ -297,7 +316,9 @@ export interface VariantCombo {
  * The ticked axes, deduplicated, in KEY order: the pet's three as
  * `VARIANT_AXES`, then Zona, then staff cards as `axes` lists them.
  */
-export function orderedAxes(axes: readonly VariantAxisKey[] | undefined): VariantAxisKey[] {
+export function orderedAxes(
+  axes: readonly VariantAxisKey[] | undefined,
+): VariantAxisKey[] {
   const list = [...new Set(axes ?? [])];
 
   return [
@@ -348,7 +369,12 @@ export function buildVariantCombos(
           ? { [axis]: entry.value }
           : axis === "zone"
             ? { zoneId: entry.value }
-            : { choices: [...row.choices, { optionId: axis, code: entry.value }] }),
+            : {
+                choices: [
+                  ...row.choices,
+                  { optionId: axis, code: entry.value },
+                ],
+              }),
         key: `${row.key}${entry.value}|`,
         label: row.label ? `${row.label} · ${entry.label}` : entry.label,
         retired: row.retired || entry.retired,
@@ -376,6 +402,9 @@ export function comboKey(
   variant: StoredVariantValues | VariantCombo,
 ): string {
   return orderedAxes(axes)
-    .map((axis) => `${variantValueOn(variant as Partial<ServiceVariant>, axis) ?? ""}|`)
+    .map(
+      (axis) =>
+        `${variantValueOn(variant as Partial<ServiceVariant>, axis) ?? ""}|`,
+    )
     .join("");
 }

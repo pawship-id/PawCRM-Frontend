@@ -219,16 +219,23 @@ export function usePetOptions() {
     a live database, and a value written as a code before the migration must
     still find its word rather than render as raw text. It costs one miss.
   */
-  const label = useCallback(
-    (type: PetOptionType, id: string | null | undefined): string | null => {
+  const find = useCallback(
+    (type: PetOptionType, id: string | null | undefined): PetOption | null => {
       if (!id) return null;
 
       const of = (option: PetOption) =>
         option.type === type && (option._id === id || option.code === id);
 
-      const match = live.find(of) ?? state.options.find(of);
+      return live.find(of) ?? state.options.find(of) ?? null;
+    },
+    [live, state.options],
+  );
 
-      return match?.label ?? DEFAULT_PET_OPTION_LABELS[type][id] ?? id;
+  const label = useCallback(
+    (type: PetOptionType, id: string | null | undefined): string | null => {
+      if (!id) return null;
+
+      return find(type, id)?.label ?? DEFAULT_PET_OPTION_LABELS[type][id] ?? id;
     },
     [find],
   );

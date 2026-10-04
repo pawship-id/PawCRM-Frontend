@@ -16,15 +16,22 @@ import type { PetOption, PetOptionType } from "@/types/api";
  *   beforeEach(() => primePetOptions(petOptionService.list));
  */
 
-/*
-  `code` STAYS IN THE FIXTURE although the field is legacy on the wire: it is
-  what the `_id` is DERIVED from here, so every suite keeps naming its options
-  by a word a reader recognises (`opt-species-cat`) instead of a random id.
-  Required locally for that reason, even though `PetOption.code` is optional.
-*/
+/**
+ * The `_id` a fixture option gets, derived from its type and LABEL so every
+ * suite names an option by a word a reader recognises (`opt-size-kecil`)
+ * instead of a random id.
+ */
+export function petOptionId(type: PetOptionType, label: string): string {
+  const slug = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return `opt-${type}-${slug}`;
+}
+
 export function makePetOption(
-  overrides: Partial<PetOption> &
-    Pick<PetOption, "type" | "label"> & { code: string },
+  overrides: Partial<PetOption> & Pick<PetOption, "type" | "label">,
 ): PetOption {
   return {
     _id: petOptionId(overrides.type, overrides.label),
