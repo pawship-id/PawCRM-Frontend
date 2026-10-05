@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useState } from "react";
 import Link from "next/link";
 
@@ -257,7 +258,7 @@ function ReceiptBody({
                         {item.productName ?? item.name}
                       </p>
                       <p className="tabular-nums text-xs text-muted">
-                        {item.productSku ?? "—"}
+                        <SkuText value={item.productSku} fallback="—" />
                         {renamed && (
                           <span className="ml-1 font-sans italic">
                             · saat diterima: {item.name}

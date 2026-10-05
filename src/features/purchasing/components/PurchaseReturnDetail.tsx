@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -583,7 +584,7 @@ function StoredLines({
                   {item.productName ?? "—"}
                 </p>
                 <p className="tabular-nums text-xs text-muted">
-                  {item.productSku ?? "—"}
+                  <SkuText value={item.productSku} fallback="—" />
                 </p>
               </td>
               <td className="px-2 py-2 tabular-nums text-xs text-muted">

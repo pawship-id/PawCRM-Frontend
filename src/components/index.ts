@@ -33,6 +33,7 @@ export { Card } from "./Card";
 export { ImageField } from "./ImageField";
 export { Spinner } from "./Spinner";
 export { HighlightText } from "./HighlightText";
+export { SkuText } from "./SkuText";
 export { Pagination } from "./Pagination";
 export { ListFooter } from "./ListFooter";
 export { JournalLink } from "./JournalLink";

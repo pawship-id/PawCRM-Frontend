@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useEffect, useState } from "react";
 
 import { Alert, Button, Card, Pagination, Spinner } from "@/components";
@@ -156,7 +157,7 @@ export function LowStockScreen() {
                 {rows.map((row) => (
                   <TableRow key={row._id}>
                     <TableCell className="tabular-nums text-xs">
-                      {row.sku}
+                      <SkuText value={row.sku} />
                     </TableCell>
                     <TableCell>{row.name}</TableCell>
                     <TableCell className="text-right tabular-nums">

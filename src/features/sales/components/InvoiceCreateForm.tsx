@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CornerDownRight, Trash2 } from "lucide-react";
@@ -2138,7 +2139,7 @@ export function InvoiceCreateForm() {
                               <>
                                 <span className="font-medium">{line.name}</span>
                                 <span className="block text-xs text-muted">
-                                  {line.sku ?? "Jasa"}
+                                  <SkuText value={line.sku} fallback="Jasa" />
                                 </span>
                                 {stockNote(line)}
                                 {variantControls}

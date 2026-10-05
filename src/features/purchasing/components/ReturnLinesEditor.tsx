@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -146,7 +147,7 @@ export function ReturnLinesEditor({
                     {item.productName ?? item.name}
                   </p>
                   <p className="tabular-nums text-xs text-muted">
-                    {item.productSku ?? "—"}
+                    <SkuText value={item.productSku} fallback="—" />
                   </p>
                 </td>
 

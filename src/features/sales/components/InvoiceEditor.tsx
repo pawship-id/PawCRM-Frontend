@@ -1,5 +1,7 @@
 "use client";
 
+import { shortSku } from "@/lib/sku";
+import { SkuText } from "@/components/SkuText";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 
@@ -478,7 +480,7 @@ export function InvoiceEditor({
     () => [
       ...lookups.products.map((product) => ({
         value: `product:${product._id}`,
-        label: product.sku ? `${product.sku} — ${product.name}` : product.name,
+        label: product.sku ? `${shortSku(product.sku)} — ${product.name}` : product.name,
       })),
       ...lookups.services.map((service) => ({
         value: `service:${service._id}`,
@@ -1011,7 +1013,7 @@ export function InvoiceEditor({
                 <TableCell>
                   <span className="font-medium">{line.name}</span>
                   <span className="block text-xs text-muted tabular-nums">
-                    {line.sku ?? "Jasa"}
+                    <SkuText value={line.sku} fallback="Jasa" />
                     {line.fromIndex === null && " · baru"}
                   </span>
                   {/* WHAT A KEPT LINE WAS PRICED ON, read-only — it is not

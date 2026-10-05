@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { Fragment, useState } from "react";
 import Link from "next/link";
 import { EllipsisVertical, Eye, Pencil, RotateCcw, Trash2 } from "lucide-react";
@@ -242,7 +243,7 @@ export function ProductsTable({
                             {/* A parent carries no SKU — its variants do. "—"
                                 rather than a blank line, which reads as a
                                 rendering bug. */}
-                            {product.sku ?? "—"}
+                            <SkuText value={product.sku} fallback="—" />
                             {product.barcode && ` · ⦀ ${product.barcode}`}
                             {product.isPreorder && (
                               <span className="ml-2 font-sans text-secondary-foreground">
@@ -444,7 +445,7 @@ export function ProductsTable({
                               ).join(" / ")}
                             </Link>
                             <p className="tabular-nums text-xs text-muted">
-                              {variant.sku}
+                              <SkuText value={variant.sku} />
                               {variant.barcode && ` · ⦀ ${variant.barcode}`}
                             </p>
                           </td>

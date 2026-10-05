@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
@@ -184,7 +185,7 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
                       {movement.productName ?? "—"}
                     </p>
                     <p className="text-xs tabular-nums text-muted">
-                      {movement.productSku}
+                      <SkuText value={movement.productSku} />
                       {movement.productUnit && ` · ${movement.productUnit}`}
                     </p>
                     {movement.lineNotes && (

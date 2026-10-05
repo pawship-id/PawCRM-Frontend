@@ -1,5 +1,6 @@
 "use client";
 
+import { shortSku } from "@/lib/sku";
 import Link from "next/link";
 
 import { HighlightText, Pagination } from "@/components";
@@ -140,7 +141,7 @@ export function BatchesTable({
                     </p>
                     <p className="tabular-nums text-xs text-muted">
                       <HighlightText
-                        text={batch.productSku ?? ""}
+                        text={shortSku(batch.productSku)}
                         query={search}
                       />
                     </p>

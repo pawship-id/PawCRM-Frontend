@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
@@ -119,7 +120,7 @@ export function ConsignmentProductsTable({
                 </TableCell>
               )}
               <TableCell className="tabular-nums text-xs">
-                {row.sku ?? "—"}
+                <SkuText value={row.sku} fallback="—" />
               </TableCell>
               <TableCell>
                 <Link
