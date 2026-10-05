@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Plus } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 
-import { Alert, Spinner } from "@/components";
+import { Alert, ConfirmDialog, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -14,6 +14,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
+import { ApiError } from "@/services/api-error";
+import { customerTypeService } from "@/services/customerType.service";
 import type { CustomerType } from "@/services/customerType.service";
 
 import { useCustomerTypeList } from "../hooks/useCustomerTypeList";
@@ -28,22 +30,39 @@ type DialogState = { mode: "create" } | { mode: "edit"; type: CustomerType } | n
  *
  * CRUD ON A DIALOG, matching Zona and Lini bisnis: two fields do not earn a
  * page, and the common case is adding Reguler, Reseller and Grosir one after
- * another. No delete here, unlike those two — nothing references a type yet,
- * so there is nothing to guard and nothing to offer a restore for. See the
- * model's own note on `deletedAt` for why the field exists regardless.
- *
- * ⚠️ WORKING, NOT USED YET. The callout at the foot says so in the mockup's
- * own words: a type is a label on the customer's profile today, and nothing
- * reads it — no price list, no report. That is the next iteration, not this
- * one.
+ * another. Delete is soft and never refused: customers already filed under a
+ * deleted type keep its label, so there is nothing to guard — and, with no
+ * restore offered, the confirmation says so plainly.
  */
 export function CustomerTypesScreen() {
   const { can } = usePermissions();
   const { types, loading, error, refetch } = useCustomerTypeList();
   const [dialog, setDialog] = useState<DialogState>(null);
+  const [pendingDelete, setPendingDelete] = useState<CustomerType | null>(null);
+  const [working, setWorking] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const mayCreate = can("customerTypes", "create");
   const mayUpdate = can("customerTypes", "update");
+  const mayDelete = can("customerTypes", "delete");
+  const showActions = mayUpdate || mayDelete;
+
+  async function confirmDelete() {
+    if (!pendingDelete) return;
+    setWorking(true);
+    setDeleteError(null);
+    try {
+      await customerTypeService.remove(pendingDelete._id);
+      setPendingDelete(null);
+      refetch();
+    } catch (err) {
+      setDeleteError(
+        err instanceof ApiError ? err.fullMessage : "Terjadi kesalahan. Coba lagi.",
+      );
+    } finally {
+      setWorking(false);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -89,7 +108,7 @@ export function CustomerTypesScreen() {
               <TableRow>
                 <TableHead className="w-[26%]">Tipe</TableHead>
                 <TableHead>Catatan</TableHead>
-                {mayUpdate && (
+                {showActions && (
                   <TableHead className="text-right">
                     <span className="sr-only">Aksi</span>
                   </TableHead>
@@ -105,17 +124,33 @@ export function CustomerTypesScreen() {
                   <TableCell className="text-sm text-muted">
                     {type.note ?? "—"}
                   </TableCell>
-                  {mayUpdate && (
+                  {showActions && (
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Ubah ${type.name}`}
-                        onClick={() => setDialog({ mode: "edit", type })}
-                      >
-                        <Pencil className="size-4" aria-hidden />
-                        Ubah
-                      </Button>
+                      {mayUpdate && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Ubah ${type.name}`}
+                          onClick={() => setDialog({ mode: "edit", type })}
+                        >
+                          <Pencil className="size-4" aria-hidden />
+                          Ubah
+                        </Button>
+                      )}
+                      {mayDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          aria-label={`Hapus ${type.name}`}
+                          onClick={() => {
+                            setDeleteError(null);
+                            setPendingDelete(type);
+                          }}
+                        >
+                          <Trash2 className="size-4" aria-hidden />
+                          Hapus
+                        </Button>
+                      )}
                     </TableCell>
                   )}
                 </TableRow>
@@ -125,17 +160,6 @@ export function CustomerTypesScreen() {
         </div>
       )}
 
-      <div className="rounded-xl border-l-4 border-border border-l-primary bg-surface p-4">
-        <p className="font-semibold text-foreground">
-          Baru kategori, belum daftar harga
-        </p>
-        <p className="mt-1 text-sm text-muted">
-          Tipe pelanggan sekarang cuma label di profil pelanggan. Daftar harga
-          per tipe, dan profil pengiriman yang terpisah dari alamat profil,
-          menyusul di iterasi berikutnya.
-        </p>
-      </div>
-
       {dialog && (
         <CustomerTypeFormDialog
           key={dialog.mode === "edit" ? dialog.type._id : "create"}
@@ -143,6 +167,21 @@ export function CustomerTypesScreen() {
           onClose={() => setDialog(null)}
           onSaved={refetch}
         />
+      )}
+
+      {pendingDelete && (
+        <ConfirmDialog
+          title={`Hapus ${pendingDelete.name}?`}
+          confirmLabel="Hapus tipe"
+          destructive
+          busy={working}
+          error={deleteError}
+          onConfirm={() => void confirmDelete()}
+          onCancel={() => setPendingDelete(null)}
+        >
+          Tipe ini tidak bisa dipilih lagi untuk pelanggan. Pelanggan yang sudah
+          memakainya tetap menampilkan tipe ini.
+        </ConfirmDialog>
       )}
     </div>
   );

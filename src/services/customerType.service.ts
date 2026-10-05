@@ -67,4 +67,7 @@ export const customerTypeService = {
 
   update: (id: string, body: UpdateCustomerTypeInput) =>
     apiClient.patch<CustomerType>(`/customer-types/${id}`, body),
+
+  /** DELETE /customer-types/:id — soft delete; customers keep the label. */
+  remove: (id: string) => apiClient.delete<CustomerType>(`/customer-types/${id}`),
 };
