@@ -146,8 +146,9 @@ export function ProfitLossScreen({ now }: { now: string }) {
       */}
       {profitLoss?.allocation?.estimated && (
         <Alert variant="warning">
-          Sebagian pembagian dibagi rata, bukan sesuai porsi pendapatan — ada
-          segmen yang belum membukukan pendapatan apa pun di periode ini.
+          Sebagian biaya bersama dibagi rata, bukan sesuai porsi pendapatan,
+          karena tidak ada lini di lingkup pembagian itu yang mencatat
+          pendapatan pada periode ini. Angkanya perkiraan.
         </Alert>
       )}
 
