@@ -48,7 +48,6 @@ const account = (
     Pick<ChartOfAccountNode, "_id" | "code" | "name" | "accountCategory">,
 ): ChartOfAccountNode => ({
   parentAccountId: null,
-  allocations: [],
   isDefault: false,
   isActive: true,
   children: [],
@@ -466,8 +465,8 @@ describe("CashTransactionCreateForm", () => {
             accountId: "acc-listrik",
             amount: "75000",
             businessLineId: "bl-groom",
-            // Null because the account carries no Detil Akun to pick from.
-            allocationId: null,
+            // Null because the account carries no sub akun to pick from.
+            subAccountId: null,
             memo: "Agustus",
           },
         ],

@@ -585,6 +585,7 @@ export function CashTransactionEditForm({
             )}
             businessLines={lookups.businessLines}
             disabled={saving}
+            branchId={transaction.branchId}
           />
         ))}
 

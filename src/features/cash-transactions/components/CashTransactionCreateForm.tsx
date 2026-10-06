@@ -57,6 +57,7 @@ import {
   canAddLine,
   linesProblem,
   toLineInputs,
+  withoutMismatchedSubAccounts,
   type DraftLine,
 } from "./CashLinesEditor";
 
@@ -424,7 +425,12 @@ export function CashTransactionCreateForm() {
               placeholder={scope.loading ? "Memuat cabang…" : "Pilih cabang"}
               required
               disabled={saving}
-              onChange={setPickedBranch}
+              onChange={(next) => {
+                setPickedBranch(next);
+                setLines((previous) =>
+                  withoutMismatchedSubAccounts(previous, lookups.accounts, next),
+                );
+              }}
             />
 
             {/*
@@ -621,11 +627,12 @@ export function CashTransactionCreateForm() {
               businessLines={lookups.businessLines}
               disabled={saving}
               showAddButton={false}
+              branchId={branchId}
             />
             <p className="mt-3 text-sm text-muted">
-              Detil akun hanya muncul untuk akun yang punya beberapa aturan
-              alokasi (cth. Beban Gaji) — dipakai untuk laporan per lini, tidak
-              memengaruhi jurnal. Total dihitung otomatis dari baris di atas.
+              Sub akun hanya muncul untuk akun yang punya sub akun (cth. Beban
+              Gaji) — dipakai untuk laporan per lini, tidak memengaruhi jurnal.
+              Total dihitung otomatis dari baris di atas.
             </p>
           </>
         )}

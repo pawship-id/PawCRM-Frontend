@@ -19,9 +19,10 @@ import type {
   JournalEntry,
   JournalSourceDocument,
 } from "@/types/accounting";
-import { normalBalanceOf } from "@/types/accounting";
+import { lineSubAccountId, normalBalanceOf } from "@/types/accounting";
 import { formatMoney, isPositive, sumDecimals } from "@/utils/decimal";
 
+import { lineSubAccountText } from "../allocationLabels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import { useJournalEntry } from "../hooks/useJournalEntry";
 import {
@@ -105,8 +106,8 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
     );
   }
 
-  /** Whether any line on this entry names a Detil Akun — see the column below. */
-  const anyAllocation = entry.lines.some((line) => line.allocationId);
+  /** Whether any line on this entry names a sub akun — see the column below. */
+  const anySubAccount = entry.lines.some((line) => lineSubAccountId(line));
 
   const totalDebit = sumDecimals(entry.lines.map((line) => line.debit));
   const totalCredit = sumDecimals(entry.lines.map((line) => line.credit));
@@ -350,9 +351,9 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
               <TableHead>Tipe</TableHead>
               <TableHead>Lini bisnis</TableHead>
               {/* Only when a line on THIS entry names one — a column of em
-                  dashes over every entry posted before allocation existed is a
+                  dashes over every entry posted before sub akun existed is a
                   column people learn to skip. */}
-              {anyAllocation && <TableHead>Detil akun</TableHead>}
+              {anySubAccount && <TableHead>Sub akun</TableHead>}
               <TableHead>Memo</TableHead>
               <TableHead className="text-right">Debit</TableHead>
               <TableHead className="text-right">Kredit</TableHead>
@@ -399,21 +400,18 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
                         line.businessLineId)
                       : "—"}
                   </TableCell>
-                  {anyAllocation && (
+                  {anySubAccount && (
                     <TableCell className="px-4 py-2.5 text-xs text-muted">
                       {/*
-                        Resolved against the account's CURRENT rules, which may
-                        since have been renamed — the entry is immutable, the
-                        chart is not. A rule that cannot be found at all falls
-                        back to a dash rather than an ObjectId; the chart refuses
-                        to delete one a live line names, so this is only reachable
-                        through a direct database edit.
+                        The server's own `code · name` when it sent them, else
+                        resolved against the account's CURRENT sub akun, which
+                        may since have been renamed — the entry is immutable, the
+                        chart is not. One that cannot be found at all falls back
+                        to a dash rather than an ObjectId; the chart deactivates
+                        rather than deletes a sub akun a live line names, so this
+                        is only reachable through a direct database edit.
                       */}
-                      {line.allocationId
-                        ? ((account?.allocations ?? []).find(
-                            (rule) => rule._id === line.allocationId,
-                          )?.name ?? "—")
-                        : "—"}
+                      {lineSubAccountText(line, account) ?? "—"}
                     </TableCell>
                   )}
                   <TableCell className="px-4 py-2.5 text-xs text-muted">
@@ -431,7 +429,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
 
             <TableRow className="bg-surface-hover hover:bg-surface-hover">
               <TableCell
-                colSpan={4}
+                colSpan={anySubAccount ? 5 : 4}
                 className="px-4 py-2.5 text-right text-xs font-semibold tracking-widest text-muted uppercase"
               >
                 Total

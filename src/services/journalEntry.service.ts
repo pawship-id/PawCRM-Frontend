@@ -317,12 +317,29 @@ export interface ProfitLossRow {
   total: string;
 }
 
+/**
+ * One sub akun's row under an account. The rows sum to the account's own total.
+ *
+ * `unmapped` is the "Belum Dipetakan" row — what was posted to the account with
+ * no sub akun (`subAccountId: null`); the server sorts it last. A retired sub
+ * akun still appears, with `isActive: false`, because the period may predate it.
+ */
+export interface ProfitLossSubAccount extends ProfitLossRow {
+  subAccountId: string | null;
+  code: string;
+  name: string;
+  isActive: boolean;
+  unmapped: boolean;
+}
+
 export interface ProfitLossAccount extends ProfitLossRow {
   accountId: string;
   code: string;
   name: string;
   accountCategory: AccountCategory;
   accountType: AccountType;
+  /** Empty when the account has no sub akun; absent from an older server. */
+  subAccounts?: ProfitLossSubAccount[];
 }
 
 export interface ProfitLossGroup extends ProfitLossRow {

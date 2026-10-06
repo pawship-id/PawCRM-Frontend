@@ -1,9 +1,5 @@
 import { apiClient } from "./api-client";
-import type {
-  AccountAllocation,
-  ChartOfAccount,
-  ChartOfAccountNode,
-} from "@/types/accounting";
+import type { ChartOfAccount, ChartOfAccountNode } from "@/types/accounting";
 import type { PageResult } from "@/types/api";
 
 /**
@@ -74,10 +70,10 @@ export interface ChartOfAccountTreeQuery {
  * strips it, because it is the flag the delete and immutability guards hang off
  * — a client that could set it (or clear it) could escape them.
  *
- * `parentAccountId: null` is a VALUE, not an omission — it is how an account is
- * moved to the root of the tree. Which is why the update payload is a Partial:
- * omitting the key leaves the parent alone, and sending null detaches it, and
- * those are different requests.
+ * THERE IS NO PARENT AND NO ALLOCATION LIST HERE any more. The API stopped
+ * accepting `parentAccountId` and `allocations` when sub akun became records of
+ * their own (see `subAccount.service.ts`); a key sent anyway is stripped, which
+ * is a silent no-op, so they are kept off the type rather than left to be tried.
  */
 export interface ChartOfAccountPayload {
   code: string;
@@ -96,20 +92,15 @@ export interface ChartOfAccountPayload {
    * on a PATCH the account keeps what it has.
    */
   cashType?: ChartOfAccount["cashType"];
-  parentAccountId: string | null;
   /**
-   * The account's Detil Akun, sent AS A WHOLE LIST.
+   * The branches that may post to this account — at least one, all live
+   * branches of the tenant.
    *
-   * `[]` is a VALUE — it clears every rule and returns the account to Belum
-   * Dipetakan — where omitting the key on a PATCH leaves the rules alone, which
-   * is what an ordinary rename has to do. Both are requests somebody makes, so
-   * they cannot share a spelling.
-   *
-   * Keep the `_id` on a rule that already has one: it is how the server tells a
-   * rename from a delete-and-recreate, and a rule journal entries name cannot be
-   * recreated (409).
+   * SENT AS A WHOLE LIST, like the old allocations: on a PATCH it replaces the
+   * set. Removing a branch that a sub akun or a journal entry already uses is a
+   * 409 whose message names what holds it.
    */
-  allocations?: AccountAllocation[];
+  branchIds: string[];
   /** Defaults to true on the server — for a chart imported ahead of go-live. */
   isActive?: boolean;
 }
@@ -172,8 +163,7 @@ export const chartOfAccountsService = {
    * POST /chart-of-accounts — a new account, always `isDefault: false`.
    *
    * The refusals worth handling at the call site: 409 when the code is taken,
-   * and 400 for each structural rule on the parent — unknown, a different
-   * class, or already at the maximum depth.
+   * and 400 when `branchIds` is empty or names a branch the tenant does not have.
    */
   create: (payload: ChartOfAccountPayload) =>
     apiClient.post<ChartOfAccount>("/chart-of-accounts", payload),
@@ -188,7 +178,7 @@ export const chartOfAccountsService = {
    * On a SEEDED account (`isDefault`), `code` and `accountCategory` come back
    * 403 — every posting resolves its target by code, so renumbering 1201 would
    * silently redirect every inventory entry in the tenant. `name`, `isActive`
-   * and the parent stay editable.
+   * and `branchIds` stay editable.
    *
    * ONE MORE REFUSAL ON AN ORDINARY ACCOUNT: a 409 when the new category would
    * change the CLASS of an account that already has journal lines. Moving

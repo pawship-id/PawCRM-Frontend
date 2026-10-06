@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useJournalEntry } from "@/features/accounting";
+import { lineSubAccountText, useJournalEntry } from "@/features/accounting";
 import type { CashTransaction } from "@/types/api";
 import { formatMoney, isPositive, sumDecimals } from "@/utils/decimal";
 
@@ -141,6 +141,17 @@ function Body({ transaction }: { transaction: CashTransaction }) {
                           {account ? `${account.code} ` : ""}
                         </span>
                         {account?.name ?? line.accountId}
+                        {/* Which sub akun the line sits under — the server's
+                            code and name, else the chart's. Nothing for a line
+                            that is Belum Dipetakan. */}
+                        {(() => {
+                          const text = lineSubAccountText(line, account);
+                          return text ? (
+                            <span className="block text-xs text-muted">
+                              {text}
+                            </span>
+                          ) : null;
+                        })()}
                       </TableCell>
                       <TableCell className="text-right text-sm tabular-nums">
                         {isDebit ? formatMoney(line.debit) : "—"}

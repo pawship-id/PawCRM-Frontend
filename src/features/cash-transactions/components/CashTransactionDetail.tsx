@@ -22,10 +22,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ACCOUNTING_CRUMBS, SHARED_LINE_LABEL } from "@/features/accounting";
+import {
+  ACCOUNTING_CRUMBS,
+  SHARED_LINE_LABEL,
+  subAccountLabel,
+} from "@/features/accounting";
 import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
-import type { CashTransaction } from "@/types/api";
+import { lineSubAccountId } from "@/types/accounting";
+import type { CashTransaction, CashTransactionLine } from "@/types/api";
 import { formatMoney, toMinor } from "@/utils/decimal";
 
 import { useCashTransaction } from "../hooks/useCashTransaction";
@@ -477,16 +482,27 @@ function DocumentLink({
   );
 }
 
+/** "4101-01 · Pendapatan Grooming" for a line, "—" when it names one that cannot be read, "" for none. */
+function lineSubAccountLabel(line: CashTransactionLine): string {
+  if (!lineSubAccountId(line)) return "";
+  if (line.subAccountCode) {
+    return line.subAccountName
+      ? subAccountLabel({ code: line.subAccountCode, name: line.subAccountName })
+      : line.subAccountCode;
+  }
+  return line.allocationName ?? "—";
+}
+
 /** What an expense became, or where other income came from — one row per account. */
 function LinesCard({ transaction }: { transaction: CashTransaction }) {
   const lines = transaction.lines ?? [];
   /*
-    The Detil Akun column appears only when something on THIS transaction has
-    one. A column of em dashes over every row of every old transaction would
-    teach people to ignore the column, and nothing posted before allocation
-    existed carries a detil.
+    The Sub akun column appears only when something on THIS transaction has one.
+    A column of em dashes over every row of every old transaction would teach
+    people to ignore the column, and nothing posted before sub akun existed
+    carries one.
   */
-  const anyAllocation = lines.some((line) => line.allocationId);
+  const anySubAccount = lines.some((line) => lineSubAccountId(line));
 
   return (
     // "Rincian Akun", the mockup's name, rather than one that changes with the
@@ -498,7 +514,7 @@ function LinesCard({ transaction }: { transaction: CashTransaction }) {
           <TableHeader>
             <TableRow>
               <TableHead>Akun</TableHead>
-              {anyAllocation && <TableHead>Detil akun</TableHead>}
+              {anySubAccount && <TableHead>Sub akun</TableHead>}
               <TableHead>Lini bisnis</TableHead>
               <TableHead>Memo</TableHead>
               <TableHead className="text-right">Jumlah</TableHead>
@@ -511,14 +527,15 @@ function LinesCard({ transaction }: { transaction: CashTransaction }) {
                   <span className="tabular-nums">{line.accountCode ?? ""}</span>{" "}
                   {line.accountName ?? "Akun tidak aktif"}
                 </TableCell>
-                {anyAllocation && (
+                {anySubAccount && (
                   <TableCell className="text-sm">
-                    {/* The id rather than nothing when the rule cannot be named:
-                        it is unreachable through the API (the chart refuses to
-                        delete a rule an entry names) but it is what a direct
-                        database edit would look like, and silence there would
-                        read as "no detil". */}
-                    {line.allocationName ?? (line.allocationId ? "—" : "")}
+                    {/* `code · name` as the server resolved it. The dash rather
+                        than nothing when the sub akun cannot be named: it is
+                        unreachable through the API (one a line names is only
+                        ever deactivated) but it is what a direct database edit
+                        would look like, and silence there would read as "no sub
+                        akun". */}
+                    {lineSubAccountLabel(line)}
                   </TableCell>
                 )}
                 <TableCell className="text-sm">
@@ -535,7 +552,7 @@ function LinesCard({ transaction }: { transaction: CashTransaction }) {
             ))}
             <TableRow className="hover:bg-transparent">
               <TableCell
-                colSpan={anyAllocation ? 4 : 3}
+                colSpan={anySubAccount ? 4 : 3}
                 className="text-sm font-semibold"
               >
                 Total

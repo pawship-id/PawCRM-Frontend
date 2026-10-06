@@ -47,9 +47,20 @@ export interface MatrixRow {
   total: string;
 }
 
+export interface MatrixSubAccount extends MatrixRow {
+  /** Null for the "Belum Dipetakan" row. */
+  subAccountId: string | null;
+  code: string;
+  name: string;
+  isActive: boolean;
+  unmapped: boolean;
+}
+
 export interface MatrixAccount extends MatrixRow {
   code: string;
   name: string;
+  /** Under the account, server order (unmapped last). Empty without sub akun. */
+  subAccounts: MatrixSubAccount[];
 }
 
 export interface MatrixGroup extends MatrixRow {
@@ -162,6 +173,18 @@ export function profitLossMatrix(
         code: account.code,
         name: account.name,
         ...rowOf(account),
+        // The account's own total is untouched; these only break it down. A row
+        // that came to nothing in the visible columns is dropped like an account.
+        subAccounts: (account.subAccounts ?? [])
+          .map((sub) => ({
+            subAccountId: sub.subAccountId,
+            code: sub.code,
+            name: sub.name,
+            isActive: sub.isActive,
+            unmapped: sub.unmapped,
+            ...rowOf(sub),
+          }))
+          .filter((sub) => !isZero(sub.total)),
       }))
       .filter((account) => !isZero(account.total));
 

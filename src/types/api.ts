@@ -1166,6 +1166,9 @@ export interface Category {
   salesAccountId: string | null;
   cogsAccountId: string | null;
   inventoryAccountId: string | null;
+  /** The sub akun under `salesAccountId` / `cogsAccountId` — required once that account has active ones. */
+  salesSubAccountId?: string | null;
+  cogsSubAccountId?: string | null;
   /**
    * HOW MANY LIVE PRODUCTS ARE FILED UNDER IT — present only when the read
    * asked for it (`withProductCount`), which the till's pill row does and
@@ -1292,7 +1295,9 @@ export interface CreateCategoryInput {
    * the field. Null clears one back to the seeded default.
    */
   salesAccountId?: string | null;
+  salesSubAccountId?: string | null;
   cogsAccountId?: string | null;
+  cogsSubAccountId?: string | null;
   inventoryAccountId?: string | null;
   /** `""` is accepted and stored as null. */
   description?: string | null;
@@ -1320,7 +1325,9 @@ export interface UpdateCategoryInput {
   parentId?: string | null;
   /** Posting defaults — see CreateCategoryInput. `null` clears one. */
   salesAccountId?: string | null;
+  salesSubAccountId?: string | null;
   cogsAccountId?: string | null;
+  cogsSubAccountId?: string | null;
   inventoryAccountId?: string | null;
   /** `""` and `null` both clear it. */
   description?: string | null;
@@ -4139,6 +4146,8 @@ export interface Service {
   image: MediaAsset | null;
   businessLineId: string;
   salesAccountId: string | null;
+  /** The sub akun under `salesAccountId` — required once that account has active ones. */
+  salesSubAccountId?: string | null;
   categoryId: string | null;
   /**
    * Decimal as a string, e.g. "150000.0000" — or NULL when `hasVariants` is
@@ -4286,6 +4295,7 @@ export interface CreateServiceInput {
   price?: string;
   image?: MediaAsset | null;
   salesAccountId?: string | null;
+  salesSubAccountId?: string | null;
   categoryId?: string | null;
   description?: string | null;
   hasVariants?: boolean;
@@ -4322,6 +4332,7 @@ export interface UpdateServiceInput {
   image?: MediaAsset | null;
   businessLineId?: string;
   salesAccountId?: string | null;
+  salesSubAccountId?: string | null;
   categoryId?: string | null;
   price?: string;
   /** A flat service's minutes. Refused beside `hasVariants: true`. */
@@ -7560,14 +7571,18 @@ export interface CashTransactionLine {
   businessLineId: string | null;
   businessLineName: string | null;
   /**
-   * Which Detil Akun of `accountId` this line was booked to, and its name.
-   *
-   * Null whenever the account carries no rules to choose from, which is every
-   * line written before allocation existed — the laba rugi reads those as the
-   * shared bucket they always were.
+   * Which sub akun of `accountId` this line was booked to, with its code and
+   * name. Null (Belum Dipetakan) when the account has none or the line predates
+   * them. `allocationId` / `allocationName` mirror the first and last for old
+   * readers — prefer the `subAccount*` fields.
    */
-  allocationId: string | null;
-  allocationName: string | null;
+  subAccountId?: string | null;
+  subAccountCode?: string | null;
+  subAccountName?: string | null;
+  /** @deprecated Mirror of `subAccountId`. */
+  allocationId?: string | null;
+  /** @deprecated Mirror of `subAccountName`. */
+  allocationName?: string | null;
   memo: string | null;
 }
 
@@ -7762,8 +7777,8 @@ export interface CashTransactionLineInput {
   accountId: string;
   amount: string;
   businessLineId?: string | null;
-  /** Must name a live rule OF `accountId` — the server checks the pairing. */
-  allocationId?: string | null;
+  /** Must name a live sub akun OF `accountId` — the server checks the pairing. */
+  subAccountId?: string | null;
   memo?: string;
 }
 

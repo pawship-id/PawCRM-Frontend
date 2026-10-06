@@ -121,11 +121,22 @@ export {
 } from "./components/ChartOfAccountForm";
 export { ChartOfAccountsScreen } from "./components/ChartOfAccountsScreen";
 /**
- * The Detil Akun a posting may name. Exported because Transaksi Keuangan asks
- * the same question of the same accounts, and a second copy there is how the two
- * would drift on whether a retired rule is still offered.
+ * The sub akun a posting may name. Exported because Transaksi Keuangan asks the
+ * same question of the same accounts, and a second copy there is how the two
+ * would drift on whether a retired one is still offered. The picker hook and
+ * select are the catalogue forms' (product, category, service).
  */
-export { allocationOptionsFor } from "./allocationLabels";
+export {
+  lineSubAccountText,
+  NO_SUB_ACCOUNT_LABEL,
+  subAccountLabel,
+  subAccountOptionsFor,
+} from "./allocationLabels";
+export {
+  useSubAccounts,
+  type UseSubAccountsResult,
+} from "./hooks/useSubAccounts";
+export { SubAccountSelect } from "./components/SubAccountSelect";
 export { JournalEntriesScreen } from "./components/JournalEntriesScreen";
 export { JournalEntryDetail } from "./components/JournalEntryDetail";
 /** Also read by Kas & Bank's "Jurnal terkait" dialog, not only by the page. */

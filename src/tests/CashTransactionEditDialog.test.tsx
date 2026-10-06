@@ -52,7 +52,6 @@ const account = (
     Pick<ChartOfAccountNode, "_id" | "code" | "name" | "accountCategory">,
 ): ChartOfAccountNode => ({
   parentAccountId: null,
-  allocations: [],
   isDefault: false,
   isActive: true,
   children: [],
@@ -373,8 +372,9 @@ describe("CashTransactionEditDialog — saving", () => {
             amount: "75000.0000",
             businessLineId: null,
             businessLineName: null,
-            allocationId: null,
-            allocationName: null,
+            subAccountId: null,
+            subAccountCode: null,
+            subAccountName: null,
             memo: null,
           },
         ],
@@ -393,13 +393,13 @@ describe("CashTransactionEditDialog — saving", () => {
 
     await waitFor(() =>
       expect(cashTransactionService.update).toHaveBeenCalledWith("ct1", {
-        // `allocationId: null` — the account carries no Detil Akun to pick from.
+        // `subAccountId: null` — the account carries no sub akun to pick from.
         lines: [
           {
             accountId: "acc-listrik",
             amount: "80000",
             businessLineId: null,
-            allocationId: null,
+            subAccountId: null,
           },
         ],
       }),

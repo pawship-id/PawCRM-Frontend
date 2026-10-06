@@ -7,6 +7,7 @@ import { productService } from "@/services/product.service";
 import { categoryService } from "@/services/category.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import { subAccountService } from "@/services/subAccount.service";
 import { ApiError } from "@/services/api-error";
 import type { CreatedProduct, Product } from "@/types/inventory";
 
@@ -1993,6 +1994,86 @@ describe("ProductForm", () => {
       await waitFor(() => expect(create).toHaveBeenCalled());
       expect(create.mock.calls[0][0]).toMatchObject({
         salesAccountId: SALES_ACCOUNT,
+      });
+    });
+
+    /*
+      SUB AKUN (Sub-Akun-Implementation-Plan §3.4): under the sales account,
+      asked for only when that account has active ones, required then, and
+      sent as a pair with the account.
+    */
+    describe("sub akun penjualan", () => {
+      const SUB = {
+        _id: "sub-hotel-1",
+        accountId: SALES_ACCOUNT,
+        code: "4103-01",
+        name: "Penjualan Hotel - Reguler",
+        allocationType: "shared_overall" as const,
+        businessLineId: null,
+        branchId: null,
+        isActive: true,
+      };
+
+      it("is not offered while the account has none", async () => {
+        const user = userEvent.setup();
+        jest.spyOn(subAccountService, "pick").mockResolvedValue([]);
+
+        renderWithAuth(<ProductForm />);
+        await screen.findByLabelText(/Nama produk/);
+        await user.click(screen.getByLabelText("Akun penjualan"));
+        await user.click(
+          await screen.findByRole("option", { name: "4103 — Penjualan Hotel" }),
+        );
+
+        await waitFor(() =>
+          expect(subAccountService.pick).toHaveBeenCalledWith({
+            accountId: SALES_ACCOUNT,
+            isActive: true,
+          }),
+        );
+        expect(
+          screen.queryByLabelText(/Sub akun penjualan/),
+        ).not.toBeInTheDocument();
+      });
+
+      it("is required once the account has some, and goes out beside the account", async () => {
+        const user = userEvent.setup();
+        jest.spyOn(subAccountService, "pick").mockResolvedValue([SUB]);
+        const create = mockCreate();
+
+        renderWithAuth(<ProductForm />);
+        await screen.findByLabelText(/Nama produk/);
+        await fillCommon(user);
+        await user.type(screen.getByLabelText(/Harga jual/), "45000");
+
+        await user.click(screen.getByLabelText("Akun penjualan"));
+        await user.click(
+          await screen.findByRole("option", { name: "4103 — Penjualan Hotel" }),
+        );
+        expect(
+          await screen.findByLabelText(/Sub akun penjualan/),
+        ).toBeInTheDocument();
+
+        // Refused before any request, and said on the field.
+        await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+        expect(
+          await screen.findByText("Pilih sub akun penjualan."),
+        ).toBeInTheDocument();
+        expect(create).not.toHaveBeenCalled();
+
+        await user.click(screen.getByLabelText(/Sub akun penjualan/));
+        await user.click(
+          await screen.findByRole("option", {
+            name: "4103-01 · Penjualan Hotel - Reguler",
+          }),
+        );
+        await user.click(screen.getByRole("button", { name: /Simpan produk/ }));
+
+        await waitFor(() => expect(create).toHaveBeenCalled());
+        expect(create.mock.calls[0][0]).toMatchObject({
+          salesAccountId: SALES_ACCOUNT,
+          salesSubAccountId: "sub-hotel-1",
+        });
       });
     });
 

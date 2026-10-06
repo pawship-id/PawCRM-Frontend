@@ -100,6 +100,9 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
         }),
     ...(service.categoryId ? { categoryId: service.categoryId } : {}),
     ...(service.salesAccountId ? { salesAccountId: service.salesAccountId } : {}),
+    ...(service.salesAccountId && service.salesSubAccountId
+      ? { salesSubAccountId: service.salesSubAccountId }
+      : {}),
     description: service.description,
     sessions: service.sessions ?? [],
     sessionWeights: service.sessionWeights ?? [],

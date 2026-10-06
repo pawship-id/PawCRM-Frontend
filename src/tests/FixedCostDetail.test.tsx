@@ -47,7 +47,7 @@ const fixedCost = (overrides: Partial<FixedCost> = {}): FixedCost => ({
       accountId: "a2",
       amount: "3500000.0000",
       businessLineId: null,
-      allocationId: null,
+      subAccountId: null,
       memo: "Sewa bulanan",
     },
   ],

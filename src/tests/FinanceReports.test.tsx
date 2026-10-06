@@ -96,11 +96,56 @@ const PROFIT_LOSS: ProfitLossResult = {
     timezone: "Asia/Jakarta",
   },
   accounts: [
-    plAccount("4101", "Pendapatan Penjualan", "pendapatan", [
-      [GROOMING, "25000000.0000"],
-      [RETAIL, "17000000.0000"],
-      [null, "0.0000"],
-    ]),
+    {
+      ...plAccount("4101", "Pendapatan Penjualan", "pendapatan", [
+        [GROOMING, "25000000.0000"],
+        [RETAIL, "17000000.0000"],
+        [null, "0.0000"],
+      ]),
+      // Sub akun break the account's own figure down and sum to it; the
+      // unmapped row is last, and a retired one still shows.
+      subAccounts: [
+        {
+          subAccountId: "sub-groom",
+          code: "4101-01",
+          name: "Penjualan Grooming",
+          isActive: true,
+          unmapped: false,
+          lines: [
+            { businessLineId: GROOMING, amount: "25000000.0000" },
+            { businessLineId: RETAIL, amount: "0.0000" },
+            { businessLineId: null, amount: "0.0000" },
+          ],
+          total: "25000000.0000",
+        },
+        {
+          subAccountId: "sub-lama",
+          code: "4101-02",
+          name: "Penjualan Lama",
+          isActive: false,
+          unmapped: false,
+          lines: [
+            { businessLineId: GROOMING, amount: "0.0000" },
+            { businessLineId: RETAIL, amount: "12000000.0000" },
+            { businessLineId: null, amount: "0.0000" },
+          ],
+          total: "12000000.0000",
+        },
+        {
+          subAccountId: null,
+          code: "",
+          name: "",
+          isActive: true,
+          unmapped: true,
+          lines: [
+            { businessLineId: GROOMING, amount: "0.0000" },
+            { businessLineId: RETAIL, amount: "5000000.0000" },
+            { businessLineId: null, amount: "0.0000" },
+          ],
+          total: "5000000.0000",
+        },
+      ],
+    },
     // A contra account: stored negative, because the server signs it by the
     // class it sits in. It nets against the revenue beside it.
     plAccount("4191", "Diskon Penjualan", "pendapatan", [
@@ -528,6 +573,29 @@ describe("ProfitLossScreen", () => {
     // "Harga Pokok Penjualan" is both — and only the account row folds away.
     expect(screen.getByText("4101")).toBeInTheDocument();
     expect(screen.queryByText("5101")).not.toBeInTheDocument();
+  });
+
+  it("breaks an account down into its sub akun, the unmapped row last", async () => {
+    renderWithAuth(<ProfitLossScreen now={NOW} />);
+    await screen.findByText("Laporan Laba Rugi");
+
+    const rows = screen.getAllByRole("row").map((row) => row.textContent ?? "");
+    const account = rows.findIndex((text) => text.includes("4101Pendapatan Penjualan"));
+    const grooming = rows.findIndex((text) => text.includes("4101-01"));
+    const retired = rows.findIndex((text) => text.includes("4101-02"));
+    const unmapped = rows.findIndex((text) => text.includes("Belum Dipetakan"));
+
+    // Under the account, in the server's order.
+    expect(account).toBeGreaterThanOrEqual(0);
+    expect(grooming).toBe(account + 1);
+    expect(retired).toBe(grooming + 1);
+    expect(unmapped).toBe(retired + 1);
+    // A retired sub akun still shows, and says so.
+    expect(rows[retired]).toContain("Nonaktif");
+    expect(rows[grooming]).not.toContain("Nonaktif");
+    // The account's own figure is untouched by the rows beneath it.
+    expect(rows[account]).toContain("42.000.000");
+    expect(rows[grooming]).toContain("25.000.000");
   });
 
   it("prints both subtotals under the groups they close", async () => {

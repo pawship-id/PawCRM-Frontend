@@ -14,6 +14,7 @@ import {
 } from "@/components";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { useSubAccounts } from "@/features/accounting/hooks/useSubAccounts";
 import { ApiError } from "@/services/api-error";
 import { categoryService } from "@/services/category.service";
 import { swalToast } from "@/lib/swal";
@@ -177,12 +178,25 @@ function CategoryFields({
     category
       ? {
           salesAccountId: category.salesAccountId ?? "",
+          salesSubAccountId: category.salesSubAccountId ?? "",
           cogsAccountId: category.cogsAccountId ?? "",
+          cogsSubAccountId: category.cogsSubAccountId ?? "",
           inventoryAccountId: category.inventoryAccountId ?? "",
         }
       : NO_POSTING_ACCOUNTS,
   );
 
+  /**
+   * The sub akun under the sales and COGS accounts, read here rather than in the
+   * card: whether one is REQUIRED decides whether this form may save.
+   */
+  const subAccounts = {
+    salesSubAccountId: useSubAccounts(accounts.salesAccountId),
+    cogsSubAccountId: useSubAccounts(accounts.cogsAccountId),
+  };
+  const [subErrors, setSubErrors] = useState<
+    Partial<Record<"salesSubAccountId" | "cogsSubAccountId", string>>
+  >({});
   const [nameError, setNameError] = useState<string | null>(null);
   const [descriptionError, setDescriptionError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -205,6 +219,25 @@ function CategoryFields({
       setNameError(`Maksimal ${NAME_MAX_LENGTH} karakter.`);
       return;
     }
+
+    // Required once the chosen account has active sub akun — the server's own
+    // rule, said here so it never reaches the network.
+    const missingSub: typeof subErrors = {};
+    if (
+      subAccounts.salesSubAccountId.subAccounts.length > 0 &&
+      accounts.salesSubAccountId === ""
+    )
+      missingSub.salesSubAccountId = "Pilih sub akun penjualan.";
+    if (
+      subAccounts.cogsSubAccountId.subAccounts.length > 0 &&
+      accounts.cogsSubAccountId === ""
+    )
+      missingSub.cogsSubAccountId = "Pilih sub akun HPP.";
+    if (Object.keys(missingSub).length > 0) {
+      setSubErrors(missingSub);
+      return;
+    }
+    setSubErrors({});
 
     const blurb = description.trim();
 
@@ -235,7 +268,13 @@ function CategoryFields({
      * nulls that were already null.
      */
     const reposted = editing
-      ? (["salesAccountId", "cogsAccountId", "inventoryAccountId"] as const)
+      ? ([
+          "salesAccountId",
+          "salesSubAccountId",
+          "cogsAccountId",
+          "cogsSubAccountId",
+          "inventoryAccountId",
+        ] as const)
           .filter((field) => accounts[field] !== (category[field] ?? ""))
       : [];
 
@@ -294,8 +333,14 @@ function CategoryFields({
           ...(accounts.salesAccountId
             ? { salesAccountId: accounts.salesAccountId }
             : {}),
+          ...(accounts.salesAccountId && accounts.salesSubAccountId
+            ? { salesSubAccountId: accounts.salesSubAccountId }
+            : {}),
           ...(accounts.cogsAccountId
             ? { cogsAccountId: accounts.cogsAccountId }
+            : {}),
+          ...(accounts.cogsAccountId && accounts.cogsSubAccountId
+            ? { cogsSubAccountId: accounts.cogsSubAccountId }
             : {}),
           ...(accounts.inventoryAccountId
             ? { inventoryAccountId: accounts.inventoryAccountId }
@@ -426,6 +471,11 @@ function CategoryFields({
           onChange={setAccounts}
           disabled={saving}
           inherited={parentId !== null}
+          subAccounts={subAccounts}
+          subErrors={subErrors}
+          onSubChange={(key) =>
+            setSubErrors((previous) => ({ ...previous, [key]: undefined }))
+          }
         />
       </Card>
 

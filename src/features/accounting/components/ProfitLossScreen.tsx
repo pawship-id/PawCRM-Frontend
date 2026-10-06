@@ -162,7 +162,9 @@ export function ProfitLossScreen({ now }: { now: string }) {
           }
         />
         <div className="min-w-0 flex-1">
-          <Label htmlFor="pl-allocation">Bagikan beban bersama ke tiap lini</Label>
+          <Label htmlFor="pl-allocation">
+            Bagikan beban bersama ke tiap lini
+          </Label>
           <p className="mt-1 text-xs text-muted">
             {query.allocation
               ? "Sewa, marketing dan gaji kantor dibagi ke tiap lini mengikuti Aturan Alokasi di Daftar Akun, sesuai porsi pendapatan periode ini. Kolom Bersama menyisakan akun yang belum dipetakan."
@@ -197,180 +199,218 @@ export function ProfitLossScreen({ now }: { now: string }) {
           <Spinner /> Memuat laba rugi…
         </div>
       ) : (
-      /* The table container is written out rather than wrapped in <Card>: Card
+        /* The table container is written out rather than wrapped in <Card>: Card
          pads its content, and a matrix has to run edge to edge so the sticky
          first column has an edge to stick to. Same shape JournalEntriesScreen
          uses for the same reason. */
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-hover px-4 py-3">
-          <h2 className="text-base font-bold">Laporan Laba Rugi</h2>
-          <span className="text-xs tabular-nums text-muted">
-            {periodLabel} ·{" "}
-            {query.branchId
-              ? (branches.find((b) => b._id === query.branchId)?.name ??
-                "Cabang terpilih")
-              : "Semua cabang"}
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-auto"
-            onClick={() =>
-              setExpanded(
-                allOpen
-                  ? new Set()
-                  : new Set(matrix.groups.map((group) => group.key)),
-              )
-            }
-          >
-            {allOpen ? "Tutup semua rincian" : "Buka semua rincian"}
-          </Button>
-        </div>
+        <div className="overflow-hidden rounded-xl border border-border bg-surface">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-hover px-4 py-3">
+            <h2 className="text-base font-bold">Laporan Laba Rugi</h2>
+            <span className="text-xs tabular-nums text-muted">
+              {periodLabel} ·{" "}
+              {query.branchId
+                ? (branches.find((b) => b._id === query.branchId)?.name ??
+                  "Cabang terpilih")
+                : "Semua cabang"}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              onClick={() =>
+                setExpanded(
+                  allOpen
+                    ? new Set()
+                    : new Set(matrix.groups.map((group) => group.key)),
+                )
+              }
+            >
+              {allOpen ? "Tutup semua rincian" : "Buka semua rincian"}
+            </Button>
+          </div>
 
-        <Table className={loading ? "opacity-60" : undefined}>
-          <TableHeader>
-            <TableRow>
-              {/* Sticky, because the whole point of the table is reading one
+          <Table className={loading ? "opacity-60" : undefined}>
+            <TableHeader>
+              <TableRow>
+                {/* Sticky, because the whole point of the table is reading one
                   account across several lini — and a row you have scrolled the
                   name off is a row of numbers about nothing. */}
-              <TableHead className="sticky left-0 z-20 bg-surface-hover">
-                Akun
-              </TableHead>
-              {matrix.columns.map((column) => (
-                <TableHead
-                  key={column.id ?? "shared"}
-                  className="text-right whitespace-nowrap"
-                >
-                  {column.label}
+                <TableHead className="sticky left-0 z-20 bg-surface-hover">
+                  Akun
                 </TableHead>
-              ))}
-              <TableHead className="border-l border-border text-right whitespace-nowrap">
-                Total Konsolidasi
-              </TableHead>
-            </TableRow>
-          </TableHeader>
+                {matrix.columns.map((column) => (
+                  <TableHead
+                    key={column.id ?? "shared"}
+                    className="text-right whitespace-nowrap"
+                  >
+                    {column.label}
+                  </TableHead>
+                ))}
+                <TableHead className="border-l border-border text-right whitespace-nowrap">
+                  Total Konsolidasi
+                </TableHead>
+              </TableRow>
+            </TableHeader>
 
-          <TableBody>
-            {matrix.groups.map((group) => {
-              const open = expanded.has(group.key);
-              // Which side of the formula the group is on, decided in
-              // `reportSummary` rather than here: the two income groups add, the
-              // three cost groups are subtracted and so print with a leading
-              // minus. The amounts themselves stay positive, because a report
-              // prints "Beban Sewa 15.000.000" until it is being taken away.
-              const negative = group.negative;
+            <TableBody>
+              {matrix.groups.map((group) => {
+                const open = expanded.has(group.key);
+                // Which side of the formula the group is on, decided in
+                // `reportSummary` rather than here: the two income groups add, the
+                // three cost groups are subtracted and so print with a leading
+                // minus. The amounts themselves stay positive, because a report
+                // prints "Beban Sewa 15.000.000" until it is being taken away.
+                const negative = group.negative;
 
-              return (
-                <Fragment key={group.key}>
-                  <TableRow className="bg-surface-hover hover:bg-surface-hover">
-                    <TableCell className="sticky left-0 z-10 bg-surface-hover px-4 py-2.5">
-                      <button
-                        type="button"
-                        aria-expanded={open}
-                        onClick={() => toggle(group.key)}
-                        className="inline-flex items-center gap-2 rounded-md text-sm font-semibold outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                      >
-                        <ChevronRight
-                          className={cn(
-                            "size-4 text-muted transition",
-                            open && "rotate-90",
-                          )}
-                          aria-hidden
-                        />
-                        {group.label}
-                      </button>
-                    </TableCell>
-                    {group.cells.map((amount, index) => (
-                      <TableCell
-                        key={matrix.columns[index].id ?? "shared"}
-                        className="px-4 py-2.5 text-right text-sm font-semibold tabular-nums"
-                      >
-                        {signed(amount, negative)}
+                return (
+                  <Fragment key={group.key}>
+                    <TableRow className="bg-surface-hover hover:bg-surface-hover">
+                      <TableCell className="sticky left-0 z-10 bg-surface-hover px-4 py-2.5">
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          onClick={() => toggle(group.key)}
+                          className="inline-flex items-center gap-2 rounded-md text-sm font-semibold outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        >
+                          <ChevronRight
+                            className={cn(
+                              "size-4 text-muted transition",
+                              open && "rotate-90",
+                            )}
+                            aria-hidden
+                          />
+                          {group.label}
+                        </button>
                       </TableCell>
-                    ))}
-                    <TableCell className="border-l border-border px-4 py-2.5 text-right text-sm font-semibold tabular-nums">
-                      {signed(group.total, negative)}
-                    </TableCell>
-                  </TableRow>
-
-                  {open &&
-                    group.accounts.map((account) => (
-                      <TableRow key={account.code}>
-                        <TableCell className="sticky left-0 z-10 bg-surface py-2 pr-4 pl-10 text-sm">
-                          <span className="mr-2 text-xs tabular-nums text-muted">
-                            {account.code}
-                          </span>
-                          {account.name}
+                      {group.cells.map((amount, index) => (
+                        <TableCell
+                          key={matrix.columns[index].id ?? "shared"}
+                          className="px-4 py-2.5 text-right text-sm font-semibold tabular-nums"
+                        >
+                          {signed(amount, negative)}
                         </TableCell>
-                        {account.cells.map((amount, index) => (
-                          <TableCell
-                            key={matrix.columns[index].id ?? "shared"}
-                            className="px-4 py-2 text-right text-sm tabular-nums text-muted"
-                          >
-                            {signed(amount, negative)}
-                          </TableCell>
-                        ))}
-                        <TableCell className="border-l border-border px-4 py-2 text-right text-sm tabular-nums text-muted">
-                          {signed(account.total, negative)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-
-                  {open && group.accounts.length === 0 && (
-                    <TableRow className="hover:bg-transparent">
-                      <TableCell
-                        colSpan={columnCount}
-                        className="py-4 pl-10 text-sm text-muted"
-                      >
-                        Belum ada akun yang bergerak di grup ini.
+                      ))}
+                      <TableCell className="border-l border-border px-4 py-2.5 text-right text-sm font-semibold tabular-nums">
+                        {signed(group.total, negative)}
                       </TableCell>
                     </TableRow>
-                  )}
 
-                  {/* Each subtotal sits directly under the group it closes —
+                    {open &&
+                      group.accounts.map((account) => (
+                        <Fragment key={account.code}>
+                          <TableRow>
+                            <TableCell className="sticky left-0 z-10 bg-surface py-2 pr-4 pl-10 text-sm">
+                              <span className="mr-2 text-xs tabular-nums text-muted">
+                                {account.code}
+                              </span>
+                              {account.name}
+                            </TableCell>
+                            {account.cells.map((amount, index) => (
+                              <TableCell
+                                key={matrix.columns[index].id ?? "shared"}
+                                className="px-4 py-2 text-right text-sm tabular-nums text-muted"
+                              >
+                                {signed(amount, negative)}
+                              </TableCell>
+                            ))}
+                            <TableCell className="border-l border-border px-4 py-2 text-right text-sm tabular-nums text-muted">
+                              {signed(account.total, negative)}
+                            </TableCell>
+                          </TableRow>
+
+                          {/* Sub akun, always visible and indented one step further.
+                          They break the account's own figure down; the unmapped
+                          row is "Belum Dipetakan" and the server puts it last. */}
+                          {account.subAccounts.map((sub) => (
+                            <TableRow key={sub.subAccountId ?? "unmapped"}>
+                              <TableCell className="sticky left-0 z-10 bg-surface py-1.5 pr-4 pl-16 text-sm text-muted">
+                                {sub.unmapped ? (
+                                  "Belum Dipetakan"
+                                ) : (
+                                  <>
+                                    <span className="mr-2 text-xs tabular-nums">
+                                      {sub.code}
+                                    </span>
+                                    {sub.name}
+                                  </>
+                                )}
+                                {!sub.isActive && (
+                                  <span className="ml-2 rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted">
+                                    Nonaktif
+                                  </span>
+                                )}
+                              </TableCell>
+                              {sub.cells.map((amount, index) => (
+                                <TableCell
+                                  key={matrix.columns[index].id ?? "shared"}
+                                  className="px-4 py-1.5 text-right text-sm tabular-nums text-muted"
+                                >
+                                  {signed(amount, negative)}
+                                </TableCell>
+                              ))}
+                              <TableCell className="border-l border-border px-4 py-1.5 text-right text-sm tabular-nums text-muted">
+                                {signed(sub.total, negative)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </Fragment>
+                      ))}
+
+                    {open && group.accounts.length === 0 && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell
+                          colSpan={columnCount}
+                          className="py-4 pl-10 text-sm text-muted"
+                        >
+                          Belum ada akun yang bergerak di grup ini.
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {/* Each subtotal sits directly under the group it closes —
                       that placement IS what makes it that subtotal rather than
                       a second net figure. Laba kotor after HPP, laba usaha
                       after Biaya. */}
-                  {group.key === "hpp" && (
-                    <ResultRow
-                      label="Laba Kotor"
-                      row={matrix.grossProfit}
-                      base={matrix.revenue}
-                      columns={matrix.columns}
-                      pctLabel="margin"
-                    />
-                  )}
-                  {group.key === "biaya" && (
-                    <ResultRow
-                      label="Laba Usaha"
-                      row={matrix.operatingProfit}
-                      base={matrix.revenue}
-                      columns={matrix.columns}
-                      pctLabel="margin usaha"
-                    />
-                  )}
-                </Fragment>
-              );
-            })}
+                    {group.key === "hpp" && (
+                      <ResultRow
+                        label="Laba Kotor"
+                        row={matrix.grossProfit}
+                        base={matrix.revenue}
+                        columns={matrix.columns}
+                        pctLabel="margin"
+                      />
+                    )}
+                    {group.key === "biaya" && (
+                      <ResultRow
+                        label="Laba Usaha"
+                        row={matrix.operatingProfit}
+                        base={matrix.revenue}
+                        columns={matrix.columns}
+                        pctLabel="margin usaha"
+                      />
+                    )}
+                  </Fragment>
+                );
+              })}
 
-            <ResultRow
-              label="Laba Bersih"
-              row={matrix.netProfit}
-              base={matrix.revenue}
-              columns={matrix.columns}
-              pctLabel="margin bersih"
-              emphasis
-            />
-          </TableBody>
-        </Table>
-      </div>
+              <ResultRow
+                label="Laba Bersih"
+                row={matrix.netProfit}
+                base={matrix.revenue}
+                columns={matrix.columns}
+                pctLabel="margin bersih"
+                emphasis
+              />
+            </TableBody>
+          </Table>
+        </div>
       )}
 
       <p className="text-xs text-muted">
-        Persentase dihitung terhadap pendapatan kolom yang sama, jadi sebuah lini
-        dibandingkan dengan dirinya sendiri — bukan dengan total shop. Kolom
-        Bersama (HQ) tidak punya pendapatan, jadi persentasenya tampil sebagai
-        &ldquo;—&rdquo;.
+        Persentase dihitung terhadap pendapatan kolom yang sama, jadi sebuah
+        lini dibandingkan dengan dirinya sendiri — bukan dengan total shop.
+        Kolom Bersama (HQ) tidak punya pendapatan, jadi persentasenya tampil
+        sebagai &ldquo;—&rdquo;.
       </p>
     </div>
   );
