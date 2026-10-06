@@ -2,7 +2,7 @@
 
 import { Plus, Trash2 } from "lucide-react";
 
-import { FilterSelect, namedOptions } from "@/components";
+import { FilterSelect } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,9 +14,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { allocationOptionsFor, SHARED_LINE_LABEL } from "@/features/accounting";
+import { NO_SUB_ACCOUNT_LABEL, subAccountOptionsFor } from "@/features/accounting";
 import type { BusinessLine } from "@/services/businessLine.service";
 import type { ChartOfAccount } from "@/types/accounting";
+import { lineSubAccountId } from "@/types/accounting";
 import type {
   CashTransactionLine,
   CashTransactionLineInput,
@@ -33,15 +34,22 @@ import {
 export const MAX_LINES = 20;
 const MEMO_MAX_LENGTH = 500;
 
-/** One line as the form holds it. `businessLineId: ""` is Bersama. */
+/**
+ * One line as the form holds it.
+ *
+ * `businessLineId` is NEVER SET BY THE USER any more (BO, 6 Okt): the line comes
+ * from the account / sub akun mapping. It exists only so a line saved BEFORE that
+ * decision, which already names a line, is carried through an edit unchanged.
+ * `""` on every new line.
+ */
 export interface DraftLine {
   /** Local key — an index is not stable across a removal. */
   key: string;
   accountId: string;
   amount: string;
   businessLineId: string;
-  /** The Detil Akun picked for this line. `""` when the account has none. */
-  allocationId: string;
+  /** The sub akun picked for this line. `""` is Belum Dipetakan — and what an account with none has. */
+  subAccountId: string;
   memo: string;
 }
 
@@ -53,7 +61,7 @@ export function blankLine(): DraftLine {
     accountId: "",
     amount: "",
     businessLineId: "",
-    allocationId: "",
+    subAccountId: "",
     memo: "",
   };
 }
@@ -68,7 +76,7 @@ export function draftLinesFrom(
     accountId: line.accountId,
     amount: trimDecimal(line.amount),
     businessLineId: line.businessLineId ?? "",
-    allocationId: line.allocationId ?? "",
+    subAccountId: lineSubAccountId(line) ?? "",
     memo: line.memo ?? "",
   }));
 }
@@ -103,7 +111,7 @@ export function toLineInputs(lines: DraftLine[]): CashTransactionLineInput[] {
     accountId: line.accountId,
     amount: line.amount.trim(),
     businessLineId: line.businessLineId || null,
-    allocationId: line.allocationId || null,
+    subAccountId: line.subAccountId || null,
     ...(line.memo.trim() ? { memo: line.memo.trim() } : {}),
   }));
 }
@@ -118,6 +126,8 @@ export function linesSignature(
     accountId: string;
     amount: string;
     businessLineId?: string | null;
+    subAccountId?: string | null;
+    /** @deprecated Read as a fallback for `subAccountId`. */
     allocationId?: string | null;
     memo?: string | null;
   }>,
@@ -127,18 +137,48 @@ export function linesSignature(
       line.accountId,
       String(toMinor(line.amount.trim()) ?? line.amount),
       line.businessLineId || null,
-      // In the fingerprint because changing ONLY the detil is a real edit — it
+      // In the fingerprint because changing ONLY the sub akun is a real edit — it
       // moves the cost to a different segment of the laba rugi — and a Simpan
-      // that decided nothing had changed would silently discard it.
-      line.allocationId || null,
+      // that decided nothing had changed would silently discard it. Both spellings
+      // are read: a saved line may still carry only the old `allocationId`.
+      lineSubAccountId(line),
       (line.memo ?? "").trim(),
     ]),
   );
 }
 
 /**
- * The ROW TABLE of an expense or other income (§16 Form Transaksi): Akun · Lini
- * bisnis · Jumlah · Memo, Tambah baris, and the running total — which IS the
+ * The lines with every sub akun that no longer fits the branch cleared.
+ *
+ * For the caller that holds the branch: changing it can leave a line naming a
+ * sub akun pinned to the OTHER branch, which the picker no longer offers and the
+ * server would refuse. Returns the same array when nothing changed, so it is
+ * safe to hand straight to a state setter.
+ */
+export function withoutMismatchedSubAccounts(
+  lines: DraftLine[],
+  accounts: ChartOfAccount[],
+  branchId: string,
+): DraftLine[] {
+  const byId = new Map(accounts.map((account) => [account._id, account]));
+  let changed = false;
+
+  const next = lines.map((line) => {
+    if (!line.subAccountId) return line;
+    const fits = subAccountOptionsFor(byId.get(line.accountId), branchId).some(
+      (option) => option.value === line.subAccountId,
+    );
+    if (fits) return line;
+    changed = true;
+    return { ...line, subAccountId: "" };
+  });
+
+  return changed ? next : lines;
+}
+
+/**
+ * The ROW TABLE of an expense or other income (§16 Form Transaksi): Akun · Sub
+ * akun · Jumlah · Memo, Tambah baris, and the running total — which IS the
  * transaction's amount, so there is no separate Jumlah field to disagree with it.
  *
  * Controls in a table cell stay at field height (`layout="field"`, `h-10`
@@ -154,6 +194,7 @@ export function CashLinesEditor({
   businessLines,
   disabled = false,
   showAddButton = true,
+  branchId,
 }: {
   kind: "expense" | "other_income";
   lines: DraftLine[];
@@ -167,18 +208,20 @@ export function CashLinesEditor({
    * to put it in, keeps it under the table.
    */
   showAddButton?: boolean;
+  /**
+   * The branch the document is booked at, when it has one — narrows each line's
+   * sub akun to those that fit it (pinned to this branch, or to none).
+   */
+  branchId?: string;
 }) {
   const accountOptions = accounts.map((account) => ({
     value: account._id,
     label: `${account.code} · ${account.name}`,
   }));
-  const lineOptions = [
-    { value: "", label: SHARED_LINE_LABEL },
-    ...namedOptions(businessLines),
-  ];
+  const lineNames = new Map(businessLines.map((line) => [line._id, line.name]));
   const accountById = new Map(accounts.map((account) => [account._id, account]));
-  const anyAccountMapped = accounts.some((account) =>
-    (account.allocations ?? []).some((rule) => rule.isActive),
+  const anyAccountMapped = accounts.some(
+    (account) => subAccountOptionsFor(account, branchId).length > 0,
   );
   const total = linesTotal(lines);
 
@@ -204,7 +247,6 @@ export function CashLinesEditor({
               {anyAccountMapped && (
                 <TableHead className="min-w-44">Detil akun</TableHead>
               )}
-              <TableHead className="min-w-44">Lini bisnis</TableHead>
               <TableHead className="min-w-36 text-right">Jumlah</TableHead>
               <TableHead className="min-w-44">Memo</TableHead>
               <TableHead>
@@ -233,17 +275,19 @@ export function CashLinesEditor({
                       options={accountOptions}
                       onChange={(accountId) => {
                         /*
-                          THE DETIL IS RESET WITH THE ACCOUNT, always: a rule id
-                          belongs to one account, and carrying it across would be
-                          a pairing the server rejects.
+                          THE SUB AKUN IS RESET WITH THE ACCOUNT, always: one
+                          belongs to a single account, and carrying it across
+                          would be a pairing the server rejects.
 
                           It is then PRE-PICKED WHEN THERE IS EXACTLY ONE — a
                           choice with one option is not a choice, and leaving it
                           empty would send an unmapped cost for no reason anybody
-                          decided. Two or more, and the person picks.
+                          decided. Two or more, and the person picks; "Belum
+                          dipetakan" is always one click away.
 
-                          THE BUSINESS LINE IS NOT PRE-FILLED from a direct rule,
-                          which the old code did from the account's own field. It
+                          THE BUSINESS LINE IS NOT PRE-FILLED from a direct rule
+                          (and, since 6 Okt, there is no field for it at all: the
+                          line comes from the sub akun's rule). It
                           would look equivalent and is not: a line that names its
                           own `businessLineId` is taken as settled by the report
                           and lands whole at the entry's branch, where a `direct`
@@ -251,29 +295,41 @@ export function CashLinesEditor({
                           run the line. Filling it in would quietly cancel the
                           rule it came from.
                         */
-                        const options = allocationOptionsFor(
+                        const options = subAccountOptionsFor(
                           accountById.get(accountId),
+                          branchId,
                         );
 
+                        // `businessLineId` is left exactly as it was: a legacy
+                        // line keeps its stored line, a new one has none.
                         patch(line.key, {
                           accountId,
-                          allocationId:
+                          subAccountId:
                             options.length === 1 ? options[0].value : "",
                         });
                       }}
                     />
+                    {/* A line saved before the line moved to the account page:
+                        shown, never editable, and sent back as stored. */}
+                    {line.businessLineId && (
+                      <p className="mt-1 text-xs text-muted">
+                        Lini: {lineNames.get(line.businessLineId) ?? "—"}{" "}
+                        (tersimpan)
+                      </p>
+                    )}
                   </TableCell>
                   {anyAccountMapped && (
                     <TableCell>
                       {(() => {
-                        const options = allocationOptionsFor(
+                        const options = subAccountOptionsFor(
                           accountById.get(line.accountId),
+                          branchId,
                         );
 
                         if (options.length === 0) {
                           // Said rather than left blank, and it says WHICH of the
-                          // two reasons: an account with no rules is not a field
-                          // somebody forgot to fill in.
+                          // two reasons: an account with no sub akun is not a
+                          // field somebody forgot to fill in.
                           return (
                             <span className="text-sm text-muted">
                               {line.accountId ? "Belum dipetakan" : "—"}
@@ -285,35 +341,23 @@ export function CashLinesEditor({
                           <FilterSelect
                             layout="field"
                             label=""
-                            ariaLabel={`Detil akun baris ${row}`}
-                            value={line.allocationId}
+                            ariaLabel={`Sub akun baris ${row}`}
+                            value={line.subAccountId}
                             active={false}
-                            placeholder="Pilih detil"
+                            placeholder={NO_SUB_ACCOUNT_LABEL}
                             disabled={disabled}
-                            options={options}
-                            onChange={(allocationId) =>
-                              patch(line.key, { allocationId })
+                            options={[
+                              { value: "", label: NO_SUB_ACCOUNT_LABEL },
+                              ...options,
+                            ]}
+                            onChange={(subAccountId) =>
+                              patch(line.key, { subAccountId })
                             }
                           />
                         );
                       })()}
                     </TableCell>
                   )}
-                  <TableCell>
-                    <FilterSelect
-                      layout="field"
-                      label=""
-                      ariaLabel={`Lini bisnis baris ${row}`}
-                      value={line.businessLineId}
-                      active={false}
-                      placeholder={SHARED_LINE_LABEL}
-                      disabled={disabled}
-                      options={lineOptions}
-                      onChange={(businessLineId) =>
-                        patch(line.key, { businessLineId })
-                      }
-                    />
-                  </TableCell>
                   <TableCell>
                     <Input
                       aria-label={`Jumlah baris ${row}`}
@@ -375,7 +419,7 @@ export function CashLinesEditor({
           <TableFooter>
             <TableRow className="hover:bg-transparent">
               <TableCell
-                colSpan={anyAccountMapped ? 3 : 2}
+                colSpan={anyAccountMapped ? 2 : 1}
                 className="text-right text-xs font-bold tracking-wide text-muted uppercase"
               >
                 Total

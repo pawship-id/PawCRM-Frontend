@@ -47,7 +47,7 @@ const ENTRY = {
     {
       accountId: "acc-cash",
       businessLineId: null,
-      allocationId: null,
+      subAccountId: null,
       debit: "150000.0000",
       credit: "0.0000",
       memo: null,
@@ -55,7 +55,7 @@ const ENTRY = {
     {
       accountId: "acc-ar",
       businessLineId: null,
-      allocationId: null,
+      subAccountId: null,
       debit: "0.0000",
       credit: "150000.0000",
       memo: null,
@@ -88,7 +88,6 @@ beforeEach(() => {
       accountType: "asset",
       accountCategory: "cash_bank",
       parentAccountId: null,
-      allocations: [],
       isDefault: false,
       isActive: true,
       children: [],
@@ -100,7 +99,6 @@ beforeEach(() => {
       accountType: "asset",
       accountCategory: "piutang_dagang",
       parentAccountId: null,
-      allocations: [],
       isDefault: false,
       isActive: true,
       children: [],
@@ -209,7 +207,7 @@ describe("CashTransactionDetail — what it shows", () => {
     ).toHaveAttribute("href", "/dashboard/purchasing/payables/pi1");
   });
 
-  it("lists an expense's account lines, with Bersama for no business line", async () => {
+  it("lists an expense's account lines, with Belum dipetakan for no line and no sub akun", async () => {
     asMock(cashTransactionService.getById).mockResolvedValue(
       cashTx({
         number: "BKK/CBS/2609/0003",
@@ -226,8 +224,9 @@ describe("CashTransactionDetail — what it shows", () => {
             amount: "75000.0000",
             businessLineId: null,
             businessLineName: null,
-            allocationId: null,
-            allocationName: null,
+            subAccountId: null,
+            subAccountCode: null,
+            subAccountName: null,
             memo: "Agustus",
           },
         ],
@@ -239,7 +238,7 @@ describe("CashTransactionDetail — what it shows", () => {
     expect(await screen.findByText("Beban Listrik")).toBeInTheDocument();
     expect(screen.getByText("Agustus")).toBeInTheDocument();
     // Once in the row, and once more as the header's summary of the rows.
-    expect(screen.getAllByText("Bersama (HQ)")).toHaveLength(2);
+    expect(screen.getAllByText("Belum dipetakan")).toHaveLength(2);
   });
 
   it("keeps every earlier version with what it said and both journal links", async () => {

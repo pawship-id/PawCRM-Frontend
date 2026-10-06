@@ -52,7 +52,6 @@ const account = (
     Pick<ChartOfAccountNode, "_id" | "code" | "name" | "accountCategory">,
 ): ChartOfAccountNode => ({
   parentAccountId: null,
-  allocations: [],
   isDefault: false,
   isActive: true,
   children: [],
@@ -373,8 +372,9 @@ describe("CashTransactionEditDialog — saving", () => {
             amount: "75000.0000",
             businessLineId: null,
             businessLineName: null,
-            allocationId: null,
-            allocationName: null,
+            subAccountId: null,
+            subAccountCode: null,
+            subAccountName: null,
             memo: null,
           },
         ],
@@ -393,13 +393,96 @@ describe("CashTransactionEditDialog — saving", () => {
 
     await waitFor(() =>
       expect(cashTransactionService.update).toHaveBeenCalledWith("ct1", {
-        // `allocationId: null` — the account carries no Detil Akun to pick from.
+        // `subAccountId: null` — the account carries no sub akun to pick from.
         lines: [
           {
             accountId: "acc-listrik",
             amount: "80000",
             businessLineId: null,
-            allocationId: null,
+            subAccountId: null,
+          },
+        ],
+      }),
+    );
+  });
+
+  /**
+   * LEGACY DATA MUST NOT SILENTLY CHANGE (BO, 6 Okt). A row saved while the form
+   * still offered a business line keeps it: shown read-only, sent back as stored,
+   * with its sub akun beside it when it has one.
+   */
+  it("carries a stored business line through an edit, read-only, with its sub akun", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    asMock(businessLineService.list).mockResolvedValue({
+      items: [{ _id: "bl-groom", name: "Grooming", color: "navy" }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+    } as never);
+    asMock(cashTransactionService.update).mockResolvedValue(cashTx());
+
+    renderDialog(
+      cashTx({
+        number: "BKK/CBS/2609/0003",
+        direction: "out",
+        kind: "expense",
+        document: null,
+        amount: "75000.0000",
+        lines: [
+          {
+            accountId: "acc-listrik",
+            accountCode: "5401",
+            accountName: "Beban Listrik",
+            amount: "75000.0000",
+            businessLineId: "bl-groom",
+            businessLineName: "Grooming",
+            subAccountId: "sub-listrik-1",
+            subAccountCode: "5401-01",
+            subAccountName: "Listrik Toko",
+            memo: null,
+          },
+          {
+            accountId: "acc-listrik",
+            accountCode: "5401",
+            accountName: "Beban Listrik",
+            amount: "10000.0000",
+            businessLineId: null,
+            businessLineName: null,
+            subAccountId: null,
+            subAccountCode: null,
+            subAccountName: null,
+            memo: null,
+          },
+        ],
+      }),
+    );
+
+    const dialog = within(await screen.findByRole("dialog"));
+    const first = await dialog.findByLabelText("Jumlah baris 1");
+
+    // Read-only text on the legacy row only; no control to change it.
+    expect(await dialog.findByText("Lini: Grooming (tersimpan)")).toBeInTheDocument();
+    expect(dialog.getAllByText(/\(tersimpan\)/)).toHaveLength(1);
+    expect(dialog.queryByRole("button", { name: /Lini bisnis baris/ })).not.toBeInTheDocument();
+
+    await user.clear(first);
+    await user.type(first, "80000");
+    await user.click(dialog.getByRole("button", { name: "Simpan transaksi" }));
+
+    await waitFor(() =>
+      expect(cashTransactionService.update).toHaveBeenCalledWith("ct1", {
+        lines: [
+          {
+            accountId: "acc-listrik",
+            amount: "80000",
+            // Kept as stored, together with the sub akun.
+            businessLineId: "bl-groom",
+            subAccountId: "sub-listrik-1",
+          },
+          {
+            accountId: "acc-listrik",
+            amount: "10000",
+            // A line without one behaves as a new line.
+            businessLineId: null,
+            subAccountId: null,
           },
         ],
       }),

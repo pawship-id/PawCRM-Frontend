@@ -118,9 +118,9 @@ export function useFinanceReport(
     };
   }, [nonce]);
 
-  // Destructured so the effect depends on the four values rather than on the
+  // Destructured so the effect depends on the three values rather than on the
   // object literal a screen rebuilds on every render.
-  const { dateFrom, dateTo, branchId, allocation } = query;
+  const { dateFrom, dateTo, branchId } = query;
 
   const fetcher = useMemo(() => {
     const branch = branchId || undefined;
@@ -138,7 +138,6 @@ export function useFinanceReport(
             dateFrom: dateFrom || undefined,
             dateTo: dateTo || undefined,
             branchId: branch,
-            allocation,
           })
           .then((result) => ({ kind, result }) as const);
     }
@@ -176,7 +175,7 @@ export function useFinanceReport(
           accountCategory: "cash_bank",
         }),
       ]).then(([opening, closing]) => ({ kind, opening, closing }) as const);
-  }, [kind, dateFrom, dateTo, branchId, allocation]);
+  }, [kind, dateFrom, dateTo, branchId]);
 
   useEffect(() => {
     let active = true;

@@ -71,7 +71,7 @@ import {
   ACCOUNT_TYPE_LABEL,
 } from "../labels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
-import { AccountAllocationPanel } from "./AccountAllocationPanel";
+import { SubAccountPanel } from "./SubAccountPanel";
 import { ChartOfAccountsToolbar } from "./ChartOfAccountsToolbar";
 
 /**
@@ -89,7 +89,7 @@ export interface ChartOfAccountsQuery {
   accountType: AccountType | "";
   /** "" is "semua kategori" — the unset convention the filter layer uses. */
   accountCategory: AccountCategory | "";
-  /** "" is any; `"unmapped"` is the one state somebody has to act on. */
+  /** "" is any; `"unmapped"` — no sub akun yet — is the one state somebody has to act on. */
   allocation: AllocationType | "unmapped" | "";
   showInactive: boolean;
   sort: AccountSort;
@@ -114,7 +114,7 @@ const PAGE_SIZE = 25;
  * headings. Both changes came from the BO mockup, and both are worth stating
  * because the tree was deliberate:
  *
- *   THE CHEVRON HAD TO MEAN ONE THING. A row now opens to reveal its Detil Akun,
+ *   THE CHEVRON HAD TO MEAN ONE THING. A row now opens to reveal its Sub Akun,
  *   which is the point of the screen. A second chevron on the same row, folding
  *   sub-accounts, would be two controls that look identical and do unrelated
  *   things. The hierarchy survives as INDENTATION on the code column — the one
@@ -352,19 +352,18 @@ export function ChartOfAccountsScreen() {
       */}
       <SettingsPageHeader tab="keuangan" title="Daftar Akun" />
 
-      {/* What the Aturan Alokasi column is for, before anybody clicks a row.
+      {/* What the Sub akun & alokasi column is for, before anybody clicks a row.
           Only where it applies: a tenant with one line and one branch gets the
           note below instead, which says why the column is empty. */}
       {!needsNoAllocation(shape) && (
         <div className="rounded-xl border border-border bg-navy-100 p-4 text-sm">
-          <p className="font-bold text-foreground">
-            Cara kerja Aturan Alokasi
-          </p>
+          <p className="font-bold text-foreground">Cara kerja Sub Akun</p>
           <p className="mt-1 text-foreground">
-            Hanya akun Pendapatan dan Beban yang perlu dipetakan, dan satu akun
-            bisa punya beberapa aturan sekaligus — klik barisnya untuk membuka
-            rinciannya. Contohnya Beban Gaji: staf grooming bisa Direct ke satu
-            lini, sekaligus staf admin yang Shared-Overall.
+            Hanya akun Pendapatan dan Beban yang punya sub akun, dan satu akun
+            bisa punya beberapa sekaligus — klik barisnya untuk membuka
+            rinciannya. Tiap sub akun punya kode sendiri (mis. 4101-01) dan
+            aturan alokasinya. Contohnya Beban Gaji: staf grooming bisa Direct ke
+            satu lini, sekaligus staf admin yang Shared-Overall.
           </p>
         </div>
       )}
@@ -448,8 +447,8 @@ export function ChartOfAccountsScreen() {
                   onSort={sortBy}
                 />
                 {/* Not sortable: a cell that is a badge, a phrase or a count of
-                    rules has no ordering anybody would ask for. */}
-                <TableHead>Aturan alokasi</TableHead>
+                    sub akun has no ordering anybody would ask for. */}
+                <TableHead>Sub akun &amp; alokasi</TableHead>
                 <TableHead>Status</TableHead>
                 {canUpdate && <TableHead className="text-right">Aksi</TableHead>}
               </TableRow>
@@ -677,7 +676,7 @@ export function ChartOfAccountsScreen() {
                     {open && (
                       <TableRow className="hover:bg-transparent">
                         <TableCell colSpan={columnCount} className="p-3">
-                          <AccountAllocationPanel
+                          <SubAccountPanel
                             account={account}
                             shape={shape}
                             businessLines={businessLines}
@@ -756,7 +755,7 @@ function SortableHead({
 }
 
 /**
- * The Aturan Alokasi cell's text — one rule spelled out, or a count with a chip
+ * The Sub akun cell's text — one sub akun spelled out, or a count with a chip
  * per kind.
  *
  * "Belum Dipetakan" IS THE ONLY ORANGE THING ON THIS SCREEN, which is §4's rule
@@ -787,6 +786,7 @@ function AllocationSummary({
   if (state.kind === "single") {
     return (
       <span className="text-sm">
+        <span className="tabular-nums">{state.rule.code}</span> ·{" "}
         {describeAllocation(state.rule, lineNames, branchNames, shape)}
       </span>
     );
@@ -795,7 +795,7 @@ function AllocationSummary({
   if (state.kind === "several") {
     return (
       <span className="flex flex-wrap items-center gap-1.5">
-        <span className="text-sm">{state.allocations.length} aturan</span>
+        <span className="text-sm">{state.allocations.length} sub akun</span>
         {countByType(state.allocations).map(({ type, count }) => (
           <span
             key={type}
@@ -817,6 +817,11 @@ function AllocationSummary({
 /**
  * How deep an account sits under its root, for the indent on the code column.
  *
+ * LEGACY: the form no longer sets a parent, so a chart made after this change is
+ * flat and every depth is 0. Kept for the ones that predate it, which still
+ * carry `parentAccountId` and would otherwise lose the indentation that was the
+ * only trace of their hierarchy.
+ *
  * Walks `parentAccountId` rather than being carried on the row, because the list
  * is flat and a filter can remove an ancestor without removing its child. The
  * walk is bounded by the backend's MAX_DEPTH of 4, and the extra guard is
@@ -828,7 +833,7 @@ function depthOf(
   byId: Map<string, ChartOfAccount>,
 ): number {
   let depth = 0;
-  let parentId = account.parentAccountId;
+  let parentId = account.parentAccountId ?? null;
 
   while (parentId && depth < 4) {
     depth += 1;
@@ -854,7 +859,7 @@ function matchesAllocation(
   if (wanted === "unmapped") return state.kind === "unmapped";
   if (state.kind !== "single" && state.kind !== "several") return false;
 
-  return (account.allocations ?? []).some(
+  return (account.subAccounts ?? []).some(
     (rule) => rule.allocationType === wanted,
   );
 }

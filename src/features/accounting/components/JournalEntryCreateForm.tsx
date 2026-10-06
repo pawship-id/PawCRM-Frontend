@@ -40,7 +40,10 @@ import {
   toMinor,
 } from "@/utils/decimal";
 
-import { allocationOptionsFor } from "../allocationLabels";
+import {
+  NO_SUB_ACCOUNT_LABEL,
+  subAccountOptionsFor,
+} from "../allocationLabels";
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import { useChartOfAccounts } from "../hooks/useChartOfAccounts";
 import { ACCOUNT_CATEGORIES, ACCOUNT_CATEGORY_LABEL } from "../labels";
@@ -50,7 +53,7 @@ import { ACCOUNT_CATEGORIES, ACCOUNT_CATEGORY_LABEL } from "../labels";
  *
  * LAID OUT AS THE MOCKUP'S "Tambah Jurnal Manual" (21 September 2026): Tanggal
  * and Cabang side by side, Keterangan under them, then the lines as a TABLE —
- * Akun · Detil · Keterangan · Debit · Kredit — with the totals as its last row
+ * Akun · Sub akun · Keterangan · Debit · Kredit — with the totals as its last row
  * and a note under it that says whether the two sides meet. A journal is a
  * document with rows, so it takes the Form Transaksi pattern (ui-rules §16).
  *
@@ -105,13 +108,14 @@ interface DraftLine {
   key: string;
   accountId: string;
   /**
-   * Which Detil Akun of `accountId` this line is posted to, or `""`.
+   * Which sub akun of `accountId` this line is posted to, or `""` for none.
    *
    * ASKED HERE TOO, not only on Transaksi Keuangan: a cost posted to Beban Gaji
-   * with no detil lands in the shared bucket of the laba rugi with nothing to
-   * say which lini should have carried it.
+   * with no sub akun lands under Belum Dipetakan on the laba rugi, with nothing
+   * to say which lini should have carried it. Empty is allowed — a manual entry
+   * can be exactly that kind of posting — but it is a choice, not an omission.
    */
-  allocationId: string;
+  subAccountId: string;
   debit: string;
   credit: string;
   memo: string;
@@ -131,7 +135,7 @@ function blankLine(): DraftLine {
   return {
     key: `line-${lineSeq}`,
     accountId: "",
-    allocationId: "",
+    subAccountId: "",
     debit: "",
     credit: "",
     memo: "",
@@ -245,12 +249,12 @@ export function JournalEntryCreateForm() {
   const byId = chart.byId;
 
   /*
-    THE DETIL COLUMN ONLY WHEN SOMETHING CAN BE MAPPED — CashLinesEditor's rule.
-    A column of dashes on every row of a tenant with no Detil Akun set up
+    THE SUB AKUN COLUMN ONLY WHEN SOMETHING CAN BE MAPPED — CashLinesEditor's
+    rule. A column of dashes on every row of a tenant with no sub akun set up
     teaches people to ignore the column.
   */
   const anyAccountMapped = postable.some(
-    (account) => allocationOptionsFor(account).length > 0,
+    (account) => subAccountOptionsFor(account, branchId).length > 0,
   );
 
   const totalDebit = useMemo(
@@ -418,8 +422,9 @@ export function JournalEntryCreateForm() {
         lines: lines.map((line) => ({
           accountId: line.accountId,
           // Omitted rather than sent as null when nothing was picked: the server
-          // defaults it, and an account with no rules has nothing to send.
-          ...(line.allocationId ? { allocationId: line.allocationId } : {}),
+          // reads it as Belum Dipetakan, and an account with no sub akun has
+          // nothing to send.
+          ...(line.subAccountId ? { subAccountId: line.subAccountId } : {}),
           // Only the side that carries a value is sent. Both keys default to
           // "0" on the server, so omitting one is how a credit-only line is
           // expressed — not a zero it then has to reject.
@@ -515,6 +520,19 @@ export function JournalEntryCreateForm() {
               error={fieldErrors.branch}
               onChange={(next) => {
                 setPickedBranch(next);
+                // A sub akun pinned to another branch is one the server would
+                // refuse here, so the lines drop what no longer fits instead of
+                // keeping a pick the picker no longer offers.
+                setLines((prev) =>
+                  prev.map((line) =>
+                    line.subAccountId &&
+                    !subAccountOptionsFor(byId.get(line.accountId), next).some(
+                      (option) => option.value === line.subAccountId,
+                    )
+                      ? { ...line, subAccountId: "" }
+                      : line,
+                  ),
+                );
                 setFieldErrors({});
               }}
             />
@@ -608,7 +626,7 @@ export function JournalEntryCreateForm() {
                 <TableRow>
                   <TableHead className="min-w-64">Akun</TableHead>
                   {anyAccountMapped && (
-                    <TableHead className="min-w-44">Detil</TableHead>
+                    <TableHead className="min-w-52">Sub akun</TableHead>
                   )}
                   <TableHead className="min-w-44">Keterangan</TableHead>
                   <TableHead className="min-w-36 text-right">Debit</TableHead>
@@ -622,8 +640,9 @@ export function JournalEntryCreateForm() {
                 {lines.map((line, index) => {
                   const key = `line.${line.key}`;
                   const row = index + 1;
-                  const detilOptions = allocationOptionsFor(
+                  const subOptions = subAccountOptionsFor(
                     byId.get(line.accountId),
+                    branchId,
                   );
                   const debitError = fieldErrors[`${key}.debit`];
                   const creditError = fieldErrors[`${key}.credit`];
@@ -652,16 +671,18 @@ export function JournalEntryCreateForm() {
                           disabled={saving}
                           options={accountOptions}
                           onChange={(value) => {
-                            // The detil is reset with the account — a rule id
-                            // belongs to one account — and pre-picked when there
-                            // is exactly one, as CashLinesEditor does.
-                            const options = allocationOptionsFor(
+                            // The sub akun is reset with the account — one
+                            // belongs to exactly one account — and pre-picked
+                            // when there is exactly one, as CashLinesEditor
+                            // does. "Belum dipetakan" stays one click away.
+                            const options = subAccountOptionsFor(
                               byId.get(value),
+                              branchId,
                             );
 
                             patchLine(line.key, {
                               accountId: value,
-                              allocationId:
+                              subAccountId:
                                 options.length === 1 ? options[0].value : "",
                             });
                           }}
@@ -678,7 +699,7 @@ export function JournalEntryCreateForm() {
 
                       {anyAccountMapped && (
                         <TableCell>
-                          {detilOptions.length === 0 ? (
+                          {subOptions.length === 0 ? (
                             <span className="mt-4 block text-sm text-muted">
                               —
                             </span>
@@ -686,14 +707,17 @@ export function JournalEntryCreateForm() {
                             <FilterSelect
                               layout="field"
                               label=""
-                              ariaLabel={`Detil akun baris ${row}`}
-                              value={line.allocationId}
+                              ariaLabel={`Sub akun baris ${row}`}
+                              value={line.subAccountId}
                               active={false}
-                              placeholder="Pilih detil…"
+                              placeholder={NO_SUB_ACCOUNT_LABEL}
                               disabled={saving}
-                              options={detilOptions}
+                              options={[
+                                { value: "", label: NO_SUB_ACCOUNT_LABEL },
+                                ...subOptions,
+                              ]}
                               onChange={(value) =>
-                                patchLine(line.key, { allocationId: value })
+                                patchLine(line.key, { subAccountId: value })
                               }
                             />
                           )}

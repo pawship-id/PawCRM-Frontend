@@ -308,10 +308,10 @@ export function useFinanceDashboard(
 
     journalEntryService
       /*
-        UNDIVIDED — `allocation` left off, the Laba Rugi screen's own default.
-        The shared costs stay in their own "Bersama (HQ)" column, which is a
-        fact; dividing them is a model somebody chose, and a landing page that
-        silently applied it would disagree with the report one click away.
+        `allocation` is not sent: the server always applies the Detil (Sub Akun)
+        rules (BO, 6 Oct 2026), exactly as the Laba Rugi screen does, so this
+        page and the report one click away agree. What no rule covers stays in
+        the "Belum Dipetakan" column.
       */
       .profitLoss({
         dateFrom: query.dateFrom || undefined,

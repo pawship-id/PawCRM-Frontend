@@ -85,6 +85,21 @@ describe("csvToTemplateWorkbook", () => {
     expect(sheet.M3.z).toBe("@");
   });
 
+  it("formats the five account code columns as text", async () => {
+    const csv = [
+      "sku,harga_jual,akun_penjualan,sub_akun_penjualan,akun_hpp,sub_akun_hpp,akun_persediaan",
+      "A,1000,4101,4101-01,5101,5101-01,1201",
+    ].join("\n");
+    const sheet = await readBack(await csvToTemplateWorkbook(csv));
+
+    expect(sheet.C2.z).toBe("@");
+    expect(sheet.D2.z).toBe("@");
+    expect(sheet.E2.z).toBe("@");
+    expect(sheet.F2.z).toBe("@");
+    expect(sheet.G2.z).toBe("@");
+    expect(sheet.C2.v).toBe("4101");
+  });
+
   it("formats an attr_ column as text, whatever it is called", async () => {
     const sheet = await readBack(await csvToTemplateWorkbook(TEMPLATE_CSV));
 

@@ -49,6 +49,11 @@ const COLUMNS = {
   kategori: "categoryName",
   satuan: "unit",
   harga_jual: "sellPrice",
+  akun_penjualan: "salesAccountCode",
+  sub_akun_penjualan: "salesSubAccountCode",
+  akun_hpp: "cogsAccountCode",
+  sub_akun_hpp: "cogsSubAccountCode",
+  akun_persediaan: "inventoryAccountCode",
   min_stock: "minStock",
   has_expiry: "hasExpiry",
   stok_awal: "openingQty",
@@ -76,6 +81,11 @@ type TextField = Extract<
   | "name"
   | "barcode"
   | "categoryName"
+  | "salesAccountCode"
+  | "salesSubAccountCode"
+  | "cogsAccountCode"
+  | "cogsSubAccountCode"
+  | "inventoryAccountCode"
   | "supplierBatchCode"
 >;
 

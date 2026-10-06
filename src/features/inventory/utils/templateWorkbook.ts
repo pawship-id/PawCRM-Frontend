@@ -32,6 +32,13 @@ const TEXT_COLUMNS = new Set([
   "sku",
   "barcode",
   "kode_batch_supplier",
+  // Account codes are identifiers, not quantities: `4101` as a number would lose
+  // a leading zero and `4101-01` is text anyway, so all five are kept as Text.
+  "akun_penjualan",
+  "sub_akun_penjualan",
+  "akun_hpp",
+  "sub_akun_hpp",
+  "akun_persediaan",
 ]);
 
 /** A real date column: Excel stores a serial, and the month is never ambiguous. */

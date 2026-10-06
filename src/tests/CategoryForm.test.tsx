@@ -4,10 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { CategoryForm } from "@/features/categories";
 import { categoryService } from "@/services/category.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
+import { subAccountService } from "@/services/subAccount.service";
 import { ApiError } from "@/services/api-error";
 import { TOP_LEVEL_ONLY } from "@/types/api";
 import type { Category, PageResult } from "@/types/api";
-import type { ChartOfAccount } from "@/types/accounting";
+import type { ChartOfAccount, SubAccount } from "@/types/accounting";
 import type { MediaAsset } from "@/types/inventory";
 
 const push = jest.fn();
@@ -703,6 +704,103 @@ describe("CategoryForm", () => {
       await waitFor(() => expect(create).toHaveBeenCalled());
       expect(create.mock.calls[0][0]).toMatchObject({
         salesAccountId: "a-income",
+      });
+    });
+
+    /*
+      SUB AKUN (Sub-Akun-Implementation-Plan §3.4). Asked for only once the chosen
+      account has active ones, REQUIRED then, and emptied when the account
+      changes — a sub akun belongs to exactly one account.
+    */
+    describe("sub akun", () => {
+      function subOf(accountId: string, id: string, code: string, name: string): SubAccount {
+        return {
+          _id: id,
+          accountId,
+          code,
+          name,
+          allocationType: "shared_overall",
+          businessLineId: null,
+          branchId: null,
+          isActive: true,
+        };
+      }
+
+      /** The picker, keyed on the account asked about. */
+      function mockPicker(byAccount: Record<string, SubAccount[]>) {
+        return jest
+          .spyOn(subAccountService, "pick")
+          .mockImplementation(async (query = {}) =>
+            byAccount[query.accountId ?? ""] ?? [],
+          );
+      }
+
+      it("asks the picker for the chosen account, and only shows it when there is one", async () => {
+        const pick = mockPicker({
+          "a-income": [subOf("a-income", "s1", "4103-01", "Treats - Retail")],
+        });
+        mockCategoryLists();
+        render(<CategoryForm />);
+
+        // No account chosen, nothing to ask.
+        expect(screen.queryByText(/Sub akun penjualan/)).not.toBeInTheDocument();
+
+        await pickAccount(/^akun penjualan/i, /4103/);
+
+        expect(
+          await screen.findByRole("combobox", { name: /sub akun penjualan/i }),
+        ).toBeInTheDocument();
+        expect(pick).toHaveBeenCalledWith({ accountId: "a-income", isActive: true });
+      });
+
+      it("refuses to save while a required sub akun is missing, then sends the pick", async () => {
+        mockPicker({
+          "a-income": [subOf("a-income", "s1", "4103-01", "Treats - Retail")],
+        });
+        const create = jest
+          .spyOn(categoryService, "create")
+          .mockResolvedValue(makeCategory());
+        mockCategoryLists();
+        render(<CategoryForm />);
+
+        await userEvent.type(nameField(), "Treats");
+        await pickAccount(/^akun penjualan/i, /4103/);
+        await screen.findByRole("combobox", { name: /sub akun penjualan/i });
+        await submit(/buat kategori/i);
+
+        expect(await screen.findByText("Pilih sub akun penjualan.")).toBeInTheDocument();
+        expect(create).not.toHaveBeenCalled();
+
+        await pickAccount(/sub akun penjualan/i, /4103-01 · Treats - Retail/);
+        await submit(/buat kategori/i);
+
+        await waitFor(() => expect(create).toHaveBeenCalled());
+        expect(create.mock.calls[0][0]).toMatchObject({
+          salesAccountId: "a-income",
+          salesSubAccountId: "s1",
+        });
+      });
+
+      it("empties the sub akun when the account goes back to the default", async () => {
+        mockPicker({
+          "a-income": [subOf("a-income", "s1", "4103-01", "Treats - Retail")],
+        });
+        const update = jest
+          .spyOn(categoryService, "update")
+          .mockResolvedValue(makeCategory());
+        await renderEdit(
+          makeCategory({ salesAccountId: "a-income", salesSubAccountId: "s1" }),
+        );
+
+        await pickAccount(/^akun penjualan/i, /akun bawaan/i);
+        await submit(/simpan kategori/i);
+
+        await waitFor(() => expect(update).toHaveBeenCalled());
+        // Both cleared together: a sub akun cannot outlive its account.
+        expect(update.mock.calls[0][1]).toEqual({
+          salesAccountId: null,
+          salesSubAccountId: null,
+        });
       });
     });
 

@@ -41,7 +41,7 @@ export const CASH_ACCOUNT_CATEGORY = "cash_bank" as const;
 
 
 /** The bucket a P&L line with no business line falls into. */
-export const SHARED_LINE_LABEL = "Bersama (HQ)";
+export const SHARED_LINE_LABEL = "Belum Dipetakan";
 
 /**
  * The filter value that means "only the lines with no business line on them".
@@ -77,15 +77,6 @@ export interface FinanceQuery {
   branchId: string;
   /** `""` = every line, which is when `byBusinessLine` is worth reading. */
   businessLineId: string;
-  /**
-   * Laba rugi only: divide the shared costs across the lines using the
-   * allocation rules on each account.
-   *
-   * OFF BY DEFAULT. The undivided report is the one every previous month was
-   * read as, so it stays the thing the screen opens on and the toggle is how
-   * somebody asks the other question.
-   */
-  allocation?: boolean;
 }
 
 /* ------------------------------------------------------------------ helpers */
