@@ -15,6 +15,12 @@ import type {
 
 import { FULL_REACH_USER, renderWithAuth } from "./helpers/renderWithAuth";
 
+/** The detail dialog sends the reader to the product's stock card; the push is what is checked. */
+const push = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: (href: string) => push(href) }),
+}));
+
 /**
  * Batch & Expired, against mocked services.
  *
@@ -408,6 +414,59 @@ describe("BatchesScreen", () => {
     expect(within(table).getByText("Whiskas Adult 1.2kg")).toBeInTheDocument();
     expect(within(table).getByText("WSK-12")).toBeInTheDocument();
     expect(within(table).getByText("Gudang Pusat")).toBeInTheDocument();
+  });
+
+  // A row opens the same lot dialog the stock card uses: expiry, stock, value, cabang and where it came from.
+  describe("the detail of a lot", () => {
+    const open = async (user: ReturnType<typeof userEvent.setup>) => {
+      const table = await screen.findByRole("table");
+      await waitFor(() =>
+        expect(within(table).getByText("Cabang Timur")).toBeInTheDocument(),
+      );
+      await user.click(within(table).getByText("WSK-B26-0512").closest("tr") as HTMLElement);
+      return screen.findByRole("dialog");
+    };
+
+    it("opens on a click, with the lot's expiry, stock, value and cabang", async () => {
+      mockAll(
+        [lot({ supplierBatchCode: "SUP-77", expiryDate: "2028-09-15T00:00:00.000Z" })],
+        [{ ...warehouse(), defaultBranchId: BRANCH }],
+      );
+      const user = userEvent.setup();
+      renderWithAuth(<BatchesScreen />);
+
+      const dialog = await open(user);
+
+      expect(within(dialog).getByText("Detail batch")).toBeInTheDocument();
+      expect(within(dialog).getByText("SUP-77")).toBeInTheDocument();
+      expect(within(dialog).getByText(/15 September 2028/)).toBeInTheDocument();
+      // 4 left × 118.500.
+      expect(within(dialog).getByText("Rp 474.000")).toBeInTheDocument();
+      expect(within(dialog).getByText("Cabang Timur")).toBeInTheDocument();
+    });
+
+    it("does not open when the label link inside the row is used", async () => {
+      mockAll([lot()], [{ ...warehouse(), defaultBranchId: BRANCH }]);
+      const user = userEvent.setup();
+      renderWithAuth(<BatchesScreen />);
+
+      await user.click(await screen.findByRole("link", { name: "Cetak label" }));
+
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("takes the reader to the product's stock card from the dialog", async () => {
+      mockAll([lot()], [{ ...warehouse(), defaultBranchId: BRANCH }]);
+      const user = userEvent.setup();
+      renderWithAuth(<BatchesScreen />);
+
+      const dialog = await open(user);
+      await user.click(within(dialog).getByRole("button", { name: "Buka kartu stok produk ini" }));
+
+      expect(push).toHaveBeenCalledWith(
+        `/dashboard/inventory/stock-card/p1?warehouseId=${WAREHOUSE}`,
+      );
+    });
   });
 
   it("names the branch its warehouse belongs to", async () => {

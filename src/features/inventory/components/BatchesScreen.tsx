@@ -1,9 +1,11 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 import { Alert, Spinner } from "@/components";
 import { cn } from "@/lib/utils";
+import type { ProductBatch } from "@/types/inventory";
 import { formatMoney } from "@/utils/decimal";
 
 import {
@@ -16,6 +18,7 @@ import { useBranchOptions } from "../hooks/useBranchOptions";
 import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
 import { BatchesTable } from "./BatchesTable";
 import { BatchesToolbar } from "./BatchesToolbar";
+import { BatchDetailDialog } from "./StockDetailDialogs";
 
 /**
  * Every lot across the catalogue, ordered by how soon it expires.
@@ -58,6 +61,10 @@ export function BatchesScreen() {
     refreshKey,
   );
   const list = useBatches(query, page, refreshKey);
+
+  /** The lot on show, and where its history is read. */
+  const [openBatch, setOpenBatch] = useState<ProductBatch | null>(null);
+  const router = useRouter();
 
   /**
    * Which shop a lot sits in.
@@ -181,8 +188,23 @@ export function BatchesScreen() {
           total={list.pagination.total}
           search={query.search}
           onPageChange={setPage}
+          onSelect={setOpenBatch}
         />
       )}
+
+      {/* The same dialog the stock card opens for a lot — one component, so the two screens cannot drift. */}
+      <BatchDetailDialog
+        batch={openBatch}
+        productName={openBatch?.productName ?? null}
+        branchName={openBatch ? branchOf(openBatch.warehouseId) : null}
+        onClose={() => setOpenBatch(null)}
+        movementsLabel="Buka kartu stok produk ini"
+        onShowMovements={(lot) =>
+          router.push(
+            `/dashboard/inventory/stock-card/${lot.productId}?warehouseId=${lot.warehouseId}`,
+          )
+        }
+      />
     </div>
   );
 }

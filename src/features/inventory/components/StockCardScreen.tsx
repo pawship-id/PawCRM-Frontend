@@ -14,6 +14,7 @@ import { usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { stockMovementService } from "@/services/stockMovement.service";
+import type { ProductBatch, StockMovement } from "@/types/inventory";
 import {
   absDecimal,
   formatMoney,
@@ -33,7 +34,9 @@ import { csvToXlsx, saveBlob } from "@/utils/xlsx";
 
 import { useStockCardSummary } from "../hooks/useStockCardSummary";
 import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
+import { useBranchOptions } from "../hooks/useBranchOptions";
 import { BatchLotTable } from "./BatchLotTable";
+import { BatchDetailDialog, MovementDetailDialog } from "./StockDetailDialogs";
 import { StockCardFilters } from "./StockCardFilters";
 import { StockLedgerTable } from "./StockLedgerTable";
 
@@ -235,6 +238,24 @@ export function StockCardScreen({
     NO_REFRESH,
     filters.search,
   );
+
+  /**
+   * THE ROW ON SHOW. One at a time, and a dialog rather than a route: both lists
+   * are already loaded for this warehouse, so the detail is read from them and
+   * the reader keeps their page, filters and tab when they close it.
+   */
+  const [openMovement, setOpenMovement] = useState<StockMovement | null>(null);
+  const [openLot, setOpenLot] = useState<ProductBatch | null>(null);
+
+  // Branch NAMES for the detail. `branches:read` is its own grant and this fails
+  // softly: without it the cabang simply reads "—" instead of a name.
+  const branches = useBranchOptions();
+  const branchName = useCallback(
+    (id: string | null | undefined) =>
+      id ? (branches.branches.find((branch) => branch._id === id)?.name ?? null) : null,
+    [branches.branches],
+  );
+  const warehouse = warehouses.warehouses.find((row) => row._id === warehouseId);
 
   /** Any filter change is a new question, so it starts at page 1. */
   const patchFilters = useCallback((patch: Partial<LedgerFilters>) => {
@@ -513,6 +534,7 @@ export function StockCardScreen({
                       total={ledger.pagination.total}
                       filtered={filtered}
                       onPageChange={setPage}
+                      onSelect={setOpenMovement}
                     />
                   )}
                 </>
@@ -531,6 +553,7 @@ export function StockCardScreen({
                       total={batches.total}
                       hasExpiry={product?.hasExpiry ?? false}
                       search={filters.search}
+                      onSelect={setOpenLot}
                     />
                   )}
                 </>
@@ -539,6 +562,41 @@ export function StockCardScreen({
           </div>
         </>
       )}
+
+      <MovementDetailDialog
+        movement={openMovement}
+        unit={product?.unit ?? ""}
+        productName={product?.name ?? null}
+        warehouseName={warehouse?.name ?? null}
+        branchName={branchName(openMovement?.branchId ?? warehouse?.defaultBranchId)}
+        batch={
+          openMovement?.batchId
+            ? batches.batches.find((batch) => batch._id === openMovement.batchId)
+            : undefined
+        }
+        onClose={() => setOpenMovement(null)}
+        onShowLot={
+          mayReadBatches
+            ? (lot) => {
+                setOpenMovement(null);
+                setOpenLot(lot);
+              }
+            : undefined
+        }
+      />
+
+      <BatchDetailDialog
+        batch={openLot}
+        productName={product?.name ?? null}
+        branchName={branchName(warehouse?.defaultBranchId)}
+        onClose={() => setOpenLot(null)}
+        onShowMovements={(lot) => {
+          // The ledger's search matches a lot code, so this is the lot's own history.
+          patchFilters({ search: lot.batchCode });
+          setTab("ledger");
+          setOpenLot(null);
+        }}
+      />
     </div>
   );
 }
