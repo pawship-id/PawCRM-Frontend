@@ -7,7 +7,6 @@ import {
   ServiceForm,
 } from "@/features/services";
 import { serviceService } from "@/services/service.service";
-import { businessLineService } from "@/services/businessLine.service";
 import { branchService } from "@/services/branch.service";
 import { ApiError } from "@/services/api-error";
 import { petOptionService } from "@/services/petOption.service";
@@ -35,7 +34,6 @@ import {
 } from "./helpers/serviceSteps";
 
 jest.mock("@/services/service.service");
-jest.mock("@/services/businessLine.service");
 jest.mock("@/services/branch.service");
 // The variant rows are the tenant's species, sizes and coats.
 jest.mock("@/services/petOption.service");
@@ -79,12 +77,8 @@ jest.mock("next/navigation", () => ({
 const mockedServiceService = serviceService as jest.Mocked<
   typeof serviceService
 >;
-const mockedBusinessLineService = businessLineService as jest.Mocked<
-  typeof businessLineService
->;
 const mockedBranchService = branchService as jest.Mocked<typeof branchService>;
 
-const LINE_ID = "5a7f1f77bcf86cd799439077";
 const SERVICE_ID = "5a7f1f77bcf86cd799439099";
 const ADDON_ID = "5a7f1f77bcf86cd7994390aa";
 const BRANCH_ID = "5a7f1f77bcf86cd7994390bb";
@@ -95,7 +89,6 @@ const serviceFixture: Service = {
   name: "Grooming Full Service",
   code: "GRM-FULL",
   image: null,
-  businessLineId: LINE_ID,
   salesAccountId: null,
   categoryId: null,
   price: "150000.0000",
@@ -143,21 +136,6 @@ beforeEach(() => {
     serviceStepService.list,
     SERVICE_STEP_FIXTURES,
   );
-  mockedBusinessLineService.list.mockResolvedValue({
-    items: [
-      {
-        _id: LINE_ID,
-        tenantId: "507f1f77bcf86cd799439011",
-        name: "Grooming",
-        color: "#1E3A6B",
-        deletedAt: null,
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-01-01T00:00:00.000Z",
-      },
-    ],
-    pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } as any);
   mockedBranchService.list.mockResolvedValue({
     items: [
       {
@@ -212,7 +190,7 @@ async function renderNew() {
   openedFrom("grooming");
   renderWithAuth(<ServiceForm />);
   await waitFor(() =>
-    expect(mockedBusinessLineService.list).toHaveBeenCalled(),
+    expect(mockedBranchService.list).toHaveBeenCalled(),
   );
 }
 
@@ -223,7 +201,7 @@ async function renderNew() {
 async function renderPlain(kind?: string) {
   renderWithAuth(<ServiceForm />);
   await waitFor(() =>
-    expect(mockedBusinessLineService.list).toHaveBeenCalled(),
+    expect(mockedBranchService.list).toHaveBeenCalled(),
   );
   if (kind) {
     await userEvent.click(screen.getByRole("combobox", { name: /kelompok layanan/i }));
@@ -231,19 +209,10 @@ async function renderPlain(kind?: string) {
   }
 }
 
-/** Picks a business line by name. */
-async function pickLine(label = "Grooming") {
-  await userEvent.click(
-    screen.getByRole("button", { name: /pilih lini bisnis/i }),
-  );
-  await userEvent.click(await screen.findByRole("option", { name: label }));
-}
-
-/** Name, code, line, duration — everything a create needs but the price. */
+/** Name, code, duration — everything a create needs but the price. */
 async function fillRequiredExceptPrice(name = "Grooming") {
   await userEvent.type(screen.getByLabelText(/nama layanan/i), name);
   await userEvent.type(screen.getByLabelText(/^kode/i), "GRM-FULL");
-  await pickLine();
   await userEvent.type(screen.getByLabelText(/durasi/i), "90");
 }
 
@@ -256,14 +225,13 @@ async function addSessions(...names: string[]) {
 }
 
 describe("ServiceForm — creating", () => {
-  it("refuses to submit without a name, a code, a line and a price", async () => {
+  it("refuses to submit without a name, a code and a price", async () => {
     await renderNew();
 
     await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
 
     expect(await screen.findByText(/nama layanan wajib diisi/i)).toBeVisible();
     expect(screen.getByText(/kode wajib diisi/i)).toBeVisible();
-    expect(screen.getByText(/pilih lini bisnisnya dulu/i)).toBeVisible();
     expect(screen.getByText(/harga wajib diisi/i)).toBeVisible();
     expect(mockedServiceService.create).not.toHaveBeenCalled();
   });
@@ -587,17 +555,20 @@ describe("ServiceForm — variant pricing", () => {
     );
   });
 
-  it("asks Jenis layanan, then Kelompok layanan, then Lini bisnis when opened with no origin (22 September 2026)", async () => {
+  it("asks Jenis layanan, then Kelompok layanan, and no Lini bisnis, when opened with no origin", async () => {
     await renderPlain();
 
     const jenis = screen.getByRole("combobox", { name: /jenis layanan/i });
     const kelompok = screen.getByRole("combobox", { name: /kelompok layanan/i });
-    const lini = screen.getByRole("button", { name: /pilih lini bisnis/i });
     const follows = (a: Element, b: Element) =>
       Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
 
     expect(follows(jenis, kelompok)).toBe(true);
-    expect(follows(kelompok, lini)).toBe(true);
+    // A service has no lini of its own (6 Okt 2026): it is the lini of the sales
+    // sub akun it is booked to, and that is asked for under Akun penjualan.
+    expect(
+      screen.queryByRole("button", { name: /pilih lini bisnis/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("titles a form from Antar-Jemput Layanan Antar-Jemput baru", async () => {
@@ -612,7 +583,7 @@ describe("ServiceForm — variant pricing", () => {
     mockedServiceService.create.mockResolvedValue(serviceFixture);
     openedFrom("pickup-delivery");
     renderWithAuth(<ServiceForm />);
-    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+    await waitFor(() => expect(mockedBranchService.list).toHaveBeenCalled());
 
     await fillRequiredExceptPrice();
     await userEvent.type(priceBox(), "45000");
@@ -628,17 +599,23 @@ describe("ServiceForm — variant pricing", () => {
     );
   });
 
-  it("starts with no business line, whichever module opened it", async () => {
+  it("sends no business line at all — a service has none of its own", async () => {
+    mockedServiceService.create.mockResolvedValue(serviceFixture);
     await renderNew();
 
-    expect(screen.getByRole("button", { name: /pilih lini bisnis/i })).toHaveTextContent(
-      /pilih lini bisnis/i,
+    await fillRequiredExceptPrice();
+    await userEvent.type(priceBox(), "150000");
+    await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
+
+    await waitFor(() => expect(mockedServiceService.create).toHaveBeenCalled());
+    expect(mockedServiceService.create.mock.calls[0][0]).not.toHaveProperty(
+      "businessLineId",
     );
   });
 
   it("asks for a Kelompok layanan when nothing pre-chose one", async () => {
     renderWithAuth(<ServiceForm />);
-    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+    await waitFor(() => expect(mockedBranchService.list).toHaveBeenCalled());
 
     await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
 
@@ -1053,7 +1030,7 @@ describe("ServiceForm — add-ons", () => {
     mockedServiceService.create.mockResolvedValue(addonFixture);
     openedFromAddon();
     renderWithAuth(<ServiceForm />);
-    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+    await waitFor(() => expect(mockedBranchService.list).toHaveBeenCalled());
 
     await fillRequiredExceptPrice();
     await userEvent.type(priceBox(), "25000");
@@ -1075,7 +1052,7 @@ describe("ServiceForm — add-ons", () => {
     mockedServiceService.create.mockResolvedValue(addonFixture);
     openedFromAddon();
     renderWithAuth(<ServiceForm />);
-    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+    await waitFor(() => expect(mockedBranchService.list).toHaveBeenCalled());
 
     await fillRequiredExceptPrice();
     await userEvent.type(priceBox(), "25000");
@@ -1127,7 +1104,7 @@ describe("ServiceForm — add-ons", () => {
     mockedServiceService.create.mockResolvedValue(addonFixture);
     openedFromAddon();
     renderWithAuth(<ServiceForm />);
-    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+    await waitFor(() => expect(mockedBranchService.list).toHaveBeenCalled());
 
     expect(
       screen.queryByRole("combobox", { name: /jenis layanan/i }),
@@ -1157,7 +1134,7 @@ describe("ServiceForm — add-ons", () => {
   it("goes back to Master › Layanan › Add-on on Batal when opened from there", async () => {
     openedFromAddon();
     renderWithAuth(<ServiceForm />);
-    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+    await waitFor(() => expect(mockedBranchService.list).toHaveBeenCalled());
 
     await userEvent.click(screen.getByRole("button", { name: "Batal" }));
 
@@ -1245,7 +1222,7 @@ describe("ServiceForm — tahapan from the list", () => {
 
   it("offers the whole list before any Kelompok layanan is chosen (22 September 2026)", async () => {
     renderWithAuth(<ServiceForm />);
-    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+    await waitFor(() => expect(mockedBranchService.list).toHaveBeenCalled());
 
     expect(tahapanButton()).toBeEnabled();
     await userEvent.click(tahapanButton());
@@ -1311,7 +1288,6 @@ describe("ServiceForm — tahapan from the list", () => {
       );
     await renderNew();
 
-    await pickLine();
     await userEvent.click(tahapanButton());
     await userEvent.type(await screen.findByLabelText("Cari tahapan"), "potong kuku");
     await userEvent.click(
@@ -1336,7 +1312,6 @@ describe("ServiceForm — tahapan from the list", () => {
       .mockRejectedValue(new ApiError("Service step already exists", 409));
     await renderNew();
 
-    await pickLine();
     await userEvent.click(tahapanButton());
     await userEvent.type(await screen.findByLabelText("Cari tahapan"), "Spa");
     await userEvent.click(
@@ -1357,9 +1332,8 @@ describe("ServiceForm — tahapan from the list", () => {
       isSuperAdmin: false,
       permissions: [{ feature: "services", actions: ["read", "create"] }],
     });
-    await waitFor(() => expect(mockedBusinessLineService.list).toHaveBeenCalled());
+    await waitFor(() => expect(mockedBranchService.list).toHaveBeenCalled());
 
-    await pickLine();
     await userEvent.click(tahapanButton());
     await userEvent.type(await screen.findByLabelText("Cari tahapan"), "Spa");
 
@@ -1508,7 +1482,6 @@ describe("ServiceForm — commission weights per tahapan", () => {
   it("fills whole per cents that add up to 100 with Bagi rata", async () => {
     await renderNew();
 
-    await pickLine();
     await addSessions("Mandi", "Gunting", "Blow dry");
     await userEvent.click(screen.getByRole("button", { name: "Bagi rata" }));
 
@@ -1653,7 +1626,6 @@ describe("ServiceForm — editing", () => {
       tenantId: "507f1f77bcf86cd799439011",
       name: "Mandi",
       code: null,
-      businessLineId: LINE_ID,
       price: "90000.0000",
       durationMin: 60,
       description: null,
@@ -1714,12 +1686,6 @@ describe("ServiceForm — editing", () => {
 
     await userEvent.type(screen.getByLabelText(/nama layanan/i), "Grooming");
     await userEvent.type(screen.getByLabelText(/^kode/i), "GRM-FULL");
-    await userEvent.click(
-      screen.getByRole("button", { name: /pilih lini bisnis/i }),
-    );
-    await userEvent.click(
-      await screen.findByRole("option", { name: "Grooming" }),
-    );
     await userEvent.type(priceBox(), "150000");
     await userEvent.click(screen.getByRole("button", { name: /buat layanan/i }));
 

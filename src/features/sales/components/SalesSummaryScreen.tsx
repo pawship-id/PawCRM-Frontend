@@ -48,7 +48,10 @@ const SHARE = new Intl.NumberFormat("id-ID", {
  *
  * THREE BREAKDOWNS, ALL REAL, AND TWO OF THEM COUNT DIFFERENT THINGS. Kategori
  * produk and Lini usaha are read off the invoice LINES, joined to the catalogue
- * row each line sold — including the till's basket, which a `pos_bridge` invoice
+ * row each line sold. The lini is read from the sales sub akun + rule SNAPSHOT the
+ * line stored when it was sold (6 Okt 2026), so a later change of mapping cannot
+ * move it; only a legacy line without one still follows the catalogue. This
+ * includes the till's basket, which a `pos_bridge` invoice
  * keeps on its `posTransactions` document rather than in its own `items`.
  * Kategori pelanggan is read off the INVOICE, whose customer carries the
  * category, so it needs no allocation and sums to the Omzet card exactly. EVERY
@@ -183,8 +186,11 @@ const SOURCES: Record<
   businessLine: {
     source: (
       <>
-        Dikelompokkan dari <b>Lini usaha</b> yang menempel di master produk dan
-        layanan — daftarnya di{" "}
+        Dikelompokkan dari <b>Lini usaha</b> menurut pemetaan{" "}
+        <b>sub akun penjualan saat transaksi</b> (aturan di Daftar Akun). Mengubah
+        pemetaan hanya berlaku untuk penjualan baru; penjualan yang sudah tercatat
+        tidak bergeser. Baris tanpa sub akun berlini dicatat sebagai belum dipetakan.
+        Daftar lininya di{" "}
         <Link
           href={SETTINGS_PATHS.liniBisnis}
           className="text-primary underline-offset-2 hover:underline"
@@ -194,7 +200,7 @@ const SOURCES: Record<
         , dibaca per baris faktur.
       </>
     ),
-    unnamed: "Tanpa lini usaha",
+    unnamed: "Belum Dipetakan",
     empty:
       "Belum ada baris terjual pada cabang dan periode ini. Ubah lewat tombol Filter.",
   },

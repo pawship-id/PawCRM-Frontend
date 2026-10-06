@@ -314,19 +314,22 @@ add-on vanished would offer a tick that silently adds nothing to the sale.
 
 ---
 
-## Business line is required, and it is not decoration
+## A service has no business line (6 October 2026)
 
-Every journal line a POS sale writes is tagged `businessLineId`, so the P&L can be split
-per line. That split is the entire reason `4102 Penjualan Jasa` is one account rather than
-three.
+It used to be required, and every journal line a POS sale wrote was tagged with it. A
+service has no lini of its own any more, the same day a product lost its own: the lini of
+its sales is the `direct` rule of the **sub akun** its revenue is booked to, chosen under
+*Akun penjualan* on the form, which says so beneath the field.
 
-The options are **fetched**, unlike pet species which are a closed enum — a tenant names
-its own lines, so a hardcoded list would show the wrong words for every tenant that did not
-call theirs "Grooming". Capped at the API's 100-per-page limit, the same ceiling
-`PetOwnerField` documents.
+What the form no longer does: fetch the tenant's lines, ask for one, or send
+`businessLineId`. A tab opened before the change that still sends it is not refused — the
+server drops the field.
 
-Unlike a pet's owner, `businessLineId` **is editable**: moving a service between lines
-re-tags nothing historical, because journal lines carry the id they were posted with.
+What else moved with it: a booking's `service.serviceType` snapshot is now the **kelompok
+layanan's name** ("Grooming", "Hotel", "Antar-Jemput"); a commission's Lini Usaha is read
+off the service's sales sub akun; Ringkasan's "Omzet per layanan" places service lines the
+way it places product lines. See `PawCRM-Backend/docs/deployment.md` for the cleanup seed
+(`seed:service-line-cleanup`) and why `seed:service-kinds` must run first.
 
 ---
 

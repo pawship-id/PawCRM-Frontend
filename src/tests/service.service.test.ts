@@ -30,7 +30,6 @@ import type { ServiceListQuery } from "@/types/api";
 const EVERY_FILTER: Required<ServiceListQuery> = {
   page: 2,
   limit: 20,
-  businessLineId: "5a7f1f77bcf86cd799439077",
   categoryId: "5a7f1f77bcf86cd799439088",
   serviceType: "addon",
   serviceKind: "grooming",

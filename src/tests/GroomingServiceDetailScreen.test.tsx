@@ -85,7 +85,6 @@ const SERVICE = {
   name: "Express Wash",
   code: "GRM-01",
   image: null,
-  businessLineId: "bl-grooming",
   serviceKind: "grooming",
   salesAccountId: null,
   categoryId: null,
