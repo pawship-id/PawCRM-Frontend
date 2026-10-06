@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { History, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Alert, ConfirmDialog, FilterSelect } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
@@ -33,6 +34,7 @@ import {
   blankAllocation,
   type TenantShape,
 } from "../allocationLabels";
+import { SubAccountRemapDialog } from "./SubAccountRemapDialog";
 
 /** Backend caps — SUB_CODE_MAX_LENGTH and ALLOCATION_NAME_MAX_LENGTH. */
 const CODE_MAX_LENGTH = 30;
@@ -108,6 +110,25 @@ export function SubAccountPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState<SubAccount | null>(null);
+  // "Terapkan ke data lama": the dialog offered when an edit moves the rule
+  // (`save`, nothing persisted yet) or opened from the row action (`standalone`).
+  const [remap, setRemap] = useState<
+    | {
+        mode: "save";
+        sub: SubAccount;
+        code: string;
+        patch: Partial<SubAccountInput>;
+        rule: {
+          allocationType: AllocationType;
+          businessLineId: string | null;
+          branchId: string | null;
+        };
+      }
+    | { mode: "standalone"; sub: SubAccount }
+    | null
+  >(null);
+  const { can } = usePermissions();
+  const canRemap = can("chartOfAccounts", "remapHistory");
 
   const choices = allocationChoices(shape);
   const lineNames = new Map(businessLines.map((line) => [line._id, line.name]));
@@ -215,6 +236,27 @@ export function SubAccountPanel({
               (patch as Record<string, unknown>)[key] = next[key];
             }
           });
+        }
+        // A moved rule (type, line or branch) asks first whether the old data
+        // follows: the dialog saves it, so nothing is sent from here.
+        if (
+          saved &&
+          ("allocationType" in patch ||
+            "businessLineId" in patch ||
+            "branchId" in patch)
+        ) {
+          setRemap({
+            mode: "save",
+            sub: saved,
+            code,
+            patch,
+            rule: {
+              allocationType: next.allocationType,
+              businessLineId: next.businessLineId,
+              branchId: next.branchId,
+            },
+          });
+          return;
         }
         if (Object.keys(patch).length > 0) {
           await subAccountService.update(account._id, draft.id, patch);
@@ -419,7 +461,7 @@ export function SubAccountPanel({
                 <TableHead className="min-w-44">Lini usaha</TableHead>
                 <TableHead className="min-w-48">Cabang</TableHead>
                 <TableHead className="w-24">Aktif</TableHead>
-                {editable && <TableHead className="w-28" />}
+                {(editable || canRemap) && <TableHead className="w-28" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -476,27 +518,43 @@ export function SubAccountPanel({
                         {sub.isActive ? "Aktif" : "Nonaktif"}
                       </span>
                     </TableCell>
-                    {editable && (
+                    {(editable || canRemap) && (
                       <TableCell className="px-4 py-2.5">
                         <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy || draft !== null}
-                            aria-label={`Ubah sub akun ${sub.code}`}
-                            onClick={() => startEdit(sub)}
-                          >
-                            <Pencil className="size-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            disabled={busy || draft !== null}
-                            aria-label={`Hapus sub akun ${sub.code}`}
-                            onClick={() => setRemoving(sub)}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
+                          {editable && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={busy || draft !== null}
+                              aria-label={`Ubah sub akun ${sub.code}`}
+                              onClick={() => startEdit(sub)}
+                            >
+                              <Pencil className="size-4" />
+                            </Button>
+                          )}
+                          {canRemap && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={busy || draft !== null}
+                              aria-label={`Terapkan ke data lama ${sub.code}`}
+                              title="Terapkan ke data lama…"
+                              onClick={() => setRemap({ mode: "standalone", sub })}
+                            >
+                              <History className="size-4" />
+                            </Button>
+                          )}
+                          {editable && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={busy || draft !== null}
+                              aria-label={`Hapus sub akun ${sub.code}`}
+                              onClick={() => setRemoving(sub)}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     )}
@@ -513,6 +571,17 @@ export function SubAccountPanel({
             </TableBody>
           </Table>
         </div>
+      )}
+
+      {/* Foto aturan (6 Okt 2026): every transaction keeps the rule it was
+          recorded under, so editing one here only reaches what is recorded
+          next. Said where the edit happens; applying it to old data is the dialog
+          offered on Simpan (SubAccountRemapDialog), not this text. */}
+      {draft && draft.id !== null && (
+        <p className="text-xs text-muted">
+          Perubahan berlaku untuk transaksi yang dicatat setelah ini. Transaksi
+          lama tetap memakai aturan saat dicatat.
+        </p>
       )}
 
       {/* The hint for whatever types this tenant can actually pick — three
@@ -549,6 +618,34 @@ export function SubAccountPanel({
           Tutup
         </Button>
       </div>
+
+      {remap && (
+        <SubAccountRemapDialog
+          accountId={account._id}
+          sub={remap.sub}
+          mode={remap.mode}
+          proposedRule={remap.mode === "save" ? remap.rule : undefined}
+          canRemap={canRemap}
+          onPersist={
+            remap.mode === "save"
+              ? async () => {
+                  await subAccountService.update(
+                    account._id,
+                    remap.sub._id,
+                    remap.patch,
+                  );
+                  swalToast(`Sub akun ${remap.code} diperbarui.`);
+                }
+              : undefined
+          }
+          onDone={() => {
+            setRemap(null);
+            setDraft(null);
+            onSaved();
+          }}
+          onCancel={() => setRemap(null)}
+        />
+      )}
 
       {removing && (
         <ConfirmDialog

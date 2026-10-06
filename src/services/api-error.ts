@@ -18,6 +18,12 @@ export class ApiError extends Error {
    * joins them for the common case.
    */
   readonly reason?: string;
+  /**
+   * A machine-readable payload some refusals carry (a 409 whose client must act
+   * on numbers — e.g. `{ current }` of "Terapkan ke data lama"). Untyped on
+   * purpose: the caller that knows the endpoint narrows it.
+   */
+  readonly data?: unknown;
   /** True when the request never reached the server (offline, DNS, CORS). */
   readonly isNetworkError: boolean;
 
@@ -27,6 +33,7 @@ export class ApiError extends Error {
     options: {
       details?: ValidationDetail[];
       reason?: string;
+      data?: unknown;
       isNetworkError?: boolean;
     } = {},
   ) {
@@ -35,6 +42,7 @@ export class ApiError extends Error {
     this.status = status;
     this.details = options.details;
     this.reason = options.reason;
+    this.data = options.data;
     this.isNetworkError = options.isNetworkError ?? false;
   }
 

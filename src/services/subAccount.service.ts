@@ -1,5 +1,8 @@
 import { apiClient } from "./api-client";
 import type {
+  RemapApplyResult,
+  RemapPeriod,
+  RemapSummary,
   SubAccount,
   SubAccountInput,
   SubAccountRemoval,
@@ -77,5 +80,29 @@ export const subAccountService = {
   remove: (accountId: string, subId: string) =>
     apiClient.delete<SubAccountRemoval>(
       `/chart-of-accounts/${accountId}/sub-accounts/${subId}`,
+    ),
+
+  /**
+   * POST .../history/preview — what "Terapkan ke data lama" would move. Writes
+   * nothing. Needs `chartOfAccounts:remapHistory`.
+   */
+  remapPreview: (accountId: string, subId: string, body: RemapPeriod) =>
+    apiClient.post<RemapSummary>(
+      `/chart-of-accounts/${accountId}/sub-accounts/${subId}/history/preview`,
+      body,
+    ),
+
+  /**
+   * POST .../history/apply — recomputes on the server and refuses with a 409
+   * (`ApiError.data.current` = the fresh numbers) when `expected` is stale.
+   */
+  remapApply: (
+    accountId: string,
+    subId: string,
+    body: RemapPeriod & { expected: { lines: number; amount: string } },
+  ) =>
+    apiClient.post<RemapApplyResult>(
+      `/chart-of-accounts/${accountId}/sub-accounts/${subId}/history/apply`,
+      body,
     ),
 };

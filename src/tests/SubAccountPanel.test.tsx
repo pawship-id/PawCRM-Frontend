@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import Swal from "sweetalert2";
 
@@ -6,7 +6,9 @@ import { SubAccountPanel } from "@/features/accounting/components/SubAccountPane
 import { tenantShape } from "@/features/accounting/allocationLabels";
 import { ApiError } from "@/services/api-error";
 import { subAccountService } from "@/services/subAccount.service";
-import type { ChartOfAccount, SubAccount } from "@/types/accounting";
+import type { ChartOfAccount, RemapSummary, SubAccount } from "@/types/accounting";
+
+import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("sweetalert2", () => ({
   __esModule: true,
@@ -65,12 +67,12 @@ function account(subAccounts: SubAccount[]): ChartOfAccount {
 
 function renderPanel(
   subAccounts: SubAccount[],
-  props: { editable?: boolean } = {},
+  props: { editable?: boolean; remap?: boolean } = {},
 ) {
   const onSaved = jest.fn();
   const onClose = jest.fn();
 
-  render(
+  renderWithAuth(
     <SubAccountPanel
       account={account(subAccounts)}
       shape={SHAPE}
@@ -80,6 +82,16 @@ function renderPanel(
       onSaved={onSaved}
       onClose={onClose}
     />,
+    // Super-admin by default (every check passes); `remap: false` is a user who
+    // may edit the chart but does NOT hold chartOfAccounts:remapHistory.
+    props.remap === false
+      ? {
+          isSuperAdmin: false,
+          permissions: [
+            { feature: "chartOfAccounts", actions: ["read", "update", "create", "delete"] },
+          ],
+        }
+      : undefined,
   );
 
   return { onSaved, onClose };
@@ -122,6 +134,20 @@ describe("SubAccountPanel", () => {
     expect(
       screen.queryByRole("button", { name: /Ubah sub akun/ }),
     ).not.toBeInTheDocument();
+  });
+
+  /** Foto aturan (6 Okt 2026): editing a rule only reaches what is recorded next. */
+  it("says an edited rule applies to new transactions only, while a sub akun is being edited", async () => {
+    renderPanel([sub({})]);
+
+    const note = /Perubahan berlaku untuk transaksi yang dicatat setelah ini\. Transaksi lama tetap memakai aturan saat dicatat\./;
+    expect(screen.queryByText(note)).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Ubah sub akun 5101-01" }),
+    );
+
+    expect(screen.getByText(note)).toBeInTheDocument();
   });
 
   /** THE KODE IS HALF TYPED: "01" becomes "5101-01", and the prefix is text. */
@@ -280,6 +306,247 @@ describe("SubAccountPanel", () => {
         ),
       );
       expect(onSaved).toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * "TERAPKAN KE DATA LAMA" (Tahap 2b). Saving a moved rule offers the choice;
+   * the default saves for new transactions only, the second needs the grant.
+   */
+  describe("terapkan ke data lama", () => {
+    const SUMMARY: RemapSummary = {
+      entries: 2,
+      lines: 3,
+      amount: "450000.0000",
+      includesReversalPairs: 1,
+      stamped: 0,
+      changes: [
+        {
+          from: {
+            allocationType: "direct",
+            businessLineId: "bl-grooming",
+            businessLineName: "Grooming",
+            branchId: null,
+            branchName: null,
+          },
+          to: {
+            allocationType: "direct",
+            businessLineId: "bl-retail",
+            businessLineName: "Retail",
+            branchId: null,
+            branchName: null,
+          },
+          lines: 3,
+          entries: 2,
+          amount: "450000.0000",
+        },
+      ],
+    };
+
+    async function editLineToRetail() {
+      await userEvent.click(
+        screen.getByRole("button", { name: "Ubah sub akun 5101-01" }),
+      );
+      await userEvent.click(screen.getByLabelText("Lini usaha"));
+      await userEvent.click(screen.getByRole("option", { name: "Retail" }));
+      await userEvent.click(screen.getByRole("button", { name: "Simpan" }));
+      return within(await screen.findByRole("dialog"));
+    }
+
+    async function pickRange(dialog: ReturnType<typeof within>) {
+      fireEvent.change(dialog.getByLabelText("Rentang tanggal dari"), {
+        target: { value: "2026-08-01" },
+      });
+      fireEvent.change(dialog.getByLabelText("Rentang tanggal sampai"), {
+        target: { value: "2026-08-31" },
+      });
+    }
+
+    it("does not ask when only the name changed", async () => {
+      jest.spyOn(subAccountService, "update").mockResolvedValue(sub({}));
+      renderPanel([sub({})]);
+
+      await userEvent.click(screen.getByRole("button", { name: "Ubah sub akun 5101-01" }));
+      await userEvent.type(screen.getByLabelText("Nama sub akun"), " 2");
+      await userEvent.click(screen.getByRole("button", { name: "Simpan" }));
+
+      await waitFor(() => expect(subAccountService.update).toHaveBeenCalled());
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    it("saves for new transactions only by default, without touching the history endpoints", async () => {
+      const update = jest.spyOn(subAccountService, "update").mockResolvedValue(sub({}));
+      const preview = jest.spyOn(subAccountService, "remapPreview");
+      const apply = jest.spyOn(subAccountService, "remapApply");
+      const { onSaved } = renderPanel([sub({})]);
+
+      const dialog = await editLineToRetail();
+      expect(dialog.getByRole("radio", { name: /Hanya transaksi baru/ })).toBeChecked();
+      // Nothing was sent before the choice.
+      expect(update).not.toHaveBeenCalled();
+
+      await userEvent.click(dialog.getByRole("button", { name: "Simpan" }));
+
+      await waitFor(() =>
+        expect(update).toHaveBeenCalledWith("acc-gaji", "sub-1", { businessLineId: "bl-retail" }),
+      );
+      expect(preview).not.toHaveBeenCalled();
+      expect(apply).not.toHaveBeenCalled();
+      expect(onSaved).toHaveBeenCalled();
+    });
+
+    it("disables the second option, with the hint, without remapHistory", async () => {
+      renderPanel([sub({})], { remap: false });
+
+      const dialog = await editLineToRetail();
+
+      expect(dialog.getByRole("radio", { name: /Terapkan juga ke data lama/ })).toBeDisabled();
+      expect(dialog.getByText("Perlu izin khusus")).toBeInTheDocument();
+      // And no row action either.
+      expect(
+        screen.queryByRole("button", { name: /Terapkan ke data lama 5101-01/ }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("previews, then PATCHes the rule and applies with the numbers it showed", async () => {
+      const order: string[] = [];
+      jest.spyOn(subAccountService, "update").mockImplementation(async () => {
+        order.push("patch");
+        return sub({});
+      });
+      const preview = jest.spyOn(subAccountService, "remapPreview").mockResolvedValue(SUMMARY);
+      const apply = jest.spyOn(subAccountService, "remapApply").mockImplementation(async () => {
+        order.push("apply");
+        return { ...SUMMARY, modifiedEntries: 2, modifiedTransactions: 0, audited: true };
+      });
+      const { onSaved } = renderPanel([sub({})]);
+
+      const dialog = await editLineToRetail();
+      await userEvent.click(dialog.getByRole("radio", { name: /Terapkan juga ke data lama/ }));
+      expect(dialog.getByRole("button", { name: "Terapkan" })).toBeDisabled();
+
+      await pickRange(dialog);
+      await userEvent.click(dialog.getByRole("button", { name: "Lihat pratinjau" }));
+
+      await waitFor(() =>
+        expect(preview).toHaveBeenCalledWith("acc-gaji", "sub-1", {
+          dateFrom: "2026-08-01",
+          dateTo: "2026-08-31",
+          // The PROPOSED rule: nothing is saved yet.
+          rule: { allocationType: "direct", businessLineId: "bl-retail", branchId: null },
+        }),
+      );
+      expect(order).toEqual([]);
+      expect(
+        await dialog.findByText(/3 baris jurnal \(2 transaksi\), total Rp\s?450\.000 akan pindah/),
+      ).toBeInTheDocument();
+      expect(dialog.getByText("Laporan periode ini akan ikut berubah.")).toBeInTheDocument();
+      expect(dialog.getByText(/Termasuk 1 transaksi pasangan pembalikan/)).toBeInTheDocument();
+      expect(dialog.getByText("Grooming · Semua cabang")).toBeInTheDocument();
+      expect(dialog.getByText("Retail · Semua cabang")).toBeInTheDocument();
+
+      await userEvent.click(dialog.getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(apply).toHaveBeenCalledWith("acc-gaji", "sub-1", {
+          dateFrom: "2026-08-01",
+          dateTo: "2026-08-31",
+          expected: { lines: 3, amount: "450000.0000" },
+        }),
+      );
+      expect(order).toEqual(["patch", "apply"]);
+      await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    });
+
+    it("on a 409 shows the fresh numbers and applies again without a second PATCH", async () => {
+      const update = jest.spyOn(subAccountService, "update").mockResolvedValue(sub({}));
+      jest.spyOn(subAccountService, "remapPreview").mockResolvedValue(SUMMARY);
+      const fresh = { ...SUMMARY, lines: 4, amount: "500000.0000", entries: 3 };
+      const apply = jest
+        .spyOn(subAccountService, "remapApply")
+        .mockRejectedValueOnce(
+          new ApiError("Data berubah sejak pratinjau", 409, { data: { current: fresh } }),
+        )
+        .mockResolvedValueOnce({ ...fresh, modifiedEntries: 3, modifiedTransactions: 0, audited: true });
+      const { onSaved } = renderPanel([sub({})]);
+
+      const dialog = await editLineToRetail();
+      await userEvent.click(dialog.getByRole("radio", { name: /Terapkan juga ke data lama/ }));
+      await pickRange(dialog);
+      await userEvent.click(dialog.getByRole("button", { name: "Lihat pratinjau" }));
+      await dialog.findByText(/3 baris jurnal/);
+      await userEvent.click(dialog.getByRole("button", { name: "Terapkan" }));
+
+      expect(await dialog.findByText(/Data berubah sejak pratinjau tadi/)).toBeInTheDocument();
+      expect(dialog.getByText(/4 baris jurnal \(3 transaksi\)/)).toBeInTheDocument();
+      expect(onSaved).not.toHaveBeenCalled();
+
+      await userEvent.click(dialog.getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(apply).toHaveBeenLastCalledWith(
+          "acc-gaji",
+          "sub-1",
+          expect.objectContaining({ expected: { lines: 4, amount: "500000.0000" } }),
+        ),
+      );
+      expect(update).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    });
+
+    it("keeps the rule saved and says so when apply fails for another reason", async () => {
+      jest.spyOn(subAccountService, "update").mockResolvedValue(sub({}));
+      jest.spyOn(subAccountService, "remapPreview").mockResolvedValue(SUMMARY);
+      jest
+        .spyOn(subAccountService, "remapApply")
+        .mockRejectedValue(new ApiError("Terjadi kesalahan", 500));
+      const { onSaved } = renderPanel([sub({})]);
+
+      const dialog = await editLineToRetail();
+      await userEvent.click(dialog.getByRole("radio", { name: /Terapkan juga ke data lama/ }));
+      await pickRange(dialog);
+      await userEvent.click(dialog.getByRole("button", { name: "Lihat pratinjau" }));
+      await dialog.findByText(/3 baris jurnal/);
+      await userEvent.click(dialog.getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(Swal.fire).toHaveBeenCalledWith(
+          expect.objectContaining({ icon: "error", title: "Terjadi kesalahan" }),
+        ),
+      );
+      await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    });
+
+    it("opens from the row action for the current rule, with no PATCH", async () => {
+      const update = jest.spyOn(subAccountService, "update");
+      const preview = jest.spyOn(subAccountService, "remapPreview").mockResolvedValue(SUMMARY);
+      const apply = jest.spyOn(subAccountService, "remapApply").mockResolvedValue({
+        ...SUMMARY,
+        modifiedEntries: 2,
+        modifiedTransactions: 0,
+        audited: true,
+      });
+      renderPanel([sub({})]);
+
+      await userEvent.click(
+        screen.getByRole("button", { name: "Terapkan ke data lama 5101-01" }),
+      );
+      const dialog = within(await screen.findByRole("dialog"));
+      expect(dialog.queryByRole("radio")).not.toBeInTheDocument();
+
+      await pickRange(dialog);
+      await userEvent.click(dialog.getByRole("button", { name: "Lihat pratinjau" }));
+      await waitFor(() =>
+        expect(preview).toHaveBeenCalledWith("acc-gaji", "sub-1", {
+          dateFrom: "2026-08-01",
+          dateTo: "2026-08-31",
+        }),
+      );
+      await dialog.findByText(/3 baris jurnal/);
+      await userEvent.click(dialog.getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() => expect(apply).toHaveBeenCalled());
+      expect(update).not.toHaveBeenCalled();
     });
   });
 });

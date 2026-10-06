@@ -225,6 +225,55 @@ export interface SubAccountRemoval extends SubAccount {
   };
 }
 
+/** A rule as the remap endpoints name it, labels included. */
+export interface RemapRule {
+  allocationType: AllocationType;
+  businessLineId: string | null;
+  businessLineName: string | null;
+  branchId: string | null;
+  branchName: string | null;
+}
+
+export interface RemapChange {
+  from: RemapRule;
+  to: RemapRule;
+  lines: number;
+  entries: number;
+  /** Gross rupiah moved, a decimal string. */
+  amount: string;
+}
+
+/**
+ * POST .../history/preview — and the `data.current` of an apply's 409. "Terapkan
+ * ke data lama" (Sub-Akun-Implementation-Plan §14).
+ */
+export interface RemapSummary {
+  entries: number;
+  lines: number;
+  amount: string;
+  changes: RemapChange[];
+  /** Entries pulled in only as the other half of a reversal pair outside the range. */
+  includesReversalPairs: number;
+  stamped: number;
+}
+
+export interface RemapApplyResult extends RemapSummary {
+  modifiedEntries: number;
+  modifiedTransactions: number;
+  audited: boolean;
+}
+
+export interface RemapPeriod {
+  dateFrom: string;
+  dateTo: string;
+  /** The PROPOSED rule; omitted = the sub akun's current one. */
+  rule?: {
+    allocationType: AllocationType;
+    businessLineId: string | null;
+    branchId: string | null;
+  };
+}
+
 /**
  * The sub akun a posting line is filed under. `subAccountId` is canonical;
  * `allocationId` mirrors it for readers that predate the rename, so read both.

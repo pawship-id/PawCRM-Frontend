@@ -63,6 +63,8 @@ export interface ApiFailure {
    * ordinary errors, so a caller shows `message` alone when it is missing.
    */
   reason?: string;
+  /** Structured payload of the few refusals that carry one (a 409 with fresh numbers). */
+  data?: unknown;
 }
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;

@@ -2164,7 +2164,6 @@ describe("ProductForm", () => {
             description: null,
             salesAccountId: null,            inventoryAccountId: null,
             cogsAccountId: null,
-            businessLineId: null,
             shipping: {
               weight: "500",
               weightUnit: "gr",
@@ -2212,7 +2211,6 @@ describe("ProductForm", () => {
             description: null,
             salesAccountId: null,            inventoryAccountId: null,
             cogsAccountId: null,
-            businessLineId: null,
             shipping: {
               weight: "500",
               weightUnit: "gr",
@@ -2519,7 +2517,6 @@ describe("ProductForm", () => {
               description: null,
               salesAccountId: null,              inventoryAccountId: null,
               cogsAccountId: null,
-              businessLineId: null,
               shipping: {
                 weight: "500",
                 weightUnit: "gr",
