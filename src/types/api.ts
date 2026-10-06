@@ -63,6 +63,8 @@ export interface ApiFailure {
    * ordinary errors, so a caller shows `message` alone when it is missing.
    */
   reason?: string;
+  /** Structured payload of the few refusals that carry one (a 409 with fresh numbers). */
+  data?: unknown;
 }
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
@@ -4144,7 +4146,10 @@ export interface Service {
   code: string;
   /** One image, not a gallery — the same shape a category's picture takes. */
   image: MediaAsset | null;
-  businessLineId: string;
+  /*
+    NO `businessLineId` (removed 6 Okt 2026): a service has no lini of its own.
+    The lini of its sales is the rule of the sub akun it is booked to.
+  */
   salesAccountId: string | null;
   /** The sub akun under `salesAccountId` — required once that account has active ones. */
   salesSubAccountId?: string | null;
@@ -4222,8 +4227,6 @@ export interface Service {
 export interface ServiceListQuery {
   page?: number;
   limit?: number;
-  /** "Every grooming service" — the POS pill and the booking form. */
-  businessLineId?: string;
   categoryId?: string;
   /** "Every addon" — the addon picker's list. */
   serviceType?: ServiceType;
@@ -4271,7 +4274,7 @@ export interface ServiceVariantInput {
 }
 
 /**
- * Body of POST /api/services. `name`, `code`, `businessLineId` and
+ * Body of POST /api/services. `name`, `code` and
  * `serviceLocations` are required; `tenantId` and `createdBy` come from the
  * session.
  *
@@ -4285,7 +4288,6 @@ export interface ServiceVariantInput {
 export interface CreateServiceInput {
   name: string;
   code: string;
-  businessLineId: string;
   durationMin?: number;
   billingUnit?: ServiceBillingUnit;
   serviceKind?: ServiceKind | null;
@@ -4318,10 +4320,6 @@ export interface CreateServiceInput {
  * Body of PATCH /api/services/:id — every field optional, but the backend
  * rejects an empty body.
  *
- * `businessLineId` IS here, unlike `UpdatePetInput`'s missing `customerId`:
- * moving a service between lines re-tags nothing historical, because journal
- * lines carry the id they were posted with.
- *
  * The variant fields may be sent in any combination: the server reads the
  * stored document for whichever half a patch leaves out before deciding whether
  * the result is a valid flat-priced or variant-priced service.
@@ -4330,7 +4328,6 @@ export interface UpdateServiceInput {
   name?: string;
   code?: string;
   image?: MediaAsset | null;
-  businessLineId?: string;
   salesAccountId?: string | null;
   salesSubAccountId?: string | null;
   categoryId?: string | null;

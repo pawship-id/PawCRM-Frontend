@@ -199,7 +199,7 @@ describe("SalesSummaryScreen", () => {
     // Dropping an unnamed group would make the bars add up to less than the
     // panel's own total with nothing on screen saying why.
     expect(screen.getByText(/Tanpa kategori/)).toBeInTheDocument();
-    expect(screen.getByText(/Tanpa lini usaha/)).toBeInTheDocument();
+    expect(screen.getByText(/Belum Dipetakan/)).toBeInTheDocument();
   });
 
   it("says where each panel's figures come from", async () => {

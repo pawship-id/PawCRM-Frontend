@@ -41,7 +41,6 @@ export const serviceService = {
       query: {
         page: query.page,
         limit: query.limit,
-        businessLineId: query.businessLineId,
         categoryId: query.categoryId,
         serviceType: query.serviceType,
         serviceKind: query.serviceKind,

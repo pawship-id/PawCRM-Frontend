@@ -167,7 +167,8 @@ export const PERMISSION_CATALOG = {
    * sold by mistake is cancelled, which leaves a trail.
    */
   petMemberships: ["create", "read", "update", "cancel", "redeem"],
-  chartOfAccounts: ["create", "read", "update", "delete", "restore"],
+  // `remapHistory`: re-point OLD lines at a new lini/cabang (Terapkan ke data lama, 6 Okt). Owner only by default.
+  chartOfAccounts: ["create", "read", "update", "delete", "restore", "remapHistory"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is
   // its own action because correcting the ledger is a different privilege from
   // relabelling an entry.

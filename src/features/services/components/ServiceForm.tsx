@@ -8,7 +8,6 @@ import {
   Card,
   CheckRow,
   CheckRowGroup,
-  FilterSelect,
   FormActionBar,
   ImageField,
   SelectField,
@@ -25,7 +24,6 @@ import { usePermissions } from "@/features/permissions";
 import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
-import { businessLineService } from "@/services/businessLine.service";
 import { branchService } from "@/services/branch.service";
 import { swalToast } from "@/lib/swal";
 import type {
@@ -194,8 +192,6 @@ export function ServiceForm({
 
   const [service, setService] = useState<Service | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [lines, setLines] = useState<{ value: string; label: string }[]>([]);
-  const [linesError, setLinesError] = useState<string | null>(null);
 
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchesLoading, setBranchesLoading] = useState(true);
@@ -207,8 +203,6 @@ export function ServiceForm({
 
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
-  /* NO DEFAULT, from any module (22 September 2026) — the owner's choice every time. */
-  const [businessLineId, setBusinessLineId] = useState("");
   const [image, setImage] = useState<MediaAsset | null>(null);
   /*
     WHERE THE REVENUE POSTS, and the sub akun under that account. "" is "akun
@@ -296,7 +290,6 @@ export function ServiceForm({
 
   const [nameError, setNameError] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
-  const [lineError, setLineError] = useState<string | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
   const [variantError, setVariantError] = useState<string | null>(null);
   const [durationError, setDurationError] = useState<string | null>(null);
@@ -371,20 +364,6 @@ export function ServiceForm({
   useEffect(() => {
     let active = true;
 
-    businessLineService
-      .list({ limit: OPTION_FETCH_LIMIT })
-      .then((result) => {
-        if (!active) return;
-        setLines(
-          result.items.map((line) => ({ value: line._id, label: line.name })),
-        );
-      })
-      .catch(() => {
-        if (!active) return;
-        // Our own sentence, never the server's — the API answers in English.
-        setLinesError("Daftar lini bisnis tidak bisa dimuat. Coba muat ulang.");
-      });
-
     /*
       BOTH LISTS FAIL SOFTLY. `branches:read` and a second `services:read` page
       are separate reads from the one that opened this form, and a role can hold
@@ -450,7 +429,6 @@ export function ServiceForm({
           on plenty of them, which would also flip its input to uncontrolled.
         */
         setCode(result.code ?? "");
-        setBusinessLineId(result.businessLineId);
         setSalesAccountId(result.salesAccountId ?? "");
         setSalesSubAccountId(result.salesSubAccountId ?? "");
         setImage(result.image ?? null);
@@ -611,10 +589,6 @@ export function ServiceForm({
       setNameError(`Maksimal ${NAME_MAX_LENGTH} karakter.`);
       invalid = true;
     }
-    if (!businessLineId) {
-      setLineError("Pilih lini bisnisnya dulu.");
-      invalid = true;
-    }
     if (serviceType === "main" && !serviceKind) {
       setKindError("Pilih kelompok layanannya dulu.");
       invalid = true;
@@ -759,7 +733,6 @@ export function ServiceForm({
     const payload = {
       name: trimmedName,
       code: trimmedCode,
-      businessLineId,
       /*
         THE ACCOUNT AND ITS SUB AKUN GO AS A PAIR, and on an edit only when one
         MOVED — `null` is how either is cleared back to the default, and a patch
@@ -863,8 +836,6 @@ export function ServiceForm({
         if (refusal) {
           setSessionsError(refusal);
           invalidateServiceSteps();
-        } else if (detail?.field === "businessLineId") {
-          setLineError("Lini bisnis ini tidak ditemukan lagi. Pilih yang lain.");
         } else if (detail?.field === "branchIds") {
           setBranchError(detail.message);
         } else if (detail?.field?.endsWith("sessionWeights")) {
@@ -1032,29 +1003,6 @@ export function ServiceForm({
               required
             />
           )}
-
-          <div className="flex flex-col gap-1.5">
-            <FilterSelect
-              layout="form"
-              label="Lini bisnis"
-              ariaLabel="Pilih lini bisnis"
-              value={businessLineId}
-              options={lines}
-              onChange={(next) => {
-                setBusinessLineId(next);
-                setLineError(null);
-              }}
-              active={false}
-              placeholder="Pilih lini bisnis"
-              searchable
-              required
-              disabled={saving}
-              error={lineError ?? linesError ?? undefined}
-            />
-            <p className="text-xs text-muted">
-              Menentukan laba-rugi lini mana yang mencatat penjualan ini.
-            </p>
-          </div>
 
           <ServiceSalesAccountField
             accountId={salesAccountId}

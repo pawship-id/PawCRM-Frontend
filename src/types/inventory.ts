@@ -649,9 +649,9 @@ export interface Product {
    * then its CATEGORY, then the seeded code. Setting one here overrides the
    * category for that field alone.
    *
-   * `salesAccountId` WAS REMOVED ONCE and is back — see product.model.js. It
-   * does not replace `businessLineId` and never could: the account decides which
-   * LINE of the P&L, the business line decides which COLUMN.
+   * `salesAccountId` WAS REMOVED ONCE and is back — see product.model.js. A
+   * product has NO `businessLineId` (removed 6 Okt 2026): the lini comes from
+   * the sub akun's rule (`salesSubAccountId`).
    */
   salesAccountId?: string | null;
   /** The sub akun under `salesAccountId` — required once that account has active ones, and must belong to it. */
@@ -659,7 +659,6 @@ export interface Product {
   inventoryAccountId?: string | null;
   cogsAccountId?: string | null;
   cogsSubAccountId?: string | null;
-  businessLineId?: string | null;
 
   /**
    * What the fields above EFFECTIVELY are, with the parent's values substituted
@@ -810,7 +809,6 @@ export interface ResolvedProductFields {
   inventoryAccountId: string | null;
   cogsAccountId: string | null;
   cogsSubAccountId?: string | null;
-  businessLineId: string | null;
   shipping: ProductShipping;
 
   /**
@@ -1003,7 +1001,7 @@ export interface CreateFamilyVariantInput {
   /**
    * The only two marketplace fields a family row takes.
    *
-   * `brand`, the two posting accounts and `businessLineId` are absent because
+   * `brand` and the two posting accounts are absent because
    * they are RESOLVED from the parent — repeating the same brand string across twelve
    * rows is the payload the inheritance design exists to avoid. `description` is
    * absent for an arithmetic reason instead: the request body cap is 1 MB and
@@ -1079,7 +1077,6 @@ export interface CreateStandaloneInput extends CreateProductBase {
   /** Must be an `expense` account of this tenant, or the API answers 400. */
   cogsAccountId?: string | null;
   cogsSubAccountId?: string | null;
-  businessLineId?: string | null;
 
   sellPrice: string;
   barcode?: string;
@@ -1119,7 +1116,6 @@ export interface CreateParentInput extends Omit<CreateProductBase, "sku"> {
   /** Must be an `expense` account of this tenant, or the API answers 400. */
   cogsAccountId?: string | null;
   cogsSubAccountId?: string | null;
-  businessLineId?: string | null;
 
   /**
    * OPTIONAL, unlike every other type — a parent holds no stock, carries no
@@ -1169,7 +1165,6 @@ export interface CreateVariantInput {
   /** Must be an `expense` account of this tenant, or the API answers 400. */
   cogsAccountId?: string | null;
   cogsSubAccountId?: string | null;
-  businessLineId?: string | null;
 
   sku: string;
   name: string;
@@ -1215,7 +1210,6 @@ export interface CreateBundleInput extends CreateProductBase {
   /** Must be an `expense` account of this tenant, or the API answers 400. */
   cogsAccountId?: string | null;
   cogsSubAccountId?: string | null;
-  businessLineId?: string | null;
 
   bundleConfig: {
     pricingMode: BundlePricingMode;
@@ -1281,7 +1275,6 @@ export interface UpdateProductInput {
   inventoryAccountId?: string | null;
   cogsAccountId?: string | null;
   cogsSubAccountId?: string | null;
-  businessLineId?: string | null;
 
   /**
    * Sent WHOLE, never patched item by item. The array's order IS the display
