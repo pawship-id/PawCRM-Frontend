@@ -230,7 +230,7 @@ describe("financeSummary", () => {
     expect(rows.map((row) => row.label)).toEqual([
       "Retail",
       "Grooming",
-      "Bersama (HQ)",
+      "Belum Dipetakan",
     ]);
     expect(rows[0]).toMatchObject({
       revenue: "47850000.0000",
@@ -739,7 +739,7 @@ describe("FinanceDashboardScreen", () => {
     expect(rows[0]).toHaveTextContent("Sehat 33,1%");
     expect(rows[1]).toHaveTextContent("Grooming");
     // The shared bucket has costs and no revenue — a margin would be meaningless.
-    expect(rows[2]).toHaveTextContent("Bersama (HQ)");
+    expect(rows[2]).toHaveTextContent("Belum Dipetakan");
     expect(rows[2]).toHaveTextContent("Belum dibagi ke lini");
     expect(rows[2]).toHaveTextContent("−Rp 20.000.000");
   });

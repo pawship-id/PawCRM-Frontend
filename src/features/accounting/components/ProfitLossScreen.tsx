@@ -4,8 +4,6 @@ import { Fragment, useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { Alert, Breadcrumb, Spinner } from "@/components";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 // The shadcn button directly, for `size="sm"` — the app-facing wrapper in
 // @/components does not carry a size prop. Same import JournalEntriesScreen makes.
 import { Button } from "@/components/ui/button";
@@ -86,10 +84,6 @@ export function ProfitLossScreen({ now }: { now: string }) {
       dateTo: month.dateTo,
       branchId: "",
       businessLineId: "",
-      // OFF. The undivided report is what every previous month was read as, so
-      // it stays what the screen opens on — the toggle is how somebody asks the
-      // other question, side by side with the answer they already know.
-      allocation: false,
     };
   });
 
@@ -138,40 +132,12 @@ export function ProfitLossScreen({ now }: { now: string }) {
         </h1>
         <p className="mt-1 max-w-2xl text-[15px] text-muted">
           Pendapatan dikurangi beban pokok dan beban operasional, dipecah per
-          lini bisnis. Kolom Bersama (HQ) menampung yang tidak terikat satu lini
-          — sewa, gaji kantor, listrik.
+          lini bisnis. Lini diambil dari aturan Detil Akun di Daftar Akun;
+          yang belum punya aturan Detil tampil di kolom Belum Dipetakan.
         </p>
       </div>
 
       {error && <Alert variant="error">{error}</Alert>}
-
-      {/*
-        THE ONE CONTROL ON THIS SCREEN THAT IS NOT A FILTER, which is why it does
-        not live in the toolbar (§8 is about narrowing a list). It does not change
-        WHICH entries are read — it changes what the same entries are reported as,
-        and the two answers are meant to be compared. Applying on the switch, with
-        no Terapkan, is what makes the comparison a flick back and forth.
-      */}
-      <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-surface p-4">
-        <Switch
-          id="pl-allocation"
-          checked={query.allocation === true}
-          disabled={loading}
-          onCheckedChange={(allocation) =>
-            setQuery((prev) => ({ ...prev, allocation }))
-          }
-        />
-        <div className="min-w-0 flex-1">
-          <Label htmlFor="pl-allocation">
-            Bagikan beban bersama ke tiap lini
-          </Label>
-          <p className="mt-1 text-xs text-muted">
-            {query.allocation
-              ? "Sewa, marketing dan gaji kantor dibagi ke tiap lini mengikuti Aturan Alokasi di Daftar Akun, sesuai porsi pendapatan periode ini. Kolom Bersama menyisakan akun yang belum dipetakan."
-              : "Beban yang tidak terikat satu lini tetap utuh di kolom Bersama — sama seperti laporan bulan-bulan sebelumnya."}
-          </p>
-        </div>
-      </div>
 
       {/*
         A figure that rests on an equal split rather than on trade. Said here, on
@@ -409,7 +375,7 @@ export function ProfitLossScreen({ now }: { now: string }) {
       <p className="text-xs text-muted">
         Persentase dihitung terhadap pendapatan kolom yang sama, jadi sebuah
         lini dibandingkan dengan dirinya sendiri — bukan dengan total shop.
-        Kolom Bersama (HQ) tidak punya pendapatan, jadi persentasenya tampil
+        Kolom Belum Dipetakan tidak punya pendapatan, jadi persentasenya tampil
         sebagai &ldquo;—&rdquo;.
       </p>
     </div>
@@ -423,7 +389,7 @@ export function ProfitLossScreen({ now }: { now: string }) {
  * other base would make the number mean something else entirely: grooming's
  * margin against the shop's revenue is not a margin, it is a contribution share
  * wearing a margin's label. `marginPct` returns null when the base is zero, which
- * is exactly the Bersama column's case, and it renders as an em dash rather than
+ * is exactly the Belum Dipetakan column's case, and it renders as an em dash rather than
  * as 0% — a column with no revenue has no margin, and claiming zero is a claim.
  */
 function ResultRow({

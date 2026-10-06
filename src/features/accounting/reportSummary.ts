@@ -212,7 +212,7 @@ export function profitLossMatrix(
 /**
  * The columns the matrix shows, shared bucket last.
  *
- * LAST RATHER THAN FIRST, and never sorted away: "Bersama" is where sewa, gaji
+ * LAST RATHER THAN FIRST, and never sorted away: "Belum Dipetakan" is where sewa, gaji
  * kantor and listrik land, so a matrix without it would show three profitable
  * lines and no rent. It sits at the end because it is the one column that is not
  * a line of business, which is also why it reads as a name rather than as an id.

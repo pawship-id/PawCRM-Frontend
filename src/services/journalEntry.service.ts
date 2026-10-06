@@ -392,7 +392,10 @@ export interface ProfitLossResult {
  * line as its own column.
  */
 export interface ProfitLossQuery {
-  /** Divide the shared costs across the lines. Defaults to false on the server. */
+  /**
+   * LEGACY, no screen sends it. The server applies the Detil (Sub Akun) rules
+   * by default (6 Oct 2026); only an explicit `false` returns the raw lines.
+   */
   allocation?: boolean;
   dateFrom?: string;
   dateTo?: string;
@@ -587,9 +590,8 @@ export const journalEntryService = {
         dateTo: query.dateTo,
         branchId: query.branchId,
         businessLineId: query.businessLineId,
-        // Sent only when ON: the server defaults it to false, and a `false` on
-        // the URL of every read would be a parameter that never means anything.
-        allocation: query.allocation ? true : undefined,
+        // Sent only when explicitly OFF: the server defaults it to true.
+        allocation: query.allocation === false ? false : undefined,
       },
     }),
 

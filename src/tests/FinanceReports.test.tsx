@@ -53,7 +53,7 @@ jest.mock("@/services/businessLine.service");
 const NOW = "2026-08-17T03:00:00.000Z";
 const GROOMING = "bl-grooming";
 const RETAIL = "bl-retail";
-const SHARED = "Bersama (HQ)";
+const SHARED = "Belum Dipetakan";
 
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
   fn as jest.MockedFunction<T>;
@@ -534,6 +534,22 @@ describe("balanceSheet", () => {
 /* ------------------------------------------------------------- the screens */
 
 describe("ProfitLossScreen", () => {
+  it("always follows the Detil rules: no allocation switch, no allocation param", async () => {
+    renderWithAuth(<ProfitLossScreen now={NOW} />);
+    await screen.findByText("Laporan Laba Rugi");
+
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Bagikan beban bersama ke tiap lini"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/kolom Belum Dipetakan/, { exact: false }),
+    ).toBeInTheDocument();
+    expect(asMock(journalEntryService.profitLoss)).toHaveBeenCalledWith(
+      expect.not.objectContaining({ allocation: expect.anything() }),
+    );
+  });
+
   it("no longer warns that the figures are examples", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
     await screen.findByText("Laporan Laba Rugi");
@@ -583,7 +599,10 @@ describe("ProfitLossScreen", () => {
     const account = rows.findIndex((text) => text.includes("4101Pendapatan Penjualan"));
     const grooming = rows.findIndex((text) => text.includes("4101-01"));
     const retired = rows.findIndex((text) => text.includes("4101-02"));
-    const unmapped = rows.findIndex((text) => text.includes("Belum Dipetakan"));
+    // The column header carries the same words now, so look below the account.
+    const unmapped = rows.findIndex(
+      (text, index) => index > account && text.includes("Belum Dipetakan"),
+    );
 
     // Under the account, in the server's order.
     expect(account).toBeGreaterThanOrEqual(0);

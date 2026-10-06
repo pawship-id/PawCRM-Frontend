@@ -220,7 +220,7 @@ function buildSeries(
 
   /*
     "LAINNYA" IS NAMED BY WHAT IS IN IT when it holds one thing. A week whose
-    only unslotted revenue is the unattributed bucket should say "Bersama (HQ)",
+    only unslotted revenue is the unattributed bucket should say "Belum Dipetakan",
     the label every other finance screen uses for it, not a vaguer word.
   */
   const otherMembers = new Set<string | null>();

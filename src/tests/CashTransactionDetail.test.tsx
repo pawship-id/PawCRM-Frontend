@@ -207,7 +207,7 @@ describe("CashTransactionDetail — what it shows", () => {
     ).toHaveAttribute("href", "/dashboard/purchasing/payables/pi1");
   });
 
-  it("lists an expense's account lines, with Bersama for no business line", async () => {
+  it("lists an expense's account lines, with Belum dipetakan for no line and no sub akun", async () => {
     asMock(cashTransactionService.getById).mockResolvedValue(
       cashTx({
         number: "BKK/CBS/2609/0003",
@@ -238,7 +238,7 @@ describe("CashTransactionDetail — what it shows", () => {
     expect(await screen.findByText("Beban Listrik")).toBeInTheDocument();
     expect(screen.getByText("Agustus")).toBeInTheDocument();
     // Once in the row, and once more as the header's summary of the rows.
-    expect(screen.getAllByText("Bersama (HQ)")).toHaveLength(2);
+    expect(screen.getAllByText("Belum dipetakan")).toHaveLength(2);
   });
 
   it("keeps every earlier version with what it said and both journal links", async () => {

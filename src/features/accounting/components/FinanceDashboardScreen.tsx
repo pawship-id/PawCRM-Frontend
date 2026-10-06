@@ -763,7 +763,7 @@ function ThinnestLine({ lines }: { lines: LineProfit[] }) {
  * "Laba per lini bisnis" — one row per column of the laba rugi.
  *
  * UNDIVIDED, like the Laba Rugi screen's default: shared costs stay on their own
- * "Bersama (HQ)" row with no margin, because a margin on a bucket that sells
+ * "Belum Dipetakan" row with no margin, because a margin on a bucket that sells
  * nothing is meaningless. That row is also the reminder that the lini above it
  * look better than they would once rent and payroll were divided.
  */

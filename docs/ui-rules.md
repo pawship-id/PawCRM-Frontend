@@ -709,8 +709,8 @@ defaulting to `bank` and never guessed from the name. Existing charts are filled
 in by `seeds/backfillCashAccountTypes.js`, which reads it off the channels that
 already point at each account.
 
-Tambah transaksi's Lini Usaha sits in the header as a DEFAULT for the rows, which
-keep their own column.
+Tambah transaksi has NO Lini Usaha, in the header or per row (BO, 6 Okt 2026): the
+line comes from the account / sub akun mapping in Daftar Akun.
 
 **The Transaksi table follows the mockup's columns** — Tanggal · Deskripsi ·
 Akun · Cabang · Jumlah · Akun Kas/Bank · Sumber — with one signed Jumlah column

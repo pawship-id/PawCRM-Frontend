@@ -40,7 +40,7 @@ const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
  * TAMBAH TRANSAKSI. What it guards: Simpan stays off — and says why — until the
  * required fields are answered; the Akun Kas/Bank picker offers every active
  * account filed under Kas & Bank and NO channels at all; the account's own jenis
- * decides the series; the header's Lini Usaha seeds the rows; and the payload is
+ * decides the series; there is NO Lini Usaha field anywhere (the line comes from the sub akun mapping); and the payload is
  * exactly the contract, Operasi included.
  */
 const account = (
@@ -116,6 +116,36 @@ beforeEach(() => {
       name: "Beban Lama",
       accountCategory: "biaya",
       isActive: false,
+    }),
+    // Two sub akun, both with a rule that names a line — and the payload must
+    // still carry NONE of it: the line is the report's to read off the sub akun.
+    account({
+      _id: "acc-gaji",
+      code: "5101",
+      name: "Beban Gaji",
+      accountCategory: "biaya",
+      subAccounts: [
+        {
+          _id: "sub-gaji-groom",
+          accountId: "acc-gaji",
+          code: "5101-01",
+          name: "Gaji Grooming",
+          allocationType: "direct",
+          businessLineId: "bl-groom",
+          branchId: null,
+          isActive: true,
+        },
+        {
+          _id: "sub-gaji-bersama",
+          accountId: "acc-gaji",
+          code: "5101-02",
+          name: "Gaji Kantor",
+          allocationType: "shared_overall",
+          businessLineId: null,
+          branchId: null,
+          isActive: true,
+        },
+      ],
     }),
     account({
       _id: "acc-bunga",
@@ -441,7 +471,6 @@ describe("CashTransactionCreateForm", () => {
     await user.type(screen.getByLabelText("Deskripsi"), "Listrik Agustus");
 
     await pick(user, "Akun baris 1", "5401 · Beban Listrik");
-    await pick(user, "Lini bisnis baris 1", "Grooming");
     await user.type(screen.getByLabelText("Jumlah baris 1"), "75000");
     await user.type(screen.getByLabelText("Memo baris 1"), "Agustus");
 
@@ -464,7 +493,8 @@ describe("CashTransactionCreateForm", () => {
           {
             accountId: "acc-listrik",
             amount: "75000",
-            businessLineId: "bl-groom",
+            // Never chosen by the user: the line comes from the account mapping.
+            businessLineId: null,
             // Null because the account carries no sub akun to pick from.
             subAccountId: null,
             memo: "Agustus",
@@ -476,23 +506,31 @@ describe("CashTransactionCreateForm", () => {
     expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/kas-bank/transaksi/ct9");
   });
 
-  it("uses the header's Lini Usaha for the rows, and leaves an edited row alone", async () => {
+  it("has no Lini Usaha field, in the header or on any row", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CashTransactionCreateForm />);
+    await screen.findByRole("button", { name: "Simpan transaksi" });
+    await screen.findByRole("button", { name: "Akun baris 1" });
+
+    await pick(user, "Akun baris 1", "5401 · Beban Listrik");
+    await user.click(screen.getByRole("button", { name: "Tambah baris" }));
+
+    expect(screen.queryByRole("button", { name: "Lini Usaha" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Lini bisnis baris/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Lini bisnis")).not.toBeInTheDocument();
+    expect(screen.getByText(/Lini usaha mengikuti pemetaan akun dan sub akunnya/)).toBeInTheDocument();
+  });
+
+  it("sends a null line with the sub akun as picked, never the sub akun's own line", async () => {
     const user = userEvent.setup();
     renderWithAuth(<CashTransactionCreateForm />);
     await screen.findByRole("button", { name: "Simpan transaksi" });
 
     await pick(user, "Akun Kas/Bank", "1101 · Kas Pusat");
-    await pick(user, "Akun baris 1", "5401 · Beban Listrik");
-    await user.type(screen.getByLabelText("Jumlah baris 1"), "75000");
-
-    // The header carries the untouched first row along…
-    await pick(user, "Lini Usaha", "Grooming");
-    // …and seeds the row added after it.
-    await user.click(screen.getByRole("button", { name: "Tambah baris" }));
-    await pick(user, "Akun baris 2", "5401 · Beban Listrik");
-    await user.type(screen.getByLabelText("Jumlah baris 2"), "25000");
-    // A row set by hand keeps what it was set to.
-    await pick(user, "Lini bisnis baris 2", "Retail");
+    await pick(user, "Akun baris 1", "5101 · Beban Gaji");
+    // Two sub akun: nothing is pre-picked, the person chooses.
+    await pick(user, "Sub akun baris 1", "5101-01 · Gaji Grooming");
+    await user.type(screen.getByLabelText("Jumlah baris 1"), "300000");
 
     await user.click(screen.getByRole("button", { name: "Simpan transaksi" }));
 
@@ -500,8 +538,12 @@ describe("CashTransactionCreateForm", () => {
       expect(cashTransactionService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           lines: [
-            expect.objectContaining({ amount: "75000", businessLineId: "bl-groom" }),
-            expect.objectContaining({ amount: "25000", businessLineId: "bl-retail" }),
+            {
+              accountId: "acc-gaji",
+              amount: "300000",
+              businessLineId: null,
+              subAccountId: "sub-gaji-groom",
+            },
           ],
         }),
       ),

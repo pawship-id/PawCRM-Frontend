@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/table";
 import {
   ACCOUNTING_CRUMBS,
-  SHARED_LINE_LABEL,
+  NO_SUB_ACCOUNT_LABEL,
   subAccountLabel,
 } from "@/features/accounting";
 import { Can, usePermissions } from "@/features/permissions";
@@ -436,7 +436,7 @@ export function CashTransactionDetail({
  * recorded.
  *
  * Three answers and they are genuinely different. One name when every row
- * agrees; "Bersama (HQ)" when they agree that none applies, which is a decision
+ * agrees; "Belum Dipetakan" when they agree that none applies, which is a decision
  * somebody made and not a blank; and a count when they disagree, because a
  * transaction that paid for grooming AND retail has no single line and naming
  * the first of them would be a wrong answer wearing a right shape.
@@ -446,14 +446,27 @@ function businessLineSummary(transaction: CashTransaction): string {
 
   if (lines.length === 0) return "—";
 
-  const ids = new Set(lines.map((line) => line.businessLineId ?? ""));
+  const labels = new Set(lines.map(lineMapping));
+  if (labels.size === 1) return [...labels][0];
 
-  if (ids.size > 1) return `${ids.size} lini`;
+  // Several different answers: a count of lines when every one of them names its
+  // own stored line, otherwise the honest "per sub akun" — the rows say which.
+  if (lines.every((line) => line.businessLineId)) {
+    return `${new Set(lines.map((line) => line.businessLineId)).size} lini`;
+  }
+  return "Sesuai sub akun tiap baris";
+}
 
-  const [line] = lines;
-  return line.businessLineId
-    ? (line.businessLineName ?? "—")
-    : SHARED_LINE_LABEL;
+/**
+ * WHERE A ROW REPORTS — what the line says, in this order of authority (the same
+ * one the laba rugi uses): a line stored on the row (written before the line
+ * moved to the account page) wins; otherwise the sub akun the row was booked to,
+ * whose rule decides; otherwise "Belum dipetakan". Never "Bersama": that word
+ * implied somebody chose it.
+ */
+function lineMapping(line: CashTransactionLine): string {
+  if (line.businessLineId) return line.businessLineName ?? "—";
+  return lineSubAccountLabel(line) || NO_SUB_ACCOUNT_LABEL;
 }
 
 function DocumentLink({
@@ -539,8 +552,7 @@ function LinesCard({ transaction }: { transaction: CashTransaction }) {
                   </TableCell>
                 )}
                 <TableCell className="text-sm">
-                  {line.businessLineName ??
-                    (line.businessLineId ? "—" : SHARED_LINE_LABEL)}
+                  {lineMapping(line)}
                 </TableCell>
                 <TableCell className="text-sm text-muted">
                   {line.memo ?? "—"}
