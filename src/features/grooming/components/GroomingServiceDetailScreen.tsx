@@ -72,7 +72,6 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
   return {
     name: name.slice(0, NAME_MAX_LENGTH),
     code: `${service.code.slice(0, CODE_MAX_LENGTH - suffix.length)}${suffix}`,
-    businessLineId: service.businessLineId,
     billingUnit: service.billingUnit ?? "per_pet",
     serviceKind: service.serviceKind ?? null,
     serviceLocations: service.serviceLocations?.length

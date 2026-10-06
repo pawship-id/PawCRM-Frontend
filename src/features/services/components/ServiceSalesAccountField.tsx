@@ -106,7 +106,7 @@ export function ServiceSalesAccountField({
         />
         <p className="text-xs text-muted">
           Hanya akun bertipe pendapatan. Kosongkan untuk memakai akun penjualan
-          bawaan.
+          bawaan. Lini bisnis di laporan mengikuti sub akun yang dipilih.
         </p>
       </div>
 
