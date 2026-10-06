@@ -1,5 +1,6 @@
 "use client";
 
+import { shortSku } from "@/lib/sku";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
@@ -198,7 +199,7 @@ export function StockProductsTable({
                 <TableCell className="tabular-nums text-xs text-muted">
                   {/* Every row here holds stock, so every row has a SKU — only a
                       parent may be without one, and parents are not listed. */}
-                  <HighlightText text={product.sku ?? "—"} query={search} />
+                  <HighlightText text={shortSku(product.sku) || "—"} query={search} />
                 </TableCell>
 
                 <TableCell className="text-right">

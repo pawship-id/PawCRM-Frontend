@@ -760,7 +760,7 @@ describe("ReceiptDetail", () => {
 
     renderWithAuth(<ReceiptDetail receiptId={RECEIPT_ID} />);
 
-    expect(await screen.findByText(/belum ada utang/)).toBeInTheDocument();
+    expect(await screen.findByText(/tidak ada jurnal saat barang diterima/)).toBeInTheDocument();
   });
 
   it("never offers an edit or a delete", async () => {
@@ -850,17 +850,12 @@ describe("ReceiptForm", () => {
   });
 
   /**
-   * CONSIGNED GOODS ARE NOT BOUGHT, so this form does not ask what they cost:
-   * the column loses its `*`, the field is locked, and "0" is what is sent.
-   *
-   * THE PRICE IS NOT MERELY HIDDEN. `costPerUnit` is what
-   * `stockMovementService` feeds to the weighted average, and a `receipt`
-   * movement is not journal-exempt — so zero here averages the product's cost
-   * basis DOWN tenant-wide, and later sales book COGS against the diluted
-   * figure. That is the shop's decision; this test is what pins the behaviour
-   * so it cannot change by accident.
+   * ON A CONSIGNMENT THE PRICE IS THE HARGA SETOR — what the shop owes the
+   * consignor per unit once it SELLS. It is typed and required, exactly like a
+   * purchase price (it used to be locked at "0"); only the label and the hint
+   * change, so nobody reads it as a purchase.
    */
-  it("locks the price at zero on a consignment", async () => {
+  it("keeps the price editable on a consignment and names it Harga setor", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceiptForm supplierId="s1" />);
 
@@ -870,23 +865,27 @@ describe("ReceiptForm", () => {
     await user.click(await screen.findByLabelText(/Shampoo Anjing/));
     await user.click(screen.getByRole("button", { name: /Tambahkan/ }));
 
-    // Outright, the row is seeded from the product's average and editable.
     const price = await screen.findByLabelText(/Harga Shampoo Anjing/);
     expect(price).toHaveValue("12000");
-    expect(price).not.toBeDisabled();
+    expect(
+      screen.getByRole("columnheader", { name: /Harga beli/ }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Konsinyasi/ }));
 
-    expect(screen.getByLabelText(/Harga Shampoo Anjing/)).toHaveValue("0");
-    expect(screen.getByLabelText(/Harga Shampoo Anjing/)).toBeDisabled();
-    // One name for the column now — "HPP manual" named an accounting concept at
-    // somebody reading a delivery note.
-    expect(screen.queryByText("HPP manual")).toBeNull();
+    const setor = screen.getByLabelText(/Harga Shampoo Anjing/);
+    expect(setor).not.toBeDisabled();
+    expect(setor).toBeRequired();
+    expect(
+      screen.getByRole("columnheader", { name: /Harga setor/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: /Harga beli/ }),
+    ).toBeNull();
 
-    // Toggling back RESTORES what was typed: the zero overrides the draft, it
-    // does not overwrite it.
-    await user.click(screen.getByRole("button", { name: /Beli putus/ }));
-    expect(screen.getByLabelText(/Harga Shampoo Anjing/)).toHaveValue("12000");
+    await user.clear(setor);
+    await user.type(setor, "9000");
+    expect(setor).toHaveValue("9000");
   });
 
   /**
@@ -905,6 +904,25 @@ describe("ReceiptForm", () => {
       expect(
         await screen.findByText(/tetap milik supplier/),
       ).toBeInTheDocument();
+    });
+
+    it("calls the per-unit price Harga setor on konsinyasi, Harga beli otherwise", async () => {
+      const { unmount } = renderWithAuth(
+        <ReceiptForm supplierId="s1" initialPurchaseType="konsinyasi" />,
+      );
+      expect(
+        await screen.findByText(/Dibayar ke supplier saat barang terjual/),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("columnheader", { name: /Harga beli/ }),
+      ).toBeNull();
+      unmount();
+
+      renderWithAuth(<ReceiptForm supplierId="s1" />);
+      await screen.findByText(/ia jadi milik toko/);
+      expect(
+        screen.queryByText(/Dibayar ke supplier saat barang terjual/),
+      ).toBeNull();
     });
 
     it("defaults to beli putus when the query string says nothing", async () => {

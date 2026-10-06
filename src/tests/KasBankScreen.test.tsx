@@ -59,7 +59,6 @@ const account = (
     accountType: "asset",
     accountCategory: "cash_bank",
     parentAccountId: null,
-    allocations: [],
     isDefault: true,
     isActive: true,
     ...over,

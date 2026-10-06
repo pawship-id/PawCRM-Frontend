@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -125,37 +126,6 @@ function picksLot(product: Product | undefined): boolean {
 }
 
 /**
- * What a line COSTS, which on a consignment is nothing.
- *
- * FORCED TO "0" RATHER THAN TYPED. Consigned goods are still the supplier's, so
- * this form no longer asks what they cost: the column is locked at zero and the
- * field below it is disabled.
- *
- * WHAT THAT MEANS DOWNSTREAM, recorded here because it is not visible from the
- * screen. `costPerUnit` is not merely a label on a receipt — it is the figure
- * `stockMovementService` feeds to `#weightedAverage`, and a `receipt` movement
- * is NOT journal-exempt, so a consignment intake moves `products.hppAvg` exactly
- * like a purchase does. Bringing goods in at zero therefore averages the
- * product's cost basis DOWN, tenant-wide, and every later sale of that product —
- * consigned or owned — books COGS against the diluted figure. A receipt cannot
- * be edited or deleted once saved.
- *
- * That trade was made deliberately and is the shop's to make; it is written down
- * so the next reader does not "fix" the zero, and so that the day the numbers
- * look wrong there is something to read.
- *
- * A TYPED VALUE IS NOT DESTROYED, only overridden — `line.costPerUnit` keeps
- * whatever was entered under `beli_putus`, so toggling back restores it.
- *
- * MODULE-LEVEL, taking `consignment` as an argument, for the same reason
- * `needsLot` is: a function defined in the body would be new every render and
- * the payload memo would rebuild on every keystroke.
- */
-function costOf(line: LineDraft, consignment: boolean): string {
-  return consignment ? "0" : line.costPerUnit;
-}
-
-/**
  * This form's own address, for one tab.
  *
  * ONE DEFINITION, shared by the tab buttons and by the stamp on first paint —
@@ -236,8 +206,10 @@ function duplicateMessage(name: string | undefined): string {
  * BELI PUTUS vs KONSINYASI changes what the form even means. Outright, the goods
  * become the tenant's, the ledger is posted and `2101 Utang Usaha` is
  * credited. Consigned, they sit in the warehouse still belonging to the supplier
- * — stock rises, but nothing is owed and nothing is journalled, because nothing
- * has been bought. `taxAmount` is not merely hidden for consignment, it is
+ * — stock rises, but nothing is journalled on arrival. The per-unit price typed
+ * on a consignment line is the HARGA SETOR: what the shop owes the consignor
+ * once that unit SELLS (Dr HPP Konsinyasi / Cr 2105 Utang Konsinyasi), settled
+ * from the Ringkasan tab. `taxAmount` is not merely hidden for consignment, it is
  * omitted from the payload: the API REFUSES the field there rather than ignoring
  * it, on the grounds that a clerk who typed one has misunderstood which kind of
  * delivery they are recording.
@@ -522,7 +494,7 @@ export function ReceiptForm({
           return {
             productId: line.productId,
             qty: line.qty.trim(),
-            costPerUnit: costOf(line, consignment).trim(),
+            costPerUnit: line.costPerUnit.trim(),
             batchId: line.batchChoice,
           };
         }
@@ -530,7 +502,7 @@ export function ReceiptForm({
         return {
           productId: line.productId,
           qty: line.qty.trim(),
-          costPerUnit: costOf(line, consignment).trim(),
+          costPerUnit: line.costPerUnit.trim(),
           // THEIRS travels, ours does not: the lot's code is minted by the
           // server, so a receipt describes the goods — the number on the carton
           // and when they expire — and never names what the lot will be called.
@@ -627,7 +599,7 @@ export function ReceiptForm({
     lines.every((line) => {
       const product = productById.get(line.productId);
       if (!isPositive(line.qty)) return false;
-      if (!isDecimal(costOf(line, consignment))) return false;
+      if (!isDecimal(line.costPerUnit)) return false;
       // WHICH LOT comes first: until it is answered the server cannot be told
       // whether this line joins one or opens one, and the two are different
       // requests.
@@ -715,7 +687,7 @@ export function ReceiptForm({
   /** Line subtotals are plain multiplication — no server rule is involved. */
   const localSubtotal = sumDecimals(
     lines.map((line) => {
-      const cost = costOf(line, consignment);
+      const cost = line.costPerUnit;
       return isDecimal(line.qty) && isDecimal(cost)
         ? multiplyDecimals(line.qty, cost)
         : "0";
@@ -814,12 +786,9 @@ export function ReceiptForm({
           next.lines = `${label}: qty harus lebih dari nol.`;
           break;
         }
-        // Never reachable on a consignment, where the cost is the constant
-        // "0" — kept unconditional anyway, because a rule that is only true
-        // while a neighbouring branch holds is a rule that breaks quietly when
-        // that branch changes.
-        if (!isDecimal(costOf(line, consignment))) {
-          next.lines = `${label}: harga beli wajib diisi.`;
+        // On a consignment this is the harga setor — required just the same.
+        if (!isDecimal(line.costPerUnit)) {
+          next.lines = `${label}: ${consignment ? "harga setor" : "harga beli"} wajib diisi.`;
           break;
         }
         if (picksLot(product) && line.batchChoice === "") {
@@ -928,9 +897,15 @@ export function ReceiptForm({
           </div>
           <p className="mt-1.5 text-xs text-muted">
             {consignment
-              ? "Barang titipan tetap milik supplier — tidak ada utang dan tidak ada jurnal, dan harga belinya nol karena belum ada yang dibeli. Disimpan dulu sebagai belum diterima; stok baru naik saat barang diterima. Setiap baris punya lot sendiri — kode batch terisi otomatis kalau dikosongkan."
+              ? "Barang titipan tetap milik supplier — tidak ada jurnal saat diterima. Utangnya baru muncul saat barang terjual, sebesar harga setor per unit. Disimpan dulu sebagai belum diterima; stok baru naik saat barang diterima. Setiap baris punya lot sendiri — kode batch terisi otomatis kalau dikosongkan."
               : "Disimpan dulu sebagai belum diterima. Saat barang diterima, ia jadi milik toko — stok naik, utang ke supplier tercatat, dan jurnal diposting."}
           </p>
+          {consignment && (
+            <p className="mt-1.5 text-xs text-muted">
+              <b>Harga setor</b> = harga per unit yang kamu bayar ke supplier.
+              Dibayar ke supplier saat barang terjual — bukan saat diterima.
+            </p>
+          )}
         </div>
 
         <Card title="Dokumen">
@@ -1166,16 +1141,13 @@ export function ReceiptForm({
                           control it names. Subtotal keeps `text-right`, because
                           that column really is a number. */}
                       <th className="px-2 py-2 text-left font-medium">Qty</th>
-                      {/* ONE NAME, BOTH WAYS ROUND — "HPP manual" was the
-                          consignment version, and it named an accounting
-                          concept at somebody reading a surat jalan. WAJIB only
-                          on beli putus: the figure is on the supplier's invoice
-                          and cannot be derived from the running average, since a
-                          receipt that fell back to it could never move HPP. A
-                          consignment asks nothing — see `costOf`. */}
+                      {/* WAJIB BOTH WAYS: the figure is on the supplier's invoice
+                          (beli putus) or the agreed price per unit to pay the
+                          consignor once it sells (konsinyasi — "Harga setor").
+                          It cannot be derived from the running average. */}
                       <th className="px-2 py-2 text-left font-medium">
-                        Harga beli
-                        {!consignment && <Required />}
+                        {consignment ? "Harga setor" : "Harga beli"}
+                        <Required />
                       </th>
                       {/* WHICH LOT, asked before what it is called — a delivery
                           of goods that expire either joins a batch already on the
@@ -1278,7 +1250,7 @@ export function ReceiptForm({
                           <td className="px-2 py-2">
                             <p className="font-medium">{product?.name ?? "—"}</p>
                             <p className="tabular-nums text-xs text-muted">
-                              {product?.sku}
+                              <SkuText value={product?.sku} />
                               {product?.unit && ` · ${product.unit}`}
                             </p>
                           </td>
@@ -1299,15 +1271,9 @@ export function ReceiptForm({
                             <Input
                               aria-label={`Harga ${product?.name ?? ""}`}
                               inputMode="decimal"
-                              // Locked at nothing on a consignment: the goods
-                              // are still the supplier's, so there is no price
-                              // to type. `disabled` rather than readOnly so it
-                              // is skipped by the keyboard too — there is
-                              // nothing to do in it.
-                              required={!consignment}
-                              aria-required={!consignment}
-                              disabled={consignment}
-                              value={costOf(line, consignment)}
+                              required
+                              aria-required
+                              value={line.costPerUnit}
                               onChange={(event) =>
                                 updateLine(index, {
                                   costPerUnit: event.target.value,
@@ -1461,11 +1427,11 @@ export function ReceiptForm({
 
                           <td className="px-2 py-2 text-right tabular-nums text-xs">
                             {isDecimal(line.qty) &&
-                            isDecimal(costOf(line, consignment))
+                            isDecimal(line.costPerUnit)
                               ? formatMoney(
                                   multiplyDecimals(
                                     line.qty,
-                                    costOf(line, consignment),
+                                    line.costPerUnit,
                                   ),
                                 )
                               : "—"}
@@ -1669,7 +1635,7 @@ export function ReceiptForm({
               )}
               {consignment && (
                 <p className="text-xs text-muted">
-                  Nilai titipan — belum menjadi utang.
+                  Nilai titipan menurut harga setor — dibayar ke supplier saat barang terjual, bukan saat diterima.
                 </p>
               )}
             </div>

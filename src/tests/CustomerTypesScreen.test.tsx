@@ -20,9 +20,7 @@ jest.mock("@/lib/swal", () => ({
 
 /**
  * Pengaturan › Tipe pelanggan (24 September 2026, on request) — a tenant's own
- * labels for the kind of customer it deals with. Built as "working, not used
- * yet": the fields are just a name and a note, and the callout at the foot
- * says plainly that nothing reads either yet.
+ * labels for the kind of customer it deals with. Delete added 5 October 2026.
  */
 const RESELLER: CustomerType = {
   _id: "ct-reseller",
@@ -58,15 +56,47 @@ describe("CustomerTypesScreen", () => {
     expect(screen.getAllByText("—")).toHaveLength(1);
   });
 
-  /* Working, not used yet — the screen has to say so, not just imply it. */
-  it("says the type is not wired to a price list yet", async () => {
-    jest.spyOn(customerTypeService, "list").mockResolvedValue(page([]));
+  it("deletes a type after confirmation and refreshes the list", async () => {
+    jest
+      .spyOn(customerTypeService, "list")
+      .mockResolvedValueOnce(page([RESELLER]))
+      .mockResolvedValueOnce(page([]));
+    const remove = jest
+      .spyOn(customerTypeService, "remove")
+      .mockResolvedValue(RESELLER);
 
     renderWithAuth(<CustomerTypesScreen />);
 
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hapus Reseller" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hapus tipe" }),
+    );
+
+    await waitFor(() => expect(remove).toHaveBeenCalledWith("ct-reseller"));
     expect(
-      await screen.findByText("Baru kategori, belum daftar harga"),
+      await screen.findByText("Belum ada tipe pelanggan."),
     ).toBeInTheDocument();
+  });
+
+  it("shows the API error and keeps the row when delete fails", async () => {
+    jest.spyOn(customerTypeService, "list").mockResolvedValue(page([RESELLER]));
+    jest
+      .spyOn(customerTypeService, "remove")
+      .mockRejectedValue(new ApiError("Customer type not found", 404));
+
+    renderWithAuth(<CustomerTypesScreen />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hapus Reseller" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Hapus tipe" }),
+    );
+
+    expect(await screen.findByText(/not found/i)).toBeInTheDocument();
+    expect(screen.getByText("Reseller")).toBeInTheDocument();
   });
 
   it("offers to add the first type when the list is empty", async () => {

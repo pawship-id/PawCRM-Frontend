@@ -119,6 +119,9 @@ export function MapPointPicker({
     biru") with Google's own wording before they had touched anything.
   */
   const opened = useRef<LatLngLiteral | null>(null);
+  /* A pin that arrives with an EMPTY address still needs one looked up — the
+     caller blanks it when the coordinates were edited after the address was set. */
+  const openedWithAddress = useRef(false);
 
   /* Filled from the field each time it opens, and edited on a copy — Batal
      must leave the address exactly as it was. */
@@ -131,6 +134,7 @@ export function MapPointPicker({
         : (fallbackCenter ?? DEFAULT_CENTER);
 
     opened.current = value ? start : null;
+    openedWithAddress.current = !!value?.address.trim();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setCenter(start);
     setAddress(value?.address ?? "");
@@ -182,7 +186,13 @@ export function MapPointPicker({
     if (!open || state !== "ready") return;
 
     const from = opened.current;
-    if (from && from.lat === center.lat && from.lng === center.lng) return;
+    if (
+      from &&
+      openedWithAddress.current &&
+      from.lat === center.lat &&
+      from.lng === center.lng
+    )
+      return;
 
     let alive = true;
     setLooking(true);

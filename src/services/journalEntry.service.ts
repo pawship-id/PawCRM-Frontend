@@ -317,12 +317,29 @@ export interface ProfitLossRow {
   total: string;
 }
 
+/**
+ * One sub akun's row under an account. The rows sum to the account's own total.
+ *
+ * `unmapped` is the "Belum Dipetakan" row — what was posted to the account with
+ * no sub akun (`subAccountId: null`); the server sorts it last. A retired sub
+ * akun still appears, with `isActive: false`, because the period may predate it.
+ */
+export interface ProfitLossSubAccount extends ProfitLossRow {
+  subAccountId: string | null;
+  code: string;
+  name: string;
+  isActive: boolean;
+  unmapped: boolean;
+}
+
 export interface ProfitLossAccount extends ProfitLossRow {
   accountId: string;
   code: string;
   name: string;
   accountCategory: AccountCategory;
   accountType: AccountType;
+  /** Empty when the account has no sub akun; absent from an older server. */
+  subAccounts?: ProfitLossSubAccount[];
 }
 
 export interface ProfitLossGroup extends ProfitLossRow {
@@ -375,7 +392,10 @@ export interface ProfitLossResult {
  * line as its own column.
  */
 export interface ProfitLossQuery {
-  /** Divide the shared costs across the lines. Defaults to false on the server. */
+  /**
+   * LEGACY, no screen sends it. The server applies the Detil (Sub Akun) rules
+   * by default (6 Oct 2026); only an explicit `false` returns the raw lines.
+   */
   allocation?: boolean;
   dateFrom?: string;
   dateTo?: string;
@@ -570,9 +590,8 @@ export const journalEntryService = {
         dateTo: query.dateTo,
         branchId: query.branchId,
         businessLineId: query.businessLineId,
-        // Sent only when ON: the server defaults it to false, and a `false` on
-        // the URL of every read would be a parameter that never means anything.
-        allocation: query.allocation ? true : undefined,
+        // Sent only when explicitly OFF: the server defaults it to true.
+        allocation: query.allocation === false ? false : undefined,
       },
     }),
 

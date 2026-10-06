@@ -82,7 +82,7 @@ export function ReceiveReceiptDialog({
       await goodsReceiptService.receive(receipt._id, input);
       swalToast(
         consignment
-          ? `${receipt.receiptNumber} diterima — stok naik, belum ada utang.`
+          ? `${receipt.receiptNumber} diterima — stok naik, utang muncul saat barang terjual.`
           : `${receipt.receiptNumber} diterima — stok, HPP, dan utang diperbarui.`,
       );
       onReceived();
@@ -104,7 +104,9 @@ export function ReceiveReceiptDialog({
           <DialogDescription>
             Barang sudah ada di gudang? Menerima akan menaikkan stok, membuat
             lot, dan menggeser HPP
-            {consignment ? "." : ", serta mencatat utang ke supplier."} Setelah
+            {consignment
+              ? ", tanpa jurnal — utang ke supplier baru muncul saat barang terjual, sebesar harga setor."
+              : ", serta mencatat utang ke supplier."} Setelah
             itu penerimaan tidak bisa dibatalkan — koreksinya lewat retur.
           </DialogDescription>
         </DialogHeader>

@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useState } from "react";
 import Link from "next/link";
 
@@ -229,7 +230,9 @@ function ReceiptBody({
                     submit re-reads the ceiling and refuses an over-claim
                     regardless of what this column showed. */}
                 <th className="px-2 py-2 text-right font-medium">Diretur</th>
-                <th className="px-2 py-2 text-right font-medium">Harga beli</th>
+                <th className="px-2 py-2 text-right font-medium">
+                  {consignment ? "Harga setor" : "Harga beli"}
+                </th>
                 <th className="px-2 py-2 text-right font-medium">Subtotal</th>
               </tr>
             </thead>
@@ -255,7 +258,7 @@ function ReceiptBody({
                         {item.productName ?? item.name}
                       </p>
                       <p className="tabular-nums text-xs text-muted">
-                        {item.productSku ?? "—"}
+                        <SkuText value={item.productSku} fallback="—" />
                         {renamed && (
                           <span className="ml-1 font-sans italic">
                             · saat diterima: {item.name}
@@ -393,9 +396,10 @@ function ReceiptBody({
       {/* ------------------------------------------------- utang & dokumentasi */}
       {pending ? null : consignment ? (
         <div className="rounded-lg border border-secondary/40 bg-secondary/10 px-4 py-3 text-sm text-secondary-foreground">
-          <b>Konsinyasi — belum ada utang.</b> Barang sudah masuk gudang dan
-          bisa dijual, tapi masih milik supplier sampai laku. Tidak ada jurnal
-          yang dibuat karena belum ada yang dibeli.
+          <b>Konsinyasi — tidak ada jurnal saat barang diterima.</b> Barang sudah
+          masuk gudang dan bisa dijual, tapi masih milik supplier sampai laku.
+          Utangnya baru muncul saat barang terjual, sebesar harga setor per unit,
+          dan dilunasi lewat &quot;Setor&quot; di Ringkasan Pembelian.
         </div>
       ) : receipt.invoiceId ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-success/40 bg-success/5 px-4 py-3 text-sm">

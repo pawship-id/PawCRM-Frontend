@@ -261,8 +261,8 @@ export function PurchaseReturnForm({ receiptId }: { receiptId?: string }) {
           <div className="mt-4">
             <Alert variant="info">
               Penerimaan konsinyasi. Stok tetap keluar dan HPP tetap dibalik,
-              tapi <b>tidak ada utang yang berkurang</b> — barangnya memang belum
-              pernah dibeli, jadi tidak ada jurnal yang dibuat.
+              tapi <b>tidak ada utang yang berkurang</b> — barangnya belum terjual,
+              jadi belum ada utang konsinyasi dan tidak ada jurnal yang dibuat.
             </Alert>
           </div>
         )}

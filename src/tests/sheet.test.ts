@@ -150,6 +150,51 @@ describe("parseSheet", () => {
     });
   });
 
+  describe("account columns", () => {
+    const WITH_ACCOUNTS =
+      "sku,harga_jual,akun_penjualan,sub_akun_penjualan,akun_hpp,sub_akun_hpp,akun_persediaan";
+
+    it("maps the four optional account columns onto API field names", () => {
+      const result = parseSheet(
+        [WITH_ACCOUNTS, "A,1000,4101,4101-01,5101,5101-01,1201"].join("\n"),
+      );
+
+      expect(result.unknownColumns).toEqual([]);
+      expect(result.rows[0].problems).toEqual([]);
+      expect(result.rows[0].row).toMatchObject({
+        salesAccountCode: "4101",
+        salesSubAccountCode: "4101-01",
+        cogsAccountCode: "5101",
+        cogsSubAccountCode: "5101-01",
+        inventoryAccountCode: "1201",
+      });
+    });
+
+    it("leaves blank account cells off the payload and never requires the columns", () => {
+      const blank = parseSheet([WITH_ACCOUNTS, "A,1000,,,,,"].join("\n"));
+      const { row } = blank.rows[0];
+
+      expect(row).not.toHaveProperty("salesAccountCode");
+      expect(row).not.toHaveProperty("salesSubAccountCode");
+      expect(row).not.toHaveProperty("cogsAccountCode");
+      expect(row).not.toHaveProperty("cogsSubAccountCode");
+      expect(row).not.toHaveProperty("inventoryAccountCode");
+
+      // A sheet without the columns at all is still the old template.
+      expect(() => parseSheet("sku,harga_jual\nA,1000")).not.toThrow();
+    });
+
+    it("passes a sub code through even when its account is blank, for the server to refuse", () => {
+      const result = parseSheet([WITH_ACCOUNTS, "A,1000,,4101-01,,"].join("\n"));
+
+      expect(result.rows[0].problems).toEqual([]);
+      expect(result.rows[0].row).toMatchObject({
+        salesSubAccountCode: "4101-01",
+      });
+      expect(result.rows[0].row).not.toHaveProperty("salesAccountCode");
+    });
+  });
+
   describe("attr_* columns", () => {
     it("strips the prefix and keeps the header's own case", () => {
       const result = parseSheet(

@@ -163,7 +163,7 @@ export const SUPPLIER_TYPES: Array<{
   {
     value: "konsinyasi",
     label: "Konsinyasi",
-    hint: "Barang dititipkan; masih milik supplier sampai laku. Tidak membuat utang saat diterima.",
+    hint: "Barang dititipkan; masih milik supplier sampai laku. Tidak ada jurnal saat diterima; utang muncul saat barang terjual, sebesar harga setor.",
   },
   {
     value: "both",

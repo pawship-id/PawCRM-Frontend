@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useMemo, useState } from "react";
 
 import { Alert, Button, Card, Pagination, Spinner } from "@/components";
@@ -245,7 +246,7 @@ export function StockOnHandScreen() {
                             {row.warehouseName ?? "—"}
                           </TableCell>
                           <TableCell className="tabular-nums text-xs">
-                            {row.sku ?? "—"}
+                            <SkuText value={row.sku} fallback="—" />
                           </TableCell>
                           <TableCell>
                             <span className="flex items-center gap-2">

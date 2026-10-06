@@ -58,6 +58,8 @@ export const SETTINGS_PATHS = {
   pajak: `${ROOT}/pajak`,
   // Pengguna & Sistem
   dataAwal: `${ROOT}/data-awal`,
+  /** The Data awal step "Saldo awal kas & bank" — a page that step opens. */
+  dataAwalKasBank: `${ROOT}/data-awal/kas-bank`,
   pengguna: `${ROOT}/pengguna`,
   peran: `${ROOT}/peran`,
   aksesCabang: `${ROOT}/akses-cabang`,

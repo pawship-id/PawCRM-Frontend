@@ -173,31 +173,67 @@ export function isProfitLossAccount(category: AccountCategory): boolean {
 export type AllocationType = "direct" | "shared_lokasi" | "shared_overall";
 
 /**
- * ONE ALLOCATION RULE — a "Detil Akun" on a Pendapatan or Beban account.
+ * ONE SUB AKUN — what used to be a "Detil Akun", now a record of its own with a
+ * code (Sub-Akun-Implementation-Plan §3.2). Lives on a Pendapatan or Beban
+ * account and carries the allocation rule that decides which segment bears it.
  *
- * `_id` IS WHAT MAKES THE LIST EDITABLE rather than merely replaceable. A save
- * sends the whole array; a rule that goes back carrying the id it was read with
- * is the SAME rule renamed or repointed, and one without an id is new. Drop it
- * and every save mints fresh ids, orphaning the journal lines that name them —
- * which the server then refuses, so this is not a silent mistake, just an
- * unexplainable one.
+ * `code` IS THE PARENT'S CODE PLUS A SUFFIX ("4101-01"), unique across accounts
+ * and sub akun alike. The `_id` is what journal, cash and fixed-cost lines name
+ * (`subAccountId`), and a sub akun a line names can be deactivated but never
+ * deleted.
  */
-export interface AccountAllocation {
-  /** Absent on a rule the user has just added and not yet saved. */
-  _id?: string;
+export interface SubAccount {
+  _id: string;
+  tenantId?: string;
+  accountId: string;
+  /** "4101-01" — always starts with the parent's code and a hyphen. */
+  code: string;
   /** What a person picks from when recording a cost: "Gaji - Grooming Pusat". */
   name: string;
   allocationType: AllocationType;
   /** Required when `direct`, always null otherwise. */
   businessLineId: string | null;
-  /** Only on `direct`. Null means every branch that runs the line. */
+  /** Only on `direct`, and one of the parent's `branchIds`. Null means every branch running the line. */
   branchId: string | null;
-  /**
-   * Retired rather than removed. A rule journal entries already name cannot be
-   * deleted — the entries are immutable and would be left pointing at nothing —
-   * so this is what takes it off the pickers while keeping history explicable.
-   */
+  /** Retired rather than removed — off every picker, still explains old entries. */
   isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** The body of POST /chart-of-accounts/:id/sub-accounts. PATCH takes any subset. */
+export interface SubAccountInput {
+  code: string;
+  name: string;
+  allocationType: AllocationType;
+  businessLineId: string | null;
+  branchId: string | null;
+  isActive: boolean;
+}
+
+/**
+ * DELETE /chart-of-accounts/:id/sub-accounts/:subId — one call, two outcomes.
+ * A sub akun nothing refers to is deleted; one a line names is deactivated
+ * instead, and `references` says how many of each kind hold it.
+ */
+export interface SubAccountRemoval extends SubAccount {
+  outcome: "deleted" | "deactivated";
+  references?: {
+    journalEntries?: number;
+    cashTransactions?: number;
+    fixedCosts?: number;
+  };
+}
+
+/**
+ * The sub akun a posting line is filed under. `subAccountId` is canonical;
+ * `allocationId` mirrors it for readers that predate the rename, so read both.
+ */
+export function lineSubAccountId(line: {
+  subAccountId?: string | null;
+  allocationId?: string | null;
+}): string | null {
+  return line.subAccountId ?? line.allocationId ?? null;
 }
 
 /** One account in the tenant's chart of accounts. */
@@ -236,31 +272,23 @@ export interface ChartOfAccount {
    * server, never guessed from the name.
    */
   cashType?: CashType | null;
-  /** Parent in the hierarchy, or null for a root. Max 4 levels deep. */
-  parentAccountId: string | null;
   /**
-   * HOW THIS ACCOUNT'S AMOUNTS REACH A BUSINESS LINE — its Detil Akun.
-   *
-   * Replaces a single `businessLineId`, which could say "everything here is
-   * grooming's" and nothing else. One account routinely serves several segments
-   * at once: Beban Gaji carries groomers belonging to one line outright and
-   * admin staff belonging to the company as a whole, and the old shape had to
-   * record the second as "no line" — where it fell into the shared bucket of
-   * every report and stayed there.
-   *
-   * EMPTY FOR TWO DIFFERENT REASONS the screen must not blur: an account that is
-   * not on the laba rugi can never have rules (check `isProfitLossAccount`
-   * first), and one that is has simply not been mapped yet — which reads as
-   * "Belum Dipetakan" and is the thing somebody has to act on.
-   *
-   * OPTIONAL, AND ABSENT IS NOT THE SAME AS EMPTY on the wire: an account
-   * written before this field existed and not yet touched by
-   * `backfillAccountAllocations` carries no key at all. Every reader spells
-   * `allocations ?? []` for that reason — the two cases mean the same thing to a
-   * screen, and pretending the field is guaranteed is how a chart that has not
-   * been migrated yet throws instead of rendering.
+   * Which branches may post to this account — at least one, all of them by
+   * default. Optional only so a response from before the rename still parses.
    */
-  allocations?: AccountAllocation[];
+  branchIds?: string[];
+  /**
+   * LEGACY. The tree is no longer built or edited from the client (the form has
+   * no "Induk akun" and the API ignores it), but a chart that has not been
+   * migrated may still send it, and the list still indents by it.
+   */
+  parentAccountId?: string | null;
+  /**
+   * The account's live sub akun, inactive ones included, in code order. Present
+   * on every read of an account; empty for one that is not on the laba rugi or
+   * has none yet. Absent is read as empty (`subAccounts ?? []`).
+   */
+  subAccounts?: SubAccount[];
   /** True for accounts written by the per-tenant seed — undeletable. */
   isDefault: boolean;
   /** Whether the account may be picked for NEW postings. */
@@ -338,6 +366,12 @@ export type JournalSourceType =
   | "expense"
   /** Money in that is not a sale, recorded the same way. */
   | "other_income"
+  /**
+   * The opening balance of Kas & Bank — `Dr <each cash/bank account> / Cr 3101`,
+   * dated the day before the tenant's start date. Written only by Pengaturan ›
+   * Data awal.
+   */
+  | "opening_balance"
   | "manual";
 
 /**
@@ -409,22 +443,22 @@ export interface JournalLine {
    */
   businessLineId: string | null;
   /**
-   * Which Detil Akun of `accountId` this line was posted to — the `_id` of one
-   * rule in that account's `allocations[]`.
+   * Which sub akun of `accountId` this line was posted to.
    *
-   * NULL IS ORDINARY AND MEANS TWO THINGS, both fine: the account carries no
-   * rules to choose from (every asset and liability, and any P&L account still
-   * Belum Dipetakan), or the line was attributed directly at posting time and
-   * needs none — a POS sale already knows the product's line, and a fact beats a
-   * mapping. Every entry written before allocation existed reads as null and
-   * reports exactly as it always did.
+   * NULL IS ORDINARY AND MEANS "BELUM DIPETAKAN": the account carries no sub
+   * akun, or the line comes from an automatic posting that has none to name
+   * (a discount, a card fee) and shows up unmapped on the laba rugi on purpose.
+   * Entries written before sub akun existed read as null too.
    *
-   * RESOLVED AGAINST THE ACCOUNT'S CURRENT RULES when a name is shown. The entry
-   * is immutable and the chart is not, so the rule may since have been renamed —
-   * but it cannot have been deleted, because the chart refuses to remove one a
-   * live line names.
+   * `subAccountId` is canonical; `allocationId` mirrors it for old readers —
+   * read through `lineSubAccountId`. The code and name are resolved by the
+   * server so the ledger does not need `chartOfAccounts:read` to label a line.
    */
-  allocationId: string | null;
+  subAccountId?: string | null;
+  subAccountCode?: string | null;
+  subAccountName?: string | null;
+  /** @deprecated Mirror of `subAccountId`. */
+  allocationId?: string | null;
   /** Decimal string. "0" when the amount sits on the other side. */
   debit: string;
   credit: string;
@@ -514,7 +548,9 @@ export interface FixedCostLine {
   /** Decimal string — see utils/decimal. */
   amount: string;
   businessLineId: string | null;
-  allocationId: string | null;
+  subAccountId?: string | null;
+  /** @deprecated Mirror of `subAccountId`. */
+  allocationId?: string | null;
   memo: string | null;
 }
 
@@ -603,7 +639,7 @@ export interface FixedCostLineInput {
   accountId: string;
   amount: string;
   businessLineId?: string | null;
-  allocationId?: string | null;
+  subAccountId?: string | null;
   memo?: string | null;
 }
 
@@ -625,3 +661,42 @@ export interface CreateFixedCostInput {
 }
 
 export type UpdateFixedCostInput = Partial<CreateFixedCostInput>;
+
+/**
+ * Saldo awal kas & bank — `GET /api/opening-balance/cash-bank`.
+ *
+ * The accounts come WITH their saved amounts (zero where nothing is saved), so
+ * the form is one list rather than a list joined to a second. Money is a decimal
+ * string, as everywhere.
+ */
+export interface CashBankOpeningAccount {
+  id: string;
+  code: string;
+  name: string;
+  amount: string;
+}
+
+export interface CashBankOpening {
+  /** `YYYY-MM-DD`; null until a balance has been saved. */
+  startDate: string | null;
+  /** The live journal entry behind the saved balance, if any. */
+  entry: { id: string; entryNumber: string; branchId: string } | null;
+  accounts: CashBankOpeningAccount[];
+  total: string;
+  /**
+   * `YYYY-MM-DD` of the first thing the books hold other than this balance. The
+   * start date may not be later than this.
+   */
+  firstEntryDate: string | null;
+}
+
+export interface SaveCashBankOpeningInput {
+  startDate: string;
+  lines: Array<{ accountId: string; amount: string }>;
+}
+
+export interface SaveCashBankOpeningResult {
+  entryId: string;
+  entryNumber: string;
+  total: string;
+}

@@ -22,6 +22,7 @@ import {
   linesProblem,
   linesTotal,
   toLineInputs,
+  withoutMismatchedSubAccounts,
   type DraftLine,
 } from "@/features/cash-transactions/components/CashLinesEditor";
 import { useLineLookups } from "@/features/cash-transactions/hooks/useLineLookups";
@@ -35,6 +36,7 @@ import type {
   FixedCostInterval,
   FixedCostKind,
 } from "@/types/accounting";
+import { lineSubAccountId } from "@/types/accounting";
 import { formatMoney, toDecimalString } from "@/utils/decimal";
 
 import { fixedCostHref, INTERVAL_LABEL } from "../labels";
@@ -55,7 +57,7 @@ function draftsFrom(fixedCost: FixedCost): DraftLine[] {
     accountId: line.accountId,
     amount: line.amount,
     businessLineId: line.businessLineId ?? "",
-    allocationId: line.allocationId ?? "",
+    subAccountId: lineSubAccountId(line) ?? "",
     memo: line.memo ?? "",
   }));
 }
@@ -247,7 +249,12 @@ export function FixedCostForm({ fixedCost }: { fixedCost: FixedCost }) {
               active={false}
               placeholder="Pilih cabang"
               required
-              onChange={setPickedBranch}
+              onChange={(next) => {
+                setPickedBranch(next);
+                setLines((previous) =>
+                  withoutMismatchedSubAccounts(previous, lookups.accounts, next),
+                );
+              }}
             />
             <FilterSelect
               layout="form"
@@ -334,6 +341,7 @@ export function FixedCostForm({ fixedCost }: { fixedCost: FixedCost }) {
             businessLines={lookups.businessLines}
             disabled={saving}
             showAddButton={canAddLine(lines)}
+            branchId={branchId}
           />
         </div>
       </Card>

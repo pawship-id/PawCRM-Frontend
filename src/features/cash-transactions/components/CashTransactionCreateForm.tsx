@@ -20,7 +20,6 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { SHARED_LINE_LABEL } from "@/features/accounting";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
@@ -57,6 +56,7 @@ import {
   canAddLine,
   linesProblem,
   toLineInputs,
+  withoutMismatchedSubAccounts,
   type DraftLine,
 } from "./CashLinesEditor";
 
@@ -78,8 +78,9 @@ const KIND_OPTIONS: PillOption<ManualKind>[] = [
  *
  * ADOPTED FROM THE MOCKUP on 20 September 2026 (Keuangan / Kas & Bank /
  * Transaksi / Tambah Transaksi): the Uang masuk / Uang keluar toggle at the head
- * of the card, an Akun Kas/Bank picker in place of the channel one, one Lini
- * Usaha in the header, the Biaya Tetap switch closing it, and Rincian Akun as
+ * of the card, an Akun Kas/Bank picker in place of the channel one, the
+ * Biaya Tetap switch closing it (the mockup's header Lini Usaha was REMOVED on
+ * 6 Okt: the line comes from the account / sub akun mapping), and Rincian Akun as
  * its own card underneath with "+ Tambah baris" in its header and the total as
  * the row table's last line. THE ROWS ARE THE AMOUNT: there is no Jumlah field
  * to disagree with them.
@@ -144,7 +145,6 @@ export function CashTransactionCreateForm() {
    */
   const [partyKey, setPartyKey] = useState("");
   const [partyName, setPartyName] = useState("");
-  const [businessLineId, setBusinessLineId] = useState("");
   const [note, setNote] = useState("");
   const [lines, setLines] = useState<DraftLine[]>(() => [blankLine()]);
   /*
@@ -185,37 +185,14 @@ export function CashTransactionCreateForm() {
       (account) => account._id === cashAccountId,
     ) ?? null;
 
-  const lineOptions: FilterOption<string>[] = [
-    { value: "", label: SHARED_LINE_LABEL },
-    ...namedOptions(lookups.businessLines),
-  ];
-
   function switchKind(next: ManualKind) {
     if (next === kind) return;
     setKind(next);
     setLines((prev) => prev.map((line) => ({ ...line, accountId: "" })));
   }
 
-  /*
-    THE HEADER'S LINI USAHA IS A DEFAULT, NOT AN OVERRIDE. It seeds new rows, and
-    changing it carries along every row that still agreed with it — a row somebody
-    set by hand keeps what they set. Filling the header in after typing three rows
-    has to do something, or it reads as a dead control; silently overwriting a
-    deliberate per-row choice is the other way to get this wrong.
-  */
-  function changeBusinessLine(next: string) {
-    setLines((prev) =>
-      prev.map((line) =>
-        line.businessLineId === businessLineId
-          ? { ...line, businessLineId: next }
-          : line,
-      ),
-    );
-    setBusinessLineId(next);
-  }
-
   function addLine() {
-    setLines((prev) => [...prev, { ...blankLine(), businessLineId }]);
+    setLines((prev) => [...prev, blankLine()]);
   }
 
   /** The party, in whichever of its two shapes — or nothing at all. */
@@ -424,7 +401,12 @@ export function CashTransactionCreateForm() {
               placeholder={scope.loading ? "Memuat cabang…" : "Pilih cabang"}
               required
               disabled={saving}
-              onChange={setPickedBranch}
+              onChange={(next) => {
+                setPickedBranch(next);
+                setLines((previous) =>
+                  withoutMismatchedSubAccounts(previous, lookups.accounts, next),
+                );
+              }}
             />
 
             {/*
@@ -496,19 +478,6 @@ export function CashTransactionCreateForm() {
                   : undefined
               }
               onChange={setCashAccountId}
-            />
-
-            <FilterSelect
-              layout="form"
-              label="Lini Usaha"
-              ariaLabel="Lini Usaha"
-              value={businessLineId}
-              options={lineOptions}
-              active={false}
-              placeholder={SHARED_LINE_LABEL}
-              disabled={saving}
-              hint="Dipakai untuk baris baru di Rincian Akun; tiap baris masih bisa diubah sendiri."
-              onChange={changeBusinessLine}
             />
 
             <div className="sm:col-span-2">
@@ -621,11 +590,13 @@ export function CashTransactionCreateForm() {
               businessLines={lookups.businessLines}
               disabled={saving}
               showAddButton={false}
+              branchId={branchId}
             />
             <p className="mt-3 text-sm text-muted">
-              Detil akun hanya muncul untuk akun yang punya beberapa aturan
-              alokasi (cth. Beban Gaji) — dipakai untuk laporan per lini, tidak
-              memengaruhi jurnal. Total dihitung otomatis dari baris di atas.
+              Lini usaha mengikuti pemetaan akun dan sub akunnya di Daftar Akun,
+              jadi tidak dipilih di sini. Sub akun hanya muncul untuk akun yang
+              punya sub akun; tanpa sub akun, biayanya masuk Belum Dipetakan di
+              laporan per lini. Total dihitung otomatis dari baris di atas.
             </p>
           </>
         )}

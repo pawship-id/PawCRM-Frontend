@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useState } from "react";
 
 import { Alert, Spinner } from "@/components";
@@ -238,7 +239,7 @@ export function ProductMultiPicker({
                       two variants of one product differ by nothing else here. */}
                   {product.sku && (
                     <span className="tabular-nums text-[11px] text-muted">
-                      {product.sku}
+                      <SkuText value={product.sku} />
                     </span>
                   )}
                   <span className="text-[11px] text-muted">{product.unit}</span>

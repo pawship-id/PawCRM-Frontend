@@ -24,6 +24,7 @@ import { ApiError } from "@/services/api-error";
 import { invalidateVariantOptions } from "@/hooks/useVariantOptions";
 import { invalidateZones } from "@/hooks/useZones";
 import { BUILT_IN_VARIANT_OPTIONS, makeVariantOption } from "./helpers/variantOptions";
+import { openingBalanceService } from "@/services/openingBalance.service";
 import { stockEntryService } from "@/services/stockEntry.service";
 import { supplierService } from "@/services/supplier.service";
 import { tenantService } from "@/services/tenant.service";
@@ -58,6 +59,7 @@ jest.mock("@/services/serviceStep.service");
 jest.mock("@/services/zone.service");
 jest.mock("@/services/variantOption.service");
 jest.mock("@/services/customer.service");
+jest.mock("@/services/openingBalance.service");
 jest.mock("@/services/product.service");
 jest.mock("@/services/service.service");
 jest.mock("@/services/stockEntry.service");
@@ -90,6 +92,13 @@ function everythingCounts() {
   jest.mocked(customerService.list).mockResolvedValue(totalling(412));
   jest.mocked(supplierService.list).mockResolvedValue(totalling(9));
   jest.mocked(stockEntryService.list).mockResolvedValue(totalling(2));
+  jest.mocked(openingBalanceService.getCashBank).mockResolvedValue({
+    startDate: null,
+    entry: null,
+    accounts: [],
+    total: "0.0000",
+    firstEntryDate: null,
+  });
 }
 
 beforeEach(() => {
@@ -608,18 +617,44 @@ describe("InitialDataScreen", () => {
     );
   });
 
-  it("locks the three steps whose screens do not exist", async () => {
+  it("locks the two steps whose screens do not exist", async () => {
     renderWithAuth(<InitialDataScreen />);
 
-    expect(screen.getAllByText("Segera")).toHaveLength(3);
+    expect(screen.getAllByText("Segera")).toHaveLength(2);
     expect(screen.getByText("menunggu langkah di atas")).toBeInTheDocument();
     // No way in, because there is nowhere to go.
     expect(
-      screen.queryByRole("link", { name: /Saldo awal/ }),
+      screen.queryByRole("link", { name: /Piutang/ }),
     ).not.toBeInTheDocument();
 
     await waitFor(() =>
       expect(screen.getByText("selesai · 248 produk")).toBeInTheDocument(),
+    );
+  });
+
+  it("opens the cash & bank step, and reads 'belum diisi' until a balance is saved", async () => {
+    renderWithAuth(<InitialDataScreen />);
+
+    await waitFor(() =>
+      expect(screen.getByText("belum diisi")).toBeInTheDocument(),
+    );
+    expect(
+      screen.getAllByRole("link", { name: /Buka/ }).map((a) => a.getAttribute("href")),
+    ).toContain("/dashboard/pengaturan/data-awal/kas-bank");
+  });
+
+  it("reads the saved total on the cash & bank step", async () => {
+    jest.mocked(openingBalanceService.getCashBank).mockResolvedValue({
+      startDate: "2026-01-01",
+      entry: { id: "e1", entryNumber: "JE-0001", branchId: "b1" },
+      accounts: [],
+      total: "10000000.0000",
+      firstEntryDate: null,
+    });
+    renderWithAuth(<InitialDataScreen />);
+
+    await waitFor(() =>
+      expect(screen.getByText(/selesai · Rp\s*10\.000\.000/)).toBeInTheDocument(),
     );
   });
 
@@ -634,7 +669,8 @@ describe("InitialDataScreen", () => {
     await waitFor(() =>
       expect(screen.getByText("selesai · 4 cabang")).toBeInTheDocument(),
     );
-    expect(screen.getAllByText("tidak bisa dilihat")).toHaveLength(3);
+    expect(screen.getAllByText("tidak bisa dilihat")).toHaveLength(4);
+    expect(openingBalanceService.getCashBank).not.toHaveBeenCalled();
     expect(warehouseService.list).not.toHaveBeenCalled();
     expect(productService.list).not.toHaveBeenCalled();
     expect(customerService.list).not.toHaveBeenCalled();

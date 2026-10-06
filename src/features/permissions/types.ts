@@ -20,10 +20,10 @@ export const PERMISSION_CATALOG = {
   /**
    * A tenant's own labels for the kind of customer it is dealing with
    * (Reguler, Reseller, Grosir, …) — Pengaturan › Tipe pelanggan
-   * (24 September 2026). No `delete`/`restore`: nothing references a
-   * customer type yet, so there is nothing a delete could strand.
+   * (24 September 2026). `delete` added 5 October 2026 — a soft delete that
+   * only retires the label. No `restore`: no screen offers one.
    */
-  customerTypes: ["create", "read", "update"],
+  customerTypes: ["create", "read", "update", "delete"],
   categories: ["create", "read", "update", "delete", "restore"],
   products: ["create", "read", "update", "delete", "restore"],
   // The stock ledger is append-only, so it has no `update`, `delete` or
@@ -138,6 +138,12 @@ export const PERMISSION_CATALOG = {
     transaction and its journal entry. Mirrors the server's catalog.
   */
   fixedCosts: ["read", "create", "update", "delete", "post"],
+  /**
+   * Saldo awal. `update` is the only write: one document per tenant, set and
+   * re-set, whose every save posts or reverses a journal entry. Mirrors the
+   * server's catalog.
+   */
+  openingBalances: ["read", "update"],
   /**
    * The membership catalogue. Benefits have no feature of their own because
    * they have no routes of their own — a benefit is edited by PATCHing the plan

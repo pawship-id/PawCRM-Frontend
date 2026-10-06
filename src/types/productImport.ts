@@ -42,6 +42,18 @@ export interface ImportRow {
   categoryName?: string;
   unit?: string;
   sellPrice?: string;
+  /**
+   * The five account columns are OPTIONAL and sent as the CODE the sheet held
+   * (`4101`, `4101-01`), never an id — the server resolves them in the tenant
+   * and reports each problem as a verdict naming the column. A sub code needs
+   * the account code beside it; rows of one family must agree on all five.
+   */
+  salesAccountCode?: string;
+  salesSubAccountCode?: string;
+  cogsAccountCode?: string;
+  cogsSubAccountCode?: string;
+  /** `akun_persediaan` — the inventory (asset) account by code; it has no sub akun. */
+  inventoryAccountCode?: string;
   minStock?: number;
   /**
    * Sent as whatever the cell held. The server accepts `ya`/`y`/`1`/`true` and

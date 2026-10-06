@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -693,7 +694,7 @@ function SheetRow({
         <td className="px-4 py-2.5">
           <p className="text-sm font-medium">{item.productName ?? "—"}</p>
           <p className="tabular-nums text-xs text-muted">
-            {item.productSku ?? item.productId}
+            {item.productSku ? <SkuText value={item.productSku} /> : item.productId}
             {item.productUnit && ` · ${item.productUnit}`}
           </p>
         </td>

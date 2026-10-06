@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -330,7 +331,7 @@ export function StockCardScreen({
           <p className="mt-1 max-w-2xl text-sm text-muted">
             {product ? (
               <>
-                <span className="tabular-nums">{product.sku ?? "—"}</span> ·
+                <span className="tabular-nums"><SkuText value={product.sku} fallback="—" /></span> ·
                 satuan {product.unit} · riwayat setiap pergerakan dan urutan lot
                 mana yang keluar duluan.
               </>

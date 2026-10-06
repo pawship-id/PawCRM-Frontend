@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
@@ -717,7 +718,7 @@ export function StockAdjustmentForm() {
                                 {product?.name ?? "Produk"}
                               </p>
                               <p className="text-xs tabular-nums text-muted">
-                                {product?.sku}
+                                <SkuText value={product?.sku} />
                                 {product?.unit && ` - ${product.unit}`}
                               </p>
                             </TableCell>

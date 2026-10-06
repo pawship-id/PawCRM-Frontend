@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -119,7 +120,7 @@ export function BundleComponentEditor({
                 <tr key={component.componentProductId ?? index} className="border-b border-border/60">
                   <td className="px-2 py-2">
                     <p className="font-medium">{item?.name ?? "—"}</p>
-                    <p className="tabular-nums text-xs text-muted">{item?.sku}</p>
+                    <p className="tabular-nums text-xs text-muted"><SkuText value={item?.sku} /></p>
                   </td>
                   <td className="px-2 py-2 text-right">
                     <Input

@@ -22,10 +22,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ACCOUNTING_CRUMBS, SHARED_LINE_LABEL } from "@/features/accounting";
+import {
+  ACCOUNTING_CRUMBS,
+  NO_SUB_ACCOUNT_LABEL,
+  subAccountLabel,
+} from "@/features/accounting";
 import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
-import type { CashTransaction } from "@/types/api";
+import { lineSubAccountId } from "@/types/accounting";
+import type { CashTransaction, CashTransactionLine } from "@/types/api";
 import { formatMoney, toMinor } from "@/utils/decimal";
 
 import { useCashTransaction } from "../hooks/useCashTransaction";
@@ -431,7 +436,7 @@ export function CashTransactionDetail({
  * recorded.
  *
  * Three answers and they are genuinely different. One name when every row
- * agrees; "Bersama (HQ)" when they agree that none applies, which is a decision
+ * agrees; "Belum Dipetakan" when they agree that none applies, which is a decision
  * somebody made and not a blank; and a count when they disagree, because a
  * transaction that paid for grooming AND retail has no single line and naming
  * the first of them would be a wrong answer wearing a right shape.
@@ -441,14 +446,27 @@ function businessLineSummary(transaction: CashTransaction): string {
 
   if (lines.length === 0) return "—";
 
-  const ids = new Set(lines.map((line) => line.businessLineId ?? ""));
+  const labels = new Set(lines.map(lineMapping));
+  if (labels.size === 1) return [...labels][0];
 
-  if (ids.size > 1) return `${ids.size} lini`;
+  // Several different answers: a count of lines when every one of them names its
+  // own stored line, otherwise the honest "per sub akun" — the rows say which.
+  if (lines.every((line) => line.businessLineId)) {
+    return `${new Set(lines.map((line) => line.businessLineId)).size} lini`;
+  }
+  return "Sesuai sub akun tiap baris";
+}
 
-  const [line] = lines;
-  return line.businessLineId
-    ? (line.businessLineName ?? "—")
-    : SHARED_LINE_LABEL;
+/**
+ * WHERE A ROW REPORTS — what the line says, in this order of authority (the same
+ * one the laba rugi uses): a line stored on the row (written before the line
+ * moved to the account page) wins; otherwise the sub akun the row was booked to,
+ * whose rule decides; otherwise "Belum dipetakan". Never "Bersama": that word
+ * implied somebody chose it.
+ */
+function lineMapping(line: CashTransactionLine): string {
+  if (line.businessLineId) return line.businessLineName ?? "—";
+  return lineSubAccountLabel(line) || NO_SUB_ACCOUNT_LABEL;
 }
 
 function DocumentLink({
@@ -477,16 +495,27 @@ function DocumentLink({
   );
 }
 
+/** "4101-01 · Pendapatan Grooming" for a line, "—" when it names one that cannot be read, "" for none. */
+function lineSubAccountLabel(line: CashTransactionLine): string {
+  if (!lineSubAccountId(line)) return "";
+  if (line.subAccountCode) {
+    return line.subAccountName
+      ? subAccountLabel({ code: line.subAccountCode, name: line.subAccountName })
+      : line.subAccountCode;
+  }
+  return line.allocationName ?? "—";
+}
+
 /** What an expense became, or where other income came from — one row per account. */
 function LinesCard({ transaction }: { transaction: CashTransaction }) {
   const lines = transaction.lines ?? [];
   /*
-    The Detil Akun column appears only when something on THIS transaction has
-    one. A column of em dashes over every row of every old transaction would
-    teach people to ignore the column, and nothing posted before allocation
-    existed carries a detil.
+    The Sub akun column appears only when something on THIS transaction has one.
+    A column of em dashes over every row of every old transaction would teach
+    people to ignore the column, and nothing posted before sub akun existed
+    carries one.
   */
-  const anyAllocation = lines.some((line) => line.allocationId);
+  const anySubAccount = lines.some((line) => lineSubAccountId(line));
 
   return (
     // "Rincian Akun", the mockup's name, rather than one that changes with the
@@ -498,7 +527,7 @@ function LinesCard({ transaction }: { transaction: CashTransaction }) {
           <TableHeader>
             <TableRow>
               <TableHead>Akun</TableHead>
-              {anyAllocation && <TableHead>Detil akun</TableHead>}
+              {anySubAccount && <TableHead>Sub akun</TableHead>}
               <TableHead>Lini bisnis</TableHead>
               <TableHead>Memo</TableHead>
               <TableHead className="text-right">Jumlah</TableHead>
@@ -511,19 +540,19 @@ function LinesCard({ transaction }: { transaction: CashTransaction }) {
                   <span className="tabular-nums">{line.accountCode ?? ""}</span>{" "}
                   {line.accountName ?? "Akun tidak aktif"}
                 </TableCell>
-                {anyAllocation && (
+                {anySubAccount && (
                   <TableCell className="text-sm">
-                    {/* The id rather than nothing when the rule cannot be named:
-                        it is unreachable through the API (the chart refuses to
-                        delete a rule an entry names) but it is what a direct
-                        database edit would look like, and silence there would
-                        read as "no detil". */}
-                    {line.allocationName ?? (line.allocationId ? "—" : "")}
+                    {/* `code · name` as the server resolved it. The dash rather
+                        than nothing when the sub akun cannot be named: it is
+                        unreachable through the API (one a line names is only
+                        ever deactivated) but it is what a direct database edit
+                        would look like, and silence there would read as "no sub
+                        akun". */}
+                    {lineSubAccountLabel(line)}
                   </TableCell>
                 )}
                 <TableCell className="text-sm">
-                  {line.businessLineName ??
-                    (line.businessLineId ? "—" : SHARED_LINE_LABEL)}
+                  {lineMapping(line)}
                 </TableCell>
                 <TableCell className="text-sm text-muted">
                   {line.memo ?? "—"}
@@ -535,7 +564,7 @@ function LinesCard({ transaction }: { transaction: CashTransaction }) {
             ))}
             <TableRow className="hover:bg-transparent">
               <TableCell
-                colSpan={anyAllocation ? 4 : 3}
+                colSpan={anySubAccount ? 4 : 3}
                 className="text-sm font-semibold"
               >
                 Total

@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -76,7 +77,7 @@ export function ImportPreviewTable({ rows }: { rows: ImportVerdict[] }) {
                 {row.rowNumber}
               </TableCell>
               <TableCell className="tabular-nums text-xs">
-                {row.sku || "—"}
+                <SkuText value={row.sku} fallback="—" />
               </TableCell>
               <TableCell>
                 <Badge variant="outline" className={TONES[row.status]}>

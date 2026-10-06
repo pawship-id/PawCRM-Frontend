@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import Link from "next/link";
 import { RotateCcw } from "lucide-react";
 
@@ -213,7 +214,7 @@ export function NegativeStockScreen() {
                       )}
                     </div>
                     <span className="block tabular-nums text-xs text-muted">
-                      {row.sku ?? "—"}
+                      <SkuText value={row.sku} fallback="—" />
                     </span>
                   </TableCell>
                   <TableCell className="whitespace-nowrap">

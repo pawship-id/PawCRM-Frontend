@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import Link from "next/link";
 
 import { Alert, Card, Spinner } from "@/components";
@@ -168,7 +169,7 @@ export function StockEntryDetail({
                         {line.productName ?? "—"}
                       </p>
                       <p className="text-xs tabular-nums text-muted">
-                        {line.productSku}
+                        <SkuText value={line.productSku} />
                         {line.productUnit && ` · ${line.productUnit}`}
                         {line.isConsignment && " · konsinyasi"}
                       </p>

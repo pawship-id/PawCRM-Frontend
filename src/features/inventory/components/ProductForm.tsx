@@ -48,6 +48,8 @@ import {
   toMinor,
 } from "@/utils/decimal";
 import type { Category } from "@/types/api";
+import { SubAccountSelect } from "@/features/accounting/components/SubAccountSelect";
+import { useSubAccounts } from "@/features/accounting/hooks/useSubAccounts";
 import type { ChartOfAccount } from "@/types/accounting";
 import type {
   BundleComponent,
@@ -849,6 +851,21 @@ function ProductFormFields({
   const [cogsAccountId, setCogsAccountId] = useState(
     existing?.cogsAccountId ?? "",
   );
+  /*
+    THE SUB AKUN UNDER EACH P&L ACCOUNT (Sub-Akun-Implementation-Plan §3.4).
+    Persediaan has none — it is not on the laba rugi. Each is asked for only
+    when the chosen account has active sub akun, REQUIRED then, and reset when
+    the account changes: a sub akun belongs to exactly one account, so keeping
+    the old one across a change is a pairing the server refuses.
+  */
+  const [salesSubAccountId, setSalesSubAccountId] = useState(
+    existing?.salesSubAccountId ?? "",
+  );
+  const [cogsSubAccountId, setCogsSubAccountId] = useState(
+    existing?.cogsSubAccountId ?? "",
+  );
+  const salesSubs = useSubAccounts(salesAccountId);
+  const cogsSubs = useSubAccounts(cogsAccountId);
   const [openingEnabled, setOpeningEnabled] = useState(false);
   const [openingQty, setOpeningQty] = useState("");
   const [openingCost, setOpeningCost] = useState("");
@@ -1211,6 +1228,13 @@ function ProductFormFields({
      * it answers with the field — see applyApiError.
      */
     if (mode !== "variants" && sku.trim() === "") next.sku = "SKU wajib diisi.";
+    // Required exactly when the server would require it: the account named
+    // above has active sub akun. While they are still loading there is nothing
+    // to insist on yet — and the server has the last word either way.
+    if (salesSubs.subAccounts.length > 0 && salesSubAccountId === "")
+      next.salesSubAccountId = "Pilih sub akun penjualan.";
+    if (cogsSubs.subAccounts.length > 0 && cogsSubAccountId === "")
+      next.cogsSubAccountId = "Pilih sub akun HPP.";
     // No check on `unit`: the select always holds one of the API's values, so
     // there is nothing a user can do to it that the server would refuse.
 
@@ -1642,8 +1666,10 @@ function ProductFormFields({
       // answer rather than on the question.
       isPreorder,
       ...(salesAccountId ? { salesAccountId } : {}),
+      ...(salesAccountId && salesSubAccountId ? { salesSubAccountId } : {}),
       ...(inventoryAccountId ? { inventoryAccountId } : {}),
       ...(cogsAccountId ? { cogsAccountId } : {}),
+      ...(cogsAccountId && cogsSubAccountId ? { cogsSubAccountId } : {}),
       ...(isShippingEmpty(shipping)
         ? {}
         : { shipping: toShippingPayload(shipping) }),
@@ -1849,6 +1875,13 @@ function ProductFormFields({
     }
     if (cogsAccountId !== (product.cogsAccountId ?? "")) {
       patch.cogsAccountId = cogsAccountId === "" ? null : cogsAccountId;
+    }
+    // `null` clears one — it is what an account change to "Ikut kategori" sends.
+    if (salesSubAccountId !== (product.salesSubAccountId ?? "")) {
+      patch.salesSubAccountId = salesSubAccountId || null;
+    }
+    if (cogsSubAccountId !== (product.cogsSubAccountId ?? "")) {
+      patch.cogsSubAccountId = cogsSubAccountId || null;
     }
 
     /**
@@ -2492,9 +2525,10 @@ function ProductFormFields({
                 <Label htmlFor="salesAccountId">Akun penjualan</Label>
                 <Select
                   value={salesAccountId === "" ? INHERIT_ACCOUNT : salesAccountId}
-                  onValueChange={(next) =>
-                    setSalesAccountId(next === INHERIT_ACCOUNT ? "" : next)
-                  }
+                  onValueChange={(next) => {
+                    setSalesAccountId(next === INHERIT_ACCOUNT ? "" : next);
+                    setSalesSubAccountId("");
+                  }}
                   disabled={salesAccounts.length === 0}
                 >
                   <SelectTrigger
@@ -2528,6 +2562,18 @@ function ProductFormFields({
                   Hanya akun bertipe pendapatan. Kosongkan untuk mengikuti akun
                   default kategorinya.
                 </p>
+                <SubAccountSelect
+                  id="salesSubAccountId"
+                  label="Sub akun penjualan"
+                  subAccounts={salesSubs.subAccounts}
+                  loading={salesSubs.loading}
+                  value={salesSubAccountId}
+                  onChange={(next) => {
+                    setSalesSubAccountId(next);
+                    setFieldErrors((prev) => ({ ...prev, salesSubAccountId: "" }));
+                  }}
+                  error={fieldErrors.salesSubAccountId || undefined}
+                />
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -2579,9 +2625,10 @@ function ProductFormFields({
                 <Label htmlFor="cogsAccountId">Akun HPP</Label>
                 <Select
                   value={cogsAccountId === "" ? INHERIT_ACCOUNT : cogsAccountId}
-                  onValueChange={(next) =>
-                    setCogsAccountId(next === INHERIT_ACCOUNT ? "" : next)
-                  }
+                  onValueChange={(next) => {
+                    setCogsAccountId(next === INHERIT_ACCOUNT ? "" : next);
+                    setCogsSubAccountId("");
+                  }}
                   disabled={cogsAccounts.length === 0}
                 >
                   <SelectTrigger
@@ -2615,6 +2662,18 @@ function ProductFormFields({
                   Hanya akun bertipe beban. Menentukan ke akun mana harga pokok
                   produk ini dibebankan saat terjual.
                 </p>
+                <SubAccountSelect
+                  id="cogsSubAccountId"
+                  label="Sub akun HPP"
+                  subAccounts={cogsSubs.subAccounts}
+                  loading={cogsSubs.loading}
+                  value={cogsSubAccountId}
+                  onChange={(next) => {
+                    setCogsSubAccountId(next);
+                    setFieldErrors((prev) => ({ ...prev, cogsSubAccountId: "" }));
+                  }}
+                  error={fieldErrors.cogsSubAccountId || undefined}
+                />
               </div>
             </div>
           )}

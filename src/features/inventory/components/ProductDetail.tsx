@@ -24,6 +24,7 @@ import {
   sumDecimals,
   toMinor,
 } from "@/utils/decimal";
+import type { ChartOfAccount } from "@/types/accounting";
 import type { Category } from "@/types/api";
 import type { Product, ProductStockRow } from "@/types/inventory";
 
@@ -110,6 +111,26 @@ function accountLabel(
   // An id nobody can resolve names nothing a human can look up, so it is not
   // shown — the same rule the stock ledger applies to `reference.id`.
   return account ? `${account.code} — ${account.name}` : "—";
+}
+
+/**
+ * "4101-01 — Pendapatan Grooming" for a sub akun under one of the accounts above,
+ * or an em dash — never a bare id, same rule as `accountLabel`. Read from the
+ * account's own `subAccounts`, which the chart list carries, so no request of its
+ * own.
+ */
+function subAccountLabelOf(
+  accounts: Array<Pick<ChartOfAccount, "_id" | "subAccounts">>,
+  accountId: string | null | undefined,
+  subAccountId: string | null | undefined,
+): string {
+  if (!accountId || !subAccountId) return "—";
+
+  const sub = accounts
+    .find((candidate) => candidate._id === accountId)
+    ?.subAccounts?.find((candidate) => candidate._id === subAccountId);
+
+  return sub ? `${sub.code} — ${sub.name}` : "—";
 }
 
 /**
@@ -463,6 +484,20 @@ export function ProductDetail({ productId }: { productId: string }) {
                   product.resolved?.cogsAccountId,
                 )}
                 <InheritedNote product={product} field="cogsAccountId" />
+              </dd>
+              <dt className="text-muted">Sub akun HPP</dt>
+              <dd className="font-medium">
+                {subAccountLabelOf(
+                  lookups.cogsAccounts,
+                  product.resolved?.cogsAccountId,
+                  // The resolved pair when the server sent one; else the
+                  // product's own, but only while it still sits under the
+                  // account that resolved — never a sub akun of another account.
+                  product.resolved?.cogsSubAccountId ??
+                    (product.cogsAccountId === product.resolved?.cogsAccountId
+                      ? product.cogsSubAccountId
+                      : null),
+                )}
               </dd>
             </dl>
             <p className="mt-3 text-xs text-muted">

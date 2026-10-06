@@ -1,3 +1,4 @@
+import { SkuText } from "@/components/SkuText";
 import { Fragment } from "react";
 import Link from "next/link";
 import { CornerDownRight } from "lucide-react";
@@ -382,7 +383,7 @@ export function InvoiceItemsTable({
                           <>
                             <span className="font-medium">{item.name}</span>
                             <span className="block text-xs text-muted tabular-nums">
-                              {item.sku ?? "Jasa"}
+                              <SkuText value={item.sku} fallback="Jasa" />
                             </span>
                             <VariantNote item={item} />
                           </>

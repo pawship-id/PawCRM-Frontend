@@ -18,6 +18,9 @@ import {
 } from "@/components";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+// Deep, not the barrel — same reason as the grooming import below: the
+// accounting index reaches back into settings, which imports this feature.
+import { useSubAccounts } from "@/features/accounting/hooks/useSubAccounts";
 import { usePermissions } from "@/features/permissions";
 import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
 import { ApiError } from "@/services/api-error";
@@ -63,6 +66,7 @@ import {
   ServiceStepsField,
   StringListField,
 } from "./ServiceFormFields";
+import { ServiceSalesAccountField } from "./ServiceSalesAccountField";
 import { sessionsRefusal } from "./ServiceStepPicker";
 // Deep, not the barrel: the grooming index imports this feature back.
 import { GROOMING_CATALOG_PATH } from "@/features/grooming/paths";
@@ -206,6 +210,15 @@ export function ServiceForm({
   /* NO DEFAULT, from any module (22 September 2026) — the owner's choice every time. */
   const [businessLineId, setBusinessLineId] = useState("");
   const [image, setImage] = useState<MediaAsset | null>(null);
+  /*
+    WHERE THE REVENUE POSTS, and the sub akun under that account. "" is "akun
+    bawaan" for the first; the second is asked for only when the chosen account
+    has active sub akun, required then, and emptied when the account changes.
+  */
+  const [salesAccountId, setSalesAccountId] = useState("");
+  const [salesSubAccountId, setSalesSubAccountId] = useState("");
+  const [salesSubError, setSalesSubError] = useState<string | null>(null);
+  const salesSubs = useSubAccounts(salesAccountId);
   const [serviceType, setServiceType] = useState<ServiceType>("main");
   /*
     A NEW ADD-ON, from "Tambah add-on" on Master › Layanan › Add-on — told
@@ -438,6 +451,8 @@ export function ServiceForm({
         */
         setCode(result.code ?? "");
         setBusinessLineId(result.businessLineId);
+        setSalesAccountId(result.salesAccountId ?? "");
+        setSalesSubAccountId(result.salesSubAccountId ?? "");
         setImage(result.image ?? null);
         setServiceType(result.serviceType ?? "main");
         // The API stores four decimals; a counter should not have to read past
@@ -604,6 +619,12 @@ export function ServiceForm({
       setKindError("Pilih kelompok layanannya dulu.");
       invalid = true;
     }
+    // Required exactly when the server would require it: the account above has
+    // active sub akun.
+    if (salesSubs.subAccounts.length > 0 && salesSubAccountId === "") {
+      setSalesSubError("Pilih sub akun penjualan.");
+      invalid = true;
+    }
 
     /*
       ─── THE CODE IS REQUIRED ──────────────────────────────────────────────────
@@ -739,6 +760,29 @@ export function ServiceForm({
       name: trimmedName,
       code: trimmedCode,
       businessLineId,
+      /*
+        THE ACCOUNT AND ITS SUB AKUN GO AS A PAIR, and on an edit only when one
+        MOVED — `null` is how either is cleared back to the default, and a patch
+        that resent an untouched pair is one more way to trip the server's
+        pairing check on a service that predates sub akun. A create leaves them
+        out when empty.
+      */
+      ...(editing
+        ? {
+            ...(salesAccountId !== (service?.salesAccountId ?? "")
+              ? { salesAccountId: salesAccountId || null }
+              : {}),
+            ...(salesAccountId !== (service?.salesAccountId ?? "") ||
+            salesSubAccountId !== (service?.salesSubAccountId ?? "")
+              ? { salesSubAccountId: salesSubAccountId || null }
+              : {}),
+          }
+        : {
+            ...(salesAccountId ? { salesAccountId } : {}),
+            ...(salesAccountId && salesSubAccountId
+              ? { salesSubAccountId }
+              : {}),
+          }),
       /*
         SENT ONLY WHEN THERE IS ONE, except on an edit where `null` is how a
         picture is taken off. A create carrying `image: null` was refused
@@ -1011,6 +1055,24 @@ export function ServiceForm({
               Menentukan laba-rugi lini mana yang mencatat penjualan ini.
             </p>
           </div>
+
+          <ServiceSalesAccountField
+            accountId={salesAccountId}
+            onAccountChange={(next) => {
+              setSalesAccountId(next);
+              // A sub akun belongs to ONE account — see the field.
+              setSalesSubAccountId("");
+              setSalesSubError(null);
+            }}
+            subAccounts={salesSubs}
+            subAccountId={salesSubAccountId}
+            onSubAccountChange={(next) => {
+              setSalesSubAccountId(next);
+              setSalesSubError(null);
+            }}
+            subError={salesSubError ?? undefined}
+            disabled={saving}
+          />
 
           <ImageField
             value={image}

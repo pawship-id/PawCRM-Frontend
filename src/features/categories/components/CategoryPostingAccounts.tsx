@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { SubAccountSelect } from "@/features/accounting/components/SubAccountSelect";
+import type { UseSubAccountsResult } from "@/features/accounting/hooks/useSubAccounts";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -14,17 +16,24 @@ import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { ApiError } from "@/services/api-error";
 import type { ChartOfAccount } from "@/types/accounting";
 
-/** The three sides of the ledger a category may point at. */
+/**
+ * The three sides of the ledger a category may point at, and the sub akun under
+ * the two that sit on the laba rugi (persediaan has none).
+ */
 export interface PostingAccounts {
   salesAccountId: string;
+  salesSubAccountId: string;
   cogsAccountId: string;
+  cogsSubAccountId: string;
   inventoryAccountId: string;
 }
 
 /** An empty triple — what a category that has never been filled in carries. */
 export const NO_POSTING_ACCOUNTS: PostingAccounts = {
   salesAccountId: "",
+  salesSubAccountId: "",
   cogsAccountId: "",
+  cogsSubAccountId: "",
   inventoryAccountId: "",
 };
 
@@ -43,6 +52,8 @@ const INHERIT = "__inherit__";
 const FIELDS = [
   {
     key: "salesAccountId" as const,
+    subKey: "salesSubAccountId" as const,
+    subLabel: "Sub akun penjualan",
     accountType: "income" as const,
     label: "Akun penjualan",
     empty: "Belum ada akun pendapatan",
@@ -52,6 +63,8 @@ const FIELDS = [
   },
   {
     key: "inventoryAccountId" as const,
+    subKey: null,
+    subLabel: "",
     accountType: "asset" as const,
     label: "Akun persediaan",
     empty: "Belum ada akun aset",
@@ -60,6 +73,8 @@ const FIELDS = [
   },
   {
     key: "cogsAccountId" as const,
+    subKey: "cogsSubAccountId" as const,
+    subLabel: "Sub akun HPP",
     accountType: "expense" as const,
     label: "Akun HPP",
     empty: "Belum ada akun beban",
@@ -99,12 +114,24 @@ export function CategoryPostingAccounts({
   onChange,
   disabled = false,
   inherited = false,
+  subAccounts,
+  subErrors = {},
+  onSubChange,
 }: {
   value: PostingAccounts;
   onChange: (next: PostingAccounts) => void;
   disabled?: boolean;
   /** True when this category has a parent — changes what "empty" means. */
   inherited?: boolean;
+  /**
+   * The sub akun of the chosen sales / COGS account, read by the FORM — it is
+   * the one that has to know whether one is required before it saves, so the
+   * hooks live there and this card only draws what it is handed.
+   */
+  subAccounts: Record<"salesSubAccountId" | "cogsSubAccountId", UseSubAccountsResult>;
+  subErrors?: Partial<Record<"salesSubAccountId" | "cogsSubAccountId", string>>;
+  /** Called when a sub akun is picked — the form clears that field's error. */
+  onSubChange?: (key: "salesSubAccountId" | "cogsSubAccountId") => void;
 }) {
   const [accounts, setAccounts] = useState<
     Partial<Record<keyof PostingAccounts, ChartOfAccount[]>>
@@ -186,6 +213,9 @@ export function CategoryPostingAccounts({
                 onChange({
                   ...value,
                   [field.key]: next === INHERIT ? "" : next,
+                  // A sub akun belongs to ONE account, so changing the account
+                  // empties it — keeping it would be a pairing the server refuses.
+                  ...(field.subKey ? { [field.subKey]: "" } : {}),
                 })
               }
               disabled={disabled || loading || options.length === 0}
@@ -227,6 +257,21 @@ export function CategoryPostingAccounts({
                 ? "ikut kategori induknya."
                 : `pakai ${field.fallback}.`}
             </p>
+            {field.subKey && (
+              <SubAccountSelect
+                id={`category-${field.subKey}`}
+                label={field.subLabel}
+                subAccounts={subAccounts[field.subKey].subAccounts}
+                loading={subAccounts[field.subKey].loading}
+                value={value[field.subKey]}
+                disabled={disabled}
+                error={subErrors[field.subKey]}
+                onChange={(next) => {
+                  onChange({ ...value, [field.subKey]: next });
+                  onSubChange?.(field.subKey);
+                }}
+              />
+            )}
           </div>
         );
       })}

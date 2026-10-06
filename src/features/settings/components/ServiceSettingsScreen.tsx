@@ -253,14 +253,6 @@ export function ServiceSettingsScreen({
               <AddonServicesPanel
                 list={addons}
                 steps={serviceSteps.steps}
-                intro={
-                  <Intro title="Dua keputusan per add-on">
-                    Ada komisi atau tidak, dan menempel ke tahapan apa. Komisi
-                    add-on masuk utuh ke staf tahapan itu di booking; tanpa
-                    tahapan, dibagi ke semua tahapan seperti komisi layanannya.
-                    Nilai komisinya diatur sekali di setiap modul layanan.
-                  </Intro>
-                }
               />
             )}
 

@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import Swal from "sweetalert2";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 import {
@@ -20,6 +21,7 @@ import type {
   ChartOfAccountNode,
   JournalEntry,
   JournalLine,
+  SubAccount,
 } from "@/types/accounting";
 import { accountTypeOf } from "@/types/accounting";
 import type { PageResult } from "@/types/api";
@@ -84,7 +86,8 @@ function node(
     isActive = true,
     isDefault = false,
     parentAccountId = null,
-    allocations = [],
+    subAccounts = [],
+    branchIds = ["br-pusat", "br-barat"],
   }: Partial<ChartOfAccountNode> = {},
 ): ChartOfAccountNode {
   return {
@@ -94,7 +97,8 @@ function node(
     accountCategory,
     accountType: accountTypeOf(accountCategory),
     parentAccountId,
-    allocations,
+    subAccounts,
+    branchIds,
     isDefault,
     isActive,
     children: children.map((child) => ({ ...child, parentAccountId: code })),
@@ -136,13 +140,15 @@ function chart(): ChartOfAccountNode[] {
         node("5401", "Beban Penyusutan", "biaya", { isActive: false }),
       ],
     }),
-    // A mapped expense, so the Aturan Alokasi column has all three of its states
+    // A mapped expense, so the Sub akun column has all three of its states
     // on one screen: this one, the unmapped 5000/5401 above, and the neraca
     // accounts that can never have any.
     node("5101", "Beban Gaji", "biaya", {
-      allocations: [
+      subAccounts: [
         {
           _id: "alloc-groom",
+          accountId: "5101",
+          code: "5101-01",
           name: "Gaji - Grooming",
           allocationType: "direct",
           businessLineId: "bl-grooming",
@@ -151,6 +157,8 @@ function chart(): ChartOfAccountNode[] {
         },
         {
           _id: "alloc-admin",
+          accountId: "5101",
+          code: "5101-02",
           name: "Gaji - Admin",
           allocationType: "shared_overall",
           businessLineId: null,
@@ -201,8 +209,8 @@ function mockLines(items = [GROOMING, RETAIL]) {
  * The branches, and this one is not optional dressing.
  *
  * `useAllocationTargets` counts the lines AND the branches to decide whether the
- * tenant has anything to allocate at all — one of each and the whole Aturan
- * Alokasi column collapses to "Tidak perlu alokasi". A suite that left this
+ * tenant has anything to allocate at all — one of each and the whole Sub akun
+ * column collapses to "Tidak perlu alokasi". A suite that left this
  * unmocked would get an empty list from the swallowed rejection and silently
  * assert the degraded screen.
  */
@@ -220,10 +228,10 @@ async function renderChart(roots?: ChartOfAccountNode[]) {
   mockBranches();
   renderWithAuth(<ChartOfAccountsScreen />);
   await screen.findByRole("table");
-  // The second read settles a tick after the chart does, and the Aturan Alokasi
-  // column cannot be read until it has — without this every allocation
+  // The second read settles a tick after the chart does, and the Sub akun &
+  // alokasi column cannot be read until it has — without this every allocation
   // assertion races a tenant that momentarily looks like it has no lines.
-  await screen.findByText(/Cara kerja Aturan Alokasi/);
+  await screen.findByText(/Cara kerja Sub Akun/);
 }
 
 /**
@@ -265,18 +273,24 @@ async function pickCategory(label: string) {
   );
 }
 
-/** Mounts the create form and waits for the chart its parent picker needs. */
+/** Mounts the create form and waits for the branches its Cabang picker needs. */
 async function renderCreateForm(roots?: ChartOfAccountNode[]) {
   mockTree(roots);
   mockLines();
+  mockBranches();
   renderWithAuth(<ChartOfAccountCreateForm />);
   await screen.findByLabelText(/Kode akun/);
+  // Untouched, the picker reads every branch once they land — "Semua cabang".
+  await waitFor(() =>
+    expect(screen.getByLabelText("Cabang")).toHaveTextContent("Semua cabang"),
+  );
 }
 
 /** Mounts the edit form for one account and waits for it to be seeded. */
 async function renderEditForm(accountId: string, roots?: ChartOfAccountNode[]) {
   mockTree(roots);
   mockLines();
+  mockBranches();
   renderWithAuth(<ChartOfAccountEditForm accountId={accountId} />);
   await screen.findByLabelText(/Kode akun/);
 }
@@ -545,20 +559,20 @@ describe("ChartOfAccountsScreen", () => {
     // A P&L account nobody has mapped — the one state with work attached.
     expect(rowOf("5000").getByText("Belum dipetakan")).toBeInTheDocument();
     // …and one that is mapped twice over, summarised rather than listed.
-    expect(rowOf("5101").getByText("2 aturan")).toBeInTheDocument();
+    expect(rowOf("5101").getByText("2 sub akun")).toBeInTheDocument();
   });
 
-  it("opens an account's Detil Akun from its row", async () => {
+  it("opens an account's sub akun from its row, each with its code", async () => {
     await renderChart();
 
     expect(screen.queryByText("Gaji - Grooming")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByText("2 aturan"));
+    await userEvent.click(screen.getByText("2 sub akun"));
 
-    expect(
-      await screen.findByDisplayValue("Gaji - Grooming"),
-    ).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Gaji - Admin")).toBeInTheDocument();
+    expect(await screen.findByText("Gaji - Grooming")).toBeInTheDocument();
+    expect(screen.getByText("Gaji - Admin")).toBeInTheDocument();
+    expect(screen.getByText("5101-01")).toBeInTheDocument();
+    expect(screen.getByText("5101-02")).toBeInTheDocument();
   });
 
   /**
@@ -694,16 +708,16 @@ describe("ChartOfAccountsScreen", () => {
    * drafts somebody can forget about — and the second Simpan would look like it
    * saved both.
    */
-  it("closes the open Detil Akun when another row is opened", async () => {
+  it("closes the open sub akun panel when another row is opened", async () => {
     await renderChart();
 
-    await userEvent.click(screen.getByText("2 aturan"));
-    expect(await screen.findByDisplayValue("Gaji - Grooming")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("2 sub akun"));
+    expect(await screen.findByText("Gaji - Grooming")).toBeInTheDocument();
 
     await userEvent.click(screen.getAllByText("Belum dipetakan")[0]);
 
     await waitFor(() =>
-      expect(screen.queryByDisplayValue("Gaji - Grooming")).not.toBeInTheDocument(),
+      expect(screen.queryByText("Gaji - Grooming")).not.toBeInTheDocument(),
     );
   });
 
@@ -799,10 +813,10 @@ describe("ChartOfAccountForm", () => {
    *
    * There used to be one "Lini bisnis" select on this form, which could say
    * "everything landing in this account is grooming's" and nothing else. An
-   * account now carries a LIST of Detil Akun, validated against each other and
-   * against the tenant's lines — a second thing to get wrong while creating the
-   * account itself — so it is edited in the list, inside the account's own row,
-   * and a new P&L account is born "Belum Dipetakan".
+   * account now carries Sub Akun, each with its own code and rule, validated
+   * against each other and against the tenant's lines — a second thing to get
+   * wrong while creating the account itself — so they are edited in the list,
+   * inside the account's own row, and a new P&L account is born "Belum dipetakan".
    */
   it("offers no business-line control — the mapping moved to the list", async () => {
     await renderCreateForm();
@@ -852,7 +866,9 @@ describe("ChartOfAccountForm", () => {
         // The jenis rides along for this category only, and defaults to Bank —
         // the server never guesses it from the name.
         cashType: "bank",
-        parentAccountId: null,
+        // EVERY BRANCH, with nobody having touched the picker: all of them are
+        // ticked by default, and at least one is always sent.
+        branchIds: ["br-pusat", "br-barat"],
       }),
     );
     // Back to the list once it lands — the page's job, where the dialog used to
@@ -931,12 +947,12 @@ describe("ChartOfAccountForm", () => {
     expect(screen.getByText(/kodenya dipakai modul lain/)).toBeInTheDocument();
   });
 
-  it("freezes only the category of an account that has sub-accounts", async () => {
+  it("no longer offers Induk akun — what hung under a parent is a sub akun now", async () => {
     await renderEditForm("1100");
 
-    expect(screen.getByLabelText(/Kode akun/)).toBeEnabled();
-    expect(screen.getByLabelText("Kategori akun")).toBeDisabled();
-    expect(screen.getByText(/punya sub-akun/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Induk akun")).not.toBeInTheDocument();
+    // …and a category is as editable as it ever was on an ordinary account.
+    expect(screen.getByLabelText("Kategori akun")).toBeEnabled();
   });
 
   it("sends only what moved, because an empty patch is a 400", async () => {
@@ -955,21 +971,90 @@ describe("ChartOfAccountForm", () => {
     );
   });
 
-  it("offers only parents the server would accept", async () => {
-    await renderEditForm("1100");
+  /**
+   * AT LEAST ONE BRANCH, ALWAYS. An account no branch may post to is one nobody
+   * can use, and the server refuses an empty list — so the form says so first.
+   */
+  it("refuses to submit with no branch ticked, naming the field", async () => {
+    await renderCreateForm();
+    const create = jest.spyOn(chartOfAccountsService, "create");
 
-    await userEvent.click(screen.getByLabelText("Induk akun"));
-    const options = screen
-      .getAllByRole("option")
-      .map((o) => o.textContent ?? "");
+    await userEvent.type(screen.getByLabelText(/Kode akun/), "1102");
+    await userEvent.type(screen.getByLabelText(/Nama akun/), "Bank BCA");
+    await pickCategory("Cash & Bank");
 
-    // The asset root is a legal parent…
-    expect(options.some((text) => text.includes("1000"))).toBe(true);
-    // …itself is not, nor its own child (either would detach the branch)…
-    expect(options.some((text) => text.includes("1100"))).toBe(false);
-    expect(options.some((text) => text.includes("1101"))).toBe(false);
-    // …and neither is an account of another class.
-    expect(options.some((text) => text.includes("2000"))).toBe(false);
+    // Reset empties the draft and applies at once.
+    await userEvent.click(screen.getByLabelText("Cabang"));
+    await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+    await userEvent.click(screen.getByRole("button", { name: "Buat akun" }));
+
+    expect(
+      await screen.findByText("Pilih minimal satu cabang untuk akun ini."),
+    ).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("sends the branches that were ticked, narrowed from the default", async () => {
+    await renderCreateForm();
+    const create = jest
+      .spyOn(chartOfAccountsService, "create")
+      .mockResolvedValue({} as never);
+
+    await userEvent.type(screen.getByLabelText(/Kode akun/), "1102");
+    await userEvent.type(screen.getByLabelText(/Nama akun/), "Bank BCA");
+    await pickCategory("Cash & Bank");
+
+    await userEvent.click(screen.getByLabelText("Cabang"));
+    await userEvent.click(screen.getByRole("option", { name: "Barat" }));
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+    await userEvent.click(screen.getByRole("button", { name: "Buat akun" }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith(
+        expect.objectContaining({ branchIds: ["br-pusat"] }),
+      ),
+    );
+  });
+
+  it("shows the saved branches of an account being edited", async () => {
+    const roots = chart();
+    roots[1].children[0] = node("2101", "Utang Usaha", "hutang_dagang", {
+      branchIds: ["br-barat"],
+    });
+    await renderEditForm("2101", roots);
+
+    expect(screen.getByLabelText("Cabang")).toHaveTextContent("Barat");
+  });
+
+  /**
+   * A BRANCH THAT CANNOT BE REMOVED is a 409 whose message names what still
+   * uses it — shown whole as a toast, and the form stays put with what was typed.
+   */
+  it("toasts the server's 409 when a branch cannot be removed", async () => {
+    await renderEditForm("2101");
+    jest.spyOn(chartOfAccountsService, "update").mockRejectedValue(
+      new ApiError(
+        "Cabang Barat masih dipakai oleh 2 sub akun, jadi tidak bisa dilepas",
+        409,
+      ),
+    );
+
+    await userEvent.click(screen.getByLabelText("Cabang"));
+    await userEvent.click(screen.getByRole("option", { name: "Barat" }));
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+    await userEvent.click(screen.getByRole("button", { name: "Simpan" }));
+
+    await waitFor(() =>
+      expect(Swal.fire).toHaveBeenCalledWith(
+        expect.objectContaining({
+          icon: "error",
+          title: expect.stringContaining("masih dipakai oleh 2 sub akun"),
+        }),
+      ),
+    );
+    // Not misread as a taken code.
+    expect(screen.queryByText(/sudah dipakai akun lain/)).not.toBeInTheDocument();
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("explains an id that is not in the chart instead of rendering a blank form", async () => {
@@ -997,9 +1082,9 @@ function line(accountId: string, debit: string, credit: string): JournalLine {
   return {
     accountId,
     businessLineId: null,
-    // Null because the account carries no Detil Akun to pick from — which is
-    // what every entry written before allocation existed looks like.
-    allocationId: null,
+    // Null because the account carries no sub akun to pick from — which is
+    // what every entry written before sub akun existed looks like.
+    subAccountId: null,
     debit,
     credit,
     memo: null,
@@ -1621,33 +1706,44 @@ describe("JournalEntryCreateForm", () => {
   });
 
   /**
-   * A MANUAL ENTRY CAN NAME A DETIL AKUN, and the field appears only where the
-   * account has rules — an empty control on every line is one people skip.
+   * A MANUAL ENTRY CAN NAME A SUB AKUN, and the field appears only where the
+   * account has some — an empty control on every line is one people skip. Empty
+   * is a choice, named "Belum dipetakan", not a blank.
    */
-  it("offers the Detil Akun only on an account that has one, and sends it", async () => {
+  it("offers the sub akun only on an account that has some, and sends it", async () => {
+    const sub = (
+      id: string,
+      code: string,
+      name: string,
+      extra: Partial<SubAccount> = {},
+    ): SubAccount => ({
+      _id: id,
+      accountId: "5201",
+      code,
+      name,
+      allocationType: "direct",
+      businessLineId: "bl-grooming",
+      branchId: null,
+      isActive: true,
+      ...extra,
+    });
     const mapped = ledgerChart();
     mapped[3].children[0] = node(
       "5201",
       "Kerugian Persediaan",
       "biaya_lainnya",
       {
-        allocations: [
-          {
-            _id: "alloc-susut",
-            name: "Susut - Grooming",
+        subAccounts: [
+          sub("sub-susut", "5201-01", "Susut - Grooming"),
+          sub("sub-bogor", "5201-02", "Susut - Bogor", {
             allocationType: "direct",
-            businessLineId: "bl-grooming",
-            branchId: null,
-            isActive: true,
-          },
-          {
-            _id: "alloc-retired",
-            name: "Susut - lama",
+            branchId: "b2",
+          }),
+          sub("sub-retired", "5201-03", "Susut - lama", {
             allocationType: "shared_overall",
             businessLineId: null,
-            branchId: null,
             isActive: false,
-          },
+          }),
         ],
       },
     );
@@ -1657,23 +1753,31 @@ describe("JournalEntryCreateForm", () => {
       .spyOn(journalEntryService, "create")
       .mockResolvedValue({ _id: "je1", entryNumber: "JE-1" } as never);
 
-    // Nothing picked yet, so there is no account to have rules.
-    expect(screen.queryByLabelText("Detil akun baris 1")).not.toBeInTheDocument();
+    // Nothing picked yet, so there is no account to have sub akun.
+    expect(screen.queryByLabelText("Sub akun baris 1")).not.toBeInTheDocument();
 
     await pickAccount(1, /5201 · Kerugian Persediaan/);
 
-    // One ACTIVE rule, so it is pre-picked, and the retired one is not offered.
-    const detil = await screen.findByLabelText("Detil akun baris 1");
-    expect(detil).toHaveTextContent("Susut - Grooming");
-    await userEvent.click(detil);
+    // The entry is at Kemang (b1): the Bogor-pinned one does not fit, the
+    // retired one is never offered, so exactly one is left and is pre-picked.
+    const picker = await screen.findByLabelText("Sub akun baris 1");
+    expect(picker).toHaveTextContent("5201-01 · Susut - Grooming");
+    await userEvent.click(picker);
     expect(
-      screen.queryByRole("option", { name: "Susut - lama" }),
+      screen.queryByRole("option", { name: /Susut - Bogor/ }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: /Susut - lama/ }),
+    ).not.toBeInTheDocument();
+    // …and "Belum dipetakan" is always one click away.
+    expect(
+      screen.getByRole("option", { name: "Belum dipetakan" }),
+    ).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
 
-    // The second line's account has no rules, so it gets no field.
+    // The second line's account has none, so it gets no field.
     await pickAccount(2, /3101 · Modal/);
-    expect(screen.queryByLabelText("Detil akun baris 2")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sub akun baris 2")).not.toBeInTheDocument();
 
     await userEvent.type(description(), "Koreksi");
     await userEvent.type(debits()[0], "100000");
@@ -1686,13 +1790,15 @@ describe("JournalEntryCreateForm", () => {
           lines: expect.arrayContaining([
             expect.objectContaining({
               accountId: "5201",
-              allocationId: "alloc-susut",
+              subAccountId: "sub-susut",
             }),
           ]),
         }),
       ),
     );
-    expect(create.mock.calls[0][0].lines[1]).not.toHaveProperty("allocationId");
+    expect(create.mock.calls[0][0].lines[1]).not.toHaveProperty("subAccountId");
+    // The canonical name only — the mirror is for old READERS, not for writes.
+    expect(create.mock.calls[0][0].lines[0]).not.toHaveProperty("allocationId");
   });
 
   /** An inactive account is refused by code AFTER the whole entry was typed. */

@@ -122,7 +122,7 @@ describe("SupplierTypesScreen", () => {
     expect(screen.getByText("Beli putus")).toBeInTheDocument();
     expect(screen.getByText(/Utang ke supplier tercatat saat penerimaan/)).toBeInTheDocument();
     expect(
-      screen.getByText(/Penerimaan barang tidak mencatat utang sama sekali/),
+      screen.getByText(/Penerimaan barang tidak membuat jurnal/),
     ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Tipe baru|Tambah/ })).not.toBeInTheDocument();
   });

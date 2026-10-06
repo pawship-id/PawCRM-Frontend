@@ -1,9 +1,15 @@
 import type {
-  AccountAllocation,
   AllocationType,
   ChartOfAccount,
+  SubAccount,
 } from "@/types/accounting";
-import { isProfitLossAccount } from "@/types/accounting";
+import { isProfitLossAccount, lineSubAccountId } from "@/types/accounting";
+
+/** What an allocation rule is made of — a sub akun, or a draft of one. */
+type AllocationRule = Pick<
+  SubAccount,
+  "allocationType" | "businessLineId" | "branchId"
+>;
 
 /**
  * How allocation rules are NAMED and how the choice of them NARROWS to the shape
@@ -130,7 +136,7 @@ export function shapeNote(shape: TenantShape): string | null {
  * and a row of hex is worse than a row of dashes.
  */
 export function describeAllocation(
-  rule: AccountAllocation,
+  rule: AllocationRule,
   lineNames: Map<string, string>,
   branchNames: Map<string, string>,
   shape: TenantShape,
@@ -147,40 +153,99 @@ export function describeAllocation(
   return ALLOCATION_TYPE_LABEL[rule.allocationType];
 }
 
-/** How many rules of each type an account carries, for the ">1 rule" summary. */
+/** How many sub akun of each type an account carries, for the ">1 rule" summary. */
 export function countByType(
-  allocations: AccountAllocation[],
+  subAccounts: AllocationRule[],
 ): Array<{ type: AllocationType; count: number }> {
   const counts = new Map<AllocationType, number>();
 
-  for (const rule of allocations) {
+  for (const rule of subAccounts) {
     counts.set(rule.allocationType, (counts.get(rule.allocationType) ?? 0) + 1);
   }
 
   return [...counts.entries()].map(([type, count]) => ({ type, count }));
 }
 
+/** "4101-01 · Pendapatan Grooming" — the one way a sub akun is named in a picker or a table. */
+export function subAccountLabel(sub: {
+  code: string;
+  name: string;
+}): string {
+  return `${sub.code} · ${sub.name}`;
+}
+
 /**
- * The Detil Akun a line may be POSTED to: the account's rules, minus the retired
- * ones.
+ * The sub akun a line may be POSTED to: the account's, minus the retired ones,
+ * and — when the posting already knows its branch — minus those pinned to a
+ * different one.
  *
- * INACTIVE RULES ARE DROPPED rather than greyed out — the server refuses a
+ * INACTIVE ONES ARE DROPPED rather than greyed out — the server refuses a
  * posting to one, so offering it is offering a 400. They still exist so the
- * entries already posted to them stay explicable; that is the whole point of
- * retiring rather than deleting.
+ * entries already posted to them stay explicable.
+ *
+ * THE BRANCH RULE IS THE PICKER ENDPOINT'S (`GET /sub-accounts?branchId=`): a
+ * sub akun pinned to a branch fits only that branch, one pinned to none fits
+ * every branch of its account. Applied here, on the sub akun the chart already
+ * carries, because a journal or cash form with twenty rows would otherwise ask
+ * the server once per row.
  *
  * LIVES HERE rather than beside either form that uses it. Transaksi Keuangan and
  * the manual journal both post to accounts, both need exactly this list, and a
  * copy in each is how the two would come to disagree about whether an inactive
- * rule is offered.
+ * one is offered.
  */
-export function allocationOptionsFor(
-  account: Pick<ChartOfAccount, "allocations"> | undefined,
+export function subAccountOptionsFor(
+  account: Pick<ChartOfAccount, "subAccounts"> | undefined,
+  branchId?: string,
 ): Array<{ value: string; label: string }> {
-  return (account?.allocations ?? [])
-    .filter((rule) => rule.isActive && rule._id)
-    .map((rule) => ({ value: rule._id as string, label: rule.name }));
+  return (account?.subAccounts ?? [])
+    .filter(
+      (sub) =>
+        sub.isActive && (!branchId || !sub.branchId || sub.branchId === branchId),
+    )
+    .map((sub) => ({ value: sub._id, label: subAccountLabel(sub) }));
 }
+
+/**
+ * How a POSTED line names its sub akun — "4101-01 · Pendapatan Grooming" — or
+ * null for a line that is Belum Dipetakan.
+ *
+ * THE SERVER'S WORDS FIRST (`subAccountCode` / `subAccountName`), because they
+ * are what the entry said when it was read and need no grant on the chart; then
+ * the account's current sub akun, which covers a response that predates those
+ * fields. An id that resolves to neither reads as null rather than as an
+ * ObjectId.
+ */
+export function lineSubAccountText(
+  line: {
+    subAccountId?: string | null;
+    allocationId?: string | null;
+    subAccountCode?: string | null;
+    subAccountName?: string | null;
+  },
+  account: Pick<ChartOfAccount, "subAccounts"> | undefined,
+): string | null {
+  const id = lineSubAccountId(line);
+  if (!id) return null;
+
+  if (line.subAccountCode) {
+    return line.subAccountName
+      ? subAccountLabel({ code: line.subAccountCode, name: line.subAccountName })
+      : line.subAccountCode;
+  }
+
+  const sub = (account?.subAccounts ?? []).find((item) => item._id === id);
+
+  return sub ? subAccountLabel(sub) : null;
+}
+
+/**
+ * The name of the choice every line-level picker opens with: no sub akun.
+ *
+ * Empty is a real answer — "Belum Dipetakan", which BO wants for what no product
+ * explains — so it is a named option rather than a blank cell.
+ */
+export const NO_SUB_ACCOUNT_LABEL = "Belum dipetakan";
 
 /** What the Aturan Alokasi cell is showing — one enum, so the screen never re-derives it. */
 export type AllocationState =
@@ -190,8 +255,8 @@ export type AllocationState =
   | { kind: "notNeeded" }
   /** A P&L account nobody has mapped. The one state somebody must act on. */
   | { kind: "unmapped" }
-  | { kind: "single"; rule: AccountAllocation }
-  | { kind: "several"; allocations: AccountAllocation[] };
+  | { kind: "single"; rule: SubAccount }
+  | { kind: "several"; allocations: SubAccount[] };
 
 /**
  * Which of the five things a row's allocation cell is.
@@ -213,7 +278,9 @@ export function allocationState(
     return { kind: "notNeeded" };
   }
 
-  const allocations = account.allocations ?? [];
+  // Every sub akun counts, inactive ones too: a row whose only sub akun was
+  // retired is not "Belum dipetakan" — somebody mapped it, and that is history.
+  const allocations = account.subAccounts ?? [];
 
   if (allocations.length === 0) return { kind: "unmapped" };
   if (allocations.length === 1) return { kind: "single", rule: allocations[0] };
@@ -221,26 +288,27 @@ export function allocationState(
   return { kind: "several", allocations };
 }
 
-/** Whether a row can be opened to edit its rules. */
+/** Whether a row can be opened to edit its sub akun. */
 export function canEditAllocations(state: AllocationState): boolean {
   return state.kind !== "notApplicable" && state.kind !== "notNeeded";
 }
 
 /**
- * A blank rule, for "+ Tambah Detil".
+ * A blank sub akun draft, for "+ Tambah sub akun".
  *
  * Opens on the FIRST type the tenant can actually pick rather than always
  * `direct`: a single-line tenant has no Direct in its list, and a row that
  * starts on a value its own select does not offer reads as a broken control.
  *
- * The name is left EMPTY rather than pre-filled with the account's, so the field
- * shows its placeholder and the save says it is required. A pre-filled name is a
- * name nobody reads, and this one is what a person will later pick from when
+ * The name and the code suffix are left EMPTY so the fields show their
+ * placeholders and the save says they are required. A pre-filled name is a name
+ * nobody reads, and this one is what a person will later pick from when
  * recording a cost.
  */
-export function blankAllocation(shape: TenantShape): AccountAllocation {
+export function blankAllocation(
+  shape: TenantShape,
+): Pick<SubAccount, "allocationType" | "businessLineId" | "branchId" | "isActive"> {
   return {
-    name: "",
     allocationType: allocationChoices(shape)[0].value,
     businessLineId: null,
     branchId: null,

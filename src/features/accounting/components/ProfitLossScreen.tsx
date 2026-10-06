@@ -4,8 +4,6 @@ import { Fragment, useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { Alert, Breadcrumb, Spinner } from "@/components";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 // The shadcn button directly, for `size="sm"` — the app-facing wrapper in
 // @/components does not carry a size prop. Same import JournalEntriesScreen makes.
 import { Button } from "@/components/ui/button";
@@ -86,10 +84,6 @@ export function ProfitLossScreen({ now }: { now: string }) {
       dateTo: month.dateTo,
       branchId: "",
       businessLineId: "",
-      // OFF. The undivided report is what every previous month was read as, so
-      // it stays what the screen opens on — the toggle is how somebody asks the
-      // other question, side by side with the answer they already know.
-      allocation: false,
     };
   });
 
@@ -138,38 +132,12 @@ export function ProfitLossScreen({ now }: { now: string }) {
         </h1>
         <p className="mt-1 max-w-2xl text-[15px] text-muted">
           Pendapatan dikurangi beban pokok dan beban operasional, dipecah per
-          lini bisnis. Kolom Bersama (HQ) menampung yang tidak terikat satu lini
-          — sewa, gaji kantor, listrik.
+          lini bisnis. Lini diambil dari aturan Detil Akun di Daftar Akun;
+          yang belum punya aturan Detil tampil di kolom Belum Dipetakan.
         </p>
       </div>
 
       {error && <Alert variant="error">{error}</Alert>}
-
-      {/*
-        THE ONE CONTROL ON THIS SCREEN THAT IS NOT A FILTER, which is why it does
-        not live in the toolbar (§8 is about narrowing a list). It does not change
-        WHICH entries are read — it changes what the same entries are reported as,
-        and the two answers are meant to be compared. Applying on the switch, with
-        no Terapkan, is what makes the comparison a flick back and forth.
-      */}
-      <div className="flex flex-wrap items-start gap-3 rounded-xl border border-border bg-surface p-4">
-        <Switch
-          id="pl-allocation"
-          checked={query.allocation === true}
-          disabled={loading}
-          onCheckedChange={(allocation) =>
-            setQuery((prev) => ({ ...prev, allocation }))
-          }
-        />
-        <div className="min-w-0 flex-1">
-          <Label htmlFor="pl-allocation">Bagikan beban bersama ke tiap lini</Label>
-          <p className="mt-1 text-xs text-muted">
-            {query.allocation
-              ? "Sewa, marketing dan gaji kantor dibagi ke tiap lini mengikuti Aturan Alokasi di Daftar Akun, sesuai porsi pendapatan periode ini. Kolom Bersama menyisakan akun yang belum dipetakan."
-              : "Beban yang tidak terikat satu lini tetap utuh di kolom Bersama — sama seperti laporan bulan-bulan sebelumnya."}
-          </p>
-        </div>
-      </div>
 
       {/*
         A figure that rests on an equal split rather than on trade. Said here, on
@@ -197,180 +165,218 @@ export function ProfitLossScreen({ now }: { now: string }) {
           <Spinner /> Memuat laba rugi…
         </div>
       ) : (
-      /* The table container is written out rather than wrapped in <Card>: Card
+        /* The table container is written out rather than wrapped in <Card>: Card
          pads its content, and a matrix has to run edge to edge so the sticky
          first column has an edge to stick to. Same shape JournalEntriesScreen
          uses for the same reason. */
-      <div className="overflow-hidden rounded-xl border border-border bg-surface">
-        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-hover px-4 py-3">
-          <h2 className="text-base font-bold">Laporan Laba Rugi</h2>
-          <span className="text-xs tabular-nums text-muted">
-            {periodLabel} ·{" "}
-            {query.branchId
-              ? (branches.find((b) => b._id === query.branchId)?.name ??
-                "Cabang terpilih")
-              : "Semua cabang"}
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="ml-auto"
-            onClick={() =>
-              setExpanded(
-                allOpen
-                  ? new Set()
-                  : new Set(matrix.groups.map((group) => group.key)),
-              )
-            }
-          >
-            {allOpen ? "Tutup semua rincian" : "Buka semua rincian"}
-          </Button>
-        </div>
+        <div className="overflow-hidden rounded-xl border border-border bg-surface">
+          <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-hover px-4 py-3">
+            <h2 className="text-base font-bold">Laporan Laba Rugi</h2>
+            <span className="text-xs tabular-nums text-muted">
+              {periodLabel} ·{" "}
+              {query.branchId
+                ? (branches.find((b) => b._id === query.branchId)?.name ??
+                  "Cabang terpilih")
+                : "Semua cabang"}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto"
+              onClick={() =>
+                setExpanded(
+                  allOpen
+                    ? new Set()
+                    : new Set(matrix.groups.map((group) => group.key)),
+                )
+              }
+            >
+              {allOpen ? "Tutup semua rincian" : "Buka semua rincian"}
+            </Button>
+          </div>
 
-        <Table className={loading ? "opacity-60" : undefined}>
-          <TableHeader>
-            <TableRow>
-              {/* Sticky, because the whole point of the table is reading one
+          <Table className={loading ? "opacity-60" : undefined}>
+            <TableHeader>
+              <TableRow>
+                {/* Sticky, because the whole point of the table is reading one
                   account across several lini — and a row you have scrolled the
                   name off is a row of numbers about nothing. */}
-              <TableHead className="sticky left-0 z-20 bg-surface-hover">
-                Akun
-              </TableHead>
-              {matrix.columns.map((column) => (
-                <TableHead
-                  key={column.id ?? "shared"}
-                  className="text-right whitespace-nowrap"
-                >
-                  {column.label}
+                <TableHead className="sticky left-0 z-20 bg-surface-hover">
+                  Akun
                 </TableHead>
-              ))}
-              <TableHead className="border-l border-border text-right whitespace-nowrap">
-                Total Konsolidasi
-              </TableHead>
-            </TableRow>
-          </TableHeader>
+                {matrix.columns.map((column) => (
+                  <TableHead
+                    key={column.id ?? "shared"}
+                    className="text-right whitespace-nowrap"
+                  >
+                    {column.label}
+                  </TableHead>
+                ))}
+                <TableHead className="border-l border-border text-right whitespace-nowrap">
+                  Total Konsolidasi
+                </TableHead>
+              </TableRow>
+            </TableHeader>
 
-          <TableBody>
-            {matrix.groups.map((group) => {
-              const open = expanded.has(group.key);
-              // Which side of the formula the group is on, decided in
-              // `reportSummary` rather than here: the two income groups add, the
-              // three cost groups are subtracted and so print with a leading
-              // minus. The amounts themselves stay positive, because a report
-              // prints "Beban Sewa 15.000.000" until it is being taken away.
-              const negative = group.negative;
+            <TableBody>
+              {matrix.groups.map((group) => {
+                const open = expanded.has(group.key);
+                // Which side of the formula the group is on, decided in
+                // `reportSummary` rather than here: the two income groups add, the
+                // three cost groups are subtracted and so print with a leading
+                // minus. The amounts themselves stay positive, because a report
+                // prints "Beban Sewa 15.000.000" until it is being taken away.
+                const negative = group.negative;
 
-              return (
-                <Fragment key={group.key}>
-                  <TableRow className="bg-surface-hover hover:bg-surface-hover">
-                    <TableCell className="sticky left-0 z-10 bg-surface-hover px-4 py-2.5">
-                      <button
-                        type="button"
-                        aria-expanded={open}
-                        onClick={() => toggle(group.key)}
-                        className="inline-flex items-center gap-2 rounded-md text-sm font-semibold outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                      >
-                        <ChevronRight
-                          className={cn(
-                            "size-4 text-muted transition",
-                            open && "rotate-90",
-                          )}
-                          aria-hidden
-                        />
-                        {group.label}
-                      </button>
-                    </TableCell>
-                    {group.cells.map((amount, index) => (
-                      <TableCell
-                        key={matrix.columns[index].id ?? "shared"}
-                        className="px-4 py-2.5 text-right text-sm font-semibold tabular-nums"
-                      >
-                        {signed(amount, negative)}
+                return (
+                  <Fragment key={group.key}>
+                    <TableRow className="bg-surface-hover hover:bg-surface-hover">
+                      <TableCell className="sticky left-0 z-10 bg-surface-hover px-4 py-2.5">
+                        <button
+                          type="button"
+                          aria-expanded={open}
+                          onClick={() => toggle(group.key)}
+                          className="inline-flex items-center gap-2 rounded-md text-sm font-semibold outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        >
+                          <ChevronRight
+                            className={cn(
+                              "size-4 text-muted transition",
+                              open && "rotate-90",
+                            )}
+                            aria-hidden
+                          />
+                          {group.label}
+                        </button>
                       </TableCell>
-                    ))}
-                    <TableCell className="border-l border-border px-4 py-2.5 text-right text-sm font-semibold tabular-nums">
-                      {signed(group.total, negative)}
-                    </TableCell>
-                  </TableRow>
-
-                  {open &&
-                    group.accounts.map((account) => (
-                      <TableRow key={account.code}>
-                        <TableCell className="sticky left-0 z-10 bg-surface py-2 pr-4 pl-10 text-sm">
-                          <span className="mr-2 text-xs tabular-nums text-muted">
-                            {account.code}
-                          </span>
-                          {account.name}
+                      {group.cells.map((amount, index) => (
+                        <TableCell
+                          key={matrix.columns[index].id ?? "shared"}
+                          className="px-4 py-2.5 text-right text-sm font-semibold tabular-nums"
+                        >
+                          {signed(amount, negative)}
                         </TableCell>
-                        {account.cells.map((amount, index) => (
-                          <TableCell
-                            key={matrix.columns[index].id ?? "shared"}
-                            className="px-4 py-2 text-right text-sm tabular-nums text-muted"
-                          >
-                            {signed(amount, negative)}
-                          </TableCell>
-                        ))}
-                        <TableCell className="border-l border-border px-4 py-2 text-right text-sm tabular-nums text-muted">
-                          {signed(account.total, negative)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-
-                  {open && group.accounts.length === 0 && (
-                    <TableRow className="hover:bg-transparent">
-                      <TableCell
-                        colSpan={columnCount}
-                        className="py-4 pl-10 text-sm text-muted"
-                      >
-                        Belum ada akun yang bergerak di grup ini.
+                      ))}
+                      <TableCell className="border-l border-border px-4 py-2.5 text-right text-sm font-semibold tabular-nums">
+                        {signed(group.total, negative)}
                       </TableCell>
                     </TableRow>
-                  )}
 
-                  {/* Each subtotal sits directly under the group it closes —
+                    {open &&
+                      group.accounts.map((account) => (
+                        <Fragment key={account.code}>
+                          <TableRow>
+                            <TableCell className="sticky left-0 z-10 bg-surface py-2 pr-4 pl-10 text-sm">
+                              <span className="mr-2 text-xs tabular-nums text-muted">
+                                {account.code}
+                              </span>
+                              {account.name}
+                            </TableCell>
+                            {account.cells.map((amount, index) => (
+                              <TableCell
+                                key={matrix.columns[index].id ?? "shared"}
+                                className="px-4 py-2 text-right text-sm tabular-nums text-muted"
+                              >
+                                {signed(amount, negative)}
+                              </TableCell>
+                            ))}
+                            <TableCell className="border-l border-border px-4 py-2 text-right text-sm tabular-nums text-muted">
+                              {signed(account.total, negative)}
+                            </TableCell>
+                          </TableRow>
+
+                          {/* Sub akun, always visible and indented one step further.
+                          They break the account's own figure down; the unmapped
+                          row is "Belum Dipetakan" and the server puts it last. */}
+                          {account.subAccounts.map((sub) => (
+                            <TableRow key={sub.subAccountId ?? "unmapped"}>
+                              <TableCell className="sticky left-0 z-10 bg-surface py-1.5 pr-4 pl-16 text-sm text-muted">
+                                {sub.unmapped ? (
+                                  "Belum Dipetakan"
+                                ) : (
+                                  <>
+                                    <span className="mr-2 text-xs tabular-nums">
+                                      {sub.code}
+                                    </span>
+                                    {sub.name}
+                                  </>
+                                )}
+                                {!sub.isActive && (
+                                  <span className="ml-2 rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted">
+                                    Nonaktif
+                                  </span>
+                                )}
+                              </TableCell>
+                              {sub.cells.map((amount, index) => (
+                                <TableCell
+                                  key={matrix.columns[index].id ?? "shared"}
+                                  className="px-4 py-1.5 text-right text-sm tabular-nums text-muted"
+                                >
+                                  {signed(amount, negative)}
+                                </TableCell>
+                              ))}
+                              <TableCell className="border-l border-border px-4 py-1.5 text-right text-sm tabular-nums text-muted">
+                                {signed(sub.total, negative)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </Fragment>
+                      ))}
+
+                    {open && group.accounts.length === 0 && (
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell
+                          colSpan={columnCount}
+                          className="py-4 pl-10 text-sm text-muted"
+                        >
+                          Belum ada akun yang bergerak di grup ini.
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {/* Each subtotal sits directly under the group it closes —
                       that placement IS what makes it that subtotal rather than
                       a second net figure. Laba kotor after HPP, laba usaha
                       after Biaya. */}
-                  {group.key === "hpp" && (
-                    <ResultRow
-                      label="Laba Kotor"
-                      row={matrix.grossProfit}
-                      base={matrix.revenue}
-                      columns={matrix.columns}
-                      pctLabel="margin"
-                    />
-                  )}
-                  {group.key === "biaya" && (
-                    <ResultRow
-                      label="Laba Usaha"
-                      row={matrix.operatingProfit}
-                      base={matrix.revenue}
-                      columns={matrix.columns}
-                      pctLabel="margin usaha"
-                    />
-                  )}
-                </Fragment>
-              );
-            })}
+                    {group.key === "hpp" && (
+                      <ResultRow
+                        label="Laba Kotor"
+                        row={matrix.grossProfit}
+                        base={matrix.revenue}
+                        columns={matrix.columns}
+                        pctLabel="margin"
+                      />
+                    )}
+                    {group.key === "biaya" && (
+                      <ResultRow
+                        label="Laba Usaha"
+                        row={matrix.operatingProfit}
+                        base={matrix.revenue}
+                        columns={matrix.columns}
+                        pctLabel="margin usaha"
+                      />
+                    )}
+                  </Fragment>
+                );
+              })}
 
-            <ResultRow
-              label="Laba Bersih"
-              row={matrix.netProfit}
-              base={matrix.revenue}
-              columns={matrix.columns}
-              pctLabel="margin bersih"
-              emphasis
-            />
-          </TableBody>
-        </Table>
-      </div>
+              <ResultRow
+                label="Laba Bersih"
+                row={matrix.netProfit}
+                base={matrix.revenue}
+                columns={matrix.columns}
+                pctLabel="margin bersih"
+                emphasis
+              />
+            </TableBody>
+          </Table>
+        </div>
       )}
 
       <p className="text-xs text-muted">
-        Persentase dihitung terhadap pendapatan kolom yang sama, jadi sebuah lini
-        dibandingkan dengan dirinya sendiri — bukan dengan total shop. Kolom
-        Bersama (HQ) tidak punya pendapatan, jadi persentasenya tampil sebagai
-        &ldquo;—&rdquo;.
+        Persentase dihitung terhadap pendapatan kolom yang sama, jadi sebuah
+        lini dibandingkan dengan dirinya sendiri — bukan dengan total shop.
+        Kolom Belum Dipetakan tidak punya pendapatan, jadi persentasenya tampil
+        sebagai &ldquo;—&rdquo;.
       </p>
     </div>
   );
@@ -383,7 +389,7 @@ export function ProfitLossScreen({ now }: { now: string }) {
  * other base would make the number mean something else entirely: grooming's
  * margin against the shop's revenue is not a margin, it is a contribution share
  * wearing a margin's label. `marginPct` returns null when the base is zero, which
- * is exactly the Bersama column's case, and it renders as an em dash rather than
+ * is exactly the Belum Dipetakan column's case, and it renders as an em dash rather than
  * as 0% — a column with no revenue has no margin, and claiming zero is a claim.
  */
 function ResultRow({

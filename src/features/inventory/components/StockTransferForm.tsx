@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
@@ -182,7 +183,7 @@ function TransferLineRow({
       <td className="px-2 py-2">
         <p className="font-medium">{product?.name ?? "—"}</p>
         <p className="tabular-nums text-xs text-muted">
-          {product?.sku}
+          <SkuText value={product?.sku} />
           {product?.unit && ` · ${product.unit}`}
         </p>
       </td>

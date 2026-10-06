@@ -47,9 +47,20 @@ export interface MatrixRow {
   total: string;
 }
 
+export interface MatrixSubAccount extends MatrixRow {
+  /** Null for the "Belum Dipetakan" row. */
+  subAccountId: string | null;
+  code: string;
+  name: string;
+  isActive: boolean;
+  unmapped: boolean;
+}
+
 export interface MatrixAccount extends MatrixRow {
   code: string;
   name: string;
+  /** Under the account, server order (unmapped last). Empty without sub akun. */
+  subAccounts: MatrixSubAccount[];
 }
 
 export interface MatrixGroup extends MatrixRow {
@@ -162,6 +173,18 @@ export function profitLossMatrix(
         code: account.code,
         name: account.name,
         ...rowOf(account),
+        // The account's own total is untouched; these only break it down. A row
+        // that came to nothing in the visible columns is dropped like an account.
+        subAccounts: (account.subAccounts ?? [])
+          .map((sub) => ({
+            subAccountId: sub.subAccountId,
+            code: sub.code,
+            name: sub.name,
+            isActive: sub.isActive,
+            unmapped: sub.unmapped,
+            ...rowOf(sub),
+          }))
+          .filter((sub) => !isZero(sub.total)),
       }))
       .filter((account) => !isZero(account.total));
 
@@ -189,7 +212,7 @@ export function profitLossMatrix(
 /**
  * The columns the matrix shows, shared bucket last.
  *
- * LAST RATHER THAN FIRST, and never sorted away: "Bersama" is where sewa, gaji
+ * LAST RATHER THAN FIRST, and never sorted away: "Belum Dipetakan" is where sewa, gaji
  * kantor and listrik land, so a matrix without it would show three profitable
  * lines and no rent. It sits at the end because it is the one column that is not
  * a line of business, which is also why it reads as a name rather than as an id.

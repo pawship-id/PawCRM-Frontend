@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 
@@ -394,7 +395,7 @@ export function InventoryHub() {
                     {/* THE PLACE, not just the product: a shortfall is at a shelf,
                     and the same product can be fine in the next building. */}
                     <p className="truncate tabular-nums text-xs text-muted">
-                      {row.sku ?? "—"}
+                      <SkuText value={row.sku} fallback="—" />
                       {row.warehouseName && ` · ${row.warehouseName}`}
                     </p>
                   </div>
@@ -457,7 +458,7 @@ export function InventoryHub() {
                     {product.name}
                   </Link>
                   <p className="truncate tabular-nums text-xs text-muted">
-                    {product.sku ?? "—"}
+                    <SkuText value={product.sku} fallback="—" />
                   </p>
                 </div>
                 <span className="tabular-nums text-sm font-semibold text-danger">
@@ -553,7 +554,7 @@ export function InventoryHub() {
                         {row.name}
                       </Link>
                       <p className="truncate tabular-nums text-xs text-muted">
-                        {row.sku ?? "—"}
+                        <SkuText value={row.sku} fallback="—" />
                         {/* WHAT IS LEFT, beside what went — the pair is what makes
                         the row worth acting on rather than a leaderboard. */}
                         {` · sisa ${formatQty(row.qtyOnHand)}`}
@@ -608,7 +609,7 @@ export function InventoryHub() {
                         {row.name}
                       </Link>
                       <p className="truncate tabular-nums text-xs text-muted">
-                        {row.sku ?? "—"}
+                        <SkuText value={row.sku} fallback="—" />
                       </p>
                     </div>
                     <span className="whitespace-nowrap tabular-nums text-sm">

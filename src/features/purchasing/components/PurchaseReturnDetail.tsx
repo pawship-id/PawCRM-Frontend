@@ -1,5 +1,6 @@
 "use client";
 
+import { SkuText } from "@/components/SkuText";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -337,8 +338,8 @@ export function PurchaseReturnDetail({ returnId }: { returnId: string }) {
             explaining here; a draft has simply not posted yet. */}
         {!purchaseReturn.journalEntryId && !isDraft && (
           <p className="mt-4 text-xs text-muted">
-            Tidak ada jurnal untuk retur ini — barangnya konsinyasi (belum pernah
-            dibeli, jadi tidak ada utang yang dikurangi) atau nilainya nol. Stok
+            Tidak ada jurnal untuk retur ini — barangnya konsinyasi (belum terjual,
+            jadi belum ada utang yang dikurangi) atau nilainya nol. Stok
             tetap keluar dan HPP tetap dibalik.
           </p>
         )}
@@ -583,7 +584,7 @@ function StoredLines({
                   {item.productName ?? "—"}
                 </p>
                 <p className="tabular-nums text-xs text-muted">
-                  {item.productSku ?? "—"}
+                  <SkuText value={item.productSku} fallback="—" />
                 </p>
               </td>
               <td className="px-2 py-2 tabular-nums text-xs text-muted">

@@ -654,8 +654,11 @@ export interface Product {
    * LINE of the P&L, the business line decides which COLUMN.
    */
   salesAccountId?: string | null;
+  /** The sub akun under `salesAccountId` — required once that account has active ones, and must belong to it. */
+  salesSubAccountId?: string | null;
   inventoryAccountId?: string | null;
   cogsAccountId?: string | null;
+  cogsSubAccountId?: string | null;
   businessLineId?: string | null;
 
   /**
@@ -803,8 +806,10 @@ export interface ResolvedProductFields {
   brand: string | null;
   description: string | null;
   salesAccountId: string | null;
+  salesSubAccountId?: string | null;
   inventoryAccountId: string | null;
   cogsAccountId: string | null;
+  cogsSubAccountId?: string | null;
   businessLineId: string | null;
   shipping: ProductShipping;
 
@@ -1067,10 +1072,13 @@ export interface CreateStandaloneInput extends CreateProductBase {
   shipping?: Partial<ProductShipping>;
   /** Must be an `income` account of this tenant, or the API answers 400. */
   salesAccountId?: string | null;
+  /** The sub akun under `salesAccountId` — required once that account has active ones, and must belong to it. */
+  salesSubAccountId?: string | null;
   /** Must be an `asset` account of this tenant, or the API answers 400. */
   inventoryAccountId?: string | null;
   /** Must be an `expense` account of this tenant, or the API answers 400. */
   cogsAccountId?: string | null;
+  cogsSubAccountId?: string | null;
   businessLineId?: string | null;
 
   sellPrice: string;
@@ -1104,10 +1112,13 @@ export interface CreateParentInput extends Omit<CreateProductBase, "sku"> {
   shipping?: Partial<ProductShipping>;
   /** Must be an `income` account of this tenant, or the API answers 400. */
   salesAccountId?: string | null;
+  /** The sub akun under `salesAccountId` — required once that account has active ones, and must belong to it. */
+  salesSubAccountId?: string | null;
   /** Must be an `asset` account of this tenant, or the API answers 400. */
   inventoryAccountId?: string | null;
   /** Must be an `expense` account of this tenant, or the API answers 400. */
   cogsAccountId?: string | null;
+  cogsSubAccountId?: string | null;
   businessLineId?: string | null;
 
   /**
@@ -1151,10 +1162,13 @@ export interface CreateVariantInput {
   shipping?: Partial<ProductShipping>;
   /** Must be an `income` account of this tenant, or the API answers 400. */
   salesAccountId?: string | null;
+  /** The sub akun under `salesAccountId` — required once that account has active ones, and must belong to it. */
+  salesSubAccountId?: string | null;
   /** Must be an `asset` account of this tenant, or the API answers 400. */
   inventoryAccountId?: string | null;
   /** Must be an `expense` account of this tenant, or the API answers 400. */
   cogsAccountId?: string | null;
+  cogsSubAccountId?: string | null;
   businessLineId?: string | null;
 
   sku: string;
@@ -1194,10 +1208,13 @@ export interface CreateBundleInput extends CreateProductBase {
   shipping?: Partial<ProductShipping>;
   /** Must be an `income` account of this tenant, or the API answers 400. */
   salesAccountId?: string | null;
+  /** The sub akun under `salesAccountId` — required once that account has active ones, and must belong to it. */
+  salesSubAccountId?: string | null;
   /** Must be an `asset` account of this tenant, or the API answers 400. */
   inventoryAccountId?: string | null;
   /** Must be an `expense` account of this tenant, or the API answers 400. */
   cogsAccountId?: string | null;
+  cogsSubAccountId?: string | null;
   businessLineId?: string | null;
 
   bundleConfig: {
@@ -1259,8 +1276,11 @@ export interface UpdateProductInput {
   shipping?: Partial<ProductShipping>;
   /** Must be an `income` account of this tenant, or the API answers 400. */
   salesAccountId?: string | null;
+  /** The sub akun under `salesAccountId` — required once that account has active ones, and must belong to it. */
+  salesSubAccountId?: string | null;
   inventoryAccountId?: string | null;
   cogsAccountId?: string | null;
+  cogsSubAccountId?: string | null;
   businessLineId?: string | null;
 
   /**

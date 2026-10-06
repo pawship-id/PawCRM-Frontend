@@ -76,7 +76,7 @@ export function ReturnPreviewPanel({
           lines={preview.journal}
           emptyReason={
             consignment
-              ? "Konsinyasi tidak menjurnal — barangnya memang belum pernah dibeli, jadi tidak ada utang yang perlu dikurangi."
+              ? "Konsinyasi tidak menjurnal — barangnya belum terjual, jadi belum ada utang konsinyasi yang perlu dikurangi."
               : "Nilai retur nol, jadi tidak ada jurnal yang dibuat."
           }
         />
