@@ -1,5 +1,7 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
+
 import { Pagination } from "@/components";
 import { cn } from "@/lib/utils";
 import { formatMoney, formatQty, toMinor } from "@/utils/decimal";
@@ -79,6 +81,7 @@ export function StockLedgerTable({
   total,
   filtered,
   onPageChange,
+  onSelect,
 }: {
   movements: StockMovement[];
   unit: string;
@@ -90,6 +93,8 @@ export function StockLedgerTable({
   /** True when a type or date filter is narrowing the list — changes the empty copy. */
   filtered: boolean;
   onPageChange: (page: number) => void;
+  /** A row was opened — the card shows its detail. Rows are plain when absent. */
+  onSelect?: (movement: StockMovement) => void;
 }) {
   if (movements.length === 0) {
     return (
@@ -128,6 +133,7 @@ export function StockLedgerTable({
               <th className="px-4 py-2.5 text-left font-medium">
                 Diinput oleh
               </th>
+              {onSelect && <th className="w-8 px-2 py-2.5" aria-label="Detail" />}
             </tr>
           </thead>
           <tbody>
@@ -137,7 +143,23 @@ export function StockLedgerTable({
               return (
                 <tr
                   key={movement._id}
-                  className="border-b border-border/60 last:border-0"
+                  className={cn(
+                    "border-b border-border/60 last:border-0",
+                    onSelect &&
+                      "cursor-pointer transition hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50",
+                  )}
+                  {...(onSelect
+                    ? {
+                        tabIndex: 0,
+                        onClick: () => onSelect(movement),
+                        onKeyDown: (event: React.KeyboardEvent) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onSelect(movement);
+                          }
+                        },
+                      }
+                    : {})}
                 >
                   <td className="whitespace-nowrap px-4 py-2.5 tabular-nums text-xs text-muted">
                     {new Date(movement.createdAt).toLocaleString("id-ID", {
@@ -209,6 +231,11 @@ export function StockLedgerTable({
                         sync, an opname's own difference rows. */}
                     {movement.createdByName ?? "sistem"}
                   </td>
+                  {onSelect && (
+                    <td className="px-2 py-2.5 text-muted" aria-hidden>
+                      <ChevronRight className="size-4" />
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -224,7 +251,7 @@ export function StockLedgerTable({
                   {formatQty(openingBalance)}{" "}
                   <span className="text-muted">{unit}</span>
                 </td>
-                <td colSpan={3} />
+                <td colSpan={onSelect ? 4 : 3} />
               </tr>
             </tfoot>
           )}

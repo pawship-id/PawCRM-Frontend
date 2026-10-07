@@ -32,6 +32,7 @@ import type {
   RemapSummary,
   SubAccount,
 } from "@/types/accounting";
+import { branchModeOf } from "@/types/accounting";
 import { formatMoney } from "@/utils/decimal";
 
 import { ALLOCATION_TYPE_LABEL } from "../allocationLabels";
@@ -383,12 +384,21 @@ function Preview({ summary, stale }: { summary: RemapSummary; stale: boolean }) 
   );
 }
 
-/** "Grooming · Pusat", "Grooming · Semua cabang", "Shared-Overall". */
+/** "Grooming · Pusat", "Grooming · Cabang transaksi", "Grooming · Semua cabang", "Shared-Overall". */
 function ruleLabel(rule: RemapRule): string {
   if (rule.allocationType !== "direct") {
     return ALLOCATION_TYPE_LABEL[rule.allocationType];
   }
-  return `${rule.businessLineName ?? "—"} · ${rule.branchName ?? "Semua cabang"}`;
+
+  const mode = branchModeOf(rule);
+  const where =
+    mode === "pinned"
+      ? (rule.branchName ?? "—")
+      : mode === "transaction"
+        ? "Cabang transaksi"
+        : "Semua cabang";
+
+  return `${rule.businessLineName ?? "—"} · ${where}`;
 }
 
 function freshNumbers(caught: unknown): RemapSummary | null {

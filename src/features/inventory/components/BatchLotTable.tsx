@@ -1,5 +1,7 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { formatMoney, formatQty, multiplyDecimals, toMinor } from "@/utils/decimal";
@@ -26,6 +28,7 @@ export function BatchLotTable({
   total,
   hasExpiry,
   search = "",
+  onSelect,
 }: {
   batches: ProductBatch[];
   /** How many lots exist server-side — larger than the array means it was cut. */
@@ -40,6 +43,8 @@ export function BatchLotTable({
    * no lots" — which is a different, alarming claim.
    */
   search?: string;
+  /** A row was opened — the card shows the lot's detail. Rows are plain when absent. */
+  onSelect?: (batch: ProductBatch) => void;
 }) {
   const searching = search.trim() !== "";
 
@@ -77,14 +82,15 @@ export function BatchLotTable({
             <th className="px-4 py-2.5 text-right font-medium">Sisa Stock</th>
             <th className="px-4 py-2.5 text-right font-medium">Harga beli batch</th>
             <th className="px-4 py-2.5 text-right font-medium">Nilai sisa</th>
+            {onSelect && <th className="w-8 px-2 py-2.5" aria-label="Detail" />}
           </tr>
         </thead>
         <tbody>
           {live.map((batch, index) => (
-            <BatchRow key={batch._id} batch={batch} order={index + 1} />
+            <BatchRow key={batch._id} batch={batch} order={index + 1} onSelect={onSelect} />
           ))}
           {spent.map((batch) => (
-            <BatchRow key={batch._id} batch={batch} order={null} />
+            <BatchRow key={batch._id} batch={batch} order={null} onSelect={onSelect} />
           ))}
         </tbody>
       </table>
@@ -107,9 +113,11 @@ export function BatchLotTable({
 function BatchRow({
   batch,
   order,
+  onSelect,
 }: {
   batch: ProductBatch;
   order: number | null;
+  onSelect?: (batch: ProductBatch) => void;
 }) {
   const remaining = toMinor(batch.qtyRemaining) ?? 0n;
   const negative = remaining < 0n;
@@ -117,7 +125,24 @@ function BatchRow({
 
   return (
     <tr
-      className={cn("border-b border-border/60 last:border-0", spent && "opacity-55")}
+      className={cn(
+        "border-b border-border/60 last:border-0",
+        spent && "opacity-55",
+        onSelect &&
+          "cursor-pointer transition hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50",
+      )}
+      {...(onSelect
+        ? {
+            tabIndex: 0,
+            onClick: () => onSelect(batch),
+            onKeyDown: (event: React.KeyboardEvent) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect(batch);
+              }
+            },
+          }
+        : {})}
     >
       <td className="px-4 py-2.5">
         {order ? (
@@ -162,6 +187,11 @@ function BatchRow({
           ? "—"
           : formatMoney(multiplyDecimals(batch.qtyRemaining, batch.costPerUnit))}
       </td>
+      {onSelect && (
+        <td className="px-2 py-2.5 text-muted" aria-hidden>
+          <ChevronRight className="size-4" />
+        </td>
+      )}
     </tr>
   );
 }
