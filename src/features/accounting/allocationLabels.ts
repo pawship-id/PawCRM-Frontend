@@ -1,14 +1,20 @@
 import type {
+  AccountCategory,
   AllocationType,
+  BranchMode,
   ChartOfAccount,
   SubAccount,
 } from "@/types/accounting";
-import { isProfitLossAccount, lineSubAccountId } from "@/types/accounting";
+import {
+  branchModeOf,
+  isProfitLossAccount,
+  lineSubAccountId,
+} from "@/types/accounting";
 
 /** What an allocation rule is made of — a sub akun, or a draft of one. */
 type AllocationRule = Pick<
   SubAccount,
-  "allocationType" | "businessLineId" | "branchId"
+  "allocationType" | "businessLineId" | "branchMode" | "branchId"
 >;
 
 /**
@@ -27,11 +33,58 @@ export const ALLOCATION_TYPE_LABEL: Record<AllocationType, string> = {
 /** What each one does, one line, for the picker and the explanation card. */
 export const ALLOCATION_TYPE_HINT: Record<AllocationType, string> = {
   direct:
-    "Ke satu lini. Kosongkan cabangnya supaya dibagi sesuai porsi pendapatan tiap cabang, atau pilih satu cabang untuk menguncinya di situ.",
+    "Ke satu lini. Cabangnya dipilih: ikut cabang transaksi, satu cabang tertentu, atau semua cabang lini itu (dibagi sesuai porsi pendapatan tiap cabang).",
   shared_lokasi:
     "Dibagi otomatis ke lini-lini yang aktif di cabang tempat transaksinya dicatat.",
   shared_overall: "Dibagi ke seluruh perusahaan, sesuai porsi pendapatan.",
 };
+
+/** The three places a `direct` Beban can land, as the picker names them. */
+export const BRANCH_MODE_LABEL: Record<Exclude<BranchMode, "pinned">, string> = {
+  transaction: "Ikut cabang transaksi",
+  all_branches: "Semua cabang lini ini",
+};
+
+/** What the two un-pinned modes do, one line each, for the explanation under the table. */
+export const BRANCH_MODE_HINT: Record<Exclude<BranchMode, "pinned">, string> = {
+  transaction: "Seluruh nominal masuk ke cabang tempat transaksinya dicatat.",
+  all_branches:
+    "Dibagi ke semua cabang yang menjalankan lini ini, sesuai porsi pendapatan masing-masing pada periode laporan.",
+};
+
+/**
+ * Accounts whose amounts ALWAYS stay on the branch of the transaction, so a choice of branch on their
+ * sub akun would mean nothing: Pendapatan, and HPP (the cost of goods of a sale). The server enforces it;
+ * the screen says so instead of offering a picker that is ignored.
+ */
+export function staysOnTransactionBranch(category: AccountCategory): boolean {
+  return (
+    category === "pendapatan" ||
+    category === "pendapatan_lainnya" ||
+    category === "hpp"
+  );
+}
+
+/** The value a branch picker holds for a rule: the mode, or the pinned branch's id. */
+export function branchChoiceValue(rule: {
+  allocationType: AllocationType;
+  branchMode?: BranchMode | null;
+  branchId: string | null;
+}): string {
+  const mode = branchModeOf(rule);
+
+  return mode === "pinned" && rule.branchId ? rule.branchId : (mode ?? "transaction");
+}
+
+/** What a picker value means: a mode, or — anything else — a pinned branch's id. */
+export function branchFromChoice(value: string): {
+  branchMode: BranchMode;
+  branchId: string | null;
+} {
+  return value === "transaction" || value === "all_branches"
+    ? { branchMode: value, branchId: null }
+    : { branchMode: "pinned", branchId: value };
+}
 
 /**
  * The SHAPE OF THE TENANT, which is what decides how much of this feature is
@@ -143,8 +196,12 @@ export function describeAllocation(
 ): string {
   if (rule.allocationType === "direct") {
     const line = lineNames.get(rule.businessLineId ?? "") ?? "—";
-    const branch = rule.branchId ? branchNames.get(rule.branchId) : null;
-    return branch ? `Direct → ${line} (${branch})` : `Direct → ${line}`;
+    const mode = branchModeOf(rule);
+    const branch = mode === "pinned" && rule.branchId ? branchNames.get(rule.branchId) : null;
+
+    if (branch) return `Direct → ${line} (${branch})`;
+    if (mode === "transaction") return `Direct → ${line} (cabang transaksi)`;
+    return `Direct → ${line}`;
   }
 
   // With one branch the two shared kinds are one thing, and the row says so.
@@ -175,19 +232,18 @@ export function subAccountLabel(sub: {
 }
 
 /**
- * The sub akun a line may be POSTED to: the account's, minus the retired ones,
- * and — when the posting already knows its branch — minus those pinned to a
- * different one.
+ * The sub akun a line may be POSTED to: the account's, minus the retired ones.
  *
  * INACTIVE ONES ARE DROPPED rather than greyed out — the server refuses a
  * posting to one, so offering it is offering a 400. They still exist so the
  * entries already posted to them stay explicable.
  *
- * THE BRANCH RULE IS THE PICKER ENDPOINT'S (`GET /sub-accounts?branchId=`): a
- * sub akun pinned to a branch fits only that branch, one pinned to none fits
- * every branch of its account. Applied here, on the sub akun the chart already
- * carries, because a journal or cash form with twenty rows would otherwise ask
- * the server once per row.
+ * A SUB AKUN PINNED TO A BRANCH IS OFFERED AT EVERY BRANCH (BO, 7 Okt 2026). It used
+ * to be hidden at any other branch than its own, but carrying a cost made at one branch to
+ * another is exactly what pinning is for: Sewa Gudang Timur is paid from Barat's till and
+ * reported under Timur. `branchId` stays in the signature so the callers need not change;
+ * it no longer narrows anything. Applied here, on the sub akun the chart already carries,
+ * because a journal or cash form with twenty rows would otherwise ask the server once per row.
  *
  * LIVES HERE rather than beside either form that uses it. Transaksi Keuangan and
  * the manual journal both post to accounts, both need exactly this list, and a
@@ -196,13 +252,11 @@ export function subAccountLabel(sub: {
  */
 export function subAccountOptionsFor(
   account: Pick<ChartOfAccount, "subAccounts"> | undefined,
-  branchId?: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _branchId?: string,
 ): Array<{ value: string; label: string }> {
   return (account?.subAccounts ?? [])
-    .filter(
-      (sub) =>
-        sub.isActive && (!branchId || !sub.branchId || sub.branchId === branchId),
-    )
+    .filter((sub) => sub.isActive)
     .map((sub) => ({ value: sub._id, label: subAccountLabel(sub) }));
 }
 
@@ -307,10 +361,16 @@ export function canEditAllocations(state: AllocationState): boolean {
  */
 export function blankAllocation(
   shape: TenantShape,
-): Pick<SubAccount, "allocationType" | "businessLineId" | "branchId" | "isActive"> {
+): Pick<SubAccount, "allocationType" | "businessLineId" | "branchId" | "isActive"> & {
+  branchMode: BranchMode | null;
+} {
+  const allocationType = allocationChoices(shape)[0].value;
+
   return {
-    allocationType: allocationChoices(shape)[0].value,
+    allocationType,
     businessLineId: null,
+    // A new `direct` rule starts on the branch of the transaction — the default.
+    branchMode: allocationType === "direct" ? "transaction" : null,
     branchId: null,
     isActive: true,
   };

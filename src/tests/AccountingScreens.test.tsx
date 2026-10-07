@@ -1758,14 +1758,15 @@ describe("JournalEntryCreateForm", () => {
 
     await pickAccount(1, /5201 · Kerugian Persediaan/);
 
-    // The entry is at Kemang (b1): the Bogor-pinned one does not fit, the
-    // retired one is never offered, so exactly one is left and is pre-picked.
+    // The entry is at Kemang (b1), and the Bogor-pinned sub akun is offered all the same: carrying a
+    // cost made here to Bogor is what pinning is for (BO, 7 Okt 2026). The retired one never is.
+    // Two are left, so none is pre-picked.
     const picker = await screen.findByLabelText("Sub akun baris 1");
-    expect(picker).toHaveTextContent("5201-01 · Susut - Grooming");
+    expect(picker).toHaveTextContent("Belum dipetakan");
     await userEvent.click(picker);
     expect(
-      screen.queryByRole("option", { name: /Susut - Bogor/ }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("option", { name: /Susut - Bogor/ }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("option", { name: /Susut - lama/ }),
     ).not.toBeInTheDocument();
@@ -1773,7 +1774,7 @@ describe("JournalEntryCreateForm", () => {
     expect(
       screen.getByRole("option", { name: "Belum dipetakan" }),
     ).toBeInTheDocument();
-    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByRole("option", { name: /Susut - Grooming/ }));
 
     // The second line's account has none, so it gets no field.
     await pickAccount(2, /3101 · Modal/);
