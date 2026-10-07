@@ -37,7 +37,7 @@ const DEFAULT_WHATSAPP_NUMBER = "62895358614848";
  * anyone can run up.
  */
 function resolveGoogleMapsApiKey(): string {
-  return (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "").trim();
+  return (process.env.GOOGLE_MAPS_API_KEY ?? "").trim();
 }
 
 /**
