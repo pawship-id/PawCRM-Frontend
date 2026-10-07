@@ -50,13 +50,16 @@ function sub(over: Partial<SubAccount>): SubAccount {
   };
 }
 
-function account(subAccounts: SubAccount[]): ChartOfAccount {
+function account(
+  subAccounts: SubAccount[],
+  category: ChartOfAccount["accountCategory"] = "biaya",
+): ChartOfAccount {
   return {
     _id: "acc-gaji",
     code: "5101",
     name: "Beban Gaji",
-    accountType: "expense",
-    accountCategory: "biaya",
+    accountType: category === "pendapatan" ? "income" : "expense",
+    accountCategory: category,
     // Timur is NOT one of this account's branches.
     branchIds: ["br-pusat", "br-barat"],
     subAccounts,
@@ -67,14 +70,14 @@ function account(subAccounts: SubAccount[]): ChartOfAccount {
 
 function renderPanel(
   subAccounts: SubAccount[],
-  props: { editable?: boolean; remap?: boolean } = {},
+  props: { editable?: boolean; remap?: boolean; category?: ChartOfAccount["accountCategory"] } = {},
 ) {
   const onSaved = jest.fn();
   const onClose = jest.fn();
 
   renderWithAuth(
     <SubAccountPanel
-      account={account(subAccounts)}
+      account={account(subAccounts, props.category)}
       shape={SHAPE}
       businessLines={LINES}
       branches={BRANCHES}
@@ -177,6 +180,7 @@ describe("SubAccountPanel", () => {
         allocationType: "shared_overall",
         // Forced null off `direct`.
         businessLineId: null,
+        branchMode: null,
         branchId: null,
         isActive: true,
       }),
@@ -212,6 +216,107 @@ describe("SubAccountPanel", () => {
     expect(
       screen.queryByRole("option", { name: "Timur" }),
     ).not.toBeInTheDocument();
+  });
+
+  /**
+   * WHERE A `direct` BEBAN LANDS (BO, 7 Okt 2026): three choices in one picker — the transaction's
+   * branch (the default), every branch running the line, or one branch of the account's own.
+   */
+  describe("the branch of a direct Beban", () => {
+    const fillNew = async () => {
+      await userEvent.click(screen.getByRole("button", { name: /Tambah sub akun/ }));
+      await userEvent.type(screen.getByLabelText("Kode sub akun setelah 5101-"), "05");
+      await userEvent.type(screen.getByLabelText("Nama sub akun"), "Gaji - Grooming");
+      await userEvent.click(screen.getByLabelText("Lini usaha"));
+      await userEvent.click(screen.getByRole("option", { name: "Grooming" }));
+    };
+    const save = () => userEvent.click(screen.getByRole("button", { name: "Simpan" }));
+
+    it("starts on the branch of the transaction, and lists all three kinds of choice", async () => {
+      renderPanel([]);
+      await userEvent.click(screen.getByRole("button", { name: /Tambah sub akun/ }));
+
+      expect(screen.getByLabelText("Cabang")).toHaveTextContent("Ikut cabang transaksi");
+      await userEvent.click(screen.getByLabelText("Cabang"));
+      expect(screen.getByRole("option", { name: "Ikut cabang transaksi" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Semua cabang lini ini" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Pusat" })).toBeInTheDocument();
+    });
+
+    it("sends the transaction mode by default, with no branch", async () => {
+      const create = jest.spyOn(subAccountService, "create").mockResolvedValue(sub({}));
+      renderPanel([]);
+
+      await fillNew();
+      await save();
+
+      await waitFor(() =>
+        expect(create).toHaveBeenCalledWith(
+          "acc-gaji",
+          expect.objectContaining({ branchMode: "transaction", branchId: null }),
+        ),
+      );
+    });
+
+    it("sends all_branches when every branch of the line is chosen", async () => {
+      const create = jest.spyOn(subAccountService, "create").mockResolvedValue(sub({}));
+      renderPanel([]);
+
+      await fillNew();
+      await userEvent.click(screen.getByLabelText("Cabang"));
+      await userEvent.click(screen.getByRole("option", { name: "Semua cabang lini ini" }));
+      await save();
+
+      await waitFor(() =>
+        expect(create).toHaveBeenCalledWith(
+          "acc-gaji",
+          expect.objectContaining({ branchMode: "all_branches", branchId: null }),
+        ),
+      );
+    });
+
+    it("sends the pinned mode and the branch when one branch is chosen", async () => {
+      const create = jest.spyOn(subAccountService, "create").mockResolvedValue(sub({}));
+      renderPanel([]);
+
+      await fillNew();
+      await userEvent.click(screen.getByLabelText("Cabang"));
+      await userEvent.click(screen.getByRole("option", { name: "Barat" }));
+      await save();
+
+      await waitFor(() =>
+        expect(create).toHaveBeenCalledWith(
+          "acc-gaji",
+          expect.objectContaining({ branchMode: "pinned", branchId: "br-barat" }),
+        ),
+      );
+    });
+
+    it("says in words where each branch choice lands, and that nobody types a percentage", () => {
+      renderPanel([sub({})]);
+
+      expect(screen.getByText(/Seluruh nominal masuk ke cabang tempat transaksinya dicatat/)).toBeInTheDocument();
+      expect(screen.getByText(/Tidak ada persentase yang diisi manual/)).toBeInTheDocument();
+    });
+
+    it("offers no branch choice on Pendapatan, which always stays on the transaction's branch", async () => {
+      renderPanel([sub({})], { category: "pendapatan" });
+
+      expect(screen.getByText("Cabang transaksi")).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Ubah sub akun 5101-01" }));
+      expect(screen.queryByLabelText("Cabang")).not.toBeInTheDocument();
+      expect(screen.getByText("Selalu cabang transaksi")).toBeInTheDocument();
+    });
+
+    it("reads a sub akun written before the mode existed as all_branches, or pinned when it names a branch", () => {
+      renderPanel([
+        sub({ _id: "s-old", code: "5101-01", name: "Lama", branchId: null }),
+        sub({ _id: "s-pin", code: "5101-02", name: "Kunci", branchId: "br-barat" }),
+      ]);
+
+      expect(screen.getByText("Semua cabang lini ini")).toBeInTheDocument();
+      expect(screen.getByText("Barat")).toBeInTheDocument();
+    });
   });
 
   it("sends only what moved when one is edited", async () => {
@@ -433,7 +538,7 @@ describe("SubAccountPanel", () => {
           dateFrom: "2026-08-01",
           dateTo: "2026-08-31",
           // The PROPOSED rule: nothing is saved yet.
-          rule: { allocationType: "direct", businessLineId: "bl-retail", branchId: null },
+          rule: { allocationType: "direct", businessLineId: "bl-retail", branchMode: "all_branches", branchId: null },
         }),
       );
       expect(order).toEqual([]);

@@ -745,6 +745,94 @@ describe("StockCardScreen", () => {
  * label Record was complete for the union it knew about, and the gap only
  * existed between the two codebases.
  */
+/**
+ * A row of either list opens its detail — the movement with its cabang, lot, expiry and document, the lot with
+ * its stock and value. Read from what the screen already loaded, so nothing here asks the API for more.
+ */
+describe("StockCardScreen — the detail of a row", () => {
+  const EXPIRY = "2028-09-15T00:00:00.000Z";
+
+  it("opens a movement with its lot, expiry and the document it belongs to", async () => {
+    mockHappyPath(
+      [
+        movement({
+          _id: "m9",
+          movementType: "opening_balance",
+          qty: "8.0000",
+          balanceAfter: "8.0000",
+          hppAtTime: "5000.0000",
+          batchId: "b1",
+          batchCode: "RC-B26-0455",
+          supplierBatchCode: "NATURAL:15/09/2028",
+          batchExpiryDate: EXPIRY,
+          reference: { type: "opening_balance", id: "ob1" },
+          createdByName: "Budi Santoso",
+          lineNotes: "Estimasi",
+        }),
+      ],
+      [batch({ _id: "b1", batchCode: "RC-B26-0455", supplierBatchCode: "NATURAL:15/09/2028", expiryDate: EXPIRY })],
+    );
+
+    const user = userEvent.setup();
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+
+    const row = (await screen.findByText("Budi Santoso")).closest("tr") as HTMLElement;
+    await user.click(row);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Detail pergerakan stok")).toBeInTheDocument();
+    expect(within(dialog).getByText("NATURAL:15/09/2028")).toBeInTheDocument();
+    // 8 × 5.000: shown as an aid, from the HPP the row carries.
+    expect(within(dialog).getByText("Rp 40.000")).toBeInTheDocument();
+    expect(within(dialog).getByText("Estimasi")).toBeInTheDocument();
+    expect(within(dialog).getByRole("link", { name: "Buka dokumen" })).toHaveAttribute(
+      "href",
+      "/dashboard/inventory/opening-stock/ob1",
+    );
+    expect(within(dialog).getByText(/15 September 2028/)).toBeInTheDocument();
+  });
+
+  it("opens from the keyboard too", async () => {
+    mockHappyPath([movement({ createdByName: "Budi Santoso" })], []);
+
+    const user = userEvent.setup();
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+
+    const row = (await screen.findByText("Budi Santoso")).closest("tr") as HTMLElement;
+    row.focus();
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("opens a lot, and offers its own history", async () => {
+    mockHappyPath(
+      [],
+      [batch({ _id: "b1", batchCode: "RC-B26-0455", supplierBatchCode: "SUP-1", expiryDate: EXPIRY, qtyRemaining: "60.0000", costPerUnit: "1000.0000" })],
+    );
+
+    const user = userEvent.setup();
+    renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+
+    await user.click(await screen.findByRole("button", { name: /Batch \/ FEFO/ }));
+    const row = (await screen.findByText("RC-B26-0455")).closest("tr") as HTMLElement;
+    await user.click(row);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Detail batch")).toBeInTheDocument();
+    expect(within(dialog).getByText("SUP-1")).toBeInTheDocument();
+    // 60 × 1.000 left.
+    expect(within(dialog).getByText("Rp 60.000")).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("button", { name: "Lihat pergerakan batch ini" }));
+    await waitFor(() =>
+      expect(stockMovementService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: "RC-B26-0455" }),
+      ),
+    );
+  });
+});
+
 describe("MovementBadge — every type the backend can send", () => {
   it("renders every member of MovementType", () => {
     const TYPES: MovementType[] = [

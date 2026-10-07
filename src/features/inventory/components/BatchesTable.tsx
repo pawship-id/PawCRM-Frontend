@@ -41,6 +41,7 @@ export function BatchesTable({
   total,
   search,
   onPageChange,
+  onSelect,
 }: {
   batches: ProductBatch[];
   /**
@@ -61,6 +62,8 @@ export function BatchesTable({
    */
   search: string;
   onPageChange: (page: number) => void;
+  /** A row was opened — the screen shows the lot's detail. Rows are plain when absent. */
+  onSelect?: (batch: ProductBatch) => void;
 }) {
   const searching = search.trim() !== "";
 
@@ -115,7 +118,23 @@ export function BatchesTable({
                   className={cn(
                     "border-b border-border/60 last:border-0",
                     spent && "opacity-55",
+                    onSelect &&
+                      "cursor-pointer transition hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/50",
                   )}
+                  {...(onSelect
+                    ? {
+                        tabIndex: 0,
+                        onClick: () => onSelect(batch),
+                        onKeyDown: (event: React.KeyboardEvent) => {
+                          // Only the row's own keys: Enter on the label link inside it is the link's.
+                          if (event.target !== event.currentTarget) return;
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            onSelect(batch);
+                          }
+                        },
+                      }
+                    : {})}
                 >
                   <td className="px-4 py-2.5">
                     <span className="tabular-nums text-xs">
@@ -197,6 +216,8 @@ export function BatchesTable({
                     <Link
                       href={`/dashboard/inventory/batches/labels?ids=${batch._id}`}
                       className="text-xs font-medium underline"
+                      // A link inside a clickable row: opening the label page must not also open the detail.
+                      onClick={(event) => event.stopPropagation()}
                     >
                       Cetak label
                     </Link>

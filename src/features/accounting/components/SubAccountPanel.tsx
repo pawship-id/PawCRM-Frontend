@@ -22,16 +22,23 @@ import { ApiError } from "@/services/api-error";
 import { subAccountService } from "@/services/subAccount.service";
 import type {
   AllocationType,
+  BranchMode,
   ChartOfAccount,
   SubAccount,
   SubAccountInput,
 } from "@/types/accounting";
+import { branchModeOf } from "@/types/accounting";
 
 import {
   ALLOCATION_TYPE_HINT,
   ALLOCATION_TYPE_LABEL,
+  BRANCH_MODE_HINT,
+  BRANCH_MODE_LABEL,
   allocationChoices,
   blankAllocation,
+  branchChoiceValue,
+  branchFromChoice,
+  staysOnTransactionBranch,
   type TenantShape,
 } from "../allocationLabels";
 import { SubAccountRemapDialog } from "./SubAccountRemapDialog";
@@ -42,9 +49,6 @@ const NAME_MAX_LENGTH = 120;
 /** What the suffix may hold; the prefix is the parent's own, already valid. */
 const SUFFIX_PATTERN = /^[A-Z0-9-]+$/;
 
-/** `FilterSelect` cannot hold `""` as a value, so null is spelled out. */
-const NO_BRANCH = "__all__";
-
 /** The row being typed — a new sub akun, or one being changed. */
 interface Draft {
   /** Null for a sub akun that does not exist yet. */
@@ -54,6 +58,8 @@ interface Draft {
   name: string;
   allocationType: AllocationType;
   businessLineId: string | null;
+  /** Only on `direct`: transaction / pinned / all_branches. */
+  branchMode: BranchMode | null;
   branchId: string | null;
   isActive: boolean;
 }
@@ -121,6 +127,7 @@ export function SubAccountPanel({
         rule: {
           allocationType: AllocationType;
           businessLineId: string | null;
+          branchMode: BranchMode | null;
           branchId: string | null;
         };
       }
@@ -140,8 +147,11 @@ export function SubAccountPanel({
   // Only the account's own branches. Absent `branchIds` is a chart the backfill
   // has not reached; everything is offered then, and the server has the last word.
   const accountBranchIds = account.branchIds;
+  // The three places a Beban can land: the transaction's branch (the default), every branch running
+  // the line, or one branch of the account's own.
   const branchOptions = [
-    { value: NO_BRANCH, label: "Semua cabang lini ini" },
+    { value: "transaction", label: BRANCH_MODE_LABEL.transaction },
+    { value: "all_branches", label: BRANCH_MODE_LABEL.all_branches },
     ...branches
       .filter(
         (branch) => !accountBranchIds || accountBranchIds.includes(branch._id),
@@ -168,6 +178,7 @@ export function SubAccountPanel({
       name: sub.name,
       allocationType: sub.allocationType,
       businessLineId: sub.businessLineId,
+      branchMode: branchModeOf(sub),
       branchId: sub.branchId,
       isActive: sub.isActive,
     });
@@ -204,6 +215,10 @@ export function SubAccountPanel({
       setError("Pilih lini usahanya dulu.");
       return;
     }
+    if (draft.allocationType === "direct" && draft.branchMode === "pinned" && !draft.branchId) {
+      setError("Pilih cabangnya dulu.");
+      return;
+    }
 
     const next: SubAccountInput = {
       code,
@@ -214,7 +229,13 @@ export function SubAccountPanel({
       // change otherwise.
       businessLineId:
         draft.allocationType === "direct" ? draft.businessLineId : null,
-      branchId: draft.allocationType === "direct" ? draft.branchId : null,
+      branchMode:
+        draft.allocationType === "direct" ? (draft.branchMode ?? "transaction") : null,
+      // A branch only goes with a pinned rule.
+      branchId:
+        draft.allocationType === "direct" && draft.branchMode === "pinned"
+          ? draft.branchId
+          : null,
       isActive: draft.isActive,
     };
 
@@ -231,8 +252,10 @@ export function SubAccountPanel({
         // would run the uniqueness check against the sub akun's own code.
         const patch: Partial<SubAccountInput> = {};
         if (saved) {
+          // A sub akun written before the mode existed has none: compare against what it reads as.
+          const stored = { ...saved, branchMode: branchModeOf(saved) };
           (Object.keys(next) as Array<keyof SubAccountInput>).forEach((key) => {
-            if (next[key] !== saved[key]) {
+            if (next[key] !== stored[key]) {
               (patch as Record<string, unknown>)[key] = next[key];
             }
           });
@@ -243,6 +266,7 @@ export function SubAccountPanel({
           saved &&
           ("allocationType" in patch ||
             "businessLineId" in patch ||
+            "branchMode" in patch ||
             "branchId" in patch)
         ) {
           setRemap({
@@ -253,6 +277,7 @@ export function SubAccountPanel({
             rule: {
               allocationType: next.allocationType,
               businessLineId: next.businessLineId,
+              branchMode: next.branchMode,
               branchId: next.branchId,
             },
           });
@@ -337,7 +362,12 @@ export function SubAccountPanel({
               // The line and the branch are cleared with the type: they mean
               // nothing off `direct`, and a leftover id would be sent to an API
               // that refuses it.
-              patchDraft({ allocationType, businessLineId: null, branchId: null })
+              patchDraft({
+                allocationType,
+                businessLineId: null,
+                branchMode: allocationType === "direct" ? "transaction" : null,
+                branchId: null,
+              })
             }
           />
         </TableCell>
@@ -361,18 +391,18 @@ export function SubAccountPanel({
         </TableCell>
 
         <TableCell className="px-4 py-2">
-          {isDirect ? (
+          {isDirect && fixedBranch ? (
+            <span className="text-sm text-muted">Selalu cabang transaksi</span>
+          ) : isDirect ? (
             <FilterSelect
               layout="field"
               label=""
               ariaLabel="Cabang"
-              value={current.branchId ?? NO_BRANCH}
+              value={branchChoiceValue(current)}
               active={false}
               disabled={busy}
               options={branchOptions}
-              onChange={(branchId) =>
-                patchDraft({ branchId: branchId === NO_BRANCH ? null : branchId })
-              }
+              onChange={(choice) => patchDraft(branchFromChoice(choice))}
             />
           ) : (
             <span className="text-sm text-muted">Otomatis</span>
@@ -432,6 +462,8 @@ export function SubAccountPanel({
   );
 
   const showTable = subAccounts.length > 0 || draft !== null;
+  // Pendapatan and HPP never leave the transaction's branch: no choice to offer.
+  const fixedBranch = staysOnTransactionBranch(account.accountCategory);
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4">
@@ -497,10 +529,14 @@ export function SubAccountPanel({
                     </TableCell>
                     <TableCell className="px-4 py-2.5 text-sm">
                       {sub.allocationType === "direct" ? (
-                        sub.branchId ? (
-                          (branchNames.get(sub.branchId) ?? "—")
+                        fixedBranch ? (
+                          <span className="text-muted">Cabang transaksi</span>
+                        ) : branchModeOf(sub) === "pinned" ? (
+                          (branchNames.get(sub.branchId ?? "") ?? "—")
                         ) : (
-                          <span className="text-muted">Semua cabang lini ini</span>
+                          <span className="text-muted">
+                            {BRANCH_MODE_LABEL[branchModeOf(sub) === "transaction" ? "transaction" : "all_branches"]}
+                          </span>
                         )
                       ) : (
                         <span className="text-muted">Otomatis</span>
@@ -594,6 +630,17 @@ export function SubAccountPanel({
           </li>
         ))}
       </ul>
+
+      {/* Where the cost lands, and when it is worked out: the rule is kept on each transaction
+          as it is recorded, the amounts are divided when Laba Rugi is opened, and nobody types a
+          percentage — the shares come from each branch's revenue. */}
+      <p className="text-xs text-muted">
+        {fixedBranch
+          ? "Pendapatan dan HPP penjualan selalu masuk ke cabang tempat transaksinya dicatat; sub akun hanya menentukan lininya."
+          : `Cabang: “${BRANCH_MODE_LABEL.transaction}” — ${BRANCH_MODE_HINT.transaction} “${BRANCH_MODE_LABEL.all_branches}” — ${BRANCH_MODE_HINT.all_branches} Memilih satu cabang mengunci nominal ke cabang itu. `}
+        Aturan disimpan di setiap transaksi saat dicatat, dan nominal yang dibagi dihitung saat
+        Laba Rugi dibuka. Tidak ada persentase yang diisi manual.
+      </p>
 
       <div className="flex flex-wrap items-center gap-2">
         {editable && (

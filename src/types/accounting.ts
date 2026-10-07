@@ -182,6 +182,15 @@ export type AllocationType = "direct" | "shared_lokasi" | "shared_overall";
  * (`subAccountId`), and a sub akun a line names can be deactivated but never
  * deleted.
  */
+/**
+ * Where a `direct` Beban lands (BO, 7 Okt 2026):
+ *   transaction  — the branch the transaction was made at (the default)
+ *   pinned       — the branch the sub akun names (`branchId`)
+ *   all_branches — divided across every branch that runs the line, by revenue
+ * Pendapatan and the HPP of a sale ignore it: they always stay on the transaction's branch.
+ */
+export type BranchMode = "transaction" | "pinned" | "all_branches";
+
 export interface SubAccount {
   _id: string;
   tenantId?: string;
@@ -193,7 +202,9 @@ export interface SubAccount {
   allocationType: AllocationType;
   /** Required when `direct`, always null otherwise. */
   businessLineId: string | null;
-  /** Only on `direct`, and one of the parent's `branchIds`. Null means every branch running the line. */
+  /** Only on `direct`; null otherwise. Absent on a sub akun written before the mode existed — see `branchModeOf`. */
+  branchMode?: BranchMode | null;
+  /** Only on `direct` + `pinned`, and one of the parent's `branchIds`. */
   branchId: string | null;
   /** Retired rather than removed — off every picker, still explains old entries. */
   isActive: boolean;
@@ -207,6 +218,7 @@ export interface SubAccountInput {
   name: string;
   allocationType: AllocationType;
   businessLineId: string | null;
+  branchMode: BranchMode | null;
   branchId: string | null;
   isActive: boolean;
 }
@@ -230,6 +242,7 @@ export interface RemapRule {
   allocationType: AllocationType;
   businessLineId: string | null;
   businessLineName: string | null;
+  branchMode?: BranchMode | null;
   branchId: string | null;
   branchName: string | null;
 }
@@ -270,8 +283,25 @@ export interface RemapPeriod {
   rule?: {
     allocationType: AllocationType;
     businessLineId: string | null;
+    branchMode: BranchMode | null;
     branchId: string | null;
   };
+}
+
+/**
+ * Where a `direct` rule lands, whatever shape carried it: the explicit mode, or — for a sub akun written
+ * before the mode existed — pinned when it names a branch and all_branches when it does not. Null for a
+ * shared rule. Mirrors the server (`branchModeOf`).
+ */
+export function branchModeOf(rule: {
+  allocationType: AllocationType;
+  branchMode?: BranchMode | null;
+  branchId: string | null;
+}): BranchMode | null {
+  if (rule.allocationType !== "direct") return null;
+  if (rule.branchMode) return rule.branchMode;
+
+  return rule.branchId ? "pinned" : "all_branches";
 }
 
 /**
