@@ -318,6 +318,12 @@ export function RosterSection({
           ditandai.
         </p>
         <p className="text-xs text-muted">
+          Yang ditandai otomatis boleh membuka aplikasi groomer di /groomer:
+          melihat dan mengerjakan sesinya, mengambil open job (jika diizinkan
+          manager), serta mengisi catatan dan foto. Tidak perlu mengatur role
+          khusus, dan tidak membuka akses lain.
+        </p>
+        <p className="text-xs text-muted">
           Komisi diatur untuk seluruh toko di Layanan › Grooming › Pengaturan.
         </p>
       </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Menu, PanelLeft } from "lucide-react";
 
 import { Logo, Spinner } from "@/components";
@@ -74,6 +74,7 @@ function setRailCollapsed(next: boolean) {
 
 export function DashboardShell({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { status, user } = useAuth();
   const { can } = usePermissions();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -93,6 +94,24 @@ export function DashboardShell({ children }: { children: ReactNode }) {
       router.replace("/login");
     }
   }, [status, router]);
+
+  /*
+    A GROOMER LANDS ON THEIR OWN APP, NOT THE ADMIN PROFILE. Only the landing
+    page is redirected: somebody who is a groomer AND may read bookings (a
+    working supervisor) has a dashboard worth opening, and a groomer who typed a
+    dashboard URL on purpose should get it. The test is "has no booking access of
+    their own", which is the Groomer role's shape.
+  */
+  useEffect(() => {
+    if (
+      status === "authenticated" &&
+      user?.isGroomer &&
+      pathname === "/dashboard/profile" &&
+      !can("bookings", "read")
+    ) {
+      router.replace("/groomer");
+    }
+  }, [status, user, pathname, can, router]);
 
   // The mobile drawer is closed by its own links/scrim (Sidebar calls onClose on
   // every navigation), so no route-change effect is needed.
