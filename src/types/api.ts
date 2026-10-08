@@ -576,6 +576,14 @@ export interface TenantSettings {
   antarJemput?: AntarJemputSettings;
 
   /**
+   * What the groomer's phone app may show and do (8 October 2026) — a SIBLING of
+   * `grooming`, not a key inside it, so the grooming screen's whole-object save
+   * cannot reset these. Absent until saved once, and both OFF until then.
+   * Written whole.
+   */
+  groomerApp?: GroomerAppSettings;
+
+  /**
    * Pengaturan › Nomor dokumen — what this tenant asked to differ about the
    * shape of its document numbers, keyed by series (23 September 2026).
    *
@@ -3585,6 +3593,14 @@ export interface CommissionOutstanding {
  * nothing" and "there is nothing here yet" are different sentences, and a zeroed
  * row says the first when the second is true.
  */
+/** The two switches behind the groomer app. Both default OFF. */
+export interface GroomerAppSettings {
+  /** The groomer sees their own commission summary in the app. */
+  showOwnCommission: boolean;
+  /** The groomer may take a session nobody holds ("Open Job"). */
+  allowOpenJobClaim: boolean;
+}
+
 export interface MyCommission {
   period: string | null;
   earned: CommissionRecapRow | null;
