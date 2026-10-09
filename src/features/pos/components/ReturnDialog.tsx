@@ -32,7 +32,11 @@ import type {
   PosTransaction,
 } from "@/types/api";
 
-import { ReturnItemsPicker, type ReturnDraftLine } from "./ReturnItemsPicker";
+import {
+  mustChooseLots,
+  ReturnItemsPicker,
+  type ReturnDraftLine,
+} from "./ReturnItemsPicker";
 
 const FETCH_LIMIT = 100;
 
@@ -218,6 +222,21 @@ export function ReturnDialog({
         (line.lots.some((lot) => lot.batchId === "" || lot.qty < 1) ||
           line.lots.reduce((sum, lot) => sum + lot.qty, 0) !== line.qty),
     );
+
+    const unchosen = Object.entries(draft).find(
+      ([index, line]) =>
+        line.qty > 0 &&
+        line.returnToStock &&
+        (line.lots?.length ?? 0) === 0 &&
+        mustChooseLots(lotsByItem[Number(index)] ?? [], line.qty),
+    );
+
+    if (unchosen) {
+      setError(
+        `Pilih batch tujuan untuk ${sale.items[Number(unchosen[0])]?.name ?? "barang ini"} — penjualannya memakai lebih dari satu batch`,
+      );
+      return;
+    }
 
     if (mismatched) {
       setError(

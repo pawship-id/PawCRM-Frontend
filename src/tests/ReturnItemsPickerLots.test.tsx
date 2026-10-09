@@ -63,6 +63,18 @@ describe("ReturnItemsPicker — choosing the lot the goods go back to", () => {
     expect(screen.queryByRole("button", { name: "Tambah batch" })).toBeNull();
   });
 
+  it("says the lot must be chosen when the sale used two and the return does not empty them", () => {
+    render(<Harness initial={{ qty: 1, returnToStock: true }} />);
+
+    expect(screen.getByText(/pilih batch tujuan/i)).toBeInTheDocument();
+  });
+
+  it("does not insist when the return takes back everything", () => {
+    render(<Harness initial={{ qty: 3, returnToStock: true }} />);
+
+    expect(screen.queryByText(/pilih batch tujuan/i)).toBeNull();
+  });
+
   it("offers no lots for goods that are not going back on the shelf", () => {
     render(<Harness initial={{ qty: 1, returnToStock: false }} />);
 

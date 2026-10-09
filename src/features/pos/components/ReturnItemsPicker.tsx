@@ -25,6 +25,22 @@ export interface ReturnDraftLine {
 }
 
 /**
+ * WHETHER THE CASHIER MUST SAY WHICH LOT (9 October 2026): the sale drew from
+ * two or more lots that can still take goods back, and this return does not
+ * empty them all. One lot with room, or a return of everything, has nothing to
+ * choose — the server applies the same rule and refuses the gap.
+ */
+export function mustChooseLots(
+  options: Array<{ qty: string }>,
+  qty: number,
+): boolean {
+  const open = options.filter((option) => Number(option.qty) > 0);
+  const room = open.reduce((sum, option) => sum + Number(option.qty), 0);
+
+  return open.length >= 2 && qty < room;
+}
+
+/**
  * Choosing what comes back (FR-11).
  *
  * A RETURN IS PARTIAL BY DEFAULT — every line starts at zero, and the cashier
@@ -169,6 +185,10 @@ export function ReturnItemsPicker({
               !isMembership &&
               lotOptions.length > 0 && (
                 <ReturnLotRows
+                  required={
+                    (line.lots?.length ?? 0) === 0 &&
+                    mustChooseLots(lotOptions, line.qty)
+                  }
                   options={lotOptions}
                   qty={line.qty}
                   rows={line.lots ?? []}
@@ -185,12 +205,15 @@ export function ReturnItemsPicker({
 
 /** The lots a returned line goes back to — one row each, like the till's. */
 function ReturnLotRows({
+  required,
   options,
   qty,
   rows,
   disabled,
   onChange,
 }: {
+  /** Nothing chosen yet and the sale used several lots — see `mustChooseLots`. */
+  required: boolean;
   options: NonNullable<PosReturnable["items"][number]["lots"]>;
   qty: number;
   rows: Array<{ batchId: string; qty: number }>;
@@ -325,6 +348,13 @@ function ReturnLotRows({
             );
           })}
         </>
+      )}
+
+      {required && (
+        <p className="text-xs text-danger">
+          Penjualan ini memakai lebih dari satu batch — pilih batch tujuan
+          barang yang diretur.
+        </p>
       )}
 
       {(rows.length === 0 || (total < qty && rows.length < options.length)) && (
