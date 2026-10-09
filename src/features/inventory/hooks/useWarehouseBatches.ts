@@ -52,12 +52,31 @@ export function useWarehouseBatches(
     setLoading(true);
     setError(null);
 
-    productBatchService
-      .list({ warehouseId, hasRemaining: true, limit: 100 })
-      .then((result) => {
+    // EVERY PAGE, not the first. The API caps a page at 100 and orders by expiry,
+    // so a warehouse holding more lots than that silently dropped the later ones
+    // — and a product whose lots fell off page one read as "Belum ada batch",
+    // moving goods unbatched that do carry a lot.
+    (async () => {
+      const lots: ProductBatch[] = [];
+      let page = 1;
+      let totalPages = 1;
+      do {
+        const result = await productBatchService.list({
+          warehouseId,
+          hasRemaining: true,
+          limit: 100,
+          page,
+        });
+        lots.push(...result.items);
+        totalPages = result.pagination.totalPages;
+        page += 1;
+      } while (page <= totalPages && active);
+      return lots;
+    })()
+      .then((items) => {
         if (!active) return;
         const grouped = new Map<string, ProductBatch[]>();
-        for (const lot of result.items) {
+        for (const lot of items) {
           const key = String(lot.productId);
           const list = grouped.get(key);
           if (list) list.push(lot);

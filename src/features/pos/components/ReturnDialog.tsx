@@ -32,7 +32,11 @@ import type {
   PosTransaction,
 } from "@/types/api";
 
-import { ReturnItemsPicker, type ReturnDraftLine } from "./ReturnItemsPicker";
+import {
+  mustChooseLots,
+  ReturnItemsPicker,
+  type ReturnDraftLine,
+} from "./ReturnItemsPicker";
 
 const FETCH_LIMIT = 100;
 
@@ -74,6 +78,10 @@ export function ReturnDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [remaining, setRemaining] = useState<number[]>([]);
+  /** Per line, the lots it was sold from — for choosing where goods go back. */
+  const [lotsByItem, setLotsByItem] = useState<
+    NonNullable<PosReturnable["items"][number]["lots"]>[]
+  >([]);
   /*
     WHAT THIS REFUND ACTUALLY DOES, from the server. A sale still on account is
     paid back by owing less — see `PosReturnable.refundMethod`.
@@ -121,6 +129,7 @@ export function ReturnDialog({
         setRemaining(
           returnable.items.map((item) => Math.floor(Number(item.remainingQty))),
         );
+        setLotsByItem(returnable.items.map((item) => item.lots ?? []));
         setRefund({
           refundMethod: returnable.refundMethod,
           invoice: returnable.invoice,
@@ -165,6 +174,15 @@ export function ReturnDialog({
           posItemIndex: Number(index),
           qty: String(line.qty),
           returnToStock: line.returnToStock,
+          // Only when the cashier named lots AND the goods go back on a shelf.
+          ...(line.returnToStock && line.lots && line.lots.length > 0
+            ? {
+                lots: line.lots.map((lot) => ({
+                  batchId: lot.batchId,
+                  qty: String(lot.qty),
+                })),
+              }
+            : {}),
         })),
     [draft],
   );
@@ -190,6 +208,42 @@ export function ReturnDialog({
 
   async function submit() {
     if (!sale || !canSubmit) return;
+
+    /*
+      LOTS MUST ADD UP, said on press and not by a greyed button — the same
+      rule the till's line dialog follows. The server checks it too.
+    */
+    const mismatched = Object.values(draft).some(
+      (line) =>
+        line.qty > 0 &&
+        line.returnToStock &&
+        line.lots &&
+        line.lots.length > 0 &&
+        (line.lots.some((lot) => lot.batchId === "" || lot.qty < 1) ||
+          line.lots.reduce((sum, lot) => sum + lot.qty, 0) !== line.qty),
+    );
+
+    const unchosen = Object.entries(draft).find(
+      ([index, line]) =>
+        line.qty > 0 &&
+        line.returnToStock &&
+        (line.lots?.length ?? 0) === 0 &&
+        mustChooseLots(lotsByItem[Number(index)] ?? [], line.qty),
+    );
+
+    if (unchosen) {
+      setError(
+        `Pilih batch tujuan untuk ${sale.items[Number(unchosen[0])]?.name ?? "barang ini"} — penjualannya memakai lebih dari satu batch`,
+      );
+      return;
+    }
+
+    if (mismatched) {
+      setError(
+        "Total keseluruhan batch number harus sama dengan jumlah produk yang diretur",
+      );
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -249,6 +303,7 @@ export function ReturnDialog({
               <ReturnItemsPicker
                 items={sale?.items ?? []}
                 remaining={remaining}
+                lotsByItem={lotsByItem}
                 draft={draft}
                 disabled={submitting}
                 onChange={(index, line) =>

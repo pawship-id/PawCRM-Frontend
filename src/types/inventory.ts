@@ -937,6 +937,11 @@ export interface ProductListQuery {
    * nothing on it can only produce a line the save refuses.
    */
   inStockAtWarehouse?: string;
+  /**
+   * Lets `search` also match a lot's code — ours or the supplier's — and return
+   * the product that lot belongs to. Opt-in; the stock pickers use it.
+   */
+  searchBatches?: boolean;
   includeDeleted?: boolean;
   /**
    * Which ordering to page through. A NAME, not a field plus a direction —

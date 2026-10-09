@@ -69,8 +69,9 @@ export function TransferAddProductsDialog({
         <DialogHeader>
           <DialogTitle>Tambah produk ke transfer ini</DialogTitle>
           <DialogDescription>
-            Cari lalu centang produk yang ikut dipindahkan — boleh beberapa
-            sekaligus. Jumlah dan catatannya diisi di form setelah ini. Yang
+            Cari lewat nama, SKU, atau kode batch (milik kita maupun milik
+            supplier), lalu centang produk yang ikut dipindahkan — boleh
+            beberapa sekaligus. Jumlah dan catatannya diisi di form setelah ini. Yang
             ditampilkan hanya produk yang <b>ada stoknya di gudang asal</b>;
             produk yang sudah ada di form juga disembunyikan, karena satu
             transfer hanya boleh membawa tiap produk sekali.
@@ -82,6 +83,7 @@ export function TransferAddProductsDialog({
           onChange={setSelected}
           excludeIds={existingProductIds}
           inStockAtWarehouse={fromWarehouseId}
+          searchBatches
         />
 
         <DialogFooter>

@@ -89,10 +89,31 @@ export function PosXReportDialog({
                   {report.transactionCount}
                 </dd>
               </div>
+              {/*
+                THE WAY A TILL REPORT USUALLY READS: gross, less returns, equals
+                net. Gross stays on its own line so a smaller figure can always
+                be traced, and the return line is only drawn when there was one.
+              */}
               <div className="flex justify-between">
-                <dt className="text-muted">Total penjualan</dt>
+                <dt className="text-muted">Penjualan kotor</dt>
                 <dd className="tabular-nums text-foreground">
                   {formatMoney(report.totals.takings)}
+                </dd>
+              </div>
+              {Number(report.refunds.total ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-muted">
+                    Retur ({report.refunds.returnCount ?? 0})
+                  </dt>
+                  <dd className="tabular-nums text-danger">
+                    −{formatMoney(report.refunds.total ?? "0")}
+                  </dd>
+                </div>
+              )}
+              <div className="flex justify-between font-semibold">
+                <dt className="text-foreground">Penjualan bersih</dt>
+                <dd className="tabular-nums text-foreground">
+                  {formatMoney(report.totals.netSales ?? report.totals.takings)}
                 </dd>
               </div>
             </dl>
@@ -111,8 +132,14 @@ export function PosXReportDialog({
                       className="flex justify-between gap-2"
                     >
                       <dt className="truncate text-muted">{row.channelName}</dt>
-                      <dd className="shrink-0 tabular-nums text-foreground">
-                        {formatMoney(row.net)}
+                      <dd className="shrink-0 text-right tabular-nums text-foreground">
+                        {formatMoney(row.netAfterRefunds ?? row.net)}
+                        {Number(row.refunded ?? 0) > 0 && (
+                          <span className="block text-xs text-muted">
+                            {formatMoney(row.net)} − retur{" "}
+                            {formatMoney(row.refunded ?? "0")}
+                          </span>
+                        )}
                       </dd>
                     </div>
                   ))

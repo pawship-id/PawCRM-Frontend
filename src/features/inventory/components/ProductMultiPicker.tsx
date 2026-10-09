@@ -41,6 +41,7 @@ export function ProductMultiPicker({
   neverMovedInWarehouse = "",
   inStockAtWarehouse = "",
   isConsignment,
+  searchBatches = false,
   selected,
   onChange,
   excludeIds,
@@ -82,6 +83,12 @@ export function ProductMultiPicker({
    * pickers want. `false` is a real filter and NOT the same as undefined.
    */
   isConsignment?: boolean;
+  /**
+   * Search also finds a product by the code of one of its lots — the label we
+   * printed or the number on the supplier's carton. Off by default: an opening
+   * balance or a receipt has no lot to look up yet.
+   */
+  searchBatches?: boolean;
   selected: Product[];
   onChange: (products: Product[]) => void;
   /**
@@ -105,6 +112,7 @@ export function ProductMultiPicker({
     neverMovedInWarehouse,
     inStockAtWarehouse,
     isConsignment,
+    searchBatches,
   );
 
   const excluded = new Set(excludeIds ?? []);
@@ -142,7 +150,11 @@ export function ProductMultiPicker({
           type="search"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Cari nama atau SKU…"
+          placeholder={
+            searchBatches
+              ? "Cari nama, SKU, atau kode batch…"
+              : "Cari nama atau SKU…"
+          }
           aria-label="Cari produk"
           className="max-w-xs"
           disabled={disabled}
@@ -193,7 +205,7 @@ export function ProductMultiPicker({
                   // cocok" for a product somebody can see on the shelf reads as
                   // a broken search rather than as an empty warehouse.
                   inStockAtWarehouse
-                  ? `Tidak ada produk bernama "${search.trim()}" yang berstok di gudang ini.`
+                  ? `Tidak ada produk ${searchBatches ? "atau batch" : "bernama"} "${search.trim()}" yang berstok di gudang ini.`
                   : isConsignment === true
                     ? `Tidak ada produk konsinyasi bernama "${search.trim()}".`
                     : isConsignment === false

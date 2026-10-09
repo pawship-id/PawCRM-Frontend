@@ -39,6 +39,7 @@ const EVERY_FILTER: Required<
   isConsignment: true,
   neverMovedInWarehouse: "wh1",
   inStockAtWarehouse: "wh2",
+  searchBatches: true,
   includeDeleted: true,
   sort: "nameAsc",
 };

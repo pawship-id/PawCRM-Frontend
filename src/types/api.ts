@@ -1701,6 +1701,9 @@ export interface PosPaymentBreakdownRow {
   amount: string;
   change: string;
   net: string;
+  /** What went back out through this channel as returns, and what is left. */
+  refunded?: string;
+  netAfterRefunds?: string;
 }
 
 /**
@@ -1720,9 +1723,16 @@ export interface PosXReport {
   refunds: {
     count: number;
     cashRefunds: string;
+    /** Every return of the shift, however it was refunded (9 October 2026). */
+    returnCount?: number;
+    total?: string;
+    /** The part that moved no money — a lowered bill or credit kept for later. */
+    nonCash?: string;
   };
   totals: {
     takings: string;
+    /** Gross sales less every return — the headline figure on a till report. */
+    netSales?: string;
     /** NET of this shift's cash refunds. */
     cashTakings: string;
     expectedCash: string;
@@ -2474,6 +2484,11 @@ export interface PosReturnItemInput {
   qty: string;
   /** Per line — one bag holds an unopened sack and a chewed toy. */
   returnToStock: boolean;
+  /**
+   * The lots the goods go back to, with how many to each — absent for the
+   * automatic split. Their quantities must add up to `qty`.
+   */
+  lots?: Array<{ batchId: string; qty: string }>;
 }
 
 /**
@@ -2507,6 +2522,8 @@ export interface PosReturnable {
     name: string;
     soldQty: string;
     remainingQty: string;
+    /** The lots this product was sold from, and how many each may take back. */
+    lots?: { batchId: string; batchCode: string | null; qty: string }[];
   }[];
 }
 

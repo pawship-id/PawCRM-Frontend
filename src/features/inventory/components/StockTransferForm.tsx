@@ -180,8 +180,8 @@ function TransferLineRow({
 
   return (
     <tr className="border-b border-border/60">
-      <td className="px-2 py-2">
-        <p className="font-medium">{product?.name ?? "—"}</p>
+      <td className="px-2 py-2 align-top">
+        <p className="pt-0.5 font-medium">{product?.name ?? "—"}</p>
         <p className="tabular-nums text-xs text-muted">
           <SkuText value={product?.sku} />
           {product?.unit && ` · ${product.unit}`}
@@ -189,11 +189,13 @@ function TransferLineRow({
       </td>
 
       {showBatch && (
-        <td className="px-2 py-2">
+        <td className="px-2 py-2 align-top">
           {lotTracked && lotsLoading ? (
-            <span className="text-xs text-muted">Memuat batch…</span>
+            <span className="inline-flex h-10 items-center text-xs text-muted">
+              Memuat batch…
+            </span>
           ) : mustName ? (
-            <div className="min-w-52">
+            <div className="w-56">
               <FilterSelect
                 layout="field"
                 label=""
@@ -205,14 +207,18 @@ function TransferLineRow({
                 options={lots.map((lot) => ({
                   value: lot._id,
                   label: lotLabel(lot),
+                  // The trigger sits in a table cell, so it carries the code
+                  // and what is left; the list keeps the whole line.
+                  triggerLabel: `${lot.batchCode} · sisa ${formatQty(lot.qtyRemaining)}`,
                 }))}
+                wideList
                 // The quantity is cleared with the choice: it was typed
                 // against a DIFFERENT lot's remaining, and a number that
                 // silently changes meaning is worse than an empty field.
                 onChange={(value) => onChange({ batchId: value, qty: "" })}
               />
               {batchMissing && (
-                <p role="alert" className="mt-1 text-xs text-danger">
+                <p role="alert" className="mt-2 text-xs text-danger">
                   Pilih batch dulu.
                 </p>
               )}
@@ -222,18 +228,18 @@ function TransferLineRow({
             // empty dropdown that looks broken. Stock that was on the shelf
             // before `hasExpiry` was switched on carries no batch, and the
             // API moves it as it is — unbatched here, unbatched there.
-            <span className="text-xs text-muted">
+            <span className="inline-flex h-10 items-center text-xs text-muted">
               Belum ada batch — dipindahkan tanpa batch
             </span>
           ) : (
             // Said rather than left blank: an empty cell under "Batch" reads
             // as one nobody filled in.
-            <span className="text-muted">—</span>
+            <span className="inline-flex h-10 items-center text-muted">—</span>
           )}
         </td>
       )}
 
-      <td className="px-2 py-2">
+      <td className="px-2 py-2 align-top">
         <Input
           aria-label={`Jumlah ${product?.name ?? ""}`}
           inputMode="decimal"
@@ -246,12 +252,12 @@ function TransferLineRow({
           }
           aria-invalid={shortage ? true : undefined}
           className={cn(
-            "max-w-24 tabular-nums",
+            "h-10 max-w-24 tabular-nums",
             shortage && "border-danger focus-visible:ring-danger/40",
           )}
         />
         {shortage ? (
-          <p role="alert" className="mt-1 text-xs text-danger">
+          <p role="alert" className="mt-2 text-xs text-danger">
             Melebihi stok — tersedia {formatQty(shortage)}
             {product?.unit && ` ${product.unit}`}
           </p>
@@ -260,9 +266,9 @@ function TransferLineRow({
           // remaining, so there is no number to print until one is chosen —
           // and "Tersedia 0" would read as an empty shelf rather than an
           // unanswered question.
-          <p className="mt-1 text-xs text-muted">Pilih batch dulu</p>
+          <p className="mt-2 text-xs text-muted">Pilih batch dulu</p>
         ) : (
-          <p className="mt-1 text-xs text-muted">
+          <p className="mt-2 text-xs text-muted">
             {line.batchId ? "Sisa batch " : "Tersedia "}
             {formatQty(onHand)}
             {product?.unit && ` ${product.unit}`}
@@ -270,18 +276,18 @@ function TransferLineRow({
         )}
       </td>
 
-      <td className="px-2 py-2">
+      <td className="px-2 py-2 align-top">
         <Input
           aria-label={`Catatan ${product?.name ?? ""}`}
           value={line.notes}
           onChange={(event) => onChange({ notes: event.target.value })}
           maxLength={500}
           placeholder="opsional"
-          className="max-w-48 text-xs"
+          className="h-10 max-w-48 text-xs"
         />
       </td>
 
-      <td className="px-2 py-2 text-right">
+      <td className="px-2 py-2 text-right align-top">
         {/* The SAME control as the adjustment sheet's, down to the icon: both
             take a row off a document that has not been filed yet. Not red —
             danger colour is for what cannot be undone, and this deletes
@@ -1155,37 +1161,6 @@ export function StockTransferForm() {
             </p>
           )}
         </Card>
-
-        <div className="flex flex-col gap-3">
-          <p className="text-xs text-muted">
-            Semua produk di atas tersimpan sebagai <b>satu transfer</b>: kalau
-            satu baris gagal, tidak ada satu pun yang berpindah. Setiap batch
-            dibuat ulang di gudang tujuan dengan{" "}
-            <b>kode, tanggal kedaluwarsa, dan harga beli yang sama</b>, jadi
-            urutan FEFO di sana tetap utuh.
-          </p>
-
-          <p className="text-xs text-muted">
-            Produk yang <b>punya tanggal kedaluwarsa</b> harus disebutkan
-            batch-nya — yang berkurang di gudang asal persis batch yang Anda
-            pilih. Satu baris mengambil dari <b>satu batch</b>; kalau barangnya
-            diambil dari dua batch, buat satu transfer lagi untuk sisanya.
-            Produk tanpa kedaluwarsa tetap dilayani otomatis dengan urutan FEFO.
-            Kalau stok lamanya memang <b>belum punya batch</b> — misalnya
-            kedaluwarsa baru dinyalakan belakangan — barangnya tetap bisa
-            dipindahkan apa adanya, tanpa batch.
-          </p>
-
-          <p className="text-xs text-muted">
-            Transfer TIDAK membuat jurnal. Barang masih milik tenant yang sama —
-            hanya lokasinya yang berubah, jadi nilai persediaan sebelum dan
-            sesudah sama persis. Bila kedua gudang berada di{" "}
-            <b>cabang berbeda</b>, nilai persediaan sebenarnya berpindah antar
-            dua pembukuan. Itu dicatat sebagai keputusan yang diketahui dan akan
-            ditinjau ulang saat laporan keuangan per cabang dibangun.
-          </p>
-
-        </div>
       </div>
     </form>
   );

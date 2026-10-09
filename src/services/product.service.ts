@@ -75,6 +75,7 @@ export const productService = {
         isConsignment: query.isConsignment,
         neverMovedInWarehouse: query.neverMovedInWarehouse,
         inStockAtWarehouse: query.inStockAtWarehouse,
+        searchBatches: query.searchBatches,
         includeDeleted: query.includeDeleted,
         sort: query.sort,
       },
