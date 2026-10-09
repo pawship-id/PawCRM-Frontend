@@ -39,6 +39,13 @@ export interface FilterOption<T> {
    * one group. Leave it off and the list renders flat, exactly as before.
    */
   group?: string;
+  /**
+   * A SHORTER NAME FOR THE TRIGGER once this option is picked; the list still
+   * shows `label` in full. For options whose full text is long enough to blow
+   * a table cell open — a batch with both its codes and an expiry. Takes the
+   * place of `label` + `meta` on the trigger.
+   */
+  triggerLabel?: string;
   disabled?: boolean;
 }
 

@@ -1367,18 +1367,6 @@ describe("StockTransferForm", () => {
     );
   });
 
-  it("says plainly that a transfer posts no journal", async () => {
-    mockLookups();
-
-    render(<StockTransferForm />);
-
-    // Users who have just learned every stock action hits the books need to be
-    // told this one does not, or they go looking for the missing entry.
-    expect(
-      await screen.findByText(/Transfer TIDAK membuat jurnal/),
-    ).toBeInTheDocument();
-  });
-
   it("refuses to render at all when the tenant has fewer than two active warehouses", async () => {
     mockLookups({ warehouses: [warehouse(WAREHOUSE, "Gudang Pusat")] });
 

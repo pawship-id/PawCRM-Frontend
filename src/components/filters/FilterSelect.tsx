@@ -116,6 +116,12 @@ export interface FilterSelectProps<T> {
    * that swapped a Radix Select for this to stop the page locking turns it on.
    */
   closeOnScroll?: boolean;
+  /**
+   * Let the option list grow to its longest row instead of matching the
+   * trigger's width — for a trigger kept narrow on purpose, paired with
+   * `FilterOption.triggerLabel`, so the full text is still readable in the list.
+   */
+  wideList?: boolean;
   align?: "start" | "end";
   className?: string;
 }
@@ -139,6 +145,7 @@ export function FilterSelect<T>({
   disabledHint,
   error,
   closeOnScroll = false,
+  wideList = false,
   align = "start",
   className,
 }: FilterSelectProps<T>) {
@@ -163,9 +170,11 @@ export function FilterSelect<T>({
   // Falling back to the raw value keeps a stale id visible rather than silently
   // reading "Semua" while the list is still filtered by it.
   const display = current
-    ? current.meta
-      ? `${current.label} — ${current.meta}`
-      : current.label
+    ? current.triggerLabel
+      ? current.triggerLabel
+      : current.meta
+        ? `${current.label} — ${current.meta}`
+        : current.label
     : chosen
       ? String(value)
       : (placeholder ?? "Semua");
@@ -195,7 +204,10 @@ export function FilterSelect<T>({
         // reads as a stray popover rather than the field opening.
         className={cn(
           "p-0",
-          fieldLayout && "w-(--radix-popover-trigger-width)",
+          fieldLayout &&
+            (wideList
+              ? "w-max min-w-(--radix-popover-trigger-width) max-w-[min(90vw,40rem)]"
+              : "w-(--radix-popover-trigger-width)"),
         )}
         // Radix parks focus on the content wrapper, which is the ANCESTOR of
         // the listbox — so arrow keys would fire above the handler and never
