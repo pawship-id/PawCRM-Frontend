@@ -83,6 +83,12 @@ export function useProductCandidates(
    * cannot see.
    */
   isConsignment: boolean | undefined = undefined,
+  /**
+   * Also match `search` against the codes of lots — ours and the supplier's —
+   * so a label or a carton number finds its product. Asked of the SERVER for the
+   * reason the whole hook is: the codes live on the batches, not the products.
+   */
+  searchBatches = false,
 ): ProductCandidates {
   const [products, setProducts] = useState<Product[]>([]);
   const [total, setTotal] = useState(0);
@@ -109,6 +115,7 @@ export function useProductCandidates(
           // Passed straight through: `false` is a filter, and `|| undefined`
           // here would drop exactly the case the receipt picker needs most.
           isConsignment,
+          searchBatches: searchBatches || undefined,
           limit: PAGE_LIMIT,
         })
         .then((result) => {
@@ -141,6 +148,7 @@ export function useProductCandidates(
     neverMovedInWarehouse,
     inStockAtWarehouse,
     isConsignment,
+    searchBatches,
   ]);
 
   return {
