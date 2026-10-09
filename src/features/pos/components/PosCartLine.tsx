@@ -1,18 +1,17 @@
 "use client";
 
-import { Minus, Plus, Trash2 } from "lucide-react";
+import { Minus, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/utils/decimal";
-import type { PosItem, PosDiscountMode } from "@/types/api";
+import type { PosItem } from "@/types/api";
 
 import { ownDiscountOf } from "../bookingDiscount";
 import { variantDetailOf } from "../variantDetail";
 import { PosBenefitChip } from "./PosBenefitChip";
-import { PosDiscountPopover } from "./PosDiscountPopover";
 import { PosLinePrice } from "./PosLinePrice";
-import { netOf, PosLineTotal } from "./PosLineTotal";
+import { PosLineTotal } from "./PosLineTotal";
 
 /**
  * One line in the basket.
@@ -32,7 +31,7 @@ export function PosCartLine({
   addons = [],
   onQtyChange,
   onRemove,
-  onDiscountChange,
+  onEdit,
   onPriceChange,
   maySetPrice = false,
   disabled = false,
@@ -63,10 +62,11 @@ export function PosCartLine({
    * no way to be removed either.
    */
   onRemove: (index: number | number[]) => void;
-  onDiscountChange: (
-    index: number,
-    discount: { mode: PosDiscountMode; value: string } | null,
-  ) => void;
+  /**
+   * Opens the line dialog — discount, lot and note live there (8 October 2026),
+   * not on the row. Pressing the name block or the pencil both land here.
+   */
+  onEdit: (index: number) => void;
   /**
    * Typing a price over the catalogue's — `null` puts the line back to it.
    *
@@ -120,7 +120,16 @@ export function PosCartLine({
   return (
     <div className="border-b border-border px-3 py-2 last:border-b-0">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+        {/*
+          THE WHOLE NAME BLOCK OPENS THE DIALOG — a bigger target for a finger
+          than the pencil. No role of its own: the pencil below is the keyboard
+          and screen-reader route, and a second button with the same name would
+          only make the row announce itself twice.
+        */}
+        <div
+          className="min-w-0 cursor-pointer"
+          onClick={() => !disabled && onEdit(index)}
+        >
           {/*
             THE ANIMAL IN THE TITLE — "Cici - Basic Grooming", the same as the
             printed sheet.
@@ -200,7 +209,27 @@ export function PosCartLine({
             </span>
           )}
 
-          <span className="mt-0.5 block text-xs tabular-nums text-muted">
+          {/* The lot the cashier chose, and the line's note — read-only here,
+              edited in the dialog the row opens. */}
+          {(item.lots?.length ?? 0) > 0 && (
+            <span className="mt-0.5 block truncate text-xs text-muted">
+              Batch{" "}
+              {item.lots
+                ?.map((lot) => `${lot.batchCode ?? "—"} ×${Number(lot.qty)}`)
+                .join(", ")}
+            </span>
+          )}
+          {item.note && (
+            <span className="mt-0.5 block truncate text-xs italic text-muted">
+              “{item.note}”
+            </span>
+          )}
+
+          <span
+            className="mt-0.5 block text-xs tabular-nums text-muted"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
             <PosLinePrice
               item={item}
               label={`Harga ${item.name}`}
@@ -354,34 +383,27 @@ export function PosCartLine({
 
         <div className="flex items-center gap-1">
           {/*
-            A DISCOUNT IS NEVER LOCKED. It changes what the customer pays, not
-            what the animal is having — the booking behind the line stores the
-            service and its list price, and neither moves. Greying this out was
-            the same over-reach as locking the bin: it left a cashier unable to
-            give 10% off a grooming that was already on the table.
+            THE DISCOUNT MOVED INTO THE LINE DIALOG (8 October 2026, on
+            request), together with the lot and the note — one place to adjust
+            a line instead of a control per thing. A discount is still never
+            locked by a started booking: it changes what is paid, not what the
+            animal is having.
+
+            The button still SHOWS the discount — "−10%" — so a cashier
+            scanning the basket sees it without opening anything.
           */}
-          {/*
-            BEFORE THE DISCOUNT CONTROL, and the order is the order the money
-            comes off: the benefit first, then whatever the cashier types on
-            what is left (decision 7). A cashier reading the row left to right
-            reads it in the same sequence the server prices it.
-          */}
-          {/*
-            NOTHING LEFT TO DISCOUNT (1 October 2026, on request). A line a card
-            already took to nothing cannot be cut further — the server would
-            floor it at zero anyway — so the control says so rather than opening
-            a panel whose every entry changes no figure.
-            ⚠️ ONLY WHEN NOTHING WAS TYPED. A line at zero BECAUSE the cashier
-            typed 100% must keep its control, or the discount they just entered
-            is one they can never take back off.
-          */}
-          <PosDiscountPopover
-            value={ownDiscountOf(item)}
-            disabled={disabled || (!ownDiscountOf(item) && netOf(item) === "0.0000")}
-            label={`Diskon ${item.name}`}
-            subject={item.name}
-            onApply={(discount) => onDiscountChange(index, discount)}
-          />
+          <Button
+            type="button"
+            variant={ownDiscountOf(item) ? "default" : "secondary"}
+            size="sm"
+            disabled={disabled}
+            aria-label={`Ubah ${item.name}`}
+            onClick={() => onEdit(index)}
+          >
+            <Pencil className="size-4" />
+            {ownDiscountOf(item) &&
+              `−${formatMoney(ownDiscountOf(item)!.resolvedAmount)}`}
+          </Button>
           {/*
             WRAPPED, so the hint survives the disabled button. A disabled control
             swallows pointer events in several engines, and the hint would then

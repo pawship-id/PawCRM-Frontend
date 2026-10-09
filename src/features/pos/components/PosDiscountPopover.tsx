@@ -22,10 +22,10 @@ import type { PosDiscount, PosDiscountMode } from "@/types/api";
  * rupiah — a thousandfold error that looks like a typo nobody made. Digits only,
  * and the same guard the service and shift forms use.
  */
-const WHOLE_RUPIAH = /^\d+$/;
+export const WHOLE_RUPIAH = /^\d+$/;
 
 /** A percentage: up to two decimals, so 7,5% is expressible. */
-const PERCENT = /^\d{1,3}([.,]\d{1,2})?$/;
+export const PERCENT = /^\d{1,3}([.,]\d{1,2})?$/;
 
 /**
  * The discount editor for a line or for the whole basket (FR-4).
@@ -79,7 +79,7 @@ function triggerLabel(value: PosDiscount): string {
  * whole rupiah (see WHOLE_RUPIAH), so ".0000" would fail the very check that
  * decides whether Terapkan is pressable.
  */
-function storedToInput(value: PosDiscount | null): string {
+export function storedToInput(value: PosDiscount | null): string {
   if (!value) return "";
 
   const trimmed = value.value.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");

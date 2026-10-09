@@ -24,7 +24,8 @@ export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const hasHint = request.cookies.has(AUTH_HINT_COOKIE);
 
-  const isDashboard = pathname.startsWith("/dashboard");
+  const isDashboard =
+    pathname.startsWith("/dashboard") || pathname === "/groomer" || pathname.startsWith("/groomer/");
   const isAuthRoute = AUTH_ROUTES.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
@@ -52,6 +53,8 @@ export const config = {
   matcher: [
     "/dashboard",
     "/dashboard/:path*",
+    "/groomer",
+    "/groomer/:path*",
     "/login",
     "/forgot-password",
     "/reset-password",

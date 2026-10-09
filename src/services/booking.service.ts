@@ -289,6 +289,19 @@ export const bookingService = {
     ),
 
   /**
+   * POST /bookings/:id/sessions/:sessionId/claim — the caller takes an open turn.
+   *
+   * NO BODY: only the caller can be put on a turn this way. Refused when the shop
+   * has open-job claiming off, when somebody got there first (409), and when the
+   * turn clashes with one the caller already has.
+   */
+  claimSession: (bookingId: string, sessionId: string) =>
+    apiClient.post<Booking>(
+      `/bookings/${bookingId}/sessions/${sessionId}/claim`,
+      {},
+    ),
+
+  /**
    * PATCH /bookings/:id/media — the BOOKING's own album.
    *
    * ⚠️ A DIFFERENT ARRAY FROM `setSessionRecord`'s `media`, not a different view

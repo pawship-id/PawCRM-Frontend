@@ -65,6 +65,23 @@ interface UsePosCartResult {
     index: number,
     discount: UpdateCartInput["cartDiscount"],
   ) => Promise<void>;
+  /**
+   * Everything the line dialog edits, in ONE write — discount, the lot and the
+   * note. Three separate writes would each rebuild the basket from the one
+   * before it had returned. Resolves `false` when the server refused it.
+   */
+  setLineDetails: (
+    index: number,
+    details: {
+      discount: UpdateCartInput["cartDiscount"];
+      /** A typed price, or `null` to reset it; absent leaves the price alone. */
+      unitPrice?: string | null;
+      /** Absent for a non-product. */
+      qty?: string;
+      lots: Array<{ batchId: string; qty: string }>;
+      note: string | null;
+    },
+  ) => Promise<boolean>;
   setCartDiscount: (discount: UpdateCartInput["cartDiscount"]) => Promise<void>;
   setCharges: (charges: PosTransaction["otherCharges"]) => Promise<void>;
   /** The transaction's free-text note, or null to clear it (FR-5). */
@@ -334,6 +351,20 @@ export function usePosCart(): UsePosCartResult {
         */
         ...(item.listPrice ? { unitPrice: item.unitPrice } : {}),
         /*
+          THE LOT AND THE LINE NOTE, SENT BACK (8 October 2026). Same reason as
+          the price above: the server rebuilds every line from this payload, so
+          a lot or a note left out of the next write — stepping the quantity of
+          something else — would quietly fall off this line, and the sale would
+          then take from whichever lot FEFO likes instead of the one the cashier
+          picked off the shelf.
+        */
+        ...(item.lots?.length
+          ? {
+              lots: item.lots.map(({ batchId, qty }) => ({ batchId, qty })),
+            }
+          : {}),
+        ...(item.note ? { note: item.note } : {}),
+        /*
           THE LINE'S OWN DISCOUNT, never the whole of it. A booking's share of
           "Diskon seluruh booking" rides inside the stored figure, and the server
           adds it back from the booking — sending it too would count it twice.
@@ -443,8 +474,11 @@ export function usePosCart(): UsePosCartResult {
           : -1;
 
       if (existing >= 0) {
+        // The named lots no longer add up once the quantity moves — see `setQty`.
+        const { lots, ...rest } = items[existing];
+        void lots;
         items[existing] = {
-          ...items[existing],
+          ...rest,
           qty: String(Number(items[existing].qty ?? "1") + 1),
         };
       } else {
@@ -529,7 +563,15 @@ export function usePosCart(): UsePosCartResult {
     async (index: number, qty: string) => {
       const items = itemsAsInput();
       if (!items[index]) return;
-      items[index] = { ...items[index], qty };
+      /*
+        A STEPPED QUANTITY DROPS THE NAMED LOTS (8 October 2026). Their shares
+        added up to the old quantity, and the server refuses a line whose lots
+        no longer do — so the line goes back to FEFO, and the cashier names them
+        again in the dialog, where the quantity and the lots sit side by side.
+      */
+      const { lots, ...rest } = items[index];
+      void lots;
+      items[index] = { ...rest, qty };
       await send({ items });
     },
     [itemsAsInput, send],
@@ -570,6 +612,45 @@ export function usePosCart(): UsePosCartResult {
       items[index] = next;
 
       await send({ items });
+    },
+    [itemsAsInput, send],
+  );
+
+  const setLineDetails = useCallback(
+    async (
+      index: number,
+      details: {
+        discount: UpdateCartInput["cartDiscount"];
+        unitPrice?: string | null;
+        qty?: string;
+        lots: Array<{ batchId: string; qty: string }>;
+        note: string | null;
+      },
+    ) => {
+      const items = itemsAsInput();
+      if (!items[index]) return false;
+
+      // Rebuilt WITHOUT the old lots and note, so clearing one removes the key.
+      const { lots, note, ...rest } = items[index];
+      void lots;
+      void note;
+
+      // `undefined` leaves the price as `itemsAsInput` carried it; a string
+      // types one; `null` drops the key so the catalogue prices the line again.
+      if (details.unitPrice !== undefined) {
+        delete rest.unitPrice;
+        if (details.unitPrice !== null) rest.unitPrice = details.unitPrice;
+      }
+
+      items[index] = {
+        ...rest,
+        ...(details.qty ? { qty: details.qty } : {}),
+        discount: details.discount ?? null,
+        ...(details.lots.length > 0 ? { lots: details.lots } : {}),
+        ...(details.note ? { note: details.note } : {}),
+      };
+
+      return send({ items });
     },
     [itemsAsInput, send],
   );
@@ -733,6 +814,7 @@ export function usePosCart(): UsePosCartResult {
     setLinePrice,
     removeItem,
     setItemDiscount,
+    setLineDetails,
     setItemBenefit,
     setCartDiscount,
     setCharges,

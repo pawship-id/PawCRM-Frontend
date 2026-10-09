@@ -17,6 +17,7 @@ import {
   GroomingCommissionExample,
   GroomingCommissionSettings,
 } from "./GroomingCommissionSettings";
+import { GroomerAppSettingsCard } from "./GroomerAppSettingsCard";
 import { GroomingModuleHeader } from "./GroomingModuleHeader";
 import { GroomingSharedSettingsCard } from "./GroomingSharedSettingsCard";
 
@@ -267,6 +268,8 @@ export function GroomingSettingsScreen() {
           )}
         </aside>
       </div>
+
+      <GroomerAppSettingsCard />
 
       <GroomingSharedSettingsCard mayOpenCatalog={mayOpenCatalog} />
     </div>

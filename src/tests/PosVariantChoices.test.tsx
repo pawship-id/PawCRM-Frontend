@@ -410,16 +410,17 @@ describe("PosCart — a line priced beyond the animal", () => {
     renderWithAuth(<PosScreen />);
 
     await screen.findByText("Lokasi: Di Rumah · Zona A");
-    // A write that has nothing to do with the grooming: its discount popover.
+    // A write that has nothing to do with the grooming: its discount, set in
+    // the line dialog.
     await user.click(
-      screen.getByRole("button", { name: /diskon grooming rumah/i }),
+      screen.getByRole("button", { name: /ubah grooming rumah/i }),
     );
     await user.type(
-      await screen.findByLabelText(/diskon (persen|rupiah)/i),
+      await screen.findByLabelText(/nilai diskon/i),
       "10",
     );
     mockedPos.updateCart.mockClear();
-    await user.click(screen.getByRole("button", { name: /terapkan/i }));
+    await user.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
     const [, body] = mockedPos.updateCart.mock.calls[0];

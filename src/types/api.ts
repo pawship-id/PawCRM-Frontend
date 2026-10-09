@@ -576,6 +576,14 @@ export interface TenantSettings {
   antarJemput?: AntarJemputSettings;
 
   /**
+   * What the groomer's phone app may show and do (8 October 2026) — a SIBLING of
+   * `grooming`, not a key inside it, so the grooming screen's whole-object save
+   * cannot reset these. Absent until saved once, and both OFF until then.
+   * Written whole.
+   */
+  groomerApp?: GroomerAppSettings;
+
+  /**
    * Pengaturan › Nomor dokumen — what this tenant asked to differ about the
    * shape of its document numbers, keyed by series (23 September 2026).
    *
@@ -1834,6 +1842,13 @@ export interface PosItem {
   parentServiceId: string | null;
   /** What a walk-in service was priced on beyond the pet (17 September 2026). */
   variantChoices?: VariantChoiceSnapshot[];
+  /**
+   * THE LOT THE CASHIER CHOSE (8 October 2026) and its label, frozen beside it.
+   * Null on nearly every line — FEFO decides when nobody named one.
+   */
+  lots?: PosLineLot[];
+  /** Free text on THIS line, not the transaction's note. */
+  note?: string | null;
   zone?: ZoneSnapshot | null;
   /**
    * THE JOURNEY THIS LINE IS (24 September 2026) — which way the van is going
@@ -2206,6 +2221,28 @@ export interface PosCatalogItem {
 }
 
 /** Query parameters accepted by GET /api/pos/catalog. */
+/** How much of a line's quantity comes from one lot the cashier named. */
+export interface PosLineLot {
+  batchId: string;
+  batchCode: string | null;
+  qty: string;
+}
+
+/** One lot of a product at the shift's warehouse — GET /pos/catalog/:id/lots. */
+export interface PosLot {
+  _id: string;
+  batchCode: string;
+  supplierBatchCode: string | null;
+  expiryDate: string | null;
+  qtyRemaining: string;
+}
+
+export interface PosLots {
+  /** False for a product that does not expire — the dialog shows no picker. */
+  hasExpiry: boolean;
+  lots: PosLot[];
+}
+
 export interface PosCatalogQuery {
   page?: number;
   limit?: number;
@@ -2552,6 +2589,13 @@ export interface PosItemInput {
    * Omitted means "whatever the catalogue says", which is nearly every line.
    */
   unitPrice?: string;
+  /**
+   * The lots to take this product from, with the quantity from each — absent
+   * for FEFO. Their quantities must add up to `qty`. SENT ON EVERY WRITE.
+   */
+  lots?: Array<{ batchId: string; qty: string }>;
+  /** A note on this line. SENT ON EVERY WRITE, like `lots`. */
+  note?: string | null;
   discount?: {
     mode: PosDiscountMode;
     value: string;
@@ -3585,6 +3629,14 @@ export interface CommissionOutstanding {
  * nothing" and "there is nothing here yet" are different sentences, and a zeroed
  * row says the first when the second is true.
  */
+/** The two switches behind the groomer app. Both default OFF. */
+export interface GroomerAppSettings {
+  /** The groomer sees their own commission summary in the app. */
+  showOwnCommission: boolean;
+  /** The groomer may take a session nobody holds ("Open Job"). */
+  allowOpenJobClaim: boolean;
+}
+
 export interface MyCommission {
   period: string | null;
   earned: CommissionRecapRow | null;
