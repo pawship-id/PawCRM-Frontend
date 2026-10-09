@@ -70,6 +70,9 @@ interface LineDraft {
  * where the EXPIRY belongs on the row, since what a person moving goods between
  * warehouses is usually deciding is which of two dates to send.
  */
+/** The dropdown's "let FEFO choose" row. Not a real lot id, never sent as one. */
+const AUTO_FEFO = "auto-fefo";
+
 function lotLabel(lot: ProductBatch): string {
   const expiry = lot.expiryDate
     ? new Date(lot.expiryDate).toLocaleDateString("id-ID", {
@@ -204,13 +207,21 @@ function TransferLineRow({
                 active={line.batchId !== ""}
                 placeholder="Pilih batch"
                 invalid={batchMissing}
-                options={lots.map((lot) => ({
-                  value: lot._id,
-                  label: lotLabel(lot),
-                  // The trigger sits in a table cell, so it carries the code
-                  // and what is left; the list keeps the whole line.
-                  triggerLabel: `${lot.batchCode} · sisa ${formatQty(lot.qtyRemaining)}`,
-                }))}
+                options={[
+                  {
+                    value: AUTO_FEFO,
+                    label:
+                      "Otomatis (FEFO) — batch yang paling dekat kedaluwarsa dipakai dulu",
+                    triggerLabel: "Otomatis (FEFO)",
+                  },
+                  ...lots.map((lot) => ({
+                    value: lot._id,
+                    label: lotLabel(lot),
+                    // The trigger sits in a table cell, so it carries the code
+                    // and what is left; the list keeps the whole line.
+                    triggerLabel: `${lot.batchCode} · sisa ${formatQty(lot.qtyRemaining)}`,
+                  })),
+                ]}
                 wideList
                 // The quantity is cleared with the choice: it was typed
                 // against a DIFFERENT lot's remaining, and a number that
@@ -269,7 +280,9 @@ function TransferLineRow({
           <p className="mt-2 text-xs text-muted">Pilih batch dulu</p>
         ) : (
           <p className="mt-2 text-xs text-muted">
-            {line.batchId ? "Sisa batch " : "Tersedia "}
+            {line.batchId && line.batchId !== AUTO_FEFO
+              ? "Sisa batch "
+              : "Tersedia "}
             {formatQty(onHand)}
             {product?.unit && ` ${product.unit}`}
           </p>
@@ -518,7 +531,7 @@ export function StockTransferForm() {
 
   /** The lot a line named, when it named one that is still on the shelf. */
   function namedLotOf(line: LineDraft): ProductBatch | null {
-    if (line.batchId === "") return null;
+    if (line.batchId === "" || line.batchId === AUTO_FEFO) return null;
     return (
       lotsOf(line.productId).find((lot) => lot._id === line.batchId) ?? null
     );
@@ -542,7 +555,12 @@ export function StockTransferForm() {
     // A lot to name means the LOT is the ceiling. No lots on this shelf — stock
     // that predates `hasExpiry` — means the warehouse is, exactly as it is for
     // a product that never tracked lots at all.
-    if (product.hasExpiry && mustNameLot(line.productId)) {
+    // FEFO may draw from any lot, so its ceiling is the whole shelf.
+    if (
+      product.hasExpiry &&
+      mustNameLot(line.productId) &&
+      line.batchId !== AUTO_FEFO
+    ) {
       return namedLotOf(line)?.qtyRemaining ?? null;
     }
 
@@ -655,7 +673,11 @@ export function StockTransferForm() {
             // Sent only when the row named one. An empty string would be an id
             // the API cannot resolve, and a product that tracks no lots must
             // keep reaching FEFO exactly as it always did.
-            ...(line.batchId ? { batchId: line.batchId } : {}),
+            ...(line.batchId === AUTO_FEFO
+              ? { autoFefo: true }
+              : line.batchId
+                ? { batchId: line.batchId }
+                : {}),
             ...(trimmed ? { notes: trimmed } : {}),
           };
         }),

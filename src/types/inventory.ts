@@ -377,6 +377,12 @@ export interface TransferItemInput {
    * and the carton has to be relabelled when it lands.
    */
   batchId?: string;
+  /**
+   * An explicit "let FEFO pick the lots" for a product with `hasExpiry`, which
+   * otherwise has to name one. Ignored when `batchId` is sent. Each lot FEFO
+   * draws from is still its own row in the ledger.
+   */
+  autoFefo?: boolean;
   /** This line's own reason, distinct from the transfer's. ≤500 characters. */
   notes?: string;
 }
