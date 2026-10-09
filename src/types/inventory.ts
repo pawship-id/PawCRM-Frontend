@@ -266,6 +266,8 @@ export interface ProductBatch {
   productName: string | null;
   productSku: string | null;
   productUnit: string | null;
+  /** Decimal string — the product's selling price, for the shelf label. */
+  productSellPrice: string | null;
   warehouseName: string | null;
 }
 

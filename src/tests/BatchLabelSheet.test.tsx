@@ -49,6 +49,7 @@ function lot(overrides: Partial<ProductBatch> = {}): ProductBatch {
     productName: "Vaksin Rabies",
     productSku: "VAKSIN",
     productUnit: "vial",
+    productSellPrice: "75000.0000",
     warehouseName: "Gudang Pusat",
     ...overrides,
   };
@@ -72,7 +73,40 @@ describe("BatchLabelSheet", () => {
     // The line a person retypes when the scanner will not read the sticker.
     expect(await screen.findByText("VAKSIN-270301")).toBeInTheDocument();
     expect(screen.getByText("Vaksin Rabies")).toBeInTheDocument();
-    expect(screen.getByText(/exp 2027-03-01/)).toBeInTheDocument();
+    expect(screen.getByText(/Exp 2027-03-01/)).toBeInTheDocument();
+  });
+
+  it("shows the SKU and the selling price", async () => {
+    jest.spyOn(productBatchService, "getById").mockResolvedValue(lot());
+
+    render([ID_A]);
+
+    expect(await screen.findByText("SKU VAKSIN")).toBeInTheDocument();
+    expect(screen.getByText("Rp 75.000")).toBeInTheDocument();
+  });
+
+  it("prints one symbol at a time, barcode first", async () => {
+    const user = userEvent.setup();
+    jest.spyOn(productBatchService, "getById").mockResolvedValue(lot());
+
+    const { container } = render([ID_A]);
+    await screen.findByText("VAKSIN-270301");
+
+    expect(container.querySelectorAll("canvas")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Barcode" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(screen.getByRole("button", { name: "QR" }));
+
+    await waitFor(() =>
+      expect(container.querySelectorAll("canvas")).toHaveLength(1),
+    );
+    expect(screen.getByRole("button", { name: "QR" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   /**

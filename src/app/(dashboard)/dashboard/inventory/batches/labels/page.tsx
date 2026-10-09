@@ -59,9 +59,9 @@ export default async function BatchLabelsPage({
           Cetak label batch
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Tempel di kartonnya. Kode batch dicetak sebagai barcode dan QR — kasir
+          Tempel di kartonnya. Pilih barcode atau QR untuk kode batch — kasir
           tinggal scan, dan stok yang berkurang persis dari lot itu, bukan tebakan
-          FEFO.
+          FEFO. Label juga memuat SKU, harga, dan tanggal kedaluwarsa.
         </p>
       </div>
 

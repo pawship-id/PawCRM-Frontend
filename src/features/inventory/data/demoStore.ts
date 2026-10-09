@@ -77,6 +77,7 @@ const DEMO_BATCH_LABELS = {
   productName: null,
   productSku: null,
   productUnit: null,
+  productSellPrice: null,
   warehouseName: null,
 } as const;
 

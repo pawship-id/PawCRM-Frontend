@@ -217,6 +217,7 @@ function lot(overrides: Partial<ProductBatch> = {}): ProductBatch {
     productName: null,
     productSku: null,
     productUnit: null,
+    productSellPrice: null,
     warehouseName: null,
     ...overrides,
   };
