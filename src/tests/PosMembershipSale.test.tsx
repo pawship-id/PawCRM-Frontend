@@ -459,16 +459,18 @@ describe("a line the membership paid for", () => {
   });
 
   /*
-    NOTHING LEFT TO CUT. The server floors a discount at the line's total, so a
-    panel here could only ever change the figure from nought to nought.
+    THE CONTROL STAYS LIVE on a line already at nought (8 October 2026): the
+    discount moved into the line dialog, which also holds the lot and the note.
   */
-  it("will not let a line already at nought be discounted again", async () => {
+  it("still opens the line dialog on a line already at nought", async () => {
     renderWithAuth(<PosScreen />);
 
+    // The discount moved into the dialog (8 October 2026), which also holds the
+    // lot and the note — so the control no longer greys out on a zero line.
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: /diskon bruno - grooming lengkap/i }),
-      ).toBeDisabled(),
+        screen.getByRole("button", { name: /ubah bruno - grooming lengkap/i }),
+      ).toBeEnabled(),
     );
   });
 });

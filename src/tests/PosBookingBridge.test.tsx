@@ -549,7 +549,7 @@ describe("PosCart — the pulled lines", () => {
         error={null}
         onQtyChange={jest.fn()}
         onRemove={jest.fn()}
-        onItemDiscount={jest.fn()}
+        onItemDetails={jest.fn()}
       onLinePrice={jest.fn()}
         onCartDiscount={jest.fn()}
         onCharges={jest.fn()}
@@ -772,7 +772,7 @@ describe("PosCart — a line whose service has already started", () => {
         error={null}
         onQtyChange={jest.fn()}
         onRemove={jest.fn()}
-        onItemDiscount={jest.fn()}
+        onItemDetails={jest.fn()}
       onLinePrice={jest.fn()}
         onCartDiscount={jest.fn()}
         onCharges={jest.fn()}
@@ -871,7 +871,7 @@ describe("PosCart — a line whose service has already started", () => {
     );
 
     expect(
-      await screen.findByRole("button", { name: /diskon grooming/i }),
+      await screen.findByRole("button", { name: /ubah grooming/i }),
     ).toBeEnabled();
   });
 

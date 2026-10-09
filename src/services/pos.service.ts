@@ -5,6 +5,7 @@ import type {
   PageResult,
   PosCatalogItem,
   PosCatalogQuery,
+  PosLots,
   PosReceipt,
   PublicReceipt,
   PosReturn,
@@ -88,6 +89,10 @@ export const posService = {
         kinds: query.kinds,
       },
     }),
+
+  /** GET /pos/catalog/:productId/lots — the shift warehouse's lots, soonest expiry first. */
+  lots: (productId: string) =>
+    apiClient.get<PosLots>(`/pos/catalog/${productId}/lots`),
 
   /* ------------------------------------------------------------- cart */
 

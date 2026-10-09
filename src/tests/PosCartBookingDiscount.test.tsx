@@ -84,7 +84,7 @@ const open = () =>
       error={null}
       onQtyChange={jest.fn()}
       onRemove={jest.fn()}
-      onItemDiscount={jest.fn()}
+      onItemDetails={jest.fn()}
       onLinePrice={jest.fn()}
       onCartDiscount={jest.fn()}
       onCharges={jest.fn()}
@@ -206,7 +206,7 @@ const openWithBenefit = () =>
       error={null}
       onQtyChange={jest.fn()}
       onRemove={jest.fn()}
-      onItemDiscount={jest.fn()}
+      onItemDetails={jest.fn()}
       onLinePrice={jest.fn()}
       onCartDiscount={jest.fn()}
       onCharges={jest.fn()}
@@ -314,7 +314,7 @@ const openAtNought = (cartDiscount: PosTransaction["cartDiscount"] = null) =>
       error={null}
       onQtyChange={jest.fn()}
       onRemove={jest.fn()}
-      onItemDiscount={jest.fn()}
+      onItemDetails={jest.fn()}
       onLinePrice={jest.fn()}
       onCartDiscount={jest.fn()}
       onCharges={jest.fn()}

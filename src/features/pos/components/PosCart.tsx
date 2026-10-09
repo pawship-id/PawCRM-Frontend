@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Bookmark, ShoppingCart } from "lucide-react";
 
 import { Alert, Spinner } from "@/components";
@@ -18,6 +19,7 @@ import type { BenefitQuoteResponse } from "@/types/membership";
 
 import { PosBenefitSection } from "./PosBenefitSection";
 import { PosCartLine } from "./PosCartLine";
+import { PosLineDialog } from "./PosLineDialog";
 import { PosCustomerSection } from "./PosCustomerSection";
 import { PosDiscountPopover } from "./PosDiscountPopover";
 import { PosNoteEditor } from "./PosNoteEditor";
@@ -150,7 +152,7 @@ export function PosCart({
   onQtyChange,
   onLinePrice,
   onRemove,
-  onItemDiscount,
+  onItemDetails,
   onItemBenefit,
   benefitQuote,
   onCartDiscount,
@@ -188,10 +190,20 @@ export function PosCart({
    * all: a benefit with nothing to land on has no line to be keyed by.
    */
   benefitQuote?: BenefitQuoteResponse | null;
-  onItemDiscount: (
+  /**
+   * Everything the line dialog edits, in one write — see `PosLineDialog`.
+   * Resolves `false` when the server refused it, so the dialog stays open.
+   */
+  onItemDetails: (
     index: number,
-    discount: { mode: PosDiscountMode; value: string } | null,
-  ) => void;
+    details: {
+      discount: { mode: PosDiscountMode; value: string } | null;
+      unitPrice?: string | null;
+      qty?: string;
+      lots: Array<{ batchId: string; qty: string }>;
+      note: string | null;
+    },
+  ) => Promise<boolean>;
   /** Typing a price over the catalogue's; `null` puts the line back to it. */
   onLinePrice: (index: number, unitPrice: string | null) => void;
   onCartDiscount: (
@@ -210,6 +222,7 @@ export function PosCart({
   bookingSlot?: React.ReactNode;
 }) {
   const { can } = usePermissions();
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const items = cart?.items ?? [];
   const totals = cart?.runningTotals;
   const empty = items.length === 0;
@@ -294,7 +307,7 @@ export function PosCart({
                   disabled={busy}
                   onQtyChange={onQtyChange}
                   onRemove={onRemove}
-                  onDiscountChange={onItemDiscount}
+                  onEdit={setEditingIndex}
                   onPriceChange={onLinePrice}
                   /*
                     READ FROM THE GRANT, not passed down as a flag somebody
@@ -538,6 +551,19 @@ export function PosCart({
           </div>
         </div>
       )}
+
+      <PosLineDialog
+        item={editingIndex === null ? null : (items[editingIndex] ?? null)}
+        open={editingIndex !== null && items[editingIndex] !== undefined}
+        busy={busy}
+        maySetPrice={can("posTransactions", "setPrice")}
+        onOpenChange={(open) => !open && setEditingIndex(null)}
+        onSave={(details) =>
+          editingIndex === null
+            ? Promise.resolve(false)
+            : onItemDetails(editingIndex, details)
+        }
+      />
     </aside>
   );
 }

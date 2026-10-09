@@ -563,8 +563,8 @@ export function PosScreen() {
             void cart.setLinePrice(index, unitPrice)
           }
           onRemove={(index) => void cart.removeItem(index)}
-          onItemDiscount={(index, discount) =>
-            void cart.setItemDiscount(index, discount)
+          onItemDetails={(index, details) =>
+            cart.setLineDetails(index, details)
           }
           onItemBenefit={(index, benefit) =>
             void cart.setItemBenefit(index, benefit)

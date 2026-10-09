@@ -68,7 +68,7 @@ function open(
       error={null}
       onQtyChange={jest.fn()}
       onRemove={jest.fn()}
-      onItemDiscount={jest.fn()}
+      onItemDetails={jest.fn()}
       onLinePrice={onLinePrice}
       onCartDiscount={jest.fn()}
       onCharges={jest.fn()}
