@@ -2474,6 +2474,11 @@ export interface PosReturnItemInput {
   qty: string;
   /** Per line — one bag holds an unopened sack and a chewed toy. */
   returnToStock: boolean;
+  /**
+   * The lots the goods go back to, with how many to each — absent for the
+   * automatic split. Their quantities must add up to `qty`.
+   */
+  lots?: Array<{ batchId: string; qty: string }>;
 }
 
 /**
@@ -2507,6 +2512,8 @@ export interface PosReturnable {
     name: string;
     soldQty: string;
     remainingQty: string;
+    /** The lots this product was sold from, and how many each may take back. */
+    lots?: { batchId: string; batchCode: string | null; qty: string }[];
   }[];
 }
 
