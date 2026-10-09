@@ -1686,6 +1686,15 @@ export interface PosShift {
   expectedCash: string | null;
   /** countedCash − expectedCash. Positive is a surplus. */
   difference: string | null;
+  /** Non-cash methods counted at closing: expected, counted and the gap. */
+  channelCounts?: Array<{
+    channelId: string;
+    channelType: string | null;
+    channelName: string | null;
+    expected: string;
+    counted: string | null;
+    difference: string | null;
+  }>;
   closingNotes: string | null;
   status: PosShiftStatus;
   createdAt: string;
@@ -2581,6 +2590,8 @@ export interface OpenShiftInput {
  */
 export interface CloseShiftInput {
   countedCash: string;
+  /** The other payment methods' counts — one per non-cash channel the shift used. */
+  counts?: Array<{ channelId: string; counted: string }>;
   closingNotes?: string | null;
 }
 

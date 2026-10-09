@@ -630,18 +630,33 @@ describe("PosScreen — the shift bar (FR-9)", () => {
 });
 
 /**
- * Tutup Kasir (FR-9).
+ * Tutup Kasir (FR-9), counting every payment method (9 October 2026).
  *
- * The ordering is the control being tested: a cashier who is shown the expected
- * figure before counting has a number to make the drawer agree with, and the
- * count stops being independent evidence of anything.
+ * One card per method — the drawer, then each non-cash channel the shift used —
+ * with the count entered in a detail view. The old rule that hid the expected
+ * figure until a count was typed is gone: the shop's mobile till shows it up
+ * front, and a variance is still a note rather than a block.
  */
 describe("PosScreen — closing the till (FR-9)", () => {
+  const QRIS = "ch-qris";
+
   beforeEach(() => {
     mockedPos.xReport.mockResolvedValue({
       shift,
       transactionCount: 4,
-      breakdown: [],
+      breakdown: [
+        {
+          channelId: QRIS,
+          channelType: "qris",
+          channelName: "Debit - QRIS",
+          count: 2,
+          amount: "100000.0000",
+          change: "0.0000",
+          net: "100000.0000",
+          refunded: "0.0000",
+          netAfterRefunds: "100000.0000",
+        },
+      ],
       refunds: { count: 0, cashRefunds: "0.0000" },
       totals: {
         takings: "300000.0000",
@@ -649,51 +664,83 @@ describe("PosScreen — closing the till (FR-9)", () => {
         expectedCash: "700000.0000",
       },
     });
+    mockedPos.listTransactions.mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 100, total: 0, totalPages: 1 },
+    });
   });
 
-  it("hides the expected cash until a count has been typed", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<PosScreen />);
-
+  const openClose = async (user: ReturnType<typeof userEvent.setup>) => {
     await user.click(
       await screen.findByRole("button", { name: /tutup kasir/i }),
     );
-    await screen.findByLabelText(/uang di laci/i);
+    await screen.findByText("Kas pembukaan");
+  };
 
-    expect(screen.queryByText(/kas seharusnya/i)).not.toBeInTheDocument();
-  });
+  /** Opens a card's detail, types the count and saves it. */
+  const count = async (
+    user: ReturnType<typeof userEvent.setup>,
+    method: RegExp,
+    amount: string,
+  ) => {
+    const cards = screen.getAllByRole("button", { name: /lihat detail/i });
+    const index = method.test("Kas") ? 0 : 1;
+    await user.click(cards[index]);
+    await user.type(await screen.findByLabelText(/dihitung/i), amount);
+    await user.click(screen.getByRole("button", { name: /^simpan$/i }));
+    await screen.findByText("Kas pembukaan");
+  };
 
-  it("shows the variance once a count exists", async () => {
+  it("shows a card for the drawer and for each other method the shift used", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);
+    await openClose(user);
 
-    await user.click(
-      await screen.findByRole("button", { name: /tutup kasir/i }),
-    );
-    await user.type(await screen.findByLabelText(/uang di laci/i), "650000");
-
-    expect(await screen.findByText(/kas seharusnya/i)).toBeInTheDocument();
-    expect(screen.getByText(/kurang/i)).toBeInTheDocument();
+    expect(screen.getByText("Kas")).toBeInTheDocument();
+    expect(screen.getByText("Debit - QRIS")).toBeInTheDocument();
+    expect(screen.getAllByText(/nilai seharusnya/i)).toHaveLength(2);
   });
 
-  it("closes the till even when the drawer is well short", async () => {
+  it("shows the difference once a method has been counted", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+    await openClose(user);
+
+    await count(user, /Kas/, "650000");
+
+    // 700.000 expected, 650.000 counted.
+    expect(screen.getByText(/−\s*Rp\s*50\.000/)).toBeInTheDocument();
+  });
+
+  it("says which methods are still uncounted, and sends nothing", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+    await openClose(user);
+
+    await count(user, /Kas/, "700000");
+    await user.click(screen.getByRole("button", { name: /^tutup kasir$/i }));
+
+    expect(
+      await screen.findByText(/isi nilai dihitung untuk: debit - qris/i),
+    ).toBeInTheDocument();
+    expect(mockedPos.closeShift).not.toHaveBeenCalled();
+  });
+
+  it("closes the till even when a method is well short, sending every count", async () => {
     const user = userEvent.setup();
     mockedPos.closeShift.mockResolvedValue({ ...shift, status: "closed" });
-
     renderWithAuth(<PosScreen />);
+    await openClose(user);
 
-    await user.click(
-      await screen.findByRole("button", { name: /tutup kasir/i }),
-    );
-    await user.type(await screen.findByLabelText(/uang di laci/i), "100000");
-    await user.click(
-      screen.getByRole("button", { name: /^tutup kasir$/i, hidden: false }),
-    );
+    await count(user, /Kas/, "100000");
+    await count(user, /QRIS/, "100000");
+    await user.click(screen.getByRole("button", { name: /^tutup kasir$/i }));
 
     // FR-9: a shop cannot stop trading tomorrow because money went missing today.
     await waitFor(() =>
       expect(mockedPos.closeShift).toHaveBeenCalledWith(SHIFT_ID, {
         countedCash: "100000",
+        counts: [{ channelId: QRIS, counted: "100000" }],
         closingNotes: undefined,
       }),
     );
@@ -708,16 +755,12 @@ describe("PosScreen — closing the till (FR-9)", () => {
   it("asks for the branch again rather than going straight to Buka Kasir", async () => {
     const user = userEvent.setup();
     mockedPos.closeShift.mockResolvedValue({ ...shift, status: "closed" });
-
     renderWithAuth(<PosScreen />);
+    await openClose(user);
 
-    await user.click(
-      await screen.findByRole("button", { name: /tutup kasir/i }),
-    );
-    await user.type(await screen.findByLabelText(/uang di laci/i), "700000");
-    await user.click(
-      screen.getByRole("button", { name: /^tutup kasir$/i, hidden: false }),
-    );
+    await count(user, /Kas/, "700000");
+    await count(user, /QRIS/, "100000");
+    await user.click(screen.getByRole("button", { name: /^tutup kasir$/i }));
 
     expect(
       await screen.findByRole("heading", { name: /pilih cabang/i }),
@@ -730,14 +773,33 @@ describe("PosScreen — closing the till (FR-9)", () => {
   it("refuses a count typed with thousands separators", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);
+    await openClose(user);
 
     await user.click(
-      await screen.findByRole("button", { name: /tutup kasir/i }),
+      screen.getAllByRole("button", { name: /lihat detail/i })[0],
     );
     // "500.000" is five hundred thousand to a person and 500 to Number().
-    await user.type(await screen.findByLabelText(/uang di laci/i), "500.000");
+    await user.type(await screen.findByLabelText(/dihitung/i), "500.000");
+    await user.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     expect(await screen.findByText(/tanpa titik/i)).toBeInTheDocument();
+  });
+
+  it("fills the drawer count from the pecahan calculator", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+    await openClose(user);
+
+    await user.click(
+      screen.getAllByRole("button", { name: /lihat detail/i })[0],
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /masukkan pecahan/i }),
+    );
+    await user.type(screen.getByLabelText("Jumlah lembar 100000"), "2");
+    await user.type(screen.getByLabelText("Jumlah lembar 50000"), "1");
+
+    expect(screen.getByLabelText(/dihitung/i)).toHaveValue("250000");
   });
 });
 
@@ -2214,9 +2276,9 @@ describe("PosCart — a booking's header", () => {
     expect(screen.getAllByText("Mochi")).toHaveLength(1);
     // Scoped to the basket — the catalogue grid names the product too.
     expect(
-      within(screen.getByRole("complementary", { name: "Keranjang" })).getByText(
-        "Royal Canin Adult 2kg",
-      ),
+      within(
+        screen.getByRole("complementary", { name: "Keranjang" }),
+      ).getByText("Royal Canin Adult 2kg"),
     ).toBeInTheDocument();
   });
 });
