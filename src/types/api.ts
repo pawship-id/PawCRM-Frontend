@@ -1701,6 +1701,9 @@ export interface PosPaymentBreakdownRow {
   amount: string;
   change: string;
   net: string;
+  /** What went back out through this channel as returns, and what is left. */
+  refunded?: string;
+  netAfterRefunds?: string;
 }
 
 /**
@@ -1720,9 +1723,16 @@ export interface PosXReport {
   refunds: {
     count: number;
     cashRefunds: string;
+    /** Every return of the shift, however it was refunded (9 October 2026). */
+    returnCount?: number;
+    total?: string;
+    /** The part that moved no money — a lowered bill or credit kept for later. */
+    nonCash?: string;
   };
   totals: {
     takings: string;
+    /** Gross sales less every return — the headline figure on a till report. */
+    netSales?: string;
     /** NET of this shift's cash refunds. */
     cashTakings: string;
     expectedCash: string;
