@@ -32,15 +32,15 @@ import type { PetsQuery } from "../hooks/usePets";
 /**
  * Care state as a three-way filter, not a toggle.
  *
- * "Tidak aktif" has to be reachable on its own — that is how somebody finds the
+ * "Nonaktif" has to be reachable on its own — that is how somebody finds the
  * pet they retired last week to check whether they meant to. A two-state toggle
  * could only offer "in care" or "everything", which hides the smaller and more
  * interesting set behind a scan of the larger one.
  */
 const CARE = withAll<PetsQuery["isActive"]>(
   [
-    { value: "true", label: "Masih dirawat" },
-    { value: "false", label: "Tidak aktif" },
+    { value: "true", label: "Aktif" },
+    { value: "false", label: "Nonaktif" },
   ],
   "Semua status",
 );

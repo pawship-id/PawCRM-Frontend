@@ -108,16 +108,16 @@ describe("CustomerPetsSection", () => {
     renderWithAuth(<CustomerPetsSection customerId={CUSTOMER_ID} />);
 
     expect(await screen.findByText("Bella")).toBeVisible();
-    expect(screen.getByText("Tidak aktif")).toBeVisible();
+    expect(screen.getByText("Nonaktif")).toBeVisible();
   });
 
-  it("does not badge the ordinary case — every row saying Dirawat is noise", async () => {
+  it("does not badge the ordinary case — every row saying Aktif is noise", async () => {
     listReturns([pet({ isActive: true })]);
 
     renderWithAuth(<CustomerPetsSection customerId={CUSTOMER_ID} />);
 
     await screen.findByText("Bella");
-    expect(screen.queryByText("Dirawat")).not.toBeInTheDocument();
+    expect(screen.queryByText("Aktif")).not.toBeInTheDocument();
   });
 
   it("says what is missing rather than 'no data'", async () => {
@@ -177,7 +177,7 @@ describe("CustomerPetsSection", () => {
           name: "Bella",
           // IDS, NOT CODES (27 September 2026): the picker's value is the pet
           // option's `_id`, which is the only thing POST /api/pets accepts.
-          species: "opt-species-dog",
+          species: "opt-species-anjing",
           size: null,
           furType: null,
         }),
@@ -235,9 +235,9 @@ describe("CustomerPetsSection", () => {
       expect(mockedPetService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Bella",
-          species: "opt-species-dog",
-          size: "opt-size-large",
-          furType: "opt-furType-long-hair",
+          species: "opt-species-anjing",
+          size: "opt-size-besar",
+          furType: "opt-furType-bulu-panjang",
         }),
       ),
     );

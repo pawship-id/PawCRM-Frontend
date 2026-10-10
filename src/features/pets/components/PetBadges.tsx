@@ -76,8 +76,8 @@ export function PetStatusBadge({
   const { label, className } = deleted
     ? { label: "Terhapus", className: "bg-muted/40 text-muted" }
     : isActive
-      ? { label: "Dirawat", className: "bg-success/12 text-success" }
-      : { label: "Tidak aktif", className: "bg-muted/40 text-muted" };
+      ? { label: "Aktif", className: "bg-success/12 text-success" }
+      : { label: "Nonaktif", className: "bg-muted/40 text-muted" };
 
   return (
     <Badge variant="outline" className={cn("border-transparent", className)}>

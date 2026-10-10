@@ -145,7 +145,7 @@ export function PetOwnerField({
   // filter never explains itself. The note is rendered beside it here rather
   // than added to the shared component for one caller.
   const hint = locked
-    ? "Pemilik tidak bisa dipindah. Kalau hewannya pindah rumah, daftarkan lagi atas nama pemilik baru dan tandai data ini tidak aktif — riwayat groomingnya tetap utuh di dua-duanya."
+    ? "Pemilik tidak bisa dipindah. Kalau hewannya pindah rumah, daftarkan lagi atas nama pemilik baru dan tandai data ini nonaktif — riwayat groomingnya tetap utuh di dua-duanya."
     : truncated
       ? `Menampilkan ${FETCH_LIMIT} pelanggan pertama. Kalau yang dicari belum muncul, daftarkan hewannya dari halaman pelanggan itu.`
       : null;

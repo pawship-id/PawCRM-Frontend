@@ -312,7 +312,7 @@ export function PetsTable({
               Hapus <strong>{pending.pet.name}</strong>? Datanya disembunyikan
               dari daftar dan bisa dipulihkan lagi nanti. Kalau hewannya sudah
               tidak dirawat lagi — pindah rumah atau meninggal — lebih tepat
-              ditandai tidak aktif lewat Ubah, supaya riwayat groomingnya tetap
+              ditandai nonaktif lewat Ubah, supaya riwayat groomingnya tetap
               ada.
             </>
           ) : (

@@ -595,14 +595,14 @@ export function PetForm({ petId }: { petId?: string }) {
 
       {editing && (
         <Card
-          title="Status perawatan"
-          description="Hewan yang tidak aktif tidak hilang — cuma berhenti ditawarkan saat bikin booking."
+          title="Status"
+          description="Hewan yang nonaktif tidak hilang — cuma berhenti ditawarkan saat bikin booking."
         >
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <Label htmlFor="pet-active">Masih dirawat</Label>
+              <Label htmlFor="pet-active">Aktif</Label>
               <p className="mt-1 max-w-prose text-xs text-muted">
-                Matikan kalau hewannya sudah pindah rumah atau sudah tidak ada.
+                Nonaktifkan kalau hewannya sudah pindah rumah atau sudah tidak ada.
                 Riwayat grooming dan transaksinya tetap tersimpan atas nama
                 pemilik ini — itu bedanya dengan menghapus, yang ada di menu
                 barisnya.

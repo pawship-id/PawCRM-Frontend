@@ -357,10 +357,7 @@ export function PaymentChannelForm({ channelId }: { channelId?: string }) {
       {formError && <Alert variant="error">{formError}</Alert>}
       {lookupError && <Alert variant="error">{lookupError}</Alert>}
 
-      <Card
-        title="Identitas"
-        description="Tipe menentukan tab mana channel ini muncul di kasir. Namanya yang dibaca kasir, jadi tulis lengkap dengan nomor rekeningnya."
-      >
+      <Card title="Identitas">
         <div className="flex flex-col gap-4">
           <SelectField
             label="Tipe"
@@ -392,10 +389,7 @@ export function PaymentChannelForm({ channelId }: { channelId?: string }) {
         </div>
       </Card>
 
-      <Card
-        title="Akuntansi"
-        description="Ke akun mana uang yang masuk lewat channel ini dicatat. Harus akun aset — uang masuk itu debit."
-      >
+      <Card title="Akuntansi">
         <div className="flex flex-col gap-4">
           <FilterSelect
             layout="form"

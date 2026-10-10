@@ -134,7 +134,7 @@ export function CustomerEditForm({ id }: { id: string }) {
           */}
           <Card
             title="Hewan"
-            description="Hewan yang terdaftar atas nama pelanggan ini. Yang sudah tidak dirawat tetap ditampilkan — riwayatnya masih di sini."
+            description="Hewan yang terdaftar atas nama pelanggan ini. Yang nonaktif tetap ditampilkan — riwayatnya masih di sini."
           >
             <CustomerPetsSection
               customerId={customer._id}
