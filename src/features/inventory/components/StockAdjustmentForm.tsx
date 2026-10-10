@@ -105,7 +105,20 @@ function Required() {
   return <span className="text-danger"> *</span>;
 }
 
+/**
+ * A row's identity, independent of its product. A product that tracks lots is
+ * corrected one lot at a time, so it may have a row per lot and the product id
+ * no longer says which row a complaint or a React key belongs to.
+ */
+let lineSeq = 0;
+function newLineKey(): string {
+  lineSeq += 1;
+  return `line-${lineSeq}`;
+}
+
 interface DraftLine {
+  /** See `newLineKey`. Never sent. */
+  key: string;
   productId: string;
   /** "" = not chosen, a lot id, or NEW_BATCH. Only for lot-tracked products. */
   batchChoice: string;
@@ -238,6 +251,7 @@ export function StockAdjustmentForm() {
     setLines((prev) => [
       ...prev,
       ...products.map((product) => ({
+        key: newLineKey(),
         productId: product._id,
         batchChoice: "",
         newQty: "",
@@ -283,8 +297,13 @@ export function StockAdjustmentForm() {
       next.notes = "Catatan wajib diisi - ini yang dibaca saat diaudit.";
     if (lines.length === 0) next.lines = "Tambahkan minimal satu produk.";
 
+    const seenLots = new Set<string>();
+
     lines.forEach((line) => {
-      const at = `line.${line.productId}`;
+      // `~` carries the row's key past the product id, so two rows of one
+      // product keep separate complaints; `blockingReason` hands everything
+      // before the last dot to `nameOf`, which strips it again.
+      const at = `line.${line.productId}~${line.key}`;
       const product = productById.get(line.productId);
       const delta = deltaOf(line);
 
@@ -314,6 +333,25 @@ export function StockAdjustmentForm() {
           next[`${at}.expiryDate`] = "Tanggal kedaluwarsa wajib diisi.";
       }
 
+      /*
+        ONE LOT, ONE ROW. Two rows naming the same lot would each be measured
+        against the whole of it, and two new lots with the same expiry and
+        supplier code are one physical batch said twice — the API refuses both.
+      */
+      if (product?.hasExpiry && line.batchChoice !== "") {
+        const lotKey =
+          line.batchChoice === NEW_BATCH
+            ? `${line.productId}|new|${line.expiryDate}|${line.supplierBatchCode.trim()}|${line.isConsignment}`
+            : `${line.productId}|${line.batchChoice}`;
+        if (seenLots.has(lotKey) && !next[`${at}.batch`]) {
+          next[`${at}.batch`] =
+            line.batchChoice === NEW_BATCH
+              ? "Batch baru ini sama dengan baris lain — ubah tanggal kedaluwarsa / kode supplier-nya, atau gabungkan."
+              : "Batch ini sudah dipakai baris lain — gabungkan jumlahnya.";
+        }
+        seenLots.add(lotKey);
+      }
+
       if (line.costPerUnit.trim() !== "" && !isDecimal(line.costPerUnit)) {
         next[`${at}.cost`] = "Gunakan angka, maksimal 4 desimal.";
       }
@@ -336,7 +374,7 @@ export function StockAdjustmentForm() {
   const errors = collectErrors();
   const blocking = blockingReason(
     errors,
-    (productId) => productById.get(productId)?.name,
+    (id) => productById.get(id.split("~")[0])?.name,
   );
 
   /** A field's complaint, once its owner has engaged with it. */
@@ -468,7 +506,13 @@ export function StockAdjustmentForm() {
     <>
       {picking && (
         <AdjustmentAddProductsDialog
-          existingProductIds={lines.map((line) => line.productId)}
+          // A product that tracks lots stays on offer: it is corrected one lot
+          // at a time, so a second row for another batch is the ordinary case.
+          // One that does not can only be one row, and is hidden once it is
+          // there.
+          existingProductIds={lines
+            .filter((line) => !productById.get(line.productId)?.hasExpiry)
+            .map((line) => line.productId)}
           onAdd={addLines}
           onClose={() => setPicking(false)}
         />
@@ -711,7 +755,7 @@ export function StockAdjustmentForm() {
                           : null;
 
                       return (
-                        <Fragment key={line.productId}>
+                        <Fragment key={line.key}>
                           <TableRow>
                             <TableCell>
                               <p className="font-medium text-foreground">
@@ -736,14 +780,28 @@ export function StockAdjustmentForm() {
                                     options={[
                                       ...(
                                         lots.byProduct.get(line.productId) ?? []
-                                      /* BOTH CODES — see `lotOptionLabel`.
+                                      )
+                                        // Not the lots another row of this
+                                        // product has taken — one lot on two
+                                        // rows would be measured twice.
+                                        .filter(
+                                          (lot) =>
+                                            !lines.some(
+                                              (other) =>
+                                                other.key !== line.key &&
+                                                other.productId ===
+                                                  line.productId &&
+                                                other.batchChoice === lot._id,
+                                            ),
+                                        )
+                                        /* BOTH CODES — see `lotOptionLabel`.
                                          Picking a lot is matching a row to a
                                          carton, and the number printed on the
                                          carton is the supplier's. */
-                                      ).map((lot) => ({
-                                        value: lot._id,
-                                        label: lotOptionLabel(lot),
-                                      })),
+                                        .map((lot) => ({
+                                          value: lot._id,
+                                          label: lotOptionLabel(lot),
+                                        })),
                                       {
                                         value: NEW_BATCH,
                                         label: "+ Batch baru...",

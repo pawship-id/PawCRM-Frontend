@@ -23,7 +23,11 @@ This project uses [Semantic Versioning](https://semver.org/).
 - **Daftar**: kolom No. transfer dan Status, filter Status (isi panel; "Belum diterima" = antrean
   penerimaan), urutan menurut nomor. **Detail**: Ubah · Batalkan transfer · Terima barang (konfirmasi),
   gagal = toast error 6 detik (ui-rules §9).
-- **Satu produk, beberapa batch**: produk ber-batch yang sudah ada di tabel tetap muncul di modal
+- **Stok Awal, Penerimaan Barang, Koreksi Stok** memakai aturan modal yang sama: produk yang melacak
+  kedaluwarsa/batch tetap muncul di modal setelah masuk tabel, satu baris per lot. Lot yang sama dua
+  kali ditolak dengan pesan di baris; lot yang sudah diambil baris lain tidak ditawarkan lagi. Produk
+  tanpa batch tetap satu baris. Opname tidak berubah.
+- **Satu produk, beberapa batch** (transfer): produk ber-batch yang sudah ada di tabel tetap muncul di modal
   "Tambah produk" selama masih ada batch yang belum dipakai baris lain; produk tanpa batch tetap
   disembunyikan. Dropdown batch tidak menawarkan batch yang sudah dipakai baris lain, dan "Otomatis
   (FEFO)" hilang begitu produk punya dua baris.

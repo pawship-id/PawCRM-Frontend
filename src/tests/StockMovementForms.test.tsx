@@ -593,6 +593,68 @@ describe("StockAdjustmentForm", () => {
   });
 
   /**
+   * ONE PRODUCT, TWO BATCHES. A product that tracks lots is corrected one lot at
+   * a time, so a second row for another batch is the ordinary case — the picker
+   * keeps offering it, and the batch one row has taken is not on offer to the
+   * next.
+   */
+  it("offers a lot-tracked product again so another batch can be corrected", async () => {
+    mockSheet(
+      [product({ hasExpiry: true })],
+      [lot(), lot({ _id: "lot-b", batchCode: "WSK-B26" })],
+    );
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await waitFor(() => jest.advanceTimersByTime(400));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(await within(dialog).findAllByRole("checkbox")).not.toHaveLength(0);
+    expect(within(dialog).queryByText(/sudah ditambahkan/)).toBeNull();
+  });
+
+  it("does not offer a lot to a second row once the first has taken it", async () => {
+    mockSheet(
+      [product({ hasExpiry: true })],
+      [lot(), lot({ _id: "lot-b", batchCode: "WSK-B26" })],
+    );
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click((await screen.findAllByLabelText(/^Batch /))[0]);
+    await user.click(await screen.findByRole("option", { name: /WSK-A26/ }));
+
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await waitFor(() => jest.advanceTimersByTime(400));
+    const dialog = await screen.findByRole("dialog");
+    await user.click((await within(dialog).findAllByRole("checkbox"))[0]);
+    await user.click(within(dialog).getByRole("button", { name: /Tambahkan/ }));
+
+    await user.click((await screen.findAllByLabelText(/^Batch /))[1]);
+    expect(
+      screen.queryByRole("option", { name: /WSK-A26/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: /WSK-B26/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("still hides a product with no lots once it is on the sheet", async () => {
+    mockSheet();
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await waitFor(() => jest.advanceTimersByTime(400));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(
+      await within(dialog).findByText(/sudah ditambahkan/),
+    ).toBeInTheDocument();
+  });
+
+  /**
    * NAMING A LOT FILLS THE TWO COLUMNS RATHER THAN DASHING THEM.
    *
    * The picker says `WSK-A26 - sisa 8`, which identifies the lot but hides what
@@ -1753,6 +1815,53 @@ describe("OpeningStockForm", () => {
 
     expect(await screen.findByLabelText(/^Jumlah/)).toBeInTheDocument();
     expect(screen.getByText("Royal Canin Adult 3kg")).toBeInTheDocument();
+  });
+
+  /**
+   * ONE PRODUCT, SEVERAL LOTS. A shelf counted on day one holds batches with
+   * different expiry dates, and each is its own lot. The picker keeps offering a
+   * product that tracks expiry; one that does not is hidden once it is there.
+   */
+  it("offers a product that tracks expiry again, for another lot", async () => {
+    mockSheet([product({ hasExpiry: true })]);
+    const user = await renderSheet();
+
+    await pickWarehouse(user);
+    await addProducts(user);
+
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await waitFor(() => jest.advanceTimersByTime(400));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(await within(dialog).findAllByRole("checkbox")).not.toHaveLength(0);
+    expect(within(dialog).queryByText(/sudah ditambahkan/)).toBeNull();
+  });
+
+  it("refuses the same lot on two rows, naming what to change", async () => {
+    mockSheet([product({ hasExpiry: true })]);
+    const user = await renderSheet();
+
+    await pickWarehouse(user);
+    await addProducts(user);
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await waitFor(() => jest.advanceTimersByTime(400));
+    const dialog = await screen.findByRole("dialog");
+    await user.click((await within(dialog).findAllByRole("checkbox"))[0]);
+    await user.click(within(dialog).getByRole("button", { name: /Tambahkan/ }));
+
+    const qty = await screen.findAllByLabelText(/^Jumlah/);
+    const cost = screen.getAllByLabelText(/Harga beli per unit/);
+    const dates = screen.getAllByLabelText(/Tanggal kedaluwarsa/);
+    for (let i = 0; i < 2; i += 1) {
+      await user.type(qty[i], "5");
+      await user.type(cost[i], "1000");
+      await user.type(dates[i], "2027-06-30");
+    }
+
+    expect(screen.getByRole("button", { name: /Simpan stok awal/ })).toBeDisabled();
+    expect(
+      await screen.findByText(/Lot yang sama sudah ada di baris lain/),
+    ).toBeInTheDocument();
   });
 
   /**

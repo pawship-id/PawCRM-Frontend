@@ -69,7 +69,7 @@ export function TransferDeliveryNote({
         </thead>
         <tbody>
           {transfer.items.map((item, index) => (
-            <tr key={item.productId}>
+            <tr key={`${item.productId}-${item.batchId ?? index}`}>
               <Td className="text-center tabular-nums">{index + 1}</Td>
               <Td>{item.productSku ?? ""}</Td>
               <Td>{item.productName ?? ""}</Td>

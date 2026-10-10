@@ -837,16 +837,17 @@ describe("ReceiptForm", () => {
     expect(await screen.findByLabelText(/PPN masukan/)).toBeInTheDocument();
   });
 
-  it("drops PPN on consignment and explains the lot requirement", async () => {
+  it("drops PPN on consignment and leaves the beli-putus explanation behind", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceiptForm supplierId="s1" />);
 
     await user.click(await screen.findByRole("button", { name: /Konsinyasi/ }));
 
     expect(screen.queryByLabelText(/PPN masukan/)).toBeNull();
-    expect(
-      screen.getByText(/[Ss]etiap baris punya lot sendiri/),
-    ).toBeInTheDocument();
+    // The beli-putus sentence about the goods becoming the shop's own is gone,
+    // and the consignment tab carries no long explanation of its own.
+    expect(screen.queryByText(/ia jadi milik toko/)).toBeNull();
+    expect(screen.queryByText(/tetap milik supplier/)).toBeNull();
   });
 
   /**
@@ -902,8 +903,9 @@ describe("ReceiptForm", () => {
       // selected tab is marked with colour alone, which is not a thing a test
       // (or a screen reader) should be asserting against.
       expect(
-        await screen.findByText(/tetap milik supplier/),
+        await screen.findByText(/Dibayar ke supplier saat barang terjual/),
       ).toBeInTheDocument();
+      expect(screen.queryByText(/ia jadi milik toko/)).toBeNull();
     });
 
     it("calls the per-unit price Harga setor on konsinyasi, Harga beli otherwise", async () => {
@@ -919,7 +921,7 @@ describe("ReceiptForm", () => {
       unmount();
 
       renderWithAuth(<ReceiptForm supplierId="s1" />);
-      await screen.findByText(/ia jadi milik toko/);
+      await screen.findByRole("button", { name: /Simpan penerimaan/ });
       expect(
         screen.queryByText(/Dibayar ke supplier saat barang terjual/),
       ).toBeNull();
@@ -928,9 +930,14 @@ describe("ReceiptForm", () => {
     it("defaults to beli putus when the query string says nothing", async () => {
       renderWithAuth(<ReceiptForm supplierId="s1" />);
 
+      await screen.findByRole("button", { name: /Simpan penerimaan/ });
+
+      // The tab says which it is by what it does NOT carry: the consignment
+      // hint about the harga setor is the only text that differs.
       expect(
-        await screen.findByText(/ia jadi milik toko/),
-      ).toBeInTheDocument();
+        screen.queryByText(/Dibayar ke supplier saat barang terjual/),
+      ).toBeNull();
+      expect(screen.getByLabelText(/PPN masukan/)).toBeInTheDocument();
     });
 
     /**
@@ -1130,17 +1137,16 @@ describe("ReceiptForm", () => {
   });
 
   /**
-   * Before any line is complete the form shows a local estimate and SAYS it is
-   * one. Presenting an unverified number as the server's answer is the exact
-   * failure the preview endpoint exists to prevent.
+   * Before any line is complete there is nothing to ask the server about, and no
+   * provisional receipt number either — that line appears only with a preview.
    */
-  it("labels the pre-preview totals as provisional", async () => {
+  it("asks the server nothing, and shows no provisional number, until a line is complete", async () => {
     renderWithAuth(<ReceiptForm supplierId="s1" />);
 
-    expect(
-      await screen.findByText(/Angka sementara, dihitung di browser/),
-    ).toBeInTheDocument();
+    await screen.findByRole("button", { name: /Simpan penerimaan/ });
+
     expect(goodsReceiptService.preview).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Nomor sementara/)).toBeNull();
   });
 
   /**
@@ -1635,6 +1641,49 @@ describe("choosing which batch the goods land in", () => {
 
     return user;
   }
+
+  /**
+   * ONE PALLET, TWO EXPIRY DATES. A product that tracks expiry stays on offer
+   * after it is on the form, because one delivery commonly carries it in two
+   * batches. A product that tracks nothing is still hidden once it is there —
+   * it has no lot to tell a second row apart by.
+   */
+  it("offers a product that tracks expiry again, for another batch", async () => {
+    const user = await withExpiringLine();
+    await screen.findByLabelText(/^Batch Vaksin Rabies/);
+
+    await user.click(
+      screen.getByRole("button", { name: "+ Tambah produk" }),
+    );
+
+    expect(await screen.findByRole("checkbox")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Semua produk yang cocok sudah ditambahkan."),
+    ).toBeNull();
+  });
+
+  it("does not offer a lot to a second row once the first has joined it", async () => {
+    const user = await withExpiringLine();
+
+    await user.click(await screen.findByLabelText(/^Batch Vaksin Rabies/));
+    await user.click(await screen.findByRole("option", { name: /VAKSIN-270301/ }));
+
+    await user.click(
+      screen.getByRole("button", { name: "+ Tambah produk" }),
+    );
+    await user.click(await screen.findByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: /Tambahkan/ }));
+
+    const pickers = await screen.findAllByLabelText(/^Batch Vaksin Rabies/);
+    await user.click(pickers[1]);
+
+    expect(
+      screen.queryByRole("option", { name: /VAKSIN-270301/ }),
+    ).toBeNull();
+    expect(
+      await screen.findByRole("option", { name: /Batch baru/ }),
+    ).toBeInTheDocument();
+  });
 
   it("reads the lots of the destination warehouse, and only the ones with stock", async () => {
     await withExpiringLine();
