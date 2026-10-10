@@ -21,6 +21,8 @@ import { variantOptionService } from "@/services/variantOption.service";
 import { ServiceKindsField } from "@/features/services/components/ServiceKindsField";
 import type { ServiceKind } from "@/types/api";
 
+import { parseWeightRange } from "../petOptions";
+
 const NAME_MAX_LENGTH = 60;
 const DESCRIPTION_MAX_LENGTH = 200;
 
@@ -448,13 +450,33 @@ export function VariantValueEditDialog({
   onSaved,
 }: {
   optionName: string;
-  value: { label: string; isActive: boolean };
-  save: (patch: { label?: string; isActive?: boolean }) => Promise<unknown>;
+  /** `minWeightKg`/`maxWeightKg` present (even null) only for a size. */
+  value: {
+    label: string;
+    isActive: boolean;
+    minWeightKg?: number | null;
+    maxWeightKg?: number | null;
+  };
+  save: (patch: {
+    label?: string;
+    isActive?: boolean;
+    minWeightKg?: number | null;
+    maxWeightKg?: number | null;
+  }) => Promise<unknown>;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [label, setLabel] = useState(value.label);
   const [isActive, setIsActive] = useState(value.isActive);
+  /* A size's weight range [min, max): min included, max excluded. */
+  const hasWeight = "minWeightKg" in value;
+  const [minWeight, setMinWeight] = useState(
+    value.minWeightKg == null ? "" : String(value.minWeightKg),
+  );
+  const [maxWeight, setMaxWeight] = useState(
+    value.maxWeightKg == null ? "" : String(value.maxWeightKg),
+  );
+  const [weightError, setWeightError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -467,9 +489,25 @@ export function VariantValueEditDialog({
       return;
     }
 
+    let weightPatch = {};
+    if (hasWeight) {
+      const parsed = parseWeightRange(minWeight, maxWeight);
+      if (parsed.error) {
+        setWeightError(parsed.error);
+        return;
+      }
+      if (
+        parsed.min !== (value.minWeightKg ?? null) ||
+        parsed.max !== (value.maxWeightKg ?? null)
+      ) {
+        weightPatch = { minWeightKg: parsed.min, maxWeightKg: parsed.max };
+      }
+    }
+
     const patch = {
       ...(cleaned !== value.label ? { label: cleaned } : {}),
       ...(isActive !== value.isActive ? { isActive } : {}),
+      ...weightPatch,
     };
     if (Object.keys(patch).length === 0) {
       onClose();
@@ -484,7 +522,11 @@ export function VariantValueEditDialog({
       onSaved();
       onClose();
     } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 409) {
+      if (caught instanceof ApiError && caught.status === 409 && caught.fieldErrors?.minWeightKg) {
+        setWeightError(
+          "Rentang berat ini tumpang tindih dengan ukuran lain. Sesuaikan batasnya.",
+        );
+      } else if (caught instanceof ApiError && caught.status === 409) {
         setError(`${cleaned} sudah ada di ${optionName}.`);
       } else {
         setFormError(caught instanceof ApiError ? caught.fullMessage : "Terjadi kesalahan. Coba lagi.");
@@ -526,6 +568,44 @@ export function VariantValueEditDialog({
             disabled={busy}
             required
           />
+
+          {hasWeight && (
+            <div className="flex flex-col gap-1.5">
+              <div className="grid grid-cols-2 gap-3">
+                <TextField
+                  label="Berat minimum (kg)"
+                  name="minWeightKg"
+                  value={minWeight}
+                  onChange={(event) => {
+                    setMinWeight(event.target.value);
+                    setWeightError(null);
+                  }}
+                  inputMode="decimal"
+                  placeholder="mis. 0"
+                  hint="Nilai minimum termasuk (include)."
+                  disabled={busy}
+                />
+                <TextField
+                  label="Berat maksimum (kg)"
+                  name="maxWeightKg"
+                  value={maxWeight}
+                  onChange={(event) => {
+                    setMaxWeight(event.target.value);
+                    setWeightError(null);
+                  }}
+                  inputMode="decimal"
+                  placeholder="mis. 3"
+                  hint="Nilai maksimum tidak termasuk (exclude)."
+                  disabled={busy}
+                />
+              </div>
+              {weightError && (
+                <p role="alert" className="text-sm font-medium text-danger-ink">
+                  {weightError}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">

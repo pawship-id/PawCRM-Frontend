@@ -35,7 +35,7 @@ import { petOptionService } from "@/services/petOption.service";
 import { swalToast } from "@/lib/swal";
 import type { PetOption, PetOptionType } from "@/types/api";
 
-import { PET_OPTION_TYPE_WORDS } from "../petOptions";
+import { formatWeightRange, PET_OPTION_TYPE_WORDS } from "../petOptions";
 import { reorderPatches } from "../sortOrder";
 import { ListItemStatus } from "./ListItemStatus";
 
@@ -188,6 +188,7 @@ export function PetOptionsTable({
             <TableRow>
               <TableHead>Nama</TableHead>
               {type === "breed" && <TableHead>Hewan</TableHead>}
+              {type === "size" && <TableHead>Berat</TableHead>}
               {/*
                 NO KODE COLUMN (18 September 2026, on request). The code is what
                 pets, variants and commission rows store — which is why a rename
@@ -219,6 +220,11 @@ export function PetOptionsTable({
                       {option.speciesId
                         ? (speciesLabel?.(option.speciesId) ?? "Semua hewan")
                         : "Semua hewan"}
+                    </TableCell>
+                  )}
+                  {type === "size" && (
+                    <TableCell className="text-sm tabular-nums text-muted">
+                      {formatWeightRange(option)}
                     </TableCell>
                   )}
                   <TableCell>

@@ -18,7 +18,7 @@ import type { PetOptionType, VariantOption, Zone } from "@/types/api";
 
 import type { UsePetOptionListResult } from "../hooks/usePetOptionList";
 import type { UseZoneListResult } from "../hooks/useZoneList";
-import { byOrder } from "../petOptions";
+import { byOrder, formatWeightRange } from "../petOptions";
 import { zoneRangeText } from "../zones";
 import { PetOptionFormDialog } from "./PetOptionFormDialog";
 import {
@@ -47,8 +47,18 @@ type Editing =
   | {
       kind: "value";
       optionName: string;
-      value: { label: string; isActive: boolean };
-      save: (patch: { label?: string; isActive?: boolean }) => Promise<unknown>;
+      value: {
+        label: string;
+        isActive: boolean;
+        minWeightKg?: number | null;
+        maxWeightKg?: number | null;
+      };
+      save: (patch: {
+        label?: string;
+        isActive?: boolean;
+        minWeightKg?: number | null;
+        maxWeightKg?: number | null;
+      }) => Promise<unknown>;
     }
   | { kind: "zone"; zone: Zone }
   | null;
@@ -137,11 +147,24 @@ export function VariantOptionsPanel({
         .map((option) => ({
           key: option._id,
           label: option.label,
+          ...(option.type === "size" && option.minWeightKg != null
+            ? { meta: formatWeightRange(option) }
+            : {}),
           retired: !option.isActive,
           edit: {
             kind: "value" as const,
             optionName: card.name,
-            value: { label: option.label, isActive: option.isActive },
+            value: {
+              label: option.label,
+              isActive: option.isActive,
+              /* Only a size has a weight range — its presence opens the fields. */
+              ...(option.type === "size"
+                ? {
+                    minWeightKg: option.minWeightKg ?? null,
+                    maxWeightKg: option.maxWeightKg ?? null,
+                  }
+                : {}),
+            },
             save: (patch) => petOptionService.update(option._id, patch),
           },
           remove: () => petOptionService.remove(option._id),

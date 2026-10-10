@@ -154,11 +154,11 @@ describe("PetOptionsScreen", () => {
   it("names a breed's animal in its own column, and stores the choice", async () => {
     listing([
       ...PET_OPTION_FIXTURES.filter((option) => option.type !== "breed"),
-      makePetOption({ type: "breed", code: "poodle", label: "Poodle", speciesId: "opt-species-dog" }),
+      makePetOption({ type: "breed", code: "poodle", label: "Poodle", speciesId: "opt-species-anjing" }),
       makePetOption({ type: "breed", code: "mix", label: "Mix", sortOrder: 1 }),
     ]);
     jest.mocked(petOptionService.create).mockResolvedValue(
-      makePetOption({ type: "breed", code: "persia", label: "Persia", speciesId: "opt-species-cat" }),
+      makePetOption({ type: "breed", code: "persia", label: "Persia", speciesId: "opt-species-kucing" }),
     );
 
     renderWithAuth(<PetOptionsScreen />);
@@ -187,7 +187,7 @@ describe("PetOptionsScreen", () => {
       expect(petOptionService.create).toHaveBeenCalledWith({
         type: "breed",
         label: "Persia",
-        speciesId: "opt-species-cat",
+        speciesId: "opt-species-kucing",
       }),
     );
   });

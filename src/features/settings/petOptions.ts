@@ -84,3 +84,46 @@ export const PET_OPTION_TYPE_WORDS: Record<PetOptionType, PetOptionTypeWords> =
 export function byOrder(a: PetOption, b: PetOption) {
   return a.sortOrder - b.sortOrder || a.label.localeCompare(b.label, "id");
 }
+
+/**
+ * A size's weight range as a reader sees it. `[min, max)` — the lower bound is
+ * included, the upper is not — so "0 – <3 kg" says what the screen means and
+ * the next size's "3 – <8 kg" visibly starts where this one stops.
+ */
+export function formatWeightRange(option: {
+  minWeightKg?: number | null;
+  maxWeightKg?: number | null;
+}): string {
+  const { minWeightKg: min, maxWeightKg: max } = option;
+  if (min === null || min === undefined) return "—";
+  const kg = (value: number) =>
+    String(value).replace(".", ",");
+  return max === null || max === undefined
+    ? `≥ ${kg(min)} kg`
+    : `${kg(min)} – <${kg(max)} kg`;
+}
+
+/**
+ * Reads the two weight fields a size dialog holds as typed text. Empty is
+ * null; a comma is a decimal point. `error` is the sentence for the field when
+ * the pair cannot be sent.
+ */
+export function parseWeightRange(
+  minText: string,
+  maxText: string,
+): { min: number | null; max: number | null; error: string | null } {
+  const parse = (text: string) =>
+    text.trim() === "" ? null : Number(text.trim().replace(",", "."));
+  const min = parse(minText);
+  const max = parse(maxText);
+  const bad = (value: number | null) =>
+    value !== null && (!Number.isFinite(value) || value < 0);
+
+  let error: string | null = null;
+  if (bad(min) || bad(max)) error = "Isi berat dengan angka, 0 atau lebih.";
+  else if (max !== null && min === null) error = "Isi berat minimum dulu.";
+  else if (min !== null && max !== null && max <= min)
+    error = "Berat maksimum harus lebih besar dari minimum.";
+
+  return { min, max, error };
+}

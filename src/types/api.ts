@@ -4472,6 +4472,13 @@ export interface PetOption {
    * means the shop has not said, and the breed is offered for every animal.
    */
   speciesId?: string | null;
+  /**
+   * A SIZE'S WEIGHT RANGE in kg, `[min, max)` — min included, max excluded.
+   * Only a `size` carries one; null means none stated, and a null max with a
+   * min is open-ended ("≥ min").
+   */
+  minWeightKg?: number | null;
+  maxWeightKg?: number | null;
   /** Position within its list, ascending — sizes go smallest first. */
   sortOrder: number;
   /**
@@ -4513,6 +4520,9 @@ export interface CreatePetOptionInput {
   label: string;
   /** Only on a `breed` — see `PetOption.speciesId`. */
   speciesId?: string | null;
+  /** Only on a `size` — see `PetOption.minWeightKg`. */
+  minWeightKg?: number | null;
+  maxWeightKg?: number | null;
   sortOrder?: number;
   isActive?: boolean;
 }
@@ -4525,6 +4535,8 @@ export interface CreatePetOptionInput {
 export interface UpdatePetOptionInput {
   label?: string;
   speciesId?: string | null;
+  minWeightKg?: number | null;
+  maxWeightKg?: number | null;
   sortOrder?: number;
   isActive?: boolean;
 }
