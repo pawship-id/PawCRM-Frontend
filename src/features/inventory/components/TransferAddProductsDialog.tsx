@@ -41,7 +41,11 @@ import { ProductMultiPicker } from "./ProductMultiPicker";
  * `<p>`: this one holds a search box and a list of checkboxes.
  */
 export function TransferAddProductsDialog({
-  /** What the form already carries — hidden from the list, never offered twice. */
+  /**
+   * What cannot take another row — hidden from the list. A product that tracks
+   * lots is NOT in here while the shelf still holds a lot no row has claimed:
+   * moving one product from two batches is one product and two lots.
+   */
   existingProductIds,
   fromWarehouseId,
   onAdd,
@@ -73,8 +77,9 @@ export function TransferAddProductsDialog({
             supplier), lalu centang produk yang ikut dipindahkan — boleh
             beberapa sekaligus. Jumlah dan catatannya diisi di form setelah ini. Yang
             ditampilkan hanya produk yang <b>ada stoknya di gudang asal</b>;
-            produk yang sudah ada di form juga disembunyikan, karena satu
-            transfer hanya boleh membawa tiap produk sekali.
+            produk ber-batch yang sudah ada di form tetap muncul selama masih
+            ada batch lain yang belum dipakai — satu produk boleh dipindahkan
+            dari beberapa batch sekaligus. Produk tanpa batch hanya sekali.
           </DialogDescription>
         </DialogHeader>
 

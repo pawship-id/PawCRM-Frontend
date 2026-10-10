@@ -1175,10 +1175,143 @@ describe("StockTransferForm", () => {
   });
 
   /**
-   * A PRODUCT ALREADY ON THE FORM IS NOT OFFERED AGAIN. The API refuses a
-   * transfer carrying one twice — FEFO reads the source lots once per line and
-   * would allocate the same goods to both — so a tick that could only ever
-   * produce a refusal is worse than an absence. Preventing it beats validating
+   * ONE PRODUCT, TWO BATCHES. Moving three boxes of one lot and two of another is
+   * one product and two lots, and a person loading a van has to be able to say
+   * so. The picker therefore keeps offering a product that tracks lots for as
+   * long as the shelf holds a lot no row has claimed — and hides it, as before,
+   * once every lot is spoken for or when it has no lots to name.
+   */
+  describe("one product from several batches", () => {
+    const LOT_A = lot({ _id: "lot-a", batchCode: "WSK-A26" });
+    const LOT_B = lot({ _id: "lot-b", batchCode: "WSK-B26", qtyRemaining: "5.0000" });
+
+    async function reopenPicker(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+      await waitFor(() => jest.advanceTimersByTime(400));
+      return screen.findByRole("dialog");
+    }
+
+    async function chooseBatch(
+      user: ReturnType<typeof userEvent.setup>,
+      row: number,
+      code: RegExp,
+    ) {
+      const triggers = await screen.findAllByLabelText(/^Batch/);
+      await user.click(triggers[row]);
+      await user.click(await screen.findByRole("option", { name: code }));
+    }
+
+    it("offers a lot-tracked product again while a lot is unclaimed", async () => {
+      mockLookups({
+        detail: product({ hasExpiry: true }),
+        batches: [LOT_A, LOT_B],
+      });
+
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<StockTransferForm />);
+
+      await addProducts(user);
+      const dialog = await reopenPicker(user);
+
+      expect(
+        await within(dialog).findAllByRole("checkbox"),
+      ).not.toHaveLength(0);
+      expect(within(dialog).queryByText(/sudah ditambahkan/)).toBeNull();
+    });
+
+    it("stops offering it once every lot is on a row", async () => {
+      mockLookups({ detail: product({ hasExpiry: true }), batches: [LOT_A] });
+
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<StockTransferForm />);
+
+      await addProducts(user);
+      await chooseBatch(user, 0, /WSK-A26/);
+      const dialog = await reopenPicker(user);
+
+      expect(await within(dialog).findByText(/sudah ditambahkan/)).toBeInTheDocument();
+    });
+
+    it("sends two lines for one product, each with its own batch", async () => {
+      const { transferCreate: create } = mockLookups({
+        detail: product({ hasExpiry: true }),
+        batches: [LOT_A, LOT_B],
+      });
+
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<StockTransferForm />);
+
+      await addProducts(user);
+      await chooseBatch(user, 0, /WSK-A26/);
+      await user.type((await screen.findAllByLabelText(/^Jumlah/))[0], "3");
+
+      const dialog = await reopenPicker(user);
+      const [box] = await within(dialog).findAllByRole("checkbox");
+      await user.click(box);
+      await user.click(
+        within(dialog).getByRole("button", { name: /Tambahkan/ }),
+      );
+
+      // The first row's lot is not on offer to the second.
+      const second = (await screen.findAllByLabelText(/^Batch/))[1];
+      await user.click(second);
+      expect(
+        screen.queryByRole("option", { name: /WSK-A26/ }),
+      ).not.toBeInTheDocument();
+      await user.click(await screen.findByRole("option", { name: /WSK-B26/ }));
+
+      await user.type((await screen.findAllByLabelText(/^Jumlah/))[1], "2");
+      await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
+
+      await waitFor(() =>
+        expect(create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            items: [
+              { productId: PRODUCT, qty: "3", batchId: "lot-a" },
+              { productId: PRODUCT, qty: "2", batchId: "lot-b" },
+            ],
+          }),
+        ),
+      );
+    });
+
+    it("takes the FEFO option away from a product that now has two rows", async () => {
+      mockLookups({
+        detail: product({ hasExpiry: true }),
+        batches: [LOT_A, LOT_B],
+      });
+
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<StockTransferForm />);
+
+      await addProducts(user);
+      // Alone, the row may be left to FEFO.
+      await user.click((await screen.findAllByLabelText(/^Batch/))[0]);
+      expect(
+        await screen.findByRole("option", { name: /Otomatis \(FEFO\)/ }),
+      ).toBeInTheDocument();
+      await user.keyboard("{Escape}");
+
+      const dialog = await reopenPicker(user);
+      const [box] = await within(dialog).findAllByRole("checkbox");
+      await user.click(box);
+      await user.click(
+        within(dialog).getByRole("button", { name: /Tambahkan/ }),
+      );
+
+      // FEFO beside a named lot could draw from the very lot that row names.
+      await user.click((await screen.findAllByLabelText(/^Batch/))[0]);
+      expect(
+        screen.queryByRole("option", { name: /Otomatis \(FEFO\)/ }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * A PRODUCT THAT CANNOT TAKE ANOTHER ROW IS NOT OFFERED AGAIN. One with no
+   * lots to name would be a second FEFO line — FEFO reads the source lots once
+   * per line and would allocate the same goods to both — so a tick that could
+   * only ever produce a refusal is worse than an absence. Preventing it beats validating
    * it: that rule is not something a clerk can be expected to know.
    */
   it("does not offer a product already on the form", async () => {

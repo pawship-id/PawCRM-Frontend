@@ -23,6 +23,10 @@ This project uses [Semantic Versioning](https://semver.org/).
 - **Daftar**: kolom No. transfer dan Status, filter Status (isi panel; "Belum diterima" = antrean
   penerimaan), urutan menurut nomor. **Detail**: Ubah · Batalkan transfer · Terima barang (konfirmasi),
   gagal = toast error 6 detik (ui-rules §9).
+- **Satu produk, beberapa batch**: produk ber-batch yang sudah ada di tabel tetap muncul di modal
+  "Tambah produk" selama masih ada batch yang belum dipakai baris lain; produk tanpa batch tetap
+  disembunyikan. Dropdown batch tidak menawarkan batch yang sudah dipakai baris lain, dan "Otomatis
+  (FEFO)" hilang begitu produk punya dua baris.
 - Kartu stok: tipe **Transfer dibatalkan** (`transfer_cancel`) dan referensi Penerimaan/Pembatalan
   transfer; link dokumen menerima id posting lama.
 - Dihapus: `stockMovementService.listTransfers` dan `useTransfer` (pengganti: `stockTransferService`,
