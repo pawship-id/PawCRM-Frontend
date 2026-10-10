@@ -400,6 +400,8 @@ export interface ProfitLossQuery {
   dateFrom?: string;
   dateTo?: string;
   branchId?: string;
+  /** Several branches at once (the Laba Rugi multi-select); `branchId` wins if both are set. */
+  branchIds?: string[];
   businessLineId?: string;
 }
 
@@ -589,6 +591,7 @@ export const journalEntryService = {
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
         branchId: query.branchId,
+        branchIds: query.branchIds?.length ? query.branchIds : undefined,
         businessLineId: query.businessLineId,
         // Sent only when explicitly OFF: the server defaults it to true.
         allocation: query.allocation === false ? false : undefined,

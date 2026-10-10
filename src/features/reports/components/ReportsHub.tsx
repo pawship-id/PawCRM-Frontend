@@ -1,14 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/features/permissions";
 import type { Action, Feature } from "@/features/permissions/types";
 
 /**
- * The reports landing page — twelve cards, and one of them is deliberately dead.
+ * The Laporan landing page, as the v3 mockup draws it: four tabs (Penjualan,
+ * Keuangan, Inventori, Operasional), each a table of Laporan / Tujuan / action.
+ * Reports that have no screen yet are listed and marked "Segera" rather than
+ * left out, so the table of contents matches the mockup and the gap is visible.
  *
  * MOST OF THESE LINK SOMEWHERE THAT ALREADY EXISTS, and that is the design
  * rather than a shortcut. The stock card, the expiry list and the opname history
@@ -23,218 +35,302 @@ import type { Action, Feature } from "@/features/permissions/types";
  * looser one, because a card that leads to a 403 is worse than no card.
  */
 
-interface ReportCard {
+type TabKey = "penjualan" | "keuangan" | "inventori" | "operasional";
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: "penjualan", label: "Penjualan" },
+  { key: "keuangan", label: "Keuangan" },
+  { key: "inventori", label: "Inventori" },
+  { key: "operasional", label: "Operasional" },
+];
+
+interface ReportRow {
   title: string;
   description: string;
-  href: string;
+  /** Omitted = no screen yet; the row renders as "Segera". */
+  href?: string;
   /**
-   * Omitted when the report needs no grant at all.
-   *
-   * ONE CARD IS LIKE THAT — "Komisi Saya", which answers only about the signed-in
-   * person. Requiring a permission for it would mean granting a groomer the
-   * staff register to be told what they themselves earned, which is the leak
-   * that card exists to close.
+   * Omitted when the report needs no grant at all ("Komisi Saya" answers only
+   * about the signed-in person; requiring a grant would hand a groomer the staff
+   * register to be told what they themselves earned).
    */
   feature?: Feature;
   action?: Action;
-  /**
-   * Set when a report cannot work yet, with the reason. Renders disabled rather
-   * than hidden — see the note on the sales report below.
-   */
-  blockedBy?: string;
 }
 
-const CARDS: ReportCard[] = [
+const SOON = "Segera";
+
+const ROWS: Record<TabKey, ReportRow[]> = {
+  penjualan: [
+    {
+      title: "Penjualan per invoice",
+      description: "Daftar faktur dengan total, diskon, pajak, dan status bayar.",
+    },
+    {
+      title: "Penjualan per produk & layanan",
+      description: "Kuantitas dan nilai penjualan per SKU atau layanan.",
+    },
+    {
+      title: "Batch terjual",
+      description:
+        "Batch dan tanggal kedaluwarsa yang keluar lewat penjualan, untuk telusur balik.",
+    },
+    {
+      title: "Penjualan POS",
+      description: "Penutupan shift dan rekap per metode pembayaran.",
+    },
+    {
+      title: "Penjualan konsinyasi",
+      description:
+        "Penjualan produk titipan per supplier, dasar perhitungan setoran.",
+    },
+    {
+      title: "Rincian pendapatan per produk",
+      description: "Pendapatan, diskon, HPP, dan profit per produk.",
+    },
+  ],
   /*
-    THE THREE FINANCIAL STATEMENTS, moved here from Keuangan › Ringkasan on
-    22 September 2026. The v3 mockup files them under Laporan and gives the
-    Ringkasan no link cards; this hub is now their only door, so deleting one of
-    these strands a working screen. All three read the ledger, and the routes
-    enforce `journalEntries:read`.
+    The three statements keep `journalEntries:read`, the grant their routes
+    enforce. Arus Kas is in the mockup list without a screen of its own there;
+    here the screen exists, so it opens.
   */
-  {
-    title: "Laba Rugi",
-    description:
-      "Pendapatan dikurangi HPP dan beban untuk satu periode, dipecah per lini bisnis.",
-    href: "/dashboard/keuangan/laba-rugi",
-    feature: "journalEntries",
-    action: "read",
-  },
-  {
-    title: "Neraca",
-    description:
-      "Posisi pada satu tanggal: yang dimiliki, yang masih jadi kewajiban, dan sisanya milik pemilik.",
-    href: "/dashboard/keuangan/neraca",
-    feature: "journalEntries",
-    action: "read",
-  },
-  {
-    title: "Arus Kas",
-    description:
-      "Uang yang benar-benar masuk dan keluar — beda dari laba, dan ini yang menentukan bisa bayar apa tidak.",
-    href: "/dashboard/keuangan/arus-kas",
-    feature: "journalEntries",
-    action: "read",
-  },
-  {
-    title: "Stok per Cabang",
-    description:
-      "Qty, HPP rata-rata dan nilai persediaan per produk per gudang, dikelompokkan per cabang.",
-    href: "/dashboard/reports/stock-on-hand",
-    feature: "products",
-    action: "read",
-  },
-  {
-    title: "Kartu Stok",
-    description:
-      "Riwayat pergerakan satu produk di satu gudang, lengkap dengan saldo dan lot yang terpakai.",
-    href: "/dashboard/inventory/stock-card",
-    feature: "stockMovements",
-    action: "read",
-  },
-  {
-    title: "Stok Minim",
-    description:
-      "Produk yang sudah di bawah batas restock, paling mendesak di atas.",
-    href: "/dashboard/reports/low-stock",
-    feature: "products",
-    action: "read",
-  },
-  {
-    title: "Produk Mendekati Expired",
-    description:
-      "Lot yang masih ada isinya dan kedaluwarsa dalam waktu dekat, beserta nilainya.",
-    href: "/dashboard/inventory/batches",
-    feature: "productBatches",
-    action: "read",
-  },
-  {
-    title: "Komisi Saya",
-    description:
-      "Berapa yang Anda hasilkan bulan ini, dan berapa yang belum dibayar. Hanya milik Anda sendiri.",
-    href: "/dashboard/reports/commissions/mine",
-    /*
-      NO GRANT. It answers only about the signed-in person — the server reads the
-      id from the session and the query has no way to name anybody else. The
-      recap below is the whole shop's payroll and is gated accordingly; requiring
-      a grant here would mean handing a groomer the staff register to be told
-      what they themselves earned.
-    */
-  },
-  {
-    title: "Rekap Komisi",
-    description:
-      "Komisi groomer per bulan, dihitung dari booking yang selesai. Siap diunduh untuk payroll.",
-    // Keuangan's Komisi tab — the mockup files commissions under Keuangan, so
-    // the screen moved there and this card follows it. The old address still
-    // redirects; this points at the real one so the hub never costs a hop.
-    href: "/dashboard/keuangan/komisi",
-    /*
-      `users:read`, NOT a report grant. This is payroll data — it names every
-      groomer and what they are owed — so whoever may read the staff register may
-      read it, and nobody else.
-    */
-    feature: "users",
-    action: "read",
-  },
-  {
-    title: "Laporan Membership",
-    description:
-      "Paket terlaris, dan berapa nilai benefit yang sudah diberikan. Benefit yang tidak pernah muncul di sana berarti tidak pernah dipakai seorang pun.",
-    href: "/dashboard/reports/membership",
-    /*
-      `membershipPlans:read`, not a report grant: the report is about what the
-      packages did, and whoever may see the catalogue is who is asking.
-    */
-    feature: "membershipPlans",
-    action: "read",
-  },
-  {
-    title: "Konsinyasi Outstanding",
-    description:
-      "Barang titipan yang masih di gudang, per supplier. Belum jadi utang — utang muncul saat barangnya laku.",
-    href: "/dashboard/reports/consignment",
-    feature: "productBatches",
-    action: "read",
-  },
-  {
-    title: "Riwayat Opname",
-    description:
-      "Stok opname yang sudah disubmit, selisihnya, dan jurnal yang terbentuk.",
-    href: "/dashboard/inventory/opname",
-    feature: "stockOpnames",
-    action: "read",
-  },
-  {
-    /**
-     * SHOWN AND DISABLED, not hidden — a deliberate choice, and the trade is
-     * worth naming. A hidden card leaves an owner wondering whether the feature
-     * exists; a dead one says "this is coming and here is what blocks it". The
-     * cost is one inert tile on a page people visit often, which is why it sorts
-     * last and says why rather than merely greying out.
-     */
-    title: "Sales per Produk",
-    description:
-      "Produk terlaris, per kategori dan per periode, dari transaksi penjualan.",
-    href: "/dashboard/sales",
-    feature: "products",
-    action: "read",
-    blockedBy: "Menunggu modul POS — belum ada transaksi penjualan untuk dilaporkan.",
-  },
-];
+  keuangan: [
+    {
+      title: "Laba rugi",
+      description: "Hasil usaha per bulan, gabungan atau per lini bisnis.",
+      href: "/dashboard/keuangan/laba-rugi",
+      feature: "journalEntries",
+      action: "read",
+    },
+    {
+      title: "Arus kas",
+      description:
+        "Kas awal sampai kas akhir: operasional, investasi, pendanaan.",
+      href: "/dashboard/keuangan/arus-kas",
+      feature: "journalEntries",
+      action: "read",
+    },
+    {
+      title: "Neraca",
+      description: "Aset, kewajiban, dan ekuitas pada satu tanggal.",
+      href: "/dashboard/keuangan/neraca",
+      feature: "journalEntries",
+      action: "read",
+    },
+    {
+      title: "Saldo per akun",
+      description: "Saldo tiap akun dengan rincian ke mutasi jurnal.",
+    },
+    {
+      title: "Biaya per kategori",
+      description: "Biaya per kategori, termasuk alokasi biaya bersama.",
+    },
+    {
+      title: "Umur piutang & utang",
+      description:
+        "Piutang dan utang menurut umur: 0–30, 31–60, 61–90, lebih dari 90 hari.",
+    },
+  ],
+  inventori: [
+    {
+      title: "Posisi stok",
+      description:
+        "Stok tiap SKU per gudang, dikelompokkan per cabang, termasuk nilai persediaannya.",
+      href: "/dashboard/reports/stock-on-hand",
+      feature: "products",
+      action: "read",
+    },
+    {
+      title: "Kartu stok",
+      description: "Riwayat setiap pergerakan stok per SKU per gudang.",
+      href: "/dashboard/inventory/stock-card",
+      feature: "stockMovements",
+      action: "read",
+    },
+    {
+      title: "Stok minim",
+      description:
+        "Produk yang sudah di bawah batas restock, paling mendesak di atas.",
+      href: "/dashboard/reports/low-stock",
+      feature: "products",
+      action: "read",
+    },
+    {
+      title: "Nilai persediaan",
+      description:
+        "Nilai stok pada satu tanggal, cocok dengan akun persediaan di Neraca.",
+    },
+    {
+      title: "Batch & kedaluwarsa",
+      description: "Sisa umur simpan per batch dan risiko kerugian.",
+      href: "/dashboard/inventory/batches",
+      feature: "productBatches",
+      action: "read",
+    },
+    {
+      title: "Selisih opname",
+      description: "Riwayat penyesuaian hasil hitung stok, dan jurnal yang terbentuk.",
+      href: "/dashboard/inventory/opname",
+      feature: "stockOpnames",
+      action: "read",
+    },
+    {
+      title: "Transfer antar gudang",
+      description: "Perpindahan stok antar gudang dan cabang.",
+      href: "/dashboard/inventory/transfers",
+      feature: "stockMovements",
+      action: "read",
+    },
+    {
+      title: "Konsinyasi outstanding",
+      description:
+        "Barang titipan yang masih di gudang, per supplier. Belum jadi utang — utang muncul saat barangnya laku.",
+      href: "/dashboard/reports/consignment",
+      feature: "productBatches",
+      action: "read",
+    },
+    {
+      title: "Pembelian per supplier",
+      description: "Nilai dan kuantitas pembelian per supplier dan SKU.",
+    },
+  ],
+  operasional: [
+    {
+      title: "Performa staf",
+      description:
+        "Order, nilai, dan ketepatan waktu per staf. Komisi ada di Rekap komisi.",
+    },
+    {
+      title: "Rekap booking",
+      description: "Booking menurut status, pembatalan, dan jadwal ulang.",
+    },
+    {
+      title: "Layanan terlaris",
+      description: "Peringkat layanan dan add-on menurut jumlah dan nilai.",
+    },
+    {
+      title: "Okupansi hotel",
+      description: "Kamar terisi dan lama menginap.",
+    },
+    {
+      title: "Membership",
+      description:
+        "Paket terlaris, dan berapa nilai benefit yang sudah diberikan.",
+      href: "/dashboard/reports/membership",
+      feature: "membershipPlans",
+      action: "read",
+    },
+    {
+      title: "Rekap komisi",
+      description:
+        "Komisi groomer per bulan, dihitung dari booking yang selesai. Siap diunduh untuk payroll.",
+      href: "/dashboard/keuangan/komisi",
+      // Payroll data: whoever may read the staff register, and nobody else.
+      feature: "users",
+      action: "read",
+    },
+    {
+      title: "Komisi saya",
+      description:
+        "Berapa yang Anda hasilkan bulan ini, dan berapa yang belum dibayar. Hanya milik Anda sendiri.",
+      href: "/dashboard/reports/commissions/mine",
+    },
+  ],
+};
+
+function isTabKey(value: string | null): value is TabKey {
+  return TABS.some((tab) => tab.key === value);
+}
 
 export function ReportsHub() {
   const { can } = usePermissions();
-
-  const visible = CARDS.filter(
-    (card) =>
-      card.feature === undefined ||
-      card.action === undefined ||
-      can(card.feature, card.action),
-  );
+  const params = useSearchParams();
+  const raw = params?.get("tab") ?? null;
+  const active: TabKey = isTabKey(raw) ? raw : "penjualan";
 
   /*
-    THE "NO ACCESS AT ALL" EMPTY STATE IS GONE, and it was removed rather than
-    left unreachable.
-
-    It said "your role has access to no report; ask an owner" — true and useful
-    while every card was gated. Since "Komisi Saya" needs no grant, `visible` can
-    never be empty, and a branch that cannot run is worse than no branch: the
-    next reader takes it as evidence the case is possible and writes code around
-    it.
-
-    If a gated-only hub ever comes back, so does this.
+    Rows without a screen are always listed (they are the mockup's table of
+    contents and carry no data). Rows with a screen are filtered on the grant
+    their destination enforces — a row that leads to a 403 is worse than none.
   */
+  const rows = ROWS[active].filter(
+    (row) =>
+      !row.href ||
+      row.feature === undefined ||
+      row.action === undefined ||
+      can(row.feature, row.action),
+  );
+
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {visible.map((card) =>
-        card.blockedBy ? (
-          <div
-            key={card.title}
-            aria-disabled="true"
-            className="rounded-2xl border border-border bg-surface p-5 opacity-60"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <h2 className="font-bold text-foreground">{card.title}</h2>
-              <Badge variant="outline">Segera</Badge>
-            </div>
-            <p className="mt-1 text-sm text-muted">{card.description}</p>
-            <p className="mt-2 text-xs text-muted">{card.blockedBy}</p>
-          </div>
-        ) : (
-          <Link
-            key={card.title}
-            href={card.href}
-            className={cn(
-              "rounded-2xl border border-border bg-surface p-5 transition-colors",
-              "hover:border-primary/40",
-            )}
-          >
-            <h2 className="font-bold text-foreground">{card.title}</h2>
-            <p className="mt-1 text-sm text-muted">{card.description}</p>
-          </Link>
-        ),
-      )}
+    <div className="flex flex-col gap-4">
+      <nav aria-label="Jenis laporan" className="overflow-x-auto border-b border-border">
+        <ul className="flex gap-1">
+          {TABS.map((tab) => {
+            const current = tab.key === active;
+            return (
+              <li key={tab.key}>
+                <Link
+                  href={`/dashboard/reports?tab=${tab.key}`}
+                  aria-current={current ? "page" : undefined}
+                  className={cn(
+                    "-mb-px inline-block whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-bold transition-colors",
+                    current
+                      ? "border-primary text-primary"
+                      : "border-transparent text-muted hover:text-primary",
+                  )}
+                >
+                  {tab.label}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[26%]">Laporan</TableHead>
+              <TableHead>Tujuan</TableHead>
+              <TableHead className="w-[140px]" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.title}>
+                <TableCell className="font-bold text-foreground">
+                  {row.title}
+                </TableCell>
+                <TableCell className="text-muted">{row.description}</TableCell>
+                <TableCell className="text-right">
+                  {row.href ? (
+                    <Link
+                      href={row.href}
+                      className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-white hover:opacity-90"
+                    >
+                      Buka
+                    </Link>
+                  ) : (
+                    <Badge variant="outline">{SOON}</Badge>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+
+      <div className="rounded-xl border border-border border-l-[3px] border-l-primary bg-surface px-4 py-3">
+        <p className="text-sm font-bold text-foreground">Cara kerja</p>
+        <p className="mt-0.5 text-xs text-muted">
+          Laporan yang bertanda Buka tampil di layar, lengkap dengan filter dan
+          tombol unduh Excel di dalamnya. Yang bertanda Segera belum dibangun —
+          semuanya akan memakai dimensi yang sama dengan yang tersimpan di tiap
+          transaksi: cabang, gudang, lini bisnis, channel, konsinyasi, SKU, tipe
+          layanan atau produk, dan akun.
+        </p>
+      </div>
     </div>
   );
 }

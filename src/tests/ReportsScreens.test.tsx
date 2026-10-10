@@ -125,101 +125,74 @@ beforeEach(() => {
   });
 });
 
-describe("ReportsHub", () => {
-  it("lists the reports a full grant can reach", async () => {
-    renderWithAuth(<ReportsHub />);
+let mockTab = "penjualan";
+jest.mock("next/navigation", () => ({
+  ...jest.requireActual("next/navigation"),
+  useSearchParams: () => new URLSearchParams({ tab: mockTab }),
+}));
 
-    expect(screen.getByText("Stok per Cabang")).toBeInTheDocument();
-    expect(screen.getByText("Kartu Stok")).toBeInTheDocument();
-    expect(screen.getByText("Konsinyasi Outstanding")).toBeInTheDocument();
+describe("ReportsHub", () => {
+  beforeEach(() => {
+    mockTab = "penjualan";
   });
 
-  /**
-   * THE HUB IS THE STATEMENTS' ONLY DOOR since 22 September 2026, when they left
-   * Keuangan › Ringkasan with the v3 mockup. All three read the ledger.
-   */
-  it("offers the three financial statements to a ledger reader, and only them", () => {
+  it("opens on Penjualan, whose reports are all still Segera", () => {
+    renderWithAuth(<ReportsHub />);
+
+    expect(screen.getByText("Penjualan per invoice")).toBeInTheDocument();
+    expect(screen.getAllByText("Segera").length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: "Buka" })).not.toBeInTheDocument();
+  });
+
+  it("lists the inventory reports a full grant can reach", () => {
+    mockTab = "inventori";
+    renderWithAuth(<ReportsHub />);
+
+    expect(screen.getByText("Posisi stok")).toBeInTheDocument();
+    expect(screen.getByText("Kartu stok")).toBeInTheDocument();
+    expect(screen.getByText("Konsinyasi outstanding")).toBeInTheDocument();
+  });
+
+  /** The hub is the statements' only door since 22 September 2026. */
+  it("opens the three financial statements for a ledger reader", () => {
+    mockTab = "keuangan";
     renderWithAuth(<ReportsHub />, {
       isSuperAdmin: false,
       permissions: [{ feature: "journalEntries", actions: ["read"] }],
     });
 
-    expect(screen.getByRole("link", { name: /Laba Rugi/ })).toHaveAttribute(
-      "href",
+    const hrefs = screen
+      .getAllByRole("link", { name: "Buka" })
+      .map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual([
       "/dashboard/keuangan/laba-rugi",
-    );
-    expect(screen.getByRole("link", { name: /Neraca/ })).toHaveAttribute(
-      "href",
-      "/dashboard/keuangan/neraca",
-    );
-    expect(screen.getByRole("link", { name: /Arus Kas/ })).toHaveAttribute(
-      "href",
       "/dashboard/keuangan/arus-kas",
-    );
+      "/dashboard/keuangan/neraca",
+    ]);
   });
 
-  /**
-   * A card that leads to a 403 is worse than no card, so each names the grant its
-   * destination actually enforces.
-   */
-  it("hides the cards a role cannot reach", () => {
+  /** A row that leads to a 403 is worse than no row. */
+  it("hides the reports a role cannot reach", () => {
+    mockTab = "inventori";
     renderWithAuth(<ReportsHub />, {
       isSuperAdmin: false,
       permissions: [{ feature: "products", actions: ["read"] }],
     });
 
-    expect(screen.getByText("Stok per Cabang")).toBeInTheDocument();
-    expect(screen.getByText("Stok Minim")).toBeInTheDocument();
-    // Needs productBatches:read.
-    expect(
-      screen.queryByText("Konsinyasi Outstanding"),
-    ).not.toBeInTheDocument();
-    // Needs stockMovements:read.
-    expect(screen.queryByText("Kartu Stok")).not.toBeInTheDocument();
+    expect(screen.getByText("Posisi stok")).toBeInTheDocument();
+    expect(screen.getByText("Stok minim")).toBeInTheDocument();
+    expect(screen.queryByText("Konsinyasi outstanding")).not.toBeInTheDocument();
+    expect(screen.queryByText("Kartu stok")).not.toBeInTheDocument();
   });
 
-  it("still offers a role with no grants their own commission", () => {
-    /*
-      THE HUB IS NEVER EMPTY ANY MORE, and the "no access to any report" message
-      was removed rather than left unreachable — a branch that cannot run reads
-      as evidence the case is possible.
-
-      "Komisi Saya" needs no grant because it answers only about the signed-in
-      person. Requiring one would mean handing a groomer the staff register to be
-      told what they themselves earned.
-    */
+  it("still offers a role with no grants their own commission, and not the payroll", () => {
+    mockTab = "operasional";
     renderWithAuth(<ReportsHub />, { isSuperAdmin: false, permissions: [] });
 
-    const cards = screen.getAllByRole("link");
-    expect(cards).toHaveLength(1);
-    expect(cards[0]).toHaveAttribute(
-      "href",
-      "/dashboard/reports/commissions/mine",
-    );
-
-    /* And NOT the whole shop's payroll, which is the point of the split. */
-    expect(
-      screen.queryByRole("link", { name: /rekap komisi/i }),
-    ).not.toBeInTheDocument();
-  });
-
-  /**
-   * Shown and disabled rather than hidden: a hidden card leaves an owner
-   * wondering whether the feature exists, a dead one says what blocks it.
-   */
-  it("shows the sales report as blocked, with the reason", () => {
-    renderWithAuth(<ReportsHub />);
-
-    const card = screen
-      .getByText("Sales per Produk")
-      .closest("[aria-disabled]");
-    expect(card).toBeInTheDocument();
-    expect(card).toHaveTextContent(/segera/i);
-    expect(screen.getByText(/menunggu modul pos/i)).toBeInTheDocument();
-    // Not a link — there is nothing to go to.
-    expect(
-      screen.queryByRole("link", { name: /sales per produk/i }),
-    ).not.toBeInTheDocument();
+    const open = screen.getAllByRole("link", { name: "Buka" });
+    expect(open).toHaveLength(1);
+    expect(open[0]).toHaveAttribute("href", "/dashboard/reports/commissions/mine");
+    expect(screen.queryByText("Rekap komisi")).not.toBeInTheDocument();
   });
 });
 
@@ -247,7 +220,6 @@ describe("StockOnHandScreen", () => {
     asMock(reportService.stockOnHand).mockResolvedValue(
       stockResult([stockRow({ branchId: null, branchName: null })]),
     );
-
     renderWithAuth(<StockOnHandScreen />);
 
     expect(await screen.findByText("Tanpa cabang")).toBeInTheDocument();
@@ -261,7 +233,6 @@ describe("StockOnHandScreen", () => {
     asMock(reportService.stockOnHand).mockResolvedValue(
       stockResult([stockRow({ hppAvg: null, value: null })]),
     );
-
     renderWithAuth(<StockOnHandScreen />);
 
     await screen.findByText("Shampoo Anjing");
@@ -272,7 +243,6 @@ describe("StockOnHandScreen", () => {
     asMock(reportService.stockOnHand).mockResolvedValue(
       stockResult([stockRow({ isLow: true })]),
     );
-
     renderWithAuth(<StockOnHandScreen />);
 
     expect(await screen.findByText("Stok minim")).toBeInTheDocument();
@@ -282,7 +252,6 @@ describe("StockOnHandScreen", () => {
   // reader concludes the warehouse is empty.
   it("explains that zero-stock rows are hidden when the result is empty", async () => {
     asMock(reportService.stockOnHand).mockResolvedValue(stockResult([]));
-
     renderWithAuth(<StockOnHandScreen />);
 
     expect(
@@ -299,7 +268,6 @@ describe("StockOnHandScreen", () => {
     asMock(reportService.stockOnHand).mockRejectedValue(
       new ApiError("Unknown warehouse: wh9", 400),
     );
-
     renderWithAuth(<StockOnHandScreen />);
 
     expect(
@@ -312,15 +280,15 @@ describe("StockOnHandScreen", () => {
     asMock(reportService.exportStockOnHand).mockResolvedValue({
       blob: Object.assign(new Blob([csv]), {
         text: () => Promise.resolve(csv),
-      }) as Blob,
+      }),
       filename: "stok-per-cabang.csv",
-    });
+    } as Awaited<ReturnType<typeof reportService.exportStockOnHand>>);
     Object.assign(URL, {
       createObjectURL: jest.fn(() => "blob:url"),
       revokeObjectURL: jest.fn(),
     });
-
     renderWithAuth(<StockOnHandScreen />);
+
     await screen.findByText("Shampoo Anjing");
     await userEvent.click(
       screen.getByRole("button", { name: /export \.xlsx/i }),
@@ -348,8 +316,7 @@ describe("LowStockScreen", () => {
         },
       ],
       pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
-    } as Awaited<ReturnType<typeof productService.lowStock>>);
-
+    } as unknown as Awaited<ReturnType<typeof productService.lowStock>>);
     renderWithAuth(<LowStockScreen />);
 
     expect(
@@ -410,8 +377,7 @@ describe("ConsignmentScreen", () => {
       ],
       totalValue: "1860000",
       totalLots: 4,
-    });
-
+    } as Awaited<ReturnType<typeof productBatchService.consignmentSummary>>);
     renderWithAuth(<ConsignmentScreen />);
 
     expect(await screen.findByText("PT Sumber Pangan")).toBeInTheDocument();
@@ -435,8 +401,7 @@ describe("ConsignmentScreen", () => {
       ],
       totalValue: "50000",
       totalLots: 1,
-    });
-
+    } as Awaited<ReturnType<typeof productBatchService.consignmentSummary>>);
     renderWithAuth(<ConsignmentScreen />);
 
     expect(
@@ -448,7 +413,6 @@ describe("ConsignmentScreen", () => {
     asMock(productBatchService.consignmentSummary).mockRejectedValue(
       new ApiError("Forbidden", 403),
     );
-
     renderWithAuth(<ConsignmentScreen />);
 
     expect(await screen.findByText("Forbidden")).toBeInTheDocument();
@@ -473,24 +437,9 @@ describe("stock isolation on StockOnHandScreen", () => {
     asMock(warehouseService.list).mockResolvedValue({
       ...emptyPage,
       items: [
-        {
-          _id: "wh1",
-          name: "Gudang Utama",
-          isActive: true,
-          defaultBranchId: "b1",
-        },
-        {
-          _id: "wh2",
-          name: "Gudang Barat",
-          isActive: true,
-          defaultBranchId: "b2",
-        },
-        {
-          _id: "wh0",
-          name: "Gudang Pusat",
-          isActive: true,
-          defaultBranchId: null,
-        },
+        { _id: "wh1", name: "Gudang Utama", isActive: true, defaultBranchId: "b1" },
+        { _id: "wh2", name: "Gudang Barat", isActive: true, defaultBranchId: "b2" },
+        { _id: "wh0", name: "Gudang Pusat", isActive: true, defaultBranchId: null },
       ],
     } as Awaited<ReturnType<typeof warehouseService.list>>);
   });
@@ -507,13 +456,11 @@ describe("stock isolation on StockOnHandScreen", () => {
   it("offers only the branches the user holds", async () => {
     const ui = userEvent.setup();
     renderWithAuth(<StockOnHandScreen />, { user: confined });
-    await screen.findByText("Shampoo Anjing");
 
+    await screen.findByText("Shampoo Anjing");
     await ui.click(screen.getByLabelText("Cabang"));
 
-    expect(
-      screen.getByRole("option", { name: "Cabang Timur" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Cabang Timur" })).toBeInTheDocument();
     expect(
       screen.queryByRole("option", { name: "Cabang Barat" }),
     ).not.toBeInTheDocument();
@@ -523,31 +470,25 @@ describe("stock isolation on StockOnHandScreen", () => {
     // Gudang Pusat belongs to no branch, so it serves every one of them.
     const ui = userEvent.setup();
     renderWithAuth(<StockOnHandScreen />, { user: confined });
-    await screen.findByText("Shampoo Anjing");
 
+    await screen.findByText("Shampoo Anjing");
     await ui.click(screen.getByLabelText("Gudang"));
 
-    expect(
-      screen.getByRole("option", { name: "Gudang Utama" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", { name: "Gudang Pusat" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Gudang Utama" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Gudang Pusat" })).toBeInTheDocument();
     expect(
       screen.queryByRole("option", { name: "Gudang Barat" }),
     ).not.toBeInTheDocument();
   });
 
   it("leaves an all-branches user every option", async () => {
-    const owner = { ...confined, allBranches: true, branchAccess: [] };
+    const owner = { ...confined, allBranches: true, branchAccess: [] } as unknown as User;
     const ui = userEvent.setup();
     renderWithAuth(<StockOnHandScreen />, { user: owner });
-    await screen.findByText("Shampoo Anjing");
 
+    await screen.findByText("Shampoo Anjing");
     await ui.click(screen.getByLabelText("Gudang"));
 
-    expect(
-      screen.getByRole("option", { name: "Gudang Barat" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Gudang Barat" })).toBeInTheDocument();
   });
 });

@@ -17,7 +17,7 @@ export default function StockOnHandPage() {
         <div>
           <Breadcrumb
             items={[
-              { label: "Reports", href: "/dashboard/reports" },
+              { label: "Laporan", href: "/dashboard/reports" },
               // No href: this is the page. See Breadcrumb for why the last crumb
               // must not link to itself.
               { label: "Stok per Cabang" },

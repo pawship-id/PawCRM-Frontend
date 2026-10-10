@@ -135,7 +135,7 @@ export interface ReportQuery {
 export function profitLossMatrix(
   result: ProfitLossResult,
   lines: Array<{ _id: string; name: string }>,
-  businessLineId: string,
+  businessLineId: string | string[],
 ): ProfitLossMatrix {
   const columns = reportColumns(businessLineId, lines);
 
@@ -218,7 +218,7 @@ export function profitLossMatrix(
  * a line of business, which is also why it reads as a name rather than as an id.
  */
 function reportColumns(
-  businessLineId: string,
+  businessLineId: string | string[],
   lines: Array<{ _id: string; name: string }>,
 ): ReportColumn[] {
   const all: ReportColumn[] = [
@@ -226,11 +226,14 @@ function reportColumns(
     { id: null, label: SHARED_LINE_LABEL },
   ];
 
-  if (!businessLineId) return all;
-  if (businessLineId === SHARED_LINE_NONE) {
-    return all.filter((column) => column.id === null);
-  }
-  return all.filter((column) => column.id === businessLineId);
+  // Several lini may be picked (the mockup's multi-select); [] and "" are "all".
+  const wanted = (Array.isArray(businessLineId) ? businessLineId : [businessLineId]).filter(Boolean);
+  if (wanted.length === 0) return all;
+  return all.filter((column) =>
+    column.id === null
+      ? wanted.includes(SHARED_LINE_NONE)
+      : wanted.includes(column.id),
+  );
 }
 
 /* --------------------------------------------------------------- arus kas */

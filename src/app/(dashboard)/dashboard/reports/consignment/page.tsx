@@ -20,7 +20,7 @@ export default function ConsignmentPage() {
         <div>
           <Breadcrumb
             items={[
-              { label: "Reports", href: "/dashboard/reports" },
+              { label: "Laporan", href: "/dashboard/reports" },
               { label: "Konsinyasi Outstanding" },
             ]}
           />

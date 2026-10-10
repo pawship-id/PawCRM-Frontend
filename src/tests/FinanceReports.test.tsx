@@ -20,6 +20,8 @@ import type {
   ProfitLossResult,
 } from "@/services/journalEntry.service";
 
+jest.mock("@/utils/xlsx", () => ({ exportToXlsx: jest.fn(async () => undefined) }));
+import { exportToXlsx } from "@/utils/xlsx";
 jest.mock("@/services/journalEntry.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/services/businessLine.service");
@@ -534,130 +536,199 @@ describe("balanceSheet", () => {
 /* ------------------------------------------------------------- the screens */
 
 describe("ProfitLossScreen", () => {
-  it("always follows the Detil rules: no allocation switch, no allocation param", async () => {
-    renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Laporan Laba Rugi");
+  const rowTexts = () =>
+    screen.getAllByRole("row").map((row) => row.textContent ?? "");
 
-    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+  it("reads the last three months, the one on screen last", async () => {
+    renderWithAuth(<ProfitLossScreen now={NOW} />);
+    await screen.findByText("Penjualan bersih");
+
     expect(
-      screen.queryByText("Bagikan beban bersama ke tiap lini"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByText(/kolom Belum Dipetakan/, { exact: false }),
-    ).toBeInTheDocument();
-    expect(asMock(journalEntryService.profitLoss)).toHaveBeenCalledWith(
-      expect.not.objectContaining({ allocation: expect.anything() }),
+      screen.getAllByRole("columnheader").map((cell) => cell.textContent),
+    ).toEqual(["Uraian", "Juni", "Juli", "Agustus"]);
+    expect(journalEntryService.profitLoss).toHaveBeenCalledTimes(3);
+    expect(journalEntryService.profitLoss).toHaveBeenCalledWith(
+      expect.objectContaining({ dateFrom: "2026-08-01", dateTo: "2026-08-31" }),
     );
-  });
-
-  it("no longer warns that the figures are examples", async () => {
-    renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Laporan Laba Rugi");
-
-    expect(
-      screen.queryByText("Angka di halaman ini masih contoh."),
-    ).not.toBeInTheDocument();
+    expect(journalEntryService.profitLoss).toHaveBeenCalledWith(
+      expect.objectContaining({ dateFrom: "2026-06-01", dateTo: "2026-06-30" }),
+    );
   });
 
   /**
    * The lini bisnis filter drops COLUMNS from a matrix that still totals across
    * all of them, so sending it to the API — where it narrows the ledger — would
-   * make the consolidated column mean something else.
+   * make the consolidated figure mean something else.
    */
-  it("asks the API for the period and the branch, never for a business line", async () => {
+  it("never sends a business line to the API", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Laporan Laba Rugi");
+    await screen.findByText("Penjualan bersih");
 
-    expect(journalEntryService.profitLoss).toHaveBeenCalledWith(
-      expect.objectContaining({ dateFrom: "2026-08-01", dateTo: "2026-08-31" }),
-    );
     expect(journalEntryService.profitLoss).not.toHaveBeenCalledWith(
       expect.objectContaining({ businessLineId: expect.anything() }),
     );
   });
 
-  it("opens on pendapatan and folds the rest away", async () => {
+  it("lays the statement out in the mockup's order", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Laporan Laba Rugi");
+    await screen.findByText("Penjualan bersih");
 
-    expect(screen.getByRole("button", { name: /Pendapatan$/ })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    // Both probed by CODE rather than by name. Since the accounts took BO's own
-    // wording, an account name and its group's heading can be the same string —
-    // "Harga Pokok Penjualan" is both — and only the account row folds away.
-    expect(screen.getByText("4101")).toBeInTheDocument();
-    expect(screen.queryByText("5101")).not.toBeInTheDocument();
+    const labels = rowTexts().map((text) => text.replace(/(Rp|−|—).*$/, ""));
+    const at = (label: string) => labels.findIndex((l) => l.startsWith(label));
+
+    const order = [
+      "Penjualan kotor",
+      "Diskon dan potongan",
+      "Penjualan bersih",
+      "HPP",
+      "Laba kotor",
+      "Total biaya operasional",
+      "Laba bersih",
+      "Margin kotor",
+      "Margin bersih",
+    ].map(at);
+
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((x, y) => x - y)).toEqual(order);
   });
 
-  it("breaks an account down into its sub akun, the unmapped row last", async () => {
+  it("takes laba kotor and laba bersih from the server's subtotals", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Laporan Laba Rugi");
+    await screen.findByText("Penjualan bersih");
 
-    const rows = screen.getAllByRole("row").map((row) => row.textContent ?? "");
-    const account = rows.findIndex((text) => text.includes("4101Pendapatan Penjualan"));
-    const grooming = rows.findIndex((text) => text.includes("4101-01"));
-    const retired = rows.findIndex((text) => text.includes("4101-02"));
-    // The column header carries the same words now, so look below the account.
-    const unmapped = rows.findIndex(
-      (text, index) => index > account && text.includes("Belum Dipetakan"),
+    const rows = rowTexts();
+    expect(rows.find((t) => t.startsWith("Penjualan bersih"))).toContain(
+      "Rp 40.000.000",
     );
-
-    // Under the account, in the server's order.
-    expect(account).toBeGreaterThanOrEqual(0);
-    expect(grooming).toBe(account + 1);
-    expect(retired).toBe(grooming + 1);
-    expect(unmapped).toBe(retired + 1);
-    // A retired sub akun still shows, and says so.
-    expect(rows[retired]).toContain("Nonaktif");
-    expect(rows[grooming]).not.toContain("Nonaktif");
-    // The account's own figure is untouched by the rows beneath it.
-    expect(rows[account]).toContain("42.000.000");
-    expect(rows[grooming]).toContain("25.000.000");
+    expect(rows.find((t) => t.startsWith("Laba kotor"))).toContain(
+      "Rp 18.000.000",
+    );
+    expect(rows.find((t) => t.startsWith("Laba bersih"))).toContain(
+      "Rp 10.600.000",
+    );
+    // 18.000.000 / 40.000.000
+    expect(rows.find((t) => t.startsWith("Margin kotor"))).toContain("45,0%");
   });
 
-  it("prints both subtotals under the groups they close", async () => {
+  /**
+   * The mockup draws no rows for pendapatan/biaya lainnya, so none are listed;
+   * laba bersih stays the server's figure, which includes them.
+   */
+  it("prints beban as a positive cost, and draws no lainnya rows", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Laporan Laba Rugi");
+    await screen.findByText("Penjualan bersih");
 
-    const rows = screen.getAllByRole("row").map((row) => row.textContent ?? "");
-    const hpp = rows.findIndex((text) => text.startsWith("Harga Pokok"));
-    const kotor = rows.findIndex((text) => text.startsWith("Laba Kotor"));
-    const biaya = rows.findIndex((text) => text.startsWith("Biaya"));
-    const usaha = rows.findIndex((text) => text.startsWith("Laba Usaha"));
-
-    expect(kotor).toBe(hpp + 1);
-    expect(usaha).toBe(biaya + 1);
+    expect(screen.getByText("Beban Sewa").closest("tr")).toHaveTextContent(
+      "Rp 8.000.000",
+    );
+    expect(rowTexts().some((t) => t.startsWith("Pendapatan lainnya"))).toBe(false);
+    expect(rowTexts().some((t) => t.startsWith("Biaya lainnya"))).toBe(false);
   });
 
-  it("prints beban as a subtraction though it is stored positive", async () => {
+  it("labels no change when the months are identical", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Laporan Laba Rugi");
-    await userEvent.click(
-      screen.getByRole("button", { name: "Buka semua rincian" }),
-    );
+    await screen.findByText("Penjualan bersih");
 
-    const row = screen.getByText("Beban Sewa").closest("tr");
-    // A true minus sign, not the hyphen formatMoney would put after "Rp".
-    expect(row).toHaveTextContent("−Rp 8.000.000");
+    expect(screen.queryByText(/[▲▼]/)).not.toBeInTheDocument();
+  });
+
+  it("labels a move of ten percent or more, green when it helps", async () => {
+    const lastMonth = {
+      ...PROFIT_LOSS,
+      categories: PROFIT_LOSS.categories.map((c) =>
+        c.accountCategory === "pendapatan"
+          ? {
+              ...c,
+              total: "50000000.0000",
+              lines: c.lines.map((l) => ({
+                ...l,
+                amount: (Number(l.amount) * 1.25).toFixed(4),
+              })),
+            }
+          : c,
+      ),
+    };
+    // Oldest month first: Juni 50jt, Juli 40jt (−20%), Agustus 40jt.
+    asMock(journalEntryService.profitLoss).mockImplementation(async (q) =>
+      q?.dateFrom === "2026-06-01" ? lastMonth : PROFIT_LOSS,
+    );
+    renderWithAuth(<ProfitLossScreen now={NOW} />);
+    await screen.findByText("Penjualan bersih");
+
+    const row = screen.getByText("Penjualan bersih").closest("tr")!;
+    // Revenue falling is bad news.
+    expect(within(row).getByText(/▼ 20%/)).toHaveClass("text-red-700");
+  });
+
+  it("opens each row into its lini in the per-lini view, the unmapped bucket included", async () => {
+    renderWithAuth(<ProfitLossScreen now={NOW} />);
+    await screen.findByText("Penjualan bersih");
+
+    await userEvent.click(screen.getByRole("button", { name: "Per lini bisnis" }));
+    // Laba bersih opens by default.
+    const names = rowTexts().map((t) => t.replace(/(Rp|−|—).*$/, ""));
+    const at = names.findIndex((t) => t.startsWith("Laba bersih"));
+    expect(names.slice(at + 1, at + 4)).toEqual([
+      "Grooming",
+      "Retail",
+      SHARED,
+    ]);
   });
 
   it("drops a lini's column when the filter picks another", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Laporan Laba Rugi");
-
-    expect(
-      screen.getAllByRole("columnheader").map((cell) => cell.textContent),
-    ).toContain(SHARED);
+    await screen.findByText("Penjualan bersih");
 
     await userEvent.click(screen.getByLabelText("Filter lini bisnis"));
-    await userEvent.click(screen.getByRole("option", { name: "Grooming" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Grooming" }));
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+    await userEvent.click(screen.getByRole("button", { name: "Per lini bisnis" }));
+
+    await waitFor(() => {
+      const names = rowTexts().map((t) => t.replace(/(Rp|−|—).*$/, ""));
+      const at = names.findIndex((t) => t.startsWith("Laba bersih"));
+      expect(names.slice(at + 1, at + 2)).toEqual(["Grooming"]);
+      expect(names[at + 2]).toMatch(/^Margin kotor/);
+    });
+  });
+
+  it("sends several branches at once when the cabang multi-select picks them", async () => {
+    renderWithAuth(<ProfitLossScreen now={NOW} />);
+    await screen.findByText("Penjualan bersih");
+
+    await userEvent.click(screen.getByLabelText("Filter cabang"));
+    const options = await screen.findAllByRole("option");
+    await userEvent.click(options[0]);
+    await userEvent.click(options[1]);
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(journalEntryService.profitLoss).toHaveBeenLastCalledWith(
+        expect.objectContaining({ branchIds: expect.arrayContaining([expect.any(String)]) }),
+      ),
+    );
+  });
+
+  it("exports the statement to Excel", async () => {
+    renderWithAuth(<ProfitLossScreen now={NOW} />);
+    await screen.findByText("Penjualan bersih");
+
+    await userEvent.click(screen.getByRole("button", { name: "Ekspor" }));
+
+    await waitFor(() => expect(exportToXlsx).toHaveBeenCalled());
+    expect(asMock(exportToXlsx).mock.calls[0][2]).toBe("laba-rugi-2026-08.xlsx");
+  });
+
+  it("steps back a month and reads the three months before it", async () => {
+    renderWithAuth(<ProfitLossScreen now={NOW} />);
+    await screen.findByText("Penjualan bersih");
+
+    await userEvent.click(screen.getByRole("button", { name: "Bulan sebelumnya" }));
 
     await waitFor(() =>
       expect(
         screen.getAllByRole("columnheader").map((cell) => cell.textContent),
-      ).toEqual(["Akun", "Grooming", "Total Konsolidasi"]),
+      ).toEqual(["Uraian", "Mei", "Juni", "Juli"]),
     );
   });
 });
