@@ -16,6 +16,7 @@ import { productService } from "@/services/product.service";
 import { branchService } from "@/services/branch.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { stockMovementService } from "@/services/stockMovement.service";
+import { stockTransferService } from "@/services/stockTransfer.service";
 import { stockEntryService } from "@/services/stockEntry.service";
 import { productBatchService } from "@/services/productBatch.service";
 import { ApiError } from "@/services/api-error";
@@ -267,8 +268,19 @@ function mockLookups({
   const create = jest
     .spyOn(stockMovementService, "create")
     .mockResolvedValue([]);
+  // A transfer is a document of its own now, filed through its own service —
+  // the transfer form no longer posts an `operation` to the ledger.
+  const transferCreate = jest
+    .spyOn(stockTransferService, "create")
+    .mockResolvedValue({
+      _id: "tr-new",
+      transferNumber: "TRF/2610/0001",
+      productCount: 1,
+      fromWarehouseName: "Gudang Pusat",
+      toWarehouseName: "Gudang Bazar",
+    } as never);
 
-  return { create, preview: previewCall };
+  return { create, transferCreate, preview: previewCall };
 }
 
 beforeEach(() => jest.useFakeTimers({ advanceTimers: true }));
@@ -877,7 +889,7 @@ describe("StockAdjustmentForm", () => {
 
 describe("StockTransferForm", () => {
   it("sends both warehouse ids and a positive quantity, as one item", async () => {
-    const { create } = mockLookups();
+    const { transferCreate: create } = mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
@@ -894,7 +906,6 @@ describe("StockTransferForm", () => {
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          operation: "transfer",
           fromWarehouseId: WAREHOUSE,
           toWarehouseId: OTHER_WAREHOUSE,
           items: [{ productId: PRODUCT, qty: "6" }],
@@ -910,7 +921,7 @@ describe("StockTransferForm", () => {
    * stock card's notes column with silence that looks like content.
    */
   it("carries the transfer's note and the line's own", async () => {
-    const { create } = mockLookups();
+    const { transferCreate: create } = mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
@@ -976,7 +987,7 @@ describe("StockTransferForm", () => {
    * lot to name, the line moves unbatched and the payload carries no `batchId`.
    */
   it("moves a lot-tracked product with no lots on the shelf unbatched", async () => {
-    const { create } = mockLookups({
+    const { transferCreate: create } = mockLookups({
       detail: product({ hasExpiry: true }),
       batches: [],
     });
@@ -1012,7 +1023,7 @@ describe("StockTransferForm", () => {
    * let batch A leave the shelf and batch B arrive.
    */
   it("sends the named batch with the line", async () => {
-    const { create } = mockLookups({
+    const { transferCreate: create } = mockLookups({
       detail: product({ hasExpiry: true }),
       batches: [lot()],
     });
@@ -1188,10 +1199,21 @@ describe("StockTransferForm", () => {
     expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
-  it("reports how many products moved, not just how many rows", async () => {
-    const { create } = mockLookups();
-    // Two lots × an out/in pair: four rows from one product.
-    create.mockResolvedValue([{}, {}, {}, {}] as never);
+  /**
+   * THE TOAST NAMES THE NUMBER AND WHAT HAPPENED TO THE STOCK. It reports the
+   * document's own product count — the server's — rather than a row count,
+   * which means nothing now that the inbound half is written later: the goods
+   * have left, and the far warehouse gains them only when somebody receives.
+   */
+  it("reports the number, the product count and that the goods are on the road", async () => {
+    const { transferCreate: create } = mockLookups();
+    create.mockResolvedValue({
+      _id: "tr-new",
+      transferNumber: "TRF/2610/0042",
+      productCount: 3,
+      fromWarehouseName: "Gudang Pusat",
+      toWarehouseName: "Gudang Bazar",
+    } as never);
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
@@ -1203,7 +1225,9 @@ describe("StockTransferForm", () => {
     await waitFor(() =>
       expect(Swal.fire).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: expect.stringContaining("1 produk, 4 baris"),
+          title: expect.stringMatching(
+            /TRF\/2610\/0042 tersimpan — 3 produk keluar dari Gudang Pusat.*setelah diterima/,
+          ),
         }),
       ),
     );
@@ -1235,7 +1259,7 @@ describe("StockTransferForm", () => {
 
   it("puts every product ticked in the picker into one payload", async () => {
     const second = product({ _id: "p2", sku: "SH-1L", name: "Shampoo Anjing" });
-    const { create } = mockLookups({ catalogue: [product(), second] });
+    const { transferCreate: create } = mockLookups({ catalogue: [product(), second] });
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
@@ -1308,7 +1332,7 @@ describe("StockTransferForm", () => {
    */
   it("blocks a quantity larger than the source warehouse holds", async () => {
     // The fixture holds 20 at the source warehouse.
-    const { create, preview } = mockLookups();
+    const { transferCreate: create, preview } = mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
@@ -1329,7 +1353,7 @@ describe("StockTransferForm", () => {
   });
 
   it("allows moving exactly what is on hand", async () => {
-    const { create } = mockLookups();
+    const { transferCreate: create } = mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
@@ -1349,11 +1373,11 @@ describe("StockTransferForm", () => {
 
   /**
    * The half of "it worked" a toast cannot do — and the reason this form no
-   * longer clears itself in place. A transfer mints no document number and posts
-   * no journal, so a cleared form and a four-second toast used to be the entire
-   * receipt.
+   * longer clears itself in place. It leaves for the transfer it just filed,
+   * where Terima, Ubah and the surat jalan are: the next thing somebody does
+   * with a new transfer is print the note the driver carries.
    */
-  it("goes back to the list once the transfer lands", async () => {
+  it("opens the transfer once it lands", async () => {
     mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
@@ -1364,8 +1388,41 @@ describe("StockTransferForm", () => {
     await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
 
     await waitFor(() =>
-      expect(push).toHaveBeenCalledWith("/dashboard/inventory/transfers"),
+      expect(push).toHaveBeenCalledWith(
+        "/dashboard/inventory/transfers/tr-new",
+      ),
     );
+  });
+
+  /**
+   * SAID BEFORE IT IS DONE: saving takes the goods off the source shelf now, and
+   * the destination only gains them when somebody there receives the transfer.
+   * The one change in behaviour of this form, and not discoverable from the
+   * button.
+   */
+  it("says the goods leave now and arrive when received", async () => {
+    mockLookups();
+
+    render(<StockTransferForm />);
+
+    expect(
+      await screen.findByText(/langsung keluar dari gudang asal/),
+    ).toBeInTheDocument();
+  });
+
+  it("no longer sends an operation, or a movement type, to the ledger", async () => {
+    const { create, transferCreate } = mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+    await user.type(await screen.findByLabelText(/^Jumlah/), "5");
+    await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
+
+    await waitFor(() => expect(transferCreate).toHaveBeenCalled());
+    expect(create).not.toHaveBeenCalled();
+    expect(transferCreate.mock.calls[0][0]).not.toHaveProperty("operation");
   });
 
   it("refuses to render at all when the tenant has fewer than two active warehouses", async () => {

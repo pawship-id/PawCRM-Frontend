@@ -62,6 +62,7 @@ const MOVEMENT_FILTERS: FilterOption<MovementType | "">[] = [
   { value: "opname_diff", label: "Selisih opname" },
   { value: "transfer_in", label: "Transfer masuk" },
   { value: "transfer_out", label: "Transfer keluar" },
+  { value: "transfer_cancel", label: "Transfer dibatalkan" },
   { value: "customer_return", label: "Retur customer" },
   { value: "purchase_return", label: "Retur supplier" },
   { value: "bundle_consume", label: "Bundle consume" },

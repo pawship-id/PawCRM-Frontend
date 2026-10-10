@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 import { StockTransfersScreen } from "@/features/inventory";
 import { stockMovementService } from "@/services/stockMovement.service";
+import { stockTransferService } from "@/services/stockTransfer.service";
 import { warehouseService } from "@/services/warehouse.service";
 import type { User, Warehouse } from "@/types/api";
 import type {
@@ -14,16 +15,20 @@ import type {
 /**
  * The transfer list, against mocked services.
  *
- * WHAT THIS IS FOR. This route used to open onto the form, so the two things
- * worth pinning are the ones that change if somebody reverses that: the list
- * arrives grouped from the server — `listTransfers`, never the ledger filtered
- * to `transfer_manual`, which would page ROWS and split one transfer across two
- * pages — and the form is reachable from it.
+ * WHAT IS WORTH PINNING. A transfer is a numbered document with a status, so the
+ * things that would silently change if somebody reverted that are:
  *
- * The third is the one number on the screen that can be misread: "Nilai" is the
- * cost of the goods that moved, and a transfer posts no journal. The footnote
- * saying so is asserted here because it is the only place a reader adding the
- * column up would find it.
+ *   THE NUMBER AND THE STATUS ARE ON THE ROW. They are what a storekeeper looks
+ *   a transfer up by, and "Belum diterima" is the word that says the goods are
+ *   still on the road.
+ *
+ *   THE LIST COMES FROM THE DOCUMENTS (`stockTransferService`), never from the
+ *   ledger filtered to `transfer_manual`: an edited transfer has superseded
+ *   postings in the ledger, and a list built from rows would show them as
+ *   transfers of their own.
+ *
+ *   THE VALUE IS NOT HERE. A transfer's worth is a dozen products at their own
+ *   averages, and one figure in a cell can be neither checked nor traced.
  */
 const WAREHOUSES: Warehouse[] = [
   { _id: "w1", name: "Gudang Pusat", defaultBranchId: null } as Warehouse,
@@ -31,8 +36,12 @@ const WAREHOUSES: Warehouse[] = [
 ];
 
 const TRANSFER: StockTransferSummary = {
-  transferId: "t1",
-  transferredAt: "2026-08-15T02:00:00.000Z",
+  _id: "t1",
+  transferNumber: "TRF/2610/0042",
+  status: "in_transit",
+  legacy: false,
+  revision: 0,
+  transferDate: "2026-08-15T02:00:00.000Z",
   fromWarehouseId: "w1",
   toWarehouseId: "w2",
   // Three lots for two products: one of them came off two shelves.
@@ -41,9 +50,14 @@ const TRANSFER: StockTransferSummary = {
   value: "450000.0000",
   notes: "persiapan bazar Sabtu",
   createdBy: "u1",
+  createdAt: "2026-08-15T02:00:00.000Z",
+  receivedAt: null,
+  cancelledAt: null,
   fromWarehouseName: "Gudang Pusat",
   toWarehouseName: "Gudang Bazar",
   createdByName: "Rina",
+  receivedByName: null,
+  cancelledByName: null,
 };
 
 function page(items: StockTransferSummary[] = []): StockTransferPage {
@@ -56,7 +70,7 @@ function page(items: StockTransferSummary[] = []): StockTransferPage {
 beforeEach(() => {
   jest.restoreAllMocks();
   jest
-    .spyOn(stockMovementService, "listTransfers")
+    .spyOn(stockTransferService, "list")
     .mockResolvedValue(page([TRANSFER]));
   // Spied so the test below can assert it is NOT the one that gets called.
   jest.spyOn(stockMovementService, "list");
@@ -73,15 +87,38 @@ it("opens on the list, with the form behind a button", async () => {
   expect(link).toHaveAttribute("href", "/dashboard/inventory/transfers/new");
 });
 
-it("reads the grouped endpoint, not the ledger", async () => {
+it("reads the transfer documents, not the ledger", async () => {
   renderWithAuth(<StockTransfersScreen />);
 
-  // Grouping a page of ledger rows in the browser would page ROWS: one transfer
-  // could straddle a boundary and be listed twice, each time with half its lots.
-  await waitFor(() =>
-    expect(stockMovementService.listTransfers).toHaveBeenCalled(),
-  );
+  // An edited transfer leaves superseded postings in the ledger; a list built
+  // from rows would show each revision as a transfer of its own.
+  await waitFor(() => expect(stockTransferService.list).toHaveBeenCalled());
   expect(stockMovementService.list).not.toHaveBeenCalled();
+});
+
+it("leads each row with the number and says where the goods are", async () => {
+  renderWithAuth(<StockTransfersScreen />);
+
+  const row = (await screen.findByText("TRF/2610/0042")).closest("tr");
+  expect(row).not.toBeNull();
+
+  // The word, not a colour: "Belum diterima" is the state the goods are on the
+  // road and the transfer can still be corrected.
+  expect(within(row!).getByText("Belum diterima")).toBeInTheDocument();
+});
+
+it("says Diterima and Dibatalkan for the other two states", async () => {
+  jest.spyOn(stockTransferService, "list").mockResolvedValue(
+    page([
+      { ...TRANSFER, _id: "t2", transferNumber: "TRF/2610/0043", status: "received" },
+      { ...TRANSFER, _id: "t3", transferNumber: "TRF/2610/0044", status: "cancelled" },
+    ]),
+  );
+
+  renderWithAuth(<StockTransfersScreen />);
+
+  expect(await screen.findByText("Diterima")).toBeInTheDocument();
+  expect(screen.getByText("Dibatalkan")).toBeInTheDocument();
 });
 
 it("shows both ends and what the transfer carried", async () => {
@@ -118,21 +155,21 @@ it("carries no value column, and points at the detail instead", async () => {
 });
 
 /**
- * A transfer has no number to link from — it has no document — so the way in is
- * a named action rather than a linked date somebody has to try to discover.
+ * The number is the link, and a named action sits beside it — the action says
+ * where it goes without the reader having to try the number to find out.
  */
-it("opens the transfer's own detail from the row's action", async () => {
+it("opens the transfer's own detail from the row", async () => {
   renderWithAuth(<StockTransfersScreen />);
 
   const link = await screen.findByRole("link", { name: /^Detail transfer/ });
   expect(link).toHaveAttribute(
     "href",
-    `/dashboard/inventory/transfers/${TRANSFER.transferId}`,
+    `/dashboard/inventory/transfers/${TRANSFER._id}`,
   );
 });
 
 /**
- * THE MATCH, MARKED. The note is the only thing the server searches here, so a
+ * THE MATCH, MARKED. The note and the number are what the server searches, so a
  * row on screen is a row this cell explains — and a result with nothing on it
  * showing why it is a result is one a reader has to take on trust.
  */
@@ -157,7 +194,7 @@ it("cuts a long note around the match rather than from the end", async () => {
     "stok untuk bazar akhir bulan, diambil dari rak depan setelah opname " +
     "selesai dan sisanya ditinggal untuk penjualan harian di gudang pusat";
   jest
-    .spyOn(stockMovementService, "listTransfers")
+    .spyOn(stockTransferService, "list")
     .mockResolvedValue(page([{ ...TRANSFER, notes: long }]));
 
   const user = userEvent.setup();
@@ -192,18 +229,42 @@ it("narrows on the server when a warehouse is applied", async () => {
 
   // Nothing is asked until Terapkan: that is what keeps a panel from re-querying
   // while somebody composes.
-  expect(stockMovementService.listTransfers).not.toHaveBeenLastCalledWith(
+  expect(stockTransferService.list).not.toHaveBeenLastCalledWith(
     expect.objectContaining({ warehouseId: "w2" }),
   );
 
   await user.click(screen.getByRole("button", { name: "Terapkan" }));
 
   await waitFor(() =>
-    expect(stockMovementService.listTransfers).toHaveBeenLastCalledWith(
+    expect(stockTransferService.list).toHaveBeenLastCalledWith(
       expect.objectContaining({ warehouseId: "w2" }),
     ),
   );
   // The badge is what pays back what the button conceals.
+  expect(
+    await screen.findByRole("button", { name: "Filter (1)" }),
+  ).toBeInTheDocument();
+});
+
+/**
+ * "BELUM DITERIMA" IS A LENS AS WELL AS A LABEL: the receiving warehouse's
+ * to-do is what has been sent to it and is not there yet. It goes to the server
+ * for the reason every filter here does — a list pages at twenty.
+ */
+it("narrows to what is still on the road", async () => {
+  const user = await openPanel();
+
+  await user.click(screen.getByLabelText("Filter status transfer"));
+  await user.click(
+    await screen.findByRole("option", { name: "Belum diterima" }),
+  );
+  await user.click(screen.getByRole("button", { name: "Terapkan" }));
+
+  await waitFor(() =>
+    expect(stockTransferService.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "in_transit" }),
+    ),
+  );
   expect(
     await screen.findByRole("button", { name: "Filter (1)" }),
   ).toBeInTheDocument();
@@ -222,7 +283,7 @@ it("asks the server for the ordering the panel picked", async () => {
   await user.click(screen.getByRole("button", { name: "Terapkan" }));
 
   await waitFor(() =>
-    expect(stockMovementService.listTransfers).toHaveBeenLastCalledWith(
+    expect(stockTransferService.list).toHaveBeenLastCalledWith(
       expect.objectContaining({ sort: "oldest" }),
     ),
   );
@@ -272,7 +333,7 @@ it("re-queries unnarrowed on Reset", async () => {
   await user.click(await screen.findByRole("option", { name: "Gudang Bazar" }));
   await user.click(screen.getByRole("button", { name: "Terapkan" }));
   await waitFor(() =>
-    expect(stockMovementService.listTransfers).toHaveBeenLastCalledWith(
+    expect(stockTransferService.list).toHaveBeenLastCalledWith(
       expect.objectContaining({ warehouseId: "w2" }),
     ),
   );
@@ -281,14 +342,14 @@ it("re-queries unnarrowed on Reset", async () => {
   await user.click(screen.getByRole("button", { name: "Reset" }));
 
   await waitFor(() =>
-    expect(stockMovementService.listTransfers).toHaveBeenLastCalledWith(
+    expect(stockTransferService.list).toHaveBeenLastCalledWith(
       expect.objectContaining({ warehouseId: undefined, sort: "newest" }),
     ),
   );
 });
 
 it("offers the empty list its next step", async () => {
-  jest.spyOn(stockMovementService, "listTransfers").mockResolvedValue(page());
+  jest.spyOn(stockTransferService, "list").mockResolvedValue(page());
 
   renderWithAuth(<StockTransfersScreen />);
 
@@ -307,7 +368,7 @@ it("hides the create button from a role that may only read", async () => {
   // The list itself is gated on `read` by the page — the write is gated here and
   // on the /new route, so a reader still gets the history.
   await waitFor(() =>
-    expect(stockMovementService.listTransfers).toHaveBeenCalled(),
+    expect(stockTransferService.list).toHaveBeenCalled(),
   );
   expect(screen.queryByRole("link", { name: /Transfer baru/ })).toBeNull();
 });

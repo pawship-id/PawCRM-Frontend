@@ -20,19 +20,22 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
-import { stockMovementService } from "@/services/stockMovement.service";
+import { stockTransferService } from "@/services/stockTransfer.service";
 import type {
   Product,
   ProductBatch,
+  StockTransferDetail,
   TransferItemInput,
 } from "@/types/inventory";
 import {
+  absDecimal,
   formatMoney,
   formatQty,
   isDecimal,
   isPositive,
   multiplyDecimals,
   sumDecimals,
+  trimDecimal,
   toMinor,
 } from "@/utils/decimal";
 
@@ -373,7 +376,26 @@ function TransferLineRow({
  * checked in the browser is the shortage per product, which is what stops a
  * transfer the source warehouse cannot cover.
  */
-export function StockTransferForm() {
+export function StockTransferForm({
+  transfer,
+  products: initialProducts = [],
+}: {
+  /**
+   * The document being CORRECTED, when there is one. Absent, the form files a
+   * new transfer. Only an in-transit transfer is ever passed — the edit screen
+   * refuses the rest before it renders this.
+   */
+  transfer?: StockTransferDetail;
+  /**
+   * The catalogue rows of the transfer's own products, which the edit screen has
+   * already loaded. A line holds an id, and the row beside it has to print a
+   * name and be checked against what the source holds — the picker normally
+   * supplies both, and an edit never opens it for the lines it starts with.
+   */
+  products?: Product[];
+}) {
+  const editing = transfer !== undefined;
+
   /**
    * WAREHOUSES ONLY, not the stock card's fuller lookup. That one also pages the
    * whole stock-holding catalogue to fill a dropdown — which this form no longer
@@ -385,10 +407,20 @@ export function StockTransferForm() {
 
   const router = useRouter();
 
-  const [fromWarehouseId, setFrom] = useState("");
-  const [toWarehouseId, setTo] = useState("");
-  const [lines, setLines] = useState<LineDraft[]>([]);
-  const [notes, setNotes] = useState("");
+  const [fromWarehouseId, setFrom] = useState(transfer?.fromWarehouseId ?? "");
+  const [toWarehouseId, setTo] = useState(transfer?.toWarehouseId ?? "");
+  const [lines, setLines] = useState<LineDraft[]>(() =>
+    (transfer?.items ?? []).map((item) => ({
+      productId: item.productId,
+      // "5.0000" → "5": the field should read what a person would have typed.
+      qty: trimDecimal(item.qty),
+      // A lot that was named stays named; an explicit "FEFO is fine" is
+      // restored as that choice rather than as a blank the user must redo.
+      batchId: item.batchId ?? (item.autoFefo ? AUTO_FEFO : ""),
+      notes: item.notes ?? "",
+    })),
+  );
+  const [notes, setNotes] = useState(transfer?.notes ?? "");
 
   const [picking, setPicking] = useState(false);
 
@@ -400,7 +432,98 @@ export function StockTransferForm() {
    * different boxes, and offering them here would name a lot the source cannot
    * give up.
    */
-  const lots = useWarehouseBatches(fromWarehouseId);
+  const loadedLots = useWarehouseBatches(fromWarehouseId);
+
+  /**
+   * WHAT THIS TRANSFER ITSELF HAS TAKEN, by product and by lot — only while the
+   * source is still the shelf it left.
+   *
+   * An edit is a reversal and a re-post on the server: the goods go back to the
+   * lots they came from and the revised quantity is drawn again. The balance on
+   * screen is short by exactly what this transfer took, so a form that checked a
+   * quantity against it would refuse to RAISE one — "melebihi stok" for goods
+   * that are, in the same transaction, put back. The server counts them as
+   * available and so must this.
+   *
+   * Moving the source elsewhere returns nothing to the new shelf, so the map
+   * empties and the form measures against what that warehouse really holds.
+   */
+  const returning = useMemo(() => {
+    const byProduct = new Map<string, string>();
+    const byLot = new Map<string, string>();
+
+    if (!transfer || transfer.fromWarehouseId !== fromWarehouseId) {
+      return { byProduct, byLot };
+    }
+
+    for (const row of transfer.lines) {
+      const qty = absDecimal(row.qty);
+      byProduct.set(
+        row.productId,
+        sumDecimals([byProduct.get(row.productId) ?? "0", qty]),
+      );
+      if (row.batchId) {
+        byLot.set(
+          row.batchId,
+          sumDecimals([byLot.get(row.batchId) ?? "0", qty]),
+        );
+      }
+    }
+
+    return { byProduct, byLot };
+  }, [transfer, fromWarehouseId]);
+
+  /**
+   * The lots the form offers: what the source holds, PLUS what this transfer has
+   * taken from each, plus any lot it emptied.
+   *
+   * A lot the transfer drew down to nothing is not in the warehouse's list at
+   * all — it holds nothing now — yet it is exactly the lot the line names, and a
+   * dropdown that no longer offered it would quietly change the transfer under
+   * its author. Those are rebuilt from the rows the transfer wrote, with the
+   * quantity it will have once the goods are put back.
+   */
+  const lots = useMemo(() => {
+    if (returning.byLot.size === 0) {
+      return loadedLots;
+    }
+
+    const byProduct = new Map<string, ProductBatch[]>();
+    const seen = new Set<string>();
+
+    for (const [productId, list] of loadedLots.byProduct) {
+      byProduct.set(
+        productId,
+        list.map((lot) => {
+          seen.add(lot._id);
+          const back = returning.byLot.get(lot._id);
+          return back
+            ? { ...lot, qtyRemaining: sumDecimals([lot.qtyRemaining, back]) }
+            : lot;
+        }),
+      );
+    }
+
+    for (const row of transfer?.lines ?? []) {
+      if (!row.batchId || seen.has(row.batchId)) continue;
+      seen.add(row.batchId);
+
+      byProduct.set(row.productId, [
+        ...(byProduct.get(row.productId) ?? []),
+        {
+          _id: row.batchId,
+          productId: row.productId,
+          warehouseId: row.warehouseId,
+          batchCode: row.batchCode ?? "—",
+          supplierBatchCode: row.supplierBatchCode ?? null,
+          expiryDate: row.batchExpiryDate ?? null,
+          qtyRemaining: returning.byLot.get(row.batchId) ?? "0",
+        } as ProductBatch,
+      ]);
+    }
+
+    return { ...loadedLots, byProduct };
+  }, [loadedLots, returning, transfer]);
 
   /**
    * Whether a save has been ATTEMPTED, which is when a missing batch may be
@@ -478,7 +601,7 @@ export function StockTransferForm() {
    * page-load lookup ever held.
    */
   const [productById, setProductById] = useState<Map<string, Product>>(
-    new Map(),
+    () => new Map(initialProducts.map((product) => [product._id, product])),
   );
 
   const sameWarehouse = Boolean(
@@ -564,7 +687,11 @@ export function StockTransferForm() {
       return namedLotOf(line)?.qtyRemaining ?? null;
     }
 
-    return qtyAtWarehouse(product.stockByWarehouse, fromWarehouseId);
+    // PLUS what this very transfer has taken off the shelf — see `returning`.
+    return sumDecimals([
+      qtyAtWarehouse(product.stockByWarehouse, fromWarehouseId),
+      returning.byProduct.get(line.productId) ?? "0",
+    ]);
   }
 
   /**
@@ -693,7 +820,6 @@ export function StockTransferForm() {
   const payload = useMemo(() => {
     const trimmed = notes.trim();
     return {
-      operation: "transfer" as const,
       fromWarehouseId,
       toWarehouseId,
       items,
@@ -824,36 +950,35 @@ export function StockTransferForm() {
 
     setSaving(true);
     try {
-      // The payload built above, plus the retry token. Building a second one
-      // here is how a form ends up saving something other than what it showed.
-      const written = await stockMovementService.create({
-        ...payload,
-        idempotencyKey,
-      });
+      // The payload built above, plus — on a new transfer — the retry token.
+      // Building a second one here is how a form ends up saving something other
+      // than what it showed. An edit has no key: it names the document it
+      // replaces, so a retry of it is the same edit again, not a second one.
+      const saved = editing
+        ? await stockTransferService.update(transfer._id, payload)
+        : await stockTransferService.create({ ...payload, idempotencyKey });
 
-      const productCount = payload.items.length;
-
-      // The row count is the server's. It writes a pair per lot per product, so
-      // an odd number here would itself be worth noticing — which is why the
-      // message reports rows rather than deriving them from what was typed.
+      // The server's own words for what it did: the goods have LEFT the source,
+      // and the destination's stock does not move until somebody receives them.
       swalToast(
-        `Transfer tersimpan — ${productCount} produk, ${written.length} baris ditulis.`,
+        editing
+          ? `${saved.transferNumber} diperbarui — ${saved.productCount} produk.`
+          : `${saved.transferNumber} tersimpan — ${saved.productCount} produk keluar dari ${saved.fromWarehouseName ?? "gudang asal"}. Stok ${saved.toWarehouseName ?? "gudang tujuan"} bertambah setelah diterima.`,
       );
 
       /**
-       * BACK TO THE LIST, where the transfer just written is the top row.
+       * TO THE TRANSFER JUST WRITTEN, where Terima, Ubah and the surat jalan are.
        *
-       * This form used to clear itself and stay put, which was the only thing it
-       * could do while this route WAS the form: there was nowhere to go, and no
-       * list that would have shown what had just been filed. A toast over an
-       * empty form is a receipt that disappears in four seconds.
+       * This form used to go back to the list, which was right while a transfer
+       * was finished the moment it was saved. It is not any more: the next thing
+       * somebody does with a new transfer is print the note the driver carries,
+       * and that is one click from here rather than a search through the list.
        *
        * `push`, not `replace`: Back should return to the form somebody may have
-       * meant to fill in again, not to whatever they were looking at before it.
-       * The state is left as it is — the component unmounts on navigation, and a
+       * meant to fill in again. The component unmounts on navigation, and a
        * fresh mount starts fresh, including a new idempotency key.
        */
-      router.push("/dashboard/inventory/transfers");
+      router.push(`/dashboard/inventory/transfers/${saved._id}`);
     } catch (error) {
       setFormError(
         error instanceof ApiError
@@ -949,8 +1074,8 @@ export function StockTransferForm() {
           button. It stays on the strip beside the two warehouses, which is
           what it is actually about. */}
       <FormActionBar
-        title="Transfer stok baru"
-        meta={`No. [auto] · ${lines.length} produk`}
+        title={editing ? "Ubah transfer stok" : "Transfer stok baru"}
+        meta={`${editing ? transfer.transferNumber : "No. [auto]"} · ${lines.length} produk`}
         submitLabel="Simpan transfer"
         submitting={saving}
         // A shortage disables it rather than failing on click: the API would
@@ -960,8 +1085,22 @@ export function StockTransferForm() {
         // neither may grow a case the other does not have.
         disabled={blocking !== null}
         blockedReason={blocking}
-        cancelHref="/dashboard/inventory/transfers"
+        cancelHref={
+          editing
+            ? `/dashboard/inventory/transfers/${transfer._id}`
+            : "/dashboard/inventory/transfers"
+        }
       />
+
+      {/* THE ONE THING ABOUT THIS FORM THAT HAS CHANGED, said before it is done
+          rather than discovered on the stock card: saving takes the goods off
+          the source shelf NOW, and the destination only gains them when somebody
+          there receives the transfer. */}
+      <Alert variant="info">
+        {editing
+          ? "Transfer ini belum diterima, jadi masih bisa diubah. Barang yang lama dikembalikan ke gudang asal, lalu jumlah yang baru dikeluarkan lagi — keduanya tercatat di kartu stok."
+          : "Barang langsung keluar dari gudang asal begitu transfer disimpan, dan baru masuk ke gudang tujuan setelah transfer diterima. Selama belum diterima, transfer masih bisa diubah."}
+      </Alert>
 
       {formError && <Alert variant="error">{formError}</Alert>}
 

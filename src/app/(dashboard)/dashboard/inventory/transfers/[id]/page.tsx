@@ -7,12 +7,13 @@ import { RequirePermission } from "@/features/permissions";
 export const metadata: Metadata = { title: "Detail transfer · Buloo" };
 
 /**
- * The `id` here is a CORRELATION ID, not a document's primary key: a transfer
- * has no collection of its own, and what ties its rows together is the id the
- * ledger stamps on every row of one posting. See StockMovementService.
+ * The `id` here is the transfer DOCUMENT's id. A transfer is a numbered document
+ * with a status now — filed, received later, corrected or cancelled in between —
+ * and the detail is where each of those happens, so the page is gated on `read`
+ * and the actions inside it on `create`.
  *
- * Gated on `read`, like the list: this is a record of what moved, and somebody
- * who may page the stock card may read what explains its rows.
+ * It also resolves a superseded posting id, so a stock-card row written by an
+ * earlier revision of an edited transfer still lands on its document.
  */
 export default async function StockTransferDetailPage({
   params,
@@ -39,7 +40,8 @@ export default async function StockTransferDetailPage({
             Detail transfer
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Barang yang dipindahkan, dari batch mana, dan berapa nilainya.
+            Barang yang dipindahkan, sudah diterima atau belum, dari batch
+            mana, dan berapa nilainya.
           </p>
         </div>
 

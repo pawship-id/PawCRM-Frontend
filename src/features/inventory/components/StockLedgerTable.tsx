@@ -63,7 +63,12 @@ const REFERENCE_LABELS: Record<ReferenceType, string> = {
   stock_opname: "Stok opname",
   purchase_return: "Retur pembelian",
   customer_return: "Retur customer",
-  transfer_manual: "Transfer manual",
+  // The goods leaving. The two below are the same transfer's later acts, and
+  // each is a row of its own so a card shows "sent", "received" and "undone" as
+  // three events rather than one document appearing three times.
+  transfer_manual: "Transfer stok",
+  transfer_receive: "Penerimaan transfer",
+  transfer_cancel: "Pembatalan transfer",
   bundle_consume: "Penjualan bundle",
   manual_adjustment: "Penyesuaian manual",
   // Has no document either, like a manual adjustment — but is worth naming

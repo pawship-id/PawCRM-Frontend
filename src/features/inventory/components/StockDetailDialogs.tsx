@@ -58,7 +58,12 @@ export function referenceHref(
       return `/dashboard/inventory/adjustments/${id}`;
     case "stock_opname":
       return `/dashboard/inventory/opname/${id}`;
+    // All three name the transfer document: a posting's id for the outbound and
+    // cancel rows, the document's own for a receive. The detail route accepts
+    // either, because an edited transfer's older rows still carry a superseded id.
     case "transfer_manual":
+    case "transfer_receive":
+    case "transfer_cancel":
       return `/dashboard/inventory/transfers/${id}`;
     case "customer_invoice":
     case "customer_invoice_void":
@@ -79,7 +84,12 @@ const REFERENCE_NAMES: Record<ReferenceType, string> = {
   stock_opname: "Stok opname",
   purchase_return: "Retur pembelian",
   customer_return: "Retur customer",
-  transfer_manual: "Transfer manual",
+  // The goods leaving. The two below are the same transfer's later acts, and
+  // each is a row of its own so a card shows "sent", "received" and "undone" as
+  // three events rather than one document appearing three times.
+  transfer_manual: "Transfer stok",
+  transfer_receive: "Penerimaan transfer",
+  transfer_cancel: "Pembatalan transfer",
   bundle_consume: "Penjualan bundle",
   manual_adjustment: "Penyesuaian manual",
   opening_balance: "Saldo awal persediaan",

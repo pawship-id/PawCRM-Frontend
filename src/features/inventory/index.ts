@@ -52,19 +52,24 @@ export { StockEntryDetail } from "./components/StockEntryDetail";
  * Transfers: the list this route opens on, and the form behind its button.
  *
  * The list is NOT `StockEntriesScreen` with a third `kind`. Those two read one
- * collection of hand-typed DOCUMENTS; a transfer has none — it is a group of
- * ledger rows sharing a correlation id, with counts and a value that no stock
- * entry carries.
+ * collection of hand-typed DOCUMENTS and post at once; a transfer is a document
+ * with a life — sent now, received later — whose list carries a status and a
+ * number no stock entry has.
  */
 export { NegativeStockScreen } from "./components/NegativeStockScreen";
 export { StockTransfersScreen } from "./components/StockTransfersScreen";
 /**
- * One transfer, read by its correlation id — what moved, from which lot, and at
- * what value. The list carries no value column: a transfer's worth is a dozen
- * products at their own averages, and one figure in a cell can neither be
- * checked nor traced to a product without opening the row anyway.
+ * One transfer, read — what moved, from which lot, whether it has arrived, and at
+ * what value. Also where it is received, corrected and cancelled. The list
+ * carries no value column: a transfer's worth is a dozen products at their own
+ * averages, and one figure in a cell can neither be checked nor traced to a
+ * product without opening the row anyway.
  */
 export { StockTransferDetail } from "./components/StockTransferDetail";
+/** The same form files a new transfer and corrects one that is in transit. */
+export { StockTransferEditScreen } from "./components/StockTransferEditScreen";
+/** Cetak surat jalan — the delivery note the driver carries with the boxes. */
+export { StockTransferPrintScreen } from "./components/StockTransferPrintScreen";
 export { StockTransferForm } from "./components/StockTransferForm";
 
 /**

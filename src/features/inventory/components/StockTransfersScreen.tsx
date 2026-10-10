@@ -28,38 +28,37 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Can } from "@/features/permissions";
-import type { StockTransferSort } from "@/types/inventory";
+import type {
+  StockTransferSort,
+  StockTransferStatus,
+} from "@/types/inventory";
 import type { Warehouse } from "@/types/api";
 
 import { useStockTransfers } from "../hooks/useStockTransfers";
 import { excerptAround } from "../utils/excerpt";
+import { StockTransferStatusBadge } from "./StockTransferStatusBadge";
 
 /**
  * The list of stock transfers — the screen this route opens on.
  *
- * WHY A LIST EXISTS AT ALL. This route used to open straight onto the form, the
- * same way the adjustment route once did, and a transfer is the posting that
- * suffers most from it: it writes no journal and mints no document number, so
- * once the form was cleared the only trace was a pair of rows on two different
- * stock cards. "Apa saja yang dibawa ke bazar Sabtu lalu" was a question the
- * module could not answer, even though it had deliberately written the whole
- * thing as ONE posting under one correlation id precisely so that it could.
+ * A TRANSFER IS A NUMBERED DOCUMENT NOW, with a status: "Belum diterima" while
+ * the goods are on the road and can still be corrected, "Diterima" once they
+ * have landed, "Dibatalkan" when it was undone first. The list leads with that
+ * number and that status because they are what a storekeeper looks a transfer up
+ * by — the number is the one printed on the surat jalan in the driver's hand.
  *
- * THE GROUPING IS THE SERVER'S — `GET /stock-movements/transfers`, not the
- * ledger filtered to `transfer_manual`. A transfer has no document to page, so
- * paging its rows would put one transfer on two pages, each showing half its
- * lots. See `useStockTransfers`.
+ * "Belum diterima" IS A LENS AS WELL AS A LABEL. The status filter is what turns
+ * this list into the receiving warehouse's to-do: what has been sent to me and
+ * is not here yet.
  *
  * ONE COUNT ON THE ROW, NOT TWO. "Produk" is what somebody typed. How many lots
  * FEFO drew from to satisfy it is a fact about the allocation rather than about
- * the transfer, and it was answering a question nobody asks from a list — it now
- * lives on the detail, beside the lots it counts.
+ * the transfer, and it lives on the detail, beside the lots it counts.
  *
- * "Nilai" IS NOT A JOURNAL FIGURE, and the footnote under the table says so. A
- * transfer moves goods the tenant already owns, so total inventory value does
- * not change and double-entry has nothing to record. The number answers "berapa
- * nilai barang yang saya kirim ke sana", which is what somebody loading a van
- * actually wants to know.
+ * NO "Nilai" COLUMN. A transfer's worth is a dozen products at their own
+ * averages; one figure in a cell can neither be checked nor traced to a product
+ * without opening the row anyway, so it lives on the detail, a line at a time —
+ * with the sentence that keeps it from being read as a journal figure.
  */
 
 /**
@@ -69,12 +68,25 @@ import { excerptAround } from "../utils/excerpt";
 const SORTS: FilterOption<StockTransferSort>[] = [
   { value: "newest", label: "Terbaru" },
   { value: "oldest", label: "Terlama" },
+  { value: "numberDesc", label: "No. transfer, terbesar dulu" },
+  { value: "numberAsc", label: "No. transfer, terkecil dulu" },
+];
+
+/**
+ * Where the goods are. "Belum diterima" leads the list of states, because it is
+ * the one a person opens this screen to find.
+ */
+const STATUSES: FilterOption<StockTransferStatus>[] = [
+  { value: "in_transit", label: "Belum diterima" },
+  { value: "received", label: "Diterima" },
+  { value: "cancelled", label: "Dibatalkan" },
 ];
 
 /** Everything the panel edits, as one draft. */
 interface PanelFilters {
   sort: StockTransferSort;
   warehouseId: string;
+  status: StockTransferStatus | "";
 }
 
 /**
@@ -82,10 +94,10 @@ interface PanelFilters {
  * goes back to `newest` rather than being cleared: a list with no ordering is
  * not a thing, and Reset means "back to how this screen opens".
  */
-const CLEARED: PanelFilters = { sort: "newest", warehouseId: "" };
+const CLEARED: PanelFilters = { sort: "newest", warehouseId: "", status: "" };
 
-/** Tanggal, Dari, Ke, Produk, Catatan, Aksi. */
-const COLUMN_COUNT = 6;
+/** No. transfer, Tanggal, Dari, Ke, Produk, Status, Catatan, Aksi. */
+const COLUMN_COUNT = 8;
 
 export function StockTransfersScreen() {
   const {
@@ -99,7 +111,10 @@ export function StockTransfersScreen() {
     refetch,
   } = useStockTransfers();
 
-  const filtered = query.search.trim() !== "" || query.warehouseId !== "";
+  const filtered =
+    query.search.trim() !== "" ||
+    query.warehouseId !== "" ||
+    query.status !== "";
 
   return (
     <div className="flex flex-col gap-4">
@@ -122,9 +137,8 @@ export function StockTransfersScreen() {
           <FilterSearch
             value={query.search}
             onChange={(search) => setQuery({ search })}
-            // Names the one field the server actually matches: a transfer has no
-            // document number to look for, because it has no document.
-            placeholder="Cari catatan transfer…"
+            // Names the two fields the server actually matches.
+            placeholder="Cari no. transfer atau catatan…"
             ariaLabel="Cari transfer"
             fill
           />
@@ -155,16 +169,21 @@ export function StockTransfersScreen() {
             opposite view and offers active warehouses only — it has to, because
             the API refuses a movement at a closed one. */}
         <TransfersFilterPanel
-          applied={{ sort: query.sort, warehouseId: query.warehouseId }}
+          applied={{
+            sort: query.sort,
+            warehouseId: query.warehouseId,
+            status: query.status,
+          }}
           warehouses={warehouses}
           onApply={(next) => {
             // Only what actually moved: the list query is keyed on these, so
-            // posting both back would re-fetch after a Terapkan that changed
+            // posting all back would re-fetch after a Terapkan that changed
             // nothing.
             const patch: Partial<typeof query> = {};
             if (next.sort !== query.sort) patch.sort = next.sort;
             if (next.warehouseId !== query.warehouseId)
               patch.warehouseId = next.warehouseId;
+            if (next.status !== query.status) patch.status = next.status;
             if (Object.keys(patch).length > 0) setQuery(patch);
           }}
         />
@@ -174,10 +193,12 @@ export function StockTransfersScreen() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>No. transfer</TableHead>
               <TableHead>Tanggal</TableHead>
               <TableHead>Dari</TableHead>
               <TableHead>Ke</TableHead>
               <TableHead className="text-right">Produk</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead>Catatan</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
@@ -204,7 +225,7 @@ export function StockTransfersScreen() {
                     </p>
                     <p className="max-w-md text-sm text-muted">
                       {filtered
-                        ? "Coba ubah kata kunci atau gudangnya."
+                        ? "Coba ubah kata kunci, gudang, atau statusnya."
                         : "Pindahkan barang antar gudang — misalnya menyiapkan stok untuk bazar. Satu transfer boleh membawa beberapa produk sekaligus."}
                     </p>
                   </div>
@@ -214,9 +235,20 @@ export function StockTransfersScreen() {
 
             {!loading &&
               transfers.map((transfer) => (
-                <TableRow key={transfer.transferId}>
+                <TableRow key={transfer._id}>
+                  <TableCell className="whitespace-nowrap font-medium tabular-nums">
+                    <Link
+                      href={`/dashboard/inventory/transfers/${transfer._id}`}
+                      className="text-primary hover:underline"
+                    >
+                      <HighlightText
+                        text={transfer.transferNumber}
+                        query={query.search}
+                      />
+                    </Link>
+                  </TableCell>
                   <TableCell className="tabular-nums whitespace-nowrap">
-                    {formatDate(transfer.transferredAt)}
+                    {formatDate(transfer.transferDate)}
                   </TableCell>
                   <TableCell className="whitespace-nowrap">
                     {transfer.fromWarehouseName ?? "—"}
@@ -227,12 +259,15 @@ export function StockTransfersScreen() {
                   <TableCell className="text-right tabular-nums">
                     {transfer.productCount}
                   </TableCell>
-                  {/* THE MATCH, MARKED — and the cut follows it.
-                      `notes` is the ONLY thing the server searches here, so a
-                      row on screen is a row this cell explains. CSS truncation
-                      cuts from the end regardless of where the term is, which
-                      would answer a search for a word in the middle of a long
-                      note with sixty characters that do not contain it. */}
+                  <TableCell>
+                    <StockTransferStatusBadge status={transfer.status} />
+                  </TableCell>
+                  {/* THE MATCH, MARKED — and the cut follows it. The note is one
+                      of the two things the server searches, so a row on screen
+                      is a row this cell may explain. CSS truncation cuts from
+                      the end regardless of where the term is, which would answer
+                      a search for a word in the middle of a long note with
+                      sixty characters that do not contain it. */}
                   <TableCell className="max-w-xs text-muted">
                     {transfer.notes ? (
                       <HighlightText
@@ -244,14 +279,12 @@ export function StockTransfersScreen() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {/* THE ONLY WAY IN, like the stock-entry list beside it. The
-                        date used to carry the link because a transfer has no
-                        number to link from; a named action says where it goes
-                        without the reader having to try the date to find out. */}
+                    {/* A NAMED ACTION as well as the number: it says where it
+                        goes without the reader having to try the number. */}
                     <Button variant="ghost" size="sm" asChild>
                       <Link
-                        href={`/dashboard/inventory/transfers/${transfer.transferId}`}
-                        aria-label={`Detail transfer ${formatDate(transfer.transferredAt)}`}
+                        href={`/dashboard/inventory/transfers/${transfer._id}`}
+                        aria-label={`Detail transfer ${transfer.transferNumber}`}
                       >
                         Detail
                       </Link>
@@ -263,14 +296,10 @@ export function StockTransfersScreen() {
         </Table>
       </div>
 
-      {/* WHAT THIS LIST DOES NOT CARRY, and why. A transfer's worth is a
-          dozen products at their own averages; one figure in a cell can neither
-          be checked nor traced to a product without opening the row anyway. The
-          value moved to the detail, a line at a time — and the sentence that
-          keeps it from being read as a journal figure went with it. */}
+      {/* WHAT THIS LIST DOES NOT CARRY, and why: the value. See the header. */}
       <p className="text-xs text-muted">
         Buka Detail untuk melihat barang apa saja yang pindah, dari batch mana,
-        berapa nilainya, dan siapa yang mencatatnya.
+        berapa nilainya, dan untuk mencetak surat jalan.
       </p>
 
       {pagination.totalPages > 1 && (
@@ -317,7 +346,8 @@ function TransfersFilterPanel({
    * people to ignore the badge — the one thing that makes a collapsed filter
    * safe. It changes what the top of the list is, not what is in it.
    */
-  const count = applied.warehouseId !== "" ? 1 : 0;
+  const count =
+    (applied.warehouseId !== "" ? 1 : 0) + (applied.status !== "" ? 1 : 0);
   const label = count === 0 ? "Filter" : `Filter (${count})`;
 
   function onOpenChange(next: boolean) {
@@ -363,6 +393,15 @@ function TransfersFilterPanel({
           options={SORTS}
           unsetValue="newest"
           onChange={(sort) => setDraft((prev) => ({ ...prev, sort }))}
+        />
+
+        <FilterSelect
+          layout="field"
+          label="Status"
+          ariaLabel="Filter status transfer"
+          value={draft.status}
+          options={withAll(STATUSES, "Semua status")}
+          onChange={(status) => setDraft((prev) => ({ ...prev, status }))}
         />
 
         <FilterSelect
