@@ -16,7 +16,7 @@ import type { Branch } from "@/types/api";
 import type { FinanceQuery } from "../financeSummary";
 
 /**
- * The three reading reports — Laba Rugi, Neraca, Arus Kas — and the two lookup
+ * The three reading reports — Laba Rugi and Neraca — and the two lookup
  * lists their toolbars are built from.
  *
  * ONE HOOK FOR THREE SCREENS, because the shape of the work is identical in all
@@ -33,13 +33,7 @@ import type { FinanceQuery } from "../financeSummary";
  * and `branches:read` are their own grants, and a bookkeeper without them should
  * get a report whose filters are short — not an error page.
  */
-export type FinanceReportKind = "profitLoss" | "balanceSheet" | "cashflow";
-
-/** Two trial balances, one at each end of the period. See `cashflowReport`. */
-export interface CashflowBalances {
-  opening: AccountBalance[];
-  closing: AccountBalance[];
-}
+export type FinanceReportKind = "profitLoss" | "balanceSheet";
 
 export interface UseFinanceReportResult {
   branches: Branch[];
@@ -48,31 +42,9 @@ export interface UseFinanceReportResult {
   profitLoss: ProfitLossResult | null;
   /** Present when `kind` is "balanceSheet" — the whole trial balance. */
   balances: AccountBalance[] | null;
-  /** Present when `kind` is "cashflow". */
-  cashflow: CashflowBalances | null;
   loading: boolean;
   error: string | null;
   refetch: () => void;
-}
-
-/**
- * The day before a period starts, as a calendar date.
- *
- * WHY ARUS KAS NEEDS IT. `balances` is cumulative and INCLUSIVE of `asOf`, so
- * asking as of the first day of the period would fold that day's own movement
- * into the opening balance and report it as having always been there. The saldo
- * awal is the position at the END of the day before.
- *
- * Parsed and rebuilt by hand rather than through `new Date(iso)`, which reads a
- * bare date as UTC midnight and would step back two days for anyone east of
- * Greenwich — which is everyone this product has.
- */
-export function dayBefore(iso: string): string {
-  const [year, month, day] = iso.slice(0, 10).split("-").map(Number);
-  if (!year || !month || !day) return iso;
-  const at = new Date(Date.UTC(year, month - 1, day));
-  at.setUTCDate(at.getUTCDate() - 1);
-  return at.toISOString().slice(0, 10);
 }
 
 export function useFinanceReport(
@@ -84,7 +56,6 @@ export function useFinanceReport(
 
   const [profitLoss, setProfitLoss] = useState<ProfitLossResult | null>(null);
   const [balances, setBalances] = useState<AccountBalance[] | null>(null);
-  const [cashflow, setCashflow] = useState<CashflowBalances | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -142,7 +113,7 @@ export function useFinanceReport(
           .then((result) => ({ kind, result }) as const);
     }
 
-    if (kind === "balanceSheet") {
+    {
       /*
         THE WHOLE TRIAL BALANCE, unfiltered by category. The neraca needs its
         three sections AND the income and expense rows, because laba ditahan is
@@ -157,24 +128,6 @@ export function useFinanceReport(
           .balances({ asOf: dateTo || undefined, branchId: branch })
           .then((result) => ({ kind, result }) as const);
     }
-
-    return () =>
-      Promise.all([
-        // The opening read is skipped when the period is open-ended: with no
-        // start there is nothing before it, and every balance is movement.
-        dateFrom
-          ? journalEntryService.balances({
-              asOf: dayBefore(dateFrom),
-              branchId: branch,
-              accountCategory: "cash_bank",
-            })
-          : Promise.resolve({ asOf: null, timezone: "", accounts: [] }),
-        journalEntryService.balances({
-          asOf: dateTo || undefined,
-          branchId: branch,
-          accountCategory: "cash_bank",
-        }),
-      ]).then(([opening, closing]) => ({ kind, opening, closing }) as const);
   }, [kind, dateFrom, dateTo, branchId]);
 
   useEffect(() => {
@@ -189,13 +142,8 @@ export function useFinanceReport(
 
         if (payload.kind === "profitLoss") {
           setProfitLoss(payload.result);
-        } else if (payload.kind === "balanceSheet") {
-          setBalances(payload.result.accounts);
         } else {
-          setCashflow({
-            opening: payload.opening.accounts,
-            closing: payload.closing.accounts,
-          });
+          setBalances(payload.result.accounts);
         }
       })
       .catch((cause) => {
@@ -220,7 +168,6 @@ export function useFinanceReport(
     businessLines,
     profitLoss,
     balances,
-    cashflow,
     loading,
     error,
     refetch,

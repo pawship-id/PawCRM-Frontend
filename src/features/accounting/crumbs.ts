@@ -30,10 +30,6 @@ export const ACCOUNTING_CRUMBS = {
     label: "Neraca",
     href: "/dashboard/keuangan/neraca",
   },
-  cashflow: {
-    label: "Arus Kas",
-    href: "/dashboard/keuangan/arus-kas",
-  },
   /**
    * THE ONE ENTRY THAT IS NOT UNDER /keuangan — the chart of accounts moved to
    * Pengaturan on 20 September 2026, per the BO mockup. It stays in this map

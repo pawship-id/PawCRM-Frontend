@@ -103,19 +103,16 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       action: "read",
     },
     {
-      title: "Arus kas",
-      description:
-        "Kas awal sampai kas akhir: operasional, investasi, pendanaan.",
-      href: "/dashboard/keuangan/arus-kas",
-      feature: "journalEntries",
-      action: "read",
-    },
-    {
       title: "Neraca",
       description: "Aset, kewajiban, dan ekuitas pada satu tanggal.",
       href: "/dashboard/keuangan/neraca",
       feature: "journalEntries",
       action: "read",
+    },
+    {
+      title: "Arus kas",
+      description:
+        "Kas awal sampai kas akhir: operasional, investasi, pendanaan.",
     },
     {
       title: "Saldo per akun",

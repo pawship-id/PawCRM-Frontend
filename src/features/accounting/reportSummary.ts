@@ -1,6 +1,5 @@
 import { toDecimalString, toMinor } from "@/utils/decimal";
 import type {
-  AccountBalance,
   ProfitLossResult,
   ProfitLossRow,
 } from "@/services/journalEntry.service";
@@ -11,7 +10,7 @@ import { SHARED_LINE_LABEL, SHARED_LINE_NONE } from "./financeSummary";
 
 /**
  * The arrangement that turns a report's API response into the table a screen
- * draws — Laba Rugi per lini and Arus Kas.
+ * draws — Laba Rugi per lini.
  *
  * WHAT CHANGED HERE, 18 September 2026. This file used to fold a FIXTURE and
  * carried a note saying it should not outlive the endpoint, because every
@@ -236,137 +235,6 @@ function reportColumns(
   );
 }
 
-/* --------------------------------------------------------------- arus kas */
-
-export interface CashflowAccountRow {
-  code: string;
-  name: string;
-  saldoAwal: string;
-  inflow: string;
-  outflow: string;
-  /** Derived, never stored: `saldoAwal + inflow − outflow`. */
-  saldoAkhir: string;
-  /**
-   * This account's share of the closing balance, 0–100, or null when there is
-   * no closing balance to take a share of.
-   */
-  share: number | null;
-}
-
-export interface CashflowReport {
-  rows: CashflowAccountRow[];
-  totals: {
-    saldoAwal: string;
-    inflow: string;
-    outflow: string;
-    saldoAkhir: string;
-    /** Inflow − outflow. The period's movement, as distinct from the position. */
-    netFlow: string;
-  };
-}
-
-/**
- * Kas dan bank over the period: where it started, what moved, where it ended.
- *
- * BUILT FROM TWO TRIAL BALANCES, one at each end, rather than from an endpoint
- * of its own. `balances` is cumulative from inception and returns both SIDES, so
- * the period's movement is the difference between the two reads — inflow is
- * `debit(akhir) − debit(awal)`, outflow the same on the credit side. An endpoint
- * that answered this directly would be a third way of asking one question the
- * ledger already answers twice.
- *
- * THE SUBTRACTION IS THE ONE PIECE OF ARITHMETIC LEFT IN THIS FILE. It is exact
- * — BigInt minor units, never `Number` — and it is here rather than on the
- * server because neither read knows about the other.
- *
- * SALDO AKHIR IS DERIVED, so the identity printed in the card note — Saldo Akhir
- * = Saldo Awal + Inflow − Outflow — is the definition rather than a claim about
- * it. It comes out equal to the closing read's own `balance`, which is what
- * makes the two reads a check on each other rather than two sources of truth.
- *
- * AN ACCOUNT WITH NO OPENING BALANCE AND NO MOVEMENT IS DROPPED: a bank account
- * the branch does not hold is not a balance of nothing, it is not that branch's
- * account. One that is held and simply did not move stays, as a row of zeros
- * around a real saldo awal.
- */
-export function cashflowReport(
-  opening: AccountBalance[],
-  closing: AccountBalance[],
-): CashflowReport {
-  const openingByAccount = new Map(
-    opening.map((account) => [account.accountId, account]),
-  );
-
-  // Driven by the CLOSING read, which is the superset in every ordinary case: an
-  // account can acquire its first posting during the period, but one that had a
-  // balance before it cannot lose its history.
-  const seen = new Map(closing.map((account) => [account.accountId, account]));
-  for (const account of opening) {
-    if (!seen.has(account.accountId)) seen.set(account.accountId, account);
-  }
-
-  const rows = [...seen.values()]
-    .map((account) => {
-      const before = openingByAccount.get(account.accountId);
-      const isClosing = closing.some(
-        (row) => row.accountId === account.accountId,
-      );
-
-      const saldoAwal = before?.balance ?? "0.0000";
-      const inflow = minus(
-        isClosing ? account.debit : "0.0000",
-        before?.debit ?? "0.0000",
-      );
-      const outflow = minus(
-        isClosing ? account.credit : "0.0000",
-        before?.credit ?? "0.0000",
-      );
-
-      return {
-        code: account.code,
-        name: account.name,
-        saldoAwal,
-        inflow,
-        outflow,
-        saldoAkhir: minus(sum([saldoAwal, inflow]), outflow),
-      };
-    })
-    .filter(
-      (row) =>
-        !isZero(row.saldoAwal) || !isZero(row.inflow) || !isZero(row.outflow),
-    )
-    // By account number, the order a chart of accounts is read in. The two reads
-    // arrive sorted; merging them can interleave.
-    .sort((a, b) => a.code.localeCompare(b.code, "id", { numeric: true }));
-
-  const totals = {
-    saldoAwal: sum(rows.map((row) => row.saldoAwal)),
-    inflow: sum(rows.map((row) => row.inflow)),
-    outflow: sum(rows.map((row) => row.outflow)),
-    saldoAkhir: sum(rows.map((row) => row.saldoAkhir)),
-    netFlow: minus(
-      sum(rows.map((row) => row.inflow)),
-      sum(rows.map((row) => row.outflow)),
-    ),
-  };
-
-  const closingTotal = toMinor(totals.saldoAkhir) ?? 0n;
-
-  return {
-    rows: rows.map((row) => ({
-      ...row,
-      // ×1000 then ÷10 in BigInt, the same way `marginPct` keeps one decimal
-      // without dividing money by money in floating point.
-      share:
-        closingTotal === 0n
-          ? null
-          : Number(((toMinor(row.saldoAkhir) ?? 0n) * 1000n) / closingTotal) /
-            10,
-    })),
-    totals,
-  };
-}
-
 /* ----------------------------------------------------------------- exact */
 
 /** Sums decimal strings exactly, through BigInt minor units. */
@@ -374,11 +242,6 @@ function sum(values: Array<string | undefined>): string {
   return toDecimalString(
     values.reduce<bigint>((acc, value) => acc + (toMinor(value ?? "0") ?? 0n), 0n),
   );
-}
-
-/** `a − b`, exactly. */
-function minus(a: string, b: string): string {
-  return toDecimalString((toMinor(a) ?? 0n) - (toMinor(b) ?? 0n));
 }
 
 /**

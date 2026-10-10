@@ -4,12 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 import {
   BalanceSheetScreen,
-  CashflowScreen,
   ProfitLossScreen,
 } from "@/features/accounting";
 import {
   balanceSheet,
-  cashflowReport,
   profitLossMatrix,
 } from "@/features/accounting";
 import { branchService } from "@/services/branch.service";
@@ -27,7 +25,7 @@ jest.mock("@/services/branch.service");
 jest.mock("@/services/businessLine.service");
 
 /**
- * The three reading reports — Laba Rugi, Neraca, Arus Kas.
+ * The reading reports — Laba Rugi and Neraca.
  *
  * THESE USED TO ASSERT AGAINST A FIXTURE and to check that each page ADMITTED
  * its figures were examples. All three read the ledger now, so the services are
@@ -310,21 +308,6 @@ const TRIAL_BALANCE: AccountBalance[] = [
   balance("5101", "HPP", "hpp", "expense", { debit: "30000000.0000" }),
 ];
 
-/** Kas at the start of the period, and the same account at the end. */
-const CASH_OPENING: AccountBalance[] = [
-  balance("1101", "Kas", "cash_bank", "asset", { debit: "10000000.0000" }),
-];
-const CASH_CLOSING: AccountBalance[] = [
-  balance("1101", "Kas", "cash_bank", "asset", {
-    debit: "18000000.0000",
-    credit: "3000000.0000",
-  }),
-  // First posted during the period: no opening row at all.
-  balance("1102", "Bank BCA", "cash_bank", "asset", {
-    debit: "5000000.0000",
-  }),
-];
-
 function stubLookups() {
   asMock(branchService.list).mockResolvedValue({
     items: [
@@ -424,58 +407,6 @@ describe("profitLossMatrix", () => {
     const one = profitLossMatrix(PROFIT_LOSS, LINES, GROOMING);
 
     expect(one.netProfit.total).toBe("13000000.0000");
-  });
-});
-
-describe("cashflowReport", () => {
-  it("takes the period's movement as the difference between two reads", () => {
-    const report = cashflowReport(CASH_OPENING, CASH_CLOSING);
-    const kas = report.rows.find((row) => row.code === "1101")!;
-
-    expect(kas.saldoAwal).toBe("10000000.0000");
-    // 18.000.000 debit at the end − 10.000.000 at the start.
-    expect(kas.inflow).toBe("8000000.0000");
-    expect(kas.outflow).toBe("3000000.0000");
-  });
-
-  it("derives saldo akhir from the three columns beside it", () => {
-    const report = cashflowReport(CASH_OPENING, CASH_CLOSING);
-
-    for (const row of report.rows) {
-      expect(row.saldoAkhir).toBe(
-        minus(sum([row.saldoAwal, row.inflow]), row.outflow),
-      );
-    }
-    expect(report.totals.saldoAkhir).toBe(
-      minus(
-        sum([report.totals.saldoAwal, report.totals.inflow]),
-        report.totals.outflow,
-      ),
-    );
-  });
-
-  /** An account opened mid-period has no opening row at all — all movement. */
-  it("handles an account that first posted during the period", () => {
-    const report = cashflowReport(CASH_OPENING, CASH_CLOSING);
-    const bca = report.rows.find((row) => row.code === "1102")!;
-
-    expect(bca.saldoAwal).toBe("0.0000");
-    expect(bca.inflow).toBe("5000000.0000");
-  });
-
-  it("drops an account with no opening balance and no movement", () => {
-    const idle = balance("1109", "Kas Kecil", "cash_bank", "asset");
-    const report = cashflowReport([idle], [idle]);
-
-    expect(report.rows).toHaveLength(0);
-  });
-
-  it("shares out the closing balance to a hundred", () => {
-    const report = cashflowReport(CASH_OPENING, CASH_CLOSING);
-    const shares = report.rows.map((row) => row.share ?? 0);
-
-    expect(sumNumbers(shares)).toBeGreaterThan(99);
-    expect(sumNumbers(shares)).toBeLessThan(101);
   });
 });
 
@@ -733,58 +664,6 @@ describe("ProfitLossScreen", () => {
   });
 });
 
-describe("CashflowScreen", () => {
-  beforeEach(() => {
-    asMock(journalEntryService.balances).mockImplementation(async (query) =>
-      query?.asOf === "2026-07-31"
-        ? { asOf: "2026-07-31", timezone: "Asia/Jakarta", accounts: CASH_OPENING }
-        : { asOf: "2026-08-31", timezone: "Asia/Jakarta", accounts: CASH_CLOSING },
-    );
-  });
-
-  /**
-   * `balances` is INCLUSIVE of `asOf`, so reading the first day of the period
-   * would fold that day's own movement into the opening balance.
-   */
-  it("reads the opening balance as of the day BEFORE the period", async () => {
-    renderWithAuth(<CashflowScreen now={NOW} />);
-    await screen.findByText("Ringkasan Arus Kas");
-
-    expect(journalEntryService.balances).toHaveBeenCalledWith(
-      expect.objectContaining({
-        asOf: "2026-07-31",
-        accountCategory: "cash_bank",
-      }),
-    );
-  });
-
-  it("prints the identity it uses, and no longer says the figures are examples", async () => {
-    renderWithAuth(<CashflowScreen now={NOW} />);
-    await screen.findByText("Ringkasan Arus Kas");
-
-    expect(
-      screen.getByText("Saldo Akhir = Saldo Awal + Masuk − Keluar"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText("Angka di halaman ini masih contoh."),
-    ).not.toBeInTheDocument();
-  });
-
-  /**
-   * A rupiah in the bank belongs to the shop, not to grooming — so the control
-   * is ABSENT rather than disabled, and this is the assertion that keeps it so.
-   */
-  it("offers no lini bisnis filter", async () => {
-    renderWithAuth(<CashflowScreen now={NOW} />);
-    await screen.findByText("Ringkasan Arus Kas");
-
-    expect(screen.getByLabelText("Filter cabang")).toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Filter lini bisnis"),
-    ).not.toBeInTheDocument();
-  });
-});
-
 describe("BalanceSheetScreen", () => {
   it("reads the whole trial balance as of the end of the period", async () => {
     renderWithAuth(<BalanceSheetScreen now={NOW} />);
@@ -868,10 +747,3 @@ function sum(values: string[]): string {
   return fromMinor(values.reduce((acc, value) => acc + toMinor(value), 0));
 }
 
-function minus(a: string, b: string): string {
-  return fromMinor(toMinor(a) - toMinor(b));
-}
-
-function sumNumbers(values: number[]): number {
-  return values.reduce((acc, value) => acc + value, 0);
-}

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -154,7 +154,7 @@ describe("ReportsHub", () => {
   });
 
   /** The hub is the statements' only door since 22 September 2026. */
-  it("opens the three financial statements for a ledger reader", () => {
+  it("opens the two live statements for a ledger reader, and lists Arus kas as Segera", () => {
     mockTab = "keuangan";
     renderWithAuth(<ReportsHub />, {
       isSuperAdmin: false,
@@ -166,9 +166,11 @@ describe("ReportsHub", () => {
       .map((a) => a.getAttribute("href"));
     expect(hrefs).toEqual([
       "/dashboard/keuangan/laba-rugi",
-      "/dashboard/keuangan/arus-kas",
       "/dashboard/keuangan/neraca",
     ]);
+    const arusKas = screen.getByText("Arus kas").closest("tr")!;
+    expect(arusKas).toHaveTextContent("Segera");
+    expect(within(arusKas).queryByRole("link")).not.toBeInTheDocument();
   });
 
   /** A row that leads to a 403 is worse than no row. */
