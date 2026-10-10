@@ -61,9 +61,9 @@ const GROOMING: GroomingSettings = {
         the tenant's options at all — a size since deleted.
       */
       sizeNominal: {
-        "opt-size-small": 30000,
-        "opt-size-medium": 45000,
-        "opt-size-large": 60000,
+        "opt-size-kecil": 30000,
+        "opt-size-sedang": 45000,
+        "opt-size-besar": 60000,
         jumbo: 80000,
       },
     },
@@ -131,11 +131,11 @@ describe("GroomingSettingsScreen — nominal per size", () => {
       (tenantService.updateSettings as jest.Mock).mock.calls[0][0].grooming.commission
         .service.sizeNominal,
     ).toEqual({
-      "opt-size-small": 30000,
-      "opt-size-medium": 45000,
-      "opt-size-large": 60000,
+      "opt-size-kecil": 30000,
+      "opt-size-sedang": 45000,
+      "opt-size-besar": 60000,
       jumbo: 80000,
-      "opt-size-xl": 55000,
+      "opt-size-ekstra-besar": 55000,
     });
   });
 

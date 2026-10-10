@@ -247,8 +247,8 @@ describe("PetForm — registering", () => {
   it("offers only the chosen animal's breeds, and the ones that say nothing", async () => {
     primePetOptions(petOptionService.list, [
       ...PET_OPTION_FIXTURES.filter((option) => option.type !== "breed"),
-      makePetOption({ type: "breed", code: "poodle", label: "Poodle", speciesId: "opt-species-dog" }),
-      makePetOption({ type: "breed", code: "persia", label: "Persia", speciesId: "opt-species-cat", sortOrder: 1 }),
+      makePetOption({ type: "breed", code: "poodle", label: "Poodle", speciesId: "opt-species-anjing" }),
+      makePetOption({ type: "breed", code: "persia", label: "Persia", speciesId: "opt-species-kucing", sortOrder: 1 }),
       makePetOption({ type: "breed", code: "mix", label: "Mix", sortOrder: 2 }),
     ]);
 
@@ -357,13 +357,13 @@ describe("PetForm — editing", () => {
   it("offers the care switch only when editing", async () => {
     render(<PetForm petId={PET_ID} />);
 
-    expect(await screen.findByLabelText(/masih dirawat/i)).toBeVisible();
+    expect(await screen.findByLabelText(/^aktif$/i)).toBeVisible();
   });
 
   it("does not offer the care switch when registering", async () => {
     await renderNew();
 
-    expect(screen.queryByLabelText(/masih dirawat/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^aktif$/i)).not.toBeInTheDocument();
   });
 
   it("saves the edit and returns to the list", async () => {

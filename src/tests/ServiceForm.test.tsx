@@ -704,7 +704,7 @@ describe("ServiceForm — variant pricing", () => {
       {
         petType: null,
         sizeCategory: null,
-        furType: "opt-furType-long-hair",
+        furType: "opt-furType-bulu-panjang",
         price: "180000",
         durationMin: 120,
         isActive: true,
@@ -712,7 +712,7 @@ describe("ServiceForm — variant pricing", () => {
       {
         petType: null,
         sizeCategory: null,
-        furType: "opt-furType-short-hair",
+        furType: "opt-furType-bulu-pendek",
         price: "150000",
         durationMin: 90,
         isActive: false,
@@ -807,7 +807,7 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
         {
           petType: null,
           sizeCategory: null,
-          furType: "opt-furType-long-hair",
+          furType: "opt-furType-bulu-panjang",
           price: "180000.0000",
           durationMin: 120,
           isActive: true,
@@ -815,7 +815,7 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
         {
           petType: null,
           sizeCategory: null,
-          furType: "opt-furType-short-hair",
+          furType: "opt-furType-bulu-pendek",
           price: "150000.0000",
           durationMin: 90,
           isActive: true,
@@ -839,8 +839,8 @@ describe("ServiceForm — the tenant's species, sizes and coats", () => {
     await waitFor(() => expect(mockedServiceService.update).toHaveBeenCalled());
     const [, payload] = mockedServiceService.update.mock.calls[0];
     expect(payload.variants?.map((variant) => variant.furType)).toEqual([
-      "opt-furType-long-hair",
-      "opt-furType-short-hair",
+      "opt-furType-bulu-panjang",
+      "opt-furType-bulu-pendek",
     ]);
   });
 
@@ -1554,7 +1554,7 @@ describe("ServiceForm — editing", () => {
         {
           petType: null,
           sizeCategory: null,
-          furType: "opt-furType-long-hair",
+          furType: "opt-furType-bulu-panjang",
           price: "180000.0000",
           durationMin: 120,
           isActive: true,
@@ -1562,7 +1562,7 @@ describe("ServiceForm — editing", () => {
         {
           petType: null,
           sizeCategory: null,
-          furType: "opt-furType-short-hair",
+          furType: "opt-furType-bulu-pendek",
           price: "150000.0000",
           durationMin: 90,
           isActive: false,

@@ -77,5 +77,33 @@ export function usePetPickers() {
     [options, pickerOptions],
   );
 
-  return { pickerOptions, breedOptions, loading, error };
+  /**
+   * THE SIZES OF ONE ANIMAL — for a tenant that still picks the size by hand.
+   * A size filed under an animal is offered only for it; one filed under none
+   * is offered for every animal, which is every size stored before the field.
+   * The stored size is always kept, so changing the animal never blanks it.
+   */
+  const sizeOptions = useCallback(
+    (
+      species: string | null | undefined,
+      stored?: string | null,
+    ): PetOptionChoice[] => {
+      const all = pickerOptions("size", stored);
+      if (!species) return all;
+
+      const animalOf = new Map(
+        options
+          .filter((option) => option.type === "size")
+          .map((option) => [option._id, option.speciesId ?? null]),
+      );
+
+      return all.filter((choice) => {
+        const belongsTo = animalOf.get(choice.value) ?? null;
+        return belongsTo === null || belongsTo === species || choice.value === stored;
+      });
+    },
+    [options, pickerOptions],
+  );
+
+  return { pickerOptions, breedOptions, sizeOptions, options, loading, error };
 }

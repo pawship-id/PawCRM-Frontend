@@ -40,14 +40,14 @@ import {
   THE `_id` IS FORCED TO THE OLD CODE IN THIS SUITE, and only here.
 
   `sizeNominal` is keyed by the option's `_id` (25 September 2026), so every
-  literal below would otherwise have to read `{ "opt-size-medium": 40000 }` —
+  literal below would otherwise have to read `{ "opt-size-sedang": 40000 }` —
   which says nothing about which size is priced. Naming the ids "small" /
   "medium" / "large" keeps the fixtures readable while still exercising the
   real path: `commissionSizes` reads `_id`, not `code`.
 */
 const asId = <T extends { code?: string }>(option: T) => ({
   ...option,
-  _id: option.code as string,
+  _id: (option.code ?? (option as { _id?: string })._id) as string,
 });
 
 /** Kecil, Sedang, Besar — what every tenant is seeded with, in order. */
@@ -155,7 +155,7 @@ describe("withGroomingDefaults", () => {
   it("keeps what is stored and fills only the holes, key by key", () => {
     const merged = withGroomingDefaults({
       commission: {
-        service: { mode: "size_nominal", sizeNominal: { medium: 40000 } },
+        service: { mode: "size_nominal", sizeNominal: { [SIZE_ID.medium]: 40000 } },
         addon: { enabled: true, mode: "fixed", fixed: 5000 },
       },
       capacity: { overLimit: "nonsense" },
@@ -164,7 +164,7 @@ describe("withGroomingDefaults", () => {
     expect(merged.commission.service).toEqual({
       mode: "size_nominal",
       percent: 0,
-      sizeNominal: { medium: 40000 },
+      sizeNominal: { [SIZE_ID.medium]: 40000 },
     });
     expect(merged.commission.addon).toEqual({
       enabled: true,
@@ -199,9 +199,9 @@ describe("withGroomingDefaults", () => {
 describe("commissionSizes", () => {
   it("draws every active size in the tenant's order, a size the shop added included", () => {
     expect(SIZES_WITH_XL).toEqual([
-      { id: "small", label: "Kecil", retired: false },
-      { id: "medium", label: "Sedang", retired: false },
-      { id: "large", label: "Besar", retired: false },
+      { id: SIZE_ID.small, label: "Kecil", retired: false },
+      { id: SIZE_ID.medium, label: "Sedang", retired: false },
+      { id: SIZE_ID.large, label: "Besar", retired: false },
       { id: "xl", label: "Ekstra besar", retired: false },
     ]);
   });
@@ -212,13 +212,13 @@ describe("commissionSizes", () => {
     );
 
     expect(commissionSizes(options, PRICED)).toContainEqual({
-      id: "large",
+      id: SIZE_ID.large,
       label: "Besar",
       retired: true,
     });
-    expect(commissionSizes(options, { small: 30000 }).map((size) => size.id)).toEqual([
-      "small",
-      "medium",
+    expect(commissionSizes(options, { [SIZE_ID.small]: 30000 }).map((size) => size.id)).toEqual([
+      SIZE_ID.small,
+      SIZE_ID.medium,
     ]);
   });
 });
@@ -275,7 +275,7 @@ describe("exampleCommission", () => {
     });
 
     const result = exampleCommission(perSize, SIZES);
-    expect(result.size).toEqual({ id: "medium", label: "Sedang", retired: false });
+    expect(result.size).toEqual({ id: SIZE_ID.medium, label: "Sedang", retired: false });
     expect(result.service).toEqual({ amount: 45_000, basis: "nominal Sedang" });
 
     // Adding a size at the end does not change the example's animal.
@@ -377,7 +377,7 @@ describe("the draft", () => {
     const draft = draftOf(base, (d) => {
       d.service.mode = "size_nominal";
       d.service.percent = "abc";
-      d.service.sizeNominal = { small: "30000", medium: "45000", large: "60000" };
+      d.service.sizeNominal = { [SIZE_ID.small]: "30000", [SIZE_ID.medium]: "45000", [SIZE_ID.large]: "60000" };
       d.capacity = { defaultMinutes: "480", overLimit: "block" };
     });
 
@@ -386,7 +386,7 @@ describe("the draft", () => {
         service: {
           mode: "size_nominal",
           percent: 15,
-          sizeNominal: { small: 30000, medium: 45000, large: 60000 },
+          sizeNominal: { [SIZE_ID.small]: 30000, [SIZE_ID.medium]: 45000, [SIZE_ID.large]: 60000 },
         },
         addon: { enabled: false, mode: "percentage", percent: 0, fixed: 0 },
         travel: { enabled: false, mode: "percentage", percent: 0, fixed: 0 },

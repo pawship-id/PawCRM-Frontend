@@ -75,6 +75,15 @@ export interface VariantAxisValue {
   label: string;
   /** Retired, deleted or unknown: here only because the service prices it. */
   retired: boolean;
+  /**
+   * WHICH ANIMAL THIS VALUE IS FOR, on a size only — a `species` option's id,
+   * null/absent for a size that is for every animal. Read from the option's own
+   * `speciesId`, so what pairs with what is the tenant's data and nothing here
+   * names an animal.
+   */
+  speciesId?: string | null;
+  /** That animal's word, for naming the size where the animal is not a column. */
+  speciesLabel?: string | null;
 }
 
 /**
@@ -210,6 +219,15 @@ export function variantAxisValues(
           ? option.label
           : `${option.label}${RETIRED_SUFFIX}`,
         retired: !option.isActive,
+        /* Only a size filed under an animal carries one — the rest are unchanged. */
+        ...(type === "size" && option.speciesId
+          ? {
+              speciesId: option.speciesId,
+              speciesLabel:
+                options.find((other) => other._id === option.speciesId)
+                  ?.label ?? null,
+            }
+          : {}),
       }));
 
     const listed = new Set(values.map((entry) => entry.value));
@@ -329,6 +347,20 @@ export function orderedAxes(
 }
 
 /**
+ * WHETHER A SIZE MAY SIT BESIDE AN ANIMAL. A size filed under one animal pairs
+ * only with that animal; a size filed under none pairs with all of them. With
+ * no animal in the row (the service does not vary by animal) nothing is ruled
+ * out. This is the whole relation — it is read off the option's own
+ * `speciesId`, so a tenant that never splits sizes by animal sees no change.
+ */
+function sizeFitsAnimal(
+  size: VariantAxisValue,
+  animalId: string | null,
+): boolean {
+  return !size.speciesId || animalId === null || size.speciesId === animalId;
+}
+
+/**
  * `["petType", "sizeCategory"]` → every combination of the two, in key order,
  * with the values `table` gives each axis.
  *
@@ -348,6 +380,9 @@ export function buildVariantCombos(
   const ordered = orderedAxes(axes);
   if (ordered.length === 0) return [];
 
+  /* Without an animal column, a size filed under an animal says which. */
+  const animalIsAColumn = ordered.includes("petType");
+
   let rows: VariantCombo[] = [
     {
       key: "",
@@ -363,29 +398,45 @@ export function buildVariantCombos(
 
   for (const axis of ordered) {
     rows = rows.flatMap((row) =>
-      (table[axis] ?? []).map((entry) => ({
-        ...row,
-        ...(isPetAxis(axis)
-          ? { [axis]: entry.value }
-          : axis === "zone"
-            ? { zoneId: entry.value }
-            : {
-                choices: [
-                  ...row.choices,
-                  { optionId: axis, code: entry.value },
-                ],
-              }),
-        key: `${row.key}${entry.value}|`,
-        label: row.label ? `${row.label} · ${entry.label}` : entry.label,
-        retired: row.retired || entry.retired,
-      })),
+      (table[axis] ?? [])
+        .filter(
+          (entry) =>
+            axis !== "sizeCategory" || sizeFitsAnimal(entry, row.petType),
+        )
+        .map((entry) => {
+          const word =
+            axis === "sizeCategory" && !animalIsAColumn && entry.speciesLabel
+              ? `${entry.label} (${entry.speciesLabel})`
+              : entry.label;
+
+          return {
+            ...row,
+            ...(isPetAxis(axis)
+              ? { [axis]: entry.value }
+              : axis === "zone"
+                ? { zoneId: entry.value }
+                : {
+                    choices: [
+                      ...row.choices,
+                      { optionId: axis, code: entry.value },
+                    ],
+                  }),
+            key: `${row.key}${entry.value}|`,
+            label: row.label ? `${row.label} · ${word}` : word,
+            retired: row.retired || entry.retired,
+          };
+        }),
     );
   }
 
   return rows;
 }
 
-/** How many rows `buildVariantCombos` would make, without making them. */
+/**
+ * How many rows `buildVariantCombos` would make, without making them — the
+ * product of the axes, except that animal × size counts only the pairs that
+ * belong together.
+ */
 export function variantComboCount(
   axes: readonly VariantAxisKey[] | undefined,
   table: VariantAxisValues,
@@ -393,7 +444,25 @@ export function variantComboCount(
   const ordered = orderedAxes(axes);
   if (ordered.length === 0) return 0;
 
-  return ordered.reduce((count, axis) => count * (table[axis] ?? []).length, 1);
+  const pairedAxes: VariantAxisKey[] = ["petType", "sizeCategory"];
+  const rest = ordered
+    .filter((axis) => !pairedAxes.includes(axis))
+    .reduce((count, axis) => count * (table[axis] ?? []).length, 1);
+
+  if (!ordered.includes("petType") || !ordered.includes("sizeCategory")) {
+    return ordered
+      .filter((axis) => pairedAxes.includes(axis))
+      .reduce((count, axis) => count * (table[axis] ?? []).length, rest);
+  }
+
+  const sizes = table.sizeCategory ?? [];
+  const pairs = (table.petType ?? []).reduce(
+    (sum, animal) =>
+      sum + sizes.filter((size) => sizeFitsAnimal(size, animal.value)).length,
+    0,
+  );
+
+  return pairs * rest;
 }
 
 /** The key a stored variant is held under — must match `buildVariantCombos`. */

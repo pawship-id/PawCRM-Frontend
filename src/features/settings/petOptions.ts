@@ -103,10 +103,14 @@ export function formatWeightRange(option: {
     : `${kg(min)} – <${kg(max)} kg`;
 }
 
+/** Backend cap — MAX_WEIGHT_KG in petOption.model.js. */
+export const PET_OPTION_MAX_WEIGHT_KG = 500;
+
 /**
- * Reads the two weight fields a size dialog holds as typed text. Empty is
- * null; a comma is a decimal point. `error` is the sentence for the field when
- * the pair cannot be sent.
+ * Reads the two weight fields a size dialog holds as typed text. A comma is a
+ * decimal point. BOTH BOUNDS ARE REQUIRED for a size (10 October 2026): the
+ * heaviest size takes the largest weight the shop expects, not an empty box.
+ * `error` is the sentence for the field when the pair cannot be sent.
  */
 export function parseWeightRange(
   minText: string,
@@ -116,13 +120,15 @@ export function parseWeightRange(
     text.trim() === "" ? null : Number(text.trim().replace(",", "."));
   const min = parse(minText);
   const max = parse(maxText);
-  const bad = (value: number | null) =>
-    value !== null && (!Number.isFinite(value) || value < 0);
+  const bad = (value: number) =>
+    !Number.isFinite(value) || value < 0 || value > PET_OPTION_MAX_WEIGHT_KG;
 
   let error: string | null = null;
-  if (bad(min) || bad(max)) error = "Isi berat dengan angka, 0 atau lebih.";
-  else if (max !== null && min === null) error = "Isi berat minimum dulu.";
-  else if (min !== null && max !== null && max <= min)
+  if (min === null || max === null)
+    error = "Berat minimum dan maksimum wajib diisi.";
+  else if (bad(min) || bad(max))
+    error = `Isi berat dengan angka antara 0 dan ${PET_OPTION_MAX_WEIGHT_KG}.`;
+  else if (max <= min)
     error = "Berat maksimum harus lebih besar dari minimum.";
 
   return { min, max, error };

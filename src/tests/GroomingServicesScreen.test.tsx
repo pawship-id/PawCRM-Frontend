@@ -426,7 +426,7 @@ describe("GroomingServicesScreen", () => {
 
     // A draft: nothing is asked while the panel is being composed.
     expect(serviceService.list).not.toHaveBeenCalledWith(
-      expect.objectContaining({ petType: "opt-species-cat" }),
+      expect.objectContaining({ petType: "opt-species-kucing" }),
     );
 
     await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
@@ -436,7 +436,7 @@ describe("GroomingServicesScreen", () => {
         expect.objectContaining({
           serviceKind: "grooming",
           branchId: "br-1",
-          petType: "opt-species-cat",
+          petType: "opt-species-kucing",
           location: "in_home",
           page: 1,
         }),

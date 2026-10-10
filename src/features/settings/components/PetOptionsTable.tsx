@@ -187,7 +187,7 @@ export function PetOptionsTable({
           <TableHeader>
             <TableRow>
               <TableHead>Nama</TableHead>
-              {type === "breed" && <TableHead>Hewan</TableHead>}
+              {(type === "breed" || type === "size") && <TableHead>Hewan</TableHead>}
               {type === "size" && <TableHead>Berat</TableHead>}
               {/*
                 NO KODE COLUMN (18 September 2026, on request). The code is what
@@ -215,7 +215,7 @@ export function PetOptionsTable({
                   >
                     {option.label}
                   </TableCell>
-                  {type === "breed" && (
+                  {(type === "breed" || type === "size") && (
                     <TableCell className="text-sm text-muted">
                       {option.speciesId
                         ? (speciesLabel?.(option.speciesId) ?? "Semua hewan")

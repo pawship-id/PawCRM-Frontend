@@ -66,6 +66,8 @@ export function PetOptionFormDialog({
   onSaved: () => void;
 }) {
   const editing = option !== undefined;
+  /* A breed and a size may each say which animal they are for. */
+  const hasSpecies = type === "breed" || type === "size";
   const words = PET_OPTION_TYPE_WORDS[type];
 
   const [label, setLabel] = useState(option?.label ?? "");
@@ -103,7 +105,16 @@ export function PetOptionFormDialog({
     let minKg: number | null = null;
     let maxKg: number | null = null;
 
-    if (type === "size") {
+    /* A size stored before ranges existed may still be renamed or retired with
+       the boxes left empty; every NEW range, and any edit that states one, is
+       complete. */
+    const legacyBlank =
+      editing &&
+      option.minWeightKg == null &&
+      minWeight.trim() === "" &&
+      maxWeight.trim() === "";
+
+    if (type === "size" && !legacyBlank) {
       const parsed = parseWeightRange(minWeight, maxWeight);
       if (parsed.error) {
         setWeightError(parsed.error);
@@ -114,13 +125,14 @@ export function PetOptionFormDialog({
     }
     const weightChanged =
       type === "size" &&
+      !legacyBlank &&
       (minKg !== (option?.minWeightKg ?? null) ||
         maxKg !== (option?.maxWeightKg ?? null));
 
     // An untouched save closes: there is nothing to send, and the server would
     // answer an empty patch with a 400.
     const speciesChanged =
-      type === "breed" && (speciesId || null) !== (option?.speciesId ?? null);
+      hasSpecies && (speciesId || null) !== (option?.speciesId ?? null);
     if (editing && trimmed === option.label && !speciesChanged && !weightChanged) {
       onClose();
       return;
@@ -141,8 +153,8 @@ export function PetOptionFormDialog({
         await petOptionService.create({
           type,
           label: trimmed,
-          ...(type === "breed" ? { speciesId: speciesId || null } : {}),
-          ...(type === "size" && minKg !== null
+          ...(hasSpecies ? { speciesId: speciesId || null } : {}),
+          ...(type === "size"
             ? { minWeightKg: minKg, maxWeightKg: maxKg }
             : {}),
         });
@@ -188,7 +200,7 @@ export function PetOptionFormDialog({
         );
       } else if (labelClash) {
         setFieldError(
-          type === "breed" && speciesId
+          hasSpecies && speciesId
             ? `"${trimmed}" sudah ada untuk jenis hewan itu. Pakai nama lain, atau pilih jenis hewan lain.`
             : `"${trimmed}" sudah ada di daftar ${words.noun}. Pakai nama lain.`,
         );
@@ -250,7 +262,7 @@ export function PetOptionFormDialog({
             "Semua hewan" is an honest answer: a shop that has not sorted its
             list yet keeps offering every breed for every animal.
           */}
-          {type === "breed" && (
+          {hasSpecies && (
             <SelectField
               label="Jenis hewan"
               value={speciesId}
@@ -262,7 +274,11 @@ export function PetOptionFormDialog({
                   label: choice.label,
                 })),
               ]}
-              hint="Dipakai untuk menyaring pilihan ras saat mencatat hewan."
+              hint={
+                type === "size"
+                  ? "Ukuran ini hanya dipakai untuk jenis hewan yang dipilih. Pilih \"Semua hewan\" kalau berlaku untuk semuanya."
+                  : "Dipakai untuk menyaring pilihan ras saat mencatat hewan."
+              }
               disabled={busy}
             />
           )}
@@ -287,6 +303,7 @@ export function PetOptionFormDialog({
                   placeholder="mis. 0"
                   hint="Nilai minimum termasuk (include)."
                   disabled={busy}
+                  required
                 />
                 <TextField
                   label="Berat maksimum (kg)"
@@ -300,6 +317,7 @@ export function PetOptionFormDialog({
                   placeholder="mis. 3"
                   hint="Nilai maksimum tidak termasuk (exclude)."
                   disabled={busy}
+                  required
                 />
               </div>
               {weightError && (

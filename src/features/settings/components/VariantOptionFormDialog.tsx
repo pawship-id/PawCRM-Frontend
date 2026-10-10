@@ -445,6 +445,7 @@ export function VariantOptionEditDialog({
 export function VariantValueEditDialog({
   optionName,
   value,
+  speciesChoices = [],
   save,
   onClose,
   onSaved,
@@ -456,12 +457,17 @@ export function VariantValueEditDialog({
     isActive: boolean;
     minWeightKg?: number | null;
     maxWeightKg?: number | null;
+    /** A size's animal ("" / null = every animal); present only for a size. */
+    speciesId?: string | null;
   };
+  /** The animals a size may be filed under — given with `value.speciesId`. */
+  speciesChoices?: { value: string; label: string }[];
   save: (patch: {
     label?: string;
     isActive?: boolean;
     minWeightKg?: number | null;
     maxWeightKg?: number | null;
+    speciesId?: string | null;
   }) => Promise<unknown>;
   onClose: () => void;
   onSaved: () => void;
@@ -470,6 +476,8 @@ export function VariantValueEditDialog({
   const [isActive, setIsActive] = useState(value.isActive);
   /* A size's weight range [min, max): min included, max excluded. */
   const hasWeight = "minWeightKg" in value;
+  const hasSpecies = "speciesId" in value;
+  const [speciesId, setSpeciesId] = useState(value.speciesId ?? "");
   const [minWeight, setMinWeight] = useState(
     value.minWeightKg == null ? "" : String(value.minWeightKg),
   );
@@ -490,7 +498,13 @@ export function VariantValueEditDialog({
     }
 
     let weightPatch = {};
-    if (hasWeight) {
+    /* A size stored before ranges existed may be renamed or retired with the
+       boxes empty; stating a range means stating both bounds. */
+    const legacyBlank =
+      value.minWeightKg == null &&
+      minWeight.trim() === "" &&
+      maxWeight.trim() === "";
+    if (hasWeight && !legacyBlank) {
       const parsed = parseWeightRange(minWeight, maxWeight);
       if (parsed.error) {
         setWeightError(parsed.error);
@@ -507,6 +521,9 @@ export function VariantValueEditDialog({
     const patch = {
       ...(cleaned !== value.label ? { label: cleaned } : {}),
       ...(isActive !== value.isActive ? { isActive } : {}),
+      ...(hasSpecies && (speciesId || null) !== (value.speciesId ?? null)
+        ? { speciesId: speciesId || null }
+        : {}),
       ...weightPatch,
     };
     if (Object.keys(patch).length === 0) {
@@ -569,6 +586,20 @@ export function VariantValueEditDialog({
             required
           />
 
+          {hasSpecies && (
+            <SelectField
+              label="Jenis hewan"
+              value={speciesId}
+              onChange={setSpeciesId}
+              options={[
+                { value: "", label: "Semua hewan" },
+                ...speciesChoices,
+              ]}
+              hint="Ukuran ini hanya dipakai untuk jenis hewan yang dipilih."
+              disabled={busy}
+            />
+          )}
+
           {hasWeight && (
             <div className="flex flex-col gap-1.5">
               <div className="grid grid-cols-2 gap-3">
@@ -584,6 +615,7 @@ export function VariantValueEditDialog({
                   placeholder="mis. 0"
                   hint="Nilai minimum termasuk (include)."
                   disabled={busy}
+                  required
                 />
                 <TextField
                   label="Berat maksimum (kg)"
@@ -597,6 +629,7 @@ export function VariantValueEditDialog({
                   placeholder="mis. 3"
                   hint="Nilai maksimum tidak termasuk (exclude)."
                   disabled={busy}
+                  required
                 />
               </div>
               {weightError && (

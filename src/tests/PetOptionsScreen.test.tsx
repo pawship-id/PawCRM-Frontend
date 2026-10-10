@@ -237,7 +237,7 @@ describe("PetOptionsScreen", () => {
     expect(within(dialog).queryByText(/sudah ada/i)).not.toBeInTheDocument();
   });
 
-  it("only asks for an animal on a breed — a size has none", async () => {
+  it("asks for an animal on a size too, and sends none when left on every animal", async () => {
     await renderOnSizes();
 
     await userEvent.click(
@@ -245,10 +245,10 @@ describe("PetOptionsScreen", () => {
     );
 
     expect(
-      within(screen.getByRole("dialog")).queryByRole("combobox", {
+      within(screen.getByRole("dialog")).getByRole("combobox", {
         name: "Jenis hewan",
       }),
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
   });
 
   it("reads every page before drawing the lists", async () => {
@@ -296,6 +296,18 @@ describe("PetOptionsScreen", () => {
       within(dialog).getByLabelText(/Nama ukuran/),
       "Ekstra besar",
     );
+
+    /* BOTH BOUNDS ARE REQUIRED for a size: nothing is sent without them. */
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Tambah ukuran" }),
+    );
+    expect(
+      within(dialog).getByText(/berat minimum dan maksimum wajib diisi/i),
+    ).toBeVisible();
+    expect(petOptionService.create).not.toHaveBeenCalled();
+
+    await userEvent.type(within(dialog).getByLabelText(/Berat minimum/), "10");
+    await userEvent.type(within(dialog).getByLabelText(/Berat maksimum/), "20");
     await userEvent.click(
       within(dialog).getByRole("button", { name: "Tambah ukuran" }),
     );
@@ -304,6 +316,9 @@ describe("PetOptionsScreen", () => {
       expect(petOptionService.create).toHaveBeenCalledWith({
         type: "size",
         label: "Ekstra besar",
+        speciesId: null,
+        minWeightKg: 10,
+        maxWeightKg: 20,
       }),
     );
     await waitFor(() => expect(petOptionService.list).toHaveBeenCalledTimes(2));
