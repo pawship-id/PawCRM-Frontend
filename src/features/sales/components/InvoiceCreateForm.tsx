@@ -1774,6 +1774,7 @@ export function InvoiceCreateForm() {
             /* A different customer is a different panel — see its own note. */
             key={customerId}
             customerId={customerId}
+            branchId={branchId}
             selected={bookingIds}
             onChange={setPulledBookings}
             disabled={saving}

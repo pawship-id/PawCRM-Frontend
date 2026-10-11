@@ -207,6 +207,37 @@ describe("Hari Ini", () => {
     work under it, then status and whoever is on it. Not the customer: a day
     sheet is not a list of owners.
   */
+  /* The trip's word rides the card and the panel — and no column is added. */
+  it("shows where the trip to the house stands, on the card and in the panel", async () => {
+    bookings.list.mockResolvedValue(
+      page([
+        booking({
+          location: "in_home",
+          homeTrip: {
+            _id: "trip-1",
+            status: "otw_customer",
+            performerUserId: null,
+            zoneName: "Zona A",
+            distanceKm: 3,
+            history: [],
+          },
+        }),
+      ]),
+    );
+
+    renderWithAuth(<TodayScreen />);
+
+    const card = await screen.findByRole("button", { name: /bella · basic grooming/i });
+    expect(within(card).getByText("Berangkat")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Antar-Jemput" })).toBeNull();
+
+    await userEvent.click(card);
+
+    const panel = screen.getByRole("region", { name: /rincian bella/i });
+    expect(within(panel).getByText("Perjalanan")).toBeInTheDocument();
+    expect(within(panel).getByText("Berangkat")).toBeInTheDocument();
+  });
+
   it("shows the service under the animal, then status and groomer", async () => {
     bookings.list.mockResolvedValue(
       page([

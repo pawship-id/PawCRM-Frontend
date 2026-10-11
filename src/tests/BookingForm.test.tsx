@@ -9,6 +9,7 @@ import { businessLineService } from "@/services/businessLine.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
+import { tenantService } from "@/services/tenant.service";
 import { userService } from "@/services/user.service";
 import { variantOptionService } from "@/services/variantOption.service";
 import { zoneService } from "@/services/zone.service";
@@ -18,6 +19,7 @@ import type {
   Customer,
   Pet,
   Service,
+  Tenant,
   User,
   Zone,
 } from "@/types/api";
@@ -48,6 +50,7 @@ jest.mock("@/services/branch.service");
 jest.mock("@/services/businessLine.service");
 jest.mock("@/services/variantOption.service");
 jest.mock("@/services/zone.service");
+jest.mock("@/services/tenant.service");
 jest.mock("@/services/petOption.service");
 /* The house pattern: the toast is chrome, and the real Swal drags a timer into
    every test that saves. */
@@ -138,6 +141,9 @@ beforeEach(() => {
   services.list.mockResolvedValue(page([service()]));
   users.list.mockResolvedValue(page([groomer]));
   bookings.create.mockResolvedValue(created);
+  (tenantService as jest.Mocked<typeof tenantService>).me.mockResolvedValue({
+    settings: {},
+  } as Tenant);
   branches.list.mockResolvedValue(
     page([{ _id: BRANCH_ID, name: "Cibubur" }]) as never,
   );
@@ -1948,6 +1954,311 @@ describe("BookingForm — zona dan opsi dipilih staf", () => {
     expect(bookings.update.mock.calls[0][1]).toMatchObject({
       serviceId: "svc-home",
       variantChoices: [{ optionId: LOKASI, code: "rumah" }],
+    });
+  });
+});
+
+/*
+  ─── HOME GROOMING (10 October 2026) ───────────────────────────────────────────
+
+  A house call needs a pinned address, and the server adds the "Biaya kunjungan"
+  row itself — so the form must collect and send the address, and must never
+  tick, price or send that row back.
+*/
+describe("BookingForm — home grooming", () => {
+  const zone = (id: string, name: string, minKm: number, maxKm: number): Zone => ({
+    _id: id,
+    tenantId: "t1",
+    name,
+    nameKey: name.toLowerCase(),
+    description: null,
+    minKm,
+    maxKm,
+    createdBy: null,
+    deletedAt: null,
+    createdAt: "2026-10-10T00:00:00.000Z",
+    updatedAt: "2026-10-10T00:00:00.000Z",
+  });
+
+  const main = service({
+    _id: "svc-1",
+    name: "Grooming Full Service",
+    serviceType: "main",
+    addonServiceIds: ["svc-addon"],
+    serviceKind: "grooming",
+  });
+  const addon = service({
+    _id: "svc-addon",
+    name: "Parfum",
+    price: "20000.0000",
+    durationMin: 10,
+    serviceType: "addon",
+  });
+
+  /* ~2,2 km north of the branch — Zona A (fee 25.000). */
+  const nearby = {
+    ...customer,
+    address: "Jl. Mawar No. 1",
+    location: { lat: -6.18, lng: 106.8, source: "manual" },
+  } as Customer;
+
+  beforeEach(() => {
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      zones: [
+        zone("zone-a", "Zona A", 0, 5),
+        zone("zone-b", "Zona B", 5, 10),
+      ],
+    });
+    /* THE SHOP'S HOME-GROOMING SETTINGS, read behind the booking grants. */
+    bookings.homeVisitFees.mockResolvedValue({
+      unit: "per_visit",
+      fees: [
+        { zoneId: "zone-a", zoneName: "Zona A", minKm: 0, maxKm: 5, fee: "25000.0000" },
+        { zoneId: "zone-b", zoneName: "Zona B", minKm: 5, maxKm: 10, fee: "40000.0000" },
+      ],
+    });
+    services.list.mockResolvedValue(page([main, addon]));
+    customers.list.mockResolvedValue(page([nearby]));
+    branches.list.mockResolvedValue(
+      page([
+        {
+          _id: BRANCH_ID,
+          name: "Cibubur",
+          location: { lat: -6.2, lng: 106.8, source: "manual" },
+        },
+      ]) as never,
+    );
+  });
+
+  async function startHomeBooking() {
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/lokasi layanan/i, /di rumah pelanggan/i);
+    await choose(/^layanan$/i, /grooming full service/i);
+  }
+
+  it("asks for the address, previews the zone and the fee, and sends the pin", async () => {
+    await startHomeBooking();
+
+    expect(screen.getByText("Alamat kunjungan")).toBeInTheDocument();
+    expect(screen.getAllByText(/Zona A · 2,2\d* km/).length).toBeGreaterThan(0);
+    /* 150.000 for the service + 25.000 visit fee. */
+    expect(screen.getByText(/Total .*175\.000/)).toBeInTheDocument();
+    expect(screen.getByText(/termasuk biaya kunjungan .*25\.000/i)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0]).toMatchObject({
+      location: "in_home",
+      visitAddress: { address: "Jl. Mawar No. 1", lat: -6.18, lng: 106.8 },
+    });
+  });
+
+  it("sends no visit address for a salon visit", async () => {
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await screen.findByRole("combobox", { name: /^layanan$/i });
+    await choose(/^layanan$/i, /grooming full service/i);
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0]).not.toHaveProperty("visitAddress");
+  });
+
+  it("blocks the save when the customer has no phone", async () => {
+    customers.list.mockResolvedValue(page([{ ...nearby, phone: null } as Customer]));
+    await startHomeBooking();
+
+    expect(
+      screen.getAllByText(/nomor telepon pelanggan belum diisi/i).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+  });
+
+  it("blocks the save for an address outside every zone", async () => {
+    customers.list.mockResolvedValue(
+      page([{ ...nearby, location: { lat: -6.0, lng: 106.8, source: "manual" } } as Customer]),
+    );
+    await startHomeBooking();
+
+    expect(
+      screen.getAllByText(/di luar jangkauan layanan home grooming/i).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+  });
+
+  it("asks for a pin when there is none", async () => {
+    customers.list.mockResolvedValue(
+      page([{ ...nearby, location: undefined } as unknown as Customer]),
+    );
+    await startHomeBooking();
+
+    expect(screen.getByText(/pilih titik alamat di peta/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+  });
+
+  it("puts the server's refusal of the address beside the address", async () => {
+    bookings.create.mockRejectedValue(
+      new ApiError("Validation failed", 400, {
+        details: [{ field: "visitAddress", message: "Alamat ini berada di luar jangkauan (12 km)." }],
+      }),
+    );
+    await startHomeBooking();
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    expect(await screen.findByText(/alamat ini berada di luar jangkauan \(12 km\)/i)).toBeInTheDocument();
+  });
+
+  describe("editing a house call", () => {
+    const homeBooking = (extra: Record<string, unknown> = {}) =>
+      ({
+        _id: "bk-home",
+        bookingNumber: "BK-261010-001",
+        customerId: "cust-1",
+        branchId: BRANCH_ID,
+        scheduledAt: new Date("2026-10-12T09:00:00").toISOString(),
+        status: "confirmed",
+        notes: null,
+        petId: "pet-1",
+        location: "in_home",
+        visitAddress: { address: "Jl. Kenanga 5", lat: -6.18, lng: 106.8 },
+        homeTrip: { _id: "trip-1", status: "scheduled", history: [] },
+        belongings: [],
+        internalNotes: null,
+        customerNotes: null,
+        pulledToCartAt: null,
+        pulledToInvoiceAt: null,
+        service: {
+          serviceId: "svc-1",
+          name: "Grooming Full Service",
+          price: "150000.0000",
+          durationMin: 90,
+          sessions: [],
+          addons: [
+            { itemId: "i-1", serviceId: "svc-addon", name: "Parfum", price: "20000.0000", visitFee: null },
+            {
+              itemId: "i-2",
+              serviceId: "svc-fee",
+              name: "Biaya kunjungan · Zona A",
+              price: "25000.0000",
+              visitFee: { zoneId: "zone-a", zoneName: "Zona A", distanceKm: 2.2, unit: "per_visit" },
+            },
+          ],
+        },
+        ...extra,
+      }) as unknown as Booking;
+
+    beforeEach(() => {
+      customers.getById.mockResolvedValue(nearby);
+      bookings.update.mockResolvedValue(homeBooking());
+    });
+
+    it("keeps the fee row off the tick list, shows it read-only, and never sends its id", async () => {
+      bookings.getById.mockResolvedValue(homeBooking());
+      renderWithAuth(<BookingForm bookingId="bk-home" />);
+
+      await waitFor(() =>
+        expect(screen.getByRole("combobox", { name: /^layanan$/i })).toHaveTextContent(
+          "Grooming Full Service",
+        ),
+      );
+
+      /* Ticked add-on stays; the server's row is not an option to tick. */
+      expect(await screen.findByLabelText(/parfum/i)).toBeChecked();
+      expect(screen.queryByRole("checkbox", { name: /biaya kunjungan/i })).not.toBeInTheDocument();
+      /* ...but it is said, so the total makes sense. */
+      expect(screen.getByText("Biaya kunjungan · Zona A")).toBeInTheDocument();
+      expect(screen.getByText(/Total .*195\.000/)).toBeInTheDocument();
+      /* The booking's own address, not the customer's. */
+      expect(screen.getByDisplayValue("Jl. Kenanga 5")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+      await waitFor(() => expect(bookings.update).toHaveBeenCalled());
+      const [, patch] = bookings.update.mock.calls[0];
+      expect(patch.addonServiceIds).toEqual(["svc-addon"]);
+      /*
+        UNTOUCHED, SO UNSENT: the server re-measures and re-quotes on any of
+        these, and refuses two of them once the groomer has set off.
+      */
+      expect(patch).not.toHaveProperty("visitAddress");
+      expect(patch).not.toHaveProperty("location");
+      expect(patch).not.toHaveProperty("branchId");
+      expect(patch).not.toHaveProperty("customerId");
+    });
+
+    it("sends the new address once it has been changed", async () => {
+      bookings.getById.mockResolvedValue(homeBooking());
+      renderWithAuth(<BookingForm bookingId="bk-home" />);
+      await screen.findByDisplayValue("Jl. Kenanga 5");
+
+      /* Zona B, ~7 km out. */
+      fireEvent.change(screen.getByLabelText(/^latitude/i), { target: { value: "-6.26" } });
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+      await waitFor(() => expect(bookings.update).toHaveBeenCalled());
+      const patch = bookings.update.mock.calls[0][1];
+      expect(patch).toMatchObject({
+        visitAddress: { address: "Jl. Kenanga 5", lat: -6.26, lng: 106.8 },
+      });
+      /* The location did not move, so it is not re-sent. */
+      expect(patch).not.toHaveProperty("location");
+    });
+
+    it("locks the address and the location once the groomer has set off", async () => {
+      bookings.getById.mockResolvedValue(
+        homeBooking({
+          homeTrip: { _id: "trip-1", status: "otw_customer", history: [] },
+        }),
+      );
+      renderWithAuth(<BookingForm bookingId="bk-home" />);
+      await screen.findByDisplayValue("Jl. Kenanga 5");
+
+      expect(screen.getByRole("combobox", { name: /lokasi layanan/i })).toBeDisabled();
+      expect(screen.getByDisplayValue("Jl. Kenanga 5")).toBeDisabled();
+      expect(screen.getAllByText(/groomer sudah berangkat/i).length).toBeGreaterThan(0);
+
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+      await waitFor(() => expect(bookings.update).toHaveBeenCalled());
+      const [, patch] = bookings.update.mock.calls[0];
+      expect(patch).not.toHaveProperty("visitAddress");
+      expect(patch).not.toHaveProperty("location");
+    });
+
+    it("leaves a salon booking's payload as it was", async () => {
+      bookings.getById.mockResolvedValue(
+        homeBooking({
+          location: "in_store",
+          visitAddress: null,
+          homeTrip: null,
+          service: {
+            serviceId: "svc-1",
+            name: "Grooming Full Service",
+            price: "150000.0000",
+            durationMin: 90,
+            sessions: [],
+            addons: [],
+          },
+        }),
+      );
+      renderWithAuth(<BookingForm bookingId="bk-home" />);
+      await waitFor(() =>
+        expect(screen.getByRole("combobox", { name: /^layanan$/i })).toHaveTextContent(
+          "Grooming Full Service",
+        ),
+      );
+
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+      await waitFor(() => expect(bookings.update).toHaveBeenCalled());
+      const [, patch] = bookings.update.mock.calls[0];
+      expect(patch).toMatchObject({
+        branchId: BRANCH_ID,
+        customerId: "cust-1",
+        location: "in_store",
+      });
+      expect(patch).not.toHaveProperty("visitAddress");
     });
   });
 });

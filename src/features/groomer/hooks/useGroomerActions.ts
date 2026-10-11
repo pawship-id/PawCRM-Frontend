@@ -5,10 +5,11 @@ import { useCallback, useState } from "react";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
-import type { BookingWorkStatus } from "@/types/api";
+import { homeTripService } from "@/services/homeTrip.service";
+import type { BookingWorkStatus, HomeTripStatus } from "@/types/api";
 
 /**
- * The four things a groomer does, shared by the list and the detail screen.
+ * The things a groomer does, shared by the list and the detail screen.
  *
  * EVERY ACTION RELOADS the screen it ran from rather than patching it locally.
  * Taking a job, starting one and marking the dog arrived each move something on
@@ -72,5 +73,12 @@ export function useGroomerActions(reload: () => Promise<void> | void) {
     [act],
   );
 
-  return { busy, claim, move, arrive };
+  /* One rung of the journey to a house; `busy` is `trip:<tripId>`. */
+  const moveTrip = useCallback(
+    (tripId: string, to: HomeTripStatus, success: string) =>
+      act(`trip:${tripId}`, () => homeTripService.changeStatus(tripId, to), success),
+    [act],
+  );
+
+  return { busy, claim, move, arrive, moveTrip };
 }

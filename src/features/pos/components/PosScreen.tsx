@@ -63,7 +63,7 @@ export function PosScreen() {
     loading: shiftLoading,
     error: shiftError,
     refetch,
-  } = usePosShift(branchChosen);
+  } = usePosShift(session?.currentBranchId ?? null);
   const cart = usePosCart();
   /*
     FR-3. Asks nothing until a customer is attached — the banner only exists once

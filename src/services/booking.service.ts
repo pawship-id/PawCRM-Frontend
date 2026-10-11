@@ -8,6 +8,7 @@ import type {
   AffectedBooking,
   GroomerAvailability,
   GroomerCapacityDay,
+  HomeVisitFees,
   BookingStatus,
   BookingUnbilledSummary,
   CreateBookingInput,
@@ -31,6 +32,13 @@ import type { MediaAsset } from "@/types/inventory";
  * a bug worth noticing rather than papering over.
  */
 export const bookingService = {
+  /**
+   * GET /bookings/home-visit-fees — the unit and each live zone's fee, for the
+   * forms to preview a house call. The setting is edited under Layanan ›
+   * Grooming › Pengaturan › Home grooming.
+   */
+  homeVisitFees: () => apiClient.get<HomeVisitFees>("/bookings/home-visit-fees"),
+
   /**
    * GET /bookings — paginated, sorted by `scheduledAt` ASCENDING by the server.
    *
@@ -81,10 +89,14 @@ export const bookingService = {
    *
    * The day boundary is resolved in the tenant's timezone by the server, which
    * is the part a caller would get wrong.
+   *
+   * ONLY THE BRANCH THAT WILL BILL IT (11 October 2026). Omitted, the server
+   * uses the till's own branch — what the POS wants. An invoice names the
+   * branch it is being raised for, since that is the one that books the revenue.
    */
-  bridge: (customerId: string, days?: number) =>
+  bridge: (customerId: string, days?: number, branchId?: string) =>
     apiClient.get<Booking[]>("/bookings/bridge", {
-      query: { customerId, days },
+      query: { customerId, days, branchId },
     }),
 
   /**

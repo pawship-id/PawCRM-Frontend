@@ -5,6 +5,7 @@ import {
   DEFAULT_GROOMING_SETTINGS,
   draftToSettings,
   exampleCommission,
+  feeErrorKey,
   isDraftDirty,
   nextOverride,
   parseMinutes,
@@ -149,7 +150,35 @@ describe("withGroomingDefaults", () => {
         travel: { enabled: false, mode: "percentage", percent: 0, fixed: 0 },
       },
       capacity: { defaultMinutes: 420, overLimit: "warn" },
+      /* A shop that never chose is counted per visit — what the server reads. */
+      homeGrooming: { feeUnit: "per_visit", fees: [] },
     });
+  });
+
+  it("reads the home-grooming unit and fees, and ignores what is not a fee", () => {
+    const merged = withGroomingDefaults({
+      homeGrooming: {
+        feeUnit: "per_pet",
+        fees: [
+          { zoneId: "zone-a", fee: 40000 },
+          { zoneId: "", fee: 1000 },
+          { zoneId: "zone-b", fee: -5 },
+          { zoneId: "zone-c", fee: "lots" as never },
+        ],
+      },
+    });
+
+    expect(merged.homeGrooming).toEqual({
+      feeUnit: "per_pet",
+      fees: [{ zoneId: "zone-a", fee: 40000 }],
+    });
+  });
+
+  it("falls back to per visit for a unit it does not know", () => {
+    expect(
+      withGroomingDefaults({ homeGrooming: { feeUnit: "per_km" as never, fees: [] } })
+        .homeGrooming.feeUnit,
+    ).toBe("per_visit");
   });
 
   it("keeps what is stored and fills only the holes, key by key", () => {
@@ -392,7 +421,77 @@ describe("the draft", () => {
         travel: { enabled: false, mode: "percentage", percent: 0, fixed: 0 },
       },
       capacity: { defaultMinutes: 480, overLimit: "block" },
+      homeGrooming: { feeUnit: "per_visit", fees: [] },
     });
+  });
+
+  it("carries the home-grooming unit and the fee rows the draft holds", () => {
+    const stored = settings();
+    const draft = draftOf(stored, (d) => {
+      d.homeGrooming.feeUnit = "per_pet";
+      d.homeGrooming.fees = [
+        { zoneId: "zone-b", fee: "70000" },
+        { zoneId: "zone-a", fee: "40000" },
+      ];
+    });
+
+    expect(draftToSettings(draft, stored).homeGrooming).toEqual({
+      feeUnit: "per_pet",
+      fees: [
+        { zoneId: "zone-b", fee: 70000 },
+        { zoneId: "zone-a", fee: 40000 },
+      ],
+    });
+    expect(isDraftDirty(draft, draftOf(stored), null)).toBe(true);
+  });
+});
+
+describe("home-grooming fees in the draft", () => {
+  const withRows = (rows: { zoneId: string; fee: string }[]) =>
+    draftOf(settings(), (d) => {
+      d.homeGrooming.fees = rows;
+    });
+
+  it("holds up the save for a row nobody priced — an empty box is not zero", () => {
+    const errors = validateDraft(withRows([{ zoneId: "zone-a", fee: "" }]), []);
+
+    expect(errors).toEqual({ [feeErrorKey("zone-a")]: RUPIAH_ERROR });
+  });
+
+  it("accepts zero as a decision, and refuses letters and dots", () => {
+    expect(validateDraft(withRows([{ zoneId: "zone-a", fee: "0" }]), [])).toEqual({});
+    expect(
+      Object.keys(validateDraft(withRows([{ zoneId: "zone-a", fee: "40.000" }]), [])),
+    ).toEqual([feeErrorKey("zone-a")]);
+    expect(
+      Object.keys(validateDraft(withRows([{ zoneId: "zone-a", fee: "empat" }]), [])),
+    ).toEqual([feeErrorKey("zone-a")]);
+  });
+
+  it("does not call a reordered list a change", () => {
+    const rows = [
+      { zoneId: "zone-a", fee: "40000" },
+      { zoneId: "zone-b", fee: "70000" },
+    ];
+
+    expect(isDraftDirty(withRows([...rows].reverse()), withRows(rows), null)).toBe(false);
+  });
+
+  it("calls a retyped fee a change, and a fee of 040000 the same as 40000", () => {
+    expect(
+      isDraftDirty(
+        withRows([{ zoneId: "zone-a", fee: "50000" }]),
+        withRows([{ zoneId: "zone-a", fee: "40000" }]),
+        null,
+      ),
+    ).toBe(true);
+    expect(
+      isDraftDirty(
+        withRows([{ zoneId: "zone-a", fee: "040000" }]),
+        withRows([{ zoneId: "zone-a", fee: "40000" }]),
+        null,
+      ),
+    ).toBe(false);
   });
 });
 

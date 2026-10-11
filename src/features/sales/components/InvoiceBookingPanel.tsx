@@ -50,11 +50,18 @@ const WINDOW_DAYS = 30;
 
 export function InvoiceBookingPanel({
   customerId,
+  branchId,
   selected,
   onChange,
   disabled = false,
 }: {
   customerId: string;
+  /**
+   * The branch the invoice is being raised for. Only that branch's bookings are
+   * offered: a grooming done at Barat billed on a Timur invoice would book its
+   * revenue to Timur while the work and the commission stay Barat's.
+   */
+  branchId?: string;
   /** Booking ids currently on the invoice. */
   selected: string[];
   /**
@@ -94,7 +101,7 @@ export function InvoiceBookingPanel({
     let active = true;
 
     bookingService
-      .bridge(customerId, WINDOW_DAYS)
+      .bridge(customerId, WINDOW_DAYS, branchId || undefined)
       .then((rows) => {
         if (active) setBookings(rows);
       })
@@ -120,7 +127,7 @@ export function InvoiceBookingPanel({
     return () => {
       active = false;
     };
-  }, [customerId]);
+  }, [customerId, branchId]);
 
   if (!customerId) return null;
 

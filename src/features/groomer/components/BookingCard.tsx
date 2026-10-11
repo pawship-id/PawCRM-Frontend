@@ -8,6 +8,7 @@ import { Button } from "@/components";
 import { cn } from "@/lib/utils";
 import type { GroomerBooking } from "@/types/groomer";
 import { BookingHead } from "./BookingHead";
+import { HomeTripButton } from "./HomeVisit";
 import { Pill } from "./Pill";
 import { SessionRow } from "./SessionRow";
 
@@ -32,6 +33,7 @@ export function BookingCard({
   onStart,
   onFinish,
   onClaim,
+  onTrip,
 }: {
   booking: GroomerBooking;
   kind: "saya" | "open" | "selesai" | "lain";
@@ -41,6 +43,7 @@ export function BookingCard({
   onStart: (sessionId: string) => void;
   onFinish: (sessionId: string, afterCount: number) => void;
   onClaim: (sessionId: string) => void;
+  onTrip: (tripId: string, to: NonNullable<GroomerBooking["homeTrip"]>["status"]) => void;
 }) {
   const detail = `/groomer/booking/${booking.bookingId}`;
   const panelId = useId();
@@ -74,6 +77,14 @@ export function BookingCard({
       )}
     >
       <BookingHead booking={booking} showHandling={open} />
+
+      {kind !== "lain" && (
+        <HomeTripButton
+          booking={booking}
+          busy={busyKey === `trip:${booking.homeTrip?._id}`}
+          onMove={onTrip}
+        />
+      )}
 
       {kind !== "lain" && booking.canMarkArrived && (
         <Button

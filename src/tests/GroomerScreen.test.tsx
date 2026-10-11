@@ -6,6 +6,7 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { groomerService } from "@/services/groomer.service";
+import { homeTripService } from "@/services/homeTrip.service";
 import type {
   GroomerBooking,
   GroomerBookingDetail,
@@ -17,6 +18,7 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/groomer.service");
 jest.mock("@/services/booking.service");
+jest.mock("@/services/homeTrip.service");
 jest.mock("@/services/media.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
@@ -551,5 +553,86 @@ describe("GroomerBookingScreen — the detail", () => {
     await user.click(await screen.findByRole("button", { name: /Selesaikan/ }));
 
     expect(bookings.advanceSessionWork).toHaveBeenCalledWith("b1", "s1", "done");
+  });
+});
+
+describe("Groomer app — the journey to a house", () => {
+  const trips = homeTripService as jest.Mocked<typeof homeTripService>;
+
+  const home = (
+    status: NonNullable<GroomerBooking["homeTrip"]>["status"],
+    nextStatus: string | null,
+    nextLabel: string | null,
+  ) =>
+    booking("b1", {
+      location: "in_home",
+      visitAddress: { address: "Jl. Melati 5, Cibubur", lat: -6.37, lng: 106.9 },
+      homeTrip: { _id: "t1", status, nextStatus, nextLabel },
+    });
+
+  it("shows the badge, the address and the one button the trip offers", async () => {
+    groomer.jobs.mockResolvedValue(day({ saya: [home("scheduled", "otw_customer", "Berangkat")] }));
+    render();
+
+    expect(await screen.findByText("Di rumah pelanggan")).toBeInTheDocument();
+    expect(screen.getByText("Jl. Melati 5, Cibubur")).toBeInTheDocument();
+    expect(screen.getByText("Dijadwalkan")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Berangkat" })).toHaveLength(1);
+  });
+
+  it("moves one rung, says so, and reloads the day", async () => {
+    groomer.jobs.mockResolvedValue(day({ saya: [home("otw_customer", "arrived_customer", "Sampai di rumah")] }));
+    trips.changeStatus.mockResolvedValue({} as never);
+    const user = setup();
+    render();
+
+    await user.click(await screen.findByRole("button", { name: "Sampai di rumah" }));
+
+    expect(trips.changeStatus).toHaveBeenCalledWith("t1", "arrived_customer");
+    await waitFor(() => expect(groomer.jobs).toHaveBeenCalledTimes(2));
+    expect(swalToast).toHaveBeenCalledWith("Sampai di rumah dicatat");
+  });
+
+  it("shows the server's words on a refusal", async () => {
+    groomer.jobs.mockResolvedValue(day({ saya: [home("arrived_customer", "otw_store", "Pulang")] }));
+    trips.changeStatus.mockRejectedValue(new ApiError("Coco belum selesai dikerjakan.", 409));
+    const user = setup();
+    render();
+
+    await user.click(await screen.findByRole("button", { name: "Pulang" }));
+
+    await waitFor(() =>
+      expect(swalToast).toHaveBeenCalledWith("Coco belum selesai dikerjakan.", "error", 5000),
+    );
+  });
+
+  it("draws no trip button without a trip, and a quiet line at the end", async () => {
+    groomer.jobs.mockResolvedValue(
+      day({
+        saya: [
+          booking("b1", { location: "in_home", visitAddress: { address: "Jl. Lama 1", lat: null, lng: null }, homeTrip: null }),
+          { ...home("arrived_store", null, null), bookingId: "b9", pet: pet("Mimi") },
+        ],
+      }),
+    );
+    render();
+
+    expect(await screen.findByText("Jl. Lama 1")).toBeInTheDocument();
+    expect(screen.getByText("Perjalanan selesai")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Berangkat|Pulang|Sampai di/ })).not.toBeInTheDocument();
+  });
+
+  it("offers the same button on the booking's own screen", async () => {
+    groomer.booking.mockResolvedValue({
+      settings: { showOwnCommission: false, allowOpenJobClaim: true },
+      booking: home("scheduled", "otw_customer", "Berangkat"),
+    });
+    trips.changeStatus.mockResolvedValue({} as never);
+    const user = setup();
+    renderWithAuth(<GroomerBookingScreen />);
+
+    await user.click(await screen.findByRole("button", { name: "Berangkat" }));
+
+    expect(trips.changeStatus).toHaveBeenCalledWith("t1", "otw_customer");
   });
 });

@@ -3,6 +3,7 @@ import type {
   GroomerCapacityDay,
   GroomingFlatCommissionRule,
   GroomingSettings,
+  HomeGroomingFee,
   PetOption,
 } from "@/types/api";
 
@@ -57,6 +58,8 @@ export const DEFAULT_GROOMING_SETTINGS: GroomingSettings = {
     travel: DEFAULT_FLAT_RULE,
   },
   capacity: { defaultMinutes: 420, overLimit: "warn" },
+  /* Per visit, not per animal — what the server reads a shop that never chose. */
+  homeGrooming: { feeUnit: "per_visit", fees: [] },
 };
 
 /* ─── sizes ────────────────────────────────────────────────────────────── */
@@ -177,7 +180,23 @@ export function withGroomingDefaults(
       ),
       overLimit: oneOf(stored?.capacity?.overLimit, ["warn", "block"], "warn"),
     },
+    homeGrooming: {
+      feeUnit: oneOf(stored?.homeGrooming?.feeUnit, ["per_visit", "per_pet"], "per_visit"),
+      fees: storedFees(stored?.homeGrooming?.fees),
+    },
   };
+}
+
+/** The stored fee rows that are what they say: a zone id and a whole-rupiah number. */
+function storedFees(raw: unknown): HomeGroomingFee[] {
+  if (!Array.isArray(raw)) return [];
+
+  return raw.flatMap((row): HomeGroomingFee[] => {
+    const zoneId = typeof row?.zoneId === "string" ? row.zoneId : "";
+    const fee = typeof row?.fee === "number" && Number.isFinite(row.fee) ? row.fee : null;
+
+    return zoneId && fee !== null && fee >= 0 ? [{ zoneId, fee }] : [];
+  });
 }
 
 /* ─── parsing ──────────────────────────────────────────────────────────── */
@@ -244,6 +263,16 @@ export interface GroomingSettingsDraft {
     overLimit: GroomingSettings["capacity"]["overLimit"];
   };
   /**
+   * HOME GROOMING (10 October 2026) — how a visit's fee is counted, and a row
+   * per zone with its fee as typed. A row added from the zone list starts with
+   * an EMPTY fee, not 0: a price nobody typed is not a price, and it holds up
+   * the save the way an unpriced size does.
+   */
+  homeGrooming: {
+    feeUnit: GroomingSettings["homeGrooming"]["feeUnit"];
+    fees: { zoneId: string; fee: string }[];
+  };
+  /**
    * Groomer id → minutes as typed. `null` FOLLOWS THE DEFAULT, and is a
    * different thing from `""`, which is a box somebody has just emptied to type
    * a new number into.
@@ -283,6 +312,13 @@ export function toDraft(
       defaultMinutes: String(settings.capacity.defaultMinutes),
       overLimit: settings.capacity.overLimit,
     },
+    homeGrooming: {
+      feeUnit: settings.homeGrooming.feeUnit,
+      fees: settings.homeGrooming.fees.map((row) => ({
+        zoneId: row.zoneId,
+        fee: String(row.fee),
+      })),
+    },
     overrides: Object.fromEntries(
       (capacity?.groomers ?? []).map((groomer) => [
         groomer._id,
@@ -318,12 +354,16 @@ export const MINUTES_ERROR = `Isi menit antara 1 dan ${MAX_MINUTES}.`;
 /**
  * Field key → message. Keys: `service.percent`, `service.size.<code>`,
  * `addon.percent|fixed`, `travel.percent|fixed`, `capacity.defaultMinutes`,
- * `override.<groomerId>`.
+ * `homeGrooming.fee.<zoneId>`, `override.<groomerId>`.
  */
 export type DraftErrors = Record<string, string>;
 
 export function sizeErrorKey(code: string): string {
   return `service.size.${code}`;
+}
+
+export function feeErrorKey(zoneId: string): string {
+  return `homeGrooming.fee.${zoneId}`;
 }
 
 function overrideErrors(draft: GroomingSettingsDraft, errors: DraftErrors) {
@@ -384,6 +424,13 @@ export function validateDraft(
 
   flatRuleErrors("addon", draft.addon, errors);
   flatRuleErrors("travel", draft.travel, errors);
+
+  /* EVERY ROW ON SCREEN, a zone priced once. An empty box is not a zero. */
+  for (const row of draft.homeGrooming.fees) {
+    if (parseRupiah(row.fee) === null) {
+      errors[feeErrorKey(row.zoneId)] = RUPIAH_ERROR;
+    }
+  }
 
   if (parseMinutes(draft.capacity.defaultMinutes) === null) {
     errors["capacity.defaultMinutes"] = MINUTES_ERROR;
@@ -463,6 +510,13 @@ export function draftToSettings(
         parseMinutes(draft.capacity.defaultMinutes) ?? fallback.capacity.defaultMinutes,
       overLimit: draft.capacity.overLimit,
     },
+    homeGrooming: {
+      feeUnit: draft.homeGrooming.feeUnit,
+      fees: draft.homeGrooming.fees.map((row) => ({
+        zoneId: row.zoneId,
+        fee: parseRupiah(row.fee) ?? 0,
+      })),
+    },
   };
 }
 
@@ -539,6 +593,11 @@ function settingsKey(draft: GroomingSettingsDraft): string {
     rule(draft.travel),
     canon(draft.capacity.defaultMinutes, parseMinutes),
     draft.capacity.overLimit,
+    draft.homeGrooming.feeUnit,
+    /* Sorted — the order rows were added in says nothing. */
+    draft.homeGrooming.fees
+      .map((row) => [row.zoneId, canon(row.fee, parseRupiah)] as const)
+      .sort(([a], [b]) => a.localeCompare(b)),
   ]);
 }
 

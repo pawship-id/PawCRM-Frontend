@@ -22,15 +22,19 @@ import { Label } from "@/components/ui/label";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { CustomerSearchDialog } from "@/features/customers";
 import { PetQuickAddDialog } from "@/features/pets";
+import { usePermissions } from "@/features/permissions";
 import { useVariantQuote } from "@/features/services";
+import { storedDraft, type PointDraft } from "@/features/antar-jemput/components/TripPointFields";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
 import { swalToast } from "@/lib/swal";
-import { formatMoney, sumDecimals } from "@/utils/decimal";
+import { formatMoney, sumDecimals, toDecimalString } from "@/utils/decimal";
 import { BookingCard } from "./BookingCard";
+import { useHomeVisitFees } from "../hooks/useHomeVisitFees";
+import { VisitAddressCard } from "./VisitAddressCard";
 import {
   MAX_CARDS,
   blankCard,
@@ -44,6 +48,15 @@ import {
 } from "../bookingDraft";
 import type { BookingCardDraft } from "../bookingDraft";
 import { variantRefusalOf, type VariantRefusal } from "../variantLine";
+import {
+  DEFAULT_VISIT_DRAFT,
+  visitFeeOf,
+  visitInputOf,
+  visitKeyOf,
+  visitPinOf,
+  visitPointOf,
+  visitProblem,
+} from "../visitAddress";
 import { priceForPet, staffAxesOf, variesByZone } from "@/utils/serviceVariant";
 import type {
   BookingLocation,
@@ -274,6 +287,30 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   const [deliveryRequested, setDeliveryRequested] = useState(false);
   const [tripAddress, setTripAddress] = useState("");
 
+  /*
+    A HOUSE CALL'S ADDRESS (10 October 2026) — pinned, because the zone and the
+    visit fee are measured to it. Starts from the customer's own; an edit starts
+    from the one the booking holds.
+  */
+  const [visitDraft, setVisitDraft] = useState<PointDraft>(DEFAULT_VISIT_DRAFT);
+  const [visitError, setVisitError] = useState<string | null>(null);
+  /*
+    WHAT THE STORED BOOKING SAID, to tell what an edit actually moves: the
+    server re-measures and re-quotes on ANY visit address, location, branch or
+    customer in the payload — even an unchanged one — so those are sent only
+    when they changed.
+  */
+  const [original, setOriginal] = useState<{
+    location: BookingLocation;
+    branchId: string;
+    customerId: string;
+    visitKey: string;
+    /* The server-owned "Biaya kunjungan" row, read-only here. */
+    fee: { label: string; price: string } | null;
+    /* The groomer has set off: the address and the location stay. */
+    tripLocked: boolean;
+  } | null>(null);
+
   const [picking, setPicking] = useState(false);
   const [addingPet, setAddingPet] = useState(false);
   const [petsNonce, setPetsNonce] = useState(0);
@@ -299,10 +336,20 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     PRICED BEYOND THE PET (17 September 2026): the customer's pin measured from
     the chosen branch, and the staff's choices per card.
   */
+  const branch = scope.branches.find((entry) => entry._id === branchId) ?? null;
+  const visitPoint = visitPointOf(visitDraft, customer, branch);
+  const visitPin = visitPinOf(visitPoint);
+
+  /* A house call is measured to the visit address, as the server prices it. */
   const variant = useVariantQuote({
-    branchPin: scope.branches.find((branch) => branch._id === branchId)?.location,
-    customerPin: customer?.location,
+    branchPin: branch?.location,
+    customerPin: location === "in_home" ? visitPin : customer?.location,
   });
+
+  const { can } = usePermissions();
+  /* What a house call costs and how it is counted — read behind the booking
+     grants, only when this booking is one. */
+  const homeFees = useHomeVisitFees(location === "in_home");
 
   /*
     THE BOOKING BEING CORRECTED, when there is one.
@@ -332,6 +379,19 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
         setPickedBranch(booking.branchId);
         setNotes(booking.notes ?? "");
         setLocation(booking.location ?? "in_store");
+        const feeRow = (booking.service?.addons ?? []).find((addon) => addon.visitFee);
+        setOriginal({
+          location: booking.location ?? "in_store",
+          branchId: booking.branchId,
+          customerId: booking.customerId,
+          visitKey: visitKeyOf(booking.visitAddress),
+          fee: feeRow ? { label: feeRow.name, price: feeRow.price } : null,
+          tripLocked:
+            booking.homeTrip != null && booking.homeTrip.status !== "scheduled",
+        });
+        if (booking.visitAddress && booking.visitAddress.lat != null) {
+          setVisitDraft(storedDraft(booking.visitAddress));
+        }
         setPickupRequested(booking.pickupRequested ?? false);
         setDeliveryRequested(booking.deliveryRequested ?? false);
         setTripAddress(booking.tripAddress ?? "");
@@ -555,6 +615,9 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     setCards((prev) => prev.map((card) => ({ ...card, petId: "" })));
     setFieldErrors({});
     setCardRefusal(null);
+    /* Another customer, another address to start from. */
+    setVisitDraft(DEFAULT_VISIT_DRAFT);
+    setVisitError(null);
   }
 
   function updateCard(key: string, patch: Partial<BookingCardDraft>) {
@@ -640,19 +703,50 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
       notes: notes.trim() === "" ? null : notes.trim(),
     };
 
+    /*
+      A HOUSE CALL, EDITED: only what moved is sent. The server re-measures the
+      zone and re-quotes the line whenever a location, branch, customer or visit
+      address is in the payload — unchanged or not — and refuses the address and
+      location outright once the groomer has set off. A booking that was never a
+      house call keeps the header exactly as it was.
+    */
+    const homeEdit =
+      editing && original !== null && (original.location === "in_home" || location === "in_home");
+    const { branchId: headBranch, customerId: headCustomer, location: headLocation, ...rest } = header;
+    const visitInput = visitInputOf(visitPoint);
+
+    const payload =
+      homeEdit && original
+        ? {
+            ...rest,
+            ...(headBranch !== original.branchId ? { branchId: headBranch } : {}),
+            ...(headCustomer !== original.customerId ? { customerId: headCustomer } : {}),
+            ...(!original.tripLocked && headLocation !== original.location
+              ? { location: headLocation }
+              : {}),
+            ...(!original.tripLocked && location === "in_home" && visitMoved
+              ? { visitAddress: visitInput }
+              : {}),
+            ...(!original.tripLocked && location !== "in_home" && original.location === "in_home"
+              ? { visitAddress: null }
+              : {}),
+          }
+        : header;
+
     try {
       let destination = backHref;
       let message: string;
 
       if (editing) {
         const updated = await bookingService.update(bookingId, {
-          ...header,
+          ...payload,
           ...cardToUpdate(cards[0], serviceOf),
         });
         message = `Booking ${updated.bookingNumber ?? "draf"} diperbarui.`;
       } else {
         const result = await bookingService.create({
           ...header,
+          ...(location === "in_home" ? { visitAddress: visitInput } : {}),
           status: SAVE_AS[as],
           bookings: cardsToEntries(cards, serviceOf),
         });
@@ -695,6 +789,19 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
         /* The page it landed on already shows it. */
       }
     } catch (error) {
+      /*
+        THE ADDRESS REFUSED — beside the address card, in the server's own
+        Indonesian. The phone's refusal is filed under `customerId` there.
+      */
+      if (location === "in_home" && error instanceof ApiError && error.status === 400) {
+        const about = error.fieldErrors.visitAddress ?? error.fieldErrors.customerId;
+        if (about) {
+          setVisitError(about);
+          setSaving(false);
+          return;
+        }
+      }
+
       /*
         A LINE'S CHOICE OR ZONE, REFUSED — on the card it is about: the entry the
         path names, else the first card whose service declares that card (or is
@@ -766,24 +873,40 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   }
 
   /*
+    THE HOUSE CALL (10 October 2026). On an edit "moved" is measured against what
+    the booking stored: an address nobody touched is not re-measured, so it is
+    not re-checked here either.
+  */
+  const visitMoved =
+    original === null
+      ? true
+      : location !== original.location ||
+        (location === "in_home" && visitKeyOf(visitPoint) !== original.visitKey);
+  const partyMoved =
+    original !== null &&
+    (branchId !== original.branchId || customer?._id !== original.customerId);
+  const tripLocked = original?.tripLocked ?? false;
+  /*
     ONE LINE, QUOTED — the animal, the zone and the card's choices. An edit is
     quoted in the zone the booking was priced in, which is where the server
-    re-quotes it.
+    re-quotes it — until the house call itself moves (a new address or location
+    is measured again).
   */
+  const stored = storedZone !== null && !visitMoved ? storedZone : null;
   const quoteFor = (
     service: Service | null,
     pet: Pet | null,
     choices: readonly VariantChoice[],
   ) =>
-    storedZone
-      ? priceForPet(service, pet, { zoneId: storedZone.zoneId, choices })
+    stored
+      ? priceForPet(service, pet, { zoneId: stored.zoneId, choices })
       : variant.quote(service, pet, choices);
 
   const quoteOn = (card: BookingCardDraft, serviceId: string) =>
     quoteFor(serviceOf(serviceId), petOf(card.petId), card.variantChoices);
 
-  const zoneText = storedZone
-    ? `${storedZone.name}${storedZone.distanceKm === null ? "" : ` · ${String(storedZone.distanceKm).replace(".", ",")} km`}`
+  const zoneText = stored
+    ? `${stored.name}${stored.distanceKm === null ? "" : ` · ${String(stored.distanceKm).replace(".", ",")} km`}`
     : variant.zoneText;
 
   /*
@@ -803,7 +926,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     that cannot yet be determined contributes nothing rather than a guess — the
     card says why. Nor does a new pair on an inactive variant.
   */
-  const total = sumDecimals(
+  const servicesTotal = sumDecimals(
     cards.flatMap((card) =>
       idsOf(card)
         .filter((serviceId) => !refusedInactive(card, serviceId))
@@ -895,6 +1018,26 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
 
   const ownerFixed = cards.some((card) => card.locked);
 
+  const homeRecheck =
+    location === "in_home" && !tripLocked && (!editing || visitMoved || partyMoved);
+  const visitZone = variant.zone;
+  const visitReason =
+    homeRecheck && customer ? visitProblem({ customer, point: visitPoint, zone: visitZone }) : null;
+  /*
+    THE FEE LINE, READ-ONLY. Not on the cards and not a tick: the server owns the
+    row. On an edit it is the stored one until the address moves; otherwise it is
+    this address's zone, counted the way the shop counts visits.
+  */
+  const keepStoredFee = editing && original?.fee != null && !visitMoved;
+  const visitFee =
+    location !== "in_home"
+      ? 0n
+      : keepStoredFee
+        ? 0n
+        : visitFeeOf(visitZone, homeFees, editing ? 1 : Math.max(bookingCount, 1));
+  const feeShown = keepStoredFee ? (original?.fee?.price ?? null) : visitFee > 0n ? toDecimalString(visitFee) : null;
+  const total = sumDecimals(feeShown ? [servicesTotal, feeShown] : [servicesTotal]);
+
   const blockedReason = !branchId
     ? "Cabang belum dipilih."
     : !customer
@@ -911,9 +1054,11 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
                 ? `${unanswered}.`
               : inactiveLine
                 ? `Varian ${inactiveLine.service?.name ?? "layanan"} untuk ${inactiveLine.pet?.name ?? "hewan ini"} sedang nonaktif — pilih layanan lain atau aktifkan variannya di katalog.`
-                : date === "" || time === ""
-                  ? "Tanggal dan jamnya belum lengkap."
-                  : null;
+                : visitReason
+                  ? visitReason
+                  : date === "" || time === ""
+                    ? "Tanggal dan jamnya belum lengkap."
+                    : null;
 
   return (
     <>
@@ -935,6 +1080,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
           meta={
             <span className="flex flex-wrap gap-x-4 tabular-nums">
               <span>Total {formatMoney(total)}</span>
+              {feeShown && <span>Termasuk biaya kunjungan {formatMoney(feeShown)}</span>}
               {finishesAt && <span>Selesai sekitar {finishesAt}</span>}
               {!editing && bookingCount > 1 && (
                 <span>{bookingCount} booking</span>
@@ -1074,14 +1220,50 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
             <SelectField
               label="Lokasi layanan"
               value={location}
-              onChange={(next) => setLocation(next as BookingLocation)}
+              onChange={(next) => {
+                setLocation(next as BookingLocation);
+                setVisitError(null);
+              }}
               options={LOCATION_OPTIONS}
-              disabled={saving}
-              hint="Layanan yang tidak melayani di rumah tidak bisa dipilih untuk booking ke rumah."
+              disabled={saving || tripLocked}
+              hint={
+                tripLocked
+                  ? "Groomer sudah berangkat, jadi lokasi tidak bisa diubah lagi."
+                  : "Layanan yang tidak melayani di rumah tidak bisa dipilih untuk booking ke rumah."
+              }
               required
             />
           </div>
         </Card>
+
+        {/*
+          WHERE THE GROOMER GOES (10 October 2026) — a house call needs a pinned
+          address, and the zone and the visit fee are measured to it.
+        */}
+        {location === "in_home" && (
+          <VisitAddressCard
+            customer={customer}
+            branch={branch}
+            draft={visitDraft}
+            point={visitPoint}
+            zone={visitZone}
+            fees={homeFees}
+            animals={editing ? 1 : Math.max(bookingCount, 1)}
+            disabled={saving}
+            error={visitError}
+            stored={keepStoredFee ? original?.fee : null}
+            lockedNote={
+              tripLocked
+                ? "Groomer sudah berangkat, jadi alamat kunjungan tidak bisa diubah lagi."
+                : null
+            }
+            onChange={(next) => {
+              setVisitDraft(next);
+              setVisitError(null);
+              setClash(null);
+            }}
+          />
+        )}
 
         {/*
           ANTAR-JEMPUT — only when the animal has to reach the salon. THE

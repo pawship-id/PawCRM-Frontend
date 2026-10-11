@@ -26,11 +26,19 @@ interface UsePosShiftResult {
  * opened, because that is the ordinary state of every morning — treating it as a
  * failure would make the screen's normal path an error path.
  *
- * `branchChosen` gates the request rather than the result: a session pointed at
+ * `branchId` gates the request rather than the result: a session pointed at
  * no branch cannot be asked this question at all, and the branch gate renders
  * before this one. See the effect.
+ *
+ * IT IS ASKED AGAIN WHEN THE BRANCH CHANGES (11 October 2026). A shift belongs
+ * to a (branch, cashier) pair, and the answer for Timur says nothing about
+ * Barat. The effect used to depend on a boolean — "is a branch chosen" — so
+ * switching from one branch to another left the old answer standing: a cashier
+ * with a shift open at Barat was shown "Buka Kasir" because they had been at
+ * Timur a moment before, and opening one was refused as a duplicate.
  */
-export function usePosShift(branchChosen: boolean): UsePosShiftResult {
+export function usePosShift(branchId: string | null): UsePosShiftResult {
+  const branchChosen = Boolean(branchId);
   const [shift, setShift] = useState<PosShift | null>(null);
   const [fetching, setFetching] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +98,7 @@ export function usePosShift(branchChosen: boolean): UsePosShiftResult {
     return () => {
       active = false;
     };
-  }, [nonce, branchChosen]);
+  }, [nonce, branchChosen, branchId]);
 
   // Nothing is in flight before a branch is chosen, so this is never the
   // spinner's answer on the branch gate's behalf.

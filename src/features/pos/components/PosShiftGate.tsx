@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Alert, Card, TextField } from "@/components";
 import { FilterSelect } from "@/components";
 import { Button } from "@/components/ui/button";
+import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { posService } from "@/services/pos.service";
 import { useAuth } from "@/features/auth";
@@ -126,18 +127,30 @@ export function PosShiftGate({ onOpened }: { onOpened: () => void }) {
       onOpened();
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
-        // Already open — almost always a second tab, and reloading is the fix.
-        setFormError(
-          error.reason ??
-            "Kamu sudah punya shift terbuka. Muat ulang halaman untuk melanjutkannya.",
+        /*
+          ALREADY OPEN AT THIS BRANCH — a second tab, or a shift left open from
+          another day. Said in Indonesian (the server's own sentence is for
+          logs) and, more usefully, ACTED ON: the till is asked again, which
+          finds the shift that is open and carries on with it, instead of
+          leaving somebody on a gate that cannot be passed.
+        */
+        const number = /SHF-\d{4}-\d+/.exec(error.reason ?? "")?.[0];
+
+        swalToast(
+          number
+            ? `Kamu masih punya shift ${number} yang terbuka di cabang ini — dilanjutkan.`
+            : "Kamu masih punya shift yang terbuka di cabang ini — dilanjutkan.",
         );
-      } else {
-        setFormError(
-          error instanceof ApiError
-            ? (error.reason ?? error.message)
-            : "Terjadi kesalahan. Coba lagi.",
-        );
+        setSaving(false);
+        onOpened();
+        return;
       }
+
+      setFormError(
+        error instanceof ApiError
+          ? (error.reason ?? error.message)
+          : "Terjadi kesalahan. Coba lagi.",
+      );
       setSaving(false);
     }
   }

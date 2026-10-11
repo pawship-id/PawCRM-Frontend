@@ -65,10 +65,17 @@ export function discountWords(mode: DiscountMode, value: string): string {
   return mode === "percent" ? `${value}%` : formatMoney(value);
 }
 
-/** The one place a service may be done, or null when it goes either way. */
-export function onlyAt(service: Service | null): BookingLocation | null {
+/**
+ * Whether a service may be done at a place — the server's own rule
+ * (`#assertServiceOffered`): an EMPTY list is "not answered yet" and means
+ * anywhere, so an old service is never hidden by a plain `includes()`.
+ */
+export function offeredAt(
+  service: Pick<Service, "serviceLocations"> | null | undefined,
+  location: BookingLocation,
+): boolean {
   const at = service?.serviceLocations ?? [];
-  return at.length === 1 ? at[0] : null;
+  return at.length === 0 || at.includes(location);
 }
 
 export const badge = "rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap";

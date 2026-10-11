@@ -726,6 +726,44 @@ export interface GroomingSettings {
     /** `warn` asks before overbooking; `block` refuses the booking. */
     overLimit: "warn" | "block";
   };
+  /**
+   * HOME GROOMING (10 October 2026) — every setting of it, in one place. The
+   * zones are the shop's distance bands (Pengaturan › Layanan › Zona) and carry
+   * nothing about money; what a visit to each costs is chosen here.
+   */
+  homeGrooming: {
+    /** Once per visit however many animals (the default), or once per animal. */
+    feeUnit: VisitFeeUnit;
+    /** One row per zone that has a fee, in whole rupiah. A zone with no row is free. */
+    fees: HomeGroomingFee[];
+  };
+}
+
+/** How a home visit's fee is counted — one rule for the whole shop. */
+export type VisitFeeUnit = "per_visit" | "per_pet";
+
+/** One zone's home-visit fee as the grooming settings store it. */
+export interface HomeGroomingFee {
+  zoneId: string;
+  /** Whole rupiah. */
+  fee: number;
+}
+
+/**
+ * GET /api/bookings/home-visit-fees — what the booking forms preview a visit
+ * with. Behind the booking grants, so a cashier who cannot open the settings can
+ * still say the figure. Live zones, nearest first; `fee` is "0.0000" for a zone
+ * with no row.
+ */
+export interface HomeVisitFees {
+  unit: VisitFeeUnit;
+  fees: {
+    zoneId: string;
+    zoneName: string;
+    minKm: number;
+    maxKm: number;
+    fee: string;
+  }[];
 }
 
 /**
@@ -2897,6 +2935,22 @@ export interface Booking {
   tripOrigin?: TripPoint | null;
   tripDestination?: TripPoint | null;
   /**
+   * ─── HOME GROOMING (10 October 2026) ──────────────────────────────────────
+   *
+   * Where the groomer goes, on a booking whose `location` is `in_home` — with a
+   * pin, because the zone and the visit fee are measured to it. Null on every
+   * other booking. NOT `tripDestination`, which is a van's end.
+   */
+  visitAddress?: TripPoint | null;
+  /** The groomer's journey to it — null until the booking has one. */
+  homeTrip?: BookingHomeTrip | null;
+  /**
+   * The trip this booking is part of (11 October 2026) — `homeTrips`, one trip to
+   * many bookings, the pointer held HERE. Null on a salon booking, and on a home
+   * booking made before trips existed.
+   */
+  homeTripId?: string | null;
+  /**
    * ─── ANTAR-JEMPUT (21 September 2026) ─────────────────────────────────────
    *
    * `tripLeg` is set only on a booking whose main service IS the ride, and a
@@ -3251,6 +3305,17 @@ export interface BookingAddon {
   durationMin: number | null;
   /** Its own "Dipilih staf" values — inherited from the main service unless changed. */
   variantChoices?: VariantChoiceSnapshot[];
+  /**
+   * Set ONLY on the home-visit fee line (10 October 2026). The server owns the
+   * row: it cannot be ticked, priced or removed from a form, and it is
+   * recomputed from the visit address.
+   */
+  visitFee?: {
+    zoneId: string;
+    zoneName: string | null;
+    distanceKm: number | null;
+    unit: VisitFeeUnit;
+  } | null;
 }
 
 /**
@@ -3879,6 +3944,12 @@ export interface CreateBookingInput {
   tripOrigin?: TripPointInput | null;
   tripDestination?: TripPointInput | null;
   /**
+   * WHERE THE GROOMER GOES — required, with its pin, when `location` is
+   * `in_home`. The customer must also have a phone number, and the distance must
+   * fall in a zone; the server refuses either in Indonesian.
+   */
+  visitAddress?: TripPointInput | null;
+  /**
    * "Save it anyway" — FR-4 kriteria 4.6. A CLASH IS A WARNING, NOT A REFUSAL;
    * the server refuses this flag without `bookings:overrideClash`. LEAVE IS NOT
    * OVERRIDABLE.
@@ -3952,6 +4023,8 @@ export interface UpdateBookingInput {
   /** The two ends of a ride — required together on an antar-jemput save. */
   tripOrigin?: TripPointInput | null;
   tripDestination?: TripPointInput | null;
+  /** Refused with 409 once the groomer has set off. */
+  visitAddress?: TripPointInput | null;
   tripLeg?: TripLeg | null;
   /** Who is in the van. Does NOT re-quote — see `linkedBookingIds`. */
   passengerPetIds?: string[];
@@ -7923,4 +7996,103 @@ export interface UpdateCashTransactionInput {
 /** POST /api/cash-transactions/:id/void — 1–200 chars. */
 export interface CancelCashTransactionInput {
   reason: string;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   HOME GROOMING TRIP (10 October 2026)
+   ───────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The groomer's journey to a house and back — `scheduled → otw_customer →
+ * arrived_customer → otw_store → arrived_store`, one step at a time, with
+ * `cancelled` reachable from any rung before the end. NOT the booking's status
+ * and NOT antar-jemput: it bills nothing.
+ */
+export type HomeTripStatus =
+  | "scheduled"
+  | "otw_customer"
+  | "arrived_customer"
+  | "otw_store"
+  | "arrived_store"
+  | "cancelled";
+
+/** The trip as a booking carries it — enough to draw the timeline. */
+export interface BookingHomeTrip {
+  _id: string;
+  status: HomeTripStatus;
+  performerUserId: string | null;
+  zoneName: string | null;
+  distanceKm: number | null;
+  history: { status: HomeTripStatus; at: string; byName: string | null }[];
+}
+
+/** One call on one customer's house, as a trip holds it. */
+export interface HomeTripStop {
+  customerId: string;
+  customerName: string | null;
+  destination: TripPoint | null;
+  zoneName: string | null;
+  distanceKm: number | null;
+  sequence: number;
+}
+
+/** One step in a trip's trail. */
+export interface HomeTripHistoryRow {
+  status: HomeTripStatus;
+  /** The word on its button: "Berangkat", "Sampai di rumah"… */
+  label: string;
+  at: string;
+  by: string | null;
+  byName: string | null;
+}
+
+/** GET /api/home-trips[/:id] — the trip with names and the bookings it covers. */
+export interface HomeTrip {
+  _id: string;
+  groupId: string;
+  branchId: string;
+  customerId: string;
+  customerName: string | null;
+  /** Null means "the groomer on the booking". */
+  performerUserId: string | null;
+  performerName: string | null;
+  status: HomeTripStatus;
+  statusLabel: string;
+  /** The one rung the buttons may move it to; null at the end. */
+  nextStatus: HomeTripStatus | null;
+  nextLabel: string | null;
+  scheduledAt: string | null;
+  origin: TripPoint | null;
+  /** The FIRST stop's address — a trip has one stop today. See `stops`. */
+  destination: TripPoint | null;
+  zoneName: string | null;
+  distanceKm: number | null;
+  /**
+   * THE CUSTOMERS THIS TRIP CALLS ON, in order (11 October 2026). One today; the
+   * flat `customerId` / `destination` / `zoneName` above are its first, for every
+   * screen written when a trip had one.
+   */
+  stops: HomeTripStop[];
+  history: HomeTripHistoryRow[];
+  bookings: {
+    _id: string;
+    bookingNumber: string | null;
+    petName: string | null;
+    serviceName: string | null;
+    status: BookingStatus;
+  }[];
+}
+
+export interface HomeTripListQuery {
+  page?: number;
+  limit?: number;
+  branchId?: string;
+  groupId?: string;
+  status?: HomeTripStatus;
+  performerUserId?: string;
+  /** Only the caller's own trips. */
+  mine?: boolean;
+  scheduledFrom?: string;
+  scheduledTo?: string;
 }

@@ -19,14 +19,26 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { VisitAddressCard } from "@/features/booking/components/VisitAddressCard";
+import {
+  DEFAULT_VISIT_DRAFT,
+  visitFeeOf,
+  visitInputOf,
+  visitPinOf,
+  visitPointOf,
+  visitProblem,
+} from "@/features/booking/visitAddress";
 import { variantRefusalOf, type VariantRefusal } from "@/features/booking/variantLine";
 import { CustomerSearchDialog } from "@/features/customers";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { usePermissions } from "@/features/permissions";
 import { PetFixLink, PetQuickAddDialog, PetSummaryCard } from "@/features/pets";
+import type { PointDraft } from "@/features/antar-jemput/components/TripPointFields";
 // `PageHeading` is still purchasing-local, awaiting promotion (ui-rules §15).
 import { PageHeading } from "@/features/purchasing";
 import { useVariantQuote, VariantChoicePicker } from "@/features/services";
+import { useHomeVisitFees } from "@/features/booking/hooks/useHomeVisitFees";
 import { usePetOptions } from "@/hooks/usePetOptions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
@@ -81,7 +93,7 @@ import {
   Initial,
   money,
   nextHalfHourValue,
-  onlyAt,
+  offeredAt,
   PriceRow,
   SummaryLine,
   todayValue,
@@ -126,8 +138,8 @@ const VARIANT_ORDER = ["furType", "sizeCategory", "petType"] as const satisfies 
  *
  * ─── WHAT THE MOCKUP ASKS FOR THAT IS NOT BUILT ────────────────────────────
  *
- * Biaya perjalanan is "Segera": no trip fee exists on the backend yet. A
- * service priced by Zona or by a "Dipilih staf" card is quoted here since 17
+ * A house call is an explicit switch (10 October 2026), with a pinned visit
+ * address and a server-owned "Biaya kunjungan" line. A service priced by Zona or by a "Dipilih staf" card is quoted here since 17
  * September 2026 — `useVariantQuote`, and a select per card under the service. The schedule is a date and a time, as the API stores it, not the
  * mockup's Pagi/Siang blocks. Saving ASKS for the appointment (`requested`), as
  * the booking form does — confirming it is the shop's separate act.
@@ -162,6 +174,20 @@ export function GroomingBookingCreateScreen() {
   /* The van, when a chosen service offers one — BO's note 4 (21 Sep 2026). */
   const [ride, setRide] = useState<RideDraft>(BLANK_RIDE);
 
+  /*
+    WHERE THE WORK HAPPENS IS ASKED, NOT DERIVED (10 October 2026). It used to
+    be read off the chosen services' `serviceLocations`; the switch is what
+    filters the services now, so the answer comes first.
+  */
+  const [home, setHome] = useState(false);
+  const location: BookingLocation = home ? "in_home" : "in_store";
+  /* The visit address: the customer's own until somebody picks another. */
+  const [visitDraft, setVisitDraft] = useState<PointDraft>(DEFAULT_VISIT_DRAFT);
+  /* The server's refusal about the address, kept beside the address card. */
+  const [visitError, setVisitError] = useState<string | null>(null);
+  /* What flipping the switch took off the form, said by name. */
+  const [dropped, setDropped] = useState<string[]>([]);
+
   const [picking, setPicking] = useState(false);
   const [addingPet, setAddingPet] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -179,10 +205,27 @@ export function GroomingBookingCreateScreen() {
     PRICED BEYOND THE PET (17 September 2026): the zone is the customer's pin
     measured from the chosen branch; the "Dipilih staf" values are per animal.
   */
+  const branch = scope.branches.find((entry) => entry._id === branchId) ?? null;
+  const visitPoint = visitPointOf(visitDraft, customer, branch);
+  const visitPin = visitPinOf(visitPoint);
+
+  /*
+    A HOUSE CALL IS MEASURED TO THE VISIT ADDRESS, not to the customer's own
+    pin (10 October 2026) — the server prices zone variants from branch -> the
+    pinned visit address, so the preview does too.
+  */
   const variant = useVariantQuote({
-    branchPin: scope.branches.find((branch) => branch._id === branchId)?.location,
-    customerPin: customer?.location,
+    branchPin: branch?.location,
+    customerPin: home ? visitPin : customer?.location,
   });
+
+  /*
+    WHAT A HOUSE CALL COSTS, and how a fee is counted — the shop's home-grooming
+    settings, read behind the booking grants (not `tenants:read`, which a
+    cashier may lack). Only read once the switch is on.
+  */
+  const homeFees = useHomeVisitFees(home);
+  const visitUnit = homeFees?.unit ?? null;
 
   /* What is still offered — a retired service is not something to promise. */
   useEffect(() => {
@@ -290,9 +333,10 @@ export function GroomingBookingCreateScreen() {
       services.filter(
         (service) =>
           service.serviceType === "main" &&
-          service.serviceKind === GROOMING_LINE.serviceKind,
+          service.serviceKind === GROOMING_LINE.serviceKind &&
+          offeredAt(service, location),
       ),
-    [services],
+    [services, location],
   );
 
   function chooseCustomer(next: Customer) {
@@ -300,6 +344,63 @@ export function GroomingBookingCreateScreen() {
     setPets([]);
     setDrafts({});
     setBookingDiscount({ mode: "amount", value: "" });
+    setClash(null);
+    setRefusal(null);
+    /* Another customer, another address to start from. */
+    setVisitDraft(DEFAULT_VISIT_DRAFT);
+    setVisitError(null);
+    setDropped([]);
+  }
+
+  /**
+   * THE SWITCH. What no longer fits the new place is taken off — by name, said
+   * on the form — rather than kept for the server to refuse on save.
+   */
+  function switchHome(next: boolean) {
+    if (next === home) return;
+
+    const where: BookingLocation = next ? "in_home" : "in_store";
+    const lost: string[] = [];
+    const kept: Record<string, PetDraft> = { ...drafts };
+
+    for (const { pet, draft } of picked) {
+      const main = serviceOf(draft.serviceId);
+
+      if (draft.serviceId !== "" && !offeredAt(main, where)) {
+        lost.push(`${main?.name ?? "Layanan"} (${pet.name})`);
+        kept[pet._id] = {
+          ...draft,
+          serviceId: "",
+          addonServiceIds: [],
+          main: BLANK_PRICE,
+          addons: {},
+          variantChoices: [],
+        };
+        continue;
+      }
+
+      const stay = draft.addonServiceIds.filter((id) => offeredAt(serviceOf(id), where));
+      if (stay.length === draft.addonServiceIds.length) continue;
+
+      for (const id of draft.addonServiceIds) {
+        if (!stay.includes(id)) lost.push(`${serviceOf(id)?.name ?? "Add-on"} (${pet.name})`);
+      }
+      kept[pet._id] = {
+        ...draft,
+        addonServiceIds: stay,
+        addons: Object.fromEntries(
+          Object.entries(draft.addons).filter(([id]) => stay.includes(id)),
+        ),
+      };
+    }
+
+    setHome(next);
+    setDrafts(kept);
+    setDropped(lost);
+    /* A house call has no van, and the address starts from the customer's. */
+    setRide(BLANK_RIDE);
+    setVisitDraft(DEFAULT_VISIT_DRAFT);
+    setVisitError(null);
     setClash(null);
     setRefusal(null);
   }
@@ -372,20 +473,28 @@ export function GroomingBookingCreateScreen() {
     bookingDiscount.mode,
     mayPrice ? bookingDiscount.value : "",
   );
-  const subtotal = priced.reduce((sum, row) => sum + row.net, 0n);
+
+  /*
+    THE VISIT FEE — a line of its own, from the zone of the visit address. It is
+    added to the total and is NOT part of what a discount is taken from: the
+    server owns the row, and nobody types or discounts it.
+  */
+  const visitZone = variant.zone;
+  const feeMinor = home ? visitFeeOf(visitZone, homeFees, priced.length) : 0n;
+  const visitReason =
+    home && customer ? visitProblem({ customer, point: visitPoint, zone: visitZone }) : null;
+  const servicesSubtotal = priced.reduce((sum, row) => sum + row.net, 0n);
+  const subtotal = servicesSubtotal + feeMinor;
   const total = subtotal - split.total;
 
   /* WHERE THE WORK HAPPENS — every booking of one save shares it. */
   const chosenServices = priced.map((row) => row.service).filter(Boolean) as Service[];
-  const homeOnly = chosenServices.some((service) => onlyAt(service) === "in_home");
-  const storeOnly = chosenServices.some((service) => onlyAt(service) === "in_store");
-  const location: BookingLocation = homeOnly ? "in_home" : "in_store";
   /*
     ANTAR-JEMPUT FOR THIS VISIT — offered when a chosen service is switched to
     "Bisa antar-jemput" and the work is in the shop (a house call has no van).
   */
   const rideOffered =
-    !homeOnly && chosenServices.some((service) => service.pickupDeliveryAvailable);
+    !home && chosenServices.some((service) => service.pickupDeliveryAvailable);
   const rideService = serviceOf(ride.serviceId);
   const quotedRides = rideOffered
     ? quoteRides(ride, rideService, priced[0]?.pet ?? null, priced.length, variant)
@@ -428,8 +537,8 @@ export function GroomingBookingCreateScreen() {
                 ? `${unanswered}.`
                 : inactive
                 ? `Varian layanan untuk ${inactive.pet.name} sedang nonaktif.`
-                : homeOnly && storeOnly
-                  ? "Layanan di alamat dan layanan di toko tidak bisa disimpan bersama — simpan terpisah."
+                : visitReason
+                  ? visitReason
                   : date === "" || time === ""
                     ? "Tanggal dan jamnya belum lengkap."
                     : rideBlocked;
@@ -454,6 +563,7 @@ export function GroomingBookingCreateScreen() {
         scheduledAt,
         status: "requested",
         location,
+        ...(home ? { visitAddress: visitInputOf(visitPoint) } : {}),
         forceClash: clash !== null,
         bookingDiscount: mayPrice
           ? typedDiscount(bookingDiscount.mode, bookingDiscount.value)
@@ -523,6 +633,20 @@ export function GroomingBookingCreateScreen() {
         /* The page it landed on already shows it. */
       }
     } catch (error) {
+      /*
+        THE ADDRESS REFUSED — beside the address card, in the server's own
+        Indonesian. The phone's refusal is filed under `customerId` there.
+      */
+      if (home && error instanceof ApiError && error.status === 400) {
+        const fields = error.fieldErrors;
+        const about = fields.visitAddress ?? fields.customerId;
+        if (about) {
+          setVisitError(about);
+          setSaving(false);
+          return;
+        }
+      }
+
       const refused = variantRefusalOf(error);
       /*
         WHICH ANIMAL: the entry the path names, else the first whose service
@@ -778,23 +902,42 @@ export function GroomingBookingCreateScreen() {
                     onChange={setPickedBranch}
                   />
                 )}
-                {/*
-                  THE TRAVEL FEE — "Segera". Drawn where the mockup draws it, for
-                  a service done at the customer's address, so the shop can see
-                  what is coming; nothing is saved from it. The zone that PRICES
-                  a service is real since 17 September 2026 and sits with the
-                  customer and the price.
-                */}
-                {homeOnly && (
-                  <div className="flex flex-col gap-1.5">
-                    <Label>Biaya perjalanan</Label>
-                    <div
-                      className={`flex ${FIELD_HEIGHT} items-center justify-between rounded-md border border-border bg-background px-3 text-sm text-muted`}
-                    >
-                      Dihitung sekali per kunjungan
-                      <span className={`${badge} bg-tint-neutral text-muted`}>Segera</span>
-                    </div>
+              </div>
+            </Card>
+
+            {/* ─── LOKASI: HOME GROOMING ─── */}
+            {/*
+              Under the animals and above the services, because it is what
+              filters them: a service offered only at the shop is not on this
+              list while the switch is on, and the other way round.
+            */}
+            <Card title="Lokasi grooming">
+              <div className="flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <Label htmlFor="home-grooming" className="text-sm font-semibold">
+                      Grooming di rumah pelanggan
+                    </Label>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {home
+                        ? "Groomer datang ke alamat pelanggan. Layanan yang ditampilkan hanya yang melayani di rumah."
+                        : "Mati berarti grooming dikerjakan di toko."}
+                    </p>
                   </div>
+                  <Switch
+                    id="home-grooming"
+                    checked={home}
+                    onCheckedChange={switchHome}
+                    disabled={saving}
+                  />
+                </div>
+
+                {dropped.length > 0 && (
+                  <Alert variant="warning">
+                    Dilepas karena tidak tersedia untuk grooming{" "}
+                    {home ? "di rumah pelanggan" : "di toko"}: {dropped.join(", ")}. Pilih
+                    lagi layanan yang cocok.
+                  </Alert>
                 )}
               </div>
             </Card>
@@ -835,7 +978,10 @@ export function GroomingBookingCreateScreen() {
                     const { pet, draft, service, quote } = row;
                     const offered = (service?.addonServiceIds ?? [])
                       .map((id) => serviceOf(id))
-                      .filter((addon): addon is Service => addon !== null);
+                      .filter(
+                        (addon): addon is Service =>
+                          addon !== null && offeredAt(addon, location),
+                      );
                     const share = split.shares[priced.indexOf(row)] ?? 0n;
                     const cards = variant.cardsFor([
                       service,
@@ -867,11 +1013,6 @@ export function GroomingBookingCreateScreen() {
                                 .join(" · ") || "—"}
                             </span>
                           </span>
-                          {onlyAt(service) === "in_home" && (
-                            <span className={`${badge} bg-tint-warning text-warning`}>
-                              Di alamat
-                            </span>
-                          )}
                           {row.minutes > 0 && (
                             <span className={`${badge} bg-surface text-foreground tabular-nums`}>
                               {row.minutes} mnt
@@ -1129,6 +1270,27 @@ export function GroomingBookingCreateScreen() {
                 </ul>
               )}
             </section>
+
+            {/* ─── ALAMAT KUNJUNGAN — only for a house call, AFTER the services ─── */}
+            {home && (
+              <VisitAddressCard
+                customer={customer}
+                branch={branch}
+                draft={visitDraft}
+                point={visitPoint}
+                zone={visitZone}
+                fees={homeFees}
+                animals={priced.length}
+                disabled={saving}
+                error={visitError}
+                onChange={(next) => {
+                  setVisitDraft(next);
+                  setVisitError(null);
+                  setClash(null);
+                  setRefusal(null);
+                }}
+              />
+            )}
           </div>
 
           {/* ─── RINGKASAN ─── */}
@@ -1189,11 +1351,22 @@ export function GroomingBookingCreateScreen() {
                   </ul>
                 )}
 
-                {homeOnly && (
-                  <div className="flex items-center justify-between gap-3 py-1">
-                    <span>Biaya perjalanan</span>
-                    <span className={`${badge} bg-tint-neutral text-muted`}>Segera</span>
-                  </div>
+                {/*
+                  THE VISIT FEE, ABOVE THE SUBTOTAL AND NEVER DISCOUNTED — the
+                  server adds this row and nobody can type or remove it.
+                */}
+                {home && feeMinor > 0n && visitZone.ok && (
+                  <SummaryLine
+                    label={`Biaya kunjungan · ${visitZone.zone.name}`}
+                    hint={
+                      visitUnit === "per_pet"
+                        ? `${count} hewan`
+                        : visitUnit === "per_visit"
+                          ? "sekali per kunjungan"
+                          : undefined
+                    }
+                    value={money(feeMinor)}
+                  />
                 )}
 
                 <div className="mt-2 flex justify-between gap-3 border-t border-border pt-2">

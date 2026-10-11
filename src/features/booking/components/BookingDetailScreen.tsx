@@ -37,6 +37,7 @@ import { canStartWork, hasCompletedWork, ladderFor } from "../statusFlow";
 import { BookingBelongingsCard } from "./BookingBelongingsCard";
 import { BookingHistoryCard } from "./BookingHistoryCard";
 import { BookingNotesCard } from "./BookingNotesCard";
+import { HomeVisitCard } from "./HomeVisitCard";
 import { BookingRelatedCard } from "./BookingRelatedCard";
 import { BookingStatusActions } from "./BookingStatusActions";
 import {
@@ -347,6 +348,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
       );
     } finally {
       setBusy(null);
+    }
+  }
+
+  /* Best effort: the trip's own answer is already on screen. */
+  async function reloadBooking() {
+    try {
+      replaceBooking(await bookingService.getById(id));
+    } catch {
+      /* Left as it was. */
     }
   }
 
@@ -816,6 +826,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
               </div>
             )}
           </Card>
+
+          {/*
+            THE JOURNEY TO THE HOUSE (10 October 2026) — a home booking only, and
+            nothing at all otherwise. Re-reads the booking after each move: the
+            server also moves the booking when the groomer reaches the door.
+          */}
+          {booking.location === "in_home" && !booking.tripLeg && (
+            <HomeVisitCard booking={booking} onChanged={reloadBooking} />
+          )}
 
           {/* ─── Hewan & Pelanggan ──────────────────────────────────────── */}
           <Card title="Hewan &amp; Pelanggan">

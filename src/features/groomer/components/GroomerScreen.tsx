@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { CalendarOff, Coffee, RefreshCw, Sun } from "lucide-react";
 
 import { Alert, Button, Spinner } from "@/components";
+import { HOME_TRIP_LABELS } from "@/features/booking/homeTrip";
 import { cn } from "@/lib/utils";
+import type { HomeTripStatus } from "@/types/api";
 import type { GroomerJobs } from "@/types/groomer";
 import { longDate, todayKey } from "../dates";
 import { useGroomerActions } from "../hooks/useGroomerActions";
@@ -32,7 +34,7 @@ export function GroomerScreen() {
   const [tab, setTab] = useState<Tab>("saya");
 
   const { data, loading, error, reload } = useGroomerJobs(date);
-  const { busy, claim, move, arrive } = useGroomerActions(reload);
+  const { busy, claim, move, arrive, moveTrip } = useGroomerActions(reload);
 
   const running = Boolean(
     data?.saya.some((booking) => booking.sessions.some((one) => one.mine && one.status === "in_progress")),
@@ -63,6 +65,8 @@ export function GroomerScreen() {
       void move(bookingId, sessionId, "done", `${petName(bookingId) ?? "Sesi"} selesai`);
     },
     onClaim: (sessionId: string) => void claim(bookingId, sessionId, petName(bookingId)),
+    onTrip: (tripId: string, to: HomeTripStatus) =>
+      void moveTrip(tripId, to, `${HOME_TRIP_LABELS[to]} dicatat`),
   });
 
   const list = (kind: "saya" | "open" | "selesai" | "lain", bookings: GroomerJobs["saya"]) =>

@@ -123,7 +123,30 @@ export function BookingPriceBreakdown({
 
       {addons.length > 0 && (
         <ul className="mt-2 border-l-2 border-border pl-3">
-          {addons.map((addon) => (
+          {addons.map((addon) =>
+            addon.visitFee ? (
+              /*
+                THE HOME-VISIT FEE (10 October 2026) — the server owns this row
+                and recomputes it from the visit address, so it is drawn apart
+                and has no remove, no edit and no discount: it is a fact about
+                the zone, not an add-on somebody chose.
+              */
+              <li
+                key={addon.itemId}
+                data-visit-fee
+                className="my-1 flex flex-wrap justify-between gap-x-3 rounded-md bg-surface-hover px-2 py-1.5 text-sm"
+              >
+                <span className="text-foreground">
+                  {addon.name}
+                  <span className="block text-xs text-muted">
+                    Biaya kunjungan · otomatis dari zona
+                  </span>
+                </span>
+                <span className="font-semibold tabular-nums text-foreground">
+                  {formatMoney(addon.price)}
+                </span>
+              </li>
+            ) : (
             <li
               key={addon.itemId}
               className="flex flex-wrap justify-between gap-x-3 py-1 text-sm"
@@ -148,7 +171,8 @@ export function BookingPriceBreakdown({
                 </span>
               )}
             </li>
-          ))}
+            ),
+          )}
         </ul>
       )}
 
