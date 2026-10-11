@@ -12,6 +12,7 @@ import {
   type PriceLookup,
 } from "@/utils/serviceVariant";
 import { resolveZone, ZONE_FAILURE_MESSAGE, type ZoneLookup } from "@/utils/zoneDistance";
+import { useRoadDistance } from "@/utils/roadDistance";
 
 type Priced = Parameters<typeof priceForPet>[0];
 type Pin = Pick<GeoLocation, "lat" | "lng"> | null | undefined;
@@ -37,15 +38,22 @@ export function useVariantQuote({ branchPin, customerPin }: { branchPin: Pin; cu
   const cards = useVariantOptions();
   const zones = useZones();
 
+  /* BY ROAD, as the server stores it (11 October 2026) — the crow's line until it answers. */
+  const measured = useRoadDistance();
+
   const zone: ZoneLookup = useMemo(
-    () => resolveZone(branchPin, customerPin, zones.items),
-    [branchPin, customerPin, zones.items],
+    () => resolveZone(branchPin, customerPin, zones.items, measured(branchPin, customerPin)),
+    [branchPin, customerPin, zones.items, measured],
   );
 
+  /** " · garis lurus" when the server could not measure the road. */
+  const straightNote = (found: ZoneLookup) =>
+    "source" in found && found.source === "straight" ? " · garis lurus" : "";
+
   const zoneText = zone.ok
-    ? `${zone.zone.name} · ${String(zone.distanceKm).replace(".", ",")} km`
+    ? `${zone.zone.name} · ${String(zone.distanceKm).replace(".", ",")} km${straightNote(zone)}`
     : zone.reason === "outside_zones"
-      ? `${ZONE_FAILURE_MESSAGE.outside_zones} (${String(zone.distanceKm).replace(".", ",")} km)`
+      ? `${ZONE_FAILURE_MESSAGE.outside_zones} (${String(zone.distanceKm).replace(".", ",")} km${straightNote(zone)})`
       : ZONE_FAILURE_MESSAGE[zone.reason];
 
 
@@ -77,18 +85,20 @@ export function useVariantQuote({ branchPin, customerPin }: { branchPin: Pin; cu
    * holds — no second read, however many journeys a document carries.
    */
   const zoneBetween = useCallback(
-    (from: Pin, to: Pin): ZoneLookup => resolveZone(from, to, zones.items),
-    [zones.items],
+    (from: Pin, to: Pin): ZoneLookup => resolveZone(from, to, zones.items, measured(from, to)),
+    [zones.items, measured],
   );
 
   /** One zone as a line — "Zona A · 2,1 km", or why it cannot be said. */
   const textOf = useCallback(
-    (found: ZoneLookup): string =>
-      found.ok
-        ? `${found.zone.name} · ${String(found.distanceKm).replace(".", ",")} km`
+    (found: ZoneLookup): string => {
+      const note = "source" in found && found.source === "straight" ? " · garis lurus" : "";
+      return found.ok
+        ? `${found.zone.name} · ${String(found.distanceKm).replace(".", ",")} km${note}`
         : found.reason === "outside_zones"
-          ? `${ZONE_FAILURE_MESSAGE.outside_zones} (${String(found.distanceKm).replace(".", ",")} km)`
-          : ZONE_FAILURE_MESSAGE[found.reason],
+          ? `${ZONE_FAILURE_MESSAGE.outside_zones} (${String(found.distanceKm).replace(".", ",")} km${note})`
+          : ZONE_FAILURE_MESSAGE[found.reason];
+    },
     [],
   );
 

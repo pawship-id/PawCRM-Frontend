@@ -18,6 +18,7 @@ import type {
   ServiceBookingCounts,
   ServiceBookingCountScope,
   SessionMediaKind,
+  OrphanTrip,
 } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
 
@@ -97,6 +98,16 @@ export const bookingService = {
   bridge: (customerId: string, days?: number, branchId?: string) =>
     apiClient.get<Booking[]>("/bookings/bridge", {
       query: { customerId, days, branchId },
+    }),
+
+  /**
+   * GET /bookings/bridge-trips — the customer's home-grooming trips still owed
+   * with every booking of them already billed (11 October 2026). Pulled on
+   * their own; same branch rule as the bridge.
+   */
+  bridgeTrips: (customerId: string, branchId?: string) =>
+    apiClient.get<OrphanTrip[]>("/bookings/bridge-trips", {
+      query: { customerId, branchId },
     }),
 
   /**

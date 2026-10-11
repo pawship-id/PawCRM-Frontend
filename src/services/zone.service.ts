@@ -33,6 +33,17 @@ export const zoneService = {
   /** DELETE /zones/:id — soft delete. */
   remove: (id: string) => apiClient.delete<Zone>(`/zones/${id}`),
 
+  /**
+   * POST /zones/measure — how far each pair is BY ROAD, as the server will
+   * store it (11 October 2026). `source` is "straight" when the server fell
+   * back to the crow's line. Up to 20 pairs a call.
+   */
+  measure: (pairs: Array<{ from: { lat: number; lng: number }; to: { lat: number; lng: number } }>) =>
+    apiClient.post<Array<{ distanceKm: number | null; source: "road" | "straight" }>>(
+      "/zones/measure",
+      { pairs },
+    ),
+
   /** PATCH /zones/:id/restore — 409 when its name or distances were taken meanwhile. */
   restore: (id: string) => apiClient.patch<Zone>(`/zones/${id}/restore`),
 };

@@ -3,7 +3,7 @@
 import { SkuText } from "@/components/SkuText";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CornerDownRight, Trash2 } from "lucide-react";
+import { CornerDownRight, House, Plus, Trash2 } from "lucide-react";
 
 import {
   Alert,
@@ -47,6 +47,7 @@ import {
 import { AXIS_LABEL, type PriceLookup } from "@/utils/serviceVariant";
 import type {
   Booking,
+  OrphanTrip,
   CreateInvoiceItemInput,
   InvoiceChannel,
   InvoiceDiscountMode,
@@ -63,14 +64,17 @@ import {
   pinOf,
   resolveLeg,
 } from "@/features/antar-jemput/components/TripPointFields";
-import {
-  RideJourneyDialog,
-} from "@/features/antar-jemput/components/RideJourneyDialog";
+import { RideJourneyDialog } from "@/features/antar-jemput/components/RideJourneyDialog";
 import type { RideJourney } from "@/features/antar-jemput/components/RideJourneyFields";
 
 import { useInvoiceLineStock } from "../hooks/useInvoiceLineStock";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { bookingShareOf, ownDiscountOfLine } from "../bookingDiscount";
+import {
+  billedTripNote,
+  owedTripsOf,
+  tripKeysOf,
+} from "@/features/booking/visitTrip";
 import { previewInvoice } from "../invoicePreview";
 import { hasChoice, lineRefusalOf, type LineRefusal } from "../variantLine";
 import { InvoiceAddItemsDialog } from "./InvoiceAddItemsDialog";
@@ -385,6 +389,14 @@ const todayValue = () => new Date().toISOString().slice(0, 10);
 /** Nobody has a hundred animals; this is a ceiling, not a page size. */
 const MAX_PETS = 100;
 
+/** A pulled booking's own rows — its home-visit fee is drawn as a trip row instead. */
+function ownLinesOf(booking: Booking) {
+  return [
+    booking.service,
+    ...booking.service.addons.filter((addon) => !addon.visitFee),
+  ];
+}
+
 export function InvoiceCreateForm() {
   const router = useRouter();
   const lookups = useInvoiceLookups();
@@ -447,12 +459,67 @@ export function InvoiceCreateForm() {
     back in the panel. `at` is each line's place in the preview, which prices
     bookings first, in this same order.
   */
+  /*
+    THE HOME-VISIT FEE IS NOT A BOOKING'S ROW HERE (11 October 2026). It pays for
+    the trip, so it is drawn once as a row of its own after the bookings — only
+    while still owed; a trip billed with another booking of the house adds
+    nothing, and the booking says so. The server bills it the same way
+    (`claimFeeForPull`).
+  */
+  /*
+    THE TRIPS TAKEN OFF THIS BILL (11 October 2026) — the till's bin on a trip
+    line. A trip taken off is offered back below as "belum ditagih", the way
+    the basket offers it, and is not sent.
+  */
+  const [droppedTrips, setDroppedTrips] = useState<Set<string>>(new Set());
+  /*
+    A DISCOUNT PER TRIP LINE (11 October 2026, on request) — the till's ✎ on a
+    trip, as a typed line's fields. Sent beside the trip as `tripDiscounts`.
+  */
+  const [tripDiscounts, setTripDiscounts] = useState<
+    Record<string, { mode: InvoiceDiscountMode; value: string }>
+  >({});
+  const patchTripDiscount = (tripId: string, patch: Partial<{ mode: InvoiceDiscountMode; value: string }>) =>
+    setTripDiscounts((current) => ({
+      ...current,
+      [tripId]: {
+        mode: patch.mode ?? current[tripId]?.mode ?? "percent",
+        value: patch.value ?? current[tripId]?.value ?? "",
+      },
+    }));
+  const offeredTrips = useMemo(() => {
+    const keys = tripKeysOf(pulledBookings);
+    return owedTripsOf(pulledBookings).filter((trip) => keys.has(trip.key));
+  }, [pulledBookings]);
+  /*
+    TRIPS LEFT BEHIND CHOSEN IN THE PANEL (11 October 2026) — every booking of
+    them billed already, so they come on their own. Taking one off puts it back
+    in the panel, as a booking does.
+  */
+  const [orphanTrips, setOrphanTrips] = useState<OrphanTrip[]>([]);
+  const pulledTrips = useMemo(
+    () => [
+      ...offeredTrips.filter((trip) => !droppedTrips.has(trip.key)),
+      ...orphanTrips.map((trip) => ({
+        state: "unbilled" as const,
+        key: trip.tripId,
+        tripId: trip.tripId,
+        name: trip.name,
+        amount: trip.amount,
+        zoneName: trip.zoneName,
+        petNames: trip.petNames,
+      })),
+    ],
+    [offeredTrips, droppedTrips, orphanTrips],
+  );
+  const owedTrips = offeredTrips.filter((trip) => droppedTrips.has(trip.key));
+
   const bookingRows = pulledBookings.flatMap((booking, bookingIndex) => {
     const before = pulledBookings
       .slice(0, bookingIndex)
-      .reduce((count, one) => count + 1 + one.service.addons.length, 0);
+      .reduce((count, one) => count + ownLinesOf(one).length, 0);
 
-    const all = [booking.service, ...booking.service.addons];
+    const all = ownLinesOf(booking);
 
     return all.map((line, offset) => ({
       booking,
@@ -463,16 +530,30 @@ export function InvoiceCreateForm() {
     }));
   });
 
-  const bookingLines = pulledBookings.flatMap((booking) =>
-    [booking.service, ...booking.service.addons].map((line) => ({
-      qty: "1",
-      unitPrice: line.price,
-      /* The booking's discount on this line, pulled as the server pulls it. */
-      discount: line.discountAmount
-        ? { mode: "amount" as const, value: line.discountAmount }
-        : null,
-    })),
+  const bookingLines = useMemo(
+    () => [
+      ...pulledBookings.flatMap((booking) =>
+        ownLinesOf(booking).map((line) => ({
+          qty: "1",
+          unitPrice: line.price,
+          /* The booking's discount on this line, pulled as the server pulls it. */
+          discount: line.discountAmount
+            ? { mode: "amount" as const, value: line.discountAmount }
+            : null,
+        })),
+      ),
+      /* Each owed trip once, after the bookings — its figure is already net. */
+      ...pulledTrips.map((trip) => ({
+        qty: "1",
+        unitPrice: trip.amount,
+        discount: tripDiscounts[trip.tripId]?.value
+          ? { mode: tripDiscounts[trip.tripId].mode, value: tripDiscounts[trip.tripId].value }
+          : null,
+      })),
+    ],
+    [pulledBookings, pulledTrips, tripDiscounts],
   );
+  const tripRowsAt = bookingLines.length - pulledTrips.length;
   /*
     THE CUSTOMER'S ANIMALS — PCR-035, and refetched whenever the customer
     changes, because "which pets" has no meaning until "whose" is answered.
@@ -588,7 +669,9 @@ export function InvoiceCreateForm() {
     from the chosen branch's pin to the customer's, and the "Dipilih staf"
     cards. A preview — the server measures again and stores what it finds.
   */
-  const branchPin = lookups.branches.find((one) => one._id === branchId)?.location;
+  const branchPin = lookups.branches.find(
+    (one) => one._id === branchId,
+  )?.location;
   const customerPin = lookups.customers.find(
     (one) => one._id === customerId,
   )?.location;
@@ -601,7 +684,8 @@ export function InvoiceCreateForm() {
   const isRideService = (refId: string) =>
     serviceOf(refId)?.serviceKind === "pickup-delivery";
 
-  const branchRecord = lookups.branches.find((one) => one._id === branchId) ?? null;
+  const branchRecord =
+    lookups.branches.find((one) => one._id === branchId) ?? null;
   const customerRecord =
     lookups.customers.find((one) => one._id === customerId) ?? null;
 
@@ -638,7 +722,12 @@ export function InvoiceCreateForm() {
       const unit = variant.quote(
         service,
         null,
-        choicesForLeg(service, variant.cardsFor([service]), line.ride.leg, line.choices),
+        choicesForLeg(
+          service,
+          variant.cardsFor([service]),
+          line.ride.leg,
+          line.choices,
+        ),
         zone,
       ).price;
 
@@ -718,7 +807,8 @@ export function InvoiceCreateForm() {
   };
 
   const lines = useMemo(
-    () => repriced(draftLines, lookups.services, pets.items, variant.quote, fareOf),
+    () =>
+      repriced(draftLines, lookups.services, pets.items, variant.quote, fareOf),
     [draftLines, lookups.services, pets.items, variant.quote, fareOf],
   );
 
@@ -897,7 +987,9 @@ export function InvoiceCreateForm() {
     );
   }
   const hasServiceLine =
-    pulledBookings.length > 0 || lines.some((line) => line.kind === "service");
+    pulledBookings.length > 0 ||
+    pulledTrips.length > 0 ||
+    lines.some((line) => line.kind === "service");
 
   /*
     ─── WHAT A MEMBERSHIP CARD COULD PAY FOR ON THIS BILL (30 September 2026) ──
@@ -1050,7 +1142,7 @@ export function InvoiceCreateForm() {
     if (lookups.loading) return "Sedang memuat data.";
     if (!customerId) return "Pilih pelanggan dulu.";
     if (!branchId) return "Pilih cabang dulu.";
-    if (lines.length === 0 && bookingIds.length === 0)
+    if (lines.length === 0 && bookingIds.length === 0 && pulledTrips.length === 0)
       return "Tambah minimal satu baris atau pilih booking.";
     if (hasProductLine && !warehouseId)
       return "Pilih gudang — ada barang yang harus dikeluarkan.";
@@ -1098,9 +1190,7 @@ export function InvoiceCreateForm() {
     }
 
     if (
-      lines.some(
-        (line) => line.kind === "service" && !line.petId && !line.ride,
-      )
+      lines.some((line) => line.kind === "service" && !line.petId && !line.ride)
     ) {
       return petOptions.length === 0
         ? "Pelanggan ini belum punya hewan — daftarkan dulu di Master Data."
@@ -1537,6 +1627,23 @@ export function InvoiceCreateForm() {
         ...(hasProductLine ? { warehouseId } : {}),
         items,
         ...(bookingIds.length > 0 ? { bookingIds } : {}),
+        /* The trips this bill carries — what the rows show, not every one owed. */
+        ...(bookingIds.length > 0 || pulledTrips.length > 0
+          ? { homeTripIds: pulledTrips.map((trip) => trip.tripId) }
+          : {}),
+        ...(pulledTrips.some((trip) => tripDiscounts[trip.tripId]?.value)
+          ? {
+              tripDiscounts: pulledTrips
+                .filter((trip) => tripDiscounts[trip.tripId]?.value)
+                .map((trip) => ({
+                  homeTripId: trip.tripId,
+                  discount: {
+                    mode: tripDiscounts[trip.tripId].mode,
+                    value: tripDiscounts[trip.tripId].value,
+                  },
+                })),
+            }
+          : {}),
         // Itemised and trimmed — blank rows dropped, left out when none remain.
         ...(filledCharges.length > 0 ? { otherCharges: filledCharges } : {}),
         ...(invoiceDiscountValue
@@ -1776,6 +1883,9 @@ export function InvoiceCreateForm() {
             customerId={customerId}
             branchId={branchId}
             selected={bookingIds}
+            droppedTrips={droppedTrips}
+            selectedTrips={orphanTrips.map((trip) => trip.tripId)}
+            onTripsChange={setOrphanTrips}
             onChange={setPulledBookings}
             disabled={saving}
           />
@@ -1869,7 +1979,7 @@ export function InvoiceCreateForm() {
             disabled={saving}
           />
 
-          {lines.length === 0 && pulledBookings.length === 0 ? (
+          {lines.length === 0 && pulledBookings.length === 0 && pulledTrips.length === 0 ? (
             <div className="flex flex-col items-center gap-4 py-8 text-center">
               <UIButton
                 type="button"
@@ -1967,6 +2077,11 @@ export function InvoiceCreateForm() {
                                     <span className="block text-xs text-muted tabular-nums">
                                       {`Booking ${booking.bookingNumber ?? "—"}`}
                                     </span>
+                                    {billedTripNote(booking.visitTrip) && (
+                                      <span className="block text-xs text-muted">
+                                        {billedTripNote(booking.visitTrip)}
+                                      </span>
+                                    )}
                                   </>
                                 )}
                               </TableCell>
@@ -2051,6 +2166,134 @@ export function InvoiceCreateForm() {
                         );
                       },
                     )}
+                    {pulledTrips.map((trip, index) => (
+                      <TableRow key={`trip-${trip.key}`} data-invoice-trip>
+                        <TableCell>
+                          <span className="font-medium">
+                            Perjalanan home grooming
+                          </span>
+                          <span className="block text-xs text-muted">
+                            {[
+                              trip.name,
+                              trip.petNames.length > 0
+                                ? `Untuk ${trip.petNames.join(", ")}`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-muted">—</span>
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatMoney(trip.amount)}
+                        </TableCell>
+                        <TableCell className="tabular-nums">1</TableCell>
+                        <TableCell>
+                          {/* THE TRIP'S OWN DISCOUNT, as a typed line's (11 October 2026). */}
+                          <div className="flex gap-1">
+                            <select
+                              aria-label={`Jenis diskon ${trip.name}`}
+                              className="h-9 rounded-md border border-border bg-surface px-2 text-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                              value={tripDiscounts[trip.tripId]?.mode ?? "percent"}
+                              onChange={(event) =>
+                                patchTripDiscount(trip.tripId, {
+                                  mode: event.target.value as InvoiceDiscountMode,
+                                })
+                              }
+                              disabled={saving}
+                            >
+                              <option value="percent">%</option>
+                              <option value="amount">Rp</option>
+                            </select>
+                            <Input
+                              aria-label={`Diskon ${trip.name}`}
+                              value={tripDiscounts[trip.tripId]?.value ?? ""}
+                              inputMode="decimal"
+                              placeholder="0"
+                              onChange={(event) =>
+                                patchTripDiscount(trip.tripId, { value: event.target.value })
+                              }
+                              disabled={saving}
+                            />
+                          </div>
+                        </TableCell>
+                        <TableCell className="tabular-nums">
+                          {taxCell(tripRowsAt + index)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatMoney(
+                            subtractDecimals(
+                              preview.lineTotals[tripRowsAt + index],
+                              preview.lineDiscounts[tripRowsAt + index],
+                            ),
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {/* THE TILL'S BIN: off this bill, offered back below. */}
+                          <UIButton
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Hapus perjalanan ${trip.name}`}
+                            onClick={() =>
+                              orphanTrips.some((one) => one.tripId === trip.tripId)
+                                ? setOrphanTrips((current) =>
+                                    current.filter((one) => one.tripId !== trip.tripId),
+                                  )
+                                : setDroppedTrips((current) => new Set([...current, trip.key]))
+                            }
+                            disabled={saving}
+                          >
+                            <Trash2 className="size-4 text-danger" />
+                          </UIButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {/*
+                      A TRIP TAKEN OFF, OFFERED BACK — the till's "Biaya
+                      perjalanan belum ditagih" (11 October 2026).
+                    */}
+                    {owedTrips.map((trip) => (
+                      <TableRow key={`owed-${trip.key}`} className="hover:bg-transparent">
+                        <TableCell colSpan={8}>
+                          <div
+                            data-owed-trip
+                            className="flex items-start gap-2 rounded-lg border border-dashed border-border px-3 py-2"
+                          >
+                            <House className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-foreground">
+                                Biaya perjalanan belum ditagih
+                              </p>
+                              <p className="truncate text-xs text-muted">
+                                {trip.name} · {formatMoney(trip.amount)}
+                                {trip.petNames.length > 0
+                                  ? ` · untuk ${trip.petNames.join(", ")}`
+                                  : ""}
+                              </p>
+                            </div>
+                            <UIButton
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              disabled={saving}
+                              onClick={() =>
+                                setDroppedTrips((current) => {
+                                  const next = new Set(current);
+                                  next.delete(trip.key);
+                                  return next;
+                                })
+                              }
+                            >
+                              <Plus className="size-4" />
+                              Tambahkan
+                            </UIButton>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                     {lines.map((line, index) => {
                       const offered = addonsOffered(line);
                       const linePet = pets.items.find(
@@ -2169,7 +2412,11 @@ export function InvoiceCreateForm() {
                                          by an animal — see `fareOf`. */
                                       line.ride
                                         ? rideAddonQuote(line, addon)
-                                        : variant.quote(addon, linePet, line.choices)
+                                        : variant.quote(
+                                            addon,
+                                            linePet,
+                                            line.choices,
+                                          )
                                     }
                                     problemOf={variant.problemOf}
                                     tickedIds={lines
@@ -2202,7 +2449,8 @@ export function InvoiceCreateForm() {
                                     missing={lineQuote?.missingAxis ?? null}
                                   />
                                 </>
-                              ) : line.kind === "service" && line.ride !== null ? (
+                              ) : line.kind === "service" &&
+                                line.ride !== null ? (
                                 /*
                                   ─── A JOURNEY, NOT AN ANIMAL ───────────────
 
@@ -2226,7 +2474,8 @@ export function InvoiceCreateForm() {
                                       : () => setRideRow(line.key)
                                   }
                                 />
-                              ) : line.kind === "service" && isRideService(line.refId) ? (
+                              ) : line.kind === "service" &&
+                                isRideService(line.refId) ? (
                                 /*
                                   NOT FILLED IN YET — the row has no price and
                                   no journey until this is answered.

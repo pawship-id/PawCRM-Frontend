@@ -25,14 +25,17 @@ import { Button } from "@/components/ui/button";
  */
 export function PosBookingBanner({
   count,
+  tripCount = 0,
   disabled = false,
   onOpen,
 }: {
   count: number;
+  /** Trips left behind — owed, every booking of them billed (11 October 2026). */
+  tripCount?: number;
   disabled?: boolean;
   onOpen: () => void;
 }) {
-  if (count === 0) {
+  if (count === 0 && tripCount === 0) {
     return null;
   }
 
@@ -42,8 +45,19 @@ export function PosBookingBanner({
       <CalendarCheck className="size-4 shrink-0 text-warning" aria-hidden />
 
       <p className="min-w-0 flex-1 text-sm text-foreground">
-        <span className="font-medium tabular-nums">{count} booking</span> hari
-        ini belum ditarik ke keranjang.
+        {count > 0 && (
+          <>
+            <span className="font-medium tabular-nums">{count} booking</span> hari
+            ini belum ditarik ke keranjang.
+          </>
+        )}
+        {count > 0 && tripCount > 0 && " "}
+        {tripCount > 0 && (
+          <>
+            <span className="font-medium tabular-nums">{tripCount} biaya perjalanan</span>{" "}
+            belum ditagih.
+          </>
+        )}
       </p>
 
       <Button

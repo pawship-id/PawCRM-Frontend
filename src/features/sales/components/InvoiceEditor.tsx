@@ -3,7 +3,7 @@
 import { shortSku } from "@/lib/sku";
 import { SkuText } from "@/components/SkuText";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { House, Plus, Trash2 } from "lucide-react";
 
 import {
   Alert,
@@ -135,6 +135,12 @@ interface EditLine {
    * A" — shown read-only. Null on a new line and on one that asked nothing.
    */
   storedVariant: string | null;
+  /**
+   * THE HOME-GROOMING TRIP this row bills (11 October 2026). On a row ADDED
+   * here it is sent as `homeTripIds`, never as an item — the server prices it
+   * from the trip. On a kept row it is the stored line's.
+   */
+  tripId?: string | null;
 }
 
 const HUNDRED_MINOR = BigInt(100) * BigInt(10_000);
@@ -246,7 +252,9 @@ export function InvoiceEditor({
           ride: null,
           passengers: [],
           petName: item.petName,
-          booked: Boolean(item.bookingId),
+          /* A trip's fee line is one per trip — fixed at 1 like a booked one. */
+          booked: Boolean(item.bookingId || item.homeTripId),
+          tripId: item.homeTripId ?? null,
           bookingShare: share,
           choices: [],
           storedVariant: variantSummary(item),
@@ -600,9 +608,113 @@ export function InvoiceEditor({
     };
   }
 
+  /*
+    THE TRIPS THIS BILL STILL OWES (11 October 2026): the server's list, less
+    any added here, plus a stored trip row this edit took off — which comes back
+    as the kept line it was, so it is not claimed a second time.
+  */
+  const owedHere = [
+    ...(invoice.owedTrips ?? [])
+      .filter((owed) => !draftLines.some((line) => line.tripId === owed.tripId))
+      .map((owed) => ({ ...owed, restore: null as EditLine | null })),
+    ...initialLines
+      .filter(
+        (line) =>
+          line.tripId &&
+          !draftLines.some((one) => one.key === line.key) &&
+          /* Only while a grooming of it is still on the bill, or there never was one. */
+          (draftLines.some(
+            (one) =>
+              one.fromIndex !== null &&
+              (invoice.bookings ?? []).find(
+                (booking) => booking._id === invoice.items?.[one.fromIndex as number]?.bookingId,
+              )?.homeTripId === line.tripId,
+          ) ||
+            !(invoice.bookings ?? []).some((booking) => booking.homeTripId === line.tripId)),
+      )
+      .map((line) => ({
+        tripId: line.tripId as string,
+        name: line.name,
+        amount: line.unitPrice,
+        petNames: [] as string[],
+        restore: line as EditLine | null,
+      })),
+  ];
+
+  function addOwedTrip(owed: (typeof owedHere)[number]) {
+    setLineRefusals({});
+    setLines((current) => [
+      ...current,
+      owed.restore ?? {
+        key: `trip-${owed.tripId}`,
+        fromIndex: null,
+        kind: "service",
+        refId: "",
+        name: owed.name,
+        sku: null,
+        unitPrice: owed.amount,
+        qty: "1",
+        discountMode: "percent",
+        discountValue: "",
+        petId: "",
+        petName: null,
+        booked: true,
+        bookingShare: "0",
+        choices: [],
+        ride: null,
+        passengers: [],
+        storedVariant: null,
+        tripId: owed.tripId,
+      },
+    ]);
+  }
+
+  /** The trip a row's booking rides, from the bookings this bill carries. */
+  const tripOfBooking = (bookingId: string | null | undefined) =>
+    bookingId
+      ? ((invoice.bookings ?? []).find((booking) => booking._id === bookingId)?.homeTripId ?? null)
+      : null;
+  /** The booking a row bills — a kept row's stored one. */
+  const bookingOfLine = (line: EditLine) =>
+    line.fromIndex !== null ? (invoice.items?.[line.fromIndex]?.bookingId ?? null) : null;
+
+  /*
+    TAKING A ROW OFF (11 October 2026): the last grooming of a trip takes the
+    trip's row with it — the till's rule. A trip with no grooming on this bill
+    (billed on its own) is untouched.
+  */
+  function removeLine(line: EditLine) {
+    setLines((current) => {
+      const rest = current.filter((one) => one.key !== line.key);
+      const tripId = tripOfBooking(bookingOfLine(line));
+      if (!tripId) return rest;
+
+      const stillRiding = rest.some((one) => tripOfBooking(bookingOfLine(one)) === tripId);
+      return stillRiding ? rest : rest.filter((one) => one.tripId !== tripId);
+    });
+  }
+
+  /** A trip row added on this edit — sent by id, not as an item. */
+  const isAddedTrip = (line: EditLine) => Boolean(line.tripId) && line.fromIndex === null;
+
   function payload(): UpdateCustomerInvoiceInput {
+    const addedTrips = lines.filter(isAddedTrip);
+    const discountedTrips = addedTrips.filter((line) => line.discountValue);
+
     return {
-      items: lines.map((line) => ({
+      ...(addedTrips.length > 0
+        ? { homeTripIds: addedTrips.map((line) => line.tripId as string) }
+        : {}),
+      /* A trip added here carries its discount beside it (11 October 2026). */
+      ...(discountedTrips.length > 0
+        ? {
+            tripDiscounts: discountedTrips.map((line) => ({
+              homeTripId: line.tripId as string,
+              discount: { mode: line.discountMode, value: line.discountValue },
+            })),
+          }
+        : {}),
+      items: lines.filter((line) => !isAddedTrip(line)).map((line) => ({
         kind: line.kind,
         refId: line.refId,
         qty: line.qty,
@@ -668,6 +780,7 @@ export function InvoiceEditor({
             }
           : null,
         dueDate: new Date(toDateInput(invoice.dueDate)).toISOString(),
+        homeTripIds: [],
       }),
     [initialLines, invoice.invoiceDiscount, invoice.dueDate],
   );
@@ -727,7 +840,8 @@ export function InvoiceEditor({
           line.kind === "service" &&
           line.fromIndex === null &&
           !line.petId &&
-          !line.ride,
+          !line.ride &&
+          !line.tripId,
       )
     ) {
       return petOptions.length === 0
@@ -890,6 +1004,7 @@ export function InvoiceEditor({
         })),
         invoiceDiscount: body.invoiceDiscount ?? null,
         dueDate: body.dueDate,
+        homeTripIds: body.homeTripIds ?? [],
       }) === untouched
     ) {
       swalToast("Belum ada yang diubah.");
@@ -1081,6 +1196,9 @@ export function InvoiceEditor({
                   <TableCell>
                     {line.kind !== "service" ? (
                       <span className="text-xs text-muted">—</span>
+                    ) : line.tripId ? (
+                      /* A trip is for the house, not for one animal. */
+                      <span className="text-xs text-muted">—</span>
                     ) : line.fromIndex !== null ? (
                       /* The animal a kept line was billed for — changing it
                          is removing the line and adding another. On a ride
@@ -1259,11 +1377,7 @@ export function InvoiceEditor({
                     variant="ghost"
                     size="icon"
                     aria-label={`Hapus ${line.name}`}
-                    onClick={() =>
-                      setLines((current) =>
-                        current.filter((one) => one.key !== line.key),
-                      )
-                    }
+                    onClick={() => removeLine(line)}
                     disabled={saving}
                   >
                     <Trash2 className="size-4 text-danger" />
@@ -1274,6 +1388,39 @@ export function InvoiceEditor({
           </TableBody>
         </Table>
       </div>
+
+      {/*
+        A TRIP STILL OWED (11 October 2026) — the till's "Biaya perjalanan belum
+        ditagih", on the bill. A trip of this bill's home bookings that nobody
+        has billed is offered to add; a trip row taken off in this edit is
+        offered back as it was.
+      */}
+      {owedHere.map((owed) => (
+        <div
+          key={`owed-${owed.tripId}`}
+          data-owed-trip
+          className="flex items-start gap-2 rounded-lg border border-dashed border-border px-3 py-2"
+        >
+          <House className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground">Biaya perjalanan belum ditagih</p>
+            <p className="truncate text-xs text-muted">
+              {owed.name} · {formatMoney(owed.amount)}
+              {owed.petNames.length > 0 ? ` · untuk ${owed.petNames.join(", ")}` : ""}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={saving}
+            onClick={() => addOwedTrip(owed)}
+          >
+            <Plus className="size-4" />
+            Tambahkan
+          </Button>
+        </div>
+      ))}
 
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-64 flex-1">

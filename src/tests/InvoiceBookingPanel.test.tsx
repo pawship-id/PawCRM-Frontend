@@ -329,3 +329,65 @@ describe("without a customer", () => {
     expect(bookingService.bridge).not.toHaveBeenCalled();
   });
 });
+
+/* ─── The home-visit trip (11 October 2026) ─────────────────────────────── */
+
+describe("the home-visit trip", () => {
+  const FEE = {
+    itemId: "fee-1",
+    serviceId: "svc-fee",
+    name: "Biaya kunjungan · Zona B",
+    price: "70000",
+    visitFee: { zoneId: "z-b", zoneName: "Zona B", distanceKm: 3.9, unit: "per_visit" },
+  };
+  const owed = {
+    state: "unbilled" as const,
+    key: "bk1",
+    name: "Biaya kunjungan · Zona B",
+    amount: "70000.0000",
+    zoneName: "Zona B",
+    petNames: ["Miko", "Coco"],
+    tripId: "trip-1",
+  };
+  const carrying = () =>
+    booking({
+      service: { ...booking().service, addons: [FEE] } as never,
+      visitTrip: owed,
+    });
+  const sibling = (visitTrip: Booking["visitTrip"]) =>
+    booking({ _id: "bk2", bookingNumber: "BK-260828-002", petName: "Coco", visitTrip });
+
+  it("leaves the fee out of the card and says it comes along", async () => {
+    (bookingService.bridge as jest.Mock).mockResolvedValue([carrying()]);
+    open();
+
+    expect(
+      await screen.findByText(
+        "+ Perjalanan home grooming Rp 70.000 ikut ditagih (untuk Miko, Coco)",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("+ Biaya kunjungan · Zona B")).not.toBeInTheDocument();
+    /* The card's Total is the grooming alone. */
+    expect(screen.getByText("Rp 150.000", { selector: "span.font-semibold" })).toBeInTheDocument();
+  });
+
+  it("says the trip is already on this faktur once a booking of it is chosen", async () => {
+    (bookingService.bridge as jest.Mock).mockResolvedValue([carrying(), sibling(owed)]);
+    open({ selected: ["bk1"] });
+
+    expect(
+      await screen.findByText("Biaya perjalanan sudah ada di faktur ini"),
+    ).toBeInTheDocument();
+  });
+
+  it("says the trip was billed with another booking", async () => {
+    (bookingService.bridge as jest.Mock).mockResolvedValue([
+      sibling({ state: "billed", carrierBookingNumber: "BK-260828-001", carrierPetName: "Miko" }),
+    ]);
+    open();
+
+    expect(
+      await screen.findByText("Biaya perjalanan sudah ditagih di BK-260828-001 (Miko)"),
+    ).toBeInTheDocument();
+  });
+});

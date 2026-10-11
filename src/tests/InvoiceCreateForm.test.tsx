@@ -1747,6 +1747,178 @@ describe("what the form shows", () => {
   });
 
   /*
+    THE HOME-VISIT FEE IS A TRIP ROW (11 October 2026): drawn once after the
+    bookings while owed — not under the grooming that carries it — and not at
+    all when another booking of the house already billed it.
+  */
+  it("draws an owed trip once as its own row, whichever bookings of it are chosen", async () => {
+    const owed = {
+      state: "unbilled",
+      key: "bk1",
+      name: "Biaya kunjungan · Zona B",
+      amount: "70000.0000",
+      zoneName: "Zona B",
+      petNames: ["Cici", "Coco"],
+      tripId: "trip-1",
+    };
+    jest.spyOn(bookingService, "bridge").mockResolvedValue([
+      {
+        _id: "bk1",
+        bookingNumber: "BK-260828-001",
+        petName: "Cici",
+        service: {
+          serviceId: "svc1",
+          name: "Grooming",
+          price: "120000.0000",
+          addons: [
+            {
+              itemId: "fee1",
+              serviceId: "svc-fee",
+              name: "Biaya kunjungan · Zona B",
+              price: "70000.0000",
+              visitFee: { zoneId: "z-b", zoneName: "Zona B", distanceKm: 3.9, unit: "per_visit" },
+            },
+          ],
+        },
+        groomerName: "Rina",
+        visitTrip: owed,
+      },
+      {
+        _id: "bk2",
+        bookingNumber: "BK-260828-002",
+        petName: "Coco",
+        service: { serviceId: "svc1", name: "Grooming", price: "120000.0000", addons: [] },
+        groomerName: "Rina",
+        visitTrip: owed,
+      },
+    ] as never);
+
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    const boxes = await screen.findAllByRole("checkbox");
+    await userEvent.click(boxes[1]);
+    await userEvent.click(await screen.findByRole("checkbox"));
+
+    const trips = document.querySelectorAll("[data-invoice-trip]");
+    expect(trips).toHaveLength(1);
+    expect(trips[0]).toHaveTextContent("Perjalanan home grooming");
+    expect(trips[0]).toHaveTextContent("Biaya kunjungan · Zona B · Untuk Cici, Coco");
+    expect(
+      screen.queryByRole("row", { name: /^Biaya kunjungan · Zona B Add-on/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("bills a trip left behind on its own — every booking of it already billed", async () => {
+    jest.spyOn(bookingService, "bridge").mockResolvedValue([] as never);
+    jest.spyOn(bookingService, "bridgeTrips").mockResolvedValue([
+      {
+        tripId: "trip-9",
+        name: "Biaya kunjungan · Zona B",
+        amount: "70000.0000",
+        zoneName: "Zona B",
+        scheduledAt: null,
+        petNames: ["Cici", "Coco"],
+        bookingNumbers: ["BK-261011-001", "BK-261011-002"],
+      },
+    ]);
+
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+
+    const offered = (await screen.findAllByText("Perjalanan belum ditagih"))[0].closest(
+      "[data-orphan-trip]",
+    ) as HTMLElement;
+    await userEvent.click(within(offered).getByRole("checkbox"));
+
+    expect(document.querySelectorAll("[data-invoice-trip]")).toHaveLength(1);
+    expect(document.querySelector("[data-orphan-trip]")).toBeNull();
+
+    await submit();
+    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    expect(sent().homeTripIds).toEqual(["trip-9"]);
+    expect(sent().bookingIds).toBeUndefined();
+  });
+
+  it("sends a discount typed on the trip's row", async () => {
+    jest.spyOn(bookingService, "bridge").mockResolvedValue([
+      {
+        _id: "bk1",
+        bookingNumber: "BK-260828-001",
+        petName: "Cici",
+        service: { serviceId: "svc1", name: "Grooming", price: "120000.0000", addons: [] },
+        groomerName: "Rina",
+        visitTrip: {
+          state: "unbilled",
+          key: "trip-1",
+          name: "Biaya kunjungan · Zona B",
+          amount: "70000.0000",
+          zoneName: "Zona B",
+          petNames: ["Cici"],
+          tripId: "trip-1",
+        },
+      },
+    ] as never);
+
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await userEvent.click(await screen.findByRole("checkbox"));
+    await userEvent.type(screen.getByLabelText("Diskon Biaya kunjungan · Zona B"), "10");
+    await submit();
+
+    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    expect(sent().tripDiscounts).toEqual([
+      { homeTripId: "trip-1", discount: { mode: "percent", value: "10" } },
+    ]);
+  });
+
+  it("takes a trip off like the till's bin, offers it back, and sends only what the rows show", async () => {
+    const owed = {
+      state: "unbilled",
+      key: "trip-1",
+      name: "Biaya kunjungan · Zona B",
+      amount: "70000.0000",
+      zoneName: "Zona B",
+      petNames: ["Cici"],
+      tripId: "trip-1",
+    };
+    jest.spyOn(bookingService, "bridge").mockResolvedValue([
+      {
+        _id: "bk1",
+        bookingNumber: "BK-260828-001",
+        petName: "Cici",
+        service: { serviceId: "svc1", name: "Grooming", price: "120000.0000", addons: [] },
+        groomerName: "Rina",
+        visitTrip: owed,
+      },
+    ] as never);
+
+    render(<InvoiceCreateForm />);
+    await pick(/^Pelanggan$/i, /Bu Sari/);
+    await pick(/^Cabang$/i, /Cabang Pusat/);
+    await userEvent.click(await screen.findByRole("checkbox"));
+
+    expect(document.querySelectorAll("[data-invoice-trip]")).toHaveLength(1);
+
+    await userEvent.click(screen.getByRole("button", { name: /Hapus perjalanan/ }));
+
+    expect(document.querySelectorAll("[data-invoice-trip]")).toHaveLength(0);
+    const offered = document.querySelector("[data-owed-trip]") as HTMLElement;
+    expect(offered).toHaveTextContent("Biaya perjalanan belum ditagih");
+
+    await submit();
+    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    expect(sent().homeTripIds).toEqual([]);
+
+    (customerInvoiceService.create as jest.Mock).mockClear();
+    await userEvent.click(within(offered).getByRole("button", { name: /Tambahkan/ }));
+
+    expect(document.querySelectorAll("[data-invoice-trip]")).toHaveLength(1);
+  });
+
+  /*
     THE DISCOUNTS SPLIT AS THE BOOKING CARD SPLITS THEM: each line's own under
     Diskon, and the booking's share of "Diskon seluruh booking" once, on a
     "Diskon booking" row after its last line.

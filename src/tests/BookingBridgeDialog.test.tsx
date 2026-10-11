@@ -216,7 +216,8 @@ describe("BookingBridgeDialog — pulling", () => {
       screen.getByRole("button", { name: /tarik ke keranjang/i }),
     );
 
-    expect(onPull).toHaveBeenCalledWith([target]);
+    /* No trip left behind was ticked — an empty second list. */
+    expect(onPull).toHaveBeenCalledWith([target], []);
     expect(mockedBookings.update).not.toHaveBeenCalled();
   });
 
@@ -844,3 +845,142 @@ describe("BookingBridgeDialog — opsi dipilih staf", () => {
     ]);
   });
 });
+
+/* ─── The home-visit trip (11 October 2026) ─────────────────────────────── */
+
+describe("BookingBridgeDialog — the home-visit trip", () => {
+  const FEE = {
+    itemId: "fee-1",
+    serviceId: "svc-fee",
+    name: "Biaya kunjungan · Zona B",
+    price: "70000.0000",
+    durationMin: null,
+    visitFee: { zoneId: "z-b", zoneName: "Zona B", distanceKm: 3.9, unit: "per_visit" },
+  };
+  const owed = {
+    state: "unbilled" as const,
+    key: "bk-cilang",
+    name: "Biaya kunjungan · Zona B",
+    amount: "70000.0000",
+    zoneName: "Zona B",
+    petNames: ["Cilang", "Coco"],
+    tripId: "trip-1",
+  };
+  const cilang = () =>
+    booking({
+      _id: "bk-cilang",
+      bookingNumber: "BK-261011-001",
+      petName: "Cilang",
+      location: "in_home",
+      totalAmount: "190000.0000",
+      service: { ...booking().service, price: "120000.0000", addons: [FEE] as never },
+      visitTrip: owed,
+    });
+  const coco = (visitTrip: Booking["visitTrip"] = owed) =>
+    booking({
+      _id: "bk-coco",
+      bookingNumber: "BK-261011-002",
+      petName: "Coco",
+      location: "in_home",
+      totalAmount: "120000.0000",
+      service: { ...booking().service, price: "120000.0000" },
+      visitTrip,
+    });
+
+  it("draws the owed fee once, as a trip row, not under the grooming that carries it", async () => {
+    mockedBookings.bridge.mockResolvedValue([cilang(), coco()]);
+    open();
+
+    await screen.findByText("Cilang");
+
+    expect(screen.queryByText("+ Biaya kunjungan · Zona B")).not.toBeInTheDocument();
+    const trips = document.querySelectorAll("[data-bridge-trip]");
+    expect(trips).toHaveLength(1);
+    expect(trips[0]).toHaveTextContent("Perjalanan home grooming");
+    expect(trips[0]).toHaveTextContent("Untuk Cilang, Coco");
+  });
+
+  it("counts the trip once with whichever booking of it is ticked", async () => {
+    mockedBookings.bridge.mockResolvedValue([cilang(), coco()]);
+    open();
+
+    await userEvent.click(await screen.findByRole("checkbox", { name: /BK-261011-002/ }));
+
+    expect(document.querySelector("[data-bridge-trip]")).toHaveAttribute("data-coming", "true");
+    expect(screen.getByRole("button", { name: /Tarik ke keranjang · Rp 190.000/ })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /BK-261011-001/ }));
+
+    /* 120.000 + 120.000 + the trip once. */
+    expect(screen.getByRole("button", { name: /Tarik ke keranjang · Rp 310.000/ })).toBeInTheDocument();
+  });
+
+  it("says the trip was billed with another booking, and adds nothing for it", async () => {
+    mockedBookings.bridge.mockResolvedValue([
+      coco({ state: "billed", carrierBookingNumber: "BK-261011-001", carrierPetName: "Cilang" }),
+    ]);
+    open();
+
+    expect(
+      await screen.findByText("Biaya perjalanan sudah ditagih di BK-261011-001 (Cilang)"),
+    ).toBeInTheDocument();
+    expect(document.querySelector("[data-bridge-trip]")).toBeNull();
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /BK-261011-002/ }));
+
+    expect(screen.getByRole("button", { name: /Tarik ke keranjang · Rp 120.000/ })).toBeInTheDocument();
+  });
+});
+
+describe("BookingBridgeDialog — prices after the booking's discount", () => {
+  it("shows each line after what the booking takes off it, the price before struck through", async () => {
+    mockedBookings.bridge.mockResolvedValue([
+      booking({
+        netAmount: "100000.0000",
+        service: {
+          ...booking().service,
+          price: "120000.0000",
+          discountAmount: "20000.0000",
+        },
+      }),
+    ]);
+    open();
+
+    expect(await screen.findByText("Rp 100.000")).toBeInTheDocument();
+    expect(screen.getByText("Rp 120.000")).toHaveClass("line-through");
+  });
+
+  it("shows a plain price when nothing comes off", async () => {
+    mockedBookings.bridge.mockResolvedValue([booking()]);
+    open();
+
+    expect(await screen.findByText("Rp 150.000")).not.toHaveClass("line-through");
+  });
+});
+
+describe("BookingBridgeDialog — a trip left behind", () => {
+  const orphan = {
+    tripId: "trip-9",
+    name: "Biaya kunjungan · Zona B",
+    amount: "70000.0000",
+    zoneName: "Zona B",
+    scheduledAt: null,
+    petNames: ["Cici", "Coco"],
+    bookingNumbers: ["BK-261011-001", "BK-261011-002"],
+  };
+
+  it("offers it on its own when no booking is left, and hands back its id", async () => {
+    mockedBookings.bridge.mockResolvedValue([]);
+    mockedBookings.bridgeTrips.mockResolvedValue([orphan]);
+    const onPull = open();
+
+    const row = (await screen.findByText("Perjalanan belum ditagih")).parentElement as HTMLElement;
+    expect(row).toHaveTextContent("Untuk Cici, Coco · booking BK-261011-001, BK-261011-002 sudah ditagih");
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /Tarik perjalanan/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Tarik ke keranjang · Rp 70.000/ }));
+
+    expect(onPull).toHaveBeenCalledWith([], ["trip-9"]);
+  });
+});
+

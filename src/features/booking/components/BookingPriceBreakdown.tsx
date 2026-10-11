@@ -5,13 +5,17 @@ import {
   bookingShareOf,
   ownDiscountOfLine,
 } from "@/features/sales/bookingDiscount";
-import { formatMoney, isPositive, sumDecimals } from "@/utils/decimal";
+import Link from "next/link";
+
+import { formatMoney, isPositive, subtractDecimals, sumDecimals } from "@/utils/decimal";
 import type {
   Booking,
   BookingAddon,
   BookingMainService,
   VariantChoiceSnapshot,
 } from "@/types/api";
+
+import { homeTripPath } from "../paths";
 
 /**
  * WHAT IS BEING CHARGED, AND WHAT COMES OFF IT — one booking's money, drawn
@@ -77,12 +81,24 @@ export function BookingPriceBreakdown({
 
   if (!service) return null;
 
-  const addons = service.addons ?? [];
+  /*
+    THE HOME-VISIT FEE IS NOT DRAWN HERE (11 October 2026, on request). It is
+    still a line on the booking — the till, the invoice and the journal read it
+    there — but it belongs to the journey, so the trip's page shows it. Every
+    figure below leaves it out, so the lines on screen add up to the Total.
+  */
+  const feeRows = (service.addons ?? []).filter((addon) => addon.visitFee);
+  const addons = (service.addons ?? []).filter((addon) => !addon.visitFee);
+  const shown: Booking = { ...booking, service: { ...service, addons } };
+  const feeNet = sumDecimals(
+    feeRows.map((row) => subtractDecimals(row.price, row.discountAmount ?? "0")),
+  );
   const priced = [pricedOn(service), tail].filter(Boolean).join(" · ") || null;
-  const total =
-    booking.netAmount ??
-    booking.totalAmount ??
-    sumDecimals([service.price, ...addons.map((addon) => addon.price)]);
+  const stored = booking.netAmount ?? booking.totalAmount;
+  const total = stored
+    ? subtractDecimals(stored, feeNet)
+    : sumDecimals([service.price, ...addons.map((addon) => addon.price)]);
+  const tripId = booking.homeTrip?._id ?? null;
 
   return (
     <div>
@@ -123,30 +139,7 @@ export function BookingPriceBreakdown({
 
       {addons.length > 0 && (
         <ul className="mt-2 border-l-2 border-border pl-3">
-          {addons.map((addon) =>
-            addon.visitFee ? (
-              /*
-                THE HOME-VISIT FEE (10 October 2026) — the server owns this row
-                and recomputes it from the visit address, so it is drawn apart
-                and has no remove, no edit and no discount: it is a fact about
-                the zone, not an add-on somebody chose.
-              */
-              <li
-                key={addon.itemId}
-                data-visit-fee
-                className="my-1 flex flex-wrap justify-between gap-x-3 rounded-md bg-surface-hover px-2 py-1.5 text-sm"
-              >
-                <span className="text-foreground">
-                  {addon.name}
-                  <span className="block text-xs text-muted">
-                    Biaya kunjungan · otomatis dari zona
-                  </span>
-                </span>
-                <span className="font-semibold tabular-nums text-foreground">
-                  {formatMoney(addon.price)}
-                </span>
-              </li>
-            ) : (
+          {addons.map((addon) => (
             <li
               key={addon.itemId}
               className="flex flex-wrap justify-between gap-x-3 py-1 text-sm"
@@ -171,23 +164,22 @@ export function BookingPriceBreakdown({
                 </span>
               )}
             </li>
-            ),
-          )}
+          ))}
         </ul>
       )}
 
-      {isPositive(bookingShareOf(booking)) && (
+      {isPositive(bookingShareOf(shown)) && (
         <div className="mt-2 border-t border-border pt-2">
           <div className="flex justify-between gap-3 py-1 text-sm">
             <span className="text-muted">Subtotal</span>
             <span className="tabular-nums text-muted">
-              {formatMoney(afterOwnDiscounts(booking))}
+              {formatMoney(afterOwnDiscounts(shown))}
             </span>
           </div>
           <div className="flex justify-between gap-3 py-1 text-sm">
             <span className="text-success">Diskon booking</span>
             <span className="font-semibold tabular-nums text-success">
-              − {formatMoney(bookingShareOf(booking))}
+              − {formatMoney(bookingShareOf(shown))}
             </span>
           </div>
         </div>
@@ -197,6 +189,25 @@ export function BookingPriceBreakdown({
         <span className="font-extrabold">Total</span>
         <span className="text-lg font-extrabold tabular-nums">{formatMoney(total)}</span>
       </div>
+
+      {(feeRows.length > 0 || booking.homeTrip?.hasFee) && (
+        <p data-visit-fee-note className="mt-1.5 text-xs text-muted">
+          {booking.homeTrip?.feeBilled
+            ? "Biaya kunjungan ditagih terpisah, sudah ditagih"
+            : "Belum termasuk biaya kunjungan"}
+          {tripId && (
+            <>
+              {" · "}
+              <Link
+                href={homeTripPath(tripId)}
+                className="font-semibold text-primary underline-offset-2 hover:underline"
+              >
+                lihat di perjalanan
+              </Link>
+            </>
+          )}
+        </p>
+      )}
     </div>
   );
 }

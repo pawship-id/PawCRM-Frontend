@@ -351,15 +351,6 @@ export function BookingDetailScreen({ id }: { id: string }) {
     }
   }
 
-  /* Best effort: the trip's own answer is already on screen. */
-  async function reloadBooking() {
-    try {
-      replaceBooking(await bookingService.getById(id));
-    } catch {
-      /* Left as it was. */
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
@@ -829,11 +820,11 @@ export function BookingDetailScreen({ id }: { id: string }) {
 
           {/*
             THE JOURNEY TO THE HOUSE (10 October 2026) — a home booking only, and
-            nothing at all otherwise. Re-reads the booking after each move: the
-            server also moves the booking when the groomer reaches the door.
+            nothing at all otherwise. A summary and a link: the trip is moved on
+            its own page since 11 October 2026.
           */}
           {booking.location === "in_home" && !booking.tripLeg && (
-            <HomeVisitCard booking={booking} onChanged={reloadBooking} />
+            <HomeVisitCard booking={booking} />
           )}
 
           {/* ─── Hewan & Pelanggan ──────────────────────────────────────── */}

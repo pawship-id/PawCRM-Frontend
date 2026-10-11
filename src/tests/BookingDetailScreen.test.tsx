@@ -13,7 +13,6 @@ import type {
   Booking,
   BookingHomeTrip,
   BookingSession,
-  HomeTrip,
   HomeTripStatus,
 } from "@/types/api";
 
@@ -997,14 +996,6 @@ describe("BookingDetailScreen — the rail and the cards beside the work", () =>
 
 const trips = homeTripService as jest.Mocked<typeof homeTripService>;
 
-const NEXT: Record<string, { next: HomeTripStatus | null; label: string | null }> = {
-  scheduled: { next: "otw_customer", label: "Berangkat" },
-  otw_customer: { next: "arrived_customer", label: "Sampai di rumah" },
-  arrived_customer: { next: "otw_store", label: "Pulang" },
-  otw_store: { next: "arrived_store", label: "Sampai di toko" },
-  arrived_store: { next: null, label: null },
-};
-
 const LABEL: Record<string, string> = {
   scheduled: "Dijadwalkan",
   otw_customer: "Berangkat",
@@ -1032,45 +1023,6 @@ function summaryAt(status: HomeTripStatus): BookingHomeTrip {
   };
 }
 
-function fullTrip(status: HomeTripStatus, over: Partial<HomeTrip> = {}): HomeTrip {
-  const step = NEXT[status] ?? { next: null, label: null };
-  return {
-    _id: "trip-1",
-    groupId: "grp-1",
-    branchId: "branch-1",
-    customerId: "cust-1",
-    customerName: "Bu Lisa",
-    performerUserId: null,
-    performerName: null,
-    status,
-    statusLabel: LABEL[status] ?? status,
-    nextStatus: step.next,
-    nextLabel: step.label,
-    scheduledAt: "2026-09-03T02:00:00.000Z",
-    origin: null,
-    destination: null,
-    zoneName: "Zona B",
-    distanceKm: 7.5,
-    stops: [
-      {
-        customerId: "cust-1",
-        customerName: "Bu Lisa",
-        destination: null,
-        zoneName: "Zona B",
-        distanceKm: 7.5,
-        sequence: 1,
-      },
-    ],
-    history: summaryAt(status).history.map((row) => ({
-      ...row,
-      label: LABEL[row.status] ?? row.status,
-      by: "user-2",
-    })),
-    bookings: [],
-    ...over,
-  };
-}
-
 const FEE = {
   itemId: "fee-1",
   serviceId: "svc-fee",
@@ -1089,13 +1041,12 @@ const homeBooking = (status: HomeTripStatus, over: Overrides = {}): Booking =>
     ...over,
   });
 
+/*
+  THE TRIP HAS ITS OWN PAGE since 11 October 2026 — this card is the address,
+  where the trip stands, and a link. Its timeline and buttons are tested in
+  HomeTripDetailScreen.test.tsx.
+*/
 describe("BookingDetailScreen — the journey to the house", () => {
-  beforeEach(() => {
-    trips.get.mockResolvedValue(fullTrip("scheduled"));
-    trips.changeStatus.mockResolvedValue(fullTrip("otw_customer"));
-    trips.setPerformer.mockResolvedValue(fullTrip("scheduled"));
-  });
-
   it("draws the card only for a booking made at the customer's house", async () => {
     bookings.getById.mockResolvedValue(homeBooking("scheduled"));
     show();
@@ -1106,7 +1057,8 @@ describe("BookingDetailScreen — the journey to the house", () => {
       "href",
       expect.stringContaining("-6.37%2C106.9"),
     );
-    expect(await screen.findByText(/Zona B · 7,5 km/)).toBeInTheDocument();
+    /* The zone and the fee belong to the trip's page now. */
+    expect(screen.queryByText(/Zona B · 7,5 km/)).not.toBeInTheDocument();
   });
 
   it("is absent — no empty state — on a salon booking", async () => {
@@ -1118,142 +1070,68 @@ describe("BookingDetailScreen — the journey to the house", () => {
     expect(trips.get).not.toHaveBeenCalled();
   });
 
-  it("marks the rungs reached, with their time and who", async () => {
-    bookings.getById.mockResolvedValue(homeBooking("arrived_customer"));
-    trips.get.mockResolvedValue(fullTrip("arrived_customer"));
-    show();
-
-    const list = await screen.findByRole("list", { name: "Perjalanan" });
-    const rows = within(list).getAllByRole("listitem");
-
-    expect(rows).toHaveLength(5);
-    expect(rows.map((row) => row.getAttribute("data-reached"))).toEqual([
-      "true",
-      "true",
-      "true",
-      "false",
-      "false",
-    ]);
-    expect(within(rows[1]).getByText(/Rio/)).toBeInTheDocument();
-    expect(within(rows[3]).queryByText(/Rio/)).not.toBeInTheDocument();
-  });
-
-  it.each([
-    ["scheduled", "Berangkat", "otw_customer"],
-    ["otw_customer", "Sampai di rumah", "arrived_customer"],
-    ["arrived_customer", "Pulang", "otw_store"],
-    ["otw_store", "Sampai di toko", "arrived_store"],
-  ] as const)(
-    "at %s the button says %s and asks for %s",
-    async (status, word, to) => {
-      bookings.getById.mockResolvedValue(homeBooking(status));
-      trips.get.mockResolvedValue(fullTrip(status));
-      show();
-
-      const list = await screen.findByRole("list", { name: "Perjalanan" });
-      /* The rung's name is also in the timeline — the button is the one a button. */
-      expect(list).toBeInTheDocument();
-      await userEvent.click(await screen.findByRole("button", { name: word }));
-
-      expect(trips.changeStatus).toHaveBeenCalledWith("trip-1", to);
-    },
-  );
-
-  it("offers no button once the trip is over", async () => {
-    bookings.getById.mockResolvedValue(homeBooking("arrived_store"));
-    trips.get.mockResolvedValue(fullTrip("arrived_store"));
-    show();
-
-    expect(await screen.findByText("Perjalanan selesai.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Berangkat" })).not.toBeInTheDocument();
-  });
-
-  it("re-reads the booking after a move — the door also moves the booking", async () => {
+  it("says where the trip stands and links to its own page", async () => {
     bookings.getById.mockResolvedValue(homeBooking("otw_customer"));
-    trips.get.mockResolvedValue(fullTrip("otw_customer"));
-    trips.changeStatus.mockResolvedValue(fullTrip("arrived_customer"));
     show();
 
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Sampai di rumah" }),
+    await screen.findByText("Kunjungan ke rumah");
+
+    expect(screen.getByText("Berangkat")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Lihat perjalanan/ })).toHaveAttribute(
+      "href",
+      "/dashboard/booking/perjalanan/trip-1",
     );
-
-    await waitFor(() => expect(bookings.getById).toHaveBeenCalledTimes(2));
+    /* The buttons live on the trip's page now. */
+    expect(screen.queryByRole("button", { name: "Sampai di rumah" })).not.toBeInTheDocument();
+    expect(trips.get).not.toHaveBeenCalled();
   });
 
-  it("shows the server's own words when a rung is refused", async () => {
-    bookings.getById.mockResolvedValue(homeBooking("arrived_customer"));
-    trips.get.mockResolvedValue(fullTrip("arrived_customer"));
-    trips.changeStatus.mockRejectedValue(
-      new ApiError("Hewan Mochi belum selesai dikerjakan.", 409),
+  it("says the trip's fee is billed apart, once the trip carries one", async () => {
+    bookings.getById.mockResolvedValue(
+      homeBooking("scheduled", {
+        service: { addons: [PARFUM] } as never,
+        homeTrip: { ...summaryAt("scheduled"), hasFee: true, feeBilled: false },
+      }),
     );
-    show();
-
-    await userEvent.click(await screen.findByRole("button", { name: "Pulang" }));
-
-    expect(
-      await screen.findByText(/Hewan Mochi belum selesai dikerjakan/),
-    ).toBeInTheDocument();
-  });
-
-  it("disables the button, with a reason, for somebody who may not move it", async () => {
-    bookings.getById.mockResolvedValue(homeBooking("scheduled"));
-    show({
-      isSuperAdmin: false,
-      permissions: [{ feature: "bookings", actions: ["read"] }],
-    });
-
-    expect(await screen.findByRole("button", { name: "Berangkat" })).toBeDisabled();
-    expect(screen.getByText(/tidak punya izin/)).toBeInTheDocument();
-  });
-
-  it("offers the performer select only with bookings:update, while scheduled", async () => {
-    bookings.getById.mockResolvedValue(homeBooking("scheduled"));
-    const view = show({
-      isSuperAdmin: false,
-      permissions: [{ feature: "bookings", actions: ["read", "update"] }],
-    });
-
-    expect(
-      await screen.findByRole("combobox", { name: /Yang menjalankan/ }),
-    ).toBeInTheDocument();
-    view.unmount();
-  });
-
-  it("states who goes, without a select, for ladder-only staff", async () => {
-    bookings.getById.mockResolvedValue(homeBooking("scheduled"));
-    show({ isSuperAdmin: false, permissions: LADDER_ONLY });
-
-    expect(await screen.findByText(/Ikut groomer booking/)).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: /Yang menjalankan/ })).not.toBeInTheDocument();
-  });
-
-  it("has no select once the trip has left, even with bookings:update", async () => {
-    bookings.getById.mockResolvedValue(homeBooking("otw_customer"));
-    trips.get.mockResolvedValue(fullTrip("otw_customer", { performerUserId: "user-1", performerName: "Mbak Sari" }));
-    show({
-      isSuperAdmin: false,
-      permissions: [{ feature: "bookings", actions: ["read", "update"] }],
-    });
-
-    expect(await screen.findByText("Mbak Sari")).toBeInTheDocument();
-    expect(screen.queryByRole("combobox", { name: /Yang menjalankan/ })).not.toBeInTheDocument();
-  });
-
-  it("draws the visit fee apart, read-only, and not as a tickable add-on", async () => {
-    bookings.getById.mockResolvedValue(homeBooking("scheduled"));
     const { container } = show();
 
     await screen.findByText("Kunjungan ke rumah");
 
-    const fee = container.querySelector("[data-visit-fee]") as HTMLElement;
+    expect(container.querySelector("[data-visit-fee-note]")).toHaveTextContent(
+      "Belum termasuk biaya kunjungan",
+    );
+  });
 
-    expect(fee).toHaveTextContent("Biaya kunjungan · Zona B");
-    expect(fee).toHaveTextContent("Biaya kunjungan · otomatis dari zona");
-    expect(within(fee).queryByRole("button")).toBeNull();
-    expect(within(fee).queryByRole("checkbox")).toBeNull();
+  it("offers no link for a home booking made before trips existed", async () => {
+    bookings.getById.mockResolvedValue(homeBooking("scheduled", { homeTrip: null }));
+    show();
+
+    expect(
+      await screen.findByText("Booking ini belum punya catatan perjalanan."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Lihat perjalanan/ })).not.toBeInTheDocument();
+  });
+
+  it("leaves the visit fee out of the booking — it is shown on the trip", async () => {
+    bookings.getById.mockResolvedValue(
+      homeBooking("scheduled", { totalAmount: "175000.0000", netAmount: "175000.0000" }),
+    );
+    const { container } = show();
+
+    await screen.findByText("Kunjungan ke rumah");
+
+    expect(screen.queryByText(/Biaya kunjungan · Zona B/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Zona B · 7,5 km/)).not.toBeInTheDocument();
     /* The ordinary add-on is still the plain "+ name" row. */
     expect(screen.getByText(/\+ Parfum/)).toBeInTheDocument();
-    expect(screen.queryByText(/\+ Biaya kunjungan/)).not.toBeInTheDocument();
+    /* 175.000 stored, less the 35.000 fee — the Total adds up what is drawn. */
+    expect(screen.getByText("Rp 140.000")).toBeInTheDocument();
+
+    const note = container.querySelector("[data-visit-fee-note]") as HTMLElement;
+    expect(note).toHaveTextContent("Belum termasuk biaya kunjungan");
+    expect(within(note).getByRole("link", { name: "lihat di perjalanan" })).toHaveAttribute(
+      "href",
+      "/dashboard/booking/perjalanan/trip-1",
+    );
   });
 });
