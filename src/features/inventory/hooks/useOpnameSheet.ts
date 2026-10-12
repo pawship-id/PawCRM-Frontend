@@ -35,6 +35,20 @@ function forEditing(items: OpnameItem[] | undefined): OpnameItem[] {
   }));
 }
 
+/**
+ * A line as the sheet holds it locally. `resetQty` marks a line just switched
+ * to another batch: its count was typed for the old lot, so the next save sends
+ * no quantity and the server starts the line from what the new lot holds.
+ */
+export type SheetLine = OpnameItem & { resetQty?: boolean };
+
+/**
+ * Which lot a line counts: one existing lot (its id), or a lot the system does
+ * not know yet. A product that expires is never counted as a whole.
+ */
+export type BatchChoice =
+  { kind: "lot"; batchId: string; systemQty: string } | { kind: "new" };
+
 /** What the save indicator shows. `saved` carries the time it happened. */
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
@@ -54,7 +68,7 @@ export interface LineEdit {
 interface UseOpnameSheetResult {
   opname: Opname | null;
   /** The lines as they should render — local edits included. */
-  items: OpnameItem[];
+  items: SheetLine[];
   loading: boolean;
   /** A load failure, or the API's refusal of a save. */
   error: string | null;
@@ -62,15 +76,23 @@ interface UseOpnameSheetResult {
   lastSavedAt: Date | null;
   /** How many lines somebody has actually walked up to. */
   countedCount: number;
-  /** Edits one line and schedules a save. */
-  editLine: (productId: string, patch: LineEdit) => void;
-  /** Marks a line counted (or un-counts it) and schedules a save. */
-  setCounted: (productId: string, counted: boolean) => void;
   /**
-   * Takes a product back off the sheet and saves at once. Drafts only — the
+   * Edits one line and schedules a save. Lines are addressed by POSITION: one
+   * product may sit on a line per batch, so the product id no longer names one.
+   */
+  editLine: (index: number, patch: LineEdit) => void;
+  /** Marks a line counted (or un-counts it) and schedules a save. */
+  setCounted: (index: number, counted: boolean) => void;
+  /**
+   * Points a line at another lot (or a new one). The
+   * count goes back to "belum dihitung", started from what that lot holds.
+   */
+  changeBatch: (index: number, choice: BatchChoice) => void;
+  /**
+   * Takes a line back off the sheet and saves at once. Drafts only — the
    * caller gates on that, as it does for every other edit here.
    */
-  removeLine: (productId: string) => Promise<void>;
+  removeLine: (index: number) => Promise<void>;
   /** Flushes any pending edit immediately — call before submitting. */
   flush: () => Promise<void>;
   /**
@@ -114,7 +136,7 @@ interface UseOpnameSheetResult {
  */
 export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
   const [opname, setOpname] = useState<Opname | null>(null);
-  const [items, setItems] = useState<OpnameItem[]>([]);
+  const [items, setItems] = useState<SheetLine[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -130,7 +152,7 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
   /** The pending debounce, so a new keystroke replaces it rather than queueing. */
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** The latest lines, readable from a timer callback without re-arming it. */
-  const itemsRef = useRef<OpnameItem[]>([]);
+  const itemsRef = useRef<SheetLine[]>([]);
   /** Whether anything is waiting to be saved — drives `flush`. */
   const dirtyRef = useRef(false);
   /** Guards setStates after unmount. */
@@ -186,10 +208,13 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
    * cannot disagree about which lines are done.
    */
   const buildPayload = useCallback(
-    (source: OpnameItem[]): OpnameItemInput[] =>
+    (source: SheetLine[]): OpnameItemInput[] =>
       source.map((item) => ({
         productId: item.productId,
-        physicalQty: item.physicalQty,
+        ...(item.batchId ? { batchId: item.batchId } : {}),
+        ...(item.newBatch ? { newBatch: true } : {}),
+        // Left out for a line just switched to another batch — see SheetLine.
+        ...(item.resetQty ? {} : { physicalQty: item.physicalQty }),
         counted: item.countedAt !== null,
         notes: item.notes,
         ...(item.supplierBatchCode
@@ -257,11 +282,11 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
   }, [save]);
 
   const applyEdit = useCallback(
-    (productId: string, patch: Partial<OpnameItem>) => {
+    (index: number, patch: Partial<SheetLine>) => {
       revisionRef.current += 1;
       setItems((current) => {
-        const next = current.map((item) =>
-          item.productId === productId ? { ...item, ...patch } : item,
+        const next = current.map((item, at) =>
+          at === index ? { ...item, ...patch } : item,
         );
         itemsRef.current = next;
         return next;
@@ -272,7 +297,7 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
   );
 
   const editLine = useCallback(
-    (productId: string, patch: LineEdit) => {
+    (index: number, patch: LineEdit) => {
       /**
        * TYPING A QUANTITY COUNTS THE LINE. Somebody who writes a number has been
        * to that shelf, and making them tick a second control to say so would
@@ -283,18 +308,52 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
       const counts =
         patch.physicalQty !== undefined && patch.physicalQty.trim() !== "";
 
-      applyEdit(productId, {
+      applyEdit(index, {
         ...patch,
-        ...(counts ? { countedAt: new Date().toISOString() } : {}),
+        // A typed number is the count from now on, not the reset.
+        ...(counts
+          ? { countedAt: new Date().toISOString(), resetQty: false }
+          : {}),
       });
     },
     [applyEdit],
   );
 
   const setCounted = useCallback(
-    (productId: string, counted: boolean) => {
-      applyEdit(productId, {
+    (index: number, counted: boolean) => {
+      applyEdit(index, {
         countedAt: counted ? new Date().toISOString() : null,
+      });
+    },
+    [applyEdit],
+  );
+
+  /**
+   * SWITCHING THE LOT STARTS THE LINE OVER. The quantity on it was counted for
+   * a different lot, and a number that silently changes meaning is worse than
+   * none — so the line goes back to uncounted, shows what the new lot holds,
+   * and the save lets the server fill both numbers in for real.
+   */
+  const changeBatch = useCallback(
+    (index: number, choice: BatchChoice) => {
+      const systemQty = choice.kind === "lot" ? trimQty(choice.systemQty) : "0";
+
+      applyEdit(index, {
+        batchId: choice.kind === "lot" ? choice.batchId : null,
+        newBatch: choice.kind === "new",
+        lotCode: null,
+        lotSupplierBatchCode: null,
+        lotExpiryDate: null,
+        systemQty,
+        physicalQty: systemQty,
+        diffQty: "0",
+        diffValue: "0",
+        countedAt: null,
+        resetQty: true,
+        // The lot fields describe a NEW lot only; anything else carries its own.
+        ...(choice.kind === "new"
+          ? {}
+          : { supplierBatchCode: null, expiryDate: null }),
       });
     },
     [applyEdit],
@@ -315,12 +374,10 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
    * closing the tab in that window would bring the line back.
    */
   const removeLine = useCallback(
-    async (productId: string) => {
+    async (index: number) => {
       revisionRef.current += 1;
 
-      const next = itemsRef.current.filter(
-        (item) => item.productId !== productId,
-      );
+      const next = itemsRef.current.filter((_, at) => at !== index);
       itemsRef.current = next;
       setItems(next);
       dirtyRef.current = true;
@@ -429,6 +486,7 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
     countedCount: items.filter((item) => item.countedAt !== null).length,
     editLine,
     setCounted,
+    changeBatch,
     removeLine,
     flush,
     addProducts,

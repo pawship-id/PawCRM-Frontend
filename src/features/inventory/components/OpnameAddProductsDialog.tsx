@@ -33,7 +33,11 @@ import { ProductMultiPicker } from "./ProductMultiPicker";
  * <p>: this one holds a search box and a list of checkboxes.
  */
 export function OpnameAddProductsDialog({
-  /** What the sheet already carries — hidden from the list, never offered twice. */
+  /**
+   * Hidden from the list, never offered twice: the products the sheet already
+   * counts as a whole. A product that expires stays — adding it again opens a
+   * line for its next batch.
+   */
   existingProductIds,
   busy,
   onAdd,
@@ -76,7 +80,9 @@ export function OpnameAddProductsDialog({
           <DialogDescription>
             Baris baru dibuka dengan angka sistem dan berstatus{" "}
             <b>belum dihitung</b> — hitungan yang sudah Anda isi tidak berubah.
-            Produk yang sudah ada di lembar ini tidak ditampilkan.
+            Produk yang punya batch dibuka satu baris per batch, dan tetap
+            muncul walau sudah ada di lembar — menambahkannya lagi membuka baris
+            untuk batch berikutnya.
           </DialogDescription>
         </DialogHeader>
 

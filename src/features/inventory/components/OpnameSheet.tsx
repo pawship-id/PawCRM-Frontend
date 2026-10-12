@@ -9,6 +9,7 @@ import {
   Alert,
   Button,
   ConfirmDialog,
+  FilterSelect,
   InternalBatchCodeDisplay,
   Spinner,
   SupplierBatchCodeInput,
@@ -19,15 +20,20 @@ import { Input } from "@/components/ui/input";
 import { usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
-import { batchCodeHint } from "@/lib/batchCode";
+import { batchCodeHint, lotOptionLabel } from "@/lib/batchCode";
 import { ApiError } from "@/services/api-error";
 import { stockOpnameService } from "@/services/stockOpname.service";
-import type { OpnameItem } from "@/types/inventory";
+import type { OpnameItem, ProductBatch } from "@/types/inventory";
 import { exportToXlsx, type XlsxColumn } from "@/utils/xlsx";
 import { formatMoney, formatQty, toMinor } from "@/utils/decimal";
 
 import { useOpnamePreview } from "../hooks/useOpnamePreview";
-import { useOpnameSheet } from "../hooks/useOpnameSheet";
+import {
+  useOpnameSheet,
+  type BatchChoice,
+  type SheetLine,
+} from "../hooks/useOpnameSheet";
+import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
 import { JournalPreview } from "./JournalPreview";
 import { OpnameAddProductsDialog } from "./OpnameAddProductsDialog";
 import { OpnameStatusBadge } from "./OpnameStatusBadge";
@@ -72,6 +78,9 @@ const SHEET_EXPORT_COLUMNS: XlsxColumn<OpnameItem>[] = [
   { header: "SKU", value: (item) => item.productSku ?? "" },
   { header: "Produk", value: (item) => item.productName ?? "" },
   { header: "Satuan", value: (item) => item.productUnit ?? "" },
+  // Which lot the line counted — what a variance on a product that expires is
+  // actually argued about.
+  { header: "Batch dihitung", value: (item) => batchText(item) ?? "" },
   { header: "Qty sistem", value: (item) => item.systemQty, type: "number" },
   { header: "Qty fisik", value: (item) => item.physicalQty, type: "number" },
   { header: "Selisih qty", value: (item) => item.diffQty, type: "number" },
@@ -86,8 +95,14 @@ const SHEET_EXPORT_COLUMNS: XlsxColumn<OpnameItem>[] = [
   { header: "Dihitung", value: (item) => (item.countedAt ? "ya" : "belum") },
   // OURS once the sheet has been submitted and the lot exists; blank on a
   // draft, where there is no lot yet to have a code.
-  { header: "Kode batch internal", value: (item) => item.postedBatchCode ?? "" },
-  { header: "Kode batch supplier", value: (item) => item.supplierBatchCode ?? "" },
+  {
+    header: "Kode batch internal",
+    value: (item) => item.postedBatchCode ?? "",
+  },
+  {
+    header: "Kode batch supplier",
+    value: (item) => item.supplierBatchCode ?? "",
+  },
   {
     header: "Kedaluwarsa",
     value: (item) => item.expiryDate ?? "",
@@ -95,6 +110,50 @@ const SHEET_EXPORT_COLUMNS: XlsxColumn<OpnameItem>[] = [
   },
   { header: "Catatan", value: (item) => item.notes ?? "" },
 ];
+
+/** The dropdown's "a lot the system does not know" row. Never sent as an id. */
+const NEW_BATCH = "new-batch";
+
+function formatExpiry(value: string | null | undefined): string | null {
+  return value
+    ? new Date(value).toLocaleDateString("id-ID", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : null;
+}
+
+/**
+ * What lot a line counts, in words — or null for a product that has none to
+ * speak of. Used where the line is READ: a submitted sheet and the export.
+ */
+function batchText(item: OpnameItem): string | null {
+  if (item.batchId) {
+    return [
+      item.lotCode ?? "Batch",
+      item.lotSupplierBatchCode && `supplier ${item.lotSupplierBatchCode}`,
+      formatExpiry(item.lotExpiryDate) &&
+        `exp ${formatExpiry(item.lotExpiryDate)}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+  if (item.newBatch) {
+    return item.postedBatchCode
+      ? `Batch baru · ${item.postedBatchCode}`
+      : "Batch baru";
+  }
+  return item.productHasExpiry ? "Semua batch" : null;
+}
+
+/** The dropdown's row for one lot: code, supplier code, expiry, what is left. */
+function lotLabel(lot: ProductBatch): string {
+  const expiry = formatExpiry(lot.expiryDate);
+  return expiry
+    ? `${lotOptionLabel(lot)} · exp ${expiry}`
+    : lotOptionLabel(lot);
+}
 
 export function OpnameSheet({ opnameId }: { opnameId: string }) {
   const router = useRouter();
@@ -110,6 +169,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
     countedCount,
     editLine,
     setCounted,
+    changeBatch,
     removeLine,
     flush,
     addProducts,
@@ -120,10 +180,22 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
 
   const preview = useOpnamePreview(opnameId);
 
+  /**
+   * The lots the warehouse holds, for the per-line batch dropdown. Only asked
+   * of a DRAFT — a submitted sheet is read, not edited, and names its lots from
+   * the labels the detail read already carries.
+   */
+  const lots = useWarehouseBatches(
+    opname?.status === "draft" ? opname.warehouseId : "",
+  );
+
   const [addingProducts, setAddingProducts] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   /** A counted line waiting on confirmation — see `handleRemove`. */
-  const [pendingRemove, setPendingRemove] = useState<OpnameItem | null>(null);
+  const [pendingRemove, setPendingRemove] = useState<{
+    item: OpnameItem;
+    index: number;
+  } | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -159,9 +231,87 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
   const missingLot = items.filter(
     (item) =>
       item.productHasExpiry &&
+      !item.batchId &&
       (toMinor(item.diffQty) ?? 0n) > 0n &&
       !item.expiryDate,
   );
+
+  /**
+   * Lines of a product that expires that name no batch — only an old draft can
+   * carry one. The API refuses to finish the sheet until each picks a batch.
+   */
+  const unbatched = items.filter(
+    (item) => item.productHasExpiry && !item.batchId && !item.newBatch,
+  );
+
+  /** The Batch column appears once any line is of a product that expires. */
+  const showBatch = items.some(
+    (item) => item.productHasExpiry || item.batchId || item.newBatch,
+  );
+
+  /**
+   * What one line's batch dropdown offers: the lots of its product at this
+   * warehouse that no OTHER line already counts, and a new lot. There is no
+   * "whole product" choice — a product that expires is always counted batch by
+   * batch, and a lot counted twice is refused by the API, so neither is offered.
+   */
+  function batchOptions(index: number) {
+    const item = items[index];
+    const siblings = items.filter(
+      (other, at) => at !== index && other.productId === item.productId,
+    );
+    const taken = new Set(
+      siblings.map((other) => other.batchId).filter(Boolean),
+    );
+    const available = (lots.byProduct.get(item.productId) ?? []).filter(
+      (lot) => !taken.has(lot._id),
+    );
+
+    const options = available.map((lot) => ({
+      value: lot._id,
+      label: lotLabel(lot),
+      triggerLabel: `${lot.batchCode} · sisa ${formatQty(lot.qtyRemaining)}`,
+    }));
+
+    // A lot sold down to nothing since it was put on the sheet is no longer in
+    // the warehouse's list, yet it is still the lot this line counts.
+    if (item.batchId && !available.some((lot) => lot._id === item.batchId)) {
+      options.unshift({
+        value: item.batchId,
+        label: batchText(item) ?? "Batch",
+        triggerLabel: item.lotCode ?? "Batch",
+      });
+    }
+
+    options.push({
+      value: NEW_BATCH,
+      label: "+ Batch baru — belum tercatat di sistem",
+      triggerLabel: "Batch baru",
+    });
+
+    return options;
+  }
+
+  function handleBatchChange(index: number, value: string) {
+    const item = items[index];
+    let choice: BatchChoice;
+
+    if (value === NEW_BATCH) {
+      choice = { kind: "new" };
+    } else {
+      const lot = (lots.byProduct.get(item.productId) ?? []).find(
+        (candidate) => candidate._id === value,
+      );
+      choice = {
+        kind: "lot",
+        batchId: value,
+        systemQty:
+          lot?.qtyRemaining ?? (value === item.batchId ? item.systemQty : "0"),
+      };
+    }
+
+    changeBatch(index, choice);
+  }
 
   async function handleLoadEverything() {
     setAddError(await addEveryProduct());
@@ -174,12 +324,12 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
    * somebody walked to a shelf for is different: its quantity is the one thing
    * on this sheet that cannot be recovered from anywhere else.
    */
-  function handleRemove(item: OpnameItem) {
+  function handleRemove(item: OpnameItem, index: number) {
     if (item.countedAt !== null) {
-      setPendingRemove(item);
+      setPendingRemove({ item, index });
       return;
     }
-    void removeLine(item.productId);
+    void removeLine(index);
   }
 
   async function handleOpenConfirm() {
@@ -255,44 +405,6 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
         </Alert>
       )}
 
-      {/* ------------------------------------------------------------ header */}
-      <div className="flex flex-wrap gap-6 rounded-xl border border-border bg-surface p-4">
-        <Field label="Nomor" value={opname.opnameNumber} mono />
-        {/* CABANG BEFORE GUDANG — which set of books, then which shelf, the
-            order every stock screen in this module asks its two scoping
-            questions in. Em dash on a sheet that declared no branch, which is
-            what the ones opened before the field carry; it is NOT filled in from
-            the warehouse's default, because a shared warehouse's default is one
-            answer for every shop it serves. */}
-        <Field label="Cabang" value={opname.branchName ?? "—"} />
-        <Field label="Gudang" value={opname.warehouseName ?? "—"} />
-        <Field
-          label="Terhitung"
-          value={`${countedCount} / ${items.length} produk`}
-        />
-        <Field label="Baris berselisih" value={String(differing.length)} />
-        <div className="ml-auto flex flex-col items-end gap-1">
-          <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
-            Status
-          </p>
-          {done ? (
-            <div className="flex flex-col items-end gap-1">
-              <OpnameStatusBadge status="submitted" />
-              {opname.submittedByName && (
-                <span className="text-xs text-muted">
-                  oleh {opname.submittedByName}
-                </span>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col items-end gap-1">
-              <OpnameStatusBadge status="draft" />
-              <SaveIndicator state={saveState} at={lastSavedAt} />
-            </div>
-          )}
-        </div>
-      </div>
-
       {/**
        * THE EXPORT AN ACCOUNTANT ACTUALLY USES, and it is deliberately outside
        * the `!done` block below: a SUBMITTED sheet is the one that gets
@@ -318,9 +430,47 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
         </div>
       )}
 
+      {/* ------------------------------------------------------------ header */}
+      <div className="flex flex-wrap gap-6 rounded-xl border border-border bg-surface p-4">
+        <Field label="Nomor" value={opname.opnameNumber} mono />
+        {/* CABANG BEFORE GUDANG — which set of books, then which shelf, the
+            order every stock screen in this module asks its two scoping
+            questions in. Em dash on a sheet that declared no branch, which is
+            what the ones opened before the field carry; it is NOT filled in from
+            the warehouse's default, because a shared warehouse's default is one
+            answer for every shop it serves. */}
+        <Field label="Cabang" value={opname.branchName ?? "—"} />
+        <Field label="Gudang" value={opname.warehouseName ?? "—"} />
+        <Field
+          label="Terhitung"
+          value={`${countedCount} / ${items.length} baris`}
+        />
+        <Field label="Baris berselisih" value={String(differing.length)} />
+        <div className="ml-auto flex flex-col items-end gap-1">
+          <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">
+            Status
+          </p>
+          {done ? (
+            <div className="flex flex-col items-end gap-1">
+              <OpnameStatusBadge status="submitted" />
+              {opname.submittedByName && (
+                <span className="text-xs text-muted">
+                  oleh {opname.submittedByName}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-col items-end gap-1">
+              <OpnameStatusBadge status="draft" />
+              <SaveIndicator state={saveState} at={lastSavedAt} />
+            </div>
+          )}
+        </div>
+      </div>
+
       {!done && items.length > 0 && countedCount < items.length && (
         <Alert variant="info">
-          {items.length - countedCount} produk belum dihitung. Baris yang belum
+          {items.length - countedCount} baris belum dihitung. Baris yang belum
           disentuh <b>tidak dianggap nol</b> — ia tetap memakai angka sistem dan
           tidak menulis apa pun, jadi lembar yang belum selesai tetap aman
           diselesaikan.
@@ -387,6 +537,14 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
         </Alert>
       )}
 
+      {!done && unbatched.length > 0 && (
+        <Alert variant="error">
+          {unbatched.length} baris belum memilih batch. Produk yang punya
+          kedaluwarsa dihitung per batch — pilih batchnya, atau{" "}
+          <b>Batch baru</b> kalau barangnya belum tercatat.
+        </Alert>
+      )}
+
       {/* ------------------------------------------------------------- table */}
       {/* Hidden while empty: a header row over nothing reads as a sheet that
           failed to load, where the panel above says what to do next. */}
@@ -398,8 +556,25 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
       >
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-border text-xs uppercase tracking-widest text-muted">
+            {/* NOWRAP: the lot fields sit on the line they belong to, so the
+                table is wider than a laptop and scrolls sideways — headers
+                breaking into two lines would only make every row taller. */}
+            <tr className="whitespace-nowrap border-b border-border text-xs uppercase tracking-widest text-muted">
               <th className="px-4 py-2.5 text-left font-medium">Produk</th>
+              {showBatch && (
+                <>
+                  <th className="px-4 py-2.5 text-left font-medium">Batch</th>
+                  <th className="px-4 py-2.5 text-left font-medium">
+                    Kode batch
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-medium">
+                    Kode supplier
+                  </th>
+                  <th className="px-4 py-2.5 text-left font-medium">
+                    Kedaluwarsa
+                  </th>
+                </>
+              )}
               <th className="px-4 py-2.5 text-center font-medium">Dihitung</th>
               <th className="px-4 py-2.5 text-right font-medium">Qty sistem</th>
               <th className="px-4 py-2.5 text-right font-medium">Qty fisik</th>
@@ -414,11 +589,20 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
+            {items.map((item, index) => (
               <SheetRow
-                key={item.productId}
+                key={`${item.productId}-${item.batchId ?? (item.newBatch ? "new" : "whole")}-${index}`}
                 item={item}
+                index={index}
                 readOnly={done}
+                showBatch={showBatch}
+                batchOptions={
+                  showBatch && item.productHasExpiry && !done
+                    ? batchOptions(index)
+                    : null
+                }
+                lotsLoading={lots.loading}
+                onBatch={handleBatchChange}
                 onEdit={editLine}
                 onCounted={setCounted}
                 onRemove={canEdit ? handleRemove : undefined}
@@ -456,19 +640,8 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
             >
               {adding ? "Memuat…" : "Muat sisa produk gudang"}
             </Button>
-            <span className="text-xs text-muted">
-              Baris baru dibuka dengan angka sistem dan berstatus belum dihitung
-              — hitungan yang sudah diisi tidak berubah.
-            </span>
           </div>
         )}
-
-        <p className="border-t border-border px-4 py-2.5 text-xs text-muted">
-          Baris yang <b>belum dihitung</b> dan baris yang <b>cocok</b> sama-sama
-          tidak menulis apa pun. Hanya yang berselisih yang menghasilkan
-          pergerakan stok — dan angkanya dihitung ulang terhadap stok terbaru
-          saat opname diselesaikan, bukan saat lembar ini dibuka.
-        </p>
       </div>
 
       {/* ----------------------------------------------------------- summary */}
@@ -539,7 +712,10 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
               // An empty sheet has nothing to submit and the API says so; the
               // button is disabled rather than left to produce that 400.
               disabled={
-                preview.loading || saveState === "saving" || items.length === 0
+                preview.loading ||
+                saveState === "saving" ||
+                items.length === 0 ||
+                unbatched.length > 0
               }
             >
               {preview.loading ? "Menghitung…" : "Selesaikan opname"}
@@ -566,17 +742,16 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
           {preview.error && !confirming && (
             <p className="w-full text-sm text-danger">{preview.error}</p>
           )}
-
-          <p className="w-full text-xs text-muted">
-            Setelah final, lembar ini tidak bisa diubah. Koreksi berikutnya
-            dilakukan lewat opname baru — kartu stok bersifat append-only.
-          </p>
         </div>
       )}
 
       {addingProducts && (
         <OpnameAddProductsDialog
-          existingProductIds={items.map((item) => item.productId)}
+          // A product that expires stays on offer: adding it again opens a
+          // line for the next batch the sheet does not count yet.
+          existingProductIds={items
+            .filter((item) => !item.productHasExpiry)
+            .map((item) => item.productId)}
           busy={adding}
           onAdd={addProducts}
           onClose={() => {
@@ -592,17 +767,19 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
           confirmLabel="Hapus baris"
           destructive
           onConfirm={() => {
-            void removeLine(pendingRemove.productId);
+            void removeLine(pendingRemove.index);
             setPendingRemove(null);
           }}
           onCancel={() => setPendingRemove(null)}
         >
           {/* Inline fragments, not <p>: DialogDescription is itself a <p>. */}
           <>
-            <b>{pendingRemove.productName ?? "Produk ini"}</b> sudah dihitung —
-            jumlah fisik{" "}
+            <b>{pendingRemove.item.productName ?? "Produk ini"}</b>
+            {batchText(pendingRemove.item) &&
+              ` (${batchText(pendingRemove.item)})`}{" "}
+            sudah dihitung — jumlah fisik{" "}
             <b className="tabular-nums">
-              {formatQty(pendingRemove.physicalQty)}
+              {formatQty(pendingRemove.item.physicalQty)}
             </b>{" "}
             akan ikut terbuang bersama barisnya.
             <span className="mt-2 block">
@@ -656,32 +833,55 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
  */
 function SheetRow({
   item,
+  index,
   readOnly,
+  showBatch,
+  batchOptions,
+  lotsLoading,
+  onBatch,
   onEdit,
   onCounted,
   onRemove,
 }: {
-  item: OpnameItem;
+  item: SheetLine;
+  index: number;
   readOnly: boolean;
+  /** Whether the table carries the Batch column at all. */
+  showBatch: boolean;
+  /** This line's dropdown, or null where it has nothing to choose. */
+  batchOptions:
+    { value: string; label: string; triggerLabel?: string }[] | null;
+  lotsLoading: boolean;
+  onBatch: (index: number, value: string) => void;
   onEdit: (
-    productId: string,
+    index: number,
     patch: {
       physicalQty?: string;
       supplierBatchCode?: string;
       expiryDate?: string;
     },
   ) => void;
-  onCounted: (productId: string, counted: boolean) => void;
+  onCounted: (index: number, counted: boolean) => void;
   /** Absent when the sheet is final or the role may not edit it. */
-  onRemove?: (item: OpnameItem) => void;
+  onRemove?: (item: OpnameItem, index: number) => void;
 }) {
   const diffMinor = toMinor(item.diffQty) ?? 0n;
   const counted = item.countedAt !== null;
-  // Found stock of goods that expire has to DATE its lot, or the API refuses
-  // it. Neither code is asked for: ours is derived from that same date when the
-  // sheet is submitted, and the supplier's is optional.
-  const needsLot = Boolean(item.productHasExpiry) && diffMinor > 0n;
+  /**
+   * Found stock of goods that expire has to DATE its lot, or the API refuses
+   * it — but only where the goods go into a lot that does not exist yet. A
+   * line counting a named lot puts what it found back into THAT lot, which
+   * already has a date. Neither code is asked for: ours is derived from the
+   * date when the sheet is submitted, and the supplier's is optional.
+   */
+  const needsLot =
+    Boolean(item.productHasExpiry) && !item.batchId && diffMinor > 0n;
   const lotMissing = needsLot && !item.expiryDate;
+  // Empty for an old draft's whole-product line: it must still pick one.
+  const batchValue = item.batchId ?? (item.newBatch ? NEW_BATCH : "");
+  // A NEW batch always asks for its lot, before anything is typed: the system
+  // holds none of it, so whatever is counted there is found goods to be dated.
+  const editLot = !readOnly && (needsLot || item.newBatch === true);
 
   return (
     <>
@@ -691,13 +891,122 @@ function SheetRow({
           !counted && !readOnly && "bg-accent/20",
         )}
       >
-        <td className="px-4 py-2.5">
+        <td className="min-w-52 px-4 py-2.5">
           <p className="text-sm font-medium">{item.productName ?? "—"}</p>
           <p className="tabular-nums text-xs text-muted">
-            {item.productSku ? <SkuText value={item.productSku} /> : item.productId}
+            {item.productSku ? (
+              <SkuText value={item.productSku} />
+            ) : (
+              item.productId
+            )}
             {item.productUnit && ` · ${item.productUnit}`}
           </p>
         </td>
+
+        {showBatch && (
+          <td className="px-4 py-2.5">
+            {batchOptions ? (
+              lotsLoading ? (
+                <span className="text-xs text-muted">Memuat batch…</span>
+              ) : (
+                <div className="w-56">
+                  <FilterSelect
+                    layout="field"
+                    label=""
+                    ariaLabel={`Batch ${item.productName ?? ""}`}
+                    value={batchValue}
+                    active={false}
+                    placeholder="Pilih batch"
+                    invalid={batchValue === ""}
+                    options={batchOptions}
+                    wideList
+                    onChange={(value) => {
+                      if (value !== batchValue) onBatch(index, value);
+                    }}
+                  />
+                </div>
+              )
+            ) : (
+              <span className="text-xs text-muted">
+                {batchText(item) ?? "—"}
+              </span>
+            )}
+          </td>
+        )}
+
+        {/**
+         * THE LOT, ON THE SAME LINE. Editable only where found goods go into a
+         * lot that does not exist yet — a new batch, or an old whole-product
+         * line — and only the DATE is required: our code is derived from it at
+         * submit, the supplier's is optional. A line counting a named lot shows
+         * that lot's own details, read-only.
+         */}
+        {showBatch && (
+          <>
+            <td className="px-4 py-2.5">
+              {editLot ? (
+                <InternalBatchCodeDisplay
+                  code={item.postedBatchCode ?? null}
+                  hint={
+                    item.expiryDate
+                      ? batchCodeHint(
+                          item.productSku,
+                          item.expiryDate.slice(0, 10),
+                          "",
+                        )
+                      : undefined
+                  }
+                  productName={item.productName}
+                  className="w-40 text-sm"
+                />
+              ) : (
+                <LotText
+                  value={item.batchId ? item.lotCode : item.postedBatchCode}
+                />
+              )}
+            </td>
+            <td className="px-4 py-2.5">
+              {editLot ? (
+                <SupplierBatchCodeInput
+                  value={item.supplierBatchCode ?? ""}
+                  onChange={(value) =>
+                    onEdit(index, { supplierBatchCode: value })
+                  }
+                  productName={item.productName}
+                  className="w-40"
+                />
+              ) : (
+                <LotText
+                  value={
+                    item.batchId
+                      ? item.lotSupplierBatchCode
+                      : item.supplierBatchCode
+                  }
+                />
+              )}
+            </td>
+            <td className="px-4 py-2.5">
+              {editLot ? (
+                <Input
+                  aria-label={`Tanggal kedaluwarsa ${item.productName ?? ""}`}
+                  aria-invalid={lotMissing}
+                  type="date"
+                  value={item.expiryDate ? item.expiryDate.slice(0, 10) : ""}
+                  onChange={(event) =>
+                    onEdit(index, { expiryDate: event.target.value })
+                  }
+                  className="w-40"
+                />
+              ) : (
+                <LotText
+                  value={formatExpiry(
+                    item.batchId ? item.lotExpiryDate : item.expiryDate,
+                  )}
+                />
+              )}
+            </td>
+          </>
+        )}
 
         <td className="px-4 py-2.5 text-center">
           {readOnly ? (
@@ -714,9 +1023,7 @@ function SheetRow({
           ) : (
             <Checkbox
               checked={counted}
-              onCheckedChange={(value) =>
-                onCounted(item.productId, value === true)
-              }
+              onCheckedChange={(value) => onCounted(index, value === true)}
               aria-label={`Tandai ${item.productName ?? "produk"} sudah dihitung`}
             />
           )}
@@ -737,7 +1044,7 @@ function SheetRow({
               inputMode="decimal"
               value={item.physicalQty}
               onChange={(event) =>
-                onEdit(item.productId, { physicalQty: event.target.value })
+                onEdit(index, { physicalQty: event.target.value })
               }
               className="ml-auto max-w-24 text-right tabular-nums"
             />
@@ -769,7 +1076,7 @@ function SheetRow({
           <td className="px-4 py-2.5 text-right">
             <button
               type="button"
-              onClick={() => onRemove(item)}
+              onClick={() => onRemove(item, index)}
               className="text-sm font-medium text-danger hover:underline"
             >
               Hapus
@@ -777,72 +1084,16 @@ function SheetRow({
           </td>
         )}
       </tr>
-
-      {/* The lot row appears only when this line will actually need one, so the
-          sheet stays a column of quantities for the products that do not. */}
-      {needsLot && !readOnly && (
-        <tr
-          className={cn(
-            "border-b border-border/60",
-            lotMissing ? "bg-danger/10" : "bg-accent/30",
-          )}
-        >
-          {/* Spans the action column too when there is one, or the lot fields
-              would be pushed out from under the row they belong to. */}
-          <td colSpan={onRemove ? 8 : 7} className="px-4 py-2.5">
-            <div className="flex flex-wrap items-end gap-3">
-              <p className="min-w-64 flex-1 text-xs text-muted">
-                <b>{item.productName}</b> punya masa kedaluwarsa dan ditemukan
-                lebih banyak dari catatan — isi tanggal kedaluwarsanya. Kode
-                batchnya dibuat sistem dari tanggal itu; kode batch supplier
-                boleh dikosongkan.
-              </p>
-
-              {/* THE THREE FIELDS ARE ONE GROUP, and wrap as one. Left as
-                  siblings of the sentence above, the codes and the date were
-                  pushed onto separate lines by a long product name — and a lot
-                  is only a lot when they are read together. */}
-              <div className="flex shrink-0 items-end gap-3">
-                {/* OURS. A draft has opened no lot yet, so there is no code to
-                    show until the sheet is submitted — only the hint the code
-                    will be derived from. */}
-                <InternalBatchCodeDisplay
-                  code={item.postedBatchCode ?? null}
-                  hint={
-                    item.expiryDate
-                      ? batchCodeHint(
-                          item.productSku,
-                          item.expiryDate.slice(0, 10),
-                          "",
-                        )
-                      : undefined
-                  }
-                  productName={item.productName}
-                  className="max-w-44"
-                />
-                <SupplierBatchCodeInput
-                  value={item.supplierBatchCode ?? ""}
-                  onChange={(value) =>
-                    onEdit(item.productId, { supplierBatchCode: value })
-                  }
-                  productName={item.productName}
-                  className="w-44"
-                />
-                <Input
-                  aria-label={`Tanggal kedaluwarsa ${item.productName ?? ""}`}
-                  type="date"
-                  value={item.expiryDate ? item.expiryDate.slice(0, 10) : ""}
-                  onChange={(event) =>
-                    onEdit(item.productId, { expiryDate: event.target.value })
-                  }
-                  className="w-44"
-                />
-              </div>
-            </div>
-          </td>
-        </tr>
-      )}
     </>
+  );
+}
+
+/** One read-only lot detail in a cell, or a dash where there is none. */
+function LotText({ value }: { value: string | null | undefined }) {
+  return (
+    <span className="whitespace-nowrap tabular-nums text-xs text-muted">
+      {value || "—"}
+    </span>
   );
 }
 
