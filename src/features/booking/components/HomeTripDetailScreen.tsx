@@ -20,21 +20,14 @@ import type {
 } from "@/types/api";
 import { formatMoney, trimDecimal } from "@/utils/decimal";
 
-import { HOME_TRIP_LABELS, HOME_TRIP_RUNGS, nextTripRung } from "../homeTrip";
+import { HOME_TRIP_LABELS, HOME_TRIP_RUNGS, nextTripRung, tripStamp } from "../homeTrip";
 import { useTripPerformers } from "../hooks/useHomeTrip";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
 /** The select's own spelling of "no performer named" — Radix forbids `""`. */
 const FOLLOW_BOOKING = "ikut-booking";
 
-/** "12 Okt · 09.05" — the day too, since a visit's rungs may straddle midnight. */
-function stamp(iso: string): string {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return "";
-  const day = at.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
-  const clock = `${String(at.getHours()).padStart(2, "0")}.${String(at.getMinutes()).padStart(2, "0")}`;
-  return `${day} · ${clock}`;
-}
+const stamp = tripStamp;
 
 /** "Buka di peta" target — only when the address carries a pin. */
 function mapsHref(point: TripPoint | null): string | null {

@@ -22,6 +22,15 @@ export const HOME_TRIP_LABELS: Record<HomeTripStatus, string> = {
   cancelled: "Dibatalkan",
 };
 
+/** "12 Okt · 09.05" — the day too, since a visit's rungs may straddle midnight. */
+export function tripStamp(iso: string): string {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return "";
+  const day = at.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+  const clock = `${String(at.getHours()).padStart(2, "0")}.${String(at.getMinutes()).padStart(2, "0")}`;
+  return `${day} · ${clock}`;
+}
+
 /** The one rung a trip may move to from `status`; null at the end or once cancelled. */
 export function nextTripRung(status: HomeTripStatus): HomeTripStatus | null {
   const index = HOME_TRIP_RUNGS.indexOf(status as (typeof HOME_TRIP_RUNGS)[number]);
