@@ -34,6 +34,15 @@ export interface FilterOptionListProps<T> {
   /** Announced on the search box; the placeholder is not a label. */
   searchLabel?: string;
   emptyLabel?: string;
+  /**
+   * Search on the caller's side — typically the server — instead of here.
+   * Handed every keystroke; `options` is then taken as the answer and shown
+   * unfiltered, so a match the caller found by a field this list cannot see
+   * (a customer's email) is not hidden again.
+   */
+  onSearchChange?: (term: string) => void;
+  /** The caller is still looking — shown in place of the empty label. */
+  searching?: boolean;
 }
 
 export function FilterOptionList<T>({
@@ -45,6 +54,8 @@ export function FilterOptionList<T>({
   searchPlaceholder = "Cari…",
   searchLabel = "Cari pilihan",
   emptyLabel = "Tidak ada pilihan yang cocok",
+  onSearchChange,
+  searching = false,
 }: FilterOptionListProps<T>) {
   const [term, setTerm] = React.useState("");
   const [cursor, setCursor] = React.useState(0);
@@ -61,7 +72,7 @@ export function FilterOptionList<T>({
 
   const visible = React.useMemo(() => {
     const q = term.trim().toLowerCase();
-    if (!q) return options;
+    if (!q || onSearchChange) return options;
     return options.filter(
       (o) =>
         o.label.toLowerCase().includes(q) ||
@@ -70,7 +81,7 @@ export function FilterOptionList<T>({
         // option, and a search that ignored it would hide the obvious query.
         Boolean(o.group?.toLowerCase().includes(q)),
     );
-  }, [options, term]);
+  }, [options, term, onSearchChange]);
 
   // Clamped during render rather than corrected in an effect: filtering can
   // shrink the list under the cursor, and re-rendering twice to fix that is
@@ -196,6 +207,7 @@ export function FilterOptionList<T>({
             onChange={(event) => {
               setTerm(event.target.value);
               setCursor(0);
+              onSearchChange?.(event.target.value);
             }}
             placeholder={searchPlaceholder}
             aria-label={searchLabel}
@@ -260,7 +272,7 @@ export function FilterOptionList<T>({
 
         {!visible.length && (
           <li className="px-2.5 py-6 text-center text-sm text-muted">
-            {emptyLabel}
+            {searching ? "Mencari…" : emptyLabel}
           </li>
         )}
       </ul>

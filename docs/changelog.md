@@ -7,6 +7,40 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Transfer stok: status, ubah, terima, cetak surat jalan
+
+10 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Transfer kini dokumen bernomor** (`TRF/YYMM/0001`) dengan status **Belum diterima** → **Diterima**
+  (atau **Dibatalkan**). Barang keluar dari gudang asal saat disimpan dan masuk ke tujuan saat
+  **Terima barang** ditekan; form menjelaskannya sebelum disimpan.
+- **Ubah** hanya untuk transfer yang belum diterima: form yang sama (`/transfers/:id/edit`), terisi
+  dari dokumen. Barang yang sudah diambil transfer itu dihitung tersedia, jadi menaikkan jumlah tidak
+  ditolak "melebihi stok". Transfer yang sudah diterima/dibatalkan tidak membuka form sama sekali.
+- **Cetak surat jalan** (`/transfers/:id/print`, semua status): Dari / Tujuan / No. Transfer / Tanggal,
+  tabel NO · SKU · NAMA BARANG · QTY · UNIT · KETERANGAN, Total Qty, Catatan — bentuk yang sama dengan
+  surat jalan lama. Satu baris per produk, bukan per batch.
+- **Daftar**: kolom No. transfer dan Status, filter Status (isi panel; "Belum diterima" = antrean
+  penerimaan), urutan menurut nomor. **Detail**: Ubah · Batalkan transfer · Terima barang (konfirmasi),
+  gagal = toast error 6 detik (ui-rules §9).
+- **Stok Awal, Penerimaan Barang, Koreksi Stok** memakai aturan modal yang sama: produk yang melacak
+  kedaluwarsa/batch tetap muncul di modal setelah masuk tabel, satu baris per lot. Lot yang sama dua
+  kali ditolak dengan pesan di baris; lot yang sudah diambil baris lain tidak ditawarkan lagi. Produk
+  tanpa batch tetap satu baris. Opname tidak berubah.
+- **Satu produk, beberapa batch** (transfer): produk ber-batch yang sudah ada di tabel tetap muncul di modal
+  "Tambah produk" selama masih ada batch yang belum dipakai baris lain; produk tanpa batch tetap
+  disembunyikan. Dropdown batch tidak menawarkan batch yang sudah dipakai baris lain, dan "Otomatis
+  (FEFO)" hilang begitu produk punya dua baris.
+- Kartu stok: tipe **Transfer dibatalkan** (`transfer_cancel`) dan referensi Penerimaan/Pembatalan
+  transfer; link dokumen menerima id posting lama.
+- Dihapus: `stockMovementService.listTransfers` dan `useTransfer` (pengganti: `stockTransferService`,
+  `useStockTransfer`).
+- Tes: `stockTransfer.service`, `StockTransferEditScreen`, `TransferDeliveryNote`; `StockTransfersScreen`,
+  `StockTransferDetail`, `StockMovementForms` disesuaikan. 10 suite lain (hewan/grooming) gagal di mesin
+  ini dan tidak menyentuh berkas ini.
+
+---
+
 ## [Unreleased] — Saldo awal kas & bank punya layar
 
 4 Oktober 2026. Baris "Saldo awal kas & bank" di Pengaturan › Data awal tidak

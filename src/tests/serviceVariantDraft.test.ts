@@ -61,13 +61,13 @@ const FLAT = {
 
   A variant stores the option's `_id` (25 September 2026) — `petType`,
   `sizeCategory` and `furType` are all ids on the server. Every fixture below
-  would otherwise read `sizeCategory: "opt-size-medium"`, which hides the one
+  would otherwise read `sizeCategory: "opt-size-sedang"`, which hides the one
   thing each row is about. Naming the ids after the sizes keeps them readable
   while `variantAxisValues` still does the real work: it reads `_id`.
 */
 const asId = <T extends { code?: string }>(option: T) => ({
   ...option,
-  _id: option.code as string,
+  _id: (option as { _id?: string })._id ?? (option.code as string),
 });
 
 const OPTIONS = PET_OPTION_FIXTURES.map(asId);
@@ -232,7 +232,7 @@ describe("variant axis values — the tenant's lists", () => {
 
   it("keeps a priced value whose option was retired, in its place — and a deleted one last", () => {
     const options = withOption({ ...OPTIONS[5], isActive: false });
-    expect(OPTIONS[5]._id).toBe("medium");
+    expect(OPTIONS[5]._id).toBe(petOptionId("size", "Sedang"));
 
     /* An id no live option has any more — hard-deleted out from under a price. */
     const HUGE = petOptionId("size", "Raksasa");
@@ -340,5 +340,54 @@ describe("variant axis values — the tenant's lists", () => {
       sizeCategory: "opt-size-kecil",
       choices: [{ optionId: TIER_KEY, code: "t1" }],
     });
+  });
+});
+
+describe("sizes that belong to one animal", () => {
+  /*
+    A tenant that splits sizes by animal: Kecil for cats and Kecil for dogs are
+    two options. Nothing below names an animal in code — the relation is the
+    option's own `speciesId`.
+  */
+  const cat = petOptionId("species", "Kucing");
+  const dog = petOptionId("species", "Anjing");
+  const OPTS = [
+    ...PET_OPTION_FIXTURES.filter((o) => o.type === "species" || o.type === "furType"),
+    makePetOption({ type: "size", label: "Kecil (kucing)", speciesId: cat, sortOrder: 0 }),
+    makePetOption({ type: "size", label: "Kecil (anjing)", speciesId: dog, sortOrder: 1 }),
+    makePetOption({ type: "size", label: "Semua", speciesId: null, sortOrder: 2 }),
+  ];
+  const table = variantAxisValues(OPTS);
+
+  it("never pairs an animal with another animal's size", () => {
+    const combos = buildVariantCombos(["petType", "sizeCategory", "furType"], table);
+    const sizeOf = (id: string) => OPTS.find((o) => o._id === id)!;
+
+    expect(combos.length).toBe(
+      // 2 animals × (own size + the shared one) × 2 coats
+      2 * 2 * 2,
+    );
+    for (const combo of combos) {
+      const size = sizeOf(combo.sizeCategory!);
+      expect(size.speciesId == null || size.speciesId === combo.petType).toBe(true);
+    }
+  });
+
+  it("counts the same rows it builds", () => {
+    const axes = ["petType", "sizeCategory", "furType"] as const;
+    expect(variantComboCount([...axes], table)).toBe(
+      buildVariantCombos([...axes], table).length,
+    );
+  });
+
+  it("is the plain product when the service does not vary by animal, naming the animal on the size", () => {
+    const combos = buildVariantCombos(["sizeCategory"], table);
+
+    expect(combos.map((c) => c.label)).toEqual([
+      "Kecil (kucing) (Kucing)",
+      "Kecil (anjing) (Anjing)",
+      "Semua",
+    ]);
+    expect(variantComboCount(["sizeCategory"], table)).toBe(3);
   });
 });

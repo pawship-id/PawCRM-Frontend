@@ -97,6 +97,7 @@ function lot(overrides: Partial<ProductBatch> = {}): ProductBatch {
     productName: "Whiskas Adult 1.2kg",
     productSku: "WSK-12",
     productUnit: "pcs",
+    productSellPrice: null,
     warehouseName: "Gudang Pusat",
     ...overrides,
   };

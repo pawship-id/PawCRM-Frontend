@@ -5,13 +5,13 @@ import Link from "next/link";
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 
-import { Alert, Button, Card, Spinner } from "@/components";
+import { Alert, Button, Card, FilterPills, Spinner } from "@/components";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { productBatchService } from "@/services/productBatch.service";
 import { ApiError } from "@/services/api-error";
 import type { ProductBatch } from "@/types/inventory";
-import { formatQty } from "@/utils/decimal";
+import { formatMoney, formatQty } from "@/utils/decimal";
 
 /**
  * The printable label sheet — what turns a generated batch code into something
@@ -22,10 +22,12 @@ import { formatQty } from "@/utils/decimal";
  * deducts from that lot instead of guessing by FEFO. A code nothing can print is
  * a code nothing can scan, so this page is the other half of that decision.
  *
- * BOTH SYMBOLOGIES, on every label. Code128 is what an ordinary counter scanner
- * reads without being configured for anything; a QR is what a phone reads, and
- * it survives a label that gets scuffed. They encode the SAME string — the
- * internal code, verbatim — so it does not matter which one somebody points at.
+ * ONE SYMBOL PER LABEL, chosen on the sheet. Code128 is what an ordinary counter
+ * scanner reads without being configured for anything; a QR is what a phone
+ * reads, and it survives a label that gets scuffed. A label is small, and two
+ * symbols encoding the same string only crowd out the SKU, price and expiry
+ * somebody actually reads — so the sheet prints whichever was picked (barcode
+ * by default), and both encode the internal code verbatim.
  *
  * THE HUMAN LINE MATTERS AS MUCH AS THE SYMBOL. A scanner that will not read a
  * damaged label leaves somebody typing the code, so it is printed underneath in
@@ -41,6 +43,8 @@ import { formatQty } from "@/utils/decimal";
 /** Rendered at this width so a 60-character code still has quiet zones. */
 const BARCODE_WIDTH = 1.6;
 const BARCODE_HEIGHT = 44;
+
+type Symbology = "barcode" | "qr";
 
 /** More than a shelf's worth is a mis-typed number, not an intention. */
 const MAX_COPIES = 50;
@@ -105,27 +109,38 @@ function QrCode({ value }: { value: string }) {
   return <canvas ref={ref} className="size-24" />;
 }
 
-function BatchLabel({ batch }: { batch: ProductBatch }) {
+function BatchLabel({
+  batch,
+  symbol,
+}: {
+  batch: ProductBatch;
+  symbol: Symbology;
+}) {
   return (
     <div className="flex break-inside-avoid gap-3 rounded-md border border-border bg-surface p-3">
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <p className="truncate text-sm font-bold">
           {batch.productName ?? "—"}
         </p>
-        <p className="truncate text-xs text-muted tabular-nums">
-          {batch.productSku ?? "—"}
-          {batch.warehouseName && ` · ${batch.warehouseName}`}
+        {/* SKU, PRICE AND EXPIRY are what somebody reads off the carton at the
+            shelf, so they sit together at the top and in figures that line up. */}
+        <p className="text-sm font-semibold tabular-nums">
+          SKU {batch.productSku ?? "—"}
         </p>
-        <Barcode value={batch.batchCode} />
+        <p className="text-sm font-semibold tabular-nums">
+          {batch.productSellPrice
+            ? formatMoney(batch.productSellPrice)
+            : "Harga —"}
+        </p>
+        <p className="text-sm tabular-nums">
+          {batch.expiryDate
+            ? `Exp ${batch.expiryDate.slice(0, 10)}`
+            : "Tanpa tanggal kedaluwarsa"}
+        </p>
+        {symbol === "barcode" && <Barcode value={batch.batchCode} />}
         {/* THE CODE IN PLAIN FIGURES, because a scanner that will not read a
             scuffed label leaves somebody typing it. */}
-        <p className="text-sm font-semibold tabular-nums">{batch.batchCode}</p>
-        <p className="text-xs text-muted tabular-nums">
-          {batch.expiryDate
-            ? `exp ${batch.expiryDate.slice(0, 10)}`
-            : "tanpa tanggal kedaluwarsa"}
-          {` · ${formatQty(batch.initialQty)}`}
-        </p>
+        <p className="text-xs text-muted tabular-nums">{batch.batchCode}</p>
         {/* THEIRS, because a recall notice names the factory batch and not our
             row. A label without it cannot be matched to the notice. */}
         {batch.supplierBatchCode && (
@@ -134,7 +149,7 @@ function BatchLabel({ batch }: { batch: ProductBatch }) {
           </p>
         )}
       </div>
-      <QrCode value={batch.batchCode} />
+      {symbol === "qr" && <QrCode value={batch.batchCode} />}
     </div>
   );
 }
@@ -143,6 +158,7 @@ export function BatchLabelSheet({ ids }: { ids: string[] }) {
   const [loaded, setLoaded] = useState<ProductBatch[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copies, setCopies] = useState("1");
+  const [symbol, setSymbol] = useState<Symbology>("barcode");
 
   /**
    * DERIVED, not a state the effect has to write. "No ids" is a property of the
@@ -255,15 +271,18 @@ export function BatchLabelSheet({ ids }: { ids: string[] }) {
             className="w-28 tabular-nums"
           />
         </div>
+        <FilterPills<Symbology>
+          ariaLabel="Kode di label"
+          value={symbol}
+          onChange={setSymbol}
+          options={[
+            { value: "barcode", label: "Barcode" },
+            { value: "qr", label: "QR" },
+          ]}
+        />
         <Button onClick={() => window.print()} disabled={sheet.length === 0}>
           Cetak
         </Button>
-        <Link
-          href="/dashboard/inventory/batches"
-          className="text-sm font-medium underline"
-        >
-          Kembali ke daftar batch
-        </Link>
       </div>
 
       {sheet.length === 0 ? (
@@ -281,7 +300,7 @@ export function BatchLabelSheet({ ids }: { ids: string[] }) {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 print:grid-cols-2">
           {sheet.map(({ batch, key }) => (
-            <BatchLabel key={key} batch={batch} />
+            <BatchLabel key={key} batch={batch} symbol={symbol} />
           ))}
         </div>
       )}

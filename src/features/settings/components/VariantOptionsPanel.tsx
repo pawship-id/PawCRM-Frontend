@@ -18,7 +18,7 @@ import type { PetOptionType, VariantOption, Zone } from "@/types/api";
 
 import type { UsePetOptionListResult } from "../hooks/usePetOptionList";
 import type { UseZoneListResult } from "../hooks/useZoneList";
-import { byOrder } from "../petOptions";
+import { byOrder, formatWeightRange } from "../petOptions";
 import { zoneRangeText } from "../zones";
 import { PetOptionFormDialog } from "./PetOptionFormDialog";
 import {
@@ -47,8 +47,20 @@ type Editing =
   | {
       kind: "value";
       optionName: string;
-      value: { label: string; isActive: boolean };
-      save: (patch: { label?: string; isActive?: boolean }) => Promise<unknown>;
+      value: {
+        label: string;
+        isActive: boolean;
+        minWeightKg?: number | null;
+        maxWeightKg?: number | null;
+        speciesId?: string | null;
+      };
+      save: (patch: {
+        label?: string;
+        isActive?: boolean;
+        minWeightKg?: number | null;
+        maxWeightKg?: number | null;
+        speciesId?: string | null;
+      }) => Promise<unknown>;
     }
   | { kind: "zone"; zone: Zone }
   | null;
@@ -127,6 +139,12 @@ export function VariantOptionsPanel({
     invalidateZones();
   }
 
+  /* The tenant's live animals — what a size may be filed under. */
+  const speciesChoices = petOptions.options
+    .filter((option) => option.type === "species" && option.deletedAt === null && option.isActive)
+    .sort(byOrder)
+    .map((option) => ({ value: option._id, label: option.label }));
+
   function chipsOf(card: VariantOption): Chip[] {
     const petType = PET_TYPE_OF[card.source];
 
@@ -137,11 +155,34 @@ export function VariantOptionsPanel({
         .map((option) => ({
           key: option._id,
           label: option.label,
+          ...(option.type === "size"
+            ? {
+                meta: [
+                  option.speciesId
+                    ? petOptions.options.find((other) => other._id === option.speciesId)?.label
+                    : null,
+                  option.minWeightKg != null ? formatWeightRange(option) : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") || undefined,
+              }
+            : {}),
           retired: !option.isActive,
           edit: {
             kind: "value" as const,
             optionName: card.name,
-            value: { label: option.label, isActive: option.isActive },
+            value: {
+              label: option.label,
+              isActive: option.isActive,
+              /* Only a size has a weight range — its presence opens the fields. */
+              ...(option.type === "size"
+                ? {
+                    minWeightKg: option.minWeightKg ?? null,
+                    maxWeightKg: option.maxWeightKg ?? null,
+                    speciesId: option.speciesId ?? null,
+                  }
+                : {}),
+            },
             save: (patch) => petOptionService.update(option._id, patch),
           },
           remove: () => petOptionService.remove(option._id),
@@ -383,7 +424,12 @@ export function VariantOptionsPanel({
         />
       )}
       {adding?.kind === "pet" && (
-        <PetOptionFormDialog type={adding.type} onClose={() => setAdding(null)} onSaved={refreshAll} />
+        <PetOptionFormDialog
+          type={adding.type}
+          speciesChoices={speciesChoices}
+          onClose={() => setAdding(null)}
+          onSaved={refreshAll}
+        />
       )}
       {adding?.kind === "staff" && (
         <VariantValueDialog
@@ -408,6 +454,7 @@ export function VariantOptionsPanel({
         <VariantValueEditDialog
           optionName={editing.optionName}
           value={editing.value}
+          speciesChoices={speciesChoices}
           save={editing.save}
           onClose={() => setEditing(null)}
           onSaved={refreshAll}

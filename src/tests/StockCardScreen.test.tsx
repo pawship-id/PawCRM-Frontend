@@ -155,6 +155,7 @@ function batch(overrides: Partial<ProductBatch> = {}): ProductBatch {
     productName: "Royal Canin Adult 3kg",
     productSku: "RC-3KG",
     productUnit: "sak",
+    productSellPrice: null,
     warehouseName: "Gudang Pusat",
     ...overrides,
   };

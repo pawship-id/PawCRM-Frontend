@@ -19,21 +19,26 @@ import {
 } from "./GroomingCommissionSettings";
 import { GroomerAppSettingsCard } from "./GroomerAppSettingsCard";
 import { GroomingModuleHeader } from "./GroomingModuleHeader";
+import { GroomingVisitFeeSettings } from "./GroomingVisitFeeSettings";
 import { GroomingSharedSettingsCard } from "./GroomingSharedSettingsCard";
 
-type SettingsTab = "komisi" | "kapasitas";
+type SettingsTab = "komisi" | "kapasitas" | "kunjungan";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "komisi", label: "Komisi" },
   { id: "kapasitas", label: "Kapasitas" },
+  { id: "kunjungan", label: "Home grooming" },
 ];
 
 const TAB_WORDS: Record<SettingsTab, string> = {
   komisi: "Komisi",
   kapasitas: "Kapasitas",
+  kunjungan: "Home grooming",
 };
 
 function tabOfError(key: string): SettingsTab {
+  if (key.startsWith("homeGrooming.")) return "kunjungan";
+
   return key.startsWith("capacity.") || key.startsWith("override.")
     ? "kapasitas"
     : "komisi";
@@ -69,6 +74,7 @@ export function GroomingSettingsScreen() {
   const tabRefs = useRef<Record<SettingsTab, HTMLButtonElement | null>>({
     komisi: null,
     kapasitas: null,
+    kunjungan: null,
   });
 
   const errorTabs = TABS.filter((entry) =>
@@ -238,7 +244,7 @@ export function GroomingSettingsScreen() {
               sizesError={state.sizesError}
               onRetrySizes={state.retrySizes}
             />
-          ) : (
+          ) : tab === "kapasitas" ? (
             <GroomingCapacitySettings
               draft={draft}
               errors={state.errors}
@@ -249,6 +255,13 @@ export function GroomingSettingsScreen() {
               capacityError={state.capacityError}
               mayReadBookings={state.mayReadBookings}
             />
+          ) : (
+            <GroomingVisitFeeSettings
+              draft={draft}
+              errors={state.errors}
+              update={state.update}
+              disabled={disabled}
+            />
           )}
         </div>
 
@@ -258,14 +271,14 @@ export function GroomingSettingsScreen() {
               settings={draftToSettings(draft, settings)}
               sizes={state.sizes}
             />
-          ) : (
+          ) : tab === "kapasitas" ? (
             <GroomingTeamLoadPanel
               draft={draft}
               capacity={state.capacity}
               capacityError={state.capacityError}
               mayReadBookings={state.mayReadBookings}
             />
-          )}
+          ) : null}
         </aside>
       </div>
 

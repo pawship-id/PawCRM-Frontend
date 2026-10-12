@@ -24,23 +24,40 @@ export function haversineKm(from: { lat: number; lng: number }, to: { lat: numbe
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-export type ZoneLookup =
-  | { ok: true; zone: Zone; distanceKm: number }
-  | { ok: false; reason: "customer_location_missing" | "branch_location_missing" }
-  | { ok: false; reason: "outside_zones"; distanceKm: number };
+/** "road" — driven, as the server measured it; "straight" — the crow's line. */
+export type DistanceSource = "road" | "straight";
 
-/** The live zone whose [minKm, maxKm) holds the rounded distance, or why none does. */
-export function resolveZone(branchPin: Pin, customerPin: Pin, zones: readonly Zone[]): ZoneLookup {
+export type ZoneLookup =
+  | { ok: true; zone: Zone; distanceKm: number; source?: DistanceSource }
+  | { ok: false; reason: "customer_location_missing" | "branch_location_missing" }
+  | { ok: false; reason: "outside_zones"; distanceKm: number; source?: DistanceSource };
+
+/**
+ * The live zone whose [minKm, maxKm) holds the rounded distance, or why none does.
+ *
+ * `measured` IS THE SERVER'S ROAD DISTANCE when it has answered (11 October
+ * 2026) — `utils/roadDistance.ts`. Until then the crow's line stands in, with
+ * no `source`, and the zone may move when the answer lands.
+ */
+export function resolveZone(
+  branchPin: Pin,
+  customerPin: Pin,
+  zones: readonly Zone[],
+  measured?: { km: number; source: DistanceSource } | null,
+): ZoneLookup {
   if (!hasPin(customerPin)) return { ok: false, reason: "customer_location_missing" };
   if (!hasPin(branchPin)) return { ok: false, reason: "branch_location_missing" };
 
-  const distanceKm = Math.round(haversineKm(branchPin, customerPin) * 1000) / 1000;
+  const distanceKm = Math.round((measured?.km ?? haversineKm(branchPin, customerPin)) * 1000) / 1000;
+  const source = measured?.source;
   const zone = zones.find(
     (candidate) =>
       candidate.deletedAt === null && distanceKm >= candidate.minKm && distanceKm < candidate.maxKm,
   );
 
-  return zone ? { ok: true, zone, distanceKm } : { ok: false, reason: "outside_zones", distanceKm };
+  return zone
+    ? { ok: true, zone, distanceKm, source }
+    : { ok: false, reason: "outside_zones", distanceKm, source };
 }
 
 /** How a failure is said to somebody at the counter — the server's words. */

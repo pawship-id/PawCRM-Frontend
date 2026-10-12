@@ -112,6 +112,7 @@ function lot(overrides: Partial<ProductBatch> = {}): ProductBatch {
     productName: "Royal Canin Adult 3kg",
     productSku: "FD-RC-3KG",
     productUnit: "pcs",
+    productSellPrice: null,
     warehouseName: "Gudang Pusat",
     ...overrides,
   };

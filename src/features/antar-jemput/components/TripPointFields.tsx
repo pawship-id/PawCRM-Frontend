@@ -197,6 +197,7 @@ export function TripPointFields({
   customer,
   branch,
   disabled,
+  hideSources,
   onChange,
 }: {
   label: string;
@@ -205,6 +206,8 @@ export function TripPointFields({
   customer: Pick<Customer, "name" | "address" | "location"> | null;
   branch: Pick<Branch, "name" | "address" | "location"> | null;
   disabled: boolean;
+  /** Sources this end does not offer — a house call has no "Alamat cabang". */
+  hideSources?: PointSource[];
   onChange: (next: PointDraft) => void;
 }) {
   const [picking, setPicking] = useState(false);
@@ -238,7 +241,7 @@ export function TripPointFields({
         ariaLabel={`Sumber ${label.toLowerCase()}`}
         value={draft.source}
         onChange={(next) => onChange({ ...draft, source: next as PointSource })}
-        options={pointSources()}
+        options={pointSources().filter((option) => !hideSources?.includes(option.value))}
         active={false}
         placeholder="Pilih sumber alamat"
         disabled={disabled}

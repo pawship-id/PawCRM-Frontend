@@ -19,6 +19,7 @@ import type { PetOption, PetOptionType } from "@/types/api";
 
 import {
   PET_OPTION_LABEL_MAX_LENGTH,
+  parseWeightRange,
   PET_OPTION_TYPE_WORDS,
 } from "../petOptions";
 
@@ -65,11 +66,24 @@ export function PetOptionFormDialog({
   onSaved: () => void;
 }) {
   const editing = option !== undefined;
+  /* A breed and a size may each say which animal they are for. */
+  const hasSpecies = type === "breed" || type === "size";
   const words = PET_OPTION_TYPE_WORDS[type];
 
   const [label, setLabel] = useState(option?.label ?? "");
   /* A breed says which animal it is for — "" means every animal. */
   const [speciesId, setSpeciesId] = useState(option?.speciesId ?? "");
+  /*
+    A SIZE'S WEIGHT RANGE, [min, max) — kept as the text typed so a half-typed
+    "2," is not rewritten under the cursor. Max empty = no upper limit.
+  */
+  const [minWeight, setMinWeight] = useState(
+    option?.minWeightKg == null ? "" : String(option.minWeightKg),
+  );
+  const [maxWeight, setMaxWeight] = useState(
+    option?.maxWeightKg == null ? "" : String(option.maxWeightKg),
+  );
+  const [weightError, setWeightError] = useState<string | null>(null);
 
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -88,11 +102,38 @@ export function PetOptionFormDialog({
       setFieldError(`Maksimal ${PET_OPTION_LABEL_MAX_LENGTH} karakter.`);
       return;
     }
+    let minKg: number | null = null;
+    let maxKg: number | null = null;
+
+    /* A size stored before ranges existed may still be renamed or retired with
+       the boxes left empty; every NEW range, and any edit that states one, is
+       complete. */
+    const legacyBlank =
+      editing &&
+      option.minWeightKg == null &&
+      minWeight.trim() === "" &&
+      maxWeight.trim() === "";
+
+    if (type === "size" && !legacyBlank) {
+      const parsed = parseWeightRange(minWeight, maxWeight);
+      if (parsed.error) {
+        setWeightError(parsed.error);
+        return;
+      }
+      minKg = parsed.min;
+      maxKg = parsed.max;
+    }
+    const weightChanged =
+      type === "size" &&
+      !legacyBlank &&
+      (minKg !== (option?.minWeightKg ?? null) ||
+        maxKg !== (option?.maxWeightKg ?? null));
+
     // An untouched save closes: there is nothing to send, and the server would
     // answer an empty patch with a 400.
     const speciesChanged =
-      type === "breed" && (speciesId || null) !== (option?.speciesId ?? null);
-    if (editing && trimmed === option.label && !speciesChanged) {
+      hasSpecies && (speciesId || null) !== (option?.speciesId ?? null);
+    if (editing && trimmed === option.label && !speciesChanged && !weightChanged) {
       onClose();
       return;
     }
@@ -106,12 +147,16 @@ export function PetOptionFormDialog({
         await petOptionService.update(option._id, {
           ...(trimmed === option.label ? {} : { label: trimmed }),
           ...(speciesChanged ? { speciesId: speciesId || null } : {}),
+          ...(weightChanged ? { minWeightKg: minKg, maxWeightKg: maxKg } : {}),
         });
       } else {
         await petOptionService.create({
           type,
           label: trimmed,
-          ...(type === "breed" ? { speciesId: speciesId || null } : {}),
+          ...(hasSpecies ? { speciesId: speciesId || null } : {}),
+          ...(type === "size"
+            ? { minWeightKg: minKg, maxWeightKg: maxKg }
+            : {}),
         });
       }
       onSaved();
@@ -144,9 +189,18 @@ export function PetOptionFormDialog({
         error.status === 409 &&
         Boolean(error.fieldErrors.label);
 
-      if (labelClash) {
+      const weightClash =
+        error instanceof ApiError &&
+        error.status === 409 &&
+        Boolean(error.fieldErrors.minWeightKg);
+
+      if (weightClash) {
+        setWeightError(
+          "Rentang berat ini tumpang tindih dengan ukuran lain. Sesuaikan batasnya.",
+        );
+      } else if (labelClash) {
         setFieldError(
-          type === "breed" && speciesId
+          hasSpecies && speciesId
             ? `"${trimmed}" sudah ada untuk jenis hewan itu. Pakai nama lain, atau pilih jenis hewan lain.`
             : `"${trimmed}" sudah ada di daftar ${words.noun}. Pakai nama lain.`,
         );
@@ -208,7 +262,7 @@ export function PetOptionFormDialog({
             "Semua hewan" is an honest answer: a shop that has not sorted its
             list yet keeps offering every breed for every animal.
           */}
-          {type === "breed" && (
+          {hasSpecies && (
             <SelectField
               label="Jenis hewan"
               value={speciesId}
@@ -220,9 +274,58 @@ export function PetOptionFormDialog({
                   label: choice.label,
                 })),
               ]}
-              hint="Dipakai untuk menyaring pilihan ras saat mencatat hewan."
+              hint={
+                type === "size"
+                  ? "Ukuran ini hanya dipakai untuk jenis hewan yang dipilih. Pilih \"Semua hewan\" kalau berlaku untuk semuanya."
+                  : "Dipakai untuk menyaring pilihan ras saat mencatat hewan."
+              }
               disabled={busy}
             />
+          )}
+
+          {/*
+            RENTANG BERAT, SIZES ONLY. Minimum is INCLUDED, maximum is EXCLUDED:
+            0 and 3 means 0 up to 2,99 kg, and the next size starts at 3.
+            Empty maximum = no upper limit, for the heaviest size.
+          */}
+          {type === "size" && (
+            <div className="flex flex-col gap-1.5">
+              <div className="grid grid-cols-2 gap-3">
+                <TextField
+                  label="Berat minimum (kg)"
+                  name="minWeightKg"
+                  value={minWeight}
+                  onChange={(event) => {
+                    setMinWeight(event.target.value);
+                    setWeightError(null);
+                  }}
+                  inputMode="decimal"
+                  placeholder="mis. 0"
+                  hint="Nilai minimum termasuk (include)."
+                  disabled={busy}
+                  required
+                />
+                <TextField
+                  label="Berat maksimum (kg)"
+                  name="maxWeightKg"
+                  value={maxWeight}
+                  onChange={(event) => {
+                    setMaxWeight(event.target.value);
+                    setWeightError(null);
+                  }}
+                  inputMode="decimal"
+                  placeholder="mis. 3"
+                  hint="Nilai maksimum tidak termasuk (exclude)."
+                  disabled={busy}
+                  required
+                />
+              </div>
+              {weightError && (
+                <p role="alert" className="text-sm font-medium text-danger-ink">
+                  {weightError}
+                </p>
+              )}
+            </div>
           )}
 
           <DialogFooter>

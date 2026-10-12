@@ -1,11 +1,13 @@
 "use client";
 
-import { SkuText } from "@/components/SkuText";
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Pencil, Printer } from "lucide-react";
 
-import { Alert, Card, Spinner } from "@/components";
+import { SkuText } from "@/components/SkuText";
+import { Alert, Card, ConfirmDialog, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -14,6 +16,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Can } from "@/features/permissions";
+import { swalToast } from "@/lib/swal";
+import { ApiError } from "@/services/api-error";
+import { stockTransferService } from "@/services/stockTransfer.service";
 import {
   absDecimal,
   formatMoney,
@@ -22,29 +28,36 @@ import {
   sumDecimals,
 } from "@/utils/decimal";
 
-import { useTransfer } from "../hooks/useTransfer";
+import { useStockTransfer } from "../hooks/useStockTransfer";
+import { StockTransferStatusBadge } from "./StockTransferStatusBadge";
 
 /**
- * One transfer, read — what was moved, from where to where, and what it was
- * worth.
+ * One transfer, read — what was sent, from where to where, whether it has
+ * arrived, and what it was worth. It is also where a transfer is received,
+ * corrected, cancelled and printed.
+ *
+ * THE ACTIONS FOLLOW THE STATUS, and only an in-transit transfer has any beyond
+ * the print:
+ *
+ *   Ubah             — while the goods are on the road. A correction.
+ *   Terima barang    — the goods have landed; the destination's stock goes up.
+ *   Batalkan transfer — the goods go back to the shelf they left.
+ *   Cetak surat jalan — always. A copy is wanted after the fact as often as
+ *                       before it: the driver lost one, or an auditor asks.
+ *
+ * Received and cancelled transfers show none of the first three, and say why —
+ * a button that is simply absent leaves somebody wondering whether they have
+ * lost a permission.
  *
  * THE VALUE LIVES HERE, NOT IN THE LIST. A transfer's worth is the sum of a
  * dozen products at their own averages, and a single figure in a table column
  * says nothing a reader can act on: it cannot be checked, and it cannot be
- * traced to a product without opening the row anyway. On the detail each line
- * carries its own quantity, its own cost and its own value, and the total is
- * something a reader arrives at rather than something they are handed.
+ * traced to a product without opening the row anyway.
  *
- * THERE IS NO TRANSFER DOCUMENT to read from. No collection, no number: the rows
- * are tied together by the correlation id the ledger stamps on every row of one
- * posting, and this screen asks for exactly that set. The header is therefore
- * assembled from the rows themselves — they all share a date, a source, a
- * destination and a note, because one posting wrote them together.
- *
- * ONE SIDE OF THE PAIR IS RENDERED. Every product moved wrote a `transfer_out`
- * and a mirroring `transfer_in`; listing both would show every product twice and
- * read as double the goods. What is on screen is what LEFT, which is also the
- * side that names the lot it came from.
+ * THE TABLE IS PER LOT, the surat jalan is per product. What FEFO drew is what
+ * left the shelf, and a product that came off three shelves is three rows here;
+ * the printed note lists what was ASKED FOR, one line each, because that is what
+ * somebody counts boxes against.
  *
  * VALUED AT `hppAtTime`, the average the ledger used at the moment of the move —
  * not at today's. A transfer posts no journal entry, so this is an informational
@@ -52,7 +65,14 @@ import { useTransfer } from "../hooks/useTransfer";
  * shows for the same row.
  */
 export function StockTransferDetail({ transferId }: { transferId: string }) {
-  const { out, all, loading, error } = useTransfer(transferId);
+  const { transfer, loading, error, notFound, setTransfer } =
+    useStockTransfer(transferId);
+
+  /** Which confirmation is open — at most one. */
+  const [confirming, setConfirming] = useState<"receive" | "cancel" | null>(
+    null,
+  );
+  const [busy, setBusy] = useState(false);
 
   if (loading) {
     return (
@@ -66,16 +86,16 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
     return <Alert variant="error">{error}</Alert>;
   }
 
-  if (out.length === 0) {
+  if (notFound || !transfer) {
     return (
       <Alert variant="error">
-        Transfer ini tidak ditemukan, atau barisnya sudah tidak ada.
+        Transfer ini tidak ditemukan, atau bukan milik toko Anda.
       </Alert>
     );
   }
 
-  // Every row of one posting shares these, because one posting wrote them.
-  const first = out[0];
+  const { lines, arrivals } = transfer;
+  const inTransit = transfer.status === "in_transit";
 
   /**
    * THE LOTS THAT NOW SIT AT THE DESTINATION, for reprinting their labels.
@@ -86,55 +106,189 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
    * than an afterthought: the sticker on the carton names a lot at the warehouse
    * it just left, and a till at the destination scanning it would resolve to the
    * wrong shelf.
-   *
-   * Read off the `transfer_in` half, which is the side that holds those ids —
-   * the table below renders the `transfer_out` side, which names the lots the
-   * goods came OUT of.
    */
-  const arrivedLotIds = all
-    .filter(
-      (movement) =>
-        movement.movementType === "transfer_in" && movement.batchId !== null,
-    )
+  const arrivedLotIds = arrivals
+    .filter((movement) => movement.batchId !== null)
     .map((movement) => movement.batchId as string);
-  const lineValue = (movement: (typeof out)[number]) =>
+
+  const lineValue = (movement: (typeof lines)[number]) =>
     movement.hppAtTime
       ? multiplyDecimals(absDecimal(movement.qty), movement.hppAtTime)
       : "0";
-  const total = sumDecimals(out.map(lineValue));
+  const total = sumDecimals(lines.map(lineValue));
+
+  async function act(kind: "receive" | "cancel") {
+    setBusy(true);
+
+    try {
+      const updated =
+        kind === "receive"
+          ? await stockTransferService.receive(transferId)
+          : await stockTransferService.cancel(transferId);
+
+      setTransfer(updated);
+      setConfirming(null);
+      swalToast(
+        kind === "receive"
+          ? `${updated.transferNumber} diterima — stok ${updated.toWarehouseName ?? "gudang tujuan"} bertambah.`
+          : `${updated.transferNumber} dibatalkan — barang kembali ke ${updated.fromWarehouseName ?? "gudang asal"}.`,
+      );
+    } catch (err) {
+      /*
+        A FAILED ACT IS A TOAST (ui-rules §9) — the screen behind it is intact
+        and still the thing to read. The dialog closes so the reason is not
+        hidden behind it; a 409 usually means somebody else got there first, and
+        the page is reloaded to show what they did.
+      */
+      setConfirming(null);
+      swalToast(
+        err instanceof ApiError
+          ? err.fullMessage
+          : "Terjadi kesalahan. Coba lagi.",
+        "error",
+        6000,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="flex flex-col gap-6">
+      {confirming === "receive" && (
+        <ConfirmDialog
+          title="Terima barang ini?"
+          confirmLabel="Terima barang"
+          busy={busy}
+          onConfirm={() => act("receive")}
+          onCancel={() => setConfirming(null)}
+        >
+          Stok {transfer.toWarehouseName ?? "gudang tujuan"} bertambah sesuai
+          barang di bawah. Setelah diterima, transfer tidak bisa diubah lagi —
+          kekeliruan dikoreksi dengan transfer balik.
+        </ConfirmDialog>
+      )}
+
+      {confirming === "cancel" && (
+        <ConfirmDialog
+          title="Batalkan transfer ini?"
+          confirmLabel="Batalkan transfer"
+          destructive
+          busy={busy}
+          onConfirm={() => act("cancel")}
+          onCancel={() => setConfirming(null)}
+        >
+          Semua barang dikembalikan ke {transfer.fromWarehouseName ?? "gudang asal"}
+          {" "}dan transfer ini tidak bisa dilanjutkan. Dokumennya tetap tersimpan
+          sebagai riwayat.
+        </ConfirmDialog>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <StockTransferStatusBadge status={transfer.status} />
+          {transfer.revision > 0 && (
+            <span className="text-sm text-muted">
+              Direvisi {transfer.revision}×
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="secondary" asChild>
+            <Link href={`/dashboard/inventory/transfers/${transfer._id}/print`}>
+              <Printer className="size-4" />
+              Cetak surat jalan
+            </Link>
+          </Button>
+
+          {inTransit && (
+            <Can feature="stockMovements" action="create">
+              <Button variant="secondary" asChild>
+                <Link
+                  href={`/dashboard/inventory/transfers/${transfer._id}/edit`}
+                >
+                  <Pencil className="size-4" />
+                  Ubah
+                </Link>
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setConfirming("cancel")}
+              >
+                Batalkan transfer
+              </Button>
+              <Button onClick={() => setConfirming("receive")}>
+                Terima barang
+              </Button>
+            </Can>
+          )}
+        </div>
+      </div>
+
+      {/* SAID, because it is the one consequence of this state people do not
+          expect: the goods have already left the source, so its stock has gone
+          down, and nothing has arrived yet — the destination's stock does not
+          move until somebody there presses Terima. */}
+      {inTransit && (
+        <Alert variant="info">
+          Barang sudah keluar dari <b>{transfer.fromWarehouseName ?? "gudang asal"}</b>{" "}
+          dan belum tercatat di <b>{transfer.toWarehouseName ?? "gudang tujuan"}</b>.
+          Stok gudang tujuan bertambah setelah transfer diterima. Selama belum
+          diterima, transfer masih bisa diubah atau dibatalkan.
+        </Alert>
+      )}
+
+      {transfer.status === "cancelled" && (
+        <Alert variant="warning">
+          Transfer ini dibatalkan
+          {transfer.cancelledAt && ` pada ${formatDateTime(transfer.cancelledAt)}`}
+          {transfer.cancelledByName && ` oleh ${transfer.cancelledByName}`}.
+          Barangnya sudah kembali ke {transfer.fromWarehouseName ?? "gudang asal"}.
+        </Alert>
+      )}
+
       <Card>
         <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {/* NAMED FOR WHAT IT DATES, like the stock-entry detail beside it:
-              the field two along carries a second timestamp, and two fields both
-              called "Tanggal" is how a reader stops trusting either. */}
-          <Field label="Tanggal transfer">
-            <span className="tabular-nums">{formatDate(first.createdAt)}</span>
+          <Field label="No. transfer">
+            <span className="tabular-nums">{transfer.transferNumber}</span>
           </Field>
-          <Field label="Dari">{first.warehouseName ?? "—"}</Field>
-          <Field label="Ke">{first.destinationWarehouseName ?? "—"}</Field>
-          {/* WHO AND WHEN AS ONE FACT, the same way the stock-entry detail
-              says it. The header's date and this one are the SAME instant here
-              — a transfer has no document date of its own, because the ledger
-              is append-only and insert order IS the event — so what this line
-              adds is the clock time, which is what tells two transfers made on
-              one busy day apart. */}
-          <Field label="Dibuat oleh">
-            {first.createdByName ?? "—"}
-            <span className="mt-0.5 block text-xs font-normal tabular-nums text-muted">
-              {formatDateTime(first.createdAt)}
+          {/* NAMED FOR WHAT IT DATES: the date the goods were SENT. The author
+              line below carries a second timestamp, and two fields both called
+              "Tanggal" is how a reader stops trusting either. */}
+          <Field label="Tanggal transfer">
+            <span className="tabular-nums">
+              {formatDate(transfer.transferDate)}
             </span>
           </Field>
+          <Field label="Dari">{transfer.fromWarehouseName ?? "—"}</Field>
+          <Field label="Ke">{transfer.toWarehouseName ?? "—"}</Field>
+          <Field label="Dibuat oleh">
+            {transfer.createdByName ?? "—"}
+            <span className="mt-0.5 block text-xs font-normal tabular-nums text-muted">
+              {formatDateTime(transfer.createdAt)}
+            </span>
+          </Field>
+          {transfer.status === "received" && (
+            <Field label="Diterima oleh">
+              {transfer.receivedByName ?? "—"}
+              {transfer.receivedAt && (
+                <span className="mt-0.5 block text-xs font-normal tabular-nums text-muted">
+                  {formatDateTime(transfer.receivedAt)}
+                </span>
+              )}
+            </Field>
+          )}
         </dl>
 
-        {first.notes && (
+        {transfer.notes && (
           <div className="mt-4 border-t border-border/60 pt-4">
             <dt className="text-xs font-medium tracking-wider text-muted uppercase">
               Catatan
             </dt>
-            <dd className="mt-1 text-[15px] text-foreground">{first.notes}</dd>
+            <dd className="mt-1 text-[15px] text-foreground">
+              {transfer.notes}
+            </dd>
           </div>
         )}
       </Card>
@@ -159,12 +313,11 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
         title={
           <span className="flex flex-wrap items-center gap-2">
             Barang yang dipindahkan
-            <Badge variant="outline">{out.length} baris</Badge>
-            {/* Both halves of the pair, so the stock card's row count adds up. */}
-            <Badge variant="outline">{all.length} pergerakan</Badge>
+            <Badge variant="outline">{transfer.productCount} produk</Badge>
+            <Badge variant="outline">{lines.length} baris batch</Badge>
           </span>
         }
-        description="Satu baris per lot yang diambil — barang yang tersebar di beberapa batch keluar sebagai beberapa baris, dan tiap baris punya pasangannya di gudang tujuan."
+        description="Satu baris per lot yang diambil — barang yang tersebar di beberapa batch keluar sebagai beberapa baris."
       >
         <div className="overflow-x-auto">
           <Table>
@@ -178,7 +331,7 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {out.map((movement) => (
+              {lines.map((movement) => (
                 <TableRow key={movement._id}>
                   <TableCell>
                     <p className="font-medium text-foreground">
@@ -196,14 +349,10 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
                   </TableCell>
 
                   {/* THE CODE AT EACH END IS A DIFFERENT CODE, and this is the
-                      one screen where that has to be visible. A transfer
-                      re-creates the lot at the destination, codes are unique
-                      across the tenant, so the arriving row is minted its own —
-                      which means the carton has to be RELABELLED when it lands,
-                      and this table is where somebody reads what to write. The
-                      supplier's number is the half that does NOT change: it
-                      names the factory batch, and moving a box between
-                      warehouses does not move it to a different one. */}
+                      one screen where that has to be visible: the arriving row
+                      is minted its own, so the carton is RELABELLED when it
+                      lands. The supplier's number is the half that does NOT
+                      change — it names the factory batch. */}
                   <TableCell className="text-muted">
                     {movement.batchCode ?? "—"}
                     {movement.supplierBatchCode && (
@@ -247,25 +396,9 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
       </Card>
 
       <div className="flex flex-col gap-2">
-        {/* A transfer moves goods between two warehouses of one tenant, so total
-            inventory value does not change and there is nothing for double entry
-            to record. Said out loud, because a document with a value on it that
-            appears in no report is otherwise a gap somebody goes looking for. */}
-        <p className="text-sm text-muted">
-          Transfer <b>tidak membuat jurnal</b> — barang pindah antar gudang
-          milik sendiri, jadi total nilai persediaan tidak berubah. Nilai di
-          atas memakai HPP saat perpindahan, sebagai keterangan, bukan
-          pembukuan.
-        </p>
-
-        <p className="text-xs text-muted">
-          Kartu stok bersifat <b>append-only</b>. Transfer yang salah dikoreksi
-          dengan transfer balik, bukan dengan mengubah baris ini.
-        </p>
-
-        <div className="flex flex-wrap gap-3 pt-1">
+        <div className="flex flex-wrap gap-3">
           <Link
-            href={`/dashboard/inventory/stock-card?warehouseId=${first.warehouseId}`}
+            href={`/dashboard/inventory/stock-card?warehouseId=${transfer.fromWarehouseId}`}
             className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
           >
             Kartu stok gudang asal

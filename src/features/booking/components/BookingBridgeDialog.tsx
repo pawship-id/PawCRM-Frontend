@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarCheck, Plus } from "lucide-react";
+import { CalendarCheck, House, Plus } from "lucide-react";
 
 import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { formatMoney, sumDecimals } from "@/utils/decimal";
+import { formatMoney, isPositive, subtractDecimals, sumDecimals } from "@/utils/decimal";
 import type { Booking } from "@/types/api";
 
 import { useBookingBridge } from "../hooks/useBookingBridge";
+import { billedTripNote, owedTripsOf, pullTotalOf, tripKeysOf } from "../visitTrip";
 import { AddServiceTab, type AddServiceChoice } from "./AddServiceTab";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
@@ -25,23 +26,30 @@ import { BookingStatusBadge } from "./BookingStatusBadge";
 type Tab = "pull" | "adhoc";
 
 /**
- * What pulling this booking puts in the basket: the service plus its add-ons.
- *
- * `totalAmount` is the server's own summary and wins when it is there. It is
- * null only on a booking no summary has run on yet, and then the parts are
- * added up here — IN MINOR UNITS, because these figures reached the screen as
- * decimal strings so they would never pass through a float.
+ * A LINE'S PRICE AFTER WHAT THE BOOKING TAKES OFF IT (11 October 2026, on
+ * request) — its own discount and its share of "Diskon seluruh booking", the
+ * same `discountAmount` the basket pulls. The price before is struck through
+ * beside it when anything comes off, so the card adds up to the button.
  */
-function bookingTotal(booking: Booking): string {
-  /* AFTER the booking's own discounts (15 September 2026) — the basket pulls
-     them as line discounts, so this is what it will add. */
+function LinePrice({
+  line,
+  small = false,
+}: {
+  line: { price: string; discountAmount?: string | null };
+  small?: boolean;
+}) {
+  const off = line.discountAmount && isPositive(line.discountAmount) ? line.discountAmount : null;
+  const size = small ? "text-xs" : "text-sm";
+
   return (
-    booking.netAmount ??
-    booking.totalAmount ??
-    sumDecimals([
-      booking.service.price,
-      ...booking.service.addons.map((addon) => addon.price),
-    ])
+    <span className={`shrink-0 tabular-nums ${size}`}>
+      {off && (
+        <span className="mr-1.5 text-muted line-through">{formatMoney(line.price)}</span>
+      )}
+      <span className={off ? "font-semibold text-foreground" : "text-muted"}>
+        {formatMoney(off ? subtractDecimals(line.price, off) : line.price)}
+      </span>
+    </span>
   );
 }
 
@@ -88,8 +96,11 @@ export function BookingBridgeDialog({
   onOpenChange: (open: boolean) => void;
   /** True while a cart write started from here is still in flight. */
   busy?: boolean;
-  /** Handed every booking the cashier ticked on the first tab. */
-  onPull: (bookings: Booking[]) => void;
+  /**
+   * Handed every booking the cashier ticked on the first tab — and every trip
+   * left behind they ticked (11 October 2026), billed on its own.
+   */
+  onPull: (bookings: Booking[], tripIds?: string[]) => void;
   /**
    * Handed every animal the cashier ticked something for on the second tab.
    *
@@ -106,7 +117,7 @@ export function BookingBridgeDialog({
     booking, which meant the pull list beside it had gone stale; now it writes
     nothing, so there is nothing to re-ask about.
   */
-  const { bookings, loading, error } = useBookingBridge(
+  const { bookings, trips, loading, error } = useBookingBridge(
     open ? customerId : null,
   );
   /*
@@ -121,14 +132,21 @@ export function BookingBridgeDialog({
   */
   const [tab, setTab] = useState<Tab | null>(null);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [tickedTrips, setTickedTrips] = useState<Set<string>>(new Set());
+  const chosenOrphans = trips.filter((trip) => tickedTrips.has(trip.tripId));
+  const nothingToPull = bookings.length === 0 && trips.length === 0;
+
+  const chosen = bookings.filter((booking) => ticked.has(booking._id));
+  const chosenTrips = tripKeysOf(chosen);
 
   const activeTab: Tab =
-    tab ?? initialTab ?? (!loading && bookings.length === 0 ? "adhoc" : "pull");
+    tab ?? initialTab ?? (!loading && nothingToPull ? "adhoc" : "pull");
 
   /** Closing forgets everything — the next customer starts clean. */
   function handleOpenChange(next: boolean) {
     if (!next) {
       setTicked(new Set());
+      setTickedTrips(new Set());
       setTab(null);
     }
     onOpenChange(next);
@@ -143,8 +161,20 @@ export function BookingBridgeDialog({
     });
   }
 
+  function toggleTrip(id: string) {
+    setTickedTrips((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   function confirmPull() {
-    onPull(bookings.filter((booking) => ticked.has(booking._id)));
+    onPull(
+      bookings.filter((booking) => ticked.has(booking._id)),
+      chosenOrphans.map((trip) => trip.tripId),
+    );
     handleOpenChange(false);
   }
 
@@ -173,7 +203,7 @@ export function BookingBridgeDialog({
           >
             <CalendarCheck className="size-4" />
             Tarik booking
-            {bookings.length > 0 && ` (${bookings.length})`}
+            {bookings.length + trips.length > 0 && ` (${bookings.length + trips.length})`}
           </Button>
           <Button
             type="button"
@@ -194,7 +224,7 @@ export function BookingBridgeDialog({
             <div className="flex items-center gap-2 py-8 text-sm text-muted">
               <Spinner /> Memuat booking…
             </div>
-          ) : bookings.length === 0 ? (
+          ) : nothingToPull ? (
             /* The PRD's edge case: a customer with no booking today is pointed
                at the other tab rather than left on an empty list. */
             <div className="flex flex-col items-start gap-3 py-8">
@@ -284,9 +314,7 @@ export function BookingBridgeDialog({
                                 {booking.groomerName}
                               </span>
                             </span>
-                            <span className="shrink-0 text-sm tabular-nums text-muted">
-                              {formatMoney(service.price)}
-                            </span>
+                            <LinePrice line={service} />
                           </span>
 
                           {/*
@@ -296,9 +324,9 @@ export function BookingBridgeDialog({
                             two. Each keeps its own price, because each bills as
                             a line of its own.
                           */}
-                          {service.addons.length > 0 && (
+                          {service.addons.some((addon) => !addon.visitFee) && (
                             <span className="mt-1 ml-1 flex flex-col gap-0.5 border-l border-border pl-2">
-                              {service.addons.map((addon) => (
+                              {service.addons.filter((addon) => !addon.visitFee).map((addon) => (
                                 <span
                                   key={addon.itemId}
                                   className="flex items-baseline justify-between gap-3"
@@ -306,11 +334,17 @@ export function BookingBridgeDialog({
                                   <span className="min-w-0 truncate text-xs text-foreground">
                                     {`+ ${addon.name}`}
                                   </span>
-                                  <span className="shrink-0 text-xs tabular-nums text-muted">
-                                    {formatMoney(addon.price)}
-                                  </span>
+                                  <LinePrice line={addon} small />
                                 </span>
                               ))}
+                            </span>
+                          )}
+
+                          {/* The trip was billed with another booking of the house. */}
+                          {billedTripNote(booking.visitTrip) && (
+                            <span className="mt-1.5 flex items-center gap-1.5 text-xs text-muted">
+                              <House className="size-4 shrink-0" aria-hidden />
+                              {billedTripNote(booking.visitTrip)}
                             </span>
                           )}
                         </span>
@@ -318,7 +352,109 @@ export function BookingBridgeDialog({
                     </li>
                   );
                 })}
+
+                {/*
+                  EACH TRIP STILL OWED, ONCE — not under the grooming of the
+                  booking that happens to carry it (11 October 2026). No box of
+                  its own: it comes along with the first booking of the trip that
+                  is ticked, and the server makes sure it is billed only once.
+                */}
+                {owedTripsOf(bookings).map((trip) => {
+                  const coming = chosenTrips.has(trip.key);
+
+                  return (
+                    <li key={`trip-${trip.key}`}>
+                      <div
+                        data-bridge-trip
+                        data-coming={coming ? "true" : "false"}
+                        className={`flex items-start gap-3 rounded-lg border p-3 ${
+                          coming ? "border-primary bg-surface-selected" : "border-border"
+                        }`}
+                      >
+                        <House className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-semibold text-foreground">
+                            Perjalanan home grooming
+                          </span>
+                          <span className="mt-1 flex items-baseline justify-between gap-3">
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm text-foreground">
+                                {trip.name}
+                              </span>
+                              {trip.petNames.length > 0 && (
+                                <span className="block truncate text-xs text-muted">
+                                  Untuk {trip.petNames.join(", ")}
+                                </span>
+                              )}
+                            </span>
+                            <span className="shrink-0 text-sm tabular-nums text-muted">
+                              {formatMoney(trip.amount)}
+                            </span>
+                          </span>
+                          <span className="mt-1 block text-xs text-muted">
+                            {coming
+                              ? "Ikut ditarik ke keranjang"
+                              : "Ikut ditarik bersama booking pertama yang dicentang"}
+                          </span>
+                        </span>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
+
+              {/*
+                ─── TRIPS LEFT BEHIND (11 October 2026) ─────────────────────
+
+                Every booking of the trip was billed, the trip was not — Cici
+                and Coco rung up, the journey forgotten. Nothing above can bring
+                it, so it is offered here on its own, with a box of its own.
+              */}
+              {trips.length > 0 && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                    Perjalanan belum ditagih
+                  </p>
+                  <ul className="flex flex-col gap-2">
+                    {trips.map((trip) => (
+                      <li key={`orphan-${trip.tripId}`}>
+                        <label
+                          data-orphan-trip
+                          className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 hover:bg-surface-hover"
+                        >
+                          <Checkbox
+                            checked={tickedTrips.has(trip.tripId)}
+                            onCheckedChange={() => toggleTrip(trip.tripId)}
+                            aria-label={`Tarik perjalanan ${trip.name}`}
+                            className="mt-0.5"
+                          />
+                          <House className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-baseline justify-between gap-3">
+                              <span className="min-w-0 truncate text-sm font-semibold text-foreground">
+                                {trip.name}
+                              </span>
+                              <span className="shrink-0 text-sm tabular-nums text-muted">
+                                {formatMoney(trip.amount)}
+                              </span>
+                            </span>
+                            <span className="block truncate text-xs text-muted">
+                              {[
+                                trip.petNames.length > 0 ? `Untuk ${trip.petNames.join(", ")}` : null,
+                                trip.bookingNumbers.length > 0
+                                  ? `booking ${trip.bookingNumbers.join(", ")} sudah ditagih`
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          </span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               <DialogFooter>
                 <Button
@@ -331,16 +467,12 @@ export function BookingBridgeDialog({
                 <Button
                   type="button"
                   onClick={confirmPull}
-                  disabled={ticked.size === 0}
+                  disabled={ticked.size === 0 && tickedTrips.size === 0}
                 >
                   Tarik ke keranjang
-                  {ticked.size > 0 &&
+                  {(ticked.size > 0 || tickedTrips.size > 0) &&
                     ` · ${formatMoney(
-                      sumDecimals(
-                        bookings
-                          .filter((b) => ticked.has(b._id))
-                          .map(bookingTotal),
-                      ),
+                      sumDecimals([pullTotalOf(chosen), ...chosenOrphans.map((trip) => trip.amount)]),
                     )}`}
                 </Button>
               </DialogFooter>

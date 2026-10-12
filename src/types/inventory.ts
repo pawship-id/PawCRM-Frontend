@@ -57,6 +57,15 @@ export type MovementType =
   | "customer_return"
   | "transfer_out"
   | "transfer_in"
+  /**
+   * A transfer's goods going back to the shelf they left — an in-transit
+   * transfer that was edited or cancelled before anybody received it.
+   *
+   * ITS OWN TYPE RATHER THAN `transfer_in`: a stock card read at the SOURCE would
+   * otherwise say "Transfer masuk" for goods that never arrived from anywhere,
+   * and "what actually arrived here" must stay answerable.
+   */
+  | "transfer_cancel"
   | "bundle_consume"
   | "adjustment"
   /**
@@ -86,6 +95,10 @@ export type ReferenceType =
   | "purchase_return"
   | "customer_return"
   | "transfer_manual"
+  /** The arrival half of a transfer received later. Keyed on the document. */
+  | "transfer_receive"
+  /** An in-transit transfer's goods going back. Keyed on the posting undone. */
+  | "transfer_cancel"
   | "bundle_consume"
   | "manual_adjustment"
   /** Carries `reference.id: null`. A client cannot create one — see above. */
@@ -266,6 +279,8 @@ export interface ProductBatch {
   productName: string | null;
   productSku: string | null;
   productUnit: string | null;
+  /** Decimal string — the product's selling price, for the shelf label. */
+  productSellPrice: string | null;
   warehouseName: string | null;
 }
 
@@ -1671,46 +1686,61 @@ export interface StockMovementListQuery {
 }
 
 /**
- * GET /api/stock-movements/transfers — one row per TRANSFER, not per movement.
+ * Where a transfer is in its life. Mirrors TRANSFER_STATUSES.
  *
- * WHY A SEPARATE SHAPE AND NOT `StockMovement[]`. A transfer is the one manual
- * posting with no document behind it: there is no `stocktransfers` collection,
- * so its rows are held together only by the correlation id the server mints
- * into `reference.id`. The server groups on that id and pages the GROUPS —
- * grouping a page of the ledger in the browser would page ROWS, so one transfer
- * could straddle a boundary and be listed twice with half its lots each time.
+ *   in_transit — sent, not received. The ONLY state that may be edited or
+ *                cancelled: the goods are off the source shelf and on no shelf.
+ *   received   — arrived. Immutable; a wrong one is corrected by a transfer back.
+ *   cancelled  — undone before anybody received it. Its goods are back at the
+ *                source, and the document stays as the record.
+ */
+export type StockTransferStatus = "in_transit" | "received" | "cancelled";
+
+/**
+ * One transfer as a LIST ROW — GET /api/stock-transfers.
  *
- * `transferId` is that correlation id. It is not any collection's primary key;
- * what a client does with it is ask for the transfer's own rows:
- * `list({ referenceType: "transfer_manual", referenceId: transferId })`.
+ * A transfer is a numbered document with a life now. It used to be only a
+ * correlation id on a pair of ledger rows, which is why this shape had no
+ * number, no status and no way to be edited: the goods teleported, so there was
+ * nothing to wait for. See StockTransferDetail for the lines.
  */
 export interface StockTransferSummary {
-  transferId: string;
-  /** ISO date string — when the posting was written. */
-  transferredAt: string;
-  fromWarehouseId: string | null;
-  toWarehouseId: string | null;
+  _id: string;
+  /** "TRF/2610/0042" — the number printed at the top of the surat jalan. */
+  transferNumber: string;
+  status: StockTransferStatus;
+  /**
+   * True for a transfer filed before the document existed. Always `received`,
+   * and carries no requested lines of its own — the detail rebuilds them from
+   * the ledger rows it wrote.
+   */
+  legacy: boolean;
+  /** How many times it was edited while in transit. Zero as filed. */
+  revision: number;
+  /** ISO date string — when the goods were SENT. Carried through edits. */
+  transferDate: string;
+  fromWarehouseId: string;
+  toWarehouseId: string;
   /**
    * TWO COUNTS THAT MEAN DIFFERENT THINGS. `productCount` is what somebody
    * typed; `lotCount` is how many lots FEFO drew from to satisfy it. More lots
-   * than products is the row saying "one of these came off three shelves" — and
-   * the ledger holds twice `lotCount` rows, because every lot moved writes a
-   * pair.
+   * than products is the row saying "one of these came off three shelves".
    */
   productCount: number;
   lotCount: number;
   /**
    * Decimal string — Σ |qty| × the average each line was drawn at.
    *
-   * NOT A QUANTITY, deliberately: summed across products a quantity adds sacks
-   * of feed to bottles of shampoo. Rupiah is the one unit every line shares.
-   * Note that this value does not move between accounts — a transfer posts no
-   * journal, because the goods are still the tenant's.
+   * Informational, not a journal figure: a transfer posts no entry, because the
+   * goods are still the tenant's.
    */
   value: string;
-  /** The reason for the whole posting, stamped on every row it wrote. */
+  /** The reason for the whole transfer, printed as "Catatan" on the surat jalan. */
   notes: string | null;
   createdBy: string | null;
+  createdAt: string;
+  receivedAt: string | null;
+  cancelledAt: string | null;
 
   /* -------------------------------------------------- labels for the bare ids */
   /* Null where the id is not: a warehouse renamed out of existence or a user
@@ -1719,6 +1749,44 @@ export interface StockTransferSummary {
   fromWarehouseName: string | null;
   toWarehouseName: string | null;
   createdByName: string | null;
+  receivedByName: string | null;
+  cancelledByName: string | null;
+}
+
+/**
+ * One requested line — what the person asked for, one per PRODUCT. These are
+ * the surat jalan's rows; the lots FEFO drew are `lines`.
+ *
+ * For a legacy transfer the lines were never recorded, so they are rebuilt from
+ * the ledger rows, summed per product.
+ */
+export interface StockTransferItem {
+  productId: string;
+  /** Decimal string, positive. */
+  qty: string;
+  /** The lot the filer named, when they named one. */
+  batchId: string | null;
+  /** The explicit "let FEFO choose" for a lot-tracked product. */
+  autoFefo: boolean;
+  notes: string | null;
+  productName: string | null;
+  productSku: string | null;
+  productUnit: string | null;
+}
+
+/**
+ * GET /api/stock-transfers/:id — the document, what was asked for, the lots
+ * that actually left and — once received — the lots that arrived.
+ */
+export interface StockTransferDetail extends StockTransferSummary {
+  items: StockTransferItem[];
+  /** The `transfer_out` rows of the CURRENT revision: one per lot drawn. */
+  lines: StockMovement[];
+  /**
+   * The `transfer_in` rows. Empty until received; each is a lot re-created at
+   * the destination under a code of its own, which is what gets relabelled.
+   */
+  arrivals: StockMovement[];
 }
 
 export interface StockTransferPage {
@@ -1732,12 +1800,7 @@ export interface StockTransferPage {
 }
 
 /**
- * GET /api/stock-movements/transfers.
- *
- * THE LEDGER'S ROW-LEVEL FILTERS ARE ABSENT and that is not an oversight:
- * `productId`, `batchId` and `movementType` narrow to rows INSIDE a posting, so
- * a list of transfers filtered to one product would report each transfer's lot
- * count and value as though the other products it carried did not exist.
+ * GET /api/stock-transfers.
  *
  * `warehouseId` matches EITHER end. A transfer belongs to both warehouses it
  * touches, so a filter that only looked at the source would answer "what left
@@ -1747,25 +1810,43 @@ export interface StockTransferListQuery {
   page?: number;
   limit?: number;
   warehouseId?: string;
+  status?: StockTransferStatus;
   /** ISO date string. */
   from?: string;
   /** ISO date string. The backend refuses a `to` that precedes `from`. */
   to?: string;
-  /** Free text over the posting's note — the only text a transfer has. */
+  /** Free text over the document number and the note. */
   search?: string;
   /** Defaults to `newest` on the server. Every list has an ordering. */
   sort?: StockTransferSort;
 }
 
 /**
- * The orderings this endpoint names, and they are NOT the ledger's.
+ * The body of POST (create) and PATCH (edit) on /api/stock-transfers.
  *
- * It sorts GROUPS by the date the server computes over the rows of one posting,
- * where `GET /stock-movements` sorts rows by their own `createdAt`. Chronological
- * only: a transfer is an event, and ranking one by product count or value is a
- * report rather than a list of what happened.
+ * An edit sends the WHOLE document again, not a diff: it is a reversal and a
+ * re-post on the server, which needs the complete revised lines either way.
  */
-export type StockTransferSort = "newest" | "oldest";
+export interface StockTransferInput {
+  fromWarehouseId: string;
+  toWarehouseId: string;
+  /** At least one, at most 50, and `productId` unique across them. */
+  items: TransferItemInput[];
+  /** Why the whole transfer happened. ≤500 characters. */
+  notes?: string;
+  /**
+   * Create only. A token that makes a RETRY safe, 8–64 characters — send the
+   * SAME key when retrying an attempt that may have landed.
+   */
+  idempotencyKey?: string;
+}
+
+/** The orderings the transfer list names. Chronological and by number. */
+export type StockTransferSort =
+  | "newest"
+  | "oldest"
+  | "numberDesc"
+  | "numberAsc";
 
 /** The orderings `GET /api/stock-movements` accepts — MOVEMENT_SORTS in the model. */
 export type MovementSort = "newest" | "oldest";

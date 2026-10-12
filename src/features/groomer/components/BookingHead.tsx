@@ -2,6 +2,7 @@ import { PawPrint, TriangleAlert } from "lucide-react";
 
 import type { GroomerBooking } from "@/types/groomer";
 import { clock } from "../dates";
+import { HomeVisitInfo } from "./HomeVisit";
 import { Pill } from "./Pill";
 
 /**
@@ -53,6 +54,8 @@ export function BookingHead({
         {booking.serviceName}
         {booking.addons.length > 0 && ` · + ${booking.addons.join(", ")}`}
       </p>
+
+      <HomeVisitInfo booking={booking} />
 
       {showHandling && pet.handling && (
         <div className="mt-3 rounded-lg bg-tint-warning px-3 py-2 text-sm text-warning">

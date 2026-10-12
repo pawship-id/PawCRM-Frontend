@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Alert, TextField } from "@/components";
 import { SelectField } from "@/components";
@@ -18,6 +18,7 @@ import { petService } from "@/services/pet.service";
 import type { Pet, PetOptionId } from "@/types/api";
 
 import { usePetPickers } from "../hooks/usePetPickers";
+import { sizeForWeight, usesWeightSizes } from "../weightSize";
 
 const NAME_MAX_LENGTH = 80;
 
@@ -97,11 +98,18 @@ export function PetQuickAddDialog({
    */
   requireTraits?: boolean;
 }) {
+  /* Told by QuickAddPickers once the tenant's lists have loaded — they are
+     read there so a closed dialog never fetches them. */
+  const [sizeByWeight, setSizeByWeight] = useState(false);
   const [name, setName] = useState("");
   /* Option IDS, not codes — `usePetPickers` builds the items. See PetForm. */
   const [species, setSpecies] = useState<PetOptionId | "">("");
   const [size, setSize] = useState<PetOptionId | "">("");
   const [furType, setFurType] = useState<PetOptionId | "">("");
+  /* Berat is always asked: the server refuses an animal without one, and the
+     size is worked out from it once the tenant has stated ranges. */
+  const [weightKg, setWeightKg] = useState("");
+  const [weightError, setWeightError] = useState<string | null>(null);
   const [nameError, setNameError] = useState<string | null>(null);
   const [speciesError, setSpeciesError] = useState<string | null>(null);
   const [sizeError, setSizeError] = useState<string | null>(null);
@@ -114,6 +122,8 @@ export function PetQuickAddDialog({
     setSpecies("");
     setSize("");
     setFurType("");
+    setWeightKg("");
+    setWeightError(null);
     setNameError(null);
     setSpeciesError(null);
     setSizeError(null);
@@ -147,7 +157,15 @@ export function PetQuickAddDialog({
       setSpeciesError("Pilih jenis hewannya.");
       invalid = true;
     }
-    if (requireTraits && size === "") {
+    const weight = weightKg.trim() === "" ? null : Number(weightKg);
+    if (weight === null) {
+      setWeightError("Berat wajib diisi.");
+      invalid = true;
+    } else if (Number.isNaN(weight) || weight <= 0 || weight > 500) {
+      setWeightError("Isi angka lebih dari 0 sampai 500.");
+      invalid = true;
+    }
+    if (requireTraits && !sizeByWeight && size === "") {
       setSizeError("Pilih ukurannya.");
       invalid = true;
     }
@@ -168,7 +186,8 @@ export function PetQuickAddDialog({
         species: species as PetOptionId,
         /* NULL, NOT OMITTED, when nothing was chosen — "belum diisi" is a real
            state the pricing rule reads, and the API says so explicitly. */
-        size: size === "" ? null : size,
+        weightKg: weight,
+        ...(sizeByWeight ? {} : { size: size === "" ? null : size }),
         furType: furType === "" ? null : furType,
       });
 
@@ -236,6 +255,13 @@ export function PetQuickAddDialog({
               setFurTypeError(null);
             }}
             furTypeError={furTypeError}
+            weightKg={weightKg}
+            onWeightChange={(next) => {
+              setWeightKg(next);
+              setWeightError(null);
+            }}
+            weightError={weightError}
+            onSizeByWeightChange={setSizeByWeight}
             required={requireTraits}
             disabled={saving}
           />
@@ -277,6 +303,10 @@ function QuickAddPickers({
   furType,
   onFurTypeChange,
   furTypeError,
+  weightKg,
+  onWeightChange,
+  weightError,
+  onSizeByWeightChange,
   required,
   disabled,
 }: {
@@ -289,25 +319,59 @@ function QuickAddPickers({
   furType: PetOptionId | "";
   onFurTypeChange: (next: PetOptionId) => void;
   furTypeError: string | null;
+  weightKg: string;
+  onWeightChange: (next: string) => void;
+  weightError: string | null;
+  /** Reports whether Ukuran is worked out from the weight for this tenant. */
+  onSizeByWeightChange: (byWeight: boolean) => void;
   /** Ukuran and Jenis bulu are answers, not offers — see `requireTraits`. */
   required: boolean;
   disabled: boolean;
 }) {
-  const { pickerOptions, loading, error } = usePetPickers();
+  const { pickerOptions, sizeOptions, options, loading, error } =
+    usePetPickers();
+
+  /* Ukuran follows the weight once the tenant has ranges — see PetForm. */
+  const sizeByWeight = usesWeightSizes(options);
+  useEffect(() => {
+    onSizeByWeightChange(sizeByWeight);
+  }, [sizeByWeight, onSizeByWeightChange]);
+  const weightNumber = weightKg.trim() === "" ? null : Number(weightKg);
+  const derived = sizeByWeight
+    ? sizeForWeight(options, species || null, weightNumber)
+    : null;
 
   return (
     <>
-      <SelectField
-        label="Jenis"
-        value={species}
-        onChange={onSpeciesChange}
-        options={pickerOptions("species")}
-        placeholder={loading ? "Memuat…" : "Pilih jenis"}
-        error={speciesError ?? undefined}
-        hint={error ?? undefined}
-        disabled={disabled || loading}
-        required
-      />
+      {/* JENIS AND BERAT ON ONE ROW: the size is worked out from the two. */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <SelectField
+          label="Jenis"
+          value={species}
+          onChange={onSpeciesChange}
+          options={pickerOptions("species")}
+          placeholder={loading ? "Memuat…" : "Pilih jenis"}
+          error={speciesError ?? undefined}
+          hint={error ?? undefined}
+          disabled={disabled || loading}
+          required
+        />
+
+        <TextField
+          label="Berat (kg)"
+          name="quick-pet-weight"
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          min={0}
+          value={weightKg}
+          onChange={(event) => onWeightChange(event.target.value)}
+          error={weightError ?? undefined}
+          placeholder="mis. 4.5"
+          disabled={disabled}
+          required
+        />
+      </div>
 
       {/*
         SIDE BY SIDE. They sit under the two required fields because that is the
@@ -319,13 +383,24 @@ function QuickAddPickers({
       <div className="grid gap-4 sm:grid-cols-2">
         <SelectField
           label="Ukuran"
-          value={size}
+          value={sizeByWeight ? (derived?._id ?? "") : size}
           onChange={onSizeChange}
-          options={pickerOptions("size")}
-          placeholder={loading ? "Memuat…" : "Pilih ukuran"}
+          options={sizeOptions(species)}
+          placeholder={
+            loading
+              ? "Memuat…"
+              : sizeByWeight
+                ? "Otomatis dari berat"
+                : "Pilih ukuran"
+          }
+          hint={
+            sizeByWeight
+              ? "Ditentukan otomatis dari jenis hewan dan berat."
+              : undefined
+          }
           error={sizeError ?? undefined}
-          disabled={disabled || loading}
-          required={required}
+          disabled={disabled || loading || sizeByWeight}
+          required={required && !sizeByWeight}
         />
         <SelectField
           label="Jenis bulu"
@@ -338,6 +413,7 @@ function QuickAddPickers({
           required={required}
         />
       </div>
+
     </>
   );
 }

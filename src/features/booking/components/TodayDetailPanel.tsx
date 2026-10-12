@@ -13,6 +13,7 @@ import type { Booking } from "@/types/api";
 import { BILLING_BADGES } from "../billing";
 import { bookingDetailPath } from "@/features/antar-jemput/paths";
 import { clockOf, dayOf } from "../day";
+import { HOME_TRIP_LABELS } from "../homeTrip";
 import type { TodayRow } from "../today";
 import { BookingSessionSteps } from "./BookingSessionSteps";
 import { BookingStatusActions } from "./BookingStatusActions";
@@ -90,7 +91,10 @@ export function TodayDetailPanel({
       <div>
         <Line label="Layanan">{service.name}</Line>
         {row.addons.map((addon) => (
-          <Line key={addon.itemId} label="Add-on">
+          <Line
+            key={addon.itemId}
+            label={addon.visitFee ? "Biaya kunjungan" : "Add-on"}
+          >
             {addon.name}
           </Line>
         ))}
@@ -105,6 +109,16 @@ export function TodayDetailPanel({
             ? row.groomers.map((who) => who.name).join(", ")
             : "Belum ditentukan"}
         </Line>
+        {booking.homeTrip && (
+          <Line label="Perjalanan">
+            <Badge
+              variant="outline"
+              className="border-transparent bg-tint-info text-info"
+            >
+              {HOME_TRIP_LABELS[booking.homeTrip.status]}
+            </Badge>
+          </Line>
+        )}
         <Line label="Tahapan">
           {row.sessions.length
             ? `${row.sessionsDone}/${row.sessions.length} selesai`

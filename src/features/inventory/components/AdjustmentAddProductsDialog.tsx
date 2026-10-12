@@ -53,6 +53,8 @@ export function AdjustmentAddProductsDialog({
           <DialogDescription>
             Cari lalu centang produk yang mau dikoreksi, boleh beberapa produk
             sekaligus. Stok sistem dan selisihnya muncul di form setelah ini.
+            Produk ber-batch tetap muncul walau sudah ada di form, karena
+            tiap batch dikoreksi di barisnya sendiri.
           </DialogDescription>
         </DialogHeader>
 

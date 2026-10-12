@@ -22,6 +22,7 @@ import type { Pet, PetOptionId, PetSex } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
 
 import { usePetPickers } from "../hooks/usePetPickers";
+import { sizeForWeight, usesWeightSizes } from "../weightSize";
 import { PetOwnerField } from "./PetOwnerField";
 
 /** Backend caps — NAME_MAX_LENGTH and friends in pet.model.js. */
@@ -128,6 +129,8 @@ export function PetForm({ petId }: { petId?: string }) {
   const {
     pickerOptions,
     breedOptions,
+    sizeOptions,
+    options: allOptions,
     loading: optionsLoading,
     error: optionsError,
   } = usePetPickers();
@@ -165,6 +168,21 @@ export function PetForm({ petId }: { petId?: string }) {
   const [weightError, setWeightError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  /*
+    UKURAN COMES FROM THE WEIGHT (10 October 2026) once the tenant has stated
+    ranges on its sizes. The field then shows the answer and cannot be picked;
+    until some size has a range it stays an ordinary pick, so nobody is locked
+    out while the ranges are being filled in. The server makes the same lookup
+    and is the authority — this is the preview.
+  */
+  const sizeByWeight = usesWeightSizes(allOptions);
+  const weightNumber = weightKg.trim() === "" ? null : Number(weightKg);
+  const derivedSize = sizeByWeight
+    ? sizeForWeight(allOptions, species || null, weightNumber)
+    : null;
+  /* An animal registered before weights existed has none, and may stay so. */
+  const weightRequired = !editing || (pet?.weightKg ?? null) !== null;
 
   useEffect(() => {
     if (!petId) return;
@@ -250,7 +268,7 @@ export function PetForm({ petId }: { petId?: string }) {
       unconditionally because this is the form that registers the animal
       properly.
     */
-    if (size === "") {
+    if (!sizeByWeight && size === "") {
       setSizeError("Pilih ukurannya.");
       invalid = true;
     }
@@ -266,11 +284,24 @@ export function PetForm({ petId }: { petId?: string }) {
     }
 
     const weight = weightKg.trim() === "" ? null : Number(weightKg);
-    if (
+    if (weight === null && weightRequired) {
+      setWeightError("Berat wajib diisi — ukurannya dihitung dari sini.");
+      invalid = true;
+    } else if (
       weight !== null &&
-      (Number.isNaN(weight) || weight < 0 || weight > MAX_WEIGHT_KG)
+      (Number.isNaN(weight) || weight <= 0 || weight > MAX_WEIGHT_KG)
     ) {
-      setWeightError(`Isi angka antara 0 dan ${MAX_WEIGHT_KG}.`);
+      setWeightError(`Isi angka lebih dari 0 sampai ${MAX_WEIGHT_KG}.`);
+      invalid = true;
+    } else if (
+      weight !== null &&
+      sizeByWeight &&
+      species !== "" &&
+      derivedSize === null
+    ) {
+      setWeightError(
+        "Berat ini belum masuk rentang ukuran mana pun. Atur rentang ukuran di Pengaturan.",
+      );
       invalid = true;
     }
 
@@ -287,7 +318,8 @@ export function PetForm({ petId }: { petId?: string }) {
       sex,
       breed: breed || null,
       furType: furType || null,
-      size: size || null,
+      /* Worked out by the server from the weight; sent only when picked by hand. */
+      ...(sizeByWeight ? {} : { size: size || null }),
       birthDate: birthDate || null,
       weightKg: weight,
       color: color.trim() || null,
@@ -444,7 +476,11 @@ export function PetForm({ petId }: { petId?: string }) {
 
       <Card
         title="Ciri-ciri"
-        description="Ukuran dan jenis bulu wajib diisi — harga grooming dihitung dari keduanya. Sisanya diisi kalau memang tahu, bukan tebakan."
+        description={
+          sizeByWeight
+            ? "Berat dan jenis bulu wajib diisi — ukuran dihitung otomatis dari berat, lalu harga grooming dari ukuran dan jenis bulu. Sisanya diisi kalau memang tahu, bukan tebakan."
+            : "Ukuran dan jenis bulu wajib diisi — harga grooming dihitung dari keduanya. Sisanya diisi kalau memang tahu, bukan tebakan."
+        }
       >
         <div className="flex flex-col gap-4">
           {/*
@@ -497,16 +533,28 @@ export function PetForm({ petId }: { petId?: string }) {
           <div className="grid gap-4 sm:grid-cols-2">
             <SelectField
               label="Ukuran"
-              value={size}
+              value={sizeByWeight ? (derivedSize?._id ?? pet?.size ?? "") : size}
               onChange={(next) => {
                 setSize(next as PetOptionId);
                 setSizeError(null);
               }}
-              options={pickerOptions("size", pet?.size)}
-              placeholder={optionsLoading ? "Memuat…" : "Pilih ukuran"}
+              /* This animal's sizes only — see `sizeOptions`. */
+              options={sizeOptions(species, pet?.size)}
+              placeholder={
+                optionsLoading
+                  ? "Memuat…"
+                  : sizeByWeight
+                    ? "Otomatis dari berat"
+                    : "Pilih ukuran"
+              }
+              hint={
+                sizeByWeight
+                  ? "Ditentukan otomatis dari jenis hewan dan berat."
+                  : undefined
+              }
               error={sizeError ?? undefined}
-              disabled={saving || optionsLoading}
-              required
+              disabled={saving || optionsLoading || sizeByWeight}
+              required={!sizeByWeight}
             />
             <SelectField
               label="Jenis bulu"
@@ -546,6 +594,7 @@ export function PetForm({ petId }: { petId?: string }) {
               step="0.1"
               min={0}
               max={MAX_WEIGHT_KG}
+              required={weightRequired}
               value={weightKg}
               onChange={(event) => {
                 setWeightKg(event.target.value);
@@ -553,7 +602,7 @@ export function PetForm({ petId }: { petId?: string }) {
               }}
               error={weightError ?? undefined}
               placeholder="mis. 12.4"
-              hint="Berat terakhir yang ditimbang."
+              hint="Berat terakhir yang ditimbang. Ukuran dihitung dari sini."
               disabled={saving}
             />
           </div>
@@ -595,14 +644,14 @@ export function PetForm({ petId }: { petId?: string }) {
 
       {editing && (
         <Card
-          title="Status perawatan"
-          description="Hewan yang tidak aktif tidak hilang — cuma berhenti ditawarkan saat bikin booking."
+          title="Status"
+          description="Hewan yang nonaktif tidak hilang — cuma berhenti ditawarkan saat bikin booking."
         >
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <Label htmlFor="pet-active">Masih dirawat</Label>
+              <Label htmlFor="pet-active">Aktif</Label>
               <p className="mt-1 max-w-prose text-xs text-muted">
-                Matikan kalau hewannya sudah pindah rumah atau sudah tidak ada.
+                Nonaktifkan kalau hewannya sudah pindah rumah atau sudah tidak ada.
                 Riwayat grooming dan transaksinya tetap tersimpan atas nama
                 pemilik ini — itu bedanya dengan menghapus, yang ada di menu
                 barisnya.

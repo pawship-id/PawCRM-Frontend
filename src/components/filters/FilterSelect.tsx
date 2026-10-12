@@ -124,6 +124,16 @@ export interface FilterSelectProps<T> {
   wideList?: boolean;
   align?: "start" | "end";
   className?: string;
+  /**
+   * Search on the caller's side (the server) rather than over `options` — for
+   * a list too long to load whole. See `FilterOptionList`. Called with `""`
+   * when the list closes, so the caller can fall back to its opening options.
+   */
+  onSearchChange?: (term: string) => void;
+  /** The caller's search is still in flight. */
+  searching?: boolean;
+  /** What an empty list says. Defaults to "Tidak ada pilihan yang cocok". */
+  emptyLabel?: string;
 }
 
 export function FilterSelect<T>({
@@ -148,8 +158,20 @@ export function FilterSelect<T>({
   wideList = false,
   align = "start",
   className,
+  onSearchChange,
+  searching,
+  emptyLabel,
 }: FilterSelectProps<T>) {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpenState] = React.useState(false);
+  // The option list (and its search box) unmounts on close, so a caller-side
+  // search has to be told the term is gone too.
+  const setOpen = React.useCallback(
+    (next: boolean) => {
+      setOpenState(next);
+      if (!next) onSearchChange?.("");
+    },
+    [onSearchChange],
+  );
   const triggerRef = useCloseBehindShellHeader(open, setOpen);
   const contentRef = useCloseOnPageScroll(open && closeOnScroll, setOpen);
   // Null on a bar, the panel's element inside one — see useFilterPanelContainer.
@@ -162,7 +184,7 @@ export function FilterSelect<T>({
   // rather than a filter, and the stale-id fallback below must not follow it.
   const chosen = !Object.is(value, unsetValue);
   const active = activeOverride ?? chosen;
-  const withSearch = searchable ?? options.length > 8;
+  const withSearch = searchable ?? (Boolean(onSearchChange) || options.length > 8);
   // The two layouts that hand their label to a `FilterField`. "inline" and
   // "bar" are both content-sized triggers standing on a row.
   const fieldLayout = layout === "field" || layout === "form";
@@ -220,6 +242,9 @@ export function FilterSelect<T>({
           searchable={withSearch}
           searchLabel={`Cari ${label.toLowerCase()}`}
           searchPlaceholder={searchPlaceholder}
+          onSearchChange={onSearchChange}
+          searching={searching}
+          emptyLabel={emptyLabel}
           onPick={(picked) => {
             onChange(picked);
             setOpen(false);

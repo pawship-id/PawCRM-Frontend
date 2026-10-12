@@ -100,7 +100,21 @@ function todayValue(): string {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 }
 
+/**
+ * A row's identity, independent of its product — a product that tracks expiry
+ * may have a row per LOT, so the product id no longer says which row an error or
+ * a React key belongs to. See `newLineKey` in StockTransferForm for the same
+ * arrangement.
+ */
+let lineSeq = 0;
+function newLineKey(): string {
+  lineSeq += 1;
+  return `line-${lineSeq}`;
+}
+
 interface DraftLine {
+  /** See `newLineKey`. Never sent. */
+  key: string;
   productId: string;
   qty: string;
   costPerUnit: string;
@@ -186,6 +200,7 @@ export function OpeningStockForm() {
     setLines((prev) => [
       ...prev,
       ...products.map((product) => ({
+        key: newLineKey(),
         productId: product._id,
         qty: "",
         costPerUnit: "",
@@ -225,8 +240,13 @@ export function OpeningStockForm() {
       next.entryDate = "Tanggal tidak boleh di masa depan.";
     if (lines.length === 0) next.lines = "Tambahkan minimal satu produk.";
 
+    const seenLots = new Set<string>();
+
     lines.forEach((line, index) => {
-      const at = `line.${line.productId}`;
+      // `~` carries the row's key past the product id, so two rows of one
+      // product keep separate complaints. `blockingReason` hands the part
+      // before the last dot to `nameOf`, which strips it again.
+      const at = `line.${line.productId}~${line.key}`;
       const product = productById.get(line.productId);
 
       if (line.qty.trim() === "") {
@@ -262,6 +282,24 @@ export function OpeningStockForm() {
           next[`${at}.expiryDate`] = "Produk ini melacak kedaluwarsa.";
       }
 
+      /*
+        THE SAME LOT TWICE IS ONE LOT SAID TWICE. Lines of one product are
+        different lots only when their expiry date, supplier code or ownership
+        differ; two that agree would open two rows for one physical batch, which
+        is what the API refuses. Said on the row that repeats it.
+      */
+      const lotKey = [
+        line.productId,
+        product?.hasExpiry ? line.expiryDate : "",
+        product?.hasExpiry ? line.supplierBatchCode.trim() : "",
+        line.isConsignment ? "consigned" : "owned",
+      ].join("|");
+      if (seenLots.has(lotKey)) {
+        next[product?.hasExpiry ? `${at}.expiryDate` : `${at}.qty`] =
+          "Lot yang sama sudah ada di baris lain — gabungkan jumlahnya, atau ubah tanggal kedaluwarsa / kode supplier-nya.";
+      }
+      seenLots.add(lotKey);
+
       void index;
     });
 
@@ -271,7 +309,7 @@ export function OpeningStockForm() {
   /** The first complaint, for the note under a disabled button. */
   const blocking = blockingReason(
     collectErrors(),
-    (productId) => productById.get(productId)?.name,
+    (id) => productById.get(id.split("~")[0])?.name,
   );
 
   async function handleSubmit(event: React.FormEvent) {
@@ -349,7 +387,12 @@ export function OpeningStockForm() {
       {picking && (
         <OpeningStockAddProductsDialog
           warehouseId={warehouseId}
-          existingProductIds={lines.map((line) => line.productId)}
+          // A product that tracks expiry stays on offer: one product arrives in
+          // several lots, each with its own date. One that does not can only be
+          // one plain row, so it is hidden once it is there.
+          existingProductIds={lines
+            .filter((line) => !productById.get(line.productId)?.hasExpiry)
+            .map((line) => line.productId)}
           onAdd={addLines}
           onClose={() => setPicking(false)}
         />
@@ -593,13 +636,14 @@ export function OpeningStockForm() {
                   </TableHeader>
                   <TableBody>
                     {lines.map((line, index) => {
-                      const at = `line.${line.productId}`;
+                      const at = `line.${line.productId}~${line.key}`;
                       const product = productById.get(line.productId);
                       return (
-                        // Keyed on the product, not the index: a product appears
-                        // at most once, and removing a middle row under an index
-                        // key would leave React reusing the wrong row's input.
-                        <Fragment key={line.productId}>
+                        // Keyed on the row, not the product or the index: one
+                        // product may have a row per lot, and removing a middle
+                        // row under an index key would leave React reusing the
+                        // wrong row's input.
+                        <Fragment key={line.key}>
                           <TableRow>
                             <TableCell>
                               <p className="font-medium text-foreground">

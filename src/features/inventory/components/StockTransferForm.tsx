@@ -20,19 +20,22 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
-import { stockMovementService } from "@/services/stockMovement.service";
+import { stockTransferService } from "@/services/stockTransfer.service";
 import type {
   Product,
   ProductBatch,
+  StockTransferDetail,
   TransferItemInput,
 } from "@/types/inventory";
 import {
+  absDecimal,
   formatMoney,
   formatQty,
   isDecimal,
   isPositive,
   multiplyDecimals,
   sumDecimals,
+  trimDecimal,
   toMinor,
 } from "@/utils/decimal";
 
@@ -42,8 +45,23 @@ import { newIdempotencyKey } from "../utils/idempotency";
 import { qtyAtWarehouse } from "../utils/ledger";
 import { TransferAddProductsDialog } from "./TransferAddProductsDialog";
 
-/** One product line of the transfer, as the form holds it. */
+/**
+ * A row's identity, independent of its product.
+ *
+ * A product may now appear on several rows — one per NAMED LOT — so the product
+ * id can no longer say which row a shortage or a missing batch belongs to, nor
+ * keep React from reusing one row's input for another when a middle row goes.
+ */
+let lineSeq = 0;
+function newLineKey(): string {
+  lineSeq += 1;
+  return `line-${lineSeq}`;
+}
+
+/** One line of the transfer, as the form holds it. */
 interface LineDraft {
+  /** See `newLineKey`. Never sent. */
+  key: string;
   productId: string;
   qty: string;
   /**
@@ -124,6 +142,13 @@ interface LineRowProps {
   /** The lots of this product still holding something at the SOURCE warehouse. */
   lots: ProductBatch[];
   /**
+   * Whether "Otomatis (FEFO)" may be offered on this row — only while it is the
+   * product's ONLY row. FEFO beside a named lot of the same product could draw
+   * from the very lot the other row names, so the moment a second row exists
+   * every row of that product must name its own batch.
+   */
+  allowAuto: boolean;
+  /**
    * Whether the lot list is still on its way.
    *
    * An empty list means two OPPOSITE things — "this shelf holds no lots, move
@@ -161,6 +186,7 @@ function TransferLineRow({
   product,
   showBatch,
   lots,
+  allowAuto,
   lotsLoading,
   onHand,
   shortage,
@@ -208,12 +234,16 @@ function TransferLineRow({
                 placeholder="Pilih batch"
                 invalid={batchMissing}
                 options={[
-                  {
-                    value: AUTO_FEFO,
-                    label:
-                      "Otomatis (FEFO) — batch yang paling dekat kedaluwarsa dipakai dulu",
-                    triggerLabel: "Otomatis (FEFO)",
-                  },
+                  ...(allowAuto || line.batchId === AUTO_FEFO
+                    ? [
+                        {
+                          value: AUTO_FEFO,
+                          label:
+                            "Otomatis (FEFO) — batch yang paling dekat kedaluwarsa dipakai dulu",
+                          triggerLabel: "Otomatis (FEFO)",
+                        },
+                      ]
+                    : []),
                   ...lots.map((lot) => ({
                     value: lot._id,
                     label: lotLabel(lot),
@@ -373,7 +403,26 @@ function TransferLineRow({
  * checked in the browser is the shortage per product, which is what stops a
  * transfer the source warehouse cannot cover.
  */
-export function StockTransferForm() {
+export function StockTransferForm({
+  transfer,
+  products: initialProducts = [],
+}: {
+  /**
+   * The document being CORRECTED, when there is one. Absent, the form files a
+   * new transfer. Only an in-transit transfer is ever passed — the edit screen
+   * refuses the rest before it renders this.
+   */
+  transfer?: StockTransferDetail;
+  /**
+   * The catalogue rows of the transfer's own products, which the edit screen has
+   * already loaded. A line holds an id, and the row beside it has to print a
+   * name and be checked against what the source holds — the picker normally
+   * supplies both, and an edit never opens it for the lines it starts with.
+   */
+  products?: Product[];
+}) {
+  const editing = transfer !== undefined;
+
   /**
    * WAREHOUSES ONLY, not the stock card's fuller lookup. That one also pages the
    * whole stock-holding catalogue to fill a dropdown — which this form no longer
@@ -385,10 +434,21 @@ export function StockTransferForm() {
 
   const router = useRouter();
 
-  const [fromWarehouseId, setFrom] = useState("");
-  const [toWarehouseId, setTo] = useState("");
-  const [lines, setLines] = useState<LineDraft[]>([]);
-  const [notes, setNotes] = useState("");
+  const [fromWarehouseId, setFrom] = useState(transfer?.fromWarehouseId ?? "");
+  const [toWarehouseId, setTo] = useState(transfer?.toWarehouseId ?? "");
+  const [lines, setLines] = useState<LineDraft[]>(() =>
+    (transfer?.items ?? []).map((item) => ({
+      key: newLineKey(),
+      productId: item.productId,
+      // "5.0000" → "5": the field should read what a person would have typed.
+      qty: trimDecimal(item.qty),
+      // A lot that was named stays named; an explicit "FEFO is fine" is
+      // restored as that choice rather than as a blank the user must redo.
+      batchId: item.batchId ?? (item.autoFefo ? AUTO_FEFO : ""),
+      notes: item.notes ?? "",
+    })),
+  );
+  const [notes, setNotes] = useState(transfer?.notes ?? "");
 
   const [picking, setPicking] = useState(false);
 
@@ -400,7 +460,98 @@ export function StockTransferForm() {
    * different boxes, and offering them here would name a lot the source cannot
    * give up.
    */
-  const lots = useWarehouseBatches(fromWarehouseId);
+  const loadedLots = useWarehouseBatches(fromWarehouseId);
+
+  /**
+   * WHAT THIS TRANSFER ITSELF HAS TAKEN, by product and by lot — only while the
+   * source is still the shelf it left.
+   *
+   * An edit is a reversal and a re-post on the server: the goods go back to the
+   * lots they came from and the revised quantity is drawn again. The balance on
+   * screen is short by exactly what this transfer took, so a form that checked a
+   * quantity against it would refuse to RAISE one — "melebihi stok" for goods
+   * that are, in the same transaction, put back. The server counts them as
+   * available and so must this.
+   *
+   * Moving the source elsewhere returns nothing to the new shelf, so the map
+   * empties and the form measures against what that warehouse really holds.
+   */
+  const returning = useMemo(() => {
+    const byProduct = new Map<string, string>();
+    const byLot = new Map<string, string>();
+
+    if (!transfer || transfer.fromWarehouseId !== fromWarehouseId) {
+      return { byProduct, byLot };
+    }
+
+    for (const row of transfer.lines) {
+      const qty = absDecimal(row.qty);
+      byProduct.set(
+        row.productId,
+        sumDecimals([byProduct.get(row.productId) ?? "0", qty]),
+      );
+      if (row.batchId) {
+        byLot.set(
+          row.batchId,
+          sumDecimals([byLot.get(row.batchId) ?? "0", qty]),
+        );
+      }
+    }
+
+    return { byProduct, byLot };
+  }, [transfer, fromWarehouseId]);
+
+  /**
+   * The lots the form offers: what the source holds, PLUS what this transfer has
+   * taken from each, plus any lot it emptied.
+   *
+   * A lot the transfer drew down to nothing is not in the warehouse's list at
+   * all — it holds nothing now — yet it is exactly the lot the line names, and a
+   * dropdown that no longer offered it would quietly change the transfer under
+   * its author. Those are rebuilt from the rows the transfer wrote, with the
+   * quantity it will have once the goods are put back.
+   */
+  const lots = useMemo(() => {
+    if (returning.byLot.size === 0) {
+      return loadedLots;
+    }
+
+    const byProduct = new Map<string, ProductBatch[]>();
+    const seen = new Set<string>();
+
+    for (const [productId, list] of loadedLots.byProduct) {
+      byProduct.set(
+        productId,
+        list.map((lot) => {
+          seen.add(lot._id);
+          const back = returning.byLot.get(lot._id);
+          return back
+            ? { ...lot, qtyRemaining: sumDecimals([lot.qtyRemaining, back]) }
+            : lot;
+        }),
+      );
+    }
+
+    for (const row of transfer?.lines ?? []) {
+      if (!row.batchId || seen.has(row.batchId)) continue;
+      seen.add(row.batchId);
+
+      byProduct.set(row.productId, [
+        ...(byProduct.get(row.productId) ?? []),
+        {
+          _id: row.batchId,
+          productId: row.productId,
+          warehouseId: row.warehouseId,
+          batchCode: row.batchCode ?? "—",
+          supplierBatchCode: row.supplierBatchCode ?? null,
+          expiryDate: row.batchExpiryDate ?? null,
+          qtyRemaining: returning.byLot.get(row.batchId) ?? "0",
+        } as ProductBatch,
+      ]);
+    }
+
+    return { ...loadedLots, byProduct };
+  }, [loadedLots, returning, transfer]);
 
   /**
    * Whether a save has been ATTEMPTED, which is when a missing batch may be
@@ -478,7 +629,7 @@ export function StockTransferForm() {
    * page-load lookup ever held.
    */
   const [productById, setProductById] = useState<Map<string, Product>>(
-    new Map(),
+    () => new Map(initialProducts.map((product) => [product._id, product])),
   );
 
   const sameWarehouse = Boolean(
@@ -509,6 +660,55 @@ export function StockTransferForm() {
   /** The lots of one product at the source, newest question first: is there any. */
   function lotsOf(productId: string): ProductBatch[] {
     return lots.byProduct.get(productId) ?? [];
+  }
+
+  /**
+   * The lots a ROW may still choose: its product's lots, less the ones another
+   * row of the same product has already taken.
+   *
+   * One lot on two rows would be two quantities each checked against the whole
+   * lot, and together able to overdraw it — the API refuses the pair, so the
+   * dropdown simply does not offer it. A row's own choice stays in its list.
+   */
+  function lotsFor(line: LineDraft): ProductBatch[] {
+    const taken = new Set(
+      lines
+        .filter(
+          (other) =>
+            other.key !== line.key &&
+            other.productId === line.productId &&
+            other.batchId !== "" &&
+            other.batchId !== AUTO_FEFO,
+        )
+        .map((other) => other.batchId),
+    );
+
+    return lotsOf(line.productId).filter((lot) => !taken.has(lot._id));
+  }
+
+  /**
+   * Products the picker should STILL hide: those that cannot take a second row.
+   *
+   * A product that tracks lots may be added again for another batch — as long as
+   * the shelf holds a lot no row has claimed. Everything else (no lots to name,
+   * or every lot already on a row) can only be one row, because a second FEFO
+   * line would allocate the same goods twice.
+   */
+  function productsAtTheirLimit(): string[] {
+    const rowsOf = new Map<string, number>();
+    for (const line of lines) {
+      rowsOf.set(line.productId, (rowsOf.get(line.productId) ?? 0) + 1);
+    }
+
+    return [...rowsOf.entries()]
+      .filter(([productId, rows]) => {
+        if (!productById.get(productId)?.hasExpiry) return true;
+        // Lots still loading: hold the line rather than offer a row that may
+        // turn out to have nothing to name.
+        if (lots.loading) return true;
+        return lotsOf(productId).length <= rows;
+      })
+      .map(([productId]) => productId);
   }
 
   /**
@@ -564,7 +764,11 @@ export function StockTransferForm() {
       return namedLotOf(line)?.qtyRemaining ?? null;
     }
 
-    return qtyAtWarehouse(product.stockByWarehouse, fromWarehouseId);
+    // PLUS what this very transfer has taken off the shelf — see `returning`.
+    return sumDecimals([
+      qtyAtWarehouse(product.stockByWarehouse, fromWarehouseId),
+      returning.byProduct.get(line.productId) ?? "0",
+    ]);
   }
 
   /**
@@ -594,7 +798,7 @@ export function StockTransferForm() {
       if (available === null) continue;
 
       if ((toMinor(line.qty) ?? 0n) > (toMinor(available) ?? 0n)) {
-        found.set(line.productId, available);
+        found.set(line.key, available);
       }
     }
 
@@ -604,7 +808,7 @@ export function StockTransferForm() {
   }, [lines, productById, fromWarehouseId, lots.byProduct]);
 
   /**
-   * The lot-tracked lines that have not named a lot yet, by product id.
+   * The lot-tracked lines that have not named a lot yet, by line key.
    *
    * The API refuses these — a product with `hasExpiry` moves as a named lot,
    * never as a quantity — so the save button is disabled while the set is not
@@ -615,7 +819,7 @@ export function StockTransferForm() {
 
     for (const line of lines) {
       if (mustNameLot(line.productId) && line.batchId === "") {
-        found.add(line.productId);
+        found.add(line.key);
       }
     }
 
@@ -626,7 +830,7 @@ export function StockTransferForm() {
 
   /**
    * The lines whose QUANTITY is not yet a number the API would accept, by
-   * product id.
+   * line key.
    *
    * Empty, non-numeric, and zero-or-less all land here: each is a row that is
    * still being filled in, and `items` drops it from the payload rather than
@@ -641,7 +845,7 @@ export function StockTransferForm() {
 
     for (const line of lines) {
       if (!isDecimal(line.qty) || !isPositive(line.qty)) {
-        found.add(line.productId);
+        found.add(line.key);
       }
     }
 
@@ -693,7 +897,6 @@ export function StockTransferForm() {
   const payload = useMemo(() => {
     const trimmed = notes.trim();
     return {
-      operation: "transfer" as const,
       fromWarehouseId,
       toWarehouseId,
       items,
@@ -754,15 +957,29 @@ export function StockTransferForm() {
       for (const product of products) next.set(product._id, product);
       return next;
     });
-    setLines((prev) => [
-      ...prev,
-      ...products.map((product) => ({
-        productId: product._id,
-        qty: "",
-        batchId: "",
-        notes: "",
-      })),
-    ]);
+    setLines((prev) => {
+      // A product that is being added AGAIN is being split across lots, so a
+      // row that left it to FEFO must now name its own batch: FEFO beside a
+      // named lot of the same product could draw from the very lot that row
+      // names. Cleared rather than refused — the row asks again.
+      const addedIds = new Set(products.map((product) => product._id));
+      const kept = prev.map((line) =>
+        addedIds.has(line.productId) && line.batchId === AUTO_FEFO
+          ? { ...line, batchId: "", qty: "" }
+          : line,
+      );
+
+      return [
+        ...kept,
+        ...products.map((product) => ({
+          key: newLineKey(),
+          productId: product._id,
+          qty: "",
+          batchId: "",
+          notes: "",
+        })),
+      ];
+    });
   }
 
   function validate(): boolean {
@@ -779,7 +996,7 @@ export function StockTransferForm() {
       const label =
         productById.get(line.productId)?.name ?? `Baris ${index + 1}`;
 
-      if (missingBatch.has(line.productId)) {
+      if (missingBatch.has(line.key)) {
         // Barang ber-expiry berpindah sebagai LOT, bukan sebagai jumlah: yang
         // dimuat ke mobil sudah dipilih orangnya, dan FEFO akan mengurangi
         // batch lain yang masih di rak.
@@ -795,7 +1012,7 @@ export function StockTransferForm() {
         // tanda — "pindahkan -5 dari A ke B" adalah transfer arah sebaliknya
         // yang ditulis supaya setiap laporan terbaca terbalik.
         next.lines = `${label}: jumlah harus lebih dari nol — arah ditentukan gudang asal dan tujuan.`;
-      } else if (shortages.has(line.productId)) {
+      } else if (shortages.has(line.key)) {
         // Barangnya belum pindah ke mana-mana: permintaan inilah yang
         // memindahkannya, jadi ini salah ketik yang dikoreksi, bukan fakta yang
         // dicatat. Kalau raknya memang berisi lebih banyak, jalurnya penyesuaian
@@ -803,9 +1020,9 @@ export function StockTransferForm() {
         const lot = namedLotOf(line);
         next.lines = lot
           ? `${label}: batch ${lot.batchCode} hanya berisi ` +
-            `${formatQty(shortages.get(line.productId))} di ${fromName}. ` +
+            `${formatQty(shortages.get(line.key))} di ${fromName}. ` +
             `Kurangi jumlahnya, atau pindahkan sisanya lewat transfer batch lain.`
-          : `${label}: hanya tersedia ${formatQty(shortages.get(line.productId))} ` +
+          : `${label}: hanya tersedia ${formatQty(shortages.get(line.key))} ` +
             `di ${fromName}. Kurangi jumlahnya, atau catat penyesuaian stok dulu.`;
       }
 
@@ -824,36 +1041,35 @@ export function StockTransferForm() {
 
     setSaving(true);
     try {
-      // The payload built above, plus the retry token. Building a second one
-      // here is how a form ends up saving something other than what it showed.
-      const written = await stockMovementService.create({
-        ...payload,
-        idempotencyKey,
-      });
+      // The payload built above, plus — on a new transfer — the retry token.
+      // Building a second one here is how a form ends up saving something other
+      // than what it showed. An edit has no key: it names the document it
+      // replaces, so a retry of it is the same edit again, not a second one.
+      const saved = editing
+        ? await stockTransferService.update(transfer._id, payload)
+        : await stockTransferService.create({ ...payload, idempotencyKey });
 
-      const productCount = payload.items.length;
-
-      // The row count is the server's. It writes a pair per lot per product, so
-      // an odd number here would itself be worth noticing — which is why the
-      // message reports rows rather than deriving them from what was typed.
+      // The server's own words for what it did: the goods have LEFT the source,
+      // and the destination's stock does not move until somebody receives them.
       swalToast(
-        `Transfer tersimpan — ${productCount} produk, ${written.length} baris ditulis.`,
+        editing
+          ? `${saved.transferNumber} diperbarui — ${saved.productCount} produk.`
+          : `${saved.transferNumber} tersimpan — ${saved.productCount} produk keluar dari ${saved.fromWarehouseName ?? "gudang asal"}. Stok ${saved.toWarehouseName ?? "gudang tujuan"} bertambah setelah diterima.`,
       );
 
       /**
-       * BACK TO THE LIST, where the transfer just written is the top row.
+       * TO THE TRANSFER JUST WRITTEN, where Terima, Ubah and the surat jalan are.
        *
-       * This form used to clear itself and stay put, which was the only thing it
-       * could do while this route WAS the form: there was nowhere to go, and no
-       * list that would have shown what had just been filed. A toast over an
-       * empty form is a receipt that disappears in four seconds.
+       * This form used to go back to the list, which was right while a transfer
+       * was finished the moment it was saved. It is not any more: the next thing
+       * somebody does with a new transfer is print the note the driver carries,
+       * and that is one click from here rather than a search through the list.
        *
        * `push`, not `replace`: Back should return to the form somebody may have
-       * meant to fill in again, not to whatever they were looking at before it.
-       * The state is left as it is — the component unmounts on navigation, and a
+       * meant to fill in again. The component unmounts on navigation, and a
        * fresh mount starts fresh, including a new idempotency key.
        */
-      router.push("/dashboard/inventory/transfers");
+      router.push(`/dashboard/inventory/transfers/${saved._id}`);
     } catch (error) {
       setFormError(
         error instanceof ApiError
@@ -949,8 +1165,8 @@ export function StockTransferForm() {
           button. It stays on the strip beside the two warehouses, which is
           what it is actually about. */}
       <FormActionBar
-        title="Transfer stok baru"
-        meta={`No. [auto] · ${lines.length} produk`}
+        title={editing ? "Ubah transfer stok" : "Transfer stok baru"}
+        meta={`${editing ? transfer.transferNumber : "No. [auto]"} · ${lines.length} produk`}
         submitLabel="Simpan transfer"
         submitting={saving}
         // A shortage disables it rather than failing on click: the API would
@@ -960,14 +1176,28 @@ export function StockTransferForm() {
         // neither may grow a case the other does not have.
         disabled={blocking !== null}
         blockedReason={blocking}
-        cancelHref="/dashboard/inventory/transfers"
+        cancelHref={
+          editing
+            ? `/dashboard/inventory/transfers/${transfer._id}`
+            : "/dashboard/inventory/transfers"
+        }
       />
+
+      {/* THE ONE THING ABOUT THIS FORM THAT HAS CHANGED, said before it is done
+          rather than discovered on the stock card: saving takes the goods off
+          the source shelf NOW, and the destination only gains them when somebody
+          there receives the transfer. */}
+      <Alert variant="info">
+        {editing
+          ? "Transfer ini belum diterima, jadi masih bisa diubah. Barang yang lama dikembalikan ke gudang asal, lalu jumlah yang baru dikeluarkan lagi — keduanya tercatat di kartu stok."
+          : "Barang langsung keluar dari gudang asal begitu transfer disimpan, dan baru masuk ke gudang tujuan setelah transfer diterima. Selama belum diterima, transfer masih bisa diubah."}
+      </Alert>
 
       {formError && <Alert variant="error">{formError}</Alert>}
 
       {picking && (
         <TransferAddProductsDialog
-          existingProductIds={lines.map((line) => line.productId)}
+          existingProductIds={productsAtTheirLimit()}
           fromWarehouseId={fromWarehouseId}
           onAdd={addLines}
           onClose={() => setPicking(false)}
@@ -1130,21 +1360,23 @@ export function StockTransferForm() {
                   <tbody>
                     {lines.map((line, index) => (
                       <TransferLineRow
-                        // Keyed on the product, not the index: a product
-                        // appears at most once, and removing a middle row
-                        // under an index key would leave React reusing the
+                        // Keyed on the row, not the product or the index: one
+                        // product may have several rows, and removing a middle
+                        // row under an index key would leave React reusing the
                         // wrong row's input.
-                        key={line.productId}
+                        key={line.key}
                         line={line}
                         product={productById.get(line.productId)}
                         showBatch={anyLotTracked}
-                        lots={lotsOf(line.productId)}
+                        lots={lotsFor(line)}
+                        allowAuto={
+                          lines.filter((l) => l.productId === line.productId)
+                            .length === 1
+                        }
                         lotsLoading={lots.loading}
                         onHand={onHandOf(line)}
-                        shortage={shortages.get(line.productId)}
-                        batchMissing={
-                          attempted && missingBatch.has(line.productId)
-                        }
+                        shortage={shortages.get(line.key)}
+                        batchMissing={attempted && missingBatch.has(line.key)}
                         onChange={(patch) => updateLine(index, patch)}
                         onRemove={() =>
                           setLines((prev) => prev.filter((_, i) => i !== index))

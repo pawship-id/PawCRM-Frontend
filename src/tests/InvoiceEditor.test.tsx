@@ -519,3 +519,151 @@ describe("InvoiceEditor — choices and zone", () => {
     });
   });
 });
+
+/* ─── The home-grooming trip on an edit (11 October 2026) ───────────────── */
+
+describe("InvoiceEditor — a trip still owed", () => {
+  const owed = {
+    tripId: "trip-1",
+    name: "Biaya kunjungan · Zona B",
+    amount: "70000.0000",
+    petNames: ["Miko"],
+  };
+
+  it("offers the owed trip, adds it as a row, and sends it by id — never as an item", async () => {
+    const user = userEvent.setup();
+    renderEditor(invoice({ owedTrips: [owed] }));
+
+    const prompt = await screen.findByText("Biaya perjalanan belum ditagih");
+    await user.click(
+      within(prompt.closest("[data-owed-trip]") as HTMLElement).getByRole("button", {
+        name: /Tambahkan/,
+      }),
+    );
+
+    expect(document.querySelector("[data-owed-trip]")).toBeNull();
+    expect(screen.getByText("Biaya kunjungan · Zona B")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+
+    const [, body] = asMock(customerInvoiceService.update).mock.calls[0];
+    expect(body.homeTripIds).toEqual(["trip-1"]);
+    expect(body.items).toHaveLength(2);
+  });
+
+  it("offers a stored trip row taken off back as it was, by its index", async () => {
+    const user = userEvent.setup();
+    renderEditor(
+      invoice({
+        items: [
+          line(),
+          line({
+            kind: "service",
+            refId: "svc-fee",
+            name: "Biaya kunjungan · Zona B",
+            sku: null,
+            qty: "1.0000",
+            unitPrice: "70000.0000",
+            lineTotal: "70000.0000",
+            bookingId: null,
+            homeTripId: "trip-1",
+            petId: null,
+            petName: null,
+          }),
+        ],
+      }),
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Hapus Biaya kunjungan · Zona B" }));
+    const offered = document.querySelector("[data-owed-trip]") as HTMLElement;
+    expect(offered).toHaveTextContent("Biaya kunjungan · Zona B");
+
+    await user.click(within(offered).getByRole("button", { name: /Tambahkan/ }));
+    const qty = screen.getByLabelText("Jumlah Kalung Nylon");
+    await user.clear(qty);
+    await user.type(qty, "3");
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+
+    const [, body] = asMock(customerInvoiceService.update).mock.calls[0];
+    expect(body.homeTripIds).toBeUndefined();
+    expect(body.items).toContainEqual(
+      expect.objectContaining({ refId: "svc-fee", fromIndex: 1 }),
+    );
+  });
+});
+
+describe("InvoiceEditor — the trip goes with its last grooming, and takes a discount", () => {
+  const withTrip = () =>
+    invoice({
+      items: [
+        line(),
+        line({
+          kind: "service",
+          refId: "s1",
+          name: "Grooming Basic",
+          sku: null,
+          qty: "1.0000",
+          unitPrice: "150000.0000",
+          lineTotal: "150000.0000",
+          bookingId: "bk1",
+          petId: "pet1",
+          petName: "Miko",
+        }),
+        line({
+          kind: "service",
+          refId: "svc-fee",
+          name: "Biaya kunjungan · Zona B",
+          sku: null,
+          qty: "1.0000",
+          unitPrice: "70000.0000",
+          lineTotal: "70000.0000",
+          bookingId: null,
+          homeTripId: "trip-1",
+          petId: null,
+          petName: null,
+        }),
+      ],
+      bookings: [
+        {
+          _id: "bk1",
+          homeTripId: "trip-1",
+          service: { serviceId: "s1", name: "Grooming Basic", price: "150000.0000", addons: [] },
+        },
+      ],
+    } as never);
+
+  it("removes the trip's row with the last grooming of it, and does not offer it back", async () => {
+    const user = userEvent.setup();
+    renderEditor(withTrip());
+
+    await user.click(await screen.findByRole("button", { name: "Hapus Grooming Basic" }));
+
+    expect(screen.queryByRole("button", { name: "Hapus Biaya kunjungan · Zona B" })).toBeNull();
+    expect(document.querySelector("[data-owed-trip]")).toBeNull();
+  });
+
+  it("sends a discount typed on a trip added here", async () => {
+    const user = userEvent.setup();
+    renderEditor(
+      invoice({
+        owedTrips: [
+          { tripId: "trip-2", name: "Biaya kunjungan · Zona C", amount: "90000.0000", petNames: [] },
+        ],
+      }),
+    );
+
+    await user.click(await screen.findByRole("button", { name: /Tambahkan/ }));
+    await user.selectOptions(screen.getByLabelText("Jenis diskon Biaya kunjungan · Zona C"), "amount");
+    await user.type(screen.getByLabelText("Diskon Biaya kunjungan · Zona C"), "10000");
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+
+    const [, body] = asMock(customerInvoiceService.update).mock.calls[0];
+    expect(body.tripDiscounts).toEqual([
+      { homeTripId: "trip-2", discount: { mode: "amount", value: "10000" } },
+    ]);
+  });
+});
+

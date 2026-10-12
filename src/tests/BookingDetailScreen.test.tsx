@@ -3,17 +3,24 @@ import userEvent from "@testing-library/user-event";
 
 import { BookingDetailScreen } from "@/features/booking";
 import { ApiError } from "@/services/api-error";
+import { homeTripService } from "@/services/homeTrip.service";
 import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { petOptionService } from "@/services/petOption.service";
-import type { Booking, BookingSession } from "@/types/api";
+import type {
+  Booking,
+  BookingHomeTrip,
+  BookingSession,
+  HomeTripStatus,
+} from "@/types/api";
 
 import { primePetOptions } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/booking.service");
+jest.mock("@/services/homeTrip.service");
 jest.mock("@/services/pet.service");
 jest.mock("@/services/petOption.service");
 jest.mock("@/services/customer.service");
@@ -982,5 +989,149 @@ describe("BookingDetailScreen — the rail and the cards beside the work", () =>
     expect(
       await screen.findByRole("link", { name: /laporan › komisi/i }),
     ).toHaveAttribute("href", "/dashboard/reports/commissions");
+  });
+});
+
+/* ─── The journey to the house (10 October 2026) ───────────────────────── */
+
+const trips = homeTripService as jest.Mocked<typeof homeTripService>;
+
+const LABEL: Record<string, string> = {
+  scheduled: "Dijadwalkan",
+  otw_customer: "Berangkat",
+  arrived_customer: "Sampai di rumah",
+  otw_store: "Pulang",
+  arrived_store: "Sampai di toko",
+};
+
+const RUNGS = Object.keys(LABEL);
+
+/** The summary a booking carries: every rung up to `status` has a stamp. */
+function summaryAt(status: HomeTripStatus): BookingHomeTrip {
+  const reached = RUNGS.slice(0, RUNGS.indexOf(status) + 1);
+  return {
+    _id: "trip-1",
+    status,
+    performerUserId: null,
+    zoneName: "Zona B",
+    distanceKm: 7.5,
+    history: reached.map((rung, index) => ({
+      status: rung as HomeTripStatus,
+      at: `2026-09-03T0${index + 1}:15:00.000Z`,
+      byName: "Rio",
+    })),
+  };
+}
+
+const FEE = {
+  itemId: "fee-1",
+  serviceId: "svc-fee",
+  name: "Biaya kunjungan · Zona B",
+  price: "35000.0000",
+  durationMin: null,
+  visitFee: { zoneId: "z-b", zoneName: "Zona B", distanceKm: 7.5, unit: "per_km" },
+};
+
+const homeBooking = (status: HomeTripStatus, over: Overrides = {}): Booking =>
+  booking({
+    location: "in_home",
+    visitAddress: { address: "Jl. Melati 5, Cibubur", lat: -6.37, lng: 106.9 },
+    homeTrip: summaryAt(status),
+    service: { addons: [PARFUM, FEE] } as never,
+    ...over,
+  });
+
+/*
+  THE TRIP HAS ITS OWN PAGE since 11 October 2026 — this card is the address,
+  where the trip stands, and a link. Its timeline and buttons are tested in
+  HomeTripDetailScreen.test.tsx.
+*/
+describe("BookingDetailScreen — the journey to the house", () => {
+  it("draws the card only for a booking made at the customer's house", async () => {
+    bookings.getById.mockResolvedValue(homeBooking("scheduled"));
+    show();
+
+    expect(await screen.findByText("Kunjungan ke rumah")).toBeInTheDocument();
+    expect(screen.getByText("Jl. Melati 5, Cibubur")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Buka di peta" })).toHaveAttribute(
+      "href",
+      expect.stringContaining("-6.37%2C106.9"),
+    );
+    /* The zone and the fee belong to the trip's page now. */
+    expect(screen.queryByText(/Zona B · 7,5 km/)).not.toBeInTheDocument();
+  });
+
+  it("is absent — no empty state — on a salon booking", async () => {
+    show();
+
+    await screen.findByRole("heading", { level: 1 });
+
+    expect(screen.queryByText("Kunjungan ke rumah")).not.toBeInTheDocument();
+    expect(trips.get).not.toHaveBeenCalled();
+  });
+
+  it("says where the trip stands and links to its own page", async () => {
+    bookings.getById.mockResolvedValue(homeBooking("otw_customer"));
+    show();
+
+    await screen.findByText("Kunjungan ke rumah");
+
+    expect(screen.getByText("Berangkat")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Lihat perjalanan/ })).toHaveAttribute(
+      "href",
+      "/dashboard/booking/perjalanan/trip-1",
+    );
+    /* The buttons live on the trip's page now. */
+    expect(screen.queryByRole("button", { name: "Sampai di rumah" })).not.toBeInTheDocument();
+    expect(trips.get).not.toHaveBeenCalled();
+  });
+
+  it("says the trip's fee is billed apart, once the trip carries one", async () => {
+    bookings.getById.mockResolvedValue(
+      homeBooking("scheduled", {
+        service: { addons: [PARFUM] } as never,
+        homeTrip: { ...summaryAt("scheduled"), hasFee: true, feeBilled: false },
+      }),
+    );
+    const { container } = show();
+
+    await screen.findByText("Kunjungan ke rumah");
+
+    expect(container.querySelector("[data-visit-fee-note]")).toHaveTextContent(
+      "Belum termasuk biaya kunjungan",
+    );
+  });
+
+  it("offers no link for a home booking made before trips existed", async () => {
+    bookings.getById.mockResolvedValue(homeBooking("scheduled", { homeTrip: null }));
+    show();
+
+    expect(
+      await screen.findByText("Booking ini belum punya catatan perjalanan."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Lihat perjalanan/ })).not.toBeInTheDocument();
+  });
+
+  it("leaves the visit fee out of the booking — it is shown on the trip", async () => {
+    bookings.getById.mockResolvedValue(
+      homeBooking("scheduled", { totalAmount: "175000.0000", netAmount: "175000.0000" }),
+    );
+    const { container } = show();
+
+    await screen.findByText("Kunjungan ke rumah");
+
+    expect(screen.queryByText(/Biaya kunjungan · Zona B/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Zona B · 7,5 km/)).not.toBeInTheDocument();
+    /* The ordinary add-on is still the plain "+ name" row. */
+    expect(screen.getByText(/\+ Parfum/)).toBeInTheDocument();
+    /* 175.000 stored, less the 35.000 fee — the Total adds up what is drawn. */
+    expect(screen.getByText("Rp 140.000")).toBeInTheDocument();
+
+    const note = container.querySelector("[data-visit-fee-note]") as HTMLElement;
+    expect(note).toHaveTextContent("Belum termasuk biaya kunjungan");
+    expect(within(note).getByRole("link", { name: "lihat di perjalanan" })).toHaveAttribute(
+      "href",
+      "/dashboard/booking/perjalanan/trip-1",
+    );
   });
 });

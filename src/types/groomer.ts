@@ -66,6 +66,27 @@ export interface GroomerBooking {
   addons: string[];
   /** Today, confirmed, and the caller is on a session: "Hewan sudah datang". */
   canMarkArrived: boolean;
+  /** `in_home` when the groomer goes to the animal (10 October 2026). */
+  location?: "in_store" | "in_home";
+  /** Where to go — only on a home booking. */
+  visitAddress?: { address: string | null; lat: number | null; lng: number | null } | null;
+  /**
+   * The journey, and the one button it offers next. Null on a booking with no
+   * trip (every one made before home trips existed, and every salon booking).
+   */
+  homeTrip?: {
+    _id: string;
+    status:
+      | "scheduled"
+      | "otw_customer"
+      | "arrived_customer"
+      | "otw_store"
+      | "arrived_store"
+      | "cancelled";
+    nextStatus: string | null;
+    /** "Berangkat" · "Sampai di rumah" · "Pulang" · "Sampai di toko". */
+    nextLabel: string | null;
+  } | null;
   pet: GroomerPet;
   sessions: GroomerSession[];
 }

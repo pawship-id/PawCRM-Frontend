@@ -36,6 +36,11 @@ const LABELS: Record<MovementType, { label: string; tone: string }> = {
   pos_void: { label: "Batal penjualan", tone: "bg-success/12 text-success" },
   purchase_return: { label: "Retur supplier", tone: "bg-danger/10 text-danger" },
   transfer_out: { label: "Transfer keluar", tone: "bg-secondary/25 text-secondary-foreground" },
+  // The same orange as the pair it undoes, because it is the same transfer —
+  // but its own label: "Transfer masuk" at the SOURCE would claim goods arrived
+  // from somewhere. They are coming back because the transfer was edited or
+  // cancelled before anybody received it.
+  transfer_cancel: { label: "Transfer dibatalkan", tone: "bg-secondary/25 text-secondary-foreground" },
   bundle_consume: { label: "Bundle consume", tone: "bg-danger/10 text-danger" },
   opname_diff: { label: "Selisih opname", tone: "bg-primary/12 text-primary-hover" },
   adjustment: { label: "Penyesuaian", tone: "bg-primary/12 text-primary-hover" },

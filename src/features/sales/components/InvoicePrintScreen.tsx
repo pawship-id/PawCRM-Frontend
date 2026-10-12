@@ -282,8 +282,19 @@ export function InvoicePrintScreen({ invoiceId }: { invoiceId: string }) {
         transformed or scrolling sits between it and the paper — and so the
         sidebar, the heading and the options card stay off the page.
       */}
+      {/*
+        HIDDEN ON SCREEN. While the print dialog is open the page behind it is
+        still the screen, and an unstyled copy of the sheet at the end of
+        `body` showed up under the dashboard. `receipt.css` forces it to
+        `display: block` for the printer, so `hidden print:block` costs nothing.
+      */}
       {printing
-        ? createPortal(<div data-print-root>{sheet}</div>, document.body)
+        ? createPortal(
+            <div data-print-root className="hidden print:block">
+              {sheet}
+            </div>,
+            document.body,
+          )
         : null}
     </div>
   );

@@ -4,16 +4,18 @@ import { useEffect, useState } from "react";
 
 import { Alert, Spinner } from "@/components";
 import { Checkbox } from "@/components/ui/checkbox";
+import { House } from "lucide-react";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { formatMoney, isPositive, subtractDecimals } from "@/utils/decimal";
-import type { Booking } from "@/types/api";
+import type { Booking, OrphanTrip } from "@/types/api";
 
 import {
   afterOwnDiscounts,
   bookingShareOf,
   ownDiscountOfLine,
 } from "../bookingDiscount";
+import { billedTripNote } from "@/features/booking/visitTrip";
 
 /**
  * THE CUSTOMER'S BOOKINGS, ready to be billed on this invoice — PCR-034.
@@ -50,11 +52,27 @@ const WINDOW_DAYS = 30;
 
 export function InvoiceBookingPanel({
   customerId,
+  branchId,
   selected,
   onChange,
+  droppedTrips,
+  selectedTrips = [],
+  onTripsChange,
   disabled = false,
 }: {
   customerId: string;
+  /** Trips left behind already chosen for this bill (11 October 2026). */
+  selectedTrips?: string[];
+  /** Reports the trips left behind the bill now carries — added only, like bookings. */
+  onTripsChange?: (trips: OrphanTrip[]) => void;
+  /** Trips the form took off this bill — not "already on it" (11 October 2026). */
+  droppedTrips?: Set<string>;
+  /**
+   * The branch the invoice is being raised for. Only that branch's bookings are
+   * offered: a grooming done at Barat billed on a Timur invoice would book its
+   * revenue to Timur while the work and the commission stay Barat's.
+   */
+  branchId?: string;
   /** Booking ids currently on the invoice. */
   selected: string[];
   /**
@@ -69,6 +87,8 @@ export function InvoiceBookingPanel({
   disabled?: boolean;
 }) {
   const [bookings, setBookings] = useState<Booking[]>([]);
+  /* Trips left behind — best effort; a failed read is simply none. */
+  const [orphans, setOrphans] = useState<OrphanTrip[]>([]);
   /*
     STARTS LOADING, rather than being switched on inside the effect. The
     component remounts per customer, so "loading" IS its initial state — and a
@@ -93,8 +113,17 @@ export function InvoiceBookingPanel({
 
     let active = true;
 
+    /* Best effort — wrapped, so a missing answer is simply no trips. */
+    Promise.resolve(bookingService.bridgeTrips(customerId, branchId || undefined))
+      .then((rows) => {
+        if (active) setOrphans(rows ?? []);
+      })
+      .catch(() => {
+        if (active) setOrphans([]);
+      });
+
     bookingService
-      .bridge(customerId, WINDOW_DAYS)
+      .bridge(customerId, WINDOW_DAYS, branchId || undefined)
       .then((rows) => {
         if (active) setBookings(rows);
       })
@@ -120,7 +149,7 @@ export function InvoiceBookingPanel({
     return () => {
       active = false;
     };
-  }, [customerId]);
+  }, [customerId, branchId]);
 
   if (!customerId) return null;
 
@@ -132,6 +161,16 @@ export function InvoiceBookingPanel({
   }
 
   const offered = bookings.filter((booking) => !selected.includes(booking._id));
+  /* Trips whose fee a booking already on this faktur brings along. */
+  const tripsOnInvoice = new Set(
+    bookings
+      .filter((booking) => selected.includes(booking._id))
+      .flatMap((booking) =>
+        booking.visitTrip?.state === "unbilled" && !droppedTrips?.has(booking.visitTrip.key)
+          ? [booking.visitTrip.key]
+          : [],
+      ),
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -164,10 +203,31 @@ export function InvoiceBookingPanel({
           Total at the foot is what this booking bills, after both. The
           recap still totals the shares once, as "Diskon booking".
         */
-        const subtotal = afterOwnDiscounts(booking);
-        const share = bookingShareOf(booking);
+        /*
+          THE HOME-VISIT FEE IS LEFT OUT OF THE CARD (11 October 2026): it pays
+          for the trip, which is said under the card instead — owed and coming
+          along, already on this faktur, or billed with another booking.
+        */
+        const own = {
+          ...booking,
+          service: {
+            ...booking.service,
+            addons: booking.service.addons.filter((addon) => !addon.visitFee),
+          },
+        };
+        const subtotal = afterOwnDiscounts(own);
+        const share = bookingShareOf(own);
         const hasShare = isPositive(share);
         const total = hasShare ? subtractDecimals(subtotal, share) : subtotal;
+        const trip = booking.visitTrip ?? null;
+        const tripNote =
+          trip?.state === "unbilled"
+            ? tripsOnInvoice.has(trip.key)
+              ? "Biaya perjalanan sudah ada di faktur ini"
+              : `+ Perjalanan home grooming ${formatMoney(trip.amount)} ikut ditagih${
+                  trip.petNames.length > 0 ? ` (untuk ${trip.petNames.join(", ")})` : ""
+                }`
+            : billedTripNote(trip);
         const mainOwn = ownDiscountOfLine(booking.service);
 
         return (
@@ -220,8 +280,8 @@ export function InvoiceBookingPanel({
                 </li>
                 {/* Under the service they came with — nobody chose "Parfum"
                     by itself. */}
-                {booking.service.addons.map((addon) => {
-                  const own = ownDiscountOfLine(addon);
+                {own.service.addons.map((addon) => {
+                  const ownOff = ownDiscountOfLine(addon);
 
                   return (
                     <li
@@ -234,10 +294,10 @@ export function InvoiceBookingPanel({
                           {formatMoney(addon.price)}
                         </span>
                       </span>
-                      {own && (
+                      {ownOff && (
                         <span className="flex justify-between gap-2 text-success">
                           <span>Diskon item</span>
-                          <span className="tabular-nums">−{formatMoney(own)}</span>
+                          <span className="tabular-nums">−{formatMoney(ownOff)}</span>
                         </span>
                       )}
                     </li>
@@ -268,11 +328,65 @@ export function InvoiceBookingPanel({
                   </span>
                 </span>
               </span>
+              {tripNote && (
+                <span data-panel-trip className="mt-1.5 block text-xs text-muted">
+                  {tripNote}
+                </span>
+              )}
             </span>
           </label>
         );
       })}
 
+      {/*
+        ─── TRIPS LEFT BEHIND (11 October 2026) ─────────────────────────────
+
+        Every booking of the trip was billed, the trip was not. Nothing above
+        can bring it, so it is offered on its own, and leaves this list once
+        chosen — the way a booking does.
+      */}
+      {orphans
+        .filter((trip) => !selectedTrips.includes(trip.tripId))
+        .map((trip) => (
+          <label
+            key={`orphan-${trip.tripId}`}
+            htmlFor={`orphan-${trip.tripId}`}
+            data-orphan-trip
+            className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-surface px-3 py-2.5 hover:bg-surface-hover"
+          >
+            <Checkbox
+              id={`orphan-${trip.tripId}`}
+              checked={false}
+              onCheckedChange={() =>
+                onTripsChange?.(
+                  orphans.filter(
+                    (one) => selectedTrips.includes(one.tripId) || one.tripId === trip.tripId,
+                  ),
+                )
+              }
+              disabled={disabled || !onTripsChange}
+              className="mt-0.5"
+            />
+            <House className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block font-medium">Perjalanan belum ditagih</span>
+              <span className="flex justify-between gap-2 text-xs">
+                <span className="text-foreground">{trip.name}</span>
+                <span className="tabular-nums text-muted">{formatMoney(trip.amount)}</span>
+              </span>
+              <span className="block text-xs text-muted">
+                {[
+                  trip.petNames.length > 0 ? `Untuk ${trip.petNames.join(", ")}` : null,
+                  trip.bookingNumbers.length > 0
+                    ? `booking ${trip.bookingNumbers.join(", ")} sudah ditagih`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            </span>
+          </label>
+        ))}
     </div>
   );
 }

@@ -166,19 +166,20 @@ function Required() {
 }
 
 /**
- * What to say when one product is on two rows.
+ * What to say when one LOT is on two rows.
  *
- * NAMES THE PRODUCT AND THE WAY OUT. The API's own refusal identifies it by
- * ObjectId, which tells a clerk nothing about which of their rows to touch — and
- * the fix is not obvious either, because two lines for one product is exactly how
- * somebody records "twenty at one price, ten at another".
+ * A product may be on several rows — one per lot, which is how a pallet with two
+ * expiry dates is received. What may not happen is the same lot twice: two rows
+ * for one physical batch would open two lot rows for it. Names the product and
+ * the way out, because the API's own refusal identifies it by ObjectId and tells
+ * a clerk nothing about which row to touch.
  *
- * That case IS real, and the answer is TWO RECEIPTS: the delivery physically was
- * two purchases at two prices, and one line per product is what lets a purchase
- * return say which of them it is reversing.
+ * "Twenty at one price, ten at another" of ONE lot is still two receipts: the
+ * delivery physically was two purchases, and a purchase return needs to say
+ * which of them it is reversing.
  */
 function duplicateMessage(name: string | undefined): string {
-  return `${name ?? "Produk ini"} muncul di dua baris. Gabungkan menjadi satu baris — atau, kalau harga belinya memang berbeda, catat sebagai dua penerimaan terpisah.`;
+  return `${name ?? "Produk ini"} muncul di dua baris untuk batch yang sama. Gabungkan jadi satu baris, atau beri tiap baris tanggal kedaluwarsa / kode supplier yang berbeda — dan kalau harga belinya memang berbeda untuk batch yang sama, catat sebagai dua penerimaan terpisah.`;
 }
 
 /**
@@ -453,9 +454,23 @@ export function ReceiptForm({
    * consignment settlement reading that flag would bill the shop for its own
    * goods, or fail to bill for the supplier's.
    */
-  function lotsFor(productId: string) {
+  function lotsFor(productId: string, exceptIndex: number | null = null) {
+    // Less the lots ANOTHER row of this product has already joined: one lot on
+    // two rows is the same goods said twice, which the API refuses.
+    const taken = new Set(
+      lines
+        .filter(
+          (other, i) =>
+            i !== exceptIndex &&
+            other.productId === productId &&
+            other.batchChoice !== "" &&
+            other.batchChoice !== NEW_BATCH,
+        )
+        .map((other) => other.batchChoice),
+    );
+
     return (lots.byProduct.get(productId) ?? []).filter(
-      (lot) => lot.isConsignment === consignment,
+      (lot) => lot.isConsignment === consignment && !taken.has(lot._id),
     );
   }
 
@@ -574,14 +589,37 @@ export function ReceiptForm({
     [lines, productById, consignment],
   );
 
+  /**
+   * The product whose SAME LOT is on two rows, or null.
+   *
+   * A lot is identified by the one a row NAMES, or — for a product that tracks
+   * expiry — by the date and supplier code that describe a new one. A row that
+   * has not chosen yet is not a duplicate of anything: it is blocked by the
+   * choice it still owes. A product that tracks nothing has no lot to tell two
+   * rows apart by, so it may appear once, as it always could.
+   */
   const duplicateProductId = useMemo(() => {
     const seen = new Set<string>();
     for (const line of lines) {
-      if (seen.has(line.productId)) return line.productId;
-      seen.add(line.productId);
+      const product = productById.get(line.productId);
+      let lot: string;
+
+      if (product?.hasExpiry) {
+        if (line.batchChoice === "") continue;
+        lot =
+          line.batchChoice === NEW_BATCH
+            ? `new|${line.expiryDate}|${line.supplierBatchCode.trim()}`
+            : `named|${line.batchChoice}`;
+      } else {
+        lot = "plain";
+      }
+
+      const key = `${line.productId}|${lot}`;
+      if (seen.has(key)) return line.productId;
+      seen.add(key);
     }
     return null;
-  }, [lines]);
+  }, [lines, productById]);
 
   /**
    * The gate on asking the server. The endpoint refuses exactly what the create
@@ -861,7 +899,12 @@ export function ReceiptForm({
     <>
       {picking && (
         <ReceiptAddProductsDialog
-          existingProductIds={lines.map((line) => line.productId)}
+          // A product that tracks expiry stays on offer — one delivery commonly
+          // carries it in two batches. One that does not has no lot to tell a
+          // second row apart by, so it is hidden once it is there.
+          existingProductIds={lines
+            .filter((line) => !productById.get(line.productId)?.hasExpiry)
+            .map((line) => line.productId)}
           consignment={consignment}
           onAdd={addLines}
           onClose={() => setPicking(false)}
@@ -895,11 +938,6 @@ export function ReceiptForm({
               </button>
             ))}
           </div>
-          <p className="mt-1.5 text-xs text-muted">
-            {consignment
-              ? "Barang titipan tetap milik supplier — tidak ada jurnal saat diterima. Utangnya baru muncul saat barang terjual, sebesar harga setor per unit. Disimpan dulu sebagai belum diterima; stok baru naik saat barang diterima. Setiap baris punya lot sendiri — kode batch terisi otomatis kalau dikosongkan."
-              : "Disimpan dulu sebagai belum diterima. Saat barang diterima, ia jadi milik toko — stok naik, utang ke supplier tercatat, dan jurnal diposting."}
-          </p>
           {consignment && (
             <p className="mt-1.5 text-xs text-muted">
               <b>Harga setor</b> = harga per unit yang kamu bayar ke supplier.
@@ -1199,7 +1237,7 @@ export function ReceiptForm({
                         choosesLot &&
                         line.batchChoice !== "" &&
                         line.batchChoice !== NEW_BATCH
-                          ? (lotsFor(line.productId).find(
+                          ? (lotsFor(line.productId, index).find(
                               (lot) => lot._id === line.batchChoice,
                             ) ?? null)
                           : null;
@@ -1314,7 +1352,7 @@ export function ReceiptForm({
                                        row; theirs is what can be read off the
                                        box. Omitted when the lot has none, which
                                        is the ordinary case. */
-                                    ...lotsFor(line.productId).map((lot) => ({
+                                    ...lotsFor(line.productId, index).map((lot) => ({
                                       value: lot._id,
                                       label: lotOptionLabel(lot),
                                     })),
@@ -1482,33 +1520,6 @@ export function ReceiptForm({
             </>
           )}
 
-          {/* Says the rule ONCE, above the row-level marks, because the two fields
-              changed places: the code used to be mandatory and the date easy to
-              miss, and a clerk who learned the old form would otherwise read the
-              empty batch box as the thing blocking them. */}
-          {lines.some((line) =>
-            needsLot(productById.get(line.productId), consignment),
-          ) && (
-            <p className="mt-3 text-xs text-muted">
-              {anyLotPicked && (
-                <>
-                  Kalau barang ini <b>batch-nya sudah ada</b> di gudang tujuan,
-                  pilih batch itu — stoknya bertambah di lot yang sama, bukan
-                  bikin lot kembar. Kalau memang kiriman baru, pilih{" "}
-                  <b>+ Batch baru</b>.{" "}
-                </>
-              )}
-              Batch baru untuk produk berkedaluwarsa <b>wajib</b> punya tanggal
-              expired — FEFO menjual lot terdekat lebih dulu, dan tanpa tanggal
-              urutannya tidak ada. <b>Kode batch dibuat sistem</b> dari SKU dan
-              tanggal expired, jadi tidak bisa diketik — kode itu yang nanti
-              dicetak jadi barcode dan discan kasir. Yang diisi manual cuma{" "}
-              <b>kode batch supplier</b>, nomor yang tercetak di kartonnya, dan
-              itu pun opsional: dipakai kalau suatu saat supplier menarik satu
-              batch dan semua lot dari batch itu harus ditemukan.
-            </p>
-          )}
-
           {/* A duplicate is reported the moment it exists, not on submit: it blocks
               the preview too, so waiting for a save attempt would leave the panels
               silently empty with nothing on screen explaining why. */}
@@ -1621,21 +1632,11 @@ export function ReceiptForm({
                   {formatMoney(preview?.grandTotal ?? localSubtotal)}
                 </b>
               </div>
-              {preview ? (
+              {preview && (
                 <p className="mt-1 text-xs text-muted">
                   Nomor sementara{" "}
                   <span className="tabular-nums">{preview.receiptNumber}</span> —
                   masih bisa berubah kalau ada penerimaan lain lebih dulu.
-                </p>
-              ) : (
-                <p className="mt-1 text-xs text-muted">
-                  Angka sementara, dihitung di browser. Yang mengikat adalah hasil
-                  dari server setelah semua baris lengkap.
-                </p>
-              )}
-              {consignment && (
-                <p className="text-xs text-muted">
-                  Nilai titipan menurut harga setor — dibayar ke supplier saat barang terjual, bukan saat diterima.
                 </p>
               )}
             </div>

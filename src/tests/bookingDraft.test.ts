@@ -104,6 +104,30 @@ describe("bookingDraft — one card is one booking", () => {
     expect(blankCard().key).not.toBe(fresh.key);
   });
 
+  it("leaves the server-owned visit-fee row out of the card and the stored pairs", () => {
+    const home = booking({
+      service: {
+        addons: [
+          { itemId: "ad-1", serviceId: ADDON, name: "Parfum", price: "20000.0000", durationMin: 10 },
+          {
+            itemId: "ad-2",
+            serviceId: "5a7f1f77bcf86cd7994390e9",
+            name: "Biaya kunjungan · Zona A",
+            price: "25000.0000",
+            durationMin: null,
+            visitFee: { zoneId: "z-1", zoneName: "Zona A", distanceKm: 2.2, unit: "per_visit" },
+          },
+        ],
+      },
+    });
+
+    expect(cardFromBooking(home).addonServiceIds).toEqual([ADDON]);
+    expect([...storedPetServiceKeys(home)]).toEqual([
+      petServiceKey(PET_A, MAIN),
+      petServiceKey(PET_A, ADDON),
+    ]);
+  });
+
   it("caps a save at ten bookings, like the server", () => {
     expect(MAX_CARDS).toBe(10);
   });

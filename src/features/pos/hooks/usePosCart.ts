@@ -41,6 +41,10 @@ interface UsePosCartResult {
    * carries the reason. See `send`.
    */
   addItem: (tile: PosCatalogItem) => Promise<boolean>;
+  /** Puts a trip's fee back on the basket — see `owedTrips` on the cart. */
+  addTrip: (tripId: string) => Promise<boolean>;
+  /** Several trips at once — the trips left behind a pull ticks (11 October 2026). */
+  addTrips: (tripIds: string[]) => Promise<boolean>;
   /** Sells one membership package to one animal — see the implementation. */
   addMembership: (planId: string, petId: string) => Promise<boolean>;
   setQty: (index: number, qty: string) => Promise<void>;
@@ -403,6 +407,12 @@ export function usePosCart(): UsePosCartResult {
             }
           : {}),
         bookingId: item.bookingId,
+        /*
+          THE TRIP A FEE LINE BILLS, SENT BACK (11 October 2026). Left out, the
+          server reads the line as a "Biaya Kunjungan" typed by hand and refuses
+          the whole write — the next tap on anything in the basket would fail.
+        */
+        ...(item.homeTripId ? { homeTripId: item.homeTripId } : {}),
         petId: item.petId,
         petName: item.petName,
         groomerName: item.groomerName,
@@ -489,6 +499,28 @@ export function usePosCart(): UsePosCartResult {
     },
     [itemsAsInput, send],
   );
+
+  /**
+   * A HOME-GROOMING TRIP'S FEE, BACK ON THE BASKET (11 October 2026) — for a
+   * trip whose line the cashier took off while its bookings stayed. The server
+   * prices it from the trip and claims it; the id is all that is sent.
+   */
+  const addTrips = useCallback(
+    async (tripIds: string[]) => {
+      const items = itemsAsInput();
+      const fresh = tripIds.filter((tripId) => !items.some((item) => item.homeTripId === tripId));
+      if (fresh.length === 0) return true;
+      /* `refId` is a placeholder the server replaces with the trip's own service. */
+      items.push(
+        ...fresh.map((tripId) => ({ kind: "service" as const, refId: tripId, homeTripId: tripId, qty: "1" })),
+      );
+
+      return send({ items });
+    },
+    [itemsAsInput, send],
+  );
+
+  const addTrip = useCallback((tripId: string) => addTrips([tripId]), [addTrips]);
 
   /**
    * A MEMBERSHIP PACKAGE, FOR ONE ANIMAL (30 September 2026).
@@ -808,6 +840,8 @@ export function usePosCart(): UsePosCartResult {
     open,
     openIfEmpty,
     addItem,
+    addTrip,
+    addTrips,
     addServices,
     addMembership,
     setQty,

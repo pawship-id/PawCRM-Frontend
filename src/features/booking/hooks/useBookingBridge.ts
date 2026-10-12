@@ -4,10 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 
 import { bookingService } from "@/services/booking.service";
 import { ApiError } from "@/services/api-error";
-import type { Booking } from "@/types/api";
+import type { Booking, OrphanTrip } from "@/types/api";
 
 interface UseBookingBridgeResult {
   bookings: Booking[];
+  /**
+   * Trips left behind — owed, every booking of them billed (11 October 2026).
+   * Best effort: a failed read is an empty list, never the bridge's error.
+   */
+  trips: OrphanTrip[];
   loading: boolean;
   error: string | null;
   /** Re-ask — call after pulling, so a pulled booking drops out of the list. */
@@ -34,6 +39,7 @@ export function useBookingBridge(
   customerId: string | null,
 ): UseBookingBridgeResult {
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [trips, setTrips] = useState<OrphanTrip[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -52,6 +58,7 @@ export function useBookingBridge(
       */
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setBookings([]);
+      setTrips([]);
       return;
     }
 
@@ -60,6 +67,15 @@ export function useBookingBridge(
      
     setLoading(true);
     setError(null);
+
+    /* Best effort — wrapped, so a missing answer is simply no trips. */
+    Promise.resolve(bookingService.bridgeTrips(customerId))
+      .then((result) => {
+        if (active) setTrips(result ?? []);
+      })
+      .catch(() => {
+        if (active) setTrips([]);
+      });
 
     bookingService
       .bridge(customerId)
@@ -86,5 +102,5 @@ export function useBookingBridge(
     };
   }, [customerId, nonce]);
 
-  return { bookings, loading, error, refetch };
+  return { bookings, trips, loading, error, refetch };
 }

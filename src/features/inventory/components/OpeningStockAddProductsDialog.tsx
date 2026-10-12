@@ -67,7 +67,9 @@ export function OpeningStockAddProductsDialog({
           <DialogDescription>
             Cari lalu centang produk yang stok awalnya mau dicatat, boleh
             beberapa produk sekaligus. Hanya menampilkan produk yang{" "}
-            <b>belum pernah punya pergerakan di gudang ini</b>.
+            <b>belum pernah punya pergerakan di gudang ini</b>. Produk yang
+            melacak kedaluwarsa tetap muncul walau sudah ada di lembar, karena
+            satu produk bisa masuk dalam beberapa lot dengan tanggal berbeda.
           </DialogDescription>
         </DialogHeader>
 

@@ -9,6 +9,7 @@ import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
+import { tenantService } from "@/services/tenant.service";
 import { variantOptionService } from "@/services/variantOption.service";
 import { zoneService } from "@/services/zone.service";
 import type {
@@ -17,6 +18,7 @@ import type {
   Customer,
   Pet,
   Service,
+  Tenant,
   Zone,
 } from "@/types/api";
 
@@ -38,6 +40,7 @@ jest.mock("@/services/branch.service");
 jest.mock("@/services/businessLine.service");
 jest.mock("@/services/variantOption.service");
 jest.mock("@/services/zone.service");
+jest.mock("@/services/tenant.service");
 jest.mock("@/services/petOption.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
@@ -54,6 +57,7 @@ const pets = petService as jest.Mocked<typeof petService>;
 const services = serviceService as jest.Mocked<typeof serviceService>;
 const branches = branchService as jest.Mocked<typeof branchService>;
 const businessLines = businessLineService as jest.Mocked<typeof businessLineService>;
+const tenants = tenantService as jest.Mocked<typeof tenantService>;
 
 const BRANCH_ID = "branch-1";
 
@@ -110,6 +114,7 @@ beforeEach(() => {
   services.list.mockResolvedValue(page([grooming]));
   bookings.create.mockResolvedValue(created);
   bookings.availability.mockResolvedValue([]);
+  tenants.me.mockResolvedValue({ settings: {} } as Tenant);
   branches.list.mockResolvedValue(page([{ _id: BRANCH_ID, name: "Cibubur" }]) as never);
   businessLines.list.mockResolvedValue(
     page([{ _id: "line-groom", name: "Grooming" }]) as never,
@@ -552,6 +557,304 @@ describe("GroomingBookingCreateScreen", () => {
       await fillIn();
 
       expect(screen.queryByRole("checkbox", { name: /^jemput/i })).not.toBeInTheDocument();
+    });
+  });
+
+  /* ─── HOME GROOMING (10 October 2026) ─────────────────────────────────────── */
+
+  describe("home grooming", () => {
+    const zone = (id: string, name: string, minKm: number, maxKm: number): Zone => ({
+      _id: id,
+      tenantId: "t1",
+      name,
+      nameKey: name.toLowerCase(),
+      description: null,
+      minKm,
+      maxKm,
+      createdBy: null,
+      deletedAt: null,
+      createdAt: "2026-10-10T00:00:00.000Z",
+      updatedAt: "2026-10-10T00:00:00.000Z",
+    });
+
+    const shopOnly = {
+      ...grooming,
+      _id: "svc-shop",
+      name: "Mandi Toko",
+      serviceLocations: ["in_store"],
+    } as unknown as Service;
+    const homeOnly = {
+      ...grooming,
+      _id: "svc-house",
+      name: "Mandi Rumah",
+      serviceLocations: ["in_home"],
+    } as unknown as Service;
+    /* Not answered yet — offered anywhere, as the server reads it. */
+    const either = {
+      ...grooming,
+      addonServiceIds: ["add-shop", "add-house"],
+    } as unknown as Service;
+    const addon = (id: string, name: string, at: string[]) =>
+      ({
+        ...grooming,
+        _id: id,
+        name,
+        price: "20000.0000",
+        serviceType: "addon",
+        serviceLocations: at,
+        addonServiceIds: [],
+      }) as unknown as Service;
+
+    /* ~2,2 km north of the branch — Zona A (fee 25.000). */
+    const nearby = {
+      ...customer,
+      address: "Jl. Mawar No. 1",
+      location: { lat: -6.18, lng: 106.8, source: "manual" },
+    } as Customer;
+
+    beforeEach(() => {
+      primeVariantOptions(variantOptionService.list, zoneService.list, {
+        zones: [
+          zone("zone-a", "Zona A", 0, 5),
+          zone("zone-b", "Zona B", 5, 10),
+        ],
+      });
+      /* THE SHOP'S HOME-GROOMING SETTINGS, read behind the booking grants. */
+      bookings.homeVisitFees.mockResolvedValue({
+        unit: "per_visit",
+        fees: [
+          { zoneId: "zone-a", zoneName: "Zona A", minKm: 0, maxKm: 5, fee: "25000.0000" },
+          { zoneId: "zone-b", zoneName: "Zona B", minKm: 5, maxKm: 10, fee: "40000.0000" },
+        ],
+      });
+      services.list.mockResolvedValue(
+        page([
+          either,
+          shopOnly,
+          homeOnly,
+          addon("add-shop", "Add-on Toko", ["in_store"]),
+          addon("add-house", "Add-on Rumah", ["in_home"]),
+        ]),
+      );
+      branches.list.mockResolvedValue(
+        page([
+          {
+            _id: BRANCH_ID,
+            name: "Cibubur",
+            location: { lat: -6.2, lng: 106.8, source: "manual" },
+          },
+        ]) as never,
+      );
+      customers.list.mockResolvedValue(page([nearby]));
+    });
+
+    async function pickCustomerAndPet() {
+      await userEvent.click(
+        screen.getByRole("button", { name: /cari nama atau nomor whatsapp/i }),
+      );
+      await userEvent.click(await screen.findByRole("button", { name: /ibu rina/i }));
+      await userEvent.click(await screen.findByRole("button", { name: /bruno/i }));
+    }
+
+    const homeSwitch = () =>
+      screen.getByRole("switch", { name: /grooming di rumah pelanggan/i });
+
+    async function openServices() {
+      await userEvent.click(screen.getByRole("button", { name: "Layanan" }));
+    }
+
+    it("starts in the shop and filters the services by the switch", async () => {
+      renderWithAuth(<GroomingBookingCreateScreen />);
+      await pickCustomerAndPet();
+
+      expect(homeSwitch()).not.toBeChecked();
+      expect(screen.queryByText("Alamat kunjungan")).not.toBeInTheDocument();
+
+      await openServices();
+      expect(await screen.findByRole("option", { name: "Basic Grooming" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Mandi Toko" })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: "Mandi Rumah" })).not.toBeInTheDocument();
+      await userEvent.keyboard("{Escape}");
+
+      await userEvent.click(homeSwitch());
+
+      await openServices();
+      expect(await screen.findByRole("option", { name: "Basic Grooming" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Mandi Rumah" })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: "Mandi Toko" })).not.toBeInTheDocument();
+    });
+
+    it("takes off, by name, the services and add-ons the new place does not offer", async () => {
+      renderWithAuth(<GroomingBookingCreateScreen />);
+      await pickCustomerAndPet();
+
+      await openServices();
+      await userEvent.click(await screen.findByRole("option", { name: "Basic Grooming" }));
+      await userEvent.click(await screen.findByRole("checkbox", { name: /add-on toko/i }));
+
+      await userEvent.click(homeSwitch());
+
+      /* The add-on goes; the service that goes anywhere stays. */
+      expect(
+        await screen.findByText(/dilepas karena tidak tersedia.*add-on toko \(bruno\)/i),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("checkbox", { name: /add-on toko/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("checkbox", { name: /add-on rumah/i })).not.toBeChecked();
+
+      /* Back to the shop with a house-only service chosen. */
+      await openServices();
+      await userEvent.click(await screen.findByRole("option", { name: "Mandi Rumah" }));
+      await userEvent.click(homeSwitch());
+
+      expect(
+        await screen.findByText(/di toko: mandi rumah \(bruno\)/i),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+    });
+
+    it("defaults the address from the customer and previews the zone and the fee", async () => {
+      renderWithAuth(<GroomingBookingCreateScreen />);
+      await pickCustomerAndPet();
+      await userEvent.click(homeSwitch());
+
+      expect(await screen.findByText("Alamat kunjungan")).toBeInTheDocument();
+      /* The customer's card, and the visit address drawn from it. */
+      expect(screen.getAllByText("Jl. Mawar No. 1")).toHaveLength(2);
+      expect(screen.getAllByText(/Zona A · 2,2\d* km/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/25\.000/).length).toBeGreaterThan(0);
+
+      await openServices();
+      await userEvent.click(await screen.findByRole("option", { name: "Basic Grooming" }));
+
+      /* Its own line in the summary, and in the total: 150.000 + 25.000. */
+      expect(screen.getByText("Biaya kunjungan · Zona A")).toBeInTheDocument();
+      expect(screen.getAllByText(/175\.000/).length).toBeGreaterThan(0);
+    });
+
+    it("counts the fee per animal when the shop says so", async () => {
+      bookings.homeVisitFees.mockResolvedValue({
+        unit: "per_pet",
+        fees: [
+          { zoneId: "zone-a", zoneName: "Zona A", minKm: 0, maxKm: 5, fee: "25000.0000" },
+        ],
+      });
+      pets.list.mockResolvedValue(
+        page([pet, { ...pet, _id: "pet-2", name: "Luna" } as Pet]),
+      );
+
+      renderWithAuth(<GroomingBookingCreateScreen />);
+      await userEvent.click(
+        screen.getByRole("button", { name: /cari nama atau nomor whatsapp/i }),
+      );
+      await userEvent.click(await screen.findByRole("button", { name: /ibu rina/i }));
+      await userEvent.click(await screen.findByRole("button", { name: /bruno/i }));
+      await userEvent.click(await screen.findByRole("button", { name: /luna/i }));
+      await userEvent.click(homeSwitch());
+
+      expect(await screen.findByText(/ditagih per hewan \(2 hewan\)/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/50\.000/).length).toBeGreaterThan(0);
+    });
+
+    it("sends location in_home with the pinned visit address", async () => {
+      renderWithAuth(<GroomingBookingCreateScreen />);
+      await pickCustomerAndPet();
+      await userEvent.click(homeSwitch());
+      await openServices();
+      await userEvent.click(await screen.findByRole("option", { name: "Basic Grooming" }));
+
+      fireEvent.change(screen.getByLabelText(/tanggal/i), { target: { value: "2026-10-12" } });
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+      await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+      expect(bookings.create.mock.calls[0][0]).toMatchObject({
+        location: "in_home",
+        visitAddress: { address: "Jl. Mawar No. 1", lat: -6.18, lng: 106.8 },
+        bookingDiscount: null,
+      });
+      /* The fee is the server's row — never an add-on id. */
+      expect(bookings.create.mock.calls[0][0].bookings[0].addonServiceIds).toEqual([]);
+    });
+
+    it("sends no visit address for a booking in the shop", async () => {
+      renderWithAuth(<GroomingBookingCreateScreen />);
+      await pickCustomerAndPet();
+      await openServices();
+      await userEvent.click(await screen.findByRole("option", { name: "Basic Grooming" }));
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+      await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+      expect(bookings.create.mock.calls[0][0].location).toBe("in_store");
+      expect(bookings.create.mock.calls[0][0]).not.toHaveProperty("visitAddress");
+    });
+
+    it("blocks the save when the customer has no phone", async () => {
+      customers.list.mockResolvedValue(page([{ ...nearby, phone: null } as Customer]));
+      renderWithAuth(<GroomingBookingCreateScreen />);
+      await pickCustomerAndPet();
+      await userEvent.click(homeSwitch());
+      await openServices();
+      await userEvent.click(await screen.findByRole("option", { name: "Basic Grooming" }));
+
+      expect(
+        screen.getAllByText(/nomor telepon pelanggan belum diisi — isi dulu di profil pelanggan/i)
+          .length,
+      ).toBeGreaterThan(0);
+      expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+    });
+
+    it("blocks the save for an address outside every zone", async () => {
+      /* ~22 km north: past Zona B. */
+      customers.list.mockResolvedValue(
+        page([{ ...nearby, location: { lat: -6.0, lng: 106.8, source: "manual" } } as Customer]),
+      );
+      renderWithAuth(<GroomingBookingCreateScreen />);
+      await pickCustomerAndPet();
+      await userEvent.click(homeSwitch());
+      await openServices();
+      await userEvent.click(await screen.findByRole("option", { name: "Basic Grooming" }));
+
+      expect(
+        screen.getAllByText(/di luar jangkauan layanan home grooming/i).length,
+      ).toBeGreaterThan(0);
+      expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+    });
+
+    it("asks for a pin when the address has none, and blocks the save", async () => {
+      customers.list.mockResolvedValue(
+        page([{ ...nearby, location: undefined } as unknown as Customer]),
+      );
+      renderWithAuth(<GroomingBookingCreateScreen />);
+      await pickCustomerAndPet();
+      await userEvent.click(homeSwitch());
+      await openServices();
+      await userEvent.click(await screen.findByRole("option", { name: "Basic Grooming" }));
+
+      expect(screen.getByText(/pilih titik alamat di peta/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /simpan booking/i })).toBeDisabled();
+    });
+
+    it("puts the server's refusal of the address beside the address", async () => {
+      bookings.create.mockRejectedValue(
+        new ApiError("Validation failed", 400, {
+          details: [
+            {
+              field: "visitAddress",
+              message: "Alamat ini berada di luar jangkauan layanan home grooming (12 km dari cabang).",
+            },
+          ],
+        }),
+      );
+      renderWithAuth(<GroomingBookingCreateScreen />);
+      await pickCustomerAndPet();
+      await userEvent.click(homeSwitch());
+      await openServices();
+      await userEvent.click(await screen.findByRole("option", { name: "Basic Grooming" }));
+      await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+      expect(
+        await screen.findByText(/\(12 km dari cabang\)/),
+      ).toBeInTheDocument();
+      expect(push).not.toHaveBeenCalled();
     });
   });
 });

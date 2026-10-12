@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bookmark, ShoppingCart } from "lucide-react";
+import { Bookmark, House, Plus, ShoppingCart } from "lucide-react";
 
 import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import { PosCustomerSection } from "./PosCustomerSection";
 import { PosDiscountPopover } from "./PosDiscountPopover";
 import { PosNoteEditor } from "./PosNoteEditor";
 import { PosOtherChargesEditor } from "./PosOtherChargesEditor";
+import { PosVisitFeeLine } from "./PosVisitFeeLine";
 
 /**
  * The basket's lines, gathered per booking.
@@ -54,6 +55,9 @@ function groupLines(items: PosItem[]): Array<{
   const groups: ReturnType<typeof groupLines> = [];
 
   items.forEach((item, index) => {
+    /* A home-visit fee is a row of its own — see `tripLines`. */
+    if (item.visitFee) return;
+
     const bookingId = item.bookingId ?? null;
     const last = groups[groups.length - 1];
     const existing =
@@ -76,6 +80,38 @@ function groupLines(items: PosItem[]): Array<{
       bookingNumber: item.bookingNumber ?? null,
       lines: [{ item, index }],
     });
+  });
+
+  return groups;
+}
+
+/**
+ * THE HOME-VISIT FEES, one group per trip (11 October 2026, on request).
+ *
+ * The fee bills as an add-on of the grooming booking that carries it, but it
+ * pays for the groomer's journey to the house, so the basket draws it under a
+ * header of its own instead of as "+ Biaya kunjungan" under one animal's bath.
+ * Keyed by the trip, falling back to the booking for one made before trips.
+ */
+function tripLines(items: PosItem[]): Array<{
+  key: string;
+  zoneName: string | null;
+  lines: Array<{ item: PosItem; index: number }>;
+}> {
+  const groups: ReturnType<typeof tripLines> = [];
+
+  items.forEach((item, index) => {
+    if (!item.visitFee) return;
+
+    const key = item.visitFee.homeTripId ?? `booking-${item.bookingId ?? index}`;
+    const existing = groups.find((group) => group.key === key);
+
+    if (existing) {
+      existing.lines.push({ item, index });
+      return;
+    }
+
+    groups.push({ key, zoneName: item.visitFee.zoneName, lines: [{ item, index }] });
   });
 
   return groups;
@@ -162,6 +198,7 @@ export function PosCart({
   onCheckout,
   onPickCustomer,
   onClearCustomer,
+  onAddTrip,
   bookingSlot,
 }: {
   cart: PosTransaction | null;
@@ -220,12 +257,62 @@ export function PosCart({
   onClearCustomer: () => void;
   /** FR-3's booking banner and button, or nothing without a customer. */
   bookingSlot?: React.ReactNode;
+  /**
+   * Puts an owed trip's fee on the basket (11 October 2026) — offered for each
+   * of `cart.owedTrips`. Absent, the prompt says so but offers no button.
+   */
+  onAddTrip?: (tripId: string) => void;
 }) {
   const { can } = usePermissions();
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const items = cart?.items ?? [];
   const totals = cart?.runningTotals;
   const empty = items.length === 0;
+
+  /*
+    AN OLD-SHAPE FEE LEAVES WITH ITS BOOKING — a basket written before
+    11 October 2026 may still carry the fee as an add-on of one grooming, with
+    no bin of its own. A trip's own line (`homeTripId`) has a bin and is not
+    touched here.
+  */
+  const removeLines = (target: number | number[]) => {
+    const list = Array.isArray(target) ? target : [target];
+    const released = new Set(
+      list.map((index) => items[index]?.bookingId).filter(Boolean).map(String),
+    );
+    const fees = items.flatMap((item, index) =>
+      item.visitFee &&
+      item.bookingId &&
+      released.has(String(item.bookingId)) &&
+      !list.includes(index)
+        ? [index]
+        : [],
+    );
+
+    /*
+      THE TRIP GOES WITH ITS LAST GROOMING (11 October 2026, on request). When
+      the lines taken off were a trip's bookings and no other grooming of that
+      trip stays on the basket, its fee line goes too — and comes back on offer
+      with the next booking of the house that is billed. A trip pulled on its
+      own (every booking billed already) has no grooming here and is untouched.
+    */
+    const gone = new Set([...list, ...fees]);
+    const tripsTouched = new Set(
+      list.map((index) => items[index]?.bookingTripId).filter(Boolean).map(String),
+    );
+    const trips = items.flatMap((item, index) => {
+      if (!item.homeTripId || gone.has(index)) return [];
+      const tripId = String(item.homeTripId);
+      if (!tripsTouched.has(tripId)) return [];
+      const stillRiding = items.some(
+        (other, at) => !gone.has(at) && String(other.bookingTripId ?? "") === tripId,
+      );
+      return stillRiding ? [] : [index];
+    });
+
+    const extra = [...fees, ...trips];
+    onRemove(extra.length > 0 ? [...list, ...extra] : target);
+  };
 
   return (
     <aside
@@ -306,7 +393,7 @@ export function PosCart({
                   addons={addons}
                   disabled={busy}
                   onQtyChange={onQtyChange}
-                  onRemove={onRemove}
+                  onRemove={removeLines}
                   onEdit={setEditingIndex}
                   onPriceChange={onLinePrice}
                   /*
@@ -318,8 +405,69 @@ export function PosCart({
                 />
               ))}
             </div>
-          ))
+          )).concat(
+            tripLines(items).map((group) => (
+              <div key={`trip-${group.key}`} data-trip-group>
+                <div className="flex items-baseline justify-between gap-2 bg-surface px-3 py-1.5">
+                  <span className="truncate text-xs font-medium text-foreground">
+                    Perjalanan home grooming
+                  </span>
+                  {group.zoneName && (
+                    <span className="shrink-0 text-xs text-muted">{group.zoneName}</span>
+                  )}
+                </div>
+                {group.lines.map(({ item, index }) => (
+                  <PosVisitFeeLine
+                    key={`fee-${item.refId}-${index}`}
+                    item={item}
+                    index={index}
+                    disabled={busy}
+                    onEdit={setEditingIndex}
+                    /* The trip's own line has a bin; an old-shape fee leaves with its booking. */
+                    onRemove={item.homeTripId ? (at) => onRemove(at) : undefined}
+                  />
+                ))}
+              </div>
+            )),
+          )
         )}
+
+        {/*
+          A TRIP STILL OWED (11 October 2026) — the bookings it serves are on
+          this basket, but its fee is not: the cashier took the line off, or it
+          could not come with the pull. Said out loud so it is not forgotten,
+          with the one button that puts it back.
+        */}
+        {(cart?.owedTrips ?? []).map((trip) => (
+          <div
+            key={`owed-${trip.tripId}`}
+            data-owed-trip
+            className="mx-3 my-2 flex items-start gap-2 rounded-lg border border-dashed border-border px-3 py-2"
+          >
+            <House className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-foreground">
+                Biaya perjalanan belum ditagih
+              </p>
+              <p className="truncate text-xs text-muted">
+                {trip.name} · {formatMoney(trip.amount)}
+                {trip.petNames.length > 0 ? ` · untuk ${trip.petNames.join(", ")}` : ""}
+              </p>
+            </div>
+            {onAddTrip && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={busy}
+                onClick={() => onAddTrip(trip.tripId)}
+              >
+                <Plus className="size-4" />
+                Tambahkan
+              </Button>
+            )}
+          </div>
+        ))}
       </div>
 
       {!empty && totals && (

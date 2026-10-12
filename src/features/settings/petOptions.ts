@@ -84,3 +84,52 @@ export const PET_OPTION_TYPE_WORDS: Record<PetOptionType, PetOptionTypeWords> =
 export function byOrder(a: PetOption, b: PetOption) {
   return a.sortOrder - b.sortOrder || a.label.localeCompare(b.label, "id");
 }
+
+/**
+ * A size's weight range as a reader sees it. `[min, max)` — the lower bound is
+ * included, the upper is not — so "0 – <3 kg" says what the screen means and
+ * the next size's "3 – <8 kg" visibly starts where this one stops.
+ */
+export function formatWeightRange(option: {
+  minWeightKg?: number | null;
+  maxWeightKg?: number | null;
+}): string {
+  const { minWeightKg: min, maxWeightKg: max } = option;
+  if (min === null || min === undefined) return "—";
+  const kg = (value: number) =>
+    String(value).replace(".", ",");
+  return max === null || max === undefined
+    ? `≥ ${kg(min)} kg`
+    : `${kg(min)} – <${kg(max)} kg`;
+}
+
+/** Backend cap — MAX_WEIGHT_KG in petOption.model.js. */
+export const PET_OPTION_MAX_WEIGHT_KG = 500;
+
+/**
+ * Reads the two weight fields a size dialog holds as typed text. A comma is a
+ * decimal point. BOTH BOUNDS ARE REQUIRED for a size (10 October 2026): the
+ * heaviest size takes the largest weight the shop expects, not an empty box.
+ * `error` is the sentence for the field when the pair cannot be sent.
+ */
+export function parseWeightRange(
+  minText: string,
+  maxText: string,
+): { min: number | null; max: number | null; error: string | null } {
+  const parse = (text: string) =>
+    text.trim() === "" ? null : Number(text.trim().replace(",", "."));
+  const min = parse(minText);
+  const max = parse(maxText);
+  const bad = (value: number) =>
+    !Number.isFinite(value) || value < 0 || value > PET_OPTION_MAX_WEIGHT_KG;
+
+  let error: string | null = null;
+  if (min === null || max === null)
+    error = "Berat minimum dan maksimum wajib diisi.";
+  else if (bad(min) || bad(max))
+    error = `Isi berat dengan angka antara 0 dan ${PET_OPTION_MAX_WEIGHT_KG}.`;
+  else if (max <= min)
+    error = "Berat maksimum harus lebih besar dari minimum.";
+
+  return { min, max, error };
+}

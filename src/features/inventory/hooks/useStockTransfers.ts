@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { ApiError } from "@/services/api-error";
-import { stockMovementService } from "@/services/stockMovement.service";
+import { stockTransferService } from "@/services/stockTransfer.service";
 import { warehouseService } from "@/services/warehouse.service";
 import type {
   StockTransferSort,
+  StockTransferStatus,
   StockTransferSummary,
 } from "@/types/inventory";
 import type { Warehouse } from "@/types/api";
@@ -26,6 +27,12 @@ export interface StockTransfersQuery {
    */
   warehouseId: string;
   /**
+   * "" = every status. A lens on where the goods are: still on the road, or
+   * arrived. The server filters; a client-side filter would answer "what is in
+   * transit" with "what happened to be on page 1".
+   */
+  status: StockTransferStatus | "";
+  /**
    * Always set, never cleared: a list with no ordering is not a thing. Reset
    * returns it to `newest` rather than emptying it.
    */
@@ -36,6 +43,7 @@ export interface StockTransfersQuery {
 const DEFAULT_QUERY: StockTransfersQuery = {
   search: "",
   warehouseId: "",
+  status: "",
   sort: "newest",
   page: 1,
 };
@@ -60,27 +68,19 @@ export interface UseStockTransfersResult {
 }
 
 /**
- * The manual transfers, paged — one entry per transfer, not per ledger row.
+ * Stock transfers, paged — numbered documents, each with a status.
  *
- * THE GROUPING IS THE SERVER'S, and that is the whole reason this hook calls
- * `listTransfers` rather than filtering the ledger. A transfer has no document,
- * so its rows are held together only by a correlation id; a page of rows grouped
- * in the browser would page ROWS, and one transfer straddling a page boundary
- * would be listed twice with half its lots each time.
- *
- * THE FILTER GOES TO THE SERVER for the same reason it does on every other list
- * here: a list pages at twenty, so narrowing in the browser would answer
- * "transfers involving Gudang Bazar" with "the ones that happened to be on page
- * 1".
+ * THE FILTER GOES TO THE SERVER for the reason it does on every other list here:
+ * a list pages at twenty, so narrowing in the browser would answer "transfers
+ * involving Gudang Bazar" with "the ones that happened to be on page 1".
  *
  * THE WAREHOUSE LOOKUP FAILS SOFTLY. A user may hold `stockMovements:read`
- * NARROWED TO THE SIGNED-IN USER'S OWN, like every other stock picker: the
- * server refuses an out-of-scope filter with a 403 and hides the rows anyway,
- * so offering one here could only produce that refusal. A courtesy over the
- * server's answer — `utils/accessScope.ts` says why.
- *
  * without `warehouses:read`, and a list that refused to render because a
- * dropdown could not be populated would withhold the rows over the filter.
+ * dropdown could not be populated would withhold the rows over the filter. The
+ * options are NARROWED TO THE SIGNED-IN USER'S OWN, like every other stock
+ * picker: the server refuses an out-of-scope filter with a 403 and hides the
+ * rows anyway, so offering one here could only produce that refusal. A courtesy
+ * over the server's answer — `utils/accessScope.ts` says why.
  */
 export function useStockTransfers(): UseStockTransfersResult {
   const { user } = useAuth();
@@ -139,12 +139,13 @@ export function useStockTransfers(): UseStockTransfersResult {
     setLoading(true);
     setError(null);
 
-    stockMovementService
-      .listTransfers({
+    stockTransferService
+      .list({
         page: debounced.page,
         limit: LIMIT,
         search: debounced.search.trim() || undefined,
         warehouseId: debounced.warehouseId || undefined,
+        status: debounced.status || undefined,
         sort: debounced.sort,
       })
       .then((result) => {
@@ -170,6 +171,7 @@ export function useStockTransfers(): UseStockTransfersResult {
     debounced.page,
     debounced.search,
     debounced.warehouseId,
+    debounced.status,
     debounced.sort,
     nonce,
   ]);

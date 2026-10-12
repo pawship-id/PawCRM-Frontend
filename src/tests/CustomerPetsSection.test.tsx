@@ -9,6 +9,8 @@ import type { Pet } from "@/types/api";
 import {
   petOptionFields,
   petOptionId,
+  makePetOption,
+  PET_OPTION_FIXTURES,
   primePetOptions,
 } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
@@ -108,16 +110,16 @@ describe("CustomerPetsSection", () => {
     renderWithAuth(<CustomerPetsSection customerId={CUSTOMER_ID} />);
 
     expect(await screen.findByText("Bella")).toBeVisible();
-    expect(screen.getByText("Tidak aktif")).toBeVisible();
+    expect(screen.getByText("Nonaktif")).toBeVisible();
   });
 
-  it("does not badge the ordinary case — every row saying Dirawat is noise", async () => {
+  it("does not badge the ordinary case — every row saying Aktif is noise", async () => {
     listReturns([pet({ isActive: true })]);
 
     renderWithAuth(<CustomerPetsSection customerId={CUSTOMER_ID} />);
 
     await screen.findByText("Bella");
-    expect(screen.queryByText("Dirawat")).not.toBeInTheDocument();
+    expect(screen.queryByText("Aktif")).not.toBeInTheDocument();
   });
 
   it("says what is missing rather than 'no data'", async () => {
@@ -154,6 +156,8 @@ describe("CustomerPetsSection", () => {
     expect(screen.getByText(/ibu rina/i)).toBeVisible();
 
     await userEvent.type(screen.getByLabelText(/nama hewan/i), "Bella");
+    /* BERAT IS REQUIRED (10 October 2026): the size is worked out from it. */
+    await userEvent.type(screen.getByLabelText(/berat/i), "4.5");
     /* ⚠️ ANCHORED. "Jenis bulu" joined the dialog on 7 Sep 2026, so /jenis/i now
        matches two comboboxes. */
     await openPicker(/^jenis$/i);
@@ -177,7 +181,8 @@ describe("CustomerPetsSection", () => {
           name: "Bella",
           // IDS, NOT CODES (27 September 2026): the picker's value is the pet
           // option's `_id`, which is the only thing POST /api/pets accepts.
-          species: "opt-species-dog",
+          species: "opt-species-anjing",
+          weightKg: 4.5,
           size: null,
           furType: null,
         }),
@@ -212,6 +217,7 @@ describe("CustomerPetsSection", () => {
     await screen.findByRole("dialog");
 
     await userEvent.type(screen.getByLabelText(/nama hewan/i), "Bella");
+    await userEvent.type(screen.getByLabelText(/berat/i), "4.5");
     await openPicker(/^jenis$/i);
     await userEvent.click(
       await screen.findByRole("option", { name: "Anjing" }),
@@ -235,9 +241,10 @@ describe("CustomerPetsSection", () => {
       expect(mockedPetService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           name: "Bella",
-          species: "opt-species-dog",
-          size: "opt-size-large",
-          furType: "opt-furType-long-hair",
+          species: "opt-species-anjing",
+          weightKg: 4.5,
+          size: "opt-size-besar",
+          furType: "opt-furType-bulu-panjang",
         }),
       ),
     );
@@ -252,5 +259,86 @@ describe("CustomerPetsSection", () => {
     expect(
       screen.queryByRole("button", { name: /tambah hewan/i }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("CustomerPetsSection — size from weight", () => {
+  const PUPPY = makePetOption({
+    type: "size",
+    label: "Kecil",
+    speciesId: "opt-species-anjing",
+    minWeightKg: 0,
+    maxWeightKg: 5,
+  });
+  const ADULT = makePetOption({
+    type: "size",
+    label: "Besar",
+    speciesId: "opt-species-anjing",
+    minWeightKg: 5,
+    maxWeightKg: null,
+  });
+
+  it("shows the size its weight falls in, takes no pick, and sends none", async () => {
+    primePetOptions(petOptionService.list, [
+      ...PET_OPTION_FIXTURES.filter((option) => option.type !== "size"),
+      PUPPY,
+      ADULT,
+    ]);
+    listReturns([]);
+    mockedPetService.create.mockResolvedValue(pet() as never);
+
+    renderWithAuth(
+      <CustomerPetsSection customerId={CUSTOMER_ID} customerName="Ibu Rina" />,
+    );
+
+    await screen.findByText(/belum ada hewan terdaftar/i);
+    await userEvent.click(screen.getByRole("button", { name: /tambah hewan/i }));
+    await screen.findByRole("dialog");
+
+    await userEvent.type(screen.getByLabelText(/nama hewan/i), "Bella");
+    await openPicker(/^jenis$/i);
+    await userEvent.click(await screen.findByRole("option", { name: "Anjing" }));
+    await userEvent.type(screen.getByLabelText(/berat/i), "7");
+
+    /* The field is the answer, not an offer. */
+    const size = screen.getByRole("combobox", { name: /ukuran/i });
+    expect(size).toBeDisabled();
+    expect(size).toHaveTextContent("Besar");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /^tambah hewan$/i }),
+    );
+
+    await waitFor(() => expect(mockedPetService.create).toHaveBeenCalled());
+    const body = mockedPetService.create.mock.calls[0][0] as unknown as Record<string, unknown>;
+    expect(body.weightKg).toBe(7);
+    expect("size" in body).toBe(false);
+  });
+
+  it("will not save without a weight", async () => {
+    primePetOptions(petOptionService.list, [
+      ...PET_OPTION_FIXTURES.filter((option) => option.type !== "size"),
+      PUPPY,
+      ADULT,
+    ]);
+    listReturns([]);
+
+    renderWithAuth(
+      <CustomerPetsSection customerId={CUSTOMER_ID} customerName="Ibu Rina" />,
+    );
+
+    await screen.findByText(/belum ada hewan terdaftar/i);
+    await userEvent.click(screen.getByRole("button", { name: /tambah hewan/i }));
+    await screen.findByRole("dialog");
+
+    await userEvent.type(screen.getByLabelText(/nama hewan/i), "Bella");
+    await openPicker(/^jenis$/i);
+    await userEvent.click(await screen.findByRole("option", { name: "Anjing" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^tambah hewan$/i }),
+    );
+
+    expect(await screen.findByText(/berat wajib diisi/i)).toBeVisible();
+    expect(mockedPetService.create).not.toHaveBeenCalled();
   });
 });

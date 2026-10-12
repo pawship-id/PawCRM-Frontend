@@ -63,7 +63,7 @@ export function PosScreen() {
     loading: shiftLoading,
     error: shiftError,
     refetch,
-  } = usePosShift(branchChosen);
+  } = usePosShift(session?.currentBranchId ?? null);
   const cart = usePosCart();
   /*
     FR-3. Asks nothing until a customer is attached — the banner only exists once
@@ -80,8 +80,9 @@ export function PosScreen() {
    *
    * SORTED, so the order the lines happen to sit in never reads as a change.
    */
+  /* Trips too (11 October 2026): a trip left behind leaves the list once pulled. */
   const claimedBookings = (cart.cart?.items ?? [])
-    .map((item) => item.bookingId)
+    .flatMap((item) => [item.bookingId, item.homeTripId])
     .filter(Boolean)
     .sort()
     .join(",");
@@ -563,6 +564,7 @@ export function PosScreen() {
             void cart.setLinePrice(index, unitPrice)
           }
           onRemove={(index) => void cart.removeItem(index)}
+          onAddTrip={(tripId) => void cart.addTrip(tripId)}
           onItemDetails={(index, details) =>
             cart.setLineDetails(index, details)
           }
@@ -594,6 +596,7 @@ export function PosScreen() {
               <>
                 <PosBookingBanner
                   count={bridge.bookings.length}
+                  tripCount={bridge.trips.length}
                   disabled={cart.busy}
                   onOpen={() => setBridgeTab("pull")}
                 />
@@ -772,11 +775,27 @@ export function PosScreen() {
               swalToast(`${lines} layanan untuk ${names} ditambahkan.`);
             })();
           }}
-          onPull={(bookings) => {
-            if (bookings.length === 0) return;
+          onPull={(bookings, tripIds = []) => {
+            if (bookings.length === 0 && tripIds.length === 0) return;
 
             void (async () => {
+              /*
+                A TRIP LEFT BEHIND IS ADDED AFTER THE PULL (11 October 2026) — on
+                its own, as a line priced from the trip. Alone, it is the whole
+                act.
+              */
+              if (bookings.length === 0) {
+                await cart.addTrips(tripIds);
+                swalToast(
+                  tripIds.length === 1
+                    ? "Biaya perjalanan ditarik ke keranjang."
+                    : `${tripIds.length} biaya perjalanan ditarik ke keranjang.`,
+                );
+                return;
+              }
+
               await cart.pullBookings(bookings.map((booking) => booking._id));
+              if (tripIds.length > 0) await cart.addTrips(tripIds);
               /*
                 The bridge re-asks itself — see the effect on `claimedBookings`.
                 It is the basket's grip on an appointment that decides the count,

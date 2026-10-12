@@ -16,6 +16,7 @@ import { productService } from "@/services/product.service";
 import { branchService } from "@/services/branch.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { stockMovementService } from "@/services/stockMovement.service";
+import { stockTransferService } from "@/services/stockTransfer.service";
 import { stockEntryService } from "@/services/stockEntry.service";
 import { productBatchService } from "@/services/productBatch.service";
 import { ApiError } from "@/services/api-error";
@@ -217,6 +218,7 @@ function lot(overrides: Partial<ProductBatch> = {}): ProductBatch {
     productName: null,
     productSku: null,
     productUnit: null,
+    productSellPrice: null,
     warehouseName: null,
     ...overrides,
   };
@@ -266,8 +268,19 @@ function mockLookups({
   const create = jest
     .spyOn(stockMovementService, "create")
     .mockResolvedValue([]);
+  // A transfer is a document of its own now, filed through its own service —
+  // the transfer form no longer posts an `operation` to the ledger.
+  const transferCreate = jest
+    .spyOn(stockTransferService, "create")
+    .mockResolvedValue({
+      _id: "tr-new",
+      transferNumber: "TRF/2610/0001",
+      productCount: 1,
+      fromWarehouseName: "Gudang Pusat",
+      toWarehouseName: "Gudang Bazar",
+    } as never);
 
-  return { create, preview: previewCall };
+  return { create, transferCreate, preview: previewCall };
 }
 
 beforeEach(() => jest.useFakeTimers({ advanceTimers: true }));
@@ -580,6 +593,68 @@ describe("StockAdjustmentForm", () => {
   });
 
   /**
+   * ONE PRODUCT, TWO BATCHES. A product that tracks lots is corrected one lot at
+   * a time, so a second row for another batch is the ordinary case — the picker
+   * keeps offering it, and the batch one row has taken is not on offer to the
+   * next.
+   */
+  it("offers a lot-tracked product again so another batch can be corrected", async () => {
+    mockSheet(
+      [product({ hasExpiry: true })],
+      [lot(), lot({ _id: "lot-b", batchCode: "WSK-B26" })],
+    );
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await waitFor(() => jest.advanceTimersByTime(400));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(await within(dialog).findAllByRole("checkbox")).not.toHaveLength(0);
+    expect(within(dialog).queryByText(/sudah ditambahkan/)).toBeNull();
+  });
+
+  it("does not offer a lot to a second row once the first has taken it", async () => {
+    mockSheet(
+      [product({ hasExpiry: true })],
+      [lot(), lot({ _id: "lot-b", batchCode: "WSK-B26" })],
+    );
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click((await screen.findAllByLabelText(/^Batch /))[0]);
+    await user.click(await screen.findByRole("option", { name: /WSK-A26/ }));
+
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await waitFor(() => jest.advanceTimersByTime(400));
+    const dialog = await screen.findByRole("dialog");
+    await user.click((await within(dialog).findAllByRole("checkbox"))[0]);
+    await user.click(within(dialog).getByRole("button", { name: /Tambahkan/ }));
+
+    await user.click((await screen.findAllByLabelText(/^Batch /))[1]);
+    expect(
+      screen.queryByRole("option", { name: /WSK-A26/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: /WSK-B26/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("still hides a product with no lots once it is on the sheet", async () => {
+    mockSheet();
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await waitFor(() => jest.advanceTimersByTime(400));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(
+      await within(dialog).findByText(/sudah ditambahkan/),
+    ).toBeInTheDocument();
+  });
+
+  /**
    * NAMING A LOT FILLS THE TWO COLUMNS RATHER THAN DASHING THEM.
    *
    * The picker says `WSK-A26 - sisa 8`, which identifies the lot but hides what
@@ -876,7 +951,7 @@ describe("StockAdjustmentForm", () => {
 
 describe("StockTransferForm", () => {
   it("sends both warehouse ids and a positive quantity, as one item", async () => {
-    const { create } = mockLookups();
+    const { transferCreate: create } = mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
@@ -893,7 +968,6 @@ describe("StockTransferForm", () => {
     await waitFor(() =>
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
-          operation: "transfer",
           fromWarehouseId: WAREHOUSE,
           toWarehouseId: OTHER_WAREHOUSE,
           items: [{ productId: PRODUCT, qty: "6" }],
@@ -909,7 +983,7 @@ describe("StockTransferForm", () => {
    * stock card's notes column with silence that looks like content.
    */
   it("carries the transfer's note and the line's own", async () => {
-    const { create } = mockLookups();
+    const { transferCreate: create } = mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
@@ -975,7 +1049,7 @@ describe("StockTransferForm", () => {
    * lot to name, the line moves unbatched and the payload carries no `batchId`.
    */
   it("moves a lot-tracked product with no lots on the shelf unbatched", async () => {
-    const { create } = mockLookups({
+    const { transferCreate: create } = mockLookups({
       detail: product({ hasExpiry: true }),
       batches: [],
     });
@@ -1011,7 +1085,7 @@ describe("StockTransferForm", () => {
    * let batch A leave the shelf and batch B arrive.
    */
   it("sends the named batch with the line", async () => {
-    const { create } = mockLookups({
+    const { transferCreate: create } = mockLookups({
       detail: product({ hasExpiry: true }),
       batches: [lot()],
     });
@@ -1163,10 +1237,143 @@ describe("StockTransferForm", () => {
   });
 
   /**
-   * A PRODUCT ALREADY ON THE FORM IS NOT OFFERED AGAIN. The API refuses a
-   * transfer carrying one twice — FEFO reads the source lots once per line and
-   * would allocate the same goods to both — so a tick that could only ever
-   * produce a refusal is worse than an absence. Preventing it beats validating
+   * ONE PRODUCT, TWO BATCHES. Moving three boxes of one lot and two of another is
+   * one product and two lots, and a person loading a van has to be able to say
+   * so. The picker therefore keeps offering a product that tracks lots for as
+   * long as the shelf holds a lot no row has claimed — and hides it, as before,
+   * once every lot is spoken for or when it has no lots to name.
+   */
+  describe("one product from several batches", () => {
+    const LOT_A = lot({ _id: "lot-a", batchCode: "WSK-A26" });
+    const LOT_B = lot({ _id: "lot-b", batchCode: "WSK-B26", qtyRemaining: "5.0000" });
+
+    async function reopenPicker(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+      await waitFor(() => jest.advanceTimersByTime(400));
+      return screen.findByRole("dialog");
+    }
+
+    async function chooseBatch(
+      user: ReturnType<typeof userEvent.setup>,
+      row: number,
+      code: RegExp,
+    ) {
+      const triggers = await screen.findAllByLabelText(/^Batch/);
+      await user.click(triggers[row]);
+      await user.click(await screen.findByRole("option", { name: code }));
+    }
+
+    it("offers a lot-tracked product again while a lot is unclaimed", async () => {
+      mockLookups({
+        detail: product({ hasExpiry: true }),
+        batches: [LOT_A, LOT_B],
+      });
+
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<StockTransferForm />);
+
+      await addProducts(user);
+      const dialog = await reopenPicker(user);
+
+      expect(
+        await within(dialog).findAllByRole("checkbox"),
+      ).not.toHaveLength(0);
+      expect(within(dialog).queryByText(/sudah ditambahkan/)).toBeNull();
+    });
+
+    it("stops offering it once every lot is on a row", async () => {
+      mockLookups({ detail: product({ hasExpiry: true }), batches: [LOT_A] });
+
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<StockTransferForm />);
+
+      await addProducts(user);
+      await chooseBatch(user, 0, /WSK-A26/);
+      const dialog = await reopenPicker(user);
+
+      expect(await within(dialog).findByText(/sudah ditambahkan/)).toBeInTheDocument();
+    });
+
+    it("sends two lines for one product, each with its own batch", async () => {
+      const { transferCreate: create } = mockLookups({
+        detail: product({ hasExpiry: true }),
+        batches: [LOT_A, LOT_B],
+      });
+
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<StockTransferForm />);
+
+      await addProducts(user);
+      await chooseBatch(user, 0, /WSK-A26/);
+      await user.type((await screen.findAllByLabelText(/^Jumlah/))[0], "3");
+
+      const dialog = await reopenPicker(user);
+      const [box] = await within(dialog).findAllByRole("checkbox");
+      await user.click(box);
+      await user.click(
+        within(dialog).getByRole("button", { name: /Tambahkan/ }),
+      );
+
+      // The first row's lot is not on offer to the second.
+      const second = (await screen.findAllByLabelText(/^Batch/))[1];
+      await user.click(second);
+      expect(
+        screen.queryByRole("option", { name: /WSK-A26/ }),
+      ).not.toBeInTheDocument();
+      await user.click(await screen.findByRole("option", { name: /WSK-B26/ }));
+
+      await user.type((await screen.findAllByLabelText(/^Jumlah/))[1], "2");
+      await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
+
+      await waitFor(() =>
+        expect(create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            items: [
+              { productId: PRODUCT, qty: "3", batchId: "lot-a" },
+              { productId: PRODUCT, qty: "2", batchId: "lot-b" },
+            ],
+          }),
+        ),
+      );
+    });
+
+    it("takes the FEFO option away from a product that now has two rows", async () => {
+      mockLookups({
+        detail: product({ hasExpiry: true }),
+        batches: [LOT_A, LOT_B],
+      });
+
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      render(<StockTransferForm />);
+
+      await addProducts(user);
+      // Alone, the row may be left to FEFO.
+      await user.click((await screen.findAllByLabelText(/^Batch/))[0]);
+      expect(
+        await screen.findByRole("option", { name: /Otomatis \(FEFO\)/ }),
+      ).toBeInTheDocument();
+      await user.keyboard("{Escape}");
+
+      const dialog = await reopenPicker(user);
+      const [box] = await within(dialog).findAllByRole("checkbox");
+      await user.click(box);
+      await user.click(
+        within(dialog).getByRole("button", { name: /Tambahkan/ }),
+      );
+
+      // FEFO beside a named lot could draw from the very lot that row names.
+      await user.click((await screen.findAllByLabelText(/^Batch/))[0]);
+      expect(
+        screen.queryByRole("option", { name: /Otomatis \(FEFO\)/ }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * A PRODUCT THAT CANNOT TAKE ANOTHER ROW IS NOT OFFERED AGAIN. One with no
+   * lots to name would be a second FEFO line — FEFO reads the source lots once
+   * per line and would allocate the same goods to both — so a tick that could
+   * only ever produce a refusal is worse than an absence. Preventing it beats validating
    * it: that rule is not something a clerk can be expected to know.
    */
   it("does not offer a product already on the form", async () => {
@@ -1187,10 +1394,21 @@ describe("StockTransferForm", () => {
     expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
-  it("reports how many products moved, not just how many rows", async () => {
-    const { create } = mockLookups();
-    // Two lots × an out/in pair: four rows from one product.
-    create.mockResolvedValue([{}, {}, {}, {}] as never);
+  /**
+   * THE TOAST NAMES THE NUMBER AND WHAT HAPPENED TO THE STOCK. It reports the
+   * document's own product count — the server's — rather than a row count,
+   * which means nothing now that the inbound half is written later: the goods
+   * have left, and the far warehouse gains them only when somebody receives.
+   */
+  it("reports the number, the product count and that the goods are on the road", async () => {
+    const { transferCreate: create } = mockLookups();
+    create.mockResolvedValue({
+      _id: "tr-new",
+      transferNumber: "TRF/2610/0042",
+      productCount: 3,
+      fromWarehouseName: "Gudang Pusat",
+      toWarehouseName: "Gudang Bazar",
+    } as never);
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
@@ -1202,7 +1420,9 @@ describe("StockTransferForm", () => {
     await waitFor(() =>
       expect(Swal.fire).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: expect.stringContaining("1 produk, 4 baris"),
+          title: expect.stringMatching(
+            /TRF\/2610\/0042 tersimpan — 3 produk keluar dari Gudang Pusat.*setelah diterima/,
+          ),
         }),
       ),
     );
@@ -1234,7 +1454,7 @@ describe("StockTransferForm", () => {
 
   it("puts every product ticked in the picker into one payload", async () => {
     const second = product({ _id: "p2", sku: "SH-1L", name: "Shampoo Anjing" });
-    const { create } = mockLookups({ catalogue: [product(), second] });
+    const { transferCreate: create } = mockLookups({ catalogue: [product(), second] });
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
@@ -1307,7 +1527,7 @@ describe("StockTransferForm", () => {
    */
   it("blocks a quantity larger than the source warehouse holds", async () => {
     // The fixture holds 20 at the source warehouse.
-    const { create, preview } = mockLookups();
+    const { transferCreate: create, preview } = mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
@@ -1328,7 +1548,7 @@ describe("StockTransferForm", () => {
   });
 
   it("allows moving exactly what is on hand", async () => {
-    const { create } = mockLookups();
+    const { transferCreate: create } = mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     render(<StockTransferForm />);
@@ -1348,11 +1568,11 @@ describe("StockTransferForm", () => {
 
   /**
    * The half of "it worked" a toast cannot do — and the reason this form no
-   * longer clears itself in place. A transfer mints no document number and posts
-   * no journal, so a cleared form and a four-second toast used to be the entire
-   * receipt.
+   * longer clears itself in place. It leaves for the transfer it just filed,
+   * where Terima, Ubah and the surat jalan are: the next thing somebody does
+   * with a new transfer is print the note the driver carries.
    */
-  it("goes back to the list once the transfer lands", async () => {
+  it("opens the transfer once it lands", async () => {
     mockLookups();
 
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
@@ -1363,8 +1583,41 @@ describe("StockTransferForm", () => {
     await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
 
     await waitFor(() =>
-      expect(push).toHaveBeenCalledWith("/dashboard/inventory/transfers"),
+      expect(push).toHaveBeenCalledWith(
+        "/dashboard/inventory/transfers/tr-new",
+      ),
     );
+  });
+
+  /**
+   * SAID BEFORE IT IS DONE: saving takes the goods off the source shelf now, and
+   * the destination only gains them when somebody there receives the transfer.
+   * The one change in behaviour of this form, and not discoverable from the
+   * button.
+   */
+  it("says the goods leave now and arrive when received", async () => {
+    mockLookups();
+
+    render(<StockTransferForm />);
+
+    expect(
+      await screen.findByText(/langsung keluar dari gudang asal/),
+    ).toBeInTheDocument();
+  });
+
+  it("no longer sends an operation, or a movement type, to the ledger", async () => {
+    const { create, transferCreate } = mockLookups();
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+    await user.type(await screen.findByLabelText(/^Jumlah/), "5");
+    await user.click(screen.getByRole("button", { name: /Simpan transfer/ }));
+
+    await waitFor(() => expect(transferCreate).toHaveBeenCalled());
+    expect(create).not.toHaveBeenCalled();
+    expect(transferCreate.mock.calls[0][0]).not.toHaveProperty("operation");
   });
 
   it("refuses to render at all when the tenant has fewer than two active warehouses", async () => {
@@ -1562,6 +1815,53 @@ describe("OpeningStockForm", () => {
 
     expect(await screen.findByLabelText(/^Jumlah/)).toBeInTheDocument();
     expect(screen.getByText("Royal Canin Adult 3kg")).toBeInTheDocument();
+  });
+
+  /**
+   * ONE PRODUCT, SEVERAL LOTS. A shelf counted on day one holds batches with
+   * different expiry dates, and each is its own lot. The picker keeps offering a
+   * product that tracks expiry; one that does not is hidden once it is there.
+   */
+  it("offers a product that tracks expiry again, for another lot", async () => {
+    mockSheet([product({ hasExpiry: true })]);
+    const user = await renderSheet();
+
+    await pickWarehouse(user);
+    await addProducts(user);
+
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await waitFor(() => jest.advanceTimersByTime(400));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(await within(dialog).findAllByRole("checkbox")).not.toHaveLength(0);
+    expect(within(dialog).queryByText(/sudah ditambahkan/)).toBeNull();
+  });
+
+  it("refuses the same lot on two rows, naming what to change", async () => {
+    mockSheet([product({ hasExpiry: true })]);
+    const user = await renderSheet();
+
+    await pickWarehouse(user);
+    await addProducts(user);
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await waitFor(() => jest.advanceTimersByTime(400));
+    const dialog = await screen.findByRole("dialog");
+    await user.click((await within(dialog).findAllByRole("checkbox"))[0]);
+    await user.click(within(dialog).getByRole("button", { name: /Tambahkan/ }));
+
+    const qty = await screen.findAllByLabelText(/^Jumlah/);
+    const cost = screen.getAllByLabelText(/Harga beli per unit/);
+    const dates = screen.getAllByLabelText(/Tanggal kedaluwarsa/);
+    for (let i = 0; i < 2; i += 1) {
+      await user.type(qty[i], "5");
+      await user.type(cost[i], "1000");
+      await user.type(dates[i], "2027-06-30");
+    }
+
+    expect(screen.getByRole("button", { name: /Simpan stok awal/ })).toBeDisabled();
+    expect(
+      await screen.findByText(/Lot yang sama sudah ada di baris lain/),
+    ).toBeInTheDocument();
   });
 
   /**

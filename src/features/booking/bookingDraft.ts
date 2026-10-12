@@ -157,7 +157,13 @@ export function cardFromBooking(booking: Booking): BookingCardDraft {
        ever does: the card then shows "pick an animal", which is recoverable. */
     ...blankCard(booking.petId ?? ""),
     serviceId: service?.serviceId ?? "",
-    addonServiceIds: (service?.addons ?? []).map((addon) => addon.serviceId),
+    /*
+      WITHOUT THE VISIT-FEE ROW (10 October 2026): the server owns it — it is
+      never ticked, so it is never sent back in `addonServiceIds` either.
+    */
+    addonServiceIds: (service?.addons ?? [])
+      .filter((addon) => !addon.visitFee)
+      .map((addon) => addon.serviceId),
     plannedBenefit: booking.plannedBenefit
       ? {
           membershipId: booking.plannedBenefit.membershipId,
@@ -345,7 +351,10 @@ export function storedPetServiceKeys(booking: Booking): Set<string> {
   if (!service) return new Set();
 
   return new Set(
-    [service.serviceId, ...(service.addons ?? []).map((addon) => addon.serviceId)]
+    [
+      service.serviceId,
+      ...(service.addons ?? []).filter((addon) => !addon.visitFee).map((addon) => addon.serviceId),
+    ]
       .filter(Boolean)
       /* Null only on a ride, which has no card in this form — see
          `cardFromBooking`. */

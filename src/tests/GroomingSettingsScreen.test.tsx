@@ -5,7 +5,8 @@ import { GroomingSettingsScreen } from "@/features/grooming";
 import { bookingService } from "@/services/booking.service";
 import { petOptionService } from "@/services/petOption.service";
 import { tenantService } from "@/services/tenant.service";
-import type { GroomerCapacityDay, GroomingSettings, Tenant } from "@/types/api";
+import { zoneService } from "@/services/zone.service";
+import type { GroomerCapacityDay, GroomingSettings, Tenant, Zone } from "@/types/api";
 
 import {
   makePetOption,
@@ -14,6 +15,8 @@ import {
   primePetOptions,
 } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
+import { primeVariantOptions } from "./helpers/variantOptions";
+import { variantOptionService } from "@/services/variantOption.service";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -31,6 +34,8 @@ jest.mock("@/services/booking.service");
 jest.mock("@/services/petOption.service");
 jest.mock("@/services/tenant.service");
 jest.mock("@/services/user.service");
+jest.mock("@/services/zone.service");
+jest.mock("@/services/variantOption.service");
 
 /**
  * Layanan › Grooming › Pengaturan, "Nominal per ukuran" — on the TENANT'S sizes
@@ -51,6 +56,7 @@ const XL = makePetOption({
 });
 
 const GROOMING: GroomingSettings = {
+  homeGrooming: { feeUnit: "per_visit", fees: [] },
   commission: {
     service: {
       mode: "size_nominal",
@@ -61,9 +67,9 @@ const GROOMING: GroomingSettings = {
         the tenant's options at all — a size since deleted.
       */
       sizeNominal: {
-        "opt-size-small": 30000,
-        "opt-size-medium": 45000,
-        "opt-size-large": 60000,
+        "opt-size-kecil": 30000,
+        "opt-size-sedang": 45000,
+        "opt-size-besar": 60000,
         jumbo: 80000,
       },
     },
@@ -131,11 +137,11 @@ describe("GroomingSettingsScreen — nominal per size", () => {
       (tenantService.updateSettings as jest.Mock).mock.calls[0][0].grooming.commission
         .service.sizeNominal,
     ).toEqual({
-      "opt-size-small": 30000,
-      "opt-size-medium": 45000,
-      "opt-size-large": 60000,
+      "opt-size-kecil": 30000,
+      "opt-size-sedang": 45000,
+      "opt-size-besar": 60000,
       jumbo: 80000,
-      "opt-size-xl": 55000,
+      "opt-size-ekstra-besar": 55000,
     });
   });
 
@@ -238,5 +244,160 @@ describe("GroomingSettingsScreen — lists shared by every service", () => {
     expect(screen.queryByRole("link", { name: /Data hewan/ })).not.toBeInTheDocument();
     expect(screen.getByText("Tahapan")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Tahapan/ })).not.toBeInTheDocument();
+  });
+});
+
+/*
+  ─── HOME GROOMING (10 October 2026) ───────────────────────────────────────────
+
+  Every home-grooming setting is in one tab: how a visit's fee is counted, and
+  what each ZONE costs. The zones are the ones made under Pengaturan › Layanan ›
+  Zona — chosen here, never created here, and carrying no money themselves.
+*/
+describe("GroomingSettingsScreen — Home grooming", () => {
+  const zone = (id: string, name: string, minKm: number, maxKm: number): Zone => ({
+    _id: id,
+    tenantId: "t1",
+    name,
+    nameKey: name.toLowerCase(),
+    description: null,
+    minKm,
+    maxKm,
+    createdBy: null,
+    deletedAt: null,
+    createdAt: "2026-10-10T00:00:00.000Z",
+    updatedAt: "2026-10-10T00:00:00.000Z",
+  });
+
+  const ZONES = [zone("zone-a", "Zona A", 0, 3), zone("zone-b", "Zona B", 3, 6)];
+
+  /* Every size priced, so nothing on Komisi holds up a save made from here. */
+  const priced: GroomingSettings = {
+    ...GROOMING,
+    commission: {
+      ...GROOMING.commission,
+      service: {
+        ...GROOMING.commission.service,
+        sizeNominal: {
+          ...GROOMING.commission.service.sizeNominal,
+          "opt-size-ekstra-besar": 55000,
+        },
+      },
+    },
+  };
+
+  const withFees = (feeUnit: "per_visit" | "per_pet", fees: { zoneId: string; fee: number }[]) =>
+    tenant({ ...priced, homeGrooming: { feeUnit, fees } });
+
+  async function openTab() {
+    const user = userEvent.setup();
+    renderWithAuth(<GroomingSettingsScreen />);
+    await user.click(await screen.findByRole("tab", { name: "Home grooming" }));
+    return user;
+  }
+
+  beforeEach(() => {
+    primeVariantOptions(variantOptionService.list, zoneService.list, { zones: ZONES });
+    (tenantService.me as jest.Mock).mockResolvedValue(withFees("per_visit", []));
+  });
+
+  it("is a tab of its own, beside Komisi and Kapasitas", async () => {
+    await openTab();
+
+    expect(screen.getByText("Biaya kunjungan dihitung", { selector: "h2, h3, div" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /per kunjungan/i })).toBeChecked();
+  });
+
+  it("shows the zones that already have a fee, with their range", async () => {
+    (tenantService.me as jest.Mock).mockResolvedValue(
+      withFees("per_visit", [{ zoneId: "zone-a", fee: 40000 }]),
+    );
+    await openTab();
+
+    expect(await screen.findByLabelText("Biaya kunjungan Zona A")).toHaveValue("40000");
+    expect(screen.getByText("0–3 km")).toBeInTheDocument();
+    /* Zona B has no row: it is offered to add, not drawn as a zero. */
+    expect(screen.queryByLabelText("Biaya kunjungan Zona B")).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Zona B/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Zona A ·/ })).not.toBeInTheDocument();
+  });
+
+  it("adds a zone from the list, holds the save until it is priced, then sends it", async () => {
+    const user = await openTab();
+
+    await user.selectOptions(await screen.findByLabelText("Tambah zona"), "zone-b");
+
+    const box = await screen.findByLabelText("Biaya kunjungan Zona B");
+    expect(box).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Simpan pengaturan" })).toBeDisabled();
+
+    await user.type(box, "70000");
+    await user.click(screen.getByRole("button", { name: "Simpan pengaturan" }));
+
+    await waitFor(() => expect(tenantService.updateSettings).toHaveBeenCalledTimes(1));
+    expect(
+      (tenantService.updateSettings as jest.Mock).mock.calls[0][0].grooming.homeGrooming,
+    ).toEqual({ feeUnit: "per_visit", fees: [{ zoneId: "zone-b", fee: 70000 }] });
+  });
+
+  it("sends the unit that was chosen", async () => {
+    const user = await openTab();
+
+    await user.click(screen.getByRole("radio", { name: /per hewan/i }));
+    await user.click(screen.getByRole("button", { name: "Simpan pengaturan" }));
+
+    await waitFor(() => expect(tenantService.updateSettings).toHaveBeenCalledTimes(1));
+    expect(
+      (tenantService.updateSettings as jest.Mock).mock.calls[0][0].grooming.homeGrooming
+        .feeUnit,
+    ).toBe("per_pet");
+  });
+
+  it("removes a fee, so the zone costs nothing again", async () => {
+    (tenantService.me as jest.Mock).mockResolvedValue(
+      withFees("per_visit", [{ zoneId: "zone-a", fee: 40000 }]),
+    );
+    const user = await openTab();
+
+    await user.click(await screen.findByRole("button", { name: "Hapus biaya Zona A" }));
+    await user.click(screen.getByRole("button", { name: "Simpan pengaturan" }));
+
+    await waitFor(() => expect(tenantService.updateSettings).toHaveBeenCalledTimes(1));
+    expect(
+      (tenantService.updateSettings as jest.Mock).mock.calls[0][0].grooming.homeGrooming.fees,
+    ).toEqual([]);
+  });
+
+  it("draws a fee for a zone that is gone as such, with a way to clear it", async () => {
+    (tenantService.me as jest.Mock).mockResolvedValue(
+      withFees("per_visit", [{ zoneId: "zone-lama", fee: 9000 }]),
+    );
+    await openTab();
+
+    expect(await screen.findByText("Zona sudah dihapus")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Hapus biaya zona yang sudah dihapus" }),
+    ).toBeInTheDocument();
+  });
+
+  it("points at the zone page when there is no zone yet", async () => {
+    primeVariantOptions(variantOptionService.list, zoneService.list, { zones: [] });
+    await openTab();
+
+    expect(await screen.findByText(/Belum ada zona/)).toBeInTheDocument();
+  });
+
+  it("names the tab when a fee on it is wrong", async () => {
+    (tenantService.me as jest.Mock).mockResolvedValue(
+      withFees("per_visit", [{ zoneId: "zone-a", fee: 40000 }]),
+    );
+    const user = userEvent.setup();
+    renderWithAuth(<GroomingSettingsScreen />);
+    await user.click(await screen.findByRole("tab", { name: "Home grooming" }));
+    const box = await screen.findByLabelText("Biaya kunjungan Zona A");
+    await user.clear(box);
+    await user.type(box, "empat");
+
+    expect(await screen.findByText(/isian di tab Home grooming belum benar/)).toBeInTheDocument();
   });
 });

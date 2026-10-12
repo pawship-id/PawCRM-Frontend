@@ -34,9 +34,8 @@ export { FinanceDashboardScreen } from "./components/FinanceDashboardScreen";
  */
 export { FinanceReportToolbar } from "./components/FinanceReportToolbar";
 /**
- * THE THREE READING REPORTS, all of them live against the ledger since 18
- * September 2026 — Laba Rugi over `GET /journal-entries/profit-loss`, Neraca and
- * Arus Kas over `GET /journal-entries/balances`. The fixtures they used to
+ * THE READING REPORTS, all of them live against the ledger since 18
+ * September 2026 — Laba Rugi over `GET /journal-entries/profit-loss`, Neraca over `GET /journal-entries/balances`. The fixtures they used to
  * render are gone, and so is the banner that said the figures were examples.
  *
  * They share `useFinanceReport`, which fetches the branches and the lines once
@@ -44,7 +43,6 @@ export { FinanceReportToolbar } from "./components/FinanceReportToolbar";
  * is what the seam was for.
  */
 export { ProfitLossScreen } from "./components/ProfitLossScreen";
-export { CashflowScreen } from "./components/CashflowScreen";
 /**
  * KAS & BANK LIVES HERE NOW (20 September 2026). It moved out of
  * `features/payment-channels` when its table stopped listing channels and
@@ -71,15 +69,12 @@ export {
 export { BalanceSheetScreen } from "./components/BalanceSheetScreen";
 export { balanceSheet, type BalanceSheet } from "./balanceSheet";
 export {
-  cashflowReport,
   profitLossMatrix,
-  type CashflowReport,
   type ProfitLossMatrix,
   type ReportQuery,
 } from "./reportSummary";
 export {
   useFinanceReport,
-  dayBefore,
   type FinanceReportKind,
 } from "./hooks/useFinanceReport";
 export { BusinessLinesScreen } from "./components/BusinessLinesScreen";

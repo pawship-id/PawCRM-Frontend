@@ -85,6 +85,8 @@ export function ReceiptAddProductsDialog({
             {consignment
               ? "Yang tampil hanya produk yang ditandai konsinyasi (titipan)."
               : "Produk yang ditandai konsinyasi (titipan) tidak ditampilkan di sini."}
+            {" "}Produk yang melacak kedaluwarsa tetap muncul walau sudah ada di
+            form, karena satu kiriman bisa membawanya dalam beberapa batch.
           </DialogDescription>
         </DialogHeader>
 

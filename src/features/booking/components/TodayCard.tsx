@@ -1,11 +1,12 @@
 "use client";
 
-import { TriangleAlert } from "lucide-react";
+import { House, TriangleAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 import { clockOf } from "../day";
+import { HOME_TRIP_LABELS } from "../homeTrip";
 import type { TodayRow, TodaySlice } from "../today";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
@@ -100,6 +101,18 @@ export function TodayCard({
               className="border-transparent bg-tint-neutral tabular-nums text-muted"
             >
               {row.durationMin} mnt
+            </Badge>
+          )}
+
+          {/* Where the groomer's journey to the house stands (10 October 2026). */}
+          {booking.homeTrip && (
+            <Badge
+              variant="outline"
+              title="Perjalanan ke rumah"
+              className="border-transparent bg-tint-info text-info"
+            >
+              <House className="size-4" aria-hidden />
+              {HOME_TRIP_LABELS[booking.homeTrip.status]}
             </Badge>
           )}
 

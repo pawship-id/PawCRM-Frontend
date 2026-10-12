@@ -1,11 +1,17 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
-import { Alert, Breadcrumb, Spinner } from "@/components";
-// The shadcn button directly, for `size="sm"` — the app-facing wrapper in
-// @/components does not carry a size prop. Same import JournalEntriesScreen makes.
+import {
+  Alert,
+  Breadcrumb,
+  FilterMultiSelect,
+  FilterPills,
+  Spinner,
+  namedOptions,
+} from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -17,96 +23,129 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { absDecimal, formatMoney } from "@/utils/decimal";
-import type { AccountCategory } from "@/types/accounting";
+import { exportToXlsx, type XlsxColumn } from "@/utils/xlsx";
 
-import { ACCOUNTING_CRUMBS } from "../crumbs";
 import {
-  currentMonthRange,
+  SHARED_LINE_LABEL,
+  SHARED_LINE_NONE,
   formatPercent,
-  marginPct,
-  reportPresets,
-  type FinanceQuery,
+  monthRange,
 } from "../financeSummary";
-import { useFinanceReport } from "../hooks/useFinanceReport";
-import { profitLossMatrix, type MatrixRow } from "../reportSummary";
-import { formatDate } from "../labels";
-import { FinanceReportToolbar } from "./FinanceReportToolbar";
+import { useProfitLossMonths } from "../hooks/useProfitLossMonths";
+import {
+  CHANGE_BIG,
+  CHANGE_THRESHOLD,
+  changeAgainst,
+  profitLossStatement,
+  type StatementRow,
+  type StatementValue,
+} from "../profitLossStatement";
 
 /**
- * Laba rugi per lini bisnis — accounts down, lini across, konsolidasi on the end.
+ * Laba rugi, as the v3 mockup draws it (Laporan › Laba rugi).
  *
- * WHY A MATRIX RATHER THAN A LIST. A single-column P&L answers "did the shop make
- * money", which the Keuangan dashboard already answers in four cards. The question
- * this screen exists for is the one a petshop owner actually has — *which* part of
- * the shop makes money — and that is a comparison, so the lines have to sit side
- * by side on one row. Grooming's margin is only interesting next to retail's.
+ * THREE MONTHS SIDE BY SIDE rather than accounts × lini. The question a reader
+ * brings to a P&L is "did this month get better or worse than the last", so the
+ * columns are months, oldest first, and a figure that moved 10% or more against
+ * the month before wears a label under it: green when the move helps (revenue or
+ * profit up, cost down), red when it hurts. 25% or more also tints the cell.
  *
- * THE FIGURES ARE REAL as of 18 September 2026 — `GET /journal-entries/profit-loss`.
- * It used to render a fixture, and the note here used to explain why: `summary`
- * groups by (line × account CLASS), which could give the group totals and
- * nothing under them, and could not tell HPP from beban operasional because both
- * are `expense`. The chart of accounts grew CATEGORIES, the endpoint groups by
- * them, and the whole report follows.
+ * TWO VIEWS OF THE SAME NUMBERS. Gabungan is the whole shop; Per lini bisnis
+ * keeps the same rows but each can be opened to show its share per lini, the
+ * unattributed bucket included. The lini filter drops columns, it does not
+ * narrow the ledger — see `profitLossMatrix`.
  *
- * FIVE GROUPS AND THREE SUBTOTALS, which is BO's own formula:
+ * Every amount is the server's (`GET /journal-entries/profit-loss`, one read per
+ * month). The page adds nothing up except the percentages between two figures.
  *
- *   Pendapatan − HPP = Laba Kotor − Biaya = Laba Usaha
- *   + Pendapatan Lainnya − Biaya Lainnya = Laba Bersih
- *
- * Pendapatan Lainnya sits BELOW laba usaha rather than in laba kotor — decided
- * 18 September, so gross margin is not shifted by delivery income or an opname
- * gain, and so it mirrors Biaya Lainnya. Laba bersih is the same either way.
- *
- * ALL THREE FILTERS ARE LIVE NOW. The period and the cabang go to the API; the
- * lini bisnis does NOT — it drops COLUMNS from a matrix that still totals across
- * all of them, which is a different act from narrowing the ledger. See
- * `profitLossMatrix`.
- *
- * NOTHING ON THIS SCREEN ADDS UP MONEY. Every figure including the three
- * subtotals is computed server-side and derived from the others there, so two
- * numbers on this page cannot disagree.
- *
- * `now` COMES FROM THE SERVER, like the dashboard's: the presets are dates, and a
- * client component that read the clock while rendering would disagree with the
- * HTML the server sent.
+ * `now` COMES FROM THE SERVER so the month the screen opens on matches the HTML.
  */
+
+const MONTHS = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+];
+
+type View = "gabungan" | "lini";
+
 export function ProfitLossScreen({ now }: { now: string }) {
   const today = useMemo(() => new Date(now), [now]);
-  const presets = useMemo(() => reportPresets(today), [today]);
 
-  // The current month, so the screen opens on a period rather than on the whole
-  // history of the ledger — which is a legal answer from the API and never the
-  // one somebody came for. A laba rugi is read by the month.
-  const [query, setQuery] = useState<FinanceQuery>(() => {
-    const month = currentMonthRange(today);
-    return {
-      dateFrom: month.dateFrom,
-      dateTo: month.dateTo,
-      branchId: "",
-      businessLineId: "",
+  const [back, setBack] = useState(0);
+  // Empty = semua. The multi-selects apply on Terapkan and reset to "all".
+  const [branchIds, setBranchIds] = useState<string[]>([]);
+  const [lineIds, setLineIds] = useState<string[]>([]);
+  const [view, setView] = useState<View>("gabungan");
+  const [open, setOpen] = useState<Set<string>>(() => new Set(["np"]));
+
+  // Oldest first: the month on screen is the LAST column.
+  const months = useMemo(() => {
+    const base = today.getFullYear() * 12 + today.getMonth() - back;
+    return [2, 1, 0].map((k) => {
+      const index = base - k;
+      const year = Math.floor(index / 12);
+      const month = index % 12;
+      return { ...monthRange(year, month + 1), label: MONTHS[month], year };
+    });
+  }, [today, back]);
+
+  const { branches, businessLines, results, loading, error } =
+    useProfitLossMonths(months, branchIds);
+
+  const statement = useMemo(
+    () => (results ? profitLossStatement(results, businessLines, lineIds) : null),
+    [results, businessLines, lineIds],
+  );
+
+  const current = months[2];
+  const rows = statement
+    ? view === "lini"
+      ? statement.rows.filter((r) => r.inLini)
+      : statement.rows
+    : [];
+  const allOpen = rows.length > 0 && rows.every((r) => open.has(r.key));
+
+  const branchOptions = namedOptions(branches);
+  const lineOptions = [
+    ...namedOptions(businessLines),
+    { value: SHARED_LINE_NONE, label: SHARED_LINE_LABEL },
+  ];
+  const summarize = (all: string) => (values: string[]) =>
+    values.length === 0 ? all : `${values.length} dipilih`;
+
+  async function exportXlsx() {
+    if (!statement) return;
+    type Line = { label: string; v: StatementValue[]; pct?: boolean };
+    const lines: Line[] = [];
+    for (const row of rows) {
+      lines.push({ label: row.label, pct: row.pct, v: row.v.map((m) => m[0]) });
+      if (view === "lini") {
+        statement.columns.forEach((col, i) =>
+          lines.push({ label: `   ${col.label}`, pct: row.pct, v: row.v.map((m) => m[i + 1]) }),
+        );
+      }
+    }
+    const cell = (line: Line, m: number) => {
+      const value = line.v[m];
+      if (line.pct) return typeof value === "number" ? value : null;
+      return typeof value === "string" ? Number(value) : null;
     };
-  });
+    const columns: XlsxColumn<Line>[] = [
+      { header: "Uraian", value: (l) => l.label, width: 34 },
+      ...months.map((month, m): XlsxColumn<Line> => ({
+        header: `${month.label} ${month.year}`,
+        value: (l) => cell(l, m),
+        type: "number",
+        width: 18,
+      })),
+    ];
+    await exportToXlsx(columns, lines, `laba-rugi-${current.dateFrom.slice(0, 7)}.xlsx`, {
+      sheetName: "Laba rugi",
+    });
+  }
 
-  /** Open group keys. Pendapatan leads open — it is the row people came for. */
-  const [expanded, setExpanded] = useState<Set<AccountCategory>>(
-    () => new Set<AccountCategory>(["pendapatan"]),
-  );
-
-  const { branches, businessLines, profitLoss, loading, error } =
-    useFinanceReport("profitLoss", query);
-
-  const matrix = useMemo(
-    () =>
-      profitLoss
-        ? profitLossMatrix(profitLoss, businessLines, query.businessLineId)
-        : null,
-    [profitLoss, businessLines, query.businessLineId],
-  );
-
-  const allOpen = matrix !== null && expanded.size === matrix.groups.length;
-
-  function toggle(key: AccountCategory) {
-    setExpanded((prev) => {
+  function toggle(key: string) {
+    setOpen((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -114,37 +153,42 @@ export function ProfitLossScreen({ now }: { now: string }) {
     });
   }
 
-  // +2: the sticky account column and the consolidated one, which are not lini.
-  const columnCount = (matrix?.columns.length ?? 0) + 2;
-
-  /** The period as it reads on the card, taken from what was asked for. */
-  const periodLabel =
-    query.dateFrom && query.dateTo
-      ? `${formatDate(query.dateFrom)} – ${formatDate(query.dateTo)}`
-      : "Seluruh periode";
-
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Breadcrumb items={[ACCOUNTING_CRUMBS.hub, { label: "Laba Rugi" }]} />
-        <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-          Laba Rugi per Lini Bisnis
-        </h1>
-        <p className="mt-1 max-w-2xl text-[15px] text-muted">
-          Pendapatan dikurangi beban pokok dan beban operasional, dipecah per
-          lini bisnis. Lini diambil dari aturan Detil Akun di Daftar Akun;
-          yang belum punya aturan Detil tampil di kolom Belum Dipetakan.
-        </p>
+      <div className="flex flex-wrap items-start gap-4">
+        <div>
+          <Breadcrumb
+            items={[
+              { label: "Laporan", href: "/dashboard/reports?tab=keuangan" },
+              { label: "Laba rugi" },
+            ]}
+          />
+          <h1 className="mt-1 text-2xl font-extrabold text-foreground">
+            Laba rugi
+          </h1>
+          <p className="mt-1 max-w-2xl text-[15px] text-muted">
+            Basis akrual. Pendapatan diakui saat faktur diposting, HPP saat stok
+            keluar.
+          </p>
+        </div>
+        <div className="ml-auto flex gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/dashboard/reports?tab=keuangan">← Kembali</Link>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!statement}
+            onClick={exportXlsx}
+          >
+            Ekspor
+          </Button>
+        </div>
       </div>
 
       {error && <Alert variant="error">{error}</Alert>}
 
-      {/*
-        A figure that rests on an equal split rather than on trade. Said here, on
-        the report, rather than only in a tooltip: somebody who prints this page
-        has to be able to see that one of its numbers is an estimate.
-      */}
-      {profitLoss?.allocation?.estimated && (
+      {results?.some((r) => r.allocation?.estimated) && (
         <Alert variant="warning">
           Sebagian biaya bersama dibagi rata, bukan sesuai porsi pendapatan,
           karena tidak ada lini di lingkup pembagian itu yang mencatat
@@ -152,316 +196,261 @@ export function ProfitLossScreen({ now }: { now: string }) {
         </Alert>
       )}
 
-      <FinanceReportToolbar
-        query={query}
-        branches={branches}
-        businessLines={businessLines}
-        presets={presets}
-        disabled={loading}
-        onChange={(patch) => setQuery((prev) => ({ ...prev, ...patch }))}
-      />
-
-      {matrix === null ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Memuat laba rugi…
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface px-5 py-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          {branches.length > 1 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-muted">Cabang</span>
+              <FilterMultiSelect
+                label="Cabang"
+                layout="bar"
+                ariaLabel="Filter cabang"
+                values={branchIds}
+                options={branchOptions}
+                disabled={loading}
+                formatValue={summarize("Semua cabang")}
+                onApply={setBranchIds}
+                onReset={() => setBranchIds([])}
+              />
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-muted">Lini bisnis</span>
+            <FilterMultiSelect
+              label="Lini bisnis"
+              layout="bar"
+              ariaLabel="Filter lini bisnis"
+              values={lineIds}
+              options={lineOptions}
+              disabled={loading}
+              formatValue={summarize("Semua lini")}
+              onApply={setLineIds}
+              onReset={() => setLineIds([])}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-muted">Bulan</span>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Bulan sebelumnya"
+              onClick={() => setBack((n) => n + 1)}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <b className="min-w-32 text-center text-sm">
+              {current.label} {current.year}
+            </b>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Bulan berikutnya"
+              disabled={back === 0}
+              onClick={() => setBack((n) => Math.max(0, n - 1))}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+          <span className="ml-auto text-xs text-muted">
+            Pilih satu lini untuk melihat laba rugi lengkap lini itu
+          </span>
         </div>
-      ) : (
-        /* The table container is written out rather than wrapped in <Card>: Card
-         pads its content, and a matrix has to run edge to edge so the sticky
-         first column has an edge to stick to. Same shape JournalEntriesScreen
-         uses for the same reason. */
-        <div className="overflow-hidden rounded-xl border border-border bg-surface">
-          <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface-hover px-4 py-3">
-            <h2 className="text-base font-bold">Laporan Laba Rugi</h2>
-            <span className="text-xs tabular-nums text-muted">
-              {periodLabel} ·{" "}
-              {query.branchId
-                ? (branches.find((b) => b._id === query.branchId)?.name ??
-                  "Cabang terpilih")
-                : "Semua cabang"}
-            </span>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border pt-3">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-muted">Tampilan</span>
+            <FilterPills<View>
+              ariaLabel="Tampilan laba rugi"
+              value={view}
+              options={[
+                { value: "gabungan", label: "Gabungan" },
+                { value: "lini", label: "Per lini bisnis" },
+              ]}
+              onChange={setView}
+            />
+          </div>
+          {view === "lini" && (
             <Button
               variant="ghost"
               size="sm"
               className="ml-auto"
               onClick={() =>
-                setExpanded(
-                  allOpen
-                    ? new Set()
-                    : new Set(matrix.groups.map((group) => group.key)),
-                )
+                setOpen(allOpen ? new Set() : new Set(rows.map((r) => r.key)))
               }
             >
-              {allOpen ? "Tutup semua rincian" : "Buka semua rincian"}
+              {allOpen ? "Tutup semua" : "Buka semua"}
             </Button>
-          </div>
+          )}
+        </div>
+      </div>
 
+      {statement === null ? (
+        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+          <Spinner /> Memuat laba rugi…
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-xl border border-border bg-surface">
           <Table className={loading ? "opacity-60" : undefined}>
             <TableHeader>
               <TableRow>
-                {/* Sticky, because the whole point of the table is reading one
-                  account across several lini — and a row you have scrolled the
-                  name off is a row of numbers about nothing. */}
-                <TableHead className="sticky left-0 z-20 bg-surface-hover">
-                  Akun
-                </TableHead>
-                {matrix.columns.map((column) => (
-                  <TableHead
-                    key={column.id ?? "shared"}
-                    className="text-right whitespace-nowrap"
-                  >
-                    {column.label}
+                <TableHead className="w-[34%]">Uraian</TableHead>
+                {months.map((m) => (
+                  <TableHead key={m.dateFrom} className="text-right">
+                    {m.label}
                   </TableHead>
                 ))}
-                <TableHead className="border-l border-border text-right whitespace-nowrap">
-                  Total Konsolidasi
-                </TableHead>
               </TableRow>
             </TableHeader>
-
             <TableBody>
-              {matrix.groups.map((group) => {
-                const open = expanded.has(group.key);
-                // Which side of the formula the group is on, decided in
-                // `reportSummary` rather than here: the two income groups add, the
-                // three cost groups are subtracted and so print with a leading
-                // minus. The amounts themselves stay positive, because a report
-                // prints "Beban Sewa 15.000.000" until it is being taken away.
-                const negative = group.negative;
-
-                return (
-                  <Fragment key={group.key}>
-                    <TableRow className="bg-surface-hover hover:bg-surface-hover">
-                      <TableCell className="sticky left-0 z-10 bg-surface-hover px-4 py-2.5">
-                        <button
-                          type="button"
-                          aria-expanded={open}
-                          onClick={() => toggle(group.key)}
-                          className="inline-flex items-center gap-2 rounded-md text-sm font-semibold outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                        >
-                          <ChevronRight
-                            className={cn(
-                              "size-4 text-muted transition",
-                              open && "rotate-90",
-                            )}
-                            aria-hidden
-                          />
-                          {group.label}
-                        </button>
-                      </TableCell>
-                      {group.cells.map((amount, index) => (
-                        <TableCell
-                          key={matrix.columns[index].id ?? "shared"}
-                          className="px-4 py-2.5 text-right text-sm font-semibold tabular-nums"
-                        >
-                          {signed(amount, negative)}
-                        </TableCell>
-                      ))}
-                      <TableCell className="border-l border-border px-4 py-2.5 text-right text-sm font-semibold tabular-nums">
-                        {signed(group.total, negative)}
-                      </TableCell>
-                    </TableRow>
-
-                    {open &&
-                      group.accounts.map((account) => (
-                        <Fragment key={account.code}>
-                          <TableRow>
-                            <TableCell className="sticky left-0 z-10 bg-surface py-2 pr-4 pl-10 text-sm">
-                              <span className="mr-2 text-xs tabular-nums text-muted">
-                                {account.code}
-                              </span>
-                              {account.name}
-                            </TableCell>
-                            {account.cells.map((amount, index) => (
-                              <TableCell
-                                key={matrix.columns[index].id ?? "shared"}
-                                className="px-4 py-2 text-right text-sm tabular-nums text-muted"
-                              >
-                                {signed(amount, negative)}
-                              </TableCell>
-                            ))}
-                            <TableCell className="border-l border-border px-4 py-2 text-right text-sm tabular-nums text-muted">
-                              {signed(account.total, negative)}
-                            </TableCell>
-                          </TableRow>
-
-                          {/* Sub akun, always visible and indented one step further.
-                          They break the account's own figure down; the unmapped
-                          row is "Belum Dipetakan" and the server puts it last. */}
-                          {account.subAccounts.map((sub) => (
-                            <TableRow key={sub.subAccountId ?? "unmapped"}>
-                              <TableCell className="sticky left-0 z-10 bg-surface py-1.5 pr-4 pl-16 text-sm text-muted">
-                                {sub.unmapped ? (
-                                  "Belum Dipetakan"
-                                ) : (
-                                  <>
-                                    <span className="mr-2 text-xs tabular-nums">
-                                      {sub.code}
-                                    </span>
-                                    {sub.name}
-                                  </>
-                                )}
-                                {!sub.isActive && (
-                                  <span className="ml-2 rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted">
-                                    Nonaktif
-                                  </span>
-                                )}
-                              </TableCell>
-                              {sub.cells.map((amount, index) => (
-                                <TableCell
-                                  key={matrix.columns[index].id ?? "shared"}
-                                  className="px-4 py-1.5 text-right text-sm tabular-nums text-muted"
-                                >
-                                  {signed(amount, negative)}
-                                </TableCell>
-                              ))}
-                              <TableCell className="border-l border-border px-4 py-1.5 text-right text-sm tabular-nums text-muted">
-                                {signed(sub.total, negative)}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </Fragment>
-                      ))}
-
-                    {open && group.accounts.length === 0 && (
-                      <TableRow className="hover:bg-transparent">
-                        <TableCell
-                          colSpan={columnCount}
-                          className="py-4 pl-10 text-sm text-muted"
-                        >
-                          Belum ada akun yang bergerak di grup ini.
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {/* Each subtotal sits directly under the group it closes —
-                      that placement IS what makes it that subtotal rather than
-                      a second net figure. Laba kotor after HPP, laba usaha
-                      after Biaya. */}
-                    {group.key === "hpp" && (
-                      <ResultRow
-                        label="Laba Kotor"
-                        row={matrix.grossProfit}
-                        base={matrix.revenue}
-                        columns={matrix.columns}
-                        pctLabel="margin"
+              {rows.map((row) => (
+                <Fragment key={row.key}>
+                  <StatementLine
+                    row={row}
+                    column={0}
+                    label={row.label}
+                    expander={
+                      view === "lini"
+                        ? { open: open.has(row.key), onToggle: () => toggle(row.key) }
+                        : undefined
+                    }
+                  />
+                  {view === "lini" &&
+                    open.has(row.key) &&
+                    statement.columns.map((col, i) => (
+                      <StatementLine
+                        key={col.id ?? "shared"}
+                        row={row}
+                        column={i + 1}
+                        label={col.label}
+                        child
                       />
-                    )}
-                    {group.key === "biaya" && (
-                      <ResultRow
-                        label="Laba Usaha"
-                        row={matrix.operatingProfit}
-                        base={matrix.revenue}
-                        columns={matrix.columns}
-                        pctLabel="margin usaha"
-                      />
-                    )}
-                  </Fragment>
-                );
-              })}
-
-              <ResultRow
-                label="Laba Bersih"
-                row={matrix.netProfit}
-                base={matrix.revenue}
-                columns={matrix.columns}
-                pctLabel="margin bersih"
-                emphasis
-              />
+                    ))}
+                </Fragment>
+              ))}
             </TableBody>
           </Table>
         </div>
       )}
 
-      <p className="text-xs text-muted">
-        Persentase dihitung terhadap pendapatan kolom yang sama, jadi sebuah
-        lini dibandingkan dengan dirinya sendiri — bukan dengan total shop.
-        Kolom Belum Dipetakan tidak punya pendapatan, jadi persentasenya tampil
-        sebagai &ldquo;—&rdquo;.
-      </p>
+      <div className="rounded-xl border border-border border-l-[3px] border-l-primary bg-surface px-4 py-3">
+        <p className="text-sm font-bold text-foreground">Cara membaca</p>
+        <p className="mt-0.5 text-xs text-muted">
+          Angka yang berubah {CHANGE_THRESHOLD}% atau lebih dari bulan sebelumnya
+          diberi label di bawahnya: hijau kalau menguntungkan (pendapatan atau
+          laba naik, biaya turun), merah kalau merugikan. Perubahan{" "}
+          {CHANGE_BIG}% atau lebih juga diberi warna tipis pada selnya. Laba
+          bersih di sini sama dengan laba bersih di Beranda dan menjadi laba
+          tahun berjalan di Neraca.{" "}
+          {view === "lini"
+            ? "Kategori bertanda Bersama (sewa, utilitas, gaji admin) dibagi ke tiap lini memakai dasar yang diatur di Pengaturan > Keuangan > Lini bisnis. Kategori lain dibebankan langsung ke lini."
+            : "Di versi engineering, tiap angka bisa diklik ke saldo per akun, lalu mutasi jurnal, lalu dokumen sumber."}
+        </p>
+      </div>
     </div>
   );
 }
 
-/**
- * Laba Kotor and Laba Bersih — a total with its margin under it.
- *
- * THE PERCENTAGE IS PER COLUMN, taken against that column's own pendapatan. Any
- * other base would make the number mean something else entirely: grooming's
- * margin against the shop's revenue is not a margin, it is a contribution share
- * wearing a margin's label. `marginPct` returns null when the base is zero, which
- * is exactly the Belum Dipetakan column's case, and it renders as an em dash rather than
- * as 0% — a column with no revenue has no margin, and claiming zero is a claim.
- */
-function ResultRow({
-  label,
+/** One row of the statement for one column (0 = whole shop, 1.. = a lini). */
+function StatementLine({
   row,
-  base,
-  columns,
-  pctLabel,
-  emphasis,
+  column,
+  label,
+  child,
+  expander,
 }: {
+  row: StatementRow;
+  column: number;
   label: string;
-  row: MatrixRow;
-  base: MatrixRow;
-  columns: Array<{ id: string | null; label: string }>;
-  pctLabel: string;
-  /** The bottom line, tinted so the eye lands on it from anywhere on the page. */
-  emphasis?: boolean;
+  child?: boolean;
+  expander?: { open: boolean; onToggle: () => void };
 }) {
-  const cellClass = cn(
-    "px-4 py-2.5 text-right text-sm font-bold tabular-nums",
-    emphasis ? "bg-navy-100" : "bg-surface-selected",
-  );
-
   return (
-    <TableRow className="hover:bg-transparent">
+    <TableRow
+      className={cn(
+        "hover:bg-transparent",
+        !child && row.kind === "b" && "bg-surface-selected font-bold",
+      )}
+    >
       <TableCell
         className={cn(
-          "sticky left-0 z-10 px-4 py-2.5 text-sm font-bold",
-          emphasis ? "bg-navy-100" : "bg-surface-selected",
+          "py-2.5 text-sm",
+          child
+            ? "pl-14 text-muted"
+            : row.kind === "i" && !expander
+              ? "pl-8 text-muted"
+              : "pl-4 font-semibold",
         )}
       >
-        {label}
+        {expander ? (
+          <button
+            type="button"
+            aria-expanded={expander.open}
+            onClick={expander.onToggle}
+            className="inline-flex items-center gap-2 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            <ChevronRight
+              className={cn("size-4 text-muted transition", expander.open && "rotate-90")}
+              aria-hidden
+            />
+            {label}
+          </button>
+        ) : (
+          label
+        )}
       </TableCell>
-      {row.cells.map((amount, index) => (
-        <TableCell key={columns[index].id ?? "shared"} className={cellClass}>
-          {signed(amount, false)}
-          <span className="mt-0.5 block text-xs font-medium tabular-nums text-muted">
-            {formatPercent(marginPct(amount, base.cells[index]))} {pctLabel}
-          </span>
-        </TableCell>
-      ))}
-      <TableCell className={cn(cellClass, "border-l border-border")}>
-        {signed(row.total, false)}
-        <span className="mt-0.5 block text-xs font-medium tabular-nums text-muted">
-          {formatPercent(marginPct(row.total, base.total))} {pctLabel}
-        </span>
-      </TableCell>
+      {row.v.map((perMonth, m) => {
+        const value = perMonth[column];
+        const previous = m > 0 ? row.v[m - 1][column] : undefined;
+        const change = !row.pct && m > 0 ? changeOf(row, value, previous) : null;
+        const shown = change !== null && Math.abs(change.pct) >= CHANGE_THRESHOLD;
+        const big = shown && Math.abs(change.pct) >= CHANGE_BIG;
+
+        return (
+          <TableCell
+            key={m}
+            className={cn(
+              "py-2.5 text-right text-sm tabular-nums whitespace-nowrap",
+              child && "text-muted",
+              big && (change.bad ? "bg-[#FDF3F2]" : "bg-[#F1FAF4]"),
+            )}
+          >
+            {format(value, row.pct)}
+            {shown && (
+              <div className="mt-0.5">
+                <span
+                  className={cn(
+                    "inline-flex h-5 items-center rounded-full px-2 text-xs font-bold",
+                    change.bad ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700",
+                  )}
+                >
+                  {change.pct > 0 ? "▲" : "▼"} {Math.abs(Math.round(change.pct))}%
+                </span>
+              </div>
+            )}
+          </TableCell>
+        );
+      })}
     </TableRow>
   );
 }
 
-/**
- * Money as this report prints it.
- *
- * A TRUE MINUS SIGN, not the hyphen `formatMoney` puts after "Rp" — the same
- * choice the dashboard makes, and for the same reason: "Rp -1.200.000" reads as a
- * typo at a glance, and the number it happens on is always a loss.
- *
- * `negate` is for the two beban groups, whose amounts are stored positive and
- * subtracted at the point of display. An amount of zero prints as an em dash:
- * a matrix is mostly empty cells, and a grid of "Rp 0" hides the ones that are
- * not.
- */
-function signed(value: string, negate: boolean): string {
-  if (value === "0.0000" || value === "0") return "—";
+/** Percent change vs the month before, and whether that move is bad news. */
+function changeOf(
+  row: StatementRow,
+  value: StatementValue,
+  previous: StatementValue | undefined,
+): { pct: number; bad: boolean } | null {
+  if (typeof value !== "string" || typeof previous !== "string") return null;
+  let pct = changeAgainst(value, previous);
+  if (pct === null) return null;
+  // A discount is stored negative: a larger magnitude is a lower figure, but it
+  // is the same event as a cost rising, so read its direction the other way.
+  if (row.invert) pct = -pct;
+  return { pct, bad: row.riseIsBad ? pct > 0 : pct < 0 };
+}
 
-  const loss = value.startsWith("-");
-  const magnitude = formatMoney(absDecimal(value));
-
-  // A negative beban — a supplier credit note, a stock surplus crediting 5201 —
-  // subtracts to a positive, so the two signs cancel rather than stack.
-  const minus = negate ? !loss : loss;
-  return minus ? `−${magnitude}` : magnitude;
+function format(value: StatementValue, pct?: boolean): string {
+  if (pct) return typeof value === "number" ? formatPercent(value) : "—";
+  if (typeof value !== "string") return "—";
+  if (value.startsWith("-")) return `−${formatMoney(absDecimal(value))}`;
+  return formatMoney(value);
 }

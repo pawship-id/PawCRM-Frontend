@@ -9,7 +9,9 @@ import { Alert, Button, Spinner } from "@/components";
 import { useGroomerActions } from "../hooks/useGroomerActions";
 import { useGroomerBooking } from "../hooks/useGroomerBooking";
 import { useNow } from "../hooks/useNow";
+import { HOME_TRIP_LABELS } from "@/features/booking/homeTrip";
 import { BookingHead } from "./BookingHead";
+import { HomeTripButton } from "./HomeVisit";
 import { RecordSheet } from "./RecordSheet";
 import { SessionRow } from "./SessionRow";
 
@@ -31,7 +33,7 @@ export function GroomerBookingScreen() {
   const search = useSearchParams();
 
   const { data, loading, error, reload } = useGroomerBooking(id);
-  const { busy, claim, move, arrive } = useGroomerActions(reload);
+  const { busy, claim, move, arrive, moveTrip } = useGroomerActions(reload);
 
   /** The session whose sheet is open, and whether it opened to ask for the photo. */
   const [sheet, setSheet] = useState<{ sessionId: string; needAfter: boolean } | null>(() => {
@@ -78,6 +80,14 @@ export function GroomerBookingScreen() {
       {booking && (
         <div className="mt-2 rounded-xl border border-border bg-surface p-4 shadow-sm">
           <BookingHead booking={booking} />
+
+          <HomeTripButton
+            booking={booking}
+            busy={busy === `trip:${booking.homeTrip?._id}`}
+            onMove={(tripId, to) =>
+              void moveTrip(tripId, to, `${HOME_TRIP_LABELS[to]} dicatat`)
+            }
+          />
 
           {booking.canMarkArrived && (
             <Button

@@ -100,7 +100,7 @@ describe("PetCardPrintScreen", () => {
     primePetOptions(
       petOptionService.list,
       PET_OPTION_FIXTURES.map((option) =>
-        option.type === "species" && option.code === "dog"
+        option.type === "species" && option.label === "Anjing"
           ? { ...option, label: "Guguk" }
           : option,
       ),

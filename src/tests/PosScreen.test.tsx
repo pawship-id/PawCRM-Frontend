@@ -896,6 +896,44 @@ describe("PosScreen — when the shift status cannot be read", () => {
  * warehouse serving every branch and is fine. The server is the authority; this
  * only keeps the picker from offering a choice that will be refused.
  */
+/*
+  A SHIFT THAT IS ALREADY OPEN (11 October 2026) — left open from another day, or
+  opened in a second tab. The server refuses a second one with a 409; the gate
+  must not strand the cashier on a form that can never be passed.
+*/
+describe("PosShiftGate — a shift that is already open", () => {
+  const OPEN_ELSEWHERE = new ApiError("You already have an open shift at this branch", 409, {
+    reason: "SHF-2026-0002 is still open — close it before opening another",
+  });
+
+  beforeEach(() => {
+    mockedWarehouses.list.mockResolvedValue({
+      items: [{ _id: "w1", name: "Surabaya Barat", defaultBranchId: "b1" }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+  });
+
+  it("carries on with the open shift, in Indonesian, instead of showing the server's sentence", async () => {
+    const user = userEvent.setup();
+    mockedPos.currentShift.mockResolvedValueOnce(null).mockResolvedValue(shift);
+    mockedPos.openShift.mockRejectedValue(OPEN_ELSEWHERE);
+
+    renderWithAuth(<PosScreen />);
+    await screen.findByRole("heading", { name: /buka kasir/i });
+
+    await user.type(screen.getByLabelText(/saldo awal/i), "0");
+    await user.click(screen.getByRole("button", { name: /buka kasir & mulai/i }));
+
+    // The till is asked again and the shift that is open is what it finds.
+    expect(await screen.findByText(/SHF-2026-0001/)).toBeInTheDocument();
+    expect(swalToast).toHaveBeenCalledWith(
+      expect.stringMatching(/shift SHF-2026-0002 yang terbuka di cabang ini/),
+    );
+    expect(screen.queryByText(/is still open/)).not.toBeInTheDocument();
+  });
+});
+
 describe("PosShiftGate — the warehouse picker", () => {
   beforeEach(() => {
     mockedPos.currentShift.mockResolvedValue(null);

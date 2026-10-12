@@ -29,6 +29,7 @@ export { BookingSessionSteps } from "./components/BookingSessionSteps";
 export { BILLING_BADGES, billingOf, type BillingState } from "./billing";
 export * from "./today";
 export { BookingDetailScreen } from "./components/BookingDetailScreen";
+export { HomeTripDetailScreen } from "./components/HomeTripDetailScreen";
 export { BookingCalendarScreen } from "./components/BookingCalendarScreen";
 export { BookingForm } from "./components/BookingForm";
 export { BookingStatusActions } from "./components/BookingStatusActions";

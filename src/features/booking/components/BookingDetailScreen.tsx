@@ -37,6 +37,7 @@ import { canStartWork, hasCompletedWork, ladderFor } from "../statusFlow";
 import { BookingBelongingsCard } from "./BookingBelongingsCard";
 import { BookingHistoryCard } from "./BookingHistoryCard";
 import { BookingNotesCard } from "./BookingNotesCard";
+import { HomeVisitCard } from "./HomeVisitCard";
 import { BookingRelatedCard } from "./BookingRelatedCard";
 import { BookingStatusActions } from "./BookingStatusActions";
 import {
@@ -816,6 +817,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
               </div>
             )}
           </Card>
+
+          {/*
+            THE JOURNEY TO THE HOUSE (10 October 2026) — a home booking only, and
+            nothing at all otherwise. A summary and a link: the trip is moved on
+            its own page since 11 October 2026.
+          */}
+          {booking.location === "in_home" && !booking.tripLeg && (
+            <HomeVisitCard booking={booking} />
+          )}
 
           {/* ─── Hewan & Pelanggan ──────────────────────────────────────── */}
           <Card title="Hewan &amp; Pelanggan">
