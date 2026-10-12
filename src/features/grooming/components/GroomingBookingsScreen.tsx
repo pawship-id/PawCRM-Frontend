@@ -16,6 +16,7 @@ import {
   matchesLens,
   matchesSearch,
   periodRange,
+  PERIOD_WORDS,
   sortRows,
   summariseDay,
   summariseNewAnimals,
@@ -38,13 +39,6 @@ import { GroomingStatCard } from "./GroomingStatCard";
 import { GROOMING_NEW_BOOKING_PATH } from "../paths";
 
 const PAGE_SIZE = 20;
-
-const PERIOD_WORDS: Record<Exclude<GroomingPeriod, "custom">, string> = {
-  all: "di semua tanggal",
-  today: "hari ini",
-  week: "minggu ini",
-  month: "bulan ini",
-};
 
 const LENS_WORDS: Record<Exclude<GroomingLens, "all">, string> = {
   unbilled: "belum ditagih",

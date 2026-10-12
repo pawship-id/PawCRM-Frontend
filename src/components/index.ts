@@ -15,6 +15,7 @@ export { Alert } from "./Alert";
 export { Breadcrumb } from "./Breadcrumb";
 export { PageTabs } from "./PageTabs";
 export { StatTile, PendingStatTile } from "./StatTile";
+export { ActionGroup, type ActionRow } from "./ActionGroup";
 export { InfoTooltip } from "./InfoTooltip";
 /**
  * The scope row a summary tab wears — cabang, periode, and the custom range the

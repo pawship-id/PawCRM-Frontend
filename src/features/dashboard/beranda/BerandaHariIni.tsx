@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { AlertTriangle, Coins, PawPrint, UserRound } from "lucide-react";
 
-import { Alert, StatTile } from "@/components";
+import { ActionGroup, Alert, StatTile } from "@/components";
 import {
   Table,
   TableBody,
@@ -24,7 +24,7 @@ import { posService } from "@/services/pos.service";
 import { formatMoney, formatMoneyShort } from "@/utils/decimal";
 
 import { useBerandaScope } from "./BerandaShell";
-import { ActionGroup, Panel, TileGrid } from "./parts";
+import { Panel, TileGrid } from "./parts";
 import { DONE_STATUSES, OPEN_STATUSES, useBookingsIn } from "./useBookingsIn";
 import { useRemote } from "./useRemote";
 

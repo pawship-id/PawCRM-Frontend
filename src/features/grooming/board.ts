@@ -94,6 +94,14 @@ export function isGroomingService(
  */
 export type GroomingPeriod = "all" | "today" | "week" | "month" | "custom";
 
+/** The period in a sentence — "Belum ada booking grooming bulan ini". */
+export const PERIOD_WORDS: Record<Exclude<GroomingPeriod, "custom">, string> = {
+  all: "di semua tanggal",
+  today: "hari ini",
+  week: "minggu ini",
+  month: "bulan ini",
+};
+
 /** Calendar dates, `yyyy-mm-dd`; `""` is an open end. */
 export interface DateRange {
   from: string;

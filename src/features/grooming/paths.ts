@@ -1,5 +1,7 @@
-/** The Grooming module's three tabs — each its own route (see `PageTabs`). */
+/** The Grooming module's tabs — each its own route (see `PageTabs`). */
 export const GROOMING_PATH = "/dashboard/layanan/grooming";
+/** Ringkasan — the period's performance, left of Booking (`buloo-navigation-v3`). */
+export const GROOMING_SUMMARY_PATH = `${GROOMING_PATH}/ringkasan`;
 export const GROOMING_CATALOG_PATH = `${GROOMING_PATH}/katalog`;
 export const GROOMING_SETTINGS_PATH = `${GROOMING_PATH}/pengaturan`;
 

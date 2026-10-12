@@ -4,6 +4,7 @@ import type { ServiceKind } from "@/types/api";
 
 import {
   GROOMING_CATALOG_PATH,
+  GROOMING_SUMMARY_PATH,
   GROOMING_NEW_BOOKING_PATH,
   GROOMING_PATH,
   GROOMING_SETTINGS_PATH,
@@ -39,6 +40,12 @@ export interface ServiceLine {
    */
   fallbackName: string;
   paths: {
+    /**
+     * The Ringkasan tab — Grooming only for now. The mockup builds the
+     * per-line summary for Grooming first; Antar-Jemput has none yet, so its
+     * header draws no such tab.
+     */
+    summary?: string;
     root: string;
     catalog: string;
     settings: string;
@@ -52,6 +59,7 @@ export const GROOMING_LINE: ServiceLine = {
   noun: "grooming",
   fallbackName: "Grooming",
   paths: {
+    summary: GROOMING_SUMMARY_PATH,
     root: GROOMING_PATH,
     catalog: GROOMING_CATALOG_PATH,
     settings: GROOMING_SETTINGS_PATH,

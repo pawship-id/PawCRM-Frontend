@@ -9,10 +9,17 @@ import type { DateRange, GroomingScope } from "../board";
 interface Loaded {
   key: string;
   firstBookingIds: ReadonlySet<string> | null;
+  /** petId → when its first grooming booking is — Ringkasan's "Hewan baru". */
+  firstAtByPet: ReadonlyMap<string, string> | null;
   failed: boolean;
 }
 
-const NOTHING: Loaded = { key: "", firstBookingIds: null, failed: false };
+const NOTHING: Loaded = {
+  key: "",
+  firstBookingIds: null,
+  firstAtByPet: null,
+  failed: false,
+};
 
 /**
  * The ids of each animal's FIRST grooming booking, for the animals booked in
@@ -66,11 +73,16 @@ export function useFirstVisits(
         setLoaded({
           key,
           firstBookingIds: new Set(result.firsts.map((first) => first.bookingId)),
+          firstAtByPet: new Map(
+            result.firsts.map((first) => [first.petId, first.scheduledAt]),
+          ),
           failed: false,
         });
       })
       .catch(() => {
-        if (active) setLoaded({ key, firstBookingIds: null, failed: true });
+        if (active) {
+          setLoaded({ key, firstBookingIds: null, firstAtByPet: null, failed: true });
+        }
       });
 
     return () => {
@@ -82,6 +94,7 @@ export function useFirstVisits(
 
   return {
     firstBookingIds: current ? loaded.firstBookingIds : null,
+    firstAtByPet: current ? loaded.firstAtByPet : null,
     loading: !current,
     failed: current && loaded.failed,
   };

@@ -8,7 +8,7 @@ import { usePermissions } from "@/features/permissions";
 import { GROOMING_LINE, type ServiceLine } from "../line";
 
 /**
- * The head of the Grooming module, shared by its three tabs — from
+ * The head of the Grooming module, shared by its tabs — from
  * `buloo-grooming-v3.html`.
  *
  * ROUTES, NOT `useState`, like every other tabbed module (see `PageTabs`): the
@@ -30,12 +30,15 @@ export function GroomingModuleHeader({
   const { can } = usePermissions();
 
   const tabs: PageTab[] = [
+    ...(line.paths.summary && can("bookings", "read")
+      ? [{ label: "Ringkasan", href: line.paths.summary }]
+      : []),
     ...(can("bookings", "read")
       ? [
           {
             label: "Booking",
             href: line.paths.root,
-            // EXACT: the other two tabs are routes under this one.
+            // EXACT: the other tabs are routes under this one.
             exact: true,
           },
         ]
