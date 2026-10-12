@@ -17,14 +17,9 @@ import {
 } from "./useCustomerInvoices";
 
 /**
- * WHAT THE RINGKASAN TAB OPENS ON — the Faktur list's query, with one field
- * changed.
- *
- * `period: "month"` WHERE THE LIST USES "all", and that is the one difference.
- * The list is a book somebody searches; this page is a period's composition, and
- * "Omzet periode" over every invoice the shop has ever raised is a figure with
- * the wrong name. Everything else is shared so the two screens' filter panel,
- * scope card and Reset behave identically.
+ * WHAT THE RINGKASAN TAB OPENS ON — the Faktur list's own query. Both open
+ * on Bulan ini since 12 October 2026; the period was once the one difference,
+ * and is kept spelled out so it stays a deliberate choice for this tab.
  */
 export const DEFAULT_SUMMARY_QUERY: CustomerInvoicesQuery = {
   ...DEFAULT_QUERY,

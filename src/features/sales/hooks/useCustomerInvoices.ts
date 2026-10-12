@@ -68,12 +68,12 @@ export const DEFAULT_QUERY: CustomerInvoicesQuery = {
   branchIds: [],
   warehouseIds: [],
   /*
-    EVERY INVOICE, EVERY STATUS, EVERY DATE — asked for on 11 Sep 2026, after a
-    first version opened on "Bulan ini". The table is the whole book until
-    somebody narrows it; the period, like every other filter, is one panel away,
-    and the scope card says "Semua tanggal" so nobody mistakes it for a month.
+    BULAN INI, BACK AGAIN (12 October 2026, on request) — the same period the
+    Ringkasan tab opens on, so the two tabs' cards agree when somebody moves
+    between them. It had opened on every date since 11 Sep 2026; "Semua" is
+    one chip away on the scope row. Every status is still on.
   */
-  period: "all",
+  period: "month",
   dateFrom: "",
   dateTo: "",
   createdBy: [],

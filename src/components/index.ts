@@ -22,11 +22,28 @@ export { InfoTooltip } from "./InfoTooltip";
  */
 export {
   ScopeCard,
+  ScopeCustomRange,
   ScopeField,
   ScopePeriodCard,
   type ScopePeriod,
   type ScopePeriodCardProps,
 } from "./ScopePeriodCard";
+/**
+ * THE scope row — Cabang, Gudang and Periode, every dropdown taking several
+ * values. One component for every screen that scopes its figures (12 Oct 2026).
+ */
+export {
+  ScopeFilterCard,
+  branchesAfterWarehouses,
+  scopeSummary,
+  warehousesAfterBranches,
+  warehousesOffered,
+  type ScopeBranchOption,
+  type ScopeFilterCardPeriod,
+  type ScopeFilterCardProps,
+  type ScopeSelection,
+  type ScopeWarehouseOption,
+} from "./ScopeFilterCard";
 export type { PageTab, PageTabsProps } from "./PageTabs";
 export type { BreadcrumbProps, Crumb } from "./Breadcrumb";
 export { Card } from "./Card";

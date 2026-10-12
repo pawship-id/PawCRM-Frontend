@@ -145,8 +145,12 @@ const page = (items: CustomerInvoiceListRow[], total = items.length) => ({
   },
 });
 
-/** The read-only card naming the cabang, gudang and periode. */
+/** The scope card — cabang, gudang and periode, changed in place. */
 const scopeCard = () => screen.getByRole("region", { name: "Lingkup data" });
+
+/** The scope card's period pill by name — pressed when it is the one on. */
+const scopePill = (name: string) =>
+  within(scopeCard()).getByRole("button", { name });
 
 /** Opens the one filter panel and returns it. */
 async function openFilters(user: ReturnType<typeof userEvent.setup>) {
@@ -203,10 +207,10 @@ beforeEach(() => {
 
 describe("SalesInvoiceList — what it asks the server", () => {
   /*
-    THE WHOLE BOOK BY DEFAULT — every status and every date. Nothing narrowing
-    goes over the wire until somebody asks for it in the panel.
+    EVERY STATUS, THIS MONTH (12 October 2026, on request) — the same period
+    Ringkasan opens on, sent as its name.
   */
-  it("opens on every invoice — every status, every date — soonest due first, 25 a page", async () => {
+  it("opens on this month's invoices — every status — soonest due first, 25 a page", async () => {
     renderWithAuth(<ReceivablesScreen />);
 
     await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
@@ -214,7 +218,7 @@ describe("SalesInvoiceList — what it asks the server", () => {
     expect(lastList()).toMatchObject({ sort: "dueSoonest", limit: 25, page: 1 });
     expect(lastList()?.statuses).toBeUndefined();
     expect(lastList()?.status).toBeUndefined();
-    expect(lastList()?.period).toBeUndefined();
+    expect(lastList()?.period).toBe("month");
     expect(lastList()?.dateFrom).toBeUndefined();
     expect(lastList()?.dateTo).toBeUndefined();
   });
@@ -226,7 +230,7 @@ describe("SalesInvoiceList — what it asks the server", () => {
       expect(customerInvoiceService.summary).toHaveBeenCalled(),
     );
 
-    expect(lastSummary()?.period).toBeUndefined();
+    expect(lastSummary()?.period).toBe("month");
     expect(lastSummary()).not.toHaveProperty("page");
     expect(lastSummary()).not.toHaveProperty("sort");
   });
@@ -237,10 +241,10 @@ describe("SalesInvoiceList — what it asks the server", () => {
 
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Bulan ini" }));
+    await user.click(within(panel).getByRole("button", { name: "Hari ini" }));
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
 
-    await waitFor(() => expect(lastList()).toMatchObject({ period: "month" }));
+    await waitFor(() => expect(lastList()).toMatchObject({ period: "today" }));
     expect(lastList()?.dateFrom).toBeUndefined();
   });
 
@@ -255,7 +259,7 @@ describe("SalesInvoiceList — what it asks the server", () => {
 
     await waitFor(() => expect(lastList()).toMatchObject({ period: "week" }));
     await waitFor(() => expect(lastSummary()).toMatchObject({ period: "week" }));
-    expect(scopeCard()).toHaveTextContent(/Periode\s*Minggu ini/);
+    expect(scopePill("Minggu ini")).toHaveAttribute("aria-pressed", "true");
     /*
       THE BADGE COUNTS IT TOO (16 September 2026) — one number for "how much is
       on", shown both here and as the card's "Reset filter (n)". It used to leave
@@ -274,7 +278,7 @@ describe("SalesInvoiceList — what it asks the server", () => {
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
     /* The last pill — the two dates appear under it only once it is pressed. */
-    await user.click(within(panel).getByRole("button", { name: "Pilih tanggal" }));
+    await user.click(within(panel).getByRole("button", { name: "Custom" }));
     await user.type(within(panel).getByLabelText("Tanggal faktur dari"), "2026-09-01");
     await user.type(
       within(panel).getByLabelText("Tanggal faktur sampai"),
@@ -289,41 +293,69 @@ describe("SalesInvoiceList — what it asks the server", () => {
       }),
     );
     expect(lastList()?.period).toBeUndefined();
-    expect(scopeCard()).toHaveTextContent("1–15 Sep 2026");
+    // The card follows: Custom on, and the same two dates under it.
+    expect(scopePill("Custom")).toHaveAttribute("aria-pressed", "true");
+    expect(
+      within(scopeCard()).getByLabelText("Tanggal faktur dari"),
+    ).toHaveValue("2026-09-01");
+    expect(
+      within(scopeCard()).getByLabelText("Tanggal faktur sampai"),
+    ).toHaveValue("2026-09-15");
   });
 });
 
 describe("SalesInvoiceList — the scope card", () => {
-  it("opens saying the figures are about every cabang, gudang and date", async () => {
+  it("opens on every cabang and gudang, this month", async () => {
     renderWithAuth(<ReceivablesScreen />);
 
     await screen.findByText("INV-2026-0042");
     expect(scopeCard()).toHaveTextContent(/Cabang\s*Semua cabang/);
     expect(scopeCard()).toHaveTextContent(/Gudang\s*Semua gudang/);
-    expect(scopeCard()).toHaveTextContent(/Periode\s*Semua tanggal/);
+    expect(scopePill("Bulan ini")).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("captions a named period with the days the server resolved", async () => {
+  /*
+    CHANGED IN PLACE (12 October 2026, on request) — the card used to be
+    read-only, with every control behind the Filter button.
+  */
+  it("changes the period on click, and the panel opens on it", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
     await screen.findByText("INV-2026-0042");
-    const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Bulan ini" }));
-    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+    expect(scopeCard()).not.toHaveTextContent("Reset filter");
+    await user.click(scopePill("Hari ini"));
 
-    // The days come from the server's echo, cut in the tenant's zone.
-    await waitFor(() =>
-      expect(scopeCard()).toHaveTextContent("Bulan ini · 1–30 Sep 2026"),
+    await waitFor(() => expect(lastList()).toMatchObject({ period: "today" }));
+    await waitFor(() => expect(lastSummary()).toMatchObject({ period: "today" }));
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
     );
+
+    const panel = await openFilters(user);
+    expect(
+      within(panel).getByRole("button", { name: "Hari ini" }),
+    ).toHaveAttribute("aria-pressed", "true");
   });
 
-  it("is read-only while nothing narrows the list", async () => {
+  it("picks a gudang in place, ticking its cabang as the panel would", async () => {
+    const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
     await screen.findByText("INV-2026-0042");
-    expect(within(scopeCard()).queryAllByRole("button")).toHaveLength(0);
-    expect(scopeCard()).toHaveTextContent("Ubah lewat tombol Filter");
+    await user.click(within(scopeCard()).getByRole("button", { name: "Gudang" }));
+    const popover = await screen.findByRole("dialog");
+    await user.click(within(popover).getByRole("option", { name: /Gudang Selatan/ }));
+    await user.click(within(popover).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(lastList()).toMatchObject({
+        branchIds: ["b2"],
+        warehouseIds: ["w2"],
+      }),
+    );
+    expect(scopeCard()).toHaveTextContent(/Cabang\s*Cabang Selatan/);
+    expect(scopeCard()).toHaveTextContent(/Gudang\s*Gudang Selatan/);
   });
 
   /*
@@ -349,7 +381,7 @@ describe("SalesInvoiceList — the scope card", () => {
       expect(scopeCard()).toHaveTextContent(/Cabang\s*Semua cabang/),
     );
     expect(scopeCard()).toHaveTextContent(/Gudang\s*Semua gudang/);
-    expect(scopeCard()).toHaveTextContent("Ubah lewat tombol Filter");
+    expect(scopeCard()).not.toHaveTextContent("Reset filter");
   });
 
   it("follows what the filter panel applied", async () => {
@@ -367,7 +399,7 @@ describe("SalesInvoiceList — the scope card", () => {
     expect(scopeCard()).toHaveTextContent(/Gudang\s*Gudang Selatan/);
   });
 
-  it("names two cabang, and counts three gudang with their names on hover", async () => {
+  it("names two cabang, and counts three gudang", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
@@ -382,14 +414,12 @@ describe("SalesInvoiceList — the scope card", () => {
         /Cabang\s*Cabang Barat, Cabang Selatan/,
       ),
     );
-    const gudang = within(scopeCard()).getByText("3 gudang");
-    expect(gudang).toHaveAttribute(
-      "title",
-      "Gudang Barat, Gudang Selatan, Etalase Barat",
-    );
+    expect(
+      within(scopeCard()).getByRole("button", { name: "Gudang" }),
+    ).toHaveTextContent("3 gudang");
   });
 
-  it("reads 'Semua tanggal' once a drill has lifted a date bound", async () => {
+  it("reads 'Semua' once a drill has lifted a date bound", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
@@ -402,46 +432,9 @@ describe("SalesInvoiceList — the scope card", () => {
     await user.click(screen.getByRole("button", { name: /Belum lunas/ }));
 
     await waitFor(() =>
-      expect(scopeCard()).toHaveTextContent(/Periode\s*Semua tanggal/),
+      expect(scopePill("Semua")).toHaveAttribute("aria-pressed", "true"),
     );
     expect(lastList()?.period).toBeUndefined();
-  });
-
-  /*
-    NOT LAST MONTH'S DATES UNDER THIS WEEK'S NAME. Between a period change and
-    the new summary arriving, the card names the period without dates.
-  */
-  it("drops the dates while the summary for a new period is on its way", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<ReceivablesScreen />);
-
-    await screen.findByText("INV-2026-0042");
-    const first = await openFilters(user);
-    await user.click(within(first).getByRole("button", { name: "Bulan ini" }));
-    await user.click(within(first).getByRole("button", { name: "Terapkan" }));
-    await waitFor(() =>
-      expect(scopeCard()).toHaveTextContent("Bulan ini · 1–30 Sep 2026"),
-    );
-
-    asMock(customerInvoiceService.summary).mockReturnValue(
-      new Promise(() => undefined) as never,
-    );
-
-    const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Minggu ini" }));
-    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
-
-    await waitFor(() =>
-      expect(scopeCard()).toHaveTextContent(/Periode\s*Minggu ini/),
-    );
-    /*
-      THE LABEL ALONE, WITH NO DATES AT ALL — not the previous period's, and not
-      a guess at this one's. The dot is what joins a period to its days, so its
-      absence is the assertion; the card's right-hand side now carries "Reset
-      filter", which is about the filters rather than about this.
-    */
-    expect(scopeCard()).not.toHaveTextContent("·");
-    expect(scopeCard()).not.toHaveTextContent("1–30 Sep 2026");
   });
 });
 
@@ -967,7 +960,7 @@ describe("SalesInvoiceList — the filter panel", () => {
     );
   });
 
-  it("resets the panel's filters back to every invoice", async () => {
+  it("resets the panel's filters back to every status, this month", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
@@ -980,7 +973,7 @@ describe("SalesInvoiceList — the filter panel", () => {
     await user.click(within(panel).getByRole("button", { name: "Reset" }));
 
     await waitFor(() => expect(lastList()?.statuses).toBeUndefined());
-    expect(lastList()?.period).toBeUndefined();
-    expect(scopeCard()).toHaveTextContent(/Periode\s*Semua tanggal/);
+    expect(lastList()?.period).toBe("month");
+    expect(scopePill("Bulan ini")).toHaveAttribute("aria-pressed", "true");
   });
 });
