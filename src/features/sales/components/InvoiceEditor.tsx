@@ -64,6 +64,7 @@ import type { RideJourney } from "@/features/antar-jemput/components/RideJourney
 
 import { invoiceBookingShareOf } from "../bookingDiscount";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
+import { useProductSearch } from "../hooks/useServerSearch";
 import { previewInvoice } from "../invoicePreview";
 import {
   hasChoice,
@@ -211,6 +212,7 @@ export function InvoiceEditor({
   onSaved: (updated: CustomerInvoiceDetail) => void;
 }) {
   const lookups = useInvoiceLookups();
+  const productSearch = useProductSearch(lookups.products);
 
   const initialLines = useMemo<EditLine[]>(
     () =>
@@ -484,19 +486,31 @@ export function InvoiceEditor({
     );
   }
 
-  const catalogue = useMemo(
-    () => [
-      ...lookups.products.map((product) => ({
+  /*
+    PRODUCTS ARE SEARCHED ON THE SERVER — a catalogue runs past the 100 the
+    lookups open on (12 October 2026). Services are all loaded, so they are
+    narrowed here; the picker no longer filters once a caller searches.
+  */
+  const catalogue = useMemo(() => {
+    const q = productSearch.term.toLowerCase();
+    return [
+      ...productSearch.items.map((product) => ({
         value: `product:${product._id}`,
         label: product.sku ? `${shortSku(product.sku)} — ${product.name}` : product.name,
       })),
-      ...lookups.services.map((service) => ({
-        value: `service:${service._id}`,
-        label: `${service.name} (jasa)`,
-      })),
-    ],
-    [lookups.products, lookups.services],
-  );
+      ...lookups.services
+        .filter(
+          (service) =>
+            !q ||
+            service.name.toLowerCase().includes(q) ||
+            Boolean(service.code?.toLowerCase().includes(q)),
+        )
+        .map((service) => ({
+          value: `service:${service._id}`,
+          label: `${service.name} (jasa)`,
+        })),
+    ];
+  }, [productSearch.items, productSearch.term, lookups.services]);
 
   /* The shelves of the invoice's branch, plus every central one. */
   const warehousesHere = useMemo(
@@ -924,7 +938,7 @@ export function InvoiceEditor({
     }
 
     if (line.kind === "product") {
-      const product = lookups.products.find((one) => one._id === line.refId);
+      const product = productSearch.find(line.refId);
       return String(product?.sellPrice ?? "0");
     }
 
@@ -940,7 +954,7 @@ export function InvoiceEditor({
     const [kind, refId] = picked.split(":") as ["product" | "service", string];
     const found =
       kind === "product"
-        ? lookups.products.find((product) => product._id === refId)
+        ? productSearch.find(refId)
         : lookups.services.find((service) => service._id === refId);
 
     if (!found) return;
@@ -1433,7 +1447,19 @@ export function InvoiceEditor({
             active={false}
             placeholder="Cari nama atau SKU"
             disabled={saving}
-            onChange={setPicked}
+            onSearchChange={productSearch.setSearch}
+            searching={productSearch.searching && !catalogue.length}
+            emptyLabel={
+              productSearch.failed
+                ? "Pencarian barang gagal. Coba lagi."
+                : undefined
+            }
+            onChange={(value) => {
+              if (value.startsWith("product:")) {
+                productSearch.remember(value.slice("product:".length));
+              }
+              setPicked(value);
+            }}
           />
         </div>
         <Button

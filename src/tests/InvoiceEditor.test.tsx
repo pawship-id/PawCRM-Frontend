@@ -520,6 +520,38 @@ describe("InvoiceEditor — choices and zone", () => {
   });
 });
 
+/* ─── A product past the first 100 (12 October 2026) ────────────────────── */
+
+describe("InvoiceEditor — the line picker searches the server", () => {
+  it("finds a product the opening list did not carry, and adds it", async () => {
+    asMock(productService.list).mockImplementation(
+      async (query: { search?: string } = {}) =>
+        page(
+          query.search === "Snack"
+            ? [{ _id: "p77", name: "Snack Kucing", sku: "SNK", sellPrice: "25000" }]
+            : [],
+        ),
+    );
+    const user = userEvent.setup();
+    renderEditor();
+
+    await user.click(
+      await screen.findByRole("button", { name: "Tambah barang atau jasa" }),
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: /cari tambah barang atau jasa/i }),
+      "Snack",
+    );
+    await user.click(await screen.findByRole("option", { name: /Snack Kucing/ }));
+    await user.click(screen.getByRole("button", { name: "Tambah baris" }));
+
+    expect(productService.list).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "Snack", isActive: true }),
+    );
+    expect(await screen.findAllByText(/Snack Kucing/)).not.toHaveLength(0);
+  });
+});
+
 /* ─── The home-grooming trip on an edit (11 October 2026) ───────────────── */
 
 describe("InvoiceEditor — a trip still owed", () => {

@@ -602,6 +602,36 @@ describe("scanning a barcode", () => {
 });
 
 describe("adding lines through the dialog", () => {
+  /*
+    EVERY ACTIVE SERVICE, NOT THE FIRST 100 (12 October 2026). The Jasa tab
+    searches what the form loaded, so a service on page two was unfindable.
+  */
+  it("offers a service from past the first page", async () => {
+    jest
+      .spyOn(serviceService, "list")
+      .mockImplementation((async (query: { page?: number } = {}) => ({
+        items:
+          (query.page ?? 1) === 1
+            ? [SERVICE]
+            : [{ _id: "s2", name: "Mandi Kutu", price: "80000" }],
+        pagination: { page: query.page ?? 1, limit: 100, total: 101, totalPages: 2 },
+      })) as never);
+    render(<InvoiceCreateForm />);
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: /tambah barang atau jasa/i }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("tab", { name: /^Jasa/ }));
+
+    expect(
+      await within(dialog).findByRole("checkbox", { name: /Mandi Kutu/ }),
+    ).toBeInTheDocument();
+    expect(serviceService.list).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 2, limit: 100 }),
+    );
+  });
+
   it("adds a product and a service in one pass", async () => {
     render(<InvoiceCreateForm />);
 

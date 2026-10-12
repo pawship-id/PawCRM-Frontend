@@ -69,7 +69,7 @@ import type { RideJourney } from "@/features/antar-jemput/components/RideJourney
 
 import { useInvoiceLineStock } from "../hooks/useInvoiceLineStock";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
-import { useInvoiceCustomerSearch } from "../hooks/useInvoiceCustomerSearch";
+import { useCustomerSearch } from "../hooks/useServerSearch";
 import { bookingShareOf, ownDiscountOfLine } from "../bookingDiscount";
 import {
   billedTripNote,
@@ -401,7 +401,7 @@ function ownLinesOf(booking: Booking) {
 export function InvoiceCreateForm() {
   const router = useRouter();
   const lookups = useInvoiceLookups();
-  const customerSearch = useInvoiceCustomerSearch(lookups.customers);
+  const customerSearch = useCustomerSearch(lookups.customers);
 
   const [customerId, setCustomerId] = useState("");
   const [branchId, setBranchId] = useState("");
@@ -902,12 +902,12 @@ export function InvoiceCreateForm() {
    */
   const customerOptions = useMemo(
     () =>
-      customerSearch.customers.map((customer) => ({
+      customerSearch.items.map((customer) => ({
         value: customer._id,
         label: customer.name,
         ...(customer.phone ? { meta: customer.phone } : {}),
       })),
-    [customerSearch.customers],
+    [customerSearch.items],
   );
 
   /**
