@@ -9,6 +9,7 @@ import {
   periodRange,
   sortRows,
   summariseDay,
+  summariseNewAnimals,
   summarisePeriod,
   toGroomingRows,
   type GroomingScope,
@@ -190,6 +191,31 @@ describe("billingOf", () => {
     expect(
       billingOf(booking({ status: "completed", pulledToInvoiceAt: "2026-09-13T10:00:00Z" })),
     ).toBe("invoiced");
+  });
+});
+
+describe("summariseNewAnimals", () => {
+  it("counts each animal once, new when its first-ever booking is a row", () => {
+    const rows = toGroomingRows(
+      [
+        /* Bella's first grooming, and her second in the same month. */
+        booking({ _id: "bk-1", petId: "pet-1" }),
+        booking({ _id: "bk-2", petId: "pet-1" }),
+        /* Milo came before this period. */
+        booking({ _id: "bk-3", petId: "pet-2" }),
+        /* A cancelled first booking is no visit. */
+        booking({ _id: "bk-4", petId: "pet-3", status: "cancelled" }),
+        /* A ride carries no animal of its own. */
+        booking({ _id: "bk-5", petId: null }),
+      ],
+      scope,
+    );
+
+    expect(summariseNewAnimals(rows, new Set(["bk-1", "bk-4", "bk-5"]))).toEqual({
+      animals: 2,
+      newAnimals: 1,
+      returning: 1,
+    });
   });
 });
 

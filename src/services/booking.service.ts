@@ -15,6 +15,8 @@ import type {
   CreateBookingResult,
   UpdateBookingInput,
   PageResult,
+  BookingFirstVisits,
+  BookingFirstVisitsQuery,
   ServiceBookingCounts,
   ServiceBookingCountScope,
   SessionMediaKind,
@@ -140,6 +142,18 @@ export const bookingService = {
         branchIds: scope.branchIds,
         scheduledFrom: scope.scheduledFrom,
         scheduledTo: scope.scheduledTo,
+      },
+    }),
+
+  /** GET /bookings/first-visits — each animal's first booking on a line. */
+  firstVisits: (query: BookingFirstVisitsQuery) =>
+    apiClient.get<BookingFirstVisits>("/bookings/first-visits", {
+      query: {
+        serviceIds: query.serviceIds?.length ? query.serviceIds : undefined,
+        serviceType: query.serviceType || undefined,
+        branchIds: query.branchIds,
+        scheduledFrom: query.scheduledFrom,
+        scheduledTo: query.scheduledTo,
       },
     }),
 

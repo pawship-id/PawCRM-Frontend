@@ -287,6 +287,45 @@ export function summarisePeriod(
   };
 }
 
+export interface NewAnimalSummary {
+  /** Animals on a live row, once each. */
+  animals: number;
+  /** Of those, the ones whose first grooming booking ever is one of the rows. */
+  newAnimals: number;
+  returning: number;
+}
+
+/**
+ * "HEWAN BARU" — an animal is new when its FIRST live grooming booking, read
+ * by the server across all history and every cabang (`GET /bookings/
+ * first-visits`), is one of these rows. So the card follows the Filter panel
+ * like its neighbours: narrow the rows and the new animals narrow with them.
+ *
+ * An animal is counted once however many bookings it has in the period, and a
+ * ride (no `petId`) is not an animal here.
+ */
+export function summariseNewAnimals(
+  rows: GroomingRow[],
+  firstBookingIds: ReadonlySet<string>,
+): NewAnimalSummary {
+  const animals = new Set<string>();
+  const fresh = new Set<string>();
+
+  for (const row of rows) {
+    const petId = row.booking.petId;
+    if (!petId || row.booking.status === "cancelled") continue;
+
+    animals.add(petId);
+    if (firstBookingIds.has(row.key)) fresh.add(petId);
+  }
+
+  return {
+    animals: animals.size,
+    newAnimals: fresh.size,
+    returning: animals.size - fresh.size,
+  };
+}
+
 export interface DaySummary {
   working: number;
   workingValue: string;

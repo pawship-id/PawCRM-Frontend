@@ -3836,6 +3836,27 @@ export interface ServiceBookingCounts {
 }
 
 /**
+ * GET /api/bookings/first-visits — Grooming's "Hewan baru".
+ *
+ * For every animal booked in the scope, its EARLIEST live booking on these
+ * services, across every cabang and every date. Draft and cancelled bookings
+ * are not visits. A ride has no `petId` and is never here.
+ */
+export interface BookingFirstVisits {
+  firsts: { petId: string; bookingId: string; scheduledAt: string }[];
+}
+
+/** Which animals to ask about — the board's own line, cabang and period. */
+export interface BookingFirstVisitsQuery {
+  serviceIds?: string[];
+  /** The line's name, matched against `service.serviceType`. */
+  serviceType?: string;
+  branchIds?: string[];
+  scheduledFrom?: string;
+  scheduledTo?: string;
+}
+
+/**
  * What a booking count may be narrowed to — the catalogue's Cabang and Periode.
  * Calendar dates; the server expands them in the tenant's timezone. All
  * optional: without them the count is all-time, across every branch.

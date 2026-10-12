@@ -4,13 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import {
-  Alert,
-  Pagination,
-  PendingStatTile,
-  Spinner,
-  formatRangeShort,
-} from "@/components";
+import { Alert, Pagination, Spinner, formatRangeShort } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 
@@ -24,6 +18,7 @@ import {
   periodRange,
   sortRows,
   summariseDay,
+  summariseNewAnimals,
   summarisePeriod,
   type DateRange,
   type GroomingFilters,
@@ -32,6 +27,7 @@ import {
   type GroomingScope,
 } from "../board";
 import { MAX_BOOKING_PAGES, useGroomingBoard } from "../hooks/useGroomingBoard";
+import { useFirstVisits } from "../hooks/useFirstVisits";
 import { useGroomingCatalog } from "../hooks/useGroomingCatalog";
 import { GROOMING_LINE } from "../line";
 import { GroomingBookingsTable } from "./GroomingBookingsTable";
@@ -62,8 +58,9 @@ const LENS_WORDS: Record<Exclude<GroomingLens, "all">, string> = {
  * ─── WHAT THE MOCKUP ASKS FOR THAT IS NOT DRAWN ────────────────────────────
  *
  * Built on the API as it stands (decided 13 September 2026: frontend first).
- * The "Hewan baru" card is a `PendingStatTile`, because nothing marks an
- * animal's first grooming. Neto and Potongan are gone from the first card: a
+ * "Hewan baru" counts animals whose first grooming ever is on the board — read
+ * from `GET /bookings/first-visits` since 12 October 2026, because that first
+ * visit may lie before the period. Neto and Potongan are gone from the first card: a
  * booking carries prices, not what was charged. Trips, zones and the travel fee
  * wait for the backend to have them.
  *
@@ -101,6 +98,7 @@ export function GroomingBookingsScreen() {
   );
 
   const board = useGroomingBoard(scope, branchIds, range);
+  const firstVisits = useFirstVisits(scope, branchIds, range);
 
   /*
     "RESET FILTER (n)" ON THE SCOPE ROW (12 October 2026, on request) — the
@@ -115,6 +113,13 @@ export function GroomingBookingsScreen() {
     [board.periodRows, filters],
   );
   const summary = useMemo(() => summarisePeriod(filtered), [filtered]);
+  const animals = useMemo(
+    () =>
+      firstVisits.firstBookingIds
+        ? summariseNewAnimals(filtered, firstVisits.firstBookingIds)
+        : null,
+    [filtered, firstVisits.firstBookingIds],
+  );
   const day = useMemo(
     () =>
       summariseDay(
@@ -275,9 +280,22 @@ export function GroomingBookingsScreen() {
           loading={board.todayLoading}
           error={board.todayError}
         />
-        <PendingStatTile
+        <GroomingStatCard
           label="Hewan baru"
-          blockedBy="Sistem belum menandai kunjungan grooming pertama tiap hewan."
+          value={String(animals?.newAnimals ?? 0)}
+          caption={`hewan pertama kali grooming ${periodWords}`}
+          splits={[
+            {
+              label: "Total hewan",
+              value: String(animals?.animals ?? 0),
+            },
+            {
+              label: "Kembali lagi",
+              value: String(animals?.returning ?? 0),
+            },
+          ]}
+          loading={board.loading || firstVisits.loading}
+          error={board.error !== null || firstVisits.failed}
         />
       </section>
 
