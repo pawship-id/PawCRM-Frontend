@@ -166,7 +166,18 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     label: "Utama",
     items: [
-      { label: "Beranda", href: "/dashboard", icon: House, exact: true },
+      {
+        label: "Beranda",
+        href: "/dashboard",
+        icon: House,
+        exact: true,
+        // Its Uang / Operasional / Cabang tabs are routes of their own.
+        match: [
+          "/dashboard/uang",
+          "/dashboard/operasional",
+          "/dashboard/cabang",
+        ],
+      },
       {
         /**
          * Gated on READING transactions rather than opening a shift: somebody
