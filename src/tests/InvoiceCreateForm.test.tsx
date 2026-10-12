@@ -180,13 +180,25 @@ afterEach(() => jest.restoreAllMocks());
  * name, so two customers called Budi can be told apart before one is billed.
  */
 describe("the customer picker", () => {
+  // The form opens on the first 100; typing asks the server, which matches
+  // over every customer — stood in for here by a filter over the two.
+  const CUSTOMERS = [
+    { _id: "c1", name: "Budi Santoso", phone: "0812-1000-16" },
+    { _id: "c2", name: "Budi Wijaya", phone: "0812-1000-17" },
+  ];
+
   beforeEach(() => {
-    jest.spyOn(customerService, "list").mockResolvedValue(
-      page([
-        { _id: "c1", name: "Budi Santoso", phone: "0812-1000-16" },
-        { _id: "c2", name: "Budi Wijaya", phone: "0812-1000-17" },
-      ]) as never,
-    );
+    jest.spyOn(customerService, "list").mockImplementation((async (
+      query: { search?: string } = {},
+    ) =>
+      page(
+        CUSTOMERS.filter(
+          (one) =>
+            !query.search ||
+            one.name.includes(query.search) ||
+            one.phone.includes(query.search),
+        ),
+      )) as never);
   });
 
   it("shows each phone, finds a customer by it, and keeps it on the trigger", async () => {
@@ -203,11 +215,15 @@ describe("the customer picker", () => {
       screen.getByRole("textbox", { name: /cari pelanggan/i }),
       "1000-17",
     );
+    const match = await screen.findByRole("option", { name: /Budi Wijaya/ });
     expect(
       screen.queryByRole("option", { name: /Budi Santoso/ }),
     ).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("option", { name: /Budi Wijaya/ }));
+    await userEvent.click(match);
+    expect(customerService.list).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "1000-17", isActive: true }),
+    );
     expect(
       screen.getByRole("button", { name: /^Pelanggan$/i }),
     ).toHaveTextContent("Budi Wijaya — 0812-1000-17");

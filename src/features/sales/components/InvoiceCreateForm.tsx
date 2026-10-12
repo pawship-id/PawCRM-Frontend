@@ -69,6 +69,7 @@ import type { RideJourney } from "@/features/antar-jemput/components/RideJourney
 
 import { useInvoiceLineStock } from "../hooks/useInvoiceLineStock";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
+import { useInvoiceCustomerSearch } from "../hooks/useInvoiceCustomerSearch";
 import { bookingShareOf, ownDiscountOfLine } from "../bookingDiscount";
 import {
   billedTripNote,
@@ -400,6 +401,7 @@ function ownLinesOf(booking: Booking) {
 export function InvoiceCreateForm() {
   const router = useRouter();
   const lookups = useInvoiceLookups();
+  const customerSearch = useInvoiceCustomerSearch(lookups.customers);
 
   const [customerId, setCustomerId] = useState("");
   const [branchId, setBranchId] = useState("");
@@ -672,9 +674,7 @@ export function InvoiceCreateForm() {
   const branchPin = lookups.branches.find(
     (one) => one._id === branchId,
   )?.location;
-  const customerPin = lookups.customers.find(
-    (one) => one._id === customerId,
-  )?.location;
+  const customerPin = customerSearch.find(customerId)?.location;
   const variant = useVariantQuote({ branchPin, customerPin });
 
   const serviceOf = (refId: string) =>
@@ -686,8 +686,7 @@ export function InvoiceCreateForm() {
 
   const branchRecord =
     lookups.branches.find((one) => one._id === branchId) ?? null;
-  const customerRecord =
-    lookups.customers.find((one) => one._id === customerId) ?? null;
+  const customerRecord = customerSearch.find(customerId);
 
   /** A ride row's two ends, resolved against the registers it may copy from. */
   const endsOf = useCallback(
@@ -903,12 +902,12 @@ export function InvoiceCreateForm() {
    */
   const customerOptions = useMemo(
     () =>
-      lookups.customers.map((customer) => ({
+      customerSearch.customers.map((customer) => ({
         value: customer._id,
         label: customer.name,
         ...(customer.phone ? { meta: customer.phone } : {}),
       })),
-    [lookups.customers],
+    [customerSearch.customers],
   );
 
   /**
@@ -1754,11 +1753,19 @@ export function InvoiceCreateForm() {
               searchable
               placeholder="Cari nama pelanggan…"
               searchPlaceholder="Cari nama atau nomor HP…"
+              onSearchChange={customerSearch.setSearch}
+              searching={customerSearch.searching}
+              emptyLabel={
+                customerSearch.failed
+                  ? "Pencarian pelanggan gagal. Coba lagi."
+                  : undefined
+              }
               hint="Cari lalu pilih — nomor HP ditampilkan supaya tidak salah pilih kalau ada nama yang sama."
               disabled={saving}
               className="sm:col-span-2"
               onChange={(value) => {
                 if (value === customerId) return;
+                customerSearch.remember(value);
                 setCustomerId(value);
                 // Every booking on offer belonged to the previous customer.
                 // Keeping one would bill this person for somebody else's grooming
