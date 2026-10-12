@@ -259,6 +259,26 @@ function daysSince(iso: string, today: Date): number | null {
   return Math.max(0, Math.round((now.getTime() - then.getTime()) / DAY_MS));
 }
 
+/**
+ * NOT YET PULLED — neither put in a cashier's basket nor on an invoice, and
+ * not cancelled. WHATEVER ITS STATUS (13 October 2026, on request): the
+ * Grooming board's "Belum ditagih" card counts a booking still at Requested
+ * or Confirmed too, because what the shop asked it to answer is "what has not
+ * reached the till or a faktur yet", not "what work was finished and missed".
+ *
+ * Narrower `billingOf(…) === "unbilled"` (finished work only) still drives the
+ * row badges and Antar-Jemput's card — "Belum ditagih" on a dog booked for
+ * Thursday would read as a reproach on the row itself.
+ */
+export function isUnpulled(row: GroomingRow): boolean {
+  const booking = row.booking;
+  return (
+    booking.status !== "cancelled" &&
+    !booking.pulledToCartAt &&
+    !booking.pulledToInvoiceAt
+  );
+}
+
 /** CANCELLED BOOKINGS COUNT FOR NOTHING — not in the value, not in the average. */
 export function summarisePeriod(
   rows: GroomingRow[],
@@ -266,7 +286,7 @@ export function summarisePeriod(
 ): PeriodSummary {
   const live = rows.filter((row) => row.booking.status !== "cancelled");
   const value = sumDecimals(live.map((row) => row.value));
-  const unbilled = rows.filter((row) => row.billing === "unbilled");
+  const unbilled = rows.filter(isUnpulled);
 
   const oldest = unbilled.reduce<number | null>((max, row) => {
     const days = daysSince(row.booking.scheduledAt, today);
@@ -441,11 +461,16 @@ export function matchesFilters(
   return true;
 }
 
-/** The two cards that narrow the table when pressed. */
-export type GroomingLens = "all" | "unbilled" | "working";
+/**
+ * The cards that narrow the table when pressed. `unbilled` is finished work
+ * nobody charged for (Antar-Jemput); `unpulled` is anything not yet at the
+ * till or on a faktur (Grooming — see `isUnpulled`).
+ */
+export type GroomingLens = "all" | "unbilled" | "unpulled" | "working";
 
 export function matchesLens(row: GroomingRow, lens: GroomingLens): boolean {
   if (lens === "unbilled") return row.billing === "unbilled";
+  if (lens === "unpulled") return isUnpulled(row);
   if (lens === "working") return row.booking.status === "in_progress";
 
   return true;

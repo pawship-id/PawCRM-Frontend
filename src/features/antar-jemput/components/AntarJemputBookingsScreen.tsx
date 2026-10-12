@@ -49,6 +49,8 @@ const PERIOD_WORDS: Record<Exclude<GroomingPeriod, "custom">, string> = {
 
 const LENS_WORDS: Record<Exclude<GroomingLens, "all">, string> = {
   unbilled: "belum ditagih",
+  // Grooming's lens; this board never presses it.
+  unpulled: "belum ditagih",
   working: "sedang jalan",
 };
 

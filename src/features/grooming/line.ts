@@ -3,8 +3,8 @@ import { SETTINGS_PATHS, serviceFormPath } from "@/features/settings/paths";
 import type { ServiceKind } from "@/types/api";
 
 import {
+  GROOMING_BOOKINGS_PATH,
   GROOMING_CATALOG_PATH,
-  GROOMING_SUMMARY_PATH,
   GROOMING_NEW_BOOKING_PATH,
   GROOMING_PATH,
   GROOMING_SETTINGS_PATH,
@@ -46,6 +46,7 @@ export interface ServiceLine {
      * header draws no such tab.
      */
     summary?: string;
+    /** The booking board — the Booking tab. Grooming's sits at `/booking`. */
     root: string;
     catalog: string;
     settings: string;
@@ -59,8 +60,8 @@ export const GROOMING_LINE: ServiceLine = {
   noun: "grooming",
   fallbackName: "Grooming",
   paths: {
-    summary: GROOMING_SUMMARY_PATH,
-    root: GROOMING_PATH,
+    summary: GROOMING_PATH,
+    root: GROOMING_BOOKINGS_PATH,
     catalog: GROOMING_CATALOG_PATH,
     settings: GROOMING_SETTINGS_PATH,
     newBooking: GROOMING_NEW_BOOKING_PATH,

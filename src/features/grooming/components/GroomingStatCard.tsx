@@ -102,7 +102,12 @@ export function GroomingStatCard({
       onClick={onPress}
       className={cn(
         shell,
-        "w-full transition hover:shadow-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        /*
+          A COLUMN, TOP-ALIGNED. A <button> centres its content vertically, so
+          once the grid stretched it to the row's height its label sat lower
+          than the plain cards beside it.
+        */
+        "flex w-full flex-col justify-start transition hover:shadow-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
         pressed && (tone === "danger" ? "ring-2 ring-danger" : "ring-2 ring-primary"),
       )}
     >

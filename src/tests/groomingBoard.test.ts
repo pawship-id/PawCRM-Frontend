@@ -220,7 +220,7 @@ describe("summariseNewAnimals", () => {
 });
 
 describe("summarisePeriod", () => {
-  it("leaves cancelled bookings out of the value and finds the oldest unbilled day", () => {
+  it("leaves cancelled bookings out, and counts every unpulled booking as belum ditagih", () => {
     const rows = toGroomingRows(
       [
         booking({
@@ -260,9 +260,27 @@ describe("summarisePeriod", () => {
     expect(summary.value).toBe("300000.0000");
     expect(summary.averagePerAnimal).toBe("150000.0000");
     expect(summary.addonRate).toBe(50);
-    expect(summary.unbilledCount).toBe(1);
-    expect(summary.unbilledValue).toBe("150000.0000");
+    // bk-1 (completed) and bk-3 (still confirmed) — neither has reached the
+    // till or a faktur; the cancelled bk-2 owes nothing.
+    expect(summary.unbilledCount).toBe(2);
+    expect(summary.unbilledValue).toBe("300000.0000");
     expect(summary.oldestUnbilledDays).toBe(6);
+  });
+
+  it("does not count a booking already in a basket or on a faktur", () => {
+    const rows = toGroomingRows(
+      [
+        booking({ _id: "bk-1", status: "confirmed", pulledToCartAt: "2026-09-12T10:00:00" }),
+        booking({ _id: "bk-2", status: "completed", pulledToInvoiceAt: "2026-09-12T10:00:00" }),
+        booking({ _id: "bk-3", status: "requested" }),
+      ],
+      scope,
+    );
+
+    expect(summarisePeriod(rows).unbilledCount).toBe(1);
+    expect(rows.filter((row) => matchesLens(row, "unpulled")).map((row) => row.key)).toEqual([
+      "bk-3",
+    ]);
   });
 
   it("answers null rather than zero when there is nothing to average", () => {

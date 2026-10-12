@@ -373,17 +373,6 @@ export function GroomingSummaryScreen() {
         }
       />
 
-      <div className="rounded-xl border border-border border-l-4 border-l-primary bg-surface px-4 py-3">
-        <p className="font-bold text-foreground">
-          Khusus performa Grooming, bukan status hari ini
-        </p>
-        <p className="mt-0.5 text-sm text-muted">
-          Untuk yang sedang terjadi sekarang — belum ditagih, sedang dikerjakan
-          — lihat tab Booking. Rebook rate sengaja memakai jendela tetap{" "}
-          {REBOOK_DAYS} hari dan tidak ikut Periode. Daftar pelanggan dan hewan
-          di atas dihitung dari booking setahun terakhir.
-        </p>
-      </div>
     </div>
   );
 }

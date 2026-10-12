@@ -1,7 +1,13 @@
-/** The Grooming module's tabs — each its own route (see `PageTabs`). */
+/**
+ * The Grooming module's tabs — each its own route (see `PageTabs`).
+ *
+ * THE MODULE'S OWN ADDRESS IS RINGKASAN (13 October 2026, on request): the
+ * rail's Grooming row opens on the period's performance, and the booking board
+ * moved one segment down to `/booking`.
+ */
 export const GROOMING_PATH = "/dashboard/layanan/grooming";
-/** Ringkasan — the period's performance, left of Booking (`buloo-navigation-v3`). */
-export const GROOMING_SUMMARY_PATH = `${GROOMING_PATH}/ringkasan`;
+/** The booking board — the Booking tab. */
+export const GROOMING_BOOKINGS_PATH = `${GROOMING_PATH}/booking`;
 export const GROOMING_CATALOG_PATH = `${GROOMING_PATH}/katalog`;
 export const GROOMING_SETTINGS_PATH = `${GROOMING_PATH}/pengaturan`;
 

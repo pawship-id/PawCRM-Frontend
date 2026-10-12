@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 
-import { GroomingBookingsScreen } from "@/features/grooming";
+import { GroomingSummaryScreen } from "@/features/grooming";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Grooming · Buloo" };
+export const metadata: Metadata = { title: "Ringkasan Grooming · Buloo" };
 
-export default function GroomingPage() {
+/** Layanan › Grooming › Ringkasan — gated like the Booking tab it sits beside. */
+export default function GroomingSummaryPage() {
   return (
     <RequirePermission feature="bookings">
-      <GroomingBookingsScreen />
+      <GroomingSummaryScreen />
     </RequirePermission>
   );
 }

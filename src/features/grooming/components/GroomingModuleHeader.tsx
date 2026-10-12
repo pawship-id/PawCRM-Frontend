@@ -31,14 +31,22 @@ export function GroomingModuleHeader({
 
   const tabs: PageTab[] = [
     ...(line.paths.summary && can("bookings", "read")
-      ? [{ label: "Ringkasan", href: line.paths.summary }]
+      ? [
+          {
+            label: "Ringkasan",
+            href: line.paths.summary,
+            // EXACT: on Grooming it is the module's own address, a prefix of
+            // every other tab.
+            exact: true,
+          },
+        ]
       : []),
     ...(can("bookings", "read")
       ? [
           {
             label: "Booking",
             href: line.paths.root,
-            // EXACT: the other tabs are routes under this one.
+            // EXACT: on Antar-Jemput the other tabs are routes under this one.
             exact: true,
           },
         ]

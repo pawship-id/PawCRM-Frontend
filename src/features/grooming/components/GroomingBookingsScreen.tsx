@@ -42,6 +42,7 @@ const PAGE_SIZE = 20;
 
 const LENS_WORDS: Record<Exclude<GroomingLens, "all">, string> = {
   unbilled: "belum ditagih",
+  unpulled: "belum ditagih",
   working: "sedang dikerjakan",
 };
 
@@ -243,7 +244,7 @@ export function GroomingBookingsScreen() {
           label="Belum ditagih"
           tone={summary.unbilledCount > 0 ? "danger" : "default"}
           value={formatMoneyShort(summary.unbilledValue)}
-          caption={`${summary.unbilledCount} hewan selesai dikerjakan, belum ditagih`}
+          caption={`${summary.unbilledCount} booking belum masuk kasir atau faktur`}
           splits={[
             {
               label: "Terlama",
@@ -253,8 +254,8 @@ export function GroomingBookingsScreen() {
                   : `${summary.oldestUnbilledDays} hari`,
             },
           ]}
-          pressed={lens === "unbilled"}
-          onPress={() => pressLens("unbilled")}
+          pressed={lens === "unpulled"}
+          onPress={() => pressLens("unpulled")}
           loading={board.loading}
           error={board.error !== null}
         />

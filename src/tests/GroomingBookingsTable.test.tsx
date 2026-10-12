@@ -12,7 +12,7 @@ jest.mock("@/services/booking.service");
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }),
-  usePathname: () => "/dashboard/layanan/grooming",
+  usePathname: () => "/dashboard/layanan/grooming/booking",
 }));
 
 const scope: GroomingScope = {
