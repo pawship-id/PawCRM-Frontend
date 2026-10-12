@@ -1931,6 +1931,9 @@ export interface ExpiringBatchListQuery {
   warehouseId?: string;
   /** Same meaning as on the audit list — see `ProductBatchListQuery`. */
   branchId?: string;
+  /** Sets of either — the Inventori scope row picks several. */
+  warehouseIds?: string[];
+  branchIds?: string[];
   /** 0–365, default 30. Zero means "expired or expiring today". */
   withinDays?: number;
   /** Same closed list as the audit endpoint's — both screens share one control. */

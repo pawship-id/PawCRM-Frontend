@@ -44,10 +44,16 @@ const LIMIT = 5;
 export function useLowStockAlert(
   enabled: boolean,
   /** Empty means every warehouse — see the note on the threshold above. */
-  warehouseId = "",
+  warehouseIds: string[] = [],
   /** Empty means every cabang; resolved server-side into its gudang. */
-  branchId = "",
+  branchIds: string[] = [],
 ): UseLowStockAlertResult {
+  /*
+    SETS SINCE 12 OCTOBER 2026 — the Inventori scope row picks several. Keyed
+    as strings so a new array of the same ids is no reason to re-ask.
+  */
+  const warehouseKey = warehouseIds.join(",");
+  const branchKey = branchIds.join(",");
   const [items, setItems] = useState<LowStockProduct[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(enabled);
@@ -68,8 +74,8 @@ export function useLowStockAlert(
       // than reaching the API as an empty string it would reject as a 400.
       .lowStock({
         limit: LIMIT,
-        warehouseId: warehouseId || undefined,
-        branchId: branchId || undefined,
+        warehouseIds: warehouseKey ? warehouseKey.split(",") : undefined,
+        branchIds: branchKey ? branchKey.split(",") : undefined,
       })
       .then((result) => {
         if (!active) return;
@@ -93,7 +99,7 @@ export function useLowStockAlert(
     return () => {
       active = false;
     };
-  }, [enabled, warehouseId, branchId]);
+  }, [enabled, warehouseKey, branchKey]);
 
   return { items, total, loading, error };
 }

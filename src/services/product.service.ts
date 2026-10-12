@@ -107,6 +107,9 @@ export const productService = {
       warehouseId?: string;
       /** Every gudang under this cabang, plus the branchless ones. */
       branchId?: string;
+      /** Sets of either — sent as repeated params, intersected on the server. */
+      warehouseIds?: string[];
+      branchIds?: string[];
     } = {},
   ) =>
     apiClient.get<PageResult<Product & { qtyOnHand: string }>>(
@@ -135,6 +138,9 @@ export const productService = {
       warehouseId?: string;
       /** Every gudang under this cabang, plus the branchless ones. */
       branchId?: string;
+      /** Sets of either — sent as repeated params, intersected on the server. */
+      warehouseIds?: string[];
+      branchIds?: string[];
     } = {},
   ) =>
     apiClient.get<NegativeStockResult>("/products/negative-stock", {

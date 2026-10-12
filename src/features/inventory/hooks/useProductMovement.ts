@@ -37,11 +37,17 @@ export function useProductMovement(
   /** Skip the request when the role cannot read products. */
   enabled: boolean,
   /** Empty means every gudang the caller may reach. */
-  warehouseId: string,
+  warehouseIds: string[],
   /** Empty means every cabang; resolved server-side into its gudang. */
-  branchId: string,
+  branchIds: string[],
   idleDays: number,
 ): UseProductMovementResult {
+  /*
+    SETS SINCE 12 OCTOBER 2026 — the Inventori scope row picks several. Keyed
+    as strings so a new array of the same ids is no reason to re-ask.
+  */
+  const warehouseKey = warehouseIds.join(",");
+  const branchKey = branchIds.join(",");
   const [data, setData] = useState<ProductMovementReport | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
@@ -58,8 +64,8 @@ export function useProductMovement(
 
     reportService
       .productMovement({
-        warehouseId,
-        branchId,
+        warehouseIds: warehouseKey ? warehouseKey.split(",") : undefined,
+        branchIds: branchKey ? branchKey.split(",") : undefined,
         days: TOP_SELLER_DAYS,
         idleDays,
         limit: LIMIT,
@@ -83,7 +89,7 @@ export function useProductMovement(
     return () => {
       active = false;
     };
-  }, [enabled, warehouseId, branchId, idleDays]);
+  }, [enabled, warehouseKey, branchKey, idleDays]);
 
   return { data, loading, error };
 }
