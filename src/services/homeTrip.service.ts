@@ -4,6 +4,7 @@ import type {
   HomeTripListQuery,
   HomeTripStatus,
   PageResult,
+  TypedDiscountInput,
 } from "@/types/api";
 
 /**
@@ -40,4 +41,8 @@ export const homeTripService = {
   /** PATCH /home-trips/:id — who drives; `null` falls back to the booking's groomer. */
   setPerformer: (id: string, performerUserId: string | null) =>
     apiClient.patch<HomeTrip>(`/home-trips/${id}`, { performerUserId }),
+
+  /** PATCH /home-trips/:id/fee-discount — the fee's own discount; `null` removes it. */
+  setFeeDiscount: (id: string, discount: TypedDiscountInput | null) =>
+    apiClient.patch<HomeTrip>(`/home-trips/${id}/fee-discount`, { discount }),
 };

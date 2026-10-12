@@ -287,3 +287,49 @@ describe("HomeTripDetailScreen", () => {
     expect(await screen.findByText("Perjalanan tidak ditemukan")).toBeInTheDocument();
   });
 });
+
+describe("HomeTripDetailScreen — the fee's own discount (12 October 2026)", () => {
+  const permissions = [{ feature: "bookings", actions: ["read", "update"] }];
+
+  it("saves a discount on an unbilled fee and shows what is left to pay", async () => {
+    const base = tripAt("scheduled");
+    trips.setFeeDiscount.mockResolvedValue({
+      ...base,
+      fee: {
+        ...base.fee!,
+        discount: { mode: "percent", value: "10.0000", resolvedAmount: "3500.0000" },
+        netAmount: "31500.0000",
+      },
+    });
+    show({ isSuperAdmin: false, permissions });
+
+    await userEvent.type(await screen.findByLabelText("Diskon biaya kunjungan"), "10");
+    await userEvent.click(screen.getByRole("button", { name: "Simpan diskon" }));
+
+    expect(trips.setFeeDiscount).toHaveBeenCalledWith("trip-1", { mode: "percent", value: "10" });
+    expect(await screen.findByText("Yang ditagih")).toBeInTheDocument();
+    expect(screen.getByLabelText("Diskon biaya kunjungan")).toHaveValue("10");
+  });
+
+  it("offers no fields once the fee is billed", async () => {
+    trips.get.mockResolvedValue(
+      tripAt("scheduled", {
+        billing: { state: "billed", via: "pos", at: "2026-09-03T05:00:00.000Z", bookingId: null, bookingNumber: null },
+      }),
+    );
+    show({ isSuperAdmin: false, permissions });
+
+    expect(await screen.findByText(/Sudah ditagih di kasir/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Diskon biaya kunjungan")).not.toBeInTheDocument();
+  });
+
+  it("offers no fields without bookings:update", async () => {
+    show({
+      isSuperAdmin: false,
+      permissions: [{ feature: "bookings", actions: ["read", "advanceStatus"] }],
+    });
+
+    expect(await screen.findByText("Biaya kunjungan · Zona B")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Diskon biaya kunjungan")).not.toBeInTheDocument();
+  });
+});

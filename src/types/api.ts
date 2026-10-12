@@ -2083,7 +2083,13 @@ export interface PosTransaction {
    * TRIPS OF THE BOOKINGS ON THIS BASKET STILL OWED (11 October 2026) — a fee
    * nobody has billed and no line here carries. The till offers to add it.
    */
-  owedTrips?: { tripId: string; name: string; amount: string; petNames: string[] }[];
+  owedTrips?: {
+    tripId: string;
+    name: string;
+    amount: string;
+    discount?: TripFeeDiscount | null;
+    petNames: string[];
+  }[];
   _id: string;
   tenantId: string;
   branchId: string;
@@ -6841,7 +6847,13 @@ export interface CustomerInvoiceDetail extends Omit<
   "paymentCount"
 > {
   /** Trips of this bill's home bookings nobody has billed — the edit offers them (11 October 2026). */
-  owedTrips?: { tripId: string; name: string; amount: string; petNames: string[] }[];
+  owedTrips?: {
+    tripId: string;
+    name: string;
+    amount: string;
+    discount?: TripFeeDiscount | null;
+    petNames: string[];
+  }[];
   /** Who raised it. Null for a till-born invoice, or a user deleted since. */
   createdByName: string | null;
   payments: CustomerInvoicePayment[];
@@ -7320,7 +7332,7 @@ export interface UpdateCustomerInvoiceInput {
   /** Home-grooming trips to ADD, priced from each trip (11 October 2026). */
   homeTripIds?: string[];
   /** A discount on a trip ADDED by this edit; a kept trip row takes its row's. */
-  tripDiscounts?: Array<{ homeTripId: string; discount: TypedDiscountInput }>;
+  tripDiscounts?: Array<{ homeTripId: string; discount: TypedDiscountInput | null }>;
   /** Absent keeps the typed discount; null removes it. */
   invoiceDiscount?: TypedDiscountInput | null;
   /** Absent keeps the stored charges; an array — even empty — replaces them. */
@@ -7419,7 +7431,16 @@ export interface CreateCustomerInvoiceInput {
    */
   homeTripIds?: string[];
   /** A discount per trip line, as a typed line would carry one (11 October 2026). */
-  tripDiscounts?: Array<{ homeTripId: string; discount: TypedDiscountInput }>;
+  tripDiscounts?: Array<{ homeTripId: string; discount: TypedDiscountInput | null }>;
+  /**
+   * A pulled booking line's OWN discount, when the form changed it (12 October
+   * 2026). The server adds the line's share of "Diskon seluruh booking".
+   */
+  bookingLineDiscounts?: Array<{
+    bookingId: string;
+    serviceId: string;
+    discount: TypedDiscountInput | null;
+  }>;
   customerId: string;
   branchId: string;
   warehouseId?: string;
@@ -8153,6 +8174,7 @@ export type BookingVisitTrip =
       key: string;
       name: string;
       amount: string;
+      discount?: TripFeeDiscount | null;
       zoneName: string | null;
       petNames: string[];
       tripId: string;
@@ -8171,6 +8193,7 @@ export interface OrphanTrip {
   tripId: string;
   name: string;
   amount: string;
+  discount?: TripFeeDiscount | null;
   zoneName: string | null;
   scheduledAt: string | null;
   petNames: string[];
@@ -8194,6 +8217,17 @@ export interface HomeTripFee {
   /** "road" — driven; "straight" — the crow's line, when the road could not be measured. */
   distanceSource?: "road" | "straight";
   unit: "per_visit" | "per_pet" | null;
+  /** The trip's own discount, set on its page (12 October 2026). */
+  discount?: TripFeeDiscount | null;
+  /** `amount` less the discount. */
+  netAmount?: string;
+}
+
+/** A trip fee's own discount, resolved against the fee. */
+export interface TripFeeDiscount {
+  mode: "percent" | "amount";
+  value: string;
+  resolvedAmount: string;
 }
 
 export interface HomeTripListQuery {

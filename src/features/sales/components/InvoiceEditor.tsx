@@ -29,7 +29,6 @@ import { customerService } from "@/services/customer.service";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { petService } from "@/services/pet.service";
 import {
-  divideRound,
   formatMoney,
   isPositive,
   subtractDecimals,
@@ -45,6 +44,7 @@ import {
   type PriceLookup,
 } from "@/utils/serviceVariant";
 import type {
+  TripFeeDiscount,
   CustomerInvoiceDetail,
   GeoLocation,
   InvoiceDiscountMode,
@@ -62,7 +62,7 @@ import {
 import { RideJourneyDialog } from "@/features/antar-jemput/components/RideJourneyDialog";
 import type { RideJourney } from "@/features/antar-jemput/components/RideJourneyFields";
 
-import { invoiceBookingShareOf } from "../bookingDiscount";
+import { invoiceBookingShareOf, ownDiscountMinor } from "../bookingDiscount";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { useProductSearch } from "../hooks/useServerSearch";
 import { previewInvoice } from "../invoicePreview";
@@ -142,29 +142,6 @@ interface EditLine {
    * from the trip. On a kept row it is the stored line's.
    */
   tripId?: string | null;
-}
-
-const HUNDRED_MINOR = BigInt(100) * BigInt(10_000);
-
-/**
- * What the line's own discount takes off `basisMinor` — the server's rule
- * (`utils/discount.js`): a percent half-up and never past 100, a rupiah amount
- * never past what it is taken from. Invalid or empty takes nothing.
- */
-function ownDiscountMinor(
-  basisMinor: bigint,
-  mode: InvoiceDiscountMode,
-  value: string,
-): bigint {
-  const typed = value === "" ? null : toMinor(value.replace(",", "."));
-  if (typed === null || typed <= BigInt(0) || basisMinor <= BigInt(0)) return BigInt(0);
-
-  const off =
-    mode === "percent"
-      ? divideRound(basisMinor * (typed > HUNDRED_MINOR ? HUNDRED_MINOR : typed), HUNDRED_MINOR)
-      : typed;
-
-  return off > basisMinor ? basisMinor : off;
 }
 
 /** Nobody has a hundred animals; this is a ceiling, not a page size. */
@@ -656,6 +633,8 @@ export function InvoiceEditor({
   ];
 
   function addOwedTrip(owed: (typeof owedHere)[number]) {
+    /* A trip starts with the discount set on its page (12 October 2026). */
+    const own = (owed as { discount?: TripFeeDiscount | null }).discount ?? null;
     setLineRefusals({});
     setLines((current) => [
       ...current,
@@ -668,8 +647,8 @@ export function InvoiceEditor({
         sku: null,
         unitPrice: owed.amount,
         qty: "1",
-        discountMode: "percent",
-        discountValue: "",
+        discountMode: own?.mode ?? "percent",
+        discountValue: own ? trimDecimal(own.value) : "",
         petId: "",
         petName: null,
         booked: true,
@@ -713,18 +692,22 @@ export function InvoiceEditor({
 
   function payload(): UpdateCustomerInvoiceInput {
     const addedTrips = lines.filter(isAddedTrip);
-    const discountedTrips = addedTrips.filter((line) => line.discountValue);
 
     return {
       ...(addedTrips.length > 0
         ? { homeTripIds: addedTrips.map((line) => line.tripId as string) }
         : {}),
-      /* A trip added here carries its discount beside it (11 October 2026). */
-      ...(discountedTrips.length > 0
+      /*
+        A trip added here carries its discount beside it (11 October 2026) —
+        every one, even cleared, else the server bills the trip's own.
+      */
+      ...(addedTrips.length > 0
         ? {
-            tripDiscounts: discountedTrips.map((line) => ({
+            tripDiscounts: addedTrips.map((line) => ({
               homeTripId: line.tripId as string,
-              discount: { mode: line.discountMode, value: line.discountValue },
+              discount: line.discountValue
+                ? { mode: line.discountMode, value: line.discountValue }
+                : null,
             })),
           }
         : {}),

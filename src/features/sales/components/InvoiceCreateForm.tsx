@@ -43,6 +43,7 @@ import {
   sumDecimals,
   toDecimalString,
   toMinor,
+  trimDecimal,
 } from "@/utils/decimal";
 import { AXIS_LABEL, type PriceLookup } from "@/utils/serviceVariant";
 import type {
@@ -70,11 +71,17 @@ import type { RideJourney } from "@/features/antar-jemput/components/RideJourney
 import { useInvoiceLineStock } from "../hooks/useInvoiceLineStock";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { useCustomerSearch } from "../hooks/useServerSearch";
-import { bookingShareOf, ownDiscountOfLine } from "../bookingDiscount";
+import {
+  bookingShareOf,
+  bookingShareOfLine,
+  ownDiscountOfLine,
+  pulledLineDiscount,
+} from "../bookingDiscount";
 import {
   billedTripNote,
   owedTripsOf,
   tripKeysOf,
+  type OwedTrip,
 } from "@/features/booking/visitTrip";
 import { previewInvoice } from "../invoicePreview";
 import { hasChoice, lineRefusalOf, type LineRefusal } from "../variantLine";
@@ -390,6 +397,21 @@ const todayValue = () => new Date().toISOString().slice(0, 10);
 /** Nobody has a hundred animals; this is a ceiling, not a page size. */
 const MAX_PETS = 100;
 
+/** A discount's two fields, as a typed line holds them. */
+type DiscountField = { mode: InvoiceDiscountMode; value: string };
+
+/** One price line of a pulled booking — the main service or an add-on. */
+type BookingPriceLine = ReturnType<typeof ownLinesOf>[number];
+
+/** The fields a stored discount starts them at — empty when there is none. */
+function fieldOf(
+  discount: { mode: InvoiceDiscountMode; value: string } | null | undefined,
+): DiscountField {
+  return discount
+    ? { mode: discount.mode, value: trimDecimal(discount.value) }
+    : { mode: "percent", value: "" };
+}
+
 /** A pulled booking's own rows — its home-visit fee is drawn as a trip row instead. */
 function ownLinesOf(booking: Booking) {
   return [
@@ -477,17 +499,45 @@ export function InvoiceCreateForm() {
   /*
     A DISCOUNT PER TRIP LINE (11 October 2026, on request) — the till's ✎ on a
     trip, as a typed line's fields. Sent beside the trip as `tripDiscounts`.
+    The fields START with the discount set on the trip's page (12 October
+    2026), and every trip's is sent — even cleared — so the bill says what the
+    rows show.
   */
-  const [tripDiscounts, setTripDiscounts] = useState<
-    Record<string, { mode: InvoiceDiscountMode; value: string }>
-  >({});
-  const patchTripDiscount = (tripId: string, patch: Partial<{ mode: InvoiceDiscountMode; value: string }>) =>
+  const [tripDiscounts, setTripDiscounts] = useState<Record<string, DiscountField>>({});
+  const tripFieldOf = (trip: OwedTrip): DiscountField =>
+    tripDiscounts[trip.tripId] ?? fieldOf(trip.discount);
+  const patchTripDiscount = (trip: OwedTrip, patch: Partial<DiscountField>) =>
     setTripDiscounts((current) => ({
       ...current,
-      [tripId]: {
-        mode: patch.mode ?? current[tripId]?.mode ?? "percent",
-        value: patch.value ?? current[tripId]?.value ?? "",
-      },
+      [trip.tripId]: { ...(current[trip.tripId] ?? fieldOf(trip.discount)), ...patch },
+    }));
+  /*
+    A PULLED BOOKING LINE'S OWN DISCOUNT (12 October 2026, on request) — the
+    till lets the cashier change it, so the invoice does too. The fields start
+    with the booking's "Diskon item"; the share of "Diskon seluruh booking"
+    stays the booking's and is added by the server. Only a line whose fields
+    moved is sent.
+  */
+  const [bookingLineDiscounts, setBookingLineDiscounts] = useState<
+    Record<string, DiscountField>
+  >({});
+  const bookingLineKey = (booking: Booking, line: BookingPriceLine) =>
+    `${booking._id}|${line.serviceId}`;
+  const bookingLineFieldOf = (booking: Booking, line: BookingPriceLine): DiscountField =>
+    bookingLineDiscounts[bookingLineKey(booking, line)] ?? fieldOf(line.discount);
+  const bookingLineEdited = (booking: Booking, line: BookingPriceLine) => {
+    const typed = bookingLineDiscounts[bookingLineKey(booking, line)];
+    const booked = fieldOf(line.discount);
+    return Boolean(typed) && (typed.mode !== booked.mode || typed.value !== booked.value);
+  };
+  const patchBookingLineDiscount = (
+    booking: Booking,
+    line: BookingPriceLine,
+    patch: Partial<DiscountField>,
+  ) =>
+    setBookingLineDiscounts((current) => ({
+      ...current,
+      [bookingLineKey(booking, line)]: { ...bookingLineFieldOf(booking, line), ...patch },
     }));
   const offeredTrips = useMemo(() => {
     const keys = tripKeysOf(pulledBookings);
@@ -508,6 +558,7 @@ export function InvoiceCreateForm() {
         tripId: trip.tripId,
         name: trip.name,
         amount: trip.amount,
+        discount: trip.discount ?? null,
         zoneName: trip.zoneName,
         petNames: trip.petNames,
       })),
@@ -535,25 +586,40 @@ export function InvoiceCreateForm() {
   const bookingLines = useMemo(
     () => [
       ...pulledBookings.flatMap((booking) =>
-        ownLinesOf(booking).map((line) => ({
-          qty: "1",
-          unitPrice: line.price,
-          /* The booking's discount on this line, pulled as the server pulls it. */
-          discount: line.discountAmount
-            ? { mode: "amount" as const, value: line.discountAmount }
-            : null,
-        })),
+        ownLinesOf(booking).map((line) => {
+          const typed = bookingLineDiscounts[`${booking._id}|${line.serviceId}`];
+          const booked = fieldOf(line.discount);
+          const edited =
+            Boolean(typed) && (typed.mode !== booked.mode || typed.value !== booked.value);
+
+          return {
+            qty: "1",
+            unitPrice: line.price,
+            /*
+              The booking's discount on this line, pulled as the server pulls
+              it — or, once the form changed it, the typed own discount plus
+              the booking's share, as the server will store it.
+            */
+            discount: edited
+              ? pulledLineDiscount(line.price, bookingShareOfLine(line), typed.mode, typed.value)
+              : line.discountAmount
+                ? { mode: "amount" as const, value: line.discountAmount }
+                : null,
+          };
+        }),
       ),
       /* Each owed trip once, after the bookings — its figure is already net. */
-      ...pulledTrips.map((trip) => ({
-        qty: "1",
-        unitPrice: trip.amount,
-        discount: tripDiscounts[trip.tripId]?.value
-          ? { mode: tripDiscounts[trip.tripId].mode, value: tripDiscounts[trip.tripId].value }
-          : null,
-      })),
+      ...pulledTrips.map((trip) => {
+        const field = tripDiscounts[trip.tripId] ?? fieldOf(trip.discount);
+
+        return {
+          qty: "1",
+          unitPrice: trip.amount,
+          discount: field.value ? { mode: field.mode, value: field.value } : null,
+        };
+      }),
     ],
-    [pulledBookings, pulledTrips, tripDiscounts],
+    [pulledBookings, pulledTrips, tripDiscounts, bookingLineDiscounts],
   );
   const tripRowsAt = bookingLines.length - pulledTrips.length;
   /*
@@ -1630,19 +1696,33 @@ export function InvoiceCreateForm() {
         ...(bookingIds.length > 0 || pulledTrips.length > 0
           ? { homeTripIds: pulledTrips.map((trip) => trip.tripId) }
           : {}),
-        ...(pulledTrips.some((trip) => tripDiscounts[trip.tripId]?.value)
+        /* Every trip's, even cleared — else the server bills the trip's own. */
+        ...(pulledTrips.length > 0
           ? {
-              tripDiscounts: pulledTrips
-                .filter((trip) => tripDiscounts[trip.tripId]?.value)
-                .map((trip) => ({
+              tripDiscounts: pulledTrips.map((trip) => {
+                const field = tripFieldOf(trip);
+                return {
                   homeTripId: trip.tripId,
-                  discount: {
-                    mode: tripDiscounts[trip.tripId].mode,
-                    value: tripDiscounts[trip.tripId].value,
-                  },
-                })),
+                  discount: field.value ? { mode: field.mode, value: field.value } : null,
+                };
+              }),
             }
           : {}),
+        ...(() => {
+          const changed = pulledBookings.flatMap((booking) =>
+            ownLinesOf(booking)
+              .filter((line) => bookingLineEdited(booking, line))
+              .map((line) => {
+                const field = bookingLineFieldOf(booking, line);
+                return {
+                  bookingId: booking._id,
+                  serviceId: line.serviceId,
+                  discount: field.value ? { mode: field.mode, value: field.value } : null,
+                };
+              }),
+          );
+          return changed.length > 0 ? { bookingLineDiscounts: changed } : {};
+        })(),
         // Itemised and trimmed — blank rows dropped, left out when none remain.
         ...(filledCharges.length > 0 ? { otherCharges: filledCharges } : {}),
         ...(invoiceDiscountValue
@@ -2008,7 +2088,7 @@ export function InvoiceCreateForm() {
           ) : (
             <>
               <div className="overflow-x-auto">
-                <Table>
+                <Table className="min-w-[1040px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Item</TableHead>
@@ -2032,7 +2112,7 @@ export function InvoiceCreateForm() {
                       )}
                       <TableHead className="text-right">Harga</TableHead>
                       <TableHead className="w-28">Jumlah</TableHead>
-                      <TableHead className="w-44">Diskon</TableHead>
+                      <TableHead className="w-52">Diskon</TableHead>
                       <TableHead>Pajak</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       <TableHead className="w-12" />
@@ -2041,7 +2121,16 @@ export function InvoiceCreateForm() {
                   <TableBody>
                     {bookingRows.map(
                       ({ booking, line, isAddon, isLast, at }) => {
-                        const own = ownDiscountOfLine(line);
+                        /* What the row's own discount takes off now — the typed one once changed. */
+                        const ownNow = subtractDecimals(
+                          preview.lineDiscounts[at] ?? "0",
+                          bookingShareOfLine(line),
+                        );
+                        const own = bookingLineEdited(booking, line)
+                          ? isPositive(ownNow)
+                            ? ownNow
+                            : null
+                          : ownDiscountOfLine(line);
                         const share = bookingShareOf(booking);
 
                         return (
@@ -2106,17 +2195,43 @@ export function InvoiceCreateForm() {
                               <TableCell className="tabular-nums">1</TableCell>
 
                               {/* THE LINE'S OWN DISCOUNT only, as the booking card
-                            draws it ("Diskon item"). The booking's share of
-                            "Diskon seluruh booking" gets its own row below the
-                            booking's last line, as on the card. Fixed when the
-                            booking was made, so text rather than inputs. */}
-                              <TableCell className="tabular-nums">
-                                {own ? (
-                                  <span className="text-xs text-success">
+                            draws it ("Diskon item") — editable since 12 October
+                            2026, as at the till. The booking's share of "Diskon
+                            seluruh booking" keeps its own row below the
+                            booking's last line, and is not typed here. */}
+                              <TableCell>
+                                <div className="flex gap-1">
+                                  <select
+                                    aria-label={`Jenis diskon ${line.name}`}
+                                    className="h-9 w-16 shrink-0 rounded-md border border-border bg-surface px-2 text-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                                    value={bookingLineFieldOf(booking, line).mode}
+                                    onChange={(event) =>
+                                      patchBookingLineDiscount(booking, line, {
+                                        mode: event.target.value as InvoiceDiscountMode,
+                                      })
+                                    }
+                                    disabled={saving}
+                                  >
+                                    <option value="percent">%</option>
+                                    <option value="amount">Rp</option>
+                                  </select>
+                                  <Input
+                                    aria-label={`Diskon ${line.name}`}
+                                    value={bookingLineFieldOf(booking, line).value}
+                                    inputMode="decimal"
+                                    placeholder="0"
+                                    onChange={(event) =>
+                                      patchBookingLineDiscount(booking, line, {
+                                        value: event.target.value,
+                                      })
+                                    }
+                                    disabled={saving}
+                                  />
+                                </div>
+                                {own && (
+                                  <span className="mt-0.5 block text-xs tabular-nums text-success">
                                     −{formatMoney(own)}
                                   </span>
-                                ) : (
-                                  <span className="text-muted">—</span>
                                 )}
                               </TableCell>
 
@@ -2202,10 +2317,10 @@ export function InvoiceCreateForm() {
                           <div className="flex gap-1">
                             <select
                               aria-label={`Jenis diskon ${trip.name}`}
-                              className="h-9 rounded-md border border-border bg-surface px-2 text-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-                              value={tripDiscounts[trip.tripId]?.mode ?? "percent"}
+                              className="h-9 w-16 shrink-0 rounded-md border border-border bg-surface px-2 text-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                              value={tripFieldOf(trip).mode}
                               onChange={(event) =>
-                                patchTripDiscount(trip.tripId, {
+                                patchTripDiscount(trip, {
                                   mode: event.target.value as InvoiceDiscountMode,
                                 })
                               }
@@ -2216,11 +2331,11 @@ export function InvoiceCreateForm() {
                             </select>
                             <Input
                               aria-label={`Diskon ${trip.name}`}
-                              value={tripDiscounts[trip.tripId]?.value ?? ""}
+                              value={tripFieldOf(trip).value}
                               inputMode="decimal"
                               placeholder="0"
                               onChange={(event) =>
-                                patchTripDiscount(trip.tripId, { value: event.target.value })
+                                patchTripDiscount(trip, { value: event.target.value })
                               }
                               disabled={saving}
                             />
@@ -2616,7 +2731,7 @@ export function InvoiceCreateForm() {
                             <div className="flex gap-1">
                               <select
                                 aria-label={`Jenis diskon ${line.name}`}
-                                className="h-9 rounded-md border border-border bg-surface px-2 text-sm"
+                                className="h-9 w-16 shrink-0 rounded-md border border-border bg-surface px-2 text-sm"
                                 value={line.discountMode}
                                 onChange={(event) =>
                                   patchLine(index, {
