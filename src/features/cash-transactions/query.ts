@@ -40,7 +40,8 @@ export interface CashTransactionsQuery {
   /** `yyyy-mm-dd`. */
   dateFrom: string;
   dateTo: string;
-  branchId: string;
+  /** Empty = every cabang. Several since 12 October 2026. */
+  branchIds: string[];
   /**
    * THE KAS/BANK ACCOUNT, not the channel (20 September 2026). "Which account is
    * this money in" is the question the list is read with; a channel is a button
@@ -76,7 +77,7 @@ export const DEFAULT_CASH_TRANSACTIONS_QUERY: CashTransactionsQuery = {
   source: "",
   dateFrom: "",
   dateTo: "",
-  branchId: "",
+  branchIds: [],
   accountId: "",
   status: "posted",
   documentId: "",

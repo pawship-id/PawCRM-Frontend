@@ -114,7 +114,7 @@ export function CashTransactionsPanel({
     query.source !== "" ||
     query.dateFrom !== "" ||
     query.dateTo !== "" ||
-    query.branchId !== "" ||
+    query.branchIds.length > 0 ||
     query.accountId !== "" ||
     query.status !== DEFAULT_CASH_TRANSACTION_STATUS ||
     query.documentId !== "";

@@ -28,8 +28,8 @@ export interface JournalEntriesQuery {
   /** `yyyy-mm-dd`, as the context bar holds them. "" = unbounded. */
   dateFrom: string;
   dateTo: string;
-  /** "" = semua cabang. */
-  branchId: string;
+  /** Empty = semua cabang. Several since 12 October 2026. */
+  branchIds: string[];
   /**
    * Which ordering to page through — set by the column headers. Always set: a
    * list has no "unordered" state, which is why this one is not `""`-able.
@@ -51,7 +51,7 @@ export const DEFAULT_JOURNAL_QUERY: JournalEntriesQuery = {
   sourceType: "",
   dateFrom: "",
   dateTo: "",
-  branchId: "",
+  branchIds: [],
   sort: "newest",
 };
 
@@ -146,7 +146,7 @@ export function useJournalEntries(): UseJournalEntriesResult {
         sourceType: settled.sourceType || undefined,
         dateFrom: settled.dateFrom || undefined,
         dateTo: settled.dateTo || undefined,
-        branchId: settled.branchId || undefined,
+        branchIds: settled.branchIds.length > 0 ? settled.branchIds : undefined,
         sort: settled.sort,
         page: settled.page,
         limit: settled.limit,

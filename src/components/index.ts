@@ -44,6 +44,15 @@ export {
   type ScopeSelection,
   type ScopeWarehouseOption,
 } from "./ScopeFilterCard";
+/**
+ * The Keuangan scope row — Cabang, Lini bisnis and Periode (by dates), on the
+ * same `ScopeFilterCard` (12 October 2026).
+ */
+export {
+  FinanceScopeCard,
+  type FinanceLineOption,
+  type FinanceScopeCardProps,
+} from "./FinanceScopeCard";
 export type { PageTab, PageTabsProps } from "./PageTabs";
 export type { BreadcrumbProps, Crumb } from "./Breadcrumb";
 export { Card } from "./Card";

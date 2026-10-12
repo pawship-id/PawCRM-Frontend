@@ -3636,6 +3636,9 @@ export type CommissionSort =
 
 export interface CommissionRowsQuery {
   branchId?: string;
+  /** Sets (12 Oct 2026) — repeated params; `__none__` among the lini is the shared bucket. */
+  branchIds?: string[];
+  businessLineIds?: string[];
   /** `"__none__"` for "no line of business". */
   businessLineId?: string;
   /** `YYYY-MM-DD`, the booking's date in the shop's zone. */
@@ -7996,6 +7999,8 @@ export interface CashTransactionListQuery {
   direction?: CashTransactionDirection;
   kind?: CashTransactionKind | CashTransactionKind[];
   branchId?: string;
+  /** Several cabang (12 Oct 2026). */
+  branchIds?: string[];
   channelId?: string;
   /** The kas/bank account the money moved through — matches `cashAccountId`. */
   accountId?: string;

@@ -159,7 +159,7 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     renderWithAuth(<KasBankScreen now={NOW} />);
     await screen.findByText("BKM/CBS/2609/0001");
 
-    await user.click(screen.getByRole("button", { name: /Cabang/ }));
+    await user.click(within(screen.getByRole("table")).getByRole("button", { name: /Cabang/ }));
     await waitFor(() =>
       expect(cashTransactionService.list).toHaveBeenLastCalledWith(
         expect.objectContaining({ sort: "branchDesc", page: 1 }),
@@ -167,7 +167,7 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     );
 
     // A second click on the same column flips it.
-    await user.click(screen.getByRole("button", { name: /Cabang/ }));
+    await user.click(within(screen.getByRole("table")).getByRole("button", { name: /Cabang/ }));
     await waitFor(() =>
       expect(cashTransactionService.list).toHaveBeenLastCalledWith(
         expect.objectContaining({ sort: "branchAsc" }),

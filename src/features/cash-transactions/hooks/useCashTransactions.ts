@@ -192,7 +192,7 @@ export function useCashTransactions(
         kind: kinds ? [...kinds] : undefined,
         dateFrom: settled.dateFrom || undefined,
         dateTo: settled.dateTo || undefined,
-        branchId: settled.branchId || undefined,
+        branchIds: settled.branchIds.length > 0 ? settled.branchIds : undefined,
         accountId: settled.accountId || undefined,
         status: settled.status || undefined,
         documentId: settled.documentId || undefined,

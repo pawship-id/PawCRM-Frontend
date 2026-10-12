@@ -128,6 +128,8 @@ export const reportService = {
       query: {
         branchId: query.branchId || undefined,
         businessLineId: query.businessLineId || undefined,
+        branchIds: query.branchIds,
+        businessLineIds: query.businessLineIds,
         dateFrom: query.dateFrom || undefined,
         dateTo: query.dateTo || undefined,
         status: query.status || undefined,
@@ -168,8 +170,7 @@ export const reportService = {
    */
   overrideCommission: (
     input: CommissionRowKey & { amount: string | null; reason?: string | null },
-  ) =>
-    apiClient.post<CommissionDetail>("/reports/commissions/override", input),
+  ) => apiClient.post<CommissionDetail>("/reports/commissions/override", input),
 
   /**
    * GET /reports/commissions/outstanding — what one person is still owed.

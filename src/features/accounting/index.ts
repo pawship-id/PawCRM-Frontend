@@ -101,6 +101,7 @@ export {
   SHARED_LINE_NONE,
   type ExpenseShare,
   type FinanceQuery,
+  type FinanceScopeQuery,
   type LineProfit,
   type Period,
   type ProfitLossHeadline,

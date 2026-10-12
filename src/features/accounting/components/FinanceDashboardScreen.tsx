@@ -16,7 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import { Alert, Button, Card } from "@/components";
+import { Alert, Button, Card, FinanceScopeCard } from "@/components";
 // `asChild` lives on the vendored button, not the project one — the same import
 // CashTransactionsScreen makes for the same "a link that looks like the primary
 // action" job.
@@ -44,9 +44,10 @@ import {
   lineProfits,
   profitLossHeadline,
   reportPresets,
+  SHARED_LINE_LABEL,
   SHARED_LINE_NONE,
   type ExpenseShare,
-  type FinanceQuery,
+  type FinanceScopeQuery,
   type LineProfit,
   type ProfitLossHeadline,
 } from "../financeSummary";
@@ -55,7 +56,6 @@ import {
   useFinanceDashboard,
 } from "../hooks/useFinanceDashboard";
 import { formatDate } from "../labels";
-import { FinanceReportToolbar } from "./FinanceReportToolbar";
 import { LineRevenueChart } from "./LineRevenueChart";
 
 /**
@@ -95,27 +95,22 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
   const { can } = usePermissions();
   const today = useMemo(() => new Date(now), [now]);
 
-  const [query, setQuery] = useState<FinanceQuery>(() => ({
+  const [query, setQuery] = useState<FinanceScopeQuery>(() => ({
     dateFrom: "",
     dateTo: "",
-    branchId: "",
-    businessLineId: "",
+    branchIds: [],
+    businessLineIds: [],
   }));
 
   // Shared with Laba Rugi and Arus Kas — see reportPresets.
   const presets = useMemo(() => reportPresets(today), [today]);
 
-  // The shared bucket is a client-side token; the API expresses "no business
-  // line" by filtering on the lines, which it cannot do through an id. Sending
-  // it would be a 400, so it is dropped.
-  const apiQuery = useMemo<FinanceQuery>(
-    () => ({
-      ...query,
-      businessLineId:
-        query.businessLineId === SHARED_LINE_NONE ? "" : query.businessLineId,
-    }),
-    [query],
-  );
+  /*
+    THE SHARED BUCKET GOES OVER THE WIRE (12 October 2026). It used to be
+    dropped here because the ledger took only an id; `businessLineIds` takes
+    `__none__`, so "Belum Dipetakan" now filters instead of quietly showing
+    every line.
+  */
 
   /*
     ONE GRANT PER READ. They do not travel together — a bookkeeper may hold the
@@ -123,7 +118,7 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
     wrapping its call, because a hook cannot be called conditionally.
   */
   const readsLedger = can("journalEntries", "read");
-  const data = useFinanceDashboard(apiQuery, {
+  const data = useFinanceDashboard(query, {
     now: today,
     ledger: readsLedger,
     cashMovement: can("cashTransactions", "read"),
@@ -161,8 +156,15 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
     data.businessLines.length > 0 ||
     lines.some((line) => line.businessLineId !== null);
 
-  const patch = (next: Partial<FinanceQuery>) =>
+  const patch = (next: Partial<FinanceScopeQuery>) =>
     setQuery((prev) => ({ ...prev, ...next }));
+
+  /* "Reset filter (n)", as on every other scope row — one per field narrowed;
+     the page opens on every branch, line and date, and Reset returns there. */
+  const scopeCount =
+    (query.branchIds.length > 0 ? 1 : 0) +
+    (query.businessLineIds.length > 0 ? 1 : 0) +
+    (query.dateFrom || query.dateTo ? 1 : 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -188,13 +190,41 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
         </Card>
       ) : (
         <>
-          <FinanceReportToolbar
-            query={query}
+          <FinanceScopeCard
             branches={data.branches}
+            branchIds={query.branchIds}
+            onBranchIdsChange={(branchIds) => patch({ branchIds })}
             businessLines={data.businessLines}
+            businessLineIds={query.businessLineIds}
+            onBusinessLineIdsChange={(businessLineIds) =>
+              patch({ businessLineIds })
+            }
+            sharedLine={{ value: SHARED_LINE_NONE, label: SHARED_LINE_LABEL }}
             presets={presets}
-            disabled={data.loading}
-            onChange={patch}
+            dateFrom={query.dateFrom}
+            dateTo={query.dateTo}
+            onDateRangeChange={({ from, to }) =>
+              patch({ dateFrom: from, dateTo: to })
+            }
+            trailing={
+              scopeCount > 0 ? (
+                <SlotButton
+                  type="button"
+                  variant="link"
+                  className="min-h-11 px-0"
+                  onClick={() =>
+                    setQuery({
+                      dateFrom: "",
+                      dateTo: "",
+                      branchIds: [],
+                      businessLineIds: [],
+                    })
+                  }
+                >
+                  Reset filter ({scopeCount})
+                </SlotButton>
+              ) : undefined
+            }
           />
 
           {data.error ? (
@@ -488,7 +518,10 @@ function PositionRow({
         */
         delta={
           margin !== null && marginBefore !== null
-            ? { value: Math.round((margin - marginBefore) * 10) / 10, unit: "poin" }
+            ? {
+                value: Math.round((margin - marginBefore) * 10) / 10,
+                unit: "poin",
+              }
             : undefined
         }
         loading={data.loading}
@@ -743,9 +776,7 @@ function ThinnestLine({ lines }: { lines: LineProfit[] }) {
       </p>
       <p className="mt-1 text-sm text-warning">
         {alone ? (
-          <>
-            Satu-satunya lini bisnis yang punya pendapatan di periode ini.
-          </>
+          <>Satu-satunya lini bisnis yang punya pendapatan di periode ini.</>
         ) : (
           <>
             Margin bersihnya {formatPercent(margin)}, terendah dari{" "}
@@ -986,8 +1017,8 @@ function FixedCostsDue({ data }: { data: DashboardData }) {
     <div className="mt-5 rounded-xl border border-border border-l-4 border-l-warning bg-tint-warning px-5 py-4">
       <p className="flex flex-wrap items-center gap-2 font-semibold text-foreground">
         <Repeat className="size-4 text-warning" aria-hidden />
-        {due.totals.out.count} biaya tetap jatuh tempo ≤{FIXED_COST_HORIZON_DAYS}{" "}
-        hari · {money(due.totals.out.amount)} total
+        {due.totals.out.count} biaya tetap jatuh tempo ≤
+        {FIXED_COST_HORIZON_DAYS} hari · {money(due.totals.out.amount)} total
       </p>
       <p className="mt-1.5 text-sm text-warning">
         {next && (

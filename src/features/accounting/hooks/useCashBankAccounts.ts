@@ -7,7 +7,7 @@ import { journalEntryService } from "@/services/journalEntry.service";
 import type { ChartOfAccount } from "@/types/accounting";
 import { sumDecimals, toDecimalString, toMinor } from "@/utils/decimal";
 
-import { CASH_ACCOUNT_CATEGORY } from "../financeSummary";
+import { CASH_ACCOUNT_CATEGORY, listOfKey } from "../financeSummary";
 
 /**
  * The "Akun Kas & Bank" table — the ledger accounts the shop's money sits in,
@@ -63,7 +63,8 @@ export interface UseCashBankAccountsResult {
 export interface CashBankAccountsQuery {
   dateFrom: string;
   dateTo: string;
-  branchId: string;
+  /** Empty = every cabang. Several since 12 October 2026. */
+  branchIds: string[];
   /** Include accounts marked inactive in Daftar Akun. */
   includeInactive: boolean;
 }
@@ -80,6 +81,8 @@ export function useCashBankAccounts(
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  // The set as a string, so a new array of the same ids is no reason to re-ask.
+  const branchKey = query.branchIds.join(",");
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 
@@ -140,7 +143,7 @@ export function useCashBankAccounts(
       .movement({
         dateFrom: query.dateFrom || undefined,
         dateTo: query.dateTo || undefined,
-        branchId: query.branchId || undefined,
+        branchIds: listOfKey(branchKey),
         accountCategory: CASH_ACCOUNT_CATEGORY,
       })
       .then((result) => {
@@ -160,7 +163,7 @@ export function useCashBankAccounts(
     return () => {
       active = false;
     };
-  }, [enabled, nonce, query.dateFrom, query.dateTo, query.branchId]);
+  }, [enabled, nonce, query.dateFrom, query.dateTo, branchKey]);
 
   /* -------------------------------------------- balances, per period */
   /*
@@ -175,7 +178,7 @@ export function useCashBankAccounts(
     journalEntryService
       .balances({
         asOf: query.dateTo || undefined,
-        branchId: query.branchId || undefined,
+        branchIds: listOfKey(branchKey),
         accountCategory: CASH_ACCOUNT_CATEGORY,
       })
       .then((result) => {
@@ -191,7 +194,7 @@ export function useCashBankAccounts(
     return () => {
       active = false;
     };
-  }, [enabled, nonce, query.dateTo, query.branchId]);
+  }, [enabled, nonce, query.dateTo, branchKey]);
 
   const rows = useMemo<CashBankAccountRow[]>(
     () =>

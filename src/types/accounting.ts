@@ -693,6 +693,8 @@ export interface FixedCostListQuery {
   limit?: number;
   sort?: FixedCostSort;
   branchId?: string;
+  /** Several cabang (12 Oct 2026). */
+  branchIds?: string[];
   accountId?: string;
   kind?: FixedCostKind;
   interval?: FixedCostInterval;

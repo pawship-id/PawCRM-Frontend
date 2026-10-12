@@ -123,7 +123,9 @@ export const customerInvoiceService = {
    * and the rows cannot be asked two different questions. Paging and ordering
    * are not sent: neither changes what the rows add up to.
    */
-  summary: (query: Omit<CustomerInvoiceListQuery, "page" | "limit" | "sort"> = {}) =>
+  summary: (
+    query: Omit<CustomerInvoiceListQuery, "page" | "limit" | "sort"> = {},
+  ) =>
     apiClient.get<CustomerInvoiceListSummary>("/customer-invoices/summary", {
       query: filterParams(query),
     }),
@@ -246,14 +248,26 @@ export const customerInvoiceService = {
    * All three buckets are cut at one instant, so "already late" and "due this
    * week" cannot overlap and cannot leave a gap between them.
    */
-  outstanding: (query: { customerId?: string; branchId?: string; horizonDays?: number } = {}) =>
-    apiClient.get<CustomerOutstandingSummary>("/customer-invoices/outstanding", {
-      query: {
-        customerId: query.customerId,
-        branchId: query.branchId,
-        horizonDays: query.horizonDays,
+  outstanding: (
+    query: {
+      customerId?: string;
+      branchId?: string;
+      /** Several cabang (12 Oct 2026). */
+      branchIds?: string[];
+      horizonDays?: number;
+    } = {},
+  ) =>
+    apiClient.get<CustomerOutstandingSummary>(
+      "/customer-invoices/outstanding",
+      {
+        query: {
+          customerId: query.customerId,
+          branchId: query.branchId,
+          branchIds: query.branchIds,
+          horizonDays: query.horizonDays,
+        },
       },
-    }),
+    ),
 
   /**
    * POST /customer-invoices/:id/payments — record money arriving (201). THE ONE

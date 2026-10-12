@@ -76,6 +76,11 @@ export interface ScopeFilterCardProps<P extends string = ScopePeriod> {
   onScopeChange: (scope: ScopeSelection) => void;
   /** Omit to draw no Periode field — a page of balances as of now. */
   period?: ScopeFilterCardPeriod<P>;
+  /**
+   * More fields, drawn after Gudang and before Periode — `ScopeField`s. How
+   * `FinanceScopeCard` adds Lini bisnis without a second copy of this row.
+   */
+  extraFields?: ReactNode;
   /** Drawn at the row's right end — a screen's "Reset filter (n)". */
   trailing?: ReactNode;
 }
@@ -182,6 +187,7 @@ export function ScopeFilterCard<P extends string = ScopePeriod>({
   warehouseIds = [],
   onScopeChange,
   period,
+  extraFields,
   trailing,
 }: ScopeFilterCardProps<P>) {
   return (
@@ -250,6 +256,8 @@ export function ScopeFilterCard<P extends string = ScopePeriod>({
           />
         </ScopeField>
       )}
+
+      {extraFields}
 
       {period && (
         <ScopeField icon={<CalendarDays className="size-4" />} label="Periode">

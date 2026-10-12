@@ -27,7 +27,8 @@ import {
   isoDate,
   previousPeriod,
   trendWindow,
-  type FinanceQuery,
+  listOfKey,
+  type FinanceScopeQuery,
   type Period,
 } from "../financeSummary";
 
@@ -148,7 +149,7 @@ export interface FinanceDashboardGrants {
 }
 
 export function useFinanceDashboard(
-  query: FinanceQuery,
+  query: FinanceScopeQuery,
   {
     now,
     ledger = true,
@@ -167,17 +168,23 @@ export function useFinanceDashboard(
     now: Date;
   },
 ): UseFinanceDashboardResult {
+  // The sets as strings, so a new array of the same ids is no reason to re-ask.
+  const branchKey = query.branchIds.join(",");
+  const lineKey = query.businessLineIds.join(",");
   const [profitLoss, setProfitLoss] = useState<ProfitLossResult | null>(null);
   const [trend, setTrend] = useState<JournalTrendDay[]>([]);
   const [movement, setMovement] = useState<CashTransactionTotals | null>(null);
-  const [arSummary, setArSummary] =
-    useState<CustomerOutstandingSummary | null>(null);
-  const [apSummary, setApSummary] =
-    useState<SupplierOutstandingSummary | null>(null);
+  const [arSummary, setArSummary] = useState<CustomerOutstandingSummary | null>(
+    null,
+  );
+  const [apSummary, setApSummary] = useState<SupplierOutstandingSummary | null>(
+    null,
+  );
   const [fixedCostsDue, setFixedCostsDue] =
     useState<UseFinanceDashboardResult["fixedCostsDue"]>(null);
-  const [prevProfitLoss, setPrevProfitLoss] =
-    useState<ProfitLossResult | null>(null);
+  const [prevProfitLoss, setPrevProfitLoss] = useState<ProfitLossResult | null>(
+    null,
+  );
   const [prevMovement, setPrevMovement] =
     useState<CashTransactionTotals | null>(null);
 
@@ -257,8 +264,8 @@ export function useFinanceDashboard(
         .profitLoss({
           dateFrom: prevPeriod.dateFrom,
           dateTo: prevPeriod.dateTo,
-          branchId: query.branchId || undefined,
-          businessLineId: query.businessLineId || undefined,
+          branchIds: listOfKey(branchKey),
+          businessLineIds: listOfKey(lineKey),
         })
         .then((result) => {
           if (active) setPrevProfitLoss(result);
@@ -273,7 +280,7 @@ export function useFinanceDashboard(
         .list({
           dateFrom: prevPeriod.dateFrom,
           dateTo: prevPeriod.dateTo,
-          branchId: query.branchId || undefined,
+          branchIds: listOfKey(branchKey),
           status: "posted",
           page: 1,
           limit: 1,
@@ -289,14 +296,7 @@ export function useFinanceDashboard(
     return () => {
       active = false;
     };
-  }, [
-    ledger,
-    cashMovement,
-    nonce,
-    prevPeriod,
-    query.branchId,
-    query.businessLineId,
-  ]);
+  }, [ledger, cashMovement, nonce, prevPeriod, branchKey, lineKey]);
 
   /* ------------------------------------------------ the laba rugi, per filter */
   useEffect(() => {
@@ -316,8 +316,8 @@ export function useFinanceDashboard(
       .profitLoss({
         dateFrom: query.dateFrom || undefined,
         dateTo: query.dateTo || undefined,
-        branchId: query.branchId || undefined,
-        businessLineId: query.businessLineId || undefined,
+        branchIds: listOfKey(branchKey),
+        businessLineIds: listOfKey(lineKey),
       })
       .then((result) => {
         if (active) setProfitLoss(result);
@@ -338,14 +338,7 @@ export function useFinanceDashboard(
     return () => {
       active = false;
     };
-  }, [
-    ledger,
-    nonce,
-    query.dateFrom,
-    query.dateTo,
-    query.branchId,
-    query.businessLineId,
-  ]);
+  }, [ledger, nonce, query.dateFrom, query.dateTo, branchKey, lineKey]);
 
   /* ------------------------------------------------------ the trend chart */
   /*
@@ -366,8 +359,8 @@ export function useFinanceDashboard(
       .trend({
         dateFrom: trendPeriod.dateFrom,
         dateTo: trendPeriod.dateTo,
-        branchId: query.branchId || undefined,
-        businessLineId: query.businessLineId || undefined,
+        branchIds: listOfKey(branchKey),
+        businessLineIds: listOfKey(lineKey),
       })
       .then((result) => {
         if (active) setTrend(result.days);
@@ -391,8 +384,8 @@ export function useFinanceDashboard(
     nonce,
     trendPeriod.dateFrom,
     trendPeriod.dateTo,
-    query.branchId,
-    query.businessLineId,
+    branchKey,
+    lineKey,
   ]);
 
   /* --------------------------------------------- cash in and out, per period */
@@ -410,7 +403,7 @@ export function useFinanceDashboard(
       .list({
         dateFrom: query.dateFrom || undefined,
         dateTo: query.dateTo || undefined,
-        branchId: query.branchId || undefined,
+        branchIds: listOfKey(branchKey),
         status: "posted",
         page: 1,
         limit: 1,
@@ -427,13 +420,7 @@ export function useFinanceDashboard(
     return () => {
       active = false;
     };
-  }, [
-    cashMovement,
-    nonce,
-    query.dateFrom,
-    query.dateTo,
-    query.branchId,
-  ]);
+  }, [cashMovement, nonce, query.dateFrom, query.dateTo, branchKey]);
 
   /* ------------------------------------------- piutang and utang, per branch */
   /*
@@ -450,7 +437,7 @@ export function useFinanceDashboard(
     let active = true;
 
     customerInvoiceService
-      .outstanding({ branchId: query.branchId || undefined })
+      .outstanding({ branchIds: listOfKey(branchKey) })
       .then((result) => {
         if (active) setArSummary(result);
       })
@@ -461,7 +448,7 @@ export function useFinanceDashboard(
     return () => {
       active = false;
     };
-  }, [receivables, nonce, query.branchId]);
+  }, [receivables, nonce, branchKey]);
 
   /* ------------------------------------------- biaya tetap coming due, per branch */
   /*
@@ -483,7 +470,7 @@ export function useFinanceDashboard(
         isActive: true,
         kind: "expense",
         dueTo: isoDate(horizon),
-        branchId: query.branchId || undefined,
+        branchIds: listOfKey(branchKey),
         sort: "dueSoonest",
         limit: 1,
       })
@@ -499,7 +486,7 @@ export function useFinanceDashboard(
     return () => {
       active = false;
     };
-  }, [fixedCosts, nonce, nowIso, query.branchId]);
+  }, [fixedCosts, nonce, nowIso, branchKey]);
 
   useEffect(() => {
     if (!payables) return;
@@ -549,4 +536,3 @@ export function useFinanceDashboard(
     refetch,
   };
 }
-
