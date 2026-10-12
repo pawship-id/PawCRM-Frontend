@@ -26,7 +26,7 @@ The fastest way to be consistent here. Check this table before writing markup.
 | Instead of writing… | Write | Why |
 | --- | --- | --- |
 | `bg-card`, `text-muted-foreground`, `text-destructive` | `bg-surface`, `text-muted`, `text-danger` | Identical values. App vocabulary wins outside `components/ui/`. §3 |
-| a hand-built Cabang / Gudang / Periode row above a screen's figures | `<ScopeFilterCard>` from `@/components` | Ringkasan and Faktur drifted into two different dropdowns for one question (12 October 2026). Every dropdown in it takes several values; Gudang and Periode are optional. Used by Penjualan › Ringkasan and Faktur, and Inventori (no Periode). `ScopePeriodCard` (Pembelian) is its single-select predecessor, left until that API takes a set of cabang. |
+| a hand-built Cabang / Gudang / Periode row above a screen's figures | `<ScopeFilterCard>` from `@/components` | Ringkasan and Faktur drifted into two different dropdowns for one question (12 October 2026). Every dropdown in it takes several values; Gudang and Periode are optional. Used by Penjualan › Ringkasan and Faktur, Pembelian › Ringkasan, and Inventori (no Periode), each with its own "Reset filter (n)" in `trailing`. The single-select `ScopePeriodCard` it replaced has no callers left. |
 | a hand-rolled toolbar `<div>` | `<FilterBar>` + the filter controls, from `@/components` | 15 copies used to exist in two incompatible layouts. §8 |
 | `ui/select` for a filter, plus a `const ALL = "all"` sentinel | `<FilterSelect>` with `withAll(…)` / `triState(…)` | The sentinel only existed because Radix Select forbids `value=""`. §8 |
 | a `w-40` / `w-44` / `w-52` guess on a filter | nothing — width comes from content | One number, in `FilterTrigger.tsx`. |

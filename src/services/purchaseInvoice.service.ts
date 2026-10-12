@@ -53,6 +53,7 @@ export const purchaseInvoiceService = {
         search: query.search,
         supplierId: query.supplierId,
         branchId: query.branchId,
+        branchIds: query.branchIds,
         warehouseId: query.warehouseId,
         goodsReceiptId: query.goodsReceiptId,
         status: query.status,
@@ -143,6 +144,8 @@ export const purchaseInvoiceService = {
   summary: (
     query: {
       branchId?: string;
+      /** Several cabang — sent as repeated params. */
+      branchIds?: string[];
       /** A named period, cut in the TENANT's timezone. Never beside the dates. */
       period?: "today" | "week" | "month";
       dateFrom?: string;
@@ -152,6 +155,7 @@ export const purchaseInvoiceService = {
     apiClient.get<PayablesSummary>("/purchase-invoices/summary", {
       query: {
         branchId: query.branchId || undefined,
+        branchIds: query.branchIds,
         period: query.period,
         dateFrom: query.dateFrom || undefined,
         dateTo: query.dateTo || undefined,

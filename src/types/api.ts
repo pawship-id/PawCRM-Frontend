@@ -6184,6 +6184,8 @@ export interface PurchaseInvoiceListQuery {
   search?: string;
   supplierId?: string;
   branchId?: string;
+  /** Several cabang — sent as repeated params, `$in` on the server. */
+  branchIds?: string[];
   /**
    * WHERE THE GOODS LANDED. Combines with `branchId` rather than being implied
    * by it — the shared central warehouse serves every branch, so neither can be

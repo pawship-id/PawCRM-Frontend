@@ -21,8 +21,9 @@ export type PayablesPeriod = "all" | "today" | "week" | "month" | "custom";
 
 /** What the Ringkasan tab is scoped to. */
 export interface PayablesSummaryQuery {
-  /** "" = every cabang. */
-  branchId: string;
+  /** Empty = every cabang. A SET since 12 October 2026 — the shared scope row
+      picks several, as on Penjualan. */
+  branchIds: string[];
   period: PayablesPeriod;
   /** `yyyy-mm-dd`. Read only under `custom`; bounds the PAYMENTS, never the
       invoice dates. */
@@ -66,7 +67,7 @@ const EMPTY: PayablesWorklist = { rows: [], count: 0, total: null };
  * three rather than re-scoping the page.
  */
 export const DEFAULT_PAYABLES_QUERY: PayablesSummaryQuery = {
-  branchId: "",
+  branchIds: [],
   period: "month",
   dateFrom: "",
   dateTo: "",
@@ -97,8 +98,9 @@ export function usePayablesSummary(
   /** Skip every request when the role cannot read payables. */
   enabled: boolean,
 ): UsePayablesSummaryResult {
-  const [query, setQueryState] =
-    useState<PayablesSummaryQuery>(DEFAULT_PAYABLES_QUERY);
+  const [query, setQueryState] = useState<PayablesSummaryQuery>(
+    DEFAULT_PAYABLES_QUERY,
+  );
   const [summary, setSummary] = useState<PayablesSummary | null>(null);
   const [summaryFailed, setSummaryFailed] = useState(false);
   const [pendingReceipts, setPendingReceipts] = useState<number | null>(null);
@@ -110,7 +112,9 @@ export function usePayablesSummary(
     setQueryState((prev) => ({ ...prev, ...patch }));
   }, []);
 
-  const { branchId, period, dateFrom, dateTo } = query;
+  const { period, dateFrom, dateTo } = query;
+  // Keyed as a string: a new array of the same ids is no reason to re-ask.
+  const branchKey = query.branchIds.join(",");
 
   useEffect(() => {
     if (!enabled) return;
@@ -119,11 +123,12 @@ export function usePayablesSummary(
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
 
-    const scope = branchId ? { branchId } : {};
+    const branchIds = branchKey ? branchKey.split(",") : undefined;
+    const scope = branchIds ? { branchIds } : {};
 
     Promise.allSettled([
       purchaseInvoiceService.summary({
-        branchId,
+        branchIds,
         /*
           ONE OR THE OTHER, never both — the API refuses a payload carrying a
           named period beside explicit dates, because such a request does not
@@ -148,7 +153,7 @@ export function usePayablesSummary(
       // Scoped by the same cabang as everything else on the tab; the period does
       // not touch it — a delivery still on the way is on the way whatever month
       // it is.
-      goodsReceiptService.pendingCount({ branchId }),
+      goodsReceiptService.pendingCount({ branchIds }),
     ]).then(([summaryResult, overdueResult, dueSoonResult, pendingResult]) => {
       if (!active) return;
 
@@ -196,7 +201,7 @@ export function usePayablesSummary(
     return () => {
       active = false;
     };
-  }, [enabled, branchId, period, dateFrom, dateTo]);
+  }, [enabled, branchKey, period, dateFrom, dateTo]);
 
   return {
     query,

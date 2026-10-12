@@ -165,7 +165,7 @@ export function PurchasingHub() {
           failure here leaves the rest of the tab standing. */}
       <ConsignmentDebtSection
         enabled={mayReadInvoices}
-        branchId={query.branchId}
+        branchIds={query.branchIds}
       />
     </div>
   );
