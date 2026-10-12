@@ -13,7 +13,7 @@ import { ApiError } from "@/services/api-error";
 import type { BusinessLine } from "@/services/businessLine.service";
 import type { Branch } from "@/types/api";
 
-import type { FinanceQuery } from "../financeSummary";
+import { listOfKey, type FinanceScopeQuery } from "../financeSummary";
 
 /**
  * The three reading reports — Laba Rugi and Neraca — and the two lookup
@@ -49,7 +49,7 @@ export interface UseFinanceReportResult {
 
 export function useFinanceReport(
   kind: FinanceReportKind,
-  query: FinanceQuery,
+  query: FinanceScopeQuery,
 ): UseFinanceReportResult {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [businessLines, setBusinessLines] = useState<BusinessLine[]>([]);
@@ -91,10 +91,13 @@ export function useFinanceReport(
 
   // Destructured so the effect depends on the three values rather than on the
   // object literal a screen rebuilds on every render.
-  const { dateFrom, dateTo, branchId } = query;
+  const { dateFrom, dateTo } = query;
+  // Several cabang since 12 October 2026, keyed as a string so a new array of
+  // the same ids is no reason to re-ask.
+  const branchKey = query.branchIds.join(",");
 
   const fetcher = useMemo(() => {
-    const branch = branchId || undefined;
+    const branchIds = listOfKey(branchKey);
 
     if (kind === "profitLoss") {
       /*
@@ -108,7 +111,7 @@ export function useFinanceReport(
           .profitLoss({
             dateFrom: dateFrom || undefined,
             dateTo: dateTo || undefined,
-            branchId: branch,
+            branchIds,
           })
           .then((result) => ({ kind, result }) as const);
     }
@@ -125,10 +128,10 @@ export function useFinanceReport(
       */
       return () =>
         journalEntryService
-          .balances({ asOf: dateTo || undefined, branchId: branch })
+          .balances({ asOf: dateTo || undefined, branchIds })
           .then((result) => ({ kind, result }) as const);
     }
-  }, [kind, dateFrom, dateTo, branchId]);
+  }, [kind, dateFrom, dateTo, branchKey]);
 
   useEffect(() => {
     let active = true;

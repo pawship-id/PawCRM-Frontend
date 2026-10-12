@@ -57,12 +57,18 @@ export interface FinanceScopeCardProps {
    * is a real answer somebody filters by. Its `value` is the screen's sentinel.
    */
   sharedLine?: { value: string; label: string };
-  /** The screen's date presets; the chips apply the ones named above. */
-  presets: DatePreset[];
+  /**
+   * The screen's date presets; the chips apply the ones named above. OMIT IT
+   * (with the dates) to draw no Periode chips — Laba Rugi steps through months
+   * with its own control instead, passed in `extraFields`.
+   */
+  presets?: DatePreset[];
   /** `yyyy-mm-dd`; both empty = every date. */
-  dateFrom: string;
-  dateTo: string;
-  onDateRangeChange: (range: { from: string; to: string }) => void;
+  dateFrom?: string;
+  dateTo?: string;
+  onDateRangeChange?: (range: { from: string; to: string }) => void;
+  /** More `ScopeField`s, drawn after Lini bisnis — Laba Rugi's month stepper. */
+  extraFields?: ReactNode;
   /** What the dates bound, read aloud on the custom inputs. */
   dateLabel?: string;
   /** Drawn at the row's right end — the screen's "Reset filter (n)". */
@@ -93,16 +99,17 @@ export function FinanceScopeCard({
   onBusinessLineIdsChange,
   sharedLine,
   presets,
-  dateFrom,
-  dateTo,
+  dateFrom = "",
+  dateTo = "",
   onDateRangeChange,
   dateLabel = "Periode khusus",
+  extraFields,
   trailing,
 }: FinanceScopeCardProps) {
   const [customOpen, setCustomOpen] = useState(false);
 
   const presetFor = (chip: "today" | "week" | "month") =>
-    presets.find((preset) => preset.label === PRESET_OF[chip]);
+    presets?.find((preset) => preset.label === PRESET_OF[chip]);
   const matched = (["today", "week", "month"] as const).find((chip) => {
     const preset = presetFor(chip);
     return preset && preset.from === dateFrom && preset.to === dateTo;
@@ -128,49 +135,59 @@ export function FinanceScopeCard({
       branchIds={branchIds}
       onScopeChange={(next) => onBranchIdsChange(next.branchIds)}
       extraFields={
-        businessLines && onBusinessLineIdsChange ? (
-          <ScopeField icon={<Layers className="size-4" />} label="Lini bisnis">
-            <FilterMultiSelect
+        <>
+          {businessLines && onBusinessLineIdsChange ? (
+            <ScopeField
+              icon={<Layers className="size-4" />}
               label="Lini bisnis"
-              layout="bar"
-              ariaLabel="Lini bisnis"
-              values={businessLineIds}
-              options={namedOptions(lines)}
-              formatValue={(ids) =>
-                scopeSummary(ids, lines, "Semua lini bisnis", "lini")
-              }
-              onApply={onBusinessLineIdsChange}
-              onReset={() => onBusinessLineIdsChange([])}
-            />
-          </ScopeField>
-        ) : undefined
+            >
+              <FilterMultiSelect
+                label="Lini bisnis"
+                layout="bar"
+                ariaLabel="Lini bisnis"
+                values={businessLineIds}
+                options={namedOptions(lines)}
+                formatValue={(ids) =>
+                  scopeSummary(ids, lines, "Semua lini bisnis", "lini")
+                }
+                onApply={onBusinessLineIdsChange}
+                onReset={() => onBusinessLineIdsChange([])}
+              />
+            </ScopeField>
+          ) : null}
+          {extraFields}
+        </>
       }
-      period={{
-        value,
-        options: CHIPS,
-        onChange: (next) => {
-          if (next === "custom") {
-            setCustomOpen(true);
-            return;
-          }
-          setCustomOpen(false);
-          const preset = next === "all" ? undefined : presetFor(next);
-          onDateRangeChange(
-            preset
-              ? { from: preset.from, to: preset.to }
-              : { from: "", to: "" },
-          );
-        },
-        dateFrom,
-        dateTo,
-        onDateRangeChange: (range) => {
-          /* Terapkan applies the range; the range's own Reset (two empty
+      period={
+        presets && onDateRangeChange
+          ? {
+              value,
+              options: CHIPS,
+              onChange: (next) => {
+                if (next === "custom") {
+                  setCustomOpen(true);
+                  return;
+                }
+                setCustomOpen(false);
+                const preset = next === "all" ? undefined : presetFor(next);
+                onDateRangeChange(
+                  preset
+                    ? { from: preset.from, to: preset.to }
+                    : { from: "", to: "" },
+                );
+              },
+              dateFrom,
+              dateTo,
+              onDateRangeChange: (range) => {
+                /* Terapkan applies the range; the range's own Reset (two empty
              ends) is "Semua", and closes the inputs with it. */
-          setCustomOpen(false);
-          onDateRangeChange(range);
-        },
-        dateLabel,
-      }}
+                setCustomOpen(false);
+                onDateRangeChange(range);
+              },
+              dateLabel,
+            }
+          : undefined
+      }
       trailing={trailing}
     />
   );

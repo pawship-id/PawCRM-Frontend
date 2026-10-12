@@ -2,7 +2,14 @@
 
 import { Fragment, useMemo, useState } from "react";
 
-import { Alert, Breadcrumb, Spinner } from "@/components";
+import {
+  Alert,
+  Breadcrumb,
+  FinanceScopeCard,
+  Spinner,
+  scopeSummary,
+} from "@/components";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -16,10 +23,13 @@ import { absDecimal, formatMoney } from "@/utils/decimal";
 
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import { balanceSheet, type BalanceSheetSection } from "../balanceSheet";
-import { currentMonthRange, reportPresets, type FinanceQuery } from "../financeSummary";
+import {
+  currentMonthRange,
+  reportPresets,
+  type FinanceScopeQuery,
+} from "../financeSummary";
 import { useFinanceReport } from "../hooks/useFinanceReport";
 import { formatDate } from "../labels";
-import { FinanceReportToolbar } from "./FinanceReportToolbar";
 
 /**
  * Neraca — what the shop owns, what it owes, and what is left.
@@ -47,15 +57,17 @@ export function BalanceSheetScreen({ now }: { now: string }) {
   const today = useMemo(() => new Date(now), [now]);
   const presets = useMemo(() => reportPresets(today), [today]);
 
-  const [query, setQuery] = useState<FinanceQuery>(() => {
+  /** What the page opens on, and what "Reset filter" returns to: this month. */
+  const initial = useMemo<FinanceScopeQuery>(() => {
     const month = currentMonthRange(today);
     return {
       dateFrom: month.dateFrom,
       dateTo: month.dateTo,
-      branchId: "",
-      businessLineId: "",
+      branchIds: [],
+      businessLineIds: [],
     };
-  });
+  }, [today]);
+  const [query, setQuery] = useState<FinanceScopeQuery>(initial);
 
   const { branches, balances, loading, error } = useFinanceReport(
     "balanceSheet",
@@ -68,10 +80,19 @@ export function BalanceSheetScreen({ now }: { now: string }) {
   );
 
   const asOfLabel = query.dateTo ? formatDate(query.dateTo) : "hari ini";
-  const branchLabel = query.branchId
-    ? (branches.find((branch) => branch._id === query.branchId)?.name ??
-      "Cabang terpilih")
-    : "Semua cabang";
+  const branchLabel = scopeSummary(
+    query.branchIds,
+    branches,
+    "Semua cabang",
+    "cabang",
+  );
+
+  /* "Reset filter (n)" — the cabang, and a period off this month. */
+  const scopeCount =
+    (query.branchIds.length > 0 ? 1 : 0) +
+    (query.dateFrom !== initial.dateFrom || query.dateTo !== initial.dateTo
+      ? 1
+      : 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -87,12 +108,32 @@ export function BalanceSheetScreen({ now }: { now: string }) {
 
       {error && <Alert variant="error">{error}</Alert>}
 
-      <FinanceReportToolbar
-        query={query}
+      {/* The Keuangan scope row (12 October 2026). No Lini bisnis: a balance
+          sheet is the whole shop's position, not a line's. */}
+      <FinanceScopeCard
         branches={branches}
+        branchIds={query.branchIds}
+        onBranchIdsChange={(branchIds) =>
+          setQuery((prev) => ({ ...prev, branchIds }))
+        }
         presets={presets}
-        disabled={loading}
-        onChange={(patch) => setQuery((prev) => ({ ...prev, ...patch }))}
+        dateFrom={query.dateFrom}
+        dateTo={query.dateTo}
+        onDateRangeChange={({ from, to }) =>
+          setQuery((prev) => ({ ...prev, dateFrom: from, dateTo: to }))
+        }
+        trailing={
+          scopeCount > 0 ? (
+            <Button
+              type="button"
+              variant="link"
+              className="min-h-11 px-0"
+              onClick={() => setQuery(initial)}
+            >
+              Reset filter ({scopeCount})
+            </Button>
+          ) : undefined
+        }
       />
 
       {sheet === null ? (
@@ -147,7 +188,11 @@ export function BalanceSheetScreen({ now }: { now: string }) {
                 {/* The total a reader checks the other side against, so it is
                     emphasised on its own row rather than left as the last
                     section subtotal. */}
-                <TotalRow label="Total Aset" value={sheet.assets.total} emphasis />
+                <TotalRow
+                  label="Total Aset"
+                  value={sheet.assets.total}
+                  emphasis
+                />
 
                 <Section section={sheet.liabilities} />
                 <TotalRow
@@ -177,8 +222,8 @@ export function BalanceSheetScreen({ now }: { now: string }) {
           <p className="text-xs text-muted">
             Laba Ditahan tidak punya akun sendiri di daftar akun: PawCRM belum
             punya proses tutup buku, jadi angkanya dihitung dari seluruh akun
-            pendapatan dikurangi seluruh akun beban sampai tanggal ini. Akun yang
-            belum pernah dipakai posting tidak muncul di sini.
+            pendapatan dikurangi seluruh akun beban sampai tanggal ini. Akun
+            yang belum pernah dipakai posting tidak muncul di sini.
           </p>
         </div>
       )}
@@ -280,7 +325,10 @@ function TotalRow({
         {label}
       </TableCell>
       <TableCell
-        className={cn("px-4 py-2.5 text-right text-sm font-bold tabular-nums", tone)}
+        className={cn(
+          "px-4 py-2.5 text-right text-sm font-bold tabular-nums",
+          tone,
+        )}
       >
         {signed(value)}
       </TableCell>
