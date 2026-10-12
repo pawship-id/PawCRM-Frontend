@@ -5,7 +5,7 @@ import { CalendarDays, Store, Warehouse } from "lucide-react";
 
 import { namedOptions } from "./filters/codecs";
 import { FilterMultiSelect } from "./filters/FilterMultiSelect";
-import { FilterPills } from "./filters/FilterPills";
+import { FilterPills, type PillOption } from "./filters/FilterPills";
 import {
   SCOPE_PERIODS,
   ScopeCard,
@@ -44,9 +44,16 @@ export interface ScopeSelection {
   warehouseIds: string[];
 }
 
-export interface ScopeFilterCardPeriod {
-  value: ScopePeriod;
-  onChange: (period: ScopePeriod) => void;
+export interface ScopeFilterCardPeriod<P extends string = ScopePeriod> {
+  value: P;
+  onChange: (period: P) => void;
+  /**
+   * The chips, when a screen's periods are not the default five — Grooming has
+   * no "Semua", because its board would load every booking ever taken.
+   * Defaults to `SCOPE_PERIODS`. Whatever is passed, "custom" is the value that
+   * reveals the two dates.
+   */
+  options?: PillOption<P>[];
   /** `yyyy-mm-dd`, read only under `custom`. */
   dateFrom: string;
   dateTo: string;
@@ -55,7 +62,7 @@ export interface ScopeFilterCardPeriod {
   dateLabel: string;
 }
 
-export interface ScopeFilterCardProps {
+export interface ScopeFilterCardProps<P extends string = ScopePeriod> {
   branches: ScopeBranchOption[];
   branchIds: string[];
   /** Omit to draw no Gudang field — a screen whose data has no gudang. */
@@ -68,7 +75,7 @@ export interface ScopeFilterCardProps {
    */
   onScopeChange: (scope: ScopeSelection) => void;
   /** Omit to draw no Periode field — a page of balances as of now. */
-  period?: ScopeFilterCardPeriod;
+  period?: ScopeFilterCardPeriod<P>;
   /** Drawn at the row's right end — a screen's "Reset filter (n)". */
   trailing?: ReactNode;
 }
@@ -168,7 +175,7 @@ export function scopeSummary(
  * GUDANG AND PERIODE ARE OPTIONAL, so a screen draws only the fields its data
  * has: Ringkasan has no gudang, a stock page has no period.
  */
-export function ScopeFilterCard({
+export function ScopeFilterCard<P extends string = ScopePeriod>({
   branches,
   branchIds,
   warehouses,
@@ -176,7 +183,7 @@ export function ScopeFilterCard({
   onScopeChange,
   period,
   trailing,
-}: ScopeFilterCardProps) {
+}: ScopeFilterCardProps<P>) {
   return (
     <ScopeCard
       below={
@@ -249,7 +256,9 @@ export function ScopeFilterCard({
           <FilterPills
             ariaLabel="Periode"
             value={period.value}
-            options={SCOPE_PERIODS}
+            options={
+              period.options ?? (SCOPE_PERIODS as unknown as PillOption<P>[])
+            }
             onChange={period.onChange}
           />
         </ScopeField>

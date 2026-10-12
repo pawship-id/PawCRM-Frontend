@@ -59,6 +59,7 @@ export const bookingService = {
         groupId: query.groupId,
         groomerUserId: query.groomerUserId,
         branchId: query.branchId,
+        branchIds: query.branchIds,
         // An array becomes repeated `status=` params — see buildUrl. Joining
         // with a comma would send one value the enum check rejects.
         status: query.status,
@@ -136,6 +137,7 @@ export const bookingService = {
       query: {
         serviceIds,
         branchId: scope.branchId,
+        branchIds: scope.branchIds,
         scheduledFrom: scope.scheduledFrom,
         scheduledTo: scope.scheduledTo,
       },

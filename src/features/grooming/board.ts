@@ -88,7 +88,11 @@ export function isGroomingService(
 
 /* ─── Periods ─────────────────────────────────────────────────────────────── */
 
-export type GroomingPeriod = "today" | "week" | "month" | "custom";
+/**
+ * "all" — every date, no bounds sent (12 October 2026, on request). The screens
+ * still OPEN on "month"; "all" is a chip somebody presses.
+ */
+export type GroomingPeriod = "all" | "today" | "week" | "month" | "custom";
 
 /** Calendar dates, `yyyy-mm-dd`; `""` is an open end. */
 export interface DateRange {
@@ -102,6 +106,11 @@ export function periodRange(
   today: Date = new Date(),
 ): DateRange {
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  // Two open ends: the API reads that as every date.
+  if (period === "all") {
+    return { from: "", to: "" };
+  }
 
   if (period === "today") {
     return { from: isoDate(start), to: isoDate(start) };
@@ -120,6 +129,15 @@ export function periodRange(
     from: isoDate(new Date(start.getFullYear(), start.getMonth(), 1)),
     to: isoDate(new Date(start.getFullYear(), start.getMonth() + 1, 0)),
   };
+}
+
+/**
+ * The dates "Custom" starts from — the period in force, so the numbers do not
+ * move until a date does. "Semua" has no dates to hand over, so it starts from
+ * this month: an empty range would read as "back to the default" instead.
+ */
+export function customSeed(period: Exclude<GroomingPeriod, "custom">): DateRange {
+  return periodRange(period === "all" ? "month" : period);
 }
 
 /* ─── Rows ────────────────────────────────────────────────────────────────── */

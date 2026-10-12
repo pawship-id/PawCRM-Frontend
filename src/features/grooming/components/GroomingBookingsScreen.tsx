@@ -44,6 +44,7 @@ import { GROOMING_NEW_BOOKING_PATH } from "../paths";
 const PAGE_SIZE = 20;
 
 const PERIOD_WORDS: Record<Exclude<GroomingPeriod, "custom">, string> = {
+  all: "di semua tanggal",
   today: "hari ini",
   week: "minggu ini",
   month: "bulan ini",
@@ -85,7 +86,8 @@ export function GroomingBookingsScreen() {
     };
   }, [catalog.loading, catalog.services]);
 
-  const [branchId, setBranchId] = useState("");
+  /** Empty = every cabang. Several since 12 October 2026. */
+  const [branchIds, setBranchIds] = useState<string[]>([]);
   const [period, setPeriod] = useState<GroomingPeriod>("month");
   const [custom, setCustom] = useState<DateRange>({ from: "", to: "" });
   const [filters, setFilters] = useState<GroomingFilters>(DEFAULT_FILTERS);
@@ -98,7 +100,15 @@ export function GroomingBookingsScreen() {
     [period, custom],
   );
 
-  const board = useGroomingBoard(scope, branchId, range);
+  const board = useGroomingBoard(scope, branchIds, range);
+
+  /*
+    "RESET FILTER (n)" ON THE SCOPE ROW (12 October 2026, on request) — the
+    button Penjualan's tabs wear. The period counts only off its default, Bulan
+    ini, which is where Reset returns it.
+  */
+  const scopeCount =
+    (branchIds.length > 0 ? 1 : 0) + (period !== "month" ? 1 : 0);
 
   const filtered = useMemo(
     () => board.periodRows.filter((row) => matchesFilters(row, filters)),
@@ -107,7 +117,9 @@ export function GroomingBookingsScreen() {
   const summary = useMemo(() => summarisePeriod(filtered), [filtered]);
   const day = useMemo(
     () =>
-      summariseDay(board.todayRows.filter((row) => matchesFilters(row, filters))),
+      summariseDay(
+        board.todayRows.filter((row) => matchesFilters(row, filters)),
+      ),
     [board.todayRows, filters],
   );
   const visible = useMemo(
@@ -157,9 +169,9 @@ export function GroomingBookingsScreen() {
       />
 
       <GroomingPeriodBar
-        branchId={branchId}
-        onBranchChange={(next) => {
-          setBranchId(next);
+        branchIds={branchIds}
+        onBranchesChange={(next) => {
+          setBranchIds(next);
           setPage(1);
         }}
         period={period}
@@ -178,6 +190,22 @@ export function GroomingBookingsScreen() {
           }
           setPage(1);
         }}
+        trailing={
+          scopeCount > 0 ? (
+            <Button
+              type="button"
+              variant="link"
+              className="min-h-11 px-0"
+              onClick={() => {
+                setBranchIds([]);
+                setPeriod("month");
+                setPage(1);
+              }}
+            >
+              Reset filter ({scopeCount})
+            </Button>
+          ) : undefined
+        }
       />
 
       {board.error && <Alert variant="error">{board.error}</Alert>}

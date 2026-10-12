@@ -24,6 +24,7 @@ export {
 export { FilterOptionList } from "./FilterOptionList";
 export { FilterPanel, type FilterPanelProps } from "./FilterPanel";
 export { FilterPills, type FilterPillsProps, type PillOption } from "./FilterPills";
+export { FilterCheckMenu } from "./FilterCheckMenu";
 export { FilterSearch, type FilterSearchProps } from "./FilterSearch";
 export { FilterSelect, type FilterSelectProps } from "./FilterSelect";
 export { FilterToggle, type FilterToggleProps } from "./FilterToggle";

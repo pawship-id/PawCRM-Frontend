@@ -5,6 +5,7 @@ import { ListFilter } from "lucide-react";
 
 import {
   FilterBar,
+  FilterCheckMenu,
   FilterDateRange,
   FilterField,
   FilterPanel,
@@ -18,13 +19,6 @@ import {
   type FilterOption,
   type ScopeWarehouseOption,
 } from "@/components";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type {
   CustomerInvoiceFilterOptions,
   CustomerInvoiceSource,
@@ -306,12 +300,15 @@ function ReceivablesFilterPanel({
     const dateFrom = draft.period === "custom" ? draft.dateFrom : "";
     const dateTo = draft.period === "custom" ? draft.dateTo : "";
 
-    if (!sameSet(draft.branchIds, query.branchIds)) change.branchIds = draft.branchIds;
+    if (!sameSet(draft.branchIds, query.branchIds))
+      change.branchIds = draft.branchIds;
     if (!sameSet(draft.warehouseIds, query.warehouseIds)) {
       change.warehouseIds = draft.warehouseIds;
     }
-    if (!sameSet(draft.createdBy, query.createdBy)) change.createdBy = draft.createdBy;
-    if (!sameSet(draft.statuses, query.statuses)) change.statuses = draft.statuses;
+    if (!sameSet(draft.createdBy, query.createdBy))
+      change.createdBy = draft.createdBy;
+    if (!sameSet(draft.statuses, query.statuses))
+      change.statuses = draft.statuses;
     if (!sameSet(draft.sources, query.sources)) change.sources = draft.sources;
     if (draft.period !== query.period) change.period = draft.period;
     if (dateFrom !== query.dateFrom) change.dateFrom = dateFrom;
@@ -342,7 +339,7 @@ function ReceivablesFilterPanel({
         onReset={reset}
         onApply={apply}
       >
-        <CheckMenuField
+        <FilterCheckMenu
           label="Cabang"
           allLabel="Semua cabang"
           unit="cabang"
@@ -350,7 +347,7 @@ function ReceivablesFilterPanel({
           selected={draft.branchIds}
           onChange={pickBranches}
         />
-        <CheckMenuField
+        <FilterCheckMenu
           label="Gudang"
           allLabel="Semua gudang"
           unit="gudang"
@@ -358,7 +355,7 @@ function ReceivablesFilterPanel({
           selected={draft.warehouseIds}
           onChange={pickWarehouses}
         />
-        <CheckMenuField
+        <FilterCheckMenu
           label="Kasir / Admin"
           allLabel="Semua kasir/admin"
           unit="orang"
@@ -366,7 +363,7 @@ function ReceivablesFilterPanel({
           selected={draft.createdBy}
           onChange={(createdBy) => patch({ createdBy })}
         />
-        <CheckMenuField
+        <FilterCheckMenu
           label="Sumber"
           allLabel="Semua sumber"
           unit="sumber"
@@ -374,7 +371,7 @@ function ReceivablesFilterPanel({
           selected={draft.sources}
           onChange={(sources) => patch({ sources })}
         />
-        <CheckMenuField
+        <FilterCheckMenu
           label="Status"
           allLabel="Semua status"
           unit="status"
@@ -419,106 +416,5 @@ function ReceivablesFilterPanel({
         )}
       </FilterPanel>
     </>
-  );
-}
-
-/**
- * A many-value field inside the panel, as a menu of checkboxes.
- *
- * NOT A FilterMultiSelect, for the reason `ProductsToolbar`'s WarehouseField
- * gives: that control carries its own Terapkan, and this one sits inside a panel
- * that already has one. The shell — FilterField and FilterTrigger — is shared,
- * so it lines up with the selects beside it.
- *
- * NOTHING TICKED IS "SEMUA", and that row is what the empty state looks like
- * rather than a separate mode.
- *
- * THE LIST IS HELD STILL WHILE THE MENU IS OPEN. Ticking a gudang ticks its
- * cabang, which narrows the gudang on offer; re-drawn mid-menu, the row somebody
- * was reaching for next would vanish under the pointer. The narrower list shows
- * the next time the menu opens.
- */
-function CheckMenuField<T extends string>({
-  label,
-  allLabel,
-  unit,
-  options,
-  selected,
-  onChange,
-}: {
-  label: string;
-  allLabel: string;
-  /** The noun a count past one reads as — "2 orang". */
-  unit: string;
-  options: FilterOption<T>[];
-  selected: T[];
-  onChange: (values: T[]) => void;
-}) {
-  const [heldOptions, setHeldOptions] = useState<FilterOption<T>[] | null>(
-    null,
-  );
-  const shown = heldOptions ?? options;
-
-  const names = options
-    .filter((option) => selected.includes(option.value))
-    .map((option) => option.label);
-
-  const value =
-    selected.length === 0
-      ? allLabel
-      : selected.length === 1 && names.length === 1
-        ? names[0]
-        : `${selected.length} ${unit}`;
-
-  function toggle(option: T) {
-    onChange(
-      selected.includes(option)
-        ? selected.filter((current) => current !== option)
-        : [...selected, option],
-    );
-  }
-
-  return (
-    <FilterField label={label}>
-      <DropdownMenu
-        onOpenChange={(isOpen) => setHeldOptions(isOpen ? options : null)}
-      >
-        <DropdownMenuTrigger asChild>
-          <FilterTrigger
-            layout="field"
-            label={label}
-            value={value}
-            active={selected.length > 0}
-            aria-label={`${label}: ${value}`}
-            title={names.length > 1 ? names.join(", ") : undefined}
-          />
-        </DropdownMenuTrigger>
-
-        <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuCheckboxItem
-            checked={selected.length === 0}
-            onCheckedChange={() => onChange([])}
-          >
-            {allLabel}
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuSeparator />
-          {shown.length === 0 ? (
-            <p className="px-2 py-1.5 text-sm text-muted">
-              Belum ada pilihan dari faktur yang ada.
-            </p>
-          ) : (
-            shown.map((option) => (
-              <DropdownMenuCheckboxItem
-                key={option.value}
-                checked={selected.includes(option.value)}
-                onCheckedChange={() => toggle(option.value)}
-              >
-                {option.label}
-              </DropdownMenuCheckboxItem>
-            ))
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </FilterField>
   );
 }

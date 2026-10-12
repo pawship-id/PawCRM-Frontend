@@ -5,6 +5,7 @@ import { ListFilter } from "lucide-react";
 
 import {
   FilterBar,
+  FilterCheckMenu,
   FilterDateRange,
   FilterField,
   FilterPanel,
@@ -21,18 +22,18 @@ import { branchService } from "@/services/branch.service";
 import type { Branch } from "@/types/api";
 import { accessibleBranches } from "@/utils/accessScope";
 
-import { periodRange, type DateRange, type GroomingPeriod } from "../board";
+import { customSeed, type DateRange, type GroomingPeriod } from "../board";
 import type { GroomingServicesQuery } from "../hooks/useGroomingServices";
 import { PERIOD_OPTIONS } from "./GroomingPeriodBar";
 
 /** What the Filter panel holds — every narrowing but the search box. */
 export type ServiceFilters = Pick<
   GroomingServicesQuery,
-  "branchId" | "isActive" | "petType" | "location" | "includeDeleted"
+  "branchIds" | "isActive" | "petType" | "location" | "includeDeleted"
 >;
 
 export const EMPTY_SERVICE_FILTERS: ServiceFilters = {
-  branchId: "",
+  branchIds: [],
   isActive: "",
   petType: "",
   location: "",
@@ -49,9 +50,11 @@ export const EMPTY_SERVICE_FILTERS: ServiceFilters = {
  */
 export function countServiceFilters(filters: ServiceFilters): number {
   return (
-    [filters.branchId, filters.isActive, filters.petType, filters.location].filter(
+    [filters.isActive, filters.petType, filters.location].filter(
       (value) => value !== "",
-    ).length + (filters.includeDeleted ? 1 : 0)
+    ).length +
+    (filters.branchIds.length > 0 ? 1 : 0) +
+    (filters.includeDeleted ? 1 : 0)
   );
 }
 
@@ -190,7 +193,7 @@ export function GroomingServicesToolbar({
     // Custom starts from the period in force — the card's rule, for the reason
     // it gives: the numbers should not move until a date does.
     if (next === "custom" && draftPeriod !== "custom") {
-      setDraftCustom(periodRange(draftPeriod));
+      setDraftCustom(customSeed(draftPeriod));
     }
     setDraftPeriod(next);
   }
@@ -229,15 +232,17 @@ export function GroomingServicesToolbar({
           setOpen(false);
         }}
       >
-        <FilterSelect
-          layout="field"
+        {/* Several cabang (12 October 2026), as the scope row above takes. */}
+        <FilterCheckMenu
           label="Cabang"
-          value={draft.branchId}
-          options={withAll(
-            branches.map((branch) => ({ value: branch._id, label: branch.name })),
-            "Semua cabang",
-          )}
-          onChange={(branchId) => patch({ branchId })}
+          allLabel="Semua cabang"
+          unit="cabang"
+          options={branches.map((branch) => ({
+            value: branch._id,
+            label: branch.name,
+          }))}
+          selected={draft.branchIds}
+          onChange={(branchIds) => patch({ branchIds })}
         />
         <FilterSelect
           layout="field"
@@ -264,7 +269,9 @@ export function GroomingServicesToolbar({
           <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-foreground">
             <Checkbox
               checked={draft.includeDeleted}
-              onCheckedChange={(next) => patch({ includeDeleted: next === true })}
+              onCheckedChange={(next) =>
+                patch({ includeDeleted: next === true })
+              }
             />
             Tampilkan terhapus
           </label>

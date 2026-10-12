@@ -34,6 +34,7 @@ const EVERY_FILTER: Required<ServiceListQuery> = {
   serviceType: "addon",
   serviceKind: "grooming",
   branchId: "5a7f1f77bcf86cd7994390bb",
+  branchIds: ["5a7f1f77bcf86cd7994390bb", "b2"],
   isActive: false,
   location: "in_home",
   petType: "opt-species-kucing",

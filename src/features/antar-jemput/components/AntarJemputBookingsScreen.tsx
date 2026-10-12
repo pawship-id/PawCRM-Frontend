@@ -27,7 +27,10 @@ import { GroomingBookingsToolbar } from "@/features/grooming/components/Grooming
 import { GroomingModuleHeader } from "@/features/grooming/components/GroomingModuleHeader";
 import { GroomingPeriodBar } from "@/features/grooming/components/GroomingPeriodBar";
 import { GroomingStatCard } from "@/features/grooming/components/GroomingStatCard";
-import { MAX_BOOKING_PAGES, useGroomingBoard } from "@/features/grooming/hooks/useGroomingBoard";
+import {
+  MAX_BOOKING_PAGES,
+  useGroomingBoard,
+} from "@/features/grooming/hooks/useGroomingBoard";
 import { useGroomingCatalog } from "@/features/grooming/hooks/useGroomingCatalog";
 
 import { summariseRides } from "../board";
@@ -38,6 +41,7 @@ import { AntarJemputBookingsTable } from "./AntarJemputBookingsTable";
 const PAGE_SIZE = 20;
 
 const PERIOD_WORDS: Record<Exclude<GroomingPeriod, "custom">, string> = {
+  all: "di semua tanggal",
   today: "hari ini",
   week: "minggu ini",
   month: "bulan ini",
@@ -85,7 +89,8 @@ export function AntarJemputBookingsScreen() {
     };
   }, [catalog.loading, catalog.services]);
 
-  const [branchId, setBranchId] = useState("");
+  /** Empty = every cabang. Several since 12 October 2026. */
+  const [branchIds, setBranchIds] = useState<string[]>([]);
   const [period, setPeriod] = useState<GroomingPeriod>("month");
   const [custom, setCustom] = useState<DateRange>({ from: "", to: "" });
   const [filters, setFilters] = useState<GroomingFilters>(DEFAULT_FILTERS);
@@ -98,7 +103,15 @@ export function AntarJemputBookingsScreen() {
     [period, custom],
   );
 
-  const board = useGroomingBoard(scope, branchId, range);
+  const board = useGroomingBoard(scope, branchIds, range);
+
+  /*
+    "RESET FILTER (n)" ON THE SCOPE ROW (12 October 2026, on request) — the
+    button Penjualan's tabs wear. The period counts only off its default, Bulan
+    ini, which is where Reset returns it.
+  */
+  const scopeCount =
+    (branchIds.length > 0 ? 1 : 0) + (period !== "month" ? 1 : 0);
 
   const filtered = useMemo(
     () => board.periodRows.filter((row) => matchesFilters(row, filters)),
@@ -107,7 +120,9 @@ export function AntarJemputBookingsScreen() {
   const summary = useMemo(() => summariseRides(filtered), [filtered]);
   const day = useMemo(
     () =>
-      summariseDay(board.todayRows.filter((row) => matchesFilters(row, filters))),
+      summariseDay(
+        board.todayRows.filter((row) => matchesFilters(row, filters)),
+      ),
     [board.todayRows, filters],
   );
   const visible = useMemo(
@@ -158,9 +173,9 @@ export function AntarJemputBookingsScreen() {
       />
 
       <GroomingPeriodBar
-        branchId={branchId}
-        onBranchChange={(next) => {
-          setBranchId(next);
+        branchIds={branchIds}
+        onBranchesChange={(next) => {
+          setBranchIds(next);
           setPage(1);
         }}
         period={period}
@@ -178,6 +193,22 @@ export function AntarJemputBookingsScreen() {
           }
           setPage(1);
         }}
+        trailing={
+          scopeCount > 0 ? (
+            <Button
+              type="button"
+              variant="link"
+              className="min-h-11 px-0"
+              onClick={() => {
+                setBranchIds([]);
+                setPeriod("month");
+                setPage(1);
+              }}
+            >
+              Reset filter ({scopeCount})
+            </Button>
+          ) : undefined
+        }
       />
 
       {board.error && (
@@ -319,9 +350,9 @@ export function AntarJemputBookingsScreen() {
         </>
       )}
       <p className="text-xs text-muted">
-        Klik baris untuk membuka halaman booking — rute, tahapan, rincian
-        harga, booking terkait, riwayat, dan faktur. Status bisa diubah langsung
-        dari barisnya.
+        Klik baris untuk membuka halaman booking — rute, tahapan, rincian harga,
+        booking terkait, riwayat, dan faktur. Status bisa diubah langsung dari
+        barisnya.
       </p>
     </div>
   );

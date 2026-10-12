@@ -3782,6 +3782,8 @@ export interface BookingListQuery {
   /** Whose work — anybody on any of the booking's sessions. */
   groomerUserId?: string;
   branchId?: string;
+  /** Several cabang — repeated params, `$in` on the server (12 Oct 2026). */
+  branchIds?: string[];
   /** One status or several — a day sheet usually wants more than one. */
   status?: BookingStatus | BookingStatus[];
   origin?: BookingOrigin;
@@ -3837,6 +3839,8 @@ export interface ServiceBookingCounts {
  */
 export interface ServiceBookingCountScope {
   branchId?: string;
+  /** Several cabang (12 Oct 2026). */
+  branchIds?: string[];
   scheduledFrom?: string;
   scheduledTo?: string;
 }
@@ -4430,6 +4434,8 @@ export interface ServiceListQuery {
   serviceKind?: string;
   /** Only services offered at that branch, `allBranches` ones included. */
   branchId?: string;
+  /** Available at ANY of these cabang (12 Oct 2026). */
+  branchIds?: string[];
   isActive?: boolean;
   /**
    * Where the work is done. `in_store` includes a service with no location

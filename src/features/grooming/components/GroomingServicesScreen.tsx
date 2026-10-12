@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, RotateCcw } from "lucide-react";
 
-import { Alert, Card, HighlightText, Pagination, Spinner } from "@/components";
+import { Alert, HighlightText, Pagination, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,6 +53,9 @@ import {
   EMPTY_SERVICE_FILTERS,
   GroomingServicesToolbar,
 } from "./GroomingServicesToolbar";
+
+/** What the catalogue opens on, and what its Reset returns to. */
+const DEFAULT_PERIOD: GroomingPeriod = "all";
 
 /**
  * Layanan › Grooming › Layanan & Harga — the Grooming line's services.
@@ -122,9 +125,15 @@ export function GroomingServicesScreen({
   // Per row, over that row's own variants — see variantRows.
   const { valuesFor, axes: axisDefs } = useVariantAxisValues();
   /* The tenant's card names — "Ukuran × Lokasi", not only the pet's three. */
-  const axisName = (key: string) => axisDefs.find((def) => def.key === key)?.name;
+  const axisName = (key: string) =>
+    axisDefs.find((def) => def.key === key)?.name;
 
-  const [period, setPeriod] = useState<GroomingPeriod>("month");
+  /*
+    THE CATALOGUE OPENS ON "SEMUA" (12 October 2026, on request) — every
+    booking a service has ever had, where the booking boards open on Bulan ini.
+    A price list is read for what sells at all, not this month's run.
+  */
+  const [period, setPeriod] = useState<GroomingPeriod>(DEFAULT_PERIOD);
   const [custom, setCustom] = useState<DateRange>({ from: "", to: "" });
   const range = useMemo(
     () => (period === "custom" ? custom : periodRange(period)),
@@ -135,7 +144,7 @@ export function GroomingServicesScreen({
     services.map((service) => service._id),
     can("bookings", "read"),
     {
-      branchId: query.branchId || undefined,
+      branchIds: query.branchIds,
       scheduledFrom: range.from || undefined,
       scheduledTo: range.to || undefined,
     },
@@ -148,13 +157,14 @@ export function GroomingServicesScreen({
 
   const mayRestore = can("services", "restore");
   const filterCount = countServiceFilters(query);
+  const scopeCount = filterCount + (period !== DEFAULT_PERIOD ? 1 : 0);
   const narrowed = query.search.trim() !== "" || filterCount > 0;
 
   /** Custom's dates, from the card or the panel. */
   function pickCustomRange(next: DateRange) {
     // An emptied range — the date field's own Reset — goes back to the default.
     if (!next.from && !next.to) {
-      setPeriod("month");
+      setPeriod(DEFAULT_PERIOD);
       return;
     }
 
@@ -180,28 +190,35 @@ export function GroomingServicesScreen({
         }
       />
 
-      <Card className="py-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <GroomingPeriodBar
-            branchId={query.branchId}
-            onBranchChange={(branchId) => setQuery({ branchId })}
-            period={period}
-            customRange={custom}
-            onPeriodChange={setPeriod}
-            onCustomRange={pickCustomRange}
-          />
-          {filterCount > 0 && (
+      {/*
+        THE SHARED SCOPE ROW (12 October 2026, on request) — `ScopeFilterCard`
+        through GroomingPeriodBar, so Cabang takes several. Its "Reset filter"
+        counts the panel's fields too, plus a period off Bulan ini, and puts
+        all of them back.
+      */}
+      <GroomingPeriodBar
+        branchIds={query.branchIds}
+        onBranchesChange={(branchIds) => setQuery({ branchIds })}
+        period={period}
+        customRange={custom}
+        onPeriodChange={setPeriod}
+        onCustomRange={pickCustomRange}
+        trailing={
+          scopeCount > 0 ? (
             <Button
               type="button"
               variant="link"
-              className="ml-auto min-h-11"
-              onClick={() => setQuery(EMPTY_SERVICE_FILTERS)}
+              className="min-h-11 px-0"
+              onClick={() => {
+                setQuery(EMPTY_SERVICE_FILTERS);
+                setPeriod(DEFAULT_PERIOD);
+              }}
             >
-              Reset filter ({filterCount})
+              Reset filter ({scopeCount})
             </Button>
-          )}
-        </div>
-      </Card>
+          ) : undefined
+        }
+      />
 
       <div className="flex flex-col gap-3">
         <GroomingServicesToolbar
@@ -293,7 +310,11 @@ export function GroomingServicesScreen({
                         deleted
                           ? undefined
                           : (event) => {
-                              if ((event.target as HTMLElement).closest("a, button")) {
+                              if (
+                                (event.target as HTMLElement).closest(
+                                  "a, button",
+                                )
+                              ) {
                                 return;
                               }
                               router.push(href);
@@ -303,18 +324,27 @@ export function GroomingServicesScreen({
                       <TableCell className="whitespace-normal">
                         {deleted ? (
                           <span className="text-sm font-semibold text-foreground">
-                            <HighlightText text={service.name} query={query.search} />
+                            <HighlightText
+                              text={service.name}
+                              query={query.search}
+                            />
                           </span>
                         ) : (
                           <Link
                             href={href}
                             className="rounded text-sm font-semibold text-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
                           >
-                            <HighlightText text={service.name} query={query.search} />
+                            <HighlightText
+                              text={service.name}
+                              query={query.search}
+                            />
                           </Link>
                         )}
                         <span className="block text-xs tabular-nums text-muted">
-                          <HighlightText text={service.code ?? ""} query={query.search} />
+                          <HighlightText
+                            text={service.code ?? ""}
+                            query={query.search}
+                          />
                           {used !== undefined && ` · ${used} booking`}
                         </span>
                       </TableCell>
@@ -383,7 +413,10 @@ export function GroomingServicesScreen({
                         <div className="flex flex-wrap items-center gap-2">
                           <Badge
                             variant="outline"
-                            className={cn("border-transparent", status.className)}
+                            className={cn(
+                              "border-transparent",
+                              status.className,
+                            )}
                           >
                             {status.label}
                           </Badge>

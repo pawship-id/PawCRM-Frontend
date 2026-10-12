@@ -24,7 +24,12 @@ interface Loaded {
   failed: boolean;
 }
 
-const NOTHING: Loaded = { key: "", bookings: [], truncated: false, failed: false };
+const NOTHING: Loaded = {
+  key: "",
+  bookings: [],
+  truncated: false,
+  failed: false,
+};
 
 export interface GroomingBoardState {
   /** The chosen period, grooming rows only. */
@@ -56,21 +61,23 @@ export interface GroomingBoardState {
  */
 export function useGroomingBoard(
   scope: GroomingScope | null,
-  branchId: string,
+  /** Empty = every cabang. Several since 12 October 2026. */
+  branchIds: string[],
   range: DateRange,
 ): GroomingBoardState {
   const [today] = useState(() => isoDate(new Date()));
   const [period, setPeriod] = useState<Loaded>(NOTHING);
   const [day, setDay] = useState<Loaded>(NOTHING);
 
-  const periodKey = [branchId, range.from, range.to].join("|");
-  const dayKey = [branchId, today].join("|");
+  const branchKey = branchIds.join(",");
+  const periodKey = [branchKey, range.from, range.to].join("|");
+  const dayKey = [branchKey, today].join("|");
 
   useEffect(() => {
     let active = true;
 
     listAllBookings({
-      branchId: branchId || undefined,
+      branchIds: branchKey ? branchKey.split(",") : undefined,
       scheduledFrom: range.from || undefined,
       scheduledTo: range.to || undefined,
     })
@@ -84,13 +91,13 @@ export function useGroomingBoard(
     return () => {
       active = false;
     };
-  }, [periodKey, branchId, range.from, range.to]);
+  }, [periodKey, branchKey, range.from, range.to]);
 
   useEffect(() => {
     let active = true;
 
     listAllBookings({
-      branchId: branchId || undefined,
+      branchIds: branchKey ? branchKey.split(",") : undefined,
       scheduledFrom: today,
       scheduledTo: today,
     })
@@ -104,7 +111,7 @@ export function useGroomingBoard(
     return () => {
       active = false;
     };
-  }, [dayKey, branchId, today]);
+  }, [dayKey, branchKey, today]);
 
   const replaceBooking = useCallback((updated: Booking) => {
     const swap = (loaded: Loaded): Loaded =>

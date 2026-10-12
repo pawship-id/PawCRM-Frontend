@@ -173,14 +173,18 @@ describe("GroomingServicesScreen", () => {
       ).toBeInTheDocument(),
     );
 
-    // Counted for the card's default period, this month.
-    const month = periodRange("month");
+    // Counted over the catalogue's default period, Semua (12 October 2026):
+    // no dates go over the wire, and the chip says so.
     expect(bookingService.serviceCounts).toHaveBeenCalledWith(
       ["svc-1"],
       expect.objectContaining({
-        scheduledFrom: month.from,
-        scheduledTo: month.to,
+        scheduledFrom: undefined,
+        scheduledTo: undefined,
       }),
+    );
+    expect(screen.getByRole("button", { name: "Semua" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
 
     expect(
@@ -313,9 +317,10 @@ describe("GroomingServicesScreen", () => {
       "aria-pressed",
       "true",
     );
-    expect(
-      screen.getByRole("button", { name: "Pilih rentang tanggal booking" }),
-    ).toBeInTheDocument();
+    // The card shows the same range, open under its Custom chip.
+    expect(screen.getByLabelText("Tanggal booking dari")).toHaveValue(
+      isoDate(earlier),
+    );
   });
 
   it("shows the card's dates only behind Custom, starting from the period in force", async () => {
@@ -324,9 +329,7 @@ describe("GroomingServicesScreen", () => {
     renderWithAuth(<GroomingServicesScreen />);
     await screen.findByRole("link", { name: "Express Wash" });
 
-    expect(
-      screen.queryByRole("button", { name: "Pilih rentang tanggal booking" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Tanggal booking dari")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "Custom" }));
 
@@ -334,12 +337,11 @@ describe("GroomingServicesScreen", () => {
       "aria-pressed",
       "true",
     );
-    expect(
-      screen.getByRole("button", { name: "Pilih rentang tanggal booking" }),
-    ).toBeInTheDocument();
 
-    // Seeded with this month's dates, so the count still asks the same question.
+    // Open in the card (the shared scope row, 12 October 2026), seeded with
+    // this month's dates, so the count still asks the same question.
     const month = periodRange("month");
+    expect(screen.getByLabelText("Tanggal booking dari")).toHaveValue(month.from);
     await waitFor(() =>
       expect(bookingService.serviceCounts).toHaveBeenLastCalledWith(
         ["svc-1"],
@@ -349,24 +351,14 @@ describe("GroomingServicesScreen", () => {
         }),
       ),
     );
-
-    // Just the two dates behind it — the pills on the card are the presets.
-    await userEvent.click(
-      screen.getByRole("button", { name: "Pilih rentang tanggal booking" }),
-    );
-    expect(
-      screen.getByLabelText("Pilih rentang tanggal booking dari"),
-    ).toHaveValue(month.from);
+    // Just the two dates — the pills on the card are the presets.
     expect(
       screen.queryByRole("button", { name: "7 hari" }),
     ).not.toBeInTheDocument();
-    await userEvent.keyboard("{Escape}");
 
     // Back to a pill, and the dates go away again.
     await userEvent.click(screen.getByRole("button", { name: "Hari ini" }));
-    expect(
-      screen.queryByRole("button", { name: "Pilih rentang tanggal booking" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Tanggal booking dari")).not.toBeInTheDocument();
   });
 
   it("the card's Cabang narrows the list and the count, and its Reset filter clears it", async () => {
@@ -375,18 +367,21 @@ describe("GroomingServicesScreen", () => {
     renderWithAuth(<GroomingServicesScreen />);
     await screen.findByRole("link", { name: "Express Wash" });
 
-    await userEvent.click(screen.getByLabelText("Pilih cabang"));
-    await userEvent.click(await screen.findByRole("option", { name: "Barat" }));
+    // Several cabang may be ticked (12 October 2026), applied on Terapkan.
+    await userEvent.click(screen.getByRole("button", { name: "Cabang" }));
+    const popover = await screen.findByRole("dialog");
+    await userEvent.click(within(popover).getByRole("option", { name: /Barat/ }));
+    await userEvent.click(within(popover).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() =>
       expect(serviceService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ branchId: "br-1" }),
+        expect.objectContaining({ branchIds: ["br-1"] }),
       ),
     );
     await waitFor(() =>
       expect(bookingService.serviceCounts).toHaveBeenLastCalledWith(
         ["svc-1"],
-        expect.objectContaining({ branchId: "br-1" }),
+        expect.objectContaining({ branchIds: ["br-1"] }),
       ),
     );
 
@@ -396,7 +391,7 @@ describe("GroomingServicesScreen", () => {
 
     await waitFor(() =>
       expect(jest.mocked(serviceService.list).mock.lastCall?.[0]).toEqual(
-        expect.objectContaining({ branchId: undefined }),
+        expect.objectContaining({ branchIds: undefined }),
       ),
     );
     expect(
@@ -416,8 +411,14 @@ describe("GroomingServicesScreen", () => {
     await screen.findByRole("link", { name: "Express Wash" });
 
     const panel = await openFilters();
-    await userEvent.click(within(panel).getByLabelText("Cabang"));
-    await userEvent.click(await screen.findByRole("option", { name: "Barat" }));
+    // A checkbox menu now — several cabang, like the scope row above.
+    await userEvent.click(
+      within(panel).getByRole("button", { name: /^Cabang:/ }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitemcheckbox", { name: "Barat" }),
+    );
+    await userEvent.keyboard("{Escape}");
     await userEvent.click(within(panel).getByLabelText("Jenis hewan"));
     expect(screen.getByRole("option", { name: "Kelinci" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("option", { name: "Kucing" }));
@@ -435,7 +436,7 @@ describe("GroomingServicesScreen", () => {
       expect(serviceService.list).toHaveBeenLastCalledWith(
         expect.objectContaining({
           serviceKind: "grooming",
-          branchId: "br-1",
+          branchIds: ["br-1"],
           petType: "opt-species-kucing",
           location: "in_home",
           page: 1,
@@ -456,7 +457,7 @@ describe("GroomingServicesScreen", () => {
     await waitFor(() =>
       expect(jest.mocked(serviceService.list).mock.lastCall?.[0]).toEqual(
         expect.objectContaining({
-          branchId: undefined,
+          branchIds: undefined,
           petType: undefined,
           location: undefined,
         }),
