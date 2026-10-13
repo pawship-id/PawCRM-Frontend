@@ -2137,6 +2137,18 @@ export interface PosTransaction {
   runningTotals: PosRunningTotals;
   status: PosTransactionStatus;
   heldLabel: string | null;
+  /**
+   * The N in "Keranjang N" — drawn from ONE counter per branch per day, so two
+   * cashiers never hold the same number. Null on baskets made before it existed.
+   */
+  cartNumber?: number | null;
+  /**
+   * SYNC ONLINE: once parked, the basket shows in Keranjang Tersimpan at every
+   * till of the branch. Off, it belongs to the cashier holding it alone.
+   */
+  syncOnline?: boolean;
+  /** Who opened it — tells "mine" from a synced one parked at another till. */
+  createdBy?: string | null;
   bookingIds: string[];
   paidAt: string | null;
   createdAt: string;
@@ -2760,6 +2772,8 @@ export interface UpdateCartInput {
   customerId?: string | null;
   note?: string | null;
   heldLabel?: string | null;
+  /** Share the basket with every till of the branch — see `PosTransaction`. */
+  syncOnline?: boolean;
   /**
    * Parked, or picked back up (FR-6).
    *

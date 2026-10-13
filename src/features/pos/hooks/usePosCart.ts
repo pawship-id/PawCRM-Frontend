@@ -90,6 +90,8 @@ interface UsePosCartResult {
   setCharges: (charges: PosTransaction["otherCharges"]) => Promise<void>;
   /** The transaction's free-text note, or null to clear it (FR-5). */
   setNote: (note: string | null) => Promise<void>;
+  /** Sync online on or off — share the basket with every till of the branch. */
+  setSyncOnline: (syncOnline: boolean) => Promise<void>;
   /**
    * Attach a customer, or `null` to make the basket a walk-in again.
    *
@@ -775,6 +777,14 @@ export function usePosCart(): UsePosCartResult {
     [send],
   );
 
+  const setSyncOnline = useCallback(
+    async (syncOnline: boolean) => {
+      // Alone, like the note: one flag, no repricing.
+      await send({ syncOnline });
+    },
+    [send],
+  );
+
   const setCustomer = useCallback(
     async (customerId: string | null, { dropPetLines = false } = {}) => {
       await send(
@@ -853,6 +863,7 @@ export function usePosCart(): UsePosCartResult {
     setCartDiscount,
     setCharges,
     setNote,
+    setSyncOnline,
     setCustomer,
     pullBookings,
     patch: send,

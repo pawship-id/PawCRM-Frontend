@@ -575,6 +575,7 @@ export function PosScreen() {
           onCartDiscount={(discount) => void cart.setCartDiscount(discount)}
           onCharges={(charges) => void cart.setCharges(charges)}
           onNote={(note) => void cart.setNote(note)}
+          onSyncOnline={(on) => void cart.setSyncOnline(on)}
           onPickCustomer={() => {
             // Opened on its own, with no tile waiting behind it.
             customerChosen.current = false;

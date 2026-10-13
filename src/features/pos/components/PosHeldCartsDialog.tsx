@@ -62,7 +62,9 @@ function savedAtLabel(savedAt: string | null): string {
 function cartLabel(cart: PosTransaction, index: number): string {
   if (cart.heldLabel) return cart.heldLabel;
   if (cart.customer?.name) return cart.customer.name;
-  return `Keranjang ${index + 1}`;
+  /* The branch-wide number when the basket has one (13 October 2026) — the
+     same on every till — and the list position only for older baskets. */
+  return `Keranjang ${cart.cartNumber ?? index + 1}`;
 }
 
 /**
@@ -108,7 +110,8 @@ export function PosHeldCartsDialog({
         <DialogHeader>
           <DialogTitle>Keranjang tersimpan</DialogTitle>
           <DialogDescription>
-            Keranjang yang disimpan di shift ini.
+            Keranjang yang kamu simpan di shift ini, ditambah keranjang sync
+            online dari kasir lain di cabang ini.
           </DialogDescription>
         </DialogHeader>
 
@@ -141,8 +144,19 @@ export function PosHeldCartsDialog({
                 className="flex items-center justify-between gap-3 py-3"
               >
                 <div className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-foreground">
-                    {cartLabel(cart, index)}
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {cartLabel(cart, index)}
+                    </span>
+                    {/*
+                      SAID IN WORDS (§1.3): this basket is visible at every till
+                      of the branch, and may have been parked by somebody else.
+                    */}
+                    {cart.syncOnline && (
+                      <span className="shrink-0 rounded-full bg-tint-info px-2 py-0.5 text-xs font-medium text-info">
+                        Sync online
+                      </span>
+                    )}
                   </span>
                   <span className="block text-xs tabular-nums text-muted">
                     {cart.items.length} item ·{" "}
