@@ -27,7 +27,12 @@ export default function CommissionPage() {
     <div className="flex flex-col gap-6">
       <AccountingModuleHeader />
 
-      <RequirePermission feature="users" action="read">
+      <RequirePermission
+        anyOf={[
+          { feature: "commissionReports", action: "read" },
+          { feature: "users", action: "read" },
+        ]}
+      >
         <CommissionScreen now={new Date().toISOString()} />
       </RequirePermission>
     </div>

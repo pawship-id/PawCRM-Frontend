@@ -46,10 +46,12 @@ it("files a transfer with POST", async () => {
 
   await stockTransferService.create({ ...INPUT, idempotencyKey: "key-12345678" });
 
-  expect(post).toHaveBeenCalledWith("/stock-transfers", {
-    ...INPUT,
-    idempotencyKey: "key-12345678",
-  });
+  expect(post).toHaveBeenCalledWith(
+    "/stock-transfers",
+    { ...INPUT, idempotencyKey: "key-12345678" },
+    // A large transfer may take longer than the client's 15-second default.
+    { timeoutMs: 60_000 },
+  );
 });
 
 it("edits with PATCH, sending the whole document again", async () => {
@@ -57,7 +59,9 @@ it("edits with PATCH, sending the whole document again", async () => {
 
   await stockTransferService.update("t1", INPUT);
 
-  expect(patch).toHaveBeenCalledWith("/stock-transfers/t1", INPUT);
+  expect(patch).toHaveBeenCalledWith("/stock-transfers/t1", INPUT, {
+    timeoutMs: 60_000,
+  });
 });
 
 it("receives and cancels with their own verbs, carrying no body", async () => {
@@ -66,8 +70,18 @@ it("receives and cancels with their own verbs, carrying no body", async () => {
   await stockTransferService.receive("t1");
   await stockTransferService.cancel("t1");
 
-  expect(post).toHaveBeenNthCalledWith(1, "/stock-transfers/t1/receive");
-  expect(post).toHaveBeenNthCalledWith(2, "/stock-transfers/t1/cancel");
+  expect(post).toHaveBeenNthCalledWith(
+    1,
+    "/stock-transfers/t1/receive",
+    undefined,
+    { timeoutMs: 60_000 },
+  );
+  expect(post).toHaveBeenNthCalledWith(
+    2,
+    "/stock-transfers/t1/cancel",
+    undefined,
+    { timeoutMs: 60_000 },
+  );
 });
 
 it("exposes no delete — a transfer that should not have happened is cancelled", () => {

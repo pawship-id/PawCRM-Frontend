@@ -30,7 +30,7 @@ async function renderForm() {
   jest.spyOn(roleService, "catalog").mockResolvedValue(CATALOG);
   render(<RoleCreateForm />);
   await waitForElementToBeRemoved(() =>
-    screen.queryByText(/loading form create role/i),
+    screen.queryByText(/memuat formulir/i),
   );
 }
 
@@ -44,10 +44,10 @@ describe("RoleCreateForm", () => {
     const create = jest.spyOn(roleService, "create");
     await renderForm();
 
-    await userEvent.click(screen.getByRole("button", { name: /create role/i }));
+    await userEvent.click(screen.getByRole("button", { name: /simpan peran/i }));
 
     expect(create).not.toHaveBeenCalled();
-    expect(screen.getByText(/role name is required/i)).toBeInTheDocument();
+    expect(screen.getByText(/nama peran wajib diisi/i)).toBeInTheDocument();
   });
 
   it("sends the selected permissions and redirects on success", async () => {
@@ -56,10 +56,10 @@ describe("RoleCreateForm", () => {
       .mockResolvedValue({} as never);
     await renderForm();
 
-    await userEvent.type(screen.getByLabelText(/role name/i), "Cashier");
+    await userEvent.type(screen.getByLabelText(/nama peran/i), "Cashier");
     // Tick a single action checkbox (users → Read).
     await userEvent.click(screen.getByLabelText(/^read$/i));
-    await userEvent.click(screen.getByRole("button", { name: /create role/i }));
+    await userEvent.click(screen.getByRole("button", { name: /simpan peran/i }));
 
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -77,8 +77,8 @@ describe("RoleCreateForm", () => {
       .mockRejectedValue(new ApiError("Role 'Cashier' already exists", 409));
     await renderForm();
 
-    await userEvent.type(screen.getByLabelText(/role name/i), "Cashier");
-    await userEvent.click(screen.getByRole("button", { name: /create role/i }));
+    await userEvent.type(screen.getByLabelText(/nama peran/i), "Cashier");
+    await userEvent.click(screen.getByRole("button", { name: /simpan peran/i }));
 
     expect(await screen.findByText(/already exists/i)).toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();

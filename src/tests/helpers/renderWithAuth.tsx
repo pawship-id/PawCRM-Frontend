@@ -75,7 +75,12 @@ export function renderWithAuth(
     session = BRANCHED_SESSION,
     switchBranch = jest.fn(),
     signOutEverywhere = jest.fn(),
+    disabledModules = [],
+    disabledFeatures = [],
   }: {
+    /* Modules the business switched off, and the features inside them. */
+    disabledModules?: string[];
+    disabledFeatures?: string[];
     permissions?: PermissionGrant[];
     isSuperAdmin?: boolean;
     user?: User | null;
@@ -91,6 +96,8 @@ export function renderWithAuth(
     session,
     permissions,
     isSuperAdmin,
+    disabledModules,
+    disabledFeatures,
     signIn: jest.fn(),
     signOut: jest.fn(),
     signOutEverywhere,

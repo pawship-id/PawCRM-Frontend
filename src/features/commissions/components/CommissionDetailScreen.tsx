@@ -64,7 +64,10 @@ import { PayCommissionDialog } from "./PayCommissionDialog";
  */
 export function CommissionDetailScreen({ bookingId, groomerUserId }: CommissionRowKey) {
   const { can } = usePermissions();
-  const manages = can("journalEntries", "create");
+  // Approving, correcting and paying: the report's own grant, or the ledger
+  // grant it used to need (every step posts a journal entry).
+  const manages =
+    can("commissionReports", "manage") || can("journalEntries", "create");
 
   const [detail, setDetail] = useState<CommissionDetail | null>(null);
   const [loading, setLoading] = useState(true);

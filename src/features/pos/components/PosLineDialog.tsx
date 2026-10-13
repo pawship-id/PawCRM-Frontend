@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Percent, Plus, X } from "lucide-react";
+import { Minus, Percent, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Alert } from "@/components";
@@ -15,18 +15,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { posService } from "@/services/pos.service";
 import { formatMoney } from "@/utils/decimal";
-import type { PosDiscountMode, PosItem, PosLot, PosLots } from "@/types/api";
+import type { PosDiscountMode, PosItem, PosLots } from "@/types/api";
 
 import { ownDiscountOf } from "../bookingDiscount";
+import { LotSplitEditor, lotRowsValid, type LotRow } from "./LotSplitEditor";
 import { PERCENT, storedToInput, WHOLE_RUPIAH } from "./PosDiscountPopover";
 
 /** Matches the server's `LINE_NOTE_MAX_LENGTH`. */
@@ -49,33 +43,6 @@ const NOTE_MAX_LENGTH = 200;
  * "OTOMATIS" IS A REAL CHOICE, not an empty state: it is FEFO, the default the
  * till has always had, and picking it clears a lot chosen earlier.
  */
-/** One row of the manual split: which lot, and how many from it. */
-interface LotRow {
-  batchId: string;
-  qty: number;
-}
-
-/**
- * The default split: earliest-expiring lots first, which is what FEFO would do.
- * It is only the STARTING point of manual mode — the cashier edits it from here
- * rather than building it from nothing.
- */
-function fefoSplit(lots: PosLot[], qty: number): LotRow[] {
-  const rows: LotRow[] = [];
-  let left = qty;
-
-  for (const lot of lots) {
-    if (left <= 0) break;
-
-    const take = Math.min(left, Math.floor(Number(lot.qtyRemaining)));
-    if (take <= 0) continue;
-
-    rows.push({ batchId: lot._id, qty: take });
-    left -= take;
-  }
-
-  return rows.length > 0 ? rows : [{ batchId: "", qty: Math.max(qty, 1) }];
-}
 
 export function PosLineDialog({
   item,
@@ -184,59 +151,12 @@ export function PosLineDialog({
 
   const isProduct = item?.kind === "product";
   const lotList = lots?.lots ?? [];
-  const lotOf = (id: string) => lotList.find((lot) => lot._id === id);
-
-  const total = rows.reduce((sum, row) => sum + row.qty, 0);
   /*
-    THE SPLIT MUST ADD UP, and Simpan stays off until it does: every row names
-    a lot, takes a whole number within what the lot holds, and the rows total
-    the quantity being sold. The server enforces the same — this is so the
-    cashier is told BEFORE pressing, not refused after.
-  */
-  const rowsValid =
-    rows.length > 0 &&
-    total === qty &&
-    rows.every((row) => {
-      const lot = lotOf(row.batchId);
-      return (
-        lot !== undefined &&
-        Number.isInteger(row.qty) &&
-        row.qty >= 1 &&
-        row.qty <= Number(lot.qtyRemaining)
-      );
-    });
-  /*
-    NO ROWS = AUTOMATIC (FEFO), which is the default and needs no choosing. The
-    moment the cashier adds a batch row they are naming lots, and then the rows
-    must add up. Removing the last row is the way back.
+    NO ROWS = AUTOMATIC (FEFO); once rows exist they must add up — see
+    `LotSplitEditor`.
   */
   const manual = rows.length > 0;
-  const batchValid = !manual || rowsValid;
-
-  /*
-    OFFERED WHILE THERE IS SOMETHING TO ADD: no rows yet (the first one starts
-    from FEFO's own split, so the cashier edits a sensible default instead of
-    building one), or rows that do not yet cover the quantity with lots left.
-  */
-  const canAddBatch =
-    isProduct &&
-    lots?.hasExpiry === true &&
-    lotList.length > 0 &&
-    (rows.length === 0 || (total < qty && rows.length < lotList.length));
-
-  function addBatch() {
-    setRows((current) =>
-      current.length === 0
-        ? fefoSplit(lotList, qty)
-        : [...current, { batchId: "", qty: Math.max(qty - total, 1) }],
-    );
-  }
-
-  function patchRow(index: number, patch: Partial<LotRow>) {
-    setRows((current) =>
-      current.map((row, i) => (i === index ? { ...row, ...patch } : row)),
-    );
-  }
+  const batchValid = lotRowsValid(rows, lotList, qty);
 
   async function save() {
     /*
@@ -460,136 +380,13 @@ export function PosLineDialog({
           {/* ─── BATCH — no rows means automatic; "+ Tambah batch" starts them ─── */}
           {isProduct && lotsError && <Alert variant="error">{lotsError}</Alert>}
 
-          {manual && (
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Batch</Label>
-              <div className="space-y-2">
-                {rows.map((row, index) => {
-                  const lot = lotOf(row.batchId);
-                  const held = lot ? Math.floor(Number(lot.qtyRemaining)) : 0;
-                  const taken = new Set(
-                    rows
-                      .filter((_, i) => i !== index)
-                      .map((other) => other.batchId),
-                  );
-                  /*
-                          THE MOST THIS ROW CAN TAKE: what its lot holds, and
-                          what is still unassigned on the line once the OTHER
-                          rows are counted. The input clamps to it, so a figure
-                          over either limit cannot be typed — and + goes grey at
-                          it.
-                        */
-                  const most = Math.max(
-                    Math.min(lot ? held : qty, qty - (total - row.qty)),
-                    0,
-                  );
-
-                  return (
-                    /*
-                      ONE LINE PER LOT: the choice stretches, the quantity
-                      controls (small, like Jumlah's) and the bin sit at its
-                      end. The Select is the only part that gives, so the line
-                      still fits a phone's dialog.
-                    */
-                    <div key={index} className="flex items-center gap-1.5">
-                      <Select
-                        value={row.batchId}
-                        onValueChange={(value) => {
-                          const next = lotOf(value);
-                          const cap = next
-                            ? Math.floor(Number(next.qtyRemaining))
-                            : row.qty;
-                          patchRow(index, {
-                            batchId: value,
-                            qty: Math.min(row.qty, cap),
-                          });
-                        }}
-                      >
-                        <SelectTrigger
-                          className="h-9 min-w-0 flex-1"
-                          aria-label={`Batch ${index + 1}`}
-                        >
-                          <SelectValue placeholder="Pilih batch" />
-                        </SelectTrigger>
-                        <SelectContent className="max-w-[calc(100vw-2rem)]">
-                          {lotList
-                            .filter((option) => !taken.has(option._id))
-                            .map((option) => (
-                              <SelectItem key={option._id} value={option._id}>
-                                {`${option.supplierBatchCode ?? option.batchCode} · sisa ${Number(option.qtyRemaining)}`}
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="icon"
-                        className="size-7 shrink-0"
-                        aria-label={`Kurangi jumlah batch ${index + 1}`}
-                        disabled={row.qty <= 1}
-                        onClick={() => patchRow(index, { qty: row.qty - 1 })}
-                      >
-                        <Minus className="size-3.5" />
-                      </Button>
-                      <Input
-                        inputMode="numeric"
-                        value={row.qty === 0 ? "" : String(row.qty)}
-                        placeholder="0"
-                        aria-label={`Jumlah batch ${index + 1}`}
-                        className="h-8 w-11 shrink-0 px-1 text-center tabular-nums"
-                        onChange={(event) => {
-                          const digits = event.target.value.replace(/\D/g, "");
-                          patchRow(index, {
-                            qty: Math.min(Number(digits || 0), most),
-                          });
-                        }}
-                      />
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="icon"
-                        className="size-7 shrink-0"
-                        aria-label={`Tambah jumlah batch ${index + 1}`}
-                        disabled={row.qty >= most}
-                        onClick={() => patchRow(index, { qty: row.qty + 1 })}
-                      >
-                        <Plus className="size-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 shrink-0 text-danger"
-                        aria-label={`Hapus baris batch ${index + 1}`}
-                        onClick={() =>
-                          setRows((current) =>
-                            current.filter((_, i) => i !== index),
-                          )
-                        }
-                      >
-                        <X className="size-4" />
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {canAddBatch && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="-ml-2 h-8 px-2 text-primary"
-              onClick={addBatch}
-            >
-              <Plus className="size-4" />
-              Tambah batch
-            </Button>
-          )}
+          <LotSplitEditor
+            lots={lotList}
+            qty={qty}
+            rows={rows}
+            available={isProduct && lots?.hasExpiry === true}
+            onRowsChange={setRows}
+          />
         </div>
 
         {submitError && <Alert variant="error">{submitError}</Alert>}

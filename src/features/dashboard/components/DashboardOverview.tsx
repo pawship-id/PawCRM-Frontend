@@ -74,7 +74,7 @@ function shortcutsOf(sections: NavSection[]): Shortcut[] {
 
 export function DashboardOverview() {
   const { user } = useAuth();
-  const { can } = usePermissions();
+  const { can, isModuleOn } = usePermissions();
 
   const mayReadProducts = can("products", "read");
   const mayReadBatches = can("productBatches", "read");
@@ -83,8 +83,8 @@ export function DashboardOverview() {
   const expiring = useExpiringAlert(mayReadBatches);
 
   const shortcuts = useMemo(
-    () => shortcutsOf(filterNavSections(NAV_SECTIONS, can)),
-    [can],
+    () => shortcutsOf(filterNavSections(NAV_SECTIONS, can, isModuleOn)),
+    [can, isModuleOn],
   );
 
   return (

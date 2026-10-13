@@ -11,7 +11,13 @@ import { validateRoleName, validateRoleDescription } from "@/utils/validation";
 
 import { usePermissionCatalog } from "../hooks/usePermissionCatalog";
 import { PermissionsField } from "./PermissionsField";
-import { selectionToGrants, type PermissionSelection } from "../permissions";
+import { PermissionTree } from "./PermissionTree";
+import { RoleTemplatePicker } from "./RoleTemplatePicker";
+import {
+  grantsToSelection,
+  selectionToGrants,
+  type PermissionSelection,
+} from "../permissions";
 
 /**
  * Create a role via POST /roles, then return to the list.
@@ -25,6 +31,8 @@ export function RoleCreateForm() {
   const router = useRouter();
   const {
     features: catalog,
+    modules,
+    templates,
     loading: catalogLoading,
     error: catalogError,
   } = usePermissionCatalog();
@@ -32,6 +40,8 @@ export function RoleCreateForm() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [selection, setSelection] = useState<PermissionSelection>({});
+  // Bumped per template pick, so the tree remounts and opens what it filled.
+  const [templateRun, setTemplateRun] = useState(0);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -58,14 +68,14 @@ export function RoleCreateForm() {
       });
       // Redirect first, then fire the toast so it rides along on the list screen.
       router.push("/dashboard/pengaturan/peran");
-      swalToast(`${created.name} has been created.`);
+      swalToast(`Peran ${created.name} tersimpan.`);
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
         setFieldErrors(error.fieldErrors);
       } else if (error instanceof ApiError) {
         setFormError(error.message);
       } else {
-        setFormError("Something went wrong. Please try again.");
+        setFormError("Terjadi kesalahan. Coba lagi.");
       }
       setSaving(false);
     }
@@ -74,7 +84,7 @@ export function RoleCreateForm() {
   if (catalogLoading) {
     return (
       <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted">
-        <Spinner /> Loading form create role...
+        <Spinner /> Memuat formulir…
       </div>
     );
   }
@@ -86,7 +96,7 @@ export function RoleCreateForm() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <TextField
-          label="Role name"
+          label="Nama peran"
           name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -94,21 +104,43 @@ export function RoleCreateForm() {
           required
         />
         <TextField
-          label="Description"
+          label="Keterangan"
           name="description"
-          placeholder="Optional"
+          placeholder="Opsional"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           error={fieldErrors.description}
         />
       </div>
 
-      <PermissionsField
-        catalog={catalog}
-        selection={selection}
-        onChange={setSelection}
-        error={fieldErrors.permissions}
-      />
+      {templates.length > 0 && (
+        <RoleTemplatePicker
+          templates={templates}
+          onPick={(template) => {
+            setSelection(grantsToSelection(template.permissions));
+            setTemplateRun((run) => run + 1);
+            // A blank name takes the template's, so "Kasir" needs one click.
+            if (name.trim() === "") setName(template.label);
+          }}
+        />
+      )}
+
+      {modules.length > 0 ? (
+        <PermissionTree
+          key={templateRun}
+          modules={modules}
+          selection={selection}
+          onChange={setSelection}
+          error={fieldErrors.permissions}
+        />
+      ) : (
+        <PermissionsField
+          catalog={catalog}
+          selection={selection}
+          onChange={setSelection}
+          error={fieldErrors.permissions}
+        />
+      )}
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button
@@ -117,10 +149,10 @@ export function RoleCreateForm() {
           className="w-full sm:w-auto"
           onClick={() => router.push("/dashboard/pengaturan/peran")}
         >
-          Cancel
+          Batal
         </Button>
         <Button type="submit" loading={saving} className="w-full sm:w-auto">
-          Create role
+          Simpan peran
         </Button>
       </div>
     </form>

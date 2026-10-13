@@ -28,6 +28,13 @@ import type {
  * disagreeing with the stock it moved. A document typed in error is answered by
  * a second one correcting it.
  */
+/**
+ * How long a stock document's save may take before the form stops waiting —
+ * longer than the client's 15-second default, which a long sheet on a slow
+ * connection can reach while the server is still, correctly, posting it.
+ */
+const STOCK_ENTRY_WRITE_TIMEOUT_MS = 60_000;
+
 export const stockEntryService = {
   /**
    * GET /stock-entries — one page of one kind, newest first.
@@ -71,7 +78,9 @@ export const stockEntryService = {
    * server would answer a different question than the user answered.
    */
   createAdjustment: (input: StockEntryInput) =>
-    apiClient.post<StockEntry>("/stock-entries/adjustments", input),
+    apiClient.post<StockEntry>("/stock-entries/adjustments", input, {
+      timeoutMs: STOCK_ENTRY_WRITE_TIMEOUT_MS,
+    }),
 
   /**
    * POST /stock-entries/opening-stock — day-one stock (201).
@@ -81,5 +90,7 @@ export const stockEntryService = {
    * the server owns that rule because the answer lives in the ledger.
    */
   createOpeningStock: (input: StockEntryInput) =>
-    apiClient.post<StockEntry>("/stock-entries/opening-stock", input),
+    apiClient.post<StockEntry>("/stock-entries/opening-stock", input, {
+      timeoutMs: STOCK_ENTRY_WRITE_TIMEOUT_MS,
+    }),
 };

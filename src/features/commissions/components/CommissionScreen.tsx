@@ -114,7 +114,10 @@ export function CommissionScreen({ now }: { now: string }) {
   } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const manages = can("journalEntries", "create");
+  // Approving, correcting and paying: the report's own grant, or the ledger
+  // grant it used to need (every step posts a journal entry).
+  const manages =
+    can("commissionReports", "manage") || can("journalEntries", "create");
   const rows = data?.rows ?? [];
   const picked = Object.values(selected);
   const pickedTotal = sumDecimals(picked.map((row) => row.amount));

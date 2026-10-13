@@ -438,3 +438,25 @@ function groupOf(label: string) {
     (item) => item.label === label,
   );
 }
+
+describe("filterNavSections — switched-off modules", () => {
+  const allowAll = () => true;
+  const labels = (sections: ReturnType<typeof filterNavSections>) =>
+    sections.flatMap((s) =>
+      s.items.flatMap((i) => [i.label, ...(i.children ?? []).map((c) => c.label)]),
+    );
+
+  it("hides an ungated row whose module is off, even for a super-admin", () => {
+    const visible = labels(
+      filterNavSections(NAV_SECTIONS, allowAll, (m) => m !== "layanan"),
+    );
+    expect(visible).not.toContain("Grooming");
+    expect(visible).not.toContain("Hotel");
+    expect(visible).toContain("Kalender");
+  });
+
+  it("keeps every row when no module is off", () => {
+    const visible = labels(filterNavSections(NAV_SECTIONS, allowAll));
+    expect(visible).toEqual(expect.arrayContaining(["Grooming", "Hotel"]));
+  });
+});

@@ -609,8 +609,8 @@ export function validateSupplierPaymentTerm(value: string): string | undefined {
 
 export function validateRoleName(value: string): string | undefined {
   const name = value.trim();
-  if (!name) return "Role name is required";
-  if (name.length > ROLE_NAME_MAX_LENGTH) return "Role name is too long";
+  if (!name) return "Nama peran wajib diisi";
+  if (name.length > ROLE_NAME_MAX_LENGTH) return "Nama peran terlalu panjang";
   return undefined;
 }
 
@@ -619,7 +619,7 @@ export function validateRoleDescription(value: string): string | undefined {
   const description = value.trim();
   if (!description) return undefined;
   if (description.length > ROLE_DESCRIPTION_MAX_LENGTH)
-    return "Description is too long";
+    return "Keterangan terlalu panjang";
   return undefined;
 }
 

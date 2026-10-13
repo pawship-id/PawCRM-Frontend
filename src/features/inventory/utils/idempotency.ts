@@ -17,6 +17,30 @@
  * intents, and a jsdom or an old browser losing the retry guard is better than
  * losing the form.
  */
+import { ApiError } from "@/services/api-error";
+
+/**
+ * What a form that sends a key says when its save did not answer.
+ *
+ * A TIMEOUT IS NOT A FAILURE: the server may still be posting. For a form that
+ * sends a key it is also harmless to press the button again — the server
+ * returns the document that key already filed, even when the first save is
+ * still running (a unique index on the key) — so that is what the message
+ * says. Every other refusal is the server's own sentence, shown verbatim.
+ */
+export function keyedSaveFailureMessage(
+  error: unknown,
+  submitLabel: string,
+): string {
+  if (error instanceof ApiError && error.isTimeout) {
+    return `Server belum menjawab. Tekan ${submitLabel} lagi — yang sama tidak akan tercatat dua kali.`;
+  }
+
+  return error instanceof ApiError
+    ? error.fullMessage
+    : "Terjadi kesalahan. Coba lagi.";
+}
+
 export function newIdempotencyKey(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();

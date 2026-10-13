@@ -29,6 +29,7 @@ import {
 } from "@/utils/decimal";
 
 import { useStockTransfer } from "../hooks/useStockTransfer";
+import { transferFailureMessage } from "../utils/transferErrors";
 import { StockTransferStatusBadge } from "./StockTransferStatusBadge";
 
 /**
@@ -65,7 +66,7 @@ import { StockTransferStatusBadge } from "./StockTransferStatusBadge";
  * shows for the same row.
  */
 export function StockTransferDetail({ transferId }: { transferId: string }) {
-  const { transfer, loading, error, notFound, setTransfer } =
+  const { transfer, loading, error, notFound, setTransfer, refetch } =
     useStockTransfer(transferId);
 
   /** Which confirmation is open — at most one. */
@@ -142,12 +143,16 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
       */
       setConfirming(null);
       swalToast(
-        err instanceof ApiError
-          ? err.fullMessage
-          : "Terjadi kesalahan. Coba lagi.",
+        transferFailureMessage(err, kind === "receive" ? "terima" : "batal"),
         "error",
         6000,
       );
+      // The server may have finished after the browser stopped waiting — the
+      // page reloads so it shows what actually happened rather than the state
+      // from before the click.
+      if (err instanceof ApiError && err.isTimeout) {
+        refetch();
+      }
     } finally {
       setBusy(false);
     }

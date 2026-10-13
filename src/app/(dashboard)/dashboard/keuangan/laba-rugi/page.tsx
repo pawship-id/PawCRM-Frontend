@@ -20,7 +20,12 @@ export const dynamic = "force-dynamic";
  */
 export default function LabaRugiPage() {
   return (
-    <RequirePermission feature="journalEntries">
+    <RequirePermission
+      anyOf={[
+        { feature: "financeReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ]}
+    >
       <ProfitLossScreen now={new Date().toISOString()} />
     </RequirePermission>
   );

@@ -15,6 +15,7 @@ import type {
   InvoiceActivityEntry,
   UpdateCustomerInvoiceInput,
   PublicCustomerInvoice,
+  PosLots,
 } from "@/types/api";
 
 /**
@@ -176,6 +177,16 @@ export const customerInvoiceService = {
    */
   create: (input: CreateCustomerInvoiceInput) =>
     apiClient.post<CustomerInvoiceDetail>("/customer-invoices", input),
+
+  /**
+   * GET /customer-invoices/lots — one product's in-date lots at the invoice's
+   * warehouse, soonest expiry first (13 October 2026). The till's lots, for
+   * Faktur baru's batch picker.
+   */
+  lots: (productId: string, warehouseId: string) =>
+    apiClient.get<PosLots>("/customer-invoices/lots", {
+      query: { productId, warehouseId },
+    }),
 
   /**
    * POST /customer-invoices/:id/void — unwind an issued invoice (PCR-031).

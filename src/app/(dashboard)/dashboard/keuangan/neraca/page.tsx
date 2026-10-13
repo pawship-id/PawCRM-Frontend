@@ -19,7 +19,12 @@ export const dynamic = "force-dynamic";
  */
 export default function NeracaPage() {
   return (
-    <RequirePermission feature="journalEntries">
+    <RequirePermission
+      anyOf={[
+        { feature: "financeReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ]}
+    >
       <BalanceSheetScreen now={new Date().toISOString()} />
     </RequirePermission>
   );

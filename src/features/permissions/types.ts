@@ -26,6 +26,8 @@ export const PERMISSION_CATALOG = {
   customerTypes: ["create", "read", "update", "delete"],
   categories: ["create", "read", "update", "delete", "restore"],
   products: ["create", "read", "update", "delete", "restore"],
+  /** Uploading product images and the groomer's "after" photo. */
+  media: ["create"],
   // The stock ledger is append-only, so it has no `update`, `delete` or
   // `restore` — those endpoints do not exist. A wrong movement is corrected by
   // posting a reversing adjustment, which `create` already covers.
@@ -199,7 +201,7 @@ export const PERMISSION_CATALOG = {
    * decision with financial consequences, and the person at the counter who
    * hears that a pet died is the same person who edits the row.
    */
-  pets: ["create", "read", "update", "delete", "restore"],
+  pets: ["create", "read", "update", "delete", "restore", "medical"],
 
   /**
    * The species, breeds, sizes and coats a tenant describes animals with —
@@ -270,6 +272,8 @@ export const PERMISSION_CATALOG = {
     "cancel",
     "overrideClash",
     "setPrice",
+    "claim",
+    "recordOwn",
   ],
 
   /**
@@ -299,10 +303,25 @@ export const PERMISSION_CATALOG = {
    * done TO a sale, and because the role that may approve one is usually the
    * role that may void — which a grant on this feature can express.
    */
-  posTransactions: ["create", "read", "void", "refund", "discountOverride"],
+  posTransactions: [
+    "create",
+    "read",
+    "void",
+    "refund",
+    "discountOverride",
+    "setPrice",
+  ],
   // The audit trail is read-only (mirrors the backend catalog): records are
   // system-appended and never edited or deleted, so `read` is the only action.
   auditLogs: ["read"],
+  /**
+   * The Laporan module. Each report opens with its own grant OR the data grant
+   * it used to need — see the backend catalog.
+   */
+  stockReports: ["read"],
+  financeReports: ["read"],
+  membershipReports: ["read"],
+  commissionReports: ["read", "manage"],
 } as const;
 
 /** A permission feature — a module the RBAC catalog gates. */

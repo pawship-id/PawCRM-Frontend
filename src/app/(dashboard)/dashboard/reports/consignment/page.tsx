@@ -15,7 +15,12 @@ export const metadata: Metadata = { title: "Konsinyasi Outstanding · Buloo" };
  */
 export default function ConsignmentPage() {
   return (
-    <RequirePermission feature="productBatches" action="read">
+    <RequirePermission
+      anyOf={[
+        { feature: "stockReports", action: "read" },
+        { feature: "productBatches", action: "read" },
+      ]}
+    >
       <div className="flex flex-col gap-6">
         <div>
           <Breadcrumb

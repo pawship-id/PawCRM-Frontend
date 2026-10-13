@@ -5,6 +5,8 @@ import { useMemo } from "react";
 import { useAuth } from "@/features/auth";
 import { permissionKey, type Action, type Feature } from "./types";
 
+const EMPTY: string[] = [];
+
 export interface PermissionChecker {
   /** The user's role bypasses every check — every `can` returns true. */
   isSuperAdmin: boolean;
@@ -14,6 +16,8 @@ export interface PermissionChecker {
   canAny: (feature: Feature, actions: Action[]) => boolean;
   /** True when the user has EVERY one of the given actions on `feature`. */
   canAll: (feature: Feature, actions: Action[]) => boolean;
+  /** False when the business switched this module off (Pengaturan › Umum). */
+  isModuleOn: (moduleKey: string) => boolean;
 }
 
 /**
@@ -29,7 +33,12 @@ export interface PermissionChecker {
  * backend remains the authority on every mutation.
  */
 export function usePermissions(): PermissionChecker {
-  const { permissions, isSuperAdmin } = useAuth();
+  const auth = useAuth();
+  const { permissions, isSuperAdmin } = auth;
+  // `?? []`: a context built before modules could be switched off (a test's
+  // stub, an older payload) means none are.
+  const disabledModules = auth.disabledModules ?? EMPTY;
+  const disabledFeatures = auth.disabledFeatures ?? EMPTY;
 
   const granted = useMemo(() => {
     const set = new Set<string>();
@@ -40,13 +49,16 @@ export function usePermissions(): PermissionChecker {
   }, [permissions]);
 
   return useMemo<PermissionChecker>(() => {
+    // A switched-off module is closed to the Owner too — it is checked first.
     const can = (feature: Feature, action: Action) =>
-      isSuperAdmin || granted.has(permissionKey(feature, action));
+      !disabledFeatures.includes(feature) &&
+      (isSuperAdmin || granted.has(permissionKey(feature, action)));
     return {
       isSuperAdmin,
       can,
       canAny: (feature, actions) => actions.some((a) => can(feature, a)),
       canAll: (feature, actions) => actions.every((a) => can(feature, a)),
+      isModuleOn: (moduleKey) => !disabledModules.includes(moduleKey),
     };
-  }, [granted, isSuperAdmin]);
+  }, [granted, isSuperAdmin, disabledModules, disabledFeatures]);
 }

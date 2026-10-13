@@ -92,6 +92,7 @@ import { InvoiceAddonPicker } from "./InvoiceAddonPicker";
 import { InvoiceBarcodeScan } from "./InvoiceBarcodeScan";
 import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
 import { InvoiceLineVariant } from "./InvoiceLineVariant";
+import { InvoiceLotDialog, type InvoiceLotShare } from "./InvoiceLotDialog";
 import { formatRate } from "./InvoiceItemsTable";
 
 /**
@@ -351,6 +352,14 @@ interface DraftLine {
    * show both. Sent as the line's `unitPrice`; needs `customerInvoices:setPrice`.
    */
   priceOverride?: string | null;
+  /** The product expires, so its lots can be named. Never set on a service. */
+  hasExpiry?: boolean;
+  /**
+   * THE LOTS THIS ROW IS TAKEN FROM (13 October 2026), or empty/absent for
+   * automatic (FEFO), the default. Shares add up to `qty`; sent as `lots`.
+   * Cleared when the warehouse changes — a lot belongs to one shelf.
+   */
+  lots?: InvoiceLotShare[];
 }
 
 /** What the row actually bills — the typed price when there is one. */
@@ -445,6 +454,8 @@ export function InvoiceCreateForm() {
   const [customerId, setCustomerId] = useState("");
   const [branchId, setBranchId] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
+  /* The row whose lots are being picked — see `InvoiceLotDialog`. */
+  const [lotRowKey, setLotRowKey] = useState<string | null>(null);
   const [invoiceDate, setInvoiceDate] = useState(todayValue());
   const [termDays, setTermDays] = useState("30");
   const [channel, setChannel] = useState<InvoiceChannel>("manual");
@@ -1011,6 +1022,20 @@ export function InvoiceCreateForm() {
   );
 
   const hasProductLine = lines.some((line) => line.kind === "product");
+  const lotRow = lines.find((line) => line.key === lotRowKey) ?? null;
+
+  /**
+   * A NEW WAREHOUSE DROPS EVERY NAMED LOT — a lot belongs to one shelf, and
+   * the rows go back to automatic (FEFO) rather than naming goods elsewhere.
+   */
+  function changeWarehouse(value: string) {
+    if (value !== warehouseId) {
+      setLines((current) =>
+        current.map((line) => (line.lots?.length ? { ...line, lots: [] } : line)),
+      );
+    }
+    setWarehouseId(value);
+  }
 
   /*
     STOCK UNDER EACH PRODUCT LINE'S SKU (14 September 2026, the BO mockup) — at
@@ -1066,6 +1091,41 @@ export function InvoiceCreateForm() {
 
     return (
       <span className="block text-xs font-semibold text-success">{label}</span>
+    );
+  }
+
+  /**
+   * WHICH LOTS THE ROW LEAVES FROM (13 October 2026) — "Otomatis (FEFO)" until
+   * somebody picks, then the lots by name. A product that expires only, and
+   * only once a warehouse is chosen: a lot belongs to one shelf.
+   */
+  function batchControl(line: DraftLine) {
+    if (line.kind !== "product" || !line.hasExpiry || !warehouseId) return null;
+
+    const lots = line.lots ?? [];
+    const summary =
+      lots.length === 0
+        ? "Otomatis (FEFO)"
+        : lots.map((lot) => `${lot.label} ×${lot.qty}`).join(", ");
+    const adds = lots.reduce((sum, lot) => sum + lot.qty, 0) === Number(line.qty);
+
+    return (
+      <span className="block text-xs">
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => setLotRowKey(line.key)}
+          aria-label={`Batch ${line.name}`}
+          className="rounded-sm text-left text-muted underline decoration-dotted underline-offset-2 transition hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60"
+        >
+          Batch: <span className="tabular-nums">{summary}</span>
+        </button>
+        {lots.length > 0 && !adds && (
+          <span className="block font-semibold text-warning">
+            Jumlah batch belum sama dengan jumlah barang
+          </span>
+        )}
+      </span>
     );
   }
   const hasServiceLine =
@@ -1230,6 +1290,13 @@ export function InvoiceCreateForm() {
       return "Pilih gudang — ada barang yang harus dikeluarkan.";
     if (lines.some((line) => !line.qty || Number(line.qty) <= 0))
       return "Ada baris yang jumlahnya belum diisi.";
+    const lotsOff = lines.find(
+      (line) =>
+        (line.lots?.length ?? 0) > 0 &&
+        line.lots!.reduce((sum, lot) => sum + lot.qty, 0) !== Number(line.qty),
+    );
+    if (lotsOff)
+      return `Batch ${lotsOff.name} belum sama dengan jumlahnya — atur ulang batch-nya.`;
     /*
       EVERY SERVICE NAMES ITS ANIMAL — PCR-035, and it is a refusal rather than a
       nudge. A grooming billed with no pet reaches no day sheet: nobody is
@@ -1399,6 +1466,7 @@ export function InvoiceCreateForm() {
             name: product.name,
             sku: product.sku,
             unitPrice: String(product.sellPrice ?? "0"),
+            hasExpiry: product.hasExpiry === true,
             qty: "1",
             discountMode: "percent",
             discountValue: "",
@@ -1439,6 +1507,7 @@ export function InvoiceCreateForm() {
         name: product.name,
         sku: product.sku,
         unitPrice: String(product.sellPrice ?? "0"),
+        hasExpiry: product.hasExpiry === true,
         qty: "1",
         discountMode: "percent" as const,
         discountValue: "",
@@ -1659,6 +1728,15 @@ export function InvoiceCreateForm() {
           : null,
         /* Only a typed price — the catalogue's is the server's to read. */
         ...(line.priceOverride != null ? { unitPrice: line.priceOverride } : {}),
+        /* Only named lots — none is FEFO, the server's default. */
+        ...(line.lots?.length
+          ? {
+              lots: line.lots.map((lot) => ({
+                batchId: lot.batchId,
+                qty: String(lot.qty),
+              })),
+            }
+          : {}),
         /*
           WHICH CARD AND WHICH BENEFIT — never the amount. The server prices it
           again from the card; what was quoted here only ever drove the preview.
@@ -1904,7 +1982,7 @@ export function InvoiceCreateForm() {
                 setBranchId(value);
                 // Every warehouse on offer belonged to the old branch. Keeping
                 // one would name a shelf these books never held.
-                setWarehouseId("");
+                changeWarehouse("");
               }}
             />
 
@@ -1929,7 +2007,7 @@ export function InvoiceCreateForm() {
               // Nothing to offer until a branch is named: the list IS that
               // branch's shelves plus the central ones.
               disabled={saving || branchId === ""}
-              onChange={setWarehouseId}
+              onChange={changeWarehouse}
             />
 
             <TextField
@@ -2005,11 +2083,36 @@ export function InvoiceCreateForm() {
 
       <Card
         title="Baris faktur"
-        description="Harga diambil dari katalog dan tidak bisa diubah di sini."
+        description={
+          maySetPrice
+            ? "Harga diambil dari katalog — klik harganya untuk mengubah."
+            : "Harga diambil dari katalog dan tidak bisa diubah di sini."
+        }
       >
         {/* The same dialog the stock documents and receipts open, with a Jasa
             tab beside the product picker. Portaled, so none of its buttons
             sit inside this form's DOM and none can submit it. */}
+        {lotRow && (
+          <InvoiceLotDialog
+            open
+            onOpenChange={(open) => {
+              if (!open) setLotRowKey(null);
+            }}
+            productId={lotRow.refId}
+            productName={lotRow.name}
+            warehouseId={warehouseId}
+            qty={Number(lotRow.qty) || 0}
+            value={lotRow.lots ?? []}
+            onSave={(lots) =>
+              setLines((current) =>
+                current.map((line) =>
+                  line.key === lotRow.key ? { ...line, lots } : line,
+                ),
+              )
+            }
+          />
+        )}
+
         {picking && (
           <InvoiceAddItemsDialog
             services={lookups.services}
@@ -2532,6 +2635,7 @@ export function InvoiceCreateForm() {
                                   <SkuText value={line.sku} fallback="Jasa" />
                                 </span>
                                 {stockNote(line)}
+                                {batchControl(line)}
                                 {variantControls}
                                 {offered.length > 0 && (
                                   <InvoiceAddonPicker

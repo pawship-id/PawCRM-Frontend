@@ -15,7 +15,12 @@ export const metadata: Metadata = {
  */
 export default function MembershipReportPage() {
   return (
-    <RequirePermission feature="membershipPlans">
+    <RequirePermission
+      anyOf={[
+        { feature: "membershipReports", action: "read" },
+        { feature: "membershipPlans", action: "read" },
+      ]}
+    >
       <MembershipReportScreen />
     </RequirePermission>
   );

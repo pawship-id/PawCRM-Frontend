@@ -81,6 +81,12 @@ export interface NavChild {
    */
   permission?: PermissionRequirement;
   /**
+   * The module this row belongs to (permissionModules.js keys). A row whose
+   * module the business switched off is hidden whatever its permission says —
+   * the only gate on a row that has no permission of its own.
+   */
+  module?: string;
+  /**
    * Count shown as a pill on the row. NOTHING SETS THIS YET, on purpose: the
    * mockup draws badges on six rows, and there is no endpoint behind any of
    * them. The rail already knows how to render one, so wiring a real count is a
@@ -118,6 +124,12 @@ export interface NavItem {
    * GROUP needs no requirement of its own: it shows when it has a visible child.
    */
   permission?: PermissionRequirement;
+  /**
+   * The module this row belongs to (permissionModules.js keys). A row whose
+   * module the business switched off is hidden whatever its permission says —
+   * the only gate on a row that has no permission of its own.
+   */
+  module?: string;
   /**
    * ANY ONE of these grants shows the row — for a leaf whose TABS are gated
    * separately, where no single permission describes the module.
@@ -219,12 +231,14 @@ export const NAV_SECTIONS: NavSection[] = [
             label: "Grooming",
             href: "/dashboard/layanan/grooming",
             icon: Scissors,
+            module: "layanan",
           },
-          { label: "Hotel", href: "/dashboard/hotel", icon: Bed },
+          { label: "Hotel", href: "/dashboard/hotel", icon: Bed, module: "layanan" },
           {
             label: "Antar-Jemput",
             href: "/dashboard/layanan/antar-jemput",
             icon: Car,
+            module: "layanan",
           },
         ],
       },
@@ -365,6 +379,7 @@ export const NAV_SECTIONS: NavSection[] = [
             href: "/dashboard/inventory",
             icon: Package,
             exact: true,
+            module: "inventori",
           },
           {
             /**
@@ -596,6 +611,11 @@ export const NAV_SECTIONS: NavSection[] = [
 /** Predicate matching usePermissions().can — lets the filter stay pure/testable. */
 export type CanFn = (feature: Feature, action: Action) => boolean;
 
+/** Predicate matching usePermissions().isModuleOn. */
+export type ModuleOnFn = (moduleKey: string) => boolean;
+
+const ALL_MODULES_ON: ModuleOnFn = () => true;
+
 /**
  * Narrows one section's items to what `can` permits: a leaf is dropped when its
  * `permission` is not granted; a group keeps only its permitted children and is
@@ -609,9 +629,15 @@ export type CanFn = (feature: Feature, action: Action) => boolean;
  * is a landing page telling it, seven times over, that it may not read any of
  * this.
  */
-export function filterNavItems(items: NavItem[], can: CanFn): NavItem[] {
+export function filterNavItems(
+  items: NavItem[],
+  can: CanFn,
+  isModuleOn: ModuleOnFn = ALL_MODULES_ON,
+): NavItem[] {
   const allowed = (req?: PermissionRequirement) =>
     !req || can(req.feature, req.action);
+  const moduleOn = (row: { module?: string }) =>
+    !row.module || isModuleOn(row.module);
 
   /**
    * A leaf survives when its own `permission` passes AND, if it names a set,
@@ -620,13 +646,15 @@ export function filterNavItems(items: NavItem[], can: CanFn): NavItem[] {
    * here rather than a bare `.some()`.
    */
   const leafAllowed = (item: NavItem) =>
+    moduleOn(item) &&
     allowed(item.permission) &&
     (!item.permissionAny?.length || item.permissionAny.some(allowed));
 
   return items.reduce<NavItem[]>((visible, item) => {
     if (item.children) {
-      const children = item.children.filter((child) =>
-        allowed(child.permission),
+      if (!moduleOn(item)) return visible;
+      const children = item.children.filter(
+        (child) => moduleOn(child) && allowed(child.permission),
       );
       if (children.some((child) => child.permission)) {
         visible.push({ ...item, children });
@@ -646,9 +674,10 @@ export function filterNavItems(items: NavItem[], can: CanFn): NavItem[] {
 export function filterNavSections(
   sections: NavSection[],
   can: CanFn,
+  isModuleOn: ModuleOnFn = ALL_MODULES_ON,
 ): NavSection[] {
   return sections.reduce<NavSection[]>((visible, section) => {
-    const items = filterNavItems(section.items, can);
+    const items = filterNavItems(section.items, can, isModuleOn);
     if (items.length) visible.push({ ...section, items });
     return visible;
   }, []);

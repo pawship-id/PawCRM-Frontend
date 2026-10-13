@@ -155,6 +155,7 @@ async function requestEnvelope<T>(
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new ApiError(`Request timed out after ${timeoutMs}ms`, 0, {
         isNetworkError: true,
+        isTimeout: true,
       });
     }
     throw ApiError.network();
@@ -235,6 +236,7 @@ async function download(
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new ApiError(`Request timed out after ${timeoutMs}ms`, 0, {
         isNetworkError: true,
+        isTimeout: true,
       });
     }
     throw ApiError.network();

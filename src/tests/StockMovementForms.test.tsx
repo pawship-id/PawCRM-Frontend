@@ -1944,7 +1944,35 @@ describe("OpeningStockForm", () => {
       entryDate: expect.any(String),
       notes: undefined,
       lines: [{ productId: PRODUCT, qty: "24", costPerUnit: "118500" }],
+      // One per intent, so a save pressed again after a timeout files one
+      // document rather than two.
+      idempotencyKey: expect.any(String),
     });
+  });
+
+  it("sends the SAME key when a timed-out save is pressed again", async () => {
+    const post = mockSheet();
+    post.mockRejectedValueOnce(
+      new ApiError("Request timed out after 60000ms", 0, {
+        isNetworkError: true,
+        isTimeout: true,
+      }),
+    );
+    const user = await renderSheet();
+    await fillOneLine(user);
+
+    await user.click(screen.getByRole("button", { name: /Simpan stok awal/ }));
+
+    expect(
+      await screen.findByText(/Tekan Simpan stok awal lagi/),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Simpan stok awal/ }));
+
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(2));
+    expect(post.mock.calls[1][0].idempotencyKey).toBe(
+      post.mock.calls[0][0].idempotencyKey,
+    );
   });
 
   /**

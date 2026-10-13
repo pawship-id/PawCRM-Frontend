@@ -403,6 +403,80 @@ describe("InvoiceEditor", () => {
  * priced on — shown, never re-quoted, never re-sent; a line added here asks its
  * "Dipilih staf" values on the row and sends them.
  */
+describe("InvoiceEditor — a typed price and named lots (13 October 2026)", () => {
+  it("re-prices a kept line with customerInvoices:setPrice, but never a booked one", async () => {
+    const user = userEvent.setup();
+    renderEditor();
+
+    expect(
+      screen.queryByRole("button", { name: "Ubah harga Grooming Basic" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "Ubah harga Kalung Nylon" }));
+    const price = screen.getByLabelText("Harga Kalung Nylon");
+    await user.clear(price);
+    await user.type(price, "80000{Enter}");
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+    const [, body] = asMock(customerInvoiceService.update).mock.calls[0];
+    expect(body.items[0]).toMatchObject({ fromIndex: 0, unitPrice: "80000" });
+    expect(body.items[1]).not.toHaveProperty("unitPrice");
+  });
+
+  it("shows the price as text without the grant", async () => {
+    renderWithAuth(
+      <InvoiceEditor invoice={invoice()} onSaved={onSaved} onCancel={onCancel} />,
+      { isSuperAdmin: false, permissions: [{ feature: "customerInvoices", actions: ["update"] }] },
+    );
+
+    expect(await screen.findByLabelText("Jumlah Kalung Nylon")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Ubah harga Kalung Nylon" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("puts a stored override back to the catalogue's price when the box is emptied", async () => {
+    const user = userEvent.setup();
+    renderEditor(
+      invoice({
+        items: [line({ unitPrice: "80000.0000", listPrice: "90000.0000" })],
+      }),
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Ubah harga Kalung Nylon" }));
+    await user.clear(screen.getByLabelText("Harga Kalung Nylon"));
+    await user.keyboard("{Enter}");
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+    const [, body] = asMock(customerInvoiceService.update).mock.calls[0];
+    expect(body.items[0].unitPrice).toBeNull();
+  });
+
+  it("sends the lots picked for a kept product line", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.lots).mockResolvedValue({
+      hasExpiry: true,
+      lots: [
+        { _id: "lotA", batchCode: "KLG-A", supplierBatchCode: null, expiryDate: null, qtyRemaining: "5" },
+      ],
+    });
+    renderEditor();
+
+    await user.click(await screen.findByRole("button", { name: "Batch Kalung Nylon" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(customerInvoiceService.lots).toHaveBeenCalledWith("p1", "w1");
+    await user.click(await within(dialog).findByRole("button", { name: /Tambah batch/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Simpan batch" }));
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+    const [, body] = asMock(customerInvoiceService.update).mock.calls[0];
+    expect(body.items[0].lots).toEqual([{ batchId: "lotA", qty: "2" }]);
+  });
+});
+
 describe("InvoiceEditor — choices and zone", () => {
   const LOKASI_ID = "5a7f1f77bcf86cd7994391aa";
   const LOKASI = makeVariantOption({
@@ -489,10 +563,12 @@ describe("InvoiceEditor — choices and zone", () => {
     renderEditor();
 
     await user.click(
-      await screen.findByRole("button", { name: "Tambah barang atau jasa" }),
+      await screen.findByRole("button", { name: "+ Tambah barang atau jasa" }),
     );
-    await user.click(await screen.findByRole("option", { name: /Grooming Rumah/ }));
-    await user.click(screen.getByRole("button", { name: "Tambah baris" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("tab", { name: /^Jasa/ }));
+    await user.click(await within(dialog).findByRole("checkbox", { name: /Grooming Rumah/ }));
+    await user.click(within(dialog).getByRole("button", { name: /^tambahkan/i }));
     await user.click(screen.getByRole("button", { name: /^Hewan untuk Grooming Rumah$/ }));
     await user.click(await screen.findByRole("option", { name: /Miko/ }));
 
@@ -522,8 +598,8 @@ describe("InvoiceEditor — choices and zone", () => {
 
 /* ─── A product past the first 100 (12 October 2026) ────────────────────── */
 
-describe("InvoiceEditor — the line picker searches the server", () => {
-  it("finds a product the opening list did not carry, and adds it", async () => {
+describe("InvoiceEditor — adding lines, as on Faktur baru (13 October 2026)", () => {
+  it("adds a product found on the server through the dialog, priced from it", async () => {
     asMock(productService.list).mockImplementation(
       async (query: { search?: string } = {}) =>
         page(
@@ -536,19 +612,24 @@ describe("InvoiceEditor — the line picker searches the server", () => {
     renderEditor();
 
     await user.click(
-      await screen.findByRole("button", { name: "Tambah barang atau jasa" }),
+      await screen.findByRole("button", { name: "+ Tambah barang atau jasa" }),
     );
-    await user.type(
-      screen.getByRole("textbox", { name: /cari tambah barang atau jasa/i }),
-      "Snack",
-    );
-    await user.click(await screen.findByRole("option", { name: /Snack Kucing/ }));
-    await user.click(screen.getByRole("button", { name: "Tambah baris" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(await within(dialog).findByLabelText("Cari produk"), "Snack");
+    await user.click(await within(dialog).findByRole("checkbox", { name: /Snack Kucing/ }));
+    await user.click(within(dialog).getByRole("button", { name: /^tambahkan/i }));
 
-    expect(productService.list).toHaveBeenCalledWith(
-      expect.objectContaining({ search: "Snack", isActive: true }),
-    );
     expect(await screen.findAllByText(/Snack Kucing/)).not.toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+    const [, body] = asMock(customerInvoiceService.update).mock.calls[0];
+    expect(body.items[2]).toEqual({ kind: "product", refId: "p77", qty: "1", discount: null });
+  });
+
+  it("offers the barcode scan the create form has", async () => {
+    renderEditor();
+    expect(await screen.findByLabelText(/barcode/i)).toBeInTheDocument();
   });
 });
 

@@ -281,6 +281,13 @@ export interface SessionContext {
 export interface AuthPermissions {
   permissions: PermissionGrant[];
   isSuperAdmin: boolean;
+  /**
+   * Modules Buloo admin switched off for this tenant, and
+   * the catalog features inside them. Closed to everyone, the Owner included —
+   * `can()` answers no for these before it looks at the grants.
+   */
+  disabledModules?: string[];
+  disabledFeatures?: string[];
 }
 
 /** Payload of POST /api/auth/login. */
@@ -421,6 +428,43 @@ export interface PermissionGrant {
  */
 export interface PermissionCatalog {
   features: PermissionGrant[];
+  /** The same features grouped modul → layar, labelled — drives the role editor. */
+  modules?: PermissionModule[];
+  /** Starting points for a new role. */
+  templates?: RoleTemplate[];
+}
+
+/** A preset grant set a new role can start from. */
+export interface RoleTemplate {
+  key: string;
+  label: string;
+  description: string;
+  permissions: PermissionGrant[];
+}
+
+/** One action as the role editor shows it. */
+export interface PermissionActionInfo {
+  key: string;
+  label: string;
+  /** Moves money, undoes a posted record or bypasses a limit — flagged in the UI. */
+  sensitive: boolean;
+}
+
+/** A screen (layar) inside a module, and the catalog features it covers. */
+export interface PermissionScreen {
+  key: string;
+  label: string;
+  description: string | null;
+  features: { feature: string; actions: PermissionActionInfo[] }[];
+}
+
+/** A module (modul) — the unit an owner thinks in and a plan can switch off. */
+export interface PermissionModule {
+  key: string;
+  label: string;
+  /** False for Pengaturan & Sistem, which can never be switched off. */
+  toggleable?: boolean;
+  screens: PermissionScreen[];
 }
 
 /**
@@ -829,6 +873,8 @@ export interface Tenant {
   fiscalYearStartMonth?: number;
   subscription: TenantSubscription;
   settings: TenantSettings;
+  /** Modules Buloo admin switched off for this tenant. */
+  disabledModules?: string[];
   /** Schema version, stamped on write so a migration can find older shapes. */
   sv: number;
   /** Soft-delete marker; a live session on a deleted tenant reads a 404 instead. */
@@ -7256,6 +7302,13 @@ export interface CustomerInvoiceItem {
   sku: string | null;
   qty: string;
   unitPrice: string;
+  /**
+   * THE CATALOGUE'S PRICE when `unitPrice` was typed over it with
+   * `customerInvoices:setPrice` (13 October 2026); null otherwise.
+   */
+  listPrice?: string | null;
+  /** The lots the goods left from, when somebody named them; empty for FEFO. */
+  lots?: Array<{ batchId: string; batchCode: string | null; qty: string }>;
   discount: InvoiceDiscount | null;
   /**
    * HOW MUCH OF `discount` A MEMBERSHIP BENEFIT PAID FOR (29 September 2026) —
@@ -7454,6 +7507,11 @@ export interface CreateInvoiceItemInput {
    * `customerInvoices:setPrice`.
    */
   unitPrice?: string | null;
+  /**
+   * THE LOTS THE GOODS LEAVE FROM (13 October 2026) — the till's `lots`.
+   * Omitted leaves it to FEFO; when sent, the shares add up to `qty`.
+   */
+  lots?: Array<{ batchId: string; qty: string }>;
   /**
    * WHOSE ANIMAL, on a service line — PCR-035, and the prerequisite for the rest
    * of it. A booking needs a pet, and a grooming typed straight onto an invoice
