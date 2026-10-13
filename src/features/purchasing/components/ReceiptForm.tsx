@@ -638,6 +638,7 @@ export function ReceiptForm({
       const product = productById.get(line.productId);
       if (!isPositive(line.qty)) return false;
       if (!isDecimal(line.costPerUnit)) return false;
+      if (consignment && !isPositive(line.costPerUnit)) return false;
       // WHICH LOT comes first: until it is answered the server cannot be told
       // whether this line joins one or opens one, and the two are different
       // requests.
@@ -827,6 +828,11 @@ export function ReceiptForm({
         // On a consignment this is the harga setor — required just the same.
         if (!isDecimal(line.costPerUnit)) {
           next.lines = `${label}: ${consignment ? "harga setor" : "harga beli"} wajib diisi.`;
+          break;
+        }
+        // A consigned sale posts this to HPP Konsinyasi; at 0 its margin reads 100%.
+        if (consignment && !isPositive(line.costPerUnit)) {
+          next.lines = `${label}: harga setor harus lebih dari nol.`;
           break;
         }
         if (picksLot(product) && line.batchChoice === "") {
