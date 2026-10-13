@@ -26,6 +26,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PetFixLink } from "@/features/pets";
+import { usePermissions } from "@/features/permissions";
+import { PosLinePrice } from "@/features/pos/components/PosLinePrice";
 import { useBenefitQuote } from "@/features/memberships";
 
 import { InvoiceBenefitSection } from "./InvoiceBenefitSection";
@@ -241,10 +243,10 @@ function repriced(
  * authority; nothing here is ever SENT as a total. A form that asked somebody to
  * approve a bill without showing them the bill would not be a form.
  *
- * PRICES ARE NOT EDITABLE, and that is a rule rather than an omission: a price a
- * client can set is a discount nobody approved. What this form decides is which
- * item, how many, and what discount — the price comes from the catalogue, on
- * screen and again on the server.
+ * PRICES ARE THE CATALOGUE'S unless somebody holding `customerInvoices:setPrice`
+ * types over one (13 October 2026, on request — the till's override). Without
+ * the grant the price is read-only: a price a client can set is a discount
+ * nobody approved, and the server refuses one without it.
  *
  * ERRORS GO TO A TOAST. A departure from `docs/ui-rules.md` §9, matching the
  * branch forms and asked for directly: this form is long, and the refusals that
@@ -342,6 +344,18 @@ interface DraftLine {
    * keeps its animals in.
    */
   passengers: string[];
+  /**
+   * A PRICE TYPED OVER `unitPrice` (13 October 2026), or null/absent. Kept
+   * BESIDE the catalogue's figure rather than over it, so `repriced` can go on
+   * correcting the catalogue's while the typed one stands — and the row can
+   * show both. Sent as the line's `unitPrice`; needs `customerInvoices:setPrice`.
+   */
+  priceOverride?: string | null;
+}
+
+/** What the row actually bills — the typed price when there is one. */
+function chargedPrice(line: DraftLine) {
+  return line.priceOverride ?? line.unitPrice;
 }
 
 /**
@@ -424,6 +438,9 @@ export function InvoiceCreateForm() {
   const router = useRouter();
   const lookups = useInvoiceLookups();
   const customerSearch = useCustomerSearch(lookups.customers);
+  const { can } = usePermissions();
+  /* Typing over a row's price — the till's override, see the header. */
+  const maySetPrice = can("customerInvoices", "setPrice");
 
   const [customerId, setCustomerId] = useState("");
   const [branchId, setBranchId] = useState("");
@@ -1087,7 +1104,7 @@ export function InvoiceCreateForm() {
                 kind: "service" as const,
                 refId: line.refId,
                 petId: line.petId,
-                amount: line.unitPrice,
+                amount: chargedPrice(line),
               },
             ]
           : [],
@@ -1113,7 +1130,7 @@ export function InvoiceCreateForm() {
           ...bookingLines,
           ...lines.map((line) => ({
             qty: line.qty,
-            unitPrice: line.unitPrice,
+            unitPrice: chargedPrice(line),
             discount: line.discountValue
               ? { mode: line.discountMode, value: line.discountValue }
               : null,
@@ -1514,9 +1531,14 @@ export function InvoiceCreateForm() {
           IS the price. Products are left alone — theirs does not depend on a
           pet, and was read from the picked product when the row was added.
         */
+        /* A price typed for the old animal is not a price for the new one. */
         return patch.petId === undefined || next.kind !== "service"
           ? next
-          : { ...next, unitPrice: priceOfService(next.refId, next.petId) };
+          : {
+              ...next,
+              unitPrice: priceOfService(next.refId, next.petId),
+              priceOverride: null,
+            };
       });
     });
   }
@@ -1635,6 +1657,8 @@ export function InvoiceCreateForm() {
         discount: line.discountValue
           ? { mode: line.discountMode, value: line.discountValue }
           : null,
+        /* Only a typed price — the catalogue's is the server's to read. */
+        ...(line.priceOverride != null ? { unitPrice: line.priceOverride } : {}),
         /*
           WHICH CARD AND WHICH BENEFIT — never the amount. The server prices it
           again from the card; what was quoted here only ever drove the preview.
@@ -2680,8 +2704,8 @@ export function InvoiceCreateForm() {
                             </TableCell>
                           )}
 
-                          {/* READ-ONLY, and it is a rule: a price a client can set is
-                          a discount nobody approved. */}
+                          {/* TYPED OVER only with `customerInvoices:setPrice` —
+                          read-only text for everybody else. */}
                           <TableCell className="text-right tabular-nums">
                             {/*
                           AN EM-DASH, NOT "Rp 0", while a variant service has no
@@ -2691,10 +2715,35 @@ export function InvoiceCreateForm() {
                           question.
                         */}
                             {line.kind === "service" &&
-                            line.unitPrice === "0" ? (
+                            line.unitPrice === "0" &&
+                            line.priceOverride == null ? (
                               <span className="text-muted">—</span>
                             ) : (
-                              formatMoney(line.unitPrice)
+                              <PosLinePrice
+                                item={{
+                                  name: line.name,
+                                  unitPrice: chargedPrice(line),
+                                  listPrice:
+                                    line.priceOverride != null
+                                      ? line.unitPrice
+                                      : null,
+                                }}
+                                label={`Harga ${line.name}`}
+                                editable={maySetPrice}
+                                disabled={saving}
+                                stacked
+                                onChange={(typed) =>
+                                  patchLine(index, {
+                                    // Typing the catalogue's own figure back is
+                                    // not an override.
+                                    priceOverride:
+                                      typed !== null &&
+                                      Number(typed) !== Number(line.unitPrice)
+                                        ? typed
+                                        : null,
+                                  })
+                                }
+                              />
                             )}
                             {/* The row the blocking sentence is about, in words. */}
                             {variantInactive(line) && (

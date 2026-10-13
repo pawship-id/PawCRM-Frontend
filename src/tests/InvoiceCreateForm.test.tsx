@@ -43,9 +43,19 @@ jest.mock("sweetalert2", () => ({
   default: { fire: jest.fn().mockResolvedValue({ isConfirmed: true }) },
 }));
 
+/* No grants by default — `setPrice` is switched on by the tests that need it. */
+let mockGrants: { feature: string; actions: string[] }[] = [];
 jest.mock("@/features/auth", () => ({
-  useAuth: () => ({ user: { allBranches: true, branchAccess: [] } }),
+  useAuth: () => ({
+    user: { allBranches: true, branchAccess: [] },
+    permissions: mockGrants,
+    isSuperAdmin: false,
+  }),
 }));
+
+beforeEach(() => {
+  mockGrants = [];
+});
 
 /**
  * The form that raises an invoice by hand.
@@ -1535,9 +1545,33 @@ describe("what the form sends", () => {
     expect(sent().items).toEqual([
       { kind: "product", refId: "p1", qty: "1", discount: null },
     ]);
-    // A price a client can set is a discount nobody approved.
+    // Untouched, the price is the catalogue's — the server reads it there.
     expect(sent().items[0]).not.toHaveProperty("unitPrice");
     expect(sent().items[0]).not.toHaveProperty("name");
+  });
+
+  it("sends a price typed over the catalogue's, with customerInvoices:setPrice", async () => {
+    mockGrants = [{ feature: "customerInvoices", actions: ["create", "setPrice"] }];
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+
+    const row = screen.getByRole("row", { name: /Kalung Nylon/ });
+    await userEvent.click(
+      within(row).getByRole("button", { name: /Ubah harga Kalung Nylon/i }),
+    );
+    const price = within(row).getByLabelText(/^Harga Kalung Nylon$/i);
+    await userEvent.clear(price);
+    await userEvent.type(price, "90000{Enter}");
+
+    // The catalogue's price stays on the row, struck through above the typed one.
+    expect(within(row).getByText("Rp 100.000")).toHaveClass("line-through");
+    expect(within(row).queryByText("Harga diubah")).not.toBeInTheDocument();
+    await submit();
+
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
+    expect(sent().items[0]).toMatchObject({ refId: "p1", unitPrice: "90000" });
   });
 
   it("goes to the new invoice and toasts its number", async () => {
@@ -1646,7 +1680,7 @@ describe("what the form sends", () => {
 });
 
 describe("what the form shows", () => {
-  it("shows the catalogue price, read-only", async () => {
+  it("shows the catalogue price, read-only without customerInvoices:setPrice", async () => {
     render(<InvoiceCreateForm />);
     await fillMinimal();
 
@@ -1659,8 +1693,8 @@ describe("what the form shows", () => {
     const row = screen.getByRole("row", { name: /Kalung Nylon/ });
     expect(within(row).getByText("Rp 100.000")).toBeInTheDocument();
     expect(within(row).getByText("Rp 200.000")).toBeInTheDocument();
-    // The price is TEXT, never an input: a price a client can set is a discount
-    // nobody approved.
+    // The price is TEXT for somebody without the grant: a price they could set
+    // is a discount nobody approved.
     expect(within(row).queryByLabelText(/harga/i)).not.toBeInTheDocument();
   });
 

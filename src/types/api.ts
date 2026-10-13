@@ -7449,6 +7449,12 @@ export interface CreateInvoiceItemInput {
    */
   benefit?: { membershipId: string; benefitId: string } | null;
   /**
+   * A PRICE TYPED OVER THE CATALOGUE'S (13 October 2026). Omitted bills the
+   * catalogue's; a different figure is refused (403) without
+   * `customerInvoices:setPrice`.
+   */
+  unitPrice?: string | null;
+  /**
    * WHOSE ANIMAL, on a service line — PCR-035, and the prerequisite for the rest
    * of it. A booking needs a pet, and a grooming typed straight onto an invoice
    * has none, so without this the service is billed and appears on no day sheet.
