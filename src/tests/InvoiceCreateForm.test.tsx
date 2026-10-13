@@ -1679,6 +1679,58 @@ describe("what the form sends", () => {
   });
 });
 
+describe("choosing the lots a product leaves from", () => {
+  beforeEach(() => {
+    jest
+      .spyOn(productService, "list")
+      .mockResolvedValue(page([{ ...PRODUCT, hasExpiry: true }]) as never);
+    jest.spyOn(customerInvoiceService, "lots").mockResolvedValue({
+      hasExpiry: true,
+      lots: [
+        { _id: "lotA", batchCode: "KLG-A", supplierBatchCode: null, expiryDate: null, qtyRemaining: "1" },
+        { _id: "lotB", batchCode: "KLG-B", supplierBatchCode: null, expiryDate: null, qtyRemaining: "5" },
+      ],
+    });
+  });
+
+  it("is automatic (FEFO) until picked, and sends no lots", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+
+    expect(screen.getByRole("button", { name: /^Batch Kalung Nylon$/ })).toHaveTextContent(
+      "Otomatis (FEFO)",
+    );
+    await submit();
+
+    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    expect(sent().items[0]).not.toHaveProperty("lots");
+  });
+
+  it("sends the lots picked, starting from FEFO's own split", async () => {
+    render(<InvoiceCreateForm />);
+    await fillMinimal();
+    await userEvent.clear(screen.getByLabelText(/^Jumlah Kalung Nylon$/i));
+    await userEvent.type(screen.getByLabelText(/^Jumlah Kalung Nylon$/i), "2");
+
+    await userEvent.click(screen.getByRole("button", { name: /^Batch Kalung Nylon$/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(customerInvoiceService.lots).toHaveBeenCalledWith("p1", "wh1");
+    await userEvent.click(await within(dialog).findByRole("button", { name: /Tambah batch/ }));
+    await userEvent.click(within(dialog).getByRole("button", { name: /^Simpan batch$/ }));
+
+    expect(screen.getByRole("button", { name: /^Batch Kalung Nylon$/ })).toHaveTextContent(
+      "KLG-A ×1, KLG-B ×1",
+    );
+    await submit();
+
+    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    expect(sent().items[0].lots).toEqual([
+      { batchId: "lotA", qty: "1" },
+      { batchId: "lotB", qty: "1" },
+    ]);
+  });
+});
+
 describe("what the form shows", () => {
   it("shows the catalogue price, read-only without customerInvoices:setPrice", async () => {
     render(<InvoiceCreateForm />);

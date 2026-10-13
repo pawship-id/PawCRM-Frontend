@@ -7455,6 +7455,11 @@ export interface CreateInvoiceItemInput {
    */
   unitPrice?: string | null;
   /**
+   * THE LOTS THE GOODS LEAVE FROM (13 October 2026) — the till's `lots`.
+   * Omitted leaves it to FEFO; when sent, the shares add up to `qty`.
+   */
+  lots?: Array<{ batchId: string; qty: string }>;
+  /**
    * WHOSE ANIMAL, on a service line — PCR-035, and the prerequisite for the rest
    * of it. A booking needs a pet, and a grooming typed straight onto an invoice
    * has none, so without this the service is billed and appears on no day sheet.
