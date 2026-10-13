@@ -7256,6 +7256,13 @@ export interface CustomerInvoiceItem {
   sku: string | null;
   qty: string;
   unitPrice: string;
+  /**
+   * THE CATALOGUE'S PRICE when `unitPrice` was typed over it with
+   * `customerInvoices:setPrice` (13 October 2026); null otherwise.
+   */
+  listPrice?: string | null;
+  /** The lots the goods left from, when somebody named them; empty for FEFO. */
+  lots?: Array<{ batchId: string; batchCode: string | null; qty: string }>;
   discount: InvoiceDiscount | null;
   /**
    * HOW MUCH OF `discount` A MEMBERSHIP BENEFIT PAID FOR (29 September 2026) —

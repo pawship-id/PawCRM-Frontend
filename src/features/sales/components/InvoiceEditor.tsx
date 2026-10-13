@@ -1,6 +1,5 @@
 "use client";
 
-import { shortSku } from "@/lib/sku";
 import { SkuText } from "@/components/SkuText";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { House, Plus, Trash2 } from "lucide-react";
@@ -50,9 +49,11 @@ import type {
   InvoiceDiscountMode,
   InvoiceItemKind,
   Pet,
+  Service,
   UpdateCustomerInvoiceInput,
   VariantChoice,
 } from "@/types/api";
+import type { Product } from "@/types/inventory";
 
 import { arahCardOf, choicesForLeg } from "@/features/antar-jemput/ride";
 import {
@@ -72,7 +73,12 @@ import {
   variantSummary,
   type LineRefusal,
 } from "../variantLine";
+import { InvoiceAddItemsDialog } from "./InvoiceAddItemsDialog";
+import { InvoiceBarcodeScan } from "./InvoiceBarcodeScan";
 import { InvoiceLineVariant } from "./InvoiceLineVariant";
+import { InvoiceLotDialog, type InvoiceLotShare } from "./InvoiceLotDialog";
+import { usePermissions } from "@/features/permissions";
+import { PosLinePrice } from "@/features/pos/components/PosLinePrice";
 
 /** A line as the editor holds it. */
 interface EditLine {
@@ -86,7 +92,7 @@ interface EditLine {
    * already carry one — and dropping it, or narrowing this type so it could not
    * be represented, would quietly delete a line the customer was charged for.
    *
-   * WHAT PROTECTS IT: the "Tambah baris" picker offers only products and
+   * WHAT PROTECTS IT: the "Tambah barang atau jasa" dialog offers only products and
    * services, and a KEPT line is sent back by `fromIndex` for the server to
    * re-read rather than re-priced here (`priceOf` runs on new rows only). So a
    * membership line passes through untouched, which is exactly what it should
@@ -142,7 +148,23 @@ interface EditLine {
    * from the trip. On a kept row it is the stored line's.
    */
   tripId?: string | null;
+  /**
+   * A PRICE TYPED OVER `unitPrice` (13 October 2026) — `customerInvoices:setPrice`.
+   * On a kept row `unitPrice` holds the catalogue's price as recorded (the
+   * stored `listPrice`, else what it was billed at), so the row bills
+   * `priceOverride ?? unitPrice` exactly as on Faktur baru.
+   */
+  priceOverride?: string | null;
+  /** The override the row was stored with — a kept row sends a price only when it moved. */
+  storedOverride?: string | null;
+  /** The product expires, so its lots can be named. Unknown on a kept row is offered. */
+  hasExpiry?: boolean;
+  /** The lots the goods leave from; empty/absent is automatic (FEFO). */
+  lots?: InvoiceLotShare[];
 }
+
+/** What the row actually bills — the typed price when there is one. */
+const chargedPrice = (line: EditLine) => line.priceOverride ?? line.unitPrice;
 
 /** Nobody has a hundred animals; this is a ceiling, not a page size. */
 const MAX_PETS = 100;
@@ -165,11 +187,10 @@ const nextKey = () => `baru-${(lineSeq += 1)}`;
  * discount and the due date. WHAT CANNOT: the customer, the branch and the
  * date, which the number and the credit check are bound to.
  *
- * PRICES ARE NOT EDITABLE, deliberately, though the mockup draws an input there.
- * A kept line keeps the price it was billed at and a new line takes the
- * catalogue's — on screen and again on the server. A price a client can type is
- * a discount nobody approved, and the discount column already exists for the
- * ones somebody did.
+ * PRICES ARE THE CATALOGUE'S unless somebody holding `customerInvoices:setPrice`
+ * types over one (13 October 2026) — the same control as Faktur baru. A kept
+ * line otherwise keeps the price it was billed at and a new line takes the
+ * catalogue's. A row billed from a booking or a trip keeps the booking's price.
  *
  * LOOKUPS LOAD ONLY WHEN EDITING STARTS, which is why this is behind a button
  * rather than inputs drawn on every unpaid invoice: the catalogue, the tenant's
@@ -213,7 +234,15 @@ export function InvoiceEditor({
           refId: item.refId,
           name: item.name,
           sku: item.sku,
-          unitPrice: item.unitPrice,
+          /* The recorded catalogue price; an override rides beside it. */
+          unitPrice: item.listPrice ?? item.unitPrice,
+          priceOverride: item.listPrice ? item.unitPrice : null,
+          storedOverride: item.listPrice ? item.unitPrice : null,
+          lots: (item.lots ?? []).map((lot) => ({
+            batchId: lot.batchId,
+            qty: Number(lot.qty),
+            label: lot.batchCode ?? "",
+          })),
           qty: trimQty(item.qty),
           discountMode:
             own !== null ? "amount" : (item.discount?.mode ?? "percent"),
@@ -247,9 +276,15 @@ export function InvoiceEditor({
   const [lineRefusals, setLineRefusals] = useState<Record<string, LineRefusal>>(
     {},
   );
-  const [picked, setPicked] = useState("");
+  /** Whether the "+ Tambah barang atau jasa" dialog is open. */
+  const [picking, setPicking] = useState(false);
   const [dueDate, setDueDate] = useState(toDateInput(invoice.dueDate));
   const [warehouseId, setWarehouseId] = useState(invoice.warehouseId ?? "");
+  /* The row whose lots are being picked — see `InvoiceLotDialog`. */
+  const [lotRowKey, setLotRowKey] = useState<string | null>(null);
+  const { can } = usePermissions();
+  /* Typing over a row's price — Faktur baru's control, see the header. */
+  const maySetPrice = can("customerInvoices", "setPrice");
   const [invoiceDiscountMode, setInvoiceDiscountMode] =
     useState<InvoiceDiscountMode>(invoice.invoiceDiscount?.mode ?? "percent");
   const [invoiceDiscountValue, setInvoiceDiscountValue] = useState(
@@ -463,31 +498,6 @@ export function InvoiceEditor({
     );
   }
 
-  /*
-    PRODUCTS ARE SEARCHED ON THE SERVER — a catalogue runs past the 100 the
-    lookups open on (12 October 2026). Services are all loaded, so they are
-    narrowed here; the picker no longer filters once a caller searches.
-  */
-  const catalogue = useMemo(() => {
-    const q = productSearch.term.toLowerCase();
-    return [
-      ...productSearch.items.map((product) => ({
-        value: `product:${product._id}`,
-        label: product.sku ? `${shortSku(product.sku)} — ${product.name}` : product.name,
-      })),
-      ...lookups.services
-        .filter(
-          (service) =>
-            !q ||
-            service.name.toLowerCase().includes(q) ||
-            Boolean(service.code?.toLowerCase().includes(q)),
-        )
-        .map((service) => ({
-          value: `service:${service._id}`,
-          label: `${service.name} (jasa)`,
-        })),
-    ];
-  }, [productSearch.items, productSearch.term, lookups.services]);
 
   /* The shelves of the invoice's branch, plus every central one. */
   const warehousesHere = useMemo(
@@ -564,7 +574,7 @@ export function InvoiceEditor({
       previewInvoice(
         lines.map((line) => ({
           qty: line.qty,
-          unitPrice: line.unitPrice,
+          unitPrice: chargedPrice(line),
           discount: previewDiscountOf(line),
         })),
         invoiceDiscountValue
@@ -719,6 +729,27 @@ export function InvoiceEditor({
           ? { mode: line.discountMode, value: line.discountValue }
           : null,
         ...(line.fromIndex !== null ? { fromIndex: line.fromIndex } : {}),
+        /*
+          A TYPED PRICE (13 October 2026). A new row sends its override; a kept
+          row sends one only when it moved — null puts it back to the
+          catalogue's recorded price, and absent keeps what it was billed at.
+        */
+        ...(line.fromIndex === null
+          ? line.priceOverride != null
+            ? { unitPrice: line.priceOverride }
+            : {}
+          : (line.priceOverride ?? null) !== (line.storedOverride ?? null)
+            ? { unitPrice: line.priceOverride ?? null }
+            : {}),
+        /* Named lots only — none is FEFO, the server's default. */
+        ...(line.lots?.length
+          ? {
+              lots: line.lots.map((lot) => ({
+                batchId: lot.batchId,
+                qty: String(lot.qty),
+              })),
+            }
+          : {}),
         // A kept line's animal is the one it was billed for; only a new one
         // names one, and the server refuses a pet on a product line.
         ...(line.fromIndex === null && line.petId ? { petId: line.petId } : {}),
@@ -769,6 +800,10 @@ export function InvoiceEditor({
             ? { mode: line.discountMode, value: line.discountValue }
             : null,
           fromIndex: line.fromIndex,
+          unitPrice: undefined,
+          lots: line.lots?.length
+            ? line.lots.map((lot) => ({ batchId: lot.batchId, qty: String(lot.qty) }))
+            : undefined,
         })),
         invoiceDiscount: invoice.invoiceDiscount
           ? {
@@ -799,6 +834,13 @@ export function InvoiceEditor({
     if (lines.length === 0) return "Faktur butuh minimal satu baris.";
     if (lines.some((line) => !line.qty || Number(line.qty) <= 0))
       return "Ada baris yang jumlahnya belum diisi.";
+    const lotsOff = lines.find(
+      (line) =>
+        (line.lots?.length ?? 0) > 0 &&
+        line.lots!.reduce((sum, lot) => sum + lot.qty, 0) !== Number(line.qty),
+    );
+    if (lotsOff)
+      return `Batch ${lotsOff.name} belum sama dengan jumlahnya — atur ulang batch-nya.`;
     if (!dueDate) return "Isi tanggal jatuh tempo.";
     if (needsWarehouse && !warehouseId)
       return "Pilih gudang — ada barang yang harus dikeluarkan.";
@@ -931,42 +973,122 @@ export function InvoiceEditor({
     return variant.quote(service, pet).price ?? "0";
   }
 
-  function addLine() {
-    if (!picked) return;
+  /** A new row, as `addItems` and the scanner both build it. */
+  function newRow(kind: "product" | "service", found: Product | Service): EditLine {
+    return {
+      key: nextKey(),
+      fromIndex: null,
+      kind,
+      refId: found._id,
+      name: found.name,
+      sku: kind === "product" ? ((found as Product).sku ?? null) : null,
+      /*
+        A PRODUCT'S PRICE COMES FROM THE PICKED PRODUCT — the dialog searches the
+        whole catalogue, past the lookups' first hundred. A service is nought
+        until its animal is chosen, then `patchLine` prices it.
+      */
+      unitPrice:
+        kind === "product"
+          ? String((found as Product).sellPrice ?? "0")
+          : priceOf({ kind, refId: found._id, petId: "" }),
+      hasExpiry: kind === "product" ? (found as Product).hasExpiry === true : undefined,
+      qty: "1",
+      discountMode: "percent",
+      discountValue: "",
+      petId: "",
+      petName: null,
+      booked: false,
+      bookingShare: "0",
+      choices: [],
+      ride: null,
+      passengers: [],
+      storedVariant: null,
+    };
+  }
 
-    const [kind, refId] = picked.split(":") as ["product" | "service", string];
-    const found =
-      kind === "product"
-        ? productSearch.find(refId)
-        : lookups.services.find((service) => service._id === refId);
-
-    if (!found) return;
-
+  /**
+   * What "+ Tambah barang atau jasa" ticked — Faktur baru's dialog (13 October
+   * 2026, on request) — products first, then services.
+   */
+  function addItems(picked: { products: Product[]; services: Service[] }) {
     setLines((current) => [
       ...current,
-      {
-        key: nextKey(),
-        fromIndex: null,
-        kind,
-        refId,
-        name: found.name,
-        sku:
-          kind === "product" ? ((found as { sku?: string }).sku ?? null) : null,
-        unitPrice: priceOf({ kind, refId, petId: "" }),
-        qty: "1",
-        discountMode: "percent",
-        discountValue: "",
-        petId: "",
-        petName: null,
-        booked: false,
-        bookingShare: "0",
-        choices: [],
-        ride: null,
-        passengers: [],
-        storedVariant: null,
-      },
+      ...picked.products.map((product) => newRow("product", product)),
+      ...picked.services.map((service) => newRow("service", service)),
     ]);
-    setPicked("");
+  }
+
+  /** A scanned product, as a row — or one more of it, as on Faktur baru. */
+  function addScannedProduct(product: Product) {
+    setLines((current) => {
+      const at = current.findIndex(
+        (line) =>
+          line.kind === "product" && line.refId === product._id && !line.booked,
+      );
+
+      return at === -1
+        ? [...current, newRow("product", product)]
+        : current.map((line, index) =>
+            index === at
+              ? { ...line, qty: String((Number(line.qty) || 0) + 1) }
+              : line,
+          );
+    });
+  }
+
+  const lotRow = lines.find((line) => line.key === lotRowKey) ?? null;
+
+  /** A new warehouse drops every named lot — a lot belongs to one shelf. */
+  function changeWarehouse(value: string) {
+    if (value !== warehouseId) {
+      setLines((current) =>
+        current.map((line) => (line.lots?.length ? { ...line, lots: [] } : line)),
+      );
+    }
+    setWarehouseId(value);
+  }
+
+  /**
+   * WHICH LOTS THE ROW LEAVES FROM (13 October 2026) — Faktur baru's control.
+   * A kept product whose expiry is not in the lookups is offered too; the
+   * dialog says so when it has no lots.
+   */
+  function batchControl(line: EditLine) {
+    if (line.kind !== "product" || !warehouseId) return null;
+
+    const known = productSearch.find(line.refId) as
+      | { hasExpiry?: boolean }
+      | undefined;
+    const hasExpiry =
+      (line.lots?.length ?? 0) > 0 ||
+      (line.hasExpiry ?? known?.hasExpiry ?? line.fromIndex !== null);
+    if (!hasExpiry) return null;
+
+    const lots = line.lots ?? [];
+    const summary =
+      lots.length === 0
+        ? "Otomatis (FEFO)"
+        : lots.map((lot) => `${lot.label} ×${lot.qty}`).join(", ");
+    const adds = lots.reduce((sum, lot) => sum + lot.qty, 0) === Number(line.qty);
+
+    return (
+      <span className="block text-xs">
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => setLotRowKey(line.key)}
+          aria-label={`Batch ${line.name}`}
+          className="rounded-sm text-left text-muted underline decoration-dotted underline-offset-2 transition hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60"
+        >
+          Batch: <span className="tabular-nums">{summary}</span>
+        </button>
+        {lots.length > 0 && !adds && (
+          <span className="block font-semibold text-warning">
+            Jumlah batch belum sama dengan jumlah barang
+          </span>
+        )}
+      </span>
+    );
   }
 
   function patchLine(key: string, patch: Partial<EditLine>) {
@@ -978,9 +1100,10 @@ export function InvoiceEditor({
         const next = { ...line, ...patch };
         // Re-priced when a NEW service's animal changes — for a variant
         // service that IS the price.
+        /* A price typed for the old animal is not a price for the new one. */
         return patch.petId === undefined || line.fromIndex !== null
           ? next
-          : { ...next, unitPrice: priceOf(next) };
+          : { ...next, unitPrice: priceOf(next), priceOverride: null };
       }),
     );
   }
@@ -998,6 +1121,8 @@ export function InvoiceEditor({
           qty: item.qty,
           discount: item.discount ?? null,
           fromIndex: item.fromIndex ?? null,
+          unitPrice: item.unitPrice,
+          lots: item.lots,
         })),
         invoiceDiscount: body.invoiceDiscount ?? null,
         dueDate: body.dueDate,
@@ -1096,7 +1221,7 @@ export function InvoiceEditor({
             required
             placeholder="Pilih gudang"
             disabled={saving}
-            onChange={setWarehouseId}
+            onChange={changeWarehouse}
           />
         )}
       </div>
@@ -1128,6 +1253,7 @@ export function InvoiceEditor({
                     <SkuText value={line.sku} fallback="Jasa" />
                     {line.fromIndex === null && " · baru"}
                   </span>
+                  {batchControl(line)}
                   {/* WHAT A KEPT LINE WAS PRICED ON, read-only — it is not
                       quoted again. */}
                   {line.storedVariant && (
@@ -1267,10 +1393,33 @@ export function InvoiceEditor({
                 )}
 
                 <TableCell className="text-right tabular-nums">
-                  {line.kind === "service" && line.unitPrice === "0" ? (
+                  {line.kind === "service" &&
+                  line.unitPrice === "0" &&
+                  line.priceOverride == null ? (
                     <span className="text-muted">—</span>
                   ) : (
-                    formatMoney(line.unitPrice)
+                    <PosLinePrice
+                      item={{
+                        name: line.name,
+                        unitPrice: chargedPrice(line),
+                        listPrice:
+                          line.priceOverride != null ? line.unitPrice : null,
+                      }}
+                      label={`Harga ${line.name}`}
+                      // A booked or trip row keeps the booking's price.
+                      editable={maySetPrice && !line.booked && !line.tripId}
+                      disabled={saving}
+                      stacked
+                      onChange={(typed) =>
+                        patchLine(line.key, {
+                          priceOverride:
+                            typed !== null &&
+                            Number(typed) !== Number(line.unitPrice)
+                              ? typed
+                              : null,
+                        })
+                      }
+                    />
                   )}
                   {/* The row the blocking sentence is about, marked in words. */}
                   {variantInactive(line) && (
@@ -1419,42 +1568,36 @@ export function InvoiceEditor({
         </div>
       ))}
 
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="min-w-64 flex-1">
-          <FilterSelect
-            layout="form"
-            label="Tambah barang atau jasa"
-            ariaLabel="Tambah barang atau jasa"
-            value={picked}
-            options={catalogue}
-            active={false}
-            placeholder="Cari nama atau SKU"
-            disabled={saving}
-            onSearchChange={productSearch.setSearch}
-            searching={productSearch.searching && !catalogue.length}
-            emptyLabel={
-              productSearch.failed
-                ? "Pencarian barang gagal. Coba lagi."
-                : undefined
-            }
-            onChange={(value) => {
-              if (value.startsWith("product:")) {
-                productSearch.remember(value.slice("product:".length));
-              }
-              setPicked(value);
-            }}
-          />
-        </div>
+      {/* Faktur baru's two ways in: a scan lands straight on the bill, and the
+          dialog ticks several items at once. */}
+      <InvoiceBarcodeScan
+        onProduct={addScannedProduct}
+        warehouseId={warehouseId}
+        warehouseName={
+          lookups.warehouses.find((one) => one._id === warehouseId)?.name
+        }
+        disabled={saving}
+      />
+      <div>
         <Button
           type="button"
           variant="secondary"
-          size="lg"
-          onClick={addLine}
-          disabled={saving || !picked}
+          onClick={() => setPicking(true)}
+          disabled={saving}
         >
-          Tambah baris
+          + Tambah barang atau jasa
         </Button>
       </div>
+      {picking && (
+        <InvoiceAddItemsDialog
+          services={lookups.services}
+          existingProductIds={lines
+            .filter((line) => line.kind === "product")
+            .map((line) => line.refId)}
+          onAdd={addItems}
+          onClose={() => setPicking(false)}
+        />
+      )}
 
       <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
         <div>
@@ -1591,6 +1734,27 @@ export function InvoiceEditor({
         Mounted only while a row is being filled in: it asks the customer's
         diary the moment its switch is turned on.
       */}
+      {lotRow && (
+        <InvoiceLotDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setLotRowKey(null);
+          }}
+          productId={lotRow.refId}
+          productName={lotRow.name}
+          warehouseId={warehouseId}
+          qty={Number(lotRow.qty) || 0}
+          value={lotRow.lots ?? []}
+          onSave={(lots) =>
+            setLines((current) =>
+              current.map((line) =>
+                line.key === lotRow.key ? { ...line, lots } : line,
+              ),
+            )
+          }
+        />
+      )}
+
       {rideRow && (
         <RideJourneyDialog
           open
