@@ -15,10 +15,11 @@ import { ApiError } from "@/services/api-error";
 import { roleService } from "@/services/role.service";
 import { swalToast } from "@/lib/swal";
 import { validateRoleName, validateRoleDescription } from "@/utils/validation";
-import type { Role, PermissionGrant } from "@/types/api";
+import type { Role, PermissionGrant, PermissionModule } from "@/types/api";
 
 import { usePermissionCatalog } from "../hooks/usePermissionCatalog";
 import { PermissionsField } from "./PermissionsField";
+import { PermissionTree } from "./PermissionTree";
 import { RoleStatusBadge } from "./RoleStatusBadge";
 import {
   grantsToSelection,
@@ -45,6 +46,7 @@ export function RoleEditForm({ id }: { id: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const {
     features: catalog,
+    modules,
     loading: catalogLoading,
     error: catalogError,
   } = usePermissionCatalog();
@@ -59,7 +61,7 @@ export function RoleEditForm({ id }: { id: string }) {
       .catch((error) => {
         if (!active) return;
         setLoadError(
-          error instanceof ApiError ? error.message : "Could not load this role.",
+          error instanceof ApiError ? error.message : "Peran ini tidak bisa dimuat.",
         );
       });
     return () => {
@@ -71,13 +73,13 @@ export function RoleEditForm({ id }: { id: string }) {
     <div className="flex flex-col gap-6">
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-extrabold text-foreground">Edit Role</h1>
+          <h1 className="text-2xl font-extrabold text-foreground">Ubah peran</h1>
           {role && <RoleStatusBadge role={role} />}
         </div>
         <p className="mt-1 text-sm text-muted">
           {role
-            ? `Update ${role.name}'s details and permissions.`
-            : "Update this role's details and permissions."}
+            ? `Ubah nama, keterangan, dan hak akses ${role.name}.`
+            : "Ubah nama, keterangan, dan hak akses peran ini."}
         </p>
       </div>
 
@@ -85,25 +87,30 @@ export function RoleEditForm({ id }: { id: string }) {
         <Alert variant="error">{loadError}</Alert>
       ) : !role || catalogLoading ? (
         <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted">
-          <Spinner /> Loading form edit role...
+          <Spinner /> Memuat formulir…
         </div>
       ) : (
         <>
           <Card
-            title="Details"
-            description="Name, description and the permissions this role grants."
+            title="Detail"
+            description="Nama, keterangan, dan hak akses yang diberikan peran ini."
           >
             {catalogError && (
               <Alert variant="error" className="mb-4">
                 {catalogError}
               </Alert>
             )}
-            <DetailsSection role={role} catalog={catalog} onUpdated={setRole} />
+            <DetailsSection
+              role={role}
+              catalog={catalog}
+              modules={modules}
+              onUpdated={setRole}
+            />
           </Card>
 
           <Card
-            title="Danger zone"
-            description="Account-lifecycle actions for this role."
+            title="Hapus atau pulihkan"
+            description="Peran yang dihapus disembunyikan dan bisa dipulihkan lagi."
           >
             <DangerSection role={role} onUpdated={setRole} />
           </Card>
@@ -118,10 +125,12 @@ export function RoleEditForm({ id }: { id: string }) {
 function DetailsSection({
   role,
   catalog,
+  modules,
   onUpdated,
 }: {
   role: Role;
   catalog: PermissionGrant[];
+  modules: PermissionModule[];
   onUpdated: (role: Role) => void;
 }) {
   const router = useRouter();
@@ -165,14 +174,14 @@ function DetailsSection({
           : { permissions: selectionToGrants(selection) }),
       });
       onUpdated(updated);
-      swalToast("Role updated.");
+      swalToast("Peran tersimpan.");
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
         setFieldErrors(error.fieldErrors);
       } else if (error instanceof ApiError) {
         setFormError(error.message);
       } else {
-        setFormError("Something went wrong. Please try again.");
+        setFormError("Terjadi kesalahan. Coba lagi.");
       }
     } finally {
       setSaving(false);
@@ -196,7 +205,7 @@ function DetailsSection({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <TextField
-          label="Role name"
+          label="Nama peran"
           name="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -205,24 +214,34 @@ function DetailsSection({
           required
         />
         <TextField
-          label="Description"
+          label="Keterangan"
           name="description"
-          placeholder="Optional"
+          placeholder="Opsional"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           error={fieldErrors.description}
-          hint="Leave blank to remove."
+          hint="Kosongkan untuk menghapus keterangan."
           disabled={disabled}
         />
       </div>
 
-      <PermissionsField
-        catalog={catalog}
-        selection={selection}
-        onChange={setSelection}
-        disabled={permissionsDisabled}
-        error={fieldErrors.permissions}
-      />
+      {modules.length > 0 ? (
+        <PermissionTree
+          modules={modules}
+          selection={selection}
+          onChange={setSelection}
+          disabled={permissionsDisabled}
+          error={fieldErrors.permissions}
+        />
+      ) : (
+        <PermissionsField
+          catalog={catalog}
+          selection={selection}
+          onChange={setSelection}
+          disabled={permissionsDisabled}
+          error={fieldErrors.permissions}
+        />
+      )}
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button
@@ -231,7 +250,7 @@ function DetailsSection({
           className="w-full sm:w-auto"
           onClick={() => router.push("/dashboard/pengaturan/peran")}
         >
-          Cancel
+          Batal
         </Button>
         <Button
           type="submit"
@@ -239,7 +258,7 @@ function DetailsSection({
           disabled={disabled}
           className="w-full sm:w-auto"
         >
-          Save changes
+          Simpan peran
         </Button>
       </div>
     </form>
@@ -278,18 +297,18 @@ function DangerSection({
       if (pending === "delete") {
         await roleService.remove(role._id);
         router.push("/dashboard/pengaturan/peran");
-        swalToast("Role deleted.");
+        swalToast("Peran dihapus.");
         return;
       }
       const restored = await roleService.restore(role._id);
       onUpdated(restored);
       setPending(null);
-      swalToast("Role restored.");
+      swalToast("Peran dipulihkan.");
     } catch (err) {
       setError(
         err instanceof ApiError
           ? err.message
-          : "Something went wrong. Please try again.",
+          : "Terjadi kesalahan. Coba lagi.",
       );
     } finally {
       setBusy(false);
@@ -301,7 +320,7 @@ function DangerSection({
   if (role.isSystem && !deleted) {
     return (
       <p className="text-sm text-muted">
-        System roles are part of the baseline and cannot be deleted.
+        Peran bawaan sistem tidak bisa dihapus.
       </p>
     );
   }
@@ -310,7 +329,7 @@ function DangerSection({
     <div className="flex flex-wrap items-center gap-3">
       {deleted ? (
         <Button variant="secondary" onClick={() => setPending("restore")}>
-          Restore role
+          Pulihkan peran
         </Button>
       ) : (
         <Button
@@ -318,14 +337,14 @@ function DangerSection({
           className="bg-danger text-danger-foreground hover:bg-danger/90"
           onClick={() => setPending("delete")}
         >
-          Delete role
+          Hapus peran
         </Button>
       )}
 
       {pending && (
         <ConfirmDialog
-          title={pending === "delete" ? "Delete role" : "Restore role"}
-          confirmLabel={pending === "delete" ? "Delete" : "Restore"}
+          title={pending === "delete" ? "Hapus peran" : "Pulihkan peran"}
+          confirmLabel={pending === "delete" ? "Hapus" : "Pulihkan"}
           destructive={pending === "delete"}
           busy={busy}
           error={error}
@@ -334,13 +353,14 @@ function DangerSection({
         >
           {pending === "delete" ? (
             <>
-              Delete <strong>{role.name}</strong>? It will be hidden and can be
-              restored later. A role still assigned to a user cannot be deleted.
+              Hapus <strong>{role.name}</strong>? Peran akan disembunyikan dan
+              bisa dipulihkan nanti. Peran yang masih dipakai pengguna tidak
+              bisa dihapus.
             </>
           ) : (
             <>
-              Restore <strong>{role.name}</strong>? This may fail if another role
-              has since taken its name.
+              Pulihkan <strong>{role.name}</strong>? Bisa gagal kalau namanya
+              sudah dipakai peran lain.
             </>
           )}
         </ConfirmDialog>

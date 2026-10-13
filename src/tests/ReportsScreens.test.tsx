@@ -187,6 +187,31 @@ describe("ReportsHub", () => {
     expect(screen.queryByText("Kartu stok")).not.toBeInTheDocument();
   });
 
+  it("opens the stock reports for a role holding only Laporan Stok", () => {
+    mockTab = "inventori";
+    renderWithAuth(<ReportsHub />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "stockReports", actions: ["read"] }],
+    });
+
+    expect(screen.getByText("Posisi stok")).toBeInTheDocument();
+    expect(screen.getByText("Stok minim")).toBeInTheDocument();
+    expect(screen.getByText("Konsinyasi outstanding")).toBeInTheDocument();
+    // Kartu stok is the inventory screen itself, not a report — still its own grant.
+    expect(screen.queryByText("Kartu stok")).not.toBeInTheDocument();
+  });
+
+  it("opens the payroll for a role holding only Rekap Komisi", () => {
+    mockTab = "operasional";
+    renderWithAuth(<ReportsHub />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "commissionReports", actions: ["read"] }],
+    });
+
+    expect(screen.getByText("Rekap komisi")).toBeInTheDocument();
+    expect(screen.queryByText("Membership")).not.toBeInTheDocument();
+  });
+
   it("still offers a role with no grants their own commission, and not the payroll", () => {
     mockTab = "operasional";
     renderWithAuth(<ReportsHub />, { isSuperAdmin: false, permissions: [] });

@@ -53,7 +53,7 @@ export function BerandaOperasional() {
     dateFrom && dateTo && dateFrom.slice(0, 7) === dateTo.slice(0, 7)
       ? dateFrom.slice(0, 7)
       : null;
-  const readsCommissions = can("users", "read") && month !== null && branchIds.length <= 1;
+  const readsCommissions = (can("commissionReports", "read") || can("users", "read")) && month !== null && branchIds.length <= 1;
   const recap = useRemote(
     `recap|${month}|${branchIds.join(",")}`,
     () =>

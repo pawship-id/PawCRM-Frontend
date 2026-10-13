@@ -9,7 +9,12 @@ export const metadata: Metadata = { title: "Stok Minim · Buloo" };
 /** Gated on `products:read`, matching `GET /api/products/low-stock`. */
 export default function LowStockPage() {
   return (
-    <RequirePermission feature="products" action="read">
+    <RequirePermission
+      anyOf={[
+        { feature: "stockReports", action: "read" },
+        { feature: "products", action: "read" },
+      ]}
+    >
       <div className="flex flex-col gap-6">
         <div>
           <Breadcrumb

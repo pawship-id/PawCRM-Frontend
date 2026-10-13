@@ -56,6 +56,12 @@ interface ReportRow {
    */
   feature?: Feature;
   action?: Action;
+  /**
+   * Opens when ANY of these is granted — a report's own grant beside the data
+   * grant it used to need, mirroring requireAnyOf on its route. Wins over
+   * `feature`/`action` when set.
+   */
+  anyOf?: { feature: Feature; action: Action }[];
 }
 
 const SOON = "Segera";
@@ -99,15 +105,19 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Laba rugi",
       description: "Hasil usaha per bulan, gabungan atau per lini bisnis.",
       href: "/dashboard/keuangan/laba-rugi",
-      feature: "journalEntries",
-      action: "read",
+      anyOf: [
+        { feature: "financeReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ],
     },
     {
       title: "Neraca",
       description: "Aset, kewajiban, dan ekuitas pada satu tanggal.",
       href: "/dashboard/keuangan/neraca",
-      feature: "journalEntries",
-      action: "read",
+      anyOf: [
+        { feature: "financeReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ],
     },
     {
       title: "Arus kas",
@@ -134,8 +144,10 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       description:
         "Stok tiap SKU per gudang, dikelompokkan per cabang, termasuk nilai persediaannya.",
       href: "/dashboard/reports/stock-on-hand",
-      feature: "products",
-      action: "read",
+      anyOf: [
+        { feature: "stockReports", action: "read" },
+        { feature: "products", action: "read" },
+      ],
     },
     {
       title: "Kartu stok",
@@ -149,8 +161,10 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       description:
         "Produk yang sudah di bawah batas restock, paling mendesak di atas.",
       href: "/dashboard/reports/low-stock",
-      feature: "products",
-      action: "read",
+      anyOf: [
+        { feature: "stockReports", action: "read" },
+        { feature: "products", action: "read" },
+      ],
     },
     {
       title: "Nilai persediaan",
@@ -183,8 +197,10 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       description:
         "Barang titipan yang masih di gudang, per supplier. Belum jadi utang — utang muncul saat barangnya laku.",
       href: "/dashboard/reports/consignment",
-      feature: "productBatches",
-      action: "read",
+      anyOf: [
+        { feature: "stockReports", action: "read" },
+        { feature: "productBatches", action: "read" },
+      ],
     },
     {
       title: "Pembelian per supplier",
@@ -214,17 +230,21 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       description:
         "Paket terlaris, dan berapa nilai benefit yang sudah diberikan.",
       href: "/dashboard/reports/membership",
-      feature: "membershipPlans",
-      action: "read",
+      anyOf: [
+        { feature: "membershipReports", action: "read" },
+        { feature: "membershipPlans", action: "read" },
+      ],
     },
     {
       title: "Rekap komisi",
       description:
         "Komisi groomer per bulan, dihitung dari booking yang selesai. Siap diunduh untuk payroll.",
       href: "/dashboard/keuangan/komisi",
-      // Payroll data: whoever may read the staff register, and nobody else.
-      feature: "users",
-      action: "read",
+      // Payroll data: the report's own grant, or the staff register it used to need.
+      anyOf: [
+        { feature: "commissionReports", action: "read" },
+        { feature: "users", action: "read" },
+      ],
     },
     {
       title: "Komisi saya",
@@ -250,12 +270,14 @@ export function ReportsHub() {
     contents and carry no data). Rows with a screen are filtered on the grant
     their destination enforces — a row that leads to a 403 is worse than none.
   */
-  const rows = ROWS[active].filter(
-    (row) =>
-      !row.href ||
-      row.feature === undefined ||
-      row.action === undefined ||
-      can(row.feature, row.action),
+  const rows = ROWS[active].filter((row) =>
+    !row.href
+      ? true
+      : row.anyOf
+        ? row.anyOf.some((grant) => can(grant.feature, grant.action))
+        : row.feature === undefined ||
+          row.action === undefined ||
+          can(row.feature, row.action),
   );
 
   return (

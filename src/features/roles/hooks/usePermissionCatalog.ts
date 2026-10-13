@@ -4,11 +4,19 @@ import { useEffect, useState } from "react";
 
 import { roleService } from "@/services/role.service";
 import { ApiError } from "@/services/api-error";
-import type { PermissionGrant } from "@/types/api";
+import type {
+  PermissionGrant,
+  PermissionModule,
+  RoleTemplate,
+} from "@/types/api";
 
 interface CatalogState {
   /** Every feature and the actions it supports — drives the permissions matrix. */
   features: PermissionGrant[];
+  /** The modul → layar tree; empty when the backend predates it. */
+  modules: PermissionModule[];
+  /** Starting points for a new role (Kasir, Admin Gudang, …). */
+  templates: RoleTemplate[];
   loading: boolean;
   /** Non-null when the catalog failed to load — the form shows this. */
   error: string | null;
@@ -25,6 +33,8 @@ interface CatalogState {
  */
 export function usePermissionCatalog(): CatalogState {
   const [features, setFeatures] = useState<PermissionGrant[]>([]);
+  const [modules, setModules] = useState<PermissionModule[]>([]);
+  const [templates, setTemplates] = useState<RoleTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +44,10 @@ export function usePermissionCatalog(): CatalogState {
     roleService
       .catalog()
       .then((result) => {
-        if (active) setFeatures(result.features);
+        if (!active) return;
+        setFeatures(result.features);
+        setModules(result.modules ?? []);
+        setTemplates(result.templates ?? []);
       })
       .catch((err) => {
         if (!active) return;
@@ -53,5 +66,5 @@ export function usePermissionCatalog(): CatalogState {
     };
   }, []);
 
-  return { features, loading, error };
+  return { features, modules, templates, loading, error };
 }

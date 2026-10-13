@@ -11,9 +11,9 @@ export default function NewRolePage() {
     <RequirePermission feature="roles" action="create">
       <div className="flex flex-col gap-6">
         <div>
-          <h1 className="text-2xl font-extrabold text-foreground">Create Role</h1>
+          <h1 className="text-2xl font-extrabold text-foreground">Tambah peran</h1>
           <p className="mt-1 text-sm text-muted">
-            Add a new role and choose the permissions it grants.
+            Beri nama peran, lalu pilih hak aksesnya — atau mulai dari template.
           </p>
         </div>
 

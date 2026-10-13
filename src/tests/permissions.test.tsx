@@ -16,7 +16,12 @@ function withAuth(
   {
     permissions = [],
     isSuperAdmin = false,
-  }: { permissions?: PermissionGrant[]; isSuperAdmin?: boolean } = {},
+    disabledFeatures = [],
+  }: {
+    permissions?: PermissionGrant[];
+    isSuperAdmin?: boolean;
+    disabledFeatures?: string[];
+  } = {},
 ) {
   const value: AuthContextValue = {
     status: "authenticated",
@@ -24,6 +29,8 @@ function withAuth(
     session: null,
     permissions,
     isSuperAdmin,
+    disabledModules: [],
+    disabledFeatures,
     signIn: jest.fn(),
     signOut: jest.fn(),
     signOutEverywhere: jest.fn(),
@@ -65,6 +72,13 @@ describe("usePermissions", () => {
   it("super-admin passes every check regardless of grants", () => {
     withAuth(<CanProbe />, { isSuperAdmin: true });
     expect(screen.getByText("yes")).toBeInTheDocument();
+  });
+});
+
+describe("usePermissions — a switched-off module", () => {
+  it("denies its features even to a super-admin", () => {
+    withAuth(<CanProbe />, { isSuperAdmin: true, disabledFeatures: ["users"] });
+    expect(screen.getByText("no")).toBeInTheDocument();
   });
 });
 

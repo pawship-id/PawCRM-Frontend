@@ -24,6 +24,7 @@ export const tenantService = {
    */
   me: () => apiClient.get<Tenant>("/tenants/me"),
 
+
   /**
    * PATCH /tenants/me — the signed-in business editing its OWN settings.
    *

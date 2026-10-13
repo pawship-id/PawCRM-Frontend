@@ -30,6 +30,10 @@ export interface AuthContextValue {
   permissions: PermissionGrant[];
   /** True when the user's role bypasses every permission check. */
   isSuperAdmin: boolean;
+  /** Modules the business switched off — hidden for everyone. */
+  disabledModules: string[];
+  /** The catalog features inside those modules. */
+  disabledFeatures: string[];
   /** Sign in and populate the context. Throws ApiError on failure. */
   signIn: (email: string, password: string) => Promise<void>;
   /** End the session and clear local auth state. */
@@ -123,6 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionContext | null>(null);
   const [permissions, setPermissions] = useState<PermissionGrant[]>([]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [disabledModules, setDisabledModules] = useState<string[]>([]);
+  const [disabledFeatures, setDisabledFeatures] = useState<string[]>([]);
 
   // Guards against a state update after unmount from the initial /me call.
   const mounted = useRef(true);
@@ -140,12 +146,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session: ctx,
         permissions: grants = [],
         isSuperAdmin: superAdmin = false,
+        disabledModules: offModules = [],
+        disabledFeatures: offFeatures = [],
       } = await authService.me();
       if (!mounted.current) return;
       setUserState(me);
       setSession(ctx);
       setPermissions(grants);
       setIsSuperAdmin(superAdmin);
+      setDisabledModules(offModules);
+      setDisabledFeatures(offFeatures);
       setStatus("authenticated");
     } catch (error) {
       if (!mounted.current) return;
@@ -158,6 +168,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(null);
       setPermissions([]);
       setIsSuperAdmin(false);
+      setDisabledModules([]);
+      setDisabledFeatures([]);
       setStatus("unauthenticated");
     }
   }, []);
@@ -184,12 +196,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session: ctx,
       permissions: grants = [],
       isSuperAdmin: superAdmin = false,
+      disabledModules: offModules = [],
+      disabledFeatures: offFeatures = [],
     } = await authService.login(email, password);
     setAuthHint();
     setUserState(me);
     setSession(ctx);
     setPermissions(grants);
     setIsSuperAdmin(superAdmin);
+    setDisabledModules(offModules);
+    setDisabledFeatures(offFeatures);
     setStatus("authenticated");
   }, []);
 
@@ -200,6 +216,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
     setPermissions([]);
     setIsSuperAdmin(false);
+    setDisabledModules([]);
+    setDisabledFeatures([]);
     setStatus("unauthenticated");
   }, []);
 
@@ -241,6 +259,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       permissions,
       isSuperAdmin,
+      disabledModules,
+      disabledFeatures,
       signIn,
       signOut,
       signOutEverywhere,
@@ -254,6 +274,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       permissions,
       isSuperAdmin,
+      disabledModules,
+      disabledFeatures,
       signIn,
       signOut,
       signOutEverywhere,

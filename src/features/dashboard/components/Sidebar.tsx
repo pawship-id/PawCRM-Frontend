@@ -46,11 +46,14 @@ interface SidebarProps {
  */
 export function Sidebar({ open, collapsed, onClose, onExpand }: SidebarProps) {
   const pathname = usePathname();
-  const { can } = usePermissions();
+  const { can, isModuleOn } = usePermissions();
 
   // Hide sections the current role cannot use. Recomputed only when the grant
   // set changes (can is memoized by usePermissions).
-  const sections = useMemo(() => filterNavSections(NAV_SECTIONS, can), [can]);
+  const sections = useMemo(
+    () => filterNavSections(NAV_SECTIONS, can, isModuleOn),
+    [can, isModuleOn],
+  );
 
   /**
    * Submenus the reader has folded or unfolded BY HAND, keyed by group label.

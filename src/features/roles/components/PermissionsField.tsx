@@ -91,9 +91,9 @@ export function PermissionsField({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between">
-        <Label htmlFor={id}>Permissions</Label>
+        <Label htmlFor={id}>Hak akses</Label>
         <span className="text-xs text-muted">
-          What holders of this role may do.
+          Apa saja yang boleh dilakukan pemegang peran ini.
         </span>
       </div>
 
@@ -162,15 +162,15 @@ export function PermissionsField({
 
         {catalog.length === 0 && (
           <p className="p-4 text-sm text-muted">
-            No features are available to grant.
+            Belum ada fitur yang bisa diberikan.
           </p>
         )}
       </div>
 
       {catalog.length > 0 && !disabled && (
         <p className="text-xs text-muted">
-          “Read” is required for access — choosing any other action selects it
-          automatically, and clearing it clears the whole feature.
+          “Read” wajib untuk akses — memilih aksi lain ikut mencentangnya, dan
+          menghapusnya menghapus seluruh fitur.
         </p>
       )}
 
