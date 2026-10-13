@@ -12,6 +12,7 @@ import type {
   PosReturnable,
   PosTransactionListQuery,
   PosShift,
+  PosShiftStatus,
   PosTransaction,
   PosXReport,
   PayInput,
@@ -53,6 +54,21 @@ export const posService = {
    * to show the gate.
    */
   currentShift: () => apiClient.get<PosShift | null>("/pos/shifts/current"),
+
+  /**
+   * GET /pos/shifts — every shift in the scope, newest first. Beranda counts
+   * the day's shifts and how many are still open; `posShifts:read`.
+   */
+  listShifts: (
+    query: {
+      page?: number;
+      limit?: number;
+      branchId?: string;
+      status?: PosShiftStatus;
+      openedFrom?: string;
+      openedTo?: string;
+    } = {},
+  ) => apiClient.get<PageResult<PosShift>>("/pos/shifts", { query }),
 
   /** GET /pos/shifts/:id/x-report — read-only, and safe to run repeatedly. */
   xReport: (shiftId: string) =>

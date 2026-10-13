@@ -7,6 +7,7 @@ import { categoryService } from "@/services/category.service";
 import { branchService } from "@/services/branch.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { productService } from "@/services/product.service";
+import { productBatchService } from "@/services/productBatch.service";
 import { ApiError } from "@/services/api-error";
 import type { Opname, OpnameItem, Product } from "@/types/inventory";
 import type { User } from "@/types/api";
@@ -31,6 +32,8 @@ jest.mock("@/services/warehouse.service");
 // The start card reads the branch list to fill its picker.
 jest.mock("@/services/branch.service");
 jest.mock("@/services/product.service");
+// The sheet's per-line batch dropdown lists the warehouse's lots.
+jest.mock("@/services/productBatch.service");
 
 const push = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -145,6 +148,11 @@ function product(overrides: Partial<Product> = {}): Product {
 
 beforeEach(() => {
   jest.clearAllMocks();
+
+  asMock(productBatchService.list).mockResolvedValue({
+    items: [],
+    pagination: { page: 1, limit: 100, total: 0, totalPages: 1 },
+  } as never);
 
   asMock(branchService.list).mockResolvedValue({
     items: [{ _id: BRANCH_ID, name: "Cabang Pusat", isActive: true }],
@@ -899,8 +907,8 @@ describe("OpnameSheet", () => {
 
     renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
 
-    expect(await screen.findByText("1 / 2 produk")).toBeInTheDocument();
-    expect(screen.getByText(/1 produk belum dihitung/)).toBeInTheDocument();
+    expect(await screen.findByText("1 / 2 baris")).toBeInTheDocument();
+    expect(screen.getByText(/1 baris belum dihitung/)).toBeInTheDocument();
   });
 
   it("renders the variance the API computed, never its own subtraction", async () => {
@@ -1535,7 +1543,7 @@ describe("OpnameSheet", () => {
       await openDialog(user);
 
       expect(
-        await screen.findByText(/sudah ada di lembar ini/),
+        await screen.findByText(/tetap\s+muncul walau sudah ada di lembar/),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText(/Shampoo Anjing SHAMPOO/)).toBeNull();
     });
@@ -1663,6 +1671,164 @@ describe("OpnameSheet", () => {
       expect(counted.value(rows[0])).toBe("belum");
     });
   });
+
+  /**
+   * A product that expires is counted lot by lot: each line names its lot, the
+   * dropdown offers the lots no other line counts, and switching a line's lot
+   * starts its count over.
+   */
+  describe("counting per batch", () => {
+    const vaccine = (overrides: Partial<OpnameItem> = {}) =>
+      item({
+        productId: "p9",
+        productSku: "VAKSIN",
+        productName: "Vaksin Rabies",
+        productUnit: "vial",
+        productHasExpiry: true,
+        batchId: "lotA",
+        lotCode: "VAKSIN-270301",
+        systemQty: "4.0000",
+        physicalQty: "4.0000",
+        ...overrides,
+      });
+
+    const lots = [
+      {
+        _id: "lotA",
+        productId: "p9",
+        warehouseId: WAREHOUSE_ID,
+        batchCode: "VAKSIN-270301",
+        supplierBatchCode: null,
+        expiryDate: null,
+        qtyRemaining: "4.0000",
+      },
+      {
+        _id: "lotB",
+        productId: "p9",
+        warehouseId: WAREHOUSE_ID,
+        batchCode: "VAKSIN-270901",
+        supplierBatchCode: null,
+        expiryDate: null,
+        qtyRemaining: "6.0000",
+      },
+    ];
+
+    beforeEach(() => {
+      asMock(productBatchService.list).mockResolvedValue({
+        items: lots,
+        pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      } as never);
+    });
+
+    it("switches a line to another lot and lets the server start it over", async () => {
+      const user = userEvent.setup();
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({ items: [vaccine()] }),
+      );
+      asMock(stockOpnameService.update).mockResolvedValue(
+        sheet({
+          items: [vaccine({ batchId: "lotB", lotCode: "VAKSIN-270901" })],
+        }),
+      );
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      await user.click(
+        await screen.findByRole("button", { name: /Batch Vaksin Rabies/ }),
+      );
+      await user.click(
+        await screen.findByRole("option", { name: /VAKSIN-270901/ }),
+      );
+
+      await waitFor(
+        () => expect(stockOpnameService.update).toHaveBeenCalled(),
+        {
+          timeout: 3000,
+        },
+      );
+
+      const [, payload] = asMock(stockOpnameService.update).mock.calls.at(-1)!;
+      expect(payload.items?.[0]).toMatchObject({
+        productId: "p9",
+        batchId: "lotB",
+        counted: false,
+      });
+      // The count was typed for lot A; the server fills in what B holds.
+      expect(payload.items?.[0]).not.toHaveProperty("physicalQty");
+    });
+
+    it("does not offer a lot another line already counts", async () => {
+      const user = userEvent.setup();
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({
+          items: [
+            vaccine(),
+            vaccine({ batchId: "lotB", lotCode: "VAKSIN-270901" }),
+          ],
+        }),
+      );
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      const [first] = await screen.findAllByRole("button", {
+        name: /Batch Vaksin Rabies/,
+      });
+      await user.click(first);
+
+      expect(
+        await screen.findByRole("option", { name: /Batch baru/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("option", { name: /VAKSIN-270901/ }),
+      ).toBeNull();
+      // Counting an expiring product as a whole is never on offer.
+      expect(screen.queryByRole("option", { name: /Semua batch/ })).toBeNull();
+    });
+
+    it("blocks finishing until an old whole-product line picks a batch", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({ items: [vaccine({ batchId: null, lotCode: null })] }),
+      );
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      expect(
+        await screen.findByText(/1 baris belum memilih batch/),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Selesaikan opname/ }),
+      ).toBeDisabled();
+    });
+
+    it("keeps offering a product that expires in the add dialog", async () => {
+      const user = userEvent.setup();
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({ items: [vaccine()] }),
+      );
+      asMock(productService.list).mockResolvedValue({
+        items: [
+          product({
+            _id: "p9",
+            sku: "VAKSIN",
+            name: "Vaksin Rabies",
+            hasExpiry: true,
+          }),
+        ],
+        pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any);
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+      await user.click(
+        await screen.findByRole("button", { name: /Tambah produk/ }),
+      );
+
+      const dialog = await screen.findByRole("dialog");
+      expect(
+        await within(dialog).findByLabelText(/Vaksin Rabies/),
+      ).toBeInTheDocument();
+    });
+  });
 });
 
 /**
@@ -1684,11 +1850,19 @@ describe("stock isolation", () => {
     allBranches: false,
     branchAccess: [BRANCH_ID],
     warehouseAccess: [
-      { branchId: BRANCH_ID, allWarehouses: false, warehouseIds: [WAREHOUSE_ID] },
+      {
+        branchId: BRANCH_ID,
+        allWarehouses: false,
+        warehouseIds: [WAREHOUSE_ID],
+      },
     ],
   } as unknown as User;
 
-  function warehouse(_id: string, name: string, defaultBranchId: string | null) {
+  function warehouse(
+    _id: string,
+    name: string,
+    defaultBranchId: string | null,
+  ) {
     return {
       _id,
       tenantId: "t1",

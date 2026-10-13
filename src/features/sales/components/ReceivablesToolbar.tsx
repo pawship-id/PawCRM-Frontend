@@ -5,22 +5,20 @@ import { ListFilter } from "lucide-react";
 
 import {
   FilterBar,
+  FilterCheckMenu,
   FilterDateRange,
   FilterField,
   FilterPanel,
   FilterPills,
   FilterSearch,
   FilterTrigger,
+  branchesAfterWarehouses,
   namedOptions,
+  warehousesAfterBranches,
+  warehousesOffered,
   type FilterOption,
+  type ScopeWarehouseOption,
 } from "@/components";
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import type {
   CustomerInvoiceFilterOptions,
   CustomerInvoiceSource,
@@ -31,6 +29,7 @@ import type {
   CustomerInvoicesQuery,
   InvoicePeriodChoice,
 } from "../hooks/useCustomerInvoices";
+import { DEFAULT_QUERY } from "../hooks/useCustomerInvoices";
 
 /**
  * What the Status filter offers. `overdue` is not a status — it rides here
@@ -55,48 +54,46 @@ const SOURCES: FilterOption<CustomerInvoiceSource>[] = [
 ];
 
 /**
- * The periods. "Semua tanggal" is the default and sends nothing; the three named
- * ones go over the wire as their NAME and are cut in the tenant's timezone;
- * "Pilih tanggal" opens the range beneath.
+ * The periods. "Semua" sends nothing; the three named ones go over the wire as
+ * their NAME and are cut in the tenant's timezone; "Custom" opens the range
+ * beneath. The same words as the scope row's chips (12 October 2026, on
+ * request), so the panel and the row name one period one way.
  *
  * THE ONE OPTION FIELD THAT STAYS A SINGLE CHOICE. Hari ini sits inside Minggu
  * ini, which sits inside Bulan ini — ticking two of them would only ever mean
- * the larger one, and "Pilih tanggal" beside a named period is two ranges with
+ * the larger one, and "Custom" beside a named period is two ranges with
  * no rule for combining them.
  */
 export const PERIODS: FilterOption<InvoicePeriodChoice>[] = [
-  { value: "all", label: "Semua tanggal" },
+  { value: "all", label: "Semua" },
   { value: "today", label: "Hari ini" },
   { value: "week", label: "Minggu ini" },
   { value: "month", label: "Bulan ini" },
-  { value: "custom", label: "Pilih tanggal" },
+  { value: "custom", label: "Custom" },
 ];
 
 type WarehouseOption = CustomerInvoiceFilterOptions["warehouses"][number];
 
 /**
- * Whether a gudang sits under a cabang.
+ * This list's gudang in the shape the shared scope row links on — so the panel
+ * below and the scope card above make the same cabang–gudang moves.
  *
  * ITS OWN CABANG FIRST — the master record's — and only when that is not named,
  * the cabang it has actually billed under. A gudang that once served another
- * branch's sale does not thereby belong to it.
+ * branch's sale does not thereby belong to it. Picking it ticks its home cabang
+ * only when that can be told: its own, or the single one it has billed under.
  */
-function belongsTo(warehouse: WarehouseOption, branchId: string) {
-  return warehouse.branchId
-    ? warehouse.branchId === branchId
-    : warehouse.branchIds.includes(branchId);
-}
-
-const belongsToAny = (warehouse: WarehouseOption, branchIds: string[]) =>
-  branchIds.some((branchId) => belongsTo(warehouse, branchId));
-
-/**
- * The cabang that picking this gudang fills in — or "" when it cannot be told,
- * in which case the Cabang field is left as it was rather than guessed.
- */
-function homeBranchOf(warehouse: WarehouseOption) {
-  if (warehouse.branchId) return warehouse.branchId;
-  return warehouse.branchIds.length === 1 ? warehouse.branchIds[0] : "";
+export function toScopeWarehouses(
+  warehouses: WarehouseOption[],
+): ScopeWarehouseOption[] {
+  return warehouses.map((warehouse) => ({
+    _id: warehouse._id,
+    name: warehouse.name,
+    branchIds: warehouse.branchId ? [warehouse.branchId] : warehouse.branchIds,
+    homeBranchId:
+      warehouse.branchId ??
+      (warehouse.branchIds.length === 1 ? warehouse.branchIds[0] : null),
+  }));
 }
 
 /** What the panel edits, as one draft. */
@@ -115,6 +112,9 @@ interface PanelDraft {
  * WHAT "RESET FILTER" PUTS BACK — the panel's fields and the period, never the
  * search box. Exported since 16 September 2026 so the scope card's own Reset and
  * the panel's clear the same things; two lists of fields would drift.
+ *
+ * THE PERIOD GOES BACK TO THE SCREEN'S DEFAULT, Bulan ini since 12 October
+ * 2026 — not to "Semua", which is now a choice somebody makes.
  */
 export const CLEARED_INVOICE_FILTERS: Partial<CustomerInvoicesQuery> = {
   branchIds: [],
@@ -122,7 +122,7 @@ export const CLEARED_INVOICE_FILTERS: Partial<CustomerInvoicesQuery> = {
   createdBy: [],
   sources: [],
   statuses: [],
-  period: "all",
+  period: DEFAULT_QUERY.period,
   dateFrom: "",
   dateTo: "",
 };
@@ -136,6 +136,9 @@ export const CLEARED_INVOICE_FILTERS: Partial<CustomerInvoicesQuery> = {
  * spells out — but the answer to "is anything on, and how much of it goes away
  * if I press this".
  *
+ * THE PERIOD COUNTS ONLY OFF ITS DEFAULT (Bulan ini), the one Reset returns to
+ * — a number over the default would promise a change Reset does not make.
+ *
  * THE SEARCH BOX IS NOT IN IT. It is on screen with its own text in it, and
  * Reset leaves it alone.
  */
@@ -147,7 +150,8 @@ export function countInvoiceFilters(query: CustomerInvoicesQuery): number {
       query.createdBy,
       query.sources,
       query.statuses,
-    ].filter((values) => values.length > 0).length + (query.period === "all" ? 0 : 1)
+    ].filter((values) => values.length > 0).length +
+    (query.period === DEFAULT_QUERY.period ? 0 : 1)
   );
 }
 
@@ -246,44 +250,37 @@ function ReceivablesFilterPanel({
     A TICKED GUDANG IS ALWAYS OFFERED, even when the cabang ticked beside it do
     not cover it — a value that cannot be seen cannot be unticked.
   */
-  const visibleWarehouses =
-    draft.branchIds.length === 0
-      ? options.warehouses
-      : options.warehouses.filter(
-          (warehouse) =>
-            belongsToAny(warehouse, draft.branchIds) ||
-            draft.warehouseIds.includes(warehouse._id),
-        );
+  const scopeWarehouses = toScopeWarehouses(options.warehouses);
+  const visibleWarehouses = warehousesOffered(
+    scopeWarehouses,
+    draft.branchIds,
+    draft.warehouseIds,
+  );
 
   function patch(change: Partial<PanelDraft>) {
     setDraft((prev) => ({ ...prev, ...change }));
   }
 
   function pickBranches(branchIds: string[]) {
-    const warehouseIds =
-      branchIds.length === 0
-        ? draft.warehouseIds
-        : draft.warehouseIds.filter((id) => {
-            const warehouse = options.warehouses.find((row) => row._id === id);
-            // A gudang whose options have not loaded is kept, not guessed away.
-            return !warehouse || belongsToAny(warehouse, branchIds);
-          });
-
-    patch({ branchIds, warehouseIds });
+    patch({
+      branchIds,
+      warehouseIds: warehousesAfterBranches(
+        scopeWarehouses,
+        branchIds,
+        draft.warehouseIds,
+      ),
+    });
   }
 
   function pickWarehouses(warehouseIds: string[]) {
-    const homes = warehouseIds
-      .filter((id) => !draft.warehouseIds.includes(id))
-      .map((id) => options.warehouses.find((row) => row._id === id))
-      .map((warehouse) => (warehouse ? homeBranchOf(warehouse) : ""))
-      .filter((home) => home !== "" && !draft.branchIds.includes(home));
-
     patch({
       warehouseIds,
-      ...(homes.length > 0
-        ? { branchIds: [...draft.branchIds, ...new Set(homes)] }
-        : {}),
+      branchIds: branchesAfterWarehouses(
+        scopeWarehouses,
+        draft.branchIds,
+        draft.warehouseIds,
+        warehouseIds,
+      ),
     });
   }
 
@@ -303,12 +300,15 @@ function ReceivablesFilterPanel({
     const dateFrom = draft.period === "custom" ? draft.dateFrom : "";
     const dateTo = draft.period === "custom" ? draft.dateTo : "";
 
-    if (!sameSet(draft.branchIds, query.branchIds)) change.branchIds = draft.branchIds;
+    if (!sameSet(draft.branchIds, query.branchIds))
+      change.branchIds = draft.branchIds;
     if (!sameSet(draft.warehouseIds, query.warehouseIds)) {
       change.warehouseIds = draft.warehouseIds;
     }
-    if (!sameSet(draft.createdBy, query.createdBy)) change.createdBy = draft.createdBy;
-    if (!sameSet(draft.statuses, query.statuses)) change.statuses = draft.statuses;
+    if (!sameSet(draft.createdBy, query.createdBy))
+      change.createdBy = draft.createdBy;
+    if (!sameSet(draft.statuses, query.statuses))
+      change.statuses = draft.statuses;
     if (!sameSet(draft.sources, query.sources)) change.sources = draft.sources;
     if (draft.period !== query.period) change.period = draft.period;
     if (dateFrom !== query.dateFrom) change.dateFrom = dateFrom;
@@ -339,7 +339,7 @@ function ReceivablesFilterPanel({
         onReset={reset}
         onApply={apply}
       >
-        <CheckMenuField
+        <FilterCheckMenu
           label="Cabang"
           allLabel="Semua cabang"
           unit="cabang"
@@ -347,7 +347,7 @@ function ReceivablesFilterPanel({
           selected={draft.branchIds}
           onChange={pickBranches}
         />
-        <CheckMenuField
+        <FilterCheckMenu
           label="Gudang"
           allLabel="Semua gudang"
           unit="gudang"
@@ -355,7 +355,7 @@ function ReceivablesFilterPanel({
           selected={draft.warehouseIds}
           onChange={pickWarehouses}
         />
-        <CheckMenuField
+        <FilterCheckMenu
           label="Kasir / Admin"
           allLabel="Semua kasir/admin"
           unit="orang"
@@ -363,7 +363,7 @@ function ReceivablesFilterPanel({
           selected={draft.createdBy}
           onChange={(createdBy) => patch({ createdBy })}
         />
-        <CheckMenuField
+        <FilterCheckMenu
           label="Sumber"
           allLabel="Semua sumber"
           unit="sumber"
@@ -371,7 +371,7 @@ function ReceivablesFilterPanel({
           selected={draft.sources}
           onChange={(sources) => patch({ sources })}
         />
-        <CheckMenuField
+        <FilterCheckMenu
           label="Status"
           allLabel="Semua status"
           unit="status"
@@ -383,7 +383,7 @@ function ReceivablesFilterPanel({
           PERIODE AS A ROW OF PILLS (16 September 2026, on request) — the same
           shape the grooming board's period bar uses, on a line of its own so the
           five choices are read at a glance rather than opened one at a time.
-          "Pilih tanggal" is the last pill, and the two dates appear under it only
+          "Custom" is the last pill, and the two dates appear under it only
           once it is pressed.
         */}
         {/*
@@ -416,106 +416,5 @@ function ReceivablesFilterPanel({
         )}
       </FilterPanel>
     </>
-  );
-}
-
-/**
- * A many-value field inside the panel, as a menu of checkboxes.
- *
- * NOT A FilterMultiSelect, for the reason `ProductsToolbar`'s WarehouseField
- * gives: that control carries its own Terapkan, and this one sits inside a panel
- * that already has one. The shell — FilterField and FilterTrigger — is shared,
- * so it lines up with the selects beside it.
- *
- * NOTHING TICKED IS "SEMUA", and that row is what the empty state looks like
- * rather than a separate mode.
- *
- * THE LIST IS HELD STILL WHILE THE MENU IS OPEN. Ticking a gudang ticks its
- * cabang, which narrows the gudang on offer; re-drawn mid-menu, the row somebody
- * was reaching for next would vanish under the pointer. The narrower list shows
- * the next time the menu opens.
- */
-function CheckMenuField<T extends string>({
-  label,
-  allLabel,
-  unit,
-  options,
-  selected,
-  onChange,
-}: {
-  label: string;
-  allLabel: string;
-  /** The noun a count past one reads as — "2 orang". */
-  unit: string;
-  options: FilterOption<T>[];
-  selected: T[];
-  onChange: (values: T[]) => void;
-}) {
-  const [heldOptions, setHeldOptions] = useState<FilterOption<T>[] | null>(
-    null,
-  );
-  const shown = heldOptions ?? options;
-
-  const names = options
-    .filter((option) => selected.includes(option.value))
-    .map((option) => option.label);
-
-  const value =
-    selected.length === 0
-      ? allLabel
-      : selected.length === 1 && names.length === 1
-        ? names[0]
-        : `${selected.length} ${unit}`;
-
-  function toggle(option: T) {
-    onChange(
-      selected.includes(option)
-        ? selected.filter((current) => current !== option)
-        : [...selected, option],
-    );
-  }
-
-  return (
-    <FilterField label={label}>
-      <DropdownMenu
-        onOpenChange={(isOpen) => setHeldOptions(isOpen ? options : null)}
-      >
-        <DropdownMenuTrigger asChild>
-          <FilterTrigger
-            layout="field"
-            label={label}
-            value={value}
-            active={selected.length > 0}
-            aria-label={`${label}: ${value}`}
-            title={names.length > 1 ? names.join(", ") : undefined}
-          />
-        </DropdownMenuTrigger>
-
-        <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuCheckboxItem
-            checked={selected.length === 0}
-            onCheckedChange={() => onChange([])}
-          >
-            {allLabel}
-          </DropdownMenuCheckboxItem>
-          <DropdownMenuSeparator />
-          {shown.length === 0 ? (
-            <p className="px-2 py-1.5 text-sm text-muted">
-              Belum ada pilihan dari faktur yang ada.
-            </p>
-          ) : (
-            shown.map((option) => (
-              <DropdownMenuCheckboxItem
-                key={option.value}
-                checked={selected.includes(option.value)}
-                onCheckedChange={() => toggle(option.value)}
-              >
-                {option.label}
-              </DropdownMenuCheckboxItem>
-            ))
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </FilterField>
   );
 }

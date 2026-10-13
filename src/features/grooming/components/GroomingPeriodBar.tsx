@@ -1,21 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-import {
-  FilterDateRange,
-  FilterPills,
-  FilterSelect,
-  withAll,
-  type PillOption,
-} from "@/components";
+import { ScopeFilterCard, type PillOption } from "@/components";
 import { branchService } from "@/services/branch.service";
 import type { Branch } from "@/types/api";
 
-import { periodRange, type DateRange, type GroomingPeriod } from "../board";
+import { customSeed, type DateRange, type GroomingPeriod } from "../board";
 
 /** The four pills — also the Layanan & Harga Filter panel's, so both say the same. */
 export const PERIOD_OPTIONS: PillOption<GroomingPeriod>[] = [
+  // "Semua" leads, as on every other scope row; the screens open on Bulan ini.
+  { value: "all", label: "Semua" },
   { value: "today", label: "Hari ini" },
   { value: "week", label: "Minggu ini" },
   { value: "month", label: "Bulan ini" },
@@ -24,6 +20,10 @@ export const PERIOD_OPTIONS: PillOption<GroomingPeriod>[] = [
 
 /**
  * The mockup's context bar — Cabang and Periode — above the cards.
+ *
+ * THE SHARED `ScopeFilterCard` SINCE 12 OCTOBER 2026 (on request), the row
+ * Penjualan, Pembelian and Inventori wear: Cabang takes several, and the dates
+ * open in the card under Custom rather than in a popover beside the pills.
  *
  * OUTSIDE THE FILTER PANEL, and it is §8's two exceptions at once. Both change
  * the NUMBERS on the cards rather than only which rows are listed (Kartu
@@ -44,22 +44,25 @@ export const PERIOD_OPTIONS: PillOption<GroomingPeriod>[] = [
  * loads every booking the shop ever took on the other.
  */
 export function GroomingPeriodBar({
-  branchId,
-  onBranchChange,
+  branchIds,
+  onBranchesChange,
   period,
   customRange,
   onPeriodChange,
   onCustomRange,
+  trailing,
 }: {
-  branchId: string;
-  onBranchChange: (branchId: string) => void;
+  /** Empty = every cabang. Several since 12 October 2026. */
+  branchIds: string[];
+  onBranchesChange: (branchIds: string[]) => void;
   period: GroomingPeriod;
   customRange: DateRange;
   onPeriodChange: (period: GroomingPeriod) => void;
   onCustomRange: (range: DateRange) => void;
+  /** Drawn at the row's right end — the screen's "Reset filter (n)". */
+  trailing?: ReactNode;
 }) {
   const [branches, setBranches] = useState<Branch[]>([]);
-  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -70,8 +73,7 @@ export function GroomingPeriodBar({
         if (active) setBranches(result.items);
       })
       .catch(() => {
-        // Stays on "Semua cabang", which is the harmless answer.
-        if (active) setFailed(true);
+        // Stays on "Semua cabang" with nothing to pick, the harmless answer.
       });
 
     return () => {
@@ -80,42 +82,26 @@ export function GroomingPeriodBar({
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <FilterSelect
-        label="Cabang"
-        ariaLabel="Pilih cabang"
-        value={branchId}
-        options={withAll(
-          branches.map((branch) => ({ value: branch._id, label: branch.name })),
-          "Semua cabang",
-        )}
-        onChange={onBranchChange}
-        disabled={failed}
-      />
-      <FilterPills
-        ariaLabel="Periode"
-        value={period}
-        options={PERIOD_OPTIONS}
-        onChange={(next) => {
+    <ScopeFilterCard<GroomingPeriod>
+      branches={branches}
+      branchIds={branchIds}
+      onScopeChange={(next) => onBranchesChange(next.branchIds)}
+      period={{
+        value: period,
+        options: PERIOD_OPTIONS,
+        onChange: (next) => {
           if (next !== "custom") {
             onPeriodChange(next);
           } else if (period !== "custom") {
-            onCustomRange(periodRange(period));
+            onCustomRange(customSeed(period));
           }
-        }}
-      />
-      {period === "custom" && (
-        <FilterDateRange
-          label="Tanggal"
-          ariaLabel="Pilih rentang tanggal booking"
-          from={customRange.from}
-          to={customRange.to}
-          // NO PRESETS, on request: the pills beside it already are the presets,
-          // and "Hari ini" twice on one bar is two controls for one choice.
-          presets={[]}
-          onApply={onCustomRange}
-        />
-      )}
-    </div>
+        },
+        dateFrom: customRange.from,
+        dateTo: customRange.to,
+        onDateRangeChange: onCustomRange,
+        dateLabel: "Tanggal booking",
+      }}
+      trailing={trailing}
+    />
   );
 }

@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { Bookmark, House, Plus, ShoppingCart } from "lucide-react";
 
-import { Alert, Spinner } from "@/components";
+import { Alert, InfoTooltip, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   formatMoney,
   isPositive,
@@ -194,6 +196,7 @@ export function PosCart({
   onCartDiscount,
   onCharges,
   onNote,
+  onSyncOnline,
   onHold,
   onCheckout,
   onPickCustomer,
@@ -252,6 +255,8 @@ export function PosCart({
   /** Opens the picker — for choosing one, or replacing the current one. */
   /** The transaction's free-text note, or null to clear it (FR-5). */
   onNote: (note: string | null) => void;
+  /** Sync online on or off — share this basket with every till of the branch. */
+  onSyncOnline?: (syncOnline: boolean) => void;
   onPickCustomer: () => void;
   /** Makes the basket a walk-in again. A different act from replacing. */
   onClearCustomer: () => void;
@@ -324,11 +329,40 @@ export function PosCart({
     >
       <header className="flex items-center gap-2 border-b border-border px-4 py-3">
         <ShoppingCart className="size-4 text-muted" />
-        <span className="text-sm font-semibold text-foreground">Keranjang</span>
+        {/*
+          THE BASKET'S OWN NUMBER, from the branch-wide counter — the same
+          "Keranjang 7" Keranjang Tersimpan lists it under, so a cashier calling
+          it across the counter and the one at the next till mean one basket.
+        */}
+        <span className="text-sm font-semibold tabular-nums text-foreground">
+          {cart?.cartNumber ? `Keranjang ${cart.cartNumber}` : "Keranjang"}
+        </span>
         {!empty && (
           <span className="text-sm tabular-nums text-muted">
             · {items.length} item
           </span>
+        )}
+
+        {/*
+          SYNC ONLINE. Only once the basket exists — there is nothing to share
+          before the first line, and the flag lives on the basket's row.
+        */}
+        {cart && onSyncOnline && (
+          <div className="ml-auto flex items-center gap-2">
+            <Label
+              htmlFor="pos-sync-online"
+              className="text-xs font-medium text-muted"
+            >
+              Sync online
+            </Label>
+            <InfoTooltip hint="Kalau aktif, setelah disimpan keranjang ini muncul di daftar simpanan semua kasir di cabang ini, jadi kasir lain bisa melanjutkan dan menerima pembayarannya. Kalau mati, hanya kamu yang bisa melihatnya." />
+            <Switch
+              id="pos-sync-online"
+              checked={cart.syncOnline === true}
+              onCheckedChange={onSyncOnline}
+              disabled={busy}
+            />
+          </div>
         )}
       </header>
 

@@ -33,17 +33,18 @@ import { ConsignmentSettleDialog } from "./ConsignmentSettleDialog";
  * The cabang is the tab's own, so this agrees with the cards above it.
  */
 export function ConsignmentDebtSection({
-  branchId,
+  branchIds,
   enabled,
 }: {
-  branchId: string;
+  /** Empty = every cabang. */
+  branchIds: string[];
   enabled: boolean;
 }) {
   const { can } = usePermissions();
   const mayPay = can("purchaseInvoices", "pay");
   const { data, failed, loading, refetch } = useConsignmentOutstanding(
     enabled,
-    branchId,
+    branchIds,
   );
   const [settling, setSettling] = useState<ConsignmentOutstandingRow | null>(
     null,
@@ -122,7 +123,10 @@ export function ConsignmentDebtSection({
       {settling && (
         <ConsignmentSettleDialog
           row={settling}
-          branchId={branchId}
+          /* A payment is made FROM one cabang. With exactly one in scope it
+             is that one; with several or none, "" lets the server use the
+             account's own current cabang, as it always did unscoped. */
+          branchId={branchIds.length === 1 ? branchIds[0] : ""}
           onClose={() => setSettling(null)}
           onSettled={() => {
             setSettling(null);

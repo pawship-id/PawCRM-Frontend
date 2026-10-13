@@ -39,9 +39,7 @@ export const cashTransactionService = {
     apiClient.get<CashTransactionListResponse>("/cash-transactions", {
       query: {
         page: query.page,
-        limit: query.limit
-          ? Math.min(query.limit, MAX_PAGE_LIMIT)
-          : undefined,
+        limit: query.limit ? Math.min(query.limit, MAX_PAGE_LIMIT) : undefined,
         sort: query.sort,
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
@@ -52,6 +50,7 @@ export const cashTransactionService = {
             : undefined
           : query.kind,
         branchId: query.branchId,
+        branchIds: query.branchIds,
         channelId: query.channelId,
         status: query.status,
         partyId: query.partyId,
@@ -85,30 +84,27 @@ export const cashTransactionService = {
   summaryByChannel: (
     query: Omit<CashTransactionListQuery, "page" | "limit" | "sort"> = {},
   ) =>
-    apiClient.get<CashTransactionChannelSummary>(
-      "/cash-transactions/summary",
-      {
-        query: {
-          dateFrom: query.dateFrom,
-          dateTo: query.dateTo,
-          direction: query.direction,
-          kind: Array.isArray(query.kind)
-            ? query.kind.length > 0
-              ? query.kind.join(",")
-              : undefined
-            : query.kind,
-          branchId: query.branchId,
-          channelId: query.channelId,
-          status: query.status,
-          partyId: query.partyId,
-          documentType: query.documentType,
-          documentId: query.documentId,
-          recordedVia: query.recordedVia,
-          shiftId: query.shiftId,
-          search: query.search,
-        },
+    apiClient.get<CashTransactionChannelSummary>("/cash-transactions/summary", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        direction: query.direction,
+        kind: Array.isArray(query.kind)
+          ? query.kind.length > 0
+            ? query.kind.join(",")
+            : undefined
+          : query.kind,
+        branchId: query.branchId,
+        channelId: query.channelId,
+        status: query.status,
+        partyId: query.partyId,
+        documentType: query.documentType,
+        documentId: query.documentId,
+        recordedVia: query.recordedVia,
+        shiftId: query.shiftId,
+        search: query.search,
       },
-    ),
+    }),
 
   /** GET /cash-transactions/:id — one transaction with its revisions. */
   getById: (id: string) =>

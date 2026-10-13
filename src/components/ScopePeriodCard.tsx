@@ -31,7 +31,7 @@ export type ScopePeriod = "all" | "today" | "week" | "month" | "custom";
  * unrelated buttons. "Custom" is last, because it is the only one that reveals a
  * second control.
  */
-const PERIODS: PillOption<ScopePeriod>[] = [
+export const SCOPE_PERIODS: PillOption<ScopePeriod>[] = [
   { value: "all", label: "Semua" },
   { value: "today", label: "Hari ini" },
   { value: "week", label: "Minggu ini" },
@@ -60,8 +60,20 @@ export function ScopeCard({
       aria-label="Lingkup data"
       className="flex flex-col gap-3 rounded-xl border border-border bg-surface px-5 py-3.5 shadow-sm"
     >
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        {children}
+      {/*
+        THE HAIRLINE THAT STARTS A LINE IS CLIPPED (12 October 2026, on
+        request). Every field draws its own divider on the left, and CSS cannot
+        tell which field a wrap put first on the second line — `first:` only
+        knows the first child — so a wrapped row opened on a stray line. The
+        row is pulled left by one divider's width (its 1px plus the field's
+        24px padding) inside a clipping box: whichever field starts a line,
+        its divider and padding fall outside the clip and its content lines up
+        flush. The 4px of padding around the clip keeps focus rings visible.
+      */}
+      <div className="-m-1 overflow-hidden p-1">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 sm:-ml-[25px]">
+          {children}
+        </div>
       </div>
       {below}
     </section>
@@ -71,8 +83,9 @@ export function ScopeCard({
 /**
  * One labelled control in a `ScopeCard` — icon, caption, then the control.
  *
- * THE HAIRLINE BELONGS TO THE FIELD, not to the row: `first:` drops it from the
- * leading one, so a card of two fields and a card of three are the same markup.
+ * THE HAIRLINE BELONGS TO THE FIELD, not to the row — every field draws one,
+ * and `ScopeCard` clips the one that starts each line, the first included. So a
+ * card of two fields and a card of three are the same markup, wrapped or not.
  */
 export function ScopeField({
   icon,
@@ -84,7 +97,7 @@ export function ScopeField({
   children: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 sm:border-l sm:border-border sm:pl-6 sm:first:border-l-0 sm:first:pl-0">
+    <div className="flex flex-wrap items-center gap-2 sm:border-l sm:border-border sm:pl-6">
       <span aria-hidden className="text-primary">
         {icon}
       </span>
@@ -161,7 +174,7 @@ export function ScopePeriodCard({
           controls rather than as one lens.
         */
         period === "custom" ? (
-          <CustomRange
+          <ScopeCustomRange
             /*
               KEYED ON THE APPLIED RANGE, which is how the draft is re-seeded
               when it changes from outside — Reset, or coming back to Custom
@@ -206,7 +219,7 @@ export function ScopePeriodCard({
         <FilterPills
           ariaLabel="Periode"
           value={period}
-          options={PERIODS}
+          options={SCOPE_PERIODS}
           onChange={onPeriodChange}
         />
       </ScopeField>
@@ -236,8 +249,12 @@ export function ScopePeriodCard({
  * RESET CLEARS AND APPLIES IN ONE CLICK, the rule §8 carves out for it, and
  * leaves the chip on Custom: it empties the range, it does not undo the choice to
  * type one.
+ *
+ * EXPORTED (12 October 2026) for Penjualan › Faktur's scope card, which wears
+ * the same range under its own Periode pills. Key it on the applied range, as
+ * above, so it re-seeds when the range changes from outside.
  */
-function CustomRange({
+export function ScopeCustomRange({
   from,
   to,
   label,

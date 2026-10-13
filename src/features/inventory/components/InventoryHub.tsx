@@ -4,19 +4,17 @@ import { SkuText } from "@/components/SkuText";
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 
-import { Store, Warehouse } from "lucide-react";
-
 import {
   Alert,
   Card,
   FilterSelect,
   PendingStatTile,
-  ScopeCard,
-  ScopeField,
+  ScopeFilterCard,
   Spinner,
   StatTile,
-  namedOptions,
-  withAll,
+  scopeSummary,
+  warehousesOffered,
+  type ScopeWarehouseOption,
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -26,7 +24,6 @@ import { useTenant } from "@/features/tenant";
 import { formatMoney, formatQty, multiplyDecimals } from "@/utils/decimal";
 
 import { useBranchOptions } from "../hooks/useBranchOptions";
-import { warehousesUnder } from "../hooks/useBranchScope";
 import { useExpiringAlert } from "../hooks/useExpiringAlert";
 import type { SkuCounts } from "../hooks/useSkuCounts";
 import type { WarehouseValue } from "../hooks/useStockValuation";
@@ -99,9 +96,12 @@ export function InventoryHub() {
   const mayReadProducts = can("products", "read");
   const mayReadBatches = can("productBatches", "read");
 
-  /** Empty = every gudang / every cabang — the repo's unset convention. */
-  const [warehouseId, setWarehouseId] = useState("");
-  const [branchId, setBranchId] = useState("");
+  /**
+   * Empty = every gudang / every cabang. SETS since 12 October 2026 — the
+   * shared scope row picks several of each, as on Penjualan.
+   */
+  const [warehouseIds, setWarehouseIds] = useState<string[]>([]);
+  const [branchIds, setBranchIds] = useState<string[]>([]);
   /*
     THE IDLE LIST'S OWN WINDOW, and the only control on this page besides the
     warehouse. 60 days by default, as the mockup opens: 30 catches a seasonal
@@ -112,24 +112,45 @@ export function InventoryHub() {
   // Only fetched where there is a list for it to narrow — see the hook.
   const warehouses = useWarehouseOptions(mayReadProducts || mayReadBatches);
   const branches = useBranchOptions(mayReadProducts || mayReadBatches);
-  const lowStock = useLowStockAlert(mayReadProducts, warehouseId, branchId);
+  /*
+    THE GUDANG AS THE SCOPE ROW LINKS THEM. A gudang with no default cabang is
+    shared (PCR-019) and sits under every cabang — `warehousesUnder`'s rule.
+  */
+  const scopeWarehouses: ScopeWarehouseOption[] = warehouses.warehouses.map(
+    (warehouse) => ({
+      _id: warehouse._id,
+      name: warehouse.isActive
+        ? warehouse.name
+        : `${warehouse.name} (nonaktif)`,
+      branchIds: warehouse.defaultBranchId
+        ? [warehouse.defaultBranchId]
+        : "all",
+      homeBranchId: warehouse.defaultBranchId,
+    }),
+  );
+
+  const lowStock = useLowStockAlert(mayReadProducts, warehouseIds, branchIds);
   const negative = useNegativeStockAlert(
     mayReadProducts,
-    warehouseId,
-    branchId,
+    warehouseIds,
+    branchIds,
   );
-  const expiring = useExpiringAlert(mayReadBatches, warehouseId, branchId);
+  const expiring = useExpiringAlert(mayReadBatches, warehouseIds, branchIds);
   const movement = useProductMovement(
     mayReadProducts,
-    warehouseId,
-    branchId,
+    warehouseIds,
+    branchIds,
     idleDays,
   );
   const valuation = useStockValuation(
     mayReadProducts,
-    warehouseId,
-    branchId,
-    warehouses.warehouses,
+    warehouseIds,
+    branchIds,
+    /* The breakdown's bars: the gudang picked, or every one under the cabang
+       picked — never a shelf outside the scope the headline counts. */
+    warehouseIds.length > 0
+      ? warehouses.warehouses.filter((row) => warehouseIds.includes(row._id))
+      : warehousesOffered(scopeWarehouses, branchIds, []),
   );
   const skus = useSkuCounts(mayReadProducts, can("services", "read"));
 
@@ -172,12 +193,20 @@ export function InventoryHub() {
    * (FilterSelect does this deliberately), and a caption inventing a name for it
    * would be the one place on screen claiming the filter is something else.
    */
-  const warehouseName = warehouses.warehouses.find(
-    (warehouse) => warehouse._id === warehouseId,
-  )?.name;
+  const filterCount =
+    (branchIds.length > 0 ? 1 : 0) + (warehouseIds.length > 0 ? 1 : 0);
 
-  /** " di Gudang Pusat", or nothing at all. Appended, never sentence-leading. */
-  const scope = warehouseName ? ` di ${warehouseName}` : "";
+  const warehouseName =
+    warehouseIds.length > 0
+      ? scopeSummary(warehouseIds, warehouses.warehouses, "", "gudang")
+      : "";
+
+  /**
+   * " di Gudang Pusat", " di Gudang A, Gudang B", " di 3 gudang", or nothing.
+   * Appended, never sentence-leading; "—" (a name not loaded yet) says nothing.
+   */
+  const scope =
+    warehouseName && warehouseName !== "—" ? ` di ${warehouseName}` : "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -212,9 +241,9 @@ export function InventoryHub() {
       {/* Hidden until the lookup answers: an empty dropdown that fills in a
           moment later is a control people click twice. */}
       {/*
-        THE SAME SCOPE ROW THE RINGKASAN TABS WEAR (29 September 2026, on
-        request) — two fields instead of their cabang-and-periode, because a
-        stock page has no period: every figure on it is a balance as of now.
+        THE SAME SCOPE ROW PENJUALAN WEARS — the shared `ScopeFilterCard` since
+        12 October 2026 (on request), so Cabang and Gudang each take several.
+        No Periode: every figure on this page is a balance as of now.
 
         CABANG NARROWS THE GUDANG LIST as well as the data. A gudang belongs to a
         cabang by soft default (PCR-019), so picking a shop and then being
@@ -222,52 +251,33 @@ export function InventoryHub() {
         each other. A gudang already chosen that falls outside the new cabang is
         cleared rather than left narrowing the page to nothing.
       */}
-      <ScopeCard>
-        <ScopeField icon={<Store className="size-4" />} label="Cabang">
-          <FilterSelect
-            layout="bar"
-            label="Cabang"
-            ariaLabel="Cabang"
-            value={branchId}
-            options={withAll(namedOptions(branches.branches), "Semua cabang")}
-            onChange={(next) => {
-              setBranchId(next);
-              if (
-                warehouseId &&
-                !warehousesUnder(next, warehouses.warehouses).some(
-                  (warehouse) => warehouse._id === warehouseId,
-                )
-              ) {
-                setWarehouseId("");
-              }
-            }}
-            /* A scope, not a filter applied on top of one — navy here would
-               announce something the reader did not set. */
-            active={false}
-          />
-        </ScopeField>
-
-        <ScopeField icon={<Warehouse className="size-4" />} label="Gudang">
-          <FilterSelect
-            layout="bar"
-            label="Gudang"
-            ariaLabel="Gudang"
-            value={warehouseId}
-            options={withAll(
-              namedOptions(
-                warehousesUnder(branchId, warehouses.warehouses),
-                (warehouse) =>
-                  warehouse.isActive
-                    ? warehouse.name
-                    : `${warehouse.name} (nonaktif)`,
-              ),
-              "Semua gudang",
-            )}
-            onChange={setWarehouseId}
-            active={false}
-          />
-        </ScopeField>
-      </ScopeCard>
+      <ScopeFilterCard
+        branches={branches.branches}
+        branchIds={branchIds}
+        warehouses={scopeWarehouses}
+        warehouseIds={warehouseIds}
+        onScopeChange={(next) => {
+          setBranchIds(next.branchIds);
+          setWarehouseIds(next.warehouseIds);
+        }}
+        trailing={
+          /* "Reset filter (n)", as on the Penjualan tabs (12 October 2026, on
+             request) — one per field narrowed; both go back to "Semua". */
+          filterCount > 0 ? (
+            <Button
+              type="button"
+              variant="link"
+              className="min-h-11 px-0"
+              onClick={() => {
+                setBranchIds([]);
+                setWarehouseIds([]);
+              }}
+            >
+              Reset filter ({filterCount})
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* Separate from each list's own error: the picker can fail to load while
           every alert renders perfectly well, unfiltered. */}
@@ -438,8 +448,8 @@ export function InventoryHub() {
             // unfiltered, both sides describe the same thing and the line would
             // be a standing sentence people stop reading.
             note={
-              warehouseId
-                ? "Batas minimum berlaku per produk, bukan per gudang — angka di layar ini membandingkan stok satu gudang dengan batas produk."
+              warehouseIds.length > 0
+                ? "Batas minimum berlaku per produk, bukan per gudang — angka di layar ini membandingkan stok gudang yang dipilih dengan batas produk."
                 : undefined
             }
             empty={`Semua stok${scope} di atas batas minimum.`}
@@ -628,41 +638,43 @@ export function InventoryHub() {
         unfiltered view: with one gudang chosen the headline card above already
         IS that gudang's, and a one-bar chart under it says nothing twice.
       */}
-      {mayReadProducts && !warehouseId && valuation.perWarehouse.length > 0 && (
-        <Card
-          title={<h2 className="text-lg font-bold">Nilai stok per gudang</h2>}
-        >
-          <ul className="divide-y divide-border rounded-lg border border-border px-4">
-            {valuation.perWarehouse.map((row) => (
-              <li
-                key={row.warehouseId}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm"
-              >
-                <span className="min-w-0 flex-1 font-semibold text-foreground">
-                  {row.name}
-                  <span className="ml-1.5 text-xs font-normal text-muted tabular-nums">
-                    {formatQty(row.qty)} unit
-                  </span>
-                </span>
-                <span
-                  className="h-1.5 w-28 overflow-hidden rounded-full bg-tint-neutral"
-                  aria-hidden
+      {mayReadProducts &&
+        warehouseIds.length !== 1 &&
+        valuation.perWarehouse.length > 0 && (
+          <Card
+            title={<h2 className="text-lg font-bold">Nilai stok per gudang</h2>}
+          >
+            <ul className="divide-y divide-border rounded-lg border border-border px-4">
+              {valuation.perWarehouse.map((row) => (
+                <li
+                  key={row.warehouseId}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 text-sm"
                 >
+                  <span className="min-w-0 flex-1 font-semibold text-foreground">
+                    {row.name}
+                    <span className="ml-1.5 text-xs font-normal text-muted tabular-nums">
+                      {formatQty(row.qty)} unit
+                    </span>
+                  </span>
                   <span
-                    className="block h-full rounded-full bg-chart-gross"
-                    style={{
-                      width: `${shareOf(row.value, valuation.perWarehouse)}%`,
-                    }}
-                  />
-                </span>
-                <span className="w-40 text-right text-muted tabular-nums">
-                  {formatMoney(row.value)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+                    className="h-1.5 w-28 overflow-hidden rounded-full bg-tint-neutral"
+                    aria-hidden
+                  >
+                    <span
+                      className="block h-full rounded-full bg-chart-gross"
+                      style={{
+                        width: `${shareOf(row.value, valuation.perWarehouse)}%`,
+                      }}
+                    />
+                  </span>
+                  <span className="w-40 text-right text-muted tabular-nums">
+                    {formatMoney(row.value)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
     </div>
   );
 }

@@ -55,7 +55,8 @@ const rupiah = (value: number | string) => formatMoney(String(value));
  *
  * THE COUNT IS ENTERED IN THE DETAIL VIEW, and Tutup Kasir does not grey out
  * while one is missing: it says which methods are still uncounted when pressed,
- * the same way the till's other dialogs refuse.
+ * the same way the till's other dialogs refuse. Until a method is counted its
+ * card reads 0 counted and 0 gap — a gap is only shown once there is a count.
  *
  * A LARGE VARIANCE DOES NOT BLOCK CLOSING. FR-9 is explicit and the reason is
  * practical: a shop cannot stop trading tomorrow because money went missing
@@ -138,7 +139,9 @@ export function PosCloseShiftDialog({
   const viewed = methods.find((method) => method.key === viewing) ?? null;
 
   const gapOf = (method: Method) =>
-    Number(counted[method.key] ?? 0) - Number(method.expected);
+    counted[method.key] === undefined
+      ? 0
+      : Number(counted[method.key]) - Number(method.expected);
 
   async function submit() {
     if (!report) return;

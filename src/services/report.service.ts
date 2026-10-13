@@ -45,6 +45,8 @@ export const reportService = {
         limit: query.limit,
         warehouseId: query.warehouseId,
         branchId: query.branchId,
+        warehouseIds: query.warehouseIds,
+        branchIds: query.branchIds,
         categoryId: query.categoryId,
         // Sent only when true: the server defaults it to false, and an explicit
         // `false` in the query string is noise in the browser's address bar.
@@ -64,6 +66,9 @@ export const reportService = {
       warehouseId?: string;
       /** Every gudang filed under this cabang, plus the branchless ones. */
       branchId?: string;
+      /** Sets of either — sent as repeated params. */
+      warehouseIds?: string[];
+      branchIds?: string[];
       days?: number;
       idleDays?: number;
       limit?: number;
@@ -73,6 +78,8 @@ export const reportService = {
       query: {
         warehouseId: query.warehouseId || undefined,
         branchId: query.branchId || undefined,
+        warehouseIds: query.warehouseIds,
+        branchIds: query.branchIds,
         days: query.days,
         idleDays: query.idleDays,
         limit: query.limit,
@@ -100,6 +107,8 @@ export const reportService = {
       query: {
         warehouseId: query.warehouseId,
         branchId: query.branchId,
+        warehouseIds: query.warehouseIds,
+        branchIds: query.branchIds,
         categoryId: query.categoryId,
         includeZero: query.includeZero || undefined,
       },
@@ -119,6 +128,8 @@ export const reportService = {
       query: {
         branchId: query.branchId || undefined,
         businessLineId: query.businessLineId || undefined,
+        branchIds: query.branchIds,
+        businessLineIds: query.businessLineIds,
         dateFrom: query.dateFrom || undefined,
         dateTo: query.dateTo || undefined,
         status: query.status || undefined,
@@ -159,8 +170,7 @@ export const reportService = {
    */
   overrideCommission: (
     input: CommissionRowKey & { amount: string | null; reason?: string | null },
-  ) =>
-    apiClient.post<CommissionDetail>("/reports/commissions/override", input),
+  ) => apiClient.post<CommissionDetail>("/reports/commissions/override", input),
 
   /**
    * GET /reports/commissions/outstanding — what one person is still owed.

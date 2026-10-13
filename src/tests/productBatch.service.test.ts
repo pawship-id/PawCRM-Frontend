@@ -47,6 +47,8 @@ const EVERY_EXPIRING_FILTER: Required<ExpiringBatchListQuery> = {
   limit: 20,
   warehouseId: "w1",
   branchId: "b1",
+  warehouseIds: ["w1", "w2"],
+  branchIds: ["b1", "b2"],
   withinDays: 7,
   sort: "expiryLatest",
 };

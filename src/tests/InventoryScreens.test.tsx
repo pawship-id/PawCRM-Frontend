@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { InventoryHub } from "@/features/inventory";
@@ -173,11 +173,18 @@ const tenantWith = (allowNegativeStock?: boolean) =>
   ({
     _id: "t1",
     name: "Toko Uji",
-    settings: { hotelMode: "numbered", ...(allowNegativeStock === undefined ? {} : { allowNegativeStock }) },
+    settings: {
+      hotelMode: "numbered",
+      ...(allowNegativeStock === undefined ? {} : { allowNegativeStock }),
+    },
   }) as unknown as Tenant;
 
 /** `/reports/stock-on-hand` answered for the totals only — the card reads those. */
-const valuation = (value = "94200000.0000", qty = "18400.0000", products = 248) =>
+const valuation = (
+  value = "94200000.0000",
+  qty = "18400.0000",
+  products = 248,
+) =>
   ({
     items: [],
     totals: { qty, value, productCount: products },
@@ -290,9 +297,7 @@ describe("InventoryHub", () => {
     expect(await screen.findByText("38 terjual")).toBeInTheDocument();
     // 4 left against 38 in 30 days — about three days of cover, which is the
     // half of the row that makes it worth acting on.
-    expect(
-      screen.getByText(/sisa 4 · habis ~3 hari lagi/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/sisa 4 · habis ~3 hari lagi/)).toBeInTheDocument();
   });
 
   /*
@@ -304,11 +309,11 @@ describe("InventoryHub", () => {
     it, which is the one thing a valuation must never do.
   */
   /*
-    THE SAME SCOPE ROW THE RINGKASAN TABS WEAR, with two fields instead of their
-    cabang-and-periode: a stock page has no period, because every figure on it is
-    a balance as of now.
+    THE SAME SCOPE ROW PENJUALAN WEARS (`ScopeFilterCard`, 12 October 2026),
+    with Cabang and Gudang and no Periode: every figure here is a balance as of
+    now. Each dropdown takes several, applied on its own Terapkan.
   */
-  it("scopes by cabang as well as gudang, and narrows the gudang list to it", async () => {
+  it("scopes by several cabang, and narrows the gudang list to them", async () => {
     const user = userEvent.setup();
     mockedBranches.list.mockResolvedValue({
       items: [
@@ -320,8 +325,18 @@ describe("InventoryHub", () => {
     } as any);
     mockedWarehouses.list.mockResolvedValue({
       items: [
-        { _id: "w1", name: "Gudang Pusat", isActive: true, defaultBranchId: "b1" },
-        { _id: "w2", name: "Gudang Timur", isActive: true, defaultBranchId: "b2" },
+        {
+          _id: "w1",
+          name: "Gudang Pusat",
+          isActive: true,
+          defaultBranchId: "b1",
+        },
+        {
+          _id: "w2",
+          name: "Gudang Timur",
+          isActive: true,
+          defaultBranchId: "b2",
+        },
       ],
       pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -330,27 +345,66 @@ describe("InventoryHub", () => {
     renderWithAuth(<InventoryHub />);
 
     await user.click(await screen.findByRole("button", { name: "Cabang" }));
-    await user.click(await screen.findByRole("option", { name: "Cabang Pusat" }));
+    const cabang = await screen.findByRole("dialog");
+    await user.click(
+      within(cabang).getByRole("option", { name: /Cabang Pusat/ }),
+    );
+    await user.click(within(cabang).getByRole("button", { name: "Terapkan" }));
 
     // Every list on the page follows it — the cabang says whose shelves.
     await waitFor(() =>
       expect(mockedProducts.lowStock).toHaveBeenLastCalledWith(
-        expect.objectContaining({ branchId: "b1" }),
+        expect.objectContaining({ branchIds: ["b1"] }),
       ),
     );
     expect(mockedReports.productMovement).toHaveBeenLastCalledWith(
-      expect.objectContaining({ branchId: "b1" }),
+      expect.objectContaining({ branchIds: ["b1"] }),
+    );
+    expect(mockedBatches.expiring).toHaveBeenLastCalledWith(
+      expect.objectContaining({ branchIds: ["b1"] }),
     );
 
     // And the gudang picker offers only what is filed under it: two controls
     // contradicting each other is the thing this narrowing prevents.
     await user.click(screen.getByRole("button", { name: "Gudang" }));
+    const gudang = await screen.findByRole("dialog");
     expect(
-      await screen.findByRole("option", { name: "Gudang Pusat" }),
+      within(gudang).getByRole("option", { name: /Gudang Pusat/ }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("option", { name: "Gudang Timur" }),
+      within(gudang).queryByRole("option", { name: /Gudang Timur/ }),
     ).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    // A second cabang widens it: both go over the wire as one set.
+    await user.click(screen.getByRole("button", { name: "Cabang" }));
+    const again = await screen.findByRole("dialog");
+    await user.click(
+      within(again).getByRole("option", { name: /Cabang Timur/ }),
+    );
+    await user.click(within(again).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(mockedProducts.lowStock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ branchIds: ["b1", "b2"] }),
+      ),
+    );
+    expect(mockedReports.stockOnHand).toHaveBeenCalledWith(
+      expect.objectContaining({ branchIds: ["b1", "b2"] }),
+    );
+    // One press puts every shelf back — the same Reset the Penjualan tabs wear.
+    await user.click(
+      within(screen.getByRole("region", { name: "Lingkup data" })).getByRole(
+        "button",
+        { name: "Reset filter (1)" },
+      ),
+    );
+    await waitFor(() =>
+      expect(mockedProducts.lowStock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ branchIds: undefined }),
+      ),
+    );
+    expect(screen.queryByRole("button", { name: /Reset filter/ })).toBeNull();
   });
 
   it("keeps the valuation when one gudang refuses to answer", async () => {
@@ -393,8 +447,8 @@ describe("InventoryHub", () => {
 
     await waitFor(() =>
       expect(mockedReports.productMovement).toHaveBeenCalledWith({
-        warehouseId: "",
-        branchId: "",
+        warehouseIds: undefined,
+        branchIds: undefined,
         days: 30,
         idleDays: 60,
         limit: 5,
@@ -640,7 +694,9 @@ describe("InventoryHub", () => {
     renderWithAuth(<InventoryHub />);
 
     await waitFor(() => {
-      expect(screen.getByText("Ringkasan lot gagal dimuat")).toBeInTheDocument();
+      expect(
+        screen.getByText("Ringkasan lot gagal dimuat"),
+      ).toBeInTheDocument();
     });
     expect(screen.getByText("FD-RC-3KG")).toBeInTheDocument();
   });

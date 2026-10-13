@@ -4,13 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import {
-  Alert,
-  Pagination,
-  PendingStatTile,
-  Spinner,
-  formatRangeShort,
-} from "@/components";
+import { Alert, Pagination, Spinner, formatRangeShort } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 
@@ -22,8 +16,10 @@ import {
   matchesLens,
   matchesSearch,
   periodRange,
+  PERIOD_WORDS,
   sortRows,
   summariseDay,
+  summariseNewAnimals,
   summarisePeriod,
   type DateRange,
   type GroomingFilters,
@@ -32,6 +28,7 @@ import {
   type GroomingScope,
 } from "../board";
 import { MAX_BOOKING_PAGES, useGroomingBoard } from "../hooks/useGroomingBoard";
+import { useFirstVisits } from "../hooks/useFirstVisits";
 import { useGroomingCatalog } from "../hooks/useGroomingCatalog";
 import { GROOMING_LINE } from "../line";
 import { GroomingBookingsTable } from "./GroomingBookingsTable";
@@ -43,14 +40,9 @@ import { GROOMING_NEW_BOOKING_PATH } from "../paths";
 
 const PAGE_SIZE = 20;
 
-const PERIOD_WORDS: Record<Exclude<GroomingPeriod, "custom">, string> = {
-  today: "hari ini",
-  week: "minggu ini",
-  month: "bulan ini",
-};
-
 const LENS_WORDS: Record<Exclude<GroomingLens, "all">, string> = {
   unbilled: "belum ditagih",
+  unpulled: "belum ditagih",
   working: "sedang dikerjakan",
 };
 
@@ -61,8 +53,9 @@ const LENS_WORDS: Record<Exclude<GroomingLens, "all">, string> = {
  * ─── WHAT THE MOCKUP ASKS FOR THAT IS NOT DRAWN ────────────────────────────
  *
  * Built on the API as it stands (decided 13 September 2026: frontend first).
- * The "Hewan baru" card is a `PendingStatTile`, because nothing marks an
- * animal's first grooming. Neto and Potongan are gone from the first card: a
+ * "Hewan baru" counts animals whose first grooming ever is on the board — read
+ * from `GET /bookings/first-visits` since 12 October 2026, because that first
+ * visit may lie before the period. Neto and Potongan are gone from the first card: a
  * booking carries prices, not what was charged. Trips, zones and the travel fee
  * wait for the backend to have them.
  *
@@ -85,7 +78,8 @@ export function GroomingBookingsScreen() {
     };
   }, [catalog.loading, catalog.services]);
 
-  const [branchId, setBranchId] = useState("");
+  /** Empty = every cabang. Several since 12 October 2026. */
+  const [branchIds, setBranchIds] = useState<string[]>([]);
   const [period, setPeriod] = useState<GroomingPeriod>("month");
   const [custom, setCustom] = useState<DateRange>({ from: "", to: "" });
   const [filters, setFilters] = useState<GroomingFilters>(DEFAULT_FILTERS);
@@ -98,16 +92,34 @@ export function GroomingBookingsScreen() {
     [period, custom],
   );
 
-  const board = useGroomingBoard(scope, branchId, range);
+  const board = useGroomingBoard(scope, branchIds, range);
+  const firstVisits = useFirstVisits(scope, branchIds, range);
+
+  /*
+    "RESET FILTER (n)" ON THE SCOPE ROW (12 October 2026, on request) — the
+    button Penjualan's tabs wear. The period counts only off its default, Bulan
+    ini, which is where Reset returns it.
+  */
+  const scopeCount =
+    (branchIds.length > 0 ? 1 : 0) + (period !== "month" ? 1 : 0);
 
   const filtered = useMemo(
     () => board.periodRows.filter((row) => matchesFilters(row, filters)),
     [board.periodRows, filters],
   );
   const summary = useMemo(() => summarisePeriod(filtered), [filtered]);
+  const animals = useMemo(
+    () =>
+      firstVisits.firstBookingIds
+        ? summariseNewAnimals(filtered, firstVisits.firstBookingIds)
+        : null,
+    [filtered, firstVisits.firstBookingIds],
+  );
   const day = useMemo(
     () =>
-      summariseDay(board.todayRows.filter((row) => matchesFilters(row, filters))),
+      summariseDay(
+        board.todayRows.filter((row) => matchesFilters(row, filters)),
+      ),
     [board.todayRows, filters],
   );
   const visible = useMemo(
@@ -157,9 +169,9 @@ export function GroomingBookingsScreen() {
       />
 
       <GroomingPeriodBar
-        branchId={branchId}
-        onBranchChange={(next) => {
-          setBranchId(next);
+        branchIds={branchIds}
+        onBranchesChange={(next) => {
+          setBranchIds(next);
           setPage(1);
         }}
         period={period}
@@ -178,6 +190,22 @@ export function GroomingBookingsScreen() {
           }
           setPage(1);
         }}
+        trailing={
+          scopeCount > 0 ? (
+            <Button
+              type="button"
+              variant="link"
+              className="min-h-11 px-0"
+              onClick={() => {
+                setBranchIds([]);
+                setPeriod("month");
+                setPage(1);
+              }}
+            >
+              Reset filter ({scopeCount})
+            </Button>
+          ) : undefined
+        }
       />
 
       {board.error && <Alert variant="error">{board.error}</Alert>}
@@ -216,7 +244,7 @@ export function GroomingBookingsScreen() {
           label="Belum ditagih"
           tone={summary.unbilledCount > 0 ? "danger" : "default"}
           value={formatMoneyShort(summary.unbilledValue)}
-          caption={`${summary.unbilledCount} hewan selesai dikerjakan, belum ditagih`}
+          caption={`${summary.unbilledCount} booking belum masuk kasir atau faktur`}
           splits={[
             {
               label: "Terlama",
@@ -226,8 +254,8 @@ export function GroomingBookingsScreen() {
                   : `${summary.oldestUnbilledDays} hari`,
             },
           ]}
-          pressed={lens === "unbilled"}
-          onPress={() => pressLens("unbilled")}
+          pressed={lens === "unpulled"}
+          onPress={() => pressLens("unpulled")}
           loading={board.loading}
           error={board.error !== null}
         />
@@ -247,9 +275,22 @@ export function GroomingBookingsScreen() {
           loading={board.todayLoading}
           error={board.todayError}
         />
-        <PendingStatTile
+        <GroomingStatCard
           label="Hewan baru"
-          blockedBy="Sistem belum menandai kunjungan grooming pertama tiap hewan."
+          value={String(animals?.newAnimals ?? 0)}
+          caption={`hewan pertama kali grooming ${periodWords}`}
+          splits={[
+            {
+              label: "Total hewan",
+              value: String(animals?.animals ?? 0),
+            },
+            {
+              label: "Kembali lagi",
+              value: String(animals?.returning ?? 0),
+            },
+          ]}
+          loading={board.loading || firstVisits.loading}
+          error={board.error !== null || firstVisits.failed}
         />
       </section>
 

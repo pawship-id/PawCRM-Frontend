@@ -31,14 +31,21 @@ export function PosLinePrice({
   label,
   editable,
   disabled = false,
+  stacked = false,
   onChange,
 }: {
-  item: PosItem;
+  /** A till line — or any line shaped like one, such as a Faktur baru row. */
+  item: Pick<PosItem, "name" | "unitPrice" | "listPrice">;
   /** Names the field for a screen reader: twenty "Harga" boxes say nothing. */
   label: string;
   /** `posTransactions:setPrice` — see the header. */
   editable: boolean;
   disabled?: boolean;
+  /**
+   * Faktur baru's arrangement (13 October 2026, on request): the catalogue's
+   * price struck through ABOVE the typed one, with no "Harga diubah" word.
+   */
+  stacked?: boolean;
   /** `null` puts the line back to whatever the catalogue says today. */
   onChange: (unitPrice: string | null) => void;
 }) {
@@ -84,7 +91,12 @@ export function PosLinePrice({
   }
 
   if (!editable) {
-    return (
+    return stacked ? (
+      <span className="inline-flex flex-col items-end tabular-nums">
+        {overridden && <StruckPrice value={item.listPrice!} />}
+        {formatMoney(item.unitPrice)}
+      </span>
+    ) : (
       <span className="tabular-nums">
         {formatMoney(item.unitPrice)}
         {overridden && <ListPrice value={item.listPrice!} />}
@@ -122,7 +134,7 @@ export function PosLinePrice({
     );
   }
 
-  return (
+  const button = (
     <button
       type="button"
       disabled={disabled}
@@ -138,8 +150,26 @@ export function PosLinePrice({
       aria-label={`Ubah harga ${item.name}`}
     >
       {formatMoney(item.unitPrice)}
-      {overridden && <ListPrice value={item.listPrice!} />}
+      {overridden && !stacked && <ListPrice value={item.listPrice!} />}
     </button>
+  );
+
+  return stacked ? (
+    <span className="inline-flex flex-col items-end">
+      {overridden && <StruckPrice value={item.listPrice!} />}
+      {button}
+    </span>
+  ) : (
+    button
+  );
+}
+
+/** The catalogue's price alone, struck through — the stacked arrangement. */
+function StruckPrice({ value }: { value: string }) {
+  return (
+    <span className="text-xs text-muted tabular-nums line-through">
+      {formatMoney(value)}
+    </span>
   );
 }
 

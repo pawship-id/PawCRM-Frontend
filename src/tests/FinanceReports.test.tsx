@@ -610,7 +610,7 @@ describe("ProfitLossScreen", () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
     await screen.findByText("Penjualan bersih");
 
-    await userEvent.click(screen.getByLabelText("Filter lini bisnis"));
+    await userEvent.click(screen.getByRole("button", { name: "Lini bisnis" }));
     await userEvent.click(await screen.findByRole("option", { name: "Grooming" }));
     await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
     await userEvent.click(screen.getByRole("button", { name: "Per lini bisnis" }));
@@ -627,7 +627,7 @@ describe("ProfitLossScreen", () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
     await screen.findByText("Penjualan bersih");
 
-    await userEvent.click(screen.getByLabelText("Filter cabang"));
+    await userEvent.click(screen.getByRole("button", { name: "Cabang" }));
     const options = await screen.findAllByRole("option");
     await userEvent.click(options[0]);
     await userEvent.click(options[1]);
@@ -719,8 +719,10 @@ describe("BalanceSheetScreen", () => {
     renderWithAuth(<BalanceSheetScreen now={NOW} />);
     await screen.findByText("Laporan Neraca");
 
+    // The scope row's Cabang is there; Lini bisnis is not.
+    expect(screen.getByRole("button", { name: "Cabang" })).toBeInTheDocument();
     expect(
-      screen.queryByLabelText("Filter lini bisnis"),
+      screen.queryByRole("button", { name: "Lini bisnis" }),
     ).not.toBeInTheDocument();
   });
 });

@@ -117,6 +117,8 @@ export const productBatchService = {
         limit: query.limit,
         warehouseId: query.warehouseId,
         branchId: query.branchId,
+        warehouseIds: query.warehouseIds,
+        branchIds: query.branchIds,
         withinDays: query.withinDays,
         sort: query.sort,
       },

@@ -163,8 +163,11 @@ describe("SalesSummaryScreen", () => {
       period: "today",
     });
 
+    // Several cabang may be ticked, so a pick waits for Terapkan.
     await user.click(screen.getByRole("button", { name: "Cabang" }));
-    await user.click(await screen.findByRole("option", { name: "Cabang Pusat" }));
+    const popover = await screen.findByRole("dialog");
+    await user.click(within(popover).getByRole("option", { name: /Cabang Pusat/ }));
+    await user.click(within(popover).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() =>
       expect(mocked.summary).toHaveBeenLastCalledWith({
@@ -172,6 +175,18 @@ describe("SalesSummaryScreen", () => {
         period: "today",
       }),
     );
+
+    // Two off the default — a cabang and a period that is not Bulan ini.
+    await user.click(
+      within(screen.getByRole("region", { name: "Lingkup data" })).getByRole(
+        "button",
+        { name: "Reset filter (2)" },
+      ),
+    );
+    await waitFor(() =>
+      expect(mocked.summary).toHaveBeenLastCalledWith({ period: "month" }),
+    );
+    expect(screen.queryByRole("button", { name: /Reset filter/ })).toBeNull();
   });
 
   it("shows the server's omzet, not a sum of rows", async () => {

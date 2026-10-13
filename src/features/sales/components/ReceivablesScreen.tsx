@@ -39,9 +39,10 @@ type RowAction =
  * The Penjualan › Faktur tab — the September 2026 layout.
  *
  * TOP TO BOTTOM, THE ORDER A READER ASKS IN: whose books and which days (the
- * read-only scope card), how that went (the four cards), which invoices (search,
- * and the filter panel — where cabang, gudang and periode are changed), and the
- * invoices themselves, with what can be done to each.
+ * scope card, which changes cabang, gudang and periode in place), how that went
+ * (the four cards), which invoices (search, and the filter panel — which edits
+ * the same query, so the card follows it), and the invoices themselves, with
+ * what can be done to each.
  *
  * THE CARDS ARE THE SERVER'S, from `/customer-invoices/summary` asked with the
  * list's own filter — never a sum of the page on screen, which would grow as the
@@ -61,7 +62,6 @@ export function ReceivablesScreen() {
     error,
     summary,
     summaryFailed,
-    summaryStale,
     setQuery,
     refetch,
   } = useCustomerInvoices();
@@ -136,13 +136,13 @@ export function ReceivablesScreen() {
         }
       />
 
-      {/* What the cards below are ABOUT — read-only; changed in the panel. */}
+      {/* What the cards below are ABOUT — and where cabang, gudang and periode
+          are changed directly; the Filter panel edits the same query. */}
       <InvoiceScopeCard
         query={query}
         options={options}
-        summary={summary}
-        summaryStale={summaryStale}
         filterCount={countInvoiceFilters(query)}
+        onChange={setQuery}
         onReset={() => setQuery(CLEARED_INVOICE_FILTERS)}
       />
 

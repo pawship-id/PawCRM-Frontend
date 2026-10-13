@@ -29,7 +29,6 @@ import { customerService } from "@/services/customer.service";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { petService } from "@/services/pet.service";
 import {
-  divideRound,
   formatMoney,
   isPositive,
   subtractDecimals,
@@ -45,6 +44,7 @@ import {
   type PriceLookup,
 } from "@/utils/serviceVariant";
 import type {
+  TripFeeDiscount,
   CustomerInvoiceDetail,
   GeoLocation,
   InvoiceDiscountMode,
@@ -62,8 +62,9 @@ import {
 import { RideJourneyDialog } from "@/features/antar-jemput/components/RideJourneyDialog";
 import type { RideJourney } from "@/features/antar-jemput/components/RideJourneyFields";
 
-import { invoiceBookingShareOf } from "../bookingDiscount";
+import { invoiceBookingShareOf, ownDiscountMinor } from "../bookingDiscount";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
+import { useProductSearch } from "../hooks/useServerSearch";
 import { previewInvoice } from "../invoicePreview";
 import {
   hasChoice,
@@ -143,29 +144,6 @@ interface EditLine {
   tripId?: string | null;
 }
 
-const HUNDRED_MINOR = BigInt(100) * BigInt(10_000);
-
-/**
- * What the line's own discount takes off `basisMinor` — the server's rule
- * (`utils/discount.js`): a percent half-up and never past 100, a rupiah amount
- * never past what it is taken from. Invalid or empty takes nothing.
- */
-function ownDiscountMinor(
-  basisMinor: bigint,
-  mode: InvoiceDiscountMode,
-  value: string,
-): bigint {
-  const typed = value === "" ? null : toMinor(value.replace(",", "."));
-  if (typed === null || typed <= BigInt(0) || basisMinor <= BigInt(0)) return BigInt(0);
-
-  const off =
-    mode === "percent"
-      ? divideRound(basisMinor * (typed > HUNDRED_MINOR ? HUNDRED_MINOR : typed), HUNDRED_MINOR)
-      : typed;
-
-  return off > basisMinor ? basisMinor : off;
-}
-
 /** Nobody has a hundred animals; this is a ceiling, not a page size. */
 const MAX_PETS = 100;
 
@@ -211,6 +189,7 @@ export function InvoiceEditor({
   onSaved: (updated: CustomerInvoiceDetail) => void;
 }) {
   const lookups = useInvoiceLookups();
+  const productSearch = useProductSearch(lookups.products);
 
   const initialLines = useMemo<EditLine[]>(
     () =>
@@ -484,19 +463,31 @@ export function InvoiceEditor({
     );
   }
 
-  const catalogue = useMemo(
-    () => [
-      ...lookups.products.map((product) => ({
+  /*
+    PRODUCTS ARE SEARCHED ON THE SERVER — a catalogue runs past the 100 the
+    lookups open on (12 October 2026). Services are all loaded, so they are
+    narrowed here; the picker no longer filters once a caller searches.
+  */
+  const catalogue = useMemo(() => {
+    const q = productSearch.term.toLowerCase();
+    return [
+      ...productSearch.items.map((product) => ({
         value: `product:${product._id}`,
         label: product.sku ? `${shortSku(product.sku)} — ${product.name}` : product.name,
       })),
-      ...lookups.services.map((service) => ({
-        value: `service:${service._id}`,
-        label: `${service.name} (jasa)`,
-      })),
-    ],
-    [lookups.products, lookups.services],
-  );
+      ...lookups.services
+        .filter(
+          (service) =>
+            !q ||
+            service.name.toLowerCase().includes(q) ||
+            Boolean(service.code?.toLowerCase().includes(q)),
+        )
+        .map((service) => ({
+          value: `service:${service._id}`,
+          label: `${service.name} (jasa)`,
+        })),
+    ];
+  }, [productSearch.items, productSearch.term, lookups.services]);
 
   /* The shelves of the invoice's branch, plus every central one. */
   const warehousesHere = useMemo(
@@ -642,6 +633,8 @@ export function InvoiceEditor({
   ];
 
   function addOwedTrip(owed: (typeof owedHere)[number]) {
+    /* A trip starts with the discount set on its page (12 October 2026). */
+    const own = (owed as { discount?: TripFeeDiscount | null }).discount ?? null;
     setLineRefusals({});
     setLines((current) => [
       ...current,
@@ -654,8 +647,8 @@ export function InvoiceEditor({
         sku: null,
         unitPrice: owed.amount,
         qty: "1",
-        discountMode: "percent",
-        discountValue: "",
+        discountMode: own?.mode ?? "percent",
+        discountValue: own ? trimDecimal(own.value) : "",
         petId: "",
         petName: null,
         booked: true,
@@ -699,18 +692,22 @@ export function InvoiceEditor({
 
   function payload(): UpdateCustomerInvoiceInput {
     const addedTrips = lines.filter(isAddedTrip);
-    const discountedTrips = addedTrips.filter((line) => line.discountValue);
 
     return {
       ...(addedTrips.length > 0
         ? { homeTripIds: addedTrips.map((line) => line.tripId as string) }
         : {}),
-      /* A trip added here carries its discount beside it (11 October 2026). */
-      ...(discountedTrips.length > 0
+      /*
+        A trip added here carries its discount beside it (11 October 2026) —
+        every one, even cleared, else the server bills the trip's own.
+      */
+      ...(addedTrips.length > 0
         ? {
-            tripDiscounts: discountedTrips.map((line) => ({
+            tripDiscounts: addedTrips.map((line) => ({
               homeTripId: line.tripId as string,
-              discount: { mode: line.discountMode, value: line.discountValue },
+              discount: line.discountValue
+                ? { mode: line.discountMode, value: line.discountValue }
+                : null,
             })),
           }
         : {}),
@@ -924,7 +921,7 @@ export function InvoiceEditor({
     }
 
     if (line.kind === "product") {
-      const product = lookups.products.find((one) => one._id === line.refId);
+      const product = productSearch.find(line.refId);
       return String(product?.sellPrice ?? "0");
     }
 
@@ -940,7 +937,7 @@ export function InvoiceEditor({
     const [kind, refId] = picked.split(":") as ["product" | "service", string];
     const found =
       kind === "product"
-        ? lookups.products.find((product) => product._id === refId)
+        ? productSearch.find(refId)
         : lookups.services.find((service) => service._id === refId);
 
     if (!found) return;
@@ -1433,7 +1430,19 @@ export function InvoiceEditor({
             active={false}
             placeholder="Cari nama atau SKU"
             disabled={saving}
-            onChange={setPicked}
+            onSearchChange={productSearch.setSearch}
+            searching={productSearch.searching && !catalogue.length}
+            emptyLabel={
+              productSearch.failed
+                ? "Pencarian barang gagal. Coba lagi."
+                : undefined
+            }
+            onChange={(value) => {
+              if (value.startsWith("product:")) {
+                productSearch.remember(value.slice("product:".length));
+              }
+              setPicked(value);
+            }}
           />
         </div>
         <Button

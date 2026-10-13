@@ -15,6 +15,8 @@ import type {
   CreateBookingResult,
   UpdateBookingInput,
   PageResult,
+  BookingFirstVisits,
+  BookingFirstVisitsQuery,
   ServiceBookingCounts,
   ServiceBookingCountScope,
   SessionMediaKind,
@@ -59,6 +61,7 @@ export const bookingService = {
         groupId: query.groupId,
         groomerUserId: query.groomerUserId,
         branchId: query.branchId,
+        branchIds: query.branchIds,
         // An array becomes repeated `status=` params — see buildUrl. Joining
         // with a comma would send one value the enum check rejects.
         status: query.status,
@@ -136,8 +139,21 @@ export const bookingService = {
       query: {
         serviceIds,
         branchId: scope.branchId,
+        branchIds: scope.branchIds,
         scheduledFrom: scope.scheduledFrom,
         scheduledTo: scope.scheduledTo,
+      },
+    }),
+
+  /** GET /bookings/first-visits — each animal's first booking on a line. */
+  firstVisits: (query: BookingFirstVisitsQuery) =>
+    apiClient.get<BookingFirstVisits>("/bookings/first-visits", {
+      query: {
+        serviceIds: query.serviceIds?.length ? query.serviceIds : undefined,
+        serviceType: query.serviceType || undefined,
+        branchIds: query.branchIds,
+        scheduledFrom: query.scheduledFrom,
+        scheduledTo: query.scheduledTo,
       },
     }),
 

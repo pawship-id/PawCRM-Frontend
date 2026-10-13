@@ -2,14 +2,18 @@
 
 import Link from "next/link";
 
-import { Alert, Card, ScopePeriodCard, Spinner } from "@/components";
+import { Alert, Card, ScopeFilterCard, Spinner } from "@/components";
 import { SETTINGS_PATHS } from "@/features/settings/paths";
 import type { RevenueBreakdown } from "@/types/api";
+import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/utils/decimal";
 
 import type { BreakdownState } from "../hooks/useSalesSummary";
 import { useReceivableFilterOptions } from "../hooks/useReceivableFilterOptions";
-import { useSalesSummary } from "../hooks/useSalesSummary";
+import {
+  DEFAULT_SUMMARY_QUERY,
+  useSalesSummary,
+} from "../hooks/useSalesSummary";
 import { InvoiceStatCards } from "./InvoiceStatCards";
 import { SalesModuleHeader } from "./SalesModuleHeader";
 
@@ -66,42 +70,68 @@ export function SalesSummaryScreen() {
 
   const revenue = summary?.revenue;
 
+  /*
+    WHAT "RESET FILTER" COUNTS AND PUTS BACK (12 October 2026, on request) —
+    the Faktur tab's button on this tab's two fields. The period counts only
+    when it is off this tab's own default, Bulan ini: Reset returns there, not
+    to "Semua", so a number over the default would promise a change Reset does
+    not make.
+  */
+  const filterCount =
+    (query.branchIds.length > 0 ? 1 : 0) +
+    (query.period !== DEFAULT_SUMMARY_QUERY.period ? 1 : 0);
+
   return (
     <div className="flex flex-col gap-5">
       <SalesModuleHeader />
 
       {/* What every figure below is ABOUT — and the two controls that set it.
           The same row Pembelian › Ringkasan wears (29 September 2026, on
-          request); see ScopePeriodCard for why there is no Filter button. */}
-      <ScopePeriodCard
+          request); see ScopeFilterCard. */}
+      <ScopeFilterCard
         /*
-          ONE CABANG, WHERE THE QUERY HOLDS A SET. The list's panel offers several
-          at once; this row offers one, so the value is the first of the set and
-          picking replaces it. Nothing is lost that this tab could show: a
-          composition of two branches read as one number is a figure nobody can
-          act on, and the Faktur tab still takes the set.
+          SEVERAL CABANG (12 October 2026, on request) — every scope dropdown
+          takes a set now, and the query always held one. No Gudang here: this
+          tab counts a period's composition, not a warehouse's.
         */
-        branchId={query.branchIds[0] ?? ""}
         branches={options.branches}
-        onBranchChange={(branchId) =>
-          setQuery({ branchIds: branchId ? [branchId] : [] })
+        branchIds={query.branchIds}
+        onScopeChange={({ branchIds }) => setQuery({ branchIds })}
+        period={{
+          value: query.period,
+          /* Leaving Custom drops the typed dates: a named period carries its
+             own, and stale ones would travel beside it. */
+          onChange: (period) =>
+            setQuery(
+              period === "custom"
+                ? { period }
+                : { period, dateFrom: "", dateTo: "" },
+            ),
+          dateFrom: query.dateFrom,
+          dateTo: query.dateTo,
+          onDateRangeChange: ({ from, to }) =>
+            setQuery({ dateFrom: from, dateTo: to }),
+          dateLabel: "Tanggal faktur",
+        }}
+        trailing={
+          filterCount > 0 ? (
+            <Button
+              type="button"
+              variant="link"
+              className="min-h-11 px-0"
+              onClick={() =>
+                setQuery({
+                  branchIds: [],
+                  period: DEFAULT_SUMMARY_QUERY.period,
+                  dateFrom: "",
+                  dateTo: "",
+                })
+              }
+            >
+              Reset filter ({filterCount})
+            </Button>
+          ) : undefined
         }
-        period={query.period}
-        /* Leaving Custom drops the typed dates: a named period carries its own,
-           and stale ones would travel beside it. */
-        onPeriodChange={(period) =>
-          setQuery(
-            period === "custom"
-              ? { period }
-              : { period, dateFrom: "", dateTo: "" },
-          )
-        }
-        dateFrom={query.dateFrom}
-        dateTo={query.dateTo}
-        onDateRangeChange={({ from, to }) =>
-          setQuery({ dateFrom: from, dateTo: to })
-        }
-        dateLabel="Tanggal faktur"
       />
 
       <InvoiceStatCards summary={summary} failed={summaryFailed} />

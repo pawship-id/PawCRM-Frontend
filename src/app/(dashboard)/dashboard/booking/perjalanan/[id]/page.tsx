@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { Breadcrumb } from "@/components";
-import { BOOKING_CRUMBS, HomeTripDetailScreen } from "@/features/booking";
+import { HomeTripDetailScreen } from "@/features/booking";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Perjalanan Home Grooming · Buloo" };
@@ -27,7 +27,13 @@ export default async function HomeTripDetailPage({
   return (
     <RequirePermission feature="bookings" action="read">
       <div className="flex flex-col gap-6">
-        <Breadcrumb items={[...BOOKING_CRUMBS, { label: "Perjalanan" }]} />
+        <Breadcrumb
+          items={[
+            { label: "Layanan" },
+            { label: "Grooming", href: "/dashboard/layanan/grooming" },
+            { label: "Perjalanan" },
+          ]}
+        />
         <HomeTripDetailScreen id={id} />
       </div>
     </RequirePermission>

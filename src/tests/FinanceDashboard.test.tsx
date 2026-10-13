@@ -401,16 +401,23 @@ describe("FinanceDashboardScreen", () => {
       ),
     );
 
-    expect(
-      await screen.findByRole("button", {
-        name: /Hapus filter Periode 1 Jul–31 Jul/,
-      }),
-    ).toBeInTheDocument();
-    // And no pill claims it, because none of them is that month.
+    // Custom stays lit over it, with the range open in the card (the shared
+    // scope row, 12 October 2026) — no chip needed, nothing is concealed.
+    expect(screen.getByRole("button", { name: "Custom" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByLabelText("Periode khusus dari")).toHaveValue(
+      "2026-07-01",
+    );
+    // And no named pill claims it, because none of them is that month.
     expect(screen.getByRole("button", { name: "Semua" })).toHaveAttribute(
       "aria-pressed",
       "false",
     );
+    expect(
+      screen.getByRole("button", { name: "Reset filter (1)" }),
+    ).toBeInTheDocument();
   });
 
   /**
@@ -448,9 +455,13 @@ describe("FinanceDashboardScreen", () => {
     await loaded();
 
     await pickCustomRange("2026-07-01", "2026-07-31");
-    await screen.findByRole("button", { name: /Hapus filter Periode/ });
+    await waitFor(() =>
+      expect(journalEntryService.profitLoss).toHaveBeenLastCalledWith(
+        expect.objectContaining({ dateFrom: "2026-07-01" }),
+      ),
+    );
 
-    await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+    // The range stays open under Custom; its own Reset clears it.
     await userEvent.click(await screen.findByRole("button", { name: "Reset" }));
 
     await waitFor(() =>
@@ -849,14 +860,19 @@ describe("FinanceDashboardScreen", () => {
     renderWithAuth(<FinanceDashboardScreen now={NOW} />);
     await loaded();
 
-    await userEvent.click(screen.getByLabelText("Filter cabang"));
+    // Several cabang may be ticked (12 October 2026), applied on Terapkan.
+    await userEvent.click(screen.getByRole("button", { name: "Cabang" }));
+    const popover = await screen.findByRole("dialog");
     await userEvent.click(
-      await screen.findByRole("option", { name: "Cabang Kemang" }),
+      within(popover).getByRole("option", { name: /Cabang Kemang/ }),
+    );
+    await userEvent.click(
+      within(popover).getByRole("button", { name: "Terapkan" }),
     );
 
     await waitFor(() =>
       expect(journalEntryService.trend).toHaveBeenLastCalledWith(
-        expect.objectContaining({ branchId: "branch-kemang" }),
+        expect.objectContaining({ branchIds: ["branch-kemang"] }),
       ),
     );
   });
@@ -958,19 +974,49 @@ describe("FinanceDashboardScreen", () => {
     renderWithAuth(<FinanceDashboardScreen now={NOW} />);
     await loaded();
 
-    await userEvent.click(screen.getByLabelText("Filter cabang"));
+    // Several cabang may be ticked (12 October 2026), applied on Terapkan.
+    await userEvent.click(screen.getByRole("button", { name: "Cabang" }));
+    const popover = await screen.findByRole("dialog");
     await userEvent.click(
-      await screen.findByRole("option", { name: "Cabang Kemang" }),
+      within(popover).getByRole("option", { name: /Cabang Kemang/ }),
+    );
+    await userEvent.click(
+      within(popover).getByRole("button", { name: "Terapkan" }),
     );
 
     await waitFor(() =>
       expect(journalEntryService.profitLoss).toHaveBeenLastCalledWith(
-        expect.objectContaining({ branchId: "branch-kemang" }),
+        expect.objectContaining({ branchIds: ["branch-kemang"] }),
       ),
     );
     await waitFor(() =>
       expect(fixedCostService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ branchId: "branch-kemang" }),
+        expect.objectContaining({ branchIds: ["branch-kemang"] }),
+      ),
+    );
+  });
+
+  /*
+    "BELUM DIPETAKAN" FILTERS NOW (12 October 2026). It used to be dropped
+    before the request, so picking it quietly showed every line; the API takes
+    `__none__` among `businessLineIds`.
+  */
+  it("sends the shared bucket as a lini, instead of dropping it", async () => {
+    renderWithAuth(<FinanceDashboardScreen now={NOW} />);
+    await loaded();
+
+    await userEvent.click(screen.getByRole("button", { name: "Lini bisnis" }));
+    const popover = await screen.findByRole("dialog");
+    await userEvent.click(
+      within(popover).getByRole("option", { name: /Belum Dipetakan/ }),
+    );
+    await userEvent.click(
+      within(popover).getByRole("button", { name: "Terapkan" }),
+    );
+
+    await waitFor(() =>
+      expect(journalEntryService.profitLoss).toHaveBeenLastCalledWith(
+        expect.objectContaining({ businessLineIds: ["__none__"] }),
       ),
     );
   });

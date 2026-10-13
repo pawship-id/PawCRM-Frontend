@@ -9,6 +9,7 @@ import {
   Alert,
   Card,
   FilterBar,
+  FinanceScopeCard,
   FilterSearch,
   FilterSelect,
   HighlightText,
@@ -29,9 +30,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  FinanceReportToolbar,
   reportPresets,
-  type FinanceQuery,
+  SHARED_LINE_LABEL,
+  SHARED_LINE_NONE,
 } from "@/features/accounting";
 import { usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
@@ -118,18 +119,18 @@ export function CommissionScreen({ now }: { now: string }) {
   const picked = Object.values(selected);
   const pickedTotal = sumDecimals(picked.map((row) => row.amount));
 
-  const contextQuery: FinanceQuery = {
-    dateFrom: query.dateFrom,
-    dateTo: query.dateTo,
-    branchId: query.branchId,
-    businessLineId: query.businessLineId,
-  };
+  /* "Reset filter (n)" on the scope row — its three fields; the status
+     filter and the search box keep their own resets. */
+  const scopeCount =
+    (query.branchIds.length > 0 ? 1 : 0) +
+    (query.businessLineIds.length > 0 ? 1 : 0) +
+    (query.dateFrom || query.dateTo ? 1 : 0);
 
   const filtered =
     query.search.trim() !== "" ||
     query.status !== "" ||
-    query.branchId !== "" ||
-    query.businessLineId !== "" ||
+    query.branchIds.length > 0 ||
+    query.businessLineIds.length > 0 ||
     query.dateFrom !== "" ||
     query.dateTo !== "";
 
@@ -169,7 +170,10 @@ export function CommissionScreen({ now }: { now: string }) {
     const pending = targets.filter((row) => row.status === "pending");
 
     if (pending.length === 0) {
-      safeToast("Tidak ada komisi yang menunggu persetujuan di pilihan ini.", "error");
+      safeToast(
+        "Tidak ada komisi yang menunggu persetujuan di pilihan ini.",
+        "error",
+      );
       return;
     }
 
@@ -177,13 +181,19 @@ export function CommissionScreen({ now }: { now: string }) {
 
     try {
       const result = await reportService.approveCommissions(
-        pending.map(({ bookingId, groomerUserId }) => ({ bookingId, groomerUserId })),
+        pending.map(({ bookingId, groomerUserId }) => ({
+          bookingId,
+          groomerUserId,
+        })),
       );
       forget(pending.map((row) => row.key));
       refetch();
       safeToast(`${result.approved} komisi disetujui.`);
     } catch (err) {
-      safeToast(errorText(err, "Komisi tidak bisa disetujui. Coba lagi."), "error");
+      safeToast(
+        errorText(err, "Komisi tidak bisa disetujui. Coba lagi."),
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -199,7 +209,10 @@ export function CommissionScreen({ now }: { now: string }) {
       refetch();
       safeToast("Persetujuan dibatalkan.");
     } catch (err) {
-      safeToast(errorText(err, "Persetujuan tidak bisa dibatalkan. Coba lagi."), "error");
+      safeToast(
+        errorText(err, "Persetujuan tidak bisa dibatalkan. Coba lagi."),
+        "error",
+      );
     } finally {
       setBusy(false);
     }
@@ -264,21 +277,41 @@ export function CommissionScreen({ now }: { now: string }) {
 
   return (
     <div className="flex flex-col gap-6">
-      <FinanceReportToolbar
-        query={contextQuery}
+      <FinanceScopeCard
         branches={state.branches}
+        branchIds={query.branchIds}
+        onBranchIdsChange={(branchIds) => setQuery({ branchIds })}
         businessLines={state.businessLines}
+        businessLineIds={query.businessLineIds}
+        onBusinessLineIdsChange={(businessLineIds) =>
+          setQuery({ businessLineIds })
+        }
+        sharedLine={{ value: SHARED_LINE_NONE, label: SHARED_LINE_LABEL }}
         presets={presets}
-        disabled={loading}
-        onChange={(patch) =>
-          setQuery({
-            ...(patch.dateFrom !== undefined && { dateFrom: patch.dateFrom }),
-            ...(patch.dateTo !== undefined && { dateTo: patch.dateTo }),
-            ...(patch.branchId !== undefined && { branchId: patch.branchId }),
-            ...(patch.businessLineId !== undefined && {
-              businessLineId: patch.businessLineId,
-            }),
-          })
+        dateFrom={query.dateFrom}
+        dateTo={query.dateTo}
+        onDateRangeChange={({ from, to }) =>
+          setQuery({ dateFrom: from, dateTo: to })
+        }
+        dateLabel="Tanggal booking"
+        trailing={
+          scopeCount > 0 ? (
+            <Button
+              type="button"
+              variant="link"
+              className="min-h-11 px-0"
+              onClick={() =>
+                setQuery({
+                  branchIds: [],
+                  businessLineIds: [],
+                  dateFrom: "",
+                  dateTo: "",
+                })
+              }
+            >
+              Reset filter ({scopeCount})
+            </Button>
+          ) : undefined
         }
       />
 
@@ -418,7 +451,9 @@ export function CommissionScreen({ now }: { now: string }) {
                                 ? true
                                 : "indeterminate"
                           }
-                          onCheckedChange={(value) => togglePage(value === true)}
+                          onCheckedChange={(value) =>
+                            togglePage(value === true)
+                          }
                         />
                       </TableHead>
                       {sortHead("bookingDate", "Tanggal")}
@@ -472,7 +507,10 @@ export function CommissionScreen({ now }: { now: string }) {
                 pageSize={query.limit}
                 pageSizes={COMMISSION_PAGE_SIZES}
                 total={data?.total ?? 0}
-                totalPages={Math.max(1, Math.ceil((data?.total ?? 0) / query.limit))}
+                totalPages={Math.max(
+                  1,
+                  Math.ceil((data?.total ?? 0) / query.limit),
+                )}
                 unit="komisi"
                 onPageChange={(page) => setQuery({ page })}
                 onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
@@ -516,13 +554,19 @@ function SortHead({
   const Icon =
     active === "asc" ? ArrowUp : active === "desc" ? ArrowDown : ChevronsUpDown;
   const natural: "asc" | "desc" =
-    sort === "groomer" || sort === "branch" || sort === "status" ? "asc" : "desc";
+    sort === "groomer" || sort === "branch" || sort === "status"
+      ? "asc"
+      : "desc";
 
   return (
     <TableHead
       className={align === "right" ? "text-right" : undefined}
       aria-sort={
-        active === "asc" ? "ascending" : active === "desc" ? "descending" : "none"
+        active === "asc"
+          ? "ascending"
+          : active === "desc"
+            ? "descending"
+            : "none"
       }
     >
       <button
@@ -580,12 +624,17 @@ function CommissionTableRow({
         reversed && "text-muted",
       )}
     >
-      <TableCell className="px-4 py-2.5" onClick={(event) => event.stopPropagation()}>
+      <TableCell
+        className="px-4 py-2.5"
+        onClick={(event) => event.stopPropagation()}
+      >
         <Checkbox
           aria-label={`Pilih komisi ${row.groomerName ?? ""} ${row.bookingNumber ?? ""}`.trim()}
           checked={checked}
           disabled={!isSelectable(row)}
-          title={isSelectable(row) ? undefined : COMMISSION_STATUS_LABEL[row.status]}
+          title={
+            isSelectable(row) ? undefined : COMMISSION_STATUS_LABEL[row.status]
+          }
           onCheckedChange={(value) => onCheck(value === true)}
         />
       </TableCell>
@@ -596,9 +645,14 @@ function CommissionTableRow({
           onClick={(event) => event.stopPropagation()}
           className="rounded-md font-semibold tabular-nums underline-offset-4 hover:text-primary-hover hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
         >
-          <HighlightText text={row.bookingNumber ?? "Tanpa nomor"} query={search} />
+          <HighlightText
+            text={row.bookingNumber ?? "Tanpa nomor"}
+            query={search}
+          />
         </Link>
-        <p className="text-xs text-muted tabular-nums">{formatDay(row.bookingDate)}</p>
+        <p className="text-xs text-muted tabular-nums">
+          {formatDay(row.bookingDate)}
+        </p>
       </TableCell>
 
       <TableCell className="px-4 py-2.5 text-sm">
@@ -633,7 +687,10 @@ function CommissionTableRow({
         )}
       </TableCell>
 
-      <TableCell className="px-4 py-2.5" onClick={(event) => event.stopPropagation()}>
+      <TableCell
+        className="px-4 py-2.5"
+        onClick={(event) => event.stopPropagation()}
+      >
         {/*
           THE MOCKUP'S STATUS DROPDOWN, for whoever may decide — and only the
           moves the Owner allowed: approve a pending row, take an approval back,

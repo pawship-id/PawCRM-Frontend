@@ -4,7 +4,14 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { CreditCard, RotateCcw } from "lucide-react";
 
-import { Alert, Card, FilterToggle, PageTabs, StatTile } from "@/components";
+import {
+  Alert,
+  Card,
+  FilterToggle,
+  FinanceScopeCard,
+  PageTabs,
+  StatTile,
+} from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   CashTransactionsPanel,
@@ -15,11 +22,10 @@ import { FixedCostsPanel, useFixedCosts } from "@/features/fixed-costs";
 import { Can, usePermissions } from "@/features/permissions";
 import { formatMoney, subtractDecimals } from "@/utils/decimal";
 
-import { reportPresets, type FinanceQuery } from "../financeSummary";
+import { reportPresets } from "../financeSummary";
 import { useCashBankAccounts } from "../hooks/useCashBankAccounts";
 import { AccountingModuleHeader } from "./AccountingModuleHeader";
 import { CashBankAccountsTable } from "./CashBankAccountsTable";
-import { FinanceReportToolbar } from "./FinanceReportToolbar";
 
 /** The two halves of Kas & Bank, as the mockup names them. */
 export type KasBankSection = "transaksi" | "biaya-tetap";
@@ -100,29 +106,23 @@ export function KasBankScreen({
     {
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
-      branchId: query.branchId,
+      branchIds: query.branchIds,
       includeInactive,
     },
     { enabled: can("chartOfAccounts", "read") },
   );
 
-  /*
-    THE CONTEXT BAR'S SHAPE, over the transaction query. `FinanceReportToolbar`
-    speaks `FinanceQuery`; this page's state is a `CashTransactionsQuery` that
-    happens to carry the same three fields. Translating here rather than making
-    the toolbar generic keeps one bar across Keuangan — the same control, in the
-    same place, on four screens.
-  */
-  const contextQuery: FinanceQuery = {
-    dateFrom: query.dateFrom,
-    dateTo: query.dateTo,
-    branchId: query.branchId,
-    businessLineId: "",
-  };
+  /* "Reset filter (n)" on the scope row — Cabang and Periode; the panel's
+     own fields keep the panel's Reset. */
+  const scopeCount =
+    (query.branchIds.length > 0 ? 1 : 0) +
+    (query.dateFrom || query.dateTo ? 1 : 0);
 
   // Masuk − keluar, in minor units: two server-side aggregates subtracted, never
   // a sum over the rows on the page.
-  const net = totals ? subtractDecimals(totals.in.amount, totals.out.amount) : null;
+  const net = totals
+    ? subtractDecimals(totals.in.amount, totals.out.amount)
+    : null;
 
   const tabs = [
     { label: "Transaksi", href: KAS_BANK_HREF, exact: true },
@@ -150,17 +150,32 @@ export function KasBankScreen({
         }
       />
 
-      <FinanceReportToolbar
-        query={contextQuery}
+      {/* The Keuangan scope row (12 October 2026) — no Lini bisnis: money
+          in a drawer is not in a line. */}
+      <FinanceScopeCard
         branches={branches}
+        branchIds={query.branchIds}
+        onBranchIdsChange={(branchIds) => setQuery({ branchIds })}
         presets={presets}
-        disabled={state.loading}
-        onChange={(patch: Partial<FinanceQuery>) =>
-          setQuery({
-            ...(patch.dateFrom !== undefined && { dateFrom: patch.dateFrom }),
-            ...(patch.dateTo !== undefined && { dateTo: patch.dateTo }),
-            ...(patch.branchId !== undefined && { branchId: patch.branchId }),
-          })
+        dateFrom={query.dateFrom}
+        dateTo={query.dateTo}
+        onDateRangeChange={({ from, to }) =>
+          setQuery({ dateFrom: from, dateTo: to })
+        }
+        dateLabel="Tanggal transaksi"
+        trailing={
+          scopeCount > 0 ? (
+            <Button
+              type="button"
+              variant="link"
+              className="min-h-11 px-0"
+              onClick={() =>
+                setQuery({ branchIds: [], dateFrom: "", dateTo: "" })
+              }
+            >
+              Reset filter ({scopeCount})
+            </Button>
+          ) : undefined
         }
       />
 
@@ -213,7 +228,11 @@ export function KasBankScreen({
             <Alert variant="error" className="mb-3">
               <span className="flex flex-wrap items-center gap-3">
                 {accounts.error}
-                <Button variant="secondary" size="sm" onClick={accounts.refetch}>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={accounts.refetch}
+                >
                   <RotateCcw className="size-4" />
                   Coba lagi
                 </Button>
@@ -235,8 +254,8 @@ export function KasBankScreen({
         ) : (
           <Card>
             <p className="text-sm text-muted">
-              Kamu belum punya akses ke daftar transaksi. Minta admin menambahkan
-              izin baca transaksi keuangan.
+              Kamu belum punya akses ke daftar transaksi. Minta admin
+              menambahkan izin baca transaksi keuangan.
             </p>
           </Card>
         )
@@ -253,4 +272,3 @@ export function KasBankScreen({
     </div>
   );
 }
-

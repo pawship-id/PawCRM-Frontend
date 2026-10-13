@@ -88,7 +88,19 @@ export function isGroomingService(
 
 /* ─── Periods ─────────────────────────────────────────────────────────────── */
 
-export type GroomingPeriod = "today" | "week" | "month" | "custom";
+/**
+ * "all" — every date, no bounds sent (12 October 2026, on request). The screens
+ * still OPEN on "month"; "all" is a chip somebody presses.
+ */
+export type GroomingPeriod = "all" | "today" | "week" | "month" | "custom";
+
+/** The period in a sentence — "Belum ada booking grooming bulan ini". */
+export const PERIOD_WORDS: Record<Exclude<GroomingPeriod, "custom">, string> = {
+  all: "di semua tanggal",
+  today: "hari ini",
+  week: "minggu ini",
+  month: "bulan ini",
+};
 
 /** Calendar dates, `yyyy-mm-dd`; `""` is an open end. */
 export interface DateRange {
@@ -102,6 +114,11 @@ export function periodRange(
   today: Date = new Date(),
 ): DateRange {
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  // Two open ends: the API reads that as every date.
+  if (period === "all") {
+    return { from: "", to: "" };
+  }
 
   if (period === "today") {
     return { from: isoDate(start), to: isoDate(start) };
@@ -120,6 +137,15 @@ export function periodRange(
     from: isoDate(new Date(start.getFullYear(), start.getMonth(), 1)),
     to: isoDate(new Date(start.getFullYear(), start.getMonth() + 1, 0)),
   };
+}
+
+/**
+ * The dates "Custom" starts from — the period in force, so the numbers do not
+ * move until a date does. "Semua" has no dates to hand over, so it starts from
+ * this month: an empty range would read as "back to the default" instead.
+ */
+export function customSeed(period: Exclude<GroomingPeriod, "custom">): DateRange {
+  return periodRange(period === "all" ? "month" : period);
 }
 
 /* ─── Rows ────────────────────────────────────────────────────────────────── */
@@ -233,6 +259,26 @@ function daysSince(iso: string, today: Date): number | null {
   return Math.max(0, Math.round((now.getTime() - then.getTime()) / DAY_MS));
 }
 
+/**
+ * NOT YET PULLED — neither put in a cashier's basket nor on an invoice, and
+ * not cancelled. WHATEVER ITS STATUS (13 October 2026, on request): the
+ * Grooming board's "Belum ditagih" card counts a booking still at Requested
+ * or Confirmed too, because what the shop asked it to answer is "what has not
+ * reached the till or a faktur yet", not "what work was finished and missed".
+ *
+ * Narrower `billingOf(…) === "unbilled"` (finished work only) still drives the
+ * row badges and Antar-Jemput's card — "Belum ditagih" on a dog booked for
+ * Thursday would read as a reproach on the row itself.
+ */
+export function isUnpulled(row: GroomingRow): boolean {
+  const booking = row.booking;
+  return (
+    booking.status !== "cancelled" &&
+    !booking.pulledToCartAt &&
+    !booking.pulledToInvoiceAt
+  );
+}
+
 /** CANCELLED BOOKINGS COUNT FOR NOTHING — not in the value, not in the average. */
 export function summarisePeriod(
   rows: GroomingRow[],
@@ -240,7 +286,7 @@ export function summarisePeriod(
 ): PeriodSummary {
   const live = rows.filter((row) => row.booking.status !== "cancelled");
   const value = sumDecimals(live.map((row) => row.value));
-  const unbilled = rows.filter((row) => row.billing === "unbilled");
+  const unbilled = rows.filter(isUnpulled);
 
   const oldest = unbilled.reduce<number | null>((max, row) => {
     const days = daysSince(row.booking.scheduledAt, today);
@@ -266,6 +312,45 @@ export function summarisePeriod(
     /* What the bills will come to — after discount, unlike `value`. */
     unbilledValue: sumDecimals(unbilled.map((row) => row.net)),
     oldestUnbilledDays: oldest,
+  };
+}
+
+export interface NewAnimalSummary {
+  /** Animals on a live row, once each. */
+  animals: number;
+  /** Of those, the ones whose first grooming booking ever is one of the rows. */
+  newAnimals: number;
+  returning: number;
+}
+
+/**
+ * "HEWAN BARU" — an animal is new when its FIRST live grooming booking, read
+ * by the server across all history and every cabang (`GET /bookings/
+ * first-visits`), is one of these rows. So the card follows the Filter panel
+ * like its neighbours: narrow the rows and the new animals narrow with them.
+ *
+ * An animal is counted once however many bookings it has in the period, and a
+ * ride (no `petId`) is not an animal here.
+ */
+export function summariseNewAnimals(
+  rows: GroomingRow[],
+  firstBookingIds: ReadonlySet<string>,
+): NewAnimalSummary {
+  const animals = new Set<string>();
+  const fresh = new Set<string>();
+
+  for (const row of rows) {
+    const petId = row.booking.petId;
+    if (!petId || row.booking.status === "cancelled") continue;
+
+    animals.add(petId);
+    if (firstBookingIds.has(row.key)) fresh.add(petId);
+  }
+
+  return {
+    animals: animals.size,
+    newAnimals: fresh.size,
+    returning: animals.size - fresh.size,
   };
 }
 
@@ -376,11 +461,16 @@ export function matchesFilters(
   return true;
 }
 
-/** The two cards that narrow the table when pressed. */
-export type GroomingLens = "all" | "unbilled" | "working";
+/**
+ * The cards that narrow the table when pressed. `unbilled` is finished work
+ * nobody charged for (Antar-Jemput); `unpulled` is anything not yet at the
+ * till or on a faktur (Grooming — see `isUnpulled`).
+ */
+export type GroomingLens = "all" | "unbilled" | "unpulled" | "working";
 
 export function matchesLens(row: GroomingRow, lens: GroomingLens): boolean {
   if (lens === "unbilled") return row.billing === "unbilled";
+  if (lens === "unpulled") return isUnpulled(row);
   if (lens === "working") return row.booking.status === "in_progress";
 
   return true;

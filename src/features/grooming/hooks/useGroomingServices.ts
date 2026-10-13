@@ -15,8 +15,8 @@ import type {
 export interface GroomingServicesQuery {
   page: number;
   search: string;
-  /** "" = every branch. */
-  branchId: string;
+  /** Empty = every branch. Several since 12 October 2026. */
+  branchIds: string[];
   /** "" = both. */
   isActive: "" | "true" | "false";
   /**
@@ -35,7 +35,7 @@ const PAGE_SIZE = 20;
 const DEFAULT_QUERY: GroomingServicesQuery = {
   page: 1,
   search: "",
-  branchId: "",
+  branchIds: [],
   isActive: "",
   petType: "",
   location: "",
@@ -111,8 +111,9 @@ export function useGroomingServices(serviceKind: ServiceKind) {
         page: settled.page,
         limit: PAGE_SIZE,
         search: settled.search.trim() || undefined,
-        branchId: settled.branchId || undefined,
-        isActive: settled.isActive === "" ? undefined : settled.isActive === "true",
+        branchIds: settled.branchIds.length > 0 ? settled.branchIds : undefined,
+        isActive:
+          settled.isActive === "" ? undefined : settled.isActive === "true",
         petType: settled.petType || undefined,
         location: settled.location || undefined,
         includeDeleted: settled.includeDeleted || undefined,
@@ -129,7 +130,12 @@ export function useGroomingServices(serviceKind: ServiceKind) {
       })
       .catch(() => {
         if (active) {
-          setLoaded({ key, services: [], pagination: EMPTY_PAGE, failed: true });
+          setLoaded({
+            key,
+            services: [],
+            pagination: EMPTY_PAGE,
+            failed: true,
+          });
         }
       });
 

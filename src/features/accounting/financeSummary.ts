@@ -39,7 +39,6 @@ import { toDecimalString, toMinor } from "@/utils/decimal";
  */
 export const CASH_ACCOUNT_CATEGORY = "cash_bank" as const;
 
-
 /** The bucket a P&L line with no business line falls into. */
 export const SHARED_LINE_LABEL = "Belum Dipetakan";
 
@@ -78,6 +77,24 @@ export interface FinanceQuery {
   /** `""` = every line, which is when `byBusinessLine` is worth reading. */
   businessLineId: string;
 }
+
+/**
+ * THE SAME SCOPE AS SETS — what the Keuangan scope row (`FinanceScopeCard`)
+ * edits on Ringkasan, Kas & Bank, Komisi and Jurnal since 12 October 2026.
+ * Empty = every branch / every line; `SHARED_LINE_NONE` among the lines is the
+ * shared bucket, which the API now takes as `__none__`. `FinanceQuery` stays
+ * for the screens still on the single-select toolbar (Neraca).
+ */
+export interface FinanceScopeQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds: string[];
+  businessLineIds: string[];
+}
+
+/** A joined key back into a list for the API — `undefined` when empty. */
+export const listOfKey = (key: string): string[] | undefined =>
+  key ? key.split(",") : undefined;
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -178,7 +195,9 @@ export interface ProfitLossHeadline {
 }
 
 /** The consolidated column of the laba rugi, read as the Ringkasan cards. */
-export function profitLossHeadline(result: ProfitLossResult): ProfitLossHeadline {
+export function profitLossHeadline(
+  result: ProfitLossResult,
+): ProfitLossHeadline {
   let gross = 0n;
   let deductions = 0n;
 
@@ -404,7 +423,10 @@ export function isoDate(date: Date): string {
  * instants and a local-time `Date` crossing a DST change would lose an hour
  * and, at midnight, a day.
  */
-export function previousPeriod(dateFrom: string, dateTo: string): Period | null {
+export function previousPeriod(
+  dateFrom: string,
+  dateTo: string,
+): Period | null {
   if (!dateFrom || !dateTo) return null;
 
   const parse = (iso: string) => {
@@ -431,7 +453,9 @@ export function previousPeriod(dateFrom: string, dateTo: string): Period | null 
   if (wholeMonth) {
     const month = from.getUTCMonth() === 0 ? 12 : from.getUTCMonth();
     const year =
-      from.getUTCMonth() === 0 ? from.getUTCFullYear() - 1 : from.getUTCFullYear();
+      from.getUTCMonth() === 0
+        ? from.getUTCFullYear() - 1
+        : from.getUTCFullYear();
     return monthRange(year, month);
   }
 

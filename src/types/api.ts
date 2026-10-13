@@ -2083,7 +2083,13 @@ export interface PosTransaction {
    * TRIPS OF THE BOOKINGS ON THIS BASKET STILL OWED (11 October 2026) — a fee
    * nobody has billed and no line here carries. The till offers to add it.
    */
-  owedTrips?: { tripId: string; name: string; amount: string; petNames: string[] }[];
+  owedTrips?: {
+    tripId: string;
+    name: string;
+    amount: string;
+    discount?: TripFeeDiscount | null;
+    petNames: string[];
+  }[];
   _id: string;
   tenantId: string;
   branchId: string;
@@ -2131,6 +2137,18 @@ export interface PosTransaction {
   runningTotals: PosRunningTotals;
   status: PosTransactionStatus;
   heldLabel: string | null;
+  /**
+   * The N in "Keranjang N" — drawn from ONE counter per branch per day, so two
+   * cashiers never hold the same number. Null on baskets made before it existed.
+   */
+  cartNumber?: number | null;
+  /**
+   * SYNC ONLINE: once parked, the basket shows in Keranjang Tersimpan at every
+   * till of the branch. Off, it belongs to the cashier holding it alone.
+   */
+  syncOnline?: boolean;
+  /** Who opened it — tells "mine" from a synced one parked at another till. */
+  createdBy?: string | null;
   bookingIds: string[];
   paidAt: string | null;
   createdAt: string;
@@ -2754,6 +2772,8 @@ export interface UpdateCartInput {
   customerId?: string | null;
   note?: string | null;
   heldLabel?: string | null;
+  /** Share the basket with every till of the branch — see `PosTransaction`. */
+  syncOnline?: boolean;
   /**
    * Parked, or picked back up (FR-6).
    *
@@ -3630,6 +3650,9 @@ export type CommissionSort =
 
 export interface CommissionRowsQuery {
   branchId?: string;
+  /** Sets (12 Oct 2026) — repeated params; `__none__` among the lini is the shared bucket. */
+  branchIds?: string[];
+  businessLineIds?: string[];
   /** `"__none__"` for "no line of business". */
   businessLineId?: string;
   /** `YYYY-MM-DD`, the booking's date in the shop's zone. */
@@ -3776,6 +3799,8 @@ export interface BookingListQuery {
   /** Whose work — anybody on any of the booking's sessions. */
   groomerUserId?: string;
   branchId?: string;
+  /** Several cabang — repeated params, `$in` on the server (12 Oct 2026). */
+  branchIds?: string[];
   /** One status or several — a day sheet usually wants more than one. */
   status?: BookingStatus | BookingStatus[];
   origin?: BookingOrigin;
@@ -3825,12 +3850,35 @@ export interface ServiceBookingCounts {
 }
 
 /**
+ * GET /api/bookings/first-visits — Grooming's "Hewan baru".
+ *
+ * For every animal booked in the scope, its EARLIEST live booking on these
+ * services, across every cabang and every date. Draft and cancelled bookings
+ * are not visits. A ride has no `petId` and is never here.
+ */
+export interface BookingFirstVisits {
+  firsts: { petId: string; bookingId: string; scheduledAt: string }[];
+}
+
+/** Which animals to ask about — the board's own line, cabang and period. */
+export interface BookingFirstVisitsQuery {
+  serviceIds?: string[];
+  /** The line's name, matched against `service.serviceType`. */
+  serviceType?: string;
+  branchIds?: string[];
+  scheduledFrom?: string;
+  scheduledTo?: string;
+}
+
+/**
  * What a booking count may be narrowed to — the catalogue's Cabang and Periode.
  * Calendar dates; the server expands them in the tenant's timezone. All
  * optional: without them the count is all-time, across every branch.
  */
 export interface ServiceBookingCountScope {
   branchId?: string;
+  /** Several cabang (12 Oct 2026). */
+  branchIds?: string[];
   scheduledFrom?: string;
   scheduledTo?: string;
 }
@@ -4424,6 +4472,8 @@ export interface ServiceListQuery {
   serviceKind?: string;
   /** Only services offered at that branch, `allBranches` ones included. */
   branchId?: string;
+  /** Available at ANY of these cabang (12 Oct 2026). */
+  branchIds?: string[];
   isActive?: boolean;
   /**
    * Where the work is done. `in_store` includes a service with no location
@@ -6178,6 +6228,8 @@ export interface PurchaseInvoiceListQuery {
   search?: string;
   supplierId?: string;
   branchId?: string;
+  /** Several cabang — sent as repeated params, `$in` on the server. */
+  branchIds?: string[];
   /**
    * WHERE THE GOODS LANDED. Combines with `branchId` rather than being implied
    * by it — the shared central warehouse serves every branch, so neither can be
@@ -6841,7 +6893,13 @@ export interface CustomerInvoiceDetail extends Omit<
   "paymentCount"
 > {
   /** Trips of this bill's home bookings nobody has billed — the edit offers them (11 October 2026). */
-  owedTrips?: { tripId: string; name: string; amount: string; petNames: string[] }[];
+  owedTrips?: {
+    tripId: string;
+    name: string;
+    amount: string;
+    discount?: TripFeeDiscount | null;
+    petNames: string[];
+  }[];
   /** Who raised it. Null for a till-born invoice, or a user deleted since. */
   createdByName: string | null;
   payments: CustomerInvoicePayment[];
@@ -7320,7 +7378,7 @@ export interface UpdateCustomerInvoiceInput {
   /** Home-grooming trips to ADD, priced from each trip (11 October 2026). */
   homeTripIds?: string[];
   /** A discount on a trip ADDED by this edit; a kept trip row takes its row's. */
-  tripDiscounts?: Array<{ homeTripId: string; discount: TypedDiscountInput }>;
+  tripDiscounts?: Array<{ homeTripId: string; discount: TypedDiscountInput | null }>;
   /** Absent keeps the typed discount; null removes it. */
   invoiceDiscount?: TypedDiscountInput | null;
   /** Absent keeps the stored charges; an array — even empty — replaces them. */
@@ -7391,6 +7449,12 @@ export interface CreateInvoiceItemInput {
    */
   benefit?: { membershipId: string; benefitId: string } | null;
   /**
+   * A PRICE TYPED OVER THE CATALOGUE'S (13 October 2026). Omitted bills the
+   * catalogue's; a different figure is refused (403) without
+   * `customerInvoices:setPrice`.
+   */
+  unitPrice?: string | null;
+  /**
    * WHOSE ANIMAL, on a service line — PCR-035, and the prerequisite for the rest
    * of it. A booking needs a pet, and a grooming typed straight onto an invoice
    * has none, so without this the service is billed and appears on no day sheet.
@@ -7419,7 +7483,16 @@ export interface CreateCustomerInvoiceInput {
    */
   homeTripIds?: string[];
   /** A discount per trip line, as a typed line would carry one (11 October 2026). */
-  tripDiscounts?: Array<{ homeTripId: string; discount: TypedDiscountInput }>;
+  tripDiscounts?: Array<{ homeTripId: string; discount: TypedDiscountInput | null }>;
+  /**
+   * A pulled booking line's OWN discount, when the form changed it (12 October
+   * 2026). The server adds the line's share of "Diskon seluruh booking".
+   */
+  bookingLineDiscounts?: Array<{
+    bookingId: string;
+    serviceId: string;
+    discount: TypedDiscountInput | null;
+  }>;
   customerId: string;
   branchId: string;
   warehouseId?: string;
@@ -7967,6 +8040,8 @@ export interface CashTransactionListQuery {
   direction?: CashTransactionDirection;
   kind?: CashTransactionKind | CashTransactionKind[];
   branchId?: string;
+  /** Several cabang (12 Oct 2026). */
+  branchIds?: string[];
   channelId?: string;
   /** The kas/bank account the money moved through — matches `cashAccountId`. */
   accountId?: string;
@@ -8153,6 +8228,7 @@ export type BookingVisitTrip =
       key: string;
       name: string;
       amount: string;
+      discount?: TripFeeDiscount | null;
       zoneName: string | null;
       petNames: string[];
       tripId: string;
@@ -8171,6 +8247,7 @@ export interface OrphanTrip {
   tripId: string;
   name: string;
   amount: string;
+  discount?: TripFeeDiscount | null;
   zoneName: string | null;
   scheduledAt: string | null;
   petNames: string[];
@@ -8194,6 +8271,17 @@ export interface HomeTripFee {
   /** "road" — driven; "straight" — the crow's line, when the road could not be measured. */
   distanceSource?: "road" | "straight";
   unit: "per_visit" | "per_pet" | null;
+  /** The trip's own discount, set on its page (12 October 2026). */
+  discount?: TripFeeDiscount | null;
+  /** `amount` less the discount. */
+  netAmount?: string;
+}
+
+/** A trip fee's own discount, resolved against the fee. */
+export interface TripFeeDiscount {
+  mode: "percent" | "amount";
+  value: string;
+  resolvedAmount: string;
 }
 
 export interface HomeTripListQuery {

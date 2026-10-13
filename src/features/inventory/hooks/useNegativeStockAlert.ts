@@ -42,10 +42,16 @@ const LIMIT = 5;
 export function useNegativeStockAlert(
   enabled: boolean,
   /** Empty means every warehouse. */
-  warehouseId = "",
+  warehouseIds: string[] = [],
   /** Empty means every cabang; resolved server-side into its gudang. */
-  branchId = "",
+  branchIds: string[] = [],
 ): UseNegativeStockAlertResult {
+  /*
+    SETS SINCE 12 OCTOBER 2026 — the Inventori scope row picks several. Keyed
+    as strings so a new array of the same ids is no reason to re-ask.
+  */
+  const warehouseKey = warehouseIds.join(",");
+  const branchKey = branchIds.join(",");
   const [items, setItems] = useState<NegativeStockRow[]>([]);
   const [total, setTotal] = useState(0);
   const [shortfall, setShortfall] = useState<string | null>(null);
@@ -67,8 +73,8 @@ export function useNegativeStockAlert(
       // than reaching the API as an empty string it would reject as a 400.
       .negativeStock({
         limit: LIMIT,
-        warehouseId: warehouseId || undefined,
-        branchId: branchId || undefined,
+        warehouseIds: warehouseKey ? warehouseKey.split(",") : undefined,
+        branchIds: branchKey ? branchKey.split(",") : undefined,
       })
       .then((result) => {
         if (!active) return;
@@ -94,7 +100,7 @@ export function useNegativeStockAlert(
     return () => {
       active = false;
     };
-  }, [enabled, warehouseId, branchId]);
+  }, [enabled, warehouseKey, branchKey]);
 
   return { items, total, shortfall, loading, error };
 }

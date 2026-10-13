@@ -12,7 +12,7 @@ jest.mock("@/services/booking.service");
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }),
-  usePathname: () => "/dashboard/layanan/grooming",
+  usePathname: () => "/dashboard/layanan/grooming/booking",
 }));
 
 const scope: GroomingScope = {
@@ -146,5 +146,41 @@ describe("GroomingBookingsTable — Rincian", () => {
     expect(detail.getByText("Total").nextSibling).toHaveTextContent(
       formatMoney("140000.0000"),
     );
+  });
+});
+
+/* Tipe and the trip behind a house call (12 October 2026, on request). */
+describe("GroomingBookingsTable — Tipe and Perjalanan", () => {
+  const show = (one: Booking) =>
+    renderWithAuth(
+      <GroomingBookingsTable
+        rows={toGroomingRows([one], scope)}
+        loading={false}
+        onChanged={jest.fn()}
+        emptyMessage="—"
+      />,
+    );
+
+  it("names a home grooming and links to its trip", () => {
+    /* The list presents the trip as `homeTrip`, not the stored `homeTripId`. */
+    show(
+      booking({
+        location: "in_home",
+        homeTrip: { _id: "trip-9" } as NonNullable<Booking["homeTrip"]>,
+      }),
+    );
+
+    expect(screen.getByText("Home grooming")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Buka perjalanan" })).toHaveAttribute(
+      "href",
+      "/dashboard/booking/perjalanan/trip-9",
+    );
+  });
+
+  it("names a grooming at the shop, with no trip to open", () => {
+    show(booking());
+
+    expect(screen.getByText("Di toko")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Buka perjalanan" })).not.toBeInTheDocument();
   });
 });

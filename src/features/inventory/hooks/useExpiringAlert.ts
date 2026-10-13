@@ -42,10 +42,16 @@ const WITHIN_DAYS = 30;
 export function useExpiringAlert(
   enabled: boolean,
   /** Empty means every warehouse. */
-  warehouseId = "",
+  warehouseIds: string[] = [],
   /** Empty means every cabang — the API resolves it to that branch's gudang. */
-  branchId = "",
+  branchIds: string[] = [],
 ): UseExpiringAlertResult {
+  /*
+    SETS SINCE 12 OCTOBER 2026 — the Inventori scope row picks several. Keyed
+    as strings so a new array of the same ids is no reason to re-ask.
+  */
+  const warehouseKey = warehouseIds.join(",");
+  const branchKey = branchIds.join(",");
   const [items, setItems] = useState<ProductBatch[]>([]);
   const [total, setTotal] = useState(0);
   const [withinDays, setWithinDays] = useState(WITHIN_DAYS);
@@ -67,8 +73,8 @@ export function useExpiringAlert(
       .expiring({
         limit: LIMIT,
         withinDays: WITHIN_DAYS,
-        warehouseId: warehouseId || undefined,
-        branchId: branchId || undefined,
+        warehouseIds: warehouseKey ? warehouseKey.split(",") : undefined,
+        branchIds: branchKey ? branchKey.split(",") : undefined,
       })
       .then((result) => {
         if (!active) return;
@@ -93,7 +99,7 @@ export function useExpiringAlert(
     return () => {
       active = false;
     };
-  }, [enabled, warehouseId, branchId]);
+  }, [enabled, warehouseKey, branchKey]);
 
   return { items, total, withinDays, loading, error };
 }

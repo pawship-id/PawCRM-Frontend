@@ -43,6 +43,14 @@ export interface ProfitLossStatement {
 /** The 4191 contra account that turns "penjualan kotor" into "bersih". */
 export const DISCOUNT_ACCOUNT = "4191";
 
+/**
+ * The consignment pair — 4150 Penjualan Konsinyasi against 5102 HPP Konsinyasi —
+ * drawn as detail under Penjualan kotor and HPP, so the margin on titipan goods
+ * reads on its own. Both are already inside the totals they sit under.
+ */
+export const CONSIGNMENT_SALES_ACCOUNT = "4150";
+export const CONSIGNMENT_COGS_ACCOUNT = "5102";
+
 /** ≥ this and the change gets a label; ≥ BIG it also tints the cell. */
 export const CHANGE_THRESHOLD = 10;
 export const CHANGE_BIG = 25;
@@ -78,6 +86,12 @@ export function profitLossStatement(
     matrices.map(fn);
 
   const discount = perMonth(accountIn("pendapatan", DISCOUNT_ACCOUNT));
+  const consignmentSales = perMonth(accountIn("pendapatan", CONSIGNMENT_SALES_ACCOUNT));
+  const consignmentCogs = perMonth(accountIn("hpp", CONSIGNMENT_COGS_ACCOUNT));
+  // Only drawn for a shop that has sold titipan goods in one of the months.
+  const hasConsignment = [...consignmentSales, ...consignmentCogs].some((cells) =>
+    cells.some((c) => (toMinor(c) ?? 0n) !== 0n),
+  );
   const net = perMonth((m) => flat(group("pendapatan")(m)));
   const gross = net.map((cells, mi) => cells.map((c, ci) => sub(c, discount[mi][ci])));
 
@@ -99,9 +113,15 @@ export function profitLossStatement(
 
   const rows: StatementRow[] = [
     { key: "gross", label: "Penjualan kotor", kind: "n", riseIsBad: false, inLini: false, v: gross },
+    ...(hasConsignment
+      ? [{ key: "consignment-sales", label: "Termasuk penjualan konsinyasi", kind: "i", riseIsBad: false, inLini: false, v: consignmentSales } satisfies StatementRow]
+      : []),
     { key: "discount", label: "Diskon dan potongan", kind: "i", riseIsBad: true, invert: true, inLini: false, v: discount },
     { key: "net", label: "Penjualan bersih", kind: "b", riseIsBad: false, inLini: true, v: net },
     { key: "hpp", label: "HPP", kind: "n", riseIsBad: true, inLini: true, v: perMonth((m) => flat(group("hpp")(m))) },
+    ...(hasConsignment
+      ? [{ key: "consignment-cogs", label: "Termasuk HPP konsinyasi", kind: "i", riseIsBad: true, inLini: false, v: consignmentCogs } satisfies StatementRow]
+      : []),
     { key: "gp", label: "Laba kotor", kind: "b", riseIsBad: false, inLini: true, v: grossProfit },
     ...expenseCodes.map<StatementRow>((code) => ({
       key: `biaya-${code}`,

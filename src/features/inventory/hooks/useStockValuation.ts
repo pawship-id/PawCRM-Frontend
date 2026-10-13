@@ -39,12 +39,17 @@ interface UseStockValuationResult {
  *
  * NO BREAKDOWN WHILE ONE WAREHOUSE IS CHOSEN: the headline already IS that
  * warehouse's, and a one-bar chart under it says nothing twice.
+ *
+ * SETS SINCE 12 OCTOBER 2026. `warehouses` is the breakdown's own list, which
+ * the caller narrows to the scope (the gudang picked, or those under the cabang
+ * picked); the headline is asked with the sets themselves.
  */
 export function useStockValuation(
   enabled: boolean,
-  warehouseId: string,
-  /** Empty means every cabang. Narrows both the headline and the breakdown. */
-  branchId: string,
+  /** Empty means every gudang. */
+  warehouseIds: string[],
+  /** Empty means every cabang. */
+  branchIds: string[],
   warehouses: Array<{ _id: string; name: string }>,
 ): UseStockValuationResult {
   const [totals, setTotals] = useState<StockOnHandTotals | null>(null);
@@ -54,7 +59,9 @@ export function useStockValuation(
 
   // The ids, as one string: the effect must re-run when the LIST changes, not
   // whenever the array identity does.
-  const warehouseKey = warehouses.map((row) => row._id).join(",");
+  const breakdownKey = warehouses.map((row) => row._id).join(",");
+  const warehouseKey = warehouseIds.join(",");
+  const branchKey = branchIds.join(",");
 
   useEffect(() => {
     if (!enabled) return;
@@ -64,7 +71,8 @@ export function useStockValuation(
     setLoading(true);
     setError(null);
 
-    const breakdown = warehouseId ? [] : warehouses;
+    const picked = warehouseKey ? warehouseKey.split(",") : [];
+    const breakdown = picked.length === 1 ? [] : warehouses;
 
     /*
       SETTLED INDEPENDENTLY, AND THIS IS THE WHOLE POINT OF THE FAN-OUT BEING
@@ -80,8 +88,8 @@ export function useStockValuation(
     */
     Promise.allSettled([
       reportService.stockOnHand({
-        warehouseId: warehouseId || undefined,
-        branchId: branchId || undefined,
+        warehouseIds: picked,
+        branchIds: branchKey ? branchKey.split(",") : undefined,
         limit: 1,
       }),
       ...breakdown.map((warehouse) =>
@@ -139,7 +147,7 @@ export function useStockValuation(
       active = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, warehouseId, branchId, warehouseKey]);
+  }, [enabled, warehouseKey, branchKey, breakdownKey]);
 
   return { totals, perWarehouse, loading, error };
 }

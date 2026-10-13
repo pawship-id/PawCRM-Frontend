@@ -11,7 +11,13 @@ import {
   RotateCcw,
 } from "lucide-react";
 
-import { Alert, Card, ListFooter, Spinner } from "@/components";
+import {
+  Alert,
+  Card,
+  FinanceScopeCard,
+  ListFooter,
+  Spinner,
+} from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -27,14 +33,13 @@ import type { JournalEntry, JournalEntrySort } from "@/types/accounting";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
 
 import { ACCOUNTING_CRUMBS } from "../crumbs";
-import { reportPresets, type FinanceQuery } from "../financeSummary";
+import { reportPresets } from "../financeSummary";
 import {
   JOURNAL_PAGE_SIZES,
   useJournalEntries,
 } from "../hooks/useJournalEntries";
 import { formatDate, sourceLabel, SOURCE_TONE } from "../labels";
 import { AccountingModuleHeader } from "./AccountingModuleHeader";
-import { FinanceReportToolbar } from "./FinanceReportToolbar";
 import { JournalEntriesToolbar } from "./JournalEntriesToolbar";
 
 /** Tanggal, No. jurnal, Keterangan, Sumber, Cabang, Nilai, Status. */
@@ -109,16 +114,13 @@ export function JournalEntriesScreen({ now }: { now: string }) {
     query.sourceType !== "" ||
     query.dateFrom !== "" ||
     query.dateTo !== "" ||
-    query.branchId !== "";
+    query.branchIds.length > 0;
 
-  // The bar speaks `FinanceQuery`; this page's state carries three of its
-  // fields. Translated here so the bar stays one component across Keuangan.
-  const contextQuery: FinanceQuery = {
-    dateFrom: query.dateFrom,
-    dateTo: query.dateTo,
-    branchId: query.branchId,
-    businessLineId: "",
-  };
+  /* "Reset filter (n)" on the scope row — its own two fields; the panel's
+     Sumber and the search box keep their own resets. */
+  const scopeCount =
+    (query.branchIds.length > 0 ? 1 : 0) +
+    (query.dateFrom || query.dateTo ? 1 : 0);
 
   const sortHead = (
     column: keyof typeof SORTABLE,
@@ -155,17 +157,32 @@ export function JournalEntriesScreen({ now }: { now: string }) {
         }
       />
 
-      <FinanceReportToolbar
-        query={contextQuery}
+      {/* The Keuangan scope row (12 October 2026) — no Lini bisnis here: an
+          entry is not in a line, its lines are. */}
+      <FinanceScopeCard
         branches={branches}
+        branchIds={query.branchIds}
+        onBranchIdsChange={(branchIds) => setQuery({ branchIds })}
         presets={presets}
-        disabled={loading}
-        onChange={(patch: Partial<FinanceQuery>) =>
-          setQuery({
-            ...(patch.dateFrom !== undefined && { dateFrom: patch.dateFrom }),
-            ...(patch.dateTo !== undefined && { dateTo: patch.dateTo }),
-            ...(patch.branchId !== undefined && { branchId: patch.branchId }),
-          })
+        dateFrom={query.dateFrom}
+        dateTo={query.dateTo}
+        onDateRangeChange={({ from, to }) =>
+          setQuery({ dateFrom: from, dateTo: to })
+        }
+        dateLabel="Tanggal jurnal"
+        trailing={
+          scopeCount > 0 ? (
+            <Button
+              type="button"
+              variant="link"
+              className="min-h-11 px-0"
+              onClick={() =>
+                setQuery({ branchIds: [], dateFrom: "", dateTo: "" })
+              }
+            >
+              Reset filter ({scopeCount})
+            </Button>
+          ) : undefined
         }
       />
 

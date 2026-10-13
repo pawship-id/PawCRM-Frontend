@@ -3,6 +3,7 @@ import { SETTINGS_PATHS, serviceFormPath } from "@/features/settings/paths";
 import type { ServiceKind } from "@/types/api";
 
 import {
+  GROOMING_BOOKINGS_PATH,
   GROOMING_CATALOG_PATH,
   GROOMING_NEW_BOOKING_PATH,
   GROOMING_PATH,
@@ -39,6 +40,13 @@ export interface ServiceLine {
    */
   fallbackName: string;
   paths: {
+    /**
+     * The Ringkasan tab — Grooming only for now. The mockup builds the
+     * per-line summary for Grooming first; Antar-Jemput has none yet, so its
+     * header draws no such tab.
+     */
+    summary?: string;
+    /** The booking board — the Booking tab. Grooming's sits at `/booking`. */
     root: string;
     catalog: string;
     settings: string;
@@ -52,7 +60,8 @@ export const GROOMING_LINE: ServiceLine = {
   noun: "grooming",
   fallbackName: "Grooming",
   paths: {
-    root: GROOMING_PATH,
+    summary: GROOMING_PATH,
+    root: GROOMING_BOOKINGS_PATH,
     catalog: GROOMING_CATALOG_PATH,
     settings: GROOMING_SETTINGS_PATH,
     newBooking: GROOMING_NEW_BOOKING_PATH,

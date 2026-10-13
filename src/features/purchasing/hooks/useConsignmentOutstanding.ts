@@ -30,9 +30,11 @@ export interface UseConsignmentOutstandingResult {
 export function useConsignmentOutstanding(
   /** Skip the request when the role cannot read payables. */
   enabled: boolean,
-  /** "" = every cabang. */
-  branchId: string,
+  /** Empty = every cabang. Several since 12 October 2026. */
+  branchIds: string[],
 ): UseConsignmentOutstandingResult {
+  // Keyed as a string: a new array of the same ids is no reason to re-ask.
+  const branchKey = branchIds.join(",");
   const [data, setData] = useState<ConsignmentOutstanding | null>(null);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(enabled);
@@ -48,7 +50,7 @@ export function useConsignmentOutstanding(
     setLoading(true);
 
     consignmentSettlementService
-      .outstanding({ branchId })
+      .outstanding({ branchIds: branchKey ? branchKey.split(",") : undefined })
       .then((result) => {
         if (!active) return;
         setData(result ?? null);
@@ -65,7 +67,7 @@ export function useConsignmentOutstanding(
     return () => {
       active = false;
     };
-  }, [enabled, branchId, reloads]);
+  }, [enabled, branchKey, reloads]);
 
   return { data, failed, loading, refetch };
 }

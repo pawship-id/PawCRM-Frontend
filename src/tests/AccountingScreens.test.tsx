@@ -1299,7 +1299,10 @@ describe("JournalEntriesScreen", () => {
       ),
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /^Cabang/ }));
+    // The column header, not the scope row's Cabang dropdown above the table.
+    await userEvent.click(
+      within(screen.getByRole("table")).getByRole("button", { name: /^Cabang/ }),
+    );
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith(
         expect.objectContaining({ sort: "branchAsc" }),
@@ -1320,23 +1323,39 @@ describe("JournalEntriesScreen", () => {
     ).not.toBeInTheDocument();
     // Its neighbours are buttons — the header row is sortable, just not here.
     expect(
-      screen.getByRole("button", { name: /^Cabang/ }),
+      within(screen.getByRole("table")).getByRole("button", { name: /^Cabang/ }),
     ).toBeInTheDocument();
   });
 
-  /** Cabang lives on the module's context bar now, not in the panel. */
-  it("narrows to a branch from the context bar", async () => {
+  /**
+   * Cabang lives on the module's scope row — `FinanceScopeCard` since 12
+   * October 2026, several at once, applied on Terapkan — and Reset filter
+   * takes it back off.
+   */
+  it("narrows to a branch from the scope row, and resets it", async () => {
     const list = await renderLedger([entry({ _id: "1" })]);
     await screen.findByText("Penjualan POS");
 
-    await userEvent.click(screen.getByLabelText("Filter cabang"));
+    const scope = screen.getByRole("region", { name: "Lingkup data" });
+    await userEvent.click(within(scope).getByRole("button", { name: "Cabang" }));
+    const popover = await screen.findByRole("dialog");
     await userEvent.click(
-      screen.getByRole("option", { name: "Cabang Kemang" }),
+      within(popover).getByRole("option", { name: /Cabang Kemang/ }),
     );
+    await userEvent.click(within(popover).getByRole("button", { name: "Terapkan" }));
 
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ branchId: "b1", page: 1 }),
+        expect.objectContaining({ branchIds: ["b1"], page: 1 }),
+      ),
+    );
+
+    await userEvent.click(
+      within(scope).getByRole("button", { name: "Reset filter (1)" }),
+    );
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ branchIds: undefined }),
       ),
     );
   });

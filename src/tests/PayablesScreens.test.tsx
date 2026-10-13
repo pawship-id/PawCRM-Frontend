@@ -1328,7 +1328,7 @@ describe("PurchasingHub — the Ringkasan tab", () => {
 
     await waitFor(() =>
       expect(goodsReceiptService.pendingCount).toHaveBeenCalledWith({
-        branchId: "",
+        branchIds: undefined,
       }),
     );
   });
@@ -1345,23 +1345,51 @@ describe("PurchasingHub — the Ringkasan tab", () => {
       timezone would bound it a few hours off.
     */
     expect(asMock(purchaseInvoiceService.summary).mock.calls[0][0]).toEqual({
-      branchId: "",
+      branchIds: undefined,
       period: "month",
     });
 
+    // Several cabang may be ticked (12 October 2026), so a pick waits for
+    // Terapkan.
     await user.click(screen.getByRole("button", { name: "Cabang" }));
-    await user.click(await screen.findByRole("option", { name: "Cabang Pusat" }));
+    const popover = await screen.findByRole("dialog");
+    await user.click(within(popover).getByRole("option", { name: /Cabang Pusat/ }));
+    await user.click(within(popover).getByRole("button", { name: "Terapkan" }));
 
     // The cabang says whose books — so it narrows the cards AND the two
     // worklists, which would otherwise list another branch's bills under it.
     await waitFor(() =>
       expect(purchaseInvoiceService.summary).toHaveBeenLastCalledWith(
-        expect.objectContaining({ branchId: BRANCH_ID }),
+        expect.objectContaining({ branchIds: [BRANCH_ID] }),
       ),
     );
     expect(purchaseInvoiceService.list).toHaveBeenCalledWith(
-      expect.objectContaining({ branchId: BRANCH_ID, overdue: true, limit: 5 }),
+      expect.objectContaining({
+        branchIds: [BRANCH_ID],
+        overdue: true,
+        limit: 5,
+      }),
     );
+    expect(goodsReceiptService.pendingCount).toHaveBeenLastCalledWith({
+      branchIds: [BRANCH_ID],
+    });
+    expect(consignmentSettlementService.outstanding).toHaveBeenLastCalledWith({
+      branchIds: [BRANCH_ID],
+    });
+
+    // "Reset filter" — the Penjualan tabs' button — counts the cabang and puts
+    // it back, with the period on its default, Bulan ini.
+    await user.click(screen.getByRole("button", { name: "Minggu ini" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Reset filter (2)" }),
+    );
+    await waitFor(() =>
+      expect(purchaseInvoiceService.summary).toHaveBeenLastCalledWith({
+        branchIds: undefined,
+        period: "month",
+      }),
+    );
+    expect(screen.queryByRole("button", { name: /Reset filter/ })).toBeNull();
   });
 
   /*
@@ -1377,7 +1405,7 @@ describe("PurchasingHub — the Ringkasan tab", () => {
     await user.click(screen.getByRole("button", { name: "Minggu ini" }));
     await waitFor(() =>
       expect(purchaseInvoiceService.summary).toHaveBeenLastCalledWith({
-        branchId: "",
+        branchIds: undefined,
         period: "week",
       }),
     );
@@ -1387,7 +1415,7 @@ describe("PurchasingHub — the Ringkasan tab", () => {
     // has no such value, and sending one would 400.
     await waitFor(() =>
       expect(purchaseInvoiceService.summary).toHaveBeenLastCalledWith({
-        branchId: "",
+        branchIds: undefined,
       }),
     );
   });
@@ -1423,7 +1451,7 @@ describe("PurchasingHub — the Ringkasan tab", () => {
 
     await waitFor(() =>
       expect(purchaseInvoiceService.summary).toHaveBeenLastCalledWith({
-        branchId: "",
+        branchIds: undefined,
         dateFrom: "2026-09-01",
         dateTo: "2026-09-30",
       }),
@@ -1455,7 +1483,7 @@ describe("PurchasingHub — the Ringkasan tab", () => {
     // ends unbounded, which the server reads as every date.
     await waitFor(() =>
       expect(purchaseInvoiceService.summary).toHaveBeenLastCalledWith({
-        branchId: "",
+        branchIds: undefined,
         dateFrom: "",
         dateTo: "",
       }),
@@ -1694,7 +1722,7 @@ describe("PurchasingHub — Utang konsinyasi", () => {
     expect(screen.getByText("Rp 300.000")).toBeInTheDocument();
     expect(screen.getByText("UD Lunas")).toBeInTheDocument();
     expect(consignmentSettlementService.outstanding).toHaveBeenCalledWith({
-      branchId: "",
+      branchIds: undefined,
     });
   });
 

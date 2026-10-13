@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
 import {
   Alert,
   Breadcrumb,
-  FilterMultiSelect,
   FilterPills,
+  FinanceScopeCard,
+  ScopeField,
   Spinner,
-  namedOptions,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
@@ -62,8 +62,18 @@ import {
  */
 
 const MONTHS = [
-  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
 ];
 
 type View = "gabungan" | "lini";
@@ -93,7 +103,8 @@ export function ProfitLossScreen({ now }: { now: string }) {
     useProfitLossMonths(months, branchIds);
 
   const statement = useMemo(
-    () => (results ? profitLossStatement(results, businessLines, lineIds) : null),
+    () =>
+      results ? profitLossStatement(results, businessLines, lineIds) : null,
     [results, businessLines, lineIds],
   );
 
@@ -105,13 +116,8 @@ export function ProfitLossScreen({ now }: { now: string }) {
     : [];
   const allOpen = rows.length > 0 && rows.every((r) => open.has(r.key));
 
-  const branchOptions = namedOptions(branches);
-  const lineOptions = [
-    ...namedOptions(businessLines),
-    { value: SHARED_LINE_NONE, label: SHARED_LINE_LABEL },
-  ];
-  const summarize = (all: string) => (values: string[]) =>
-    values.length === 0 ? all : `${values.length} dipilih`;
+  const scopeCount =
+    (branchIds.length > 0 ? 1 : 0) + (lineIds.length > 0 ? 1 : 0);
 
   async function exportXlsx() {
     if (!statement) return;
@@ -121,7 +127,11 @@ export function ProfitLossScreen({ now }: { now: string }) {
       lines.push({ label: row.label, pct: row.pct, v: row.v.map((m) => m[0]) });
       if (view === "lini") {
         statement.columns.forEach((col, i) =>
-          lines.push({ label: `   ${col.label}`, pct: row.pct, v: row.v.map((m) => m[i + 1]) }),
+          lines.push({
+            label: `   ${col.label}`,
+            pct: row.pct,
+            v: row.v.map((m) => m[i + 1]),
+          }),
         );
       }
     }
@@ -139,9 +149,14 @@ export function ProfitLossScreen({ now }: { now: string }) {
         width: 18,
       })),
     ];
-    await exportToXlsx(columns, lines, `laba-rugi-${current.dateFrom.slice(0, 7)}.xlsx`, {
-      sheetName: "Laba rugi",
-    });
+    await exportToXlsx(
+      columns,
+      lines,
+      `laba-rugi-${current.dateFrom.slice(0, 7)}.xlsx`,
+      {
+        sheetName: "Laba rugi",
+      },
+    );
   }
 
   function toggle(key: string) {
@@ -196,40 +211,21 @@ export function ProfitLossScreen({ now }: { now: string }) {
         </Alert>
       )}
 
-      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface px-5 py-4 shadow-sm">
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          {branches.length > 1 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-muted">Cabang</span>
-              <FilterMultiSelect
-                label="Cabang"
-                layout="bar"
-                ariaLabel="Filter cabang"
-                values={branchIds}
-                options={branchOptions}
-                disabled={loading}
-                formatValue={summarize("Semua cabang")}
-                onApply={setBranchIds}
-                onReset={() => setBranchIds([])}
-              />
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-muted">Lini bisnis</span>
-            <FilterMultiSelect
-              label="Lini bisnis"
-              layout="bar"
-              ariaLabel="Filter lini bisnis"
-              values={lineIds}
-              options={lineOptions}
-              disabled={loading}
-              formatValue={summarize("Semua lini")}
-              onApply={setLineIds}
-              onReset={() => setLineIds([])}
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-muted">Bulan</span>
+      {/*
+        THE KEUANGAN SCOPE ROW (12 October 2026, on request) — `FinanceScopeCard`,
+        the Cabang and Lini bisnis dropdowns Ringkasan wears. No Periode chips:
+        a laba rugi is read month by month, so its stepper rides in the row.
+      */}
+      <FinanceScopeCard
+        branches={branches}
+        branchIds={branchIds}
+        onBranchIdsChange={setBranchIds}
+        businessLines={businessLines}
+        businessLineIds={lineIds}
+        onBusinessLineIdsChange={setLineIds}
+        sharedLine={{ value: SHARED_LINE_NONE, label: SHARED_LINE_LABEL }}
+        extraFields={
+          <ScopeField icon={<CalendarDays className="size-4" />} label="Bulan">
             <Button
               variant="outline"
               size="sm"
@@ -250,37 +246,55 @@ export function ProfitLossScreen({ now }: { now: string }) {
             >
               <ChevronRight className="size-4" />
             </Button>
-          </div>
-          <span className="ml-auto text-xs text-muted">
-            Pilih satu lini untuk melihat laba rugi lengkap lini itu
-          </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-t border-border pt-3">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-muted">Tampilan</span>
-            <FilterPills<View>
-              ariaLabel="Tampilan laba rugi"
-              value={view}
-              options={[
-                { value: "gabungan", label: "Gabungan" },
-                { value: "lini", label: "Per lini bisnis" },
-              ]}
-              onChange={setView}
-            />
-          </div>
-          {view === "lini" && (
+          </ScopeField>
+        }
+        trailing={
+          /* "Reset filter (n)", as on every other scope row — the two
+             dropdowns; the month is where somebody is reading, not a filter. */
+          scopeCount > 0 ? (
             <Button
-              variant="ghost"
-              size="sm"
-              className="ml-auto"
-              onClick={() =>
-                setOpen(allOpen ? new Set() : new Set(rows.map((r) => r.key)))
-              }
+              type="button"
+              variant="link"
+              className="min-h-11 px-0"
+              onClick={() => {
+                setBranchIds([]);
+                setLineIds([]);
+              }}
             >
-              {allOpen ? "Tutup semua" : "Buka semua"}
+              Reset filter ({scopeCount})
             </Button>
-          )}
+          ) : undefined
+        }
+      />
+
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-muted">Tampilan</span>
+          <FilterPills<View>
+            ariaLabel="Tampilan laba rugi"
+            value={view}
+            options={[
+              { value: "gabungan", label: "Gabungan" },
+              { value: "lini", label: "Per lini bisnis" },
+            ]}
+            onChange={setView}
+          />
         </div>
+        <span className="text-xs text-muted">
+          Pilih satu lini untuk melihat laba rugi lengkap lini itu
+        </span>
+        {view === "lini" && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto"
+            onClick={() =>
+              setOpen(allOpen ? new Set() : new Set(rows.map((r) => r.key)))
+            }
+          >
+            {allOpen ? "Tutup semua" : "Buka semua"}
+          </Button>
+        )}
       </div>
 
       {statement === null ? (
@@ -309,7 +323,10 @@ export function ProfitLossScreen({ now }: { now: string }) {
                     label={row.label}
                     expander={
                       view === "lini"
-                        ? { open: open.has(row.key), onToggle: () => toggle(row.key) }
+                        ? {
+                            open: open.has(row.key),
+                            onToggle: () => toggle(row.key),
+                          }
                         : undefined
                     }
                   />
@@ -334,12 +351,12 @@ export function ProfitLossScreen({ now }: { now: string }) {
       <div className="rounded-xl border border-border border-l-[3px] border-l-primary bg-surface px-4 py-3">
         <p className="text-sm font-bold text-foreground">Cara membaca</p>
         <p className="mt-0.5 text-xs text-muted">
-          Angka yang berubah {CHANGE_THRESHOLD}% atau lebih dari bulan sebelumnya
-          diberi label di bawahnya: hijau kalau menguntungkan (pendapatan atau
-          laba naik, biaya turun), merah kalau merugikan. Perubahan{" "}
-          {CHANGE_BIG}% atau lebih juga diberi warna tipis pada selnya. Laba
-          bersih di sini sama dengan laba bersih di Beranda dan menjadi laba
-          tahun berjalan di Neraca.{" "}
+          Angka yang berubah {CHANGE_THRESHOLD}% atau lebih dari bulan
+          sebelumnya diberi label di bawahnya: hijau kalau menguntungkan
+          (pendapatan atau laba naik, biaya turun), merah kalau merugikan.
+          Perubahan {CHANGE_BIG}% atau lebih juga diberi warna tipis pada
+          selnya. Laba bersih di sini sama dengan laba bersih di Beranda dan
+          menjadi laba tahun berjalan di Neraca.{" "}
           {view === "lini"
             ? "Kategori bertanda Bersama (sewa, utilitas, gaji admin) dibagi ke tiap lini memakai dasar yang diatur di Pengaturan > Keuangan > Lini bisnis. Kategori lain dibebankan langsung ke lini."
             : "Di versi engineering, tiap angka bisa diklik ke saldo per akun, lalu mutasi jurnal, lalu dokumen sumber."}
@@ -388,7 +405,10 @@ function StatementLine({
             className="inline-flex items-center gap-2 rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             <ChevronRight
-              className={cn("size-4 text-muted transition", expander.open && "rotate-90")}
+              className={cn(
+                "size-4 text-muted transition",
+                expander.open && "rotate-90",
+              )}
               aria-hidden
             />
             {label}
@@ -400,8 +420,10 @@ function StatementLine({
       {row.v.map((perMonth, m) => {
         const value = perMonth[column];
         const previous = m > 0 ? row.v[m - 1][column] : undefined;
-        const change = !row.pct && m > 0 ? changeOf(row, value, previous) : null;
-        const shown = change !== null && Math.abs(change.pct) >= CHANGE_THRESHOLD;
+        const change =
+          !row.pct && m > 0 ? changeOf(row, value, previous) : null;
+        const shown =
+          change !== null && Math.abs(change.pct) >= CHANGE_THRESHOLD;
         const big = shown && Math.abs(change.pct) >= CHANGE_BIG;
 
         return (
@@ -419,10 +441,13 @@ function StatementLine({
                 <span
                   className={cn(
                     "inline-flex h-5 items-center rounded-full px-2 text-xs font-bold",
-                    change.bad ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700",
+                    change.bad
+                      ? "bg-red-100 text-red-700"
+                      : "bg-green-100 text-green-700",
                   )}
                 >
-                  {change.pct > 0 ? "▲" : "▼"} {Math.abs(Math.round(change.pct))}%
+                  {change.pct > 0 ? "▲" : "▼"}{" "}
+                  {Math.abs(Math.round(change.pct))}%
                 </span>
               </div>
             )}

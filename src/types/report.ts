@@ -66,6 +66,9 @@ export interface StockOnHandQuery {
   warehouseId?: string;
   /** Matches warehouses whose DEFAULT branch this is — see `branchId` above. */
   branchId?: string;
+  /** Sets of either — sent as repeated params. */
+  warehouseIds?: string[];
+  branchIds?: string[];
   categoryId?: string;
   /** Keep rows whose quantity is zero. Excluded by default. */
   includeZero?: boolean;

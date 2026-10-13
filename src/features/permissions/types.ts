@@ -124,8 +124,12 @@ export const PERMISSION_CATALOG = {
    * No `delete`: a receivable is voided, never removed — and the same holds for
    * a payment, which is marked cancelled rather than dropped so the ledger entry
    * it posted still has a document behind it.
+   *
+   * `setPrice` (13 October 2026) is typing a price over the catalogue's on a
+   * line of Faktur baru — the till's `posTransactions:setPrice`, for the back
+   * office. Without it a typed price is a discount nobody approved.
    */
-  customerInvoices: ["create", "read", "update", "pay", "void"],
+  customerInvoices: ["create", "read", "update", "pay", "void", "setPrice"],
   /**
    * Transaksi Keuangan — every numbered movement of money. `create` records an
    * expense or other income; `update` and `void` correct and cancel any payment,

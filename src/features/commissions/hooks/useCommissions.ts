@@ -23,8 +23,8 @@ export const COMMISSION_PAGE_SIZES = [10, 25, 50, 100];
 export type CommissionsQuery = Required<
   Pick<
     CommissionRowsQuery,
-    | "branchId"
-    | "businessLineId"
+    | "branchIds"
+    | "businessLineIds"
     | "dateFrom"
     | "dateTo"
     | "status"
@@ -41,8 +41,9 @@ export type CommissionsQuery = Required<
  * open on an empty September that reads as "nothing here".
  */
 export const DEFAULT_COMMISSIONS_QUERY: CommissionsQuery = {
-  branchId: "",
-  businessLineId: "",
+  // Sets since 12 October 2026; `__none__` among the lini is the shared bucket.
+  branchIds: [],
+  businessLineIds: [],
   dateFrom: "",
   dateTo: "",
   status: "",
@@ -107,8 +108,10 @@ export function useCommissions(): UseCommissionsResult {
       businessLineService.list({ limit: 100 }),
     ]).then(([branchResult, lineResult]) => {
       if (!active) return;
-      if (branchResult.status === "fulfilled") setBranches(branchResult.value.items);
-      if (lineResult.status === "fulfilled") setBusinessLines(lineResult.value.items);
+      if (branchResult.status === "fulfilled")
+        setBranches(branchResult.value.items);
+      if (lineResult.status === "fulfilled")
+        setBusinessLines(lineResult.value.items);
     });
 
     return () => {

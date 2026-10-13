@@ -1,5 +1,13 @@
-import { isPositive, subtractDecimals, sumDecimals } from "@/utils/decimal";
+import {
+  divideRound,
+  isPositive,
+  subtractDecimals,
+  sumDecimals,
+  toDecimalString,
+  toMinor,
+} from "@/utils/decimal";
 import type {
+  InvoiceDiscountMode,
   Booking,
   BookingAddon,
   BookingMainService,
@@ -20,6 +28,48 @@ import type {
 type PriceLine = Pick<BookingMainService | BookingAddon, "price" | "discount" | "discountAmount">;
 
 const ZERO = "0.0000";
+
+const HUNDRED_MINOR = BigInt(100) * BigInt(10_000);
+
+/**
+ * What a line's own discount takes off `basisMinor` — the server's rule
+ * (`utils/discount.js`): a percent half-up and never past 100, a rupiah amount
+ * never past what it is taken from. Invalid or empty takes nothing.
+ */
+export function ownDiscountMinor(
+  basisMinor: bigint,
+  mode: InvoiceDiscountMode,
+  value: string,
+): bigint {
+  const typed = value === "" ? null : toMinor(value.replace(",", "."));
+  if (typed === null || typed <= BigInt(0) || basisMinor <= BigInt(0)) return BigInt(0);
+
+  const off =
+    mode === "percent"
+      ? divideRound(basisMinor * (typed > HUNDRED_MINOR ? HUNDRED_MINOR : typed), HUNDRED_MINOR)
+      : typed;
+
+  return off > basisMinor ? basisMinor : off;
+}
+
+/**
+ * WHAT THE SERVER STORES ON A PULLED BOOKING LINE whose own discount was typed:
+ * the typed discount on the price less the booking's share, plus that share,
+ * as one nominal figure (`#pulledLineDiscount`, and the edit's same rule).
+ */
+export function pulledLineDiscount(
+  price: string,
+  share: string,
+  mode: InvoiceDiscountMode,
+  value: string,
+): { mode: "amount"; value: string } | null {
+  const priceMinor = toMinor(price) ?? BigInt(0);
+  const shareMinor = toMinor(share) ?? BigInt(0);
+  const capped = shareMinor > priceMinor ? priceMinor : shareMinor;
+  const whole = ownDiscountMinor(priceMinor - capped, mode, value) + capped;
+
+  return whole > BigInt(0) ? { mode: "amount", value: toDecimalString(whole) } : null;
+}
 
 /** The line's own discount, or null. */
 export function ownDiscountOfLine(line: PriceLine): string | null {

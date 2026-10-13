@@ -49,6 +49,17 @@ export interface InvoiceLookups {
  */
 const MAX_LIMIT = 100;
 
+/** Every active service — page one, then the rest side by side. */
+async function listAllServices(): Promise<Service[]> {
+  const first = await serviceService.list({ limit: MAX_LIMIT, isActive: true });
+  const rest = await Promise.all(
+    Array.from({ length: Math.max(0, first.pagination.totalPages - 1) }, (_, at) =>
+      serviceService.list({ page: at + 2, limit: MAX_LIMIT, isActive: true }),
+    ),
+  );
+  return [first, ...rest].flatMap((page) => page.items);
+}
+
 export function useInvoiceLookups(): InvoiceLookups {
   const { user } = useAuth();
   const [state, setState] = useState<Omit<InvoiceLookups, "loading" | "error">>({
@@ -82,7 +93,14 @@ export function useInvoiceLookups(): InvoiceLookups {
               in one flat dropdown is a list nobody can read.
             */
             productService.list({ limit: MAX_LIMIT, isActive: true }),
-            serviceService.list({ limit: MAX_LIMIT, isActive: true }),
+            /*
+              EVERY ACTIVE SERVICE, PAGE BY PAGE — not the first 100. The form
+              resolves services by id all over (a row's price, a service's
+              add-ons, a pulled booking), and the Jasa tab searches this list,
+              so one past the first page could neither be found nor priced
+              (12 October 2026). A shop's menu runs to dozens, rarely hundreds.
+            */
+            listAllServices(),
             tenantService.me(),
           ]);
 
@@ -95,7 +113,7 @@ export function useInvoiceLookups(): InvoiceLookups {
           branches: accessibleBranches(user, branches.items),
           warehouses: accessibleWarehouses(user, warehouses.items),
           products: products.items,
-          services: services.items,
+          services,
           tax: {
             // `!== false`, matching the server: a tenant that has never set it
             // prices inclusive of tax, which is the Indonesian shelf norm.

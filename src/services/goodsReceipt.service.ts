@@ -100,10 +100,13 @@ export const goodsReceiptService = {
   receive: (id: string, input: ReceiveGoodsReceiptInput = {}) =>
     apiClient.post<GoodsReceiptDetail>(`/goods-receipts/${id}/receive`, input),
 
-  /** Deliveries still `pending`, optionally for one cabang. */
-  pendingCount: (query: { branchId?: string } = {}) =>
+  /** Deliveries still `pending`, optionally for one cabang or several. */
+  pendingCount: (query: { branchId?: string; branchIds?: string[] } = {}) =>
     apiClient.get<{ count: number }>("/goods-receipts/pending-count", {
-      query: { branchId: query.branchId || undefined },
+      query: {
+        branchId: query.branchId || undefined,
+        branchIds: query.branchIds,
+      },
     }),
 
   preview: (input: CreateGoodsReceiptInput) =>

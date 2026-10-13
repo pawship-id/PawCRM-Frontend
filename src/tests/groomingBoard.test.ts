@@ -9,6 +9,7 @@ import {
   periodRange,
   sortRows,
   summariseDay,
+  summariseNewAnimals,
   summarisePeriod,
   toGroomingRows,
   type GroomingScope,
@@ -193,8 +194,33 @@ describe("billingOf", () => {
   });
 });
 
+describe("summariseNewAnimals", () => {
+  it("counts each animal once, new when its first-ever booking is a row", () => {
+    const rows = toGroomingRows(
+      [
+        /* Bella's first grooming, and her second in the same month. */
+        booking({ _id: "bk-1", petId: "pet-1" }),
+        booking({ _id: "bk-2", petId: "pet-1" }),
+        /* Milo came before this period. */
+        booking({ _id: "bk-3", petId: "pet-2" }),
+        /* A cancelled first booking is no visit. */
+        booking({ _id: "bk-4", petId: "pet-3", status: "cancelled" }),
+        /* A ride carries no animal of its own. */
+        booking({ _id: "bk-5", petId: null }),
+      ],
+      scope,
+    );
+
+    expect(summariseNewAnimals(rows, new Set(["bk-1", "bk-4", "bk-5"]))).toEqual({
+      animals: 2,
+      newAnimals: 1,
+      returning: 1,
+    });
+  });
+});
+
 describe("summarisePeriod", () => {
-  it("leaves cancelled bookings out of the value and finds the oldest unbilled day", () => {
+  it("leaves cancelled bookings out, and counts every unpulled booking as belum ditagih", () => {
     const rows = toGroomingRows(
       [
         booking({
@@ -234,9 +260,27 @@ describe("summarisePeriod", () => {
     expect(summary.value).toBe("300000.0000");
     expect(summary.averagePerAnimal).toBe("150000.0000");
     expect(summary.addonRate).toBe(50);
-    expect(summary.unbilledCount).toBe(1);
-    expect(summary.unbilledValue).toBe("150000.0000");
+    // bk-1 (completed) and bk-3 (still confirmed) — neither has reached the
+    // till or a faktur; the cancelled bk-2 owes nothing.
+    expect(summary.unbilledCount).toBe(2);
+    expect(summary.unbilledValue).toBe("300000.0000");
     expect(summary.oldestUnbilledDays).toBe(6);
+  });
+
+  it("does not count a booking already in a basket or on a faktur", () => {
+    const rows = toGroomingRows(
+      [
+        booking({ _id: "bk-1", status: "confirmed", pulledToCartAt: "2026-09-12T10:00:00" }),
+        booking({ _id: "bk-2", status: "completed", pulledToInvoiceAt: "2026-09-12T10:00:00" }),
+        booking({ _id: "bk-3", status: "requested" }),
+      ],
+      scope,
+    );
+
+    expect(summarisePeriod(rows).unbilledCount).toBe(1);
+    expect(rows.filter((row) => matchesLens(row, "unpulled")).map((row) => row.key)).toEqual([
+      "bk-3",
+    ]);
   });
 
   it("answers null rather than zero when there is nothing to average", () => {

@@ -23,10 +23,15 @@ export const consignmentSettlementService = {
    * GET /consignment-settlements/outstanding — per supplier: sold, settled and
    * what is still owed. `branchId` scopes it; empty/absent means every cabang.
    */
-  outstanding: (query: { branchId?: string } = {}) =>
+  outstanding: (query: { branchId?: string; branchIds?: string[] } = {}) =>
     apiClient.get<ConsignmentOutstanding>(
       "/consignment-settlements/outstanding",
-      { query: { branchId: query.branchId || undefined } },
+      {
+        query: {
+          branchId: query.branchId || undefined,
+          branchIds: query.branchIds,
+        },
+      },
     ),
 
   /** GET /consignment-settlements — payments already made, newest first. */

@@ -81,7 +81,7 @@ export function GroomingBookingsTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-      <Table className={cn("min-w-270", loading && "opacity-60")}>
+      <Table className={cn("min-w-320", loading && "opacity-60")}>
         <TableHeader>
           <TableRow>
             <TableHead className="w-12">
@@ -90,6 +90,8 @@ export function GroomingBookingsTable({
             <TableHead>Booking</TableHead>
             <TableHead>Hewan</TableHead>
             <TableHead>Layanan</TableHead>
+            <TableHead>Tipe</TableHead>
+            <TableHead>Perjalanan</TableHead>
             <TableHead>Jam</TableHead>
             <TableHead>Groomer</TableHead>
             <TableHead>Faktur</TableHead>
@@ -177,19 +179,10 @@ export function GroomingBookingsTable({
                       {service.name}
                     </span>
 
-                    {(booking.location === "in_home" ||
-                      booking.pickupRequested ||
+                    {(booking.pickupRequested ||
                       booking.deliveryRequested ||
                       (booking.trips?.length ?? 0) > 0) && (
                       <span className="mt-1 flex flex-wrap gap-1">
-                        {booking.location === "in_home" && (
-                          <Badge
-                            variant="outline"
-                            className="border-transparent bg-tint-info text-info"
-                          >
-                            Di rumah
-                          </Badge>
-                        )}
                         {/*
                           THE VAN, from either side: the booking's own trip
                           flags, or a ride booked in its visit (21 Sep 2026).
@@ -229,6 +222,40 @@ export function GroomingBookingsTable({
                         />
                         {booking.internalNotes}
                       </span>
+                    )}
+                  </TableCell>
+
+                  {/*
+                    WHERE THE GROOMING HAPPENS, and for a house call the trip
+                    behind it (12 October 2026, on request) — the trip's page
+                    is reached from here rather than from a list of its own.
+                  */}
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "border-transparent",
+                        booking.location === "in_home"
+                          ? "bg-tint-info text-info"
+                          : "bg-tint-neutral text-muted",
+                      )}
+                    >
+                      {booking.location === "in_home" ? "Home grooming" : "Di toko"}
+                    </Badge>
+                  </TableCell>
+
+                  <TableCell>
+                    {/* `homeTrip` is what the list presents; the bare id is the stored pointer. */}
+                    {booking.location === "in_home" &&
+                    (booking.homeTrip?._id ?? booking.homeTripId) ? (
+                      <Link
+                        href={`/dashboard/booking/perjalanan/${booking.homeTrip?._id ?? booking.homeTripId}`}
+                        className="rounded text-sm font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                      >
+                        Buka perjalanan
+                      </Link>
+                    ) : (
+                      <span className="text-muted">—</span>
                     )}
                   </TableCell>
 
@@ -291,7 +318,7 @@ export function GroomingBookingsTable({
                     id={detailId}
                     className="bg-surface-hover hover:bg-surface-hover"
                   >
-                    <TableCell colSpan={9} className="whitespace-normal p-4">
+                    <TableCell colSpan={11} className="whitespace-normal p-4">
                       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
                         <BookingSessionSteps booking={booking} onChanged={onChanged} />
                         <RowBreakdown row={row} />

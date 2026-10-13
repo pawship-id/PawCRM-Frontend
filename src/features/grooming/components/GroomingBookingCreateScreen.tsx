@@ -99,7 +99,7 @@ import {
   todayValue,
   toScheduledAt,
 } from "./BookingPriceControls";
-import { GROOMING_PATH } from "../paths";
+import { GROOMING_BOOKINGS_PATH, GROOMING_PATH } from "../paths";
 
 /** The API's page cap. */
 const FETCH_LIMIT = 100;
@@ -610,7 +610,7 @@ export function GroomingBookingCreateScreen() {
       }
 
       router.push(
-        made.length === 1 ? `/dashboard/booking/${made[0]._id}` : GROOMING_PATH,
+        made.length === 1 ? `/dashboard/booking/${made[0]._id}` : GROOMING_BOOKINGS_PATH,
       );
       router.refresh();
 
@@ -709,7 +709,7 @@ export function GroomingBookingCreateScreen() {
           disabled={blockedReason !== null}
           blockedReason={blockedReason}
           onCancel={() => {
-            if (!saving) router.push(GROOMING_PATH);
+            if (!saving) router.push(GROOMING_BOOKINGS_PATH);
           }}
         />
 

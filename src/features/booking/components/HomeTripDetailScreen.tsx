@@ -7,27 +7,27 @@ import { Check, House, MapPin } from "lucide-react";
 import { Alert, Card, SelectField, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { usePermissions } from "@/features/permissions";
 import { ApiError } from "@/services/api-error";
 import { homeTripService } from "@/services/homeTrip.service";
-import type { HomeTrip, HomeTripStatus, TripPoint } from "@/types/api";
-import { formatMoney } from "@/utils/decimal";
+import type {
+  HomeTrip,
+  HomeTripFee,
+  HomeTripStatus,
+  InvoiceDiscountMode,
+  TripPoint,
+} from "@/types/api";
+import { formatMoney, trimDecimal } from "@/utils/decimal";
 
-import { HOME_TRIP_LABELS, HOME_TRIP_RUNGS, nextTripRung } from "../homeTrip";
+import { HOME_TRIP_LABELS, HOME_TRIP_RUNGS, nextTripRung, tripStamp } from "../homeTrip";
 import { useTripPerformers } from "../hooks/useHomeTrip";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
 /** The select's own spelling of "no performer named" — Radix forbids `""`. */
 const FOLLOW_BOOKING = "ikut-booking";
 
-/** "12 Okt · 09.05" — the day too, since a visit's rungs may straddle midnight. */
-function stamp(iso: string): string {
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return "";
-  const day = at.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
-  const clock = `${String(at.getHours()).padStart(2, "0")}.${String(at.getMinutes()).padStart(2, "0")}`;
-  return `${day} · ${clock}`;
-}
+const stamp = tripStamp;
 
 /** "Buka di peta" target — only when the address carries a pin. */
 function mapsHref(point: TripPoint | null): string | null {
@@ -182,6 +182,24 @@ export function HomeTripDetailScreen({ id }: { id: string }) {
       );
       /* A 409 usually means somebody moved it first — read where it stands. */
       await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveDiscount(discount: { mode: InvoiceDiscountMode; value: string } | null) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+
+    try {
+      setTrip(await homeTripService.setFeeDiscount(id, discount));
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? err.fullMessage
+          : "Tidak bisa menyimpan diskon biaya kunjungan. Coba lagi.",
+      );
     } finally {
       setBusy(false);
     }
@@ -385,6 +403,18 @@ export function HomeTripDetailScreen({ id }: { id: string }) {
                 {formatMoney(trip.fee.amount)}
               </span>
             </div>
+            {/*
+              THE FEE'S OWN DISCOUNT (12 October 2026, on request) — set here
+              while unbilled, as a booking's "Diskon item" is set on the
+              booking; the till or the invoice starts the trip's line with it.
+            */}
+            <TripFeeDiscount
+              key={`${trip.fee.discount?.mode ?? ""}:${trip.fee.discount?.value ?? ""}`}
+              fee={trip.fee}
+              editable={canAssign && trip.billing.state === "unbilled" && status !== "cancelled"}
+              busy={busy}
+              onSave={(discount) => void saveDiscount(discount)}
+            />
             <div className="mt-3 border-t border-border pt-3">
               {trip.billing.state === "billed" ? (
                 <Badge variant="outline" className="border-transparent bg-tint-success text-success">
@@ -425,6 +455,111 @@ export function HomeTripDetailScreen({ id }: { id: string }) {
           </ul>
         )}
       </Card>
+    </div>
+  );
+}
+
+/**
+ * The fee's discount row: the controls while it may change, the figure once
+ * billed (the line on the bill is then what is paid). Keyed on the stored
+ * discount by the caller, so a save resets the fields to what was stored.
+ */
+function TripFeeDiscount({
+  fee,
+  editable,
+  busy,
+  onSave,
+}: {
+  fee: HomeTripFee;
+  editable: boolean;
+  busy: boolean;
+  onSave: (discount: { mode: InvoiceDiscountMode; value: string } | null) => void;
+}) {
+  const stored = fee.discount ?? null;
+  const [mode, setMode] = useState<InvoiceDiscountMode>(stored?.mode ?? "percent");
+  const [value, setValue] = useState(stored ? trimDecimal(stored.value) : "");
+  const dirty =
+    mode !== (stored?.mode ?? "percent") || value !== (stored ? trimDecimal(stored.value) : "");
+
+  return (
+    <div className="mt-3 border-t border-border pt-3 text-sm">
+      {editable ? (
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSave(value.trim() ? { mode, value: value.trim() } : null);
+          }}
+        >
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-semibold text-muted">Diskon</span>
+            <div className="flex gap-1">
+              <select
+                aria-label="Jenis diskon biaya kunjungan"
+                className="h-9 w-16 shrink-0 rounded-md border border-border bg-surface px-2 text-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                value={mode}
+                onChange={(event) => setMode(event.target.value as InvoiceDiscountMode)}
+                disabled={busy}
+              >
+                <option value="percent">%</option>
+                <option value="amount">Rp</option>
+              </select>
+              <Input
+                aria-label="Diskon biaya kunjungan"
+                className="w-32"
+                value={value}
+                inputMode="decimal"
+                placeholder="0"
+                onChange={(event) => setValue(event.target.value)}
+                disabled={busy}
+              />
+            </div>
+          </div>
+          <Button type="submit" variant="secondary" disabled={busy || !dirty}>
+            {busy ? "Menyimpan…" : "Simpan diskon"}
+          </Button>
+          {stored && (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => onSave(null)}
+            >
+              Hapus diskon
+            </Button>
+          )}
+        </form>
+      ) : (
+        <p>
+          <span className="text-muted">Diskon: </span>
+          <span className="text-foreground">
+            {stored
+              ? stored.mode === "percent"
+                ? `${trimDecimal(stored.value)}%`
+                : formatMoney(stored.value)
+              : "—"}
+          </span>
+        </p>
+      )}
+
+      {stored && (
+        <div className="mt-2 flex flex-col gap-0.5 tabular-nums">
+          <p className="flex justify-between">
+            <span className="text-muted">Potongan</span>
+            <span className="text-success">−{formatMoney(stored.resolvedAmount)}</span>
+          </p>
+          <p className="flex justify-between font-semibold">
+            <span className="text-foreground">Yang ditagih</span>
+            <span className="text-foreground">{formatMoney(fee.netAmount ?? fee.amount)}</span>
+          </p>
+        </div>
+      )}
+      {editable && (
+        <p className="mt-1.5 text-xs text-muted">
+          Ikut ke baris trip di kasir atau faktur. Kalau diubah di sana, diskon di sini ikut
+          berubah.
+        </p>
+      )}
     </div>
   );
 }

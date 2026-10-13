@@ -1393,6 +1393,22 @@ export type OpnameStatus = "draft" | "submitted";
 export interface OpnameItem {
   productId: string;
   /**
+   * THE LOT THIS LINE COUNTS. Null when the line counts the product as a whole
+   * — or a new lot (`newBatch`). A product that expires is counted lot by lot:
+   * its `systemQty` is then that lot's balance, and the difference is posted
+   * into or out of that very lot.
+   */
+  batchId?: string | null;
+  /**
+   * Goods of a lot the system has no record of. `systemQty` is zero, and what
+   * is counted opens a new lot at submit — dated by `expiryDate`.
+   */
+  newBatch?: boolean;
+  /** The counted lot as a counter recognises it — DETAIL read only. */
+  lotCode?: string | null;
+  lotSupplierBatchCode?: string | null;
+  lotExpiryDate?: string | null;
+  /**
    * What the system believed. A DISPLAY HINT: it is re-read at submit, because a
    * draft may sit open for hours while the shop keeps selling, and diffing
    * against an hours-old snapshot would book those sales a second time as
@@ -1543,7 +1559,14 @@ export type OpnameSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
  */
 export interface OpnameItemInput {
   productId: string;
-  physicalQty: string;
+  /** Which lot the line counts — see `OpnameItem.batchId`. Never both. */
+  batchId?: string | null;
+  newBatch?: boolean;
+  /**
+   * OMITTED means "start from the system quantity" — sent that way for a line
+   * just switched to another batch, whose count was typed for the old one.
+   */
+  physicalQty?: string;
   /**
    * "Somebody has walked this shelf." Omitting it PRESERVES whatever is stored,
    * so an auto-save with no opinion never resets progress; `false` clears it.
@@ -1566,9 +1589,7 @@ export interface OpnameItemInput {
  * walked, and the progress figure would read 40 / 40 before anybody left the
  * office.
  */
-export type CreateOpnameItemInput = Omit<OpnameItemInput, "physicalQty"> & {
-  physicalQty?: string;
-};
+export type CreateOpnameItemInput = OpnameItemInput;
 
 /**
  * POST /api/stock-opnames.
@@ -1910,6 +1931,9 @@ export interface ExpiringBatchListQuery {
   warehouseId?: string;
   /** Same meaning as on the audit list — see `ProductBatchListQuery`. */
   branchId?: string;
+  /** Sets of either — the Inventori scope row picks several. */
+  warehouseIds?: string[];
+  branchIds?: string[];
   /** 0–365, default 30. Zero means "expired or expiring today". */
   withinDays?: number;
   /** Same closed list as the audit endpoint's — both screens share one control. */

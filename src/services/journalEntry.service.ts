@@ -66,6 +66,9 @@ export interface JournalEntryListQuery extends LedgerPeriodQuery {
   accountId?: string;
   businessLineId?: string;
   branchId?: string;
+  /** Sets (12 Oct 2026) — repeated params; `__none__` among the lini is the shared bucket. */
+  branchIds?: string[];
+  businessLineIds?: string[];
   cashflowType?: CashflowType;
   tag?: string;
   /** Defaults to `newest` server-side. */
@@ -195,6 +198,9 @@ export interface JournalTrendQuery {
   dateTo: string;
   branchId?: string;
   businessLineId?: string;
+  /** Sets (12 Oct 2026) — repeated params; `__none__` among the lini is the shared bucket. */
+  branchIds?: string[];
+  businessLineIds?: string[];
 }
 
 export interface AccountBalance {
@@ -236,6 +242,8 @@ export interface AccountBalancesResult {
 export interface AccountBalancesQuery {
   asOf?: string;
   branchId?: string;
+  /** Several cabang (12 Oct 2026), appended as repeated params. */
+  branchIds?: string[];
   accountType?: AccountType;
   /** The finer filter — one neraca section, or every cash and bank account. */
   accountCategory?: AccountCategory;
@@ -292,6 +300,8 @@ export interface AccountMovementQuery {
   dateFrom?: string;
   dateTo?: string;
   branchId?: string;
+  /** Several cabang (12 Oct 2026), appended as repeated params. */
+  branchIds?: string[];
   accountType?: AccountType;
   accountCategory?: AccountCategory;
   /** Repeated on the wire. The API caps this at 20. */
@@ -403,6 +413,8 @@ export interface ProfitLossQuery {
   /** Several branches at once (the Laba Rugi multi-select); `branchId` wins if both are set. */
   branchIds?: string[];
   businessLineId?: string;
+  /** Several lini (12 Oct 2026); `__none__` is the shared bucket. */
+  businessLineIds?: string[];
 }
 
 /** The writable half of a manual entry — the only kind the HTTP API creates. */
@@ -442,9 +454,7 @@ export const journalEntryService = {
     apiClient.get<PageResult<JournalEntry>>("/journal-entries", {
       query: {
         page: query.page,
-        limit: query.limit
-          ? Math.min(query.limit, MAX_PAGE_LIMIT)
-          : undefined,
+        limit: query.limit ? Math.min(query.limit, MAX_PAGE_LIMIT) : undefined,
         search: query.search,
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
@@ -453,6 +463,8 @@ export const journalEntryService = {
         accountId: query.accountId,
         businessLineId: query.businessLineId,
         branchId: query.branchId,
+        businessLineIds: query.businessLineIds,
+        branchIds: query.branchIds,
         cashflowType: query.cashflowType,
         tag: query.tag,
         sort: query.sort,
@@ -484,6 +496,8 @@ export const journalEntryService = {
         accountId: query.accountId,
         businessLineId: query.businessLineId,
         branchId: query.branchId,
+        businessLineIds: query.businessLineIds,
+        branchIds: query.branchIds,
         cashflowType: query.cashflowType,
         tag: query.tag,
       },
@@ -517,6 +531,8 @@ export const journalEntryService = {
         dateTo: query.dateTo,
         branchId: query.branchId,
         businessLineId: query.businessLineId,
+        branchIds: query.branchIds,
+        businessLineIds: query.businessLineIds,
       },
     }),
 
@@ -531,6 +547,7 @@ export const journalEntryService = {
     const params = new URLSearchParams();
     if (query.asOf) params.append("asOf", query.asOf);
     if (query.branchId) params.append("branchId", query.branchId);
+    for (const id of query.branchIds ?? []) params.append("branchIds", id);
     if (query.accountType) params.append("accountType", query.accountType);
     if (query.accountCategory)
       params.append("accountCategory", query.accountCategory);
@@ -541,7 +558,9 @@ export const journalEntryService = {
     const search = params.toString();
 
     return apiClient.get<AccountBalancesResult>(
-      search ? `/journal-entries/balances?${search}` : "/journal-entries/balances",
+      search
+        ? `/journal-entries/balances?${search}`
+        : "/journal-entries/balances",
     );
   },
 
@@ -561,6 +580,7 @@ export const journalEntryService = {
     if (query.dateFrom) params.append("dateFrom", query.dateFrom);
     if (query.dateTo) params.append("dateTo", query.dateTo);
     if (query.branchId) params.append("branchId", query.branchId);
+    for (const id of query.branchIds ?? []) params.append("branchIds", id);
     if (query.accountType) params.append("accountType", query.accountType);
     if (query.accountCategory)
       params.append("accountCategory", query.accountCategory);
@@ -571,7 +591,9 @@ export const journalEntryService = {
     const search = params.toString();
 
     return apiClient.get<AccountMovementResult>(
-      search ? `/journal-entries/movement?${search}` : "/journal-entries/movement",
+      search
+        ? `/journal-entries/movement?${search}`
+        : "/journal-entries/movement",
     );
   },
 
@@ -593,13 +615,15 @@ export const journalEntryService = {
         branchId: query.branchId,
         branchIds: query.branchIds?.length ? query.branchIds : undefined,
         businessLineId: query.businessLineId,
+        businessLineIds: query.businessLineIds,
         // Sent only when explicitly OFF: the server defaults it to true.
         allocation: query.allocation === false ? false : undefined,
       },
     }),
 
   /** GET /journal-entries/:id — one entry, with its labels resolved. */
-  getById: (id: string) => apiClient.get<JournalEntry>(`/journal-entries/${id}`),
+  getById: (id: string) =>
+    apiClient.get<JournalEntry>(`/journal-entries/${id}`),
 
   /**
    * POST /journal-entries — a MANUAL entry, and nothing else.

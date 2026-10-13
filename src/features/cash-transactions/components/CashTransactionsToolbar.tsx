@@ -85,7 +85,7 @@ type PanelFilters = Pick<
   | "dateTo"
   | "direction"
   | "source"
-  | "branchId"
+  | "branchIds"
   | "accountId"
   | "status"
 >;
@@ -106,7 +106,7 @@ const CLEARED: PanelFilters = {
   dateTo: "",
   direction: "",
   source: "",
-  branchId: "",
+  branchIds: [],
   accountId: "",
   // BACK TO "TERCATAT", not to "". Reset returns the panel to the state it
   // opens the screen in, and hiding the cancelled rows IS that state.
@@ -230,7 +230,7 @@ export function CashTransactionsToolbar({
           dateTo: query.dateTo,
           direction: query.direction,
           source: query.source,
-          branchId: query.branchId,
+          branchIds: query.branchIds,
           accountId: query.accountId,
           status: query.status,
         }}
@@ -243,7 +243,8 @@ export function CashTransactionsToolbar({
           if (next.direction !== query.direction)
             patch.direction = next.direction;
           if (next.source !== query.source) patch.source = next.source;
-          if (next.branchId !== query.branchId) patch.branchId = next.branchId;
+          if (next.branchIds.join(",") !== query.branchIds.join(","))
+            patch.branchIds = next.branchIds;
           if (next.accountId !== query.accountId)
             patch.accountId = next.accountId;
           if (next.status !== query.status) patch.status = next.status;

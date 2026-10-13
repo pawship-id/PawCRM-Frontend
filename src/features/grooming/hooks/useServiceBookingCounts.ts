@@ -34,7 +34,11 @@ export function useServiceBookingCounts(
       ? JSON.stringify([
           [...serviceIds].sort(),
           scope
-            ? [scope.branchId ?? "", scope.scheduledFrom ?? "", scope.scheduledTo ?? ""]
+            ? [
+                (scope.branchIds ?? []).join(","),
+                scope.scheduledFrom ?? "",
+                scope.scheduledTo ?? "",
+              ]
             : null,
         ])
       : "";
@@ -48,11 +52,14 @@ export function useServiceBookingCounts(
     if (key === "") return;
 
     let active = true;
-    const [ids, bounds] = JSON.parse(key) as [string[], [string, string, string] | null];
+    const [ids, bounds] = JSON.parse(key) as [
+      string[],
+      [string, string, string] | null,
+    ];
 
     const request = bounds
       ? bookingService.serviceCounts(ids, {
-          branchId: bounds[0] || undefined,
+          branchIds: bounds[0] ? bounds[0].split(",") : undefined,
           scheduledFrom: bounds[1] || undefined,
           scheduledTo: bounds[2] || undefined,
         })
