@@ -26,6 +26,13 @@ export class ApiError extends Error {
   readonly data?: unknown;
   /** True when the request never reached the server (offline, DNS, CORS). */
   readonly isNetworkError: boolean;
+  /**
+   * True when the CLIENT stopped waiting (`timeoutMs`), which is not the same
+   * fact as a failure: the request may have reached the server and still be
+   * running there, and may yet succeed. A screen that offers "coba lagi" on a
+   * timeout can make somebody do the same thing twice.
+   */
+  readonly isTimeout: boolean;
 
   constructor(
     message: string,
@@ -35,6 +42,7 @@ export class ApiError extends Error {
       reason?: string;
       data?: unknown;
       isNetworkError?: boolean;
+      isTimeout?: boolean;
     } = {},
   ) {
     super(message);
@@ -44,6 +52,7 @@ export class ApiError extends Error {
     this.reason = options.reason;
     this.data = options.data;
     this.isNetworkError = options.isNetworkError ?? false;
+    this.isTimeout = options.isTimeout ?? false;
   }
 
   /** The request never reached the server. */

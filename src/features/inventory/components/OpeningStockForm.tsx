@@ -32,8 +32,11 @@ import {
 } from "@/components/ui/table";
 import { batchCodeHint } from "@/lib/batchCode";
 import { blockingReason } from "../utils/blocker";
+import {
+  keyedSaveFailureMessage,
+  newIdempotencyKey,
+} from "../utils/idempotency";
 import { swalToast } from "@/lib/swal";
-import { ApiError } from "@/services/api-error";
 import { stockEntryService } from "@/services/stockEntry.service";
 import type { Product } from "@/types/inventory";
 import {
@@ -160,6 +163,13 @@ export function OpeningStockForm() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /**
+   * ONE KEY PER INTENT, kept across a failed save — that is the point: pressing
+   * the button again after a timeout files the same document rather than a
+   * second one. No setter, because a success leaves this route and a fresh
+   * mount mints a fresh key.
+   */
+  const [idempotencyKey] = useState(newIdempotencyKey);
 
   const scope = useBranchScope();
   /**
@@ -328,6 +338,7 @@ export function OpeningStockForm() {
 
     try {
       const entry = await stockEntryService.createOpeningStock({
+        idempotencyKey,
         warehouseId,
         branchId,
         entryDate,
@@ -361,11 +372,7 @@ export function OpeningStockForm() {
       // The server's refusals here name the SKUs to take off the sheet, which
       // is the part that says what to do next. Shown verbatim — a paraphrase
       // would drop exactly that.
-      setFormError(
-        error instanceof ApiError
-          ? error.fullMessage
-          : "Terjadi kesalahan. Coba lagi.",
-      );
+      setFormError(keyedSaveFailureMessage(error, "Simpan stok awal"));
       setSaving(false);
     }
   }

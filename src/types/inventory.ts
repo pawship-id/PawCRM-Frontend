@@ -2090,6 +2090,11 @@ export interface StockEntryInput {
     isConsignment?: boolean;
     notes?: string;
   }>;
+  /**
+   * Minted once per INTENT by the form and kept across a failed attempt, so a
+   * save pressed again after a timeout files one document, not two.
+   */
+  idempotencyKey?: string;
 }
 
 

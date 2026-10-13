@@ -19,7 +19,6 @@ import { Button as UIButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { swalToast } from "@/lib/swal";
-import { ApiError } from "@/services/api-error";
 import { stockTransferService } from "@/services/stockTransfer.service";
 import type {
   Product,
@@ -42,6 +41,10 @@ import {
 import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
 import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
 import { newIdempotencyKey } from "../utils/idempotency";
+import {
+  TRANSFER_MAX_ITEMS,
+  transferFailureMessage,
+} from "../utils/transferErrors";
 import { qtyAtWarehouse } from "../utils/ledger";
 import { TransferAddProductsDialog } from "./TransferAddProductsDialog";
 
@@ -982,6 +985,18 @@ export function StockTransferForm({
     });
   }
 
+  /**
+   * THE SERVER'S CEILING, said while rows are still being added — not after
+   * Simpan as "body.items must contain less than or equal to 50 items". A
+   * transfer that big is a second document anyway: one posting carrying
+   * hundreds of lots is slow to save and slow to check at the far end.
+   */
+  const atLimit = lines.length >= TRANSFER_MAX_ITEMS;
+  const overLimitMessage =
+    `Satu transfer maksimal ${TRANSFER_MAX_ITEMS} produk. Hapus ` +
+    `${lines.length - TRANSFER_MAX_ITEMS} baris, lalu pindahkan sisanya ` +
+    `lewat transfer kedua.`;
+
   function validate(): boolean {
     const next: Record<string, string> = {};
 
@@ -990,6 +1005,9 @@ export function StockTransferForm({
     }
     if (lines.length === 0) {
       next.lines = "Tambahkan minimal satu produk.";
+    }
+    if (lines.length > TRANSFER_MAX_ITEMS) {
+      next.lines = overLimitMessage;
     }
 
     for (const [index, line] of lines.entries()) {
@@ -1071,11 +1089,7 @@ export function StockTransferForm({
        */
       router.push(`/dashboard/inventory/transfers/${saved._id}`);
     } catch (error) {
-      setFormError(
-        error instanceof ApiError
-          ? error.fullMessage
-          : "Terjadi kesalahan. Coba lagi.",
-      );
+      setFormError(transferFailureMessage(error, editing ? "ubah" : "buat"));
     } finally {
       setSaving(false);
     }
@@ -1143,7 +1157,9 @@ export function StockTransferForm({
     ? "Gudang asal dan tujuan masih sama"
     : lines.length === 0
       ? "Belum ada produk yang ditambahkan"
-      : missingBatch.size > 0
+      : lines.length > TRANSFER_MAX_ITEMS
+        ? overLimitMessage
+        : missingBatch.size > 0
         ? lots.loading
           ? "Daftar batch masih dimuat"
           : "Masih ada baris yang belum dipilih batch-nya"
@@ -1296,7 +1312,9 @@ export function StockTransferForm({
           title={
             <span className="flex flex-wrap items-center gap-2">
               Produk yang dipindahkan
-              <Badge variant="outline">{lines.length} baris</Badge>
+              <Badge variant="outline">
+                {lines.length} dari {TRANSFER_MAX_ITEMS} baris
+              </Badge>
             </span>
           }
         >
@@ -1395,10 +1413,18 @@ export function StockTransferForm({
                 <UIButton
                   type="button"
                   variant="secondary"
+                  disabled={atLimit}
                   onClick={() => setPicking(true)}
                 >
                   + Tambah produk
                 </UIButton>
+                {atLimit && (
+                  <p className="mt-2 text-sm text-muted">
+                    {lines.length > TRANSFER_MAX_ITEMS
+                      ? overLimitMessage
+                      : `Sudah ${TRANSFER_MAX_ITEMS} produk — batas satu transfer. Sisanya dibuat sebagai transfer kedua.`}
+                  </p>
+                )}
               </div>
             </>
           )}
