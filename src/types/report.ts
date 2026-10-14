@@ -844,3 +844,33 @@ export interface TopServicesQuery {
   /** Omitted = both. */
   kinds?: ServiceKind[];
 }
+
+/**
+ * GET /reports/commission-payroll — Laporan › Rekap komisi. One row per
+ * groomer × month × cabang, at the Komisi screen's effective amounts.
+ */
+export interface CommissionPayrollRow {
+  /** `YYYY-MM`. */
+  period: string;
+  staffName: string | null;
+  branchName: string | null;
+  bookingCount: number;
+  basis: string;
+  amount: string;
+  pending: string;
+  approved: string;
+  paid: string;
+  unpaid: string;
+  overriddenCount: number;
+  reversedCount: number;
+}
+
+export interface CommissionPayrollReport {
+  rows: CommissionPayrollRow[];
+}
+
+export interface CommissionPayrollQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+}

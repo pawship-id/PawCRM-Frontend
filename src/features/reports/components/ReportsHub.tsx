@@ -43,6 +43,7 @@ import {
 } from "../stockReports";
 import {
   bookingRecapReport,
+  commissionPayrollReport,
   membershipReport,
   staffPerformanceReport,
   topServicesReport,
@@ -129,7 +130,8 @@ type ReportDialog =
   | "staffPerformance"
   | "bookingRecap"
   | "topServices"
-  | "membership";
+  | "membership"
+  | "commissionPayroll";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -144,6 +146,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  commissionPayroll: (props) => (
+    <SalesReportDialog report={commissionPayrollReport} {...props} />
   ),
   membership: (props) => (
     <SalesReportDialog report={membershipReport} {...props} />
@@ -446,7 +451,9 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Rekap komisi",
       description:
         "Komisi groomer per bulan, dihitung dari booking yang selesai. Siap diunduh untuk payroll.",
-      href: "/dashboard/keuangan/komisi",
+      // A download here; /dashboard/keuangan/komisi stays the screen where
+      // commission is approved and paid.
+      dialog: "commissionPayroll",
       // Payroll data: the report's own grant, or the staff register it used to need.
       anyOf: [{ feature: "commissionReports", action: "read" }],
     },

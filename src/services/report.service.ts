@@ -39,6 +39,8 @@ import type {
   BookingRecapQuery,
   TopServicesReport,
   TopServicesQuery,
+  CommissionPayrollReport,
+  CommissionPayrollQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -340,6 +342,20 @@ export const reportService = {
         dateTo: query.dateTo,
         branchIds: query.branchIds,
         kinds: query.kinds,
+      },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/commission-payroll — Rekap komisi: per groomer, month and
+   * cabang, earned and where it stands — the payroll sheet.
+   */
+  commissionPayroll: (query: CommissionPayrollQuery) =>
+    apiClient.get<CommissionPayrollReport>("/reports/commission-payroll", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
       },
       timeoutMs: 60_000,
     }),

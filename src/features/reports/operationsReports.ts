@@ -5,6 +5,7 @@ import type { MembershipReport } from "@/types/membership";
 import type { BookingStatus } from "@/types/api";
 import type {
   BookingRecapRow,
+  CommissionPayrollRow,
   ServiceKind,
   StaffPerformanceRow,
   TopServiceRow,
@@ -582,4 +583,122 @@ export const membershipReport: SalesReportDefinition<
   columns: MEMBERSHIP_COLUMNS,
   fetch: async ({ dateFrom, dateTo }) =>
     membershipRows(await membershipService.report({ dateFrom, dateTo })),
+};
+
+/* ---------------------------------------------------------- Rekap komisi */
+
+/** `2026-09` → `September 2026`, the way a payslip names a month. */
+function monthName(period: string): string {
+  const [year, month] = period.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString("id-ID", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+const money = (value: string) => Number(value);
+
+/** Whose month, then what was earned, then where it stands — a payslip. */
+const PAYROLL_COLUMNS: SalesReportColumn<CommissionPayrollRow>[] = [
+  {
+    header: "Bulan",
+    value: (r) => monthName(r.period),
+    width: 16,
+    about: "Bulan komisi — bulan booking selesai",
+  },
+  {
+    header: "Groomer",
+    value: (r) => r.staffName,
+    width: 22,
+    about: "Groomer / staf penerima komisi",
+  },
+  {
+    header: "Cabang",
+    value: (r) => r.branchName,
+    width: 16,
+    about: "Cabang booking",
+  },
+  {
+    header: "Jumlah booking",
+    value: (r) => r.bookingCount,
+    type: "number",
+    about: "Booking selesai yang menghasilkan komisi",
+  },
+  {
+    header: "Dasar komisi",
+    value: (r) => money(r.basis),
+    type: "number",
+    width: 16,
+    about: "Nilai layanan yang menjadi dasar perhitungan",
+  },
+  {
+    header: "Komisi",
+    value: (r) => money(r.amount),
+    type: "number",
+    width: 16,
+    about: "Komisi final — nilai yang diubah manual dipakai kalau ada",
+  },
+  {
+    header: "Menunggu persetujuan",
+    value: (r) => money(r.pending),
+    type: "number",
+    width: 16,
+    about: "Bagian komisi yang belum disetujui",
+  },
+  {
+    header: "Disetujui",
+    value: (r) => money(r.approved),
+    type: "number",
+    width: 16,
+    about: "Sudah disetujui, siap dibayar",
+  },
+  {
+    header: "Sudah dibayar",
+    value: (r) => money(r.paid),
+    type: "number",
+    width: 16,
+    about: "Sudah dibayarkan",
+  },
+  {
+    header: "Belum dibayar",
+    value: (r) => money(r.unpaid),
+    type: "number",
+    width: 16,
+    about: "Komisi − sudah dibayar",
+  },
+  {
+    header: "Diubah manual",
+    value: (r) => r.overriddenCount,
+    type: "number",
+    about: "Berapa baris komisi yang nilainya diubah manual",
+  },
+  {
+    header: "Dibatalkan",
+    value: (r) => r.reversedCount,
+    type: "number",
+    about:
+      "Baris komisi yang dibatalkan (booking dibatalkan setelah selesai) — tidak ikut dijumlah",
+  },
+];
+
+/**
+ * Komisi groomer per bulan, dihitung dari booking yang selesai — the payroll
+ * sheet. Approving and paying stay on the Komisi screen.
+ */
+export const commissionPayrollReport: SalesReportDefinition<
+  CommissionPayrollRow,
+  never
+> = {
+  title: "Rekap komisi",
+  description:
+    "Komisi groomer per bulan, dihitung dari booking yang selesai. Siap diunduh untuk payroll. Diunduh sebagai Excel.",
+  fileName: "rekap-komisi",
+  rowNoun: "baris",
+  periodLabel: "bulan komisi",
+  locations: "branches",
+  note: "Komisi dicatat per bulan booking selesai, jadi periode dibulatkan ke bulan penuh. Menyetujui dan membayar komisi tetap di layar Keuangan › Komisi.",
+  columns: PAYROLL_COLUMNS,
+  fetch: async ({ dateFrom, dateTo, branchIds }) =>
+    (await reportService.commissionPayroll({ dateFrom, dateTo, branchIds }))
+      .rows,
 };
