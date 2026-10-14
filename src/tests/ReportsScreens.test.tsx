@@ -176,6 +176,10 @@ describe("ReportsHub", () => {
       "/dashboard/keuangan/laba-rugi",
       "/dashboard/keuangan/neraca",
     ]);
+    const biaya = screen.getByText("Biaya per kategori").closest("tr")!;
+    expect(
+      within(biaya).getByRole("button", { name: "Unduh" }),
+    ).toBeInTheDocument();
     const saldo = screen.getByText("Saldo per akun").closest("tr")!;
     expect(
       within(saldo).getByRole("button", { name: "Unduh" }),

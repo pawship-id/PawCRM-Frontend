@@ -24,6 +24,7 @@ export {
 export {
   cashFlowReport,
   cashFlowRows,
+  expenseReport,
   ledgerReport,
   ledgerRows,
 } from "./financeReports";

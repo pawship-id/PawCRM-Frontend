@@ -17,6 +17,8 @@ import type {
   CashFlowReportQuery,
   LedgerReport,
   LedgerReportQuery,
+  ExpenseReport,
+  ExpenseReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -169,6 +171,21 @@ export const reportService = {
         accountTypes: query.accountTypes,
       },
       timeoutMs: 120_000,
+    }),
+
+  /**
+   * GET /reports/expenses — Biaya per kategori: the laba rugi's costs per
+   * lini, split into posted directly and allocated from the biaya bersama.
+   */
+  expenses: (query: ExpenseReportQuery) =>
+    apiClient.get<ExpenseReport>("/reports/expenses", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        accountCategories: query.accountCategories,
+      },
+      timeoutMs: 60_000,
     }),
 
   /**

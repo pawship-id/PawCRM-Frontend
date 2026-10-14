@@ -447,3 +447,38 @@ export interface LedgerReportQuery {
   /** Omitted = all five. */
   accountTypes?: AccountType[];
 }
+
+/**
+ * GET /reports/expenses — Laporan › Biaya per kategori. One row per cost
+ * account × lini bisnis. `direct` is what was posted to the lini, `allocated`
+ * its share of the biaya bersama (negative on the unattributed row the rules
+ * divided away), `total` the laba rugi's figure.
+ */
+export type ExpenseCategory = "hpp" | "biaya" | "biaya_lainnya";
+
+export interface ExpenseReportRow {
+  accountCategory: ExpenseCategory;
+  code: string;
+  name: string;
+  /** Null — Belum Dipetakan: what no Sub Akun rule placed. */
+  businessLineId: string | null;
+  businessLineName: string | null;
+  direct: string;
+  allocated: string;
+  total: string;
+  share: number | null;
+}
+
+export interface ExpenseReport {
+  range: { fromDate: string | null; toDate: string | null };
+  allocation: { estimated: boolean };
+  rows: ExpenseReportRow[];
+}
+
+export interface ExpenseReportQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  /** Omitted = all three. */
+  accountCategories?: ExpenseCategory[];
+}

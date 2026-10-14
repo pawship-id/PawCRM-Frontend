@@ -1,9 +1,16 @@
-import { ACCOUNT_TYPE_LABEL, sourceLabel } from "@/features/accounting";
+import {
+  ACCOUNT_CATEGORY_LABEL,
+  ACCOUNT_TYPE_LABEL,
+  SHARED_LINE_LABEL,
+  sourceLabel,
+} from "@/features/accounting";
 import { reportService } from "@/services/report.service";
 import type { AccountType } from "@/types/accounting";
 import type {
   CashFlowReport,
   CashFlowSection,
+  ExpenseCategory,
+  ExpenseReportRow,
   LedgerReport,
 } from "@/types/report";
 
@@ -344,4 +351,102 @@ export const ledgerReport: SalesReportDefinition<LedgerRow, AccountType> = {
     ledgerRows(
       await reportService.ledger({ dateFrom, dateTo, branchIds, accountTypes }),
     ),
+};
+
+/* --------------------------------------------------- Biaya per kategori */
+
+const EXPENSE_CATEGORIES: ExpenseCategory[] = ["hpp", "biaya", "biaya_lainnya"];
+
+const EXPENSE_COLUMNS: SalesReportColumn<ExpenseReportRow>[] = [
+  {
+    header: "Kategori",
+    value: (r) => ACCOUNT_CATEGORY_LABEL[r.accountCategory],
+    width: 22,
+    about: "Harga Pokok Penjualan, Biaya, atau Biaya Lainnya",
+  },
+  {
+    header: "Kode akun",
+    value: (r) => r.code,
+    width: 12,
+    about: "Kode akun biaya",
+  },
+  {
+    header: "Nama akun",
+    value: (r) => r.name,
+    width: 28,
+    about: "Nama akun biaya",
+  },
+  {
+    header: "Lini bisnis",
+    value: (r) => r.businessLineName ?? SHARED_LINE_LABEL,
+    width: 18,
+    about: `Lini yang menanggung biaya. "${SHARED_LINE_LABEL}" = belum ada aturan Sub Akun yang membaginya`,
+  },
+  {
+    header: "Biaya langsung",
+    value: (r) => num(r.direct),
+    type: "number",
+    width: 16,
+    about: "Yang dicatat langsung ke lini itu",
+  },
+  {
+    header: "Alokasi biaya bersama",
+    value: (r) => num(r.allocated),
+    type: "number",
+    width: 18,
+    about: `Bagian biaya bersama yang dibagikan ke lini itu. Minus di baris "${SHARED_LINE_LABEL}" = yang sudah dibagikan keluar`,
+  },
+  {
+    header: "Total",
+    value: (r) => num(r.total),
+    type: "number",
+    width: 16,
+    about: "Biaya langsung + alokasi. Sama dengan angka di Laba rugi",
+  },
+  {
+    header: "% dari total biaya",
+    value: (r) => r.share,
+    type: "number",
+    about: "Porsi baris ini dari semua biaya di file",
+  },
+];
+
+/**
+ * Biaya per kategori, termasuk alokasi biaya bersama — one row per cost
+ * account × lini bisnis, the laba rugi's figures.
+ */
+export const expenseReport: SalesReportDefinition<
+  ExpenseReportRow,
+  ExpenseCategory
+> = {
+  title: "Biaya per kategori",
+  description:
+    "Biaya per kategori, termasuk alokasi biaya bersama. Diunduh sebagai Excel.",
+  fileName: "biaya-per-kategori",
+  rowNoun: "baris",
+  periodLabel: "tanggal jurnal",
+  locations: "branches",
+  note: "Biaya bersama dibagi mengikuti aturan Sub Akun di Daftar Akun, sama persis dengan Laba rugi.",
+  columns: EXPENSE_COLUMNS,
+  choice: {
+    label: "Kategori",
+    options: EXPENSE_CATEGORIES.map((value) => ({
+      value,
+      label: ACCOUNT_CATEGORY_LABEL[value],
+    })),
+    defaults: EXPENSE_CATEGORIES,
+    summary: (values) =>
+      values.length === EXPENSE_CATEGORIES.length
+        ? "Semua kategori biaya"
+        : values.map((v) => ACCOUNT_CATEGORY_LABEL[v]).join(", "),
+  },
+  fetch: async ({ dateFrom, dateTo, branchIds }, accountCategories) =>
+    (
+      await reportService.expenses({
+        dateFrom,
+        dateTo,
+        branchIds,
+        accountCategories,
+      })
+    ).rows,
 };

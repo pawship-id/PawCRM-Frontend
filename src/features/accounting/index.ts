@@ -156,4 +156,8 @@ export {
   type UseJournalEntriesResult,
 } from "./hooks/useJournalEntries";
 /** Where a journal entry came from, in the words the Jurnal screen uses. */
-export { ACCOUNT_TYPE_LABEL, sourceLabel } from "./labels";
+export {
+  ACCOUNT_CATEGORY_LABEL,
+  ACCOUNT_TYPE_LABEL,
+  sourceLabel,
+} from "./labels";

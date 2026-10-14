@@ -25,7 +25,7 @@ import {
   salesItemReport,
   salesRevenueReport,
 } from "../salesReports";
-import { cashFlowReport, ledgerReport } from "../financeReports";
+import { cashFlowReport, expenseReport, ledgerReport } from "../financeReports";
 import { SalesReportDialog } from "./SalesReportDialog";
 
 /**
@@ -94,7 +94,8 @@ type ReportDialog =
   | "consignmentSales"
   | "salesRevenue"
   | "cashFlow"
-  | "ledger";
+  | "ledger"
+  | "expenses";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -110,6 +111,7 @@ const REPORT_DIALOGS: Record<
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
   ),
+  expenses: (props) => <SalesReportDialog report={expenseReport} {...props} />,
   ledger: (props) => <SalesReportDialog report={ledgerReport} {...props} />,
   cashFlow: (props) => <SalesReportDialog report={cashFlowReport} {...props} />,
   salesRevenue: (props) => (
@@ -229,6 +231,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
     {
       title: "Biaya per kategori",
       description: "Biaya per kategori, termasuk alokasi biaya bersama.",
+      dialog: "expenses",
+      anyOf: [
+        { feature: "financeReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ],
     },
     {
       title: "Umur piutang & utang",
