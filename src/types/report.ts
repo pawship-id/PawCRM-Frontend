@@ -1,4 +1,4 @@
-import type { JournalSourceType } from "./accounting";
+import type { AccountType, JournalSourceType } from "./accounting";
 /**
  * The reports contract — `/api/reports`.
  *
@@ -402,4 +402,48 @@ export interface CashFlowReportQuery {
   dateFrom: string;
   dateTo: string;
   branchIds?: string[];
+}
+
+/**
+ * GET /reports/ledger — Laporan › Saldo per akun: the buku besar. Per account,
+ * in code order: its balance before the period, every line inside it with the
+ * running balance, and its closing. Balances are signed by the account's
+ * normal side, so an ordinary balance is positive.
+ */
+export interface LedgerReportLine {
+  date: string;
+  entryNumber: string;
+  description: string | null;
+  memo: string | null;
+  sourceType: JournalSourceType;
+  branchName: string | null;
+  debit: string;
+  credit: string;
+  balance: string;
+}
+
+export interface LedgerReportAccount {
+  code: string;
+  name: string;
+  accountType: AccountType;
+  accountCategory: string;
+  normalBalance: "debit" | "credit";
+  opening: string;
+  debit: string;
+  credit: string;
+  closing: string;
+  lines: LedgerReportLine[];
+}
+
+export interface LedgerReport {
+  range: { fromDate: string | null; toDate: string | null } | null;
+  accounts: LedgerReportAccount[];
+}
+
+export interface LedgerReportQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  /** Omitted = all five. */
+  accountTypes?: AccountType[];
 }

@@ -1,6 +1,11 @@
-import { sourceLabel } from "@/features/accounting";
+import { ACCOUNT_TYPE_LABEL, sourceLabel } from "@/features/accounting";
 import { reportService } from "@/services/report.service";
-import type { CashFlowReport, CashFlowSection } from "@/types/report";
+import type { AccountType } from "@/types/accounting";
+import type {
+  CashFlowReport,
+  CashFlowSection,
+  LedgerReport,
+} from "@/types/report";
 
 import type {
   SalesReportColumn,
@@ -165,4 +170,178 @@ export const cashFlowReport: SalesReportDefinition<CashFlowRow, never> = {
   columns: CASH_FLOW_COLUMNS,
   fetch: async ({ dateFrom, dateTo, branchIds }) =>
     cashFlowRows(await reportService.cashFlow({ dateFrom, dateTo, branchIds })),
+};
+
+/* ------------------------------------------------------- Saldo per akun */
+
+/**
+ * One line of the buku besar as it lands in the sheet: an account's opening,
+ * each journal line under it, then its closing with the period's totals.
+ * The account repeats on every row so the sheet can be filtered by it.
+ */
+export interface LedgerRow {
+  code: string;
+  name: string;
+  accountType: AccountType;
+  date: string | null;
+  entryNumber: string | null;
+  source: string | null;
+  branchName: string | null;
+  description: string;
+  memo: string | null;
+  debit: string | null;
+  credit: string | null;
+  balance: string;
+}
+
+/** The server's per-account ledger, flattened in reading order. */
+export function ledgerRows(report: LedgerReport): LedgerRow[] {
+  const from = report.range?.fromDate ?? null;
+  const to = report.range?.toDate ?? null;
+
+  return report.accounts.flatMap((account) => {
+    const base = {
+      code: account.code,
+      name: account.name,
+      accountType: account.accountType,
+      entryNumber: null,
+      source: null,
+      branchName: null,
+      memo: null,
+    };
+    return [
+      {
+        ...base,
+        date: from,
+        description: "Saldo awal",
+        debit: null,
+        credit: null,
+        balance: account.opening,
+      },
+      ...account.lines.map((line) => ({
+        ...base,
+        date: line.date,
+        entryNumber: line.entryNumber,
+        source: sourceLabel(line.sourceType),
+        branchName: line.branchName,
+        description: line.description ?? "",
+        memo: line.memo,
+        debit: line.debit,
+        credit: line.credit,
+        balance: line.balance,
+      })),
+      {
+        ...base,
+        date: to,
+        description: "Saldo akhir",
+        debit: account.debit,
+        credit: account.credit,
+        balance: account.closing,
+      },
+    ];
+  });
+}
+
+const LEDGER_COLUMNS: SalesReportColumn<LedgerRow>[] = [
+  { header: "Kode akun", value: (r) => r.code, width: 12, about: "Kode akun" },
+  { header: "Nama akun", value: (r) => r.name, width: 26, about: "Nama akun" },
+  {
+    header: "Tipe akun",
+    value: (r) => ACCOUNT_TYPE_LABEL[r.accountType],
+    width: 12,
+    about: "Aset, Kewajiban, Ekuitas, Pendapatan, atau Beban",
+  },
+  {
+    header: "Tanggal",
+    value: (r) => r.date,
+    type: "date",
+    width: 12,
+    about: "Tanggal jurnal; untuk saldo awal/akhir, awal/akhir periode",
+  },
+  {
+    header: "No. jurnal",
+    value: (r) => r.entryNumber,
+    width: 18,
+    about: "Nomor jurnal",
+  },
+  {
+    header: "Sumber",
+    value: (r) => r.source,
+    width: 16,
+    about: "Asal jurnal: kasir, faktur, jurnal manual, dst.",
+  },
+  {
+    header: "Cabang",
+    value: (r) => r.branchName,
+    width: 16,
+    about: "Cabang jurnal",
+  },
+  {
+    header: "Keterangan",
+    value: (r) => r.description,
+    width: 36,
+    about: "Keterangan jurnal, atau Saldo awal / Saldo akhir",
+  },
+  {
+    header: "Memo",
+    value: (r) => r.memo,
+    width: 24,
+    about: "Catatan di baris jurnal",
+  },
+  {
+    header: "Debit",
+    value: (r) => num(r.debit),
+    type: "number",
+    width: 16,
+    about: "Di baris saldo akhir: total debit periode ini",
+  },
+  {
+    header: "Kredit",
+    value: (r) => num(r.credit),
+    type: "number",
+    width: 16,
+    about: "Di baris saldo akhir: total kredit periode ini",
+  },
+  {
+    header: "Saldo",
+    value: (r) => num(r.balance),
+    type: "number",
+    width: 18,
+    about:
+      "Saldo berjalan, mengikuti saldo normal akun (aset & beban dari debit, lainnya dari kredit)",
+  },
+];
+
+const ALL_ACCOUNT_TYPES = Object.keys(ACCOUNT_TYPE_LABEL) as AccountType[];
+
+/**
+ * Saldo tiap akun dengan rincian ke mutasi jurnal — the buku besar for a
+ * period, every account that held or moved money.
+ */
+export const ledgerReport: SalesReportDefinition<LedgerRow, AccountType> = {
+  title: "Saldo per akun",
+  description:
+    "Saldo tiap akun dengan rincian ke mutasi jurnal. Diunduh sebagai Excel.",
+  fileName: "saldo-per-akun",
+  rowNoun: "baris",
+  periodLabel: "tanggal jurnal",
+  locations: "branches",
+  note: "Akun yang tidak punya saldo dan tidak bergerak di periode ini tidak dicantumkan.",
+  columns: LEDGER_COLUMNS,
+  choice: {
+    label: "Tipe akun",
+    options: ALL_ACCOUNT_TYPES.map((value) => ({
+      value,
+      label: ACCOUNT_TYPE_LABEL[value],
+    })),
+    defaults: ALL_ACCOUNT_TYPES,
+    summary: (values) =>
+      values.length === ALL_ACCOUNT_TYPES.length
+        ? "Semua tipe"
+        : values.map((v) => ACCOUNT_TYPE_LABEL[v]).join(", "),
+  },
+  fetch: async ({ dateFrom, dateTo, branchIds }, accountTypes) =>
+    ledgerRows(
+      await reportService.ledger({ dateFrom, dateTo, branchIds, accountTypes }),
+    ),
 };

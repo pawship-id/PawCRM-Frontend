@@ -15,6 +15,8 @@ import type {
   SalesRevenueReportQuery,
   CashFlowReport,
   CashFlowReportQuery,
+  LedgerReport,
+  LedgerReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -152,6 +154,21 @@ export const reportService = {
         branchIds: query.branchIds,
       },
       timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/ledger — Saldo per akun: the buku besar, per account with
+   * every journal line and its running balance.
+   */
+  ledger: (query: LedgerReportQuery) =>
+    apiClient.get<LedgerReport>("/reports/ledger", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        accountTypes: query.accountTypes,
+      },
+      timeoutMs: 120_000,
     }),
 
   /**

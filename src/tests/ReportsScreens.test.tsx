@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 
 import {
   cashFlowRows,
+  ledgerRows,
   ConsignmentScreen,
   LowStockScreen,
   ReportsHub,
@@ -175,6 +176,10 @@ describe("ReportsHub", () => {
       "/dashboard/keuangan/laba-rugi",
       "/dashboard/keuangan/neraca",
     ]);
+    const saldo = screen.getByText("Saldo per akun").closest("tr")!;
+    expect(
+      within(saldo).getByRole("button", { name: "Unduh" }),
+    ).toBeInTheDocument();
     const arusKas = screen.getByText("Arus kas").closest("tr")!;
     expect(
       within(arusKas).getByRole("button", { name: "Unduh" }),
@@ -607,5 +612,48 @@ describe("cashFlowRows", () => {
       ["Saldo akhir", "1101 Kas", "1500000.0000"],
       ["Saldo akhir", "Total saldo akhir kas & bank", "1500000.0000"],
     ]);
+  });
+});
+
+describe("ledgerRows", () => {
+  it("frames each account's lines with its opening and closing", () => {
+    const rows = ledgerRows({
+      range: { fromDate: "2026-09-01", toDate: "2026-09-30" },
+      accounts: [
+        {
+          code: "1101",
+          name: "Kas",
+          accountType: "asset",
+          accountCategory: "cash_bank",
+          normalBalance: "debit",
+          opening: "1000000.0000",
+          debit: "500000.0000",
+          credit: "0.0000",
+          closing: "1500000.0000",
+          lines: [
+            {
+              date: "2026-09-05",
+              entryNumber: "JU-0001",
+              description: "Penjualan",
+              memo: null,
+              sourceType: "pos",
+              branchName: "Pusat",
+              debit: "500000.0000",
+              credit: "0.0000",
+              balance: "1500000.0000",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      rows.map((r) => [r.date, r.description, r.source, r.balance]),
+    ).toEqual([
+      ["2026-09-01", "Saldo awal", null, "1000000.0000"],
+      ["2026-09-05", "Penjualan", "Kasir", "1500000.0000"],
+      ["2026-09-30", "Saldo akhir", null, "1500000.0000"],
+    ]);
+    expect(rows[2].debit).toBe("500000.0000");
   });
 });
