@@ -1,20 +1,21 @@
-import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen, within } from "@testing-library/react";
 
 import {
   cashFlowRows,
+  stockLocations,
+  stockOnHandRows,
   ledgerRows,
   ConsignmentScreen,
   LowStockScreen,
   ReportsHub,
-  StockOnHandScreen,
 } from "@/features/reports";
 import { reportService } from "@/services/report.service";
 import { productService } from "@/services/product.service";
 import { productBatchService } from "@/services/productBatch.service";
 import { branchService } from "@/services/branch.service";
 import { categoryService } from "@/services/category.service";
-import type { User } from "@/types/api";
+import type { Branch, User } from "@/types/api";
+import type { StockWarehouse } from "@/types/inventory";
 import { warehouseService } from "@/services/warehouse.service";
 import { ApiError } from "@/services/api-error";
 import type { StockOnHandRow } from "@/types/report";
@@ -251,112 +252,6 @@ describe("ReportsHub", () => {
   });
 });
 
-describe("StockOnHandScreen", () => {
-  it("renders the rows and the server's totals", async () => {
-    renderWithAuth(<StockOnHandScreen />);
-
-    expect(await screen.findByText("Shampoo Anjing")).toBeInTheDocument();
-    expect(screen.getByText("Cabang Timur")).toBeInTheDocument();
-  });
-
-  /**
-   * The tiles sit above a paged table and would otherwise be read as its sum.
-   * The number is the API's, and the caption says which set it covers.
-   */
-  it("says the totals cover the whole filter, not the page", async () => {
-    renderWithAuth(<StockOnHandScreen />);
-
-    expect(
-      await screen.findByText(/seluruh hasil filter, bukan cuma halaman ini/i),
-    ).toBeInTheDocument();
-  });
-
-  it("groups a warehouse with no branch under 'Tanpa cabang'", async () => {
-    asMock(reportService.stockOnHand).mockResolvedValue(
-      stockResult([stockRow({ branchId: null, branchName: null })]),
-    );
-    renderWithAuth(<StockOnHandScreen />);
-
-    expect(await screen.findByText("Tanpa cabang")).toBeInTheDocument();
-  });
-
-  /**
-   * An em dash, never "Rp 0" — only one of those is a data-entry problem the
-   * owner should chase.
-   */
-  it("renders a missing cost basis as a dash rather than zero", async () => {
-    asMock(reportService.stockOnHand).mockResolvedValue(
-      stockResult([stockRow({ hppAvg: null, value: null })]),
-    );
-    renderWithAuth(<StockOnHandScreen />);
-
-    await screen.findByText("Shampoo Anjing");
-    expect(screen.queryByText("Rp 0")).not.toBeInTheDocument();
-  });
-
-  it("flags a row that is below its restock threshold", async () => {
-    asMock(reportService.stockOnHand).mockResolvedValue(
-      stockResult([stockRow({ isLow: true })]),
-    );
-    renderWithAuth(<StockOnHandScreen />);
-
-    expect(await screen.findByText("Stok minim")).toBeInTheDocument();
-  });
-
-  // Zero rows are hidden by default, so the empty state has to say so — or the
-  // reader concludes the warehouse is empty.
-  it("explains that zero-stock rows are hidden when the result is empty", async () => {
-    asMock(reportService.stockOnHand).mockResolvedValue(stockResult([]));
-    renderWithAuth(<StockOnHandScreen />);
-
-    expect(
-      await screen.findByText(/stoknya nol disembunyikan/i),
-    ).toBeInTheDocument();
-  });
-
-  /**
-   * The API refuses a filter naming something that does not exist rather than
-   * reporting zero rows, and its message names which. Repeating it as "gagal
-   * memuat" would throw away the only useful part.
-   */
-  it("passes the API's filter message through verbatim", async () => {
-    asMock(reportService.stockOnHand).mockRejectedValue(
-      new ApiError("Unknown warehouse: wh9", 400),
-    );
-    renderWithAuth(<StockOnHandScreen />);
-
-    expect(
-      await screen.findByText("Unknown warehouse: wh9"),
-    ).toBeInTheDocument();
-  });
-
-  it("exports through the streaming endpoint, not by paging the list", async () => {
-    const csv = "Cabang,SKU,Qty\r\nCabang Timur,SHAMPOO,12\r\n";
-    asMock(reportService.exportStockOnHand).mockResolvedValue({
-      blob: Object.assign(new Blob([csv]), {
-        text: () => Promise.resolve(csv),
-      }),
-      filename: "stok-per-cabang.csv",
-    } as Awaited<ReturnType<typeof reportService.exportStockOnHand>>);
-    Object.assign(URL, {
-      createObjectURL: jest.fn(() => "blob:url"),
-      revokeObjectURL: jest.fn(),
-    });
-    renderWithAuth(<StockOnHandScreen />);
-
-    await screen.findByText("Shampoo Anjing");
-    await userEvent.click(
-      screen.getByRole("button", { name: /export \.xlsx/i }),
-    );
-
-    await waitFor(() =>
-      expect(reportService.exportStockOnHand).toHaveBeenCalled(),
-    );
-    // One request for the whole set — never a page-by-page walk.
-    expect(reportService.stockOnHand).toHaveBeenCalledTimes(1);
-  });
-});
-
 describe("LowStockScreen", () => {
   it("counts what needs restocking", async () => {
     asMock(productService.lowStock).mockResolvedValue({
@@ -480,39 +375,16 @@ describe("ConsignmentScreen", () => {
  * A COURTESY OVER THE SERVER'S ANSWER — the endpoint narrows the rows and
  * refuses an out-of-scope filter with a 403 whatever these dropdowns offer.
  */
-describe("stock isolation on StockOnHandScreen", () => {
-  beforeEach(() => {
-    asMock(branchService.list).mockResolvedValue({
-      ...emptyPage,
-      items: [
-        { _id: "b1", name: "Cabang Timur" },
-        { _id: "b2", name: "Cabang Barat" },
-      ],
-    } as Awaited<ReturnType<typeof branchService.list>>);
-    asMock(warehouseService.list).mockResolvedValue({
-      ...emptyPage,
-      items: [
-        {
-          _id: "wh1",
-          name: "Gudang Utama",
-          isActive: true,
-          defaultBranchId: "b1",
-        },
-        {
-          _id: "wh2",
-          name: "Gudang Barat",
-          isActive: true,
-          defaultBranchId: "b2",
-        },
-        {
-          _id: "wh0",
-          name: "Gudang Pusat",
-          isActive: true,
-          defaultBranchId: null,
-        },
-      ],
-    } as Awaited<ReturnType<typeof warehouseService.list>>);
-  });
+describe("stockLocations — the Posisi stok dialog's Cabang and Gudang", () => {
+  const branches = [
+    { _id: "b1", name: "Cabang Timur" },
+    { _id: "b2", name: "Cabang Barat" },
+  ] as Branch[];
+  const warehouses = [
+    { _id: "wh1", name: "Gudang Utama", isActive: true, defaultBranchId: "b1" },
+    { _id: "wh2", name: "Gudang Barat", isActive: true, defaultBranchId: "b2" },
+    { _id: "wh0", name: "Gudang Pusat", isActive: true, defaultBranchId: null },
+  ] as StockWarehouse[];
 
   const confined = {
     _id: "u2",
@@ -523,55 +395,53 @@ describe("stock isolation on StockOnHandScreen", () => {
     ],
   } as unknown as User;
 
-  it("offers only the branches the user holds", async () => {
-    const ui = userEvent.setup();
-    renderWithAuth(<StockOnHandScreen />, { user: confined });
-
-    await screen.findByText("Shampoo Anjing");
-    await ui.click(screen.getByLabelText("Cabang"));
-
-    expect(
-      screen.getByRole("option", { name: "Cabang Timur" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Cabang Barat" }),
-    ).not.toBeInTheDocument();
+  it("offers only the branches the user holds", () => {
+    const { branches: offered } = stockLocations(
+      confined,
+      branches,
+      warehouses,
+    );
+    expect(offered.map((b) => b.name)).toEqual(["Cabang Timur"]);
   });
 
-  it("offers the shared warehouse alongside the user's own", async () => {
+  it("offers the shared warehouse alongside the user's own, under every cabang", () => {
     // Gudang Pusat belongs to no branch, so it serves every one of them.
-    const ui = userEvent.setup();
-    renderWithAuth(<StockOnHandScreen />, { user: confined });
-
-    await screen.findByText("Shampoo Anjing");
-    await ui.click(screen.getByLabelText("Gudang"));
-
-    expect(
-      screen.getByRole("option", { name: "Gudang Utama" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("option", { name: "Gudang Pusat" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Gudang Barat" }),
-    ).not.toBeInTheDocument();
+    const { warehouses: offered } = stockLocations(
+      confined,
+      branches,
+      warehouses,
+    );
+    expect(offered.map((w) => [w.name, w.branchIds])).toEqual([
+      ["Gudang Utama", ["b1"]],
+      ["Gudang Pusat", "all"],
+    ]);
   });
 
-  it("leaves an all-branches user every option", async () => {
+  it("leaves an all-branches user every option", () => {
     const owner = {
       ...confined,
       allBranches: true,
       branchAccess: [],
     } as unknown as User;
-    const ui = userEvent.setup();
-    renderWithAuth(<StockOnHandScreen />, { user: owner });
+    const { warehouses: offered } = stockLocations(owner, branches, warehouses);
+    expect(offered.map((w) => w.name)).toContain("Gudang Barat");
+  });
+});
 
-    await screen.findByText("Shampoo Anjing");
-    await ui.click(screen.getByLabelText("Gudang"));
-
-    expect(
-      screen.getByRole("option", { name: "Gudang Barat" }),
-    ).toBeInTheDocument();
+describe("stockOnHandRows", () => {
+  it("reads the streamed CSV by header, dropping the BOM and trailing blank lines", () => {
+    const rows = stockOnHandRows(
+      '\uFEFFCabang,Gudang,SKU,Produk,Qty\r\nTimur,Utama,007,"Pakan, 1kg",12\r\n\r\n',
+    );
+    expect(rows).toEqual([
+      {
+        Cabang: "Timur",
+        Gudang: "Utama",
+        SKU: "007",
+        Produk: "Pakan, 1kg",
+        Qty: "12",
+      },
+    ]);
   });
 });
 

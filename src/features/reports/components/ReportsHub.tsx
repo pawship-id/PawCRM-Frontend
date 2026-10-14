@@ -31,6 +31,7 @@ import {
   expenseReport,
   ledgerReport,
 } from "../financeReports";
+import { stockOnHandReport } from "../stockReports";
 import { SalesReportDialog } from "./SalesReportDialog";
 
 /**
@@ -101,7 +102,8 @@ type ReportDialog =
   | "cashFlow"
   | "ledger"
   | "expenses"
-  | "aging";
+  | "aging"
+  | "stockOnHand";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -116,6 +118,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  stockOnHand: (props) => (
+    <SalesReportDialog report={stockOnHandReport} {...props} />
   ),
   aging: (props) => <SalesReportDialog report={agingReport} {...props} />,
   expenses: (props) => <SalesReportDialog report={expenseReport} {...props} />,
@@ -260,7 +265,7 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Posisi stok",
       description:
         "Stok tiap SKU per gudang, dikelompokkan per cabang, termasuk nilai persediaannya.",
-      href: "/dashboard/reports/stock-on-hand",
+      dialog: "stockOnHand",
       anyOf: [{ feature: "stockReports", action: "read" }],
     },
     {

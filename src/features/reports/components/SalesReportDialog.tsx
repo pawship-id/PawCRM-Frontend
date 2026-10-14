@@ -11,6 +11,8 @@ import {
   warehousesAfterBranches,
   warehousesOffered,
   type DatePreset,
+  type ScopeBranchOption,
+  type ScopeWarehouseOption,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,9 +37,11 @@ import { ApiError } from "@/services/api-error";
 import { branchService } from "@/services/branch.service";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { useAuth } from "@/features/auth";
-import { accessibleBranches } from "@/utils/accessScope";
+import { accessibleBranches, accessibleWarehouses } from "@/utils/accessScope";
+import { warehouseService } from "@/services/warehouse.service";
+import type { Branch, User } from "@/types/api";
+import type { StockWarehouse } from "@/types/inventory";
 import { toScopeWarehouses } from "@/features/sales";
-import type { CustomerInvoiceFilterOptions } from "@/types/api";
 import { isoDate } from "@/utils/date";
 import { exportToXlsx, type XlsxColumn } from "@/utils/xlsx";
 
@@ -89,9 +93,11 @@ export interface SalesReportDefinition<Row, Choice extends string> {
   /**
    * `branches` — Cabang only, read from the branch register: a report with no
    * gudang (cash sits in no warehouse) for a role that may not read faktur.
+   * `stock` — Cabang and Gudang from the branch and warehouse registers, for a
+   * stock report read by a role that may not read faktur.
    * Default `sales`: Cabang and Gudang, from the faktur's own filter options.
    */
-  locations?: "sales" | "branches";
+  locations?: "sales" | "branches" | "stock";
   columns: SalesReportColumn<Row>[];
   /**
    * The one filter particular to this report — Status, Tipe… Omitted when the
@@ -104,6 +110,38 @@ export interface SalesReportDefinition<Row, Choice extends string> {
     summary: (values: Choice[]) => string;
   };
   fetch: (scope: SalesReportScope, choices: Choice[]) => Promise<Row[]>;
+}
+
+/** The Cabang and Gudang a report's dialog offers. */
+interface ReportLocations {
+  branches: ScopeBranchOption[];
+  warehouses: ScopeWarehouseOption[];
+}
+
+/**
+ * Cabang and Gudang from the registers, narrowed to the caller's own — the
+ * shape the stock reports' dialogs offer. A gudang with no default cabang is
+ * shared and sits under every cabang (`InventoryHub`'s rule); an inactive one
+ * stays, marked, since a closed location can still hold stock.
+ */
+export function stockLocations(
+  user: User | null,
+  branches: Branch[],
+  warehouses: StockWarehouse[],
+): ReportLocations {
+  return {
+    branches: accessibleBranches(user, branches),
+    warehouses: accessibleWarehouses(user, warehouses).map((warehouse) => ({
+      _id: warehouse._id,
+      name: warehouse.isActive
+        ? warehouse.name
+        : `${warehouse.name} (nonaktif)`,
+      branchIds: warehouse.defaultBranchId
+        ? [warehouse.defaultBranchId]
+        : "all",
+      homeBranchId: warehouse.defaultBranchId ?? null,
+    })),
+  };
 }
 
 /** The presets above the two dates, read off the browser's clock. */
@@ -144,9 +182,7 @@ export function SalesReportDialog<Row, Choice extends string>({
 }) {
   const { user } = useAuth();
   const branchesOnly = report.locations === "branches";
-  const [options, setOptions] = useState<CustomerInvoiceFilterOptions | null>(
-    null,
-  );
+  const [options, setOptions] = useState<ReportLocations | null>(null);
   const [branchIds, setBranchIds] = useState<string[]>([]);
   const [warehouseIds, setWarehouseIds] = useState<string[]>([]);
   const [choices, setChoices] = useState<Choice[]>(
@@ -162,21 +198,34 @@ export function SalesReportDialog<Row, Choice extends string>({
 
   /*
     FETCHED ON FIRST OPEN, not with the hub: most visits never open this.
-    NO ERROR STATE, as in `useReportLookups` — a lookup that fails leaves
-    "Semua cabang", which still exports the unfiltered file.
+    NO ERROR STATE — a lookup that fails leaves "Semua cabang", which still
+    exports the unfiltered file. Branches and warehouses from the registers
+    are narrowed to the caller's own: the server refuses any other with a 403.
   */
   useEffect(() => {
     if (!open || options) return;
     let live = true;
-    const load = branchesOnly
-      ? branchService.list({ limit: 100 }).then((page) => ({
-          // Narrowed to the caller's own, as `useReportLookups` does: the
-          // server refuses any other with a 403.
-          branches: accessibleBranches(user, page.items),
-          warehouses: [],
-          creators: [],
-        }))
-      : customerInvoiceService.filterOptions();
+    const load: Promise<ReportLocations> =
+      report.locations === "branches"
+        ? branchService.list({ limit: 100 }).then((page) => ({
+            branches: accessibleBranches(user, page.items),
+            warehouses: [],
+          }))
+        : report.locations === "stock"
+          ? Promise.allSettled([
+              branchService.list({ limit: 100 }),
+              warehouseService.list({ limit: 100 }),
+            ]).then(([branch, warehouse]) =>
+              stockLocations(
+                user,
+                branch.status === "fulfilled" ? branch.value.items : [],
+                warehouse.status === "fulfilled" ? warehouse.value.items : [],
+              ),
+            )
+          : customerInvoiceService.filterOptions().then((result) => ({
+              branches: result.branches,
+              warehouses: toScopeWarehouses(result.warehouses),
+            }));
     load
       .then((result) => {
         if (live) setOptions(result);
@@ -185,10 +234,10 @@ export function SalesReportDialog<Row, Choice extends string>({
     return () => {
       live = false;
     };
-  }, [open, options, branchesOnly, user]);
+  }, [open, options, report.locations, user]);
 
   const branches = options?.branches ?? [];
-  const warehouses = toScopeWarehouses(options?.warehouses ?? []);
+  const warehouses = options?.warehouses ?? [];
   const hasPeriod = report.period !== false;
   const ready =
     (!hasPeriod || Boolean(range.from && range.to)) &&

@@ -528,7 +528,7 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 
 **Migration list** — existing code that violates these rules. Fix opportunistically when you are already in the file; do not open a sweep without being asked:
 
-- 2 screens with filters written inline rather than in a toolbar — `StockOnHandScreen`, `ProductDetail` — still carry their own `const ALL = "all"` sentinel and a raw `ui/select`. They were not part of the 15-toolbar census; migrate them to `@/components` filters. (`ChartOfAccountsScreen` and `JournalEntriesScreen` are done — the latter as one piece of work with its wiring to `GET /api/journal-entries`, which is also what retired `features/accounting/data/dummy.ts`.)
+- 1 screen with filters written inline rather than in a toolbar — `ProductDetail` — still carries its own `const ALL = "all"` sentinel and a raw `ui/select`. It was not part of the 15-toolbar census; migrate it to `@/components` filters. (`StockOnHandScreen` is gone — Posisi stok became an export dialog on the Laporan hub, 14 October 2026.) (`ChartOfAccountsScreen` and `JournalEntriesScreen` are done — the latter as one piece of work with its wiring to `GET /api/journal-entries`, which is also what retired `features/accounting/data/dummy.ts`.)
 - 15 forms with their buttons at the foot of the page → `<FormActionBar>` at the head (§16). `ReceiptForm` also still has Simpan to the LEFT of Batal.
 - 2 buttons still reading `Simpan perubahan` — `SupplierEditForm`, `PurchaseReturnDetail`. That names the act, not the object; §16 wants `Simpan supplier`, `Simpan retur`.
 - 23 files still using the banned `text-[10px]` (§1.6). `OpnameSheet` is done; the rest are opportunistic.

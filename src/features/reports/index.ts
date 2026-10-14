@@ -8,7 +8,6 @@
  * with two that slowly stop agreeing.
  */
 export { ReportsHub } from "./components/ReportsHub";
-export { StockOnHandScreen } from "./components/StockOnHandScreen";
 export { LowStockScreen } from "./components/LowStockScreen";
 export { ConsignmentScreen } from "./components/ConsignmentScreen";
 export { MyCommissionScreen } from "./components/MyCommissionScreen";
@@ -29,3 +28,5 @@ export {
   ledgerReport,
   ledgerRows,
 } from "./financeReports";
+export { stockOnHandReport, stockOnHandRows } from "./stockReports";
+export { stockLocations } from "./components/SalesReportDialog";
