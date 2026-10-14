@@ -3,6 +3,8 @@ import type {
   ProductMovementReport,
   SalesInvoiceReport,
   SalesInvoiceReportQuery,
+  SalesItemReport,
+  SalesItemReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -46,6 +48,22 @@ export const reportService = {
         branchIds: query.branchIds,
         warehouseIds: query.warehouseIds,
         statuses: query.statuses,
+      },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/sales-items — Penjualan per produk & layanan: the period's
+   * sold lines summed per produk / layanan, kasir sales included.
+   */
+  salesItems: (query: SalesItemReportQuery) =>
+    apiClient.get<SalesItemReport>("/reports/sales-items", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        warehouseIds: query.warehouseIds,
+        kinds: query.kinds,
       },
       timeoutMs: 60_000,
     }),

@@ -351,10 +351,7 @@ function groupByBranch(rows: StockOnHandRow[]): BranchGroup[] {
   // UI — the report-wide figures come from the API's own totals.
   groups.forEach((group) => {
     group.value = String(
-      group.rows.reduce(
-        (total, row) => total + Number(row.value ?? 0),
-        0,
-      ),
+      group.rows.reduce((total, row) => total + Number(row.value ?? 0), 0),
     );
   });
 

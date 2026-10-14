@@ -77,7 +77,12 @@ export interface StockOnHandQuery {
 export interface StockOnHandResult {
   items: StockOnHandRow[];
   totals: StockOnHandTotals;
-  pagination: { page: number; limit: number; total: number; totalPages: number };
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
 }
 
 /**
@@ -168,4 +173,40 @@ export interface SalesInvoiceReportQuery {
 export interface SalesInvoiceReport {
   range: { fromDate: string | null; toDate: string | null } | null;
   rows: SalesInvoiceReportRow[];
+}
+
+/**
+ * GET /reports/sales-items — Laporan › Penjualan per produk & layanan. One row
+ * per catalogue row sold in the period, largest `net` first. Money and qty are
+ * decimal strings; `share` is a percent of the period's net, two places.
+ */
+export interface SalesItemReportRow {
+  kind: "product" | "service" | "membership";
+  refId: string;
+  name: string | null;
+  sku: string | null;
+  unit: string | null;
+  categoryName: string | null;
+  invoiceCount: number;
+  lineCount: number;
+  qty: string;
+  gross: string;
+  discount: string;
+  net: string;
+  averagePrice: string | null;
+  share: number | null;
+}
+
+export interface SalesItemReport {
+  range: { fromDate: string | null; toDate: string | null } | null;
+  rows: SalesItemReportRow[];
+}
+
+export interface SalesItemReportQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  warehouseIds?: string[];
+  /** Omitted = all three. */
+  kinds?: SalesItemReportRow["kind"][];
 }

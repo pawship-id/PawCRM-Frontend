@@ -87,7 +87,10 @@ const stockResult = (rows: StockOnHandRow[], overrides = {}) => ({
   ...overrides,
 });
 
-const emptyPage = { items: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 0 } };
+const emptyPage = {
+  items: [],
+  pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -136,13 +139,15 @@ describe("ReportsHub", () => {
     mockTab = "penjualan";
   });
 
-  it("opens on Penjualan, where only Penjualan per invoice is built — as a dialog", () => {
+  it("opens on Penjualan, whose two built reports open as dialogs", () => {
     renderWithAuth(<ReportsHub />);
 
     expect(screen.getByText("Penjualan per invoice")).toBeInTheDocument();
     expect(screen.getAllByText("Segera").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("link", { name: "Buka" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Unduh" })).toHaveLength(1);
+    expect(
+      screen.queryByRole("link", { name: "Buka" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Unduh" })).toHaveLength(2);
   });
 
   it("lists the inventory reports a full grant can reach", () => {
@@ -183,7 +188,9 @@ describe("ReportsHub", () => {
       permissions: [{ feature: "products", actions: ["read"] }],
     });
 
-    expect(screen.queryByRole("link", { name: "Inventori" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Inventori" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText("Posisi stok")).not.toBeInTheDocument();
     // Falls back to the one tab every role has: Operasional, with Komisi saya.
     expect(screen.getByText("Komisi saya")).toBeInTheDocument();
@@ -220,7 +227,10 @@ describe("ReportsHub", () => {
 
     const open = screen.getAllByRole("link", { name: "Buka" });
     expect(open).toHaveLength(1);
-    expect(open[0]).toHaveAttribute("href", "/dashboard/reports/commissions/mine");
+    expect(open[0]).toHaveAttribute(
+      "href",
+      "/dashboard/reports/commissions/mine",
+    );
     expect(screen.queryByText("Rekap komisi")).not.toBeInTheDocument();
   });
 });
@@ -466,9 +476,24 @@ describe("stock isolation on StockOnHandScreen", () => {
     asMock(warehouseService.list).mockResolvedValue({
       ...emptyPage,
       items: [
-        { _id: "wh1", name: "Gudang Utama", isActive: true, defaultBranchId: "b1" },
-        { _id: "wh2", name: "Gudang Barat", isActive: true, defaultBranchId: "b2" },
-        { _id: "wh0", name: "Gudang Pusat", isActive: true, defaultBranchId: null },
+        {
+          _id: "wh1",
+          name: "Gudang Utama",
+          isActive: true,
+          defaultBranchId: "b1",
+        },
+        {
+          _id: "wh2",
+          name: "Gudang Barat",
+          isActive: true,
+          defaultBranchId: "b2",
+        },
+        {
+          _id: "wh0",
+          name: "Gudang Pusat",
+          isActive: true,
+          defaultBranchId: null,
+        },
       ],
     } as Awaited<ReturnType<typeof warehouseService.list>>);
   });
@@ -489,7 +514,9 @@ describe("stock isolation on StockOnHandScreen", () => {
     await screen.findByText("Shampoo Anjing");
     await ui.click(screen.getByLabelText("Cabang"));
 
-    expect(screen.getByRole("option", { name: "Cabang Timur" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Cabang Timur" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("option", { name: "Cabang Barat" }),
     ).not.toBeInTheDocument();
@@ -503,21 +530,31 @@ describe("stock isolation on StockOnHandScreen", () => {
     await screen.findByText("Shampoo Anjing");
     await ui.click(screen.getByLabelText("Gudang"));
 
-    expect(screen.getByRole("option", { name: "Gudang Utama" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Gudang Pusat" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Gudang Utama" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Gudang Pusat" }),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("option", { name: "Gudang Barat" }),
     ).not.toBeInTheDocument();
   });
 
   it("leaves an all-branches user every option", async () => {
-    const owner = { ...confined, allBranches: true, branchAccess: [] } as unknown as User;
+    const owner = {
+      ...confined,
+      allBranches: true,
+      branchAccess: [],
+    } as unknown as User;
     const ui = userEvent.setup();
     renderWithAuth(<StockOnHandScreen />, { user: owner });
 
     await screen.findByText("Shampoo Anjing");
     await ui.click(screen.getByLabelText("Gudang"));
 
-    expect(screen.getByRole("option", { name: "Gudang Barat" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Gudang Barat" }),
+    ).toBeInTheDocument();
   });
 });

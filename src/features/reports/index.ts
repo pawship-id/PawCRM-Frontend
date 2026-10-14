@@ -12,4 +12,5 @@ export { StockOnHandScreen } from "./components/StockOnHandScreen";
 export { LowStockScreen } from "./components/LowStockScreen";
 export { ConsignmentScreen } from "./components/ConsignmentScreen";
 export { MyCommissionScreen } from "./components/MyCommissionScreen";
-export { SalesInvoiceReportDialog } from "./components/SalesInvoiceReportDialog";
+export { SalesReportDialog } from "./components/SalesReportDialog";
+export { salesInvoiceReport, salesItemReport } from "./salesReports";

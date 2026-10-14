@@ -17,7 +17,8 @@ import { cn } from "@/lib/utils";
 import { usePermissions } from "@/features/permissions";
 import type { Action, Feature } from "@/features/permissions/types";
 
-import { SalesInvoiceReportDialog } from "./SalesInvoiceReportDialog";
+import { salesInvoiceReport, salesItemReport } from "../salesReports";
+import { SalesReportDialog } from "./SalesReportDialog";
 
 /**
  * The Laporan landing page, as the v3 mockup draws it: four tabs (Penjualan,
@@ -77,7 +78,26 @@ interface ReportRow {
   anyOf?: { feature: Feature; action: Action }[];
 }
 
-type ReportDialog = "salesInvoices";
+type ReportDialog = "salesInvoices" | "salesItems";
+
+/**
+ * Each export dialog, its report definition already bound — a map of
+ * components rather than of definitions, so each keeps its own row type.
+ */
+const REPORT_DIALOGS: Record<
+  ReportDialog,
+  (props: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+  }) => React.ReactNode
+> = {
+  salesInvoices: (props) => (
+    <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  salesItems: (props) => (
+    <SalesReportDialog report={salesItemReport} {...props} />
+  ),
+};
 
 const SOON = "Segera";
 
@@ -85,7 +105,8 @@ const ROWS: Record<TabKey, ReportRow[]> = {
   penjualan: [
     {
       title: "Penjualan per invoice",
-      description: "Daftar faktur dengan total, diskon, pajak, dan status bayar.",
+      description:
+        "Daftar faktur dengan total, diskon, pajak, dan status bayar.",
       dialog: "salesInvoices",
       anyOf: [
         { feature: "salesReports", action: "read" },
@@ -95,6 +116,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
     {
       title: "Penjualan per produk & layanan",
       description: "Kuantitas dan nilai penjualan per SKU atau layanan.",
+      dialog: "salesItems",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "customerInvoices", action: "read" },
+      ],
     },
     {
       title: "Batch terjual",
@@ -125,17 +151,13 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Laba rugi",
       description: "Hasil usaha per bulan, gabungan atau per lini bisnis.",
       href: "/dashboard/keuangan/laba-rugi",
-      anyOf: [
-        { feature: "financeReports", action: "read" },
-      ],
+      anyOf: [{ feature: "financeReports", action: "read" }],
     },
     {
       title: "Neraca",
       description: "Aset, kewajiban, dan ekuitas pada satu tanggal.",
       href: "/dashboard/keuangan/neraca",
-      anyOf: [
-        { feature: "financeReports", action: "read" },
-      ],
+      anyOf: [{ feature: "financeReports", action: "read" }],
     },
     {
       title: "Arus kas",
@@ -162,9 +184,7 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       description:
         "Stok tiap SKU per gudang, dikelompokkan per cabang, termasuk nilai persediaannya.",
       href: "/dashboard/reports/stock-on-hand",
-      anyOf: [
-        { feature: "stockReports", action: "read" },
-      ],
+      anyOf: [{ feature: "stockReports", action: "read" }],
     },
     {
       title: "Kartu stok",
@@ -178,9 +198,7 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       description:
         "Produk yang sudah di bawah batas restock, paling mendesak di atas.",
       href: "/dashboard/reports/low-stock",
-      anyOf: [
-        { feature: "stockReports", action: "read" },
-      ],
+      anyOf: [{ feature: "stockReports", action: "read" }],
     },
     {
       title: "Nilai persediaan",
@@ -196,7 +214,8 @@ const ROWS: Record<TabKey, ReportRow[]> = {
     },
     {
       title: "Selisih opname",
-      description: "Riwayat penyesuaian hasil hitung stok, dan jurnal yang terbentuk.",
+      description:
+        "Riwayat penyesuaian hasil hitung stok, dan jurnal yang terbentuk.",
       href: "/dashboard/inventory/opname",
       feature: "stockOpnames",
       action: "read",
@@ -213,9 +232,7 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       description:
         "Barang titipan yang masih di gudang, per supplier. Belum jadi utang — utang muncul saat barangnya laku.",
       href: "/dashboard/reports/consignment",
-      anyOf: [
-        { feature: "stockReports", action: "read" },
-      ],
+      anyOf: [{ feature: "stockReports", action: "read" }],
     },
     {
       title: "Pembelian per supplier",
@@ -245,9 +262,7 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       description:
         "Paket terlaris, dan berapa nilai benefit yang sudah diberikan.",
       href: "/dashboard/reports/membership",
-      anyOf: [
-        { feature: "membershipReports", action: "read" },
-      ],
+      anyOf: [{ feature: "membershipReports", action: "read" }],
     },
     {
       title: "Rekap komisi",
@@ -255,9 +270,7 @@ const ROWS: Record<TabKey, ReportRow[]> = {
         "Komisi groomer per bulan, dihitung dari booking yang selesai. Siap diunduh untuk payroll.",
       href: "/dashboard/keuangan/komisi",
       // Payroll data: the report's own grant, or the staff register it used to need.
-      anyOf: [
-        { feature: "commissionReports", action: "read" },
-      ],
+      anyOf: [{ feature: "commissionReports", action: "read" }],
     },
     {
       title: "Komisi saya",
@@ -300,7 +313,10 @@ export function ReportsHub() {
 
   return (
     <div className="flex flex-col gap-4">
-      <nav aria-label="Jenis laporan" className="overflow-x-auto border-b border-border">
+      <nav
+        aria-label="Jenis laporan"
+        className="overflow-x-auto border-b border-border"
+      >
         <ul className="flex gap-1">
           {tabs.map((tab) => {
             const current = tab.key === active;
@@ -366,20 +382,26 @@ export function ReportsHub() {
         </Table>
       </div>
 
-      <SalesInvoiceReportDialog
-        open={openDialog === "salesInvoices"}
-        onOpenChange={(open) => setOpenDialog(open ? "salesInvoices" : null)}
-      />
+      {(Object.keys(REPORT_DIALOGS) as ReportDialog[]).map((key) => {
+        const ReportDialogFor = REPORT_DIALOGS[key];
+        return (
+          <ReportDialogFor
+            key={key}
+            open={openDialog === key}
+            onOpenChange={(open) => setOpenDialog(open ? key : null)}
+          />
+        );
+      })}
 
       <div className="rounded-xl border border-border border-l-[3px] border-l-primary bg-surface px-4 py-3">
         <p className="text-sm font-bold text-foreground">Cara kerja</p>
         <p className="mt-0.5 text-xs text-muted">
           Laporan yang bertanda Buka tampil di layar, lengkap dengan filter dan
-          tombol unduh Excel di dalamnya. Yang bertanda Unduh langsung
-          membuka pilihan periode dan menghasilkan file Excel. Yang bertanda Segera belum dibangun —
-          semuanya akan memakai dimensi yang sama dengan yang tersimpan di tiap
-          transaksi: cabang, gudang, lini bisnis, channel, konsinyasi, SKU, tipe
-          layanan atau produk, dan akun.
+          tombol unduh Excel di dalamnya. Yang bertanda Unduh langsung membuka
+          pilihan periode dan menghasilkan file Excel. Yang bertanda Segera
+          belum dibangun — semuanya akan memakai dimensi yang sama dengan yang
+          tersimpan di tiap transaksi: cabang, gudang, lini bisnis, channel,
+          konsinyasi, SKU, tipe layanan atau produk, dan akun.
         </p>
       </div>
     </div>

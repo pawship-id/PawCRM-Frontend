@@ -6,10 +6,7 @@ import { branchService } from "@/services/branch.service";
 import { categoryService } from "@/services/category.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { useAuth } from "@/features/auth";
-import {
-  accessibleBranches,
-  accessibleWarehouses,
-} from "@/utils/accessScope";
+import { accessibleBranches, accessibleWarehouses } from "@/utils/accessScope";
 import type { Branch, Category } from "@/types/api";
 import type { StockWarehouse } from "@/types/inventory";
 
@@ -67,7 +64,8 @@ export function useReportLookups(): UseReportLookupsResult {
         if (warehouse.status === "fulfilled") {
           setWarehouses(accessibleWarehouses(user, warehouse.value.items));
         }
-        if (category.status === "fulfilled") setCategories(category.value.items);
+        if (category.status === "fulfilled")
+          setCategories(category.value.items);
       })
       .finally(() => {
         if (active) setLoading(false);
