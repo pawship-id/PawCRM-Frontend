@@ -28,5 +28,10 @@ export {
   ledgerReport,
   ledgerRows,
 } from "./financeReports";
-export { stockOnHandReport, stockOnHandRows } from "./stockReports";
+export {
+  fetchAllLowStock,
+  lowStockReport,
+  stockOnHandReport,
+  stockOnHandRows,
+} from "./stockReports";
 export { stockLocations } from "./components/SalesReportDialog";

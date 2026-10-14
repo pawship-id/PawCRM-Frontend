@@ -1,4 +1,7 @@
+import { ApiError } from "@/services/api-error";
+import { productService } from "@/services/product.service";
 import { reportService } from "@/services/report.service";
+import type { Product } from "@/types/inventory";
 import { sniffDelimiter, splitCsv } from "@/utils/csv";
 
 import type {
@@ -153,4 +156,87 @@ export const stockOnHandReport: SalesReportDefinition<
       ? rows
       : rows.filter((row) => Number(row["Qty"]) === 0);
   },
+};
+
+/* ----------------------------------------------------------- Stok minim */
+
+export type LowStockRow = Product & { qtyOnHand: string };
+
+/** The most pages one export walks — 100 rows each, the API's cap. */
+const LOW_STOCK_MAX_PAGES = 50;
+
+/**
+ * Every product at or below its restock threshold, in the server's order —
+ * lowest stock first. THE LIST IS PAGED (100 at most), so this walks it; a
+ * restock list is a few dozen rows, and one past the cap is refused rather
+ * than cut short.
+ */
+export async function fetchAllLowStock(query: {
+  branchIds?: string[];
+  warehouseIds?: string[];
+}): Promise<LowStockRow[]> {
+  const rows: LowStockRow[] = [];
+  for (let page = 1; page <= LOW_STOCK_MAX_PAGES; page += 1) {
+    const result = await productService.lowStock({
+      ...query,
+      page,
+      limit: 100,
+    });
+    rows.push(...result.items);
+    if (page >= result.pagination.totalPages) return rows;
+  }
+  // An ApiError, so the dialog's toast says this rather than a bare failure.
+  throw new ApiError(
+    "Terlalu banyak produk di bawah batas restock untuk satu file. Persempit cabang atau gudangnya.",
+    400,
+  );
+}
+
+const LOW_STOCK_COLUMNS: SalesReportColumn<LowStockRow>[] = [
+  { header: "SKU", value: (r) => r.sku, width: 16, about: "Kode produk" },
+  { header: "Produk", value: (r) => r.name, width: 32, about: "Nama produk" },
+  { header: "Satuan", value: (r) => r.unit, about: "Satuan produk" },
+  {
+    header: "Stok saat ini",
+    value: (r) => Number(r.qtyOnHand),
+    type: "number",
+    about: "Jumlah stok di cabang/gudang yang dipilih",
+  },
+  {
+    header: "Batas minimum",
+    value: (r) => Number(r.minStock),
+    type: "number",
+    about: "Batas restock produk",
+  },
+  {
+    header: "Kurang",
+    value: (r) => Number(r.minStock) - Number(r.qtyOnHand),
+    type: "number",
+    about:
+      "Batas minimum − stok saat ini: berapa yang perlu diisi untuk kembali ke batas",
+  },
+  {
+    header: "Status",
+    value: (r) => (Number(r.qtyOnHand) <= 0 ? "Habis" : "Di bawah minimum"),
+    width: 18,
+    about: "Habis kalau stok 0 atau minus",
+  },
+];
+
+/**
+ * Produk yang sudah di bawah batas restock, paling mendesak di atas — the
+ * same list the Stok minim page and the dashboard's alert read.
+ */
+export const lowStockReport: SalesReportDefinition<LowStockRow, never> = {
+  title: "Stok minim",
+  description:
+    "Produk yang sudah di bawah batas restock, paling mendesak di atas. Diunduh sebagai Excel.",
+  fileName: "stok-minim",
+  rowNoun: "produk",
+  period: false,
+  locations: "stock",
+  note: "Posisi per saat diunduh. Produk dengan batas minimum 0 tidak dipantau, jadi tidak muncul di sini.",
+  columns: LOW_STOCK_COLUMNS,
+  fetch: async ({ branchIds, warehouseIds }) =>
+    fetchAllLowStock({ branchIds, warehouseIds }),
 };

@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 
 import {
   cashFlowRows,
+  fetchAllLowStock,
   stockLocations,
   stockOnHandRows,
   ledgerRows,
@@ -533,5 +534,29 @@ describe("ledgerRows", () => {
       ["2026-09-30", "Saldo akhir", null, "1500000.0000"],
     ]);
     expect(rows[2].debit).toBe("500000.0000");
+  });
+});
+
+describe("fetchAllLowStock", () => {
+  it("walks every page of the restock list, in the server's order", async () => {
+    const product = (id: string) => ({ _id: id, qtyOnHand: "0" });
+    asMock(productService.lowStock)
+      .mockResolvedValueOnce({
+        items: [product("p1"), product("p2")],
+        pagination: { page: 1, limit: 100, total: 3, totalPages: 2 },
+      } as unknown as Awaited<ReturnType<typeof productService.lowStock>>)
+      .mockResolvedValueOnce({
+        items: [product("p3")],
+        pagination: { page: 2, limit: 100, total: 3, totalPages: 2 },
+      } as unknown as Awaited<ReturnType<typeof productService.lowStock>>);
+
+    const rows = await fetchAllLowStock({ branchIds: ["b1"] });
+
+    expect(rows.map((r) => r._id)).toEqual(["p1", "p2", "p3"]);
+    expect(productService.lowStock).toHaveBeenCalledWith({
+      branchIds: ["b1"],
+      page: 2,
+      limit: 100,
+    });
   });
 });

@@ -31,7 +31,7 @@ import {
   expenseReport,
   ledgerReport,
 } from "../financeReports";
-import { stockOnHandReport } from "../stockReports";
+import { lowStockReport, stockOnHandReport } from "../stockReports";
 import { SalesReportDialog } from "./SalesReportDialog";
 
 /**
@@ -103,7 +103,8 @@ type ReportDialog =
   | "ledger"
   | "expenses"
   | "aging"
-  | "stockOnHand";
+  | "stockOnHand"
+  | "lowStock";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -119,6 +120,7 @@ const REPORT_DIALOGS: Record<
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
   ),
+  lowStock: (props) => <SalesReportDialog report={lowStockReport} {...props} />,
   stockOnHand: (props) => (
     <SalesReportDialog report={stockOnHandReport} {...props} />
   ),
@@ -279,7 +281,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Stok minim",
       description:
         "Produk yang sudah di bawah batas restock, paling mendesak di atas.",
-      href: "/dashboard/reports/low-stock",
+      /*
+        A DOWNLOAD HERE, while /dashboard/reports/low-stock stays: the
+        dashboard's restock alert links to that page to be read on screen.
+      */
+      dialog: "lowStock",
       anyOf: [{ feature: "stockReports", action: "read" }],
     },
     {
