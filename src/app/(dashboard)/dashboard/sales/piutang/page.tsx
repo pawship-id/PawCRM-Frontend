@@ -25,7 +25,7 @@ export const metadata: Metadata = {
  */
 export default function ReceivablesTabPage() {
   return (
-    <RequirePermission feature="customerInvoices" action="read">
+    <RequirePermission feature="receivables">
       <ModuleTabPlaceholder
         header={<SalesModuleHeader />}
         title="Piutang"

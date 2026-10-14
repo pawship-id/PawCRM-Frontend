@@ -1,9 +1,12 @@
 "use client";
 
+import { useEffect } from "react";
 import type { ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { ShieldAlert } from "lucide-react";
 
 import { usePermissions } from "./usePermissions";
+import { tabAllowed, type GatedTab } from "./gatedTabs";
 import type { Action, Feature } from "./types";
 
 /**
@@ -19,6 +22,7 @@ export function RequirePermission({
   feature,
   action = "read",
   anyOf,
+  redirectTo,
   children,
 }: {
   feature?: Feature;
@@ -37,9 +41,17 @@ export function RequirePermission({
    * how you say "and", and it reads better than a second prop would.
    */
   anyOf?: Array<{ feature: Feature; action?: Action }>;
+  /**
+   * The page's sibling tabs. When this page is refused, the reader is sent to
+   * the first of them they may open instead of being shown "denied" — for the
+   * tab a module's menu row lands on (Ringkasan), which a role may now be
+   * given the rest of the module without.
+   */
+  redirectTo?: GatedTab[];
   children: ReactNode;
 }) {
   const { can } = usePermissions();
+  const router = useRouter();
 
   const allowed = anyOf
     ? anyOf.some((grant) => can(grant.feature, grant.action ?? "read"))
@@ -47,6 +59,15 @@ export function RequirePermission({
       ? can(feature, action)
       : false;
 
+  const fallback = !allowed
+    ? redirectTo?.find((tab) => tabAllowed(tab, can))?.href
+    : undefined;
+
+  useEffect(() => {
+    if (fallback) router.replace(fallback);
+  }, [fallback, router]);
+
+  if (fallback) return null;
   if (!allowed) return <AccessDenied />;
 
   return <>{children}</>;

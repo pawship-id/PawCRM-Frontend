@@ -23,7 +23,7 @@ export const metadata: Metadata = { title: "Transfer stok · Buloo" };
  */
 export default function StockTransfersPage() {
   return (
-    <RequirePermission feature="stockMovements" action="read">
+    <RequirePermission feature="stockTransfers">
       <div className="flex flex-col gap-6">
         <div>
           <Breadcrumb

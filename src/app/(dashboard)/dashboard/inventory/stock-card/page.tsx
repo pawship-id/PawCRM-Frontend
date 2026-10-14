@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 
 import { StockProductsScreen } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
+import { INVENTORY_TAB } from "@/features/inventory/pages";
 
 export const metadata: Metadata = { title: "Kartu stok · Buloo" };
 
@@ -49,7 +50,10 @@ export default async function StockCardIndexPage({
   // so no card here can lead to a refusal — the product list's own grant is
   // handled inside the screen.
   return (
-    <RequirePermission feature="stockMovements">
+    <RequirePermission
+      feature="stockMovements"
+      redirectTo={[INVENTORY_TAB.batches]}
+    >
       <StockProductsScreen />
     </RequirePermission>
   );

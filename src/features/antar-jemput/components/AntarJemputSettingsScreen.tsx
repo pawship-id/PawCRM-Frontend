@@ -45,7 +45,9 @@ const EXAMPLE_ADDON = 15_000;
  */
 export function AntarJemputSettingsScreen() {
   const { can } = usePermissions();
-  const mayUpdate = can("tenants", "update");
+  // The Pengaturan tab's own grant (14 Oct 2026); tenants:update still writes too.
+  const mayUpdate =
+    can("serviceSettings", "update") || can("tenants", "update");
   const mayOpenCatalog = can("services", "read");
   const state = useAntarJemputSettings();
   const { draft, settings } = state;

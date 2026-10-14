@@ -13,7 +13,7 @@ export const metadata: Metadata = {
  */
 export default function GroomingSettingsPage() {
   return (
-    <RequirePermission feature="tenants">
+    <RequirePermission feature="serviceSettings">
       <GroomingSettingsScreen />
     </RequirePermission>
   );

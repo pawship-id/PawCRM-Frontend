@@ -37,10 +37,15 @@ import type { Action, Feature } from "@/features/permissions/types";
 
 type TabKey = "penjualan" | "keuangan" | "inventori" | "operasional";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "penjualan", label: "Penjualan" },
-  { key: "keuangan", label: "Keuangan" },
-  { key: "inventori", label: "Inventori" },
+/*
+  Each tab answers to its Laporan grant in the role editor (14 October 2026).
+  Operasional has none: it holds "Komisi saya", which every staff member may
+  read about themselves, so it is always there and its other rows are gated.
+*/
+const TABS: { key: TabKey; label: string; feature?: Feature }[] = [
+  { key: "penjualan", label: "Penjualan", feature: "salesReports" },
+  { key: "keuangan", label: "Keuangan", feature: "financeReports" },
+  { key: "inventori", label: "Inventori", feature: "stockReports" },
   { key: "operasional", label: "Operasional" },
 ];
 
@@ -57,9 +62,9 @@ interface ReportRow {
   feature?: Feature;
   action?: Action;
   /**
-   * Opens when ANY of these is granted — a report's own grant beside the data
-   * grant it used to need, mirroring requireAnyOf on its route. Wins over
-   * `feature`/`action` when set.
+   * Opens when ANY of these is granted. Wins over `feature`/`action` when set.
+   * The report rows list their Laporan grant alone (14 October 2026) — the
+   * routes behind them still take the old data grants too.
    */
   anyOf?: { feature: Feature; action: Action }[];
 }
@@ -107,7 +112,6 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       href: "/dashboard/keuangan/laba-rugi",
       anyOf: [
         { feature: "financeReports", action: "read" },
-        { feature: "journalEntries", action: "read" },
       ],
     },
     {
@@ -116,7 +120,6 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       href: "/dashboard/keuangan/neraca",
       anyOf: [
         { feature: "financeReports", action: "read" },
-        { feature: "journalEntries", action: "read" },
       ],
     },
     {
@@ -146,7 +149,6 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       href: "/dashboard/reports/stock-on-hand",
       anyOf: [
         { feature: "stockReports", action: "read" },
-        { feature: "products", action: "read" },
       ],
     },
     {
@@ -163,7 +165,6 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       href: "/dashboard/reports/low-stock",
       anyOf: [
         { feature: "stockReports", action: "read" },
-        { feature: "products", action: "read" },
       ],
     },
     {
@@ -199,7 +200,6 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       href: "/dashboard/reports/consignment",
       anyOf: [
         { feature: "stockReports", action: "read" },
-        { feature: "productBatches", action: "read" },
       ],
     },
     {
@@ -232,7 +232,6 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       href: "/dashboard/reports/membership",
       anyOf: [
         { feature: "membershipReports", action: "read" },
-        { feature: "membershipPlans", action: "read" },
       ],
     },
     {
@@ -243,7 +242,6 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       // Payroll data: the report's own grant, or the staff register it used to need.
       anyOf: [
         { feature: "commissionReports", action: "read" },
-        { feature: "users", action: "read" },
       ],
     },
     {
@@ -263,7 +261,11 @@ export function ReportsHub() {
   const { can } = usePermissions();
   const params = useSearchParams();
   const raw = params?.get("tab") ?? null;
-  const active: TabKey = isTabKey(raw) ? raw : "penjualan";
+  const tabs = TABS.filter((tab) => !tab.feature || can(tab.feature, "read"));
+  const active: TabKey =
+    isTabKey(raw) && tabs.some((tab) => tab.key === raw)
+      ? raw
+      : (tabs[0]?.key ?? "operasional");
 
   /*
     Rows without a screen are always listed (they are the mockup's table of
@@ -284,7 +286,7 @@ export function ReportsHub() {
     <div className="flex flex-col gap-4">
       <nav aria-label="Jenis laporan" className="overflow-x-auto border-b border-border">
         <ul className="flex gap-1">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const current = tab.key === active;
             return (
               <li key={tab.key}>

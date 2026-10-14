@@ -3,6 +3,7 @@ import { Undo2 } from "lucide-react";
 
 import { ModuleTabPlaceholder } from "@/features/dashboard";
 import { SalesModuleHeader } from "@/features/sales";
+import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
   title: "Retur · Penjualan · Buloo",
@@ -16,11 +17,13 @@ export const metadata: Metadata = {
  */
 export default function SalesReturnsTabPage() {
   return (
-    <ModuleTabPlaceholder
-      header={<SalesModuleHeader />}
-      title="Retur"
-      note="Barang yang dikembalikan pelanggan — stok masuk lagi dan tagihannya ikut berkurang. Untuk sekarang, penjualan yang salah dibatalkan lewat tombol Batalkan faktur di detail fakturnya."
-      icon={Undo2}
-    />
+    <RequirePermission feature="salesReturns">
+      <ModuleTabPlaceholder
+        header={<SalesModuleHeader />}
+        title="Retur"
+        note="Barang yang dikembalikan pelanggan — stok masuk lagi dan tagihannya ikut berkurang. Untuk sekarang, penjualan yang salah dibatalkan lewat tombol Batalkan faktur di detail fakturnya."
+        icon={Undo2}
+      />
+    </RequirePermission>
   );
 }

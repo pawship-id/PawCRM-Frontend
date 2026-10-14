@@ -65,7 +65,9 @@ function tabOfError(key: string): SettingsTab {
  */
 export function GroomingSettingsScreen() {
   const { can } = usePermissions();
-  const mayUpdate = can("tenants", "update");
+  // The Pengaturan tab's own grant (14 Oct 2026); tenants:update still writes too.
+  const mayUpdate =
+    can("serviceSettings", "update") || can("tenants", "update");
   const mayEditOverrides = mayUpdate && can("users", "update");
   const mayOpenCatalog = can("services", "read");
 

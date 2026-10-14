@@ -3,6 +3,7 @@ import { RefreshCw } from "lucide-react";
 
 import { ModuleTabPlaceholder } from "@/features/dashboard";
 import { SalesModuleHeader } from "@/features/sales";
+import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
   title: "E-commerce · Penjualan · Buloo",
@@ -21,11 +22,13 @@ export const metadata: Metadata = {
  */
 export default function EcommerceSyncPage() {
   return (
-    <ModuleTabPlaceholder
-      header={<SalesModuleHeader />}
-      title="E-commerce"
-      note="Sinkronisasi produk, stok, dan pesanan dengan marketplace. Untuk sekarang, pesanan dari marketplace dicatat manual sebagai faktur di tab Faktur."
-      icon={RefreshCw}
-    />
+    <RequirePermission feature="ecommerce">
+      <ModuleTabPlaceholder
+        header={<SalesModuleHeader />}
+        title="E-commerce"
+        note="Sinkronisasi produk, stok, dan pesanan dengan marketplace. Untuk sekarang, pesanan dari marketplace dicatat manual sebagai faktur di tab Faktur."
+        icon={RefreshCw}
+      />
+    </RequirePermission>
   );
 }

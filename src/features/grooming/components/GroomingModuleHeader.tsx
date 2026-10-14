@@ -29,8 +29,11 @@ export function GroomingModuleHeader({
 }) {
   const { can } = usePermissions();
 
+  // Each tab answers to its own "Lihat" (14 October 2026); Booking shares the
+  // Kalender's grant, and Layanan & Harga and Pengaturan are one grant each
+  // across Grooming and Antar-Jemput.
   const tabs: PageTab[] = [
-    ...(line.paths.summary && can("bookings", "read")
+    ...(line.paths.summary && can("serviceSummary", "read")
       ? [
           {
             label: "Ringkasan",
@@ -54,7 +57,9 @@ export function GroomingModuleHeader({
     ...(can("services", "read")
       ? [{ label: "Layanan & Harga", href: line.paths.catalog }]
       : []),
-    { label: "Pengaturan", href: line.paths.settings },
+    ...(can("serviceSettings", "read")
+      ? [{ label: "Pengaturan", href: line.paths.settings }]
+      : []),
   ];
 
   return (

@@ -1,6 +1,11 @@
 "use client";
 
-import { PageTabs, type PageTab } from "@/components";
+import { PageTabs } from "@/components";
+import {
+  usePermissions,
+  visibleTabs,
+  type GatedTab,
+} from "@/features/permissions";
 
 import {
   MEMBERSHIP_CARDS_HREF,
@@ -17,24 +22,35 @@ import {
  * second, smaller row rather than four more entries on the first — "Kartu" is
  * not a sibling of "Pelanggan" and "Hewan", it is inside one of them.
  */
-export function MembershipSubTabs() {
-  const tabs: PageTab[] = [
-    {
-      label: "Paket",
-      href: MEMBERSHIP_HREF,
-      /*
+/** Membership's sub-tabs: Paket, and Kartu with Perpanjangan (one grant). */
+export const MEMBERSHIP_TABS: GatedTab[] = [
+  {
+    label: "Paket",
+    href: MEMBERSHIP_HREF,
+    anyOf: [{ feature: "membershipPlans" }],
+    /*
         EXACT, because the other two tabs are routes UNDER this one. Left
         prefix-matched it would sit underlined beside whichever of them the
         reader had actually opened — two current tabs, which says neither.
         Same reason Pelanggan carries it in the module header above.
       */
-      exact: true,
-    },
-    { label: "Kartu", href: MEMBERSHIP_CARDS_HREF },
-    { label: "Perpanjangan", href: MEMBERSHIP_RENEWALS_HREF },
-  ];
+    exact: true,
+  },
+  {
+    label: "Kartu",
+    href: MEMBERSHIP_CARDS_HREF,
+    anyOf: [{ feature: "petMemberships" }],
+  },
+  {
+    label: "Perpanjangan",
+    href: MEMBERSHIP_RENEWALS_HREF,
+    anyOf: [{ feature: "petMemberships" }],
+  },
+];
 
-  return (
-    <PageTabs tabs={tabs} ariaLabel="Bagian membership" />
-  );
+export function MembershipSubTabs() {
+  const { can } = usePermissions();
+  const tabs = visibleTabs(MEMBERSHIP_TABS, can);
+
+  return <PageTabs tabs={tabs} ariaLabel="Bagian membership" />;
 }

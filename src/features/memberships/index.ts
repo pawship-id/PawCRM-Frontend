@@ -20,7 +20,10 @@ export { PetMembershipPanel } from "./components/PetMembershipPanel";
 export { IssueMembershipDialog } from "./components/IssueMembershipDialog";
 export { MembershipStatusBadge } from "./components/MembershipStatusBadge";
 export { BenefitList } from "./components/BenefitList";
-export { MembershipSubTabs } from "./components/MembershipSubTabs";
+export {
+  MembershipSubTabs,
+  MEMBERSHIP_TABS,
+} from "./components/MembershipSubTabs";
 
 export { useMembershipPlans } from "./hooks/useMembershipPlans";
 export { useMembershipPlan } from "./hooks/useMembershipPlan";

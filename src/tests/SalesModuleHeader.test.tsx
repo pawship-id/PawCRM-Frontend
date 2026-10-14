@@ -109,15 +109,18 @@ describe("SalesModuleHeader", () => {
     );
   });
 
-  it("hides Ringkasan, Faktur and Piutang from a role that cannot read invoices", () => {
-    // Who owes the shop money is the sensitive half of this module; the two
-    // ungated placeholders ride along because they hold nothing.
+  it("shows each tab only to its own grant (14 Oct 2026)", () => {
+    renderWithAuth(<SalesModuleHeader />, { isSuperAdmin: false, permissions: [] });
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
+  });
+
+  it("gives a collections role Piutang without Faktur", () => {
     renderWithAuth(<SalesModuleHeader />, {
       isSuperAdmin: false,
-      permissions: [],
+      permissions: [{ feature: "receivables", actions: ["read"] }],
     });
 
-    expect(tabNames()).toEqual(["E-commerce", "Retur"]);
+    expect(tabNames()).toEqual(["Piutang"]);
   });
 
   it("renders the tab's own create button in the action slot", () => {

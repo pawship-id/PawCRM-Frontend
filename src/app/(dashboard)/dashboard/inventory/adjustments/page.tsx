@@ -33,7 +33,7 @@ export default function StockAdjustmentsPage() {
     <div className="flex flex-col gap-6">
       <StockCorrectionModuleHeader />
 
-      <RequirePermission feature="stockMovements" action="read">
+      <RequirePermission feature="stockAdjustments">
         <StockEntriesScreen kind="adjustment" />
       </RequirePermission>
     </div>

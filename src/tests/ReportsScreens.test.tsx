@@ -154,11 +154,11 @@ describe("ReportsHub", () => {
   });
 
   /** The hub is the statements' only door since 22 September 2026. */
-  it("opens the two live statements for a ledger reader, and lists Arus kas as Segera", () => {
+  it("opens the two live statements for Laporan Keuangan, and lists Arus kas as Segera", () => {
     mockTab = "keuangan";
     renderWithAuth(<ReportsHub />, {
       isSuperAdmin: false,
-      permissions: [{ feature: "journalEntries", actions: ["read"] }],
+      permissions: [{ feature: "financeReports", actions: ["read"] }],
     });
 
     const hrefs = screen
@@ -174,17 +174,18 @@ describe("ReportsHub", () => {
   });
 
   /** A row that leads to a 403 is worse than no row. */
-  it("hides the reports a role cannot reach", () => {
+  it("hides a Laporan tab whose Lihat is not ticked", () => {
+    // 14 Oct 2026: the tab answers to its Laporan grant, not the data grant.
     mockTab = "inventori";
     renderWithAuth(<ReportsHub />, {
       isSuperAdmin: false,
       permissions: [{ feature: "products", actions: ["read"] }],
     });
 
-    expect(screen.getByText("Posisi stok")).toBeInTheDocument();
-    expect(screen.getByText("Stok minim")).toBeInTheDocument();
-    expect(screen.queryByText("Konsinyasi outstanding")).not.toBeInTheDocument();
-    expect(screen.queryByText("Kartu stok")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Inventori" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Posisi stok")).not.toBeInTheDocument();
+    // Falls back to the one tab every role has: Operasional, with Komisi saya.
+    expect(screen.getByText("Komisi saya")).toBeInTheDocument();
   });
 
   it("opens the stock reports for a role holding only Laporan Stok", () => {

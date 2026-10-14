@@ -37,17 +37,12 @@ export function StockCorrectionModuleHeader({
 }) {
   const { can } = usePermissions();
   const mayReadOpnames = can("stockOpnames", "read");
-  /**
-   * READ, not create — and this is a deliberate change from what the rail used
-   * to do. The Penyesuaian Stok ROW was gated on `stockMovements:create`,
-   * because a menu row is an invitation and that screen's one action is a write.
-   * The row is "Koreksi Stok" now, and this is a tab inside a module the reader
-   * has already opened: gating it on create would mean somebody who may read the
-   * list (the page allows it, and the stock card is full of rows it explains)
-   * could open /adjustments by URL and find a tab bar with nothing marked
-   * current. The create button inside is still gated on create.
-   */
-  const mayReadAdjustments = can("stockMovements", "read");
+  /*
+    The Penyesuaian tab's own "Lihat" since 14 October 2026 — it used to ride
+    on `stockMovements:read`. The create button inside is gated on
+    `stockAdjustments:create`.
+  */
+  const mayReadAdjustments = can("stockAdjustments", "read");
 
   const counts = useCorrectionCounts(mayReadOpnames, mayReadAdjustments);
 

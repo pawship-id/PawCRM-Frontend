@@ -51,12 +51,11 @@ describe("filterNavItems", () => {
   it("shows it to somebody who can, with its placeholder siblings", () => {
     const onlyBookings: CanFn = (feature, action) =>
       feature === "bookings" && action === "read";
-    // The three placeholder screens are ungated, so they ride along with the
-    // one grant that keeps the group open.
+    // Grooming and Antar-Jemput show their Booking tab on this grant; Hotel
+    // answers to its own "Lihat" since 14 October 2026.
     expect(groupChildren(onlyBookings, "Layanan")).toEqual([
       "Kalender",
       "Grooming",
-      "Hotel",
       "Antar-Jemput",
     ]);
   });
@@ -114,13 +113,12 @@ describe("filterNavItems", () => {
     );
   });
 
-  it("hides the catalogue row from a role that cannot read products", () => {
-    // The row is the product list's, so it goes with that grant — and with it
-    // goes the menu route to the category list, which every seeded role holding
-    // categories:read also holds products:read for.
+  it("shows Produk & Varian to a role holding only its Kategori tab", () => {
+    // Each tab has its own "Lihat" (14 Oct 2026); the row shows when one does,
+    // and the Produk route sends this role on to Kategori.
     const onlyCategories: CanFn = (feature, action) =>
       feature === "categories" && action === "read";
-    expect(groupChildren(onlyCategories, "Inventori")).toBeUndefined();
+    expect(groupChildren(onlyCategories, "Inventori")).toEqual(["Produk & Varian"]);
   });
 
   it("lists every Inventori screen, in the order the data flows", () => {
@@ -200,10 +198,8 @@ describe("filterNavItems", () => {
     const readOnlyStock: CanFn = (feature, action) =>
       feature === "stockMovements" && action === "read";
 
-    expect(groupChildren(readOnlyStock, "Inventori")).toEqual([
-      "Ringkasan",
-      "Stok",
-    ]);
+    // Ringkasan answers to inventorySummary:read since 14 October 2026.
+    expect(groupChildren(readOnlyStock, "Inventori")).toEqual(["Stok"]);
   });
 
   it("drops the Inventori group entirely for a role with no stock grant", () => {
@@ -260,13 +256,12 @@ describe("filterNavItems", () => {
     expect(isActive(pelanggan, "/dashboard/master/users")).toBe(false);
   });
 
-  it("hides Pelanggan from a role that cannot read customers", () => {
-    // The row is the customer list's, so it goes with that grant — and with it
-    // goes the menu route to the animal register, which every seeded role that
-    // holds pets:read also holds customers:read for.
+  it("shows Pelanggan to a role holding only its Hewan tab", () => {
+    // Any tab opens the row since 14 October 2026.
     const onlyPets: CanFn = (feature, action) =>
       feature === "pets" && action === "read";
-    expect(itemsOf(onlyPets).find((i) => i.label === "Pelanggan")).toBeUndefined();
+    expect(itemsOf(onlyPets).find((i) => i.label === "Pelanggan")).toBeDefined();
+    expect(itemsOf(denyAll).find((i) => i.label === "Pelanggan")).toBeUndefined();
   });
 
   /*
@@ -337,16 +332,18 @@ describe("filterNavItems", () => {
     expect(finance?.match).toBeUndefined();
   });
 
-  it("shows Keuangan to a role holding either of its finance grants", () => {
+  it("shows Keuangan to a role holding one of its tabs, not a channel alone", () => {
     const onlyJournal: CanFn = (feature, action) =>
       feature === "journalEntries" && action === "read";
     const onlyChannels: CanFn = (feature, action) =>
       feature === "paymentChannels" && action === "read";
 
     expect(itemsOf(onlyJournal).find((i) => i.label === "Keuangan")).toBeDefined();
+    // Kas & Bank opens on its Transaksi or Biaya Tetap grant (14 Oct 2026); the
+    // channel list is Pengaturan › Keuangan.
     expect(
       itemsOf(onlyChannels).find((i) => i.label === "Keuangan"),
-    ).toBeDefined();
+    ).toBeUndefined();
   });
 
   /**

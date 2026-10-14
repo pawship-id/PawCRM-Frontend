@@ -12,26 +12,57 @@ const MODULES: PermissionModule[] = [
   {
     key: "kasir",
     label: "Kasir (POS)",
-    screens: [
+    pages: [
       {
-        key: "posTransactions",
-        label: "Transaksi Kasir",
+        key: "kasir",
+        label: "Kasir",
         description: null,
-        features: [
+        single: false,
+        tabs: [
           {
-            feature: "posTransactions",
-            actions: [act("create", "Buat transaksi"), act("read", "Lihat"), act("void", "Batalkan", true)],
+            key: "posTransactions",
+            label: "Transaksi Kasir",
+            description: null,
+            features: [
+              {
+                feature: "posTransactions",
+                actions: [act("create", "Buat transaksi"), act("read", "Lihat"), act("void", "Batalkan", true)],
+              },
+            ],
+          },
+          {
+            key: "posShifts",
+            label: "Shift Kasir",
+            description: null,
+            features: [
+              {
+                feature: "posShifts",
+                actions: [act("open", "Buka shift"), act("read", "Lihat"), act("close", "Tutup shift")],
+              },
+            ],
           },
         ],
       },
+    ],
+  },
+  {
+    key: "penjualan",
+    label: "Penjualan",
+    pages: [
       {
-        key: "posShifts",
-        label: "Shift Kasir",
+        key: "penjualan",
+        label: "Penjualan",
         description: null,
-        features: [
+        single: false,
+        tabs: [
           {
-            feature: "posShifts",
-            actions: [act("open", "Buka shift"), act("read", "Lihat"), act("close", "Tutup shift")],
+            key: "receivables",
+            label: "Piutang",
+            description: null,
+            features: [
+              { feature: "receivables", actions: [act("read", "Lihat")] },
+              { feature: "customerInvoices", actions: [act("pay", "Catat pembayaran", true)] },
+            ],
           },
         ],
       },
@@ -79,6 +110,26 @@ describe("PermissionTree", () => {
   });
 });
 
+describe("PermissionTree — a tab's Lihat spans its features", () => {
+  it("ticks the tab's Lihat when a payment is granted on Piutang", async () => {
+    const { onChange } = setup({ posShifts: ["read"] });
+    await userEvent.click(screen.getByRole("button", { name: /Penjualan/ }));
+    await userEvent.click(screen.getByLabelText(/Catat pembayaran/));
+    const next = onChange.mock.calls[0][0];
+    expect(next.customerInvoices).toEqual(["pay"]);
+    expect(next.receivables).toEqual(["read"]);
+  });
+
+  it("clears the whole tab when its Lihat is unticked", async () => {
+    const { onChange } = setup({ receivables: ["read"], customerInvoices: ["pay", "read"] });
+    const lihat = screen
+      .getAllByLabelText("Lihat")
+      .find((el) => el.id.includes("receivables"))!;
+    await userEvent.click(lihat);
+    expect(onChange).toHaveBeenCalledWith({ customerInvoices: ["read"] });
+  });
+});
+
 describe("RoleTemplatePicker", () => {
   it("hands the picked template up and says what it filled", async () => {
     const onPick = jest.fn();
@@ -94,5 +145,13 @@ describe("RoleTemplatePicker", () => {
 
     expect(onPick).toHaveBeenCalledWith(kasir);
     expect(screen.getByText(/sudah diisi/)).toBeInTheDocument();
+  });
+});
+
+describe("PermissionTree — a module with one page", () => {
+  it("lists its tabs straight under the module, with no page row", async () => {
+    setup({ posShifts: ["read"] });
+    expect(screen.getByText("Transaksi Kasir")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Semua akses halaman Kasir")).not.toBeInTheDocument();
   });
 });

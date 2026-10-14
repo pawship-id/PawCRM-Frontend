@@ -450,7 +450,10 @@ export interface PermissionActionInfo {
   sensitive: boolean;
 }
 
-/** A screen (layar) inside a module, and the catalog features it covers. */
+/**
+ * A tab (or a page with no tabs) and the `feature:action` pairs it shows — a
+ * feature may be split across tabs by action.
+ */
 export interface PermissionScreen {
   key: string;
   label: string;
@@ -458,13 +461,23 @@ export interface PermissionScreen {
   features: { feature: string; actions: PermissionActionInfo[] }[];
 }
 
-/** A module (modul) — the unit an owner thinks in and a plan can switch off. */
+/** A page (halaman) of a module, as the sidebar names it. */
+export interface PermissionPage {
+  key: string;
+  label: string;
+  description: string | null;
+  /** A page with no tabs of its own — drawn as one row, `tabs` holds it alone. */
+  single: boolean;
+  tabs: PermissionScreen[];
+}
+
+/** A module (modul) — the unit an owner thinks in and Buloo admin switches. */
 export interface PermissionModule {
   key: string;
   label: string;
-  /** False for Pengaturan & Sistem, which can never be switched off. */
+  /** False for Pelanggan and Pengaturan, which can never be switched off. */
   toggleable?: boolean;
-  screens: PermissionScreen[];
+  pages: PermissionPage[];
 }
 
 /**

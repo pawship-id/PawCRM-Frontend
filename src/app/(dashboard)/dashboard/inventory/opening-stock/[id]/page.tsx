@@ -14,7 +14,7 @@ export default async function OpeningStockDetailPage({
   const { id } = await params;
 
   return (
-    <RequirePermission feature="products" action="create">
+    <RequirePermission feature="openingStock">
       <div className="flex flex-col gap-6">
         <div>
           <Breadcrumb

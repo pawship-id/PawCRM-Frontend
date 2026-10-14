@@ -2,9 +2,12 @@
 
 import type { ReactNode } from "react";
 
-import { PageTabs, type PageTab } from "@/components";
-import { usePermissions } from "@/features/permissions";
-import type { Action, Feature } from "@/features/permissions";
+import { PageTabs } from "@/components";
+import {
+  usePermissions,
+  visibleTabs,
+  type GatedTab,
+} from "@/features/permissions";
 
 /**
  * The head of the Pembelian module, worn by every screen in it except Kategori
@@ -59,40 +62,19 @@ import type { Action, Feature } from "@/features/permissions";
  * header would put them above the supplier register too, and would double
  * figures that already exist a tab away.
  */
-const TABS: Array<{
-  label: string;
-  href: string;
-  exact?: boolean;
-  /** Omitted on the hub, which gates each of its own cards. */
-  permission?: { feature: Feature; action: Action };
-}> = [
+/** Pembelian's tabs, each opened by its own "Lihat" (14 October 2026). */
+export const PURCHASING_TABS: GatedTab[] = [
   {
     label: "Ringkasan",
     href: "/dashboard/purchasing",
-    // EXACT, because its href is the prefix of every sibling's — prefix
-    // matching would leave this tab lit on all five screens.
+    // EXACT, because its href is the prefix of every sibling's.
     exact: true,
+    anyOf: [{ feature: "purchasingSummary" }],
   },
-  {
-    label: "Faktur",
-    href: "/dashboard/purchasing/payables",
-    permission: { feature: "purchaseInvoices", action: "read" },
-  },
-  {
-    label: "Penerimaan",
-    href: "/dashboard/purchasing/receipts",
-    permission: { feature: "goodsReceipts", action: "read" },
-  },
-  {
-    label: "Supplier",
-    href: "/dashboard/purchasing/suppliers",
-    permission: { feature: "suppliers", action: "read" },
-  },
-  {
-    label: "Retur",
-    href: "/dashboard/purchasing/returns",
-    permission: { feature: "purchaseReturns", action: "read" },
-  },
+  { label: "Faktur", href: "/dashboard/purchasing/payables", anyOf: [{ feature: "purchaseInvoices" }] },
+  { label: "Penerimaan", href: "/dashboard/purchasing/receipts", anyOf: [{ feature: "goodsReceipts" }] },
+  { label: "Supplier", href: "/dashboard/purchasing/suppliers", anyOf: [{ feature: "suppliers" }] },
+  { label: "Retur", href: "/dashboard/purchasing/returns", anyOf: [{ feature: "purchaseReturns" }] },
 ];
 
 export function PurchasingModuleHeader({
@@ -103,10 +85,7 @@ export function PurchasingModuleHeader({
 }) {
   const { can } = usePermissions();
 
-  const tabs: PageTab[] = TABS.filter(
-    (tab) =>
-      !tab.permission || can(tab.permission.feature, tab.permission.action),
-  ).map(({ label, href, exact }) => ({ label, href, exact }));
+  const tabs = visibleTabs(PURCHASING_TABS, can);
 
   return (
     <div className="flex flex-col gap-4">

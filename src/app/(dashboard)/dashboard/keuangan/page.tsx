@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 
 import { FinanceDashboardScreen } from "@/features/accounting";
+import { RequirePermission } from "@/features/permissions";
+import { ACCOUNTING_TABS } from "@/features/accounting/components/AccountingModuleHeader";
 
 export const metadata: Metadata = { title: "Keuangan · Buloo" };
 
@@ -17,5 +19,9 @@ export const metadata: Metadata = { title: "Keuangan · Buloo" };
 export const dynamic = "force-dynamic";
 
 export default function KeuanganPage() {
-  return <FinanceDashboardScreen now={new Date().toISOString()} />;
+  return (
+    <RequirePermission feature="financeSummary" redirectTo={ACCOUNTING_TABS}>
+      <FinanceDashboardScreen now={new Date().toISOString()} />
+    </RequirePermission>
+  );
 }

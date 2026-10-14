@@ -322,6 +322,26 @@ export const PERMISSION_CATALOG = {
   financeReports: ["read"],
   membershipReports: ["read"],
   commissionReports: ["read", "manage"],
+  /**
+   * Per-tab grants (14 October 2026): each tab of a page answers to its own
+   * "Lihat" — unticked, the tab is hidden.
+   */
+  serviceSummary: ["read"],
+  customerSummary: ["read"],
+  salesSummary: ["read"],
+  purchasingSummary: ["read"],
+  inventorySummary: ["read"],
+  financeSummary: ["read"],
+  receivables: ["read"],
+  serviceSettings: ["read", "update"],
+  stockAdjustments: ["read", "create"],
+  stockTransfers: ["read", "create"],
+  openingStock: ["read", "create"],
+  hotel: ["read"],
+  customerHistory: ["read"],
+  ecommerce: ["read"],
+  salesReturns: ["read"],
+  salesReports: ["read"],
 } as const;
 
 /** A permission feature — a module the RBAC catalog gates. */

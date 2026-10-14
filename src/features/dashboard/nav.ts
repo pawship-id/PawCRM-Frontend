@@ -87,6 +87,11 @@ export interface NavChild {
    */
   module?: string;
   /**
+   * Any ONE of these opens the row — for a page whose tabs each have their own
+   * "Lihat" (14 October 2026): the row shows when at least one tab would.
+   */
+  permissionAny?: PermissionRequirement[];
+  /**
    * Count shown as a pill on the row. NOTHING SETS THIS YET, on purpose: the
    * mockup draws badges on six rows, and there is no endpoint behind any of
    * them. The rail already knows how to render one, so wiring a real count is a
@@ -232,13 +237,30 @@ export const NAV_SECTIONS: NavSection[] = [
             href: "/dashboard/layanan/grooming",
             icon: Scissors,
             module: "layanan",
+            permissionAny: [
+              { feature: "serviceSummary", action: "read" },
+              { feature: "bookings", action: "read" },
+              { feature: "services", action: "read" },
+              { feature: "serviceSettings", action: "read" },
+            ],
           },
-          { label: "Hotel", href: "/dashboard/hotel", icon: Bed, module: "layanan" },
+          {
+            label: "Hotel",
+            href: "/dashboard/hotel",
+            icon: Bed,
+            module: "layanan",
+            permission: { feature: "hotel", action: "read" },
+          },
           {
             label: "Antar-Jemput",
             href: "/dashboard/layanan/antar-jemput",
             icon: Car,
             module: "layanan",
+            permissionAny: [
+              { feature: "bookings", action: "read" },
+              { feature: "services", action: "read" },
+              { feature: "serviceSettings", action: "read" },
+            ],
           },
         ],
       },
@@ -266,13 +288,20 @@ export const NAV_SECTIONS: NavSection[] = [
           opens the module to find out. The register is where you go when you
           already know whose name you are after.
 
-          SAME GRANT EITHER WAY, so this does not break the rule above that a
-          gated href must match the row's own `permission`: the Ringkasan route
-          is gated on `customers:read` exactly as the register is.
+          ANY TAB OPENS THE ROW (14 October 2026): each tab has its own
+          "Lihat" now, and the Ringkasan route sends a role that may not see it
+          to the first tab it may.
         */
         href: "/dashboard/master/customers/ringkasan",
         icon: Users,
-        permission: { feature: "customers", action: "read" },
+        permissionAny: [
+          { feature: "customerSummary", action: "read" },
+          { feature: "customers", action: "read" },
+          { feature: "pets", action: "read" },
+          { feature: "membershipPlans", action: "read" },
+          { feature: "petMemberships", action: "read" },
+          { feature: "customerHistory", action: "read" },
+        ],
         /*
           THE REGISTER IS A `match` NOW, and it has to be: `href` is prefix
           matched, and `/…/customers/ringkasan` is not a prefix of
@@ -310,7 +339,14 @@ export const NAV_SECTIONS: NavSection[] = [
         label: "Penjualan",
         href: "/dashboard/sales",
         icon: ShoppingCart,
-        permission: { feature: "customerInvoices", action: "read" },
+        // Any tab opens the row; Ringkasan redirects to the first one allowed.
+        permissionAny: [
+          { feature: "salesSummary", action: "read" },
+          { feature: "customerInvoices", action: "read" },
+          { feature: "receivables", action: "read" },
+          { feature: "ecommerce", action: "read" },
+          { feature: "salesReturns", action: "read" },
+        ],
         match: ["/dashboard/ecommerce-sync"],
       },
       /**
@@ -345,6 +381,7 @@ export const NAV_SECTIONS: NavSection[] = [
         href: "/dashboard/purchasing",
         icon: Truck,
         permissionAny: [
+          { feature: "purchasingSummary", action: "read" },
           { feature: "suppliers", action: "read" },
           { feature: "goodsReceipts", action: "read" },
           { feature: "purchaseInvoices", action: "read" },
@@ -380,6 +417,7 @@ export const NAV_SECTIONS: NavSection[] = [
             icon: Package,
             exact: true,
             module: "inventori",
+            permission: { feature: "inventorySummary", action: "read" },
           },
           {
             /**
@@ -401,7 +439,10 @@ export const NAV_SECTIONS: NavSection[] = [
             label: "Produk & Varian",
             href: "/dashboard/inventory/products",
             icon: Boxes,
-            permission: { feature: "products", action: "read" },
+            permissionAny: [
+              { feature: "products", action: "read" },
+              { feature: "categories", action: "read" },
+            ],
             match: ["/dashboard/inventory/categories"],
           },
           {
@@ -425,7 +466,10 @@ export const NAV_SECTIONS: NavSection[] = [
             label: "Stok",
             href: "/dashboard/inventory/stock-card",
             icon: ScrollText,
-            permission: { feature: "stockMovements", action: "read" },
+            permissionAny: [
+              { feature: "stockMovements", action: "read" },
+              { feature: "productBatches", action: "read" },
+            ],
             match: ["/dashboard/inventory/batches"],
           },
           {
@@ -459,7 +503,10 @@ export const NAV_SECTIONS: NavSection[] = [
             label: "Koreksi Stok",
             href: "/dashboard/inventory/opname",
             icon: ClipboardList,
-            permission: { feature: "stockOpnames", action: "read" },
+            permissionAny: [
+              { feature: "stockOpnames", action: "read" },
+              { feature: "stockAdjustments", action: "read" },
+            ],
             match: ["/dashboard/inventory/adjustments"],
           },
           {
@@ -473,7 +520,7 @@ export const NAV_SECTIONS: NavSection[] = [
             label: "Transfer Stok",
             href: "/dashboard/inventory/transfers",
             icon: ArrowRightLeft,
-            permission: { feature: "stockMovements", action: "create" },
+            permission: { feature: "stockTransfers", action: "read" },
           },
           {
             /**
@@ -500,7 +547,7 @@ export const NAV_SECTIONS: NavSection[] = [
             label: "Stok Awal",
             href: "/dashboard/inventory/opening-stock",
             icon: PackagePlus,
-            permission: { feature: "products", action: "create" },
+            permission: { feature: "openingStock", action: "read" },
           },
         ],
       },
@@ -542,7 +589,9 @@ export const NAV_SECTIONS: NavSection[] = [
         href: "/dashboard/keuangan",
         icon: Wallet,
         permissionAny: [
-          { feature: "paymentChannels", action: "read" },
+          { feature: "financeSummary", action: "read" },
+          { feature: "fixedCosts", action: "read" },
+          { feature: "commissionReports", action: "read" },
           { feature: "journalEntries", action: "read" },
           // Transaksi Keuangan — a Staff account that records petty cash and
           // holds no ledger grant still needs the way in.
@@ -654,9 +703,16 @@ export function filterNavItems(
     if (item.children) {
       if (!moduleOn(item)) return visible;
       const children = item.children.filter(
-        (child) => moduleOn(child) && allowed(child.permission),
+        (child) =>
+          moduleOn(child) &&
+          allowed(child.permission) &&
+          (!child.permissionAny?.length || child.permissionAny.some(allowed)),
       );
-      if (children.some((child) => child.permission)) {
+      if (
+        children.some(
+          (child) => child.permission || child.permissionAny?.length,
+        )
+      ) {
         visible.push({ ...item, children });
       }
     } else if (leafAllowed(item)) {
