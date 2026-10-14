@@ -247,3 +247,49 @@ export interface SalesBatchReportQuery {
   branchIds?: string[];
   warehouseIds?: string[];
 }
+
+/**
+ * GET /reports/pos-sales — Laporan › Penjualan POS. One row per shift opened in
+ * the period. Per-method figures are net of refunds (the X-Report's); the
+ * drawer figures of a closed shift are its signed Z-Report, null while open.
+ */
+export interface PosSalesReportRow {
+  shiftNumber: string;
+  branchName: string | null;
+  warehouseName: string | null;
+  cashierName: string | null;
+  status: "open" | "closed";
+  openedDate: string | null;
+  openedTime: string | null;
+  closedDate: string | null;
+  closedTime: string | null;
+  transactionCount: number;
+  grossSales: string;
+  returnCount: number;
+  returns: string;
+  netSales: string;
+  cash: string;
+  transfer: string;
+  qris: string;
+  edc: string;
+  otherMethods: string;
+  openingCash: string | null;
+  expectedCash: string | null;
+  countedCash: string | null;
+  cashDifference: string | null;
+  nonCashDifference: string | null;
+  closingNotes: string | null;
+}
+
+export interface PosSalesReport {
+  rows: PosSalesReportRow[];
+}
+
+export interface PosSalesReportQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  warehouseIds?: string[];
+  /** Omitted = open and closed alike. */
+  statuses?: PosSalesReportRow["status"][];
+}

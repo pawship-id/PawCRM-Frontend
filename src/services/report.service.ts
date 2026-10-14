@@ -7,6 +7,8 @@ import type {
   SalesItemReportQuery,
   SalesBatchReport,
   SalesBatchReportQuery,
+  PosSalesReport,
+  PosSalesReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -83,6 +85,22 @@ export const reportService = {
         warehouseIds: query.warehouseIds,
       },
       timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/pos-sales — Penjualan POS: each shift's closing and its
+   * takings per payment method.
+   */
+  posSales: (query: PosSalesReportQuery) =>
+    apiClient.get<PosSalesReport>("/reports/pos-sales", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        warehouseIds: query.warehouseIds,
+        statuses: query.statuses,
+      },
+      timeoutMs: 120_000,
     }),
 
   /**

@@ -1,5 +1,6 @@
 import { reportService } from "@/services/report.service";
 import type {
+  PosSalesReportRow,
   SalesBatchReportRow,
   SalesInvoiceReportRow,
   SalesItemReportRow,
@@ -460,4 +461,212 @@ export const salesBatchReport: SalesReportDefinition<
   note: "Hanya produk yang dicatat per batch. Retur penjualan belum mengurangi angka di laporan ini.",
   columns: BATCH_COLUMNS,
   fetch: async (scope) => (await reportService.salesBatches(scope)).rows,
+};
+
+/* ------------------------------------------------------ Penjualan POS */
+
+type ShiftStatus = PosSalesReportRow["status"];
+
+const SHIFT_STATUS_LABEL: Record<ShiftStatus, string> = {
+  closed: "Ditutup",
+  open: "Masih buka",
+};
+
+const ALL_SHIFT_STATUSES = Object.keys(SHIFT_STATUS_LABEL) as ShiftStatus[];
+
+/**
+ * Which shift, then what it sold and through which method, then how the drawer
+ * closed — the order a Z-Report is read in.
+ */
+const POS_COLUMNS: SalesReportColumn<PosSalesReportRow>[] = [
+  {
+    header: "No. shift",
+    value: (r) => r.shiftNumber,
+    width: 18,
+    about: "Nomor shift",
+  },
+  {
+    header: "Cabang",
+    value: (r) => r.branchName,
+    width: 18,
+    about: "Cabang kasir",
+  },
+  {
+    header: "Gudang",
+    value: (r) => r.warehouseName,
+    width: 18,
+    about: "Gudang kasir",
+  },
+  {
+    header: "Kasir",
+    value: (r) => r.cashierName,
+    width: 18,
+    about: "Yang membuka shift",
+  },
+  {
+    header: "Status",
+    value: (r) => SHIFT_STATUS_LABEL[r.status],
+    about: "Ditutup, atau masih buka saat diunduh",
+  },
+  {
+    header: "Tanggal buka",
+    value: (r) => r.openedDate,
+    type: "date",
+    width: 14,
+    about: "Tanggal shift dibuka",
+  },
+  { header: "Jam buka", value: (r) => r.openedTime, about: "Jam shift dibuka" },
+  {
+    header: "Tanggal tutup",
+    value: (r) => r.closedDate,
+    type: "date",
+    width: 14,
+    about: "Kosong kalau shift masih buka",
+  },
+  {
+    header: "Jam tutup",
+    value: (r) => r.closedTime,
+    about: "Kosong kalau shift masih buka",
+  },
+  {
+    header: "Jumlah transaksi",
+    value: (r) => r.transactionCount,
+    type: "number",
+    about: "Transaksi lunas di shift ini",
+  },
+  {
+    header: "Penjualan kotor",
+    value: (r) => num(r.grossSales),
+    type: "number",
+    width: 16,
+    about: "Semua uang masuk dari penjualan, sebelum retur",
+  },
+  {
+    header: "Jumlah retur",
+    value: (r) => r.returnCount,
+    type: "number",
+    about: "Retur yang diproses di shift ini",
+  },
+  {
+    header: "Nilai retur",
+    value: (r) => num(r.returns),
+    type: "number",
+    width: 14,
+    about: "Nilai semua retur, apa pun cara pengembaliannya",
+  },
+  {
+    header: "Penjualan bersih",
+    value: (r) => num(r.netSales),
+    type: "number",
+    width: 16,
+    about: "Penjualan kotor − nilai retur",
+  },
+  {
+    header: "Tunai",
+    value: (r) => num(r.cash),
+    type: "number",
+    width: 14,
+    about: "Diterima tunai, setelah kembalian dan refund tunai",
+  },
+  {
+    header: "Transfer",
+    value: (r) => num(r.transfer),
+    type: "number",
+    width: 14,
+    about: "Diterima lewat transfer, setelah refund",
+  },
+  {
+    header: "QRIS",
+    value: (r) => num(r.qris),
+    type: "number",
+    width: 14,
+    about: "Diterima lewat QRIS, setelah refund",
+  },
+  {
+    header: "EDC",
+    value: (r) => num(r.edc),
+    type: "number",
+    width: 14,
+    about: "Diterima lewat kartu debit/kredit, setelah refund",
+  },
+  {
+    header: "Metode lain",
+    value: (r) => num(r.otherMethods),
+    type: "number",
+    width: 14,
+    about: "Metode pembayaran selain empat di atas",
+  },
+  {
+    header: "Kas awal",
+    value: (r) => num(r.openingCash),
+    type: "number",
+    width: 14,
+    about: "Uang di laci saat shift dibuka",
+  },
+  {
+    header: "Kas seharusnya",
+    value: (r) => num(r.expectedCash),
+    type: "number",
+    width: 16,
+    about:
+      "Kas awal + tunai bersih. Untuk shift yang masih buka: posisi saat diunduh",
+  },
+  {
+    header: "Kas dihitung",
+    value: (r) => num(r.countedCash),
+    type: "number",
+    width: 16,
+    about: "Uang yang dihitung kasir saat tutup",
+  },
+  {
+    header: "Selisih kas",
+    value: (r) => num(r.cashDifference),
+    type: "number",
+    width: 14,
+    about: "Kas dihitung − kas seharusnya. Minus berarti kurang",
+  },
+  {
+    header: "Selisih non-tunai",
+    value: (r) => num(r.nonCashDifference),
+    type: "number",
+    width: 16,
+    about: "Total selisih QRIS/EDC/transfer yang dicocokkan saat tutup",
+  },
+  {
+    header: "Catatan tutup",
+    value: (r) => r.closingNotes,
+    width: 30,
+    about: "Catatan kasir saat menutup shift",
+  },
+];
+
+/**
+ * Shift closings and takings per payment method — one row per shift opened in
+ * the period.
+ */
+export const posSalesReport: SalesReportDefinition<
+  PosSalesReportRow,
+  ShiftStatus
+> = {
+  title: "Penjualan POS",
+  description:
+    "Penutupan shift dan rekap per metode pembayaran. Diunduh sebagai Excel.",
+  fileName: "penjualan-pos",
+  rowNoun: "shift",
+  note: "Periode dihitung dari tanggal shift dibuka. Angka per metode dihitung ulang saat diunduh, jadi pembayaran yang dibatalkan setelah shift ditutup ikut terkoreksi.",
+  columns: POS_COLUMNS,
+  choice: {
+    label: "Status shift",
+    options: ALL_SHIFT_STATUSES.map((value) => ({
+      value,
+      label: SHIFT_STATUS_LABEL[value],
+    })),
+    defaults: ALL_SHIFT_STATUSES,
+    summary: (values) =>
+      values.length === ALL_SHIFT_STATUSES.length
+        ? "Semua"
+        : values.map((v) => SHIFT_STATUS_LABEL[v]).join(", "),
+  },
+  fetch: async (scope, statuses) =>
+    (await reportService.posSales({ ...scope, statuses })).rows,
 };

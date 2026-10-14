@@ -18,6 +18,7 @@ import { usePermissions } from "@/features/permissions";
 import type { Action, Feature } from "@/features/permissions/types";
 
 import {
+  posSalesReport,
   salesBatchReport,
   salesInvoiceReport,
   salesItemReport,
@@ -82,7 +83,8 @@ interface ReportRow {
   anyOf?: { feature: Feature; action: Action }[];
 }
 
-type ReportDialog = "salesInvoices" | "salesItems" | "salesBatches";
+type ReportDialog =
+  "salesInvoices" | "salesItems" | "salesBatches" | "posSales";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -98,6 +100,7 @@ const REPORT_DIALOGS: Record<
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
   ),
+  posSales: (props) => <SalesReportDialog report={posSalesReport} {...props} />,
   salesBatches: (props) => (
     <SalesReportDialog report={salesBatchReport} {...props} />
   ),
@@ -142,6 +145,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
     {
       title: "Penjualan POS",
       description: "Penutupan shift dan rekap per metode pembayaran.",
+      dialog: "posSales",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "posShifts", action: "read" },
+      ],
     },
     {
       title: "Penjualan konsinyasi",
