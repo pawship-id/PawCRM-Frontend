@@ -3,6 +3,7 @@ import { productService } from "@/services/product.service";
 import { reportService } from "@/services/report.service";
 import type { Product } from "@/types/inventory";
 import type {
+  ConsignmentOnHandRow,
   OpnameDifferenceRow,
   TransferReportRow,
   TransferStatus,
@@ -1011,4 +1012,104 @@ export const transferReport: SalesReportDefinition<
         statuses,
       })
     ).rows,
+};
+
+/* ----------------------------------------------- Konsinyasi outstanding */
+
+/** Whose goods, where they sit, how much, and how long they have sat. */
+const CONSIGNMENT_ON_HAND_COLUMNS: SalesReportColumn<ConsignmentOnHandRow>[] = [
+  {
+    header: "Supplier",
+    value: (r) => r.supplierName,
+    width: 24,
+    about: "Penitip barang",
+  },
+  {
+    header: "Cabang",
+    value: (r) => r.branchName,
+    width: 16,
+    about: "Cabang gudang; kosong untuk gudang bersama",
+  },
+  {
+    header: "Gudang",
+    value: (r) => r.warehouseName,
+    width: 18,
+    about: "Gudang tempat titipan berada",
+  },
+  { header: "SKU", value: (r) => r.sku, width: 16, about: "Kode produk" },
+  {
+    header: "Produk",
+    value: (r) => r.productName,
+    width: 30,
+    about: "Nama produk titipan",
+  },
+  { header: "Satuan", value: (r) => r.unit, about: "Satuan produk" },
+  {
+    header: "Jumlah lot",
+    value: (r) => r.lotCount,
+    type: "number",
+    about: "Berapa lot titipan yang masih ada stoknya",
+  },
+  {
+    header: "Qty sisa",
+    value: (r) => Number(r.qty),
+    type: "number",
+    about: "Titipan yang masih di gudang",
+  },
+  {
+    header: "Harga setor",
+    value: (r) => (r.unitCost === null ? null : Number(r.unitCost)),
+    type: "number",
+    width: 14,
+    about: "Harga dari supplier per satuan (rata-rata lot yang tersisa)",
+  },
+  {
+    header: "Nilai titipan",
+    value: (r) => Number(r.value),
+    type: "number",
+    width: 16,
+    about:
+      "Qty sisa × harga setor — belum utang; jadi utang hanya kalau terjual",
+  },
+  {
+    header: "Masuk paling lama",
+    value: (r) => r.oldestReceivedDate,
+    type: "date",
+    width: 14,
+    about: "Tanggal lot tertua yang masih ada masuk",
+  },
+  {
+    header: "Lama dititip (hari)",
+    value: (r) => r.daysHeld,
+    type: "number",
+    about: "Hari sejak lot tertua masuk, per hari ini",
+  },
+  {
+    header: "Kedaluwarsa terdekat",
+    value: (r) => r.nearestExpiry,
+    type: "date",
+    width: 14,
+    about: "Kosong untuk produk yang tidak kedaluwarsa",
+  },
+];
+
+/**
+ * Barang titipan yang masih di gudang, per supplier — not a debt: the debt
+ * appears only as the goods sell.
+ */
+export const consignmentOnHandReport: SalesReportDefinition<
+  ConsignmentOnHandRow,
+  never
+> = {
+  title: "Konsinyasi outstanding",
+  description:
+    "Barang titipan yang masih di gudang, per supplier. Belum jadi utang — utang muncul saat barangnya laku. Diunduh sebagai Excel.",
+  fileName: "konsinyasi-outstanding",
+  rowNoun: "baris",
+  period: false,
+  locations: "stock",
+  note: "Posisi per hari ini. Nilai titipan bukan utang; utang konsinyasi ada di laporan Penjualan konsinyasi dan layar Konsinyasi.",
+  columns: CONSIGNMENT_ON_HAND_COLUMNS,
+  fetch: async ({ branchIds, warehouseIds }) =>
+    (await reportService.consignmentOnHand({ branchIds, warehouseIds })).rows,
 };

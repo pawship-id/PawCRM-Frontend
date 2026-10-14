@@ -31,6 +31,8 @@ import type {
   OpnameDifferenceQuery,
   TransferReport,
   TransferReportQuery,
+  ConsignmentOnHandReport,
+  ConsignmentOnHandQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -279,6 +281,16 @@ export const reportService = {
         warehouseIds: query.warehouseIds,
         statuses: query.statuses,
       },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/consignment-on-hand — Konsinyasi outstanding: titipan still
+   * on the shelves, per supplier × product × gudang.
+   */
+  consignmentOnHand: (query: ConsignmentOnHandQuery = {}) =>
+    apiClient.get<ConsignmentOnHandReport>("/reports/consignment-on-hand", {
+      query: { branchIds: query.branchIds, warehouseIds: query.warehouseIds },
       timeoutMs: 60_000,
     }),
 

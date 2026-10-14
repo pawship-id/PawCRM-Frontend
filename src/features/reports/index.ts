@@ -9,7 +9,6 @@
  */
 export { ReportsHub } from "./components/ReportsHub";
 export { LowStockScreen } from "./components/LowStockScreen";
-export { ConsignmentScreen } from "./components/ConsignmentScreen";
 export { MyCommissionScreen } from "./components/MyCommissionScreen";
 export { SalesReportDialog } from "./components/SalesReportDialog";
 export {
@@ -30,6 +29,7 @@ export {
 } from "./financeReports";
 export {
   batchExpiryReport,
+  consignmentOnHandReport,
   fetchAllLowStock,
   inventoryValuationReport,
   valuationRows,

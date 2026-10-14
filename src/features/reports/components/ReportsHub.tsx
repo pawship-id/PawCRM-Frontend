@@ -33,6 +33,7 @@ import {
 } from "../financeReports";
 import {
   batchExpiryReport,
+  consignmentOnHandReport,
   inventoryValuationReport,
   lowStockReport,
   opnameDifferenceReport,
@@ -117,7 +118,8 @@ type ReportDialog =
   | "purchases"
   | "batchExpiry"
   | "opnameDifferences"
-  | "transfers";
+  | "transfers"
+  | "consignmentOnHand";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -132,6 +134,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  consignmentOnHand: (props) => (
+    <SalesReportDialog report={consignmentOnHandReport} {...props} />
   ),
   transfers: (props) => (
     <SalesReportDialog report={transferReport} {...props} />
@@ -365,7 +370,7 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Konsinyasi outstanding",
       description:
         "Barang titipan yang masih di gudang, per supplier. Belum jadi utang — utang muncul saat barangnya laku.",
-      href: "/dashboard/reports/consignment",
+      dialog: "consignmentOnHand",
       anyOf: [{ feature: "stockReports", action: "read" }],
     },
     {

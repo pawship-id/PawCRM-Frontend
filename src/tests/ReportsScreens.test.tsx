@@ -7,7 +7,6 @@ import {
   stockLocations,
   stockOnHandRows,
   ledgerRows,
-  ConsignmentScreen,
   LowStockScreen,
   ReportsHub,
 } from "@/features/reports";
@@ -19,7 +18,6 @@ import { categoryService } from "@/services/category.service";
 import type { Branch, User } from "@/types/api";
 import type { StockWarehouse } from "@/types/inventory";
 import { warehouseService } from "@/services/warehouse.service";
-import { ApiError } from "@/services/api-error";
 import type { StockOnHandRow } from "@/types/report";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
@@ -300,83 +298,6 @@ describe("LowStockScreen", () => {
   });
 });
 
-describe("ConsignmentScreen", () => {
-  /**
-   * THE ONE THING THIS SCREEN MUST NOT LET A READER DO. Consigned goods belong
-   * to the supplier until they sell; an owner reading two totals on two screens
-   * will otherwise sum them.
-   */
-  it("states that the figure is not a debt, and points at the one that is", async () => {
-    renderWithAuth(<ConsignmentScreen />);
-
-    expect(await screen.findByText(/bukan utang/i)).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: /faktur pembelian/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("lists suppliers with what they still hold", async () => {
-    asMock(productBatchService.consignmentSummary).mockResolvedValue({
-      items: [
-        {
-          supplierId: "s1",
-          supplierName: "PT Sumber Pangan",
-          lotCount: 4,
-          productCount: 3,
-          qtyRemaining: "62",
-          value: "1860000",
-        },
-      ],
-      totalValue: "1860000",
-      totalLots: 4,
-    } as Awaited<ReturnType<typeof productBatchService.consignmentSummary>>);
-    renderWithAuth(<ConsignmentScreen />);
-
-    expect(await screen.findByText("PT Sumber Pangan")).toBeInTheDocument();
-  });
-
-  /**
-   * The goods are on the shelf whether or not the vendor record survives, so the
-   * row stays and only the label is missing — hiding it would lose the stock.
-   */
-  it("keeps a row whose supplier was deleted", async () => {
-    asMock(productBatchService.consignmentSummary).mockResolvedValue({
-      items: [
-        {
-          supplierId: "s1",
-          supplierName: null,
-          lotCount: 1,
-          productCount: 1,
-          qtyRemaining: "5",
-          value: "50000",
-        },
-      ],
-      totalValue: "50000",
-      totalLots: 1,
-    } as Awaited<ReturnType<typeof productBatchService.consignmentSummary>>);
-    renderWithAuth(<ConsignmentScreen />);
-
-    expect(
-      await screen.findByText(/supplier sudah dihapus/i),
-    ).toBeInTheDocument();
-  });
-
-  it("reports a failure rather than showing an empty table", async () => {
-    asMock(productBatchService.consignmentSummary).mockRejectedValue(
-      new ApiError("Forbidden", 403),
-    );
-    renderWithAuth(<ConsignmentScreen />);
-
-    expect(await screen.findByText("Forbidden")).toBeInTheDocument();
-  });
-});
-
-/**
- * Stock isolation on the valuation report.
- *
- * A COURTESY OVER THE SERVER'S ANSWER — the endpoint narrows the rows and
- * refuses an out-of-scope filter with a 403 whatever these dropdowns offer.
- */
 describe("stockLocations — the Posisi stok dialog's Cabang and Gudang", () => {
   const branches = [
     { _id: "b1", name: "Cabang Timur" },

@@ -709,3 +709,33 @@ export interface TransferReportQuery {
   /** Omitted = every status. */
   statuses?: TransferStatus[];
 }
+
+/**
+ * GET /reports/consignment-on-hand — Laporan › Konsinyasi outstanding, as of
+ * now. One row per consignor × product × gudang, valued at the harga setor.
+ */
+export interface ConsignmentOnHandRow {
+  supplierName: string | null;
+  branchName: string | null;
+  warehouseName: string | null;
+  sku: string | null;
+  productName: string | null;
+  unit: string | null;
+  lotCount: number;
+  qty: string;
+  unitCost: string | null;
+  value: string;
+  oldestReceivedDate: string | null;
+  daysHeld: number | null;
+  nearestExpiry: string | null;
+}
+
+export interface ConsignmentOnHandReport {
+  asOf: string;
+  rows: ConsignmentOnHandRow[];
+}
+
+export interface ConsignmentOnHandQuery {
+  branchIds?: string[];
+  warehouseIds?: string[];
+}

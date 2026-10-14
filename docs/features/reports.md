@@ -1,5 +1,13 @@
 # Reports (Dashboard → Reports)
 
+> **Superseded in part (14 October 2026).** The hub's reports now open as
+> export dialogs (`SalesReportDialog`, definitions in
+> `features/reports/salesReports.ts`, `financeReports.ts`, `stockReports.ts`).
+> `/dashboard/reports/stock-on-hand` and `/dashboard/reports/consignment` are
+> gone; `/dashboard/reports/low-stock` stays because the dashboard links to it.
+> The module screens (batches, opname, transfers) stay as working screens. The
+> table below records the original design.
+
 The operational reports, against `/api/reports`, `/api/products/low-stock` and
 `/api/product-batches/consignment-summary`. Frontend half of backend `0.37.0`.
 
