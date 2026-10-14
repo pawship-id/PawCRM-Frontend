@@ -38,6 +38,7 @@ import {
   opnameDifferenceReport,
   purchasesReport,
   stockOnHandReport,
+  transferReport,
 } from "../stockReports";
 import { SalesReportDialog } from "./SalesReportDialog";
 
@@ -115,7 +116,8 @@ type ReportDialog =
   | "inventoryValuation"
   | "purchases"
   | "batchExpiry"
-  | "opnameDifferences";
+  | "opnameDifferences"
+  | "transfers";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -130,6 +132,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  transfers: (props) => (
+    <SalesReportDialog report={transferReport} {...props} />
   ),
   opnameDifferences: (props) => (
     <SalesReportDialog report={opnameDifferenceReport} {...props} />
@@ -347,9 +352,14 @@ const ROWS: Record<TabKey, ReportRow[]> = {
     {
       title: "Transfer antar gudang",
       description: "Perpindahan stok antar gudang dan cabang.",
-      href: "/dashboard/inventory/transfers",
-      feature: "stockMovements",
-      action: "read",
+      // A download here; /dashboard/inventory/transfers stays the module's own
+      // screen for sending and receiving.
+      dialog: "transfers",
+      anyOf: [
+        { feature: "stockReports", action: "read" },
+        { feature: "stockTransfers", action: "read" },
+        { feature: "stockMovements", action: "read" },
+      ],
     },
     {
       title: "Konsinyasi outstanding",

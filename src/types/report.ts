@@ -665,3 +665,47 @@ export interface OpnameDifferenceQuery {
   /** Default true: lines that counted what the system expected are left out. */
   onlyDifferences?: boolean;
 }
+
+/**
+ * GET /reports/transfers — Laporan › Transfer antar gudang. One row per
+ * transfer × product × lot its current posting moved.
+ */
+export type TransferStatus = "in_transit" | "received" | "cancelled";
+
+export interface TransferReportRow {
+  transferNumber: string;
+  transferDate: string | null;
+  status: TransferStatus;
+  fromBranchName: string | null;
+  fromWarehouseName: string | null;
+  toBranchName: string | null;
+  toWarehouseName: string | null;
+  crossBranch: boolean;
+  sku: string | null;
+  productName: string | null;
+  unit: string | null;
+  batchCode: string | null;
+  expiryDate: string | null;
+  qty: string;
+  value: string;
+  receivedDate: string | null;
+  cancelledDate: string | null;
+  revision: number;
+  createdByName: string | null;
+  receivedByName: string | null;
+  notes: string | null;
+}
+
+export interface TransferReport {
+  rows: TransferReportRow[];
+}
+
+export interface TransferReportQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  /** Either end of the transfer. */
+  warehouseIds?: string[];
+  /** Omitted = every status. */
+  statuses?: TransferStatus[];
+}

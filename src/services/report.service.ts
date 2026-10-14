@@ -29,6 +29,8 @@ import type {
   BatchExpiryReportQuery,
   OpnameDifferenceReport,
   OpnameDifferenceQuery,
+  TransferReport,
+  TransferReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -260,6 +262,22 @@ export const reportService = {
         branchIds: query.branchIds,
         warehouseIds: query.warehouseIds,
         onlyDifferences: query.onlyDifferences,
+      },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/transfers — Transfer antar gudang: what moved between gudang
+   * and cabang in a period, lot by lot.
+   */
+  transfers: (query: TransferReportQuery) =>
+    apiClient.get<TransferReport>("/reports/transfers", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        warehouseIds: query.warehouseIds,
+        statuses: query.statuses,
       },
       timeoutMs: 60_000,
     }),

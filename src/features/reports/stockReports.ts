@@ -4,6 +4,8 @@ import { reportService } from "@/services/report.service";
 import type { Product } from "@/types/inventory";
 import type {
   OpnameDifferenceRow,
+  TransferReportRow,
+  TransferStatus,
   BatchExpiryReportRow,
   ExpiryStatus,
   InventoryValuationReport,
@@ -830,4 +832,183 @@ export const opnameDifferenceReport: SalesReportDefinition<
       ? rows
       : rows.filter((row) => row.direction === "match");
   },
+};
+
+/* ------------------------------------------------ Transfer antar gudang */
+
+/* The Transfer Stok screen's words for the three states. */
+const TRANSFER_STATUS_LABEL: Record<TransferStatus, string> = {
+  in_transit: "Belum diterima",
+  received: "Diterima",
+  cancelled: "Dibatalkan",
+};
+
+const TRANSFER_STATUSES = Object.keys(
+  TRANSFER_STATUS_LABEL,
+) as TransferStatus[];
+
+/** Which transfer, from where to where, what and how much, and its fate. */
+const TRANSFER_COLUMNS: SalesReportColumn<TransferReportRow>[] = [
+  {
+    header: "No. transfer",
+    value: (r) => r.transferNumber,
+    width: 18,
+    about: "Nomor transfer (surat jalan)",
+  },
+  {
+    header: "Tanggal kirim",
+    value: (r) => r.transferDate,
+    type: "date",
+    width: 14,
+    about: "Tanggal barang dikirim",
+  },
+  {
+    header: "Status",
+    value: (r) => TRANSFER_STATUS_LABEL[r.status],
+    width: 14,
+    about: "Belum diterima, Diterima, atau Dibatalkan",
+  },
+  {
+    header: "Cabang asal",
+    value: (r) => r.fromBranchName,
+    width: 16,
+    about: "Kosong untuk gudang bersama",
+  },
+  {
+    header: "Gudang asal",
+    value: (r) => r.fromWarehouseName,
+    width: 18,
+    about: "Gudang pengirim",
+  },
+  {
+    header: "Cabang tujuan",
+    value: (r) => r.toBranchName,
+    width: 16,
+    about: "Kosong untuk gudang bersama",
+  },
+  {
+    header: "Gudang tujuan",
+    value: (r) => r.toWarehouseName,
+    width: 18,
+    about: "Gudang penerima",
+  },
+  {
+    header: "Antar cabang",
+    value: (r) => (r.crossBranch ? "Ya" : "Tidak"),
+    about: "Ya kalau gudang asal dan tujuan ada di cabang yang berbeda",
+  },
+  { header: "SKU", value: (r) => r.sku, width: 16, about: "Kode produk" },
+  {
+    header: "Produk",
+    value: (r) => r.productName,
+    width: 30,
+    about: "Nama produk",
+  },
+  {
+    header: "Kode batch",
+    value: (r) => r.batchCode,
+    width: 18,
+    about: "Batch yang benar-benar dipindahkan (hasil FEFO atau pilihan)",
+  },
+  {
+    header: "Tgl kedaluwarsa",
+    value: (r) => r.expiryDate,
+    type: "date",
+    width: 14,
+    about: "Kedaluwarsa batch itu",
+  },
+  {
+    header: "Qty",
+    value: (r) => Number(r.qty),
+    type: "number",
+    about: "Qty yang dipindahkan",
+  },
+  { header: "Satuan", value: (r) => r.unit, about: "Satuan produk" },
+  {
+    header: "Nilai",
+    value: (r) => Number(r.value),
+    type: "number",
+    width: 16,
+    about:
+      "Qty × HPP saat dikirim — informasi, bukan jurnal: nilai persediaan tidak berubah",
+  },
+  {
+    header: "Tanggal diterima",
+    value: (r) => r.receivedDate,
+    type: "date",
+    width: 14,
+    about: "Kosong kalau belum diterima",
+  },
+  {
+    header: "Tanggal dibatalkan",
+    value: (r) => r.cancelledDate,
+    type: "date",
+    width: 14,
+    about: "Diisi hanya untuk transfer yang dibatalkan",
+  },
+  {
+    header: "Revisi",
+    value: (r) => r.revision,
+    type: "number",
+    about: "Berapa kali transfer diubah sebelum diterima",
+  },
+  {
+    header: "Dibuat oleh",
+    value: (r) => r.createdByName,
+    width: 18,
+    about: "Yang membuat transfer",
+  },
+  {
+    header: "Diterima oleh",
+    value: (r) => r.receivedByName,
+    width: 18,
+    about: "Yang menerima di gudang tujuan",
+  },
+  {
+    header: "Catatan",
+    value: (r) => r.notes,
+    width: 28,
+    about: "Catatan transfer",
+  },
+];
+
+/**
+ * Perpindahan stok antar gudang dan cabang — every transfer sent in the
+ * period, lot by lot.
+ */
+export const transferReport: SalesReportDefinition<
+  TransferReportRow,
+  TransferStatus
+> = {
+  title: "Transfer antar gudang",
+  description:
+    "Perpindahan stok antar gudang dan cabang. Diunduh sebagai Excel.",
+  fileName: "transfer-antar-gudang",
+  rowNoun: "baris",
+  periodLabel: "tanggal kirim",
+  locations: "stock",
+  note: "Filter Gudang mencocokkan gudang asal maupun tujuan. Qty dan batch diambil dari yang benar-benar dipindahkan, versi terakhir kalau transfernya pernah diubah.",
+  columns: TRANSFER_COLUMNS,
+  choice: {
+    label: "Status",
+    options: TRANSFER_STATUSES.map((value) => ({
+      value,
+      label: TRANSFER_STATUS_LABEL[value],
+    })),
+    defaults: TRANSFER_STATUSES,
+    summary: (values) =>
+      values.length === TRANSFER_STATUSES.length
+        ? "Semua status"
+        : values.map((v) => TRANSFER_STATUS_LABEL[v]).join(", "),
+  },
+  fetch: async ({ dateFrom, dateTo, branchIds, warehouseIds }, statuses) =>
+    (
+      await reportService.transfers({
+        dateFrom,
+        dateTo,
+        branchIds,
+        warehouseIds,
+        statuses,
+      })
+    ).rows,
 };

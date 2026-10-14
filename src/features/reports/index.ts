@@ -38,5 +38,6 @@ export {
   purchasesReport,
   stockOnHandReport,
   stockOnHandRows,
+  transferReport,
 } from "./stockReports";
 export { stockLocations } from "./components/SalesReportDialog";
