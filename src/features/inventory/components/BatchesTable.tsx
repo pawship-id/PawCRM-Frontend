@@ -1,6 +1,6 @@
 "use client";
 
-import { shortSku } from "@/lib/sku";
+import { SKU_WRAP_CLASS } from "@/lib/sku";
 import Link from "next/link";
 
 import { HighlightText, Pagination } from "@/components";
@@ -159,10 +159,12 @@ export function BatchesTable({
                       />
                     </p>
                     <p className="tabular-nums text-xs text-muted">
-                      <HighlightText
-                        text={shortSku(batch.productSku)}
-                        query={search}
-                      />
+                      <span className={SKU_WRAP_CLASS}>
+                        <HighlightText
+                          text={batch.productSku ?? ""}
+                          query={search}
+                        />
+                      </span>
                     </p>
                   </td>
                   <td className="px-4 py-2.5 text-xs text-muted">

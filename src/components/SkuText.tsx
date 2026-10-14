@@ -1,10 +1,8 @@
-import { shortSku } from "@/lib/sku";
+import { SKU_WRAP_CHARS, SKU_WRAP_CLASS } from "@/lib/sku";
 
 /**
- * An SKU, shortened for a list or picker. The full code is the hover title, so a
- * truncated one can still be read. Short codes render exactly as before.
- *
- * Not for the product detail page, which shows the whole code.
+ * An SKU in a list or picker: the full code, wrapped onto further lines when it
+ * is longer than the column (see `SKU_WRAP_CLASS`).
  */
 export function SkuText({
   value,
@@ -15,9 +13,7 @@ export function SkuText({
   fallback?: string;
 }) {
   if (!value) return <>{fallback}</>;
+  if (value.length <= SKU_WRAP_CHARS) return <>{value}</>;
 
-  const short = shortSku(value);
-  if (short === value) return <>{value}</>;
-
-  return <span title={value}>{short}</span>;
+  return <span className={SKU_WRAP_CLASS}>{value}</span>;
 }
