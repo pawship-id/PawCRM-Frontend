@@ -117,3 +117,55 @@ export interface ProductMovementReport {
     qtyOnHand: string;
   }>;
 }
+
+/**
+ * GET /reports/sales-invoices — Laporan › Penjualan per invoice. One row per
+ * invoice; money is a decimal string, dates are calendar days in the tenant's
+ * timezone.
+ *
+ * The breakdown fields (`subtotal` … `tax`) are NULL on a till-born invoice,
+ * which stored only its total — empty in the file, never a guessed zero.
+ */
+export interface SalesInvoiceReportRow {
+  invoiceNumber: string;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  branchName: string | null;
+  warehouseName: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  source: "manual" | "pos_bridge";
+  channel: "manual" | "marketplace";
+  lineCount: number;
+  qtyTotal: string | null;
+  subtotal: string | null;
+  itemDiscount: string | null;
+  invoiceDiscount: string | null;
+  otherCharges: string | null;
+  dpp: string | null;
+  tax: string | null;
+  taxRate: number | null;
+  total: string;
+  paidAmount: string;
+  outstandingAmount: string;
+  status: "unpaid" | "partial" | "paid" | "void";
+  isOverdue: boolean;
+  createdByName: string | null;
+  notes: string | null;
+  voidReason: string | null;
+}
+
+export interface SalesInvoiceReportQuery {
+  /** `yyyy-mm-dd`, both required and inclusive; at most 366 days apart. */
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  warehouseIds?: string[];
+  /** Omitted = every status but `void`. */
+  statuses?: SalesInvoiceReportRow["status"][];
+}
+
+export interface SalesInvoiceReport {
+  range: { fromDate: string | null; toDate: string | null } | null;
+  rows: SalesInvoiceReportRow[];
+}

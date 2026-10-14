@@ -1,6 +1,8 @@
 import { apiClient } from "./api-client";
 import type {
   ProductMovementReport,
+  SalesInvoiceReport,
+  SalesInvoiceReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -31,6 +33,23 @@ import type {
  * and no invoice. It arrives with those modules.
  */
 export const reportService = {
+  /**
+   * GET /reports/sales-invoices — Penjualan per invoice, every row of the
+   * period at once (the server refuses past 10 000 rather than truncating).
+   * Generous timeout: a year of a busy shop is a big answer.
+   */
+  salesInvoices: (query: SalesInvoiceReportQuery) =>
+    apiClient.get<SalesInvoiceReport>("/reports/sales-invoices", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        warehouseIds: query.warehouseIds,
+        statuses: query.statuses,
+      },
+      timeoutMs: 60_000,
+    }),
+
   /**
    * GET /reports/stock-on-hand — what is on every shelf, and what it is worth.
    *

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,6 +16,8 @@ import {
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/features/permissions";
 import type { Action, Feature } from "@/features/permissions/types";
+
+import { SalesInvoiceReportDialog } from "./SalesInvoiceReportDialog";
 
 /**
  * The Laporan landing page, as the v3 mockup draws it: four tabs (Penjualan,
@@ -52,8 +55,13 @@ const TABS: { key: TabKey; label: string; feature?: Feature }[] = [
 interface ReportRow {
   title: string;
   description: string;
-  /** Omitted = no screen yet; the row renders as "Segera". */
+  /** Omitted (with `dialog`) = no screen yet; the row renders as "Segera". */
   href?: string;
+  /**
+   * An export-only report opens a DIALOG on this page instead of a page of its
+   * own (14 October 2026, on request) — it has nothing to show, only a file.
+   */
+  dialog?: ReportDialog;
   /**
    * Omitted when the report needs no grant at all ("Komisi Saya" answers only
    * about the signed-in person; requiring a grant would hand a groomer the staff
@@ -69,6 +77,8 @@ interface ReportRow {
   anyOf?: { feature: Feature; action: Action }[];
 }
 
+type ReportDialog = "salesInvoices";
+
 const SOON = "Segera";
 
 const ROWS: Record<TabKey, ReportRow[]> = {
@@ -76,6 +86,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
     {
       title: "Penjualan per invoice",
       description: "Daftar faktur dengan total, diskon, pajak, dan status bayar.",
+      dialog: "salesInvoices",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "customerInvoices", action: "read" },
+      ],
     },
     {
       title: "Penjualan per produk & layanan",
@@ -259,6 +274,7 @@ function isTabKey(value: string | null): value is TabKey {
 
 export function ReportsHub() {
   const { can } = usePermissions();
+  const [openDialog, setOpenDialog] = useState<ReportDialog | null>(null);
   const params = useSearchParams();
   const raw = params?.get("tab") ?? null;
   const tabs = TABS.filter((tab) => !tab.feature || can(tab.feature, "read"));
@@ -273,7 +289,7 @@ export function ReportsHub() {
     their destination enforces — a row that leads to a 403 is worse than none.
   */
   const rows = ROWS[active].filter((row) =>
-    !row.href
+    !row.href && !row.dialog
       ? true
       : row.anyOf
         ? row.anyOf.some((grant) => can(grant.feature, grant.action))
@@ -325,7 +341,15 @@ export function ReportsHub() {
                 </TableCell>
                 <TableCell className="text-muted">{row.description}</TableCell>
                 <TableCell className="text-right">
-                  {row.href ? (
+                  {row.dialog ? (
+                    <button
+                      type="button"
+                      onClick={() => setOpenDialog(row.dialog ?? null)}
+                      className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-white hover:opacity-90 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                    >
+                      Unduh
+                    </button>
+                  ) : row.href ? (
                     <Link
                       href={row.href}
                       className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-white hover:opacity-90"
@@ -342,11 +366,17 @@ export function ReportsHub() {
         </Table>
       </div>
 
+      <SalesInvoiceReportDialog
+        open={openDialog === "salesInvoices"}
+        onOpenChange={(open) => setOpenDialog(open ? "salesInvoices" : null)}
+      />
+
       <div className="rounded-xl border border-border border-l-[3px] border-l-primary bg-surface px-4 py-3">
         <p className="text-sm font-bold text-foreground">Cara kerja</p>
         <p className="mt-0.5 text-xs text-muted">
           Laporan yang bertanda Buka tampil di layar, lengkap dengan filter dan
-          tombol unduh Excel di dalamnya. Yang bertanda Segera belum dibangun —
+          tombol unduh Excel di dalamnya. Yang bertanda Unduh langsung
+          membuka pilihan periode dan menghasilkan file Excel. Yang bertanda Segera belum dibangun —
           semuanya akan memakai dimensi yang sama dengan yang tersimpan di tiap
           transaksi: cabang, gudang, lini bisnis, channel, konsinyasi, SKU, tipe
           layanan atau produk, dan akun.
