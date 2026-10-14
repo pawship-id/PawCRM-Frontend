@@ -435,18 +435,6 @@ export function ReportsHub() {
           />
         );
       })}
-
-      <div className="rounded-xl border border-border border-l-[3px] border-l-primary bg-surface px-4 py-3">
-        <p className="text-sm font-bold text-foreground">Cara kerja</p>
-        <p className="mt-0.5 text-xs text-muted">
-          Laporan yang bertanda Buka tampil di layar, lengkap dengan filter dan
-          tombol unduh Excel di dalamnya. Yang bertanda Unduh langsung membuka
-          pilihan periode dan menghasilkan file Excel. Yang bertanda Segera
-          belum dibangun — semuanya akan memakai dimensi yang sama dengan yang
-          tersimpan di tiap transaksi: cabang, gudang, lini bisnis, channel,
-          konsinyasi, SKU, tipe layanan atau produk, dan akun.
-        </p>
-      </div>
     </div>
   );
 }
