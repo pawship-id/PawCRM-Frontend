@@ -29,6 +29,7 @@ export {
   ledgerRows,
 } from "./financeReports";
 export {
+  batchExpiryReport,
   fetchAllLowStock,
   inventoryValuationReport,
   valuationRows,

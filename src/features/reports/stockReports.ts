@@ -3,6 +3,8 @@ import { productService } from "@/services/product.service";
 import { reportService } from "@/services/report.service";
 import type { Product } from "@/types/inventory";
 import type {
+  BatchExpiryReportRow,
+  ExpiryStatus,
   InventoryValuationReport,
   InventoryValuationRow,
   PurchaseType,
@@ -507,4 +509,147 @@ export const purchasesReport: SalesReportDefinition<
         purchaseTypes,
       })
     ).rows,
+};
+
+/* ------------------------------------------------- Batch & kedaluwarsa */
+
+const EXPIRY_STATUS_LABEL: Record<ExpiryStatus, string> = {
+  expired: "Sudah kedaluwarsa",
+  within30: "≤ 30 hari",
+  within90: "31–90 hari",
+  within180: "91–180 hari",
+  later: "> 180 hari",
+  noExpiry: "Tanpa tanggal kedaluwarsa",
+};
+
+const EXPIRY_STATUSES = Object.keys(EXPIRY_STATUS_LABEL) as ExpiryStatus[];
+
+/** Where the lot is, which lot, how long it has, and what it is worth. */
+const EXPIRY_COLUMNS: SalesReportColumn<BatchExpiryReportRow>[] = [
+  {
+    header: "Cabang",
+    value: (r) => r.branchName,
+    width: 16,
+    about: "Cabang gudang; kosong untuk gudang bersama",
+  },
+  {
+    header: "Gudang",
+    value: (r) => r.warehouseName,
+    width: 18,
+    about: "Gudang tempat batch berada",
+  },
+  { header: "SKU", value: (r) => r.sku, width: 16, about: "Kode produk" },
+  {
+    header: "Produk",
+    value: (r) => r.productName,
+    width: 30,
+    about: "Nama produk",
+  },
+  {
+    header: "Kode batch",
+    value: (r) => r.batchCode,
+    width: 18,
+    about: "Kode batch di sistem",
+  },
+  {
+    header: "Kode batch supplier",
+    value: (r) => r.supplierBatchCode,
+    width: 18,
+    about: "Kode lot dari supplier",
+  },
+  {
+    header: "Tanggal masuk",
+    value: (r) => r.receivedDate,
+    type: "date",
+    width: 14,
+    about: "Tanggal batch masuk ke gudang",
+  },
+  {
+    header: "Tgl kedaluwarsa",
+    value: (r) => r.expiryDate,
+    type: "date",
+    width: 14,
+    about: "Kosong untuk produk yang tidak kedaluwarsa",
+  },
+  {
+    header: "Sisa umur (hari)",
+    value: (r) => r.daysLeft,
+    type: "number",
+    about: "Hari sampai kedaluwarsa, per hari ini. Minus = sudah lewat",
+  },
+  {
+    header: "Status umur",
+    value: (r) => EXPIRY_STATUS_LABEL[r.status],
+    width: 20,
+    about: "Kelompok sisa umur simpan",
+  },
+  {
+    header: "Konsinyasi",
+    value: (r) => (r.isConsignment ? "Ya" : "Tidak"),
+    about: "Barang titipan supplier",
+  },
+  {
+    header: "Qty sisa",
+    value: (r) => Number(r.qtyRemaining),
+    type: "number",
+    about: "Stok yang masih ada di batch ini",
+  },
+  { header: "Satuan", value: (r) => r.unit, about: "Satuan produk" },
+  {
+    header: "Harga pokok",
+    value: (r) => Number(r.unitCost),
+    type: "number",
+    width: 14,
+    about: "HPP rata-rata produk; untuk konsinyasi, harga setor ke supplier",
+  },
+  {
+    header: "Nilai sisa",
+    value: (r) => Number(r.value),
+    type: "number",
+    width: 16,
+    about: "Qty sisa × harga pokok",
+  },
+  {
+    header: "Risiko kerugian",
+    value: (r) => (r.riskValue === null ? null : Number(r.riskValue)),
+    type: "number",
+    width: 16,
+    about:
+      "Nilai sisa batch milik toko yang sudah atau akan kedaluwarsa dalam 90 hari",
+  },
+];
+
+/**
+ * Sisa umur simpan per batch dan risiko kerugian — every lot still holding
+ * stock, as of today.
+ */
+export const batchExpiryReport: SalesReportDefinition<
+  BatchExpiryReportRow,
+  ExpiryStatus
+> = {
+  title: "Batch & kedaluwarsa",
+  description:
+    "Sisa umur simpan per batch dan risiko kerugian. Diunduh sebagai Excel.",
+  fileName: "batch-kedaluwarsa",
+  rowNoun: "batch",
+  period: false,
+  locations: "stock",
+  note: "Posisi per hari ini, hanya batch yang masih ada stoknya. Risiko kerugian = nilai batch milik toko yang sudah atau akan kedaluwarsa dalam 90 hari; barang konsinyasi tidak dihitung.",
+  columns: EXPIRY_COLUMNS,
+  choice: {
+    label: "Status umur",
+    options: EXPIRY_STATUSES.map((value) => ({
+      value,
+      label: EXPIRY_STATUS_LABEL[value],
+    })),
+    defaults: EXPIRY_STATUSES,
+    summary: (values) =>
+      values.length === EXPIRY_STATUSES.length
+        ? "Semua"
+        : values.map((v) => EXPIRY_STATUS_LABEL[v]).join(", "),
+  },
+  fetch: async ({ branchIds, warehouseIds }, statuses) =>
+    (await reportService.batchExpiry({ branchIds, warehouseIds })).rows.filter(
+      (row) => statuses.includes(row.status),
+    ),
 };

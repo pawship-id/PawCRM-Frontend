@@ -588,3 +588,40 @@ export interface PurchasesReportQuery {
   /** Omitted = beli putus only. */
   purchaseTypes?: PurchaseType[];
 }
+
+/**
+ * GET /reports/batch-expiry — Laporan › Batch & kedaluwarsa, as of today. One
+ * row per lot still holding stock, soonest expiry first. `riskValue` is the
+ * value of a lot of the shop's own that has expired or expires within 90 days.
+ */
+export type ExpiryStatus =
+  "expired" | "within30" | "within90" | "within180" | "later" | "noExpiry";
+
+export interface BatchExpiryReportRow {
+  branchName: string | null;
+  warehouseName: string | null;
+  sku: string | null;
+  productName: string | null;
+  unit: string | null;
+  batchCode: string | null;
+  supplierBatchCode: string | null;
+  receivedDate: string | null;
+  expiryDate: string | null;
+  daysLeft: number | null;
+  status: ExpiryStatus;
+  isConsignment: boolean;
+  qtyRemaining: string;
+  unitCost: string;
+  value: string;
+  riskValue: string | null;
+}
+
+export interface BatchExpiryReport {
+  asOf: string;
+  rows: BatchExpiryReportRow[];
+}
+
+export interface BatchExpiryReportQuery {
+  branchIds?: string[];
+  warehouseIds?: string[];
+}

@@ -25,6 +25,8 @@ import type {
   InventoryValuationQuery,
   PurchasesReport,
   PurchasesReportQuery,
+  BatchExpiryReport,
+  BatchExpiryReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -231,6 +233,16 @@ export const reportService = {
         warehouseIds: query.warehouseIds,
         purchaseTypes: query.purchaseTypes,
       },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/batch-expiry — Batch & kedaluwarsa: every lot still holding
+   * stock, its shelf life left and the value at risk.
+   */
+  batchExpiry: (query: BatchExpiryReportQuery = {}) =>
+    apiClient.get<BatchExpiryReport>("/reports/batch-expiry", {
+      query: { branchIds: query.branchIds, warehouseIds: query.warehouseIds },
       timeoutMs: 60_000,
     }),
 

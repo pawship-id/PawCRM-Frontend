@@ -32,6 +32,7 @@ import {
   ledgerReport,
 } from "../financeReports";
 import {
+  batchExpiryReport,
   inventoryValuationReport,
   lowStockReport,
   purchasesReport,
@@ -111,7 +112,8 @@ type ReportDialog =
   | "stockOnHand"
   | "lowStock"
   | "inventoryValuation"
-  | "purchases";
+  | "purchases"
+  | "batchExpiry";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -126,6 +128,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  batchExpiry: (props) => (
+    <SalesReportDialog report={batchExpiryReport} {...props} />
   ),
   purchases: (props) => (
     <SalesReportDialog report={purchasesReport} {...props} />
@@ -314,9 +319,13 @@ const ROWS: Record<TabKey, ReportRow[]> = {
     {
       title: "Batch & kedaluwarsa",
       description: "Sisa umur simpan per batch dan risiko kerugian.",
-      href: "/dashboard/inventory/batches",
-      feature: "productBatches",
-      action: "read",
+      // A download here; /dashboard/inventory/batches stays the module's
+      // own screen for working the list.
+      dialog: "batchExpiry",
+      anyOf: [
+        { feature: "stockReports", action: "read" },
+        { feature: "productBatches", action: "read" },
+      ],
     },
     {
       title: "Selisih opname",
