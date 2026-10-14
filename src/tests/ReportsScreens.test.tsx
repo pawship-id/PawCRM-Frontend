@@ -139,7 +139,7 @@ describe("ReportsHub", () => {
     mockTab = "penjualan";
   });
 
-  it("opens on Penjualan, whose two built reports open as dialogs", () => {
+  it("opens on Penjualan, whose three built reports open as dialogs", () => {
     renderWithAuth(<ReportsHub />);
 
     expect(screen.getByText("Penjualan per invoice")).toBeInTheDocument();
@@ -147,7 +147,7 @@ describe("ReportsHub", () => {
     expect(
       screen.queryByRole("link", { name: "Buka" }),
     ).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Unduh" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Unduh" })).toHaveLength(3);
   });
 
   it("lists the inventory reports a full grant can reach", () => {

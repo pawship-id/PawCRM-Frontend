@@ -76,8 +76,11 @@ export interface SalesReportDefinition<Row, Choice extends string> {
    */
   note?: string;
   columns: SalesReportColumn<Row>[];
-  /** The one filter particular to this report — Status, Tipe… */
-  choice: {
+  /**
+   * The one filter particular to this report — Status, Tipe… Omitted when the
+   * period, cabang and gudang are all it asks (Batch terjual).
+   */
+  choice?: {
     label: string;
     options: { value: Choice; label: string }[];
     defaults: Choice[];
@@ -127,7 +130,9 @@ export function SalesReportDialog<Row, Choice extends string>({
   );
   const [branchIds, setBranchIds] = useState<string[]>([]);
   const [warehouseIds, setWarehouseIds] = useState<string[]>([]);
-  const [choices, setChoices] = useState<Choice[]>(report.choice.defaults);
+  const [choices, setChoices] = useState<Choice[]>(
+    report.choice?.defaults ?? [],
+  );
   // Opens on Bulan ini — the period a sales report is most often asked for.
   const [range, setRange] = useState(() => {
     const month = presets()[2];
@@ -157,7 +162,8 @@ export function SalesReportDialog<Row, Choice extends string>({
 
   const branches = options?.branches ?? [];
   const warehouses = toScopeWarehouses(options?.warehouses ?? []);
-  const ready = Boolean(range.from && range.to) && choices.length > 0;
+  const ready =
+    Boolean(range.from && range.to) && (!report.choice || choices.length > 0);
 
   async function download() {
     if (!ready) return;
@@ -243,16 +249,18 @@ export function SalesReportDialog<Row, Choice extends string>({
               onApply={setWarehouseIds}
               onReset={() => setWarehouseIds([])}
             />
-            <FilterMultiSelect<Choice>
-              layout="field"
-              label={report.choice.label}
-              className="sm:col-span-2"
-              values={choices}
-              options={report.choice.options}
-              formatValue={report.choice.summary}
-              onApply={setChoices}
-              onReset={() => setChoices(report.choice.defaults)}
-            />
+            {report.choice && (
+              <FilterMultiSelect<Choice>
+                layout="field"
+                label={report.choice.label}
+                className="sm:col-span-2"
+                values={choices}
+                options={report.choice.options}
+                formatValue={report.choice.summary}
+                onApply={setChoices}
+                onReset={() => setChoices(report.choice?.defaults ?? [])}
+              />
+            )}
           </div>
 
           {report.note && (

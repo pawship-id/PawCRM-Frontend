@@ -210,3 +210,40 @@ export interface SalesItemReportQuery {
   /** Omitted = all three. */
   kinds?: SalesItemReportRow["kind"][];
 }
+
+/**
+ * GET /reports/sales-batches — Laporan › Batch terjual. One row per faktur ×
+ * produk × batch, oldest faktur first, read off the stock movements (FEFO's
+ * choice, not only lots picked by hand).
+ */
+export interface SalesBatchReportRow {
+  invoiceNumber: string;
+  invoiceDate: string | null;
+  branchName: string | null;
+  warehouseName: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  source: "manual" | "pos_bridge";
+  sku: string | null;
+  productName: string | null;
+  unit: string | null;
+  batchCode: string | null;
+  supplierBatchCode: string | null;
+  /** `yyyy-mm-dd`; null on a lot of a product that does not expire. */
+  expiryDate: string | null;
+  isConsignment: boolean;
+  supplierName: string | null;
+  qty: string;
+}
+
+export interface SalesBatchReport {
+  range: { fromDate: string | null; toDate: string | null } | null;
+  rows: SalesBatchReportRow[];
+}
+
+export interface SalesBatchReportQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  warehouseIds?: string[];
+}

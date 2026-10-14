@@ -5,6 +5,8 @@ import type {
   SalesInvoiceReportQuery,
   SalesItemReport,
   SalesItemReportQuery,
+  SalesBatchReport,
+  SalesBatchReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -64,6 +66,21 @@ export const reportService = {
         branchIds: query.branchIds,
         warehouseIds: query.warehouseIds,
         kinds: query.kinds,
+      },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/sales-batches — Batch terjual: which lots left through the
+   * period's sales, per faktur, for tracing a batch back to its buyers.
+   */
+  salesBatches: (query: SalesBatchReportQuery) =>
+    apiClient.get<SalesBatchReport>("/reports/sales-batches", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        warehouseIds: query.warehouseIds,
       },
       timeoutMs: 60_000,
     }),

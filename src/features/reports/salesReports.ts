@@ -1,5 +1,9 @@
 import { reportService } from "@/services/report.service";
-import type { SalesInvoiceReportRow, SalesItemReportRow } from "@/types/report";
+import type {
+  SalesBatchReportRow,
+  SalesInvoiceReportRow,
+  SalesItemReportRow,
+} from "@/types/report";
 
 import type {
   SalesReportColumn,
@@ -344,3 +348,116 @@ export const salesItemReport: SalesReportDefinition<SalesItemReportRow, Kind> =
     fetch: async (scope, kinds) =>
       (await reportService.salesItems({ ...scope, kinds })).rows,
   };
+
+/* ------------------------------------------------------ Batch terjual */
+
+/**
+ * Who has the faktur and the phone number first, then what and which lot —
+ * the order somebody reads it in when a batch is recalled.
+ */
+const BATCH_COLUMNS: SalesReportColumn<SalesBatchReportRow>[] = [
+  {
+    header: "Tanggal faktur",
+    value: (r) => r.invoiceDate,
+    type: "date",
+    width: 14,
+    about: "Tanggal faktur diterbitkan",
+  },
+  {
+    header: "No. faktur",
+    value: (r) => r.invoiceNumber,
+    width: 22,
+    about: "Nomor faktur",
+  },
+  {
+    header: "Cabang",
+    value: (r) => r.branchName,
+    width: 18,
+    about: "Cabang penerbit",
+  },
+  {
+    header: "Gudang",
+    value: (r) => r.warehouseName,
+    width: 18,
+    about: "Gudang asal barang",
+  },
+  {
+    header: "Pelanggan",
+    value: (r) => r.customerName,
+    width: 24,
+    about: "Nama pelanggan (kosong untuk pembeli umum di kasir)",
+  },
+  {
+    header: "No. HP",
+    value: (r) => r.customerPhone,
+    width: 16,
+    about: "Nomor HP pelanggan, untuk dihubungi saat penarikan",
+  },
+  {
+    header: "Sumber",
+    value: (r) => (r.source === "pos_bridge" ? "Kasir" : "Manual"),
+    about: "Dari kasir atau faktur manual",
+  },
+  { header: "SKU", value: (r) => r.sku, width: 16, about: "Kode produk" },
+  {
+    header: "Produk",
+    value: (r) => r.productName,
+    width: 30,
+    about: "Nama produk di katalog",
+  },
+  {
+    header: "Kode batch",
+    value: (r) => r.batchCode,
+    width: 18,
+    about: "Kode batch di sistem",
+  },
+  {
+    header: "Kode batch supplier",
+    value: (r) => r.supplierBatchCode,
+    width: 18,
+    about: "Kode lot dari supplier, yang dipakai saat supplier menarik produk",
+  },
+  {
+    header: "Tgl kedaluwarsa",
+    value: (r) => r.expiryDate,
+    type: "date",
+    width: 14,
+    about: "Kosong untuk produk yang tidak kedaluwarsa",
+  },
+  {
+    header: "Supplier",
+    value: (r) => r.supplierName,
+    width: 20,
+    about: "Supplier batch ini (penitip, untuk barang konsinyasi)",
+  },
+  {
+    header: "Konsinyasi",
+    value: (r) => (r.isConsignment ? "Ya" : "Tidak"),
+    about: "Barang titipan atau milik sendiri",
+  },
+  {
+    header: "Qty",
+    value: (r) => num(r.qty),
+    type: "number",
+    about: "Jumlah dari batch ini yang keluar di faktur itu",
+  },
+  { header: "Satuan", value: (r) => r.unit, about: "Satuan produk" },
+];
+
+/**
+ * Batches and expiry dates that left through sales, for tracing back — one
+ * row per faktur × produk × batch.
+ */
+export const salesBatchReport: SalesReportDefinition<
+  SalesBatchReportRow,
+  never
+> = {
+  title: "Batch terjual",
+  description:
+    "Batch dan tanggal kedaluwarsa yang keluar lewat penjualan, untuk telusur balik. Diunduh sebagai Excel.",
+  fileName: "batch-terjual",
+  rowNoun: "baris batch",
+  note: "Hanya produk yang dicatat per batch. Retur penjualan belum mengurangi angka di laporan ini.",
+  columns: BATCH_COLUMNS,
+  fetch: async (scope) => (await reportService.salesBatches(scope)).rows,
+};
