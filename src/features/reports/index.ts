@@ -21,3 +21,4 @@ export {
   salesItemReport,
   salesRevenueReport,
 } from "./salesReports";
+export { cashFlowReport, cashFlowRows } from "./financeReports";

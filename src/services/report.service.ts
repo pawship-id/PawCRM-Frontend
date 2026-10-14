@@ -13,6 +13,8 @@ import type {
   ConsignmentSalesReportQuery,
   SalesRevenueReport,
   SalesRevenueReportQuery,
+  CashFlowReport,
+  CashFlowReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -134,6 +136,20 @@ export const reportService = {
         branchIds: query.branchIds,
         warehouseIds: query.warehouseIds,
         kinds: query.kinds,
+      },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/cash-flow — Arus kas: kas awal, operasional / investasi /
+   * pendanaan, kas akhir. Cabang only; cash sits in no gudang.
+   */
+  cashFlow: (query: CashFlowReportQuery) =>
+    apiClient.get<CashFlowReport>("/reports/cash-flow", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
       },
       timeoutMs: 60_000,
     }),

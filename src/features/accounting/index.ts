@@ -50,10 +50,7 @@ export { ProfitLossScreen } from "./components/ProfitLossScreen";
  * screen wherever the file happens to sit. The channels moved the other way, to
  * Pengaturan.
  */
-export {
-  KasBankScreen,
-  type KasBankSection,
-} from "./components/KasBankScreen";
+export { KasBankScreen, type KasBankSection } from "./components/KasBankScreen";
 export { CashBankAccountsTable } from "./components/CashBankAccountsTable";
 export {
   useCashBankAccounts,
@@ -158,3 +155,5 @@ export {
   type JournalEntriesQuery,
   type UseJournalEntriesResult,
 } from "./hooks/useJournalEntries";
+/** Where a journal entry came from, in the words the Jurnal screen uses. */
+export { sourceLabel } from "./labels";

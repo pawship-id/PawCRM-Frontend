@@ -32,7 +32,10 @@ import {
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
+import { branchService } from "@/services/branch.service";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
+import { useAuth } from "@/features/auth";
+import { accessibleBranches } from "@/utils/accessScope";
 import { toScopeWarehouses } from "@/features/sales";
 import type { CustomerInvoiceFilterOptions } from "@/types/api";
 import { isoDate } from "@/utils/date";
@@ -75,6 +78,14 @@ export interface SalesReportDefinition<Row, Choice extends string> {
    * makes it — a gap nobody is told about is read as a wrong number.
    */
   note?: string;
+  /** What the period's dates bound — "tanggal faktur" unless said otherwise. */
+  periodLabel?: string;
+  /**
+   * `branches` — Cabang only, read from the branch register: a report with no
+   * gudang (cash sits in no warehouse) for a role that may not read faktur.
+   * Default `sales`: Cabang and Gudang, from the faktur's own filter options.
+   */
+  locations?: "sales" | "branches";
   columns: SalesReportColumn<Row>[];
   /**
    * The one filter particular to this report — Status, Tipe… Omitted when the
@@ -125,6 +136,8 @@ export function SalesReportDialog<Row, Choice extends string>({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { user } = useAuth();
+  const branchesOnly = report.locations === "branches";
   const [options, setOptions] = useState<CustomerInvoiceFilterOptions | null>(
     null,
   );
@@ -149,8 +162,16 @@ export function SalesReportDialog<Row, Choice extends string>({
   useEffect(() => {
     if (!open || options) return;
     let live = true;
-    customerInvoiceService
-      .filterOptions()
+    const load = branchesOnly
+      ? branchService.list({ limit: 100 }).then((page) => ({
+          // Narrowed to the caller's own, as `useReportLookups` does: the
+          // server refuses any other with a 403.
+          branches: accessibleBranches(user, page.items),
+          warehouses: [],
+          creators: [],
+        }))
+      : customerInvoiceService.filterOptions();
+    load
       .then((result) => {
         if (live) setOptions(result);
       })
@@ -158,7 +179,7 @@ export function SalesReportDialog<Row, Choice extends string>({
     return () => {
       live = false;
     };
-  }, [open, options]);
+  }, [open, options, branchesOnly, user]);
 
   const branches = options?.branches ?? [];
   const warehouses = toScopeWarehouses(options?.warehouses ?? []);
@@ -181,7 +202,7 @@ export function SalesReportDialog<Row, Choice extends string>({
       );
       swalToast(
         rows.length === 0
-          ? "Tidak ada penjualan di periode ini — file berisi judul kolom saja."
+          ? "Tidak ada data di periode ini — file berisi judul kolom saja."
           : `Laporan diunduh — ${rows.length.toLocaleString("id-ID")} ${report.rowNoun}.`,
       );
       onOpenChange(false);
@@ -214,7 +235,7 @@ export function SalesReportDialog<Row, Choice extends string>({
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
             <FilterDateRange
               layout="field"
-              label="Periode (tanggal faktur)"
+              label={`Periode (${report.periodLabel ?? "tanggal faktur"})`}
               from={range.from}
               to={range.to}
               presets={presets()}
@@ -236,19 +257,21 @@ export function SalesReportDialog<Row, Choice extends string>({
               }}
               onReset={() => setBranchIds([])}
             />
-            <FilterMultiSelect
-              layout="field"
-              label="Gudang"
-              values={warehouseIds}
-              options={namedOptions(
-                warehousesOffered(warehouses, branchIds, warehouseIds),
-              )}
-              formatValue={(ids) =>
-                scopeSummary(ids, warehouses, "Semua gudang", "gudang")
-              }
-              onApply={setWarehouseIds}
-              onReset={() => setWarehouseIds([])}
-            />
+            {!branchesOnly && (
+              <FilterMultiSelect
+                layout="field"
+                label="Gudang"
+                values={warehouseIds}
+                options={namedOptions(
+                  warehousesOffered(warehouses, branchIds, warehouseIds),
+                )}
+                formatValue={(ids) =>
+                  scopeSummary(ids, warehouses, "Semua gudang", "gudang")
+                }
+                onApply={setWarehouseIds}
+                onReset={() => setWarehouseIds([])}
+              />
+            )}
             {report.choice && (
               <FilterMultiSelect<Choice>
                 layout="field"

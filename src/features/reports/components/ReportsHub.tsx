@@ -25,6 +25,7 @@ import {
   salesItemReport,
   salesRevenueReport,
 } from "../salesReports";
+import { cashFlowReport } from "../financeReports";
 import { SalesReportDialog } from "./SalesReportDialog";
 
 /**
@@ -91,7 +92,8 @@ type ReportDialog =
   | "salesBatches"
   | "posSales"
   | "consignmentSales"
-  | "salesRevenue";
+  | "salesRevenue"
+  | "cashFlow";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -107,6 +109,7 @@ const REPORT_DIALOGS: Record<
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
   ),
+  cashFlow: (props) => <SalesReportDialog report={cashFlowReport} {...props} />,
   salesRevenue: (props) => (
     <SalesReportDialog report={salesRevenueReport} {...props} />
   ),
@@ -186,8 +189,8 @@ const ROWS: Record<TabKey, ReportRow[]> = {
   ],
   /*
     The three statements keep `journalEntries:read`, the grant their routes
-    enforce. Arus Kas is in the mockup list without a screen of its own there;
-    here the screen exists, so it opens.
+    enforce. Arus kas has no page: it opens as an export dialog like the
+    Penjualan reports (14 October 2026, on request).
   */
   keuangan: [
     {
@@ -206,6 +209,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Arus kas",
       description:
         "Kas awal sampai kas akhir: operasional, investasi, pendanaan.",
+      dialog: "cashFlow",
+      anyOf: [
+        { feature: "financeReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ],
     },
     {
       title: "Saldo per akun",

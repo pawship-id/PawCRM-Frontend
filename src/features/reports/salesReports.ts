@@ -654,6 +654,7 @@ export const posSalesReport: SalesReportDefinition<
   description:
     "Penutupan shift dan rekap per metode pembayaran. Diunduh sebagai Excel.",
   fileName: "penjualan-pos",
+  periodLabel: "tanggal buka shift",
   rowNoun: "shift",
   note: "Periode dihitung dari tanggal shift dibuka. Angka per metode dihitung ulang saat diunduh, jadi pembayaran yang dibatalkan setelah shift ditutup ikut terkoreksi.",
   columns: POS_COLUMNS,
@@ -752,6 +753,7 @@ export const consignmentSalesReport: SalesReportDefinition<
   description:
     "Penjualan produk titipan per supplier, dasar perhitungan setoran. Diunduh sebagai Excel.",
   fileName: "penjualan-konsinyasi",
+  periodLabel: "tanggal barang keluar",
   rowNoun: "produk titipan",
   note: "Periode dihitung dari tanggal barang keluar atau kembali. Yang sudah disetor tidak dikurangkan di sini — lihat sisanya di Konsinyasi.",
   columns: CONSIGNMENT_COLUMNS,

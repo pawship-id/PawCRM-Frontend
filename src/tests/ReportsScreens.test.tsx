@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
+  cashFlowRows,
   ConsignmentScreen,
   LowStockScreen,
   ReportsHub,
@@ -160,7 +161,7 @@ describe("ReportsHub", () => {
   });
 
   /** The hub is the statements' only door since 22 September 2026. */
-  it("opens the two live statements for Laporan Keuangan, and lists Arus kas as Segera", () => {
+  it("opens the two live statements for Laporan Keuangan, and Arus kas as a download", () => {
     mockTab = "keuangan";
     renderWithAuth(<ReportsHub />, {
       isSuperAdmin: false,
@@ -175,7 +176,9 @@ describe("ReportsHub", () => {
       "/dashboard/keuangan/neraca",
     ]);
     const arusKas = screen.getByText("Arus kas").closest("tr")!;
-    expect(arusKas).toHaveTextContent("Segera");
+    expect(
+      within(arusKas).getByRole("button", { name: "Unduh" }),
+    ).toBeInTheDocument();
     expect(within(arusKas).queryByRole("link")).not.toBeInTheDocument();
   });
 
@@ -556,5 +559,53 @@ describe("stock isolation on StockOnHandScreen", () => {
     expect(
       screen.getByRole("option", { name: "Gudang Barat" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("cashFlowRows", () => {
+  it("lays the statement out top to bottom, totals as rows of their own", () => {
+    const rows = cashFlowRows({
+      range: { fromDate: "2026-09-01", toDate: "2026-09-30" },
+      opening: {
+        total: "1000000.0000",
+        accounts: [{ code: "1101", name: "Kas", balance: "1000000.0000" }],
+      },
+      sections: [
+        {
+          type: "operating",
+          inflow: "500000.0000",
+          outflow: "0.0000",
+          net: "500000.0000",
+          lines: [
+            {
+              sourceType: "pos",
+              entryCount: 3,
+              inflow: "500000.0000",
+              outflow: "0.0000",
+              net: "500000.0000",
+            },
+          ],
+        },
+      ],
+      netChange: "500000.0000",
+      closing: {
+        total: "1500000.0000",
+        accounts: [{ code: "1101", name: "Kas", balance: "1500000.0000" }],
+      },
+    });
+
+    expect(rows.map((r) => [r.section, r.label, r.amount])).toEqual([
+      ["Saldo awal", "1101 Kas", "1000000.0000"],
+      ["Saldo awal", "Total saldo awal kas & bank", "1000000.0000"],
+      ["Operasional", "Kasir", "500000.0000"],
+      [
+        "Operasional",
+        "Arus kas bersih dari aktivitas operasional",
+        "500000.0000",
+      ],
+      ["Perubahan kas", "Kenaikan (penurunan) kas bersih", "500000.0000"],
+      ["Saldo akhir", "1101 Kas", "1500000.0000"],
+      ["Saldo akhir", "Total saldo akhir kas & bank", "1500000.0000"],
+    ]);
   });
 });

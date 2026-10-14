@@ -1,3 +1,4 @@
+import type { JournalSourceType } from "./accounting";
 /**
  * The reports contract — `/api/reports`.
  *
@@ -361,4 +362,44 @@ export interface SalesRevenueReportQuery {
   branchIds?: string[];
   warehouseIds?: string[];
   kinds?: SalesRevenueReportRow["kind"][];
+}
+
+/**
+ * GET /reports/cash-flow — Laporan › Arus kas. Kas awal, the cash that moved
+ * per section × journal source, kas akhir — and kas awal + Σ net = kas akhir,
+ * which the server checks before it answers.
+ */
+export type CashFlowSection = "operating" | "investing" | "financing" | null;
+
+export interface CashFlowAccountBalance {
+  code: string;
+  name: string;
+  balance: string;
+}
+
+export interface CashFlowReport {
+  range: { fromDate: string | null; toDate: string | null };
+  opening: { total: string; accounts: CashFlowAccountBalance[] };
+  sections: Array<{
+    /** Null — cash that moved under an entry nobody classified. */
+    type: CashFlowSection;
+    inflow: string;
+    outflow: string;
+    net: string;
+    lines: Array<{
+      sourceType: JournalSourceType;
+      entryCount: number;
+      inflow: string;
+      outflow: string;
+      net: string;
+    }>;
+  }>;
+  netChange: string;
+  closing: { total: string; accounts: CashFlowAccountBalance[] };
+}
+
+export interface CashFlowReportQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
 }
