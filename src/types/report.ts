@@ -552,3 +552,39 @@ export interface InventoryValuationQuery {
   branchIds?: string[];
   warehouseIds?: string[];
 }
+
+/**
+ * GET /reports/purchases — Laporan › Pembelian per supplier. One row per
+ * supplier × product: received lines less submitted returns, ex-tax.
+ */
+export type PurchaseType = "beli_putus" | "konsinyasi";
+
+export interface PurchasesReportRow {
+  supplierName: string | null;
+  sku: string | null;
+  productName: string | null;
+  categoryName: string | null;
+  unit: string | null;
+  receiptCount: number;
+  lastReceiptDate: string | null;
+  qty: string;
+  amount: string;
+  averageCost: string | null;
+  returnedQty: string;
+  returnedAmount: string;
+  netQty: string;
+  netAmount: string;
+}
+
+export interface PurchasesReport {
+  rows: PurchasesReportRow[];
+}
+
+export interface PurchasesReportQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  warehouseIds?: string[];
+  /** Omitted = beli putus only. */
+  purchaseTypes?: PurchaseType[];
+}

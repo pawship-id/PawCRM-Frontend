@@ -33,6 +33,7 @@ export {
   inventoryValuationReport,
   valuationRows,
   lowStockReport,
+  purchasesReport,
   stockOnHandReport,
   stockOnHandRows,
 } from "./stockReports";

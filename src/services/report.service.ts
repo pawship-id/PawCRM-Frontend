@@ -23,6 +23,8 @@ import type {
   AgingReportQuery,
   InventoryValuationReport,
   InventoryValuationQuery,
+  PurchasesReport,
+  PurchasesReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -214,6 +216,22 @@ export const reportService = {
         warehouseIds: query.warehouseIds,
       },
       timeoutMs: 120_000,
+    }),
+
+  /**
+   * GET /reports/purchases — Pembelian per supplier: bought per supplier ×
+   * SKU in a period, net of returns, ex-tax.
+   */
+  purchases: (query: PurchasesReportQuery) =>
+    apiClient.get<PurchasesReport>("/reports/purchases", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        warehouseIds: query.warehouseIds,
+        purchaseTypes: query.purchaseTypes,
+      },
+      timeoutMs: 60_000,
     }),
 
   /**

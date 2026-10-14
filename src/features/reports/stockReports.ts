@@ -5,6 +5,8 @@ import type { Product } from "@/types/inventory";
 import type {
   InventoryValuationReport,
   InventoryValuationRow,
+  PurchaseType,
+  PurchasesReportRow,
 } from "@/types/report";
 import { sniffDelimiter, splitCsv } from "@/utils/csv";
 
@@ -368,4 +370,141 @@ export const inventoryValuationReport: SalesReportDefinition<
     valuationRows(
       await reportService.inventoryValuation({ asOf, branchIds, warehouseIds }),
     ),
+};
+
+/* ------------------------------------------------- Pembelian per supplier */
+
+const PURCHASE_TYPE_LABEL: Record<PurchaseType, string> = {
+  beli_putus: "Beli putus",
+  konsinyasi: "Konsinyasi",
+};
+
+const PURCHASE_TYPES = Object.keys(PURCHASE_TYPE_LABEL) as PurchaseType[];
+
+const decimalOf = (value: string | null) =>
+  value === null ? null : Number(value);
+
+/** Supplier, then what, then how much came in, went back, and stayed. */
+const PURCHASE_COLUMNS: SalesReportColumn<PurchasesReportRow>[] = [
+  {
+    header: "Supplier",
+    value: (r) => r.supplierName,
+    width: 24,
+    about: "Supplier pengirim",
+  },
+  { header: "SKU", value: (r) => r.sku, width: 16, about: "Kode produk" },
+  {
+    header: "Produk",
+    value: (r) => r.productName,
+    width: 32,
+    about: "Nama produk",
+  },
+  {
+    header: "Kategori",
+    value: (r) => r.categoryName,
+    width: 18,
+    about: "Kategori produk",
+  },
+  { header: "Satuan", value: (r) => r.unit, about: "Satuan produk" },
+  {
+    header: "Jumlah penerimaan",
+    value: (r) => r.receiptCount,
+    type: "number",
+    about: "Berapa kali produk ini diterima dari supplier itu",
+  },
+  {
+    header: "Penerimaan terakhir",
+    value: (r) => r.lastReceiptDate,
+    type: "date",
+    width: 14,
+    about: "Tanggal penerimaan terakhir di periode ini",
+  },
+  {
+    header: "Qty dibeli",
+    value: (r) => decimalOf(r.qty),
+    type: "number",
+    about: "Qty yang diterima",
+  },
+  {
+    header: "Harga beli rata-rata",
+    value: (r) => decimalOf(r.averageCost),
+    type: "number",
+    width: 16,
+    about: "Nilai dibeli ÷ qty dibeli",
+  },
+  {
+    header: "Nilai dibeli",
+    value: (r) => decimalOf(r.amount),
+    type: "number",
+    width: 16,
+    about: "Qty × harga beli, tanpa PPN",
+  },
+  {
+    header: "Qty retur",
+    value: (r) => decimalOf(r.returnedQty),
+    type: "number",
+    about: "Qty yang dikembalikan ke supplier",
+  },
+  {
+    header: "Nilai retur",
+    value: (r) => decimalOf(r.returnedAmount),
+    type: "number",
+    width: 14,
+    about: "Nilai yang dikembalikan, tanpa PPN",
+  },
+  {
+    header: "Qty bersih",
+    value: (r) => decimalOf(r.netQty),
+    type: "number",
+    about: "Qty dibeli − qty retur",
+  },
+  {
+    header: "Nilai bersih",
+    value: (r) => decimalOf(r.netAmount),
+    type: "number",
+    width: 16,
+    about: "Nilai dibeli − nilai retur",
+  },
+];
+
+/**
+ * Nilai dan kuantitas pembelian per supplier dan SKU — received goods less
+ * returns, for the period chosen.
+ */
+export const purchasesReport: SalesReportDefinition<
+  PurchasesReportRow,
+  PurchaseType
+> = {
+  title: "Pembelian per supplier",
+  description:
+    "Nilai dan kuantitas pembelian per supplier dan SKU. Diunduh sebagai Excel.",
+  fileName: "pembelian-per-supplier",
+  rowNoun: "baris",
+  periodLabel: "tanggal penerimaan",
+  locations: "stock",
+  note: "Hanya penerimaan yang sudah diterima dan retur yang sudah diajukan. Nilai tanpa PPN.",
+  columns: PURCHASE_COLUMNS,
+  choice: {
+    label: "Jenis pembelian",
+    options: PURCHASE_TYPES.map((value) => ({
+      value,
+      label: PURCHASE_TYPE_LABEL[value],
+    })),
+    // Titipan is received, not bought — on request only.
+    defaults: ["beli_putus"],
+    summary: (values) =>
+      values.length === PURCHASE_TYPES.length
+        ? "Beli putus & konsinyasi"
+        : values.map((v) => PURCHASE_TYPE_LABEL[v]).join(", "),
+  },
+  fetch: async ({ dateFrom, dateTo, branchIds, warehouseIds }, purchaseTypes) =>
+    (
+      await reportService.purchases({
+        dateFrom,
+        dateTo,
+        branchIds,
+        warehouseIds,
+        purchaseTypes,
+      })
+    ).rows,
 };

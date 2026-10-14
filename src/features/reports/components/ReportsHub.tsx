@@ -34,6 +34,7 @@ import {
 import {
   inventoryValuationReport,
   lowStockReport,
+  purchasesReport,
   stockOnHandReport,
 } from "../stockReports";
 import { SalesReportDialog } from "./SalesReportDialog";
@@ -109,7 +110,8 @@ type ReportDialog =
   | "aging"
   | "stockOnHand"
   | "lowStock"
-  | "inventoryValuation";
+  | "inventoryValuation"
+  | "purchases";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -124,6 +126,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  purchases: (props) => (
+    <SalesReportDialog report={purchasesReport} {...props} />
   ),
   inventoryValuation: (props) => (
     <SalesReportDialog report={inventoryValuationReport} {...props} />
@@ -338,6 +343,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
     {
       title: "Pembelian per supplier",
       description: "Nilai dan kuantitas pembelian per supplier dan SKU.",
+      dialog: "purchases",
+      anyOf: [
+        { feature: "stockReports", action: "read" },
+        { feature: "purchaseInvoices", action: "read" },
+      ],
     },
   ],
   operasional: [
