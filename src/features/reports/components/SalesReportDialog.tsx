@@ -6,6 +6,7 @@ import { ChevronDown, Download, Info } from "lucide-react";
 import {
   FilterDateRange,
   FilterMultiSelect,
+  TextField,
   namedOptions,
   scopeSummary,
   warehousesAfterBranches,
@@ -66,6 +67,8 @@ export type SalesReportColumn<Row> = XlsxColumn<Row> & { about: string };
 export interface SalesReportScope {
   dateFrom: string;
   dateTo: string;
+  /** The one day a position report is read at — `asOf` reports only. */
+  asOf: string;
   branchIds: string[];
   warehouseIds: string[];
 }
@@ -87,9 +90,10 @@ export interface SalesReportDefinition<Row, Choice extends string> {
   /**
    * `false` for a report that is a position as of today rather than a period
    * (Umur piutang & utang): no dates are asked, and the file is named for the
-   * day it was made.
+   * day it was made. `"asOf"` asks ONE date instead of a range — a position at
+   * the end of that day (Nilai persediaan).
    */
-  period?: boolean;
+  period?: boolean | "asOf";
   /**
    * `branches` — Cabang only, read from the branch register: a report with no
    * gudang (cash sits in no warehouse) for a role that may not read faktur.
@@ -193,6 +197,7 @@ export function SalesReportDialog<Row, Choice extends string>({
     const month = presets()[2];
     return { from: month.from, to: month.to };
   });
+  const [asOf, setAsOf] = useState(() => isoDate(new Date()));
   const [busy, setBusy] = useState(false);
   const [showColumns, setShowColumns] = useState(false);
 
@@ -238,9 +243,11 @@ export function SalesReportDialog<Row, Choice extends string>({
 
   const branches = options?.branches ?? [];
   const warehouses = options?.warehouses ?? [];
-  const hasPeriod = report.period !== false;
+  const hasPeriod = report.period !== false && report.period !== "asOf";
+  const atOneDate = report.period === "asOf";
   const ready =
     (!hasPeriod || Boolean(range.from && range.to)) &&
+    (!atOneDate || Boolean(asOf)) &&
     (!report.choice || choices.length > 0);
 
   async function download() {
@@ -248,7 +255,13 @@ export function SalesReportDialog<Row, Choice extends string>({
     setBusy(true);
     try {
       const rows = await report.fetch(
-        { dateFrom: range.from, dateTo: range.to, branchIds, warehouseIds },
+        {
+          dateFrom: range.from,
+          dateTo: range.to,
+          asOf,
+          branchIds,
+          warehouseIds,
+        },
         choices,
       );
       await exportToXlsx(
@@ -256,7 +269,7 @@ export function SalesReportDialog<Row, Choice extends string>({
         rows,
         hasPeriod
           ? `${report.fileName}_${range.from}_${range.to}.xlsx`
-          : `${report.fileName}_${isoDate(new Date())}.xlsx`,
+          : `${report.fileName}_${atOneDate ? asOf : isoDate(new Date())}.xlsx`,
         { sheetName: report.title },
       );
       swalToast(
@@ -292,6 +305,16 @@ export function SalesReportDialog<Row, Choice extends string>({
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
+            {atOneDate && (
+              <TextField
+                type="date"
+                label="Per tanggal"
+                value={asOf}
+                max={isoDate(new Date())}
+                onChange={(event) => setAsOf(event.target.value)}
+                hint="Posisi di akhir hari itu."
+              />
+            )}
             {hasPeriod && (
               <FilterDateRange
                 layout="field"

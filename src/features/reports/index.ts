@@ -30,6 +30,8 @@ export {
 } from "./financeReports";
 export {
   fetchAllLowStock,
+  inventoryValuationReport,
+  valuationRows,
   lowStockReport,
   stockOnHandReport,
   stockOnHandRows,

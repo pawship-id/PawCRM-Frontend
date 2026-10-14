@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 
 import {
   cashFlowRows,
+  valuationRows,
   fetchAllLowStock,
   stockLocations,
   stockOnHandRows,
@@ -558,5 +559,42 @@ describe("fetchAllLowStock", () => {
       page: 2,
       limit: 100,
     });
+  });
+});
+
+describe("valuationRows", () => {
+  it("adds the total and the check against the Neraca under the shelves", () => {
+    const rows = valuationRows({
+      asOf: "2026-09-30",
+      rows: [
+        {
+          branchName: "Timur",
+          warehouseName: "Gudang Utama",
+          sku: "PK-1",
+          productName: "Pakan 1kg",
+          categoryName: null,
+          unit: "pcs",
+          qty: "12.0000",
+          averageCost: "1300.0000",
+          value: "15600.0000",
+        },
+      ],
+      total: "15600.0000",
+      reconciliation: {
+        accounts: [
+          { code: "1201", name: "Persediaan Barang", balance: "15600.0000" },
+        ],
+        ledgerTotal: "15600.0000",
+        difference: "0.0000",
+      },
+    });
+
+    expect(rows.map((r) => [r.productName, r.value])).toEqual([
+      ["Pakan 1kg", "15600.0000"],
+      ["Total nilai persediaan menurut stok", "15600.0000"],
+      ["Saldo akun 1201 Persediaan Barang (Neraca)", "15600.0000"],
+      ["Total saldo akun persediaan di Neraca", "15600.0000"],
+      ["Selisih (stok − Neraca)", "0.0000"],
+    ]);
   });
 });

@@ -2,6 +2,10 @@ import { ApiError } from "@/services/api-error";
 import { productService } from "@/services/product.service";
 import { reportService } from "@/services/report.service";
 import type { Product } from "@/types/inventory";
+import type {
+  InventoryValuationReport,
+  InventoryValuationRow,
+} from "@/types/report";
 import { sniffDelimiter, splitCsv } from "@/utils/csv";
 
 import type {
@@ -239,4 +243,129 @@ export const lowStockReport: SalesReportDefinition<LowStockRow, never> = {
   columns: LOW_STOCK_COLUMNS,
   fetch: async ({ branchIds, warehouseIds }) =>
     fetchAllLowStock({ branchIds, warehouseIds }),
+};
+
+/* ------------------------------------------------------ Nilai persediaan */
+
+/**
+ * A shelf row, or — at the foot of the sheet — one line of the check against
+ * the Neraca, with its words in the Produk column and its figure under Nilai.
+ */
+export type ValuationSheetRow = InventoryValuationRow;
+
+const blank = {
+  branchName: null,
+  warehouseName: null,
+  sku: null,
+  categoryName: null,
+  unit: null,
+  qty: "",
+  averageCost: "",
+};
+
+/** The shelves, then the total and its reconciliation to the Neraca. */
+export function valuationRows(
+  report: InventoryValuationReport,
+): ValuationSheetRow[] {
+  const foot = (label: string, value: string): ValuationSheetRow => ({
+    ...blank,
+    productName: label,
+    value,
+  });
+  const check = report.reconciliation;
+
+  return [
+    ...report.rows,
+    foot("Total nilai persediaan menurut stok", report.total),
+    ...(check
+      ? [
+          ...check.accounts.map((account) =>
+            foot(
+              `Saldo akun ${account.code} ${account.name} (Neraca)`,
+              account.balance,
+            ),
+          ),
+          foot("Total saldo akun persediaan di Neraca", check.ledgerTotal),
+          foot("Selisih (stok − Neraca)", check.difference),
+        ]
+      : []),
+  ];
+}
+
+const valueOf =
+  (key: "qty" | "averageCost" | "value") => (r: ValuationSheetRow) =>
+    r[key] === "" ? null : Number(r[key]);
+
+const VALUATION_COLUMNS: SalesReportColumn<ValuationSheetRow>[] = [
+  {
+    header: "Cabang",
+    value: (r) => r.branchName,
+    width: 18,
+    about: "Cabang gudang; kosong untuk gudang bersama",
+  },
+  {
+    header: "Gudang",
+    value: (r) => r.warehouseName,
+    width: 18,
+    about: "Gudang tempat stok berada",
+  },
+  { header: "SKU", value: (r) => r.sku, width: 16, about: "Kode produk" },
+  {
+    header: "Produk",
+    value: (r) => r.productName,
+    width: 40,
+    about:
+      "Nama produk; di bagian bawah, baris total dan pencocokan dengan Neraca",
+  },
+  {
+    header: "Kategori",
+    value: (r) => r.categoryName,
+    width: 18,
+    about: "Kategori produk",
+  },
+  { header: "Satuan", value: (r) => r.unit, about: "Satuan produk" },
+  {
+    header: "Qty",
+    value: valueOf("qty"),
+    type: "number",
+    about: "Stok di gudang itu pada akhir tanggal yang dipilih",
+  },
+  {
+    header: "HPP rata-rata",
+    value: valueOf("averageCost"),
+    type: "number",
+    width: 14,
+    about:
+      "Harga pokok rata-rata produk pada tanggal itu — sama untuk semua gudang",
+  },
+  {
+    header: "Nilai persediaan",
+    value: valueOf("value"),
+    type: "number",
+    width: 18,
+    about: "Qty × HPP rata-rata",
+  },
+];
+
+/**
+ * Nilai stok pada satu tanggal, cocok dengan akun persediaan di Neraca — the
+ * shop's own stock at the end of the chosen day, checked against the ledger.
+ */
+export const inventoryValuationReport: SalesReportDefinition<
+  ValuationSheetRow,
+  never
+> = {
+  title: "Nilai persediaan",
+  description:
+    "Nilai stok pada satu tanggal, cocok dengan akun persediaan di Neraca. Diunduh sebagai Excel.",
+  fileName: "nilai-persediaan",
+  rowNoun: "baris",
+  period: "asOf",
+  locations: "stock",
+  note: "Barang konsinyasi tidak dihitung karena bukan milik toko. Pencocokan dengan Neraca hanya muncul kalau Cabang dan Gudang tidak dipilih.",
+  columns: VALUATION_COLUMNS,
+  fetch: async ({ asOf, branchIds, warehouseIds }) =>
+    valuationRows(
+      await reportService.inventoryValuation({ asOf, branchIds, warehouseIds }),
+    ),
 };

@@ -516,3 +516,39 @@ export interface AgingReportQuery {
   /** Omitted = both sides. */
   kinds?: AgingKind[];
 }
+
+/**
+ * GET /reports/inventory-valuation — Laporan › Nilai persediaan at the end of
+ * one day. Each shelf is priced at its product's average as of then; the
+ * reconciliation against the Neraca's Persediaan accounts comes only for the
+ * whole shop (null when a cabang or gudang narrowed it).
+ */
+export interface InventoryValuationRow {
+  branchName: string | null;
+  warehouseName: string | null;
+  sku: string | null;
+  productName: string | null;
+  categoryName: string | null;
+  unit: string | null;
+  qty: string;
+  averageCost: string;
+  value: string;
+}
+
+export interface InventoryValuationReport {
+  asOf: string | null;
+  rows: InventoryValuationRow[];
+  total: string;
+  reconciliation: {
+    accounts: Array<{ code: string; name: string; balance: string }>;
+    ledgerTotal: string;
+    difference: string;
+  } | null;
+}
+
+export interface InventoryValuationQuery {
+  /** `yyyy-mm-dd`, not in the future. */
+  asOf: string;
+  branchIds?: string[];
+  warehouseIds?: string[];
+}

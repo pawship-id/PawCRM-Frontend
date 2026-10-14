@@ -31,7 +31,11 @@ import {
   expenseReport,
   ledgerReport,
 } from "../financeReports";
-import { lowStockReport, stockOnHandReport } from "../stockReports";
+import {
+  inventoryValuationReport,
+  lowStockReport,
+  stockOnHandReport,
+} from "../stockReports";
 import { SalesReportDialog } from "./SalesReportDialog";
 
 /**
@@ -104,7 +108,8 @@ type ReportDialog =
   | "expenses"
   | "aging"
   | "stockOnHand"
-  | "lowStock";
+  | "lowStock"
+  | "inventoryValuation";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -119,6 +124,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  inventoryValuation: (props) => (
+    <SalesReportDialog report={inventoryValuationReport} {...props} />
   ),
   lowStock: (props) => <SalesReportDialog report={lowStockReport} {...props} />,
   stockOnHand: (props) => (
@@ -292,6 +300,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Nilai persediaan",
       description:
         "Nilai stok pada satu tanggal, cocok dengan akun persediaan di Neraca.",
+      dialog: "inventoryValuation",
+      anyOf: [
+        { feature: "stockReports", action: "read" },
+        { feature: "financeReports", action: "read" },
+      ],
     },
     {
       title: "Batch & kedaluwarsa",

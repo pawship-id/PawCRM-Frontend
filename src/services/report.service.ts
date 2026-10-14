@@ -21,6 +21,8 @@ import type {
   ExpenseReportQuery,
   AgingReport,
   AgingReportQuery,
+  InventoryValuationReport,
+  InventoryValuationQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -198,6 +200,20 @@ export const reportService = {
     apiClient.get<AgingReport>("/reports/aging", {
       query: { branchIds: query.branchIds, kinds: query.kinds },
       timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/inventory-valuation — Nilai persediaan at one date, with the
+   * reconciliation to the Neraca's Persediaan for the whole shop.
+   */
+  inventoryValuation: (query: InventoryValuationQuery) =>
+    apiClient.get<InventoryValuationReport>("/reports/inventory-valuation", {
+      query: {
+        asOf: query.asOf,
+        branchIds: query.branchIds,
+        warehouseIds: query.warehouseIds,
+      },
+      timeoutMs: 120_000,
     }),
 
   /**
