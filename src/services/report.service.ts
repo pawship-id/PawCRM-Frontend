@@ -37,6 +37,8 @@ import type {
   StaffPerformanceQuery,
   BookingRecapReport,
   BookingRecapQuery,
+  TopServicesReport,
+  TopServicesQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -323,6 +325,21 @@ export const reportService = {
         dateTo: query.dateTo,
         branchIds: query.branchIds,
         statuses: query.statuses,
+      },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/top-services — Layanan terlaris: services and add-ons done in
+   * the period, ranked by count and by value.
+   */
+  topServices: (query: TopServicesQuery) =>
+    apiClient.get<TopServicesReport>("/reports/top-services", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        kinds: query.kinds,
       },
       timeoutMs: 60_000,
     }),

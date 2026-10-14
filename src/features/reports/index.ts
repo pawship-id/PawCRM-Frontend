@@ -44,4 +44,5 @@ export { stockLocations } from "./components/SalesReportDialog";
 export {
   bookingRecapReport,
   staffPerformanceReport,
+  topServicesReport,
 } from "./operationsReports";

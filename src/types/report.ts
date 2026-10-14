@@ -810,3 +810,37 @@ export interface BookingRecapQuery {
   /** Omitted = every status. */
   statuses?: BookingStatus[];
 }
+
+/**
+ * GET /reports/top-services — Laporan › Layanan terlaris. One row per service
+ * or add-on done on the period's finished bookings, main services first, each
+ * kind ranked on its own by count and by value.
+ */
+export type ServiceKind = "main" | "addon";
+
+export interface TopServiceRow {
+  kind: ServiceKind;
+  rankByCount: number;
+  rankByValue: number;
+  name: string | null;
+  categoryName: string | null;
+  count: number;
+  bookingCount: number;
+  gross: string;
+  discount: string;
+  net: string;
+  averagePrice: string | null;
+  share: number | null;
+}
+
+export interface TopServicesReport {
+  rows: TopServiceRow[];
+}
+
+export interface TopServicesQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  /** Omitted = both. */
+  kinds?: ServiceKind[];
+}

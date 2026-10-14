@@ -1,7 +1,12 @@
 import { BOOKING_STATUS_LABELS, bookingStatusLabel } from "@/features/booking";
 import { reportService } from "@/services/report.service";
 import type { BookingStatus } from "@/types/api";
-import type { BookingRecapRow, StaffPerformanceRow } from "@/types/report";
+import type {
+  BookingRecapRow,
+  ServiceKind,
+  StaffPerformanceRow,
+  TopServiceRow,
+} from "@/types/report";
 
 import type {
   SalesReportColumn,
@@ -287,4 +292,128 @@ export const bookingRecapReport: SalesReportDefinition<
           statuses.length === RECAP_STATUSES.length ? undefined : statuses,
       })
     ).rows,
+};
+
+/* ------------------------------------------------------ Layanan terlaris */
+
+const SERVICE_KIND_LABEL: Record<ServiceKind, string> = {
+  main: "Layanan utama",
+  addon: "Add-on",
+};
+
+const SERVICE_KINDS = Object.keys(SERVICE_KIND_LABEL) as ServiceKind[];
+
+/** Kind and rank first — the sheet is a leaderboard — then the figures. */
+const TOP_SERVICE_COLUMNS: SalesReportColumn<TopServiceRow>[] = [
+  {
+    header: "Jenis",
+    value: (r) => SERVICE_KIND_LABEL[r.kind],
+    width: 14,
+    about: "Layanan utama atau add-on — masing-masing diperingkat sendiri",
+  },
+  {
+    header: "Peringkat (jumlah)",
+    value: (r) => r.rankByCount,
+    type: "number",
+    about: "Urutan menurut berapa kali dikerjakan",
+  },
+  {
+    header: "Peringkat (nilai)",
+    value: (r) => r.rankByValue,
+    type: "number",
+    about: "Urutan menurut nilai bersih",
+  },
+  {
+    header: "Layanan",
+    value: (r) => r.name,
+    width: 28,
+    about: "Nama layanan atau add-on",
+  },
+  {
+    header: "Kategori",
+    value: (r) => r.categoryName,
+    width: 18,
+    about: "Kategori di katalog layanan",
+  },
+  {
+    header: "Jumlah dikerjakan",
+    value: (r) => r.count,
+    type: "number",
+    about: "Berapa kali dikerjakan",
+  },
+  {
+    header: "Jumlah booking",
+    value: (r) => r.bookingCount,
+    type: "number",
+    about: "Berapa booking yang memuatnya",
+  },
+  {
+    header: "Nilai kotor",
+    value: (r) => Number(r.gross),
+    type: "number",
+    width: 16,
+    about: "Harga saat dibooking, sebelum diskon",
+  },
+  {
+    header: "Diskon",
+    value: (r) => Number(r.discount),
+    type: "number",
+    width: 14,
+    about:
+      "Diskon di layanan/add-on itu (diskon seluruh booking tidak termasuk)",
+  },
+  {
+    header: "Nilai bersih",
+    value: (r) => Number(r.net),
+    type: "number",
+    width: 16,
+    about: "Nilai kotor − diskon",
+  },
+  {
+    header: "Harga rata-rata",
+    value: (r) => (r.averagePrice === null ? null : Number(r.averagePrice)),
+    type: "number",
+    width: 14,
+    about: "Nilai bersih ÷ jumlah dikerjakan",
+  },
+  {
+    header: "% dari total jenisnya",
+    value: (r) => r.share,
+    type: "number",
+    about: "Porsi dari nilai bersih semua layanan utama, atau semua add-on",
+  },
+];
+
+/**
+ * Peringkat layanan dan add-on menurut jumlah dan nilai — from the period's
+ * finished bookings.
+ */
+export const topServicesReport: SalesReportDefinition<
+  TopServiceRow,
+  ServiceKind
+> = {
+  title: "Layanan terlaris",
+  description:
+    "Peringkat layanan dan add-on menurut jumlah dan nilai. Diunduh sebagai Excel.",
+  fileName: "layanan-terlaris",
+  rowNoun: "layanan",
+  periodLabel: "tanggal jadwal booking",
+  locations: "branches",
+  note: "Dari booking yang sudah selesai, termasuk yang belum ditagih. Diskon seluruh booking tidak dibagi ke layanan.",
+  columns: TOP_SERVICE_COLUMNS,
+  choice: {
+    label: "Jenis",
+    options: SERVICE_KINDS.map((value) => ({
+      value,
+      label: SERVICE_KIND_LABEL[value],
+    })),
+    defaults: SERVICE_KINDS,
+    summary: (values) =>
+      values.length === SERVICE_KINDS.length
+        ? "Layanan utama & add-on"
+        : values.map((v) => SERVICE_KIND_LABEL[v]).join(", "),
+  },
+  fetch: async ({ dateFrom, dateTo, branchIds }, kinds) =>
+    (await reportService.topServices({ dateFrom, dateTo, branchIds, kinds }))
+      .rows,
 };

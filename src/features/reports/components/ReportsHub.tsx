@@ -44,6 +44,7 @@ import {
 import {
   bookingRecapReport,
   staffPerformanceReport,
+  topServicesReport,
 } from "../operationsReports";
 import { SalesReportDialog } from "./SalesReportDialog";
 
@@ -125,7 +126,8 @@ type ReportDialog =
   | "transfers"
   | "consignmentOnHand"
   | "staffPerformance"
-  | "bookingRecap";
+  | "bookingRecap"
+  | "topServices";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -140,6 +142,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  topServices: (props) => (
+    <SalesReportDialog report={topServicesReport} {...props} />
   ),
   bookingRecap: (props) => (
     <SalesReportDialog report={bookingRecapReport} {...props} />
@@ -415,6 +420,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
     {
       title: "Layanan terlaris",
       description: "Peringkat layanan dan add-on menurut jumlah dan nilai.",
+      dialog: "topServices",
+      anyOf: [
+        { feature: "bookings", action: "read" },
+        { feature: "salesReports", action: "read" },
+      ],
     },
     {
       title: "Okupansi hotel",
