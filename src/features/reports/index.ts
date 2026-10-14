@@ -19,4 +19,5 @@ export {
   salesBatchReport,
   salesInvoiceReport,
   salesItemReport,
+  salesRevenueReport,
 } from "./salesReports";

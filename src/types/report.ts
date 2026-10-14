@@ -323,3 +323,42 @@ export interface ConsignmentSalesReportQuery {
   branchIds?: string[];
   warehouseIds?: string[];
 }
+
+/**
+ * GET /reports/sales-revenue — Laporan › Rincian pendapatan per produk. One
+ * row per produk / layanan, largest `revenue` first.
+ *
+ * gross − discount − invoiceDiscount − tax = revenue (DPP, tax-exclusive);
+ * revenue − cost = profit. `qtyNoCost` is the qty sold with no HPP recorded,
+ * whose cost is therefore missing from `cost`.
+ */
+export interface SalesRevenueReportRow {
+  kind: "product" | "service" | "membership";
+  name: string | null;
+  sku: string | null;
+  unit: string | null;
+  categoryName: string | null;
+  qty: string;
+  gross: string;
+  discount: string;
+  invoiceDiscount: string;
+  tax: string;
+  revenue: string;
+  cost: string;
+  profit: string;
+  margin: number | null;
+  qtyNoCost: string;
+}
+
+export interface SalesRevenueReport {
+  range: { fromDate: string | null; toDate: string | null } | null;
+  rows: SalesRevenueReportRow[];
+}
+
+export interface SalesRevenueReportQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  warehouseIds?: string[];
+  kinds?: SalesRevenueReportRow["kind"][];
+}

@@ -11,6 +11,8 @@ import type {
   PosSalesReportQuery,
   ConsignmentSalesReport,
   ConsignmentSalesReportQuery,
+  SalesRevenueReport,
+  SalesRevenueReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -116,6 +118,22 @@ export const reportService = {
         dateTo: query.dateTo,
         branchIds: query.branchIds,
         warehouseIds: query.warehouseIds,
+      },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/sales-revenue — Rincian pendapatan per produk: revenue net of
+   * every discount and the PPN in the price, against HPP.
+   */
+  salesRevenue: (query: SalesRevenueReportQuery) =>
+    apiClient.get<SalesRevenueReport>("/reports/sales-revenue", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        warehouseIds: query.warehouseIds,
+        kinds: query.kinds,
       },
       timeoutMs: 60_000,
     }),

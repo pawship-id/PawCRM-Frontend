@@ -5,6 +5,7 @@ import type {
   SalesBatchReportRow,
   SalesInvoiceReportRow,
   SalesItemReportRow,
+  SalesRevenueReportRow,
 } from "@/types/report";
 
 import type {
@@ -755,4 +756,131 @@ export const consignmentSalesReport: SalesReportDefinition<
   note: "Periode dihitung dari tanggal barang keluar atau kembali. Yang sudah disetor tidak dikurangkan di sini — lihat sisanya di Konsinyasi.",
   columns: CONSIGNMENT_COLUMNS,
   fetch: async (scope) => (await reportService.consignmentSales(scope)).rows,
+};
+
+/* ---------------------------------------- Rincian pendapatan per produk */
+
+/**
+ * What it is, then the money from the shelf price down to profit, left to
+ * right — each column is the one before it less something named.
+ */
+const REVENUE_COLUMNS: SalesReportColumn<SalesRevenueReportRow>[] = [
+  {
+    header: "Tipe",
+    value: (r) => KIND_LABEL[r.kind],
+    about: "Produk, Layanan, atau Membership",
+  },
+  { header: "SKU", value: (r) => r.sku, width: 16, about: "Kode produk" },
+  {
+    header: "Nama",
+    value: (r) => r.name,
+    width: 32,
+    about: "Nama yang terakhir tercetak di faktur (termasuk varian)",
+  },
+  {
+    header: "Kategori",
+    value: (r) => r.categoryName,
+    width: 18,
+    about: "Kategori di katalog",
+  },
+  { header: "Satuan", value: (r) => r.unit, about: "Satuan produk" },
+  {
+    header: "Qty terjual",
+    value: (r) => num(r.qty),
+    type: "number",
+    about: "Total qty terjual",
+  },
+  {
+    header: "Pendapatan kotor",
+    value: (r) => num(r.gross),
+    type: "number",
+    width: 16,
+    about: "Qty × harga jual, sebelum diskon",
+  },
+  {
+    header: "Diskon baris",
+    value: (r) => num(r.discount),
+    type: "number",
+    width: 14,
+    about: "Diskon yang diberikan di baris itu",
+  },
+  {
+    header: "Diskon faktur",
+    value: (r) => num(r.invoiceDiscount),
+    type: "number",
+    width: 14,
+    about: "Bagian dari diskon faktur, dibagi sebanding nilai baris",
+  },
+  {
+    header: "PPN",
+    value: (r) => num(r.tax),
+    type: "number",
+    width: 14,
+    about:
+      "PPN yang sudah termasuk di harga jual. 0 kalau harga belum termasuk PPN",
+  },
+  {
+    header: "Pendapatan bersih",
+    value: (r) => num(r.revenue),
+    type: "number",
+    width: 16,
+    about:
+      "Kotor − diskon baris − diskon faktur − PPN. Sama dengan pendapatan di laba rugi",
+  },
+  {
+    header: "HPP",
+    value: (r) => num(r.cost),
+    type: "number",
+    width: 16,
+    about: "Qty × harga pokok saat barang keluar. Layanan tidak punya HPP",
+  },
+  {
+    header: "Profit",
+    value: (r) => num(r.profit),
+    type: "number",
+    width: 16,
+    about: "Pendapatan bersih − HPP",
+  },
+  {
+    header: "Margin (%)",
+    value: (r) => r.margin,
+    type: "number",
+    about: "Profit ÷ pendapatan bersih",
+  },
+  {
+    header: "Qty tanpa HPP",
+    value: (r) => num(r.qtyNoCost),
+    type: "number",
+    about:
+      "Qty yang terjual tanpa HPP tercatat. Kalau lebih dari 0, profit baris itu terlalu besar",
+  },
+];
+
+/**
+ * Revenue, discounts, HPP and profit per produk — one row per produk (or
+ * layanan, when asked for).
+ */
+export const salesRevenueReport: SalesReportDefinition<
+  SalesRevenueReportRow,
+  Kind
+> = {
+  title: "Rincian pendapatan per produk",
+  description:
+    "Pendapatan, diskon, HPP, dan profit per produk. Diunduh sebagai Excel.",
+  fileName: "rincian-pendapatan-per-produk",
+  rowNoun: "produk",
+  note: "Retur penjualan belum mengurangi angka di laporan ini. Profit layanan belum dikurangi komisi atau biaya kerja.",
+  columns: REVENUE_COLUMNS,
+  choice: {
+    label: "Tipe",
+    options: ALL_KINDS.map((value) => ({ value, label: KIND_LABEL[value] })),
+    // "Per produk": HPP and profit mean most on goods; layanan on request.
+    defaults: ["product"],
+    summary: (values) =>
+      values.length === ALL_KINDS.length
+        ? "Semua tipe"
+        : values.map((v) => KIND_LABEL[v]).join(", "),
+  },
+  fetch: async (scope, kinds) =>
+    (await reportService.salesRevenue({ ...scope, kinds })).rows,
 };

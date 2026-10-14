@@ -23,6 +23,7 @@ import {
   salesBatchReport,
   salesInvoiceReport,
   salesItemReport,
+  salesRevenueReport,
 } from "../salesReports";
 import { SalesReportDialog } from "./SalesReportDialog";
 
@@ -89,7 +90,8 @@ type ReportDialog =
   | "salesItems"
   | "salesBatches"
   | "posSales"
-  | "consignmentSales";
+  | "consignmentSales"
+  | "salesRevenue";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -104,6 +106,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  salesRevenue: (props) => (
+    <SalesReportDialog report={salesRevenueReport} {...props} />
   ),
   consignmentSales: (props) => (
     <SalesReportDialog report={consignmentSalesReport} {...props} />
@@ -172,6 +177,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
     {
       title: "Rincian pendapatan per produk",
       description: "Pendapatan, diskon, HPP, dan profit per produk.",
+      dialog: "salesRevenue",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ],
     },
   ],
   /*
