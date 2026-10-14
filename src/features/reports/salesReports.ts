@@ -1,5 +1,6 @@
 import { reportService } from "@/services/report.service";
 import type {
+  ConsignmentSalesReportRow,
   PosSalesReportRow,
   SalesBatchReportRow,
   SalesInvoiceReportRow,
@@ -669,4 +670,89 @@ export const posSalesReport: SalesReportDefinition<
   },
   fetch: async (scope, statuses) =>
     (await reportService.posSales({ ...scope, statuses })).rows,
+};
+
+/* ----------------------------------------------- Penjualan konsinyasi */
+
+/** By supplier, then what sold, then what it adds to the setoran. */
+const CONSIGNMENT_COLUMNS: SalesReportColumn<ConsignmentSalesReportRow>[] = [
+  {
+    header: "Supplier",
+    value: (r) => r.supplierName,
+    width: 24,
+    about: "Penitip barang",
+  },
+  { header: "SKU", value: (r) => r.sku, width: 16, about: "Kode produk" },
+  {
+    header: "Produk",
+    value: (r) => r.productName,
+    width: 30,
+    about: "Nama produk titipan",
+  },
+  { header: "Satuan", value: (r) => r.unit, about: "Satuan produk" },
+  {
+    header: "Qty terjual",
+    value: (r) => num(r.soldQty),
+    type: "number",
+    about: "Qty yang keluar lewat penjualan",
+  },
+  {
+    header: "Qty retur/batal",
+    value: (r) => num(r.returnedQty),
+    type: "number",
+    about: "Qty yang kembali karena retur atau penjualan dibatalkan",
+  },
+  {
+    header: "Qty bersih",
+    value: (r) => num(r.netQty),
+    type: "number",
+    about: "Qty terjual − qty retur/batal",
+  },
+  {
+    header: "Harga titip",
+    value: (r) => num(r.unitPrice),
+    type: "number",
+    width: 14,
+    about: "Harga dari supplier per satuan (rata-rata)",
+  },
+  {
+    header: "Nilai terjual",
+    value: (r) => num(r.soldAmount),
+    type: "number",
+    width: 16,
+    about: "Qty terjual × harga titip",
+  },
+  {
+    header: "Nilai retur/batal",
+    value: (r) => num(r.returnedAmount),
+    type: "number",
+    width: 16,
+    about: "Nilai yang dikurangkan karena retur atau batal",
+  },
+  {
+    header: "Nilai setoran",
+    value: (r) => num(r.amount),
+    type: "number",
+    width: 16,
+    about:
+      "Nilai terjual − nilai retur/batal. Yang harus disetor ke supplier untuk periode ini",
+  },
+];
+
+/**
+ * Consigned goods sold per supplier — the basis of the setoran. One row per
+ * supplier × produk.
+ */
+export const consignmentSalesReport: SalesReportDefinition<
+  ConsignmentSalesReportRow,
+  never
+> = {
+  title: "Penjualan konsinyasi",
+  description:
+    "Penjualan produk titipan per supplier, dasar perhitungan setoran. Diunduh sebagai Excel.",
+  fileName: "penjualan-konsinyasi",
+  rowNoun: "produk titipan",
+  note: "Periode dihitung dari tanggal barang keluar atau kembali. Yang sudah disetor tidak dikurangkan di sini — lihat sisanya di Konsinyasi.",
+  columns: CONSIGNMENT_COLUMNS,
+  fetch: async (scope) => (await reportService.consignmentSales(scope)).rows,
 };

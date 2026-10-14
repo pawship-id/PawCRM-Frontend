@@ -9,6 +9,8 @@ import type {
   SalesBatchReportQuery,
   PosSalesReport,
   PosSalesReportQuery,
+  ConsignmentSalesReport,
+  ConsignmentSalesReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -101,6 +103,21 @@ export const reportService = {
         statuses: query.statuses,
       },
       timeoutMs: 120_000,
+    }),
+
+  /**
+   * GET /reports/consignment-sales — Penjualan konsinyasi: consigned goods
+   * sold per supplier × product, the basis of the setoran.
+   */
+  consignmentSales: (query: ConsignmentSalesReportQuery) =>
+    apiClient.get<ConsignmentSalesReport>("/reports/consignment-sales", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        warehouseIds: query.warehouseIds,
+      },
+      timeoutMs: 60_000,
     }),
 
   /**

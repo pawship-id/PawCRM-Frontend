@@ -14,6 +14,7 @@ export { ConsignmentScreen } from "./components/ConsignmentScreen";
 export { MyCommissionScreen } from "./components/MyCommissionScreen";
 export { SalesReportDialog } from "./components/SalesReportDialog";
 export {
+  consignmentSalesReport,
   posSalesReport,
   salesBatchReport,
   salesInvoiceReport,

@@ -293,3 +293,33 @@ export interface PosSalesReportQuery {
   /** Omitted = open and closed alike. */
   statuses?: PosSalesReportRow["status"][];
 }
+
+/**
+ * GET /reports/consignment-sales — Laporan › Penjualan konsinyasi. One row per
+ * consignor × product; `amount` is what the period added to the setoran owed
+ * (sales less returns and voids, at the consignor's price).
+ */
+export interface ConsignmentSalesReportRow {
+  supplierName: string | null;
+  sku: string | null;
+  productName: string | null;
+  unit: string | null;
+  soldQty: string;
+  returnedQty: string;
+  netQty: string;
+  unitPrice: string | null;
+  soldAmount: string;
+  returnedAmount: string;
+  amount: string;
+}
+
+export interface ConsignmentSalesReport {
+  rows: ConsignmentSalesReportRow[];
+}
+
+export interface ConsignmentSalesReportQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  warehouseIds?: string[];
+}

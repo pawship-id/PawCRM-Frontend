@@ -18,6 +18,7 @@ import { usePermissions } from "@/features/permissions";
 import type { Action, Feature } from "@/features/permissions/types";
 
 import {
+  consignmentSalesReport,
   posSalesReport,
   salesBatchReport,
   salesInvoiceReport,
@@ -84,7 +85,11 @@ interface ReportRow {
 }
 
 type ReportDialog =
-  "salesInvoices" | "salesItems" | "salesBatches" | "posSales";
+  | "salesInvoices"
+  | "salesItems"
+  | "salesBatches"
+  | "posSales"
+  | "consignmentSales";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -99,6 +104,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  consignmentSales: (props) => (
+    <SalesReportDialog report={consignmentSalesReport} {...props} />
   ),
   posSales: (props) => <SalesReportDialog report={posSalesReport} {...props} />,
   salesBatches: (props) => (
@@ -155,6 +163,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Penjualan konsinyasi",
       description:
         "Penjualan produk titipan per supplier, dasar perhitungan setoran.",
+      dialog: "consignmentSales",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "purchaseInvoices", action: "read" },
+      ],
     },
     {
       title: "Rincian pendapatan per produk",
