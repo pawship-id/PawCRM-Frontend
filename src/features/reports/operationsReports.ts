@@ -1,5 +1,7 @@
 import { BOOKING_STATUS_LABELS, bookingStatusLabel } from "@/features/booking";
+import { membershipService } from "@/services/membership.service";
 import { reportService } from "@/services/report.service";
+import type { MembershipReport } from "@/types/membership";
 import type { BookingStatus } from "@/types/api";
 import type {
   BookingRecapRow,
@@ -416,4 +418,168 @@ export const topServicesReport: SalesReportDefinition<
   fetch: async ({ dateFrom, dateTo, branchIds }, kinds) =>
     (await reportService.topServices({ dateFrom, dateTo, branchIds, kinds }))
       .rows,
+};
+
+/* ------------------------------------------------------------ Membership */
+
+/**
+ * One line of the membership sheet: a package, a benefit spent under one, or
+ * the total — told apart by `section`, so the sheet can be filtered by it.
+ */
+export interface MembershipSheetRow {
+  section: "Paket" | "Benefit" | "Total";
+  rank: number | null;
+  planName: string | null;
+  benefit: string | null;
+  cards: number | null;
+  revenue: string | null;
+  used: number | null;
+  benefitValue: string | null;
+  margin: string | null;
+  lastUsedAt: string | null;
+}
+
+const blankMembershipRow = {
+  rank: null,
+  planName: null,
+  benefit: null,
+  cards: null,
+  revenue: null,
+  used: null,
+  benefitValue: null,
+  margin: null,
+  lastUsedAt: null,
+};
+
+/**
+ * The packages (best-selling first, as the server orders them), then every
+ * benefit spent, then the total. A benefit nobody used has no row — the
+ * redemption ledger has nothing for it, and that absence is the finding.
+ */
+export function membershipRows(report: MembershipReport): MembershipSheetRow[] {
+  const minus = (a: string, b: string) => String(Number(a) - Number(b));
+
+  return [
+    ...report.plans.map((plan, index) => ({
+      ...blankMembershipRow,
+      section: "Paket" as const,
+      rank: index + 1,
+      planName: plan.name,
+      cards: plan.cards,
+      revenue: plan.revenue,
+      used: plan.benefitsUsed,
+      benefitValue: plan.benefitValue,
+      margin: minus(plan.revenue, plan.benefitValue),
+    })),
+    ...report.benefits.map((benefit) => ({
+      ...blankMembershipRow,
+      section: "Benefit" as const,
+      planName: benefit.planName,
+      benefit: benefit.label,
+      used: benefit.used,
+      benefitValue: benefit.value,
+      lastUsedAt: benefit.lastUsedAt ? benefit.lastUsedAt.slice(0, 10) : null,
+    })),
+    {
+      ...blankMembershipRow,
+      section: "Total" as const,
+      planName: "Semua paket",
+      cards: report.summary.cards,
+      revenue: report.summary.revenue,
+      benefitValue: report.summary.benefitValue,
+      margin: report.summary.margin,
+    },
+  ];
+}
+
+const asNumber = (value: string | null) =>
+  value === null ? null : Number(value);
+
+const MEMBERSHIP_COLUMNS: SalesReportColumn<MembershipSheetRow>[] = [
+  {
+    header: "Bagian",
+    value: (r) => r.section,
+    about: "Paket, Benefit, atau Total",
+  },
+  {
+    header: "Peringkat",
+    value: (r) => r.rank,
+    type: "number",
+    about: "Urutan paket menurut kartu terjual",
+  },
+  {
+    header: "Paket",
+    value: (r) => r.planName,
+    width: 26,
+    about: "Nama paket saat dijual",
+  },
+  {
+    header: "Benefit",
+    value: (r) => r.benefit,
+    width: 28,
+    about: "Benefit yang dipakai (baris Benefit)",
+  },
+  {
+    header: "Kartu terjual",
+    value: (r) => r.cards,
+    type: "number",
+    about: "Kartu membership yang terjual",
+  },
+  {
+    header: "Nilai terjual",
+    value: (r) => asNumber(r.revenue),
+    type: "number",
+    width: 16,
+    about: "Nilai paket yang terjual",
+  },
+  {
+    header: "Benefit dipakai",
+    value: (r) => r.used,
+    type: "number",
+    about: "Berapa kali benefit dipakai",
+  },
+  {
+    header: "Nilai benefit",
+    value: (r) => asNumber(r.benefitValue),
+    type: "number",
+    width: 16,
+    about: "Nilai benefit yang sudah diberikan, menurut harga saat dipakai",
+  },
+  {
+    header: "Selisih",
+    value: (r) => asNumber(r.margin),
+    type: "number",
+    width: 16,
+    about:
+      "Nilai terjual − nilai benefit. Belum dikurangi biaya kerja, jadi bukan laba",
+  },
+  {
+    header: "Terakhir dipakai",
+    value: (r) => r.lastUsedAt,
+    type: "date",
+    width: 14,
+    about: "Kapan benefit itu terakhir dipakai",
+  },
+];
+
+/**
+ * Paket terlaris, dan berapa nilai benefit yang sudah diberikan — the same
+ * figures the old Laporan Membership page drew.
+ */
+export const membershipReport: SalesReportDefinition<
+  MembershipSheetRow,
+  never
+> = {
+  title: "Membership",
+  description:
+    "Paket terlaris, dan berapa nilai benefit yang sudah diberikan. Diunduh sebagai Excel.",
+  fileName: "membership",
+  rowNoun: "baris",
+  periodLabel: "tanggal",
+  // A card follows the animal, not the cabang that sold it.
+  locations: "none",
+  note: "Benefit yang belum pernah dipakai tidak muncul — itu tandanya benefit tersebut tidak dikenal pelanggan atau kasir. Selisih belum dikurangi biaya kerja.",
+  columns: MEMBERSHIP_COLUMNS,
+  fetch: async ({ dateFrom, dateTo }) =>
+    membershipRows(await membershipService.report({ dateFrom, dateTo })),
 };

@@ -2,6 +2,7 @@ import { screen, within } from "@testing-library/react";
 
 import {
   cashFlowRows,
+  membershipRows,
   valuationRows,
   fetchAllLowStock,
   stockLocations,
@@ -517,5 +518,57 @@ describe("valuationRows", () => {
       ["Total saldo akun persediaan di Neraca", "15600.0000"],
       ["Selisih (stok − Neraca)", "0.0000"],
     ]);
+  });
+});
+
+describe("membershipRows", () => {
+  it("lists the packages best-selling first, then each benefit spent, then the total", () => {
+    const rows = membershipRows({
+      summary: {
+        cards: 3,
+        revenue: "900000",
+        benefitValue: "200000",
+        margin: "700000",
+      },
+      plans: [
+        {
+          planId: "p1",
+          name: "Gold",
+          cards: 2,
+          revenue: "600000",
+          benefitsUsed: 3,
+          benefitValue: "150000",
+        },
+        {
+          planId: "p2",
+          name: "Silver",
+          cards: 1,
+          revenue: "300000",
+          benefitsUsed: 1,
+          benefitValue: "50000",
+        },
+      ],
+      benefits: [
+        {
+          benefitId: "b1",
+          planId: "p1",
+          planName: "Gold",
+          label: "Mandi gratis",
+          used: 3,
+          value: "150000",
+          lastUsedAt: "2026-09-20T03:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(
+      rows.map((r) => [r.section, r.rank, r.planName, r.benefit, r.margin]),
+    ).toEqual([
+      ["Paket", 1, "Gold", null, "450000"],
+      ["Paket", 2, "Silver", null, "250000"],
+      ["Benefit", null, "Gold", "Mandi gratis", null],
+      ["Total", null, "Semua paket", null, "700000"],
+    ]);
+    expect(rows[2].lastUsedAt).toBe("2026-09-20");
   });
 });

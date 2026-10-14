@@ -99,9 +99,11 @@ export interface SalesReportDefinition<Row, Choice extends string> {
    * gudang (cash sits in no warehouse) for a role that may not read faktur.
    * `stock` — Cabang and Gudang from the branch and warehouse registers, for a
    * stock report read by a role that may not read faktur.
+   * `none` — no place at all: a report whose rows follow something no cabang
+   * owns (a membership card follows the animal).
    * Default `sales`: Cabang and Gudang, from the faktur's own filter options.
    */
-  locations?: "sales" | "branches" | "stock";
+  locations?: "sales" | "branches" | "stock" | "none";
   columns: SalesReportColumn<Row>[];
   /**
    * The one filter particular to this report — Status, Tipe… Omitted when the
@@ -186,6 +188,7 @@ export function SalesReportDialog<Row, Choice extends string>({
 }) {
   const { user } = useAuth();
   const branchesOnly = report.locations === "branches";
+  const noLocations = report.locations === "none";
   const [options, setOptions] = useState<ReportLocations | null>(null);
   const [branchIds, setBranchIds] = useState<string[]>([]);
   const [warehouseIds, setWarehouseIds] = useState<string[]>([]);
@@ -208,7 +211,7 @@ export function SalesReportDialog<Row, Choice extends string>({
     are narrowed to the caller's own: the server refuses any other with a 403.
   */
   useEffect(() => {
-    if (!open || options) return;
+    if (!open || options || noLocations) return;
     let live = true;
     const load: Promise<ReportLocations> =
       report.locations === "branches"
@@ -239,7 +242,7 @@ export function SalesReportDialog<Row, Choice extends string>({
     return () => {
       live = false;
     };
-  }, [open, options, report.locations, user]);
+  }, [open, options, noLocations, report.locations, user]);
 
   const branches = options?.branches ?? [];
   const warehouses = options?.warehouses ?? [];
@@ -325,23 +328,25 @@ export function SalesReportDialog<Row, Choice extends string>({
                 onApply={setRange}
               />
             )}
-            <FilterMultiSelect
-              layout="field"
-              label="Cabang"
-              values={branchIds}
-              options={namedOptions(branches)}
-              formatValue={(ids) =>
-                scopeSummary(ids, branches, "Semua cabang", "cabang")
-              }
-              onApply={(next) => {
-                setBranchIds(next);
-                setWarehouseIds(
-                  warehousesAfterBranches(warehouses, next, warehouseIds),
-                );
-              }}
-              onReset={() => setBranchIds([])}
-            />
-            {!branchesOnly && (
+            {!noLocations && (
+              <FilterMultiSelect
+                layout="field"
+                label="Cabang"
+                values={branchIds}
+                options={namedOptions(branches)}
+                formatValue={(ids) =>
+                  scopeSummary(ids, branches, "Semua cabang", "cabang")
+                }
+                onApply={(next) => {
+                  setBranchIds(next);
+                  setWarehouseIds(
+                    warehousesAfterBranches(warehouses, next, warehouseIds),
+                  );
+                }}
+                onReset={() => setBranchIds([])}
+              />
+            )}
+            {!branchesOnly && !noLocations && (
               <FilterMultiSelect
                 layout="field"
                 label="Gudang"
