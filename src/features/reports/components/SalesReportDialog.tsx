@@ -81,6 +81,12 @@ export interface SalesReportDefinition<Row, Choice extends string> {
   /** What the period's dates bound — "tanggal faktur" unless said otherwise. */
   periodLabel?: string;
   /**
+   * `false` for a report that is a position as of today rather than a period
+   * (Umur piutang & utang): no dates are asked, and the file is named for the
+   * day it was made.
+   */
+  period?: boolean;
+  /**
    * `branches` — Cabang only, read from the branch register: a report with no
    * gudang (cash sits in no warehouse) for a role that may not read faktur.
    * Default `sales`: Cabang and Gudang, from the faktur's own filter options.
@@ -183,8 +189,10 @@ export function SalesReportDialog<Row, Choice extends string>({
 
   const branches = options?.branches ?? [];
   const warehouses = toScopeWarehouses(options?.warehouses ?? []);
+  const hasPeriod = report.period !== false;
   const ready =
-    Boolean(range.from && range.to) && (!report.choice || choices.length > 0);
+    (!hasPeriod || Boolean(range.from && range.to)) &&
+    (!report.choice || choices.length > 0);
 
   async function download() {
     if (!ready) return;
@@ -197,7 +205,9 @@ export function SalesReportDialog<Row, Choice extends string>({
       await exportToXlsx(
         report.columns,
         rows,
-        `${report.fileName}_${range.from}_${range.to}.xlsx`,
+        hasPeriod
+          ? `${report.fileName}_${range.from}_${range.to}.xlsx`
+          : `${report.fileName}_${isoDate(new Date())}.xlsx`,
         { sheetName: report.title },
       );
       swalToast(
@@ -233,14 +243,16 @@ export function SalesReportDialog<Row, Choice extends string>({
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="grid grid-cols-[minmax(0,1fr)] gap-4 sm:grid-cols-2">
-            <FilterDateRange
-              layout="field"
-              label={`Periode (${report.periodLabel ?? "tanggal faktur"})`}
-              from={range.from}
-              to={range.to}
-              presets={presets()}
-              onApply={setRange}
-            />
+            {hasPeriod && (
+              <FilterDateRange
+                layout="field"
+                label={`Periode (${report.periodLabel ?? "tanggal faktur"})`}
+                from={range.from}
+                to={range.to}
+                presets={presets()}
+                onApply={setRange}
+              />
+            )}
             <FilterMultiSelect
               layout="field"
               label="Cabang"

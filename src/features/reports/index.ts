@@ -22,6 +22,7 @@ export {
   salesRevenueReport,
 } from "./salesReports";
 export {
+  agingReport,
   cashFlowReport,
   cashFlowRows,
   expenseReport,

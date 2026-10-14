@@ -7,6 +7,8 @@ import {
 import { reportService } from "@/services/report.service";
 import type { AccountType } from "@/types/accounting";
 import type {
+  AgingKind,
+  AgingReportRow,
   CashFlowReport,
   CashFlowSection,
   ExpenseCategory,
@@ -449,4 +451,150 @@ export const expenseReport: SalesReportDefinition<
         accountCategories,
       })
     ).rows,
+};
+
+/* ---------------------------------------------- Umur piutang & utang */
+
+const AGING_KIND_LABEL: Record<AgingKind, string> = {
+  receivable: "Piutang",
+  payable: "Utang",
+};
+
+const AGING_KINDS = Object.keys(AGING_KIND_LABEL) as AgingKind[];
+
+/**
+ * Which side and who, which document, how much is left — then the remainder
+ * again under the one bucket it falls in, so each bucket column sums to what
+ * is that late.
+ */
+const AGING_COLUMNS: SalesReportColumn<AgingReportRow>[] = [
+  {
+    header: "Jenis",
+    value: (r) => AGING_KIND_LABEL[r.kind],
+    about:
+      "Piutang (pelanggan berutang ke toko) atau Utang (toko berutang ke supplier)",
+  },
+  {
+    header: "Pelanggan / Supplier",
+    value: (r) => r.partyName,
+    width: 26,
+    about: "Pihak yang berutang atau yang diutangi",
+  },
+  {
+    header: "No. faktur",
+    value: (r) => r.documentNumber,
+    width: 22,
+    about: "Nomor faktur penjualan atau pembelian",
+  },
+  {
+    header: "Cabang",
+    value: (r) => r.branchName,
+    width: 16,
+    about: "Cabang faktur",
+  },
+  {
+    header: "Tanggal faktur",
+    value: (r) => r.invoiceDate,
+    type: "date",
+    width: 14,
+    about: "Tanggal faktur",
+  },
+  {
+    header: "Jatuh tempo",
+    value: (r) => r.dueDate,
+    type: "date",
+    width: 14,
+    about: "Batas pembayaran",
+  },
+  {
+    header: "Hari terlambat",
+    value: (r) => r.daysOverdue,
+    type: "number",
+    about: "Hari sejak jatuh tempo, per hari ini. 0 kalau belum jatuh tempo",
+  },
+  {
+    header: "Total",
+    value: (r) => num(r.total),
+    type: "number",
+    width: 16,
+    about: "Total faktur",
+  },
+  {
+    header: "Dibayar",
+    value: (r) => num(r.paid),
+    type: "number",
+    width: 16,
+    about: "Yang sudah dibayar",
+  },
+  {
+    header: "Sisa",
+    value: (r) => num(r.outstanding),
+    type: "number",
+    width: 16,
+    about: "Total − dibayar",
+  },
+  {
+    header: "Belum jatuh tempo",
+    value: (r) => num(r.current),
+    type: "number",
+    width: 16,
+    about: "Sisa yang belum lewat jatuh tempo",
+  },
+  {
+    header: "1–30 hari",
+    value: (r) => num(r.days1to30),
+    type: "number",
+    width: 14,
+    about: "Sisa yang terlambat 1–30 hari",
+  },
+  {
+    header: "31–60 hari",
+    value: (r) => num(r.days31to60),
+    type: "number",
+    width: 14,
+    about: "Sisa yang terlambat 31–60 hari",
+  },
+  {
+    header: "61–90 hari",
+    value: (r) => num(r.days61to90),
+    type: "number",
+    width: 14,
+    about: "Sisa yang terlambat 61–90 hari",
+  },
+  {
+    header: "> 90 hari",
+    value: (r) => num(r.over90),
+    type: "number",
+    width: 14,
+    about: "Sisa yang terlambat lebih dari 90 hari",
+  },
+];
+
+/**
+ * Piutang dan utang menurut umur — as of today, every document still owed.
+ */
+export const agingReport: SalesReportDefinition<AgingReportRow, AgingKind> = {
+  title: "Umur piutang & utang",
+  description:
+    "Piutang dan utang menurut umur: belum jatuh tempo, 1–30, 31–60, 61–90, lebih dari 90 hari. Diunduh sebagai Excel.",
+  fileName: "umur-piutang-utang",
+  rowNoun: "faktur",
+  period: false,
+  locations: "branches",
+  note: "Posisi per hari ini, dihitung dari tanggal jatuh tempo. Utang di sini adalah faktur pembelian; utang konsinyasi ada di layar Konsinyasi.",
+  columns: AGING_COLUMNS,
+  choice: {
+    label: "Jenis",
+    options: AGING_KINDS.map((value) => ({
+      value,
+      label: AGING_KIND_LABEL[value],
+    })),
+    defaults: AGING_KINDS,
+    summary: (values) =>
+      values.length === AGING_KINDS.length
+        ? "Piutang & utang"
+        : values.map((v) => AGING_KIND_LABEL[v]).join(", "),
+  },
+  fetch: async ({ branchIds }, kinds) =>
+    (await reportService.aging({ branchIds, kinds })).rows,
 };

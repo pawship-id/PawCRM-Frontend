@@ -482,3 +482,37 @@ export interface ExpenseReportQuery {
   /** Omitted = all three. */
   accountCategories?: ExpenseCategory[];
 }
+
+/**
+ * GET /reports/aging — Laporan › Umur piutang & utang, AS OF TODAY. One row
+ * per document still owed, piutang first; the remainder sits in exactly one
+ * bucket column, aged from the due date.
+ */
+export type AgingKind = "receivable" | "payable";
+export type AgingBucket =
+  "current" | "days1to30" | "days31to60" | "days61to90" | "over90";
+
+export interface AgingReportRow extends Record<AgingBucket, string | null> {
+  kind: AgingKind;
+  partyName: string | null;
+  documentNumber: string;
+  branchName: string | null;
+  invoiceDate: string | null;
+  dueDate: string | null;
+  total: string;
+  paid: string;
+  outstanding: string;
+  daysOverdue: number;
+  bucket: AgingBucket;
+}
+
+export interface AgingReport {
+  asOf: string | null;
+  rows: AgingReportRow[];
+}
+
+export interface AgingReportQuery {
+  branchIds?: string[];
+  /** Omitted = both sides. */
+  kinds?: AgingKind[];
+}

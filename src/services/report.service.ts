@@ -19,6 +19,8 @@ import type {
   LedgerReportQuery,
   ExpenseReport,
   ExpenseReportQuery,
+  AgingReport,
+  AgingReportQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -185,6 +187,16 @@ export const reportService = {
         branchIds: query.branchIds,
         accountCategories: query.accountCategories,
       },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/aging — Umur piutang & utang, as of today: every document
+   * still owed both ways, by how late it is.
+   */
+  aging: (query: AgingReportQuery = {}) =>
+    apiClient.get<AgingReport>("/reports/aging", {
+      query: { branchIds: query.branchIds, kinds: query.kinds },
       timeoutMs: 60_000,
     }),
 

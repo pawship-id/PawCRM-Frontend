@@ -162,7 +162,7 @@ describe("ReportsHub", () => {
   });
 
   /** The hub is the statements' only door since 22 September 2026. */
-  it("opens the two live statements for Laporan Keuangan, and Arus kas as a download", () => {
+  it("opens the two live statements for Laporan Keuangan, and the rest as downloads", () => {
     mockTab = "keuangan";
     renderWithAuth(<ReportsHub />, {
       isSuperAdmin: false,
@@ -176,6 +176,10 @@ describe("ReportsHub", () => {
       "/dashboard/keuangan/laba-rugi",
       "/dashboard/keuangan/neraca",
     ]);
+    const umur = screen.getByText("Umur piutang & utang").closest("tr")!;
+    expect(
+      within(umur).getByRole("button", { name: "Unduh" }),
+    ).toBeInTheDocument();
     const biaya = screen.getByText("Biaya per kategori").closest("tr")!;
     expect(
       within(biaya).getByRole("button", { name: "Unduh" }),

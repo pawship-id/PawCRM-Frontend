@@ -25,7 +25,12 @@ import {
   salesItemReport,
   salesRevenueReport,
 } from "../salesReports";
-import { cashFlowReport, expenseReport, ledgerReport } from "../financeReports";
+import {
+  agingReport,
+  cashFlowReport,
+  expenseReport,
+  ledgerReport,
+} from "../financeReports";
 import { SalesReportDialog } from "./SalesReportDialog";
 
 /**
@@ -95,7 +100,8 @@ type ReportDialog =
   | "salesRevenue"
   | "cashFlow"
   | "ledger"
-  | "expenses";
+  | "expenses"
+  | "aging";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -111,6 +117,7 @@ const REPORT_DIALOGS: Record<
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
   ),
+  aging: (props) => <SalesReportDialog report={agingReport} {...props} />,
   expenses: (props) => <SalesReportDialog report={expenseReport} {...props} />,
   ledger: (props) => <SalesReportDialog report={ledgerReport} {...props} />,
   cashFlow: (props) => <SalesReportDialog report={cashFlowReport} {...props} />,
@@ -241,6 +248,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Umur piutang & utang",
       description:
         "Piutang dan utang menurut umur: 0–30, 31–60, 61–90, lebih dari 90 hari.",
+      dialog: "aging",
+      anyOf: [
+        { feature: "financeReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ],
     },
   ],
   inventori: [
