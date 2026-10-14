@@ -27,6 +27,8 @@ import type {
   PurchasesReportQuery,
   BatchExpiryReport,
   BatchExpiryReportQuery,
+  OpnameDifferenceReport,
+  OpnameDifferenceQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -243,6 +245,22 @@ export const reportService = {
   batchExpiry: (query: BatchExpiryReportQuery = {}) =>
     apiClient.get<BatchExpiryReport>("/reports/batch-expiry", {
       query: { branchIds: query.branchIds, warehouseIds: query.warehouseIds },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/opname-differences — Selisih opname: every counted line of the
+   * period's submitted sheets, with the journal each sheet posted.
+   */
+  opnameDifferences: (query: OpnameDifferenceQuery) =>
+    apiClient.get<OpnameDifferenceReport>("/reports/opname-differences", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        warehouseIds: query.warehouseIds,
+        onlyDifferences: query.onlyDifferences,
+      },
       timeoutMs: 60_000,
     }),
 

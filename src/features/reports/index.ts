@@ -34,6 +34,7 @@ export {
   inventoryValuationReport,
   valuationRows,
   lowStockReport,
+  opnameDifferenceReport,
   purchasesReport,
   stockOnHandReport,
   stockOnHandRows,

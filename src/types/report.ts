@@ -625,3 +625,43 @@ export interface BatchExpiryReportQuery {
   branchIds?: string[];
   warehouseIds?: string[];
 }
+
+/**
+ * GET /reports/opname-differences — Laporan › Selisih opname. One row per
+ * counted line of a submitted sheet, with the journal entry the sheet posted.
+ */
+export interface OpnameDifferenceRow {
+  opnameNumber: string;
+  opnameDate: string;
+  branchName: string | null;
+  warehouseName: string | null;
+  submittedByName: string | null;
+  sku: string | null;
+  productName: string | null;
+  unit: string | null;
+  batchCode: string | null;
+  systemQty: string;
+  physicalQty: string;
+  diffQty: string;
+  direction: "short" | "over" | "match";
+  unitCost: string;
+  diffValue: string;
+  lineNotes: string | null;
+  sheetNotes: string | null;
+  sheetDiffValue: string;
+  entryNumber: string | null;
+  posting: string | null;
+}
+
+export interface OpnameDifferenceReport {
+  rows: OpnameDifferenceRow[];
+}
+
+export interface OpnameDifferenceQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  warehouseIds?: string[];
+  /** Default true: lines that counted what the system expected are left out. */
+  onlyDifferences?: boolean;
+}

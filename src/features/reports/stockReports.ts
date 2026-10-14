@@ -3,6 +3,7 @@ import { productService } from "@/services/product.service";
 import { reportService } from "@/services/report.service";
 import type { Product } from "@/types/inventory";
 import type {
+  OpnameDifferenceRow,
   BatchExpiryReportRow,
   ExpiryStatus,
   InventoryValuationReport,
@@ -652,4 +653,181 @@ export const batchExpiryReport: SalesReportDefinition<
     (await reportService.batchExpiry({ branchIds, warehouseIds })).rows.filter(
       (row) => statuses.includes(row.status),
     ),
+};
+
+/* ------------------------------------------------------- Selisih opname */
+
+const DIRECTION_LABEL: Record<OpnameDifferenceRow["direction"], string> = {
+  short: "Kurang",
+  over: "Lebih",
+  match: "Sesuai",
+};
+
+type OpnameLines = "diff" | "match";
+
+const OPNAME_LINES_LABEL: Record<OpnameLines, string> = {
+  diff: "Ada selisih",
+  match: "Tanpa selisih",
+};
+
+/** Which count, which product, what was found, and what it posted. */
+const OPNAME_COLUMNS: SalesReportColumn<OpnameDifferenceRow>[] = [
+  {
+    header: "No. opname",
+    value: (r) => r.opnameNumber,
+    width: 18,
+    about: "Nomor stok opname",
+  },
+  {
+    header: "Tanggal opname",
+    value: (r) => r.opnameDate,
+    type: "date",
+    width: 14,
+    about: "Tanggal hitung stok",
+  },
+  {
+    header: "Cabang",
+    value: (r) => r.branchName,
+    width: 16,
+    about: "Cabang opname",
+  },
+  {
+    header: "Gudang",
+    value: (r) => r.warehouseName,
+    width: 18,
+    about: "Gudang yang dihitung",
+  },
+  {
+    header: "Diajukan oleh",
+    value: (r) => r.submittedByName,
+    width: 18,
+    about: "Yang mengajukan hasil opname",
+  },
+  { header: "SKU", value: (r) => r.sku, width: 16, about: "Kode produk" },
+  {
+    header: "Produk",
+    value: (r) => r.productName,
+    width: 30,
+    about: "Nama produk",
+  },
+  {
+    header: "Kode batch",
+    value: (r) => r.batchCode,
+    width: 18,
+    about: "Batch yang dihitung, kalau produknya per batch",
+  },
+  { header: "Satuan", value: (r) => r.unit, about: "Satuan produk" },
+  {
+    header: "Qty sistem",
+    value: (r) => Number(r.systemQty),
+    type: "number",
+    about: "Stok menurut sistem saat opname",
+  },
+  {
+    header: "Qty fisik",
+    value: (r) => Number(r.physicalQty),
+    type: "number",
+    about: "Stok yang ditemukan di rak",
+  },
+  {
+    header: "Selisih qty",
+    value: (r) => Number(r.diffQty),
+    type: "number",
+    about: "Qty fisik − qty sistem. Minus = kurang",
+  },
+  {
+    header: "Kurang / lebih",
+    value: (r) => DIRECTION_LABEL[r.direction],
+    about: "Kurang, Lebih, atau Sesuai",
+  },
+  {
+    header: "HPP",
+    value: (r) => Number(r.unitCost),
+    type: "number",
+    width: 14,
+    about: "HPP rata-rata saat opname diajukan",
+  },
+  {
+    header: "Nilai selisih",
+    value: (r) => Number(r.diffValue),
+    type: "number",
+    width: 16,
+    about: "Selisih qty × HPP — yang masuk ke jurnal",
+  },
+  {
+    header: "Catatan baris",
+    value: (r) => r.lineNotes,
+    width: 24,
+    about: "Catatan di baris hitung",
+  },
+  {
+    header: "Catatan opname",
+    value: (r) => r.sheetNotes,
+    width: 24,
+    about: "Catatan opname",
+  },
+  {
+    header: "Total selisih opname",
+    value: (r) => Number(r.sheetDiffValue),
+    type: "number",
+    width: 18,
+    about: "Nilai selisih seluruh opname — jumlah yang diposting ke jurnal",
+  },
+  {
+    header: "No. jurnal",
+    value: (r) => r.entryNumber,
+    width: 18,
+    about: "Jurnal yang terbentuk dari opname ini",
+  },
+  {
+    header: "Akun jurnal",
+    value: (r) => r.posting,
+    width: 44,
+    about: "Akun debit (Dr) dan kredit (Cr) di jurnal itu",
+  },
+];
+
+/**
+ * Riwayat penyesuaian hasil hitung stok, dan jurnal yang terbentuk — every
+ * counted line of the period's submitted opname.
+ */
+export const opnameDifferenceReport: SalesReportDefinition<
+  OpnameDifferenceRow,
+  OpnameLines
+> = {
+  title: "Selisih opname",
+  description:
+    "Riwayat penyesuaian hasil hitung stok, dan jurnal yang terbentuk. Diunduh sebagai Excel.",
+  fileName: "selisih-opname",
+  rowNoun: "baris",
+  periodLabel: "tanggal opname",
+  locations: "stock",
+  note: "Hanya opname yang sudah diajukan. Satu opname membentuk satu jurnal, jadi No. jurnal dan Total selisih opname sama untuk semua barisnya.",
+  columns: OPNAME_COLUMNS,
+  choice: {
+    label: "Baris",
+    options: (Object.keys(OPNAME_LINES_LABEL) as OpnameLines[]).map(
+      (value) => ({
+        value,
+        label: OPNAME_LINES_LABEL[value],
+      }),
+    ),
+    defaults: ["diff"],
+    summary: (values) =>
+      values.length === 2
+        ? "Semua baris"
+        : values.map((v) => OPNAME_LINES_LABEL[v]).join(", "),
+  },
+  fetch: async ({ dateFrom, dateTo, branchIds, warehouseIds }, lines) => {
+    const { rows } = await reportService.opnameDifferences({
+      dateFrom,
+      dateTo,
+      branchIds,
+      warehouseIds,
+      onlyDifferences: !lines.includes("match"),
+    });
+    return lines.includes("diff")
+      ? rows
+      : rows.filter((row) => row.direction === "match");
+  },
 };

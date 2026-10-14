@@ -35,6 +35,7 @@ import {
   batchExpiryReport,
   inventoryValuationReport,
   lowStockReport,
+  opnameDifferenceReport,
   purchasesReport,
   stockOnHandReport,
 } from "../stockReports";
@@ -113,7 +114,8 @@ type ReportDialog =
   | "lowStock"
   | "inventoryValuation"
   | "purchases"
-  | "batchExpiry";
+  | "batchExpiry"
+  | "opnameDifferences";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -128,6 +130,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  opnameDifferences: (props) => (
+    <SalesReportDialog report={opnameDifferenceReport} {...props} />
   ),
   batchExpiry: (props) => (
     <SalesReportDialog report={batchExpiryReport} {...props} />
@@ -331,9 +336,13 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Selisih opname",
       description:
         "Riwayat penyesuaian hasil hitung stok, dan jurnal yang terbentuk.",
-      href: "/dashboard/inventory/opname",
-      feature: "stockOpnames",
-      action: "read",
+      // A download here; /dashboard/inventory/opname stays the module's own
+      // screen for counting and submitting.
+      dialog: "opnameDifferences",
+      anyOf: [
+        { feature: "stockReports", action: "read" },
+        { feature: "stockOpnames", action: "read" },
+      ],
     },
     {
       title: "Transfer antar gudang",
