@@ -41,6 +41,7 @@ import {
   stockOnHandReport,
   transferReport,
 } from "../stockReports";
+import { staffPerformanceReport } from "../operationsReports";
 import { SalesReportDialog } from "./SalesReportDialog";
 
 /**
@@ -119,7 +120,8 @@ type ReportDialog =
   | "batchExpiry"
   | "opnameDifferences"
   | "transfers"
-  | "consignmentOnHand";
+  | "consignmentOnHand"
+  | "staffPerformance";
 
 /**
  * Each export dialog, its report definition already bound — a map of
@@ -134,6 +136,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  staffPerformance: (props) => (
+    <SalesReportDialog report={staffPerformanceReport} {...props} />
   ),
   consignmentOnHand: (props) => (
     <SalesReportDialog report={consignmentOnHandReport} {...props} />
@@ -388,6 +393,11 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Performa staf",
       description:
         "Order, nilai, dan ketepatan waktu per staf. Komisi ada di Rekap komisi.",
+      dialog: "staffPerformance",
+      anyOf: [
+        { feature: "commissionReports", action: "read" },
+        { feature: "users", action: "read" },
+      ],
     },
     {
       title: "Rekap booking",

@@ -33,6 +33,8 @@ import type {
   TransferReportQuery,
   ConsignmentOnHandReport,
   ConsignmentOnHandQuery,
+  StaffPerformanceReport,
+  StaffPerformanceQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -291,6 +293,20 @@ export const reportService = {
   consignmentOnHand: (query: ConsignmentOnHandQuery = {}) =>
     apiClient.get<ConsignmentOnHandReport>("/reports/consignment-on-hand", {
       query: { branchIds: query.branchIds, warehouseIds: query.warehouseIds },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/staff-performance — Performa staf: bookings, value, minutes
+   * and punctuality per staff member over the period's finished bookings.
+   */
+  staffPerformance: (query: StaffPerformanceQuery) =>
+    apiClient.get<StaffPerformanceReport>("/reports/staff-performance", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+      },
       timeoutMs: 60_000,
     }),
 

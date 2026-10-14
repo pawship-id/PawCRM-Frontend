@@ -739,3 +739,32 @@ export interface ConsignmentOnHandQuery {
   branchIds?: string[];
   warehouseIds?: string[];
 }
+
+/**
+ * GET /reports/staff-performance — Laporan › Performa staf. One row per staff
+ * member on the period's finished bookings. Value and minutes are their share
+ * (split by turn and crew, as commission is); punctuality is per booking.
+ */
+export interface StaffPerformanceRow {
+  staffName: string | null;
+  bookingCount: number;
+  sessionCount: number;
+  value: string;
+  minutes: number;
+  averageValue: string | null;
+  measuredStart: number;
+  onTimeStartRate: number | null;
+  averageLateMinutes: number | null;
+  measuredFinish: number;
+  onTimeFinishRate: number | null;
+}
+
+export interface StaffPerformanceReport {
+  rows: StaffPerformanceRow[];
+}
+
+export interface StaffPerformanceQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+}
