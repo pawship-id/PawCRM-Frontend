@@ -1,3 +1,4 @@
+import type { BookingStatus, TripLeg } from "./api";
 import type { AccountType, JournalSourceType } from "./accounting";
 /**
  * The reports contract — `/api/reports`.
@@ -767,4 +768,45 @@ export interface StaffPerformanceQuery {
   dateFrom: string;
   dateTo: string;
   branchIds?: string[];
+}
+
+/**
+ * GET /reports/booking-recap — Laporan › Rekap booking. One row per booking
+ * scheduled in the period, with its cancellation and reschedules read off the
+ * status trail (the date a reschedule moved FROM is not stored).
+ */
+export interface BookingRecapRow {
+  bookingNumber: string | null;
+  scheduledDate: string | null;
+  scheduledTime: string | null;
+  branchName: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  petName: string | null;
+  serviceName: string | null;
+  location: "in_store" | "in_home" | null;
+  origin: "booking" | "pos_adhoc" | "invoice_adhoc" | null;
+  tripLeg: TripLeg | null;
+  status: BookingStatus;
+  staffNames: string;
+  netAmount: string;
+  createdDate: string | null;
+  createdByName: string | null;
+  rescheduleCount: number;
+  lastRescheduledDate: string | null;
+  cancelledDate: string | null;
+  cancelReason: string | null;
+  completedDate: string | null;
+}
+
+export interface BookingRecapReport {
+  rows: BookingRecapRow[];
+}
+
+export interface BookingRecapQuery {
+  dateFrom: string;
+  dateTo: string;
+  branchIds?: string[];
+  /** Omitted = every status. */
+  statuses?: BookingStatus[];
 }

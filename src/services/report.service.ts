@@ -35,6 +35,8 @@ import type {
   ConsignmentOnHandQuery,
   StaffPerformanceReport,
   StaffPerformanceQuery,
+  BookingRecapReport,
+  BookingRecapQuery,
   StockOnHandQuery,
   StockOnHandResult,
 } from "@/types/report";
@@ -306,6 +308,21 @@ export const reportService = {
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
         branchIds: query.branchIds,
+      },
+      timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/booking-recap — Rekap booking: every booking scheduled in the
+   * period, its status, cancellation and reschedules.
+   */
+  bookingRecap: (query: BookingRecapQuery) =>
+    apiClient.get<BookingRecapReport>("/reports/booking-recap", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+        statuses: query.statuses,
       },
       timeoutMs: 60_000,
     }),

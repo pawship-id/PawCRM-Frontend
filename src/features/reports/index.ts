@@ -41,4 +41,7 @@ export {
   transferReport,
 } from "./stockReports";
 export { stockLocations } from "./components/SalesReportDialog";
-export { staffPerformanceReport } from "./operationsReports";
+export {
+  bookingRecapReport,
+  staffPerformanceReport,
+} from "./operationsReports";
