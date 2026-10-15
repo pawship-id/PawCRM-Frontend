@@ -188,6 +188,13 @@ export const NAV_SECTIONS: NavSection[] = [
         href: "/dashboard",
         icon: House,
         exact: true,
+        // Any of its tabs opens the row; Hari Ini sends a role without it on.
+        permissionAny: [
+          { feature: "berandaToday", action: "read" },
+          { feature: "berandaMoney", action: "read" },
+          { feature: "berandaOperations", action: "read" },
+          { feature: "berandaBranches", action: "read" },
+        ],
         // Its Uang / Operasional / Cabang tabs are routes of their own.
         match: [
           "/dashboard/uang",

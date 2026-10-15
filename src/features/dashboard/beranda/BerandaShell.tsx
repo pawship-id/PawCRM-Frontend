@@ -23,7 +23,7 @@ import { usePermissions } from "@/features/permissions";
 import { PageHeading } from "@/features/purchasing";
 import type { Branch } from "@/types/api";
 
-import { BERANDA_HREF, berandaTabs } from "./tabs";
+import { BERANDA_HREF, berandaTabAccess, berandaTabs } from "./tabs";
 
 /**
  * Beranda — the screen somebody opens first every morning, after the
@@ -89,13 +89,9 @@ export function BerandaShell({
   const [branchIds, setBranchIds] = useState<string[]>([]);
   const [range, setRange] = useState({ from: month.dateFrom, to: month.dateTo });
 
-  const readsLedger = can("journalEntries", "read");
   const manyBranches = scope.branches.length > 1;
-  const tabs = berandaTabs({
-    ledger: readsLedger,
-    bookings: can("bookings", "read"),
-    manyBranches,
-  });
+  const access = berandaTabAccess(can, manyBranches);
+  const tabs = berandaTabs(access);
 
   /* "Reset filter (n)" — one per field narrowed away from the opening state:
      every cabang, this month. */
@@ -119,7 +115,7 @@ export function BerandaShell({
 
   const firstName = user?.fullName.split(" ")[0];
   const subtitle =
-    readsLedger && manyBranches
+    access.branches
       ? "Ringkasan cabang yang kamu pegang."
       : "Yang perlu kamu kerjakan hari ini.";
 

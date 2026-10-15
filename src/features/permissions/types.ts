@@ -333,6 +333,11 @@ export const PERMISSION_CATALOG = {
   inventorySummary: ["read"],
   financeSummary: ["read"],
   receivables: ["read"],
+  /** Beranda's tabs (15 October 2026) — each also needs its data's grant. */
+  berandaToday: ["read"],
+  berandaMoney: ["read"],
+  berandaOperations: ["read"],
+  berandaBranches: ["read"],
   serviceSettings: ["read", "update"],
   stockAdjustments: ["read", "create"],
   stockTransfers: ["read", "create"],
