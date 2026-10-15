@@ -27,9 +27,9 @@ export const metadata: Metadata = { title: "Terima barang · Buloo" };
 export default async function NewReceiptPage({
   searchParams,
 }: {
-  searchParams: Promise<{ supplier?: string; type?: string }>;
+  searchParams: Promise<{ supplier?: string; type?: string; invoice?: string }>;
 }) {
-  const { supplier, type } = await searchParams;
+  const { supplier, type, invoice } = await searchParams;
 
   /**
    * VALIDATED AGAINST THE ONE VALUE THAT MATTERS, not cast.
@@ -52,14 +52,18 @@ export default async function NewReceiptPage({
             PURCHASING_CRUMBS.receipts,
             { label: "Terima barang" },
           ]}
-          title="Terima barang"
+          title={invoice ? "Terima barang dari faktur" : "Terima barang"}
         >
-          Penerimaan inilah yang membentuk HPP. Cocokkan harga beli dengan faktur
-          supplier di tangan — angka yang keluar dipakai setiap penjualan
-          berikutnya, dan tidak bisa diubah setelah disimpan.
+          {invoice
+            ? "Barangnya mengikuti faktur. Isi lot dan centang yang sudah datang — sisanya bisa diterima nanti."
+            : "Isi barang yang dikirim, lalu centang yang sudah datang. Stok, HPP, dan utang hanya tercatat untuk barang yang diterima."}
         </PageHeading>
 
-        <ReceiptForm supplierId={supplier} initialPurchaseType={purchaseType} />
+        <ReceiptForm
+          supplierId={supplier}
+          initialPurchaseType={purchaseType}
+          invoiceId={invoice}
+        />
       </div>
     </RequirePermission>
   );

@@ -125,7 +125,7 @@ export function PurchasingHub() {
           into, unlike Faktur's — see PayablesStatCards' own doc. */}
       <PayablesStatCards
         onPendingReceiptsClick={() =>
-          router.push("/dashboard/purchasing/receipts?status=pending")
+          router.push("/dashboard/purchasing/receipts?status=open")
         }
         figures={figures}
         loading={loading && !summary}

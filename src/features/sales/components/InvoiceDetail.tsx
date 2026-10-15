@@ -37,6 +37,7 @@ import { InvoiceJournalDialog } from "./InvoiceJournalDialog";
 import { InvoicePaymentTimeline } from "./InvoicePaymentTimeline";
 import { InvoiceSourceBadge, InvoiceStatusBadge } from "./InvoiceStatusBadge";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
+import { PaymentStatusCard } from "@/features/cash-transactions/components/PaymentStatusCard";
 import { VoidInvoiceDialog } from "./VoidInvoiceDialog";
 
 function formatDate(iso: string): string {
@@ -143,21 +144,8 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const voided = invoice.status === "void";
   const payments = invoice.payments ?? [];
 
-  /*
-    HOW FAR ALONG THE BILL IS, from the server's own figures. `paidAmount`
-    already counts only ACTIVE payments, so summing the timeline here would count
-    cancelled ones too. Clamped at 100 and guarded against a zero total, which
-    would otherwise render `NaN%` — and that paints full.
-  */
-  const paidMinor = toMinor(invoice.paidAmount) ?? BigInt(0);
-  const totalMinor = toMinor(invoice.total) ?? BigInt(0);
-  const paidPercent =
-    totalMinor === BigInt(0)
-      ? 0
-      : Math.min(
-          100,
-          Math.round(Number((paidMinor * BigInt(100)) / totalMinor)),
-        );
+  // How far along the bill is: PaymentStatusCard, from the server's own
+  // `paidAmount` (active payments only).
   /*
     ACTIVE ONLY — a cancelled payment has posted its own reversal and must not
     block anything. The same definition the server uses.
@@ -412,72 +400,25 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
 
         {/* ─── ITS STATE ─────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-5 lg:sticky lg:top-20">
-          <Card title="Status pembayaran">
-            <div className="flex flex-col gap-3">
-              {/*
-                THE THREE FIGURES ON A DARK PANEL: the one block on the page read
-                from across a desk, and the contrast is what makes the balance
-                findable without hunting.
-              */}
-              <div className="rounded-xl bg-primary px-4 py-3.5 text-primary-foreground">
-                <div className="flex justify-between gap-3 text-sm opacity-80">
-                  <span>Total tagihan</span>
-                  <span className="tabular-nums">
-                    {formatMoney(invoice.total)}
+          <PaymentStatusCard
+            total={invoice.total}
+            paid={invoice.paidAmount}
+            outstanding={invoice.outstandingAmount}
+            dueDate={invoice.dueDate}
+            settled={settled}
+            voided={voided}
+            voidedNote={
+              <p className="text-sm text-muted">
+                Tidak ada yang bisa ditagih. Nomornya tetap tercatat dan tidak
+                akan dipakai ulang.
+                {invoice.voidReason && (
+                  <span className="mt-1 block italic">
+                    Alasan: {invoice.voidReason}
                   </span>
-                </div>
-                <div className="mt-1 flex justify-between gap-3 text-sm opacity-80">
-                  <span>Terbayar</span>
-                  <span className="tabular-nums">
-                    {formatMoney(invoice.paidAmount)}
-                  </span>
-                </div>
-                <div className="mt-2.5 flex items-baseline justify-between gap-3 text-lg font-bold">
-                  <span>{voided ? "Dibatalkan" : "Sisa"}</span>
-                  <span className="tabular-nums">
-                    {voided ? "—" : formatMoney(invoice.outstandingAmount)}
-                  </span>
-                </div>
-              </div>
-
-              {!voided && (
-                <>
-                  <div className="h-2 overflow-hidden rounded-full bg-surface-hover">
-                    <div
-                      className="h-full rounded-full bg-success-fill"
-                      style={{ width: `${paidPercent}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted tabular-nums">
-                    {paidPercent}% terbayar · jatuh tempo{" "}
-                    {formatDate(invoice.dueDate)}
-                  </p>
-                </>
-              )}
-
-              {voided && (
-                <p className="text-sm text-muted">
-                  Tidak ada yang bisa ditagih. Nomornya tetap tercatat dan tidak
-                  akan dipakai ulang.
-                  {invoice.voidReason && (
-                    <span className="mt-1 block italic">
-                      Alasan: {invoice.voidReason}
-                    </span>
-                  )}
-                </p>
-              )}
-
-              {!voided && settled && (
-                <p className="rounded-lg bg-tint-success px-3 py-2 text-sm font-medium text-success">
-                  Faktur ini sudah lunas.
-                </p>
-              )}
-
-              {/*
-                NAVY, NOT THE MOCKUP'S ORANGE — docs/ui-rules.md §7: there is no
-                orange button variant in the product. GATED ON `pay`, and a role
-                without it is TOLD rather than left to wonder where it went.
-              */}
+                )}
+              </p>
+            }
+          >
               {!voided && !settled && !isEditing && (
                 <Can
                   feature="customerInvoices"
@@ -496,8 +437,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                   </Button>
                 </Can>
               )}
-            </div>
-          </Card>
+          </PaymentStatusCard>
 
           {/*
             HIDDEN ON A SETTLED TILL SALE WITH NO PAYMENT ROWS: "belum ada

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -18,10 +18,26 @@ import {
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
-import { formatMoney } from "@/utils/decimal";
-import type { GoodsReceiptListRow } from "@/types/api";
+import { goodsReceiptService } from "@/services/goodsReceipt.service";
+import {
+  formatMoney,
+  formatQty,
+  multiplyDecimals,
+  subtractDecimals,
+  toMinor,
+} from "@/utils/decimal";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import type { GoodsReceiptDetail, GoodsReceiptListRow } from "@/types/api";
 
 import { useUninvoicedReceipts } from "../hooks/useUninvoicedReceipts";
+import { ReceiptLineStatusBadge } from "./ReceiptStatusBadge";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("id-ID", {
@@ -65,11 +81,57 @@ function today(): string {
  * matching the returns form, and sparing this component the Suspense boundary
  * the hook would require.
  */
-export function FileInvoiceForm({ receiptId: initialId }: { receiptId?: string }) {
+export function FileInvoiceForm({
+  receiptId: initialId,
+}: {
+  receiptId?: string;
+}) {
   const router = useRouter();
 
-  const { receipts, loading, error: loadError, truncated } =
-    useUninvoicedReceipts();
+  const {
+    receipts,
+    loading,
+    error: loadError,
+    truncated,
+  } = useUninvoicedReceipts();
+
+  /*
+    OPENED FROM A RECEIPT'S PAGE ("Catat faktur supplier"): that receipt is the
+    one being billed, so it is fetched by id — it may sit beyond the first page
+    of the picker's list — chosen, and the picker LOCKED (15 October 2026).
+  */
+  const fixed = Boolean(initialId);
+  const [fixedReceipt, setFixedReceipt] = useState<GoodsReceiptDetail | null>(
+    null,
+  );
+  const [fixedError, setFixedError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!initialId) return;
+    let active = true;
+    goodsReceiptService
+      .getById(initialId)
+      .then((result) => {
+        if (active) setFixedReceipt(result);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setFixedError(
+          err instanceof ApiError
+            ? err.fullMessage
+            : "Penerimaan tidak dapat dimuat.",
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [initialId]);
+
+  const options: Array<GoodsReceiptListRow | GoodsReceiptDetail> = fixed
+    ? fixedReceipt
+      ? [fixedReceipt]
+      : []
+    : receipts;
 
   const [receiptId, setReceiptId] = useState(initialId ?? "");
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -79,9 +141,43 @@ export function FileInvoiceForm({ receiptId: initialId }: { receiptId?: string }
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const selected: GoodsReceiptListRow | undefined = receipts.find(
-    (receipt) => receipt._id === receiptId,
-  );
+  const selected = options.find((receipt) => receipt._id === receiptId);
+
+  /*
+    THE LINES OF THE CHOSEN RECEIPT, read-only — what this invoice will bill.
+    The list rows carry no lines, so the receipt is read by id; the one opened
+    from its own page is already in hand.
+  */
+  const [lines, setLines] = useState<GoodsReceiptDetail | null>(null);
+  const [linesLoading, setLinesLoading] = useState(false);
+
+  useEffect(() => {
+    if (!receiptId) return;
+    if (fixedReceipt && fixedReceipt._id === receiptId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLines(fixedReceipt);
+      return;
+    }
+    let active = true;
+    setLinesLoading(true);
+    goodsReceiptService
+      .getById(receiptId)
+      .then((result) => {
+        if (active) setLines(result);
+      })
+      // Supporting detail: the invoice can still be filed without it.
+      .catch(() => {
+        if (active) setLines(null);
+      })
+      .finally(() => {
+        if (active) setLinesLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [receiptId, fixedReceipt]);
+
+  const shownLines = lines && lines._id === receiptId ? lines : null;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -104,11 +200,8 @@ export function FileInvoiceForm({ receiptId: initialId }: { receiptId?: string }
         goodsReceiptId: selected._id,
         invoiceNumber: invoiceNumber.trim(),
         invoiceDate,
-        // Copied from the delivery, never retyped — see the header. `total` is
-        // the receipt's EX-TAX value, which is exactly what `subtotal` means on
-        // an invoice.
-        subtotal: selected.total,
-        taxAmount: selected.taxAmount,
+        // No amounts: the server copies the receipt's lines and totals onto
+        // the invoice, so the two documents cannot disagree.
         notes: notes.trim() || undefined,
       });
 
@@ -129,7 +222,39 @@ export function FileInvoiceForm({ receiptId: initialId }: { receiptId?: string }
     }
   }
 
-  if (loading) {
+  if (fixed) {
+    if (fixedError) {
+      return <Alert variant="error">{fixedError}</Alert>;
+    }
+    if (!fixedReceipt) {
+      return (
+        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+          <Spinner /> Memuat penerimaan…
+        </div>
+      );
+    }
+    if (fixedReceipt.invoiceId || fixedReceipt.purchaseType === "konsinyasi") {
+      return (
+        <Alert variant="info">
+          {fixedReceipt.invoiceId
+            ? `Penerimaan ${fixedReceipt.receiptNumber} sudah punya faktur.`
+            : `Penerimaan ${fixedReceipt.receiptNumber} adalah konsinyasi — ditagih saat barang terjual, bukan lewat faktur.`}{" "}
+          <Link
+            href={
+              fixedReceipt.invoiceId
+                ? `/dashboard/purchasing/payables/${fixedReceipt.invoiceId}`
+                : `/dashboard/purchasing/receipts/${fixedReceipt._id}`
+            }
+            className="font-semibold underline"
+          >
+            {fixedReceipt.invoiceId ? "Lihat faktur" : "Kembali ke penerimaan"}
+          </Link>
+        </Alert>
+      );
+    }
+  }
+
+  if (!fixed && loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
         <Spinner /> Memuat penerimaan yang belum difakturkan…
@@ -137,20 +262,21 @@ export function FileInvoiceForm({ receiptId: initialId }: { receiptId?: string }
     );
   }
 
-  if (loadError) {
+  if (!fixed && loadError) {
     return <Alert variant="error">{loadError}</Alert>;
   }
 
-  if (receipts.length === 0) {
+  if (!fixed && receipts.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center">
         <p className="font-medium text-foreground">
           Tidak ada penerimaan yang menunggu faktur.
         </p>
         <p className="max-w-md text-sm text-muted">
-          Semua penerimaan beli putus sudah difakturkan. Konsinyasi tidak muncul
-          di sini — barangnya masih milik supplier sampai laku, jadi belum ada
-          yang ditagih.
+          Semua penerimaan beli putus sudah punya faktur. Konsinyasi tidak
+          muncul di sini — barangnya masih milik supplier sampai laku, jadi
+          belum ada yang ditagih. Faktur yang datang sebelum barangnya bisa
+          dicatat sebagai faktur manual.
         </p>
         <UIButton variant="secondary" asChild>
           <Link href="/dashboard/purchasing/receipts">
@@ -165,7 +291,7 @@ export function FileInvoiceForm({ receiptId: initialId }: { receiptId?: string }
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
       {formError && <Alert variant="error">{formError}</Alert>}
 
-      {truncated && (
+      {!fixed && truncated && (
         <Alert variant="info">
           Hanya {receipts.length} penerimaan pertama yang ditampilkan. Kalau
           penerimaan yang dicari tidak ada, buka detailnya dari daftar
@@ -179,14 +305,15 @@ export function FileInvoiceForm({ receiptId: initialId }: { receiptId?: string }
             <Label htmlFor="receipt">Penerimaan</Label>
             <Select
               value={receiptId}
-              disabled={saving}
+              // Locked when opened from the receipt itself.
+              disabled={saving || fixed}
               onValueChange={setReceiptId}
             >
               <SelectTrigger id="receipt" aria-label="Penerimaan">
                 <SelectValue placeholder="Pilih penerimaan…" />
               </SelectTrigger>
               <SelectContent>
-                {receipts.map((receipt) => (
+                {options.map((receipt) => (
                   <SelectItem key={receipt._id} value={receipt._id}>
                     {receipt.receiptNumber} · {receipt.supplierName ?? "—"} ·{" "}
                     {formatDate(receipt.receiptDate)}
@@ -200,28 +327,12 @@ export function FileInvoiceForm({ receiptId: initialId }: { receiptId?: string }
               </p>
             ) : (
               <p className="text-xs text-muted">
-                Hanya penerimaan beli putus yang belum difakturkan.
+                {fixed
+                  ? "Dibuka dari halaman penerimaan ini — barangnya akan disalin ke faktur."
+                  : "Penerimaan beli putus yang belum punya faktur — barangnya akan disalin ke faktur."}
               </p>
             )}
           </div>
-
-          {selected && (
-            <dl className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-accent/30 p-3 text-sm sm:grid-cols-4">
-              <Summary label="Supplier" value={selected.supplierName ?? "—"} />
-              <Summary
-                label="Nilai barang"
-                value={formatMoney(selected.total)}
-                mono
-              />
-              <Summary label="PPN" value={formatMoney(selected.taxAmount)} mono />
-              <Summary
-                label="Total ditagih"
-                value={formatMoney(selected.grandTotal)}
-                mono
-                strong
-              />
-            </dl>
-          )}
         </div>
       </Card>
 
@@ -265,6 +376,115 @@ export function FileInvoiceForm({ receiptId: initialId }: { receiptId?: string }
           />
         </div>
       </Card>
+
+      {selected && (
+        <Card title="Barang yang ditagih">
+          <div className="flex flex-col gap-4">
+            <dl className="grid grid-cols-2 gap-3 rounded-lg border border-border bg-accent/30 p-3 text-sm sm:grid-cols-4">
+              <Summary label="Supplier" value={selected.supplierName ?? "—"} />
+              <Summary
+                label="Nilai barang"
+                value={formatMoney(selected.total)}
+                mono
+              />
+              <Summary
+                label="PPN"
+                value={formatMoney(selected.taxAmount)}
+                mono
+              />
+              <Summary
+                label="Total ditagih"
+                value={formatMoney(selected.grandTotal)}
+                mono
+                strong
+              />
+            </dl>
+            <div>
+              {linesLoading && !shownLines ? (
+                <p className="flex items-center gap-2 py-3 text-sm text-muted">
+                  <Spinner /> Memuat rincian barang…
+                </p>
+              ) : shownLines ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Produk</TableHead>
+                        <TableHead className="text-right">Qty</TableHead>
+                        <TableHead className="text-right">Diterima</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Harga beli</TableHead>
+                        <TableHead className="text-right">Subtotal</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {shownLines.items.map((item) => {
+                        const cancelled =
+                          (toMinor(item.cancelledQty) ?? 0n) > 0n;
+                        return (
+                          <TableRow key={item.itemId}>
+                            <TableCell>
+                              <p className="text-sm font-medium">
+                                {item.productName ?? item.name}
+                              </p>
+                              <p className="text-xs text-muted tabular-nums">
+                                {item.productSku ?? "—"}
+                              </p>
+                            </TableCell>
+                            <TableCell className="text-right text-sm tabular-nums">
+                              {formatQty(item.qty)}
+                              {item.productUnit && (
+                                <span className="ml-1 text-muted">
+                                  {item.productUnit}
+                                </span>
+                              )}
+                              {cancelled && (
+                                <span className="block text-xs text-danger">
+                                  batal {formatQty(item.cancelledQty)}
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right text-sm tabular-nums">
+                              {formatQty(item.receivedQty)}
+                            </TableCell>
+                            <TableCell>
+                              <ReceiptLineStatusBadge
+                                status={item.receiveStatus}
+                              />
+                            </TableCell>
+                            <TableCell className="text-right text-sm tabular-nums">
+                              {formatMoney(item.costPerUnit)}
+                            </TableCell>
+                            <TableCell className="text-right text-sm tabular-nums">
+                              {/* A line closed short bills only what arrived. */}
+                              {formatMoney(
+                                cancelled
+                                  ? multiplyDecimals(
+                                      subtractDecimals(
+                                        item.qty,
+                                        item.cancelledQty,
+                                      ),
+                                      item.costPerUnit,
+                                    )
+                                  : item.subtotal,
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <p className="py-3 text-sm text-muted">
+                  Rincian barang tidak dapat dimuat. Faktur tetap bisa dicatat —
+                  barangnya disalin dari penerimaan ini.
+                </p>
+              )}
+            </div>
+          </div>
+        </Card>
+      )}
 
       <p className="text-xs text-muted">
         Nilai faktur mengikuti penerimaannya dan tidak bisa diubah di sini —

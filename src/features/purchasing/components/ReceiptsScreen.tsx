@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Alert, Pagination, Spinner } from "@/components";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { formatMoney } from "@/utils/decimal";
-import type { GoodsReceiptStatus } from "@/types/api";
+import type { GoodsReceiptStatusFilter } from "@/types/api";
 
 import { useGoodsReceipts } from "../hooks/useGoodsReceipts";
 import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
@@ -31,7 +31,7 @@ export function ReceiptsScreen({
   initialStatus,
 }: {
   /** From `?status=` — the "Barang belum diterima" card links here. */
-  initialStatus?: GoodsReceiptStatus;
+  initialStatus?: GoodsReceiptStatusFilter;
 }) {
   const { receipts, pagination, query, loading, error, setQuery } =
     useGoodsReceipts(initialStatus ? { status: initialStatus } : {});

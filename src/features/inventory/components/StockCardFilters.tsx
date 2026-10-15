@@ -65,6 +65,7 @@ const MOVEMENT_FILTERS: FilterOption<MovementType | "">[] = [
   { value: "transfer_cancel", label: "Transfer dibatalkan" },
   { value: "customer_return", label: "Retur customer" },
   { value: "purchase_return", label: "Retur supplier" },
+  { value: "receipt_correction", label: "Koreksi penerimaan" },
   { value: "bundle_consume", label: "Bundle consume" },
 ];
 

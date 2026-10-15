@@ -37,8 +37,9 @@ function today(): string {
  * would pay the consignor twice. `saving` locks every control for the flight and
  * is released on failure only; success closes the dialog.
  *
- * THE PAYMENT-ACCOUNT FIELDS ARE `RecordPaymentForm`'s (`PaymentAccountFields`):
- * the money leaves the shop the same way a supplier invoice is paid.
+ * THE PAYMENT-ACCOUNT FIELDS ARE `PaymentAccountFields` — method + channel, the
+ * way a supplier invoice used to be paid before it moved to the shared Kas &
+ * Bank payment form.
  */
 export function ConsignmentSettleDialog({
   row,

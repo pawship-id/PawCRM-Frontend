@@ -32,12 +32,11 @@ const METHODS: Array<{ value: PaymentMethod; label: string }> = [
  * "Metode" + "Keluar dari" — the two fields that say HOW and FROM WHICH ACCOUNT
  * money leaves the shop to a supplier.
  *
- * EXTRACTED from `RecordPaymentForm` when the consignment "Setor" dialog became
- * its second caller: both pay a supplier out of a `paymentChannels` row and send
- * the same `{ method, channelId }` pair, so the direction rule (`usableFor:
- * "out"`) and the method/channel agreement must live in ONE place. Both callers
- * are in Pembelian, so it stays in this feature rather than `src/components/`
- * (ui-rules §14: promote only when a second FEATURE needs it).
+ * Extracted from the supplier-invoice payment form when the consignment "Setor"
+ * dialog needed the same `{ method, channelId }` pair. Since 15 October 2026
+ * the invoice payment uses the shared Kas & Bank `PaymentForm`
+ * (cash-transactions/RecordPaymentDialog) instead, so "Setor" is the only
+ * caller left.
  *
  * CONTROLLED: the parent owns `method` and `channelId` because it sends them. The
  * channel list is this component's own — it is re-read whenever the method

@@ -3,11 +3,15 @@ import userEvent from "@testing-library/user-event";
 import type { UserEvent } from "@testing-library/user-event";
 
 import {
+  EditInvoiceScreen,
   FileInvoiceForm,
   InvoiceDetail,
+  ManualInvoiceForm,
   PayablesScreen,
+  PurchasePaymentDetail,
   PurchasingHub,
 } from "@/features/purchasing";
+import { cashTransactionService } from "@/services/cashTransaction.service";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { consignmentSettlementService } from "@/services/consignmentSettlement.service";
 import { swalToast } from "@/lib/swal";
@@ -15,12 +19,15 @@ import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { supplierService } from "@/services/supplier.service";
 import { branchService } from "@/services/branch.service";
 import { paymentChannelService } from "@/services/paymentChannel.service";
+import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { warehouseService } from "@/services/warehouse.service";
+import { productService } from "@/services/product.service";
 import { ApiError } from "@/services/api-error";
 import type {
   GoodsReceiptDetail,
   GoodsReceiptListRow,
   PurchaseInvoiceDetail,
+  PurchaseInvoiceItem,
   PayablesSummary,
   PurchaseInvoiceListRow,
   SupplierOutstandingSummary,
@@ -34,12 +41,31 @@ jest.mock("@/services/goodsReceipt.service");
 jest.mock("@/services/supplier.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/services/paymentChannel.service");
+jest.mock("@/services/chartOfAccounts.service");
 jest.mock("@/services/warehouse.service");
 jest.mock("@/services/productBatch.service");
+jest.mock("@/services/product.service");
+jest.mock("@/services/cashTransaction.service");
+
+/**
+ * "Riwayat aktivitas" has its own request and its own rendering; these screens
+ * only have to mount it. An empty, settled history keeps it out of the way.
+ */
+jest.mock("@/features/purchasing/hooks/usePurchaseActivity", () => ({
+  usePurchaseActivity: jest.fn(() => ({
+    items: [],
+    loading: false,
+    error: null,
+  })),
+}));
 
 const push = jest.fn();
+const replace = jest.fn();
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: (href: string) => push(href) }),
+  useRouter: () => ({
+    push: (href: string) => push(href),
+    replace: (href: string) => replace(href),
+  }),
 }));
 
 /**
@@ -110,6 +136,10 @@ function listRow(
     branchId: "b1",
     branchName: "Cabang Pusat",
     goodsReceiptId: RECEIPT_ID,
+    // Linked to a fully received delivery: locked, and payable in full.
+    locked: true,
+    receivedAmount: "166500.0000",
+    payableAmount: "166500.0000",
     // Read back through the delivery, not stored on the invoice — see the type.
     warehouseId: "wh1",
     warehouseName: "Gudang Utama",
@@ -129,6 +159,44 @@ function listRow(
   };
 }
 
+function invoiceItem(
+  overrides: Partial<PurchaseInvoiceItem> = {},
+): PurchaseInvoiceItem {
+  return {
+    invoiceItemId: "ii1",
+    productId: "p1",
+    name: "Shampoo Anjing",
+    productSku: "SHAMPOO",
+    productName: "Shampoo Anjing",
+    productUnit: "botol",
+    qty: "10.0000",
+    costPerUnit: "15000.0000",
+    subtotal: "150000.0000",
+    cancelledQty: "0.0000",
+    receivedQty: "10.0000",
+    ...overrides,
+  };
+}
+
+/**
+ * A MANUAL bill — typed in before the goods arrived. No receipt, not locked,
+ * nothing received, nothing payable.
+ */
+function manualDetail(
+  overrides: Partial<PurchaseInvoiceDetail> = {},
+): PurchaseInvoiceDetail {
+  return detail({
+    goodsReceiptId: null,
+    goodsReceiptNumber: null,
+    goodsReceiptStatus: null,
+    locked: false,
+    receivedAmount: "0.0000",
+    payableAmount: "0.0000",
+    items: [invoiceItem({ receivedQty: null })],
+    ...overrides,
+  });
+}
+
 function detail(
   overrides: Partial<PurchaseInvoiceDetail> = {},
 ): PurchaseInvoiceDetail {
@@ -142,6 +210,8 @@ function detail(
   return {
     ...row,
     goodsReceiptNumber: "GR-260806-001",
+    goodsReceiptStatus: "received",
+    items: [invoiceItem()],
     createdByName: "Sari",
     payments: [],
     journalEntryId: null,
@@ -211,6 +281,7 @@ function receiptDetail(): GoodsReceiptDetail {
     createdByName: "Sari",
     receiptDate: "2026-08-06T00:00:00.000Z",
     purchaseType: "beli_putus",
+    origin: "manual",
     items: [
       {
         itemId: "it1",
@@ -223,6 +294,11 @@ function receiptDetail(): GoodsReceiptDetail {
         qty: "10.0000",
         costPerUnit: "15000.0000",
         subtotal: "150000.0000",
+        receivedQty: "10.0000",
+        receivedSubtotal: "150000.0000",
+        cancelledQty: "0.0000",
+        outstandingQty: "0.0000",
+        receiveStatus: "received",
         returnedQty: "0.0000",
         remainingQty: "10.0000",
       },
@@ -230,6 +306,11 @@ function receiptDetail(): GoodsReceiptDetail {
     total: "150000.0000",
     taxAmount: "16500.0000",
     grandTotal: "166500.0000",
+    receivedTotal: "150000.0000",
+    receivedTax: "16500.0000",
+    events: [],
+    closedAt: null,
+    closedByName: null,
     invoiceId: INVOICE_ID,
     journalEntryId: "je1",
     notes: null,
@@ -299,8 +380,8 @@ const optionPage = <T,>(items: T[]) =>
 
 beforeEach(() => {
   /*
-    The payment form reads the tenant's pay-out channels — which account the
-    money leaves from. One BCA account, which the form pre-selects.
+    The consignment "Setor" dialog still reads the tenant's pay-out channels —
+    which account the money leaves from. One BCA account, which it pre-selects.
   */
   asMock(paymentChannelService.list).mockResolvedValue({
     items: [
@@ -317,6 +398,24 @@ beforeEach(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any);
   jest.clearAllMocks();
+
+  /*
+    The invoice's payment dialog is the shared Kas & Bank form (the same one a
+    sales invoice uses): it lists the chart's KAS & BANK ACCOUNTS — where the
+    money leaves from. One bank account, which the form pre-selects.
+  */
+  asMock(chartOfAccountsService.list).mockResolvedValue(
+    optionPage([
+      {
+        _id: "acc-bca",
+        code: "1102",
+        name: "Bank BCA",
+        accountType: "asset",
+        accountCategory: "cash_bank",
+        isActive: true,
+      },
+    ]),
+  );
 
   asMock(consignmentSettlementService.outstanding).mockResolvedValue({
     items: [],
@@ -875,12 +974,63 @@ describe("PayablesScreen", () => {
 
 /* ----------------------------------------------------------------- detail */
 
+/**
+ * "Catat pembayaran" is a button now — the same dialog a sales invoice opens
+ * (15 October 2026) — so every payment test starts by opening it.
+ */
+async function openPaymentDialog(user: UserEvent) {
+  await user.click(
+    await screen.findByRole("button", { name: /Catat pembayaran/ }),
+  );
+  return within(await screen.findByRole("dialog"));
+}
+
+const toast = swalToast as jest.MockedFunction<typeof swalToast>;
+
 describe("InvoiceDetail", () => {
   it("shows the balance and the payment form for an unpaid bill", async () => {
+    const user = userEvent.setup();
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    expect(await screen.findByText("INV/2026/VIII/0142")).toBeInTheDocument();
-    expect(screen.getByLabelText("Jumlah dibayar")).toBeInTheDocument();
+    // The number is the page's title, as on a sales invoice.
+    expect(
+      await screen.findByRole("heading", { name: "INV/2026/VIII/0142" }),
+    ).toBeInTheDocument();
+    // Closed until asked for — the page shows the button, not the form.
+    expect(screen.queryByLabelText("Jumlah dibayar")).not.toBeInTheDocument();
+
+    const dialog = await openPaymentDialog(user);
+
+    expect(dialog.getByText("Bisa dibayar sekarang")).toBeInTheDocument();
+    expect(
+      dialog.getByText(
+        "INV/2026/VIII/0142 · PT Sumber Pangan · sisa tagihan Rp 166.500",
+      ),
+    ).toBeInTheDocument();
+    // Money going OUT: the labels say so.
+    expect(dialog.getByLabelText("Jumlah dibayar")).toBeInTheDocument();
+    expect(dialog.getByLabelText("Tanggal bayar")).toBeInTheDocument();
+    expect(dialog.getByLabelText("No. referensi")).toBeInTheDocument();
+    expect(dialog.queryByLabelText("Metode")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(chartOfAccountsService.list).toHaveBeenCalledWith({
+        accountCategory: "cash_bank",
+        isActive: true,
+        limit: 100,
+      }),
+    );
+    expect(paymentChannelService.list).not.toHaveBeenCalled();
+  });
+
+  it("closes the dialog on Batal without sending anything", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    const dialog = await openPaymentDialog(user);
+
+    await user.click(dialog.getByRole("button", { name: "Batal" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(purchaseInvoiceService.recordPayment).not.toHaveBeenCalled();
   });
 
   it("sends the payment and renders the invoice the write returned", async () => {
@@ -894,7 +1044,8 @@ describe("InvoiceDetail", () => {
             paymentId: "pay1",
             at: "2026-08-20T00:00:00.000Z",
             amount: "66500.0000",
-            method: "transfer",
+            method: null,
+            cashAccountName: "Bank BCA",
             ref: "TRF/998877",
             byUserId: "u1",
             byUserName: "Sari",
@@ -906,23 +1057,28 @@ describe("InvoiceDetail", () => {
 
     const user = userEvent.setup();
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    const dialog = await openPaymentDialog(user);
 
-    await user.type(await screen.findByLabelText("Jumlah dibayar"), "66500");
-    await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
+    await user.type(dialog.getByLabelText("Jumlah dibayar"), "66500");
+    await user.type(dialog.getByLabelText("No. referensi"), " TRF/998877 ");
+    await user.click(dialog.getByRole("button", { name: "Simpan pembayaran" }));
 
+    // UT-1, the shared-form way: the Kas & Bank ACCOUNT the money left from,
+    // not a method or a channel — neither is sent any more.
     await waitFor(() =>
       expect(purchaseInvoiceService.recordPayment).toHaveBeenCalledWith(
         INVOICE_ID,
-        expect.objectContaining({
+        {
           amount: "66500",
-          method: "transfer",
-          // UT-1: which account paid, not just how. The account used to be
-          // derived from the method alone, so a shop with three rekening could
-          // not tell which one settled a supplier.
-          channelId: "chan-bca",
-        }),
+          accountId: "acc-bca",
+          at: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          ref: "TRF/998877",
+        },
       ),
     );
+
+    expect(toast).toHaveBeenCalledWith("Pembayaran Rp 66.500 tercatat.");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     // The response IS the new state — no refetch, and the balance updates from
     // the document the write produced.
@@ -937,14 +1093,32 @@ describe("InvoiceDetail", () => {
   it("refuses locally to pay more than is outstanding", async () => {
     const user = userEvent.setup();
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    const dialog = await openPaymentDialog(user);
 
-    await user.type(await screen.findByLabelText("Jumlah dibayar"), "999999999");
-    await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
+    await user.type(dialog.getByLabelText("Jumlah dibayar"), "999999999");
+    await user.click(dialog.getByRole("button", { name: "Simpan pembayaran" }));
 
-    expect(
-      await screen.findByText(/Jumlah melebihi sisa tagihan/),
-    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        "Jumlah melebihi sisa tagihan Rp 166.500.",
+        "error",
+      ),
+    );
     expect(purchaseInvoiceService.recordPayment).not.toHaveBeenCalled();
+    // A refusal keeps the dialog — and what was typed — open for a fix.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("fills the payable amount when Lunasi is pressed", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    const dialog = await openPaymentDialog(user);
+
+    await user.click(dialog.getByRole("button", { name: "Lunasi" }));
+    expect(dialog.getByLabelText("Jumlah dibayar")).toHaveValue("166500");
+
+    await user.click(dialog.getByRole("button", { name: "50%" }));
+    expect(dialog.getByLabelText("Jumlah dibayar")).toHaveValue("83250");
   });
 
   /**
@@ -961,20 +1135,22 @@ describe("InvoiceDetail", () => {
 
     const user = userEvent.setup();
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    const dialog = await openPaymentDialog(user);
 
-    await user.type(await screen.findByLabelText("Jumlah dibayar"), "1000");
+    await user.type(dialog.getByLabelText("Jumlah dibayar"), "1000");
 
-    const submit = screen.getByRole("button", { name: "Simpan pembayaran" });
+    const submit = dialog.getByRole("button", { name: "Simpan pembayaran" });
     await user.click(submit);
 
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Menyimpan…" })).toBeDisabled(),
-    );
+    await waitFor(() => expect(submit).toBeDisabled());
+    expect(dialog.getByRole("button", { name: "Batal" })).toBeDisabled();
+    expect(dialog.getByLabelText("Jumlah dibayar")).toBeDisabled();
 
-    await user.click(screen.getByRole("button", { name: "Menyimpan…" }));
+    await user.click(submit);
     expect(purchaseInvoiceService.recordPayment).toHaveBeenCalledTimes(1);
 
     release(detail());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("shows the backend's refusal verbatim", async () => {
@@ -986,15 +1162,25 @@ describe("InvoiceDetail", () => {
 
     const user = userEvent.setup();
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    const dialog = await openPaymentDialog(user);
 
-    await user.type(await screen.findByLabelText("Jumlah dibayar"), "1000");
-    await user.click(screen.getByRole("button", { name: "Simpan pembayaran" }));
+    await user.type(dialog.getByLabelText("Jumlah dibayar"), "1000");
+    await user.click(dialog.getByRole("button", { name: "Simpan pembayaran" }));
 
     // `fullMessage` — the message plus the reason, which is the half that says
-    // what to do next.
+    // what to do next — held for 8 seconds so it can be read to the end.
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.stringMatching(/nothing left outstanding to pay/),
+        "error",
+        8000,
+      ),
+    );
+    // Still open, and released for another try.
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(
-      await screen.findByText(/nothing left outstanding to pay/),
-    ).toBeInTheDocument();
+      dialog.getByRole("button", { name: "Simpan pembayaran" }),
+    ).toBeEnabled();
   });
 
   it("replaces the form with a settled note once the bill is paid", async () => {
@@ -1009,7 +1195,9 @@ describe("InvoiceDetail", () => {
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
     expect(await screen.findByText("Faktur ini sudah lunas.")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Jumlah dibayar")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Catat pembayaran/ }),
+    ).not.toBeInTheDocument();
   });
 
   /**
@@ -1024,8 +1212,12 @@ describe("InvoiceDetail", () => {
       ],
     });
 
-    expect(await screen.findByText("INV/2026/VIII/0142")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Jumlah dibayar")).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "INV/2026/VIII/0142" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Catat pembayaran/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText(/tidak punya izin mencatat pembayaran/)).
       toBeInTheDocument();
   });
@@ -1044,19 +1236,102 @@ describe("InvoiceDetail", () => {
       not.toBeInTheDocument();
   });
 
-  // The lines belong to the goods receipt, not the invoice. A clerk who came to
-  // pay a bill can still pay it when they fail to load.
-  it("stays usable when the delivery's lines cannot be loaded", async () => {
-    asMock(goodsReceiptService.getById).mockRejectedValue(
-      new ApiError("Server error", 500),
+  /**
+   * THE LINES ARE THE INVOICE'S OWN now — copied onto it when it was filed —
+   * so the screen no longer reads the delivery to draw them, and a delivery
+   * that cannot be read cannot blank them.
+   */
+  it("draws its own lines without reading the delivery", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText("Shampoo Anjing")).toBeInTheDocument();
+    expect(screen.getByText("SHAMPOO")).toBeInTheDocument();
+    // The sales invoice's "Rincian faktur" card: header fields, the lines,
+    // then the recap.
+    expect(screen.getByText("Rincian faktur")).toBeInTheDocument();
+    expect(screen.getByText("Tanggal faktur")).toBeInTheDocument();
+    expect(screen.getByText("Subtotal")).toBeInTheDocument();
+    expect(screen.getAllByText("Total tagihan").length).toBeGreaterThan(0);
+    expect(goodsReceiptService.getById).not.toHaveBeenCalled();
+  });
+
+  it("shows how much has arrived beside how much is paid", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        goodsReceiptStatus: "partial",
+        receivedAmount: "66600.0000",
+        payableAmount: "66600.0000",
+        items: [invoiceItem({ receivedQty: "4.0000" })],
+      }),
     );
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    expect(await screen.findByLabelText("Jumlah dibayar")).toBeInTheDocument();
+    // The shared "Status pembayaran" card — the sales invoice's — with the
+    // one line a supplier bill adds: how far its goods have arrived.
+    expect(await screen.findByText("Status pembayaran")).toBeInTheDocument();
+    // In the status card and in the Rincian recap alike.
+    expect(screen.getAllByText("Total tagihan")).toHaveLength(2);
+    expect(screen.getByText("Terbayar")).toBeInTheDocument();
+    expect(screen.getByText("Sisa")).toBeInTheDocument();
+    expect(screen.getByText(/0% terbayar · jatuh tempo/)).toBeInTheDocument();
+    const arrived = screen.getByText(/Barang diterima/);
+    expect(arrived).toHaveTextContent("Rp 66.600 dari Rp 166.500");
+    expect(arrived).toHaveTextContent("bisa dibayar sekarang Rp 66.600");
+    expect(screen.getByText("diterima sebagian")).toBeInTheDocument();
+  });
+
+  it("caps the payment at what has arrived, not at the whole bill", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        goodsReceiptStatus: "partial",
+        receivedAmount: "66600.0000",
+        payableAmount: "66600.0000",
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+    const dialog = await openPaymentDialog(user);
+
+    // The panel and the ceiling are what has ARRIVED, not the whole bill.
+    expect(dialog.getByText("Maksimal Rp 66.600")).toBeInTheDocument();
+    await user.click(dialog.getByRole("button", { name: "Lunasi" }));
+    expect(dialog.getByLabelText("Jumlah dibayar")).toHaveValue("66600");
+
+    await user.clear(dialog.getByLabelText("Jumlah dibayar"));
+    await user.type(dialog.getByLabelText("Jumlah dibayar"), "100000");
+    await user.click(dialog.getByRole("button", { name: "Simpan pembayaran" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.stringMatching(/melebihi nilai barang yang sudah diterima/),
+        "error",
+      ),
+    );
+    expect(purchaseInvoiceService.recordPayment).not.toHaveBeenCalled();
+  });
+
+  it("hides the payment form while nothing is payable", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        goodsReceiptStatus: "partial",
+        paidAmount: "66600.0000",
+        outstandingAmount: "99900.0000",
+        status: "partial",
+        receivedAmount: "66600.0000",
+        payableAmount: "0.0000",
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
     expect(
-      screen.getByText(/Rincian barang tidak dapat dimuat/),
-    ).toBeInTheDocument();
+      await screen.findByText(/Belum ada yang bisa dibayar/),
+    ).toHaveTextContent(/sudah dibayar semua/);
+    expect(
+      screen.queryByRole("button", { name: /Catat pembayaran/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("names the branch and the warehouse the bill belongs to", async () => {
@@ -1072,7 +1347,7 @@ describe("InvoiceDetail", () => {
     expect(screen.getByText("Gudang Timur")).toBeInTheDocument();
   });
 
-  it("names the journal entry behind each payment", async () => {
+  it("lists each payment in the Riwayat pembayaran card", async () => {
     asMock(purchaseInvoiceService.getById).mockResolvedValue(
       detail({
         paidAmount: "66500.0000",
@@ -1095,13 +1370,16 @@ describe("InvoiceDetail", () => {
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
-    // The only handle anyone has on a wrong payment: it cannot be edited or
-    // deleted, so correcting one means reversing the entry it posted.
-    expect(await screen.findByText("je9")).toBeInTheDocument();
+    // The shared timeline, the sales invoice's: amount, date and how it moved.
+    // The journal entry is on the payment's own Transaksi Keuangan page.
+    expect(await screen.findByText("Riwayat pembayaran")).toBeInTheDocument();
+    expect(screen.getByText(/20 Agu 2026/).closest("li")).toHaveTextContent(
+      "Transfer",
+    );
   });
 });
 
-describe("PaymentHistory — each payment is a cash transaction", () => {
+describe("Riwayat pembayaran — each payment is a cash transaction", () => {
   const payment = {
     paymentId: "pay1",
     paymentNumber: "BBK/CBS/2608/0007",
@@ -1129,9 +1407,13 @@ describe("PaymentHistory — each payment is a cash transaction", () => {
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
     expect(await screen.findByText("BBK/CBS/2608/0007")).toBeInTheDocument();
+    // The whole row opens the payment's own page, as on a sales invoice.
     expect(
-      screen.getByRole("link", { name: /Buka di Transaksi Keuangan/ }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/pay1");
+      screen.getByRole("link", { name: /BBK\/CBS\/2608\/0007/ }),
+    ).toHaveAttribute(
+      "href",
+      `/dashboard/purchasing/payables/${INVOICE_ID}/payments/pay1`,
+    );
   });
 
   it("marks a cancelled payment and strikes its amount through", async () => {
@@ -1153,7 +1435,47 @@ describe("PaymentHistory — each payment is a cash transaction", () => {
     ).toBe(true);
   });
 
-  it("does not link a role that cannot read cash transactions", async () => {
+  /*
+    Recorded through the shared Kas & Bank form there is NO method — the
+    payment names the account the money left from, and that is what the badge
+    says, so a reconciler can tell which rekening paid.
+  */
+  it("names the Kas & Bank account when the payment has no method", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        payments: [
+          { ...payment, method: null, cashAccountName: "Bank BCA" },
+          {
+            ...payment,
+            paymentId: "pay2",
+            paymentNumber: "BBK/CBS/2608/0008",
+            method: null,
+            cashAccountName: null,
+          },
+        ],
+      }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText(/· Bank BCA/)).toBeInTheDocument();
+    // An account that cannot be named still says where it came from in general.
+    expect(screen.getByText(/· Kas & Bank/)).toBeInTheDocument();
+    expect(screen.queryByText(/· Transfer/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the method label on an older channel payment", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({ payments: [{ ...payment, cashAccountName: "Bank BCA" }] }),
+    );
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText(/· Transfer/)).toBeInTheDocument();
+    expect(screen.queryByText(/· Bank BCA/)).not.toBeInTheDocument();
+  });
+
+  it("links the payment page for a role that cannot read cash transactions", async () => {
     asMock(purchaseInvoiceService.getById).mockResolvedValue(
       detail({ payments: [payment] }),
     );
@@ -1164,9 +1486,132 @@ describe("PaymentHistory — each payment is a cash transaction", () => {
     });
 
     expect(await screen.findByText("BBK/CBS/2608/0007")).toBeInTheDocument();
+    // The payment page needs only purchaseInvoices:read; what it offers is
+    // gated there.
     expect(
-      screen.queryByRole("link", { name: /Buka di Transaksi Keuangan/ }),
+      screen.getByRole("link", { name: /BBK\/CBS\/2608\/0007/ }),
+    ).toBeInTheDocument();
+  });
+});
+
+/* ----------------------------------------------- one payment, its own page */
+
+describe("PurchasePaymentDetail — the sales payment page, for a supplier", () => {
+  const payment = {
+    paymentId: "pay1",
+    paymentNumber: "BBK/CBS/2608/0007",
+    at: "2026-08-20T00:00:00.000Z",
+    amount: "66500.0000",
+    method: null,
+    cashAccountName: "Bank BCA",
+    ref: "TRF/998877",
+    byUserId: "u1",
+    byUserName: "Sari",
+    journalEntryId: "je9",
+    journalEntryNumber: "JU/2608/0012",
+    isVoided: false,
+    voidedAt: null,
+  };
+
+  it("lays out the payment and where the bill stands now", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        paidAmount: "66500.0000",
+        outstandingAmount: "100000.0000",
+        status: "partial",
+        payments: [payment],
+      }),
+    );
+
+    renderWithAuth(
+      <PurchasePaymentDetail invoiceId={INVOICE_ID} paymentId="pay1" />,
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "BBK/CBS/2608/0007" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Rincian pembayaran")).toBeInTheDocument();
+    expect(screen.getByText("Keluar dari").nextSibling).toHaveTextContent(
+      "Bank BCA",
+    );
+    expect(screen.getByText("JU/2608/0012")).toBeInTheDocument();
+    expect(screen.getByText("TRF/998877")).toBeInTheDocument();
+    expect(screen.getByText("Faktur ini sekarang")).toBeInTheDocument();
+    expect(screen.getByText("aktif")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Ubah pembayaran/ }),
+    ).toBeInTheDocument();
+    // A supplier issues the receipt, not the shop.
+    expect(
+      screen.queryByRole("button", { name: /Kwitansi/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("reads the cash transaction when Batalkan is pressed", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({ payments: [payment] }),
+    );
+    asMock(cashTransactionService.getById).mockResolvedValue({
+      _id: "pay1",
+      number: "BBK/CBS/2608/0007",
+      amount: "66500.0000",
+      status: "posted",
+    } as never);
+    const user = userEvent.setup();
+
+    renderWithAuth(
+      <PurchasePaymentDetail invoiceId={INVOICE_ID} paymentId="pay1" />,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: /Batalkan pembayaran/ }),
+    );
+
+    await waitFor(() =>
+      expect(cashTransactionService.getById).toHaveBeenCalledWith("pay1"),
+    );
+  });
+
+  it("shows a cancelled payment with its reason and no actions", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        payments: [
+          {
+            ...payment,
+            isVoided: true,
+            voidedAt: "2026-08-21T00:00:00.000Z",
+            voidReason: "salah nominal",
+          },
+        ],
+      }),
+    );
+
+    renderWithAuth(
+      <PurchasePaymentDetail invoiceId={INVOICE_ID} paymentId="pay1" />,
+    );
+
+    expect(await screen.findByText("Alasan: salah nominal")).toBeInTheDocument();
+    expect(screen.getByText("dibatalkan")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Batalkan pembayaran/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Ubah pembayaran/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says so when the payment is not on this invoice", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({ payments: [] }),
+    );
+
+    renderWithAuth(
+      <PurchasePaymentDetail invoiceId={INVOICE_ID} paymentId="nope" />,
+    );
+
+    expect(
+      await screen.findByText(/Pembayaran ini tidak ada di faktur/),
+    ).toBeInTheDocument();
   });
 });
 
@@ -1178,6 +1623,78 @@ describe("FileInvoiceForm", () => {
       items: [receiptRow()],
       pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
+    // Opened from a receipt's page, the form reads THAT receipt by id — an
+    // unbilled one here.
+    asMock(goodsReceiptService.getById).mockResolvedValue({
+      ...receiptDetail(),
+      invoiceId: null,
+    });
+  });
+
+  /**
+   * OPENED FROM THE RECEIPT ("Catat faktur supplier"): that receipt is chosen
+   * and the picker is locked, even when it is not on the picker's first page.
+   */
+  it("preselects and locks the receipt it was opened from", async () => {
+    asMock(goodsReceiptService.list).mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    });
+
+    renderWithAuth(<FileInvoiceForm receiptId={RECEIPT_ID} />);
+
+    const picker = await screen.findByRole("combobox", { name: "Penerimaan" });
+    expect(picker).toBeDisabled();
+    expect(picker).toHaveTextContent("GR-260806-001");
+    expect(goodsReceiptService.getById).toHaveBeenCalledWith(RECEIPT_ID);
+    expect(
+      screen.queryByText("Tidak ada penerimaan yang menunggu faktur."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("says so when the receipt it was opened from already has an invoice", async () => {
+    asMock(goodsReceiptService.getById).mockResolvedValue(receiptDetail());
+
+    renderWithAuth(<FileInvoiceForm receiptId={RECEIPT_ID} />);
+
+    expect(
+      await screen.findByText(/GR-260806-001 sudah punya faktur/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Lihat faktur" })).toHaveAttribute(
+      "href",
+      `/dashboard/purchasing/payables/${INVOICE_ID}`,
+    );
+  });
+
+  it("lists the chosen receipt's lines read-only", async () => {
+    renderWithAuth(<FileInvoiceForm receiptId={RECEIPT_ID} />);
+
+    expect(await screen.findByText("Barang yang ditagih")).toBeInTheDocument();
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("Shampoo Anjing")).toBeInTheDocument();
+    // Where each line stands — the receipt's own badge.
+    expect(within(table).getByText("Status")).toBeInTheDocument();
+    expect(within(table).getByText("lengkap")).toBeInTheDocument();
+    expect(within(table).getByText("SHAMPOO")).toBeInTheDocument();
+    // Read-only: nothing in the table can be typed into.
+    expect(within(table).queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("reads the lines of a receipt picked from the list", async () => {
+    asMock(goodsReceiptService.getById).mockClear();
+    renderWithAuth(<FileInvoiceForm />);
+
+    await screen.findByRole("combobox", { name: "Penerimaan" });
+    expect(screen.queryByText("Barang yang ditagih")).not.toBeInTheDocument();
+    expect(goodsReceiptService.getById).not.toHaveBeenCalled();
+  });
+
+  it("leaves the picker open when not opened from a receipt", async () => {
+    renderWithAuth(<FileInvoiceForm />);
+
+    const picker = await screen.findByRole("combobox", { name: "Penerimaan" });
+    expect(picker).not.toBeDisabled();
+    expect(goodsReceiptService.getById).not.toHaveBeenCalled();
   });
 
   /**
@@ -1193,6 +1710,10 @@ describe("FileInvoiceForm", () => {
     expect(goodsReceiptService.list).toHaveBeenCalledWith(
       expect.objectContaining({ invoiced: false, purchaseType: "beli_putus" }),
     );
+    // Any receiving status: a bill may document an order still on its way.
+    expect(
+      asMock(goodsReceiptService.list).mock.calls[0][0],
+    ).not.toHaveProperty("status");
   });
 
   it("explains the empty state without blaming the user", async () => {
@@ -1229,15 +1750,18 @@ describe("FileInvoiceForm", () => {
       expect(purchaseInvoiceService.create).toHaveBeenCalledWith(
         expect.objectContaining({
           goodsReceiptId: RECEIPT_ID,
-          // The receipt's EX-TAX value is exactly what `subtotal` means here.
-          subtotal: "150000.0000",
-          taxAmount: "16500.0000",
+          invoiceNumber: "INV/2026/VIII/0142",
           // Never picked: billing one vendor for another's delivery pays the
           // wrong company and leaves the right one still owed.
           supplierId: "s1",
         }),
       ),
     );
+    // NO AMOUNTS AT ALL: the server copies the receipt's lines and totals onto
+    // the invoice, so the two documents cannot disagree.
+    const body = asMock(purchaseInvoiceService.create).mock.calls[0][0];
+    expect(body).not.toHaveProperty("subtotal");
+    expect(body).not.toHaveProperty("taxAmount");
 
     expect(screen.queryByLabelText(/Subtotal/)).not.toBeInTheDocument();
   });
@@ -1312,14 +1836,15 @@ describe("PurchasingHub — the Ringkasan tab", () => {
     expect(await screen.findByText("3 penerimaan")).toBeInTheDocument();
   });
 
-  it("opens the receipts list narrowed to pending from the card", async () => {
+  it("opens the receipts list narrowed to the ones still expected from the card", async () => {
     const user = userEvent.setup();
     renderWithAuth(<PurchasingHub />);
 
     await user.click(await screen.findByText("3 penerimaan"));
 
+    // `open` = pending AND partial — a half-delivered order is still waited on.
     expect(push).toHaveBeenCalledWith(
-      "/dashboard/purchasing/receipts?status=pending",
+      "/dashboard/purchasing/receipts?status=open",
     );
   });
 
@@ -1841,64 +2366,361 @@ describe("PurchasingHub — Utang konsinyasi", () => {
   });
 });
 
+/* ----------------------------------------------- the manual invoice's life */
+
 /**
- * UT-1 — which account paid the supplier.
- *
- * The account used to be derived from the METHOD alone: `transfer`, `qris` and
- * `giro` all credited one hardcoded "1102 Bank". A shop with three rekening paid
- * every supplier from the same ledger line, while the SELLING side — which names
- * its channels — answered exactly that question. Reconciliation was possible in
- * one direction and not the other, in the same tenant.
+ * A MANUAL INVOICE is typed in before the goods arrive. Nothing is owed until a
+ * goods receipt is made from it and something is received, so it cannot be
+ * paid; until that receipt exists it can still be edited or deleted.
  */
-describe("RecordPaymentForm — the account the money leaves from", () => {
-  it("asks for pay-out channels of the chosen method only", async () => {
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    await screen.findByLabelText("Jumlah dibayar");
-
-    await waitFor(() =>
-      expect(paymentChannelService.list).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: "transfer",
-          // A merchant QRIS receives; offering one here would credit a clearing
-          // account nothing will ever settle.
-          usableFor: "out",
-          isActive: true,
-        }),
-      ),
-    );
+describe("InvoiceDetail — a manual invoice with no receipt yet", () => {
+  beforeEach(() => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(manualDetail());
   });
 
-  it("re-reads the list when the method changes", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
-
-    await screen.findByLabelText("Jumlah dibayar");
-    asMock(paymentChannelService.list).mockClear();
-
-    await user.click(screen.getByLabelText("Metode"));
-    await user.click(await screen.findByRole("option", { name: /tunai/i }));
-
-    // A cash payment leaves a till, not a bank account — the two lists share
-    // nothing.
-    await waitFor(() =>
-      expect(paymentChannelService.list).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "cash", usableFor: "out" }),
-      ),
-    );
-  });
-
-  it("says so when the tenant has no pay-out account for that method", async () => {
-    asMock(paymentChannelService.list).mockResolvedValue({
-      items: [],
-      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any);
-
+  it("says the goods have not arrived and offers no payment", async () => {
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
     expect(
-      await screen.findByText(/belum ada rekening transfer/i),
+      await screen.findByText(/Barang dari faktur ini belum diterima/),
     ).toBeInTheDocument();
+    expect(screen.getByText(/Belum ada yang bisa dibayar/)).toHaveTextContent(
+      /barangnya belum diterima/,
+    );
+    expect(
+      screen.queryByRole("button", { name: /Catat pembayaran/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("belum ada")).toBeInTheDocument();
+  });
+
+  /**
+   * THE BUTTON OPENS THE RECEIPT FORM ON THIS INVOICE; it writes nothing. The
+   * receipt is made only when that form is saved, with its lots and what
+   * arrived (15 October 2026, BO) — so no request, and no toast, from here.
+   */
+  it("opens the receipt form on this invoice without writing anything", async () => {
+    const user = userEvent.setup();
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Buat penerimaan barang" }),
+    );
+
+    expect(push).toHaveBeenCalledWith(
+      `/dashboard/purchasing/receipts/new?invoice=${INVOICE_ID}`,
+    );
+    expect(goodsReceiptService.createFromInvoice).not.toHaveBeenCalled();
+    expect(swalToast).not.toHaveBeenCalled();
+  });
+
+  it("links to the edit page", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByRole("link", { name: "Ubah faktur" }),
+    ).toHaveAttribute("href", `/dashboard/purchasing/payables/${INVOICE_ID}/edit`);
+  });
+
+  it("deletes only after a confirmation, then leaves for the list", async () => {
+    asMock(purchaseInvoiceService.remove).mockResolvedValue({
+      _id: INVOICE_ID,
+      deleted: true,
+    });
+    const user = userEvent.setup();
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await user.click(await screen.findByRole("button", { name: "Hapus" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(purchaseInvoiceService.remove).not.toHaveBeenCalled();
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Hapus faktur" }),
+    );
+
+    await waitFor(() =>
+      expect(purchaseInvoiceService.remove).toHaveBeenCalledWith(INVOICE_ID),
+    );
+    expect(replace).toHaveBeenCalledWith("/dashboard/purchasing/payables");
+  });
+
+  it("offers none of it on a linked invoice", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(detail());
+
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    await screen.findByRole("button", { name: /Catat pembayaran/ });
+    expect(
+      screen.queryByRole("button", { name: "Buat penerimaan barang" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Hapus" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Ubah faktur" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("withholds the receipt button from a role that may not receive goods", async () => {
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />, {
+      isSuperAdmin: false,
+      permissions: [
+        { feature: "purchaseInvoices", actions: ["create", "read", "pay"] },
+      ],
+    });
+
+    expect(
+      await screen.findByRole("link", { name: "Ubah faktur" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Buat penerimaan barang" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("ManualInvoiceForm", () => {
+  const SUPPLIER = {
+    _id: "s1",
+    name: "PT Sumber Pangan",
+    type: "beli_putus",
+    isActive: true,
+  };
+  const PRODUCT = {
+    _id: "p1",
+    sku: "SHAMPOO",
+    name: "Shampoo Anjing",
+    productType: "standalone",
+    parentId: null,
+    variantAxes: [],
+    variantAttributes: null,
+    bundleConfig: null,
+    barcode: null,
+    minStock: 0,
+    hasExpiry: false,
+    categoryId: "c1",
+    unit: "botol",
+    sellPrice: "25000",
+    hppAvg: "12000.0000",
+    isActive: true,
+    isConsignment: false,
+    deletedAt: null,
+    stockByWarehouse: [],
+  };
+
+  beforeEach(() => {
+    asMock(supplierService.list).mockResolvedValue(optionPage([SUPPLIER]));
+    // One warehouse for the sole branch, so the form answers both itself.
+    asMock(warehouseService.list).mockResolvedValue(optionPage([WAREHOUSE]));
+    asMock(productService.list).mockResolvedValue(optionPage([PRODUCT]));
+    asMock(purchaseInvoiceService.create).mockResolvedValue(manualDetail());
+    asMock(purchaseInvoiceService.update).mockResolvedValue(manualDetail());
+  });
+
+  it("says which answer is still missing before it can be saved", async () => {
+    renderWithAuth(<ManualInvoiceForm />);
+
+    expect(
+      await screen.findByRole("button", { name: /Simpan faktur/ }),
+    ).toBeDisabled();
+    expect(screen.getByText(/supplier belum dipilih/)).toBeInTheDocument();
+  });
+
+  it("files a manual invoice with its lines and PPN", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ManualInvoiceForm />);
+
+    await user.click(await screen.findByLabelText("Supplier"));
+    await user.click(
+      await screen.findByRole("option", { name: /PT Sumber Pangan/ }),
+    );
+    await user.type(
+      screen.getByLabelText(/No. faktur supplier/),
+      " INV/2026/X/0007 ",
+    );
+
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await user.click(await screen.findByLabelText(/Shampoo Anjing/));
+    await user.click(screen.getByRole("button", { name: /Tambahkan/ }));
+
+    const qty = await screen.findByLabelText("Qty Shampoo Anjing");
+    await user.clear(qty);
+    await user.type(qty, "10");
+    const price = screen.getByLabelText("Harga beli Shampoo Anjing");
+    expect(price).toHaveValue("12000");
+    await user.clear(price);
+    await user.type(price, "15000");
+    await user.type(screen.getByLabelText(/PPN masukan/), "16500");
+
+    expect(screen.getByText("Rp 166.500")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Simpan faktur/ }));
+
+    await waitFor(() =>
+      expect(purchaseInvoiceService.create).toHaveBeenCalledTimes(1),
+    );
+    expect(asMock(purchaseInvoiceService.create).mock.calls[0][0]).toEqual({
+      supplierId: "s1",
+      warehouseId: "wh1",
+      invoiceNumber: "INV/2026/X/0007",
+      invoiceDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+      taxAmount: "16500",
+      items: [{ productId: "p1", qty: "10", costPerUnit: "15000" }],
+    });
+    expect(purchaseInvoiceService.update).not.toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledWith(
+      `/dashboard/purchasing/payables/${INVOICE_ID}`,
+    );
+  });
+
+  it("refuses a zero quantity locally", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(
+      <ManualInvoiceForm invoice={manualDetail({ items: [invoiceItem()] })} />,
+    );
+
+    const qty = await screen.findByLabelText("Qty Shampoo Anjing");
+    await user.clear(qty);
+    await user.type(qty, "0");
+    await user.click(screen.getByRole("button", { name: /Simpan faktur/ }));
+
+    expect(
+      await screen.findByText("Qty harus lebih dari 0"),
+    ).toBeInTheDocument();
+    expect(purchaseInvoiceService.update).not.toHaveBeenCalled();
+  });
+
+  it("edits through update, keeping each line's id", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ManualInvoiceForm invoice={manualDetail()} />);
+
+    const qty = await screen.findByLabelText("Qty Shampoo Anjing");
+    expect(qty).toHaveValue("10");
+    await user.clear(qty);
+    await user.type(qty, "12");
+
+    await user.click(
+      await screen.findByRole("button", { name: /Simpan faktur/ }),
+    );
+
+    await waitFor(() =>
+      expect(purchaseInvoiceService.update).toHaveBeenCalledTimes(1),
+    );
+    const [id, body] = asMock(purchaseInvoiceService.update).mock.calls[0];
+    expect(id).toBe(INVOICE_ID);
+    expect(body).toEqual({
+      supplierId: "s1",
+      warehouseId: "wh1",
+      invoiceNumber: "INV/2026/VIII/0142",
+      invoiceDate: "2026-08-06",
+      taxAmount: "16500",
+      items: [
+        {
+          invoiceItemId: "ii1",
+          productId: "p1",
+          qty: "12",
+          costPerUnit: "15000",
+        },
+      ],
+    });
+    expect(purchaseInvoiceService.create).not.toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledWith(
+      `/dashboard/purchasing/payables/${INVOICE_ID}`,
+    );
+  });
+
+  it("toasts the API's refusal and stays on the form", async () => {
+    asMock(purchaseInvoiceService.update).mockRejectedValue(
+      new ApiError("Faktur sudah terkunci oleh penerimaan barang", 409),
+    );
+    const user = userEvent.setup();
+    renderWithAuth(<ManualInvoiceForm invoice={manualDetail()} />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /Simpan faktur/ }),
+    );
+
+    await waitFor(() =>
+      expect(swalToast).toHaveBeenCalledWith(
+        expect.stringMatching(/sudah terkunci/),
+        "error",
+        6000,
+      ),
+    );
+    expect(replace).not.toHaveBeenCalled();
+  });
+});
+
+describe("EditInvoiceScreen", () => {
+  it("hands an unlocked manual invoice to the form", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(manualDetail());
+    asMock(supplierService.list).mockResolvedValue(
+      optionPage([
+        { _id: "s1", name: "PT Sumber Pangan", type: "beli_putus", isActive: true },
+      ]),
+    );
+    asMock(productService.list).mockResolvedValue(optionPage([]));
+
+    renderWithAuth(<EditInvoiceScreen invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByLabelText("Qty Shampoo Anjing"),
+    ).toHaveValue("10");
+  });
+
+  it("refuses to edit an invoice a receipt has locked", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(detail());
+
+    renderWithAuth(<EditInvoiceScreen invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByText(/sudah punya penerimaan barang/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Kembali ke faktur" }),
+    ).toHaveAttribute("href", `/dashboard/purchasing/payables/${INVOICE_ID}`);
+    expect(screen.queryByRole("button", { name: /Simpan faktur/ })).toBeNull();
+  });
+});
+
+describe("PayablesTable — what a row can be paid", () => {
+  it("marks a manual bill whose goods have not arrived, and offers no Bayar on it", async () => {
+    asMock(purchaseInvoiceService.list).mockResolvedValue(
+      page([
+        listRow({
+          goodsReceiptId: null,
+          locked: false,
+          receivedAmount: "0.0000",
+          payableAmount: "0.0000",
+        }),
+      ]),
+    );
+
+    renderWithAuth(<PayablesScreen />);
+
+    expect(await screen.findByText("barang belum diterima")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Detail" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Bayar" })).toBeNull();
+  });
+
+  it("offers Bayar on a linked bill with something payable", async () => {
+    asMock(purchaseInvoiceService.list).mockResolvedValue(page([listRow()]));
+
+    renderWithAuth(<PayablesScreen />);
+
+    expect(await screen.findByRole("link", { name: "Bayar" })).toHaveAttribute(
+      "href",
+      `/dashboard/purchasing/payables/${INVOICE_ID}`,
+    );
+    expect(screen.queryByText("barang belum diterima")).toBeNull();
+  });
+
+  it("opens the receipts still expected from the pending card", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PayablesScreen />);
+
+    await user.click(await screen.findByText("3 penerimaan"));
+
+    expect(push).toHaveBeenCalledWith(
+      "/dashboard/purchasing/receipts?status=open",
+    );
   });
 });

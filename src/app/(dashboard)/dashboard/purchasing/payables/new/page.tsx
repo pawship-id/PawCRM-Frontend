@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import {
   FileInvoiceForm,
+  ManualInvoiceForm,
   PageHeading,
   PURCHASING_CRUMBS,
 } from "@/features/purchasing";
@@ -10,19 +12,23 @@ import { RequirePermission } from "@/features/permissions";
 export const metadata: Metadata = { title: "Catat faktur supplier · Buloo" };
 
 /**
- * `create`, not `read`. Filing a bill is a write, and the seeded Staff role holds
- * it without `pay` — the separation of duties this module turns on.
+ * TWO WAYS IN (14 October 2026, BO):
  *
- * `?receipt=` is read here rather than by the form, matching the returns page:
- * the server already has the search params, so the client component does not
- * need `useSearchParams` and the Suspense boundary that comes with it.
+ *   manual (default)         — the bill arrives before the goods: supplier,
+ *                              gudang and lines typed in; the goods receipt is
+ *                              made from it later.
+ *   `?receipt=` / `?mode=receipt` — bill a delivery already filed; its lines
+ *                              are copied.
+ *
+ * `create`, not `read`: filing a bill is a write.
  */
 export default async function FileInvoicePage({
   searchParams,
 }: {
-  searchParams: Promise<{ receipt?: string }>;
+  searchParams: Promise<{ receipt?: string; mode?: string }>;
 }) {
-  const { receipt } = await searchParams;
+  const { receipt, mode } = await searchParams;
+  const fromReceipt = Boolean(receipt) || mode === "receipt";
 
   return (
     <RequirePermission feature="purchaseInvoices" action="create">
@@ -33,14 +39,41 @@ export default async function FileInvoicePage({
             PURCHASING_CRUMBS.payables,
             { label: "Catat faktur" },
           ]}
-          title="Catat faktur supplier"
+          title={
+            fromReceipt
+              ? "Catat faktur dari penerimaan"
+              : "Catat faktur supplier"
+          }
         >
-          Utangnya sudah tercatat sejak barang diterima. Yang dicatat di sini
-          adalah dokumen tagihannya — nomor faktur supplier dan tanggal
-          terbitnya, yang menentukan jatuh tempo lewat termin supplier.
+          {fromReceipt ? (
+            <>
+              Barang dan nilainya disalin dari penerimaan yang dipilih.{" "}
+              <Link
+                href="/dashboard/purchasing/payables/new"
+                className="font-semibold text-primary underline-offset-2 hover:underline"
+              >
+                Atau catat faktur manual →
+              </Link>
+            </>
+          ) : (
+            <>
+              Faktur yang datang sebelum barangnya. Penerimaan barang dibuat dari
+              faktur ini saat barang tiba.{" "}
+              <Link
+                href="/dashboard/purchasing/payables/new?mode=receipt"
+                className="font-semibold text-primary underline-offset-2 hover:underline"
+              >
+                Barangnya sudah dicatat di penerimaan? Buat faktur dari penerimaan →
+              </Link>
+            </>
+          )}
         </PageHeading>
 
-        <FileInvoiceForm receiptId={receipt} />
+        {fromReceipt ? (
+          <FileInvoiceForm receiptId={receipt} />
+        ) : (
+          <ManualInvoiceForm />
+        )}
       </div>
     </RequirePermission>
   );

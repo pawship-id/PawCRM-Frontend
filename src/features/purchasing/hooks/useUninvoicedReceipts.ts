@@ -61,8 +61,8 @@ export function useUninvoicedReceipts(): UseUninvoicedReceiptsResult {
       .list({
         limit: OPTION_LIMIT,
         invoiced: false,
-        // A bill can only document goods that have arrived.
-        status: "received",
+        // ANY status since 14 October 2026: a bill may document an order still
+        // on its way — the payable only grows as the goods are received.
         purchaseType: "beli_putus",
       })
       .then((result) => {

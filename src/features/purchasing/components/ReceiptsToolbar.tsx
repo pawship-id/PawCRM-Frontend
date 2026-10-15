@@ -20,7 +20,7 @@ import { Can } from "@/features/permissions";
 import type {
   Branch,
   GoodsReceiptSort,
-  GoodsReceiptStatus,
+  GoodsReceiptStatusFilter,
   PurchaseType,
   Supplier,
 } from "@/types/api";
@@ -76,10 +76,13 @@ const TYPES = withAll<PurchaseType | "">(
 );
 
 /** Whether the goods are on the shelf yet. */
-const STATUSES = withAll<GoodsReceiptStatus | "">(
+const STATUSES = withAll<GoodsReceiptStatusFilter | "">(
   [
+    { value: "open", label: "Belum lengkap" },
     { value: "pending", label: "Belum diterima" },
-    { value: "received", label: "Diterima" },
+    { value: "partial", label: "Diterima sebagian" },
+    { value: "received", label: "Diterima lengkap" },
+    { value: "closed", label: "Ditutup" },
   ],
   "Semua status",
 );
