@@ -1,7 +1,7 @@
 "use client";
 
 import { SkuText } from "@/components/SkuText";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -188,6 +188,47 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
   const lots = useWarehouseBatches(
     opname?.status === "draft" ? opname.warehouseId : "",
   );
+
+  const editable =
+    opname?.status === "draft" && can("stockOpnames", "update");
+
+  /**
+   * ONE LOT, NO QUESTION. A line of a product that expires which names no batch
+   * yet — an old draft's whole-product line — is pointed at the lot itself when
+   * the product holds exactly one here that no other line counts. Only while it
+   * is uncounted: a number already typed was counted for "semua batch", and
+   * switching the lot under it would quietly throw it away. The dropdown still
+   * offers "Batch baru" afterwards, for a carton the system does not know.
+   */
+  useEffect(() => {
+    if (!editable || lots.loading) return;
+
+    const taken = new Set(
+      items.map((item) => item.batchId).filter(Boolean) as string[],
+    );
+
+    items.forEach((item, index) => {
+      if (
+        !item.productHasExpiry ||
+        item.batchId ||
+        item.newBatch ||
+        item.countedAt !== null
+      ) {
+        return;
+      }
+      const productLots = lots.byProduct.get(item.productId) ?? [];
+      if (productLots.length !== 1) return;
+      const [lot] = productLots;
+      if (taken.has(lot._id)) return;
+
+      taken.add(lot._id);
+      changeBatch(index, {
+        kind: "lot",
+        batchId: lot._id,
+        systemQty: lot.qtyRemaining,
+      });
+    });
+  }, [editable, lots.loading, lots.byProduct, items, changeBatch]);
 
   const [addingProducts, setAddingProducts] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
