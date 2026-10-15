@@ -15,12 +15,14 @@ export { MembershipPlanDetail } from "./components/MembershipPlanDetail";
 export { MembershipCardsPanel } from "./components/MembershipCardsPanel";
 export { MembershipCardDetail } from "./components/MembershipCardDetail";
 export { RenewalPanel } from "./components/RenewalPanel";
-export { MembershipReportScreen } from "./components/MembershipReportScreen";
 export { PetMembershipPanel } from "./components/PetMembershipPanel";
 export { IssueMembershipDialog } from "./components/IssueMembershipDialog";
 export { MembershipStatusBadge } from "./components/MembershipStatusBadge";
 export { BenefitList } from "./components/BenefitList";
-export { MembershipSubTabs } from "./components/MembershipSubTabs";
+export {
+  MembershipSubTabs,
+  MEMBERSHIP_TABS,
+} from "./components/MembershipSubTabs";
 
 export { useMembershipPlans } from "./hooks/useMembershipPlans";
 export { useMembershipPlan } from "./hooks/useMembershipPlan";

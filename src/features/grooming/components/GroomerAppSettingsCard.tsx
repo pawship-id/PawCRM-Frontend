@@ -23,7 +23,9 @@ import { useGroomerAppSettings } from "../hooks/useGroomerAppSettings";
  */
 export function GroomerAppSettingsCard() {
   const { can } = usePermissions();
-  const mayUpdate = can("tenants", "update");
+  // The Pengaturan tab's own grant (14 Oct 2026); tenants:update still writes too.
+  const mayUpdate =
+    can("serviceSettings", "update") || can("tenants", "update");
   const state = useGroomerAppSettings();
   const { draft } = state;
 

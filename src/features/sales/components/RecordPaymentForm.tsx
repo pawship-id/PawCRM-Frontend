@@ -1,72 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-
-import { Alert, Button, FIELD_HEIGHT, TextField } from "@/components";
-import { cn } from "@/lib/utils";
-import { Button as UIButton } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { swalToast } from "@/lib/swal";
-import { ApiError } from "@/services/api-error";
+import { Alert } from "@/components";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
-import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
-import { CASH_ACCOUNT_CATEGORY } from "@/features/accounting";
-import { cashBankAccounts } from "@/features/cash-transactions/hooks/useCashBankAccountOptions";
-import {
-  divideRound,
-  formatMoney,
-  isDecimal,
-  toDecimalString,
-  toMinor,
-  trimDecimal,
-} from "@/utils/decimal";
+import { PaymentForm } from "@/features/cash-transactions/components/RecordPaymentDialog";
 import type { CustomerInvoiceDetail } from "@/types/api";
-import type { ChartOfAccount } from "@/types/accounting";
-
-/** `yyyy-mm-dd` for today, as a date input holds it. */
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 /**
- * Record money arriving against one receivable.
- *
- * ONE FORM FOR DP, CICILAN AND PELUNASAN — that is PCR-032's whole user story,
- * and it is why there is no second control anywhere for "settle in full". The
- * status is derived from what has been paid, so "Lunasi" is a shortcut that
- * fills the amount box, not a different request.
- *
- * THE FORM LIVES BESIDE THE INVOICE rather than on its own route because a
- * payment has no meaning apart from the debt it clears: the amount is bounded by
- * what is outstanding, and offering the field a navigation away from the number
- * it must not exceed is how a typo becomes a 400 the user did not see coming.
- *
- * THE SUBMIT IS LOCKED FOR THE WHOLE FLIGHT, and this is the one guard that
- * genuinely matters. `POST /:id/payments` is NOT idempotent — there is no key to
- * send — so a double-click records the money arriving twice, on two irreversible
- * journal entries. The lock is `saving`, released in BOTH outcomes — see the
- * note at the release: assuming success always unmounts this form was wrong for
- * every partial payment, and left the button spinning until a reload.
- *
- * REFUSALS ARE TOASTS, NOT AN INLINE ALERT — a deliberate departure from
- * docs/ui-rules.md §9, made on request. The tradeoff it accepts: a toast
- * auto-dismisses, so a message the user has to act on can be missed. The
- * server's refusals are given 8 seconds rather than the default 3 for that
- * reason. The local checks keep the default — the user knows what they just
- * typed.
- *
- * THE CLIENT-SIDE BOUND IS A COURTESY, NOT THE AUTHORITY. The server refuses an
- * overpayment against the balance it can see, which is the only one that counts
- * under concurrency — two clerks recording at once both pass this check and one
- * of them loses a compare-and-swap. What the local check buys is a message
- * before a round trip, in the ordinary case.
+ * Record money arriving against one receivable — DP, cicilan and pelunasan
+ * alike (PCR-032). The form itself is the shared `PaymentForm` (moved to
+ * cash-transactions on 15 October 2026 when Pembelian adopted it); this wraps
+ * it with the receivable's ceiling, its request, and its note.
  */
 export function RecordPaymentForm({
   invoice,
@@ -76,292 +19,28 @@ export function RecordPaymentForm({
   invoice: CustomerInvoiceDetail;
   /** Handed the UPDATED invoice the write returned — no refetch needed. */
   onPaid: (updated: CustomerInvoiceDetail) => void;
-  /**
-   * Offered when the form is in a dialog, absent when it is not.
-   *
-   * A CANCEL BUTTON ON A PAGE IS A BUTTON THAT DOES NOTHING — there is nothing
-   * to back out of. In a dialog it is the way out that does not save, and ui-rules
-   * §16 puts it to the left of the primary action.
-   */
+  /** Offered when the form is in a dialog. */
   onCancel?: () => void;
 }) {
-  const [amount, setAmount] = useState("");
-  const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
-  const [accountId, setAccountId] = useState("");
-  const [at, setAt] = useState(today());
-  const [ref, setRef] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  /*
-    THE KAS & BANK ACCOUNTS, straight off the chart — no method, no channel
-    (BO, 22 Sep 2026). Outside the till the person recording a receivable knows
-    which account the money landed in, and that is all the journal needs: the
-    account is what it debits, and whether it is kas or bank decides BKM or BBM.
-    Channels are the cashier's buttons and stay at the till.
-
-    `accountCategory: "cash_bank"` is the same definition the Kas & Bank page and
-    the manual transaction form use, so the three can never disagree.
-  */
-  useEffect(() => {
-    let active = true;
-
-    chartOfAccountsService
-      .list({ accountCategory: CASH_ACCOUNT_CATEGORY, isActive: true, limit: 100 })
-      .then((result) => {
-        if (!active) return;
-        const usable = cashBankAccounts(result.items);
-        setAccounts(usable);
-        // A tenant with a single cash-or-bank account has nothing to choose;
-        // pre-selecting it removes a tap from every payment.
-        setAccountId(usable.length === 1 ? usable[0]._id : "");
-      })
-      .catch(() => {
-        if (active) setAccounts([]);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const outstandingMinor = toMinor(invoice.outstandingAmount) ?? 0n;
-
-  /** A fraction of what is left, rounded to a whole minor unit. */
-  function quickAmount(percentage: bigint) {
-    /*
-      TRIMMED, because `toDecimalString` always writes four decimal places — the
-      scale the ledger stores. A box pre-filled with `38850.0000` reads at a
-      glance as a far larger number than it is, and somebody looked at one and
-      thought the bill had gone up.
-
-      A REAL FRACTION SURVIVES: only trailing zeros go, so an outstanding of
-      155400.5000 still fills as "155400.5". Rounding to whole rupiah here would
-      quietly change what is about to be paid.
-    */
-    setAmount(
-      trimDecimal(
-        toDecimalString(divideRound(outstandingMinor * percentage, 100n)),
-      ),
-    );
-  }
-
-  async function handleSubmit(event: React.FormEvent) {
-    event.preventDefault();
-
-    if (!isDecimal(amount) || (toMinor(amount) ?? 0n) <= 0n) {
-      swalToast("Jumlah pembayaran harus lebih dari nol.", "error");
-      return;
-    }
-    if ((toMinor(amount) ?? 0n) > outstandingMinor) {
-      swalToast(
-        `Jumlah melebihi sisa tagihan ${formatMoney(invoice.outstandingAmount)}.`,
-        "error",
-      );
-      return;
-    }
-    if (!accountId) {
-      swalToast("Pilih akun kas atau bank tujuan uang masuknya.", "error");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const updated = await customerInvoiceService.recordPayment(invoice._id, {
-        amount,
-        accountId,
-        at,
-        // Empty means "no reference", which the API models as null/absent — an
-        // empty string would be stored as one and shown as a blank bank ref.
-        ref: ref.trim() || undefined,
-      });
-
-      swalToast(`Pembayaran ${formatMoney(amount)} tercatat.`);
-      setAmount("");
-      setRef("");
-      /*
-        RELEASED ON SUCCESS TOO, and BEFORE `onPaid`. This used to be released
-        only on failure, on the reasoning that a successful payment unmounts the
-        form — which is true only when the invoice becomes SETTLED. A partial
-        payment leaves the same branch of the parent rendering the same element
-        in the same position, so React keeps this component's state: the button
-        stayed disabled with a spinner until the page was reloaded, after every
-        instalment.
-
-        Before `onPaid` because that re-renders the parent and may unmount this
-        form; setting state afterwards would be setting it on a dead component.
-      */
-      setSaving(false);
-      onPaid(updated);
-    } catch (caught) {
-      /*
-        Every refusal here is actionable and specific — "melebihi sisa tagihan",
-        "sudah lunas", "sudah dibayar orang lain sementara pembayaran ini
-        dicatat". `fullMessage` carries the backend's reason alongside the
-        message, which is the half that says what to do next, so the toast gets
-        longer than the default three seconds to be read in.
-      */
-      swalToast(
-        caught instanceof ApiError
-          ? caught.fullMessage
-          : "Gagal menyimpan pembayaran. Coba lagi.",
-        "error",
-        8000,
-      );
-      setSaving(false);
-    }
-  }
-
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-      {/* NOT DECORATION: partial payment is the normal case on terms, and "half
-          now" is a decision made far more often than an arbitrary figure is
-          typed. "Lunasi" fills the box with the outstanding amount — it is not a
-          different request. */}
-      <div className="flex gap-1">
-        {([25n, 50n, 100n] as const).map((percentage) => (
-          <UIButton
-            key={String(percentage)}
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={saving}
-            onClick={() => quickAmount(percentage)}
-          >
-            {percentage === 100n ? "Lunasi" : `${percentage}%`}
-          </UIButton>
-        ))}
-      </div>
-
-
-      {/*
-        SIDE BY SIDE, the way the mockup lays them out: how much and when are one
-        thought, and a full-width box each pushes the reference field below the
-        fold of a dialog. Stacks on a phone.
-      */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <TextField
-          label="Jumlah diterima"
-          name="amount"
-          inputMode="decimal"
-          value={amount}
-          disabled={saving}
-          onChange={(event) => setAmount(event.target.value)}
-          /*
-            THE FIGURE ECHOED BACK IN RUPIAH, beside the ceiling it must not pass.
-
-            The box itself stays a plain number — grouping it as the caret moves
-            fights the caret, and a payment field that jumps the cursor mid-typing
-            is worse than one that reads plainly. So the formatting happens
-            underneath, where it can be checked without being edited.
-
-            Only once something valid is in the box: "Rp 0" under an empty field
-            is a figure nobody entered.
-          */
-          hint={
-            isDecimal(amount) && (toMinor(amount) ?? 0n) > 0n
-              ? `${formatMoney(amount)} · maksimal ${formatMoney(invoice.outstandingAmount)}`
-              : `Maksimal ${formatMoney(invoice.outstandingAmount)}`
-          }
-        />
-
-        {/* The day the money MOVED, not the day this row was typed. A transfer
-            received on the 31st and recorded on the 2nd is the previous month's
-            cash inflow, and the journal entry is dated from this field. */}
-        <TextField
-          label="Tanggal terima"
-          name="at"
-          type="date"
-          value={at}
-          disabled={saving}
-          onChange={(event) => setAt(event.target.value)}
-          hint="Tanggal uang benar-benar masuk — ini yang dipakai jurnalnya."
-        />
-      </div>
-
-      {/*
-        WHICH ACCOUNT THE MONEY LANDED IN — the account the journal entry debits.
-        "1102 · Bank BCA", the same label the manual transaction form uses.
-
-        FULL WIDTH AND 44px: `SelectTrigger` is vendored shadcn and defaults to
-        `w-fit`; ui-rules §16 sets form controls at 44px. Applied here rather than
-        in `ui/select.tsx`, which is also the control behind every filter.
-      */}
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="payment-account">Masuk ke</Label>
-        {accounts.length === 0 ? (
-          <p className="text-sm text-danger">
-            Belum ada akun berkategori Kas &amp; Bank. Tambah dulu di Daftar
-            Akun.
-          </p>
-        ) : (
-          <Select
-            value={accountId}
-            disabled={saving}
-            onValueChange={setAccountId}
-          >
-            <SelectTrigger
-              id="payment-account"
-              aria-label="Masuk ke"
-              className={cn("w-full", FIELD_HEIGHT)}
-            >
-              <SelectValue placeholder="Pilih akun kas atau bank" />
-            </SelectTrigger>
-            <SelectContent>
-              {accounts.map((account) => (
-                <SelectItem key={account._id} value={account._id}>
-                  {account.code} · {account.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-        <p className="text-xs text-muted">
-          Akun ini yang didebit di jurnal, jadi rekonsiliasinya bisa ditelusuri
-          per akun.
-        </p>
-      </div>
-
-      <TextField
-        label="No. referensi"
-        name="ref"
-        value={ref}
-        disabled={saving}
-        onChange={(event) => setRef(event.target.value)}
-        hint="Opsional. Nomor mutasi bank atau trace QRIS/EDC untuk rekonsiliasi."
-      />
-
-      {/*
-        WHAT HAPPENS AFTER SAVE, said before it. "DP sebagian" and "Lunas" are
-        not buttons anybody presses — the status follows the arithmetic — and
-        somebody who does not know that goes looking for the step that marks it
-        paid.
-      */}
-      <Alert variant="info">
-        Jumlah tidak boleh melebihi sisa tagihan. Setelah disimpan, status faktur
-        naik sendiri ke <strong>DP sebagian</strong> atau <strong>Lunas</strong>{" "}
-        — tidak ada aksi manual terpisah.
-      </Alert>
-
-      {/*
-        BATAL LEFT, SIMPAN RIGHT — ui-rules §16, and the same order every other
-        form in this product uses. Batal only exists inside a dialog; on a page
-        there is nothing to back out of.
-      */}
-      <div className="flex items-center justify-end gap-2">
-        {onCancel && (
-          <UIButton
-            type="button"
-            variant="secondary"
-            disabled={saving}
-            onClick={onCancel}
-          >
-            Batal
-          </UIButton>
-        )}
-        <Button type="submit" loading={saving} disabled={saving}>
-          Simpan pembayaran
-        </Button>
-      </div>
-    </form>
+    <PaymentForm
+      direction="in"
+      ceiling={invoice.outstandingAmount}
+      onCancel={onCancel}
+      onSubmit={async (input) => {
+        const updated = await customerInvoiceService.recordPayment(
+          invoice._id,
+          input,
+        );
+        onPaid(updated);
+      }}
+      note={
+        <Alert variant="info">
+          Jumlah tidak boleh melebihi sisa tagihan. Setelah disimpan, status
+          faktur naik sendiri ke <strong>DP sebagian</strong> atau{" "}
+          <strong>Lunas</strong> — tidak ada aksi manual terpisah.
+        </Alert>
+      }
+    />
   );
 }

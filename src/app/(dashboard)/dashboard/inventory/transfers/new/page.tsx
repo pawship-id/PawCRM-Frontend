@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Transfer baru · Buloo" };
 
 export default function NewStockTransferPage() {
   return (
-    <RequirePermission feature="stockMovements" action="create">
+    <RequirePermission feature="stockTransfers" action="create">
       <div className="flex flex-col gap-6">
         <div>
           <Breadcrumb

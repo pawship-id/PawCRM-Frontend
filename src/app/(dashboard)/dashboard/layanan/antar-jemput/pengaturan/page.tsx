@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 /** Commission lives on the tenant, so reading it is `tenants:read`, as Grooming's. */
 export default function AntarJemputSettingsPage() {
   return (
-    <RequirePermission feature="tenants">
+    <RequirePermission feature="serviceSettings">
       <AntarJemputSettingsScreen />
     </RequirePermission>
   );

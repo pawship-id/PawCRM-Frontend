@@ -27,12 +27,8 @@ export default function CommissionPage() {
     <div className="flex flex-col gap-6">
       <AccountingModuleHeader />
 
-      <RequirePermission
-        anyOf={[
-          { feature: "commissionReports", action: "read" },
-          { feature: "users", action: "read" },
-        ]}
-      >
+      {/* The Komisi tab's own "Lihat" (14 Oct 2026). */}
+      <RequirePermission feature="commissionReports">
         <CommissionScreen now={new Date().toISOString()} />
       </RequirePermission>
     </div>

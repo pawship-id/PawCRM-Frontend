@@ -22,7 +22,7 @@ export default async function EditStockTransferPage({
   const { id } = await params;
 
   return (
-    <RequirePermission feature="stockMovements" action="create">
+    <RequirePermission feature="stockTransfers" action="create">
       <div className="flex flex-col gap-6">
         <div>
           <Breadcrumb

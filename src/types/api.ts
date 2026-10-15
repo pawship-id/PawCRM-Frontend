@@ -450,7 +450,10 @@ export interface PermissionActionInfo {
   sensitive: boolean;
 }
 
-/** A screen (layar) inside a module, and the catalog features it covers. */
+/**
+ * A tab (or a page with no tabs) and the `feature:action` pairs it shows — a
+ * feature may be split across tabs by action.
+ */
 export interface PermissionScreen {
   key: string;
   label: string;
@@ -458,13 +461,23 @@ export interface PermissionScreen {
   features: { feature: string; actions: PermissionActionInfo[] }[];
 }
 
-/** A module (modul) — the unit an owner thinks in and a plan can switch off. */
+/** A page (halaman) of a module, as the sidebar names it. */
+export interface PermissionPage {
+  key: string;
+  label: string;
+  description: string | null;
+  /** A page with no tabs of its own — drawn as one row, `tabs` holds it alone. */
+  single: boolean;
+  tabs: PermissionScreen[];
+}
+
+/** A module (modul) — the unit an owner thinks in and Buloo admin switches. */
 export interface PermissionModule {
   key: string;
   label: string;
-  /** False for Pengaturan & Sistem, which can never be switched off. */
+  /** False for Pelanggan and Pengaturan, which can never be switched off. */
   toggleable?: boolean;
-  screens: PermissionScreen[];
+  pages: PermissionPage[];
 }
 
 /**
@@ -5779,7 +5792,24 @@ export type PurchaseType = "beli_putus" | "konsinyasi";
  * `pending` — filed, goods not confirmed on the shelf, nothing posted.
  * `received` — confirmed; stock, lots and the ledger are posted.
  */
-export type GoodsReceiptStatus = "pending" | "received";
+/**
+ * pending → partial → received, or closed short from partial (14 October 2026:
+ * receiving is per line and may take several events).
+ */
+export type GoodsReceiptStatus = "pending" | "partial" | "received" | "closed";
+
+/** Where one line of a receipt stands. */
+export type GoodsReceiptLineStatus =
+  | "pending"
+  | "partial"
+  | "received"
+  | "cancelled";
+
+/** `invoice`: the lines were copied from a supplier invoice and cannot change. */
+export type GoodsReceiptOrigin = "manual" | "invoice";
+
+/** A list filter: a status, or `open` — pending and partial, still expected. */
+export type GoodsReceiptStatusFilter = GoodsReceiptStatus | "open";
 
 export interface GoodsReceiptListRow {
   _id: string;
@@ -5845,7 +5875,7 @@ export type GoodsReceiptSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
  * an absent one: somebody eventually builds a toggle for it.
  */
 export interface GoodsReceiptListQuery {
-  status?: GoodsReceiptStatus;
+  status?: GoodsReceiptStatusFilter;
   page?: number;
   limit?: number;
   /** Free-text over receipt number / notes. */
@@ -5904,10 +5934,25 @@ export interface GoodsReceiptDetailItem {
   productName: string | null;
   /** The unit received IN — a line reading "8" without "kg" gets miscounted. */
   productUnit: string | null;
+  /** Receiving a line of this product needs an expiry date when it has no lot. */
+  productHasExpiry?: boolean;
   batchId: string | null;
+  /** Lot details typed at filing, or on the first receiving of the line. */
+  supplierBatchCode?: string | null;
+  expiryDate?: string | null;
+  /** ORDERED — what the receipt (and its invoice) bills. */
   qty: string;
   costPerUnit: string;
   subtotal: string;
+  /** Arrived and posted so far. */
+  receivedQty: string;
+  receivedSubtotal: string;
+  /** Given up when the receipt was closed short. "0" otherwise. */
+  cancelledQty: string;
+  /** Still expected: qty − received − cancelled. */
+  outstandingQty: string;
+  receiveStatus: GoodsReceiptLineStatus;
+  invoiceItemId?: string | null;
   /**
    * Σ of every SUBMITTED purchase return against this line. Drafts do not count:
    * one has moved no stock, and counting it would show a line as spent while the
@@ -5915,7 +5960,7 @@ export interface GoodsReceiptDetailItem {
    */
   returnedQty: string;
   /**
-   * `qty − returnedQty` — what may still be sent back.
+   * `receivedQty − returnedQty` — what may still be sent back.
    *
    * ADVISORY, and the distinction matters. The server re-reads this inside the
    * submit and refuses an over-claim regardless of what a form was shown, so a
@@ -5924,6 +5969,33 @@ export interface GoodsReceiptDetailItem {
    * submit is refused.
    */
   remainingQty: string;
+}
+
+/** One line of a receiving event: how far the line moved. */
+export interface GoodsReceiptEventLine {
+  itemId: string;
+  productId: string;
+  name: string | null;
+  /** For a close: ordered → what it was cut down to. */
+  qtyBefore: string;
+  qtyAfter: string;
+  qtyDelta: string;
+  valueDelta: string;
+}
+
+/** One receiving event — goods received / corrected, or the close. */
+export interface GoodsReceiptEvent {
+  eventId: string;
+  type: "receive" | "close";
+  at: string;
+  lines: GoodsReceiptEventLine[];
+  valueDelta: string;
+  taxDelta: string;
+  journalEntryId: string | null;
+  notes: string | null;
+  createdBy: string | null;
+  createdByName: string | null;
+  createdAt: string;
 }
 
 /**
@@ -5958,12 +6030,20 @@ export interface GoodsReceiptDetail {
   createdByName: string | null;
   receiptDate: string;
   purchaseType: PurchaseType;
+  origin: GoodsReceiptOrigin;
   items: GoodsReceiptDetailItem[];
-  /** EX-TAX — what was debited to inventory. */
+  /** EX-TAX — the ORDERED value. */
   total: string;
   taxAmount: string;
   /** `total + taxAmount`. Derived server-side so a third total cannot disagree. */
   grandTotal: string;
+  /** What the ledger holds so far — the receiving progress in rupiah. */
+  receivedTotal: string;
+  receivedTax: string;
+  /** Receiving history, oldest first. */
+  events: GoodsReceiptEvent[];
+  closedAt: string | null;
+  closedByName: string | null;
   invoiceId: string | null;
   /** Null on a consignment receipt: nothing was bought, so nothing was posted. */
   journalEntryId: string | null;
@@ -5974,6 +6054,8 @@ export interface GoodsReceiptDetail {
 /** One delivered line, as a client sends it. Money and qty are decimal strings. */
 export interface CreateGoodsReceiptItemInput {
   productId: string;
+  /** How much arrived with this save (0..qty). Absent = not received yet. */
+  receivedQty?: string;
   /** Strictly positive — a receipt records goods ARRIVING. */
   qty: string;
   /**
@@ -6029,6 +6111,15 @@ export interface CreateGoodsReceiptInput {
   taxAmount?: string;
   notes?: string;
   items: CreateGoodsReceiptItemInput[];
+  /**
+   * File the supplier's invoice in the same save — its lines are COPIED from
+   * this receipt, so the two documents say the same thing. Beli putus only.
+   */
+  invoice?: {
+    invoiceNumber: string;
+    invoiceDate?: string;
+    notes?: string;
+  };
 }
 
 /**
@@ -6040,9 +6131,24 @@ export interface CreateGoodsReceiptInput {
  * POST /purchase-invoices. Absent is not "no debt": a `beli_putus` receipt
  * credits Utang Usaha when it posts either way. Forbidden on `konsinyasi`.
  */
+/** One line of a receiving: its NEW TOTAL received quantity. */
+export interface ReceiveGoodsReceiptLineInput {
+  itemId: string;
+  /** Join a lot already on the shelf instead of describing a new one. */
+  batchId?: string | null;
+  /** The total now on the shelf. Below the current value = a correction. */
+  receivedQty: string;
+  /** Only read for a line that has no lot yet. */
+  expiryDate?: string | null;
+  supplierBatchCode?: string | null;
+}
+
 export interface ReceiveGoodsReceiptInput {
   /** ISO. When the goods were confirmed on the shelf; defaults to now. */
   receivedAt?: string;
+  /** Omitted: every line is received in full. */
+  lines?: ReceiveGoodsReceiptLineInput[];
+  notes?: string;
   invoice?: {
     /** The VENDOR'S own number, from their document. Unique per vendor. */
     invoiceNumber: string;
@@ -6164,7 +6270,15 @@ export interface PurchaseInvoiceListRow {
   branchId: string;
   /** The branch's name, resolved server-side. Null if it was hard-deleted. */
   branchName: string | null;
-  goodsReceiptId: string;
+  /** Null while a manual invoice has no goods receipt yet. */
+  goodsReceiptId: string | null;
+  /** A goods receipt has been made from it — its lines can no longer change. */
+  locked: boolean;
+  /** Received goods value + PPN posted so far — the payment ceiling. */
+  receivedAmount: string;
+  /** What may be paid now: received less paid. */
+  payableAmount: string;
+  itemCount?: number;
   /**
    * WHERE THE GOODS LANDED — copied from the delivery when the bill was filed,
    * so the list can be FILTERED by it: an index cannot span two collections.
@@ -6215,7 +6329,10 @@ export interface PurchaseInvoicePayment {
   /** When the money actually MOVED, which is what the ledger entry is dated by. */
   at: string;
   amount: string;
-  method: PaymentMethod;
+  /** Null for a payment recorded against a Kas & Bank account (no method). */
+  method: PaymentMethod | null;
+  /** The Kas & Bank account it left, when recorded that way. */
+  cashAccountName?: string | null;
   /** Bank reference, giro number or QRIS transaction id. */
   ref: string | null;
   byUserId: string | null;
@@ -6233,6 +6350,14 @@ export interface PurchaseInvoicePayment {
   /** Set when the payment was cancelled. The row stays; it no longer counts. */
   voidedAt?: string | null;
   isVoided?: boolean;
+  voidReason?: string | null;
+  /** The entry that reversed it, when cancelled. */
+  reversalJournalEntryId?: string | null;
+  /** The entries' human numbers, beside their ids. */
+  journalEntryNumber?: string | null;
+  reversalJournalEntryNumber?: string | null;
+  /** "backoffice" for everything recorded on this screen. */
+  recordedVia?: string | null;
 }
 
 /**
@@ -6248,10 +6373,68 @@ export interface PurchaseInvoiceDetail extends Omit<
   "paymentCount"
 > {
   goodsReceiptNumber: string | null;
+  goodsReceiptStatus: GoodsReceiptStatus | null;
   /** Who filed the bill. Null when that user has been deleted since. */
   createdByName: string | null;
   payments: PurchaseInvoicePayment[];
   journalEntryId: string | null;
+  items: PurchaseInvoiceItem[];
+}
+
+/** One billed line. The same lines as the goods receipt. */
+export interface PurchaseInvoiceItem {
+  invoiceItemId: string;
+  productId: string;
+  name: string;
+  productSku: string | null;
+  productName: string | null;
+  productUnit: string | null;
+  productHasExpiry?: boolean;
+  qty: string;
+  costPerUnit: string;
+  subtotal: string;
+  cancelledQty: string | null;
+  /** Null until a goods receipt exists. */
+  receivedQty: string | null;
+}
+
+/** One invoice line on a receipt made from the invoice: its lot and what arrived. */
+export interface ReceiptFromInvoiceItemInput {
+  invoiceItemId: string;
+  receivedQty?: string;
+  batchId?: string;
+  expiryDate?: string;
+  supplierBatchCode?: string;
+}
+
+/** One line of a manual invoice. */
+export interface PurchaseInvoiceLineInput {
+  invoiceItemId?: string;
+  productId: string;
+  qty: string;
+  costPerUnit: string;
+}
+
+/** A manual invoice — filed before any goods. Also the edit body. */
+export interface ManualPurchaseInvoiceInput {
+  supplierId: string;
+  warehouseId: string;
+  invoiceNumber: string;
+  invoiceDate?: string;
+  taxAmount?: string;
+  notes?: string;
+  items: PurchaseInvoiceLineInput[];
+}
+
+/** One row of a receipt's / invoice's merged history. */
+export interface PurchaseActivityEntry {
+  _id: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  at: string;
+  actorName: string | null;
+  metadata: Record<string, unknown>;
 }
 
 /**
@@ -6283,6 +6466,8 @@ export interface PurchaseInvoiceListQuery {
    */
   warehouseId?: string;
   goodsReceiptId?: string;
+  /** false: manual invoices with no goods receipt yet. */
+  linked?: boolean;
   status?: InvoiceStatus;
   outstanding?: boolean;
   overdue?: boolean;
@@ -6355,7 +6540,8 @@ export interface CreatePurchaseInvoiceInput {
   invoiceNumber: string;
   /** Defaults to now. The date the supplier ISSUED the bill. */
   invoiceDate?: string;
-  subtotal: string;
+  /** Optional now — the amounts are copied from the receipt. */
+  subtotal?: string;
   taxAmount?: string;
   notes?: string;
 }
@@ -6430,26 +6616,16 @@ export interface CreateConsignmentSettlementInput {
  * on a bank statement.
  */
 export interface RecordPaymentInput {
-  /** Strictly positive, and never more than `outstandingAmount`. */
+  /** Strictly positive, never more than what may be paid now. */
   amount: string;
   /**
-   * What KIND of payment this is — what a reconciler filters by.
-   *
-   * Distinct from `channelId`, which says which ACCOUNT it left. The server
-   * checks the two agree: recording a cash payment under `transfer` would make
-   * that filter lie.
+   * The Kas & Bank account the money LEFT (15 October 2026) — what the back
+   * office picks, the same shape as the receivables payment. Send this, OR
+   * the older `method` + `channelId` pair; never both.
    */
-  method: PaymentMethod;
-  /**
-   * The account the money leaves from — a `paymentChannels` row.
-   *
-   * REQUIRED. The account used to be derived from `method` alone, so a tenant
-   * with three bank accounts paid every supplier from one "1102 Bank" line and
-   * the ledger could not say which — while the selling side, which has named
-   * channels, answered exactly that.
-   */
-  channelId: string;
-  /** Defaults to now. The day the money MOVED, which dates the ledger entry. */
+  accountId?: string;
+  method?: PaymentMethod;
+  channelId?: string;
   at?: string;
   ref?: string;
 }

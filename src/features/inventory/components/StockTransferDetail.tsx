@@ -208,7 +208,7 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
           </Button>
 
           {inTransit && (
-            <Can feature="stockMovements" action="create">
+            <Can feature="stockTransfers" action="create">
               <Button variant="secondary" asChild>
                 <Link
                   href={`/dashboard/inventory/transfers/${transfer._id}/edit`}

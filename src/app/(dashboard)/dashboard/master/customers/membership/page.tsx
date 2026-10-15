@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 
 import { CustomerModuleHeader } from "@/features/customers";
-import { MembershipPlansPanel, MembershipSubTabs } from "@/features/memberships";
+import {
+  MembershipPlansPanel,
+  MembershipSubTabs,
+} from "@/features/memberships";
 import { RequirePermission } from "@/features/permissions";
+import { MEMBERSHIP_TABS } from "@/features/memberships";
 
 export const metadata: Metadata = {
   title: "Membership · Pelanggan · Buloo",
@@ -21,7 +25,7 @@ export const metadata: Metadata = {
  */
 export default function CustomerMembershipPage() {
   return (
-    <RequirePermission feature="membershipPlans">
+    <RequirePermission feature="membershipPlans" redirectTo={MEMBERSHIP_TABS}>
       <div className="flex flex-col gap-6">
         <CustomerModuleHeader />
         <MembershipSubTabs />

@@ -1,14 +1,15 @@
 import type { Metadata } from "next";
 
-import {
-  PageHeading,
-  PURCHASING_CRUMBS,
-  ReceiptDetail,
-} from "@/features/purchasing";
+import { ReceiptDetail } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Detail penerimaan · Buloo" };
 
+/**
+ * One goods receipt. The heading is drawn by `ReceiptDetail` itself — its title
+ * is the receipt NUMBER, which only the loaded document knows (15 October
+ * 2026, matching the invoice pages).
+ */
 export default async function ReceiptDetailPage({
   params,
 }: {
@@ -18,17 +19,7 @@ export default async function ReceiptDetailPage({
 
   return (
     <RequirePermission feature="goodsReceipts" action="read">
-      <div className="flex flex-col gap-6">
-        <PageHeading
-          crumbs={[
-            PURCHASING_CRUMBS.hub,
-            PURCHASING_CRUMBS.receipts,
-            { label: "Detail penerimaan" },
-          ]}
-          title="Detail penerimaan"
-        />
-        <ReceiptDetail receiptId={id} />
-      </div>
+      <ReceiptDetail receiptId={id} />
     </RequirePermission>
   );
 }

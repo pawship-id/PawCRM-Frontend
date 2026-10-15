@@ -37,6 +37,9 @@ export { InvoiceDetail } from "./components/InvoiceDetail";
 // Filing the vendor's bill against a delivery. Its own entry point because it is
 // its own route — the payable already exists by the time this screen is opened.
 export { FileInvoiceForm } from "./components/FileInvoiceForm";
+export { ManualInvoiceForm } from "./components/ManualInvoiceForm";
+export { EditInvoiceScreen } from "./components/EditInvoiceScreen";
+export { PurchasePaymentDetail } from "./components/PurchasePaymentDetail";
 export { PurchaseReturnsScreen } from "./components/PurchaseReturnsScreen";
 export { PurchaseReturnForm } from "./components/PurchaseReturnForm";
 // A return has a life before it posts, so unlike a receipt it has a detail

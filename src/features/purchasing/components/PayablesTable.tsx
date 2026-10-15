@@ -114,6 +114,13 @@ export function PayablesTable({
                       query={search}
                     />
                   </Link>
+                  {/* A manual bill still waiting for its goods owes nothing
+                      yet — said here, so "Sisa" is not read as payable. */}
+                  {!invoice.goodsReceiptId && (
+                    <span className="block text-xs text-muted">
+                      barang belum diterima
+                    </span>
+                  )}
                 </TableCell>
 
                 <TableCell className="text-sm font-medium">
@@ -175,7 +182,11 @@ export function PayablesTable({
                 <TableCell className="text-right whitespace-nowrap">
                   <Button variant="ghost" size="sm" asChild>
                     <Link href={href}>
-                      {invoice.status !== "paid" && canPay ? "Bayar" : "Detail"}
+                      {invoice.status !== "paid" &&
+                      canPay &&
+                      isPositive(invoice.payableAmount ?? invoice.outstandingAmount)
+                        ? "Bayar"
+                        : "Detail"}
                     </Link>
                   </Button>
                 </TableCell>

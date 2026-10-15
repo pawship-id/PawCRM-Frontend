@@ -64,16 +64,26 @@ describe("AccountingModuleHeader", () => {
     );
   });
 
-  it("gives the payroll grant the Komisi tab and nothing else", () => {
-    // The recap names every groomer and what they are owed, so it goes with the
-    // staff register rather than with a finance grant. The hub tab is ungated
-    // and rides along.
+  /*
+    EACH TAB ANSWERS TO ITS OWN "LIHAT" since 14 October 2026 — Ringkasan too,
+    so it is no longer shown to every role that reaches the module.
+  */
+  it("gives the Komisi grant the Komisi tab and nothing else", () => {
+    renderWithAuth(<AccountingModuleHeader />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "commissionReports", actions: ["read"] }],
+    });
+
+    expect(tabNames()).toEqual(["Komisi"]);
+  });
+
+  it("no longer opens Komisi on the staff register alone", () => {
     renderWithAuth(<AccountingModuleHeader />, {
       isSuperAdmin: false,
       permissions: [{ feature: "users", actions: ["read"] }],
     });
 
-    expect(tabNames()).toEqual(["Ringkasan", "Komisi"]);
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
   });
 
   it("gives a bookkeeper the ledger without the payroll", () => {
@@ -82,50 +92,32 @@ describe("AccountingModuleHeader", () => {
       permissions: [{ feature: "journalEntries", actions: ["read"] }],
     });
 
-    expect(tabNames()).toEqual(["Ringkasan", "Jurnal"]);
+    expect(tabNames()).toEqual(["Jurnal"]);
   });
 
-  /**
-   * THE CHART OF ACCOUNTS IS NOT A TAB ANY MORE. It was one from 12 September
-   * 2026 as a stopgap — the mockup files it under Pengaturan, and that section
-   * did not exist yet. It does now, so the grant that used to earn a tab here
-   * earns nothing here.
-   *
-   * Asserted as an absence rather than dropped, because "this grant no longer
-   * opens a finance tab" is the fact the move turns on, and a deleted test would
-   * let the tab drift back in unnoticed.
-   */
-  it("gives the chart-of-accounts grant no tab of its own", () => {
+  it("shows Ringkasan only to its own grant", () => {
     renderWithAuth(<AccountingModuleHeader />, {
       isSuperAdmin: false,
-      permissions: [{ feature: "chartOfAccounts", actions: ["read"] }],
+      permissions: [{ feature: "financeSummary", actions: ["read"] }],
     });
 
     expect(tabNames()).toEqual(["Ringkasan"]);
   });
 
-  /**
-   * THE MOVE MUST NOT TAKE THE LIST AWAY FROM ANYBODY. Transaksi stopped being a
-   * tab, so the only way in is now Kas & Bank — and gating that on
-   * `paymentChannels` alone would have locked out every role that could read
-   * transactions and not channels. Either grant opens it; each half is gated
-   * again inside.
-   */
-  it("still offers a way in to a role that may read transactions but not channels", () => {
+  it("opens Kas & Bank on either of its sub-tabs, not on the channel list", () => {
     renderWithAuth(<AccountingModuleHeader />, {
       isSuperAdmin: false,
-      permissions: [{ feature: "cashTransactions", actions: ["read"] }],
+      permissions: [{ feature: "fixedCosts", actions: ["read"] }],
     });
-
-    expect(tabNames()).toEqual(["Ringkasan", "Kas & Bank"]);
+    expect(tabNames()).toEqual(["Kas & Bank"]);
   });
 
-  it("gives the channel grant the Kas & Bank tab and nothing else", () => {
+  it("gives the channel grant no tab — the channel list is in Pengaturan", () => {
     renderWithAuth(<AccountingModuleHeader />, {
       isSuperAdmin: false,
       permissions: [{ feature: "paymentChannels", actions: ["read"] }],
     });
 
-    expect(tabNames()).toEqual(["Ringkasan", "Kas & Bank"]);
+    expect(screen.queryAllByRole("link")).toHaveLength(0);
   });
 });

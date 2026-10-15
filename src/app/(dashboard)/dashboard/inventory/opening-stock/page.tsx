@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Stok Awal · Buloo" };
 
 export default function OpeningStockPage() {
   return (
-    <RequirePermission feature="products" action="create">
+    <RequirePermission feature="openingStock">
       <div className="flex flex-col gap-6">
         <div>
           <Breadcrumb

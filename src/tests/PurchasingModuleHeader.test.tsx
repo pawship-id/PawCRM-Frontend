@@ -84,9 +84,8 @@ describe("PurchasingModuleHeader", () => {
       permissions: [{ feature: "purchaseInvoices", actions: ["read"] }],
     });
 
-    // The hub rides along ungated — it gates each of its own cards, so it is
-    // exactly as much as the role may read.
-    expect(tabNames()).toEqual(["Ringkasan", "Faktur"]);
+    // Ringkasan has its own "Lihat" since 14 October 2026.
+    expect(tabNames()).toEqual(["Faktur"]);
   });
 
   it("renders the tab's own headline figure in the action slot", () => {

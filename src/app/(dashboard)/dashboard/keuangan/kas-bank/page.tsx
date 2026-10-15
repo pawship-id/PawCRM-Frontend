@@ -50,10 +50,8 @@ export default async function KasBankPage({
 
   return (
     <RequirePermission
-      anyOf={[
-        { feature: "chartOfAccounts" },
-        { feature: "cashTransactions" },
-      ]}
+      // The Kas & Bank tab: its Transaksi or Biaya Tetap sub-tab (14 Oct 2026).
+      anyOf={[{ feature: "cashTransactions" }, { feature: "fixedCosts" }]}
     >
       <KasBankScreen
         key={JSON.stringify(initialQuery)}

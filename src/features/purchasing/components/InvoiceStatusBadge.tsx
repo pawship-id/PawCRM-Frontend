@@ -29,7 +29,7 @@ const TONE: Record<InvoiceStatus, string> = {
 
 const LABEL: Record<InvoiceStatus, string> = {
   unpaid: "belum dibayar",
-  partial: "sebagian",
+  partial: "dibayar sebagian",
   paid: "lunas",
 };
 

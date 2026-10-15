@@ -8,7 +8,7 @@ import type {
   GoodsReceiptListQuery,
   GoodsReceiptListRow,
   GoodsReceiptSort,
-  GoodsReceiptStatus,
+  GoodsReceiptStatusFilter,
   PageResult,
   PurchaseType,
 } from "@/types/api";
@@ -34,7 +34,7 @@ export interface GoodsReceiptsQuery {
   /** "" = both purchase types. */
   purchaseType: PurchaseType | "";
   /** "" = pending and received alike. */
-  status: GoodsReceiptStatus | "";
+  status: GoodsReceiptStatusFilter | "";
   /** `yyyy-mm-dd`, as the date inputs hold them. "" = unbounded. */
   dateFrom: string;
   dateTo: string;

@@ -5,6 +5,7 @@ import {
   StockCorrectionModuleHeader,
 } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
+import { INVENTORY_TAB } from "@/features/inventory/pages";
 
 export const metadata: Metadata = { title: "Opname · Koreksi Stok · Buloo" };
 
@@ -24,7 +25,10 @@ export default function OpnamePage() {
       {/* The nav already hides this module from a role without the grant; this
           covers direct URL entry. Opening a count and discarding a draft carry
           their own checks inside — reading the list is a different privilege. */}
-      <RequirePermission feature="stockOpnames">
+      <RequirePermission
+        feature="stockOpnames"
+        redirectTo={[INVENTORY_TAB.adjustments]}
+      >
         <OpnameScreen />
       </RequirePermission>
     </div>

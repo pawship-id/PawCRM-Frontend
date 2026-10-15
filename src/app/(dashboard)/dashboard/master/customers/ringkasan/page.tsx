@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { CustomerSummaryScreen } from "@/features/customers";
 import { RequirePermission } from "@/features/permissions";
+import { CUSTOMER_TABS } from "@/features/customers/components/CustomerModuleHeader";
 
 export const metadata: Metadata = {
   title: "Ringkasan · Pelanggan · Buloo",
@@ -16,7 +17,7 @@ export const metadata: Metadata = {
  */
 export default function CustomerSummaryPage() {
   return (
-    <RequirePermission feature="customers">
+    <RequirePermission feature="customerSummary" redirectTo={CUSTOMER_TABS}>
       <CustomerSummaryScreen />
     </RequirePermission>
   );

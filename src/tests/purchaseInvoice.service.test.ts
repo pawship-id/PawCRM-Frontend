@@ -9,11 +9,10 @@ import type { PurchaseInvoiceListQuery } from "@/types/api";
  * apiClient is spied on rather than fetch, so these assert what the service ASKS
  * FOR without a server — the same level goodsReceipt.service.test.ts works at.
  *
- * THE ABSENCES ARE ASSERTED TOO, and they are half the point of this file. An
- * invoice is immutable and a payment cannot be withdrawn: no `PATCH`, no
- * `DELETE`, no `includeDeleted`. Those are backend design decisions — every
- * payment posts a journal entry that cannot be edited — and a frontend that
- * quietly grew a method for one of them would ship a button that 404s.
+ * A MANUAL invoice (one no goods receipt has been made from yet) can be edited
+ * with `PUT` and deleted with `DELETE`; the server refuses both once a receipt
+ * locks it. A payment still cannot be withdrawn from here — that is a reversal
+ * in the ledger — so there is no `removePayment`.
  */
 
 /**
@@ -40,6 +39,7 @@ const EVERY_FILTER: Required<PurchaseInvoiceListQuery> = {
   branchIds: ["b1", "b2"],
   warehouseId: "wh1",
   goodsReceiptId: "gr1",
+  linked: false,
   status: "partial",
   outstanding: true,
   overdue: true,
@@ -185,9 +185,41 @@ describe("purchaseInvoiceService", () => {
    * either here would be a button that 404s — and, worse, an implied promise that
    * a posted payment can be taken back.
    */
-  it("exposes no update or delete", () => {
-    expect(purchaseInvoiceService).not.toHaveProperty("update");
-    expect(purchaseInvoiceService).not.toHaveProperty("remove");
+  it("edits a manual invoice with PUT", async () => {
+    const put = jest.spyOn(apiClient, "put").mockResolvedValue({} as never);
+    const input = {
+      supplierId: "s1",
+      warehouseId: "wh1",
+      invoiceNumber: "INV/2026/014",
+      invoiceDate: "2026-10-14",
+      taxAmount: "11000",
+      items: [{ productId: "p1", qty: "10", costPerUnit: "10000" }],
+    };
+
+    await purchaseInvoiceService.update("pi1", input);
+
+    expect(put).toHaveBeenCalledWith("/purchase-invoices/pi1", input);
+  });
+
+  it("deletes a manual invoice with DELETE", async () => {
+    const del = jest
+      .spyOn(apiClient, "delete")
+      .mockResolvedValue({} as never);
+
+    await purchaseInvoiceService.remove("pi1");
+
+    expect(del).toHaveBeenCalledWith("/purchase-invoices/pi1");
+  });
+
+  it("reads the merged activity of one invoice", async () => {
+    const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
+
+    await purchaseInvoiceService.activity("pi1");
+
+    expect(get).toHaveBeenCalledWith("/purchase-invoices/pi1/activity");
+  });
+
+  it("still cannot withdraw a payment — that is a ledger reversal", () => {
     expect(purchaseInvoiceService).not.toHaveProperty("delete");
     expect(purchaseInvoiceService).not.toHaveProperty("removePayment");
   });

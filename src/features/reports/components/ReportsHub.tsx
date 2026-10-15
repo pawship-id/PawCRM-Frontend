@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,6 +16,39 @@ import {
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/features/permissions";
 import type { Action, Feature } from "@/features/permissions/types";
+
+import {
+  consignmentSalesReport,
+  posSalesReport,
+  salesBatchReport,
+  salesInvoiceReport,
+  salesItemReport,
+  salesRevenueReport,
+} from "../salesReports";
+import {
+  agingReport,
+  cashFlowReport,
+  expenseReport,
+  ledgerReport,
+} from "../financeReports";
+import {
+  batchExpiryReport,
+  consignmentOnHandReport,
+  inventoryValuationReport,
+  lowStockReport,
+  opnameDifferenceReport,
+  purchasesReport,
+  stockOnHandReport,
+  transferReport,
+} from "../stockReports";
+import {
+  bookingRecapReport,
+  commissionPayrollReport,
+  membershipReport,
+  staffPerformanceReport,
+  topServicesReport,
+} from "../operationsReports";
+import { SalesReportDialog } from "./SalesReportDialog";
 
 /**
  * The Laporan landing page, as the v3 mockup draws it: four tabs (Penjualan,
@@ -37,18 +71,28 @@ import type { Action, Feature } from "@/features/permissions/types";
 
 type TabKey = "penjualan" | "keuangan" | "inventori" | "operasional";
 
-const TABS: { key: TabKey; label: string }[] = [
-  { key: "penjualan", label: "Penjualan" },
-  { key: "keuangan", label: "Keuangan" },
-  { key: "inventori", label: "Inventori" },
+/*
+  Each tab answers to its Laporan grant in the role editor (14 October 2026).
+  Operasional has none: it holds "Komisi saya", which every staff member may
+  read about themselves, so it is always there and its other rows are gated.
+*/
+const TABS: { key: TabKey; label: string; feature?: Feature }[] = [
+  { key: "penjualan", label: "Penjualan", feature: "salesReports" },
+  { key: "keuangan", label: "Keuangan", feature: "financeReports" },
+  { key: "inventori", label: "Inventori", feature: "stockReports" },
   { key: "operasional", label: "Operasional" },
 ];
 
 interface ReportRow {
   title: string;
   description: string;
-  /** Omitted = no screen yet; the row renders as "Segera". */
+  /** Omitted (with `dialog`) = no screen yet; the row renders as "Segera". */
   href?: string;
+  /**
+   * An export-only report opens a DIALOG on this page instead of a page of its
+   * own (14 October 2026, on request) — it has nothing to show, only a file.
+   */
+  dialog?: ReportDialog;
   /**
    * Omitted when the report needs no grant at all ("Komisi Saya" answers only
    * about the signed-in person; requiring a grant would hand a groomer the staff
@@ -57,12 +101,107 @@ interface ReportRow {
   feature?: Feature;
   action?: Action;
   /**
-   * Opens when ANY of these is granted — a report's own grant beside the data
-   * grant it used to need, mirroring requireAnyOf on its route. Wins over
-   * `feature`/`action` when set.
+   * Opens when ANY of these is granted. Wins over `feature`/`action` when set.
+   * The report rows list their Laporan grant alone (14 October 2026) — the
+   * routes behind them still take the old data grants too.
    */
   anyOf?: { feature: Feature; action: Action }[];
 }
+
+type ReportDialog =
+  | "salesInvoices"
+  | "salesItems"
+  | "salesBatches"
+  | "posSales"
+  | "consignmentSales"
+  | "salesRevenue"
+  | "cashFlow"
+  | "ledger"
+  | "expenses"
+  | "aging"
+  | "stockOnHand"
+  | "lowStock"
+  | "inventoryValuation"
+  | "purchases"
+  | "batchExpiry"
+  | "opnameDifferences"
+  | "transfers"
+  | "consignmentOnHand"
+  | "staffPerformance"
+  | "bookingRecap"
+  | "topServices"
+  | "membership"
+  | "commissionPayroll";
+
+/**
+ * Each export dialog, its report definition already bound — a map of
+ * components rather than of definitions, so each keeps its own row type.
+ */
+const REPORT_DIALOGS: Record<
+  ReportDialog,
+  (props: {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+  }) => React.ReactNode
+> = {
+  salesInvoices: (props) => (
+    <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  commissionPayroll: (props) => (
+    <SalesReportDialog report={commissionPayrollReport} {...props} />
+  ),
+  membership: (props) => (
+    <SalesReportDialog report={membershipReport} {...props} />
+  ),
+  topServices: (props) => (
+    <SalesReportDialog report={topServicesReport} {...props} />
+  ),
+  bookingRecap: (props) => (
+    <SalesReportDialog report={bookingRecapReport} {...props} />
+  ),
+  staffPerformance: (props) => (
+    <SalesReportDialog report={staffPerformanceReport} {...props} />
+  ),
+  consignmentOnHand: (props) => (
+    <SalesReportDialog report={consignmentOnHandReport} {...props} />
+  ),
+  transfers: (props) => (
+    <SalesReportDialog report={transferReport} {...props} />
+  ),
+  opnameDifferences: (props) => (
+    <SalesReportDialog report={opnameDifferenceReport} {...props} />
+  ),
+  batchExpiry: (props) => (
+    <SalesReportDialog report={batchExpiryReport} {...props} />
+  ),
+  purchases: (props) => (
+    <SalesReportDialog report={purchasesReport} {...props} />
+  ),
+  inventoryValuation: (props) => (
+    <SalesReportDialog report={inventoryValuationReport} {...props} />
+  ),
+  lowStock: (props) => <SalesReportDialog report={lowStockReport} {...props} />,
+  stockOnHand: (props) => (
+    <SalesReportDialog report={stockOnHandReport} {...props} />
+  ),
+  aging: (props) => <SalesReportDialog report={agingReport} {...props} />,
+  expenses: (props) => <SalesReportDialog report={expenseReport} {...props} />,
+  ledger: (props) => <SalesReportDialog report={ledgerReport} {...props} />,
+  cashFlow: (props) => <SalesReportDialog report={cashFlowReport} {...props} />,
+  salesRevenue: (props) => (
+    <SalesReportDialog report={salesRevenueReport} {...props} />
+  ),
+  consignmentSales: (props) => (
+    <SalesReportDialog report={consignmentSalesReport} {...props} />
+  ),
+  posSales: (props) => <SalesReportDialog report={posSalesReport} {...props} />,
+  salesBatches: (props) => (
+    <SalesReportDialog report={salesBatchReport} {...props} />
+  ),
+  salesItems: (props) => (
+    <SalesReportDialog report={salesItemReport} {...props} />
+  ),
+};
 
 const SOON = "Segera";
 
@@ -70,72 +209,117 @@ const ROWS: Record<TabKey, ReportRow[]> = {
   penjualan: [
     {
       title: "Penjualan per invoice",
-      description: "Daftar faktur dengan total, diskon, pajak, dan status bayar.",
+      description:
+        "Daftar faktur dengan total, diskon, pajak, dan status bayar.",
+      dialog: "salesInvoices",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "customerInvoices", action: "read" },
+      ],
     },
     {
       title: "Penjualan per produk & layanan",
       description: "Kuantitas dan nilai penjualan per SKU atau layanan.",
+      dialog: "salesItems",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "customerInvoices", action: "read" },
+      ],
     },
     {
       title: "Batch terjual",
       description:
         "Batch dan tanggal kedaluwarsa yang keluar lewat penjualan, untuk telusur balik.",
+      dialog: "salesBatches",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "customerInvoices", action: "read" },
+      ],
     },
     {
       title: "Penjualan POS",
       description: "Penutupan shift dan rekap per metode pembayaran.",
+      dialog: "posSales",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "posShifts", action: "read" },
+      ],
     },
     {
       title: "Penjualan konsinyasi",
       description:
         "Penjualan produk titipan per supplier, dasar perhitungan setoran.",
+      dialog: "consignmentSales",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "purchaseInvoices", action: "read" },
+      ],
     },
     {
       title: "Rincian pendapatan per produk",
       description: "Pendapatan, diskon, HPP, dan profit per produk.",
+      dialog: "salesRevenue",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ],
     },
   ],
   /*
     The three statements keep `journalEntries:read`, the grant their routes
-    enforce. Arus Kas is in the mockup list without a screen of its own there;
-    here the screen exists, so it opens.
+    enforce. Arus kas has no page: it opens as an export dialog like the
+    Penjualan reports (14 October 2026, on request).
   */
   keuangan: [
     {
       title: "Laba rugi",
       description: "Hasil usaha per bulan, gabungan atau per lini bisnis.",
       href: "/dashboard/keuangan/laba-rugi",
-      anyOf: [
-        { feature: "financeReports", action: "read" },
-        { feature: "journalEntries", action: "read" },
-      ],
+      anyOf: [{ feature: "financeReports", action: "read" }],
     },
     {
       title: "Neraca",
       description: "Aset, kewajiban, dan ekuitas pada satu tanggal.",
       href: "/dashboard/keuangan/neraca",
+      anyOf: [{ feature: "financeReports", action: "read" }],
+    },
+    {
+      title: "Arus kas",
+      description:
+        "Kas awal sampai kas akhir: operasional, investasi, pendanaan.",
+      dialog: "cashFlow",
       anyOf: [
         { feature: "financeReports", action: "read" },
         { feature: "journalEntries", action: "read" },
       ],
     },
     {
-      title: "Arus kas",
-      description:
-        "Kas awal sampai kas akhir: operasional, investasi, pendanaan.",
-    },
-    {
       title: "Saldo per akun",
       description: "Saldo tiap akun dengan rincian ke mutasi jurnal.",
+      dialog: "ledger",
+      anyOf: [
+        { feature: "financeReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ],
     },
     {
       title: "Biaya per kategori",
       description: "Biaya per kategori, termasuk alokasi biaya bersama.",
+      dialog: "expenses",
+      anyOf: [
+        { feature: "financeReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ],
     },
     {
       title: "Umur piutang & utang",
       description:
         "Piutang dan utang menurut umur: 0–30, 31–60, 61–90, lebih dari 90 hari.",
+      dialog: "aging",
+      anyOf: [
+        { feature: "financeReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ],
     },
   ],
   inventori: [
@@ -143,11 +327,8 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Posisi stok",
       description:
         "Stok tiap SKU per gudang, dikelompokkan per cabang, termasuk nilai persediaannya.",
-      href: "/dashboard/reports/stock-on-hand",
-      anyOf: [
-        { feature: "stockReports", action: "read" },
-        { feature: "products", action: "read" },
-      ],
+      dialog: "stockOnHand",
+      anyOf: [{ feature: "stockReports", action: "read" }],
     },
     {
       title: "Kartu stok",
@@ -160,51 +341,73 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Stok minim",
       description:
         "Produk yang sudah di bawah batas restock, paling mendesak di atas.",
-      href: "/dashboard/reports/low-stock",
-      anyOf: [
-        { feature: "stockReports", action: "read" },
-        { feature: "products", action: "read" },
-      ],
+      /*
+        A DOWNLOAD HERE, while /dashboard/reports/low-stock stays: the
+        dashboard's restock alert links to that page to be read on screen.
+      */
+      dialog: "lowStock",
+      anyOf: [{ feature: "stockReports", action: "read" }],
     },
     {
       title: "Nilai persediaan",
       description:
         "Nilai stok pada satu tanggal, cocok dengan akun persediaan di Neraca.",
+      dialog: "inventoryValuation",
+      anyOf: [
+        { feature: "stockReports", action: "read" },
+        { feature: "financeReports", action: "read" },
+      ],
     },
     {
       title: "Batch & kedaluwarsa",
       description: "Sisa umur simpan per batch dan risiko kerugian.",
-      href: "/dashboard/inventory/batches",
-      feature: "productBatches",
-      action: "read",
-    },
-    {
-      title: "Selisih opname",
-      description: "Riwayat penyesuaian hasil hitung stok, dan jurnal yang terbentuk.",
-      href: "/dashboard/inventory/opname",
-      feature: "stockOpnames",
-      action: "read",
-    },
-    {
-      title: "Transfer antar gudang",
-      description: "Perpindahan stok antar gudang dan cabang.",
-      href: "/dashboard/inventory/transfers",
-      feature: "stockMovements",
-      action: "read",
-    },
-    {
-      title: "Konsinyasi outstanding",
-      description:
-        "Barang titipan yang masih di gudang, per supplier. Belum jadi utang — utang muncul saat barangnya laku.",
-      href: "/dashboard/reports/consignment",
+      // A download here; /dashboard/inventory/batches stays the module's
+      // own screen for working the list.
+      dialog: "batchExpiry",
       anyOf: [
         { feature: "stockReports", action: "read" },
         { feature: "productBatches", action: "read" },
       ],
     },
     {
+      title: "Selisih opname",
+      description:
+        "Riwayat penyesuaian hasil hitung stok, dan jurnal yang terbentuk.",
+      // A download here; /dashboard/inventory/opname stays the module's own
+      // screen for counting and submitting.
+      dialog: "opnameDifferences",
+      anyOf: [
+        { feature: "stockReports", action: "read" },
+        { feature: "stockOpnames", action: "read" },
+      ],
+    },
+    {
+      title: "Transfer antar gudang",
+      description: "Perpindahan stok antar gudang dan cabang.",
+      // A download here; /dashboard/inventory/transfers stays the module's own
+      // screen for sending and receiving.
+      dialog: "transfers",
+      anyOf: [
+        { feature: "stockReports", action: "read" },
+        { feature: "stockTransfers", action: "read" },
+        { feature: "stockMovements", action: "read" },
+      ],
+    },
+    {
+      title: "Konsinyasi outstanding",
+      description:
+        "Barang titipan yang masih di gudang, per supplier. Belum jadi utang — utang muncul saat barangnya laku.",
+      dialog: "consignmentOnHand",
+      anyOf: [{ feature: "stockReports", action: "read" }],
+    },
+    {
       title: "Pembelian per supplier",
       description: "Nilai dan kuantitas pembelian per supplier dan SKU.",
+      dialog: "purchases",
+      anyOf: [
+        { feature: "stockReports", action: "read" },
+        { feature: "purchaseInvoices", action: "read" },
+      ],
     },
   ],
   operasional: [
@@ -212,14 +415,26 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Performa staf",
       description:
         "Order, nilai, dan ketepatan waktu per staf. Komisi ada di Rekap komisi.",
+      dialog: "staffPerformance",
+      anyOf: [
+        { feature: "commissionReports", action: "read" },
+        { feature: "users", action: "read" },
+      ],
     },
     {
       title: "Rekap booking",
       description: "Booking menurut status, pembatalan, dan jadwal ulang.",
+      dialog: "bookingRecap",
+      anyOf: [{ feature: "bookings", action: "read" }],
     },
     {
       title: "Layanan terlaris",
       description: "Peringkat layanan dan add-on menurut jumlah dan nilai.",
+      dialog: "topServices",
+      anyOf: [
+        { feature: "bookings", action: "read" },
+        { feature: "salesReports", action: "read" },
+      ],
     },
     {
       title: "Okupansi hotel",
@@ -229,22 +444,18 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Membership",
       description:
         "Paket terlaris, dan berapa nilai benefit yang sudah diberikan.",
-      href: "/dashboard/reports/membership",
-      anyOf: [
-        { feature: "membershipReports", action: "read" },
-        { feature: "membershipPlans", action: "read" },
-      ],
+      dialog: "membership",
+      anyOf: [{ feature: "membershipReports", action: "read" }],
     },
     {
       title: "Rekap komisi",
       description:
         "Komisi groomer per bulan, dihitung dari booking yang selesai. Siap diunduh untuk payroll.",
-      href: "/dashboard/keuangan/komisi",
+      // A download here; /dashboard/keuangan/komisi stays the screen where
+      // commission is approved and paid.
+      dialog: "commissionPayroll",
       // Payroll data: the report's own grant, or the staff register it used to need.
-      anyOf: [
-        { feature: "commissionReports", action: "read" },
-        { feature: "users", action: "read" },
-      ],
+      anyOf: [{ feature: "commissionReports", action: "read" }],
     },
     {
       title: "Komisi saya",
@@ -261,9 +472,14 @@ function isTabKey(value: string | null): value is TabKey {
 
 export function ReportsHub() {
   const { can } = usePermissions();
+  const [openDialog, setOpenDialog] = useState<ReportDialog | null>(null);
   const params = useSearchParams();
   const raw = params?.get("tab") ?? null;
-  const active: TabKey = isTabKey(raw) ? raw : "penjualan";
+  const tabs = TABS.filter((tab) => !tab.feature || can(tab.feature, "read"));
+  const active: TabKey =
+    isTabKey(raw) && tabs.some((tab) => tab.key === raw)
+      ? raw
+      : (tabs[0]?.key ?? "operasional");
 
   /*
     Rows without a screen are always listed (they are the mockup's table of
@@ -271,7 +487,7 @@ export function ReportsHub() {
     their destination enforces — a row that leads to a 403 is worse than none.
   */
   const rows = ROWS[active].filter((row) =>
-    !row.href
+    !row.href && !row.dialog
       ? true
       : row.anyOf
         ? row.anyOf.some((grant) => can(grant.feature, grant.action))
@@ -282,9 +498,12 @@ export function ReportsHub() {
 
   return (
     <div className="flex flex-col gap-4">
-      <nav aria-label="Jenis laporan" className="overflow-x-auto border-b border-border">
+      <nav
+        aria-label="Jenis laporan"
+        className="overflow-x-auto border-b border-border"
+      >
         <ul className="flex gap-1">
-          {TABS.map((tab) => {
+          {tabs.map((tab) => {
             const current = tab.key === active;
             return (
               <li key={tab.key}>
@@ -323,7 +542,15 @@ export function ReportsHub() {
                 </TableCell>
                 <TableCell className="text-muted">{row.description}</TableCell>
                 <TableCell className="text-right">
-                  {row.href ? (
+                  {row.dialog ? (
+                    <button
+                      type="button"
+                      onClick={() => setOpenDialog(row.dialog ?? null)}
+                      className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-white hover:opacity-90 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                    >
+                      Unduh
+                    </button>
+                  ) : row.href ? (
                     <Link
                       href={row.href}
                       className="inline-flex h-8 items-center rounded-lg bg-primary px-3 text-xs font-semibold text-white hover:opacity-90"
@@ -340,16 +567,16 @@ export function ReportsHub() {
         </Table>
       </div>
 
-      <div className="rounded-xl border border-border border-l-[3px] border-l-primary bg-surface px-4 py-3">
-        <p className="text-sm font-bold text-foreground">Cara kerja</p>
-        <p className="mt-0.5 text-xs text-muted">
-          Laporan yang bertanda Buka tampil di layar, lengkap dengan filter dan
-          tombol unduh Excel di dalamnya. Yang bertanda Segera belum dibangun —
-          semuanya akan memakai dimensi yang sama dengan yang tersimpan di tiap
-          transaksi: cabang, gudang, lini bisnis, channel, konsinyasi, SKU, tipe
-          layanan atau produk, dan akun.
-        </p>
-      </div>
+      {(Object.keys(REPORT_DIALOGS) as ReportDialog[]).map((key) => {
+        const ReportDialogFor = REPORT_DIALOGS[key];
+        return (
+          <ReportDialogFor
+            key={key}
+            open={openDialog === key}
+            onOpenChange={(open) => setOpenDialog(open ? key : null)}
+          />
+        );
+      })}
     </div>
   );
 }

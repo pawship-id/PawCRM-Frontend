@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { RequirePermission } from "@/features/permissions";
 import { SalesSummaryScreen } from "@/features/sales";
+import { SALES_TABS } from "@/features/sales/components/SalesModuleHeader";
 
 export const metadata: Metadata = {
   title: "Ringkasan · Penjualan · Buloo",
@@ -25,7 +26,7 @@ export const metadata: Metadata = {
  */
 export default function SalesSummaryPage() {
   return (
-    <RequirePermission feature="customerInvoices" action="read">
+    <RequirePermission feature="salesSummary" redirectTo={SALES_TABS}>
       <SalesSummaryScreen />
     </RequirePermission>
   );

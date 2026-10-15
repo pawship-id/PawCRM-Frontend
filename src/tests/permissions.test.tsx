@@ -6,6 +6,11 @@ import type { AuthContextValue } from "@/features/auth/context/AuthProvider";
 import { Can, RequirePermission, usePermissions } from "@/features/permissions";
 import type { PermissionGrant } from "@/types/api";
 
+const replace = jest.fn();
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ replace, push: jest.fn() }),
+}));
+
 /**
  * Wraps children in an AuthContext holding a fixed grant set, so the permission
  * primitives can be exercised without a real session or the AuthProvider's /me
@@ -133,5 +138,24 @@ describe("RequirePermission", () => {
     );
     expect(screen.queryByRole("heading", { name: "Branches" })).toBeNull();
     expect(screen.getByText(/access denied/i)).toBeInTheDocument();
+  });
+});
+
+describe("RequirePermission — redirectTo", () => {
+  it("sends a reader refused this tab to the first sibling tab they may open", () => {
+    withAuth(
+      <RequirePermission
+        feature="salesSummary"
+        redirectTo={[
+          { label: "Faktur", href: "/dashboard/sales/invoice", anyOf: [{ feature: "customerInvoices" }] },
+          { label: "Piutang", href: "/dashboard/sales/piutang", anyOf: [{ feature: "receivables" }] },
+        ]}
+      >
+        <span>ringkasan</span>
+      </RequirePermission>,
+      { permissions: [{ feature: "receivables", actions: ["read"] }] },
+    );
+    expect(screen.queryByText("ringkasan")).not.toBeInTheDocument();
+    expect(replace).toHaveBeenCalledWith("/dashboard/sales/piutang");
   });
 });

@@ -138,9 +138,9 @@ export function LowStockScreen() {
         <div className={cn("overflow-x-auto", loading && "opacity-60")}>
           {rows.length === 0 && !loading ? (
             <p className="text-sm text-muted">
-              Tidak ada produk di bawah batas minimum. Produk yang batasnya masih
-              nol tidak dihitung — atur <code>min_stock</code> di detail produk
-              supaya ikut terpantau.
+              Tidak ada produk di bawah batas minimum. Produk yang batasnya
+              masih nol tidak dihitung — atur <code>min_stock</code> di detail
+              produk supaya ikut terpantau.
             </p>
           ) : (
             <Table>

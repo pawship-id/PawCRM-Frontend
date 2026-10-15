@@ -75,7 +75,8 @@ const COPY: Record<
   {
     newHref: string;
     newLabel: string;
-    feature: "stockMovements" | "products";
+    /** The tab's own grant (14 Oct 2026) — its create opens the button. */
+    feature: "stockAdjustments" | "openingStock";
     empty: string;
     emptyHint: string;
   }
@@ -83,7 +84,7 @@ const COPY: Record<
   adjustment: {
     newHref: "/dashboard/inventory/adjustments/new",
     newLabel: "Penyesuaian baru",
-    feature: "stockMovements",
+    feature: "stockAdjustments",
     empty: "Belum ada penyesuaian",
     emptyHint:
       "Koreksi satu barang atau beberapa sekaligus — rusak, hilang, atau terpakai sendiri.",
@@ -91,7 +92,7 @@ const COPY: Record<
   opening_balance: {
     newHref: "/dashboard/inventory/opening-stock/new",
     newLabel: "Stok awal baru",
-    feature: "products",
+    feature: "openingStock",
     empty: "Belum ada pencatatan stok awal",
     emptyHint:
       "Untuk produk yang sudah terdaftar tapi belum pernah punya stok di gudang itu.",

@@ -2,19 +2,22 @@
 
 import { SkuText } from "@/components/SkuText";
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import {
   Alert,
-  Button,
   Card,
+  CheckRow,
   FilterSelect,
+  FormActionBar,
   InternalBatchCodeDisplay,
   Spinner,
   SupplierBatchCodeInput,
   TextField,
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button as UIButton } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,9 +40,16 @@ import {
   isPositive,
   multiplyDecimals,
   sumDecimals,
+  toMinor,
   trimQty,
 } from "@/utils/decimal";
-import type { CreateGoodsReceiptInput, PurchaseType } from "@/types/api";
+import type {
+  CreateGoodsReceiptInput,
+  GoodsReceiptDetail,
+  PurchaseInvoiceDetail,
+  PurchaseType,
+  ReceiveGoodsReceiptLineInput,
+} from "@/types/api";
 import type { Product } from "@/types/inventory";
 import { useStockCardLookups } from "@/features/inventory/hooks/useStockCardLookups";
 import {
@@ -49,6 +59,8 @@ import {
 import { useWarehouseBatches } from "@/features/inventory/hooks/useWarehouseBatches";
 
 import { ReceiptAddProductsDialog } from "./ReceiptAddProductsDialog";
+import { useGoodsReceipt } from "../hooks/useGoodsReceipt";
+import { usePurchaseInvoice } from "../hooks/usePurchaseInvoice";
 import { useReceiptPreview } from "../hooks/useReceiptPreview";
 import { useSupplierOptions } from "../hooks/useSupplierOptions";
 
@@ -60,10 +72,45 @@ import { useSupplierOptions } from "../hooks/useSupplierOptions";
  */
 const NEW_BATCH = "__new__";
 
+/**
+ * WHAT THIS FORM IS FILLING IN (15 October 2026, BO — one receipt form, the
+ * checklist on it, no separate receiving page):
+ *
+ *   create  — a new delivery typed in: lines, lots, and how much arrived.
+ *   invoice — a new receipt made from a manual supplier invoice: the lines are
+ *             the invoice's and locked; the clerk fills in lots and what arrived.
+ *   edit    — an existing receipt still being received: lines locked, only what
+ *             arrived (up, or down while partial) and a missing lot change.
+ */
+type ReceiptSource =
+  | { kind: "create" }
+  | { kind: "invoice"; invoice: PurchaseInvoiceDetail }
+  | { kind: "edit"; receipt: GoodsReceiptDetail };
+
 interface LineDraft {
   productId: string;
   qty: string;
   costPerUnit: string;
+  /**
+   * How much of the line is ON THE SHELF after this save — the checklist. The
+   * box ticks it to `qty`; the input takes a partial count.
+   */
+  receivedQty: string;
+  /** What had already arrived before this save — "0" except when editing. */
+  currentReceived: string;
+  /** The receipt line (edit) or invoice line (invoice) this row is. */
+  itemId?: string;
+  invoiceItemId?: string;
+  /**
+   * The line's lot is already decided — a receipt line that names one, or was
+   * filed with its expiry — so it is shown, not asked.
+   */
+  lotLocked: boolean;
+  fixedLot?: {
+    batchId: string | null;
+    supplierBatchCode: string | null;
+    expiryDate: string | null;
+  };
   /**
    * WHICH LOT the goods join: "" = belum dipilih, a `productbatches` id, or
    * NEW_BATCH. Only asked for products that carry an expiry date — see
@@ -87,6 +134,120 @@ interface LineDraft {
 /** Today, as an `<input type="date">` holds it. Also the API's default. */
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * The server refuses a receiving moment in the future, so "today" is sent as
+ * now — a fixed noon would be ahead of the clock every morning.
+ */
+function receivedAtIso(date: string): string {
+  return date === today()
+    ? new Date().toISOString()
+    : new Date(`${date}T12:00:00`).toISOString();
+}
+
+/** A decimal string, or zero when it is not one — for comparisons only. */
+function minorOf(value: string): bigint {
+  return isDecimal(value.trim()) ? (toMinor(value.trim()) ?? 0n) : 0n;
+}
+
+/**
+ * The rows a locked form opens with, from the invoice or the receipt — and the
+ * products they are about, in the shape the table reads (labels only; nothing
+ * on a locked row is picked from the catalogue).
+ */
+function seedFromSource(source: ReceiptSource): {
+  lines: LineDraft[];
+  products: Map<string, Product>;
+} {
+  const products = new Map<string, Product>();
+  const remember = (
+    id: string,
+    name: string,
+    sku: string | null,
+    unit: string | null,
+    hasExpiry: boolean,
+    isConsignment: boolean,
+  ) => {
+    products.set(id, {
+      _id: id,
+      name,
+      sku,
+      unit: unit ?? "",
+      hasExpiry,
+      isConsignment,
+      hppAvg: null,
+    } as unknown as Product);
+  };
+
+  if (source.kind === "invoice") {
+    return {
+      products,
+      lines: source.invoice.items.map((item) => {
+        remember(
+          item.productId,
+          item.productName ?? item.name,
+          item.productSku,
+          item.productUnit,
+          item.productHasExpiry === true,
+          false,
+        );
+        return {
+          productId: item.productId,
+          qty: trimQty(item.qty),
+          costPerUnit: trimQty(item.costPerUnit),
+          receivedQty: "0",
+          currentReceived: "0",
+          invoiceItemId: item.invoiceItemId,
+          lotLocked: false,
+          batchChoice: "",
+          supplierBatchCode: "",
+          expiryDate: "",
+        };
+      }),
+    };
+  }
+
+  if (source.kind === "edit") {
+    const consigned = source.receipt.purchaseType === "konsinyasi";
+    return {
+      products,
+      lines: source.receipt.items.map((item) => {
+        remember(
+          item.productId,
+          item.productName ?? item.name,
+          item.productSku,
+          item.productUnit,
+          item.productHasExpiry === true,
+          consigned,
+        );
+        const lotLocked = Boolean(
+          item.batchId || item.expiryDate || item.supplierBatchCode,
+        );
+        return {
+          productId: item.productId,
+          qty: trimQty(item.qty),
+          costPerUnit: trimQty(item.costPerUnit),
+          receivedQty: trimQty(item.receivedQty),
+          currentReceived: trimQty(item.receivedQty),
+          itemId: item.itemId,
+          lotLocked,
+          fixedLot: lotLocked
+            ? {
+                batchId: item.batchId,
+                supplierBatchCode: item.supplierBatchCode ?? null,
+                expiryDate: item.expiryDate ?? null,
+              }
+            : undefined,
+          batchChoice: "",
+          supplierBatchCode: "",
+          expiryDate: "",
+        };
+      }),
+    };
+  }
+
+  return { lines: [], products };
 }
 
 /**
@@ -229,10 +390,12 @@ function duplicateMessage(name: string | undefined): string {
  * the handler refuses re-entry; the preview panel is the other half of the
  * mitigation.
  */
-export function ReceiptForm({
+function ReceiptFormBody({
   supplierId,
   initialPurchaseType = "beli_putus",
+  source,
 }: {
+  source: ReceiptSource;
   supplierId?: string;
   /**
    * Which tab to open on, read off `?type=` by the page.
@@ -247,20 +410,48 @@ export function ReceiptForm({
 }) {
   const router = useRouter();
 
-  const { suppliers, loading: suppliersLoading } =
-    useSupplierOptions(supplierId);
+  /** The lines, the supplier and the books are fixed — only arrivals change. */
+  const locked = source.kind !== "create";
+  const sourceDoc =
+    source.kind === "invoice"
+      ? source.invoice
+      : source.kind === "edit"
+        ? source.receipt
+        : null;
+  const seeded = useMemo(() => seedFromSource(source), [source]);
+
+  const { suppliers, loading: suppliersLoading } = useSupplierOptions(
+    sourceDoc?.supplierId ?? supplierId,
+  );
   const lookups = useStockCardLookups();
 
-  const [supplier, setSupplier] = useState(supplierId ?? "");
-  const [pickedBranch, setPickedBranch] = useState("");
-  const [warehouseId, setWarehouseId] = useState("");
-  const [purchaseType, setPurchaseType] = useState<PurchaseType>(
-    initialPurchaseType,
+  const [supplier, setSupplier] = useState(
+    sourceDoc?.supplierId ?? supplierId ?? "",
   );
+  const [pickedBranch, setPickedBranch] = useState(sourceDoc?.branchId ?? "");
+  const [warehouseId, setWarehouseId] = useState(
+    sourceDoc?.warehouseId ?? "",
+  );
+  const [purchaseType, setPurchaseType] = useState<PurchaseType>(
+    source.kind === "edit"
+      ? source.receipt.purchaseType
+      : source.kind === "invoice"
+        ? "beli_putus"
+        : initialPurchaseType,
+  );
+  // On an edit this is the day the goods ARRIVED — what the stock and the
+  // journal are dated; on a new receipt it is the receipt date, as before.
   const [receiptDate, setReceiptDate] = useState(today);
-  const [taxAmount, setTaxAmount] = useState("");
+  const [taxAmount, setTaxAmount] = useState(
+    sourceDoc ? trimQty(sourceDoc.taxAmount) : "",
+  );
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<LineDraft[]>([]);
+  // The supplier's bill, filed in the same save — its lines are copied from
+  // this receipt (14 October 2026, BO). Beli putus only.
+  const [fileInvoice, setFileInvoice] = useState(false);
+  const [invoiceNumber, setInvoiceNumber] = useState("");
+  const [invoiceDate, setInvoiceDate] = useState(today);
+  const [lines, setLines] = useState<LineDraft[]>(seeded.lines);
   /**
    * The products the rows are ABOUT, kept here rather than looked up in a
    * catalogue held in memory.
@@ -272,7 +463,7 @@ export function ReceiptForm({
    * bytes and nothing else.
    */
   const [productById, setProductById] = useState<Map<string, Product>>(
-    new Map(),
+    seeded.products,
   );
   const [picking, setPicking] = useState(false);
 
@@ -281,6 +472,12 @@ export function ReceiptForm({
   const [saving, setSaving] = useState(false);
 
   const consignment = purchaseType === "konsinyasi";
+  // The vendor's bill can be filed here only for a buy-outright delivery that
+  // has none yet — never on a receipt made FROM an invoice.
+  const canFileInvoice =
+    !consignment &&
+    (source.kind === "create" ||
+      (source.kind === "edit" && !source.receipt.invoiceId));
 
   /**
    * Switches the tab AND puts it in the address bar, so a refresh comes back to
@@ -343,13 +540,16 @@ export function ReceiptForm({
    */
   const stampedUrl = useRef(false);
   useEffect(() => {
+    // Only the create form owns `?type=`; an edit or an invoice receipt lives at
+    // its own address and must not be dragged back to /new.
+    if (locked) return;
     if (stampedUrl.current) return;
     stampedUrl.current = true;
 
     router.replace(receiptUrl(supplierId, initialPurchaseType), {
       scroll: false,
     });
-  }, [router, supplierId, initialPurchaseType]);
+  }, [router, supplierId, initialPurchaseType, locked]);
 
   /**
    * LOCATION FIRST, THEN THE SHELF — the order every hand-typed stock form in
@@ -628,6 +828,9 @@ export function ReceiptForm({
    * see and fix in the form; the server has the final word on the rest.
    */
   const previewEnabled =
+    // The preview answers "what would FILING this do" — a locked form files
+    // nothing new.
+    !locked &&
     Boolean(supplier) &&
     Boolean(effectiveWarehouseId) &&
     lines.length > 0 &&
@@ -797,13 +1000,51 @@ export function ReceiptForm({
         batchChoice: "",
         supplierBatchCode: "",
         expiryDate: "",
+        // Not received until it is ticked — the checklist is explicit.
+        receivedQty: "0",
+        currentReceived: "0",
+        lotLocked: false,
       })),
     ]);
   }
 
+  /** The box: all of it here, or back to what had arrived before. */
+  function toggleReceived(index: number, checked: boolean) {
+    setLines((prev) =>
+      prev.map((line, i) =>
+        i === index
+          ? {
+              ...line,
+              receivedQty: checked ? line.qty : line.currentReceived,
+            }
+          : line,
+      ),
+    );
+  }
+
+  function receiveAll() {
+    setLines((prev) => prev.map((line) => ({ ...line, receivedQty: line.qty })));
+  }
+
+  /** What an edit would change — nothing means nothing to save. */
+  const receivingChanges = lines.filter(
+    (line) => minorOf(line.receivedQty) !== minorOf(line.currentReceived),
+  ).length;
+
+  const blockedReason =
+    // A bill alone is filed from the receipt's page ("Catat faktur supplier");
+    // a receiving event has to receive something.
+    source.kind === "edit" && receivingChanges === 0
+      ? "belum ada jumlah diterima yang berubah"
+      : lines.length === 0
+        ? "belum ada barang"
+        : null;
+
   function validate(): boolean {
     const next: Record<string, string> = {};
 
+    // The header and the lines are the source document's on a locked form.
+    if (!locked) {
     if (!supplier) next.supplier = "Pilih supplier.";
     // Named before the warehouse, because the warehouse cannot be answered until
     // it is — a bare "Pilih gudang tujuan." over a disabled picker says nothing
@@ -863,6 +1104,47 @@ export function ReceiptForm({
     ) {
       next.taxAmount = "Gunakan angka, maksimal 4 desimal.";
     }
+    }
+
+    // THE CHECKLIST, every mode: what arrived, never more than was ordered.
+    if (!next.lines) {
+      for (const [index, line] of lines.entries()) {
+        const product = productById.get(line.productId);
+        const label = product?.name ?? `Baris ${index + 1}`;
+        const value = line.receivedQty.trim();
+
+        if (value !== "" && !isDecimal(value)) {
+          next.lines = `${label}: jumlah diterima harus angka.`;
+          break;
+        }
+        if (value.startsWith("-")) {
+          next.lines = `${label}: jumlah diterima tidak boleh minus.`;
+          break;
+        }
+        if (minorOf(value) > minorOf(line.qty)) {
+          next.lines = `${label}: diterima tidak boleh lebih dari ${formatQty(line.qty)}.`;
+          break;
+        }
+
+        // A lot is asked of a locked row only when goods arrive on it and it
+        // has none yet — a created row answered it at filing.
+        const arriving = minorOf(value) > minorOf(line.currentReceived);
+        if (locked && arriving && !line.lotLocked) {
+          if (picksLot(product) && line.batchChoice === "") {
+            next.lines = `${label}: pilih batch dulu — lot yang sudah ada, atau batch baru.`;
+            break;
+          }
+          if (
+            product?.hasExpiry &&
+            line.batchChoice === NEW_BATCH &&
+            line.expiryDate === ""
+          ) {
+            next.lines = `${label}: tanggal kedaluwarsa wajib diisi.`;
+            break;
+          }
+        }
+      }
+    }
 
     setFieldErrors(next);
     return Object.keys(next).length === 0;
@@ -878,17 +1160,116 @@ export function ReceiptForm({
     setFormError(null);
     if (!validate()) return;
 
+    const filingInvoice = canFileInvoice && fileInvoice;
+    if (filingInvoice && invoiceNumber.trim() === "") {
+      setFieldErrors((current) => ({
+        ...current,
+        invoiceNumber: "Nomor faktur supplier wajib diisi.",
+      }));
+      return;
+    }
+
     setSaving(true);
     try {
-      const receipt = await goodsReceiptService.create(payload);
+      /** The lot a row describes or names, as the API takes it. */
+      const lotOf = (line: LineDraft) => {
+        if (line.lotLocked) return {};
+        // An edit only names a lot for goods arriving now; a receipt made from
+        // an invoice records it for the line whatever arrives today.
+        if (
+          source.kind === "edit" &&
+          minorOf(line.receivedQty) <= minorOf(line.currentReceived)
+        ) {
+          return {};
+        }
+        const product = productById.get(line.productId);
+        if (
+          picksLot(product) &&
+          line.batchChoice !== "" &&
+          line.batchChoice !== NEW_BATCH
+        ) {
+          return { batchId: line.batchChoice };
+        }
+        return {
+          ...(needsLot(product, consignment) &&
+          line.supplierBatchCode.trim() !== ""
+            ? { supplierBatchCode: line.supplierBatchCode.trim() }
+            : {}),
+          ...(needsLot(product, consignment) && line.expiryDate !== ""
+            ? { expiryDate: line.expiryDate }
+            : {}),
+        };
+      };
+      const received = (line: LineDraft) =>
+        minorOf(line.receivedQty) > 0n ? line.receivedQty.trim() : undefined;
+
+      let receipt: GoodsReceiptDetail;
+
+      if (source.kind === "edit") {
+        const changed: ReceiveGoodsReceiptLineInput[] = lines
+          .filter(
+            (line) =>
+              minorOf(line.receivedQty) !== minorOf(line.currentReceived),
+          )
+          .map((line) => ({
+            itemId: line.itemId as string,
+            receivedQty: line.receivedQty.trim() || "0",
+            ...lotOf(line),
+          }));
+
+        receipt = await goodsReceiptService.receive(source.receipt._id, {
+          receivedAt: receivedAtIso(receiptDate),
+          lines: changed,
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
+          ...(filingInvoice
+            ? {
+                invoice: {
+                  invoiceNumber: invoiceNumber.trim(),
+                  invoiceDate,
+                },
+              }
+            : {}),
+        });
+      } else if (source.kind === "invoice") {
+        receipt = await goodsReceiptService.createFromInvoice(
+          source.invoice._id,
+          {
+            receiptDate,
+            ...(notes.trim() ? { notes: notes.trim() } : {}),
+            items: lines.map((line) => ({
+              invoiceItemId: line.invoiceItemId as string,
+              ...(received(line) ? { receivedQty: received(line) } : {}),
+              ...lotOf(line),
+            })),
+          },
+        );
+      } else {
+        receipt = await goodsReceiptService.create({
+          ...payload,
+          items: payload.items.map((item, index) => {
+            const qty = received(lines[index]);
+            return qty ? { ...item, receivedQty: qty } : item;
+          }),
+          ...(filingInvoice
+            ? {
+                invoice: {
+                  invoiceNumber: invoiceNumber.trim(),
+                  invoiceDate,
+                },
+              }
+            : {}),
+        });
+      }
 
       swalToast(
-        `${receipt.receiptNumber} tersimpan — belum diterima. Stok dan utang baru tercatat saat barang diterima.`,
+        receipt.status === "received"
+          ? `${receipt.receiptNumber} tersimpan — semua barang diterima.`
+          : receipt.status === "partial"
+            ? `${receipt.receiptNumber} tersimpan — sebagian barang diterima.`
+            : `${receipt.receiptNumber} tersimpan — belum ada barang yang diterima.`,
       );
-      // `replace`      );
-      // `replace`, not `push`: the create form must not be reachable by going
-      // back, because going back to it and submitting again receives the goods
-      // a second time.
+      // `replace`, not `push`: going back to a submitted form and saving again
+      // would receive the goods a second time.
       router.replace(`/dashboard/purchasing/receipts/${receipt._id}`);
     } catch (error) {
       if (error instanceof ApiError) {
@@ -918,10 +1299,65 @@ export function ReceiptForm({
       )}
 
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
+        <FormActionBar
+          title={
+            source.kind === "edit"
+              ? "Update penerimaan"
+              : source.kind === "invoice"
+                ? "Penerimaan dari faktur"
+                : "Penerimaan barang"
+          }
+          meta={
+            source.kind === "edit" ? (
+              <span className="tabular-nums">{source.receipt.receiptNumber}</span>
+            ) : source.kind === "invoice" ? (
+              <span className="tabular-nums">
+                Faktur {source.invoice.invoiceNumber}
+              </span>
+            ) : (
+              "No. otomatis"
+            )
+          }
+          submitLabel="Simpan penerimaan"
+          submitting={saving}
+          disabled={Boolean(blockedReason)}
+          blockedReason={blockedReason}
+          cancelHref={
+            source.kind === "edit"
+              ? `/dashboard/purchasing/receipts/${source.receipt._id}`
+              : source.kind === "invoice"
+                ? `/dashboard/purchasing/payables/${source.invoice._id}`
+                : "/dashboard/purchasing/receipts"
+          }
+        />
+
         {formError && <Alert variant="error">{formError}</Alert>}
         {lookups.error && <Alert variant="error">{lookups.error}</Alert>}
 
-        <div>
+        {source.kind === "invoice" && (
+          <Alert variant="info">
+            Barang diambil dari faktur{" "}
+            <Link
+              href={`/dashboard/purchasing/payables/${source.invoice._id}`}
+              className="font-semibold underline-offset-2 hover:underline"
+            >
+              {source.invoice.invoiceNumber}
+            </Link>{" "}
+            dan tidak bisa ditambah atau diubah. Isi lot, lalu centang barang yang
+            sudah datang — sisanya bisa diterima nanti.
+          </Alert>
+        )}
+        {source.kind === "edit" && (
+          <Alert variant="info">
+            Barang di penerimaan ini sudah tetap. Ubah jumlah yang sudah
+            diterima
+            {source.receipt.status === "partial"
+              ? " — angka yang lebih kecil dari sebelumnya mengoreksi (mengurangi) stok."
+              : "."}
+          </Alert>
+        )}
+
+        <div className={cn(locked && "hidden")}>
           <div className="inline-flex rounded-lg bg-accent p-1">
             {(
               [
@@ -962,7 +1398,11 @@ export function ReceiptForm({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="supplier">Supplier</Label>
-              <Select value={supplier} onValueChange={setSupplier}>
+              <Select
+                value={supplier}
+                onValueChange={setSupplier}
+                disabled={locked}
+              >
                 {/* `w-full` at the CALL SITE. `ui/select`'s trigger is `w-fit`
                     by default, which sizes it to the longest supplier's name and
                     leaves the three pickers in this card three different widths
@@ -996,7 +1436,7 @@ export function ReceiptForm({
             </div>
 
             <TextField
-              label="Tanggal terima"
+              label={source.kind === "edit" ? "Tanggal diterima" : "Tanggal terima"}
               name="receiptDate"
               type="date"
               value={receiptDate}
@@ -1012,6 +1452,7 @@ export function ReceiptForm({
                   the delivery was typed. */}
               <Select
                 value={branchId}
+                disabled={locked}
                 onValueChange={(value) => {
                   if (value === branchId) return;
                   setPickedBranch(value);
@@ -1058,7 +1499,7 @@ export function ReceiptForm({
                 // Nothing to offer until a branch is named: the list IS that
                 // branch's warehouses, so an enabled empty picker would read as
                 // "cabang ini tidak punya gudang".
-                disabled={branchId === ""}
+                disabled={locked || branchId === ""}
               >
                 <SelectTrigger
                   id="warehouse"
@@ -1097,6 +1538,7 @@ export function ReceiptForm({
                 inputMode="decimal"
                 value={taxAmount}
                 onChange={(event) => setTaxAmount(event.target.value)}
+                disabled={locked}
                 error={fieldErrors.taxAmount}
                 hint="Masuk ke akun 1301, bukan ke nilai persediaan."
                 placeholder="0"
@@ -1174,31 +1616,39 @@ export function ReceiptForm({
               )}
 
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                {/* A FIXED MINIMUM WIDTH, scrolled sideways on a narrow screen — nine
+                    columns squeezed into a laptop's width truncated every input
+                    to two digits (15 October 2026). */}
+                <table className="w-full min-w-[1180px] text-sm">
                   <thead>
-                    <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
-                      <th className="px-2 py-2 text-left font-medium">Produk</th>
+                    <tr className="border-b border-border text-xs whitespace-nowrap text-muted">
+                      <th className="min-w-56 px-2 py-2 text-left font-medium">Produk</th>
                       {/* LEFT, not right, though both columns hold numbers.
                           What sits under them is an INPUT BOX of a fixed width,
                           not a figure — the box starts at the left edge of the
                           cell, so a right-aligned label floats away from the
                           control it names. Subtotal keeps `text-right`, because
                           that column really is a number. */}
-                      <th className="px-2 py-2 text-left font-medium">Qty</th>
+                      <th className="w-28 px-2 py-2 text-left font-medium">Qty</th>
                       {/* WAJIB BOTH WAYS: the figure is on the supplier's invoice
                           (beli putus) or the agreed price per unit to pay the
                           consignor once it sells (konsinyasi — "Harga setor").
                           It cannot be derived from the running average. */}
-                      <th className="px-2 py-2 text-left font-medium">
+                      <th className="w-40 px-2 py-2 text-left font-medium">
                         {consignment ? "Harga setor" : "Harga beli"}
                         <Required />
+                      </th>
+                      {/* THE CHECKLIST — ticked when the whole line is here, or
+                          a partial count typed in (15 October 2026, BO). */}
+                      <th className="w-44 px-2 py-2 text-left font-medium">
+                        Diterima
                       </th>
                       {/* WHICH LOT, asked before what it is called — a delivery
                           of goods that expire either joins a batch already on the
                           shelf or opens one, and the two columns to its right are
                           read-only or typed depending on the answer. */}
                       {anyLotPicked && (
-                        <th className="px-2 py-2 text-left font-medium">
+                        <th className="min-w-56 px-2 py-2 text-left font-medium">
                           Batch
                           <Required />
                         </th>
@@ -1207,13 +1657,13 @@ export function ReceiptForm({
                           gets barcoded; theirs identifies the factory batch and
                           is what a recall is traced by. One column carrying
                           both would make them look like one fact. */}
-                      <th className="px-2 py-2 text-left font-medium">
+                      <th className="min-w-44 px-2 py-2 text-left font-medium">
                         Kode batch internal
                       </th>
-                      <th className="px-2 py-2 text-left font-medium">
+                      <th className="min-w-44 px-2 py-2 text-left font-medium">
                         Kode batch supplier
                       </th>
-                      <th className="px-2 py-2 text-left font-medium">
+                      <th className="min-w-44 px-2 py-2 text-left font-medium">
                         {/* The column, not the cell, carries the mark: a date
                             input cannot hold a placeholder, so an empty one
                             looks finished and needs saying somewhere. Only while
@@ -1223,16 +1673,20 @@ export function ReceiptForm({
                         Expired
                         {anyNewLot && <Required />}
                       </th>
-                      <th className="px-2 py-2 text-right font-medium">Subtotal</th>
+                      <th className="min-w-32 px-2 py-2 text-right font-medium">Subtotal</th>
                       <th className="px-2 py-2" />
                     </tr>
                   </thead>
                   <tbody>
                     {lines.map((line, index) => {
                       const product = productById.get(line.productId);
-                      const lotTracked = needsLot(product, consignment);
+                      // A row whose lot is already decided shows it and asks
+                      // nothing — see `fixedLot`.
+                      const fixed = line.lotLocked ? line.fixedLot : undefined;
+                      const lotTracked =
+                        !fixed && needsLot(product, consignment);
                       const expiryRequired = Boolean(product?.hasExpiry);
-                      const choosesLot = picksLot(product);
+                      const choosesLot = !fixed && picksLot(product);
                       /**
                        * The lot this row JOINS, when it names one that already
                        * exists. Its code and date are shown beside it read-only:
@@ -1304,10 +1758,11 @@ export function ReceiptForm({
                               aria-label={`Qty ${product?.name ?? ""}`}
                               inputMode="decimal"
                               value={line.qty}
+                              disabled={locked}
                               onChange={(event) =>
                                 updateLine(index, { qty: event.target.value })
                               }
-                              className="max-w-20 text-right tabular-nums"
+                              className="w-24 text-right tabular-nums"
                             />
                           </td>
 
@@ -1318,13 +1773,47 @@ export function ReceiptForm({
                               required
                               aria-required
                               value={line.costPerUnit}
+                              disabled={locked}
                               onChange={(event) =>
                                 updateLine(index, {
                                   costPerUnit: event.target.value,
                                 })
                               }
-                              className="max-w-28 text-right tabular-nums"
+                              className="w-36 text-right tabular-nums"
                             />
+                          </td>
+
+                          <td className="px-2 py-2">
+                            <div className="flex items-center gap-2">
+                              <Checkbox
+                                aria-label={`${product?.name ?? "Barang"} diterima lengkap`}
+                                checked={
+                                  minorOf(line.qty) > 0n &&
+                                  minorOf(line.receivedQty) >= minorOf(line.qty)
+                                }
+                                disabled={saving}
+                                onCheckedChange={(checked) =>
+                                  toggleReceived(index, checked === true)
+                                }
+                              />
+                              <Input
+                                aria-label={`Jumlah diterima ${product?.name ?? ""}`}
+                                inputMode="decimal"
+                                value={line.receivedQty}
+                                disabled={saving}
+                                onChange={(event) =>
+                                  updateLine(index, {
+                                    receivedQty: event.target.value,
+                                  })
+                                }
+                                className="w-24 text-right tabular-nums"
+                              />
+                            </div>
+                            {source.kind === "edit" && (
+                              <p className="mt-1 text-xs text-muted tabular-nums">
+                                sebelumnya {formatQty(line.currentReceived)}
+                              </p>
+                            )}
                           </td>
 
                           {anyLotPicked && (
@@ -1348,7 +1837,7 @@ export function ReceiptForm({
                                     saving || effectiveWarehouseId === ""
                                   }
                                   disabledHint="Pilih gudang tujuan dulu."
-                                  className="max-w-56"
+                                  className="w-56"
                                   options={[
                                     /* BOTH CODES IN THE OPTION, because the
                                        whole act here is matching a row on
@@ -1371,6 +1860,10 @@ export function ReceiptForm({
                                     updateLine(index, { batchChoice: value })
                                   }
                                 />
+                              ) : fixed ? (
+                                <span className="text-xs text-muted">
+                                  {fixed.batchId ? "lot tercatat" : "dari pencatatan"}
+                                </span>
                               ) : (
                                 // Said rather than left blank: an empty cell
                                 // under "Batch" reads as one nobody filled in.
@@ -1390,7 +1883,7 @@ export function ReceiptForm({
                                 }
                                 hint={namedLot ? undefined : codeHint}
                                 productName={product?.name}
-                                className="max-w-40 text-xs"
+                                className="w-40 text-xs"
                               />
                             ) : (
                               <span className="text-xs text-muted">—</span>
@@ -1403,7 +1896,11 @@ export function ReceiptForm({
                               later delivery would rewrite the first one's recall
                               trail, and the API refuses the pair. */}
                           <td className="px-2 py-2">
-                            {namedLot ? (
+                            {fixed ? (
+                              <span className="text-xs tabular-nums">
+                                {fixed.supplierBatchCode ?? "—"}
+                              </span>
+                            ) : namedLot ? (
                               /* DISABLED RATHER THAN PLAIN TEXT, the same way
                                  the column beside it is: the value stays in a
                                  box in a column of boxes, and the grey says it
@@ -1413,7 +1910,7 @@ export function ReceiptForm({
                                 onChange={() => {}}
                                 productName={product?.name}
                                 disabled
-                                className="max-w-40 text-xs"
+                                className="w-40 text-xs"
                               />
                             ) : describingLot ? (
                               <SupplierBatchCodeInput
@@ -1424,7 +1921,7 @@ export function ReceiptForm({
                                   })
                                 }
                                 productName={product?.name}
-                                className="max-w-40 text-xs"
+                                className="w-40 text-xs"
                               />
                             ) : (
                               <span className="text-xs text-muted">—</span>
@@ -1432,14 +1929,20 @@ export function ReceiptForm({
                           </td>
 
                           <td className="px-2 py-2">
-                            {namedLot ? (
+                            {fixed ? (
+                              <span className="text-xs tabular-nums">
+                                {fixed.expiryDate
+                                  ? fixed.expiryDate.slice(0, 10)
+                                  : "—"}
+                              </span>
+                            ) : namedLot ? (
                               namedLot.expiryDate ? (
                                 <Input
                                   aria-label={`Expired ${product?.name ?? ""}`}
                                   type="date"
                                   value={namedLot.expiryDate.slice(0, 10)}
                                   disabled
-                                  className="max-w-36 text-xs"
+                                  className="w-40 text-xs"
                                 />
                               ) : (
                                 <span className="text-xs text-muted">—</span>
@@ -1462,14 +1965,14 @@ export function ReceiptForm({
                                 // says it is required, the note under the table
                                 // says why, and `validate` names the row by
                                 // product if a save is attempted without it.
-                                className="max-w-36 text-xs"
+                                className="w-40 text-xs"
                               />
                             ) : (
                               <span className="text-xs text-muted">—</span>
                             )}
                           </td>
 
-                          <td className="px-2 py-2 text-right tabular-nums text-xs">
+                          <td className="px-2 py-2 text-right tabular-nums text-xs whitespace-nowrap">
                             {isDecimal(line.qty) &&
                             isDecimal(line.costPerUnit)
                               ? formatMoney(
@@ -1482,6 +1985,7 @@ export function ReceiptForm({
                           </td>
 
                           <td className="px-2 py-2 text-right">
+                            {!locked && (
                             <UIButton
                               type="button"
                               variant="ghost"
@@ -1495,6 +1999,7 @@ export function ReceiptForm({
                             >
                               Hapus
                             </UIButton>
+                            )}
                           </td>
                         </tr>
                       );
@@ -1506,7 +2011,8 @@ export function ReceiptForm({
               {/* Sized to its label, left-aligned, like the same button under the
                   transfer form's, the opname sheet's and the opening stock
                   document's tables. */}
-              <div className="mt-4 border-t border-border/60 pt-3">
+              <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
+                {!locked && (
                 <UIButton
                   type="button"
                   variant="secondary"
@@ -1514,6 +2020,15 @@ export function ReceiptForm({
                   disabled={saving || pickerBlocker !== null}
                 >
                   + Tambah produk
+                </UIButton>
+                )}
+                <UIButton
+                  type="button"
+                  variant="ghost"
+                  onClick={receiveAll}
+                  disabled={saving}
+                >
+                  Tandai semua diterima
                 </UIButton>
                 {/* Reachable with rows already on the form: changing the branch
                     clears the warehouse under them. The rows survive that — see
@@ -1568,7 +2083,10 @@ export function ReceiptForm({
               rows with nowhere to be listed — the panel would say "tidak ada
               batch baru" over a receipt that is about to move stock into three
               of them. */}
-          <Card title="Batch yang akan dibuat / ditambah">
+          <Card
+            title="Batch yang akan dibuat / ditambah"
+            className={cn(locked && "hidden")}
+          >
             {lotMovements.length > 0 ? (
               <ul className="flex flex-col gap-1 text-sm">
                 {lotMovements.map((movement, index) => (
@@ -1650,7 +2168,7 @@ export function ReceiptForm({
         </div>
 
         <TextField
-          label="Catatan"
+          label={source.kind === "edit" ? "Keterangan penerimaan" : "Catatan"}
           name="notes"
           value={notes}
           onChange={(event) => setNotes(event.target.value)}
@@ -1658,23 +2176,150 @@ export function ReceiptForm({
           className="max-w-xl"
         />
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" disabled={saving || lines.length === 0}>
-            {saving ? "Menyimpan…" : "Simpan penerimaan"}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={saving}
-            onClick={() => router.push("/dashboard/purchasing/receipts")}
-          >
-            Batal
-          </Button>
-          <p className="text-xs text-muted">
-            Sekali disimpan, penerimaan tidak bisa diedit atau dihapus.
-          </p>
-          </div>
+        {canFileInvoice && (
+          <Card>
+            <CheckRow
+              label="Sekalian catat faktur supplier"
+              description="Faktur dibuat dari penerimaan ini — barang, qty, harga, dan PPN disalin persis, jadi keduanya selalu sama. Kosongkan kalau fakturnya belum ada."
+              checked={fileInvoice}
+              onCheckedChange={setFileInvoice}
+              disabled={saving}
+            />
+            {fileInvoice && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <TextField
+                  label="Tanggal faktur"
+                  name="invoiceDate"
+                  type="date"
+                  value={invoiceDate}
+                  onChange={(event) => setInvoiceDate(event.target.value)}
+                  disabled={saving}
+                  required
+                />
+                <TextField
+                  label="No. faktur supplier"
+                  name="invoiceNumber"
+                  value={invoiceNumber}
+                  onChange={(event) => setInvoiceNumber(event.target.value)}
+                  error={fieldErrors.invoiceNumber}
+                  disabled={saving}
+                  required
+                  placeholder="Sesuai dokumen dari supplier"
+                />
+              </div>
+            )}
+          </Card>
+        )}
+
+        <p className="text-xs text-muted">
+          Daftar barang tidak bisa diubah setelah disimpan. Yang belum
+          dicentang bisa diterima nanti lewat &quot;Update penerimaan&quot; di
+          halaman penerimaan.
+        </p>
       </form>
     </>
   );
+}
+
+/**
+ * The receipt form, in whichever of its three modes the route asks for — see
+ * `ReceiptSource`. A locked mode loads its document first.
+ */
+export function ReceiptForm({
+  supplierId,
+  initialPurchaseType = "beli_putus",
+  invoiceId,
+  receiptId,
+}: {
+  supplierId?: string;
+  initialPurchaseType?: PurchaseType;
+  /** Make the receipt from this manual supplier invoice. */
+  invoiceId?: string;
+  /** Update this existing receipt's received quantities. */
+  receiptId?: string;
+}) {
+  if (receiptId) return <EditReceiptLoader receiptId={receiptId} />;
+  if (invoiceId) return <InvoiceReceiptLoader invoiceId={invoiceId} />;
+
+  return (
+    <ReceiptFormBody
+      source={CREATE_SOURCE}
+      supplierId={supplierId}
+      initialPurchaseType={initialPurchaseType}
+    />
+  );
+}
+
+const CREATE_SOURCE: ReceiptSource = { kind: "create" };
+
+function EditReceiptLoader({ receiptId }: { receiptId: string }) {
+  const { receipt, loading, error, notFound } = useGoodsReceipt(receiptId);
+  const source = useMemo<ReceiptSource | null>(
+    () => (receipt ? { kind: "edit", receipt } : null),
+    [receipt],
+  );
+
+  if (loading && !receipt) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+        <Spinner /> Memuat penerimaan…
+      </div>
+    );
+  }
+  if (notFound) return <Alert variant="error">Penerimaan tidak ditemukan.</Alert>;
+  if (error || !receipt || !source) {
+    return <Alert variant="error">{error ?? "Gagal memuat penerimaan."}</Alert>;
+  }
+  if (receipt.status !== "pending" && receipt.status !== "partial") {
+    return (
+      <Alert variant="info">
+        Penerimaan {receipt.receiptNumber} sudah{" "}
+        {receipt.status === "closed" ? "ditutup" : "diterima lengkap"} dan tidak
+        bisa diubah lagi.{" "}
+        <Link
+          href={`/dashboard/purchasing/receipts/${receipt._id}`}
+          className="font-semibold underline"
+        >
+          Kembali ke detail
+        </Link>
+      </Alert>
+    );
+  }
+
+  return <ReceiptFormBody source={source} />;
+}
+
+function InvoiceReceiptLoader({ invoiceId }: { invoiceId: string }) {
+  const { invoice, loading, error, notFound } = usePurchaseInvoice(invoiceId);
+  const source = useMemo<ReceiptSource | null>(
+    () => (invoice ? { kind: "invoice", invoice } : null),
+    [invoice],
+  );
+
+  if (loading && !invoice) {
+    return (
+      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
+        <Spinner /> Memuat faktur…
+      </div>
+    );
+  }
+  if (notFound) return <Alert variant="error">Faktur tidak ditemukan.</Alert>;
+  if (error || !invoice || !source) {
+    return <Alert variant="error">{error ?? "Gagal memuat faktur."}</Alert>;
+  }
+  if (invoice.goodsReceiptId) {
+    return (
+      <Alert variant="info">
+        Faktur {invoice.invoiceNumber} sudah punya penerimaan barang.{" "}
+        <Link
+          href={`/dashboard/purchasing/receipts/${invoice.goodsReceiptId}/edit`}
+          className="font-semibold underline"
+        >
+          Buka penerimaannya
+        </Link>
+      </Alert>
+    );
+  }
+
+  return <ReceiptFormBody source={source} />;
 }

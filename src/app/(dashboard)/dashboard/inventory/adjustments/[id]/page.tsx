@@ -14,7 +14,7 @@ export default async function StockAdjustmentDetailPage({
   const { id } = await params;
 
   return (
-    <RequirePermission feature="stockMovements" action="read">
+    <RequirePermission feature="stockAdjustments">
       <div className="flex flex-col gap-6">
         <div>
           <Breadcrumb

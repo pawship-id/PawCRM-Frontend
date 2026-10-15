@@ -1,20 +1,24 @@
-import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen, within } from "@testing-library/react";
 
 import {
-  ConsignmentScreen,
+  cashFlowRows,
+  membershipRows,
+  valuationRows,
+  fetchAllLowStock,
+  stockLocations,
+  stockOnHandRows,
+  ledgerRows,
   LowStockScreen,
   ReportsHub,
-  StockOnHandScreen,
 } from "@/features/reports";
 import { reportService } from "@/services/report.service";
 import { productService } from "@/services/product.service";
 import { productBatchService } from "@/services/productBatch.service";
 import { branchService } from "@/services/branch.service";
 import { categoryService } from "@/services/category.service";
-import type { User } from "@/types/api";
+import type { Branch, User } from "@/types/api";
+import type { StockWarehouse } from "@/types/inventory";
 import { warehouseService } from "@/services/warehouse.service";
-import { ApiError } from "@/services/api-error";
 import type { StockOnHandRow } from "@/types/report";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
@@ -87,7 +91,10 @@ const stockResult = (rows: StockOnHandRow[], overrides = {}) => ({
   ...overrides,
 });
 
-const emptyPage = { items: [], pagination: { page: 1, limit: 100, total: 0, totalPages: 0 } };
+const emptyPage = {
+  items: [],
+  pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -136,12 +143,15 @@ describe("ReportsHub", () => {
     mockTab = "penjualan";
   });
 
-  it("opens on Penjualan, whose reports are all still Segera", () => {
+  it("opens on Penjualan, where every report opens as a dialog", () => {
     renderWithAuth(<ReportsHub />);
 
     expect(screen.getByText("Penjualan per invoice")).toBeInTheDocument();
-    expect(screen.getAllByText("Segera").length).toBeGreaterThan(0);
-    expect(screen.queryByRole("link", { name: "Buka" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Segera")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Buka" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Unduh" })).toHaveLength(6);
   });
 
   it("lists the inventory reports a full grant can reach", () => {
@@ -154,11 +164,11 @@ describe("ReportsHub", () => {
   });
 
   /** The hub is the statements' only door since 22 September 2026. */
-  it("opens the two live statements for a ledger reader, and lists Arus kas as Segera", () => {
+  it("opens the two live statements for Laporan Keuangan, and the rest as downloads", () => {
     mockTab = "keuangan";
     renderWithAuth(<ReportsHub />, {
       isSuperAdmin: false,
-      permissions: [{ feature: "journalEntries", actions: ["read"] }],
+      permissions: [{ feature: "financeReports", actions: ["read"] }],
     });
 
     const hrefs = screen
@@ -168,23 +178,40 @@ describe("ReportsHub", () => {
       "/dashboard/keuangan/laba-rugi",
       "/dashboard/keuangan/neraca",
     ]);
+    const umur = screen.getByText("Umur piutang & utang").closest("tr")!;
+    expect(
+      within(umur).getByRole("button", { name: "Unduh" }),
+    ).toBeInTheDocument();
+    const biaya = screen.getByText("Biaya per kategori").closest("tr")!;
+    expect(
+      within(biaya).getByRole("button", { name: "Unduh" }),
+    ).toBeInTheDocument();
+    const saldo = screen.getByText("Saldo per akun").closest("tr")!;
+    expect(
+      within(saldo).getByRole("button", { name: "Unduh" }),
+    ).toBeInTheDocument();
     const arusKas = screen.getByText("Arus kas").closest("tr")!;
-    expect(arusKas).toHaveTextContent("Segera");
+    expect(
+      within(arusKas).getByRole("button", { name: "Unduh" }),
+    ).toBeInTheDocument();
     expect(within(arusKas).queryByRole("link")).not.toBeInTheDocument();
   });
 
   /** A row that leads to a 403 is worse than no row. */
-  it("hides the reports a role cannot reach", () => {
+  it("hides a Laporan tab whose Lihat is not ticked", () => {
+    // 14 Oct 2026: the tab answers to its Laporan grant, not the data grant.
     mockTab = "inventori";
     renderWithAuth(<ReportsHub />, {
       isSuperAdmin: false,
       permissions: [{ feature: "products", actions: ["read"] }],
     });
 
-    expect(screen.getByText("Posisi stok")).toBeInTheDocument();
-    expect(screen.getByText("Stok minim")).toBeInTheDocument();
-    expect(screen.queryByText("Konsinyasi outstanding")).not.toBeInTheDocument();
-    expect(screen.queryByText("Kartu stok")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Inventori" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Posisi stok")).not.toBeInTheDocument();
+    // Falls back to the one tab every role has: Operasional, with Komisi saya.
+    expect(screen.getByText("Komisi saya")).toBeInTheDocument();
   });
 
   it("opens the stock reports for a role holding only Laporan Stok", () => {
@@ -218,114 +245,11 @@ describe("ReportsHub", () => {
 
     const open = screen.getAllByRole("link", { name: "Buka" });
     expect(open).toHaveLength(1);
-    expect(open[0]).toHaveAttribute("href", "/dashboard/reports/commissions/mine");
+    expect(open[0]).toHaveAttribute(
+      "href",
+      "/dashboard/reports/commissions/mine",
+    );
     expect(screen.queryByText("Rekap komisi")).not.toBeInTheDocument();
-  });
-});
-
-describe("StockOnHandScreen", () => {
-  it("renders the rows and the server's totals", async () => {
-    renderWithAuth(<StockOnHandScreen />);
-
-    expect(await screen.findByText("Shampoo Anjing")).toBeInTheDocument();
-    expect(screen.getByText("Cabang Timur")).toBeInTheDocument();
-  });
-
-  /**
-   * The tiles sit above a paged table and would otherwise be read as its sum.
-   * The number is the API's, and the caption says which set it covers.
-   */
-  it("says the totals cover the whole filter, not the page", async () => {
-    renderWithAuth(<StockOnHandScreen />);
-
-    expect(
-      await screen.findByText(/seluruh hasil filter, bukan cuma halaman ini/i),
-    ).toBeInTheDocument();
-  });
-
-  it("groups a warehouse with no branch under 'Tanpa cabang'", async () => {
-    asMock(reportService.stockOnHand).mockResolvedValue(
-      stockResult([stockRow({ branchId: null, branchName: null })]),
-    );
-    renderWithAuth(<StockOnHandScreen />);
-
-    expect(await screen.findByText("Tanpa cabang")).toBeInTheDocument();
-  });
-
-  /**
-   * An em dash, never "Rp 0" — only one of those is a data-entry problem the
-   * owner should chase.
-   */
-  it("renders a missing cost basis as a dash rather than zero", async () => {
-    asMock(reportService.stockOnHand).mockResolvedValue(
-      stockResult([stockRow({ hppAvg: null, value: null })]),
-    );
-    renderWithAuth(<StockOnHandScreen />);
-
-    await screen.findByText("Shampoo Anjing");
-    expect(screen.queryByText("Rp 0")).not.toBeInTheDocument();
-  });
-
-  it("flags a row that is below its restock threshold", async () => {
-    asMock(reportService.stockOnHand).mockResolvedValue(
-      stockResult([stockRow({ isLow: true })]),
-    );
-    renderWithAuth(<StockOnHandScreen />);
-
-    expect(await screen.findByText("Stok minim")).toBeInTheDocument();
-  });
-
-  // Zero rows are hidden by default, so the empty state has to say so — or the
-  // reader concludes the warehouse is empty.
-  it("explains that zero-stock rows are hidden when the result is empty", async () => {
-    asMock(reportService.stockOnHand).mockResolvedValue(stockResult([]));
-    renderWithAuth(<StockOnHandScreen />);
-
-    expect(
-      await screen.findByText(/stoknya nol disembunyikan/i),
-    ).toBeInTheDocument();
-  });
-
-  /**
-   * The API refuses a filter naming something that does not exist rather than
-   * reporting zero rows, and its message names which. Repeating it as "gagal
-   * memuat" would throw away the only useful part.
-   */
-  it("passes the API's filter message through verbatim", async () => {
-    asMock(reportService.stockOnHand).mockRejectedValue(
-      new ApiError("Unknown warehouse: wh9", 400),
-    );
-    renderWithAuth(<StockOnHandScreen />);
-
-    expect(
-      await screen.findByText("Unknown warehouse: wh9"),
-    ).toBeInTheDocument();
-  });
-
-  it("exports through the streaming endpoint, not by paging the list", async () => {
-    const csv = "Cabang,SKU,Qty\r\nCabang Timur,SHAMPOO,12\r\n";
-    asMock(reportService.exportStockOnHand).mockResolvedValue({
-      blob: Object.assign(new Blob([csv]), {
-        text: () => Promise.resolve(csv),
-      }),
-      filename: "stok-per-cabang.csv",
-    } as Awaited<ReturnType<typeof reportService.exportStockOnHand>>);
-    Object.assign(URL, {
-      createObjectURL: jest.fn(() => "blob:url"),
-      revokeObjectURL: jest.fn(),
-    });
-    renderWithAuth(<StockOnHandScreen />);
-
-    await screen.findByText("Shampoo Anjing");
-    await userEvent.click(
-      screen.getByRole("button", { name: /export \.xlsx/i }),
-    );
-
-    await waitFor(() =>
-      expect(reportService.exportStockOnHand).toHaveBeenCalled(),
-    );
-    // One request for the whole set — never a page-by-page walk.
-    expect(reportService.stockOnHand).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -375,101 +299,16 @@ describe("LowStockScreen", () => {
   });
 });
 
-describe("ConsignmentScreen", () => {
-  /**
-   * THE ONE THING THIS SCREEN MUST NOT LET A READER DO. Consigned goods belong
-   * to the supplier until they sell; an owner reading two totals on two screens
-   * will otherwise sum them.
-   */
-  it("states that the figure is not a debt, and points at the one that is", async () => {
-    renderWithAuth(<ConsignmentScreen />);
-
-    expect(await screen.findByText(/bukan utang/i)).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: /faktur pembelian/i }),
-    ).toBeInTheDocument();
-  });
-
-  it("lists suppliers with what they still hold", async () => {
-    asMock(productBatchService.consignmentSummary).mockResolvedValue({
-      items: [
-        {
-          supplierId: "s1",
-          supplierName: "PT Sumber Pangan",
-          lotCount: 4,
-          productCount: 3,
-          qtyRemaining: "62",
-          value: "1860000",
-        },
-      ],
-      totalValue: "1860000",
-      totalLots: 4,
-    } as Awaited<ReturnType<typeof productBatchService.consignmentSummary>>);
-    renderWithAuth(<ConsignmentScreen />);
-
-    expect(await screen.findByText("PT Sumber Pangan")).toBeInTheDocument();
-  });
-
-  /**
-   * The goods are on the shelf whether or not the vendor record survives, so the
-   * row stays and only the label is missing — hiding it would lose the stock.
-   */
-  it("keeps a row whose supplier was deleted", async () => {
-    asMock(productBatchService.consignmentSummary).mockResolvedValue({
-      items: [
-        {
-          supplierId: "s1",
-          supplierName: null,
-          lotCount: 1,
-          productCount: 1,
-          qtyRemaining: "5",
-          value: "50000",
-        },
-      ],
-      totalValue: "50000",
-      totalLots: 1,
-    } as Awaited<ReturnType<typeof productBatchService.consignmentSummary>>);
-    renderWithAuth(<ConsignmentScreen />);
-
-    expect(
-      await screen.findByText(/supplier sudah dihapus/i),
-    ).toBeInTheDocument();
-  });
-
-  it("reports a failure rather than showing an empty table", async () => {
-    asMock(productBatchService.consignmentSummary).mockRejectedValue(
-      new ApiError("Forbidden", 403),
-    );
-    renderWithAuth(<ConsignmentScreen />);
-
-    expect(await screen.findByText("Forbidden")).toBeInTheDocument();
-  });
-});
-
-/**
- * Stock isolation on the valuation report.
- *
- * A COURTESY OVER THE SERVER'S ANSWER — the endpoint narrows the rows and
- * refuses an out-of-scope filter with a 403 whatever these dropdowns offer.
- */
-describe("stock isolation on StockOnHandScreen", () => {
-  beforeEach(() => {
-    asMock(branchService.list).mockResolvedValue({
-      ...emptyPage,
-      items: [
-        { _id: "b1", name: "Cabang Timur" },
-        { _id: "b2", name: "Cabang Barat" },
-      ],
-    } as Awaited<ReturnType<typeof branchService.list>>);
-    asMock(warehouseService.list).mockResolvedValue({
-      ...emptyPage,
-      items: [
-        { _id: "wh1", name: "Gudang Utama", isActive: true, defaultBranchId: "b1" },
-        { _id: "wh2", name: "Gudang Barat", isActive: true, defaultBranchId: "b2" },
-        { _id: "wh0", name: "Gudang Pusat", isActive: true, defaultBranchId: null },
-      ],
-    } as Awaited<ReturnType<typeof warehouseService.list>>);
-  });
+describe("stockLocations — the Posisi stok dialog's Cabang and Gudang", () => {
+  const branches = [
+    { _id: "b1", name: "Cabang Timur" },
+    { _id: "b2", name: "Cabang Barat" },
+  ] as Branch[];
+  const warehouses = [
+    { _id: "wh1", name: "Gudang Utama", isActive: true, defaultBranchId: "b1" },
+    { _id: "wh2", name: "Gudang Barat", isActive: true, defaultBranchId: "b2" },
+    { _id: "wh0", name: "Gudang Pusat", isActive: true, defaultBranchId: null },
+  ] as StockWarehouse[];
 
   const confined = {
     _id: "u2",
@@ -480,42 +319,256 @@ describe("stock isolation on StockOnHandScreen", () => {
     ],
   } as unknown as User;
 
-  it("offers only the branches the user holds", async () => {
-    const ui = userEvent.setup();
-    renderWithAuth(<StockOnHandScreen />, { user: confined });
-
-    await screen.findByText("Shampoo Anjing");
-    await ui.click(screen.getByLabelText("Cabang"));
-
-    expect(screen.getByRole("option", { name: "Cabang Timur" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Cabang Barat" }),
-    ).not.toBeInTheDocument();
+  it("offers only the branches the user holds", () => {
+    const { branches: offered } = stockLocations(
+      confined,
+      branches,
+      warehouses,
+    );
+    expect(offered.map((b) => b.name)).toEqual(["Cabang Timur"]);
   });
 
-  it("offers the shared warehouse alongside the user's own", async () => {
+  it("offers the shared warehouse alongside the user's own, under every cabang", () => {
     // Gudang Pusat belongs to no branch, so it serves every one of them.
-    const ui = userEvent.setup();
-    renderWithAuth(<StockOnHandScreen />, { user: confined });
-
-    await screen.findByText("Shampoo Anjing");
-    await ui.click(screen.getByLabelText("Gudang"));
-
-    expect(screen.getByRole("option", { name: "Gudang Utama" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Gudang Pusat" })).toBeInTheDocument();
-    expect(
-      screen.queryByRole("option", { name: "Gudang Barat" }),
-    ).not.toBeInTheDocument();
+    const { warehouses: offered } = stockLocations(
+      confined,
+      branches,
+      warehouses,
+    );
+    expect(offered.map((w) => [w.name, w.branchIds])).toEqual([
+      ["Gudang Utama", ["b1"]],
+      ["Gudang Pusat", "all"],
+    ]);
   });
 
-  it("leaves an all-branches user every option", async () => {
-    const owner = { ...confined, allBranches: true, branchAccess: [] } as unknown as User;
-    const ui = userEvent.setup();
-    renderWithAuth(<StockOnHandScreen />, { user: owner });
+  it("leaves an all-branches user every option", () => {
+    const owner = {
+      ...confined,
+      allBranches: true,
+      branchAccess: [],
+    } as unknown as User;
+    const { warehouses: offered } = stockLocations(owner, branches, warehouses);
+    expect(offered.map((w) => w.name)).toContain("Gudang Barat");
+  });
+});
 
-    await screen.findByText("Shampoo Anjing");
-    await ui.click(screen.getByLabelText("Gudang"));
+describe("stockOnHandRows", () => {
+  it("reads the streamed CSV by header, dropping the BOM and trailing blank lines", () => {
+    const rows = stockOnHandRows(
+      '\uFEFFCabang,Gudang,SKU,Produk,Qty\r\nTimur,Utama,007,"Pakan, 1kg",12\r\n\r\n',
+    );
+    expect(rows).toEqual([
+      {
+        Cabang: "Timur",
+        Gudang: "Utama",
+        SKU: "007",
+        Produk: "Pakan, 1kg",
+        Qty: "12",
+      },
+    ]);
+  });
+});
 
-    expect(screen.getByRole("option", { name: "Gudang Barat" })).toBeInTheDocument();
+describe("cashFlowRows", () => {
+  it("lays the statement out top to bottom, totals as rows of their own", () => {
+    const rows = cashFlowRows({
+      range: { fromDate: "2026-09-01", toDate: "2026-09-30" },
+      opening: {
+        total: "1000000.0000",
+        accounts: [{ code: "1101", name: "Kas", balance: "1000000.0000" }],
+      },
+      sections: [
+        {
+          type: "operating",
+          inflow: "500000.0000",
+          outflow: "0.0000",
+          net: "500000.0000",
+          lines: [
+            {
+              sourceType: "pos",
+              entryCount: 3,
+              inflow: "500000.0000",
+              outflow: "0.0000",
+              net: "500000.0000",
+            },
+          ],
+        },
+      ],
+      netChange: "500000.0000",
+      closing: {
+        total: "1500000.0000",
+        accounts: [{ code: "1101", name: "Kas", balance: "1500000.0000" }],
+      },
+    });
+
+    expect(rows.map((r) => [r.section, r.label, r.amount])).toEqual([
+      ["Saldo awal", "1101 Kas", "1000000.0000"],
+      ["Saldo awal", "Total saldo awal kas & bank", "1000000.0000"],
+      ["Operasional", "Kasir", "500000.0000"],
+      [
+        "Operasional",
+        "Arus kas bersih dari aktivitas operasional",
+        "500000.0000",
+      ],
+      ["Perubahan kas", "Kenaikan (penurunan) kas bersih", "500000.0000"],
+      ["Saldo akhir", "1101 Kas", "1500000.0000"],
+      ["Saldo akhir", "Total saldo akhir kas & bank", "1500000.0000"],
+    ]);
+  });
+});
+
+describe("ledgerRows", () => {
+  it("frames each account's lines with its opening and closing", () => {
+    const rows = ledgerRows({
+      range: { fromDate: "2026-09-01", toDate: "2026-09-30" },
+      accounts: [
+        {
+          code: "1101",
+          name: "Kas",
+          accountType: "asset",
+          accountCategory: "cash_bank",
+          normalBalance: "debit",
+          opening: "1000000.0000",
+          debit: "500000.0000",
+          credit: "0.0000",
+          closing: "1500000.0000",
+          lines: [
+            {
+              date: "2026-09-05",
+              entryNumber: "JU-0001",
+              description: "Penjualan",
+              memo: null,
+              sourceType: "pos",
+              branchName: "Pusat",
+              debit: "500000.0000",
+              credit: "0.0000",
+              balance: "1500000.0000",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(
+      rows.map((r) => [r.date, r.description, r.source, r.balance]),
+    ).toEqual([
+      ["2026-09-01", "Saldo awal", null, "1000000.0000"],
+      ["2026-09-05", "Penjualan", "Kasir", "1500000.0000"],
+      ["2026-09-30", "Saldo akhir", null, "1500000.0000"],
+    ]);
+    expect(rows[2].debit).toBe("500000.0000");
+  });
+});
+
+describe("fetchAllLowStock", () => {
+  it("walks every page of the restock list, in the server's order", async () => {
+    const product = (id: string) => ({ _id: id, qtyOnHand: "0" });
+    asMock(productService.lowStock)
+      .mockResolvedValueOnce({
+        items: [product("p1"), product("p2")],
+        pagination: { page: 1, limit: 100, total: 3, totalPages: 2 },
+      } as unknown as Awaited<ReturnType<typeof productService.lowStock>>)
+      .mockResolvedValueOnce({
+        items: [product("p3")],
+        pagination: { page: 2, limit: 100, total: 3, totalPages: 2 },
+      } as unknown as Awaited<ReturnType<typeof productService.lowStock>>);
+
+    const rows = await fetchAllLowStock({ branchIds: ["b1"] });
+
+    expect(rows.map((r) => r._id)).toEqual(["p1", "p2", "p3"]);
+    expect(productService.lowStock).toHaveBeenCalledWith({
+      branchIds: ["b1"],
+      page: 2,
+      limit: 100,
+    });
+  });
+});
+
+describe("valuationRows", () => {
+  it("adds the total and the check against the Neraca under the shelves", () => {
+    const rows = valuationRows({
+      asOf: "2026-09-30",
+      rows: [
+        {
+          branchName: "Timur",
+          warehouseName: "Gudang Utama",
+          sku: "PK-1",
+          productName: "Pakan 1kg",
+          categoryName: null,
+          unit: "pcs",
+          qty: "12.0000",
+          averageCost: "1300.0000",
+          value: "15600.0000",
+        },
+      ],
+      total: "15600.0000",
+      reconciliation: {
+        accounts: [
+          { code: "1201", name: "Persediaan Barang", balance: "15600.0000" },
+        ],
+        ledgerTotal: "15600.0000",
+        difference: "0.0000",
+      },
+    });
+
+    expect(rows.map((r) => [r.productName, r.value])).toEqual([
+      ["Pakan 1kg", "15600.0000"],
+      ["Total nilai persediaan menurut stok", "15600.0000"],
+      ["Saldo akun 1201 Persediaan Barang (Neraca)", "15600.0000"],
+      ["Total saldo akun persediaan di Neraca", "15600.0000"],
+      ["Selisih (stok − Neraca)", "0.0000"],
+    ]);
+  });
+});
+
+describe("membershipRows", () => {
+  it("lists the packages best-selling first, then each benefit spent, then the total", () => {
+    const rows = membershipRows({
+      summary: {
+        cards: 3,
+        revenue: "900000",
+        benefitValue: "200000",
+        margin: "700000",
+      },
+      plans: [
+        {
+          planId: "p1",
+          name: "Gold",
+          cards: 2,
+          revenue: "600000",
+          benefitsUsed: 3,
+          benefitValue: "150000",
+        },
+        {
+          planId: "p2",
+          name: "Silver",
+          cards: 1,
+          revenue: "300000",
+          benefitsUsed: 1,
+          benefitValue: "50000",
+        },
+      ],
+      benefits: [
+        {
+          benefitId: "b1",
+          planId: "p1",
+          planName: "Gold",
+          label: "Mandi gratis",
+          used: 3,
+          value: "150000",
+          lastUsedAt: "2026-09-20T03:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(
+      rows.map((r) => [r.section, r.rank, r.planName, r.benefit, r.margin]),
+    ).toEqual([
+      ["Paket", 1, "Gold", null, "450000"],
+      ["Paket", 2, "Silver", null, "250000"],
+      ["Benefit", null, "Gold", "Mandi gratis", null],
+      ["Total", null, "Semua paket", null, "700000"],
+    ]);
+    expect(rows[2].lastUsedAt).toBe("2026-09-20");
   });
 });

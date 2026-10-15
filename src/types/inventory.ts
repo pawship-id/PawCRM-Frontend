@@ -54,6 +54,8 @@ export type MovementType =
   | "pos_void"
   | "opname_diff"
   | "purchase_return"
+  /** A received quantity corrected down on a partly received goods receipt. */
+  | "receipt_correction"
   | "customer_return"
   | "transfer_out"
   | "transfer_in"

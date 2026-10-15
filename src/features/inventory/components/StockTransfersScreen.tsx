@@ -144,7 +144,7 @@ export function StockTransfersScreen() {
           />
         }
         actions={
-          <Can feature="stockMovements" action="create">
+          <Can feature="stockTransfers" action="create">
             <Button asChild>
               <Link href="/dashboard/inventory/transfers/new">
                 <Plus className="size-4" />

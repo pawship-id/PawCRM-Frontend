@@ -110,7 +110,7 @@ export function PayablesScreen() {
       {/* The mockup's strip, over the search box below it. */}
       <PayablesStatCards
         onPendingReceiptsClick={() =>
-          router.push("/dashboard/purchasing/receipts?status=pending")
+          router.push("/dashboard/purchasing/receipts?status=open")
         }
         figures={figures}
         loading={!summary && !summaryFailed}

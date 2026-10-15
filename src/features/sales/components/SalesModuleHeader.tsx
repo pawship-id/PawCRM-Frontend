@@ -3,7 +3,11 @@
 import type { ReactNode } from "react";
 
 import { Breadcrumb, PageTabs, type PageTab } from "@/components";
-import { usePermissions } from "@/features/permissions";
+import {
+  usePermissions,
+  visibleTabs,
+  type GatedTab,
+} from "@/features/permissions";
 
 /**
  * The head of the Penjualan module, worn by all five of its tabs.
@@ -31,6 +35,32 @@ import { usePermissions } from "@/features/permissions";
  * describe. Hoisting them would put "total piutang berjalan" above a page that
  * says e-commerce sync is not built yet.
  */
+/**
+ * Penjualan's tabs, each opened by its own "Lihat" in the role editor
+ * (14 October 2026). Also what the Ringkasan route redirects through when a
+ * role may not see it.
+ */
+export const SALES_TABS: GatedTab[] = [
+  /*
+    THE MODULE'S FRONT PAGE, and its landing route since 29 September 2026.
+    EXACT, because every other tab is a route UNDER this one.
+  */
+  {
+    label: "Ringkasan",
+    href: "/dashboard/sales",
+    exact: true,
+    anyOf: [{ feature: "salesSummary" }],
+  },
+  /*
+    PREFIX-MATCHED: a bill's detail, its print view and one of its payments all
+    live under `/invoice`, and every one of them keeps this tab lit.
+  */
+  { label: "Faktur", href: "/dashboard/sales/invoice", anyOf: [{ feature: "customerInvoices" }] },
+  { label: "Piutang", href: "/dashboard/sales/piutang", anyOf: [{ feature: "receivables" }] },
+  { label: "E-commerce", href: "/dashboard/ecommerce-sync", anyOf: [{ feature: "ecommerce" }] },
+  { label: "Retur", href: "/dashboard/sales/retur", anyOf: [{ feature: "salesReturns" }] },
+];
+
 export function SalesModuleHeader({
   /** The create affordance for the tab you are on — only Faktur has one. */
   action,
@@ -38,38 +68,7 @@ export function SalesModuleHeader({
   action?: ReactNode;
 }) {
   const { can } = usePermissions();
-  const mayReadInvoices = can("customerInvoices", "read");
-
-  const tabs: PageTab[] = [
-    ...(mayReadInvoices
-      ? [
-          /*
-            THE MODULE'S FRONT PAGE, and its landing route since 29 September
-            2026 (on request). Opening a sales module asks what the month looked
-            like rather than which bill is third from the top.
-
-            EXACT, because every other tab is a route UNDER this one — left
-            prefix-matched it would sit lit on all of them.
-          */
-          { label: "Ringkasan", href: "/dashboard/sales", exact: true },
-          /*
-            PREFIX-MATCHED, unlike Ringkasan, and that is the point of giving the
-            invoices a segment of their own: a bill's detail, its print view and
-            one of its payments all live under `/invoice`, and every one of them
-            should keep this tab lit rather than leaving the reader on a row with
-            nothing marked.
-          */
-          { label: "Faktur", href: "/dashboard/sales/invoice" },
-          // Gated with Faktur: it describes that list's unpaid half, so a role
-          // that may not read invoices has nothing to be told about here.
-          { label: "Piutang", href: "/dashboard/sales/piutang" },
-        ]
-      : []),
-    // Ungated, both of them: neither has a feature in the catalogue to gate on,
-    // and neither page holds anything to protect.
-    { label: "E-commerce", href: "/dashboard/ecommerce-sync" },
-    { label: "Retur", href: "/dashboard/sales/retur" },
-  ];
+  const tabs = visibleTabs(SALES_TABS, can);
 
   return (
     <div className="flex flex-col gap-4">

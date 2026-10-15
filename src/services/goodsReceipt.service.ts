@@ -6,6 +6,8 @@ import type {
   GoodsReceiptListRow,
   GoodsReceiptPreview,
   PageResult,
+  PurchaseActivityEntry,
+  ReceiptFromInvoiceItemInput,
   ReceiveGoodsReceiptInput,
   SupplierPurchaseSummary,
 } from "@/types/api";
@@ -13,7 +15,8 @@ import type {
 /**
  * Goods receipts, against /api/goods-receipts.
  *
- * CREATE AND READ ONLY, and the absences are the backend's design rather than
+ * NO EDIT AND NO DELETE — after filing, the only writes are receiving, closing,
+ * and making a receipt from an invoice — and the absences are the backend's design rather than
  * this file's caution. There is no `update` and no `remove` here because there is
  * no `PATCH` and no `DELETE` there: a receipt posts stock movements and a journal
  * entry that are both immutable, and it sets the cost basis every later sale of
@@ -69,11 +72,9 @@ export const goodsReceiptService = {
     apiClient.get<GoodsReceiptDetail>(`/goods-receipts/${id}`),
 
   /**
-   * POST /goods-receipts — receive a delivery (201). THE IRREVERSIBLE ONE.
-   *
-   * Moves the stock, recomputes the weighted average cost, and — for a
-   * `beli_putus` purchase — credits `2101 Utang Usaha`. All of it in one
-   * transaction with the document itself.
+   * POST /goods-receipts — FILE a delivery as `pending` (201). Posts nothing;
+   * stock, HPP and the payable move as lines are received (`receive`). With
+   * `invoice`, the supplier's bill is filed in the same save, lines copied.
    *
    * NOT IDEMPOTENT ACROSS REQUESTS, and callers must handle that themselves: a
    * double-submitted form creates TWO receipts, because a receipt *is* the
@@ -87,20 +88,39 @@ export const goodsReceiptService = {
     apiClient.post<GoodsReceiptDetail>("/goods-receipts", input),
 
   /**
-   * POST /goods-receipts/preview — what the receipt WOULD do, writing nothing.
-   *
-   * THE SAME BODY AS `create`, because it is the same request. A client that can
-   * preview can trust that posting will not then be turned away for a reason the
-   * preview never mentioned — so the two must never be sent different payloads.
-   *
-   * Gated on `goodsReceipts:create`, not `read`: it answers "what will this
-   * delivery do to my cost basis and my books", and a role that may not receive
-   * goods has no business asking.
+   * POST /goods-receipts/:id/receive — one receiving event. `lines` states each
+   * line's NEW TOTAL received quantity (lower = a correction, allowed while
+   * partial); omitted, everything is received in full. Posts only the
+   * difference: stock, HPP and — for beli putus — the payable.
    */
   receive: (id: string, input: ReceiveGoodsReceiptInput = {}) =>
     apiClient.post<GoodsReceiptDetail>(`/goods-receipts/${id}/receive`, input),
 
-  /** Deliveries still `pending`, optionally for one cabang or several. */
+  /** Closes a partly received delivery short; a linked invoice is billed down. */
+  close: (id: string, input: { notes?: string } = {}) =>
+    apiClient.post<GoodsReceiptDetail>(`/goods-receipts/${id}/close`, input),
+
+  /** Makes a pending receipt from a manual supplier invoice, copying its lines. */
+  createFromInvoice: (
+    invoiceId: string,
+    input: {
+      receiptDate?: string;
+      notes?: string;
+      items?: ReceiptFromInvoiceItemInput[];
+    } = {},
+  ) =>
+    apiClient.post<GoodsReceiptDetail>(
+      `/goods-receipts/from-invoice/${invoiceId}`,
+      input,
+    ),
+
+  /** The receipt's history merged with its invoice's, newest first. */
+  activity: (id: string) =>
+    apiClient.get<{ items: PurchaseActivityEntry[] }>(
+      `/goods-receipts/${id}/activity`,
+    ),
+
+  /** Deliveries still expected (pending or partial), optionally per cabang. */
   pendingCount: (query: { branchId?: string; branchIds?: string[] } = {}) =>
     apiClient.get<{ count: number }>("/goods-receipts/pending-count", {
       query: {
@@ -109,6 +129,11 @@ export const goodsReceiptService = {
       },
     }),
 
+  /**
+   * POST /goods-receipts/preview — what the receipt WOULD do, writing nothing.
+   * THE SAME BODY AS `create`, because it is the same request. Gated on
+   * `goodsReceipts:create`, not `read`.
+   */
   preview: (input: CreateGoodsReceiptInput) =>
     apiClient.post<GoodsReceiptPreview>("/goods-receipts/preview", input),
 

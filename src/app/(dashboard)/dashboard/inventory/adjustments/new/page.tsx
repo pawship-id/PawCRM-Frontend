@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Penyesuaian baru · Buloo" };
 
 export default function NewStockAdjustmentPage() {
   return (
-    <RequirePermission feature="stockMovements" action="create">
+    <RequirePermission feature="stockAdjustments" action="create">
       <div className="flex flex-col gap-6">
         <div>
           <Breadcrumb

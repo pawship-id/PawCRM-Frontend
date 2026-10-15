@@ -2,7 +2,9 @@ import { apiClient } from "./api-client";
 import type {
   PayablesSummary,
   CreatePurchaseInvoiceInput,
+  ManualPurchaseInvoiceInput,
   PageResult,
+  PurchaseActivityEntry,
   PurchaseInvoiceDetail,
   PurchaseInvoiceListQuery,
   PurchaseInvoiceListRow,
@@ -13,9 +15,9 @@ import type {
 /**
  * Purchase invoices (utang supplier), against /api/purchase-invoices.
  *
- * FIVE METHODS, AND THE ABSENCES ARE THE BACKEND'S DESIGN rather than this
- * file's caution. There is no `update` and no `remove` because there is no
- * `PATCH` and no `DELETE` there, and no way to withdraw a payment either: every
+ * `update` AND `remove` EXIST ONLY FOR A MANUAL INVOICE no goods receipt has
+ * been made from yet (14 October 2026); once a receipt exists the invoice is
+ * locked. There is no way to withdraw a payment here either: every
  * payment posts an immutable journal entry, so an edit would restate cash that
  * has already been reported and a delete would leave the ledger pointing at a
  * document nobody can look up. A wrong payment is corrected by REVERSING its
@@ -23,7 +25,7 @@ import type {
  * correction visible.
  *
  * WHAT `create` DOES NOT DO IS CREATE THE DEBT. A `beli_putus` goods receipt
- * credits `2101 Utang Usaha` the moment it posts, so filing an invoice writes
+ * credits `2101 Utang Usaha` as goods are received, so filing an invoice writes
  * no journal entry at all. What it adds is the vendor's own number, the issue
  * date, and the due date derived from their payment terms. A screen that reads a
  * receipt's null `invoiceId` as "nothing is owed" is wrong.
@@ -56,6 +58,7 @@ export const purchaseInvoiceService = {
         branchIds: query.branchIds,
         warehouseId: query.warehouseId,
         goodsReceiptId: query.goodsReceiptId,
+        linked: query.linked,
         status: query.status,
         outstanding: query.outstanding,
         overdue: query.overdue,
@@ -90,8 +93,25 @@ export const purchaseInvoiceService = {
    * (400) — consignment goods stay the supplier's until they sell, so nothing is
    * owed on arrival.
    */
-  create: (input: CreatePurchaseInvoiceInput) =>
+  /** Bill an existing receipt (lines copied) or file a manual invoice. */
+  create: (input: CreatePurchaseInvoiceInput | ManualPurchaseInvoiceInput) =>
     apiClient.post<PurchaseInvoiceDetail>("/purchase-invoices", input),
+
+  /** Edit a manual invoice — refused once a goods receipt locks it. */
+  update: (id: string, input: ManualPurchaseInvoiceInput) =>
+    apiClient.put<PurchaseInvoiceDetail>(`/purchase-invoices/${id}`, input),
+
+  /** Delete a manual invoice no goods receipt has been made from. */
+  remove: (id: string) =>
+    apiClient.delete<{ _id: string; deleted: boolean }>(
+      `/purchase-invoices/${id}`,
+    ),
+
+  /** The invoice's history merged with its receipt's, newest first. */
+  activity: (id: string) =>
+    apiClient.get<{ items: PurchaseActivityEntry[] }>(
+      `/purchase-invoices/${id}/activity`,
+    ),
 
   /**
    * POST /purchase-invoices/:id/payments — pay a supplier (201). THE ONE THAT

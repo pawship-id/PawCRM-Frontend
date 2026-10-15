@@ -2,8 +2,12 @@
 
 import type { ReactNode } from "react";
 
-import { Breadcrumb, PageTabs, type PageTab } from "@/components";
-import { usePermissions } from "@/features/permissions";
+import { Breadcrumb, PageTabs } from "@/components";
+import {
+  usePermissions,
+  visibleTabs,
+  type GatedTab,
+} from "@/features/permissions";
 
 /**
  * The head of the Keuangan module, worn by its tabs.
@@ -33,6 +37,29 @@ import { usePermissions } from "@/features/permissions";
  * second, unscoped set up here would be two answers to one question, which is
  * the trap the Stok header avoided for the same reason.
  */
+/**
+ * Keuangan's tabs, each opened by its own "Lihat" (14 October 2026).
+ *
+ * Kas & Bank opens with either of its two sub-tabs' grants — Transaksi or Biaya
+ * Tetap — and the channel table inside it keeps `paymentChannels:read`.
+ */
+export const ACCOUNTING_TABS: GatedTab[] = [
+  // EXACT: its href is the prefix of every sibling.
+  {
+    label: "Ringkasan",
+    href: "/dashboard/keuangan",
+    exact: true,
+    anyOf: [{ feature: "financeSummary" }],
+  },
+  {
+    label: "Kas & Bank",
+    href: "/dashboard/keuangan/kas-bank",
+    anyOf: [{ feature: "cashTransactions" }, { feature: "fixedCosts" }],
+  },
+  { label: "Komisi", href: "/dashboard/keuangan/komisi", anyOf: [{ feature: "commissionReports" }] },
+  { label: "Jurnal", href: "/dashboard/keuangan/journal-entries", anyOf: [{ feature: "journalEntries" }] },
+];
+
 export function AccountingModuleHeader({
   /** The create affordance for the tab you are on — not every tab has one. */
   action,
@@ -41,40 +68,7 @@ export function AccountingModuleHeader({
 }) {
   const { can } = usePermissions();
 
-  const tabs: PageTab[] = [
-    // EXACT: its href is the prefix of all three siblings.
-    { label: "Ringkasan", href: "/dashboard/keuangan", exact: true },
-    /*
-      KAS & BANK — where the money sits, and everything that moved it. Second,
-      beside Ringkasan, because it is the tab a shop opens daily.
-
-      TRANSAKSI USED TO BE A TAB OF ITS OWN and is now the first of its two
-      SUB-tabs (16 September 2026, with the mockup): a list of movements is only
-      readable next to the accounts they moved through, and two module tabs that
-      answered halves of one question meant picking the right one before you
-      could look. The old route redirects, query and all.
-
-      EITHER GRANT OPENS IT, because the page is two halves: the channel table
-      needs `paymentChannels:read` and the list needs `cashTransactions:read`,
-      and each is gated again inside. Requiring only the first would have taken
-      the transaction list away from everyone who could read it before the move.
-    */
-    ...(can("paymentChannels", "read") || can("cashTransactions", "read")
-      ? [{ label: "Kas & Bank", href: "/dashboard/keuangan/kas-bank" }]
-      : []),
-    /*
-      GATED ON `users:read`, not on a finance grant, and that is the screen's own
-      rule rather than this row's: Komisi IS payroll — it names every groomer
-      and what they are owed — so whoever may read the staff register may read
-      it, and a bookkeeper who may not is not shown the door.
-    */
-    ...(can("users", "read")
-      ? [{ label: "Komisi", href: "/dashboard/keuangan/komisi" }]
-      : []),
-    ...(can("journalEntries", "read")
-      ? [{ label: "Jurnal", href: "/dashboard/keuangan/journal-entries" }]
-      : []),
-  ];
+  const tabs = visibleTabs(ACCOUNTING_TABS, can);
 
   return (
     <div className="flex flex-col gap-4">

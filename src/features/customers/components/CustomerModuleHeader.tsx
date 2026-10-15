@@ -2,8 +2,12 @@
 
 import type { ReactNode } from "react";
 
-import { PageTabs, StatTile, type PageTab } from "@/components";
-import { usePermissions } from "@/features/permissions";
+import { PageTabs, StatTile } from "@/components";
+import {
+  usePermissions,
+  visibleTabs,
+  type GatedTab,
+} from "@/features/permissions";
 
 import {
   useRegistryCounts,
@@ -41,6 +45,39 @@ import {
  * screen to raise a doubt about tenant isolation that the code does not have.
  * The next person reaching for a scope row will land here instead.
  */
+/**
+ * Pelanggan's tabs, each opened by its own "Lihat" (14 October 2026).
+ *
+ * Membership opens with either of its sub-tabs' grants (Paket, or Kartu with
+ * Perpanjangan), and is NOT exact: it stays underlined on all three sub-tabs.
+ */
+export const CUSTOMER_TABS: GatedTab[] = [
+  {
+    label: "Ringkasan",
+    href: "/dashboard/master/customers/ringkasan",
+    exact: true,
+    anyOf: [{ feature: "customerSummary" }],
+  },
+  {
+    label: "Pelanggan",
+    href: "/dashboard/master/customers",
+    // EXACT, because the other tabs are routes UNDER this one.
+    exact: true,
+    anyOf: [{ feature: "customers" }],
+  },
+  { label: "Hewan", href: "/dashboard/master/pets", anyOf: [{ feature: "pets" }] },
+  {
+    label: "Membership",
+    href: "/dashboard/master/customers/membership",
+    anyOf: [{ feature: "membershipPlans" }, { feature: "petMemberships" }],
+  },
+  {
+    label: "Riwayat",
+    href: "/dashboard/master/customers/riwayat",
+    anyOf: [{ feature: "customerHistory" }],
+  },
+];
+
 export function CustomerModuleHeader({
   /** The create button for the tab you are on — "+ Pelanggan", "+ Hewan". */
   action,
@@ -83,47 +120,7 @@ export function CustomerModuleHeader({
     refreshKey,
   );
 
-  const tabs: PageTab[] = [
-    ...(mayReadCustomers
-      ? [
-          {
-            /*
-              THE MODULE'S FRONT PAGE, and the one tab that is not a list: who
-              has stopped coming, who has just arrived. It is first because it is
-              what somebody opens the module to find out — the register itself is
-              a thing you go to when you already know whose name you are after.
-
-              EXACT, like Pelanggan below, and for the same reason: it is a route
-              UNDER /master/customers.
-            */
-            label: "Ringkasan",
-            href: "/dashboard/master/customers/ringkasan",
-            exact: true,
-          },
-          {
-            label: "Pelanggan",
-            href: "/dashboard/master/customers",
-            // EXACT, because the other two tabs are routes UNDER this one. Left
-            // prefix-matched it would sit lit beside whichever of them the
-            // reader had actually opened.
-            exact: true,
-          },
-        ]
-      : []),
-    ...(mayReadPets
-      ? [{ label: "Hewan", href: "/dashboard/master/pets" }]
-      : []),
-    /*
-      NOT EXACT, unlike Pelanggan above — Membership has sub-tabs of its own
-      (Paket / Kartu / Perpanjangan) and has to stay underlined on all three.
-      Its own row handles which of the three is current.
-
-      The page behind it is real and gated on `membershipPlans:read`; only
-      Riwayat below still opens on a "belum tersedia" panel.
-    */
-    { label: "Membership", href: "/dashboard/master/customers/membership" },
-    { label: "Riwayat", href: "/dashboard/master/customers/riwayat" },
-  ];
+  const tabs = visibleTabs(CUSTOMER_TABS, can);
 
   return (
     <div className="flex flex-col gap-4">

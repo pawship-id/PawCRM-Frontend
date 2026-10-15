@@ -35,6 +35,10 @@ const LABELS: Record<MovementType, { label: string; tone: string }> = {
   // customers actually return" unanswerable.
   pos_void: { label: "Batal penjualan", tone: "bg-success/12 text-success" },
   purchase_return: { label: "Retur supplier", tone: "bg-danger/10 text-danger" },
+  receipt_correction: {
+    label: "Koreksi penerimaan",
+    tone: "bg-tint-warning text-warning",
+  },
   transfer_out: { label: "Transfer keluar", tone: "bg-secondary/25 text-secondary-foreground" },
   // The same orange as the pair it undoes, because it is the same transfer —
   // but its own label: "Transfer masuk" at the SOURCE would claim goods arrived
