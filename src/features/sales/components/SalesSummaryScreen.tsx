@@ -3,7 +3,6 @@
 import Link from "next/link";
 
 import { Alert, Card, ScopeFilterCard, Spinner } from "@/components";
-import { SETTINGS_PATHS } from "@/features/settings/paths";
 import type { RevenueBreakdown } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/utils/decimal";
@@ -184,8 +183,7 @@ export function SalesSummaryScreen() {
 /* ------------------------------------------------------------ the three axes */
 
 /**
- * WHERE EACH PANEL'S FIGURES COME FROM, in the words of the screens a reader can
- * go and check — asked for explicitly, and load-bearing rather than decorative.
+ * Per-axis copy: what an unnamed group is called, and what an empty panel says.
  *
  * `empty` NAMES THE FIELD THAT IS BLANK, not "no data". Two of these three have
  * an optional field behind them (a service needs no category, a customer needs
@@ -194,61 +192,19 @@ export function SalesSummaryScreen() {
  */
 const SOURCES: Record<
   RevenueBreakdown["axis"],
-  { source: React.ReactNode; unnamed: string; empty: string }
+  { unnamed: string; empty: string }
 > = {
   category: {
-    source: (
-      <>
-        Dikelompokkan dari <b>Kategori</b> pada master{" "}
-        <Link
-          href="/dashboard/inventory/products"
-          className="text-primary underline-offset-2 hover:underline"
-        >
-          Produk &amp; Varian
-        </Link>{" "}
-        dan Layanan, dibaca per baris faktur.
-      </>
-    ),
     unnamed: "Tanpa kategori",
     empty:
       "Belum ada baris terjual pada cabang dan periode ini. Ubah lewat tombol Filter.",
   },
   businessLine: {
-    source: (
-      <>
-        Dikelompokkan dari <b>Lini usaha</b> menurut pemetaan{" "}
-        <b>sub akun penjualan saat transaksi</b> (aturan di Daftar Akun). Mengubah
-        pemetaan hanya berlaku untuk penjualan baru; penjualan yang sudah tercatat
-        tidak bergeser. Baris tanpa sub akun berlini dicatat sebagai belum dipetakan.
-        Daftar lininya di{" "}
-        <Link
-          href={SETTINGS_PATHS.liniBisnis}
-          className="text-primary underline-offset-2 hover:underline"
-        >
-          Pengaturan › Lini bisnis
-        </Link>
-        , dibaca per baris faktur.
-      </>
-    ),
     unnamed: "Belum Dipetakan",
     empty:
       "Belum ada baris terjual pada cabang dan periode ini. Ubah lewat tombol Filter.",
   },
   customerType: {
-    source: (
-      <>
-        Dikelompokkan dari <b>Kategori pelanggan</b> pada profil pelanggan —
-        daftarnya di{" "}
-        <Link
-          href={SETTINGS_PATHS.tipePelanggan}
-          className="text-primary underline-offset-2 hover:underline"
-        >
-          Pengaturan › Kategori pelanggan
-        </Link>
-        . Dibaca dari register hari ini, bukan disalin ke faktur: pelanggan yang
-        pindah kategori membawa seluruh riwayatnya.
-      </>
-    ),
     unnamed: "Tanpa kategori pelanggan",
     empty:
       "Belum ada faktur pada cabang dan periode ini. Ubah lewat tombol Filter.",
@@ -310,9 +266,6 @@ function BreakdownPanel({
         </div>
       ) : (
         <>
-          {/* Where these figures come from — the master list to go and check. */}
-          <p className="mb-3 text-xs text-muted">{copy.source}</p>
-
           {rows.length === 0 ? (
             <p className="py-2 text-sm text-muted">{copy.empty}</p>
           ) : (

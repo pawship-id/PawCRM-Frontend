@@ -213,29 +213,16 @@ describe("SalesSummaryScreen", () => {
 
     // Dropping an unnamed group would make the bars add up to less than the
     // panel's own total with nothing on screen saying why.
-    expect(screen.getByText(/Tanpa kategori/)).toBeInTheDocument();
+    expect(await screen.findByText(/Tanpa kategori/)).toBeInTheDocument();
     expect(screen.getByText(/Belum Dipetakan/)).toBeInTheDocument();
   });
 
-  it("says where each panel's figures come from", async () => {
+  it("draws no source note under any panel", async () => {
     renderWithAuth(<SalesSummaryScreen />);
 
-    // Each note names the master list the field lives on, and links to it — the
-    // whole point being that a reader can go and check the grouping.
-    expect(
-      await screen.findByRole("link", { name: "Produk & Varian" }),
-    ).toHaveAttribute("href", "/dashboard/inventory/products");
-    expect(
-      screen.getByRole("link", { name: "Pengaturan › Lini bisnis" }),
-    ).toHaveAttribute("href", "/dashboard/pengaturan/lini-bisnis");
-    expect(
-      screen.getByRole("link", { name: "Pengaturan › Kategori pelanggan" }),
-    ).toHaveAttribute("href", "/dashboard/pengaturan/tipe-pelanggan");
-    // The two line axes say so; the customer one says where it reads from.
-    expect(screen.getAllByText(/dibaca per baris faktur/)).toHaveLength(2);
-    expect(
-      screen.getByText(/Dibaca dari register hari ini/),
-    ).toBeInTheDocument();
+    await screen.findAllByText(/Total nilai baris/);
+    expect(screen.queryByText(/Dikelompokkan dari/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Produk & Varian" })).not.toBeInTheDocument();
   });
 
   it("reconciles a line-based panel with the omzet, and says the customer one needs no allocation", async () => {
@@ -271,7 +258,7 @@ describe("SalesSummaryScreen", () => {
       await screen.findByText(/Rincian ini tidak bisa dimuat/),
     ).toBeInTheDocument();
     expect(screen.getByText("Rp 12.500.000")).toBeInTheDocument();
-    expect(screen.getByText(/Tanpa kategori/)).toBeInTheDocument();
+    expect(await screen.findByText(/Tanpa kategori/)).toBeInTheDocument();
   });
 
   /**
