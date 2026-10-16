@@ -116,6 +116,12 @@ function InvoiceBody({
   const [busy, setBusy] = useState(false);
 
   const linked = Boolean(invoice.goodsReceiptId);
+  // ONE INVOICE, MANY RECEIPTS (16 October 2026, BO): goods arrive over
+  // several days, one receipt each. Still to come while any line has some left.
+  const receipts = invoice.goodsReceipts ?? [];
+  const stillToCome = (invoice.items ?? []).some(
+    (item) => (toMinor(item.remainingQty ?? "0") ?? 0n) > 0n,
+  );
   const settled = invoice.status === "paid";
   const totalMinor = toMinor(invoice.total) ?? 0n;
   const payableMinor = toMinor(invoice.payableAmount) ?? 0n;
@@ -166,13 +172,31 @@ function InvoiceBody({
         {invoice.branchName ?? "—"} · {invoice.warehouseName ?? "—"}
       </PageHeading>
 
+      {linked && stillToCome && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-tint-warning px-4 py-3 text-sm text-foreground">
+          <span>
+            <b>Sebagian barang belum diterima.</b> Catat kedatangan berikutnya
+            sebagai penerimaan baru — yang bisa dipilih hanya barang yang
+            belum lengkap diterima.
+          </span>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <Can feature="goodsReceipts" action="create">
+              <Button onClick={makeReceipt} disabled={busy}>
+                Buat penerimaan barang
+              </Button>
+            </Can>
+          </div>
+        </div>
+      )}
+
       {!linked && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-tint-warning px-4 py-3 text-sm text-foreground">
           <span>
             <b>Barang dari faktur ini belum diterima.</b> Belum ada utang yang
             tercatat dan faktur belum bisa dibayar. Buat penerimaan barang saat
             barangnya datang — barangnya disalin dari faktur ini dan faktur
-            terkunci.
+            terkunci. Kalau barangnya datang bertahap, setiap kedatangan dicatat
+            sebagai penerimaan sendiri.
           </span>
           <div className="ml-auto flex flex-wrap gap-2">
             <Can feature="purchaseInvoices" action="create">
@@ -250,7 +274,25 @@ function InvoiceBody({
             </Field>
             <Field label="Dibuat oleh">{invoice.createdByName ?? "—"}</Field>
             <Field label="Penerimaan barang">
-              {invoice.goodsReceiptId ? (
+              {receipts.length > 0 ? (
+                <span className="flex flex-col gap-0.5">
+                  {receipts.map((row) => (
+                    <Link
+                      key={row._id}
+                      href={`/dashboard/purchasing/receipts/${row._id}`}
+                      className="font-semibold text-primary tabular-nums hover:underline"
+                    >
+                      {row.receiptNumber}
+                      {row.receiptDate && (
+                        <span className="ml-1 font-normal text-muted">
+                          · {formatDate(row.receiptDate)}
+                        </span>
+                      )}{" "}
+                      →
+                    </Link>
+                  ))}
+                </span>
+              ) : invoice.goodsReceiptId ? (
                 <Link
                   href={`/dashboard/purchasing/receipts/${invoice.goodsReceiptId}`}
                   className="font-semibold text-primary tabular-nums hover:underline"
@@ -262,7 +304,12 @@ function InvoiceBody({
               )}
             </Field>
             <Field label="Status barang">
-              {invoice.goodsReceiptStatus ? (
+              {!linked ? (
+                <span className="text-muted">belum diterima</span>
+              ) : receipts.length > 0 ? (
+                // Across every receipt: complete only when nothing is left.
+                <ReceiptStatusBadge status={stillToCome ? "partial" : "received"} />
+              ) : invoice.goodsReceiptStatus ? (
                 <ReceiptStatusBadge status={invoice.goodsReceiptStatus} />
               ) : (
                 <span className="text-muted">belum diterima</span>

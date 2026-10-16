@@ -988,6 +988,35 @@ async function openPaymentDialog(user: UserEvent) {
 const toast = swalToast as jest.MockedFunction<typeof swalToast>;
 
 describe("InvoiceDetail", () => {
+  // ONE INVOICE, MANY RECEIPTS: each delivery day listed, and the next one
+  // offered while something is still to come.
+  it("lists every receipt of the invoice and offers another while goods are still to come", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        goodsReceiptId: "gr1",
+        goodsReceipts: [
+          { _id: "gr1", receiptNumber: "GR-260806-001", receiptDate: "2026-08-06T00:00:00.000Z", status: "received" },
+          { _id: "gr2", receiptNumber: "GR-260810-003", receiptDate: "2026-08-10T00:00:00.000Z", status: "received" },
+        ],
+        items: [invoiceItem({ receivedQty: "6.0000", remainingQty: "4.0000" })],
+      }),
+    );
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText(/Sebagian barang belum diterima/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /GR-260806-001/ })).toHaveAttribute(
+      "href",
+      "/dashboard/purchasing/receipts/gr1",
+    );
+    expect(screen.getByRole("link", { name: /GR-260810-003/ })).toHaveAttribute(
+      "href",
+      "/dashboard/purchasing/receipts/gr2",
+    );
+    expect(
+      screen.getByRole("button", { name: "Buat penerimaan barang" }),
+    ).toBeInTheDocument();
+  });
+
   it("shows the balance and the payment form for an unpaid bill", async () => {
     const user = userEvent.setup();
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);

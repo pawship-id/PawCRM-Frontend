@@ -82,23 +82,19 @@ const NEW_BATCH = "__new__";
  * checklist on it, no separate receiving page):
  *
  *   create  — a new delivery typed in: lines, lots, and how much arrived.
- *   invoice — a new receipt made from a manual supplier invoice. The list
- *             STARTS EMPTY (16 October 2026, BO): the clerk picks the
- *             invoice's lines onto it — one line again per extra batch, up to
- *             what the invoice carries — then fills in lots and what arrived.
- *   edit    — an existing receipt still being received: its lines locked, only
- *             what arrived (up, or down while partial) and a missing lot
- *             change. One made from an invoice may also take MORE of that
- *             invoice — `invoice` is it, loaded for the picker.
+ *   invoice — one DELIVERY DAY of a manual supplier invoice. The list STARTS
+ *             EMPTY (16 October 2026, BO): the clerk picks what arrived from
+ *             the invoice lines still to come — one line again per extra
+ *             batch — and the receipt is received in full when saved. The
+ *             next delivery is another receipt; this one is never updated.
+ *   edit    — an existing receipt still being received: lines locked, only what
+ *             arrived (up, or down while partial) and a missing lot change.
+ *             Never a receipt made from an invoice.
  */
 type ReceiptSource =
   | { kind: "create" }
   | { kind: "invoice"; invoice: PurchaseInvoiceDetail }
-  | {
-      kind: "edit";
-      receipt: GoodsReceiptDetail;
-      invoice?: PurchaseInvoiceDetail | null;
-    };
+  | { kind: "edit"; receipt: GoodsReceiptDetail };
 
 interface LineDraft {
   productId: string;
@@ -114,8 +110,6 @@ interface LineDraft {
   /** The receipt line (edit) or invoice line (invoice) this row is. */
   itemId?: string;
   invoiceItemId?: string;
-  /** A row picked from the invoice on THIS edit — not on the receipt yet. */
-  isNew?: boolean;
   /**
    * The line's lot is already decided — a receipt line that names one, or was
    * filed with its expiry — so it is shown, not asked.
@@ -197,12 +191,7 @@ function seedFromSource(source: ReceiptSource): {
 
   // The invoice's products are known up front, so a row picked from it has
   // its label and its expiry flag without a catalogue lookup.
-  const invoice =
-    source.kind === "invoice"
-      ? source.invoice
-      : source.kind === "edit"
-        ? (source.invoice ?? null)
-        : null;
+  const invoice = source.kind === "invoice" ? source.invoice : null;
   for (const item of invoice?.items ?? []) {
     remember(
       item.productId,
@@ -242,7 +231,6 @@ function seedFromSource(source: ReceiptSource): {
           receivedQty: trimQty(item.receivedQty),
           currentReceived: trimQty(item.receivedQty),
           itemId: item.itemId,
-          invoiceItemId: item.invoiceItemId ?? undefined,
           lotLocked,
           fixedLot: lotLocked
             ? {
@@ -686,55 +674,28 @@ function ReceiptFormBody({
     );
   }
 
-  /**
-   * THE INVOICE THIS FORM PICKS FROM, or null — a new receipt from an
-   * invoice, or an edit of one made from it (16 October 2026, BO).
-   */
-  const sourceInvoice =
-    source.kind === "invoice"
-      ? source.invoice
-      : source.kind === "edit" && source.receipt.origin === "invoice"
-        ? (source.invoice ?? null)
-        : null;
+  /** THE INVOICE THIS FORM PICKS FROM, or null (16 October 2026, BO). */
+  const sourceInvoice = source.kind === "invoice" ? source.invoice : null;
   const picksFromInvoice = sourceInvoice !== null;
 
   /**
-   * How much of each invoice line THIS FORM may hold in total: the line, less
-   * what was cancelled, less what OTHER receipts hold. The server's
-   * `allocatedQty` counts this receipt's own saved lines too — they are rows
-   * on this form, so they are taken back out rather than counted twice.
-   *
-   * The server checks the same sum again on save; this is what lets the form
-   * cap a row before the request is sent.
+   * How much of each invoice line is still to come — billed, less cancelled,
+   * less what every earlier receipt of the invoice received. The server says
+   * it (`remainingQty`) and checks it again on save; this lets the form cap a
+   * row before the request is sent.
    */
   const invoiceCapacity = useMemo(() => {
     const capacity = new Map<string, bigint>();
-    if (!sourceInvoice) return capacity;
-
-    const ownSaved = new Map<string, bigint>();
-    if (source.kind === "edit") {
-      for (const item of source.receipt.items) {
-        if (!item.invoiceItemId) continue;
-        ownSaved.set(
-          item.invoiceItemId,
-          (ownSaved.get(item.invoiceItemId) ?? 0n) +
-            minorOf(item.qty) -
-            minorOf(item.cancelledQty),
-        );
-      }
-    }
-
-    for (const line of sourceInvoice.items) {
-      const others =
-        minorOf(line.allocatedQty ?? "0") -
-        (ownSaved.get(line.invoiceItemId) ?? 0n);
+    for (const line of sourceInvoice?.items ?? []) {
       capacity.set(
         line.invoiceItemId,
-        minorOf(line.qty) - minorOf(line.cancelledQty ?? "0") - others,
+        line.remainingQty !== undefined
+          ? minorOf(line.remainingQty)
+          : minorOf(line.qty) - minorOf(line.cancelledQty ?? "0"),
       );
     }
     return capacity;
-  }, [source, sourceInvoice]);
+  }, [sourceInvoice]);
 
   /** Σ qty of every row on the form for one invoice line, every batch. */
   function onFormFor(invoiceItemId: string, exceptIndex: number | null = null) {
@@ -760,23 +721,17 @@ function ReceiptFormBody({
     /*
       A PRODUCT WITH NO BATCH IS PICKED ONCE PER SAVE: with no expiry there is
       no second lot to tell a second row apart by, so more of it is typed on
-      the row already there — and the picker stops offering it. Only rows not
-      saved yet count: a line already on the receipt has its qty fixed, so the
-      rest of it can only arrive as a new row, on a later update.
+      the row already there — and the picker stops offering it.
     */
-    const unsaved = new Set(
+    const onForm = new Set(
       lines
-        .filter(
-          (row) =>
-            row.invoiceItemId &&
-            (source.kind === "invoice" || row.isNew === true),
-        )
+        .filter((row) => row.invoiceItemId)
         .map((row) => row.invoiceItemId as string),
     );
     return sourceInvoice.items
       .filter(
         (line) =>
-          line.productHasExpiry === true || !unsaved.has(line.invoiceItemId),
+          line.productHasExpiry === true || !onForm.has(line.invoiceItemId),
       )
       .map((line) => {
       const capacity = invoiceCapacity.get(line.invoiceItemId) ?? 0n;
@@ -795,14 +750,17 @@ function ReceiptFormBody({
         remaining: toDecimalString(left > 0n ? left : 0n),
         available: left > 0n,
       };
-    });
-  }, [sourceInvoice, invoiceCapacity, lines, source.kind]);
+    })
+      // ONLY WHAT IS STILL TO COME (16 October 2026, BO): a line that has
+      // fully arrived — on earlier receipts or on this form — is not offered.
+      .filter((choice) => choice.available);
+  }, [sourceInvoice, invoiceCapacity, lines]);
 
-  /** Whether a row's quantity is typed here, rather than fixed by its document. */
-  function qtyEditable(line: LineDraft): boolean {
-    if (source.kind === "create") return true;
-    return picksFromInvoice && (source.kind === "invoice" || line.isNew === true);
-  }
+  /**
+   * Whether rows' quantities are typed here — on a new receipt, typed or
+   * picked — rather than fixed by a receipt already saved.
+   */
+  const qtyEditable = source.kind !== "edit";
 
   /**
    * A row picked from the invoice IS ONE BATCH THAT ARRIVED: its qty is what
@@ -812,13 +770,9 @@ function ReceiptFormBody({
    * row, when it comes.
    */
   function batchRow(line: LineDraft): boolean {
-    return Boolean(line.invoiceItemId) && qtyEditable(line);
+    return Boolean(line.invoiceItemId) && qtyEditable;
   }
 
-  /** Whether a row can be taken off the form — never a line already saved. */
-  function removable(line: LineDraft): boolean {
-    return source.kind !== "edit" || line.isNew === true;
-  }
 
   /**
    * Rows for the invoice lines picked — one each, seeded with what is left of
@@ -835,7 +789,6 @@ function ReceiptFormBody({
         receivedQty: trimQty(remaining),
         currentReceived: "0",
         invoiceItemId: line.invoiceItemId,
-        isNew: source.kind === "edit",
         lotLocked: false,
         batchChoice: "",
         supplierBatchCode: "",
@@ -1202,9 +1155,7 @@ function ReceiptFormBody({
 
   /** What an edit would change — nothing means nothing to save. */
   const receivingChanges = lines.filter(
-    (line) =>
-      line.isNew === true ||
-      minorOf(line.receivedQty) !== minorOf(line.currentReceived),
+    (line) => minorOf(line.receivedQty) !== minorOf(line.currentReceived),
   ).length;
 
   const blockedReason =
@@ -1290,13 +1241,11 @@ function ReceiptFormBody({
       if (lines.length === 0) next.lines = "Tambahkan minimal satu barang dari faktur.";
 
       for (const [index, line] of lines.entries()) {
-        if (next.lines || !qtyEditable(line)) continue;
+        if (next.lines || !qtyEditable) continue;
         const label = productById.get(line.productId)?.name ?? `Baris ${index + 1}`;
 
         if (!isPositive(line.qty)) {
           next.lines = `${label}: qty harus lebih dari nol.`;
-        } else if (source.kind === "edit" && !isPositive(line.receivedQty)) {
-          next.lines = `${label}: isi jumlah yang diterima untuk barang yang baru ditambahkan.`;
         }
       }
 
@@ -1415,7 +1364,6 @@ function ReceiptFormBody({
         const changed: ReceiveGoodsReceiptLineInput[] = lines
           .filter(
             (line) =>
-              !line.isNew &&
               minorOf(line.receivedQty) !== minorOf(line.currentReceived),
           )
           .map((line) => ({
@@ -1423,22 +1371,10 @@ function ReceiptFormBody({
             receivedQty: line.receivedQty.trim() || "0",
             ...lotOf(line),
           }));
-        // More of the invoice, picked on this edit.
-        const added = lines
-          .filter((line) => line.isNew)
-          .map((line) => ({
-            invoiceItemId: line.invoiceItemId as string,
-            qty: line.qty.trim(),
-            ...(received(line) ? { receivedQty: received(line) } : {}),
-            ...lotOf(line),
-          }));
 
         receipt = await goodsReceiptService.receive(source.receipt._id, {
           receivedAt: receivedAtIso(receiptDate),
-          // `lines` absent means "everything in full" to the API — so it is
-          // sent only when it names something, and never left out alone.
-          ...(changed.length > 0 || added.length === 0 ? { lines: changed } : {}),
-          ...(added.length > 0 ? { newItems: added } : {}),
+          lines: changed,
           ...(notes.trim() ? { notes: notes.trim() } : {}),
           ...(filingInvoice
             ? {
@@ -1456,11 +1392,11 @@ function ReceiptFormBody({
             receiptDate,
             ...(notes.trim() ? { notes: notes.trim() } : {}),
             // One entry per ROW — an invoice line picked twice for two
-            // batches is two entries, each with its own qty and lot.
+            // batches is two entries, each with its own qty and lot. A row is
+            // what arrived; the receipt is received in full on save.
             items: lines.map((line) => ({
               invoiceItemId: line.invoiceItemId as string,
               qty: line.qty.trim(),
-              ...(received(line) ? { receivedQty: received(line) } : {}),
               ...lotOf(line),
             })),
           },
@@ -1484,7 +1420,9 @@ function ReceiptFormBody({
       }
 
       swalToast(
-        receipt.status === "received"
+        source.kind === "invoice"
+          ? `${receipt.receiptNumber} tersimpan — barang diterima.`
+          : receipt.status === "received"
           ? `${receipt.receiptNumber} tersimpan — semua barang diterima.`
           : receipt.status === "partial"
             ? `${receipt.receiptNumber} tersimpan — sebagian barang diterima.`
@@ -1575,8 +1513,10 @@ function ReceiptFormBody({
             </Link>
             . Klik <b>Tambah barang</b> untuk memilih barang dari faktur ini —
             satu barang boleh ditambahkan lagi untuk batch lain selama sisa qty
-            fakturnya masih ada. Isi qty yang datang dan batch-nya; sisa qty
-            faktur bisa ditambahkan nanti.
+            fakturnya masih ada. Isi qty yang datang hari ini dan batch-nya.
+            Penerimaan ini tidak bisa diubah setelah disimpan — barang yang
+            datang belakangan dicatat sebagai penerimaan baru dari faktur yang
+            sama.
           </Alert>
         )}
         {source.kind === "edit" && (
@@ -1586,8 +1526,6 @@ function ReceiptFormBody({
             {source.receipt.status === "partial"
               ? " — angka yang lebih kecil dari sebelumnya mengoreksi (mengurangi) stok."
               : "."}
-            {picksFromInvoice &&
-              " Sisa qty faktur bisa ditambahkan lewat Tambah barang, termasuk sebagai batch baru."}
           </Alert>
         )}
 
@@ -1996,7 +1934,7 @@ function ReceiptFormBody({
                               aria-label={`Qty ${product?.name ?? ""}`}
                               inputMode="decimal"
                               value={line.qty}
-                              disabled={!qtyEditable(line)}
+                              disabled={!qtyEditable}
                               onChange={(event) =>
                                 updateLine(
                                   index,
@@ -2012,7 +1950,7 @@ function ReceiptFormBody({
                             />
                             {/* The most this batch may take: what is left of
                                 the invoice line after every other row of it. */}
-                            {line.invoiceItemId && qtyEditable(line) && (
+                            {line.invoiceItemId && qtyEditable && (
                               <p className="mt-1 text-xs text-muted tabular-nums">
                                 maks.{" "}
                                 {formatQty(
@@ -2251,7 +2189,7 @@ function ReceiptFormBody({
                           </td>
 
                           <td className="px-2 py-2 text-right">
-                            {removable(line) && (
+                            {qtyEditable && (
                             <UIButton
                               type="button"
                               variant="ghost"
@@ -2482,12 +2420,9 @@ function ReceiptFormBody({
         )}
 
         <p className="text-xs text-muted">
-          Barang yang sudah disimpan tidak bisa diubah. Yang belum dicentang
-          bisa diterima nanti lewat &quot;Update penerimaan&quot; di halaman
-          penerimaan
           {picksFromInvoice
-            ? " — begitu juga sisa qty faktur yang belum ditambahkan."
-            : "."}
+            ? "Penerimaan dari faktur tidak bisa diubah setelah disimpan. Sisa qty faktur dicatat sebagai penerimaan baru dari halaman faktur."
+            : "Barang yang sudah disimpan tidak bisa diubah. Yang belum dicentang bisa diterima nanti lewat \"Update penerimaan\" di halaman penerimaan."}
         </p>
       </form>
     </>
@@ -2559,39 +2494,24 @@ function EditReceiptLoader({ receiptId }: { receiptId: string }) {
     );
   }
 
-  // A receipt made from an invoice may take more of it — load the invoice for
-  // the picker.
-  if (receipt.origin === "invoice" && receipt.invoiceId) {
+  // A receipt made from an invoice is final when made (16 October 2026, BO):
+  // the rest of the invoice is another receipt.
+  if (receipt.origin === "invoice") {
     return (
-      <EditFromInvoiceLoader receipt={receipt} invoiceId={receipt.invoiceId} />
+      <Alert variant="info">
+        Penerimaan {receipt.receiptNumber} dibuat dari faktur dan tidak bisa
+        diubah. Barang yang belum datang dicatat sebagai penerimaan baru dari
+        faktur yang sama.{" "}
+        {receipt.invoiceId && (
+          <Link
+            href={`/dashboard/purchasing/receipts/new?invoice=${receipt.invoiceId}`}
+            className="font-semibold underline"
+          >
+            Buat penerimaan baru
+          </Link>
+        )}
+      </Alert>
     );
-  }
-
-  return <ReceiptFormBody source={source} />;
-}
-
-function EditFromInvoiceLoader({
-  receipt,
-  invoiceId,
-}: {
-  receipt: GoodsReceiptDetail;
-  invoiceId: string;
-}) {
-  const { invoice, loading, error } = usePurchaseInvoice(invoiceId);
-  const source = useMemo<ReceiptSource | null>(
-    () => (invoice ? { kind: "edit", receipt, invoice } : null),
-    [receipt, invoice],
-  );
-
-  if (loading && !invoice) {
-    return (
-      <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-        <Spinner /> Memuat faktur…
-      </div>
-    );
-  }
-  if (error || !source) {
-    return <Alert variant="error">{error ?? "Gagal memuat faktur."}</Alert>;
   }
 
   return <ReceiptFormBody source={source} />;
@@ -2615,15 +2535,20 @@ function InvoiceReceiptLoader({ invoiceId }: { invoiceId: string }) {
   if (error || !invoice || !source) {
     return <Alert variant="error">{error ?? "Gagal memuat faktur."}</Alert>;
   }
-  if (invoice.goodsReceiptId) {
+  // Nothing left to come: every line arrived on earlier receipts.
+  if (
+    invoice.items.every(
+      (line) => line.remainingQty !== undefined && minorOf(line.remainingQty) <= 0n,
+    )
+  ) {
     return (
       <Alert variant="info">
-        Faktur {invoice.invoiceNumber} sudah punya penerimaan barang.{" "}
+        Semua barang di faktur {invoice.invoiceNumber} sudah diterima.{" "}
         <Link
-          href={`/dashboard/purchasing/receipts/${invoice.goodsReceiptId}/edit`}
+          href={`/dashboard/purchasing/payables/${invoice._id}`}
           className="font-semibold underline"
         >
-          Buka penerimaannya
+          Kembali ke faktur
         </Link>
       </Alert>
     );

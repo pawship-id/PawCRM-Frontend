@@ -6148,11 +6148,6 @@ export interface ReceiveGoodsReceiptInput {
   receivedAt?: string;
   /** Omitted: every line is received in full. */
   lines?: ReceiveGoodsReceiptLineInput[];
-  /**
-   * More of the invoice, onto a receipt made from it: the rest of a line, or
-   * another batch of one — up to what the invoice still has free.
-   */
-  newItems?: ReceiptFromInvoiceItemInput[];
   notes?: string;
   invoice?: {
     /** The VENDOR'S own number, from their document. Unique per vendor. */
@@ -6377,8 +6372,14 @@ export interface PurchaseInvoiceDetail extends Omit<
   PurchaseInvoiceListRow,
   "paymentCount"
 > {
+  /** The FIRST receipt — the link that locks the invoice. */
   goodsReceiptNumber: string | null;
   goodsReceiptStatus: GoodsReceiptStatus | null;
+  /**
+   * Every receipt of the invoice, oldest first. A manual invoice's goods may
+   * arrive over several days, one receipt each (16 October 2026).
+   */
+  goodsReceipts?: PurchaseInvoiceReceiptRef[];
   /** Who filed the bill. Null when that user has been deleted since. */
   createdByName: string | null;
   payments: PurchaseInvoicePayment[];
@@ -6399,24 +6400,35 @@ export interface PurchaseInvoiceItem {
   costPerUnit: string;
   subtotal: string;
   cancelledQty: string | null;
-  /** Null until a goods receipt exists. Summed over every batch of the line. */
+  /**
+   * Null until a goods receipt exists. Summed over every receipt of the
+   * invoice and every batch of the line.
+   */
   receivedQty: string | null;
   /**
-   * Already on a receipt, across every batch (16 October 2026). What is still
-   * free to pick is `qty − cancelledQty − allocatedQty`.
+   * Still to come: `qty − cancelledQty − receivedQty` (16 October 2026). What
+   * the next receipt made from the invoice may pick.
    */
-  allocatedQty?: string;
+  remainingQty?: string;
+}
+
+/** One receipt made from (or billed by) an invoice — one delivery day. */
+export interface PurchaseInvoiceReceiptRef {
+  _id: string;
+  receiptNumber: string;
+  receiptDate: string | null;
+  status: GoodsReceiptStatus;
 }
 
 /**
- * One invoice line PICKED onto a receipt made from the invoice: how much this
- * receipt line takes, its lot and what arrived. The same invoice line may be
- * picked several times, one per batch; `qty` absent takes the rest of it.
+ * One invoice line PICKED onto a receipt made from the invoice: how much
+ * ARRIVED in this batch, and its lot. The same invoice line may be picked
+ * several times, one per batch; `qty` absent takes the rest of it. The receipt
+ * is received in full when made, so there is no separate received count.
  */
 export interface ReceiptFromInvoiceItemInput {
   invoiceItemId: string;
   qty?: string;
-  receivedQty?: string;
   batchId?: string;
   expiryDate?: string;
   supplierBatchCode?: string;

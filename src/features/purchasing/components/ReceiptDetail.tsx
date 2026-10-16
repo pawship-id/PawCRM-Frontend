@@ -208,9 +208,20 @@ function ReceiptBody({
 
       {receipt.origin === "invoice" && (
         <Alert variant="info">
-          Penerimaan ini dibuat dari faktur supplier — daftar barangnya mengikuti
-          faktur dan tidak bisa ditambah. Yang bisa diubah hanya jumlah yang
-          sudah diterima.
+          Penerimaan ini dibuat dari faktur supplier dan tidak bisa diubah.
+          Barang dari faktur yang sama yang datang belakangan dicatat sebagai
+          penerimaan baru.
+          {receipt.invoiceId && (
+            <>
+              {" "}
+              <Link
+                href={`/dashboard/purchasing/payables/${receipt.invoiceId}`}
+                className="font-semibold underline-offset-2 hover:underline"
+              >
+                Lihat faktur
+              </Link>
+            </>
+          )}
         </Alert>
       )}
 
@@ -241,11 +252,15 @@ function ReceiptBody({
                   Tutup penerimaan
                 </Button>
               )}
-              <Button asChild>
-                <Link href={receiveHref}>
-                  {status === "pending" ? "Terima barang" : "Update penerimaan"}
-                </Link>
-              </Button>
+              {/* A receipt made from an invoice is never updated — the rest
+                  of the invoice is another receipt (16 October 2026, BO). */}
+              {receipt.origin !== "invoice" && (
+                <Button asChild>
+                  <Link href={receiveHref}>
+                    {status === "pending" ? "Terima barang" : "Update penerimaan"}
+                  </Link>
+                </Button>
+              )}
             </div>
           </Can>
         </div>
