@@ -100,14 +100,17 @@ export const goodsReceiptService = {
   close: (id: string, input: { notes?: string } = {}) =>
     apiClient.post<GoodsReceiptDetail>(`/goods-receipts/${id}/close`, input),
 
-  /** Makes a pending receipt from a manual supplier invoice, copying its lines. */
+  /**
+   * Makes a receipt from a manual supplier invoice, from the invoice lines the
+   * clerk PICKED — at least one; a line may be picked once per batch.
+   */
   createFromInvoice: (
     invoiceId: string,
     input: {
       receiptDate?: string;
       notes?: string;
-      items?: ReceiptFromInvoiceItemInput[];
-    } = {},
+      items: ReceiptFromInvoiceItemInput[];
+    },
   ) =>
     apiClient.post<GoodsReceiptDetail>(
       `/goods-receipts/from-invoice/${invoiceId}`,

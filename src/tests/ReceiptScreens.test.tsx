@@ -1228,7 +1228,7 @@ describe("ReceiptForm", () => {
     renderWithAuth(<ReceiptForm supplierId="s1" />);
 
     expect(
-      await screen.findByText(/Daftar barang tidak bisa diubah setelah disimpan/),
+      await screen.findByText(/Barang yang sudah disimpan tidak bisa diubah/),
     ).toHaveTextContent(/Update penerimaan/);
   });
 
@@ -2393,7 +2393,18 @@ describe("ReceiptForm — from a supplier invoice", () => {
     return user;
   }
 
-  it("copies the invoice's lines, locked, and says where they came from", async () => {
+  /** Opens the picker and adds the named invoice lines. */
+  async function pick(user: ReturnType<typeof userEvent.setup>, ...names: string[]) {
+    const buttons = await screen.findAllByRole("button", { name: "+ Tambah barang" });
+    await user.click(buttons[0]);
+    for (const name of names) {
+      await user.click(await screen.findByRole("checkbox", { name: `Pilih ${name}` }));
+    }
+    await user.click(screen.getByRole("button", { name: /^Tambahkan/ }));
+  }
+
+  // The list starts EMPTY (16 October 2026, BO): the clerk picks.
+  it("starts with no lines, the header locked to the invoice", async () => {
     renderFromInvoice();
 
     expect(
@@ -2403,29 +2414,17 @@ describe("ReceiptForm — from a supplier invoice", () => {
     expect(
       screen.getByRole("link", { name: "INV/2026/X/0007" }),
     ).toHaveAttribute("href", `/dashboard/purchasing/payables/${INVOICE_ID}`);
-    expect(screen.getByText(/tidak bisa ditambah atau diubah/)).toBeInTheDocument();
 
-    expect(screen.getByLabelText(/Qty Shampoo Anjing/)).toHaveValue("10");
-    expect(screen.getByLabelText(/Qty Shampoo Anjing/)).toBeDisabled();
-    expect(screen.getByLabelText(/Harga Vaksin Rabies/)).toHaveValue("50000");
-    expect(screen.getByLabelText(/Harga Vaksin Rabies/)).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Hapus" })).toBeNull();
+    expect(screen.getByText("Belum ada barang")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Qty Shampoo Anjing/)).toBeNull();
     expect(
-      screen.queryByRole("button", { name: "+ Tambah produk" }),
-    ).toBeNull();
+      screen.getByRole("button", { name: "+ Tambah barang" }),
+    ).toBeEnabled();
     expect(screen.getByRole("combobox", { name: "Supplier" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "Cabang" })).toBeDisabled();
     expect(
       screen.getByRole("combobox", { name: "Masuk ke gudang" }),
     ).toBeDisabled();
-
-    // Nothing received yet.
-    expect(
-      screen.getByRole("checkbox", { name: "Vaksin Rabies diterima lengkap" }),
-    ).not.toBeChecked();
-    expect(screen.getByLabelText("Jumlah diterima Vaksin Rabies")).toHaveValue(
-      "0",
-    );
     // An invoice is already the bill — no second one is offered.
     expect(
       screen.queryByRole("checkbox", { name: /Sekalian catat faktur/ }),
@@ -2438,15 +2437,116 @@ describe("ReceiptForm — from a supplier invoice", () => {
     expect(goodsReceiptService.preview).not.toHaveBeenCalled();
   });
 
-  it("makes the receipt with nothing received and no lots asked", async () => {
-    asMock(goodsReceiptService.createFromInvoice).mockResolvedValue(
-      pendingDetail({ _id: "gr9", receiptNumber: "GR-261015-009" }),
+  it("offers only the invoice's lines, with what is left of each", async () => {
+    const user = renderFromInvoice(
+      manualInvoice({
+        items: [
+          invoiceItem({ allocatedQty: "10.0000" }),
+          invoiceItem({
+            invoiceItemId: "ii2",
+            productId: "p3",
+            name: "Vaksin Rabies",
+            productName: "Vaksin Rabies",
+            productSku: "VAKSIN",
+            productHasExpiry: true,
+            qty: "5.0000",
+            allocatedQty: "2.0000",
+          }),
+        ],
+      }),
     );
+
+    await user.click(await screen.findByRole("button", { name: "+ Tambah barang" }));
+
+    const dialog = await screen.findByRole("dialog");
+    // Fully allocated: shown with nothing left, and cannot be picked.
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Pilih Shampoo Anjing" }),
+    ).toBeDisabled();
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Pilih Vaksin Rabies" }),
+    ).toBeEnabled();
+    // The invoice's two lines, nothing from the catalogue.
+    expect(within(dialog).getAllByRole("checkbox")).toHaveLength(2);
+  });
+
+  // The whole row picks, not only the small box; a second click unpicks.
+  it("picks an invoice line by clicking anywhere on its row", async () => {
     const user = renderFromInvoice();
 
-    await user.click(
-      await screen.findByRole("button", { name: /Simpan penerimaan/ }),
-    );
+    await user.click(await screen.findByRole("button", { name: "+ Tambah barang" }));
+    const dialog = await screen.findByRole("dialog");
+    const box = within(dialog).getByRole("checkbox", { name: "Pilih Vaksin Rabies" });
+
+    await user.click(within(dialog).getByText("Vaksin Rabies"));
+    expect(box).toBeChecked();
+    // Clicking the box itself still toggles once, not twice.
+    await user.click(box);
+    expect(box).not.toBeChecked();
+    await user.click(within(dialog).getByText("Rp 50.000"));
+    expect(box).toBeChecked();
+
+    await user.click(within(dialog).getByRole("button", { name: /^Tambahkan/ }));
+    expect(screen.getByLabelText(/Qty Vaksin Rabies/)).toHaveValue("5");
+  });
+
+  it("puts a picked line on the form with the rest of the line as its qty", async () => {
+    const user = renderFromInvoice();
+
+    await pick(user, "Shampoo Anjing");
+
+    expect(screen.getByLabelText(/Qty Shampoo Anjing/)).toHaveValue("10");
+    expect(screen.getByLabelText(/Qty Shampoo Anjing/)).toBeEnabled();
+    // The price is the invoice's.
+    expect(screen.getByLabelText(/Harga Shampoo Anjing/)).toHaveValue("15000");
+    expect(screen.getByLabelText(/Harga Shampoo Anjing/)).toBeDisabled();
+    // One batch that arrived: its qty IS what came, no second count.
+    expect(screen.queryByLabelText("Jumlah diterima Shampoo Anjing")).toBeNull();
+    expect(screen.getByText("sesuai qty")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hapus" })).toBeInTheDocument();
+  });
+
+  // What is typed on a row is what that batch takes — the rest stays on offer.
+  it("keeps an expiring line on offer, with the rest left, after one batch takes part of it", async () => {
+    const user = renderFromInvoice();
+
+    await pick(user, "Vaksin Rabies");
+    const qty = screen.getByLabelText(/Qty Vaksin Rabies/);
+    await user.clear(qty);
+    await user.type(qty, "2");
+
+    await user.click(screen.getByRole("button", { name: "+ Tambah barang" }));
+    const dialog = await screen.findByRole("dialog");
+    const box = within(dialog).getByRole("checkbox", { name: "Pilih Vaksin Rabies" });
+    expect(box).toBeEnabled();
+    expect(within(box.closest("tr") as HTMLElement).getByText("3")).toBeInTheDocument();
+  });
+
+  // No batch, no second row to tell apart: once on the form it leaves the
+  // picker, and more of it is typed on the row already there.
+  it("stops offering a product with no batch once it is on the form", async () => {
+    const user = renderFromInvoice();
+
+    await pick(user, "Shampoo Anjing");
+    const qty = screen.getByLabelText(/Qty Shampoo Anjing/);
+    await user.clear(qty);
+    await user.type(qty, "4");
+
+    await user.click(screen.getByRole("button", { name: "+ Tambah barang" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).queryByRole("checkbox", { name: "Pilih Shampoo Anjing" }),
+    ).toBeNull();
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Pilih Vaksin Rabies" }),
+    ).toBeEnabled();
+  });
+
+  it("makes the receipt with what was picked, as arrived, no lot asked of goods that keep none", async () => {
+    const user = renderFromInvoice();
+
+    await pick(user, "Shampoo Anjing");
+    await user.click(screen.getByRole("button", { name: /Simpan penerimaan/ }));
 
     await waitFor(() =>
       expect(goodsReceiptService.createFromInvoice).toHaveBeenCalledTimes(1),
@@ -2455,24 +2555,20 @@ describe("ReceiptForm — from a supplier invoice", () => {
       INVOICE_ID,
       {
         receiptDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-        items: [{ invoiceItemId: "ii1" }, { invoiceItemId: "ii2" }],
+        items: [{ invoiceItemId: "ii1", qty: "10", receivedQty: "10" }],
       },
     ]);
     expect(goodsReceiptService.create).not.toHaveBeenCalled();
     expect(swalToast).toHaveBeenCalledWith(
-      "GR-261015-009 tersimpan — belum ada barang yang diterima.",
+      "GR-261015-009 tersimpan — sebagian barang diterima.",
     );
     expect(replace).toHaveBeenCalledWith("/dashboard/purchasing/receipts/gr9");
   });
 
-  it("asks for the lot of an expiring line only once goods arrive on it", async () => {
+  it("asks for the lot of an expiring line before saving", async () => {
     const user = renderFromInvoice();
 
-    const received = await screen.findByLabelText(
-      "Jumlah diterima Vaksin Rabies",
-    );
-    await user.clear(received);
-    await user.type(received, "2");
+    await pick(user, "Vaksin Rabies");
     await user.click(screen.getByRole("button", { name: /Simpan penerimaan/ }));
 
     expect(
@@ -2481,66 +2577,71 @@ describe("ReceiptForm — from a supplier invoice", () => {
     expect(goodsReceiptService.createFromInvoice).not.toHaveBeenCalled();
   });
 
-  it("sends what arrived and the new lot it opens", async () => {
+  /**
+   * SEVERAL BATCHES OF ONE LINE: picked twice, each row its own qty and lot,
+   * the two together within the invoice line.
+   */
+  it("sends one invoice line twice, as two batches", async () => {
     const user = renderFromInvoice();
 
-    await user.click(
-      await screen.findByRole("checkbox", {
-        name: "Shampoo Anjing diterima lengkap",
-      }),
-    );
-    const received = screen.getByLabelText("Jumlah diterima Vaksin Rabies");
-    await user.clear(received);
-    await user.type(received, "2");
+    await pick(user, "Vaksin Rabies");
+    // Still on offer — 5 on the invoice, and this row can be lowered.
+    const qty = screen.getByLabelText(/Qty Vaksin Rabies/);
+    await user.clear(qty);
+    await user.type(qty, "3");
+    await pick(user, "Vaksin Rabies");
 
-    await user.click(screen.getByLabelText(/^Batch Vaksin Rabies/));
-    await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
-    await user.type(
-      await screen.findByLabelText(/^Expired Vaksin Rabies/),
-      "2028-01-01",
-    );
-    await user.type(
-      screen.getByLabelText(/^Kode batch supplier Vaksin Rabies/),
-      "VAK-B28",
-    );
-    await user.type(screen.getByLabelText("Catatan"), " dari faktur ");
+    const qtys = screen.getAllByLabelText(/Qty Vaksin Rabies/);
+    expect(qtys).toHaveLength(2);
+    // The second row is seeded with what the first left.
+    expect(qtys[1]).toHaveValue("2");
+
+    const batches = screen.getAllByLabelText(/^Batch Vaksin Rabies/);
+    for (const [index, date] of ["2027-01-01", "2027-06-01"].entries()) {
+      await user.click(batches[index]);
+      await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
+      await user.type(screen.getAllByLabelText(/^Expired Vaksin Rabies/)[index], date);
+    }
 
     await user.click(screen.getByRole("button", { name: /Simpan penerimaan/ }));
 
     await waitFor(() =>
       expect(goodsReceiptService.createFromInvoice).toHaveBeenCalledTimes(1),
     );
-    expect(asMock(goodsReceiptService.createFromInvoice).mock.calls[0]).toEqual([
-      INVOICE_ID,
-      {
-        receiptDate: expect.any(String),
-        notes: "dari faktur",
-        items: [
-          { invoiceItemId: "ii1", receivedQty: "10" },
-          {
-            invoiceItemId: "ii2",
-            receivedQty: "2",
-            supplierBatchCode: "VAK-B28",
-            expiryDate: "2028-01-01",
-          },
-        ],
-      },
+    expect(
+      asMock(goodsReceiptService.createFromInvoice).mock.calls[0][1]?.items,
+    ).toEqual([
+      { invoiceItemId: "ii2", qty: "3", receivedQty: "3", expiryDate: "2027-01-01" },
+      { invoiceItemId: "ii2", qty: "2", receivedQty: "2", expiryDate: "2027-06-01" },
     ]);
-    expect(swalToast).toHaveBeenCalledWith(
-      "GR-261015-009 tersimpan — sebagian barang diterima.",
-    );
-    expect(replace).toHaveBeenCalledWith("/dashboard/purchasing/receipts/gr9");
+  });
+
+  it("refuses batches of one line that add up to more than the invoice", async () => {
+    const user = renderFromInvoice();
+
+    await pick(user, "Vaksin Rabies");
+    const qty = screen.getByLabelText(/Qty Vaksin Rabies/);
+    await user.clear(qty);
+    await user.type(qty, "3");
+    await pick(user, "Vaksin Rabies");
+    const second = screen.getAllByLabelText(/Qty Vaksin Rabies/)[1];
+    expect(second).toHaveValue("2");
+    await user.clear(second);
+    await user.type(second, "3");
+
+    await user.click(screen.getByRole("button", { name: /Simpan penerimaan/ }));
+
+    expect(
+      await screen.findByText(/total qty semua batch \(6\) melebihi sisa faktur 5/),
+    ).toBeInTheDocument();
+    expect(goodsReceiptService.createFromInvoice).not.toHaveBeenCalled();
   });
 
   it("sends batchId alone when the goods join a lot on the shelf", async () => {
     asMock(productBatchService.list).mockResolvedValue(page([LOT]) as never);
     const user = renderFromInvoice();
 
-    await user.click(
-      await screen.findByRole("checkbox", {
-        name: "Vaksin Rabies diterima lengkap",
-      }),
-    );
+    await pick(user, "Vaksin Rabies");
     await user.click(screen.getByLabelText(/^Batch Vaksin Rabies/));
     await user.click(
       await screen.findByRole("option", { name: /VAKSIN-270301/ }),
@@ -2553,8 +2654,83 @@ describe("ReceiptForm — from a supplier invoice", () => {
     expect(
       asMock(goodsReceiptService.createFromInvoice).mock.calls[0][1]?.items,
     ).toEqual([
-      { invoiceItemId: "ii1" },
-      { invoiceItemId: "ii2", receivedQty: "5", batchId: "b1" },
+      { invoiceItemId: "ii2", qty: "5", receivedQty: "5", batchId: "b1" },
+    ]);
+  });
+
+  /**
+   * THE REST OF THE INVOICE, LATER: a receipt made from it may take another
+   * batch of a line on "Update penerimaan", up to what is still free.
+   */
+  it("adds another batch of an invoice line to the receipt made from it", async () => {
+    asMock(goodsReceiptService.receive).mockResolvedValue(detail());
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      manualInvoice({
+        goodsReceiptId: RECEIPT_ID,
+        items: [
+          invoiceItem({ allocatedQty: "10.0000" }),
+          invoiceItem({
+            invoiceItemId: "ii2",
+            productId: "p3",
+            name: "Vaksin Rabies",
+            productName: "Vaksin Rabies",
+            productSku: "VAKSIN",
+            productHasExpiry: true,
+            qty: "5.0000",
+            costPerUnit: "50000.0000",
+            subtotal: "250000.0000",
+            allocatedQty: "3.0000",
+          }),
+        ],
+      }),
+    );
+    asMock(goodsReceiptService.getById).mockResolvedValue(
+      detail({
+        status: "partial",
+        origin: "invoice",
+        invoiceId: INVOICE_ID,
+        items: [
+          line({ invoiceItemId: "ii1" }),
+          line({
+            itemId: "it2",
+            productId: "p3",
+            name: "Vaksin Rabies",
+            productName: "Vaksin Rabies",
+            productSku: "VAKSIN",
+            productHasExpiry: true,
+            invoiceItemId: "ii2",
+            batchId: "b1",
+            qty: "3.0000",
+            receivedQty: "3.0000",
+          }),
+        ],
+      }),
+    );
+    const user = userEvent.setup();
+    renderWithAuth(<ReceiptForm receiptId={RECEIPT_ID} />);
+
+    expect(
+      await screen.findByRole("heading", { name: "Update penerimaan" }),
+    ).toBeInTheDocument();
+    await pick(user, "Vaksin Rabies");
+
+    const qtys = screen.getAllByLabelText(/Qty Vaksin Rabies/);
+    // The saved line stays fixed; the new batch takes the 2 still free.
+    expect(qtys[0]).toBeDisabled();
+    expect(qtys[1]).toHaveValue("2");
+
+    await user.click(screen.getByLabelText(/^Batch Vaksin Rabies/));
+    await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
+    await user.type(screen.getByLabelText(/^Expired Vaksin Rabies/), "2027-06-01");
+    await user.click(screen.getByRole("button", { name: /Simpan penerimaan/ }));
+
+    await waitFor(() =>
+      expect(goodsReceiptService.receive).toHaveBeenCalledTimes(1),
+    );
+    const [, body] = asMock(goodsReceiptService.receive).mock.calls[0];
+    expect(body).not.toHaveProperty("lines");
+    expect(body?.newItems).toEqual([
+      { invoiceItemId: "ii2", qty: "2", receivedQty: "2", expiryDate: "2027-06-01" },
     ]);
   });
 

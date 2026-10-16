@@ -6148,6 +6148,11 @@ export interface ReceiveGoodsReceiptInput {
   receivedAt?: string;
   /** Omitted: every line is received in full. */
   lines?: ReceiveGoodsReceiptLineInput[];
+  /**
+   * More of the invoice, onto a receipt made from it: the rest of a line, or
+   * another batch of one — up to what the invoice still has free.
+   */
+  newItems?: ReceiptFromInvoiceItemInput[];
   notes?: string;
   invoice?: {
     /** The VENDOR'S own number, from their document. Unique per vendor. */
@@ -6394,13 +6399,23 @@ export interface PurchaseInvoiceItem {
   costPerUnit: string;
   subtotal: string;
   cancelledQty: string | null;
-  /** Null until a goods receipt exists. */
+  /** Null until a goods receipt exists. Summed over every batch of the line. */
   receivedQty: string | null;
+  /**
+   * Already on a receipt, across every batch (16 October 2026). What is still
+   * free to pick is `qty − cancelledQty − allocatedQty`.
+   */
+  allocatedQty?: string;
 }
 
-/** One invoice line on a receipt made from the invoice: its lot and what arrived. */
+/**
+ * One invoice line PICKED onto a receipt made from the invoice: how much this
+ * receipt line takes, its lot and what arrived. The same invoice line may be
+ * picked several times, one per batch; `qty` absent takes the rest of it.
+ */
 export interface ReceiptFromInvoiceItemInput {
   invoiceItemId: string;
+  qty?: string;
   receivedQty?: string;
   batchId?: string;
   expiryDate?: string;
