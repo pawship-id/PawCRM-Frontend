@@ -5969,6 +5969,11 @@ export interface GoodsReceiptDetailItem {
    * submit is refused.
    */
   remainingQty: string;
+  /**
+   * On a receipt made from an invoice: the INVOICE line's qty — what was
+   * ordered. Null otherwise. Progress against it is shown on the invoice.
+   */
+  orderedQty?: string | null;
 }
 
 /** One line of a receiving event: how far the line moved. */
@@ -6045,6 +6050,8 @@ export interface GoodsReceiptDetail {
   closedAt: string | null;
   closedByName: string | null;
   invoiceId: string | null;
+  /** The linked invoice's number. Null with no invoice, or one unreadable. */
+  invoiceNumber?: string | null;
   /** Null on a consignment receipt: nothing was bought, so nothing was posted. */
   journalEntryId: string | null;
   notes: string | null;
@@ -6116,7 +6123,8 @@ export interface CreateGoodsReceiptInput {
    * this receipt, so the two documents say the same thing. Beli putus only.
    */
   invoice?: {
-    invoiceNumber: string;
+    /** The VENDOR'S number — optional; ours is allocated by the server. */
+    supplierInvoiceNumber?: string;
     invoiceDate?: string;
     notes?: string;
   };
@@ -6150,8 +6158,8 @@ export interface ReceiveGoodsReceiptInput {
   lines?: ReceiveGoodsReceiptLineInput[];
   notes?: string;
   invoice?: {
-    /** The VENDOR'S own number, from their document. Unique per vendor. */
-    invoiceNumber: string;
+    /** The VENDOR'S own number — optional. Unique per vendor when given. */
+    supplierInvoiceNumber?: string;
     /** Defaults to `receivedAt`. What the payment terms are counted from. */
     invoiceDate?: string;
     notes?: string;
@@ -6256,8 +6264,13 @@ export type PaymentMethod = "cash" | "transfer" | "qris" | "giro";
  */
 export interface PurchaseInvoiceListRow {
   _id: string;
-  /** The SUPPLIER'S number, typed in from their document — not one we allocate. */
+  /**
+   * OUR number — `FB-2026-10-0001`, allocated by the server (16 October 2026).
+   * Bills filed before then carry the supplier's number here.
+   */
   invoiceNumber: string;
+  /** The SUPPLIER'S number from their document — optional. */
+  supplierInvoiceNumber?: string | null;
   supplierId: string;
   /** Null when the vendor was soft-deleted since; the bill still stands. */
   supplierName: string | null;
@@ -6301,7 +6314,13 @@ export interface PurchaseInvoiceListRow {
   /** Goods value, ex-tax. Reconciles exactly with the goods receipt's total. */
   subtotal: string;
   taxAmount: string;
-  /** `subtotal + taxAmount` — what the supplier is owed in full. */
+  /**
+   * Σ "biaya lain" posted straight to an expense account (16 October 2026, BO)
+   * — NOT in `subtotal`, which stays the goods. "0" when none. Optional only
+   * so a response from before the field parses.
+   */
+  expenseCharges?: string;
+  /** `subtotal + taxAmount + expenseCharges` — what the supplier is owed in full. */
   total: string;
   paidAmount: string;
   /** `total - paidAmount`. Derived, never stored. */
@@ -6380,6 +6399,20 @@ export interface PurchaseInvoiceDetail extends Omit<
    * arrive over several days, one receipt each (16 October 2026).
    */
   goodsReceipts?: PurchaseInvoiceReceiptRef[];
+  /**
+   * The bill's own discount (folded into HPP) and its "biaya lain" — each charge
+   * either folded into HPP too (`goods`) or posted to an expense account.
+   */
+  invoiceDiscount?: PurchaseDiscount | null;
+  otherCharges?: PurchaseInvoiceCharge[];
+  /**
+   * The entry that posted the expense charges (`Dr beban / Cr utang`), made
+   * when the invoice is locked. Null with no expense charge, or before then.
+   */
+  chargesJournalEntryId?: string | null;
+  /** Σ qty × typed price, and Σ line discounts. Null on bills before discounts. */
+  grossSubtotal?: string | null;
+  itemDiscount?: string | null;
   /** Who filed the bill. Null when that user has been deleted since. */
   createdByName: string | null;
   payments: PurchaseInvoicePayment[];
@@ -6387,11 +6420,44 @@ export interface PurchaseInvoiceDetail extends Omit<
   items: PurchaseInvoiceItem[];
 }
 
+/**
+ * Where one "biaya lain" goes (16 October 2026, BO): `goods` is split across
+ * the lines by value and lands in HPP; `expense` is posted straight to an
+ * expense account and added to the bill AFTER PPN.
+ */
+export type PurchaseChargeAllocation = "goods" | "expense";
+
+/** One "biaya lain" as the server presents it. Old charges read as `goods`. */
+export interface PurchaseInvoiceCharge {
+  label: string;
+  amount: string;
+  allocation?: PurchaseChargeAllocation;
+  /** The expense account — set only on an `expense` charge. */
+  accountId?: string | null;
+  accountCode?: string | null;
+  accountName?: string | null;
+}
+
+/** One "biaya lain" as sent. `accountId` is required on an `expense` charge. */
+export interface PurchaseInvoiceChargeInput {
+  label: string;
+  amount: string;
+  allocation?: PurchaseChargeAllocation;
+  accountId?: string;
+}
+
 /** One billed line. The same lines as the goods receipt. */
 export interface PurchaseInvoiceItem {
   invoiceItemId: string;
   productId: string;
   name: string;
+  /**
+   * The lot this line bills, on a bill made from receipts — the same product
+   * in two batches is two lines (16 October 2026). Null otherwise.
+   */
+  batchId?: string | null;
+  batchCode?: string | null;
+  batchExpiryDate?: string | null;
   productSku: string | null;
   productName: string | null;
   productUnit: string | null;
@@ -6410,7 +6476,27 @@ export interface PurchaseInvoiceItem {
    * the next receipt made from the invoice may pick.
    */
   remainingQty?: string;
+  /** Where the line stands across every receipt of the invoice. */
+  receiveStatus?: InvoiceLineReceiveStatus;
+  /**
+   * The price as TYPED (16 October 2026). `costPerUnit` is the NET unit cost
+   * after the line's discount and its share of the bill's discount and charges.
+   */
+  listPrice?: string;
+  discount?: PurchaseDiscount | null;
+  allocatedDiscount?: string | null;
+  allocatedCharges?: string | null;
 }
+
+/** A discount as typed, with what it came to. */
+export interface PurchaseDiscount {
+  mode: InvoiceDiscountMode;
+  value: string;
+  resolvedAmount: string;
+}
+
+/** How far one invoice line has arrived, across all its receipts. */
+export type InvoiceLineReceiveStatus = "pending" | "partial" | "received";
 
 /** One receipt made from (or billed by) an invoice — one delivery day. */
 export interface PurchaseInvoiceReceiptRef {
@@ -6418,6 +6504,8 @@ export interface PurchaseInvoiceReceiptRef {
   receiptNumber: string;
   receiptDate: string | null;
   status: GoodsReceiptStatus;
+  /** The receipt's own note. Null when none was written. */
+  notes?: string | null;
 }
 
 /**
@@ -6439,17 +6527,24 @@ export interface PurchaseInvoiceLineInput {
   invoiceItemId?: string;
   productId: string;
   qty: string;
+  /** The price per unit AS TYPED, before discounts and charges. */
   costPerUnit: string;
+  discount?: { mode: InvoiceDiscountMode; value: string } | null;
 }
 
 /** A manual invoice — filed before any goods. Also the edit body. */
 export interface ManualPurchaseInvoiceInput {
   supplierId: string;
   warehouseId: string;
-  invoiceNumber: string;
+  /** The VENDOR'S number — optional; ours is allocated by the server. */
+  supplierInvoiceNumber?: string;
   invoiceDate?: string;
   taxAmount?: string;
   notes?: string;
+  /** The bill's own discount; null clears it on an edit. */
+  invoiceDiscount?: { mode: InvoiceDiscountMode; value: string } | null;
+  /** "Biaya lain" — replaced whole on an edit. */
+  otherCharges?: PurchaseInvoiceChargeInput[];
   items: PurchaseInvoiceLineInput[];
 }
 
@@ -6562,15 +6657,27 @@ export type PurchaseInvoiceSort =
  */
 export interface CreatePurchaseInvoiceInput {
   supplierId: string;
-  /** The delivery being billed. One invoice per receipt, enforced by a unique index. */
-  goodsReceiptId: string;
-  invoiceNumber: string;
+  /**
+   * The deliveries being billed — one or more (up to 50) of one supplier, all
+   * of one cabang and one gudang (16 October 2026, BO). Their lines are merged
+   * per product onto the invoice.
+   */
+  goodsReceiptIds?: string[];
+  /** The OLD single-receipt shape, still accepted. New callers send the array. */
+  goodsReceiptId?: string;
+  /** The VENDOR'S number — optional; ours is allocated by the server. */
+  supplierInvoiceNumber?: string;
   /** Defaults to now. The date the supplier ISSUED the bill. */
   invoiceDate?: string;
   /** Optional now — the amounts are copied from the receipt. */
   subtotal?: string;
   taxAmount?: string;
   notes?: string;
+  /**
+   * "Biaya lain" — EXPENSE ONLY on this path: the goods are already valued at
+   * the receipts' prices, so nothing may be folded into HPP here.
+   */
+  otherCharges?: PurchaseInvoiceChargeInput[];
 }
 
 /**

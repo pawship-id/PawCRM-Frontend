@@ -1,10 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 
 import {
-  FileInvoiceForm,
-  ManualInvoiceForm,
   PageHeading,
+  PurchaseInvoiceForm,
   PURCHASING_CRUMBS,
 } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
@@ -12,23 +10,21 @@ import { RequirePermission } from "@/features/permissions";
 export const metadata: Metadata = { title: "Catat faktur supplier · Buloo" };
 
 /**
- * TWO WAYS IN (14 October 2026, BO):
+ * ONE PAGE (16 October 2026, BO). The supplier is picked first; if it has
+ * deliveries still waiting for a bill, the form offers them, otherwise the
+ * bill is typed in as a manual invoice. The two-mode header links are gone.
  *
- *   manual (default)         — the bill arrives before the goods: supplier,
- *                              gudang and lines typed in; the goods receipt is
- *                              made from it later.
- *   `?receipt=` / `?mode=receipt` — bill a delivery already filed; its lines
- *                              are copied.
+ * `?receipt=` — from a receipt's "Catat faktur supplier" — opens the form on
+ * that receipt and its supplier.
  *
  * `create`, not `read`: filing a bill is a write.
  */
 export default async function FileInvoicePage({
   searchParams,
 }: {
-  searchParams: Promise<{ receipt?: string; mode?: string }>;
+  searchParams: Promise<{ receipt?: string }>;
 }) {
-  const { receipt, mode } = await searchParams;
-  const fromReceipt = Boolean(receipt) || mode === "receipt";
+  const { receipt } = await searchParams;
 
   return (
     <RequirePermission feature="purchaseInvoices" action="create">
@@ -39,41 +35,13 @@ export default async function FileInvoicePage({
             PURCHASING_CRUMBS.payables,
             { label: "Catat faktur" },
           ]}
-          title={
-            fromReceipt
-              ? "Catat faktur dari penerimaan"
-              : "Catat faktur supplier"
-          }
+          title="Catat faktur supplier"
         >
-          {fromReceipt ? (
-            <>
-              Barang dan nilainya disalin dari penerimaan yang dipilih.{" "}
-              <Link
-                href="/dashboard/purchasing/payables/new"
-                className="font-semibold text-primary underline-offset-2 hover:underline"
-              >
-                Atau catat faktur manual →
-              </Link>
-            </>
-          ) : (
-            <>
-              Faktur yang datang sebelum barangnya. Penerimaan barang dibuat dari
-              faktur ini saat barang tiba.{" "}
-              <Link
-                href="/dashboard/purchasing/payables/new?mode=receipt"
-                className="font-semibold text-primary underline-offset-2 hover:underline"
-              >
-                Barangnya sudah dicatat di penerimaan? Buat faktur dari penerimaan →
-              </Link>
-            </>
-          )}
+          Pilih supplier dulu. Kalau barangnya sudah diterima, faktur dibuat
+          dari penerimaannya; kalau belum, catat sebagai faktur manual.
         </PageHeading>
 
-        {fromReceipt ? (
-          <FileInvoiceForm receiptId={receipt} />
-        ) : (
-          <ManualInvoiceForm />
-        )}
+        <PurchaseInvoiceForm receiptId={receipt} />
       </div>
     </RequirePermission>
   );

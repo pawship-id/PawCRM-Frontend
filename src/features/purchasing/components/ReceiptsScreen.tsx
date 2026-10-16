@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 
 import { Alert, Pagination, Spinner } from "@/components";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
@@ -100,17 +99,6 @@ export function ReceiptsScreen({
           />
         </>
       )}
-
-      <p className="text-xs text-muted">
-        Penerimaan tidak bisa diedit atau dihapus. Koreksi dilakukan lewat{" "}
-        <Link
-          href="/dashboard/purchasing/returns"
-          className="text-primary-hover hover:underline"
-        >
-          retur ke supplier
-        </Link>{" "}
-        — yang membalik HPP di harga beli aslinya dan mengurangi utang.
-      </p>
     </div>
   );
 }

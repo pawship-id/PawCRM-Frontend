@@ -34,10 +34,9 @@ export { ReceiptForm } from "./components/ReceiptForm";
 export { ReceiptDetail } from "./components/ReceiptDetail";
 export { PayablesScreen } from "./components/PayablesScreen";
 export { InvoiceDetail } from "./components/InvoiceDetail";
-// Filing the vendor's bill against a delivery. Its own entry point because it is
-// its own route — the payable already exists by the time this screen is opened.
-export { FileInvoiceForm } from "./components/FileInvoiceForm";
-export { ManualInvoiceForm } from "./components/ManualInvoiceForm";
+// Catat faktur supplier — ONE form, manual or from the supplier's uninvoiced
+// receipts (16 October 2026, BO). Also the edit form of a manual invoice.
+export { PurchaseInvoiceForm } from "./components/PurchaseInvoiceForm";
 export { EditInvoiceScreen } from "./components/EditInvoiceScreen";
 export { PurchasePaymentDetail } from "./components/PurchasePaymentDetail";
 export { PurchaseReturnsScreen } from "./components/PurchaseReturnsScreen";

@@ -55,8 +55,8 @@ export default async function NewReceiptPage({
           title={invoice ? "Terima barang dari faktur" : "Terima barang"}
         >
           {invoice
-            ? "Barangnya mengikuti faktur. Isi lot dan centang yang sudah datang — sisanya bisa diterima nanti."
-            : "Isi barang yang dikirim, lalu centang yang sudah datang. Stok, HPP, dan utang hanya tercatat untuk barang yang diterima."}
+            ? "Pilih barang dari faktur yang datang hari ini. Sisanya dicatat sebagai penerimaan baru saat datang."
+            : "Isi barang yang datang. Stok, HPP, dan utang langsung tercatat saat disimpan."}
         </PageHeading>
 
         <ReceiptForm

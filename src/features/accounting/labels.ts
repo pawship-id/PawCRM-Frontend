@@ -184,6 +184,7 @@ export const SOURCE_LABEL: Record<JournalSourceType, string> = {
   receipt: "Penerimaan kas",
   goods_receipt: "Penerimaan barang",
   purchase_payment: "Bayar supplier",
+  purchase_invoice: "Faktur pembelian",
   opname: "Stok opname",
   return: "Retur",
   return_cogs: "HPP retur",
@@ -231,6 +232,8 @@ export const SOURCE_TONE: Record<JournalSourceType, string> = {
   receipt: "bg-tint-success text-success",
   goods_receipt: "bg-tint-warning text-secondary-foreground",
   purchase_payment: "bg-tint-danger text-danger",
+  // The same tone as the receipt that books the goods of the same bill.
+  purchase_invoice: "bg-tint-warning text-secondary-foreground",
   opname: "bg-tint-neutral text-muted",
   return: "bg-tint-neutral text-muted",
   // The same tone as its refund half, the way `pos_cogs` shares `pos`: the two

@@ -228,12 +228,12 @@ describe("goodsReceiptService", () => {
 
     await goodsReceiptService.receive("r1", {
       receivedAt: "2026-10-03T00:00:00.000Z",
-      invoice: { invoiceNumber: "INV/1" },
+      invoice: { supplierInvoiceNumber: "INV/1" },
     });
 
     expect(post).toHaveBeenCalledWith("/goods-receipts/r1/receive", {
       receivedAt: "2026-10-03T00:00:00.000Z",
-      invoice: { invoiceNumber: "INV/1" },
+      invoice: { supplierInvoiceNumber: "INV/1" },
     });
   });
 

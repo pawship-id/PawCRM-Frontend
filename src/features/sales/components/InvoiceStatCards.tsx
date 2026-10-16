@@ -52,6 +52,7 @@ export function InvoiceStatCards({
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <StatTile
         label="Omzet periode"
+        hint="Jumlah total tagihan faktur: sudah dikurangi diskon item dan diskon faktur, sudah termasuk biaya lain, ongkos kirim, dan PPN. Faktur yang dibatalkan tidak dihitung. Untuk pendapatan tanpa PPN dan ongkir, lihat Keuangan › Laba Rugi."
         value={summary ? formatMoney(summary.revenue.amount) : "—"}
         caption={summary ? `${summary.revenue.invoiceCount} faktur` : undefined}
         loading={loading}

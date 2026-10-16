@@ -19,7 +19,13 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { cn } from "@/lib/utils";
-import { formatMoney, formatQty, toMinor } from "@/utils/decimal";
+import {
+  formatMoney,
+  formatQty,
+  multiplyDecimals,
+  subtractDecimals,
+  toMinor,
+} from "@/utils/decimal";
 import type { PurchaseInvoiceDetail } from "@/types/api";
 
 import { PURCHASING_CRUMBS } from "../crumbs";
@@ -28,13 +34,14 @@ import { PageHeading } from "./PageHeading";
 import { InvoiceStatusBadge } from "./InvoiceStatusBadge";
 import { PaymentTimeline } from "@/features/cash-transactions/components/PaymentTimeline";
 import { PurchaseActivityCard } from "./PurchaseActivityCard";
-import { ReceiptStatusBadge } from "./ReceiptStatusBadge";
+import {
+  InvoiceLineReceiveBadge,
+  ReceiptStatusBadge,
+} from "./ReceiptStatusBadge";
 import { Plus } from "lucide-react";
 import { PaymentStatusCard } from "@/features/cash-transactions/components/PaymentStatusCard";
-import {
-  PaymentForm,
-  RecordPaymentDialog,
-} from "@/features/cash-transactions/components/RecordPaymentDialog";
+import { InvoiceReceiptsCard } from "./InvoiceReceiptsCard";
+import { PayInvoiceDialog } from "./PayInvoiceDialog";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("id-ID", {
@@ -123,6 +130,15 @@ function InvoiceBody({
     (item) => (toMinor(item.remainingQty ?? "0") ?? 0n) > 0n,
   );
   const settled = invoice.status === "paid";
+  // "Biaya lain" split by where it went (16 October 2026, BO): goods charges
+  // are in the subtotal, expense charges are added after PPN. A charge saved
+  // before the toggle existed went to the goods.
+  const goodsCharges = (invoice.otherCharges ?? []).filter(
+    (charge) => charge.allocation !== "expense",
+  );
+  const expenseCharges = (invoice.otherCharges ?? []).filter(
+    (charge) => charge.allocation === "expense",
+  );
   const totalMinor = toMinor(invoice.total) ?? 0n;
   const payableMinor = toMinor(invoice.payableAmount) ?? 0n;
   const receivedMinor = toMinor(invoice.receivedAmount) ?? 0n;
@@ -176,8 +192,8 @@ function InvoiceBody({
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-tint-warning px-4 py-3 text-sm text-foreground">
           <span>
             <b>Sebagian barang belum diterima.</b> Catat kedatangan berikutnya
-            sebagai penerimaan baru — yang bisa dipilih hanya barang yang
-            belum lengkap diterima.
+            sebagai penerimaan baru — yang bisa dipilih hanya barang yang belum
+            lengkap diterima.
           </span>
           <div className="ml-auto flex flex-wrap gap-2">
             <Can feature="goodsReceipts" action="create">
@@ -208,7 +224,9 @@ function InvoiceBody({
                 Hapus
               </Button>
               <Button variant="secondary" asChild>
-                <Link href={`/dashboard/purchasing/payables/${invoice._id}/edit`}>
+                <Link
+                  href={`/dashboard/purchasing/payables/${invoice._id}/edit`}
+                >
                   Ubah faktur
                 </Link>
               </Button>
@@ -257,6 +275,12 @@ function InvoiceBody({
             <Field label="Supplier">{invoice.supplierName ?? "—"}</Field>
             <Field label="Cabang">{invoice.branchName ?? "—"}</Field>
             <Field label="Gudang">{invoice.warehouseName ?? "—"}</Field>
+            {/* The vendor's own number — optional; ours is the title. */}
+            <Field label="No. faktur supplier">
+              <span className="tabular-nums">
+                {invoice.supplierInvoiceNumber ?? "—"}
+              </span>
+            </Field>
             <Field label="Tanggal faktur">
               <span className="tabular-nums">
                 {formatDate(invoice.invoiceDate)}
@@ -273,42 +297,14 @@ function InvoiceBody({
               </span>
             </Field>
             <Field label="Dibuat oleh">{invoice.createdByName ?? "—"}</Field>
-            <Field label="Penerimaan barang">
-              {receipts.length > 0 ? (
-                <span className="flex flex-col gap-0.5">
-                  {receipts.map((row) => (
-                    <Link
-                      key={row._id}
-                      href={`/dashboard/purchasing/receipts/${row._id}`}
-                      className="font-semibold text-primary tabular-nums hover:underline"
-                    >
-                      {row.receiptNumber}
-                      {row.receiptDate && (
-                        <span className="ml-1 font-normal text-muted">
-                          · {formatDate(row.receiptDate)}
-                        </span>
-                      )}{" "}
-                      →
-                    </Link>
-                  ))}
-                </span>
-              ) : invoice.goodsReceiptId ? (
-                <Link
-                  href={`/dashboard/purchasing/receipts/${invoice.goodsReceiptId}`}
-                  className="font-semibold text-primary tabular-nums hover:underline"
-                >
-                  {invoice.goodsReceiptNumber ?? "Lihat"} →
-                </Link>
-              ) : (
-                <span className="text-muted">belum ada</span>
-              )}
-            </Field>
             <Field label="Status barang">
               {!linked ? (
                 <span className="text-muted">belum diterima</span>
               ) : receipts.length > 0 ? (
                 // Across every receipt: complete only when nothing is left.
-                <ReceiptStatusBadge status={stillToCome ? "partial" : "received"} />
+                <ReceiptStatusBadge
+                  status={stillToCome ? "partial" : "received"}
+                />
               ) : invoice.goodsReceiptStatus ? (
                 <ReceiptStatusBadge status={invoice.goodsReceiptStatus} />
               ) : (
@@ -325,14 +321,35 @@ function InvoiceBody({
                     <TableRow>
                       <TableHead>Item</TableHead>
                       <TableHead className="text-right">Harga</TableHead>
+                      <TableHead className="text-right">Diskon</TableHead>
                       <TableHead className="text-right">Jumlah</TableHead>
                       <TableHead className="text-right">Diterima</TableHead>
+                      {/* Progress per line, across every receipt of this
+                          invoice (16 October 2026, BO). */}
+                      <TableHead className="text-right">Sisa qty</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {(invoice.items ?? []).map((item) => {
                       const cancelledMinor = toMinor(item.cancelledQty) ?? 0n;
+                      const listPrice = item.listPrice ?? item.costPerUnit;
+                      const lineDiscount = item.discount?.resolvedAmount ?? "0";
+                      // What the line came to as typed — qty × harga less its
+                      // own discount. The bill's discount and the charges are
+                      // in the recap below; a line billed down on a close
+                      // shows what it bills.
+                      const lineTotal =
+                        cancelledMinor > 0n
+                          ? item.subtotal
+                          : subtractDecimals(
+                              multiplyDecimals(item.qty, listPrice),
+                              lineDiscount,
+                            );
+                      const netDiffers =
+                        (toMinor(item.costPerUnit) ?? 0n) !==
+                        (toMinor(listPrice) ?? 0n);
 
                       return (
                         <TableRow key={item.invoiceItemId}>
@@ -340,10 +357,34 @@ function InvoiceBody({
                             <p className="text-sm font-medium">{item.name}</p>
                             <p className="text-xs text-muted tabular-nums">
                               {item.productSku ?? "—"}
+                              {/* The lot, on a bill made from receipts: one
+                                  product in two batches is two lines. */}
+                              {item.batchCode && ` · batch ${item.batchCode}`}
                             </p>
                           </TableCell>
                           <TableCell className="text-right text-sm tabular-nums">
-                            {formatMoney(item.costPerUnit)}
+                            {formatMoney(listPrice)}
+                            {/* The unit cost HPP is built from, once the
+                                discounts and charges are folded in. */}
+                            {netDiffers && (
+                              <span className="block text-xs text-muted">
+                                HPP {formatMoney(item.costPerUnit)}
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right text-sm tabular-nums">
+                            {(toMinor(lineDiscount) ?? 0n) > 0n ? (
+                              <span className="text-success">
+                                −{formatMoney(lineDiscount)}
+                                {item.discount?.mode === "percent" && (
+                                  <span className="block text-xs text-muted">
+                                    {formatQty(item.discount.value)}%
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-muted">—</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-right text-sm tabular-nums">
                             {formatQty(item.qty)}
@@ -365,8 +406,17 @@ function InvoiceBody({
                               formatQty(item.receivedQty)
                             )}
                           </TableCell>
+                          <TableCell className="text-right text-sm tabular-nums">
+                            {/* Billed less cancelled less arrived. */}
+                            {formatQty(item.remainingQty ?? item.qty)}
+                          </TableCell>
+                          <TableCell>
+                            <InvoiceLineReceiveBadge
+                              status={item.receiveStatus ?? "pending"}
+                            />
+                          </TableCell>
                           <TableCell className="text-right text-sm font-medium tabular-nums">
-                            {formatMoney(item.subtotal)}
+                            {formatMoney(lineTotal)}
                           </TableCell>
                         </TableRow>
                       );
@@ -383,8 +433,51 @@ function InvoiceBody({
               )}
 
               <dl className="flex w-full flex-col gap-2 self-end text-sm sm:w-80">
+                {/* THE TYPED RECAP (16 October 2026) — lines after their own
+                    discounts, the bill's discount, the charges — on a bill
+                    that has them. Older bills show their subtotal alone. */}
+                {invoice.grossSubtotal != null && (
+                  <>
+                    <div className="flex justify-between gap-4">
+                      <dt className="text-muted">Subtotal barang</dt>
+                      <dd className="tabular-nums">
+                        {formatMoney(
+                          subtractDecimals(
+                            invoice.grossSubtotal,
+                            invoice.itemDiscount ?? "0",
+                          ),
+                        )}
+                      </dd>
+                    </div>
+                    {invoice.invoiceDiscount && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted">
+                          Diskon faktur
+                          {invoice.invoiceDiscount.mode === "percent" &&
+                            ` (${formatQty(invoice.invoiceDiscount.value)}%)`}
+                        </dt>
+                        <dd className="tabular-nums text-success">
+                          −{formatMoney(invoice.invoiceDiscount.resolvedAmount)}
+                        </dd>
+                      </div>
+                    )}
+                    {goodsCharges.map((charge, index) => (
+                      <div
+                        key={`${charge.label}-${index}`}
+                        className="flex justify-between gap-4"
+                      >
+                        <dt className="text-muted">{charge.label}</dt>
+                        <dd className="tabular-nums">
+                          {formatMoney(charge.amount)}
+                        </dd>
+                      </div>
+                    ))}
+                  </>
+                )}
                 <div className="flex justify-between gap-4">
-                  <dt className="text-muted">Subtotal</dt>
+                  <dt className="text-muted">
+                    {invoice.grossSubtotal != null ? "Total sebelum PPN" : "Subtotal"}
+                  </dt>
                   <dd className="tabular-nums">
                     {formatMoney(invoice.subtotal)}
                   </dd>
@@ -397,6 +490,24 @@ function InvoiceBody({
                     </dd>
                   </div>
                 )}
+                {/* EXPENSE CHARGES AFTER PPN (16 October 2026, BO) — posted
+                    to a beban account, not folded into the goods. */}
+                {expenseCharges.map((charge, index) => (
+                  <div
+                    key={`expense-${charge.label}-${index}`}
+                    className="flex justify-between gap-4"
+                  >
+                    <dt className="text-muted">
+                      {charge.label} · beban{" "}
+                      {[charge.accountCode, charge.accountName]
+                        .filter(Boolean)
+                        .join(" ") || "—"}
+                    </dt>
+                    <dd className="tabular-nums">
+                      {formatMoney(charge.amount)}
+                    </dd>
+                  </div>
+                ))}
                 <div className="flex justify-between gap-4 border-t-[1.5px] border-primary pt-2.5 text-base font-bold">
                   <dt>Total tagihan</dt>
                   <dd className="tabular-nums">{formatMoney(invoice.total)}</dd>
@@ -483,52 +594,39 @@ function InvoiceBody({
                 : (payment.cashAccountName ?? "Kas & Bank")
             }
           />
-
-
         </div>
       </div>
 
-      <RecordPaymentDialog
+      <PayInvoiceDialog
+        invoice={invoice}
         open={payOpen}
         onOpenChange={setPayOpen}
-        description="Untuk DP, cicilan, dan pelunasan ke supplier. Yang bisa dibayar hanya barang yang sudah diterima."
-        summaryLabel="Bisa dibayar sekarang"
-        summaryAmount={invoice.payableAmount}
-        summaryCaption={`${invoice.invoiceNumber} · ${invoice.supplierName ?? "Supplier terhapus"} · sisa tagihan ${formatMoney(invoice.outstandingAmount)}`}
-      >
-        <PaymentForm
-          key={payOpen ? "open" : "closed"}
-          direction="out"
-          ceiling={invoice.payableAmount}
-          overCeilingMessage={
-            (toMinor(invoice.payableAmount) ?? 0n) <
-            (toMinor(invoice.outstandingAmount) ?? 0n)
-              ? `Jumlah melebihi nilai barang yang sudah diterima dan belum dibayar (${formatMoney(invoice.payableAmount)}).`
-              : `Jumlah melebihi sisa tagihan ${formatMoney(invoice.outstandingAmount)}.`
-          }
-          onCancel={() => setPayOpen(false)}
-          onSubmit={async (input) => {
-            const next = await purchaseInvoiceService.recordPayment(
-              invoice._id,
-              input,
-            );
-            applyInvoice(next);
-            setVersion((value) => value + 1);
-            setPayOpen(false);
-          }}
-          note={
-            <Alert variant="info">
-              Setelah disimpan, status faktur naik sendiri ke{" "}
-              <strong>sebagian</strong> atau <strong>lunas</strong>. Pembayaran
-              langsung memposting jurnal dan tidak bisa dibatalkan dari sini.
-            </Alert>
-          }
-        />
-      </RecordPaymentDialog>
+        onPaid={(next) => {
+          applyInvoice(next);
+          setVersion((value) => value + 1);
+        }}
+      />
 
+      {/* EVERY RECEIPT OF THIS BILL, each opening its own page. A bill
+          from before several receipts existed carries only the first. */}
+      <InvoiceReceiptsCard
+        receipts={
+          receipts.length > 0
+            ? receipts
+            : invoice.goodsReceiptId
+              ? [
+                  {
+                    _id: invoice.goodsReceiptId,
+                    receiptNumber: invoice.goodsReceiptNumber ?? "Lihat",
+                    receiptDate: null,
+                    status: invoice.goodsReceiptStatus ?? "received",
+                  },
+                ]
+              : []
+        }
+      />
 
       <PurchaseActivityCard kind="invoice" id={invoice._id} version={version} />
-
     </div>
   );
 }
