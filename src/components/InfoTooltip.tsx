@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type PointerEvent } from "react";
+import { useRef, useState, type PointerEvent } from "react";
 import { Info } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -62,13 +62,23 @@ import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
  */
 export function InfoTooltip({
   hint,
+  label,
   className,
 }: {
   /** The explanation, in full sentences — this is the only place it appears. */
   hint: string;
+  /**
+   * TEXT IN PLACE OF THE ⓘ (16 October 2026): the trigger shows this instead
+   * of the icon — `SkuText` uses it to make a cut SKU the thing that opens the
+   * full one. Same open/close behaviour either way.
+   */
+  label?: string;
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  // What pressed the trigger last — a mouse click must not close what the
+  // hover just opened (the cut SKU is something people CLICK to read).
+  const pressedBy = useRef("");
 
   const openOnMouse = (event: PointerEvent<HTMLButtonElement>) => {
     if (event.pointerType === "mouse") setOpen(true);
@@ -87,12 +97,25 @@ export function InfoTooltip({
           onPointerLeave={closeOnMouse}
           onFocus={() => setOpen(true)}
           onBlur={() => setOpen(false)}
+          onPointerDown={(event) => {
+            pressedBy.current = event.pointerType;
+          }}
+          onClick={(event) => {
+            // Inside a clickable row (a picker, a checkbox row) the click
+            // opens this, not the row.
+            event.stopPropagation();
+            // Hover already opened it; Radix's toggle would close it again.
+            if (pressedBy.current === "mouse") event.preventDefault();
+            pressedBy.current = "";
+          }}
           className={cn(
-            "-m-1.5 flex-none cursor-pointer rounded-full p-1.5 text-muted outline-none transition hover:text-foreground focus-visible:text-foreground",
+            label
+              ? "cursor-pointer rounded-sm underline decoration-dotted underline-offset-2 outline-none transition hover:text-foreground focus-visible:text-foreground"
+              : "-m-1.5 flex-none cursor-pointer rounded-full p-1.5 text-muted outline-none transition hover:text-foreground focus-visible:text-foreground",
             className,
           )}
         >
-          <Info className="size-3.5" aria-hidden />
+          {label ?? <Info className="size-3.5" aria-hidden />}
         </button>
       </PopoverTrigger>
       <PopoverContent

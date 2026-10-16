@@ -47,6 +47,7 @@ import type {
   PurchaseInvoiceDetail,
 } from "@/types/api";
 import type { Product } from "@/types/inventory";
+import { SkuText } from "@/components/SkuText";
 import { useStockCardLookups } from "@/features/inventory/hooks/useStockCardLookups";
 import {
   useBranchScope,
@@ -858,7 +859,7 @@ export function PurchaseInvoiceForm({
                       <TableCell>
                         <p className="text-sm font-medium">{line.name}</p>
                         <p className="text-xs text-muted tabular-nums">
-                          {line.sku ?? "—"}
+                          <SkuText value={line.sku} fallback="—" />
                           {line.batchId && lots[line.batchId] && (
                             <>
                               {" · batch "}
@@ -925,7 +926,7 @@ export function PurchaseInvoiceForm({
                       <TableCell>
                         <p className="text-sm font-medium">{line.name}</p>
                         <p className="text-xs text-muted tabular-nums">
-                          {line.sku ?? "—"}
+                          <SkuText value={line.sku} fallback="—" />
                           {line.unit ? ` · ${line.unit}` : ""}
                         </p>
                         {error && (
