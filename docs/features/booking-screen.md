@@ -229,6 +229,19 @@ any booking for an animal without one, and the card says so on the animal.
 booking (`storedPetServiceKeys`), so correcting the time of an old booking is not refused over a
 service nobody touched.
 
+### Benefit membership
+
+When the animal (or its customer) holds a membership, the card shows **Benefit membership**: one
+radio row per benefit that covers this service on the booking's date, plus "Tanpa member"
+(`BookingBenefitField`). The rows come from the server's booking quote (membership-v1 §4.4), not
+from the card — each says what it is worth ("Jatah Grooming 1/3 · −Rp 100.000"), and one that
+cannot be used says why instead of disappearing. Saved as `plannedBenefit` on the entry.
+
+**A saved choice is a HOLD** (Promosi V1): the jatah counts as used until the booking is billed or
+cancelled, so another booking in the same period sees it as taken (`reason: "reserved"`). The note
+under a quota pick says so. Nothing is drawn when the animal holds no card. More in
+[`membership.md`](./membership.md).
+
 ### Add-ons
 
 Ticked underneath the service, from **that service's own list** — the server refuses anything

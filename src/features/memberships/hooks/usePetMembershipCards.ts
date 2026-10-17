@@ -16,6 +16,8 @@ import type { PetMembership } from "@/types/membership";
  */
 export function usePetMembershipCards(petId: string | null) {
   const [cards, setCards] = useState<PetMembership[]>([]);
+  /** The owner's customer-held cards — "Juga berlaku dari pelanggan". */
+  const [customerCards, setCustomerCards] = useState<PetMembership[]>([]);
   const [loading, setLoading] = useState(Boolean(petId));
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -38,6 +40,7 @@ export function usePetMembershipCards(petId: string | null) {
 
     if (!petId) {
       setCards([]);
+      setCustomerCards([]);
       return () => {
         active = false;
       };
@@ -46,11 +49,14 @@ export function usePetMembershipCards(petId: string | null) {
     membershipService
       .listForPet(petId)
       .then((result) => {
-        if (active) setCards(result.items);
+        if (!active) return;
+        setCards(result.items);
+        setCustomerCards(result.customerCards ?? []);
       })
       .catch((err) => {
         if (!active) return;
         setCards([]);
+        setCustomerCards([]);
         setError(
           err instanceof ApiError
             ? err.fullMessage
@@ -66,5 +72,5 @@ export function usePetMembershipCards(petId: string | null) {
     };
   }, [petId, nonce]);
 
-  return { cards, loading, error, reload };
+  return { cards, customerCards, loading, error, reload };
 }

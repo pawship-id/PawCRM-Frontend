@@ -14,7 +14,7 @@ import { variantDetailOf } from "../variantDetail";
 
 /**
  * What a membership card paid for, across every line AND every add-on under
- * it — the total the receipt's "Diskon membership" row prints.
+ * it — the total the receipt's "Potongan membership" row prints.
  *
  * FLATTENED, because an add-on's own giveaway is nested one level under its
  * service (`#nestAddons` on the server) and would otherwise be missed.
@@ -259,7 +259,7 @@ export function ReceiptPreview({
                 )}
                 {isPositive(membershipShare) && (
                   <div className="flex justify-between">
-                    <dt>Diskon membership</dt>
+                    <dt>Potongan membership</dt>
                     <dd className="tabular-nums">
                       −{formatMoney(membershipShare)}
                     </dd>

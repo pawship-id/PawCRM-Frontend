@@ -33,6 +33,12 @@ import {
   primeVariantOptions,
 } from "./helpers/variantOptions";
 import { petOptionService } from "@/services/petOption.service";
+import { membershipService } from "@/services/membership.service";
+import type {
+  BenefitCandidate,
+  BenefitQuoteResponse,
+  BookingBenefitQuoteInput,
+} from "@/types/membership";
 
 import { petOptionFields, primePetOptions } from "./helpers/petOptions";
 
@@ -52,6 +58,8 @@ jest.mock("@/services/variantOption.service");
 jest.mock("@/services/zone.service");
 jest.mock("@/services/tenant.service");
 jest.mock("@/services/petOption.service");
+/* Automocked: the membership quote answers nothing unless a test says otherwise. */
+jest.mock("@/services/membership.service");
 /* The house pattern: the toast is chrome, and the real Swal drags a timer into
    every test that saves. */
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
@@ -2260,5 +2268,154 @@ describe("BookingForm — home grooming", () => {
       });
       expect(patch).not.toHaveProperty("visitAddress");
     });
+  });
+});
+
+/*
+  PROMOSI V1 — the "Benefit membership" radio on a card, fed by the booking
+  quote (membership-v1 §4.4), and what a save sends and holds (§8).
+*/
+describe("BookingForm — membership benefit", () => {
+  const memberships = membershipService as jest.Mocked<typeof membershipService>;
+
+  const jatah: BenefitCandidate = {
+    membershipId: "mem-1",
+    membershipNumber: "MBR-1",
+    virtual: false,
+    packageRef: null,
+    planName: "Explorer",
+    attachTo: "pet",
+    benefitId: "ben-groom",
+    benefitLabel: "Grooming",
+    optionId: "opt-free",
+    optionKind: "free_item",
+    kind: "quota",
+    label: "Jatah Grooming 1/3",
+    discount: "100000.0000",
+    visitFee: "zone",
+    visitFeeDiscount: "0.0000",
+    used: 1,
+    cap: 3,
+    options: [],
+  };
+
+  function answerWith(line: (input: BookingBenefitQuoteInput) => Partial<BenefitQuoteResponse["lines"][number]>) {
+    memberships.quoteBooking.mockImplementation(async (input) => ({
+      cards: [
+        { id: "mem-1", number: "MBR-1", petId: "pet-1", planName: "Explorer", status: "active", benefits: [] },
+      ],
+      lines: [
+        {
+          ref: input.entries[0].ref,
+          petId: input.entries[0].petId,
+          candidates: [],
+          recommended: null,
+          unavailable: [],
+          ...line(input),
+        },
+      ],
+    }) as BenefitQuoteResponse);
+  }
+
+  async function fillOneCard() {
+    renderWithAuth(<BookingForm />);
+    await pickCustomer();
+    await waitFor(() =>
+      expect(screen.getByRole("combobox", { name: /^hewan$/i })).toHaveTextContent("Bruno"),
+    );
+    await choose(/^layanan$/i, /grooming full service/i);
+  }
+
+  it("preselects the recommended benefit, takes it off the total, and saves it", async () => {
+    answerWith((input) =>
+      input.entries[0].noBenefit
+        ? { candidates: [jatah], recommended: null }
+        : { candidates: [jatah], recommended: jatah },
+    );
+
+    await fillOneCard();
+
+    const radio = await screen.findByRole("radio", { name: /Jatah Grooming 1\/3/ });
+    expect(radio).toHaveAttribute("aria-checked", "true");
+    /* The quote is asked for the booking's own date. */
+    expect(memberships.quoteBooking.mock.calls.at(-1)?.[0]).toMatchObject({
+      context: "booking",
+      customerId: "cust-1",
+      entries: [{ petId: "pet-1", serviceId: "svc-1", amount: "150000.0000" }],
+    });
+    expect(screen.getByText("Total Rp 50.000")).toBeInTheDocument();
+    expect(screen.getByText("Potongan member Rp 100.000")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].bookings[0].plannedBenefit).toEqual({
+      membershipId: "mem-1",
+      benefitId: "ben-groom",
+      optionId: "opt-free",
+    });
+  });
+
+  it("sends null after 'Tanpa member'", async () => {
+    answerWith((input) =>
+      input.entries[0].noBenefit
+        ? { candidates: [jatah], recommended: null }
+        : { candidates: [jatah], recommended: jatah },
+    );
+
+    await fillOneCard();
+    await userEvent.click(await screen.findByRole("radio", { name: /Tanpa member/ }));
+    await waitFor(() => expect(screen.getByText("Total Rp 150.000")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].bookings[0].plannedBenefit).toBeNull();
+  });
+
+  it("shows why nothing is offered", async () => {
+    answerWith(() => ({
+      unavailable: [
+        {
+          membershipId: "mem-1",
+          benefitId: "ben-groom",
+          benefitLabel: "Grooming",
+          reason: "reserved",
+          message: "Jatah Grooming habis periode ini",
+          reservedBy: [{ bookingId: "b", bookingNumber: "BK-2026-0012", scheduledAt: "x", petId: "pet-1" }],
+        },
+      ],
+    }));
+
+    await fillOneCard();
+    expect(
+      await screen.findByText("Jatah Grooming habis periode ini · dipakai BK-2026-0012"),
+    ).toBeInTheDocument();
+  });
+
+  it("puts a 409 on the benefit in a toast and under the card — not in the clash", async () => {
+    answerWith(() => ({ candidates: [jatah], recommended: jatah }));
+    bookings.create.mockRejectedValue(
+      new ApiError("Benefit membership tidak bisa dipakai untuk booking ini", 409, {
+        details: [
+          {
+            field: "bookings[0].plannedBenefit",
+            message: "Jatah periode ini sudah dipesan booking lain",
+          },
+        ] as never,
+        data: {
+          code: "reserved",
+          reservedBy: [{ bookingId: "b", bookingNumber: "BK-2026-0012", scheduledAt: "x", petId: "pet-1" }],
+        },
+      }),
+    );
+
+    await fillOneCard();
+    await screen.findByRole("radio", { name: /Jatah Grooming 1\/3/ });
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    const message = "Jatah periode ini sudah dipesan booking lain · dipakai BK-2026-0012";
+    await waitFor(() => expect(swalToast).toHaveBeenCalledWith(message, "error", 6000));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.queryByText(/tekan Simpan lagi/)).not.toBeInTheDocument();
   });
 });

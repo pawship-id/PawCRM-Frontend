@@ -45,9 +45,15 @@ import "../print/receipt.css";
 export function ReceiptDialog({
   saleId,
   onOpenChange,
+  effects,
 }: {
   saleId: string | null;
   onOpenChange: (open: boolean) => void;
+  /**
+   * What the sale just set off beyond the receipt — membership issued, jatah
+   * spent (Promosi V1). Only right after payment; a reprint passes nothing.
+   */
+  effects?: React.ReactNode;
 }) {
   const [receipt, setReceipt] = useState<PosReceipt | null>(null);
   /*
@@ -239,6 +245,8 @@ export function ReceiptDialog({
         </DialogHeader>
 
         {error && <Alert variant="error">{error}</Alert>}
+
+        {effects}
 
         {loading || !receipt ? (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">

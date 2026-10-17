@@ -1,224 +1,176 @@
 "use client";
 
 import { FilterMultiSelect, SelectField } from "@/components";
-import type { BenefitInput, BenefitTarget } from "@/types/membership";
+import type { Service } from "@/types/api";
+import type { BenefitScope, BenefitTarget } from "@/types/membership";
 
-import { useScopeOptions } from "../hooks/useScopeOptions";
+import type { CatalogItem } from "../hooks/useMembershipCatalog";
+import { servicesFor } from "../hooks/useMembershipCatalog";
 
 /**
- * WHAT A BENEFIT MAY BE SPENT ON — three controls that depend on each other.
+ * WHAT ONE OPTION COVERS — "Layanan / produk" in the builder (contract §2.3).
  *
- * ─── THE CASCADE (29 September 2026, on BO's design) ───────────────────────
+ *   Jenis = Layanan  → Kelompok narrows the list; ticking services narrows to
+ *                      exactly those. A kelompok with nothing ticked means
+ *                      EVERY service of it, including ones created later.
+ *   Jenis = Add-on   → same, but nothing at all ticked and no kelompok is
+ *                      legal: "Semua add-on", including add-ons added later.
+ *   Jenis = Produk   → pick at least one product.
+ *   Jenis = Apa saja → every line. No picker.
  *
- *   Jenis baris = Layanan  → Kelompok layanan appears; the service picker below
- *                            it lists MAIN services of that kelompok.
- *   Jenis baris = Add-on   → same, but the picker lists ADD-ONS of it.
- *   Jenis baris = Produk   → Kelompok disappears (a bag of feed belongs to no
- *                            kelompok layanan); the picker lists products.
- *   Jenis baris = Apa saja → both disappear. Nothing to narrow.
- *
- * THREE INDEPENDENT CONTROLS WAS THE OLD SHAPE and it was worse: it let an
- * owner scope a benefit to "produk" and then tick a grooming service, which is
- * a sentence the engine can never match and nothing on screen refused.
- *
- * ─── AND THE RULE THE EMPTY PICKER CARRIES ─────────────────────────────────
- *
- * A kelompok with NO service ticked means EVERY service of that kelompok —
- * including ones created next month. That is the point of scoping by kelompok
- * at all, and it is why the trigger says "Semua layanan grooming" rather than
- * "Pilih…" when nothing is chosen: an empty control that silently means
- * "everything" has to say so.
- *
- * Ticking services NARROWS to exactly those, and the ENGINE is what makes that
- * true: once anything more specific is named it matches only those, treating
- * the kelompok as the filter they were chosen through rather than as a second
- * thing to match. So the kelompok stays in the payload even when services are
- * ticked — which is what lets this form reopen on the right filter and show
- * them.
+ * Naming specific items NARROWS; `serviceKinds` only counts when nothing is
+ * named, so the kelompok stays in the payload as the filter the services were
+ * picked through — which is what lets the form reopen on it.
  */
 
 const TARGET_OPTIONS: { value: BenefitTarget; label: string }[] = [
   { value: "service", label: "Layanan" },
-  { value: "product", label: "Produk" },
   { value: "addon", label: "Add-on" },
+  { value: "product", label: "Produk" },
   { value: "any", label: "Apa saja" },
 ];
 
-/**
- * A SINGLE SELECT, not a multi. A benefit spanning grooming AND hotel is rare,
- * and the picker below can only be filtered by one kelompok at a time without
- * becoming a list nobody can reason about. Two kelompok means two benefits,
- * which also reads better on the card.
- *
- * Stored as an ARRAY all the same (`scope.serviceKinds`), because that is what
- * the engine matches against and a second kelompok may be wanted one day.
- */
+/** `SelectField` takes no `""` option (Radix), so "every kelompok" has a real value. */
+const ALL_KINDS = "semua";
+
 const KIND_OPTIONS = [
+  { value: ALL_KINDS, label: "Semua kelompok" },
   { value: "grooming", label: "Grooming" },
   { value: "hotel", label: "Hotel" },
   { value: "pickup-delivery", label: "Antar-jemput" },
 ];
 
 const kindLabel = (value: string | null) =>
-  KIND_OPTIONS.find((option) => option.value === value)?.label ?? "";
+  value ? (KIND_OPTIONS.find((option) => option.value === value)?.label ?? value) : "";
 
-export function BenefitScopeField({
-  benefit,
-  onChange,
-  error,
-}: {
-  benefit: BenefitInput;
-  onChange: (scope: Partial<BenefitInput["scope"]>) => void;
-  error?: string;
-}) {
-  const scope = benefit.scope ?? {};
-  const target = (scope.target ?? "service") as BenefitTarget;
-  const serviceKind = scope.serviceKinds?.[0] ?? null;
+/** "Semua layanan Grooming" · "Semua add-on" · "2 dipilih" — the picker's own words. */
+export function scopeSummary(
+  scope: BenefitScope,
+  names: (id: string) => string | undefined,
+): string {
+  const kind = kindLabel(scope.serviceKinds[0] ?? null);
 
-  const picksServices = target === "service" || target === "addon";
-  const { options, loading } = useScopeOptions({ target, serviceKind });
-
-  // A `perk` never touches a price, so it never needs a scope — offering one
-  // would invite somebody to narrow something that is never evaluated.
-  if (benefit.kind === "perk") {
-    return null;
+  if (scope.target === "any") return "Semua layanan & produk";
+  if (scope.target === "product") {
+    if (!scope.productIds.length) return "Pilih produk";
+    return scope.productIds.length === 1
+      ? (names(scope.productIds[0]) ?? "1 produk")
+      : `${scope.productIds.length} produk`;
   }
 
-  const picked = picksServices ? (scope.serviceIds ?? []) : (scope.productIds ?? []);
+  const ids = scope.serviceIds;
+  if (ids.length === 1) return names(ids[0]) ?? "1 dipilih";
+  if (ids.length > 1) return `${ids.length} dipilih`;
 
-  const setPicked = (values: string[]) =>
-    onChange(picksServices ? { serviceIds: values } : { productIds: values });
+  if (scope.target === "addon") return kind ? `Semua add-on ${kind}` : "Semua add-on";
+  return kind ? `Semua layanan ${kind}` : "Pilih layanan";
+}
 
-  const pickerLabel =
-    target === "product"
-      ? "Produk tertentu"
-      : target === "addon"
-        ? "Add-on tertentu"
-        : "Layanan tertentu";
+export function BenefitScopeField({
+  scope,
+  onChange,
+  services,
+  products,
+  loading,
+  error,
+}: {
+  scope: BenefitScope;
+  onChange: (scope: BenefitScope) => void;
+  services: Service[];
+  products: CatalogItem[];
+  loading: boolean;
+  error?: string;
+}) {
+  const target = scope.target;
+  const serviceKind = scope.serviceKinds[0] ?? null;
+  const picksServices = target === "service" || target === "addon";
 
-  const pickerHint = loading
-    ? "Memuat…"
+  const items: CatalogItem[] = picksServices
+    ? servicesFor(services, target, serviceKind).map((service) => ({
+        id: service._id,
+        name: service.name,
+      }))
     : target === "product"
-      ? "Pilih minimal satu produk — kalau kosong, paket tidak bisa disimpan."
-      : picked.length === 0
-        ? `Kosong berarti semua ${target === "addon" ? "add-on" : "layanan"} ${kindLabel(serviceKind)} — termasuk yang dibuat nanti.`
-        : `Hanya ${picked.length} yang dipilih. Baris yang cocok dengan salah satunya dapat benefit ini.`;
+      ? products
+      : [];
+
+  const nameOf = (id: string) =>
+    (picksServices ? services.find((s) => s._id === id)?.name : products.find((p) => p.id === id)?.name) ??
+    undefined;
+
+  const picked = picksServices ? scope.serviceIds : scope.productIds;
+
+  const hint = loading
+    ? "Memuat daftar…"
+    : target === "addon" && picked.length === 0
+      ? "Berlaku untuk semua add-on, termasuk yang ditambahkan nanti."
+      : target === "service" && picked.length === 0 && serviceKind
+        ? `Semua layanan ${kindLabel(serviceKind)}, termasuk yang dibuat nanti.`
+        : undefined;
 
   return (
-    <fieldset className="mt-4 rounded-md border border-border p-3">
-      <legend className="px-1 text-sm font-medium text-foreground">
-        Berlaku untuk
-      </legend>
+    <div className="grid gap-3 sm:grid-cols-[minmax(0,10rem)_minmax(0,11rem)_minmax(0,1fr)]">
+      <SelectField
+        label="Jenis"
+        value={target}
+        options={TARGET_OPTIONS}
+        onChange={(next) =>
+          /*
+            A NEW TARGET CLEARS EVERYTHING UNDER IT: service ids left on a
+            product option would be a scope nothing can match and nothing on
+            screen can show.
+          */
+          onChange({
+            target: next as BenefitTarget,
+            serviceIds: [],
+            productIds: [],
+            categoryIds: [],
+            serviceKinds: [],
+          })
+        }
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      {picksServices ? (
         <SelectField
-          label="Jenis baris"
-          required
-          value={target}
+          label="Kelompok"
+          value={serviceKind ?? ALL_KINDS}
+          options={KIND_OPTIONS}
           onChange={(next) =>
-            /*
-              CHANGING THE TARGET CLEARS EVERYTHING UNDER IT. The ids belonged
-              to the old list: service ids left behind on a product benefit
-              would be a scope the engine can never match, and nothing on the
-              screen would be able to show them.
-            */
             onChange({
-              target: next as BenefitTarget,
+              ...scope,
+              serviceKinds: next === ALL_KINDS ? [] : [next],
+              // The ticked services belonged to the old kelompok.
               serviceIds: [],
-              productIds: [],
-              serviceKinds: [],
             })
           }
-          options={TARGET_OPTIONS}
         />
+      ) : (
+        <div className="hidden sm:block" aria-hidden />
+      )}
 
-        {picksServices && (
-          <SelectField
-            label="Kelompok layanan"
-            required
-            value={serviceKind ?? ""}
-            onChange={(next) =>
-              /*
-                A NEW KELOMPOK EMPTIES THE PICKER BELOW IT, for the same reason
-                the target does: the ticked services belonged to the old one.
-              */
-              onChange({ serviceKinds: next ? [next] : [], serviceIds: [] })
-            }
-            options={KIND_OPTIONS}
-            placeholder="Pilih kelompok"
-          />
-        )}
-      </div>
-
-      {(picksServices ? Boolean(serviceKind) : target === "product") && (
-        /*
-          A LABELLED FIELD, NOT A PILL (29 September 2026, on BO's request). It
-          sits under two ordinary `SelectField`s, and a filter-bar trigger among
-          them — half the height, label inline instead of above — read as a
-          control that had wandered in from another screen. `layout="form"` is
-          the same 44px field arrangement those two use.
-
-          STILL A MULTI-SELECT: several services means "layanan 1 ATAU layanan
-          2", which a plain select cannot say.
-        */
+      {target === "any" ? (
+        <p className="self-end pb-3 text-sm text-muted">
+          Berlaku untuk baris apa pun di struk.
+        </p>
+      ) : (
         <FilterMultiSelect
-          className="mt-4"
           layout="form"
-          label={pickerLabel}
+          label={target === "product" ? "Produk" : target === "addon" ? "Add-on" : "Layanan"}
           values={picked}
-          options={options.map((option) => ({
-            value: option.id,
-            label: option.name,
-          }))}
-          onApply={setPicked}
-          onReset={() => setPicked([])}
+          options={items.map((item) => ({ value: item.id, label: item.name }))}
+          onApply={(values) =>
+            onChange(picksServices ? { ...scope, serviceIds: values } : { ...scope, productIds: values })
+          }
+          onReset={() =>
+            onChange(picksServices ? { ...scope, serviceIds: [] } : { ...scope, productIds: [] })
+          }
           searchable
           disabled={loading}
-          hint={pickerHint}
-          formatValue={(values) => {
-            if (!values.length) {
-              /*
-                THE EMPTY STATE SAYS WHAT IT MEANS. For services that is "every
-                one of this kelompok" — a real and useful scope. For products it
-                is nothing at all, and the plan is refused on save, so the
-                wording has to differ.
-              */
-              return target === "product"
-                ? "Pilih produk"
-                : `Semua ${target === "addon" ? "add-on" : "layanan"} ${kindLabel(serviceKind)}`;
-            }
-
-            if (values.length === 1) {
-              return (
-                options.find((option) => option.id === values[0])?.name ??
-                "1 dipilih"
-              );
-            }
-
-            return `${values.length} dipilih`;
-          }}
+          hint={hint}
+          error={error}
+          formatValue={() => scopeSummary(scope, nameOf)}
         />
       )}
-
-      {/*
-        THE CAPTION MOVES INTO THE FIELD once the picker is showing — a hint
-        belongs under the control it is about. This one is left for the states
-        where there IS no picker yet: "Apa saja", and a service target whose
-        kelompok has not been chosen.
-      */}
-      {!(picksServices ? Boolean(serviceKind) : target === "product") && (
-        <p className="mt-3 text-sm text-muted">
-          {target === "any"
-            ? "Benefit ini berlaku untuk baris apa pun di struk. Pakai hanya kalau memang itu yang dimaksud."
-            : "Pilih kelompok layanannya dulu."}
-        </p>
-      )}
-
-      {error && (
-        <p role="alert" className="mt-1 text-sm text-danger">
-          {error}
-        </p>
-      )}
-    </fieldset>
+    </div>
   );
 }

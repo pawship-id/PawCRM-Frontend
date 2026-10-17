@@ -3063,8 +3063,7 @@ describe("an antar-jemput line", () => {
  * ─── BENEFIT MEMBERSHIP, AS ITS OWN SECTION (1 October 2026, on request) ────
  *
  * Applying and removing a benefit moved off the row and into one section under
- * Diskon faktur — the same move `PosBenefitSection` made at the till, for the
- * same reason: a per-row offer could only show what happened to match a row
+ * Diskon faktur, because a per-row offer could only show what happened to match a row
  * already typed, which answered nothing for the other benefits a customer held.
  */
 describe("Benefit membership on a faktur", () => {

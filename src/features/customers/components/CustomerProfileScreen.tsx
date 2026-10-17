@@ -8,6 +8,7 @@ import { Alert, Breadcrumb, Card, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
+import { CustomerMembershipSection } from "@/features/memberships";
 import { CustomerPetsSection } from "@/features/pets";
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
@@ -312,21 +313,14 @@ export function CustomerProfileScreen({ id }: { id: string }) {
       </Can>
 
       {/* ── MEMBERSHIP ── */}
-      <Card
-        title="Membership"
-        description="Paket keanggotaan, masa berlaku, dan pengingat perpanjangan."
-      >
-        <div className="flex flex-wrap items-center gap-3 py-2">
-          <Badge variant="outline">Segera</Badge>
-          <p className="text-sm text-muted">
-            Membership belum ada di sistem. Untuk sekarang tier VIP{" "}
-            <span className="font-medium text-foreground">
-              {customer.vipTier ?? "belum diisi"}
-            </span>{" "}
-            yang dipakai sebagai penanda pelanggan istimewa.
-          </p>
-        </div>
-      </Card>
+      <Can feature="petMemberships" action="read">
+        <Card
+          title="Membership"
+          description="Kartu per hewan, kartu yang melekat ke pelanggan, dan riwayatnya."
+        >
+          <CustomerMembershipSection customerId={customer._id} />
+        </Card>
+      </Can>
 
       {/* ── NILAI PELANGGAN ── */}
       <Can feature="customerInvoices" action="read">

@@ -4,6 +4,7 @@ import type {
   BookingBelongingInput,
   CreateBookingEntry,
   Pet,
+  PlannedBenefit,
   Service,
   ServiceKind,
   UpdateBookingInput,
@@ -66,20 +67,22 @@ export interface BookingCardDraft {
   /** The add-ons ticked under it, by service id. */
   addonServiceIds: string[];
   /**
-   * A MEMBERSHIP BENEFIT THIS BOOKING MEANS TO USE (30 September 2026).
+   * A MEMBERSHIP BENEFIT THIS BOOKING USES (30 September 2026; Promosi V1,
+   * 16 October 2026).
    *
-   * A PLAN, NOT A SPEND: nothing is deducted when the booking is made. The
-   * quota moves when it is BILLED, and the till re-reads the card then — a
-   * booking is a promise, and one that ate a customer's weekly free bath and
-   * was then cancelled would have taken something from somebody who received
-   * nothing.
-   *
-   * WHAT IT IS FOR is the conversation at the counter: "pakai jatah gratisnya
-   * ya" is agreed when the appointment is made, days before anybody rings it
-   * up. Without it, that has to be remembered by whoever happens to be on the
-   * till.
+   * IT HOLDS THE JATAH since Promosi V1: a saved plan counts as used in the
+   * period of the booking's own date until the booking is billed or cancelled
+   * (membership-v1 §3.3, §8). What the radio shows is what gets saved — see
+   * `effectivePlan` in `benefitQuote.ts`.
    */
-  plannedBenefit: { membershipId: string; benefitId: string } | null;
+  plannedBenefit: PlannedBenefit | null;
+  /**
+   * WHETHER SOMEBODY ANSWERED THE BENEFIT QUESTION — a pick, or "Tanpa member"
+   * (`plannedBenefit: null`). False on a new card: the quote's recommended
+   * candidate is then preselected. True on an edit, so a stored "no benefit"
+   * is not quietly turned into one.
+   */
+  benefitPicked: boolean;
   /** As typed; "" means "use the catalogue's". */
   durationMin: string;
   /**
@@ -128,6 +131,7 @@ export function blankCard(petId = ""): BookingCardDraft {
     serviceId: "",
     addonServiceIds: [],
     plannedBenefit: null,
+    benefitPicked: false,
     durationMin: "",
     groomerUserId: UNASSIGNED,
     internalNotes: "",
@@ -168,8 +172,11 @@ export function cardFromBooking(booking: Booking): BookingCardDraft {
       ? {
           membershipId: booking.plannedBenefit.membershipId,
           benefitId: booking.plannedBenefit.benefitId,
+          optionId: booking.plannedBenefit.optionId ?? null,
         }
       : null,
+    /* The stored answer, including "none" — an edit never adds a benefit on its own. */
+    benefitPicked: true,
     // Shown as typed, so saving without touching it keeps the number.
     durationMin:
       service?.durationMin === null || service?.durationMin === undefined
@@ -223,12 +230,21 @@ function cardFields(card: BookingCardDraft) {
     internalNotes: noteOf(card.internalNotes),
     customerNotes: noteOf(card.customerNotes),
     /*
-      TWO IDS AND NOTHING ELSE — which card, which benefit. The server stores
-      the plan as sent and deducts nothing; the till prices it for real when the
-      booking is billed. `null` clears a plan somebody changed their mind about,
-      which is why it is sent rather than omitted when empty.
+      WHICH CARD, WHICH BENEFIT, WHICH OPTION — the server validates it against
+      the card on the booking's date and then HOLDS the jatah (membership-v1
+      §8). `null` clears a plan somebody changed their mind about (and releases
+      its hold), which is why it is sent rather than omitted when empty.
+
+      The form resolves the card's plan against the latest quote BEFORE calling
+      this (`effectivePlan`), so a preselected candidate is saved too.
     */
-    plannedBenefit: card.plannedBenefit,
+    plannedBenefit: card.plannedBenefit
+      ? {
+          membershipId: card.plannedBenefit.membershipId,
+          benefitId: card.plannedBenefit.benefitId,
+          optionId: card.plannedBenefit.optionId ?? null,
+        }
+      : null,
   };
 }
 
@@ -289,6 +305,7 @@ export function cardToUpdate(
   | "customerNotes"
   | "belongings"
   | "variantChoices"
+  | "plannedBenefit"
 > {
   /*
     THE CHOICES ONLY WHEN THERE ARE SOME, and never on a billed line — the server

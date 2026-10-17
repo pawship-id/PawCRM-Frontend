@@ -6,14 +6,15 @@ import { Alert, ConfirmDialog, Spinner } from "@/components";
 import { posService } from "@/services/pos.service";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
-import type { PosCatalogItem, PosTransaction } from "@/types/api";
+import type { PosBenefitPick, PosCatalogItem, PosTransaction } from "@/types/api";
 
 import { useAuth } from "@/features/auth";
 import { CustomerSearchDialog } from "@/features/customers";
 import { BookingBridgeDialog, useBookingBridge } from "@/features/booking";
-import { useBenefitQuote } from "@/features/memberships";
-
+import { autoApplyChanges, lineKey, petPlans } from "../membershipCart";
+import { useCustomerMemberships } from "../hooks/useCustomerMemberships";
 import { usePosCart } from "../hooks/usePosCart";
+import { usePosMembershipQuote } from "../hooks/usePosMembershipQuote";
 import { usePosShift } from "../hooks/usePosShift";
 import { useShiftTotals } from "../hooks/useShiftTotals";
 import { PosApprovalDialog } from "./PosApprovalDialog";
@@ -22,6 +23,9 @@ import { PosBookingActions } from "./PosBookingActions";
 import { PosBookingBanner } from "./PosBookingBanner";
 import { PosCart } from "./PosCart";
 import { PosCatalog } from "./PosCatalog";
+import { PosCustomerPerks } from "./PosCustomerPerks";
+import { PosMembershipSaleDialog } from "./PosMembershipSaleDialog";
+import { PosSaleEffects } from "./PosSaleEffects";
 import { PosServicePetDialog } from "./PosServicePetDialog";
 import { PosCloseShiftDialog } from "./PosCloseShiftDialog";
 import { PosHeldCartsDialog } from "./PosHeldCartsDialog";
@@ -35,6 +39,9 @@ import { TodayTransactionsDialog } from "./TodayTransactionsDialog";
 import { VoidTransactionDialog } from "./VoidTransactionDialog";
 import { PosVariantDialog } from "./PosVariantDialog";
 import { PosXReportDialog } from "./PosXReportDialog";
+
+/** "Tanpa member" on nothing — one shared empty set, so it never re-quotes. */
+const NO_KEYS: ReadonlySet<string> = new Set();
 
 /**
  * The till.
@@ -126,6 +133,8 @@ export function PosScreen() {
   const [heldError, setHeldError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
+  /** The sale just paid — what its receipt dialog lists as membership effects. */
+  const [paidSale, setPaidSale] = useState<PosTransaction | null>(null);
   const [pickingCustomer, setPickingCustomer] = useState(false);
   /**
    * Which half of the Booking Bridge to open on, or null while it is closed.
@@ -256,6 +265,14 @@ export function PosScreen() {
     null,
   );
   /**
+   * A membership package tapped in the grid, waiting for its sell dialog
+   * (Promosi V1). Same order as a service: the customer first — a package is
+   * always sold to somebody.
+   */
+  const [pendingPackage, setPendingPackage] = useState<PosCatalogItem | null>(
+    null,
+  );
+  /**
    * Whether the customer picker is closing because somebody was CHOSEN.
    *
    * Choosing fires the dialog's `onOpenChange` as well as `onSelect`, so the two
@@ -286,7 +303,8 @@ export function PosScreen() {
         a second thing for a cashier to learn.
       */
       if (tile.kind === "service" || tile.kind === "membership") {
-        setPendingService(tile);
+        if (tile.kind === "membership") setPendingPackage(tile);
+        else setPendingService(tile);
 
         // No customer yet: that question comes first, and the tile waits.
         if (!cart.cart?.customer) {
@@ -462,49 +480,67 @@ export function PosScreen() {
   }
 
   /*
-    ─── WHAT A MEMBERSHIP CARD COULD PAY FOR, ON THIS BASKET ────────────────
+    ─── MEMBERSHIP IN THE BASKET (Promosi V1, contract §6.3) ─────────────────
 
-    Asked of the server on every change to the lines, and asked as an OFFER: the
-    answer never touches a total. Applying one sends `{ membershipId,
-    benefitKey }` back on the line and lets the server price it for real — a
-    till that could name its own benefit amount could give away the shop.
+    The quote is asked on every change to the basket; its `recommended` pick is
+    APPLIED AUTOMATICALLY to every line nobody has chosen for, in one write.
+    The cashier changes it per line from the line's select — a candidate, or
+    "Tanpa member", which is remembered for that line (by what the line is, a
+    cart line has no id) so the next quote does not put the pick straight back.
 
-    ONLY LINES THAT NAME AN ANIMAL ARE ASKED ABOUT, because a card belongs to an
-    animal: a bag of food on the same receipt is nobody's. Membership lines are
-    left out too — a package is not something a benefit can be spent on.
-
-    `ref` IS THE POSITION, STRINGIFIED. The cart renumbers when a line is
-    removed, so both the question and the map below are rebuilt from the same
-    array the rows are drawn from.
+    THE SERVER PRICES EVERYTHING. A pick is ids; the line totals and "Potongan
+    membership" are read back from the cart.
   */
-  const benefitLines = useMemo(
+  const cartId = cart.cart?._id ?? null;
+  const [noBenefit, setNoBenefit] = useState<{
+    cartId: string | null;
+    keys: ReadonlySet<string>;
+  }>({ cartId: null, keys: NO_KEYS });
+  const noBenefitKeys = noBenefit.cartId === cartId ? noBenefit.keys : NO_KEYS;
+
+  const memberQuote = usePosMembershipQuote(cart.cart, noBenefitKeys);
+  const autoTried = useRef("");
+  const { setItemBenefits, setItemBenefit } = cart;
+  const cartItems = cart.cart?.items;
+
+  useEffect(() => {
+    if (!memberQuote.quote || !memberQuote.digest || cart.busy) return;
+    /* One try per basket state: a refused write leaves the basket — and so the
+       digest — as it was, and must not be retried in a loop. */
+    if (autoTried.current === memberQuote.digest) return;
+    autoTried.current = memberQuote.digest;
+
+    const changes = autoApplyChanges(cartItems ?? [], memberQuote.quote, noBenefitKeys);
+    if (changes.length > 0) void setItemBenefits(changes);
+  }, [memberQuote.quote, memberQuote.digest, cart.busy, cartItems, noBenefitKeys, setItemBenefits]);
+
+  function chooseBenefit(index: number, pick: PosBenefitPick | null) {
+    const items = cart.cart?.items ?? [];
+    if (!items[index]) return;
+    const key = lineKey(items, index);
+    const next = new Set(noBenefitKeys);
+    if (pick) next.delete(key);
+    else next.add(key);
+    setNoBenefit({ cartId, keys: next });
+    void setItemBenefit(index, pick);
+  }
+
+  /* The customer's cards — chips under their name, plans on the pet headers. */
+  const customerCards = useCustomerMemberships(cart.cart?.customer?._id ?? null);
+  const plansByPet = useMemo(
     () =>
-      (cart.cart?.items ?? []).flatMap((item, index) =>
-        item.petId && item.kind !== "membership"
-          ? [
-              {
-                ref: String(index),
-                kind: item.kind as "service" | "product",
-                refId: item.refId,
-                petId: item.petId,
-                amount: item.lineTotal,
-                parentServiceId: item.parentServiceId ?? null,
-              },
-            ]
-          : [],
-      ),
-    [cart.cart],
+      petPlans(cart.cart?.items ?? [], [
+        ...customerCards.map((card) => ({
+          petId: card.petId,
+          planName: card.plan?.name ?? null,
+          status: card.status,
+        })),
+        ...(memberQuote.quote?.cards ?? [])
+          .filter((card) => !card.virtual)
+          .map((card) => ({ petId: card.petId, planName: card.planName, status: card.status })),
+      ]),
+    [cart.cart, customerCards, memberQuote.quote],
   );
-
-  /*
-    THE WHOLE QUOTE GOES DOWN, not a per-line map of offers (30 September 2026).
-    `PosBenefitSection` lists EVERY benefit — including the ones no line in the
-    basket matches — and a map keyed by line cannot express those at all.
-  */
-  const { quote: benefitQuote } = useBenefitQuote({
-    customerId: cart.cart?.customerId ?? null,
-    lines: benefitLines,
-  });
 
   /*
     THE BRANCH COMES BEFORE THE SHIFT, and before the loading state — there is
@@ -568,10 +604,10 @@ export function PosScreen() {
           onItemDetails={(index, details) =>
             cart.setLineDetails(index, details)
           }
-          onItemBenefit={(index, benefit) =>
-            void cart.setItemBenefit(index, benefit)
-          }
-          benefitQuote={benefitQuote}
+          onItemBenefit={chooseBenefit}
+          memberQuote={memberQuote.quote}
+          petPlans={plansByPet}
+          customerPerks={<PosCustomerPerks cards={customerCards} />}
           onCartDiscount={(discount) => void cart.setCartDiscount(discount)}
           onCharges={(charges) => void cart.setCharges(charges)}
           onNote={(note) => void cart.setNote(note)}
@@ -685,6 +721,7 @@ export function PosScreen() {
               cashier can accidentally ring up twice.
             */
             cart.clear();
+            setPaidSale(sale);
             setReceiptFor(sale._id);
             void loadHeld();
             // The shift bar and the day's list both just went stale (FR-9).
@@ -698,6 +735,12 @@ export function PosScreen() {
         onOpenChange={(open) => {
           if (!open) setReceiptFor(null);
         }}
+        /* Only for the sale just paid — a reprint from the day's list has none. */
+        effects={
+          paidSale && paidSale._id === receiptFor ? (
+            <PosSaleEffects sale={paidSale} />
+          ) : undefined
+        }
       />
 
       {/*
@@ -723,6 +766,7 @@ export function PosScreen() {
           */
           if (!next && !customerChosen.current) {
             setPendingService(null);
+            setPendingPackage(null);
           }
         }}
         onSelect={(customer, warnings) => {
@@ -866,22 +910,6 @@ export function PosScreen() {
           setPendingService(null);
 
           /*
-            A PACKAGE IS NOT A SERVICE, and this is the branch that says so. The
-            dialog is shared on purpose — "untuk hewan yang mana?" is one
-            question — but its answer used to go to `addServices` whatever was
-            being sold, which stamped `kind: "service"` on a membership plan's
-            id and earned a "Service not found" from the catalogue it was then
-            looked up in. Add-ons, variants and rides mean nothing here: a card
-            has one price, one animal and one line.
-          */
-          if (tile.kind === "membership") {
-            void cart.addMembership(tile._id, pet._id).then((ok) => {
-              if (ok) swalToast(`${tile.name} untuk ${pet.name} ditambahkan.`);
-            });
-            return;
-          }
-
-          /*
             THE SERVICE FIRST, THEN ITS ADD-ONS — one patch, one line each.
             `addServices` already takes several per animal, so nothing here has
             to know that an add-on is a different kind of line: the server reads
@@ -919,6 +947,36 @@ export function PosScreen() {
                   : `${tile.name} untuk ${whose} ditambahkan.`,
               );
             });
+        }}
+      />
+
+      {/*
+        SELLING A PACKAGE (Promosi V1) — its own dialog: whose, from when, the
+        referral code, and the server's eligibility per animal. Opens only once
+        a customer is on the basket, like the service dialog above.
+      */}
+      <PosMembershipSaleDialog
+        plan={cart.cart?.customer ? pendingPackage : null}
+        customerId={cart.cart?.customer?._id ?? ""}
+        customerName={cart.cart?.customer?.name}
+        branchId={session?.currentBranchId ?? cart.cart?.branchId ?? null}
+        cartItems={cart.cart?.items ?? []}
+        busy={cart.busy}
+        onOpenChange={(next) => {
+          if (!next) setPendingPackage(null);
+        }}
+        onAdd={async (input, summary) => {
+          const tile = pendingPackage;
+          const result = await cart.addMembership(input);
+          if (result.ok) {
+            setPendingPackage(null);
+            swalToast(
+              `${tile?.name ?? "Paket"} untuk ${summary.holderName} ditambahkan${
+                summary.startsNow ? " · jatah langsung berlaku di keranjang" : ""
+              }.`,
+            );
+          }
+          return result;
         }}
       />
 

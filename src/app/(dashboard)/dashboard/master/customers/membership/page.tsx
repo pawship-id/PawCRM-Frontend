@@ -1,36 +1,12 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { CustomerModuleHeader } from "@/features/customers";
-import {
-  MembershipPlansPanel,
-  MembershipSubTabs,
-} from "@/features/memberships";
-import { RequirePermission } from "@/features/permissions";
-import { MEMBERSHIP_TABS } from "@/features/memberships";
-
-export const metadata: Metadata = {
-  title: "Membership · Pelanggan · Buloo",
-};
+import { MEMBERSHIP_HREF } from "@/features/memberships/labels";
 
 /**
- * The Membership tab — the CATALOGUE of packages a shop sells.
- *
- * GATED ON `membershipPlans:read`, unlike the placeholder it replaced: this one
- * reads real packages and their prices, so it is a screen with something to
- * protect.
- *
- * WHY THE CATALOGUE IS THE LANDING TAB rather than the cards: nothing can exist
- * until a package does, and the first thing anybody does in this module is
- * define what is for sale. The cards live one tab over.
+ * MOVED TO PROMOSI — 16 October 2026: Membership left Pelanggan for its own
+ * rail module. Kept so old links and bookmarks land; delete once nothing links
+ * here any more. `params` is a Promise in this version of Next — see AGENTS.md.
  */
-export default function CustomerMembershipPage() {
-  return (
-    <RequirePermission feature="membershipPlans" redirectTo={MEMBERSHIP_TABS}>
-      <div className="flex flex-col gap-6">
-        <CustomerModuleHeader />
-        <MembershipSubTabs />
-        <MembershipPlansPanel />
-      </div>
-    </RequirePermission>
-  );
+export default function MovedMembershipPage() {
+  redirect(MEMBERSHIP_HREF);
 }

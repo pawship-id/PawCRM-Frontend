@@ -1890,6 +1890,27 @@ export interface PosDiscount {
   benefitId?: string | null;
   /** Frozen onto the line so a reprinted receipt can name it without a lookup. */
   benefitLabel?: string | null;
+  /** Promosi V1 (contract §6.4): a package of the SAME cart paid for it. */
+  packageRef?: string | null;
+  optionId?: string | null;
+  /** Quota uses spent (>1 only for a free item on qty > 1). */
+  units?: number | null;
+  visitFee?: "free" | "zone" | null;
+  /** True on a visit-fee line waived by a member pick — derived, not picked. */
+  visitFeeWaiver?: boolean;
+}
+
+/**
+ * WHICH CARD, WHICH BENEFIT, WHICH OPTION — never an amount (contract §6.3).
+ *
+ * A real card is named by `membershipId`; a package bought in this same cart
+ * by `packageRef` (its virtual card's id changes on every quote).
+ */
+export interface PosBenefitPick {
+  membershipId?: string | null;
+  packageRef?: string | null;
+  benefitId: string;
+  optionId?: string | null;
 }
 
 /** One line in the basket. `name` and `unitPrice` are snapshots. */
@@ -1934,6 +1955,23 @@ export interface PosItem {
   membershipDiscount?: string | null;
   /** The card this line minted, once the sale is paid. Membership lines only. */
   membershipId?: string | null;
+  /**
+   * PROMOSI V1 (contract §6.4) — the line's current member pick in the shape a
+   * write sends back. Null when none, and on a visit-fee waiver line.
+   */
+  benefit?: PosBenefitPick | null;
+  /** The line bills a booking. */
+  fromBooking?: boolean;
+  /** The booking's agreed pick — main line only. "Sesuai booking" when it equals `benefit`. */
+  plannedBenefit?: { membershipId: string; benefitId: string; optionId: string | null } | null;
+  /** Package line: when cover starts (null = when paid). */
+  membershipStartDate?: string | null;
+  /** Package line: the referral code collected at the till. */
+  referralCode?: string | null;
+  /** Package line: the client's id for it, so same-cart lines can spend it. */
+  packageRef?: string | null;
+  /** Package line: the card it renews. */
+  renewFromId?: string | null;
   hppAtTime: string | null;
   /**
    * THE BOOKING BEHIND THIS LINE — and since one booking is one animal and one
@@ -2084,6 +2122,11 @@ export interface PosTotals {
 export interface PosRunningTotals {
   subtotal: string;
   itemDiscount: string;
+  /**
+   * Σ the lines' `membershipDiscount`, visit-fee waivers included — "Potongan
+   * membership" (contract §6.4). A part of `itemDiscount`, never beside it.
+   */
+  membershipDiscount?: string;
   cartDiscount: string;
   otherCharges: string;
   /** What is owed BEFORE tax is separated out. Not what a payment must cover. */
@@ -2252,6 +2295,17 @@ export interface PosCatalogItem {
    */
   durationDays?: number | null;
   benefitCount?: number;
+  /** Promosi V1 (contract §6.1) — months win over days when set. */
+  durationMonths?: number | null;
+  /** On a `variant` plan `price` is the lowest variant price: print "mulai". */
+  priceFrom?: boolean;
+  priceMode?: "fixed" | "variant";
+  eligibility?: "all" | "new_customer" | "renewal" | "referral";
+  attachTo?: "pet" | "customer";
+  /** Pet-option ids; empty = every species. */
+  petSpecies?: string[];
+  /** Empty = every branch. */
+  branchIds?: string[];
   _id: string;
   name: string;
   code: string | null;
@@ -2772,11 +2826,15 @@ export interface PosItemInput {
    * `unitPrice`: the server rebuilds each line from this payload, so a benefit
    * left out of the next write silently drops off that line.
    */
-  benefit?: { membershipId: string; benefitId: string } | null;
+  benefit?: PosBenefitPick | null;
   /** On a `membership` line: when cover starts. Default is the day it is paid. */
   membershipStartDate?: string;
   /** On a `membership` line: the card this one renews. */
   renewFromId?: string;
+  /** On a `membership` line: required by a `referral` plan (stored, not verified). */
+  referralCode?: string;
+  /** On a `membership` line: unique per cart — the quote's `packages[].ref`. */
+  packageRef?: string;
   bookingId?: string | null;
   /** A home-grooming trip's fee line — sent back so the server keeps it (11 October 2026). */
   homeTripId?: string | null;
@@ -3077,7 +3135,7 @@ export interface Booking {
    * client text or a card read per booking to decorate a board. The till names
    * the benefit where the name changes what somebody does.
    */
-  plannedBenefit?: { membershipId: string; benefitId: string } | null;
+  plannedBenefit?: PlannedBenefit | null;
   tripLeg?: TripLeg | null;
   /**
    * EVERY ANIMAL IN THE VAN (23 September 2026) — all of them, not "the others".
@@ -3993,6 +4051,19 @@ export interface BookingBelongingInput {
  * it is a receptionist recording that this nervous dog takes longer than the
  * catalogue thinks, which is not the same kind of fact at all.
  */
+/**
+ * THE MEMBERSHIP BENEFIT A BOOKING MEANS TO USE (membership-v1 §8).
+ *
+ * Since Promosi V1 it HOLDS the quota: a live, unbilled booking counts as used
+ * in the period of its own date until it is billed, cancelled or rescheduled.
+ * `optionId` null = the best covering option when billed.
+ */
+export interface PlannedBenefit {
+  membershipId: string;
+  benefitId: string;
+  optionId?: string | null;
+}
+
 export interface CreateBookingEntry {
   /**
    * OMITTED ON A RIDE, and required everywhere else. A card that sends both
@@ -4049,6 +4120,8 @@ export interface CreateBookingEntry {
   internalNotes?: string | null;
   customerNotes?: string | null;
   belongings?: { name: string; checkedInAt?: string | null }[];
+  /** The membership benefit this booking holds — see `PlannedBenefit`. */
+  plannedBenefit?: PlannedBenefit | null;
 }
 
 /**
@@ -4165,6 +4238,8 @@ export interface UpdateBookingInput {
   passengerPetIds?: string[];
   /** The bookings the ride serves. Re-quotes a `per_pet` ride. */
   linkedBookingIds?: string[];
+  /** `null` clears the plan (and releases its hold). */
+  plannedBenefit?: PlannedBenefit | null;
   forceClash?: boolean;
 }
 /**

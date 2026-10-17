@@ -1,22 +1,18 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { MembershipCardDetail } from "@/features/memberships";
-import { RequirePermission } from "@/features/permissions";
+import { cardHref } from "@/features/memberships/labels";
 
-export const metadata: Metadata = {
-  title: "Kartu membership · Buloo",
-};
-
-export default async function MembershipCardPage({
+/**
+ * MOVED TO PROMOSI — 16 October 2026: Membership left Pelanggan for its own
+ * rail module. Kept so old links and bookmarks land; delete once nothing links
+ * here any more. `params` is a Promise in this version of Next — see AGENTS.md.
+ */
+export default async function MovedMembershipCardPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
 
-  return (
-    <RequirePermission feature="petMemberships">
-      <MembershipCardDetail id={id} />
-    </RequirePermission>
-  );
+  redirect(cardHref(id));
 }

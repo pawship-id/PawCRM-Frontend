@@ -205,6 +205,25 @@ drawer to match. It asks for a note instead.
 
 ---
 
+## Membership (Promosi V1)
+
+- **A package tile** opens `PosMembershipSaleDialog` instead of the service dialog: whose (an
+  animal, or the customer for a customer-held plan), from when (Hari ini / Setelah yang aktif
+  berakhir / Pilih tanggal), and a referral code when the plan wants one. Who may buy and at what
+  price is the server's answer (`/pet-memberships/eligibility`); an animal that may not buy is
+  listed, disabled, with the reason. One package per holder per basket.
+- **A benefit is picked per cart line** with a compact select (`PosBenefitSelect`), which replaced
+  the old Pakai/Lepas section under Diskon keranjang. The quote auto-applies its best pick; the
+  cashier chooses another or "Tanpa member". Benefits that would cover the line but cannot be used
+  show as short muted chips with the reason. The server prices it — the select only sends ids.
+- The cart summary and the receipt print the total as **Potongan membership**.
+  `PosCustomerPerks` shows the customer's cards as chips under the name; after payment
+  `PosSaleEffects` lists the cards issued and the allowances spent.
+
+Details in [`membership.md`](./membership.md).
+
+---
+
 ## Permissions
 
 | Feature · action | Staff | Manager |

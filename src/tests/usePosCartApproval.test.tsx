@@ -203,17 +203,175 @@ describe("what a cart write reports back", () => {
  * success toast over it.
  */
 describe("selling a membership package", () => {
-  it("sends it as a membership line, naming the animal it is for", async () => {
+  it("sends it as a membership line with its start, referral and packageRef", async () => {
     const hook = renderHook(() => usePosCart());
 
     await act(async () => {
-      await hook.result.current.addMembership("plan-1", "pet-1");
+      await hook.result.current.addMembership({
+        planId: "plan-1",
+        petId: "pet-1",
+        membershipStartDate: "2027-01-01T03:00:00.000Z",
+        referralCode: "RINA-01",
+        packageRef: "pkg-1",
+      });
     });
 
     expect(mockedPos.updateCart).toHaveBeenCalledWith("cart-1", {
       items: [
-        { kind: "membership", refId: "plan-1", petId: "pet-1", qty: "1" },
+        {
+          kind: "membership",
+          refId: "plan-1",
+          petId: "pet-1",
+          qty: "1",
+          packageRef: "pkg-1",
+          membershipStartDate: "2027-01-01T03:00:00.000Z",
+          referralCode: "RINA-01",
+        },
       ],
     });
+  });
+
+  /* Contract §6.2: a sale-rule refusal is the DIALOG's to show, with reasons. */
+  it("hands a 409 refusal's reasons back instead of the basket banner", async () => {
+    mockedPos.updateCart.mockRejectedValue(
+      new ApiError("Hewan ini sudah punya membership di tanggal tersebut", 409, {
+        reason: "Kartu MBR-0007 berlaku sampai 2026-12-31",
+        data: {
+          reasons: [
+            { code: "overlap", field: "startDate", message: "Sudah dipegang sampai 2026-12-31" },
+          ],
+          suggestedStartDate: "2027-01-01T03:00:00.000Z",
+        },
+      }),
+    );
+
+    const hook = renderHook(() => usePosCart());
+    let result: Awaited<ReturnType<typeof hook.result.current.addMembership>> | undefined;
+
+    await act(async () => {
+      result = await hook.result.current.addMembership({
+        planId: "plan-1",
+        petId: "pet-1",
+        packageRef: "pkg-1",
+      });
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      message: "Kartu MBR-0007 berlaku sampai 2026-12-31",
+      reasons: [
+        { code: "overlap", field: "startDate", message: "Sudah dipegang sampai 2026-12-31" },
+      ],
+    });
+    expect(hook.result.current.error).toBeNull();
+  });
+});
+
+/**
+ * ─── WHAT A LINE SENDS BACK ON THE NEXT WRITE (Promosi V1) ──────────────────
+ *
+ * The server rebuilds every line from the payload, so a pick, a start date or
+ * a packageRef left out of the next write would silently fall off.
+ */
+describe("re-sending membership facts", () => {
+  const basket = {
+    _id: "cart-1",
+    items: [
+      {
+        kind: "membership",
+        refId: "plan-1",
+        qty: "1.0000",
+        petId: "pet-1",
+        packageRef: "pkg-1",
+        membershipStartDate: "2027-01-01T03:00:00.000Z",
+        referralCode: "RINA-01",
+        discount: null,
+        bookingId: null,
+      },
+      {
+        kind: "service",
+        refId: "svc-1",
+        qty: "1.0000",
+        petId: "pet-1",
+        lineTotal: "100000.0000",
+        membershipDiscount: "100000.0000",
+        discount: {
+          mode: "amount",
+          value: "100000.0000",
+          resolvedAmount: "100000.0000",
+          approvedBy: null,
+          source: "membership",
+          packageRef: "pkg-1",
+          benefitId: "ben-1",
+          optionId: "opt-1",
+        },
+        benefit: { membershipId: null, packageRef: "pkg-1", benefitId: "ben-1", optionId: "opt-1" },
+        bookingId: null,
+      },
+      {
+        kind: "service",
+        refId: "trv",
+        qty: "1.0000",
+        homeTripId: "trip-1",
+        lineTotal: "40000.0000",
+        membershipDiscount: "40000.0000",
+        discount: {
+          mode: "amount",
+          value: "40000.0000",
+          resolvedAmount: "40000.0000",
+          approvedBy: null,
+          source: "membership",
+          membershipId: "mem-1",
+          benefitId: "ben-2",
+          visitFeeWaiver: true,
+        },
+        benefit: null,
+        bookingId: null,
+      },
+    ],
+  } as unknown as PosTransaction;
+
+  it("keeps the package's own fields and the same-cart pick, never the waiver", async () => {
+    const hook = renderHook(() => usePosCart());
+    act(() => hook.result.current.open(basket));
+
+    await act(async () => {
+      await hook.result.current.setNote("catatan");
+      await hook.result.current.setQty(0, "1");
+    });
+
+    const sent = mockedPos.updateCart.mock.calls.at(-1)?.[1].items ?? [];
+    expect(sent[0]).toEqual(
+      expect.objectContaining({
+        packageRef: "pkg-1",
+        membershipStartDate: "2027-01-01T03:00:00.000Z",
+        referralCode: "RINA-01",
+      }),
+    );
+    expect(sent[1].benefit).toEqual({
+      membershipId: null,
+      packageRef: "pkg-1",
+      benefitId: "ben-1",
+      optionId: "opt-1",
+    });
+    /* Its own discount is nothing — the card's part is not re-sent as typed. */
+    expect(sent[1].discount).toBeNull();
+    expect(sent[2].benefit).toBeUndefined();
+  });
+
+  it("writes several picks in one patch", async () => {
+    const hook = renderHook(() => usePosCart());
+    act(() => hook.result.current.open(basket));
+
+    await act(async () => {
+      await hook.result.current.setItemBenefits([
+        { index: 1, benefit: null },
+        { index: 0, benefit: null },
+      ]);
+    });
+
+    expect(mockedPos.updateCart).toHaveBeenCalledTimes(1);
+    const sent = mockedPos.updateCart.mock.calls[0][1].items ?? [];
+    expect(sent[1].benefit).toBeUndefined();
   });
 });

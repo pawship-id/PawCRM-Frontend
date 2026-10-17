@@ -1,119 +1,160 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import { useId } from "react";
 
-import { usePetMembershipCards } from "@/features/memberships";
-import type { BenefitAvailability } from "@/types/membership";
+import { cn } from "@/lib/utils";
+import type { BenefitCandidate } from "@/types/membership";
+import { formatMoney, isPositive, sumDecimals } from "@/utils/decimal";
+
+import { candidateKey, type CardBenefitView } from "../benefitQuote";
 
 /**
- * "Pakai benefit membership" on a booking card.
+ * "Benefit membership" on a booking card — one radio row per benefit that
+ * covers this animal's service on the booking's date, plus "Tanpa member".
  *
- * ─── IT PLANS, IT DOES NOT SPEND ───────────────────────────────────────────
+ * ─── THE ROWS COME FROM THE SERVER'S QUOTE, NOT FROM THE CARD ──────────────
  *
- * Nothing is deducted when the booking is saved. The quota moves when the
- * booking is BILLED, and the till re-reads the card then — a booking is a
- * promise, and one that ate a customer's weekly free bath and was then
- * cancelled would have taken something from somebody who received nothing.
+ * It used to read the animal's cards and match the scope by service id, which
+ * offered a benefit whose jatah was already gone, or held by another booking,
+ * or on a paused card. The quote (membership-v1 §4.4) knows all of that for the
+ * booking's own date and period, so each row says what it would be worth —
+ * "Jatah Grooming 1/3 · −Rp 100.000" — and a benefit that cannot be used says
+ * why instead of disappearing.
  *
- * That is the single most important thing this control has to communicate, so
- * it says it in words under the choice rather than leaving somebody to assume
- * the jatah is already gone.
+ * ─── A CHOICE IS A HOLD ────────────────────────────────────────────────────
  *
- * ─── IT DRAWS NOTHING WHEN THERE IS NOTHING TO OFFER ───────────────────────
+ * Since Promosi V1 a saved choice HOLDS the jatah until the booking is billed or
+ * cancelled — another booking in the same period sees it as used. The one-line
+ * note under a quota pick says exactly that, because "already deducted" and
+ * "not touched until the till" were both wrong answers to the customer.
  *
- * No animal chosen yet, no card, or no benefit covering this service: blank. A
- * permanently empty section on every booking card would be a control that never
- * works, on a form that already has plenty to read.
+ * ─── IT DRAWS NOTHING WHEN THE ANIMAL HOLDS NO CARD ────────────────────────
  *
- * ─── AND IT DOES NOT CHECK THE QUOTA ───────────────────────────────────────
- *
- * A booking may be a fortnight out. Whether the jatah is still there is a
- * question about the day it is billed, and greying out a plan today for a quota
- * that will have reset by then would be refusing a fact about the future. The
- * server takes the same view and validates only the shape.
+ * `view.show` is false then. A permanently empty section on every booking card
+ * would be a control that never works.
  */
 export function BookingBenefitField({
-  petId,
-  serviceId,
-  value,
-  onChange,
+  view,
+  disabled = false,
+  error = null,
+  onPick,
 }: {
-  petId: string;
-  serviceId: string;
-  value: { membershipId: string; benefitId: string } | null;
-  onChange: (next: { membershipId: string; benefitId: string } | null) => void;
+  view: CardBenefitView;
+  disabled?: boolean;
+  /** The server refused this card's benefit on save (§8). */
+  error?: string | null;
+  /** A candidate, or `null` for "Tanpa member". */
+  onPick: (candidate: BenefitCandidate | null) => void;
 }) {
-  const { cards } = usePetMembershipCards(petId || null);
+  const labelId = useId();
 
-  /*
-    EVERY BENEFIT ON EVERY LIVE CARD THAT COVERS THIS SERVICE, paired with the
-    card it belongs to — a customer may hold two packages, and the choice has to
-    say which one is being spent.
+  if (!view.show) return null;
 
-    SCOPE IS MATCHED LOOSELY HERE, on the service alone: the engine's full rule
-    (kelompok layanan, add-on parents, targets) lives on the server and is
-    applied for real when the line is priced. A form offering one benefit too
-    many is recoverable; one that hid a benefit the customer is entitled to is
-    the failure nobody notices.
-  */
-  const options = cards
-    .filter((membership) => membership.status === "active")
-    .flatMap((membership) =>
-      (membership.benefits ?? [])
-        .filter(
-          (benefit: BenefitAvailability) =>
-            benefit.kind !== "perk" &&
-            (benefit.scope.serviceIds.length === 0 ||
-              benefit.scope.serviceIds.includes(serviceId)),
-        )
-        .map((benefit: BenefitAvailability) => ({
-          membershipId: membership.id,
-          benefitId: benefit.id,
-          label: benefit.label,
-          planName: membership.plan.name,
-        })),
-    );
-
-  if (!petId || !serviceId || options.length === 0) return null;
-
-  const selectedKey = value ? `${value.membershipId}|${value.benefitId}` : "";
+  const selected =
+    view.candidates.find((candidate) => candidateKey(candidate) === view.selectedKey) ?? null;
 
   return (
     <div className="mt-3">
-      <p className="text-xs font-medium text-muted">Membership</p>
+      <p id={labelId} className="text-xs font-medium text-muted">
+        Benefit membership
+      </p>
 
-      <select
-        aria-label="Benefit membership yang dipakai"
-        className="mt-1 h-9 w-full rounded-md border border-border bg-surface px-2 text-sm focus-visible:border-primary focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        value={selectedKey}
-        onChange={(event) => {
-          if (!event.target.value) {
-            onChange(null);
-            return;
-          }
+      {view.candidates.length === 0 ? (
+        <p
+          data-benefit-empty
+          className="mt-1 rounded-md border border-border bg-background px-3 py-2.5 text-sm text-muted"
+        >
+          {view.emptyMessage}
+        </p>
+      ) : (
+        <div role="radiogroup" aria-labelledby={labelId} className="mt-1 flex flex-col gap-2">
+          {view.candidates.map((candidate) => {
+            const off = sumDecimals([candidate.discount, candidate.visitFeeDiscount ?? "0"]);
+            return (
+              <OptionRow
+                key={candidateKey(candidate)}
+                checked={view.selectedKey === candidateKey(candidate)}
+                disabled={disabled}
+                title={candidate.label}
+                source={[candidate.benefitLabel, candidate.planName].filter(Boolean).join(" · ")}
+                amount={isPositive(off) ? `−${formatMoney(off)}` : null}
+                onSelect={() => onPick(candidate)}
+              />
+            );
+          })}
+          <OptionRow
+            checked={view.selectedKey === null}
+            disabled={disabled}
+            title="Tanpa member"
+            source="Harga normal"
+            amount={null}
+            onSelect={() => onPick(null)}
+          />
+        </div>
+      )}
 
-          const [membershipId, benefitId] = event.target.value.split("|");
-          onChange({ membershipId, benefitId });
-        }}
-      >
-        <option value="">Tidak pakai benefit</option>
-        {options.map((option) => (
-          <option
-            key={`${option.membershipId}|${option.benefitId}`}
-            value={`${option.membershipId}|${option.benefitId}`}
-          >
-            {option.label} — {option.planName}
-          </option>
-        ))}
-      </select>
+      {selected?.kind === "quota" && (
+        <p className="mt-1 text-xs text-muted">
+          Jatah ditahan sampai booking dibayar atau dibatalkan.
+        </p>
+      )}
 
-      {value && (
-        <p className="mt-1 flex items-start gap-1 text-xs text-muted">
-          <Sparkles className="mt-0.5 size-3 shrink-0" aria-hidden />
-          Baru dicatat sebagai rencana. Jatahnya berkurang saat booking ini
-          ditagih di kasir, bukan sekarang.
+      {error && (
+        <p role="alert" className="mt-1 text-sm font-semibold text-danger-ink">
+          {error}
         </p>
       )}
     </div>
+  );
+}
+
+/** One radio row: what it is, where it comes from, what it takes off. */
+function OptionRow({
+  checked,
+  disabled,
+  title,
+  source,
+  amount,
+  onSelect,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  title: string;
+  source: string;
+  amount: string | null;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={checked}
+      disabled={disabled}
+      onClick={onSelect}
+      className={cn(
+        "flex min-h-11 w-full items-center gap-3 rounded-lg border-[1.5px] px-3 py-2 text-left transition",
+        "outline-none focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        "disabled:cursor-not-allowed disabled:opacity-60",
+        checked ? "border-primary bg-navy-100" : "border-border bg-surface hover:bg-surface-hover",
+      )}
+    >
+      {/* The dot is drawn, not a real input: the button IS the radio. */}
+      <span
+        aria-hidden
+        className={cn(
+          "flex size-4 shrink-0 items-center justify-center rounded-full border-[1.5px]",
+          checked ? "border-primary" : "border-muted",
+        )}
+      >
+        {checked && <span className="size-2 rounded-full bg-primary" />}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-foreground">{title}</span>
+        {source && <span className="block text-xs text-muted">{source}</span>}
+      </span>
+      {amount && (
+        <span className="shrink-0 text-sm font-semibold tabular-nums text-success">{amount}</span>
+      )}
+    </button>
   );
 }

@@ -48,8 +48,8 @@ import {
 /**
  * Pelanggan's tabs, each opened by its own "Lihat" (14 October 2026).
  *
- * Membership opens with either of its sub-tabs' grants (Paket, or Kartu with
- * Perpanjangan), and is NOT exact: it stays underlined on all three sub-tabs.
+ * NO MEMBERSHIP TAB since 16 October 2026: Membership moved to its own rail
+ * module, Promosi (see PromosiModuleHeader). The old routes redirect there.
  */
 export const CUSTOMER_TABS: GatedTab[] = [
   {
@@ -66,11 +66,6 @@ export const CUSTOMER_TABS: GatedTab[] = [
     anyOf: [{ feature: "customers" }],
   },
   { label: "Hewan", href: "/dashboard/master/pets", anyOf: [{ feature: "pets" }] },
-  {
-    label: "Membership",
-    href: "/dashboard/master/customers/membership",
-    anyOf: [{ feature: "membershipPlans" }, { feature: "petMemberships" }],
-  },
   {
     label: "Riwayat",
     href: "/dashboard/master/customers/riwayat",

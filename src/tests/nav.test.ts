@@ -249,7 +249,6 @@ describe("filterNavItems", () => {
     */
     expect(isActive(pelanggan, "/dashboard/master/customers")).toBe(true);
     expect(isActive(pelanggan, "/dashboard/master/customers/507f1f")).toBe(true);
-    expect(isActive(pelanggan, "/dashboard/master/customers/membership")).toBe(true);
     expect(isActive(pelanggan, "/dashboard/master/pets")).toBe(true);
     expect(isActive(pelanggan, "/dashboard/master/pets/507f1f")).toBe(true);
     // A sibling under the same /master prefix must not borrow the row.
@@ -284,6 +283,47 @@ describe("filterNavItems", () => {
     rail owes is no longer an order of children — it is a row that survives for
     anyone with ANY purchasing grant, and dies for somebody with none.
   */
+  /*
+    PROMOSI (16 October 2026) took Membership over from Pelanggan. One row,
+    right after Penjualan, opening the module's redirecting root.
+  */
+  it("carries Promosi as one row right after Penjualan", () => {
+    const transaksi = filterNavSections(NAV_SECTIONS, allowAll).find(
+      (s) => s.label === "Transaksi",
+    );
+    const labels = transaksi?.items.map((i) => i.label) ?? [];
+    expect(labels.indexOf("Promosi")).toBe(labels.indexOf("Penjualan") + 1);
+
+    const promosi = itemsOf(allowAll).find((i) => i.label === "Promosi")!;
+    expect(promosi.children).toBeUndefined();
+    expect(promosi.href).toBe("/dashboard/promosi");
+    expect(isActive(promosi, "/dashboard/promosi/ringkasan")).toBe(true);
+    expect(isActive(promosi, "/dashboard/promosi/membership/anggota/507f1f")).toBe(true);
+  });
+
+  it("shows Promosi to a role holding any one membership grant", () => {
+    for (const only of ["membershipPlans", "petMemberships", "membershipReports"]) {
+      const can: CanFn = (feature, action) => feature === only && action === "read";
+      expect(itemsOf(can).find((i) => i.label === "Promosi")).toBeDefined();
+    }
+    expect(itemsOf(denyAll).find((i) => i.label === "Promosi")).toBeUndefined();
+  });
+
+  it("hides Promosi when the business switched Membership off", () => {
+    const items = filterNavSections(
+      NAV_SECTIONS,
+      allowAll,
+      (moduleKey) => moduleKey !== "membership",
+    ).flatMap((section) => section.items);
+    expect(items.find((i) => i.label === "Promosi")).toBeUndefined();
+  });
+
+  it("no longer opens Pelanggan on a membership grant alone", () => {
+    const onlyPlans: CanFn = (feature, action) =>
+      feature === "membershipPlans" && action === "read";
+    expect(itemsOf(onlyPlans).find((i) => i.label === "Pelanggan")).toBeUndefined();
+  });
+
   it("carries Pembelian as one row pointing at its hub", () => {
     const purchasing = itemsOf(allowAll).find((i) => i.label === "Pembelian");
     expect(purchasing?.children).toBeUndefined();

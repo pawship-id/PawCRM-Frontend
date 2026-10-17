@@ -874,7 +874,7 @@ describe("ReceiptDialog — what the print CSS depends on", () => {
  * It used to fold a card's giveaway into the same "Diskon item" figure as
  * whatever the cashier typed — one number answering two different questions.
  */
-describe("ReceiptPreview — Diskon membership", () => {
+describe("ReceiptPreview — Potongan membership", () => {
   const receiptWithBenefit = (overrides: Partial<PosReceipt> = {}) =>
     receipt({
       items: [
@@ -925,7 +925,7 @@ describe("ReceiptPreview — Diskon membership", () => {
       (await screen.findByText("Diskon item")).parentElement?.textContent,
     ).toContain("Rp 5.000");
     expect(
-      screen.getByText("Diskon membership").parentElement?.textContent,
+      screen.getByText("Potongan membership").parentElement?.textContent,
     ).toContain("Rp 169.000");
   });
 
@@ -968,7 +968,7 @@ describe("ReceiptPreview — Diskon membership", () => {
     );
 
     expect(
-      screen.getByText("Diskon membership").parentElement?.textContent,
+      screen.getByText("Potongan membership").parentElement?.textContent,
     ).toContain("Rp 169.000");
   });
 
@@ -976,7 +976,7 @@ describe("ReceiptPreview — Diskon membership", () => {
     renderWithAuth(<ReceiptPreview receipt={receipt()} size="80" />);
 
     await waitFor(() =>
-      expect(screen.queryByText("Diskon membership")).not.toBeInTheDocument(),
+      expect(screen.queryByText("Potongan membership")).not.toBeInTheDocument(),
     );
   });
 });

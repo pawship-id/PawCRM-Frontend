@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { PetFixLink, PetSummaryCard } from "@/features/pets";
 import { VariantChoicePicker } from "@/features/services";
 import { usePetOptions } from "@/hooks/usePetOptions";
-import { formatMoney } from "@/utils/decimal";
+import { formatMoney, isPositive, subtractDecimals } from "@/utils/decimal";
 import {
   AXIS_LABEL,
   priceForPet,
@@ -33,6 +33,7 @@ import {
   type VariantOption,
 } from "@/types/api";
 import { BookingBenefitField } from "./BookingBenefitField";
+import type { CardBenefitView } from "../benefitQuote";
 import { petServiceKey, UNASSIGNED } from "../bookingDraft";
 import type { BelongingDraft, BookingCardDraft } from "../bookingDraft";
 import type { VariantRefusal } from "../variantLine";
@@ -48,6 +49,15 @@ const NO_STORED_KEYS: ReadonlySet<string> = new Set();
 const petOnlyQuote = (service: Service | null, pet: Pet | null) => priceForPet(service, pet);
 const noCards = (): VariantOption[] => [];
 const noProblem = (): string | null => null;
+const NO_BENEFIT: CardBenefitView = {
+  show: false,
+  candidates: [],
+  selectedKey: null,
+  emptyMessage: null,
+  discount: "0",
+  appliedLabel: null,
+  feeWaived: false,
+};
 
 /**
  * ONE BOOKING ON THE FORM — its animal, its one main service, the add-ons under
@@ -101,6 +111,8 @@ export function BookingCard({
   cardsFor = noCards,
   zoneText = null,
   refusal = null,
+  benefit = NO_BENEFIT,
+  benefitError = null,
   onChange,
   onRemove,
 }: {
@@ -138,6 +150,10 @@ export function BookingCard({
   zoneText?: string | null;
   /** The server's refusal of this card's choices or zone. */
   refusal?: VariantRefusal | null;
+  /** This card's slice of the form's membership quote — see `cardBenefitView`. */
+  benefit?: CardBenefitView;
+  /** The server refused this card's benefit on save. */
+  benefitError?: string | null;
   onChange: (next: Partial<BookingCardDraft>) => void;
   onRemove: () => void;
 }) {
@@ -418,8 +434,22 @@ export function BookingCard({
                   </>
                 ) : price ? (
                   <>
+                    {/*
+                      A MEMBERSHIP DISCOUNT STRIKES THE NORMAL PRICE and shows
+                      what is left, with the benefit's name under it — the same
+                      figure the bar's total is summed from.
+                    */}
+                    {isPositive(benefit.discount) && (
+                      <span className="mr-1.5 tabular-nums text-muted line-through">
+                        {formatMoney(price)}
+                      </span>
+                    )}
                     <span className="font-medium tabular-nums text-foreground">
-                      {formatMoney(price)}
+                      {formatMoney(
+                        isPositive(benefit.discount)
+                          ? subtractDecimals(price, benefit.discount)
+                          : price,
+                      )}
                     </span>
                     {variantLabel && (
                       <span className="text-muted"> · varian {variantLabel}</span>
@@ -455,21 +485,36 @@ export function BookingCard({
               </p>
             )}
 
+            {service && price && !inactive && isPositive(benefit.discount) && benefit.appliedLabel && (
+              <p className="text-xs font-semibold text-success">
+                {benefit.appliedLabel} · −{formatMoney(benefit.discount)}
+              </p>
+            )}
+
             {/*
               ─── MEMBERSHIP (30 September 2026) ──────────────────────────────
 
-              Shown only when this animal holds a card with a benefit that
-              covers what is being booked. A PLAN, not a spend: the badge under
-              it says so, because "pakai jatah gratisnya" agreed at the counter
-              and a quota actually deducted are two different promises, and a
-              customer told the wrong one at the till is the failure this whole
-              field exists to prevent.
+              Shown only when this animal holds a membership card. The rows
+              are the form's quote for the booking's date (membership-v1
+              §4.4); picking one sends it to the quote again, and what the
+              radio shows is what the save sends — and HOLDS.
             */}
             <BookingBenefitField
-              petId={card.petId}
-              serviceId={card.serviceId}
-              value={card.plannedBenefit}
-              onChange={(plannedBenefit) => onChange({ plannedBenefit })}
+              view={benefit}
+              disabled={disabled || locked}
+              error={benefitError}
+              onPick={(candidate) =>
+                onChange({
+                  benefitPicked: true,
+                  plannedBenefit: candidate
+                    ? {
+                        membershipId: candidate.membershipId,
+                        benefitId: candidate.benefitId,
+                        optionId: candidate.optionId ?? null,
+                      }
+                    : null,
+                })
+              }
             />
 
             {offeredAddons.length > 0 && (

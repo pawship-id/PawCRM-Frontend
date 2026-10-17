@@ -5,13 +5,13 @@ import { Minus, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/utils/decimal";
+import { formatDate } from "@/features/memberships/labels";
 import type { PosItem } from "@/types/api";
 
-import { ownDiscountOf } from "../bookingDiscount";
+import { membershipShareOf, ownDiscountOf } from "../bookingDiscount";
 import { variantDetailOf } from "../variantDetail";
-import { PosBenefitChip } from "./PosBenefitChip";
 import { PosLinePrice } from "./PosLinePrice";
-import { PosLineTotal } from "./PosLineTotal";
+import { netOf, PosLineTotal } from "./PosLineTotal";
 
 /**
  * One line in the basket.
@@ -35,8 +35,17 @@ export function PosCartLine({
   onPriceChange,
   maySetPrice = false,
   disabled = false,
+  benefitSlot,
+  addonBenefitSlot,
 }: {
   item: PosItem;
+  /**
+   * The member pick for this line (Promosi V1) — `PosBenefitSelect`, drawn
+   * under the price. Absent on a line no card could cover.
+   */
+  benefitSlot?: React.ReactNode;
+  /** The same, for one add-on under this service (by its cart index). */
+  addonBenefitSlot?: (index: number) => React.ReactNode;
   index: number;
   /**
    * The add-ons attached to THIS service, drawn inside its line rather than
@@ -219,6 +228,18 @@ export function PosCartLine({
                 .join(", ")}
             </span>
           )}
+          {/*
+            A PACKAGE SAYS WHEN IT STARTS (Promosi V1) — the one fact about it
+            the sell dialog decided and the price cannot show.
+          */}
+          {item.kind === "membership" && (
+            <span className="mt-0.5 block truncate text-xs text-muted">
+              {item.membershipStartDate
+                ? `Mulai ${formatDate(item.membershipStartDate)}`
+                : "Mulai saat lunas"}
+              {item.referralCode ? ` · Referral ${item.referralCode}` : ""}
+            </span>
+          )}
           {item.note && (
             <span className="mt-0.5 block truncate text-xs italic text-muted">
               “{item.note}”
@@ -272,6 +293,8 @@ export function PosCartLine({
         figure above — see there. What each does NOT keep is a control of its
         own: the discount and the bin belong to the service.
       */}
+      {benefitSlot}
+
       {addons.length > 0 && (
         <ul className="mt-1.5 ml-1 flex flex-col gap-1 border-l border-border pl-2">
           {addons.map(({ item: addon, index: addonIndex }) => (
@@ -298,6 +321,7 @@ export function PosCartLine({
                     −{formatMoney(ownDiscountOf(addon)!.resolvedAmount)}
                   </span>
                 )}
+                {addonBenefitSlot?.(addonIndex)}
               </span>
 
               {/*
@@ -307,8 +331,16 @@ export function PosCartLine({
                 a block that sells one grooming, and the two that mattered got
                 harder to find.
               */}
-              <span className="shrink-0 text-xs tabular-nums text-muted">
-                {formatMoney(addon.lineTotal)}
+              <span className="shrink-0 text-right text-xs tabular-nums text-muted">
+                {/* A card's pick on the add-on strikes its price, like a line's. */}
+                {membershipShareOf(addon) ? (
+                  <>
+                    <span className="block line-through">{formatMoney(addon.lineTotal)}</span>
+                    <span className="block font-medium text-warning">{formatMoney(netOf(addon))}</span>
+                  </>
+                ) : (
+                  formatMoney(addon.lineTotal)
+                )}
               </span>
             </li>
           ))}
@@ -366,19 +398,6 @@ export function PosCartLine({
             </>
           )}
 
-          {/*
-            BESIDE "LAYANAN" (1 October 2026, on request) — both are marks about
-            the line rather than controls on it, so they sit together on the
-            side that names what this row is, not the side that acts on it.
-          */}
-          {item.discount?.source === "membership" && (
-            <PosBenefitChip
-              applied={{
-                benefitLabel: item.discount.benefitLabel ?? null,
-                amount: item.membershipDiscount ?? "0",
-              }}
-            />
-          )}
         </div>
 
         <div className="flex items-center gap-1">
