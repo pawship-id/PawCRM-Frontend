@@ -21,7 +21,7 @@ import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { customerService } from "@/services/customer.service";
 import { membershipService } from "@/services/membership.service";
 import { posService } from "@/services/pos.service";
-import { formatMoney, formatMoneyShort } from "@/utils/decimal";
+import { formatMoney } from "@/utils/decimal";
 
 import { useBerandaScope } from "./BerandaShell";
 import { Panel, TileGrid } from "./parts";
@@ -199,9 +199,9 @@ export function BerandaHariIni() {
         {readsInvoices && (
           <StatTile
             label="Omzet hari ini"
-            value={formatMoneyShort(sales.data?.revenue.amount ?? "0")}
+            value={formatMoney(sales.data?.revenue.amount ?? "0")}
             caption={`${sales.data?.revenue.invoiceCount ?? 0} faktur`}
-            hint="Total faktur yang terbit hari ini — dari kasir maupun dibuat manual — sebelum pembayaran."
+            hint="Faktur yang terbit hari ini — dari kasir maupun dibuat manual — setelah diskon, sebelum PPN, tanpa ongkir. Dihitung saat faktur terbit, bukan saat dibayar."
             loading={sales.loading}
             error={sales.failed}
           />

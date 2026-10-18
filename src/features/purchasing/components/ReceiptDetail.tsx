@@ -1,10 +1,9 @@
 "use client";
 
 import { SkuText } from "@/components/SkuText";
-import { useState } from "react";
 import Link from "next/link";
 
-import { Alert, Card, ConfirmDialog, Spinner } from "@/components";
+import { Alert, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -15,9 +14,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { swalToast } from "@/lib/swal";
-import { ApiError } from "@/services/api-error";
-import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { formatMoney, formatQty, sumDecimals, toMinor } from "@/utils/decimal";
 import { Can } from "@/features/permissions";
 import { ExpiryBadge } from "@/features/inventory/components/ExpiryBadge";
@@ -30,7 +26,6 @@ import { PURCHASING_CRUMBS } from "../crumbs";
 import { PageHeading } from "./PageHeading";
 import { PurchaseActivityCard } from "./PurchaseActivityCard";
 import {
-  ReceiptLineStatusBadge,
   ReceiptStatusBadge,
 } from "./ReceiptStatusBadge";
 import { SupplierTypeBadge } from "./SupplierTypeBadge";
@@ -100,26 +95,16 @@ export function ReceiptDetail({ receiptId }: { receiptId: string }) {
     );
   }
 
-  return <ReceiptBody receipt={receipt} onChanged={refetch} />;
+  return <ReceiptBody receipt={receipt} />;
 }
 
 /**
  * Split from the guard clauses above so the hooks that decorate a LOADED receipt
  * — its lots, its returns — are not called conditionally.
  */
-function ReceiptBody({
-  receipt,
-  onChanged,
-}: {
-  receipt: Receipt;
-  onChanged: () => void;
-}) {
-  const [closing, setClosing] = useState(false);
-  const [closeBusy, setCloseBusy] = useState(false);
-  const [version, setVersion] = useState(0);
+function ReceiptBody({ receipt }: { receipt: Receipt }) {
 
   const status = receipt.status;
-  const open = status === "pending" || status === "partial";
   const consignment = receipt.purchaseType === "konsinyasi";
   const anyReceived = receipt.items.some(
     (item) => (toMinor(item.receivedQty) ?? 0n) > 0n,
@@ -138,31 +123,11 @@ function ReceiptBody({
     receipt.receivedTax,
   ]);
 
-  const receiveHref = `/dashboard/purchasing/receipts/${receipt._id}/edit`;
+  const fromInvoice = receipt.origin === "invoice";
+  // Every receipt is final (16 October 2026, BO): no Sisa, no per-line status.
+  const totalSpan = 7;
 
-  async function handleClose() {
-    if (closeBusy) return;
-    setCloseBusy(true);
-    try {
-      await goodsReceiptService.close(receipt._id);
-      swalToast(
-        `${receipt.receiptNumber} ditutup — sisa barang dibatalkan${
-          receipt.invoiceId ? " dan tagihan faktur disesuaikan" : ""
-        }.`,
-      );
-      setClosing(false);
-      setVersion((value) => value + 1);
-      onChanged();
-    } catch (err) {
-      swalToast(
-        err instanceof ApiError ? err.fullMessage : "Gagal menutup penerimaan.",
-        "error",
-        6000,
-      );
-    } finally {
-      setCloseBusy(false);
-    }
-  }
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -176,79 +141,78 @@ function ReceiptBody({
         ]}
         title={receipt.receiptNumber}
         aside={<ReceiptStatusBadge status={status} />}
+        actions={
+          /* Consignment has nothing to return AGAINST, and nothing can go
+             back before something arrived. */
+          !consignment &&
+          anyReceived && (
+            <Can feature="purchaseReturns" action="create">
+              <Button variant="secondary" asChild>
+                <Link
+                  href={`/dashboard/purchasing/returns/new?receipt=${receipt._id}`}
+                >
+                  Buat retur dari penerimaan ini
+                </Link>
+              </Button>
+            </Can>
+          )
+        }
       >
         {receipt.supplierName ?? "Supplier terhapus"} ·{" "}
         {receipt.branchName ?? "—"} · {receipt.warehouseName ?? "—"}
       </PageHeading>
 
       <Card>
-        <div className="flex flex-wrap gap-6">
-          <Field label="Supplier" value={receipt.supplierName ?? "—"} />
+        {/* ONE GRID, the way an invoice's Rincian reads: every label above its
+            value, columns that line up, and the invoice a link. */}
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-3 lg:grid-cols-4">
+          <Field label="Supplier">{receipt.supplierName ?? "—"}</Field>
           {/* BRANCH BEFORE WAREHOUSE — widest scope first, the way the receipt
               form asks the same two questions. "—" for a delivery written
               before the branch was recorded. */}
-          <Field label="Cabang" value={receipt.branchName ?? "—"} />
-          <Field label="Gudang" value={receipt.warehouseName ?? "—"} />
-          <Field label="Tanggal" value={formatDate(receipt.receiptDate)} />
-          <Field
-            label="Terakhir diterima"
-            value={receipt.receivedAt ? formatDate(receipt.receivedAt) : "—"}
-          />
-          <Field label="Dicatat oleh" value={receipt.createdByName ?? "—"} />
-          <div className="ml-auto flex gap-6">
-            <div>
-              <p className="text-xs font-medium text-muted">Jenis</p>
-              <div className="mt-1">
-                <SupplierTypeBadge type={receipt.purchaseType} />
-              </div>
-            </div>
-          </div>
-        </div>
+          <Field label="Cabang">{receipt.branchName ?? "—"}</Field>
+          <Field label="Gudang">{receipt.warehouseName ?? "—"}</Field>
+          <Field label="Jenis">
+            <SupplierTypeBadge type={receipt.purchaseType} />
+          </Field>
+          <Field label="Tanggal">
+            <span className="tabular-nums">
+              {formatDate(receipt.receiptDate)}
+            </span>
+          </Field>
+          <Field label="Dicatat oleh">{receipt.createdByName ?? "—"}</Field>
+          <Field label="Faktur pembelian">
+            {receipt.invoiceId ? (
+              <Link
+                href={`/dashboard/purchasing/payables/${receipt.invoiceId}`}
+                className="font-semibold text-primary tabular-nums hover:underline"
+              >
+                {receipt.invoiceNumber ?? "Lihat faktur"} →
+              </Link>
+            ) : (
+              <span className="text-muted">belum ada</span>
+            )}
+          </Field>
+        </dl>
       </Card>
 
       {receipt.origin === "invoice" && (
         <Alert variant="info">
-          Penerimaan ini dibuat dari faktur supplier — daftar barangnya mengikuti
-          faktur dan tidak bisa ditambah. Yang bisa diubah hanya jumlah yang
-          sudah diterima.
+          Penerimaan ini dibuat dari faktur supplier dan tidak bisa diubah.
+          Barang dari faktur yang sama yang datang belakangan dicatat sebagai
+          penerimaan baru.
+          {receipt.invoiceId && (
+            <>
+              {" "}
+              <Link
+                href={`/dashboard/purchasing/payables/${receipt.invoiceId}`}
+                className="font-semibold underline-offset-2 hover:underline"
+              >
+                Lihat faktur
+              </Link>
+            </>
+          )}
         </Alert>
-      )}
-
-      {/* STILL EXPECTING GOODS: what is posted so far, and the one action that
-          moves it on. Partial adds the way out when the rest is not coming. */}
-      {open && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-tint-warning px-4 py-3 text-sm text-foreground">
-          <span>
-            {status === "pending" ? (
-              <>
-                <b>Barang belum diterima.</b> Stok, lot, HPP
-                {consignment ? "" : ", dan utang"} baru tercatat untuk barang
-                yang sudah dicentang diterima.
-              </>
-            ) : (
-              <>
-                <b>Diterima sebagian.</b> Stok
-                {consignment ? "" : " dan utang"} sudah tercatat untuk barang
-                yang datang. Jumlahnya masih bisa dikoreksi selama penerimaan
-                belum lengkap.
-              </>
-            )}
-          </span>
-          <Can feature="goodsReceipts" action="create">
-            <div className="ml-auto flex flex-wrap gap-2">
-              {status === "partial" && (
-                <Button variant="secondary" onClick={() => setClosing(true)}>
-                  Tutup penerimaan
-                </Button>
-              )}
-              <Button asChild>
-                <Link href={receiveHref}>
-                  {status === "pending" ? "Terima barang" : "Update penerimaan"}
-                </Link>
-              </Button>
-            </div>
-          </Can>
-        </div>
       )}
 
       {status === "closed" && (
@@ -261,22 +225,6 @@ function ReceiptBody({
         </Alert>
       )}
 
-      {closing && (
-        <ConfirmDialog
-          title={`Tutup penerimaan ${receipt.receiptNumber}?`}
-          confirmLabel="Tutup penerimaan"
-          destructive
-          busy={closeBusy}
-          onConfirm={handleClose}
-          onCancel={() => setClosing(false)}
-        >
-          Barang yang belum datang akan dibatalkan dan penerimaan dikunci.
-          {receipt.invoiceId
-            ? " Tagihan faktur ikut turun menjadi senilai barang yang sudah diterima."
-            : ""}{" "}
-          Tindakan ini tidak bisa dibatalkan.
-        </ConfirmDialog>
-      )}
 
       {returns.length > 0 && (
         <Alert variant="info">
@@ -308,8 +256,6 @@ function ReceiptBody({
                 <TableHead>Kedaluwarsa</TableHead>
                 <TableHead className="text-right">Dipesan</TableHead>
                 <TableHead className="text-right">Diterima</TableHead>
-                <TableHead className="text-right">Sisa</TableHead>
-                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Diretur</TableHead>
                 <TableHead className="text-right">
                   {consignment ? "Harga setor" : "Harga beli"}
@@ -325,7 +271,6 @@ function ReceiptBody({
                 const renamed =
                   item.productName !== null && item.productName !== item.name;
                 const returnedMinor = toMinor(item.returnedQty) ?? 0n;
-                const cancelledMinor = toMinor(item.cancelledQty) ?? 0n;
                 const expiry = lot?.expiryDate ?? item.expiryDate ?? null;
 
                 return (
@@ -348,7 +293,8 @@ function ReceiptBody({
                       {item.batchId ? (
                         <>
                           {lot?.batchCode ?? "ada lot"}
-                          {(lot?.supplierBatchCode ?? item.supplierBatchCode) && (
+                          {(lot?.supplierBatchCode ??
+                            item.supplierBatchCode) && (
                             <span className="block text-muted">
                               supplier:{" "}
                               {lot?.supplierBatchCode ?? item.supplierBatchCode}
@@ -380,7 +326,10 @@ function ReceiptBody({
                     </TableCell>
 
                     <TableCell className="text-right text-xs tabular-nums">
-                      {formatQty(item.qty)}
+                      {/* The invoice line's qty on a receipt made from one. */}
+                      {formatQty(
+                        fromInvoice ? (item.orderedQty ?? item.qty) : item.qty,
+                      )}
                       {item.productUnit && (
                         <span className="ml-1 text-muted">
                           {item.productUnit}
@@ -390,20 +339,6 @@ function ReceiptBody({
 
                     <TableCell className="text-right text-xs font-semibold tabular-nums">
                       {formatQty(item.receivedQty)}
-                    </TableCell>
-
-                    <TableCell className="text-right text-xs tabular-nums">
-                      {cancelledMinor > 0n ? (
-                        <span className="text-danger">
-                          batal {formatQty(item.cancelledQty)}
-                        </span>
-                      ) : (
-                        formatQty(item.outstandingQty)
-                      )}
-                    </TableCell>
-
-                    <TableCell>
-                      <ReceiptLineStatusBadge status={item.receiveStatus} />
                     </TableCell>
 
                     <TableCell className="text-right text-xs tabular-nums">
@@ -432,12 +367,28 @@ function ReceiptBody({
                 );
               })}
 
-              <TotalRow label="Subtotal (dipesan)" value={receipt.total} strong />
-              {taxMinor > 0n && (
-                <TotalRow label="PPN masukan" value={receipt.taxAmount} />
-              )}
-              <TotalRow label="Total" value={receipt.grandTotal} strong />
               <TotalRow
+                span={totalSpan}
+                // A receipt made from an invoice totals what arrived on it.
+                label={fromInvoice ? "Subtotal" : "Subtotal (dipesan)"}
+                value={receipt.total}
+                strong
+              />
+              {taxMinor > 0n && (
+                <TotalRow
+                  span={totalSpan}
+                  label="PPN masukan"
+                  value={receipt.taxAmount}
+                />
+              )}
+              <TotalRow
+                span={totalSpan}
+                label="Total"
+                value={receipt.grandTotal}
+                strong
+              />
+              <TotalRow
+                span={totalSpan}
                 label={
                   consignment
                     ? "Nilai barang yang sudah diterima"
@@ -465,19 +416,7 @@ function ReceiptBody({
           setor per unit, dan dilunasi lewat &quot;Setor&quot; di Ringkasan
           Pembelian.
         </div>
-      ) : receipt.invoiceId ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl bg-tint-success px-4 py-3 text-sm">
-          <span>
-            Faktur supplier untuk penerimaan ini sudah dicatat. Utang tercatat
-            sebesar barang yang sudah diterima.
-          </span>
-          <Button variant="ghost" size="sm" asChild className="ml-auto">
-            <Link href={`/dashboard/purchasing/payables/${receipt.invoiceId}`}>
-              Lihat faktur →
-            </Link>
-          </Button>
-        </div>
-      ) : (
+      ) : receipt.invoiceId ? null : (
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-tint-neutral px-4 py-3 text-sm">
           <span>
             <b>Faktur supplier belum dicatat.</b> Utang tetap tercatat sebesar
@@ -496,31 +435,7 @@ function ReceiptBody({
         </div>
       )}
 
-      <PurchaseActivityCard kind="receipt" id={receipt._id} version={version} />
-
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Consignment has nothing to return AGAINST, and nothing can go back
-            before something arrived. */}
-        {!consignment && anyReceived && (
-          <Can feature="purchaseReturns" action="create">
-            <Button variant="secondary" asChild>
-              <Link
-                href={`/dashboard/purchasing/returns/new?receipt=${receipt._id}`}
-              >
-                Buat retur dari penerimaan ini
-              </Link>
-            </Button>
-          </Can>
-        )}
-      </div>
-
-      {!open && (
-        <p className="text-sm text-muted">
-          Penerimaan ini sudah {status === "closed" ? "ditutup" : "lengkap"} dan{" "}
-          <b>tidak bisa diubah lagi</b>. Koreksi barang yang sudah diterima
-          dilakukan lewat retur, yang membalik di harga beli asli.
-        </p>
-      )}
+      <PurchaseActivityCard kind="receipt" id={receipt._id} />
     </div>
   );
 }
@@ -529,15 +444,18 @@ function TotalRow({
   label,
   value,
   strong,
+  span = 9,
 }: {
   label: string;
   value: string;
   strong?: boolean;
+  /** The columns before Subtotal — fewer when Sisa and Status are hidden. */
+  span?: number;
 }) {
   return (
     <TableRow className="hover:bg-transparent">
       <TableCell
-        colSpan={9}
+        colSpan={span}
         className={cn(
           "text-right text-xs",
           strong ? "font-semibold" : "text-muted",
@@ -559,19 +477,15 @@ function TotalRow({
 
 function Field({
   label,
-  value,
-  mono,
+  children,
 }: {
   label: string;
-  value: string;
-  mono?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <div>
-      <p className="text-xs font-medium text-muted">{label}</p>
-      <p className={cn("mt-1 text-sm font-semibold", mono && "tabular-nums")}>
-        {value}
-      </p>
+    <div className="min-w-0">
+      <dt className="text-xs font-medium text-muted">{label}</dt>
+      <dd className="mt-1 font-semibold">{children}</dd>
     </div>
   );
 }

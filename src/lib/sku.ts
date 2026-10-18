@@ -14,5 +14,8 @@
 export const SKU_WRAP_CLASS =
   "inline-block max-w-[14ch] whitespace-normal [overflow-wrap:anywhere]";
 
-/** A code this short fits the column on one line, so it needs no wrapper. */
-export const SKU_WRAP_CHARS = 14;
+/**
+ * The longest SKU `SkuText` shows whole; a longer one is cut to this many
+ * characters and opens the full code on hover or tap (16 October 2026).
+ */
+export const SKU_MAX_CHARS = 15;

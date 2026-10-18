@@ -21,6 +21,10 @@ export const SERIES_LABELS: Record<string, { label: string; hint: string }> = {
     label: "Penerimaan barang",
     hint: "Satu pengiriman dari satu supplier masuk ke satu gudang.",
   },
+  purchaseInvoice: {
+    label: "Faktur pembelian",
+    hint: "Tagihan dari supplier. Nomor faktur dari supplier tetap bisa dicatat terpisah.",
+  },
   purchaseReturn: {
     label: "Retur ke supplier",
     hint: "Barang yang dikembalikan ke supplier.",

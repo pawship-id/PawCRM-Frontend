@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { Alert } from "@/components";
+import { Alert } from "./Alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -51,8 +51,11 @@ export function BarcodeCameraDialog({
   onDetected,
   status,
   onClose,
+  description,
 }: {
   onDetected: (code: string) => void;
+  /** Where a scanned code goes — the faktur, the kasir's basket. */
+  description: string;
   status: ScanStatus;
   onClose: () => void;
 }) {
@@ -135,10 +138,7 @@ export function BarcodeCameraDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Scan barcode pakai kamera</DialogTitle>
-          <DialogDescription>
-            Arahkan kamera ke barcode kemasan atau label batch. Setiap kode yang
-            terbaca langsung masuk ke faktur — lanjut scan tanpa menutup ini.
-          </DialogDescription>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         {problem ? (

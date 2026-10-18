@@ -120,7 +120,8 @@ export function StatTile({
     <Tag
       {...interactiveProps}
       className={cn(
-        "rounded-2xl border border-border bg-surface p-5 text-left",
+        // A size container, so the figure below can shrink to the tile.
+        "@container rounded-2xl border border-border bg-surface p-5 text-left",
         interactive &&
           "outline-none transition hover:border-primary/50 hover:shadow-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
       )}
@@ -129,9 +130,16 @@ export function StatTile({
         {label}
         {hint && <InfoTooltip hint={hint} />}
       </p>
+      {/*
+        THE FIGURE SHRINKS TO THE TILE, not the viewport (18 Oktober 2026, on
+        request). Beranda prints money in full — "Rp 11.450.000", not "11,4 jt" —
+        and at 30 px that wrapped onto two lines in its three-across rows. A
+        container query sizes it by the tile's own width, so a wide tile keeps
+        the 30 px every other screen has and only a narrow one steps down.
+      */}
       <p
         className={cn(
-          "mt-2 text-3xl font-semibold tabular-nums text-foreground",
+          "mt-2 text-xl font-semibold tabular-nums text-foreground @[15rem]:text-2xl @[19rem]:text-3xl",
           !(loading || error) && toneClass,
         )}
       >

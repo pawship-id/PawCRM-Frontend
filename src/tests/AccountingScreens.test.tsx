@@ -1621,7 +1621,7 @@ describe("JournalEntryCreateForm", () => {
       }),
       node("5000", "Beban", "biaya_lainnya", {
         children: [
-          node("5201", "Kerugian Persediaan", "biaya_lainnya"),
+          node("5201", "Beban Penyesuaian Persediaan", "biaya_lainnya"),
           node("5401", "Beban Penyusutan", "biaya_lainnya", { isActive: false }),
         ],
       }),
@@ -1663,7 +1663,7 @@ describe("JournalEntryCreateForm", () => {
   /** Fills a balanced two-line correction, ready to save. */
   async function fillBalanced(amount = "1000") {
     await userEvent.type(description(), "Koreksi");
-    await pickAccount(1, /5201 · Kerugian Persediaan/);
+    await pickAccount(1, /5201 · Beban Penyesuaian Persediaan/);
     await pickAccount(2, /3101 · Modal/);
     await userEvent.type(debits()[0], amount);
     await userEvent.type(credits()[1], amount);
@@ -1680,7 +1680,7 @@ describe("JournalEntryCreateForm", () => {
     await userEvent.click(screen.getByLabelText("Akun baris 1"));
 
     expect(
-      await screen.findByRole("option", { name: /5201 · Kerugian Persediaan/ }),
+      await screen.findByRole("option", { name: /5201 · Beban Penyesuaian Persediaan/ }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("option", { name: /1101 · Kas/ }),
@@ -1749,7 +1749,7 @@ describe("JournalEntryCreateForm", () => {
     const mapped = ledgerChart();
     mapped[3].children[0] = node(
       "5201",
-      "Kerugian Persediaan",
+      "Beban Penyesuaian Persediaan",
       "biaya_lainnya",
       {
         subAccounts: [
@@ -1775,7 +1775,7 @@ describe("JournalEntryCreateForm", () => {
     // Nothing picked yet, so there is no account to have sub akun.
     expect(screen.queryByLabelText("Sub akun baris 1")).not.toBeInTheDocument();
 
-    await pickAccount(1, /5201 · Kerugian Persediaan/);
+    await pickAccount(1, /5201 · Beban Penyesuaian Persediaan/);
 
     // The entry is at Kemang (b1), and the Bogor-pinned sub akun is offered all the same: carrying a
     // cost made here to Bogor is what pinning is for (BO, 7 Okt 2026). The retired one never is.
@@ -1828,7 +1828,7 @@ describe("JournalEntryCreateForm", () => {
     await userEvent.click(screen.getByLabelText("Akun baris 1"));
 
     expect(
-      await screen.findByRole("option", { name: /5201 · Kerugian Persediaan/ }),
+      await screen.findByRole("option", { name: /5201 · Beban Penyesuaian Persediaan/ }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("option", { name: /5401 · Beban Penyusutan/ }),
@@ -1856,7 +1856,7 @@ describe("JournalEntryCreateForm", () => {
     const create = jest.spyOn(journalEntryService, "create");
 
     await userEvent.type(description(), "Koreksi");
-    await pickAccount(1, /5201 · Kerugian Persediaan/);
+    await pickAccount(1, /5201 · Beban Penyesuaian Persediaan/);
     await pickAccount(2, /3101 · Modal/);
     await userEvent.type(debits()[0], "100000");
     await userEvent.type(credits()[1], "60000");
@@ -1917,7 +1917,7 @@ describe("JournalEntryCreateForm", () => {
     );
 
     expect(screen.getByLabelText("Akun baris 1")).toHaveTextContent(
-      /Kerugian Persediaan/,
+      /Beban Penyesuaian Persediaan/,
     );
     expect(screen.getByLabelText("Akun baris 2")).toHaveTextContent(/Modal/);
     for (const input of [...debits(), ...credits()]) {
@@ -1967,7 +1967,7 @@ describe("JournalEntryCreateForm", () => {
       expect(memo).not.toMatch(/kolom|isi di/i);
     }
     expect(memos[0]).toBe(
-      "Membatalkan kredit yang salah di Kerugian Persediaan",
+      "Membatalkan kredit yang salah di Beban Penyesuaian Persediaan",
     );
     expect(memos[1]).toBe("Pengakuan stok awal sebagai modal pemilik");
   });
@@ -1993,7 +1993,7 @@ describe("JournalEntryCreateForm", () => {
   it("hides the shortcut when the chart has no 3101", async () => {
     await renderForm([
       node("5000", "Beban", "biaya_lainnya", {
-        children: [node("5201", "Kerugian Persediaan", "biaya_lainnya")],
+        children: [node("5201", "Beban Penyesuaian Persediaan", "biaya_lainnya")],
       }),
     ]);
 

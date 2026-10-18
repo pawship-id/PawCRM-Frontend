@@ -418,6 +418,8 @@ export type JournalSourceType =
   | "receipt"
   | "goods_receipt"
   | "purchase_payment"
+  /** A supplier bill's "biaya lain" booked to an expense account (16 Oct 2026). */
+  | "purchase_invoice"
   | "opname"
   | "return"
   /**
@@ -493,7 +495,8 @@ export interface JournalSourceDocument {
     | "pos_return"
     | "stock_opname"
     | "cash_transaction"
-    | "customer_invoice";
+    | "customer_invoice"
+    | "purchase_invoice";
   id: string;
 }
 

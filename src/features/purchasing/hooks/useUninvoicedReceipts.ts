@@ -19,11 +19,18 @@ interface UseUninvoicedReceiptsResult {
   error: string | null;
   /** True when the server had more than `OPTION_LIMIT` to offer. */
   truncated: boolean;
+  /**
+   * The supplier the current `receipts` were answered for — "" until the first
+   * answer. The form compares it with the supplier on screen before acting on
+   * the list, so an answer for the PREVIOUS pick can never open the picker.
+   */
+  loadedFor: string;
 }
 
 /**
- * The deliveries still waiting for the supplier's bill — what the file-an-invoice
- * form picks from.
+ * One supplier's deliveries still waiting for its bill — what the Catat faktur
+ * form offers to bill once the supplier is picked (16 October 2026, BO). No
+ * supplier, no request: an empty `supplierId` answers an empty list.
  *
  * BOTH FILTERS ARE ASKED OF THE SERVER, and that is the whole point of this
  * hook existing rather than a `.filter()` at the call site:
@@ -45,20 +52,30 @@ interface UseUninvoicedReceiptsResult {
  * options reads as "there are no more", which is the one thing it must not say
  * when there are.
  */
-export function useUninvoicedReceipts(): UseUninvoicedReceiptsResult {
+export function useUninvoicedReceipts(
+  supplierId: string,
+): UseUninvoicedReceiptsResult {
   const [receipts, setReceipts] = useState<GoodsReceiptListRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [truncated, setTruncated] = useState(false);
+  const [loadedFor, setLoadedFor] = useState("");
 
   useEffect(() => {
+    if (!supplierId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setReceipts([]);
+      setTruncated(false);
+      setLoadedFor("");
+      return;
+    }
     let active = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
 
     goodsReceiptService
       .list({
+        supplierId,
         limit: OPTION_LIMIT,
         invoiced: false,
         // ANY status since 14 October 2026: a bill may document an order still
@@ -69,10 +86,12 @@ export function useUninvoicedReceipts(): UseUninvoicedReceiptsResult {
         if (!active) return;
         setReceipts(result.items);
         setTruncated(result.pagination.total > result.items.length);
+        setLoadedFor(supplierId);
       })
       .catch((err) => {
         if (!active) return;
         setReceipts([]);
+        setLoadedFor(supplierId);
         setError(
           err instanceof ApiError
             ? err.fullMessage
@@ -86,7 +105,7 @@ export function useUninvoicedReceipts(): UseUninvoicedReceiptsResult {
     return () => {
       active = false;
     };
-  }, []);
+  }, [supplierId]);
 
-  return { receipts, loading, error, truncated };
+  return { receipts, loading, error, truncated, loadedFor };
 }

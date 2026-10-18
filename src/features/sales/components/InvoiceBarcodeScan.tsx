@@ -5,13 +5,14 @@ import { Camera } from "lucide-react";
 
 import { TextField } from "@/components";
 import { Button } from "@/components/ui/button";
+import { parseLabelPayload, type LabelCodes } from "@/lib/batchLabel";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { productService } from "@/services/product.service";
 import { productBatchService } from "@/services/productBatch.service";
 import type { Product, ProductBatch } from "@/types/inventory";
 
-import { BarcodeCameraDialog, type ScanStatus } from "./BarcodeCameraDialog";
+import { BarcodeCameraDialog, type ScanStatus } from "@/components";
 
 /**
  * Why a scanned product cannot go on an invoice — or null when it can.
@@ -138,11 +139,83 @@ export function InvoiceBarcodeScan({
     setStatus({ tone: "success", text: message });
   }
 
+  /** A lot, checked against this invoice's warehouse and expiry, then billed. */
+  async function acceptLot(batch: ProductBatch) {
+    const refused = lotRefusal(batch, warehouseId, warehouseName);
+
+    if (refused) {
+      setStatus({ tone: "error", text: refused });
+      return;
+    }
+
+    const lotProduct = await productService.getById(batch.productId);
+
+    accept(
+      lotProduct,
+      Number(batch.qtyRemaining) > 0
+        ? `${lotProduct.name} (batch ${batch.batchCode}) masuk ke faktur.`
+        : // The carton is in somebody's hand, so the product still goes on —
+          // and the books saying the lot is empty is worth knowing.
+          `${lotProduct.name} masuk ke faktur — batch ${batch.batchCode} tercatat habis, jadi stoknya diambil dari batch lain di gudang ini.`,
+    );
+  }
+
+  /** The live product whose SKU is exactly `sku` — there is no SKU endpoint. */
+  async function bySku(sku: string): Promise<Product | null> {
+    const { items } = await productService.list({
+      search: sku,
+      excludeVariants: false,
+      limit: 20,
+    });
+    return items.find((product) => product.sku === sku) ?? null;
+  }
+
+  /**
+   * A batch label's QR (18 Oct 2026) — see lib/batchLabel.ts. It names the
+   * product several ways, tried most specific first:
+   *
+   * THE LOT, when the label carries one, so the warehouse and expiry checks a
+   * scanned lot always got still apply — an expired carton is refused here, not
+   * quietly billed by its barcode. Then the packaging barcode, then the SKU, for
+   * a label with no lot on it or a lot this tenant no longer has.
+   */
+  async function lookupLabel(label: LabelCodes, scanned: string) {
+    if (label.batch) {
+      const batch = await orNotFound(productBatchService.lookup(label.batch));
+      if (batch) {
+        await acceptLot(batch);
+        return;
+      }
+    }
+
+    const product =
+      (label.barcode
+        ? await orNotFound(productService.getByBarcode(label.barcode))
+        : null) ?? (label.sku ? await bySku(label.sku) : null);
+
+    if (product) {
+      accept(product, `${product.name} masuk ke faktur.`);
+      return;
+    }
+
+    setStatus({
+      tone: "error",
+      text: `Label ${label.sku ?? label.batch ?? scanned} tidak cocok dengan produk mana pun.`,
+    });
+  }
+
   async function lookup(raw: string) {
     const scanned = raw.trim();
     if (!scanned) return;
 
     try {
+      const label = parseLabelPayload(scanned);
+
+      if (label) {
+        await lookupLabel(label, scanned);
+        return;
+      }
+
       // Exact match on the server — a prefix would hand over the wrong item
       // when one code is another's prefix.
       const product = await orNotFound(productService.getByBarcode(scanned));
@@ -162,23 +235,7 @@ export function InvoiceBarcodeScan({
         return;
       }
 
-      const refused = lotRefusal(batch, warehouseId, warehouseName);
-
-      if (refused) {
-        setStatus({ tone: "error", text: refused });
-        return;
-      }
-
-      const lotProduct = await productService.getById(batch.productId);
-
-      accept(
-        lotProduct,
-        Number(batch.qtyRemaining) > 0
-          ? `${lotProduct.name} (batch ${batch.batchCode}) masuk ke faktur.`
-          : // The carton is in somebody's hand, so the product still goes on —
-            // and the books saying the lot is empty is worth knowing.
-            `${lotProduct.name} masuk ke faktur — batch ${batch.batchCode} tercatat habis, jadi stoknya diambil dari batch lain di gudang ini.`,
-      );
+      await acceptLot(batch);
     } catch (error) {
       setStatus({
         tone: "error",
@@ -247,6 +304,7 @@ export function InvoiceBarcodeScan({
           onDetected={(scanned) => void lookup(scanned)}
           status={status}
           onClose={() => setCamera(false)}
+          description="Arahkan kamera ke barcode kemasan atau label batch. Setiap kode yang terbaca langsung masuk ke faktur — lanjut scan tanpa menutup ini."
         />
       )}
     </div>

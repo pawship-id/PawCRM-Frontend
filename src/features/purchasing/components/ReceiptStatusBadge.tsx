@@ -1,6 +1,10 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { GoodsReceiptLineStatus, GoodsReceiptStatus } from "@/types/api";
+import type {
+  GoodsReceiptLineStatus,
+  GoodsReceiptStatus,
+  InvoiceLineReceiveStatus,
+} from "@/types/api";
 
 /**
  * Whether the goods are on the shelf yet. Amber while something is still
@@ -45,6 +49,38 @@ export function ReceiptLineStatusBadge({
   status: GoodsReceiptLineStatus;
 }) {
   const { label, tone } = LINE_STATUS[status] ?? LINE_STATUS.pending;
+
+  return (
+    <Badge
+      variant="outline"
+      className={cn("border-transparent whitespace-nowrap", tone)}
+    >
+      {label}
+    </Badge>
+  );
+}
+
+/**
+ * How far one INVOICE line has arrived, across every receipt made from the
+ * invoice (16 October 2026, BO) — progress is followed on the invoice, per
+ * line, rather than on each receipt.
+ */
+const INVOICE_LINE_STATUS: Record<
+  InvoiceLineReceiveStatus,
+  { label: string; tone: string }
+> = {
+  pending: { label: "belum diterima", tone: "bg-tint-neutral text-muted" },
+  partial: { label: "diterima sebagian", tone: "bg-tint-warning text-warning" },
+  received: { label: "diterima lengkap", tone: "bg-tint-success text-success" },
+};
+
+export function InvoiceLineReceiveBadge({
+  status,
+}: {
+  status: InvoiceLineReceiveStatus;
+}) {
+  const { label, tone } =
+    INVOICE_LINE_STATUS[status] ?? INVOICE_LINE_STATUS.pending;
 
   return (
     <Badge

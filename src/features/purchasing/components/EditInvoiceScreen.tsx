@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Alert, Spinner } from "@/components";
 
 import { usePurchaseInvoice } from "../hooks/usePurchaseInvoice";
-import { ManualInvoiceForm } from "./ManualInvoiceForm";
+import { PurchaseInvoiceForm } from "./PurchaseInvoiceForm";
 
 /**
  * Loads a manual invoice and hands it to the form — or says why it cannot be
@@ -45,5 +45,5 @@ export function EditInvoiceScreen({ invoiceId }: { invoiceId: string }) {
     );
   }
 
-  return <ManualInvoiceForm invoice={invoice} />;
+  return <PurchaseInvoiceForm invoice={invoice} />;
 }

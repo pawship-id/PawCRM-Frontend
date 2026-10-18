@@ -77,6 +77,7 @@ export const productService = {
         inStockAtWarehouse: query.inStockAtWarehouse,
         searchBatches: query.searchBatches,
         includeDeleted: query.includeDeleted,
+        view: query.view,
         sort: query.sort,
       },
     }),
@@ -153,7 +154,7 @@ export const productService = {
    *
    * SEPARATE FROM AN ADJUSTMENT, and the account is the whole reason: this
    * posts `opening_balance`, which credits 3101 Modal Disetor. A manual
-   * adjustment credits 5201 Kerugian Persediaan, which is right for goods that
+   * adjustment credits 5201 Beban Penyesuaian Persediaan, which is right for goods that
    * vanished and absurd for a shop's day-one inventory.
    *
    * REFUSED FOR ANY PRODUCT THAT HAS EVER MOVED, by SKU, in one answer. The

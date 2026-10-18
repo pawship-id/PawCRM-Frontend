@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { MoreVertical } from "lucide-react";
 
 import { HighlightText } from "@/components";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -14,7 +21,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { daysUntil } from "@/utils/date";
-import { formatMoney, isPositive } from "@/utils/decimal";
+import { formatMoney, isPositive, toMinor } from "@/utils/decimal";
 import type { PurchaseInvoiceListRow } from "@/types/api";
 
 import { InvoiceStatusBadge } from "./InvoiceStatusBadge";
@@ -41,21 +48,32 @@ function formatDate(iso: string): string {
  * `daysUntil` IS STILL USED, but only to say HOW late, never WHETHER. The count
  * is a local, drifting-by-a-day-at-worst nicety; the fact is the server's.
  *
- * THE ACTION LABEL READS THE STATUS, not the outstanding amount: "Bayar" on
- * something already settled is an invitation to an endpoint that will refuse it.
+ * ONE ⋮ MENU PER ROW (16 October 2026, on request): Detail always; Bayar only
+ * while the status is not settled AND something is payable now — "Bayar" on a
+ * settled bill, or one whose goods have not arrived, is an invitation to an
+ * endpoint that will refuse it; and "Buat penerimaan barang" while goods are
+ * still to come. Bayar opens the payment dialog in place, as on Faktur
+ * Penjualan. "Still to come" is read off `receivedAmount < total` — the list row
+ * carries no per-line quantities, and the server caps `receivedAmount` at the
+ * total, so equality means everything has arrived.
  */
 export function PayablesTable({
   invoices,
   loading,
   search,
   canPay,
+  canReceive,
+  onPay,
 }: {
   invoices: PurchaseInvoiceListRow[];
   loading: boolean;
   /** Echoed into HighlightText so a search hit explains itself. */
   search: string;
-  /** Whether the signed-in role may record a payment — decides the CTA wording. */
+  /** Whether the signed-in role may record a payment — decides whether Bayar is offered. */
   canPay: boolean;
+  /** Whether the signed-in role may create a goods receipt. */
+  canReceive: boolean;
+  onPay: (invoice: PurchaseInvoiceListRow) => void;
 }) {
   if (!loading && invoices.length === 0) {
     return (
@@ -98,6 +116,9 @@ export function PayablesTable({
           {invoices.map((invoice) => {
             const href = `/dashboard/purchasing/payables/${invoice._id}`;
             const lateBy = Math.abs(daysUntil(invoice.dueDate));
+            const stillToCome =
+              (toMinor(invoice.receivedAmount) ?? 0n) <
+              (toMinor(invoice.total) ?? 0n);
 
             return (
               <TableRow
@@ -114,6 +135,18 @@ export function PayablesTable({
                       query={search}
                     />
                   </Link>
+                  {/* The vendor's own number under ours, when it differs —
+                      what they quote when they chase payment. */}
+                  {invoice.supplierInvoiceNumber &&
+                    invoice.supplierInvoiceNumber !== invoice.invoiceNumber && (
+                      <span className="block text-xs text-muted">
+                        supplier:{" "}
+                        <HighlightText
+                          text={invoice.supplierInvoiceNumber}
+                          query={search}
+                        />
+                      </span>
+                    )}
                   {/* A manual bill still waiting for its goods owes nothing
                       yet — said here, so "Sisa" is not read as payable. */}
                   {!invoice.goodsReceiptId && (
@@ -180,15 +213,38 @@ export function PayablesTable({
                 </TableCell>
 
                 <TableCell className="text-right whitespace-nowrap">
-                  <Button variant="ghost" size="sm" asChild>
-                    <Link href={href}>
-                      {invoice.status !== "paid" &&
-                      canPay &&
-                      isPositive(invoice.payableAmount ?? invoice.outstandingAmount)
-                        ? "Bayar"
-                        : "Detail"}
-                    </Link>
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Aksi ${invoice.invoiceNumber}`}
+                      >
+                        <MoreVertical className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuItem asChild>
+                        <Link href={href}>Lihat detail</Link>
+                      </DropdownMenuItem>
+                      {canPay &&
+                        invoice.status !== "paid" &&
+                        isPositive(invoice.payableAmount) && (
+                          <DropdownMenuItem onSelect={() => onPay(invoice)}>
+                            Bayar
+                          </DropdownMenuItem>
+                        )}
+                      {canReceive && stillToCome && (
+                        <DropdownMenuItem asChild>
+                          <Link
+                            href={`/dashboard/purchasing/receipts/new?invoice=${invoice._id}`}
+                          >
+                            Buat penerimaan barang
+                          </Link>
+                        </DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             );

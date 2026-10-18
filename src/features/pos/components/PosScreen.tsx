@@ -26,6 +26,7 @@ import { PosServicePetDialog } from "./PosServicePetDialog";
 import { PosCloseShiftDialog } from "./PosCloseShiftDialog";
 import { PosHeldCartsDialog } from "./PosHeldCartsDialog";
 import { PosPaymentDialog } from "./PosPaymentDialog";
+import { prefetchTillChannels } from "../hooks/tillChannels";
 import { ReceiptDialog } from "./ReceiptDialog";
 import { PosSettingsDialog } from "./PosSettingsDialog";
 import { PosShiftBar } from "./PosShiftBar";
@@ -194,6 +195,12 @@ export function PosScreen() {
       setHeldLoading(false);
     }
   }, []);
+
+  // The payment dialog's channel list, fetched while the cashier is still
+  // ringing items up so "Bayar" opens without a spinner (tillChannels.ts).
+  useEffect(() => {
+    prefetchTillChannels(shift?.branchId);
+  }, [shift?.branchId]);
 
   // The count on the shift bar has to be right before anybody opens the dialog,
   // so the list is fetched once the till is up rather than on first open.

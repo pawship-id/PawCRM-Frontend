@@ -2104,7 +2104,7 @@ function ProductFormFields({
           /*
             Stok Awal, not Penyesuaian Stok. Both screens can raise a balance,
             and only one of them books it correctly: an adjustment credits 5201
-            Kerugian Persediaan, so recovering a day-one balance there reads on
+            Beban Penyesuaian Persediaan, so recovering a day-one balance there reads on
             the P&L as a profit earned by a shop that has sold nothing.
           */
           swalToast(

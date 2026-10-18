@@ -27,6 +27,7 @@ const SOURCES: JournalSourceType[] = [
   "receipt",
   "goods_receipt",
   "purchase_payment",
+  "purchase_invoice",
   "opname",
   "return",
   "return_cogs",

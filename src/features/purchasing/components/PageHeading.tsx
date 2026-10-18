@@ -20,6 +20,7 @@ export function PageHeading({
   crumbs,
   title,
   aside,
+  actions,
   children,
 }: {
   /** Ancestors first, the current page last and WITHOUT an href. */
@@ -31,15 +32,22 @@ export function PageHeading({
    * the title a screen reader and a test both look for.
    */
   aside?: ReactNode;
+  /** Buttons at the RIGHT end of the title line — what can be done next. */
+  actions?: ReactNode;
   children?: ReactNode;
 }) {
   return (
     <div>
       <Breadcrumb items={crumbs} />
-      {aside ? (
+      {aside || actions ? (
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
           <h1 className="text-2xl font-extrabold text-foreground">{title}</h1>
           {aside}
+          {actions && (
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {actions}
+            </div>
+          )}
         </div>
       ) : (
         <h1 className="mt-1 text-2xl font-extrabold text-foreground">{title}</h1>

@@ -4,10 +4,9 @@ import type { UserEvent } from "@testing-library/user-event";
 
 import {
   EditInvoiceScreen,
-  FileInvoiceForm,
   InvoiceDetail,
-  ManualInvoiceForm,
   PayablesScreen,
+  PurchaseInvoiceForm,
   PurchasePaymentDetail,
   PurchasingHub,
 } from "@/features/purchasing";
@@ -22,8 +21,11 @@ import { paymentChannelService } from "@/services/paymentChannel.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import { warehouseService } from "@/services/warehouse.service";
 import { productService } from "@/services/product.service";
+import { productBatchService } from "@/services/productBatch.service";
+import type { ProductBatch } from "@/types/inventory";
 import { ApiError } from "@/services/api-error";
 import type {
+  ManualPurchaseInvoiceInput,
   GoodsReceiptDetail,
   GoodsReceiptListRow,
   PurchaseInvoiceDetail,
@@ -131,6 +133,7 @@ function listRow(
   return {
     _id: INVOICE_ID,
     invoiceNumber: "INV/2026/VIII/0142",
+    supplierInvoiceNumber: "INV/2026/VIII/0142",
     supplierId: "s1",
     supplierName: "PT Sumber Pangan",
     branchId: "b1",
@@ -988,6 +991,101 @@ async function openPaymentDialog(user: UserEvent) {
 const toast = swalToast as jest.MockedFunction<typeof swalToast>;
 
 describe("InvoiceDetail", () => {
+  // "Biaya lain" split by where it went (16 October 2026, BO).
+  it("puts goods charges before PPN and expense charges after it", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        grossSubtotal: "150000.0000",
+        itemDiscount: "0.0000",
+        subtotal: "160000.0000",
+        taxAmount: "16500.0000",
+        expenseCharges: "20000.0000",
+        total: "196500.0000",
+        otherCharges: [
+          { label: "Kemasan", amount: "10000.0000", allocation: "goods" },
+          {
+            label: "Ongkir",
+            amount: "20000.0000",
+            allocation: "expense",
+            accountId: "acc-ongkir",
+            accountCode: "6107",
+            accountName: "Beban Ongkos Kirim",
+          },
+        ],
+      }),
+    );
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    const expense = await screen.findByText(
+      "Ongkir · beban 6107 Beban Ongkos Kirim",
+    );
+    const goods = screen.getByText("Kemasan");
+    const beforeTax = screen.getByText("Total sebelum PPN");
+    const tax = screen.getByText("PPN masukan");
+    const follows = (a: Node, b: Node) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(goods, beforeTax)).toBe(true);
+    expect(follows(tax, expense)).toBe(true);
+    expect(beforeTax.nextSibling).toHaveTextContent("Rp 160.000");
+    expect(expense.nextSibling).toHaveTextContent("Rp 20.000");
+    expect(
+      screen.getByText("Total tagihan", { selector: "dt" }).nextSibling,
+    ).toHaveTextContent("Rp 196.500");
+  });
+
+  // Progress is followed on the invoice, per line (16 October 2026, BO).
+  it("shows each line's received qty, what is left, and where it stands", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        goodsReceiptId: "gr1",
+        items: [
+          invoiceItem({
+            receivedQty: "6.0000",
+            remainingQty: "4.0000",
+            receiveStatus: "partial",
+          }),
+        ],
+      }),
+    );
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(
+      await screen.findByRole("columnheader", { name: "Sisa qty" }),
+    ).toBeInTheDocument();
+    const row = screen.getByText("diterima sebagian").closest("tr") as HTMLElement;
+    expect(within(row).getByText("6")).toBeInTheDocument();
+    expect(within(row).getByText("4")).toBeInTheDocument();
+  });
+
+  // ONE INVOICE, MANY RECEIPTS: each delivery day listed, and the next one
+  // offered while something is still to come.
+  it("lists every receipt of the invoice and offers another while goods are still to come", async () => {
+    asMock(purchaseInvoiceService.getById).mockResolvedValue(
+      detail({
+        goodsReceiptId: "gr1",
+        goodsReceipts: [
+          { _id: "gr1", receiptNumber: "GR-260806-001", receiptDate: "2026-08-06T00:00:00.000Z", status: "received" },
+          { _id: "gr2", receiptNumber: "GR-260810-003", receiptDate: "2026-08-10T00:00:00.000Z", status: "received" },
+        ],
+        items: [invoiceItem({ receivedQty: "6.0000", remainingQty: "4.0000" })],
+      }),
+    );
+    renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
+
+    expect(await screen.findByText(/Sebagian barang belum diterima/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /GR-260806-001/ })).toHaveAttribute(
+      "href",
+      "/dashboard/purchasing/receipts/gr1",
+    );
+    expect(screen.getByRole("link", { name: /GR-260810-003/ })).toHaveAttribute(
+      "href",
+      "/dashboard/purchasing/receipts/gr2",
+    );
+    expect(
+      screen.getByRole("button", { name: "Buat penerimaan barang" }),
+    ).toBeInTheDocument();
+  });
+
   it("shows the balance and the payment form for an unpaid bill", async () => {
     const user = userEvent.setup();
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
@@ -1617,45 +1715,335 @@ describe("PurchasePaymentDetail — the sales payment page, for a supplier", () 
 
 /* ------------------------------------------------------------ file a bill */
 
-describe("FileInvoiceForm", () => {
+/**
+ * CATAT FAKTUR SUPPLIER — ONE FORM (16 October 2026, BO). Picking the supplier
+ * looks up its deliveries still waiting for a bill; when there are any, a modal
+ * offers them, and the ones ticked (one cabang, one gudang) are billed on one
+ * invoice with their lines merged per product.
+ */
+describe("PurchaseInvoiceForm — from receipts", () => {
+  const SUPPLIER = {
+    _id: "s1",
+    name: "PT Sumber Pangan",
+    type: "beli_putus",
+    isActive: true,
+  };
+  const SECOND_ID = "gr2";
+  const ELSEWHERE_ID = "gr3";
+
+  const unbilled = (overrides: Partial<GoodsReceiptDetail> = {}) => ({
+    ...receiptDetail(),
+    invoiceId: null,
+    ...overrides,
+  });
+  // A second delivery of the same product, same cabang and gudang, later.
+  const second = unbilled({
+    _id: SECOND_ID,
+    receiptNumber: "GR-260810-002",
+    receiptDate: "2026-08-10T00:00:00.000Z",
+    taxAmount: "8800.0000",
+    items: [
+      {
+        ...receiptDetail().items[0],
+        itemId: "it2",
+        qty: "5.0000",
+        costPerUnit: "16000.0000",
+        subtotal: "80000.0000",
+      },
+    ],
+  });
+  const rows = (): GoodsReceiptListRow[] => [
+    receiptRow(),
+    {
+      ...receiptRow(),
+      _id: SECOND_ID,
+      receiptNumber: "GR-260810-002",
+      receiptDate: "2026-08-10T00:00:00.000Z",
+    },
+    {
+      ...receiptRow(),
+      _id: ELSEWHERE_ID,
+      receiptNumber: "GR-260811-003",
+      branchId: "b2",
+      branchName: "Cabang Selatan",
+      warehouseId: "wh2",
+      warehouseName: "Gudang Cabang Selatan",
+    },
+  ];
+
   beforeEach(() => {
+    asMock(supplierService.list).mockResolvedValue(optionPage([SUPPLIER]));
+    asMock(warehouseService.list).mockResolvedValue(optionPage([WAREHOUSE]));
+    asMock(productService.list).mockResolvedValue(optionPage([]));
     asMock(goodsReceiptService.list).mockResolvedValue({
-      items: [receiptRow()],
-      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
+      items: rows(),
+      pagination: { page: 1, limit: 100, total: 3, totalPages: 1 },
     });
-    // Opened from a receipt's page, the form reads THAT receipt by id — an
-    // unbilled one here.
-    asMock(goodsReceiptService.getById).mockResolvedValue({
-      ...receiptDetail(),
-      invoiceId: null,
-    });
+    asMock(goodsReceiptService.getById).mockImplementation(async (id) =>
+      id === SECOND_ID ? second : unbilled({ _id: id }),
+    );
+    asMock(purchaseInvoiceService.create).mockResolvedValue(detail());
+    // The expense accounts a "biaya lain" may go to — by category.
+    asMock(chartOfAccountsService.list).mockImplementation(async (query) =>
+      optionPage(
+        query?.accountCategory === "biaya"
+          ? [
+              {
+                _id: "acc-ongkir",
+                code: "6107",
+                name: "Beban Ongkos Kirim",
+                accountType: "expense",
+                accountCategory: "biaya",
+                isActive: true,
+              },
+            ]
+          : [],
+      ),
+    );
   });
 
-  /**
-   * OPENED FROM THE RECEIPT ("Catat faktur supplier"): that receipt is chosen
-   * and the picker is locked, even when it is not on the picker's first page.
-   */
-  it("preselects and locks the receipt it was opened from", async () => {
+  async function pickSupplier(user: UserEvent) {
+    await user.click(await screen.findByLabelText("Supplier"));
+    await user.click(
+      await screen.findByRole("option", { name: /PT Sumber Pangan/ }),
+    );
+  }
+
+  it("offers the supplier's uninvoiced receipts as soon as it is picked", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchaseInvoiceForm />);
+
+    await pickSupplier(user);
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Penerimaan yang belum ada fakturnya",
+    });
+    expect(within(dialog).getByText("GR-260806-001")).toBeInTheDocument();
+    // Asked of the server, for THIS supplier, unbilled outright deliveries only.
+    expect(goodsReceiptService.list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        supplierId: "s1",
+        invoiced: false,
+        purchaseType: "beli_putus",
+      }),
+    );
+    expect(
+      within(dialog).getByRole("button", { name: "Buat dari penerimaan (0)" }),
+    ).toBeDisabled();
+  });
+
+  it("goes straight on as a manual invoice when the supplier has none", async () => {
     asMock(goodsReceiptService.list).mockResolvedValue({
       items: [],
       pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
     });
+    const user = userEvent.setup();
+    renderWithAuth(<PurchaseInvoiceForm />);
 
-    renderWithAuth(<FileInvoiceForm receiptId={RECEIPT_ID} />);
+    await pickSupplier(user);
 
-    const picker = await screen.findByRole("combobox", { name: "Penerimaan" });
-    expect(picker).toBeDisabled();
-    expect(picker).toHaveTextContent("GR-260806-001");
-    expect(goodsReceiptService.getById).toHaveBeenCalledWith(RECEIPT_ID);
+    await waitFor(() => expect(goodsReceiptService.list).toHaveBeenCalled());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(
-      screen.queryByText("Tidak ada penerimaan yang menunggu faktur."),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: /Tambah produk/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/belum ada fakturnya/)).not.toBeInTheDocument();
+  });
+
+  it("disables receipts from another cabang or gudang after the first tick", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchaseInvoiceForm />);
+    await pickSupplier(user);
+    const dialog = await screen.findByRole("dialog");
+
+    const elsewhere = within(dialog).getByRole("checkbox", {
+      name: "Pilih GR-260811-003",
+    });
+    expect(elsewhere).not.toBeDisabled();
+
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Pilih GR-260806-001" }),
+    );
+
+    expect(elsewhere).toBeDisabled();
+    expect(
+      within(dialog).getByText("Beda cabang dan gudang"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Pilih GR-260810-002" }),
+    ).not.toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Buat dari penerimaan (1)" }),
+    ).toBeEnabled();
+  });
+
+  it("bills the ticked receipts on one invoice, their lines merged per product", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchaseInvoiceForm />);
+    await pickSupplier(user);
+    const dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Pilih GR-260806-001" }),
+    );
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Pilih GR-260810-002" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Buat dari penerimaan (2)" }),
+    );
+
+    // ONE line for the product: 10 + 5, Rp 150.000 + Rp 80.000.
+    const table = await screen.findByRole("table");
+    const bodyRows = within(table).getAllByRole("row").slice(1);
+    expect(bodyRows).toHaveLength(1);
+    expect(bodyRows[0]).toHaveTextContent("Shampoo Anjing");
+    expect(bodyRows[0]).toHaveTextContent("15");
+    expect(bodyRows[0]).toHaveTextContent("Rp 230.000");
+    // Read-only: nothing to type into, and no invoice discount.
+    expect(within(table).queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Diskon faktur")).not.toBeInTheDocument();
+    // The receipts are named, cabang and gudang read off them.
+    expect(screen.getByRole("link", { name: "GR-260810-002" })).toHaveAttribute(
+      "href",
+      `/dashboard/purchasing/receipts/${SECOND_ID}`,
+    );
+    expect(screen.getByLabelText("Gudang")).toHaveValue("Gudang Utama");
+    // PPN Σ 16.500 + 8.800; Total tagihan 230.000 + 25.300.
+    expect(screen.getByText("Total tagihan").nextSibling).toHaveTextContent(
+      "Rp 255.300",
+    );
+
+    await user.click(screen.getByRole("button", { name: /Simpan faktur/ }));
+
+    await waitFor(() =>
+      expect(purchaseInvoiceService.create).toHaveBeenCalledTimes(1),
+    );
+    expect(asMock(purchaseInvoiceService.create).mock.calls[0][0]).toEqual({
+      supplierId: "s1",
+      goodsReceiptIds: [RECEIPT_ID, SECOND_ID],
+      invoiceDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+    });
+    expect(replace).toHaveBeenCalledWith(
+      `/dashboard/purchasing/payables/${INVOICE_ID}`,
+    );
+  });
+
+  // The same product in two batches stays two lines (16 October 2026).
+  it("keeps the same product in two batches as two lines", async () => {
+    asMock(productBatchService.getById).mockImplementation(
+      async (id) =>
+        ({
+          _id: id,
+          batchCode: id === "lot-a" ? "SHAMPOO-271208" : "SHAMPOO-280115",
+          expiryDate: null,
+        }) as unknown as ProductBatch,
+    );
+    asMock(goodsReceiptService.getById).mockImplementation(async (id) =>
+      id === SECOND_ID
+        ? {
+            ...second,
+            items: second.items.map((item) => ({ ...item, batchId: "lot-b" })),
+          }
+        : unbilled({
+            _id: id,
+            items: receiptDetail().items.map((item) => ({
+              ...item,
+              batchId: "lot-a",
+            })),
+          }),
+    );
+    const user = userEvent.setup();
+    renderWithAuth(<PurchaseInvoiceForm />);
+    await pickSupplier(user);
+    const dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Pilih GR-260806-001" }),
+    );
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: "Pilih GR-260810-002" }),
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Buat dari penerimaan (2)" }),
+    );
+
+    const table = await screen.findByRole("table");
+    const bodyRows = within(table).getAllByRole("row").slice(1);
+    expect(bodyRows).toHaveLength(2);
+    expect(bodyRows[0]).toHaveTextContent("Rp 150.000");
+    expect(bodyRows[1]).toHaveTextContent("Rp 80.000");
+    // Each named by its lot.
+    expect(
+      await within(bodyRows[0]).findByText(/batch SHAMPOO-271208/),
+    ).toBeInTheDocument();
+    expect(
+      await within(bodyRows[1]).findByText(/batch SHAMPOO-280115/),
+    ).toBeInTheDocument();
+  });
+
+  it("goes on as a manual invoice from the modal, and can reopen it", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchaseInvoiceForm />);
+    await pickSupplier(user);
+    const dialog = await screen.findByRole("dialog");
+
+    await user.click(
+      within(dialog).getByRole("button", { name: "Buat faktur manual" }),
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(
+      screen.getByRole("button", { name: /Tambah produk/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/belum ada fakturnya/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Pilih penerimaan" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("opens on the receipt it came from, with its supplier, the modal shut", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchaseInvoiceForm receiptId={RECEIPT_ID} />);
+
+    expect(
+      await screen.findByRole("link", { name: "GR-260806-001" }),
+    ).toBeInTheDocument();
+    expect(goodsReceiptService.getById).toHaveBeenCalledWith(RECEIPT_ID);
+    await waitFor(() =>
+      expect(goodsReceiptService.list).toHaveBeenCalledWith(
+        expect.objectContaining({ supplierId: "s1" }),
+      ),
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    // More of the same cabang and gudang can be added from the modal.
+    await user.click(screen.getByRole("button", { name: "Pilih penerimaan" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Pilih GR-260806-001" }),
+    ).toBeChecked();
+    expect(
+      within(dialog).getByRole("checkbox", { name: "Pilih GR-260811-003" }),
+    ).toBeDisabled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "Buat dari penerimaan (1)" }),
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: /Simpan faktur/ }),
+    );
+    await waitFor(() =>
+      expect(purchaseInvoiceService.create).toHaveBeenCalledWith(
+        expect.objectContaining({ goodsReceiptIds: [RECEIPT_ID] }),
+      ),
+    );
   });
 
   it("says so when the receipt it was opened from already has an invoice", async () => {
     asMock(goodsReceiptService.getById).mockResolvedValue(receiptDetail());
 
-    renderWithAuth(<FileInvoiceForm receiptId={RECEIPT_ID} />);
+    renderWithAuth(<PurchaseInvoiceForm receiptId={RECEIPT_ID} />);
 
     expect(
       await screen.findByText(/GR-260806-001 sudah punya faktur/),
@@ -1666,141 +2054,48 @@ describe("FileInvoiceForm", () => {
     );
   });
 
-  it("lists the chosen receipt's lines read-only", async () => {
-    renderWithAuth(<FileInvoiceForm receiptId={RECEIPT_ID} />);
-
-    expect(await screen.findByText("Barang yang ditagih")).toBeInTheDocument();
-    const table = await screen.findByRole("table");
-    expect(within(table).getByText("Shampoo Anjing")).toBeInTheDocument();
-    // Where each line stands — the receipt's own badge.
-    expect(within(table).getByText("Status")).toBeInTheDocument();
-    expect(within(table).getByText("lengkap")).toBeInTheDocument();
-    expect(within(table).getByText("SHAMPOO")).toBeInTheDocument();
-    // Read-only: nothing in the table can be typed into.
-    expect(within(table).queryByRole("textbox")).not.toBeInTheDocument();
-  });
-
-  it("reads the lines of a receipt picked from the list", async () => {
-    asMock(goodsReceiptService.getById).mockClear();
-    renderWithAuth(<FileInvoiceForm />);
-
-    await screen.findByRole("combobox", { name: "Penerimaan" });
-    expect(screen.queryByText("Barang yang ditagih")).not.toBeInTheDocument();
-    expect(goodsReceiptService.getById).not.toHaveBeenCalled();
-  });
-
-  it("leaves the picker open when not opened from a receipt", async () => {
-    renderWithAuth(<FileInvoiceForm />);
-
-    const picker = await screen.findByRole("combobox", { name: "Penerimaan" });
-    expect(picker).not.toBeDisabled();
-    expect(goodsReceiptService.getById).not.toHaveBeenCalled();
-  });
-
-  /**
-   * BOTH FILTERS ARE THE SERVER'S. A consignment delivery can never be invoiced
-   * on arrival, and a page filtered client-side on `invoiceId === null` hides
-   * rows the pager already counted.
-   */
-  it("asks the server for unbilled outright deliveries only", async () => {
-    renderWithAuth(<FileInvoiceForm />);
-
-    await waitFor(() => expect(goodsReceiptService.list).toHaveBeenCalled());
-
-    expect(goodsReceiptService.list).toHaveBeenCalledWith(
-      expect.objectContaining({ invoiced: false, purchaseType: "beli_putus" }),
-    );
-    // Any receiving status: a bill may document an order still on its way.
-    expect(
-      asMock(goodsReceiptService.list).mock.calls[0][0],
-    ).not.toHaveProperty("status");
-  });
-
-  it("explains the empty state without blaming the user", async () => {
-    asMock(goodsReceiptService.list).mockResolvedValue({
-      items: [],
-      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
-    });
-
-    renderWithAuth(<FileInvoiceForm />);
-
-    expect(
-      await screen.findByText("Tidak ada penerimaan yang menunggu faktur."),
-    ).toBeInTheDocument();
-  });
-
-  /**
-   * THE AMOUNTS ARE NOT EDITABLE. They must equal the receipt's to the minor
-   * unit or the API refuses the request, so the only thing an input could do is
-   * introduce a failure — see the component header.
-   */
-  it("copies the amounts from the receipt rather than asking for them", async () => {
-    asMock(purchaseInvoiceService.create).mockResolvedValue(detail());
-
+  it("sends a biaya lain only to an expense account, added after PPN", async () => {
     const user = userEvent.setup();
-    renderWithAuth(<FileInvoiceForm receiptId={RECEIPT_ID} />);
+    renderWithAuth(<PurchaseInvoiceForm receiptId={RECEIPT_ID} />);
 
-    await user.type(
-      await screen.findByLabelText(/Nomor faktur supplier/),
-      "INV/2026/VIII/0142",
+    await user.click(
+      await screen.findByRole("button", { name: "+ Tambah biaya lain" }),
     );
-    await user.click(screen.getByRole("button", { name: "Catat faktur" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/Nama biaya/), "Ongkir");
+    await user.type(within(dialog).getByLabelText(/Nominal/), "20000");
+    // No switch on this path — the goods are already valued.
+    expect(
+      within(dialog).queryByRole("switch", { name: "Masuk akun beban" }),
+    ).toBeNull();
+    await user.click(within(dialog).getByLabelText(/Akun beban/));
+    await user.click(
+      await screen.findByRole("option", { name: /6107 Beban Ongkos Kirim/ }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Simpan biaya" }));
 
+    expect(
+      screen.getByText("Ongkir · beban 6107 Beban Ongkos Kirim"),
+    ).toBeInTheDocument();
+    // 150.000 + PPN 16.500 + ongkir 20.000.
+    expect(screen.getByText("Total tagihan").nextSibling).toHaveTextContent(
+      "Rp 186.500",
+    );
+
+    await user.click(screen.getByRole("button", { name: /Simpan faktur/ }));
     await waitFor(() =>
-      expect(purchaseInvoiceService.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          goodsReceiptId: RECEIPT_ID,
-          invoiceNumber: "INV/2026/VIII/0142",
-          // Never picked: billing one vendor for another's delivery pays the
-          // wrong company and leaves the right one still owed.
-          supplierId: "s1",
-        }),
-      ),
+      expect(purchaseInvoiceService.create).toHaveBeenCalledTimes(1),
     );
-    // NO AMOUNTS AT ALL: the server copies the receipt's lines and totals onto
-    // the invoice, so the two documents cannot disagree.
-    const body = asMock(purchaseInvoiceService.create).mock.calls[0][0];
-    expect(body).not.toHaveProperty("subtotal");
-    expect(body).not.toHaveProperty("taxAmount");
-
-    expect(screen.queryByLabelText(/Subtotal/)).not.toBeInTheDocument();
-  });
-
-  it("shows a reconcile refusal in full", async () => {
-    asMock(purchaseInvoiceService.create).mockRejectedValue(
-      new ApiError(
-        "Goods receipt GR-260806-001 has already been invoiced",
-        409,
-        { reason: "Invoice INV/2026/VIII/0001 already bills this delivery" },
-      ),
-    );
-
-    const user = userEvent.setup();
-    renderWithAuth(<FileInvoiceForm receiptId={RECEIPT_ID} />);
-
-    await user.type(
-      await screen.findByLabelText(/Nomor faktur supplier/),
-      "INV/2026/VIII/0142",
-    );
-    await user.click(screen.getByRole("button", { name: "Catat faktur" }));
-
     expect(
-      await screen.findByText(/already bills this delivery/),
-    ).toBeInTheDocument();
-  });
-
-  it("says so when the picker had to truncate", async () => {
-    asMock(goodsReceiptService.list).mockResolvedValue({
-      items: [receiptRow()],
-      pagination: { page: 1, limit: 100, total: 140, totalPages: 2 },
-    });
-
-    renderWithAuth(<FileInvoiceForm />);
-
-    // A picker that silently drops options reads as "there are no more".
-    expect(
-      await screen.findByText(/Hanya 1 penerimaan pertama yang ditampilkan/),
-    ).toBeInTheDocument();
+      asMock(purchaseInvoiceService.create).mock.calls[0][0].otherCharges,
+    ).toEqual([
+      {
+        label: "Ongkir",
+        amount: "20000",
+        allocation: "expense",
+        accountId: "acc-ongkir",
+      },
+    ]);
   });
 });
 
@@ -2390,7 +2685,9 @@ describe("InvoiceDetail — a manual invoice with no receipt yet", () => {
     expect(
       screen.queryByRole("button", { name: /Catat pembayaran/ }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("belum ada")).toBeInTheDocument();
+    expect(
+      screen.getByText("Belum ada penerimaan barang."),
+    ).toBeInTheDocument();
   });
 
   /**
@@ -2477,7 +2774,7 @@ describe("InvoiceDetail — a manual invoice with no receipt yet", () => {
   });
 });
 
-describe("ManualInvoiceForm", () => {
+describe("PurchaseInvoiceForm — manual", () => {
   const SUPPLIER = {
     _id: "s1",
     name: "PT Sumber Pangan",
@@ -2513,10 +2810,15 @@ describe("ManualInvoiceForm", () => {
     asMock(productService.list).mockResolvedValue(optionPage([PRODUCT]));
     asMock(purchaseInvoiceService.create).mockResolvedValue(manualDetail());
     asMock(purchaseInvoiceService.update).mockResolvedValue(manualDetail());
+    // The supplier has no delivery waiting for a bill: straight on, manual.
+    asMock(goodsReceiptService.list).mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    });
   });
 
   it("says which answer is still missing before it can be saved", async () => {
-    renderWithAuth(<ManualInvoiceForm />);
+    renderWithAuth(<PurchaseInvoiceForm />);
 
     expect(
       await screen.findByRole("button", { name: /Simpan faktur/ }),
@@ -2524,9 +2826,167 @@ describe("ManualInvoiceForm", () => {
     expect(screen.getByText(/supplier belum dipilih/)).toBeInTheDocument();
   });
 
+  // Discounts and "biaya lain", as on the till (16 October 2026, BO).
+  it("sends a line discount, the bill's discount and other charges, with live totals", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchaseInvoiceForm />);
+
+    await user.click(await screen.findByLabelText("Supplier"));
+    await user.click(
+      await screen.findByRole("option", { name: /PT Sumber Pangan/ }),
+    );
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await user.click(await screen.findByLabelText(/Shampoo Anjing/));
+    await user.click(screen.getByRole("button", { name: /Tambahkan/ }));
+
+    const qty = await screen.findByLabelText("Qty Shampoo Anjing");
+    await user.clear(qty);
+    await user.type(qty, "10");
+    const price = screen.getByLabelText("Harga beli Shampoo Anjing");
+    await user.clear(price);
+    await user.type(price, "15000");
+    // 10% off 150.000 = 135.000
+    await user.type(screen.getByLabelText("Diskon Shampoo Anjing"), "10");
+    // Rp 5.000 off the bill = 130.000
+    await user.selectOptions(screen.getByLabelText("Jenis diskon faktur"), "amount");
+    await user.type(screen.getByLabelText("Diskon faktur"), "5000");
+    // + ongkir 20.000 = 150.000
+    await user.click(screen.getByRole("button", { name: "+ Tambah biaya lain" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/Nama biaya/), "Ongkir");
+    await user.type(within(dialog).getByLabelText(/Nominal/), "20.000");
+    await user.click(within(dialog).getByRole("button", { name: "Simpan biaya" }));
+
+    expect(screen.getByText("Total sebelum PPN").nextSibling).toHaveTextContent(
+      "Rp 150.000",
+    );
+
+    await user.click(screen.getByRole("button", { name: /Simpan faktur/ }));
+
+    await waitFor(() =>
+      expect(purchaseInvoiceService.create).toHaveBeenCalledTimes(1),
+    );
+    const body = asMock(purchaseInvoiceService.create).mock
+      .calls[0][0] as ManualPurchaseInvoiceInput;
+    expect(body.items[0].discount).toEqual({ mode: "percent", value: "10" });
+    expect(body.invoiceDiscount).toEqual({ mode: "amount", value: "5000" });
+    expect(body.otherCharges).toEqual([
+      { label: "Ongkir", amount: "20000", allocation: "goods" },
+    ]);
+  });
+
+  // "Masuk akun beban" switch per biaya lain: off = ke barang, on = an account.
+  it("posts a biaya lain to an expense account after PPN when the switch is on", async () => {
+    asMock(chartOfAccountsService.list).mockImplementation(async (query) =>
+      optionPage(
+        query?.accountCategory === "biaya"
+          ? [
+              {
+                _id: "acc-ongkir",
+                code: "6107",
+                name: "Beban Ongkos Kirim",
+                accountType: "expense",
+                accountCategory: "biaya",
+                isActive: true,
+              },
+            ]
+          : [],
+      ),
+    );
+    const user = userEvent.setup();
+    renderWithAuth(
+      <PurchaseInvoiceForm invoice={manualDetail({ items: [invoiceItem()] })} />,
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: "+ Tambah biaya lain" }),
+    );
+    let dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/Nama biaya/), "Ongkir");
+    await user.type(within(dialog).getByLabelText(/Nominal/), "20000");
+    // Off by default — ke barang, and no account asked.
+    const toExpense = within(dialog).getByRole("switch", {
+      name: "Masuk akun beban",
+    });
+    expect(toExpense).not.toBeChecked();
+    expect(within(dialog).queryByLabelText(/Akun beban/)).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Simpan biaya" }));
+    expect(screen.getByText("Ke barang (masuk HPP)")).toBeInTheDocument();
+    expect(screen.getByText("Total sebelum PPN").nextSibling).toHaveTextContent(
+      "Rp 170.000",
+    );
+
+    // Switched on, the account is asked for — and required.
+    await user.click(screen.getByRole("button", { name: "Ubah biaya lain 1" }));
+    dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("switch", { name: "Masuk akun beban" }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Simpan biaya" }));
+    expect(
+      within(dialog).getByText("Pilih akun bebannya."),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByLabelText(/Akun beban/));
+    await user.click(
+      await screen.findByRole("option", { name: /6107 Beban Ongkos Kirim/ }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Simpan biaya" }));
+
+    // Out of the subtotal, listed after PPN, still in Total tagihan.
+    expect(
+      screen.getByText("Beban · 6107 Beban Ongkos Kirim"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Total sebelum PPN").nextSibling).toHaveTextContent(
+      "Rp 150.000",
+    );
+    expect(
+      screen.getByText("Ongkir · beban 6107 Beban Ongkos Kirim"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Total tagihan").nextSibling).toHaveTextContent(
+      "Rp 186.500",
+    );
+    await user.click(screen.getByRole("button", { name: /Simpan faktur/ }));
+
+    await waitFor(() =>
+      expect(purchaseInvoiceService.update).toHaveBeenCalledTimes(1),
+    );
+    expect(asMock(purchaseInvoiceService.update).mock.calls[0][1].otherCharges).toEqual([
+      {
+        label: "Ongkir",
+        amount: "20000",
+        allocation: "expense",
+        accountId: "acc-ongkir",
+      },
+    ]);
+  });
+
+  // The vendor's number is optional — the bill gets our own (16 October 2026).
+  it("files a manual invoice with no vendor number", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PurchaseInvoiceForm />);
+
+    await user.click(await screen.findByLabelText("Supplier"));
+    await user.click(
+      await screen.findByRole("option", { name: /PT Sumber Pangan/ }),
+    );
+    expect(screen.getByLabelText(/No. faktur supplier/)).not.toBeRequired();
+
+    await user.click(screen.getByRole("button", { name: /Tambah produk/ }));
+    await user.click(await screen.findByLabelText(/Shampoo Anjing/));
+    await user.click(screen.getByRole("button", { name: /Tambahkan/ }));
+    await user.click(screen.getByRole("button", { name: /Simpan faktur/ }));
+
+    await waitFor(() =>
+      expect(purchaseInvoiceService.create).toHaveBeenCalledTimes(1),
+    );
+    expect(
+      asMock(purchaseInvoiceService.create).mock.calls[0][0].supplierInvoiceNumber,
+    ).toBe("");
+  });
+
   it("files a manual invoice with its lines and PPN", async () => {
     const user = userEvent.setup();
-    renderWithAuth(<ManualInvoiceForm />);
+    renderWithAuth(<PurchaseInvoiceForm />);
 
     await user.click(await screen.findByLabelText("Supplier"));
     await user.click(
@@ -2560,10 +3020,14 @@ describe("ManualInvoiceForm", () => {
     expect(asMock(purchaseInvoiceService.create).mock.calls[0][0]).toEqual({
       supplierId: "s1",
       warehouseId: "wh1",
-      invoiceNumber: "INV/2026/X/0007",
+      supplierInvoiceNumber: "INV/2026/X/0007",
       invoiceDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
       taxAmount: "16500",
-      items: [{ productId: "p1", qty: "10", costPerUnit: "15000" }],
+      invoiceDiscount: null,
+      otherCharges: [],
+      items: [
+        { productId: "p1", qty: "10", costPerUnit: "15000", discount: null },
+      ],
     });
     expect(purchaseInvoiceService.update).not.toHaveBeenCalled();
     expect(replace).toHaveBeenCalledWith(
@@ -2574,7 +3038,7 @@ describe("ManualInvoiceForm", () => {
   it("refuses a zero quantity locally", async () => {
     const user = userEvent.setup();
     renderWithAuth(
-      <ManualInvoiceForm invoice={manualDetail({ items: [invoiceItem()] })} />,
+      <PurchaseInvoiceForm invoice={manualDetail({ items: [invoiceItem()] })} />,
     );
 
     const qty = await screen.findByLabelText("Qty Shampoo Anjing");
@@ -2590,7 +3054,7 @@ describe("ManualInvoiceForm", () => {
 
   it("edits through update, keeping each line's id", async () => {
     const user = userEvent.setup();
-    renderWithAuth(<ManualInvoiceForm invoice={manualDetail()} />);
+    renderWithAuth(<PurchaseInvoiceForm invoice={manualDetail()} />);
 
     const qty = await screen.findByLabelText("Qty Shampoo Anjing");
     expect(qty).toHaveValue("10");
@@ -2609,15 +3073,18 @@ describe("ManualInvoiceForm", () => {
     expect(body).toEqual({
       supplierId: "s1",
       warehouseId: "wh1",
-      invoiceNumber: "INV/2026/VIII/0142",
+      supplierInvoiceNumber: "INV/2026/VIII/0142",
       invoiceDate: "2026-08-06",
       taxAmount: "16500",
+      invoiceDiscount: null,
+      otherCharges: [],
       items: [
         {
           invoiceItemId: "ii1",
           productId: "p1",
           qty: "12",
           costPerUnit: "15000",
+          discount: null,
         },
       ],
     });
@@ -2632,7 +3099,7 @@ describe("ManualInvoiceForm", () => {
       new ApiError("Faktur sudah terkunci oleh penerimaan barang", 409),
     );
     const user = userEvent.setup();
-    renderWithAuth(<ManualInvoiceForm invoice={manualDetail()} />);
+    renderWithAuth(<PurchaseInvoiceForm invoice={manualDetail()} />);
 
     await user.click(
       await screen.findByRole("button", { name: /Simpan faktur/ }),
@@ -2694,22 +3161,33 @@ describe("PayablesTable — what a row can be paid", () => {
       ]),
     );
 
+    const user = userEvent.setup();
     renderWithAuth(<PayablesScreen />);
 
     expect(await screen.findByText("barang belum diterima")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Detail" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Bayar" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: /^Aksi / }));
+    expect(
+      await screen.findByRole("menuitem", { name: "Lihat detail" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Bayar" })).toBeNull();
+    expect(
+      screen.getByRole("menuitem", { name: "Buat penerimaan barang" }),
+    ).toHaveAttribute(
+      "href",
+      `/dashboard/purchasing/receipts/new?invoice=${INVOICE_ID}`,
+    );
   });
 
   it("offers Bayar on a linked bill with something payable", async () => {
     asMock(purchaseInvoiceService.list).mockResolvedValue(page([listRow()]));
 
+    const user = userEvent.setup();
     renderWithAuth(<PayablesScreen />);
 
-    expect(await screen.findByRole("link", { name: "Bayar" })).toHaveAttribute(
-      "href",
-      `/dashboard/purchasing/payables/${INVOICE_ID}`,
-    );
+    await user.click(await screen.findByRole("button", { name: /^Aksi / }));
+    expect(
+      await screen.findByRole("menuitem", { name: "Bayar" }),
+    ).toBeInTheDocument();
     expect(screen.queryByText("barang belum diterima")).toBeNull();
   });
 

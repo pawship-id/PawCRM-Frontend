@@ -280,6 +280,8 @@ export interface ProductBatch {
 
   productName: string | null;
   productSku: string | null;
+  /** The packaging barcode, carried on the batch label's QR. */
+  productBarcode?: string | null;
   productUnit: string | null;
   /** Decimal string — the product's selling price, for the shelf label. */
   productSellPrice: string | null;
@@ -966,6 +968,12 @@ export interface ProductListQuery {
    */
   searchBatches?: boolean;
   includeDeleted?: boolean;
+  /**
+   * `"picker"` — the "+ Tambah produk" dialogs' shape: no description, media
+   * or shipping, and no inherited `resolved` block. Those dialogs and the
+   * forms behind them read none of it.
+   */
+  view?: "picker";
   /**
    * Which ordering to page through. A NAME, not a field plus a direction —
    * the API accepts a closed list, so a client cannot ask for an ordering with
@@ -1967,7 +1975,7 @@ export interface ExpiringBatchesResult {
  * Which kind of hand-typed stock document, and through it which account the
  * value lands on.
  *
- * `adjustment` credits 5201 Kerugian Persediaan — goods that vanished, broke, or
+ * `adjustment` credits 5201 Beban Penyesuaian Persediaan — goods that vanished, broke, or
  * were used by the shop. `opening_balance` credits 3101 Modal Disetor —
  * goods a tenant already owned, bought from nobody in this system.
  */

@@ -472,7 +472,7 @@ describe("ProfitLossScreen", () => {
 
   it("reads the last three months, the one on screen last", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Penjualan bersih");
+    await screen.findByText("Total pendapatan");
 
     expect(
       screen.getAllByRole("columnheader").map((cell) => cell.textContent),
@@ -493,27 +493,40 @@ describe("ProfitLossScreen", () => {
    */
   it("never sends a business line to the API", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Penjualan bersih");
+    await screen.findByText("Total pendapatan");
 
     expect(journalEntryService.profitLoss).not.toHaveBeenCalledWith(
       expect.objectContaining({ businessLineId: expect.anything() }),
     );
   });
 
-  it("lays the statement out in the mockup's order", async () => {
+  it("lists every account that moved under its category, in report order", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Penjualan bersih");
+    await screen.findByText("Total pendapatan");
 
-    const labels = rowTexts().map((text) => text.replace(/(Rp|−|—).*$/, ""));
+    // A heading's text is uppercase only through CSS, so compare it as written.
+    const labels = rowTexts().map((text) =>
+      text.replace(/(Rp|\(Rp|—).*$/, "").replace(/^(Pendapatan|HPP|Biaya operasional|Pendapatan \(biaya\) lain-lain)$/, (h) => h.toUpperCase()),
+    );
     const at = (label: string) => labels.findIndex((l) => l.startsWith(label));
 
     const order = [
-      "Penjualan kotor",
-      "Diskon dan potongan",
-      "Penjualan bersih",
+      "PENDAPATAN",
+      "Pendapatan Penjualan",
+      "Diskon Penjualan",
+      "Total pendapatan",
       "HPP",
+      "Harga Pokok Penjualan",
+      "Total HPP",
       "Laba kotor",
+      "BIAYA OPERASIONAL",
+      "Beban Sewa",
       "Total biaya operasional",
+      "Laba usaha",
+      "PENDAPATAN (BIAYA) LAIN-LAIN",
+      "Pendapatan Lain-lain",
+      "Beban Bank",
+      "Pendapatan (biaya) lain-lain, bersih",
       "Laba bersih",
       "Margin kotor",
       "Margin bersih",
@@ -525,10 +538,10 @@ describe("ProfitLossScreen", () => {
 
   it("takes laba kotor and laba bersih from the server's subtotals", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Penjualan bersih");
+    await screen.findByText("Total pendapatan");
 
     const rows = rowTexts();
-    expect(rows.find((t) => t.startsWith("Penjualan bersih"))).toContain(
+    expect(rows.find((t) => t.startsWith("Total pendapatan"))).toContain(
       "Rp 40.000.000",
     );
     expect(rows.find((t) => t.startsWith("Laba kotor"))).toContain(
@@ -542,23 +555,78 @@ describe("ProfitLossScreen", () => {
   });
 
   /**
-   * The mockup draws no rows for pendapatan/biaya lainnya, so none are listed;
-   * laba bersih stays the server's figure, which includes them.
+   * BO, 18 Oktober 2026: laba bersih must be the rows above it added up, so the
+   * lain-lain accounts are drawn like the rest — signed by what they do to
+   * laba, a cost in brackets — and an account that did not move (4102 here) is
+   * not.
    */
-  it("prints beban as a positive cost, and draws no lainnya rows", async () => {
+  it("signs every row by its effect on laba, costs in brackets", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Penjualan bersih");
+    await screen.findByText("Total pendapatan");
 
+    const rows = rowTexts();
     expect(screen.getByText("Beban Sewa").closest("tr")).toHaveTextContent(
-      "Rp 8.000.000",
+      "(Rp 8.000.000)",
     );
-    expect(rowTexts().some((t) => t.startsWith("Pendapatan lainnya"))).toBe(false);
-    expect(rowTexts().some((t) => t.startsWith("Biaya lainnya"))).toBe(false);
+    expect(rows.find((t) => t.startsWith("Total HPP"))).toContain("(Rp 22.000.000)");
+    expect(rows.find((t) => t.startsWith("Laba usaha"))).toContain("Rp 10.000.000");
+    expect(rows.find((t) => t.startsWith("Pendapatan Lain-lain"))).toContain("Rp 1.000.000");
+    expect(rows.find((t) => t.startsWith("Beban Bank"))).toContain("(Rp 400.000)");
+    // 1.000.000 − 400.000, which laba usaha + it = laba bersih 10.600.000.
+    expect(
+      rows.find((t) => t.startsWith("Pendapatan (biaya) lain-lain, bersih")),
+    ).toContain("Rp 600.000");
+    expect(rows.find((t) => t.startsWith("Diskon Penjualan"))).toContain("(Rp 2.000.000)");
+    expect(rows.some((t) => t.startsWith("Penjualan Jasa"))).toBe(false);
+  });
+
+  /**
+   * The case that started this: a biaya lainnya account in CREDIT (5201 after
+   * found stock) raises laba, so it prints as a plain positive rather than as a
+   * negative cost somebody has to subtract twice in their head.
+   */
+  it("prints a cost account in credit as a positive in the lain-lain section", async () => {
+    const foundStock = {
+      ...PROFIT_LOSS,
+      accounts: [
+        ...PROFIT_LOSS.accounts,
+        plAccount("5201", "Beban Penyesuaian Persediaan", "biaya_lainnya", [
+          [GROOMING, "0.0000"],
+          [RETAIL, "0.0000"],
+          [null, "-1500000.0000"],
+        ]),
+      ],
+    };
+    asMock(journalEntryService.profitLoss).mockResolvedValue(foundStock);
+    renderWithAuth(<ProfitLossScreen now={NOW} />);
+    await screen.findByText("Total pendapatan");
+
+    const row = rowTexts().find((t) => t.startsWith("Beban Penyesuaian Persediaan"));
+    expect(row).toContain("Rp 1.500.000");
+    expect(row).not.toContain("(");
+  });
+
+  it("drops the lainnya sections and laba usaha in a month where nothing landed there", async () => {
+    const operatingOnly = {
+      ...PROFIT_LOSS,
+      accounts: PROFIT_LOSS.accounts.filter(
+        (a) =>
+          a.accountCategory !== "pendapatan_lainnya" &&
+          a.accountCategory !== "biaya_lainnya",
+      ),
+    };
+    asMock(journalEntryService.profitLoss).mockResolvedValue(operatingOnly);
+    renderWithAuth(<ProfitLossScreen now={NOW} />);
+    await screen.findByText("Total pendapatan");
+
+    const rows = rowTexts();
+    expect(rows.some((t) => t.startsWith("Laba usaha"))).toBe(false);
+    expect(rows.some((t) => t.startsWith("Pendapatan (biaya) lain-lain"))).toBe(false);
   });
 
   it("labels no change when the months are identical", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Penjualan bersih");
+    await screen.findByText("Total pendapatan");
 
     expect(screen.queryByText(/[▲▼]/)).not.toBeInTheDocument();
   });
@@ -584,20 +652,51 @@ describe("ProfitLossScreen", () => {
       q?.dateFrom === "2026-06-01" ? lastMonth : PROFIT_LOSS,
     );
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Penjualan bersih");
+    await screen.findByText("Total pendapatan");
 
-    const row = screen.getByText("Penjualan bersih").closest("tr")!;
+    const row = screen.getByText("Total pendapatan").closest("tr")!;
     // Revenue falling is bad news.
     expect(within(row).getByText(/▼ 20%/)).toHaveClass("text-red-700");
   });
 
+  /**
+   * HPP prints negative now, so a cost that grows is a FALL in the figure — and
+   * still bad news, without any row saying "a rise is bad" for itself.
+   */
+  it("labels a rising HPP red, as a fall in what it leaves for laba", async () => {
+    const cheaper = {
+      ...PROFIT_LOSS,
+      categories: PROFIT_LOSS.categories.map((c) =>
+        c.accountCategory === "hpp"
+          ? {
+              ...c,
+              total: "17600000.0000",
+              lines: c.lines.map((l) => ({
+                ...l,
+                amount: (Number(l.amount) * 0.8).toFixed(4),
+              })),
+            }
+          : c,
+      ),
+    };
+    // Juni 17,6 jt, Juli 22 jt: HPP up 25%, i.e. (17,6) → (22).
+    asMock(journalEntryService.profitLoss).mockImplementation(async (q) =>
+      q?.dateFrom === "2026-06-01" ? cheaper : PROFIT_LOSS,
+    );
+    renderWithAuth(<ProfitLossScreen now={NOW} />);
+    await screen.findByText("Total pendapatan");
+
+    const row = screen.getByText("Total HPP").closest("tr")!;
+    expect(within(row).getByText(/▼ 25%/)).toHaveClass("text-red-700");
+  });
+
   it("opens each row into its lini in the per-lini view, the unmapped bucket included", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Penjualan bersih");
+    await screen.findByText("Total pendapatan");
 
     await userEvent.click(screen.getByRole("button", { name: "Per lini bisnis" }));
     // Laba bersih opens by default.
-    const names = rowTexts().map((t) => t.replace(/(Rp|−|—).*$/, ""));
+    const names = rowTexts().map((t) => t.replace(/(\(?Rp|—).*$/, ""));
     const at = names.findIndex((t) => t.startsWith("Laba bersih"));
     expect(names.slice(at + 1, at + 4)).toEqual([
       "Grooming",
@@ -608,7 +707,7 @@ describe("ProfitLossScreen", () => {
 
   it("drops a lini's column when the filter picks another", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Penjualan bersih");
+    await screen.findByText("Total pendapatan");
 
     await userEvent.click(screen.getByRole("button", { name: "Lini bisnis" }));
     await userEvent.click(await screen.findByRole("option", { name: "Grooming" }));
@@ -616,7 +715,7 @@ describe("ProfitLossScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: "Per lini bisnis" }));
 
     await waitFor(() => {
-      const names = rowTexts().map((t) => t.replace(/(Rp|−|—).*$/, ""));
+      const names = rowTexts().map((t) => t.replace(/(\(?Rp|—).*$/, ""));
       const at = names.findIndex((t) => t.startsWith("Laba bersih"));
       expect(names.slice(at + 1, at + 2)).toEqual(["Grooming"]);
       expect(names[at + 2]).toMatch(/^Margin kotor/);
@@ -625,7 +724,7 @@ describe("ProfitLossScreen", () => {
 
   it("sends several branches at once when the cabang multi-select picks them", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Penjualan bersih");
+    await screen.findByText("Total pendapatan");
 
     await userEvent.click(screen.getByRole("button", { name: "Cabang" }));
     const options = await screen.findAllByRole("option");
@@ -642,7 +741,7 @@ describe("ProfitLossScreen", () => {
 
   it("exports the statement to Excel", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Penjualan bersih");
+    await screen.findByText("Total pendapatan");
 
     await userEvent.click(screen.getByRole("button", { name: "Ekspor" }));
 
@@ -652,7 +751,7 @@ describe("ProfitLossScreen", () => {
 
   it("steps back a month and reads the three months before it", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
-    await screen.findByText("Penjualan bersih");
+    await screen.findByText("Total pendapatan");
 
     await userEvent.click(screen.getByRole("button", { name: "Bulan sebelumnya" }));
 

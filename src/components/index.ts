@@ -66,6 +66,10 @@ export { ListFooter } from "./ListFooter";
 export { JournalLink } from "./JournalLink";
 export { ConfirmDialog } from "./ConfirmDialog";
 export {
+  BarcodeCameraDialog,
+  type ScanStatus,
+} from "./BarcodeCameraDialog";
+export {
   InternalBatchCodeDisplay,
   SupplierBatchCodeInput,
 } from "./BatchCodeFields";

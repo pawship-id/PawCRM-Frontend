@@ -184,24 +184,22 @@ describe("goodsReceiptService", () => {
     expect(post).toHaveBeenNthCalledWith(2, "/goods-receipts/r2/close", {});
   });
 
-  it("makes a receipt from a manual supplier invoice", async () => {
+  it("makes a receipt from the invoice lines picked, a line once per batch", async () => {
     const post = jest.spyOn(apiClient, "post").mockResolvedValue({} as never);
+    const items = [
+      { invoiceItemId: "ii1", qty: "60", expiryDate: "2027-01-01" },
+      { invoiceItemId: "ii1", qty: "40", expiryDate: "2027-06-01" },
+    ];
 
     await goodsReceiptService.createFromInvoice("pi1", {
       receiptDate: "2026-10-14",
+      items,
     });
-    await goodsReceiptService.createFromInvoice("pi2");
 
-    expect(post).toHaveBeenNthCalledWith(
-      1,
-      "/goods-receipts/from-invoice/pi1",
-      { receiptDate: "2026-10-14" },
-    );
-    expect(post).toHaveBeenNthCalledWith(
-      2,
-      "/goods-receipts/from-invoice/pi2",
-      {},
-    );
+    expect(post).toHaveBeenCalledWith("/goods-receipts/from-invoice/pi1", {
+      receiptDate: "2026-10-14",
+      items,
+    });
   });
 
   it("reads the merged activity of one receipt", async () => {
@@ -230,12 +228,12 @@ describe("goodsReceiptService", () => {
 
     await goodsReceiptService.receive("r1", {
       receivedAt: "2026-10-03T00:00:00.000Z",
-      invoice: { invoiceNumber: "INV/1" },
+      invoice: { supplierInvoiceNumber: "INV/1" },
     });
 
     expect(post).toHaveBeenCalledWith("/goods-receipts/r1/receive", {
       receivedAt: "2026-10-03T00:00:00.000Z",
-      invoice: { invoiceNumber: "INV/1" },
+      invoice: { supplierInvoiceNumber: "INV/1" },
     });
   });
 

@@ -38,6 +38,8 @@ function summary(): CustomerInvoiceListSummary {
     asOf: "2026-09-28T00:00:00.000Z",
     period: PERIOD,
     revenue: figure("12500000.0000", 34),
+    // The laba rugi's Total pendapatan — what this tab's Omzet card shows.
+    ledgerRevenue: { amount: "12500000.0000" },
     collected: figure("9000000.0000", 28),
     outstanding: figure("3500000.0000", 6),
     overdue: figure("1200000.0000", 2),
@@ -157,7 +159,7 @@ describe("SalesSummaryScreen", () => {
 
     // The card and every bar under it move together — one filter, four requests.
     await waitFor(() =>
-      expect(mocked.summary).toHaveBeenLastCalledWith({ period: "today" }),
+      expect(mocked.summary).toHaveBeenLastCalledWith({ period: "today" }, { ledger: true }),
     );
     expect(mocked.revenueBreakdown).toHaveBeenLastCalledWith("customerType", {
       period: "today",
@@ -173,7 +175,7 @@ describe("SalesSummaryScreen", () => {
       expect(mocked.summary).toHaveBeenLastCalledWith({
         branchIds: ["b1"],
         period: "today",
-      }),
+      }, { ledger: true }),
     );
 
     // Two off the default — a cabang and a period that is not Bulan ini.
@@ -184,18 +186,26 @@ describe("SalesSummaryScreen", () => {
       ),
     );
     await waitFor(() =>
-      expect(mocked.summary).toHaveBeenLastCalledWith({ period: "month" }),
+      expect(mocked.summary).toHaveBeenLastCalledWith({ period: "month" }, { ledger: true }),
     );
     expect(screen.queryByRole("button", { name: /Reset filter/ })).toBeNull();
   });
 
-  it("shows the server's omzet, not a sum of rows", async () => {
+  /**
+   * BO, 18 Oktober 2026: omzet "samain ama laba rugi". This tab asks for the
+   * ledger's Total pendapatan and shows it, not the rows' own sum — which
+   * differs once a return or a hand-posted revenue line lands in the period.
+   */
+  it("shows the laba rugi's Total pendapatan as the omzet, and asks for it", async () => {
+    mocked.summary.mockResolvedValue({
+      ...summary(),
+      ledgerRevenue: { amount: "12000000.0000" },
+    });
     renderWithAuth(<SalesSummaryScreen />);
 
-    expect(await screen.findByText("Rp 12.500.000")).toBeInTheDocument();
-    // Twice: the card's caption, and the customer-type row that counted the
-    // same 34 documents.
-    expect(await screen.findAllByText("34 faktur")).toHaveLength(2);
+    const card = (await screen.findByText("sama dengan Laba Rugi")).closest("div")!.parentElement!;
+    expect(card).toHaveTextContent("Rp 12.000.000");
+    expect(mocked.summary).toHaveBeenCalledWith(expect.anything(), { ledger: true });
   });
 
   it("draws all three breakdowns, each naming its own unnamed bucket", async () => {
@@ -213,29 +223,16 @@ describe("SalesSummaryScreen", () => {
 
     // Dropping an unnamed group would make the bars add up to less than the
     // panel's own total with nothing on screen saying why.
-    expect(screen.getByText(/Tanpa kategori/)).toBeInTheDocument();
+    expect(await screen.findByText(/Tanpa kategori/)).toBeInTheDocument();
     expect(screen.getByText(/Belum Dipetakan/)).toBeInTheDocument();
   });
 
-  it("says where each panel's figures come from", async () => {
+  it("draws no source note under any panel", async () => {
     renderWithAuth(<SalesSummaryScreen />);
 
-    // Each note names the master list the field lives on, and links to it — the
-    // whole point being that a reader can go and check the grouping.
-    expect(
-      await screen.findByRole("link", { name: "Produk & Varian" }),
-    ).toHaveAttribute("href", "/dashboard/inventory/products");
-    expect(
-      screen.getByRole("link", { name: "Pengaturan › Lini bisnis" }),
-    ).toHaveAttribute("href", "/dashboard/pengaturan/lini-bisnis");
-    expect(
-      screen.getByRole("link", { name: "Pengaturan › Kategori pelanggan" }),
-    ).toHaveAttribute("href", "/dashboard/pengaturan/tipe-pelanggan");
-    // The two line axes say so; the customer one says where it reads from.
-    expect(screen.getAllByText(/dibaca per baris faktur/)).toHaveLength(2);
-    expect(
-      screen.getByText(/Dibaca dari register hari ini/),
-    ).toBeInTheDocument();
+    await screen.findAllByText(/Total nilai baris/);
+    expect(screen.queryByText(/Dikelompokkan dari/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Produk & Varian" })).not.toBeInTheDocument();
   });
 
   it("reconciles a line-based panel with the omzet, and says the customer one needs no allocation", async () => {
@@ -248,7 +245,7 @@ describe("SalesSummaryScreen", () => {
       ),
     ).toHaveLength(2);
     expect(
-      screen.getByText(/Total Rp 12\.500\.000 — sama dengan omzet periode/),
+      screen.getByText(/Total Rp 12\.500\.000 — dari faktur, setelah diskon dan sebelum PPN/),
     ).toBeInTheDocument();
   });
 
@@ -256,7 +253,8 @@ describe("SalesSummaryScreen", () => {
     renderWithAuth(<SalesSummaryScreen />);
 
     expect(await screen.findAllByText("40 baris")).toHaveLength(2);
-    expect(screen.getAllByText("34 faktur")).toHaveLength(2);
+    // Only the customer-type row: the Omzet card's caption names the laba rugi.
+    expect(screen.getAllByText("34 faktur")).toHaveLength(1);
   });
 
   it("fails one panel at a time, keeping the answers it did get", async () => {
@@ -271,7 +269,7 @@ describe("SalesSummaryScreen", () => {
       await screen.findByText(/Rincian ini tidak bisa dimuat/),
     ).toBeInTheDocument();
     expect(screen.getByText("Rp 12.500.000")).toBeInTheDocument();
-    expect(screen.getByText(/Tanpa kategori/)).toBeInTheDocument();
+    expect(await screen.findByText(/Tanpa kategori/)).toBeInTheDocument();
   });
 
   /**

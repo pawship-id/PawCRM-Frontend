@@ -16,7 +16,7 @@ import { bookingStatusLabel } from "@/features/booking";
 import { MAX_BOOKING_PAGES } from "@/features/booking/listAll";
 import { usePermissions } from "@/features/permissions";
 import { reportService } from "@/services/report.service";
-import { formatMoneyShort, sumDecimals } from "@/utils/decimal";
+import { formatMoney, sumDecimals } from "@/utils/decimal";
 
 import { useBerandaScope } from "./BerandaShell";
 import { BarList, Panel, TileGrid } from "./parts";
@@ -216,11 +216,11 @@ export function BerandaOperasional() {
                         {who.orders}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatMoneyShort(who.value)}
+                        {formatMoney(who.value)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         {readsCommissions && !recap.loading
-                          ? formatMoneyShort(commissionOf.get(who.id) ?? "0")
+                          ? formatMoney(commissionOf.get(who.id) ?? "0")
                           : "—"}
                       </TableCell>
                     </TableRow>
