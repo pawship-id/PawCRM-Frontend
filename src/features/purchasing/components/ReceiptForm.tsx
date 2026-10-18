@@ -537,7 +537,12 @@ function ReceiptFormBody({
    * until a warehouse is named, which is why the picker below only offers
    * "+ Batch baru" then: there is nothing to add to yet.
    */
-  const lots = useWarehouseBatches(effectiveWarehouseId);
+  const lots = useWarehouseBatches(
+    effectiveWarehouseId,
+    // The lines' lots are re-read when products join and when somebody comes
+    // back to the tab, so "sisa" on the lot picker is not the morning's.
+    lines.map((line) => line.productId),
+  );
 
 
   /**

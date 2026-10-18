@@ -67,7 +67,15 @@ export const stockOpnameService = {
    * warehouse's default — the two differ at a shared warehouse, which is the
    * case the field exists for.
    */
-  getById: (id: string) => apiClient.get<Opname>(`/stock-opnames/${id}`),
+  /**
+   * GET /stock-opnames/:id. `fresh` re-reads a DRAFT's system quantities and
+   * recomputes its differences on the server, saving nothing — what an open
+   * sheet asks when somebody comes back to it.
+   */
+  getById: (id: string, options: { fresh?: boolean } = {}) =>
+    apiClient.get<Opname>(`/stock-opnames/${id}`, {
+      query: { fresh: options.fresh || undefined },
+    }),
 
   /**
    * POST /stock-opnames — open a draft (201).
