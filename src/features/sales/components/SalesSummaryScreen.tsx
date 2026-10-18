@@ -67,7 +67,8 @@ export function SalesSummaryScreen() {
     useSalesSummary();
   const options = useReceivableFilterOptions();
 
-  const revenue = summary?.revenue;
+  // The Omzet card's own figure on this tab — the laba rugi's Total pendapatan.
+  const revenue = summary?.ledgerRevenue;
 
   /*
     WHAT "RESET FILTER" COUNTS AND PUTS BACK (12 October 2026, on request) —
@@ -133,7 +134,7 @@ export function SalesSummaryScreen() {
         }
       />
 
-      <InvoiceStatCards summary={summary} failed={summaryFailed} />
+      <InvoiceStatCards summary={summary} failed={summaryFailed} ledger />
 
       <BreakdownPanel
         title="Omzet per kategori produk"
@@ -295,17 +296,19 @@ function BreakdownPanel({
               <p className="mt-3 text-xs text-muted">
                 {data.basis === "invoice" ? (
                   <>
-                    Total {formatMoney(data.total)} — sama dengan omzet periode,
-                    karena kategori pelanggan menempel pada seluruh faktur
-                    sehingga tidak ada yang perlu dibagi.
+                    Total {formatMoney(data.total)} — dari faktur, setelah
+                    diskon dan sebelum PPN, seperti omzet periode. Sama dengan
+                    omzet kecuali ada retur atau pendapatan yang dicatat lewat
+                    jurnal manual, yang tidak menempel pada faktur.
                   </>
                 ) : (
                   <>
                     Total nilai baris {formatMoney(data.total)}
                     {revenue ? ` dari omzet ${formatMoney(revenue)}` : ""} —
-                    selisihnya diskon faktur, biaya lain, dan pajak, yang tidak
-                    menempel pada satu baris. Baris dari kasir ikut dihitung lewat
-                    transaksi kasirnya.
+                    keduanya beda karena nilai baris belum dipotong diskon faktur
+                    dan retur, dan masih termasuk PPN bila harganya sudah
+                    termasuk PPN. Baris dari kasir ikut dihitung lewat transaksi
+                    kasirnya.
                   </>
                 )}
               </p>

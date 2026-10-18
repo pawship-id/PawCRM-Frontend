@@ -7983,7 +7983,13 @@ export interface CustomerInvoiceListSummary {
     fromDate: string | null;
     toDate: string | null;
   } | null;
+  /** Before PPN and ongkir: what the rows put into the laba rugi's pendapatan. */
   revenue: CustomerInvoiceSummaryFigure;
+  /**
+   * The laba rugi's Total pendapatan for the period and cabang, returns and
+   * hand-posted revenue included. Only with `ledger: true`; null otherwise.
+   */
+  ledgerRevenue?: { amount: string } | null;
   collected: CustomerInvoiceSummaryFigure;
   outstanding: CustomerInvoiceSummaryFigure;
   overdue: CustomerInvoiceSummaryFigure;
