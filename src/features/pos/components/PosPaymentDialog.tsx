@@ -12,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { paymentChannelService } from "@/services/paymentChannel.service";
 import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
 import { formatMoney } from "@/utils/decimal";
@@ -24,9 +23,7 @@ import {
 } from "./PaymentChannelPicker";
 import { PosCreditPanel, defaultDueDate } from "./PosCreditPanel";
 import { PaymentLinesList, type DraftPayment } from "./PaymentLinesList";
-
-/** The API's page cap — asking for more is a 400. */
-const FETCH_LIMIT = 100;
+import { cachedTillChannels, loadTillChannels } from "../hooks/tillChannels";
 
 /**
  * What a cashier may TYPE: digits only.
@@ -135,34 +132,40 @@ export function PosPaymentDialog({
 
     let active = true;
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true);
+    // Land on a type the shop actually has, so the first tab is never empty.
+    const show = (items: PaymentChannel[]) => {
+      setChannels(items);
+      const first = items.find((channel) => channel.type === "cash");
+      setActiveRoute(first?.type ?? items[0]?.type ?? "cash");
+    };
+
+    /*
+      DRAWN FROM THE TILL'S CACHE when it has one — fetched when the till
+      opened (tillChannels.ts) — so the dialog is usable the instant it opens.
+      The fetch below still runs and quietly replaces the list, so a channel
+      added mid-shift shows up; the spinner only appears when there is nothing
+      to show yet.
+    */
+    const cached = cachedTillChannels(cart.branchId);
+    if (cached) {
+      show(cached);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError(null);
 
-    paymentChannelService
-      /*
-        `usableFor: "in"` — the till only offers channels money can ARRIVE
-        through. Without it, a bank account a tenant marked pay-out-only would
-        still appear here, and the narrowing would work in one direction only.
-
-        A channel that declares nothing still matches, by its type: every channel
-        written before the field existed is that kind.
-      */
-      .list({
-        isActive: true,
-        usableFor: "in",
-        branchId: cart.branchId,
-        limit: FETCH_LIMIT,
-      })
-      .then((result) => {
+    loadTillChannels(cart.branchId)
+      .then((items) => {
         if (!active) return;
-        setChannels(result.items);
-        // Land on a type the shop actually has, so the first tab is never empty.
-        const first = result.items.find((channel) => channel.type === "cash");
-        setActiveRoute(first?.type ?? result.items[0]?.type ?? "cash");
+        // Only re-pick the tab on the first load: a refresh must not move a
+        // cashier who already tapped QRIS back to Tunai.
+        if (cached) setChannels(items);
+        else show(items);
       })
       .catch(() => {
-        if (active) setError("Metode bayar gagal dimuat. Coba lagi.");
+        if (active && !cached) setError("Metode bayar gagal dimuat. Coba lagi.");
       })
       .finally(() => {
         if (active) setLoading(false);
