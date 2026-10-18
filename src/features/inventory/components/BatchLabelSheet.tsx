@@ -8,6 +8,7 @@ import QRCode from "qrcode";
 import { Alert, Button, Card, FilterPills, Spinner } from "@/components";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { labelPayload } from "@/lib/batchLabel";
 import { productBatchService } from "@/services/productBatch.service";
 import { ApiError } from "@/services/api-error";
 import type { ProductBatch } from "@/types/inventory";
@@ -88,7 +89,7 @@ function Barcode({ value }: { value: string }) {
   return <canvas ref={ref} className="h-11 w-full" />;
 }
 
-/** The same string as a QR, for a phone camera. */
+/** The label as a QR, for a camera — see lib/batchLabel.ts for what it carries. */
 function QrCode({ value }: { value: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
 
@@ -98,7 +99,9 @@ function QrCode({ value }: { value: string }) {
     // Medium correction: enough to survive a scuffed label without making the
     // modules so small that a phone struggles at arm's length.
     void QRCode.toCanvas(ref.current, value, {
-      width: 96,
+      // Larger than a lone lot code needed: the QR now carries SKU, barcode and
+      // the lot (lib/batchLabel.ts), and a denser code needs bigger modules.
+      width: 112,
       margin: 0,
       errorCorrectionLevel: "M",
     }).catch(() => {
@@ -106,7 +109,7 @@ function QrCode({ value }: { value: string }) {
     });
   }, [value]);
 
-  return <canvas ref={ref} className="size-24" />;
+  return <canvas ref={ref} className="size-28" />;
 }
 
 function BatchLabel({
@@ -149,7 +152,20 @@ function BatchLabel({
           </p>
         )}
       </div>
-      {symbol === "qr" && <QrCode value={batch.batchCode} />}
+      {/* THE QR NAMES THE PRODUCT, not only the lot (18 Oct 2026): SKU,
+          barcode, and the lot codes when the lot has an expiry — so the till's
+          camera finds it even after the lot moved warehouse. */}
+      {symbol === "qr" && (
+        <QrCode
+          value={labelPayload({
+            sku: batch.productSku,
+            barcode: batch.productBarcode,
+            batchCode: batch.batchCode,
+            supplierBatchCode: batch.supplierBatchCode,
+            expiryDate: batch.expiryDate,
+          })}
+        />
+      )}
     </div>
   );
 }

@@ -280,6 +280,8 @@ export interface ProductBatch {
 
   productName: string | null;
   productSku: string | null;
+  /** The packaging barcode, carried on the batch label's QR. */
+  productBarcode?: string | null;
   productUnit: string | null;
   /** Decimal string — the product's selling price, for the shelf label. */
   productSellPrice: string | null;

@@ -2412,6 +2412,11 @@ export interface PosCatalogQuery {
   parentId?: string;
   /** The "Layanan" pill sends ["service"]. Absent means both. */
   kinds?: PosItemKind[];
+  /**
+   * `search` came from the camera: a whole code (SKU, barcode, lot) matched
+   * EXACTLY. A batch label's QR is recognised with or without this.
+   */
+  scan?: boolean;
 }
 
 /**

@@ -103,6 +103,7 @@ export const posService = {
         parentId: query.parentId,
         // An array becomes repeated params — see buildUrl in api-client.ts.
         kinds: query.kinds,
+        scan: query.scan,
       },
     }),
 
