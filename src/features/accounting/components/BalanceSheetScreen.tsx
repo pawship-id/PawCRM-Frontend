@@ -218,13 +218,6 @@ export function BalanceSheetScreen({ now }: { now: string }) {
               </TableBody>
             </Table>
           </div>
-
-          <p className="text-xs text-muted">
-            Laba Ditahan tidak punya akun sendiri di daftar akun: PawCRM belum
-            punya proses tutup buku, jadi angkanya dihitung dari seluruh akun
-            pendapatan dikurangi seluruh akun beban sampai tanggal ini. Akun
-            yang belum pernah dipakai posting tidak muncul di sini.
-          </p>
         </div>
       )}
     </div>

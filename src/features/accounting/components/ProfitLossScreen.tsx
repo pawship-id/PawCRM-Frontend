@@ -347,23 +347,6 @@ export function ProfitLossScreen({ now }: { now: string }) {
           </Table>
         </div>
       )}
-
-      <div className="rounded-xl border border-border border-l-[3px] border-l-primary bg-surface px-4 py-3">
-        <p className="text-sm font-bold text-foreground">Cara membaca</p>
-        <p className="mt-0.5 text-xs text-muted">
-          Angka yang berubah {CHANGE_THRESHOLD}% atau lebih dari bulan
-          sebelumnya diberi label di bawahnya: hijau kalau menguntungkan
-          (pendapatan atau laba naik, biaya turun), merah kalau merugikan.
-          Perubahan {CHANGE_BIG}% atau lebih juga diberi warna tipis pada
-          selnya. Tiap angka ditulis sesuai pengaruhnya ke laba: tanpa
-          kurung menambah laba, dalam kurung mengurangi laba, jadi tiap subtotal
-          adalah jumlah baris di atasnya. Laba bersih di sini sama dengan laba bersih di Beranda dan
-          menjadi laba tahun berjalan di Neraca.{" "}
-          {view === "lini"
-            ? "Kategori bertanda Bersama (sewa, utilitas, gaji admin) dibagi ke tiap lini memakai dasar yang diatur di Pengaturan > Keuangan > Lini bisnis. Kategori lain dibebankan langsung ke lini."
-            : "Di versi engineering, tiap angka bisa diklik ke saldo per akun, lalu mutasi jurnal, lalu dokumen sumber."}
-        </p>
-      </div>
     </div>
   );
 }
