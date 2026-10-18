@@ -41,4 +41,9 @@ beforeEach(() => {
   } catch {
     // A test environment without storage is fine; there is nothing to reset.
   }
+  // The product pickers' cache is module state — same reasoning as storage.
+  // Required here, not imported at the top: an import would load the real
+  // product service before a test file's `jest.mock` of it had registered.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("@/features/inventory/hooks/useProductCandidates").clearProductCandidatesCache();
 });

@@ -94,6 +94,7 @@ import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
 import { InvoiceLineVariant } from "./InvoiceLineVariant";
 import { InvoiceLotDialog, type InvoiceLotShare } from "./InvoiceLotDialog";
 import { formatRate } from "./InvoiceItemsTable";
+import { prefetchProductCandidates } from "@/features/inventory/hooks/useProductCandidates";
 
 /**
  * WHY THIS LINE HAS NO PRICE — said under the animal that would answer it
@@ -473,6 +474,11 @@ export function InvoiceCreateForm() {
   );
   /** Whether the "+ Tambah barang atau jasa" dialog is open. */
   const [picking, setPicking] = useState(false);
+  // Fetched as the form opens, so "+ Tambah produk" opens on a list that is
+  // already here instead of a spinner — see prefetchProductCandidates.
+  useEffect(() => {
+    prefetchProductCandidates({});
+  }, []);
   /*
     BOOKINGS ARE SENT AS IDS, not as lines. The server reads each booking's own
     frozen prices, its animal and its groomer — a client that could send those

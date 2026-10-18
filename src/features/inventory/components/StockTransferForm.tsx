@@ -47,6 +47,7 @@ import {
 } from "../utils/transferErrors";
 import { qtyAtWarehouse } from "../utils/ledger";
 import { TransferAddProductsDialog } from "./TransferAddProductsDialog";
+import { prefetchProductCandidates } from "../hooks/useProductCandidates";
 
 /**
  * A row's identity, independent of its product.
@@ -454,6 +455,16 @@ export function StockTransferForm({
   const [notes, setNotes] = useState(transfer?.notes ?? "");
 
   const [picking, setPicking] = useState(false);
+  // Fetched as the form opens, so "+ Tambah produk" opens on a list that is
+  // already here instead of a spinner — see prefetchProductCandidates. Re-asked
+  // for every source warehouse: the list is what THAT shelf holds.
+  useEffect(() => {
+    if (!fromWarehouseId) return;
+    prefetchProductCandidates({
+      inStockAtWarehouse: fromWarehouseId,
+      searchBatches: true,
+    });
+  }, [fromWarehouseId]);
 
   /**
    * Every lot still holding something at the SOURCE warehouse, grouped by

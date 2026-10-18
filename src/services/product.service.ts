@@ -77,6 +77,7 @@ export const productService = {
         inStockAtWarehouse: query.inStockAtWarehouse,
         searchBatches: query.searchBatches,
         includeDeleted: query.includeDeleted,
+        view: query.view,
         sort: query.sort,
       },
     }),

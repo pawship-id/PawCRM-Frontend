@@ -1,7 +1,7 @@
 "use client";
 
 import { SkuText } from "@/components/SkuText";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 
@@ -51,6 +51,7 @@ import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
 import { qtyAtWarehouse } from "../utils/ledger";
 import { AdjustmentAddProductsDialog } from "./AdjustmentAddProductsDialog";
 import { StockEntryKindHint } from "./StockEntryKindHint";
+import { prefetchProductCandidates } from "../hooks/useProductCandidates";
 
 /**
  * A manual stock adjustment — one numbered document, however many products.
@@ -158,6 +159,11 @@ export function StockAdjustmentForm() {
     new Map(),
   );
   const [picking, setPicking] = useState(false);
+  // Fetched as the form opens, so "+ Tambah produk" opens on a list that is
+  // already here instead of a spinner — see prefetchProductCandidates.
+  useEffect(() => {
+    prefetchProductCandidates({});
+  }, []);
 
   /**
    * Which fields the user has actually engaged with.

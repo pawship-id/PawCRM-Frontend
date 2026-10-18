@@ -65,6 +65,7 @@ import {
   UninvoicedReceiptsDialog,
   type ReceiptChoice,
 } from "./UninvoicedReceiptsDialog";
+import { prefetchProductCandidates } from "@/features/inventory/hooks/useProductCandidates";
 
 function today(): string {
   const now = new Date();
@@ -203,6 +204,11 @@ export function PurchaseInvoiceForm({
     })),
   );
   const [picking, setPicking] = useState(false);
+  // Fetched as the form opens, so "+ Tambah produk" opens on a list that is
+  // already here instead of a spinner — see prefetchProductCandidates.
+  useEffect(() => {
+    prefetchProductCandidates({ isConsignment: false });
+  }, []);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 

@@ -73,13 +73,8 @@ export function TransferAddProductsDialog({
         <DialogHeader>
           <DialogTitle>Tambah produk ke transfer ini</DialogTitle>
           <DialogDescription>
-            Cari lewat nama, SKU, atau kode batch (milik kita maupun milik
-            supplier), lalu centang produk yang ikut dipindahkan — boleh
-            beberapa sekaligus. Jumlah dan catatannya diisi di form setelah ini. Yang
-            ditampilkan hanya produk yang <b>ada stoknya di gudang asal</b>;
-            produk ber-batch yang sudah ada di form tetap muncul selama masih
-            ada batch lain yang belum dipakai — satu produk boleh dipindahkan
-            dari beberapa batch sekaligus. Produk tanpa batch hanya sekali.
+            Cari lewat nama, SKU, atau kode batch, lalu centang produk yang
+            mau dipindahkan. Hanya produk yang ada stoknya di gudang asal.
           </DialogDescription>
         </DialogHeader>
 

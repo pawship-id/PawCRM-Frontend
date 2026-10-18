@@ -41,6 +41,7 @@ const EVERY_FILTER: Required<
   inStockAtWarehouse: "wh2",
   searchBatches: true,
   includeDeleted: true,
+  view: "picker",
   sort: "nameAsc",
 };
 

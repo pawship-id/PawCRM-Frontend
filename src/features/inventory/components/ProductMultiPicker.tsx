@@ -165,7 +165,11 @@ export function ProductMultiPicker({
           variant="secondary"
           size="sm"
           onClick={addVisible}
-          disabled={disabled || products.length === 0 || allVisiblePicked}
+          // Not while a search is out: what is on screen may still be the
+          // answer to the previous one.
+          disabled={
+            disabled || loading || products.length === 0 || allVisiblePicked
+          }
         >
           Pilih semua hasil
         </Button>
@@ -182,15 +186,24 @@ export function ProductMultiPicker({
           </Button>
         )}
 
-        <span className="ml-auto text-xs text-muted">
-          <b className="text-foreground">{selected.length}</b> produk dipilih
+        <span className="ml-auto flex items-center gap-2 text-xs text-muted">
+          {/* The list stays put while a search is out — this says it is about
+              to change, without blanking what somebody may be reading. */}
+          {loading && products.length > 0 && (
+            <span className="flex items-center gap-1">
+              <Spinner size={14} /> Mencari…
+            </span>
+          )}
+          <span>
+            <b className="text-foreground">{selected.length}</b> produk dipilih
+          </span>
         </span>
       </div>
 
       {error && <Alert variant="error">{error}</Alert>}
 
       <div className="max-h-72 overflow-y-auto rounded-lg border border-border">
-        {loading && (
+        {loading && products.length === 0 && (
           <div className="flex items-center justify-center gap-2 px-4 py-10 text-sm text-muted">
             <Spinner /> Memuat produk…
           </div>
@@ -225,8 +238,7 @@ export function ProductMultiPicker({
           </p>
         )}
 
-        {!loading &&
-          products.map((product) => {
+        {products.map((product) => {
             const checked = selectedIds.has(product._id);
 
             return (

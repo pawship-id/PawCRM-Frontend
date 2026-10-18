@@ -969,6 +969,12 @@ export interface ProductListQuery {
   searchBatches?: boolean;
   includeDeleted?: boolean;
   /**
+   * `"picker"` — the "+ Tambah produk" dialogs' shape: no description, media
+   * or shipping, and no inherited `resolved` block. Those dialogs and the
+   * forms behind them read none of it.
+   */
+  view?: "picker";
+  /**
    * Which ordering to page through. A NAME, not a field plus a direction —
    * the API accepts a closed list, so a client cannot ask for an ordering with
    * no index behind it. Omitted means `newest`, which is what the API defaults

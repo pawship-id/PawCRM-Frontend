@@ -65,6 +65,7 @@ import {
 import { usePurchaseInvoice } from "../hooks/usePurchaseInvoice";
 import { useReceiptPreview } from "../hooks/useReceiptPreview";
 import { useSupplierOptions } from "../hooks/useSupplierOptions";
+import { prefetchProductCandidates } from "@/features/inventory/hooks/useProductCandidates";
 
 /**
  * The sentinel the batch picker uses for "buat lot baru" — the same one the
@@ -389,6 +390,12 @@ function ReceiptFormBody({
   const [saving, setSaving] = useState(false);
 
   const consignment = purchaseType === "konsinyasi";
+  // Fetched as the form opens, so "+ Tambah produk" opens on a list that is
+  // already here instead of a spinner — see prefetchProductCandidates. Re-asked
+  // when the purchase type flips, since the list is filtered by it.
+  useEffect(() => {
+    prefetchProductCandidates({ isConsignment: consignment });
+  }, [consignment]);
   // The vendor's bill can be filed here only for a buy-outright delivery that
   // has none yet — never on a receipt made FROM an invoice.
   const canFileInvoice = !consignment && source.kind === "create";
