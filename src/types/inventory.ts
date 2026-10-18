@@ -888,6 +888,12 @@ export interface ProductStockRow {
   qty: string;
 }
 
+/** GET /api/products/stock — one product's on-hand rows, by id. */
+export interface ProductStockOf {
+  productId: string;
+  stockByWarehouse: ProductStockRow[];
+}
+
 /** How many whole bundles one warehouse can assemble, and what caps it. */
 export interface BundleAvailabilityRow {
   warehouseId: string;
@@ -1893,6 +1899,8 @@ export interface ProductBatchListQuery {
   page?: number;
   limit?: number;
   productId?: string;
+  /** The lots of these products only — what an open form refreshes. Max 100. */
+  productIds?: string[];
   warehouseId?: string;
   /**
    * WHICH SHOP, rather than which shelf.

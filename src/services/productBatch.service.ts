@@ -46,6 +46,7 @@ export const productBatchService = {
         page: query.page,
         limit: query.limit,
         productId: query.productId,
+        productIds: query.productIds,
         warehouseId: query.warehouseId,
         branchId: query.branchId,
         hasRemaining: query.hasRemaining,

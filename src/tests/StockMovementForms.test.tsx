@@ -492,6 +492,39 @@ describe("StockAdjustmentForm", () => {
     });
   });
 
+  /**
+   * THE SYSTEM FIGURE IS RE-READ, not the one the picker carried. The picker
+   * brought 20; by the time the row is on the sheet the shelf holds 15. A count
+   * of 18 is then +3, and posting −2 off the stale 20 would leave the books at
+   * 13 for a shelf somebody just counted at 18.
+   */
+  it("measures the difference against the stock re-read when the row joined", async () => {
+    const create = mockSheet();
+    jest.spyOn(productService, "stock").mockResolvedValue({
+      items: [
+        {
+          productId: PRODUCT,
+          stockByWarehouse: [{ warehouseId: WAREHOUSE, qty: "15.0000" }],
+        },
+      ],
+    });
+    const user = await renderSheet();
+    await fillHeader(user);
+
+    await user.type(await screen.findByLabelText(/^Stok baru/), "18");
+    await user.click(
+      screen.getByRole("button", { name: /Simpan penyesuaian/ }),
+    );
+
+    await waitFor(() => expect(create).toHaveBeenCalled());
+    expect(create.mock.calls[0][0].lines[0]).toMatchObject({
+      qty: "3.0000",
+      systemQty: "15.0000",
+    });
+    // One read for the lines, not one per product.
+    expect(productService.stock).toHaveBeenCalledTimes(1);
+  });
+
   /** Goods leaving carry no new cost — they are drawn at the running average. */
   it("asks for a purchase price only on a row that grows", async () => {
     mockSheet();
@@ -1525,6 +1558,33 @@ describe("StockTransferForm", () => {
    * that caused it. Blocking the submit is what stops the user discovering it
    * after filling in twelve rows.
    */
+  /**
+   * "TERSEDIA" IS RE-READ WHEN THE ROW JOINS. The picker's answer said 20; the
+   * shelf now holds 5, and the row warns against 5 — before Simpan, not as a
+   * refusal after it.
+   */
+  it("warns against the stock re-read when the row joined, not the picker's", async () => {
+    mockLookups();
+    jest.spyOn(productService, "stock").mockResolvedValue({
+      items: [
+        {
+          productId: PRODUCT,
+          stockByWarehouse: [{ warehouseId: WAREHOUSE, qty: "5.0000" }],
+        },
+      ],
+    });
+
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    render(<StockTransferForm />);
+
+    await addProducts(user);
+    await user.type(await screen.findByLabelText(/^Jumlah/), "6");
+
+    expect(
+      await screen.findByText(/Melebihi stok — tersedia 5/),
+    ).toBeInTheDocument();
+  });
+
   it("blocks a quantity larger than the source warehouse holds", async () => {
     // The fixture holds 20 at the source warehouse.
     const { transferCreate: create, preview } = mockLookups();

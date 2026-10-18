@@ -38,6 +38,7 @@ import {
   toMinor,
 } from "@/utils/decimal";
 
+import { useLiveStock } from "../hooks/useLiveStock";
 import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
 import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
 import { newIdempotencyKey } from "../utils/idempotency";
@@ -474,7 +475,15 @@ export function StockTransferForm({
    * different boxes, and offering them here would name a lot the source cannot
    * give up.
    */
-  const loadedLots = useWarehouseBatches(fromWarehouseId);
+  /*
+    KEPT CURRENT WHILE THE FORM IS OPEN — the lines' stock and their lots are
+    re-read when products join and when somebody comes back to the tab, one
+    request each for every line, so "Tersedia" is not the figure the picker
+    happened to carry minutes ago.
+  */
+  const lineProductIds = lines.map((line) => line.productId);
+  const liveStock = useLiveStock(lineProductIds);
+  const loadedLots = useWarehouseBatches(fromWarehouseId, lineProductIds);
 
   /**
    * WHAT THIS TRANSFER ITSELF HAS TAKEN, by product and by lot — only while the
@@ -780,7 +789,10 @@ export function StockTransferForm({
 
     // PLUS what this very transfer has taken off the shelf — see `returning`.
     return sumDecimals([
-      qtyAtWarehouse(product.stockByWarehouse, fromWarehouseId),
+      qtyAtWarehouse(
+        liveStock.rowsOf(line.productId) ?? product.stockByWarehouse,
+        fromWarehouseId,
+      ),
       returning.byProduct.get(line.productId) ?? "0",
     ]);
   }
@@ -819,7 +831,7 @@ export function StockTransferForm({
     return found;
     // `onHandOf` reads all of these, and is redefined every render by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lines, productById, fromWarehouseId, lots.byProduct]);
+  }, [lines, productById, fromWarehouseId, lots.byProduct, liveStock.rowsOf]);
 
   /**
    * The lot-tracked lines that have not named a lot yet, by line key.

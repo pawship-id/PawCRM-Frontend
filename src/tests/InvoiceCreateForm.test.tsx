@@ -113,6 +113,18 @@ function mockLookups(overrides: { warehouses?: unknown[] } = {}) {
     ...PRODUCT,
     stockByWarehouse: [{ warehouseId: "wh1", qty: "10.0000" }],
   } as never);
+  // The same figure through the batch read the form now uses — one request for
+  // every line, never one `getById` per product.
+  jest.spyOn(productService, "stock").mockImplementation(
+    async (productIds: string[]) =>
+      ({
+        items: productIds.map((productId) => ({
+          productId,
+          stockByWarehouse:
+            productId === "p1" ? [{ warehouseId: "wh1", qty: "10.0000" }] : [],
+        })),
+      }) as never,
+  );
   jest
     .spyOn(serviceService, "list")
     .mockResolvedValue(page([SERVICE]) as never);
@@ -1599,7 +1611,7 @@ describe("stock under a product line", () => {
     expect(
       await within(productRow()).findByText("Stok 10"),
     ).toBeInTheDocument();
-    expect(productService.getById).toHaveBeenCalledWith("p1");
+    expect(productService.stock).toHaveBeenCalledWith(["p1"]);
   });
 
   it("asks for a warehouse before it can say", async () => {
@@ -1639,7 +1651,7 @@ describe("stock under a product line", () => {
     await pick(/^Gudang$/i, /Gudang Pusat Bersama/);
 
     expect(within(productRow()).getByText("Stok 0")).toBeInTheDocument();
-    expect(productService.getById).toHaveBeenCalledTimes(1);
+    expect(productService.stock).toHaveBeenCalledTimes(1);
   });
 });
 
