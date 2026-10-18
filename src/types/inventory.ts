@@ -1967,7 +1967,7 @@ export interface ExpiringBatchesResult {
  * Which kind of hand-typed stock document, and through it which account the
  * value lands on.
  *
- * `adjustment` credits 5201 Kerugian Persediaan — goods that vanished, broke, or
+ * `adjustment` credits 5201 Beban Penyesuaian Persediaan — goods that vanished, broke, or
  * were used by the shop. `opening_balance` credits 3101 Modal Disetor —
  * goods a tenant already owned, bought from nobody in this system.
  */

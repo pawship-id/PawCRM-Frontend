@@ -1173,7 +1173,7 @@ describe("OpnameSheet", () => {
         {
           accountId: "a1",
           accountCode: "5201",
-          accountName: "Kerugian Persediaan",
+          accountName: "Beban Penyesuaian Persediaan",
           debit: "30000.0000",
           credit: null,
         },

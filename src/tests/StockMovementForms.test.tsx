@@ -181,7 +181,7 @@ function previewOf(
     journal: [
       {
         accountCode: "5201",
-        accountName: "Kerugian Persediaan",
+        accountName: "Beban Penyesuaian Persediaan",
         debit: "800000.0000",
         credit: null,
       },
@@ -1726,7 +1726,7 @@ describe("JournalPreview", () => {
  * OPENING STOCK — the screen whose whole reason for existing is the ACCOUNT it
  * posts to. Its quantities are the same ones an adjustment would write; what
  * differs is that they land on 3101 Modal Disetor instead of on 5201
- * Kerugian Persediaan, which is the difference between a shop's day-one
+ * Beban Penyesuaian Persediaan, which is the difference between a shop's day-one
  * inventory and a shop that appears to have earned a profit selling nothing.
  *
  * Everything asserted here is a rule the browser owns. The one that matters
