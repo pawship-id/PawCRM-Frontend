@@ -88,6 +88,11 @@ function keyOf(filters: ReturnType<typeof normalise>): string {
   ]);
 }
 
+/** Younger than `ms` — asked again only once it is not. */
+function isFresh(entry: { at: number }, ms: number): boolean {
+  return Date.now() - entry.at < ms;
+}
+
 function readCache(key: string): Entry | null {
   const hit = cache.get(key);
   if (!hit) return null;
@@ -141,9 +146,95 @@ function fetchCandidates(
   return request;
 }
 
+/*
+  THE INDEX — every product a picker may offer, under its filters, held in the
+  browser so a search is answered here instead of by a request per keystroke.
+
+  Keyed by the filters WITHOUT the search: one index answers every word typed
+  into that picker. Loaded as a form opens (prefetchProductCandidates), shown
+  however old it is, and re-read behind the dialog once it is older than
+  INDEX_FRESH_MS. A list cut at the server's cap (`complete: false`) is not
+  searched here at all — a word matching only what was cut off would read as
+  "tidak ada" — and the server search below takes over, as before the index.
+*/
+const INDEX_FRESH_MS = 60 * 1000;
+const INDEX_KEEP_MS = 30 * 60 * 1000;
+
+interface IndexEntry {
+  products: Product[];
+  complete: boolean;
+  at: number;
+}
+
+const indexCache = new Map<string, IndexEntry>();
+const indexInflight = new Map<string, Promise<IndexEntry>>();
+
+function indexKeyOf(filters: ReturnType<typeof normalise>): string {
+  return keyOf({ ...filters, search: "" });
+}
+
+function readIndex(key: string): IndexEntry | null {
+  const hit = indexCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > INDEX_KEEP_MS) {
+    indexCache.delete(key);
+    return null;
+  }
+  return hit;
+}
+
+function loadIndex(
+  filters: ReturnType<typeof normalise>,
+  key: string,
+): Promise<IndexEntry> {
+  const pending = indexInflight.get(key);
+  if (pending) return pending;
+
+  const request = productService
+    .list({
+      holdsStock: true,
+      isActive: true,
+      categoryId: filters.categoryId || undefined,
+      neverMovedInWarehouse: filters.neverMovedInWarehouse || undefined,
+      inStockAtWarehouse: filters.inStockAtWarehouse || undefined,
+      isConsignment: filters.isConsignment,
+      view: "index",
+    })
+    .then((result) => {
+      const entry = {
+        products: result.items,
+        complete: result.pagination.total <= result.items.length,
+        at: Date.now(),
+      };
+      indexCache.set(key, entry);
+      return entry;
+    })
+    .finally(() => {
+      indexInflight.delete(key);
+    });
+
+  indexInflight.set(key, request);
+  return request;
+}
+
 /**
- * Fetches a picker's opening list BEFORE its dialog exists, so the dialog
- * draws it the moment it opens. Called by every form with a "+ Tambah produk"
+ * The server's own match, in the browser: a case-insensitive substring of the
+ * name or the SKU (utils/escapeRegex on the API — the term is literal there
+ * too). Order is the index's, which is the server's newest-first.
+ */
+function matchLocally(products: Product[], search: string): Product[] {
+  if (search === "") return products;
+  const term = search.toLowerCase();
+  return products.filter(
+    (product) =>
+      product.name.toLowerCase().includes(term) ||
+      (product.sku ?? "").toLowerCase().includes(term),
+  );
+}
+
+/**
+ * Loads a picker's INDEX before its dialog exists, so the dialog draws its
+ * list the moment it opens and answers every search without a request. Called by every form with a "+ Tambah produk"
  * button, as the form mounts and whenever the filter it will open with changes
  * (the source warehouse of a transfer, say).
  *
@@ -153,25 +244,30 @@ function fetchCandidates(
  */
 export function prefetchProductCandidates(filters: ProductCandidateFilters) {
   const normalised = normalise(filters);
-  fetchCandidates(normalised, keyOf(normalised)).catch(() => {});
+  loadIndex(normalised, indexKeyOf(normalised)).catch(() => {});
 }
 
 /** Forgets every cached answer. Tests call it between cases. */
 export function clearProductCandidatesCache() {
   cache.clear();
   inflight.clear();
+  indexCache.clear();
+  indexInflight.clear();
 }
 
 /**
  * The products a stock DOCUMENT may be built over — a count sheet, a transfer —
  * behind ProductMultiPicker.
  *
- * SEARCHED ON THE SERVER, NOT FILTERED IN THE BROWSER. A picker that loaded the
- * whole catalogue to filter it locally is fine at fifty products and a hang at
- * five thousand — and a tenant with five thousand is exactly the one who never
- * wants the whole warehouse on one sheet.
+ * SEARCHED IN THE BROWSER, against the index (above), decided 18 October 2026:
+ * a request per word cost a second per keystroke on the production server, and
+ * matching four thousand names in memory costs under a millisecond. The index
+ * is lean rows and stops at the server's cap; past it, or before it has
+ * loaded, the search goes to the server exactly as it used to. Lot codes are
+ * not in the index — the transfer picker's `searchBatches` still asks the
+ * server, and what it finds is added under the local matches.
  *
- * CACHED, AND SHOWN BEFORE IT IS REFRESHED. An answer this session already has
+ * THE SERVER PATH IS CACHED, AND SHOWN BEFORE IT IS REFRESHED. An answer this session already has
  * is drawn at once — the prefetch a form fires as it opens, or a search typed
  * before — and asked again behind it only once it is older than FRESH_MS. The
  * debounce applies to typing alone: an empty search box is not something
@@ -245,6 +341,41 @@ export function useProductCandidates(
     searchBatches,
   });
   const key = keyOf(filters);
+  const indexKey = indexKeyOf(filters);
+
+  /*
+    THE INDEX, read during render like the cache below. `indexTick` only
+    exists to re-render once a load lands; the entry itself is the module's.
+  */
+  const [, setIndexTick] = useState(0);
+  const index = readIndex(indexKey);
+  const local = index?.complete ? index : null;
+  // Not memoised: a pass over a few thousand names is well under a
+  // millisecond, and the render it would save is the keystroke that changed it.
+  const localMatches = local ? matchLocally(local.products, filters.search) : null;
+  // The server is still asked for what the index cannot answer: everything,
+  // without one; lot codes, with one.
+  const needsServer =
+    !local || (filters.searchBatches && filters.search !== "");
+
+  useEffect(() => {
+    let active = true;
+    const cached = readIndex(indexKey);
+    if (cached && isFresh(cached, INDEX_FRESH_MS)) return;
+
+    loadIndex(filters, indexKey)
+      .then(() => {
+        if (active) setIndexTick((tick) => tick + 1);
+      })
+      // Silent: without an index the picker searches on the server.
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+    // `indexKey` is `filters` without the search, serialised.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indexKey]);
 
   /*
     WHAT IS SHOWN IS WORKED OUT DURING RENDER, not copied into state by the
@@ -267,10 +398,12 @@ export function useProductCandidates(
   const error = settled?.error ?? null;
 
   useEffect(() => {
+    if (!needsServer) return;
+
     let active = true;
     const cached = readCache(key);
 
-    if (cached && Date.now() - cached.at < FRESH_MS) return;
+    if (cached && isFresh(cached, FRESH_MS)) return;
 
     const run = () => {
       fetchCandidates(filters, key)
@@ -315,7 +448,29 @@ export function useProductCandidates(
     // `key` is `filters`, serialised: listing the object would re-run every
     // render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, needsServer]);
+
+  if (localMatches) {
+    /*
+      LOCAL MATCHES FIRST, at once; lot-code matches the server found are added
+      under them when they arrive, minus any product already listed.
+    */
+    const server = needsServer ? (settled ?? hit) : null;
+    const listed = new Set(localMatches.map((product) => product._id));
+    const extra = server
+      ? server.products.filter((product) => !listed.has(product._id))
+      : [];
+    const products = [...localMatches.slice(0, PAGE_LIMIT), ...extra];
+    const total = localMatches.length + extra.length;
+
+    return {
+      products,
+      total,
+      truncated: total > products.length,
+      loading: needsServer && !server,
+      error: null,
+    };
+  }
 
   return {
     products: shown.products,

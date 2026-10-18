@@ -600,10 +600,12 @@ describe("InvoiceEditor — choices and zone", () => {
 
 describe("InvoiceEditor — adding lines, as on Faktur baru (13 October 2026)", () => {
   it("adds a product found on the server through the dialog, priced from it", async () => {
+    // Past the lookups' first hundred: the dialog's index holds the whole
+    // eligible list (and so does the server search it falls back to).
     asMock(productService.list).mockImplementation(
-      async (query: { search?: string } = {}) =>
+      async (query: { search?: string; view?: string } = {}) =>
         page(
-          query.search === "Snack"
+          query.view === "index" || query.search === "Snack"
             ? [{ _id: "p77", name: "Snack Kucing", sku: "SNK", sellPrice: "25000" }]
             : [],
         ),

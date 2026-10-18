@@ -978,8 +978,12 @@ export interface ProductListQuery {
    * `"picker"` — the "+ Tambah produk" dialogs' shape: no description, media
    * or shipping, and no inherited `resolved` block. Those dialogs and the
    * forms behind them read none of it.
+   *
+   * `"index"` — EVERY match in one answer (the server caps it at 10,000; a cut
+   * list says so through `total`), in the few fields the dialogs and their
+   * forms read, so the dialog can search in the browser. Ignores page/limit.
    */
-  view?: "picker";
+  view?: "picker" | "index";
   /**
    * Which ordering to page through. A NAME, not a field plus a direction —
    * the API accepts a closed list, so a client cannot ask for an ordering with
