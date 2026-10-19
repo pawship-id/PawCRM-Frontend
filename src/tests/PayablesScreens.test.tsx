@@ -456,6 +456,31 @@ beforeEach(() => {
 /* ------------------------------------------------------------------- list */
 
 describe("PayablesScreen", () => {
+  // "Pembelian periode" is real on Faktur too (19 October 2026): this month's
+  // billed value off `/summary`, beside the whole-book `/outstanding` figures.
+  it("fills Pembelian periode with this month's billed value", async () => {
+    renderWithAuth(<PayablesScreen />);
+
+    expect(await screen.findByText("Rp 26.400.000")).toBeInTheDocument();
+    expect(screen.getByText("9 faktur · bulan ini")).toBeInTheDocument();
+    expect(screen.queryByText("Segera")).not.toBeInTheDocument();
+    expect(purchaseInvoiceService.summary).toHaveBeenCalledWith({
+      period: "month",
+    });
+  });
+
+  it("says the Pembelian periode figure failed rather than showing zero", async () => {
+    asMock(purchaseInvoiceService.summary).mockRejectedValue(new Error("down"));
+    renderWithAuth(<PayablesScreen />);
+
+    const card = (await screen.findByText("Pembelian periode")).closest(
+      "div",
+    )!.parentElement!;
+    await waitFor(() =>
+      expect(within(card).getByText("gagal dimuat")).toBeInTheDocument(),
+    );
+  });
+
   it("opens on the outstanding view, asked of the server", async () => {
     // NOT "all". A payables screen is opened to answer "what do we owe" —
     // settled bills are history, and leading with them buries the rows that
@@ -567,6 +592,7 @@ describe("PayablesScreen", () => {
    * reaching into the other.
    */
   it("orders by deadline without disturbing the view", async () => {
+    asMock(purchaseInvoiceService.list).mockResolvedValue(page([listRow()]));
     const user = userEvent.setup();
     renderWithAuth(<PayablesScreen />);
 
@@ -575,11 +601,9 @@ describe("PayablesScreen", () => {
     const panel = await openFilters(user);
     await user.click(within(panel).getByLabelText("Filter status"));
     await user.click(await screen.findByRole("option", { name: "Jatuh tempo" }));
-    await user.click(within(panel).getByLabelText("Urutkan"));
-    await user.click(
-      await screen.findByRole("option", { name: "Jatuh tempo terdekat" }),
-    );
     await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+    // The deadline ordering is the Jatuh tempo header now (19 October 2026).
+    await user.click(await screen.findByRole("button", { name: "Jatuh tempo" }));
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
@@ -627,19 +651,17 @@ describe("PayablesScreen", () => {
    * Supplier or Cabang.
    */
   it("counts the view but not the ordering in the filter badge", async () => {
+    asMock(purchaseInvoiceService.list).mockResolvedValue(page([listRow()]));
     const user = userEvent.setup();
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
 
-    const panel = await openFilters(user);
-    await user.click(within(panel).getByLabelText("Urutkan"));
-    await user.click(await screen.findByRole("option", { name: "Terlama" }));
-    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+    await user.click(await screen.findByRole("button", { name: "Total" }));
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
-      expect(calls[calls.length - 1][0]).toMatchObject({ sort: "oldest" });
+      expect(calls[calls.length - 1][0]).toMatchObject({ sort: "totalDesc" });
     });
     expect(screen.getByRole("button", { name: "Filter" })).not.toHaveTextContent(
       "(",
@@ -1392,8 +1414,9 @@ describe("InvoiceDetail", () => {
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
     const dialog = await openPaymentDialog(user);
 
-    // The panel and the ceiling are what has ARRIVED, not the whole bill.
-    expect(dialog.getByText("Maksimal Rp 66.600")).toBeInTheDocument();
+    // The ceiling is what has ARRIVED, not the whole bill. No "Maksimal Rp …"
+    // line under the amount any more (BO, 20 October 2026) — Lunasi fills it.
+    expect(dialog.queryByText(/Maksimal Rp/)).not.toBeInTheDocument();
     await user.click(dialog.getByRole("button", { name: "Lunasi" }));
     expect(dialog.getByLabelText("Jumlah dibayar")).toHaveValue("66600");
 
@@ -3148,6 +3171,113 @@ describe("EditInvoiceScreen", () => {
   });
 });
 
+/**
+ * HEADER SORTING (BO, 19 October 2026): Faktur, Jatuh tempo, Total, Dibayar
+ * and Sisa sort from their headers on the server. First click: A / soonest
+ * first for Faktur and Jatuh tempo, largest first for the three amounts.
+ */
+describe("PayablesTable — header sorting", () => {
+  async function renderList() {
+    asMock(purchaseInvoiceService.list).mockResolvedValue(page([listRow()]));
+    const user = userEvent.setup();
+    renderWithAuth(<PayablesScreen />);
+    await screen.findByRole("button", { name: /^Aksi / });
+    return user;
+  }
+
+  const lastSort = () =>
+    asMock(purchaseInvoiceService.list).mock.calls.at(-1)?.[0]?.sort;
+
+  it("opens newest first, with no sortable header claiming it", async () => {
+    await renderList();
+
+    expect(lastSort()).toBe("newest");
+    for (const name of ["Faktur", "Jatuh tempo", "Total", "Dibayar", "Sisa"]) {
+      expect(screen.getByRole("columnheader", { name })).toHaveAttribute(
+        "aria-sort",
+        "none",
+      );
+    }
+  });
+
+  it.each([
+    ["Faktur", "numberAsc"],
+    ["Jatuh tempo", "dueSoonest"],
+    ["Total", "totalDesc"],
+    ["Dibayar", "paidDesc"],
+    ["Sisa", "outstandingDesc"],
+  ])("asks the server to sort by %s", async (header, sort) => {
+    const user = await renderList();
+
+    await user.click(screen.getByRole("button", { name: header }));
+
+    await waitFor(() => expect(lastSort()).toBe(sort));
+  });
+
+  it("flips a column on the second click", async () => {
+    const user = await renderList();
+
+    await user.click(screen.getByRole("button", { name: "Sisa" }));
+    await waitFor(() => expect(lastSort()).toBe("outstandingDesc"));
+    await user.click(screen.getByRole("button", { name: "Sisa" }));
+
+    await waitFor(() => expect(lastSort()).toBe("outstandingAsc"));
+    expect(screen.getByRole("columnheader", { name: "Sisa" })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+  });
+
+  it("leaves Supplier, Cabang, Gudang, Status and Aksi plain", async () => {
+    await renderList();
+
+    for (const name of ["Supplier", "Cabang", "Gudang", "Status", "Aksi"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+  });
+
+  /** Urutkan left the panel when the headers took over. */
+  it("offers no Urutkan in the filter panel", async () => {
+    const user = await renderList();
+    const panel = await openFilters(user);
+
+    expect(within(panel).getByLabelText("Filter status")).toBeVisible();
+    expect(within(panel).queryByLabelText("Urutkan")).toBeNull();
+  });
+
+  /**
+   * A Reset inside a filter panel must not silently re-sort a table somebody
+   * ordered from the headers it can see.
+   */
+  it("keeps the header ordering through the panel's Reset", async () => {
+    const user = await renderList();
+
+    await user.click(screen.getByRole("button", { name: "Dibayar" }));
+    await waitFor(() => expect(lastSort()).toBe("paidDesc"));
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Filter status"));
+    await user.click(await screen.findByRole("option", { name: "Lunas" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).toMatchObject({ status: "paid" });
+    });
+
+    const again = await openFilters(user);
+    await user.click(within(again).getByRole("button", { name: "Reset" }));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).toMatchObject({
+        outstanding: true,
+        sort: "paidDesc",
+      });
+    });
+  });
+});
+
 describe("PayablesTable — what a row can be paid", () => {
   it("marks a manual bill whose goods have not arrived, and offers no Bayar on it", async () => {
     asMock(purchaseInvoiceService.list).mockResolvedValue(
@@ -3167,7 +3297,7 @@ describe("PayablesTable — what a row can be paid", () => {
     expect(await screen.findByText("barang belum diterima")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^Aksi / }));
     expect(
-      await screen.findByRole("menuitem", { name: "Lihat detail" }),
+      await screen.findByRole("menuitem", { name: "Detail" }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Bayar" })).toBeNull();
     expect(

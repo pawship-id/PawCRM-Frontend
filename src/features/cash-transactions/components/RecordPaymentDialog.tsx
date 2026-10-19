@@ -54,10 +54,27 @@ export interface PaymentSubmission {
  * The words that differ between money ARRIVING (a customer paying a receivable)
  * and money LEAVING (paying a supplier). Everything else is one form.
  */
-const COPY = {
+const COPY: Record<
+  "in" | "out",
+  {
+    amount: string;
+    date: string;
+    /** Under the date; omitted where BO asked for none. */
+    dateHint?: string;
+    /** Whether "Maksimal Rp …" sits under the amount. */
+    ceilingHint: boolean;
+    account: string;
+    accountPlaceholder: string;
+    /** Under the account picker; omitted where BO asked for none. */
+    accountHint?: string;
+    accountMissing: string;
+    refHint: string;
+  }
+> = {
   in: {
     amount: "Jumlah diterima",
     date: "Tanggal terima",
+    ceilingHint: true,
     dateHint: "Tanggal uang benar-benar masuk — ini yang dipakai jurnalnya.",
     account: "Masuk ke",
     accountPlaceholder: "Pilih akun kas atau bank",
@@ -69,15 +86,16 @@ const COPY = {
   out: {
     amount: "Jumlah dibayar",
     date: "Tanggal bayar",
-    dateHint: "Tanggal uang benar-benar keluar — ini yang dipakai jurnalnya.",
+    // No hint under the date, nor "Maksimal Rp …" under the amount (BO, 20
+    // October 2026). The ceiling still refuses an over-payment on submit.
+    ceilingHint: false,
     account: "Keluar dari",
     accountPlaceholder: "Pilih akun kas atau bank",
-    accountHint:
-      "Akun ini yang dikredit di jurnal, jadi rekonsiliasinya bisa ditelusuri per akun.",
+    // No hint under "Keluar dari" (BO, 20 October 2026).
     accountMissing: "Pilih akun kas atau bank sumber pembayarannya.",
     refHint: "Opsional. Nomor transfer, nomor giro, atau id transaksi QRIS.",
   },
-} as const;
+};
 
 /**
  * RECORD MONEY AGAINST ONE DOCUMENT — a receivable paid in, or a supplier bill
@@ -238,8 +256,12 @@ export function PaymentForm({
           onChange={(event) => setAmount(event.target.value)}
           hint={
             isDecimal(amount) && (toMinor(amount) ?? 0n) > 0n
-              ? `${formatMoney(amount)} · maksimal ${maxLabel}`
-              : `Maksimal ${maxLabel}`
+              ? copy.ceilingHint
+                ? `${formatMoney(amount)} · maksimal ${maxLabel}`
+                : formatMoney(amount)
+              : copy.ceilingHint
+                ? `Maksimal ${maxLabel}`
+                : undefined
           }
         />
 
@@ -279,7 +301,9 @@ export function PaymentForm({
             </SelectContent>
           </Select>
         )}
-        <p className="text-xs text-muted">{copy.accountHint}</p>
+        {copy.accountHint && (
+          <p className="text-xs text-muted">{copy.accountHint}</p>
+        )}
       </div>
 
       <TextField

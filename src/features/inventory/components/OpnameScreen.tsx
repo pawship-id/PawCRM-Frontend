@@ -12,6 +12,7 @@ import {
   Pagination,
   type DataTableColumn,
   type SortOptions,
+  RowLinkMenu,
 } from "@/components";
 import { usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
@@ -31,7 +32,6 @@ import {
 import { OpnameStartCard } from "./OpnameStartCard";
 import { OpnameStatusBadge } from "./OpnameStatusBadge";
 import { OpnameToolbar } from "./OpnameToolbar";
-import { RowLinkMenu } from "./RowLinkMenu";
 
 /**
  * The stock-count list: sheets in progress, and sheets already final.

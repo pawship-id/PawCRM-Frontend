@@ -9,6 +9,7 @@ import {
   Pagination,
   type DataTableColumn,
   type SortOptions,
+  RowLinkMenu,
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -21,7 +22,6 @@ import {
 import type { BatchSort, ProductBatch } from "@/types/inventory";
 
 import { ExpiryBadge } from "./ExpiryBadge";
-import { RowLinkMenu } from "./RowLinkMenu";
 
 /**
  * Every lot the current filters match, in the order the API returns them.

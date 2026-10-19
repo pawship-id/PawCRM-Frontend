@@ -483,28 +483,99 @@ describe("ReceiptsScreen", () => {
     const panel = await openFilters(user);
 
     expect(within(panel).queryByLabelText(/terhapus/i)).toBeNull();
-    // The fields that DO exist, so the negative above is read against a panel
-    // that actually rendered rather than one that failed to open.
-    expect(within(panel).getByLabelText("Urutkan")).toBeInTheDocument();
+    // The field that DOES exist, so the negative above is read against a
+    // panel that actually rendered rather than one that failed to open.
     expect(within(panel).getByLabelText("Filter supplier")).toBeInTheDocument();
   });
 
-  it("orders by the ordering the panel was left on", async () => {
+  /**
+   * HEADER SORTING (BO, 19 October 2026): the list sorts from its column
+   * headers on the server. First click: A first for Nomor, newest / largest
+   * first for Tanggal, Item and Nilai.
+   */
+  describe("header sorting", () => {
+    async function renderList() {
+      const user = userEvent.setup();
+      renderWithAuth(<ReceiptsScreen />);
+      await screen.findAllByText("GR-260806-001");
+      return user;
+    }
+
+    const lastSort = () =>
+      asMock(goodsReceiptService.list).mock.calls.at(-1)?.[0]?.sort;
+
+    it("opens on the newest first, marked on the Tanggal header", async () => {
+      await renderList();
+
+      expect(lastSort()).toBe("newest");
+      expect(
+        screen.getByRole("columnheader", { name: "Tanggal" }),
+      ).toHaveAttribute("aria-sort", "descending");
+    });
+
+    it.each([
+      ["Nomor", "numberAsc"],
+      ["Tanggal", "oldest"],
+      ["Item", "itemCountDesc"],
+      ["Nilai", "valueDesc"],
+    ])("asks the server to sort by %s", async (header, sort) => {
+      const user = await renderList();
+
+      await user.click(screen.getByRole("button", { name: header }));
+
+      await waitFor(() => expect(lastSort()).toBe(sort));
+    });
+
+    it("flips a column on the second click", async () => {
+      const user = await renderList();
+
+      await user.click(screen.getByRole("button", { name: "Nilai" }));
+      await waitFor(() => expect(lastSort()).toBe("valueDesc"));
+      await user.click(screen.getByRole("button", { name: "Nilai" }));
+
+      await waitFor(() => expect(lastSort()).toBe("valueAsc"));
+    });
+
+    it("leaves Supplier, Cabang, Gudang, Jenis, Status, Faktur and Aksi plain", async () => {
+      await renderList();
+
+      for (const name of [
+        "Supplier",
+        "Cabang",
+        "Gudang",
+        "Jenis",
+        "Status",
+        "Faktur",
+        "Aksi",
+      ]) {
+        expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+        expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
+      }
+    });
+
+    /** Urutkan left the panel when the headers took over. */
+    it("offers no Urutkan in the filter panel", async () => {
+      const user = await renderList();
+      const panel = await openFilters(user);
+
+      expect(within(panel).getByLabelText("Filter supplier")).toBeVisible();
+      expect(within(panel).queryByLabelText("Urutkan")).toBeNull();
+    });
+  });
+
+  /** The Aksi column is the shared kebab, with Detail behind it. */
+  it("leads each row to its detail from the kebab", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceiptsScreen />);
 
     await screen.findAllByText("GR-260806-001");
-    const panel = await openFilters(user);
-
-    await user.click(within(panel).getByLabelText("Urutkan"));
-    await user.click(await screen.findByRole("option", { name: "Nomor A–Z" }));
-    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
-
-    await waitFor(() =>
-      expect(goodsReceiptService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "numberAsc" }),
-      ),
+    await user.click(
+      screen.getByRole("button", { name: "Aksi untuk GR-260806-001" }),
     );
+
+    expect(
+      await screen.findByRole("menuitem", { name: "Detail" }),
+    ).toHaveAttribute("href", "/dashboard/purchasing/receipts/gr1");
   });
 
   /**
@@ -661,32 +732,46 @@ describe("ReceiptsScreen", () => {
   });
 
   /**
-   * The ordering is not counted in the trigger's badge — every list has one, so
-   * it is never "on", and a badge reading `Filter (1)` over an unnarrowed list
-   * would train people to ignore the number.
+   * A Reset inside a filter panel must not silently re-sort a table somebody
+   * ordered from the headers it can see — and the header ordering is never
+   * counted on the trigger's badge.
    */
-  it("does not count the ordering as a filter", async () => {
+  it("keeps the header ordering through the panel's Reset, uncounted", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceiptsScreen />);
 
     await screen.findAllByText("GR-260806-001");
-    const panel = await openFilters(user);
-
-    await user.click(within(panel).getByLabelText("Urutkan"));
-    await user.click(await screen.findByRole("option", { name: "Terlama" }));
-    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
-
+    await user.click(screen.getByRole("button", { name: "Item" }));
     await waitFor(() =>
       expect(goodsReceiptService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "oldest" }),
+        expect.objectContaining({ sort: "itemCountDesc" }),
       ),
-    );
-    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
-      "Filter",
     );
     expect(
       screen.getByRole("button", { name: "Filter" }),
-    ).not.toHaveTextContent("(1)");
+    ).not.toHaveTextContent("(");
+
+    const panel = await openFilters(user);
+    await user.click(within(panel).getByLabelText("Filter jenis pembelian"));
+    await user.click(await screen.findByRole("option", { name: "Konsinyasi" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+    await waitFor(() =>
+      expect(goodsReceiptService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ purchaseType: "konsinyasi" }),
+      ),
+    );
+
+    const again = await openFilters(user);
+    await user.click(within(again).getByRole("button", { name: "Reset" }));
+
+    await waitFor(() =>
+      expect(goodsReceiptService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          purchaseType: undefined,
+          sort: "itemCountDesc",
+        }),
+      ),
+    );
   });
 
   it("distinguishes an unfiled invoice from a consignment with none", async () => {

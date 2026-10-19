@@ -9,6 +9,7 @@ import {
   HighlightText,
   type DataTableColumn,
   type SortOptions,
+  RowLinkMenu,
 } from "@/components";
 import { cn } from "@/lib/utils";
 import {
@@ -20,7 +21,6 @@ import {
 import type { Product, ProductSort } from "@/types/inventory";
 
 import { qtyIn } from "../utils/catalogue";
-import { RowLinkMenu } from "./RowLinkMenu";
 
 /**
  * The stock-card index: one row per stock-holding product, at one warehouse or

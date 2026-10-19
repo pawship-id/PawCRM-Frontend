@@ -15,8 +15,8 @@ export interface PayablesStatFigures {
   dueSoon: { amount: string; invoiceCount: number; horizonDays: number };
   /**
    * Bills raised inside the period. Optional: only `/summary` answers it —
-   * Faktur's `/outstanding` knows no period — so that tab leaves it off and the
-   * card stays "Segera" there.
+   * `/outstanding` knows no period — so a caller reads it from `/summary` and
+   * hands it in (Ringkasan for its own period, Faktur for this month).
    */
   invoiced?: { amount: string; invoiceCount: number };
   /**
@@ -38,8 +38,10 @@ export interface PayablesStatFigures {
  * `/outstanding` sibling, which answers the same two questions unscoped) — see
  * `PayablesStatFigures`. "Pembelian periode" is `invoiced` off `/summary` only
  * (3 October 2026): the sum of invoice VALUE by invoice date inside the tab's
- * period, which `/outstanding` cannot answer — so a caller without it (Faktur)
- * gets the "Segera" tile instead of a number from the wrong scope.
+ * period, which `/outstanding` cannot answer. Faktur asks `/summary` for this
+ * month alongside its `/outstanding` figures (19 October 2026), so every card
+ * on both tabs is real now; a caller that passes no `periodScoped` still gets
+ * the "Segera" tile rather than a number from the wrong scope.
  *
  * "BARANG BELUM DITERIMA" IS REAL TOO (3 October 2026): a goods receipt now has
  * a `status` — `pending` when filed, `received` once somebody confirms the goods
@@ -76,6 +78,9 @@ export function PayablesStatCards({
   onDueSoonClick,
   onPendingReceiptsClick,
   periodScoped = false,
+  periodLabel,
+  invoicedLoading,
+  invoicedFailed,
 }: {
   /** Null while loading or after the request failed. */
   figures: PayablesStatFigures | null;
@@ -94,6 +99,14 @@ export function PayablesStatCards({
    * "Segera" tile to a loading one when the request lands.
    */
   periodScoped?: boolean;
+  /** Names the period under the figure when the tab has no period control of its own — "bulan ini". */
+  periodLabel?: string;
+  /**
+   * When `invoiced` arrives on a request of its own (Faktur), its own state —
+   * so the card neither waits on nor fails with the other three.
+   */
+  invoicedLoading?: boolean;
+  invoicedFailed?: boolean;
 }) {
   const horizonDays = figures?.dueSoon.horizonDays ?? DEFAULT_HORIZON_DAYS;
   const dueSoonCount = figures?.dueSoon.invoiceCount ?? 0;
@@ -109,11 +122,13 @@ export function PayablesStatCards({
           value={figures?.invoiced ? formatMoney(figures.invoiced.amount) : "—"}
           caption={
             figures?.invoiced
-              ? `${figures.invoiced.invoiceCount} faktur`
+              ? [`${figures.invoiced.invoiceCount} faktur`, periodLabel]
+                  .filter(Boolean)
+                  .join(" · ")
               : undefined
           }
-          loading={loading}
-          error={failed}
+          loading={invoicedLoading ?? loading}
+          error={invoicedFailed ?? failed}
         />
       ) : (
         <PendingStatTile

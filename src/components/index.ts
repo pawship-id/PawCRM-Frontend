@@ -78,6 +78,15 @@ export {
   type SortOption,
   type SortOptions,
 } from "./DataTable";
+/**
+ * A row's Aksi kebab — links, then actions behind a separator; clicks stop at
+ * the menu so a clickable row does not also open. Inventori and Pembelian.
+ */
+export {
+  RowLinkMenu,
+  type RowAction,
+  type RowLink,
+} from "./RowLinkMenu";
 export { ListFooter } from "./ListFooter";
 export { JournalLink } from "./JournalLink";
 export { ConfirmDialog } from "./ConfirmDialog";

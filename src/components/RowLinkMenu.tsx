@@ -38,7 +38,12 @@ export interface RowAction {
  * so without the stops a pick in the menu would also open the row.
  *
  * ACTIONS COME LAST, behind a separator: everything above only navigates, and
- * what is below writes — Stok Opname's "Buang", which still asks first.
+ * what is below writes — Stok Opname's "Buang", which still asks first. An
+ * action that is not destructive (Faktur's "Bayar", which opens a dialog) sits
+ * there too, untinted.
+ *
+ * PROMOTED FROM features/inventory (19 October 2026) when Pembelian's Faktur
+ * and Penerimaan lists took the same kebab — ui-rules §14, second feature.
  */
 export function RowLinkMenu({
   name,

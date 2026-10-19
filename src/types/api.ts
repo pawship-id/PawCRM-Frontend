@@ -5459,11 +5459,22 @@ export function isSupplierActive(
 /**
  * The orderings `GET /api/suppliers` accepts — SUPPLIER_SORTS in the model.
  *
- * No "termin" or "sisa utang": the first is a negotiated property rather than a
- * ranking, and the second is aggregated by a different endpoint, so the database
- * cannot order by it.
+ * `paymentTerm*` orders by the stored term; `receiptCount*` and `outstanding*`
+ * by the Penerimaan and Sisa utang figures, which the server sums for those
+ * orderings only, with the same definitions as `GET /goods-receipts/summary`
+ * and `GET /purchase-invoices/outstanding` (BO header sorting, 19 October 2026).
  */
-export type SupplierSort = "newest" | "oldest" | "nameAsc" | "nameDesc";
+export type SupplierSort =
+  | "newest"
+  | "oldest"
+  | "nameAsc"
+  | "nameDesc"
+  | "paymentTermAsc"
+  | "paymentTermDesc"
+  | "receiptCountAsc"
+  | "receiptCountDesc"
+  | "outstandingAsc"
+  | "outstandingDesc";
 
 /** Query parameters accepted by GET /api/suppliers. All optional. */
 export interface SupplierListQuery {
@@ -5866,10 +5877,19 @@ export interface GoodsReceiptListRow {
  *
  * `newest` / `oldest` key on `receiptDate`, the day the goods arrived, never the
  * day the row was typed. The number orderings are how you walk a sequence rather
- * than a calendar — see the model. There is no ordering by value: `total` is
- * unindexed, so it would be a blocking in-memory sort of every matched receipt.
+ * than a calendar — see the model. `itemCount*` and `value*` (header sorting,
+ * 19 October 2026) order by the Item and Nilai columns — the line count and
+ * `grandTotal` — which the server computes for those orderings alone.
  */
-export type GoodsReceiptSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
+export type GoodsReceiptSort =
+  | "newest"
+  | "oldest"
+  | "numberDesc"
+  | "numberAsc"
+  | "itemCountDesc"
+  | "itemCountAsc"
+  | "valueDesc"
+  | "valueAsc";
 
 /**
  * Query parameters accepted by GET /api/goods-receipts. All optional.
@@ -6642,9 +6662,24 @@ export interface PurchaseInvoiceListQuery {
  * Named after the axis rather than a direction, matching the batch list's
  * `expirySoonest`: on a date that means a deadline, "ascending" is not what
  * anybody calls it.
+ *
+ * Header sorting (19 October 2026) added Faktur (`number*`), Total, Dibayar
+ * (`paid*`) and Sisa (`outstanding*`, computed by the server as
+ * `total − paidAmount`).
  */
 export type PurchaseInvoiceSort =
-  "newest" | "oldest" | "dueSoonest" | "dueLatest";
+  | "newest"
+  | "oldest"
+  | "dueSoonest"
+  | "dueLatest"
+  | "numberAsc"
+  | "numberDesc"
+  | "totalDesc"
+  | "totalAsc"
+  | "paidDesc"
+  | "paidAsc"
+  | "outstandingDesc"
+  | "outstandingAsc";
 
 /**
  * POST /api/purchase-invoices — file the supplier's bill against a delivery.

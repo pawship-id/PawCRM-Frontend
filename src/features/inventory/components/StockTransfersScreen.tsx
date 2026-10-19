@@ -19,6 +19,7 @@ import {
   type DataTableColumn,
   type FilterOption,
   type SortOptions,
+  RowLinkMenu,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
@@ -32,7 +33,6 @@ import type { Warehouse } from "@/types/api";
 import { useStockTransfers } from "../hooks/useStockTransfers";
 import { excerptAround } from "../utils/excerpt";
 import { StockTransferStatusBadge } from "./StockTransferStatusBadge";
-import { RowLinkMenu } from "./RowLinkMenu";
 
 /**
  * The list of stock transfers — the screen this route opens on.

@@ -88,6 +88,8 @@ export function ReceiptsScreen({
             receipts={receipts}
             loading={loading}
             search={query.search}
+            sort={query.sort}
+            onSortChange={(sort) => setQuery({ sort })}
           />
           <Pagination
             page={pagination.page}

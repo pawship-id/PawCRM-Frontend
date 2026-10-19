@@ -7,6 +7,19 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Pembelian: sort dari judul kolom, menu baris, Pembelian periode
+
+19 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Faktur, Penerimaan, Supplier** kini memakai `<DataTable>` dan sort dari judul kolom — Faktur: Faktur,
+  Jatuh tempo, Total, Dibayar, Sisa; Penerimaan: Nomor, Tanggal, Item, Nilai; Supplier: Supplier, Termin,
+  Penerimaan, Sisa utang. `Urutkan` dihapus dari panel; Reset tidak mengubah urutan.
+- **Menu baris:** Faktur — ikon di Detail / Buat penerimaan barang / Bayar (Bayar kini di bawah garis
+  pemisah); Penerimaan — tombol Detail jadi menu ⋮ → Detail. `RowLinkMenu` dipindah ke `@/components`.
+- **Kartu "Pembelian periode"** di tab Faktur kini angka asli: nilai faktur yang terbit bulan ini (dari
+  `/purchase-invoices/summary`, `period=month`), bukan lagi "Segera".
+- **Retur:** catatan "Retur yang sudah final tidak bisa diedit…" di bawah daftar dihapus.
+
 ## [Unreleased] — Satu komponen tabel, sort dari judul kolom (Stok / Inventori)
 
 19 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.

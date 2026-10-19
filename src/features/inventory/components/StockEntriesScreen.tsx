@@ -18,6 +18,7 @@ import {
   withAll,
   type DataTableColumn,
   type SortOptions,
+  RowLinkMenu,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
@@ -31,7 +32,6 @@ import type { Branch, Warehouse } from "@/types/api";
 import { ownerBranchOf, warehousesUnder } from "../hooks/useBranchScope";
 import { useStockEntries } from "../hooks/useStockEntries";
 import { excerptAround } from "../utils/excerpt";
-import { RowLinkMenu } from "./RowLinkMenu";
 
 /**
  * The list of hand-typed stock documents — one kind per screen.
