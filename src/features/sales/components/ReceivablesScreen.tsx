@@ -194,12 +194,6 @@ export function ReceivablesScreen() {
         </div>
       )}
 
-      <p className="text-xs text-muted">
-        Faktur dan pembayaran tidak bisa diubah atau dihapus — setiap pembayaran
-        memposting jurnal yang permanen. Koreksi dilakukan dengan jurnal
-        pembalik.
-      </p>
-
       {action?.kind === "pay" && (
         <RecordPaymentDialog
           invoice={action.invoice}

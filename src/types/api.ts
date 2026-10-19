@@ -7983,7 +7983,9 @@ export interface CustomerInvoiceListQuery {
     | "totalHighest"
     | "totalLowest"
     | "outstandingHighest"
-    | "outstandingLowest";
+    | "outstandingLowest"
+    | "numberAsc"
+    | "numberDesc";
 }
 
 /** What the list's Status filter may ask for — a status, or lateness. */

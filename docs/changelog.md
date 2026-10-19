@@ -7,6 +7,19 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Penjualan › Faktur: DataTable, sort Faktur, menu ⋮
+
+20 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- Daftar faktur penjualan kini memakai `<DataTable>`; judul **Faktur** ikut bisa di-sort (A dulu).
+  Tanggal, Nilai, Sisa kini klik pertama terbesar/terbaru dulu; Jatuh tempo tetap terdekat dulu.
+- Kolom **Aksi** di kanan Status: menu ⋮ — Detail (mata), Cetak faktur (printer), Bayar
+  (`BanknoteArrowDown`, hanya faktur yang masih bisa ditagih + izin bayar), lalu Batalkan faktur (merah,
+  aturan lama). Tombol Bayar di baris dihapus.
+- Sub teks "Faktur dan pembayaran tidak bisa diubah atau dihapus…" dihapus.
+- Modal Bayar Pembelian: keterangan tanggal, "Maksimal Rp …", info status/jurnal, dan keterangan akun
+  "dikredit" dihapus (modal terima pembayaran Penjualan tidak berubah).
+
 ## [Unreleased] — Pembelian: sort dari judul kolom, menu baris, Pembelian periode
 
 19 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
