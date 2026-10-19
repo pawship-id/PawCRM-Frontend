@@ -16,7 +16,13 @@ import {
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
 import { swalToast } from "@/lib/swal";
-import { ConfirmDialog, HighlightText } from "@/components";
+import {
+  ConfirmDialog,
+  DataTable,
+  HighlightText,
+  type DataTableColumn,
+  type SortOptions,
+} from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,16 +32,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
-import type { Customer } from "@/types/api";
+import type { Customer, CustomerSort } from "@/types/api";
 
 import {
   CustomerVipBadge,
@@ -59,18 +57,43 @@ function joinedOn(iso: string): string {
 }
 
 /**
- * The customer list table, in the shape the mockup draws (buloo-navigation-v3,
- * `pelangganDaftar`): who they are, how to reach them, and the two shortcuts —
- * chat and edit — that mean a small job does not need the profile open.
+ * THE LIST SORTS FROM ITS COLUMN HEADERS (BO, 20 October 2026), on the server:
+ * each sortable column maps to the two names CUSTOMER_SORTS knows for it, and a
+ * click re-fetches page 1.
  *
- * THE ROW IS THE WAY IN. Clicking anywhere on it opens the profile, which is what
- * the mockup's callout promises: a customer's page is reached from their row, not
- * from a menu. The NAME IS ALSO A REAL LINK, and that is not redundancy — the row
- * handler is a mouse affordance, while the link is what a keyboard tabs to and
- * what a screen reader announces as a destination. The handler ignores clicks that
- * landed on a control, and clicks that bubbled out of the confirm dialog's portal,
- * so the chat and edit buttons still do their own job — GroomingBookingsTable's
- * two guards, for the same two reasons.
+ *   Kode      — the stored `code`, A first. A customer with no code yet sorts
+ *               before every code ascending and after them descending (MongoDB
+ *               orders `null` lowest); the backfill, not the sort, fixes that.
+ *   Pelanggan — the stored `name`, A first.
+ *   Bergabung — `createdAt`, the date the cell prints, NEWEST first on the first
+ *               click — which is also the list's default ordering.
+ *
+ * Kontak, Kategori, Status and Aksi are plain: Kontak is two fields in one
+ * cell, and Kategori and Status are labels the server could only order by the
+ * id or flag behind them.
+ */
+const SORT_OPTIONS: SortOptions<CustomerSort> = {
+  code: { asc: "codeAsc", desc: "codeDesc" },
+  name: { asc: "nameAsc", desc: "nameDesc" },
+  joined: { asc: "oldest", desc: "newest", first: "desc" },
+};
+
+/** Keeps a click on a control inside the row from also opening the row. */
+const stop = (event: React.MouseEvent) => event.stopPropagation();
+
+/**
+ * The customer list table, in the shape the mockup draws (buloo-navigation-v3,
+ * `pelangganDaftar`), rendered through the shared `DataTable` (ui-rules §10).
+ *
+ * THE ROW IS THE WAY IN. Clicking anywhere on it (or Enter on a focused row)
+ * opens the profile — `DataTable`'s `onRowClick`. The NAME IS ALSO A REAL LINK,
+ * and that is not redundancy — the row handler is a mouse affordance, while the
+ * link is what a keyboard tabs to and what a screen reader announces as a
+ * destination. The name link and the kebab STOP THEIR CLICKS, so opening the
+ * menu or picking from it (React bubbles out of the menu's portal too) never
+ * also navigates — the same stops `RowLinkMenu` carries. The confirm dialog is
+ * rendered beside the table, not inside a row, so nothing in it can bubble into
+ * one.
  *
  * EVERY COLUMN THE MOCKUP DRAWS IS REAL NOW (27 September 2026). Kategori is
  * `customerTypeName`, filed from Pengaturan › Tipe pelanggan — it arrives beside
@@ -86,8 +109,7 @@ function joinedOn(iso: string): string {
  * DELETE STAYS ON THE ROW, unlike the mockup, which moves it into the form. The
  * mockup is right that deleting is not list work, but the list is where somebody
  * clearing up duplicates does it, and taking a working button away to match a
- * drawing is a loss. It is icon-only here and spelled out in the profile's danger
- * zone, so the row stays quiet without hiding anything.
+ * drawing is a loss.
  *
  * NONAKTIFKAN / AKTIFKAN JOINED THE MENU (2 October 2026), the same two axes
  * `SuppliersTable` already has: Hapus/Pulihkan is the soft delete, its own
@@ -96,6 +118,10 @@ function joinedOn(iso: string): string {
  * needs — and only hides the customer from another module's picker (POS,
  * booking, the sales invoice form). A deleted row offers neither: restoring
  * first is what makes them meaningful again.
+ *
+ * THE MENU IS ITS OWN, NOT `RowLinkMenu`: that one draws its separator above
+ * every action, and here Nonaktifkan belongs with the links while only Hapus is
+ * set apart.
  *
  * Read data flows in via props (from useCustomers); the lifecycle actions (delete,
  * restore) are owned here because they are local to a row: each opens a
@@ -107,12 +133,17 @@ export function CustomersTable({
   loading,
   onChanged,
   search,
+  sort,
+  onSortChange,
 }: {
   customers: Customer[];
   loading: boolean;
   onChanged: () => void;
   /** Active search term, highlighted in the searchable cells (name, email, phone). */
   search?: string;
+  /** The ordering the list is in now — a name from the server's CUSTOMER_SORTS. */
+  sort: CustomerSort;
+  onSortChange: (sort: CustomerSort) => void;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState<PendingAction>(null);
@@ -169,259 +200,242 @@ export function CustomersTable({
     }
   }
 
-  if (!loading && customers.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center text-sm text-muted">
-        Belum ada pelanggan yang cocok dengan filter ini.
-      </div>
-    );
+  const columns: DataTableColumn<Customer>[] = [
+    {
+      id: "code",
+      header: "Kode",
+      cell: (customer) =>
+        customer.code ? (
+          // tabular-nums, never font-mono — ui-rules §5. Keeps the column from
+          // shifting as the digits differ in width.
+          <span className="tabular-nums text-muted">
+            <HighlightText text={customer.code} query={search} />
+          </span>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+    },
+    {
+      id: "name",
+      header: "Pelanggan",
+      cell: (customer) => (
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/dashboard/master/customers/${customer._id}`}
+            onClick={stop}
+            className="font-medium text-foreground underline-offset-2 hover:underline"
+          >
+            <HighlightText text={customer.name} query={search} />
+          </Link>
+          {/*
+            A COMPANY SAYS SO BESIDE ITS NAME, which is where the mockup puts it
+            and where it is useful: "Toko Hewan Mitra Jaya" reads as a shop
+            either way, but plenty of companies are registered under a person's
+            name. Individuals get no badge — a label on 95% of the rows is noise.
+          */}
+          {customer.kind === "company" && (
+            <Badge
+              variant="outline"
+              className="border-transparent bg-tint-warning text-warning"
+            >
+              Perusahaan
+            </Badge>
+          )}
+          {/*
+            THE TIER RIDES WITH THE NAME, where the mockup puts the membership
+            chip. It is a property of the person rather than a column, and most
+            customers have none — a column of dashes for the sake of one badge.
+          */}
+          {customer.vipTier && <CustomerVipBadge tier={customer.vipTier} />}
+        </div>
+      ),
+    },
+    {
+      id: "contact",
+      header: "Kontak",
+      cell: (customer) => (
+        <>
+          {/*
+            PHONE ABOVE EMAIL, both in one cell, as the mockup has it: this is a
+            shop that rings and WhatsApps people, so the number is the contact
+            and the address is the footnote. tabular-nums keeps the digits from
+            dancing between rows.
+          */}
+          <div className="tabular-nums text-foreground">
+            {customer.phone ? (
+              <HighlightText text={customer.phone} query={search} />
+            ) : (
+              <span className="text-muted">—</span>
+            )}
+          </div>
+          <div className="text-xs text-muted">
+            {customer.email ? (
+              <HighlightText text={customer.email} query={search} />
+            ) : (
+              "—"
+            )}
+          </div>
+        </>
+      ),
+    },
+    {
+      id: "category",
+      header: "Kategori",
+      cell: (customer) =>
+        customer.customerTypeName ? (
+          <Badge
+            variant="outline"
+            className="border-transparent bg-tint-info text-info"
+          >
+            {customer.customerTypeName}
+          </Badge>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (customer) => (
+        <CustomerStatusBadge
+          isActive={customer.isActive}
+          deleted={customer.deletedAt !== null}
+        />
+      ),
+    },
+    {
+      id: "joined",
+      header: "Bergabung",
+      cellClassName: "whitespace-nowrap text-muted tabular-nums",
+      cell: (customer) => joinedOn(customer.createdAt),
+    },
+  ];
+
+  if (showActions) {
+    columns.push({
+      id: "actions",
+      header: "Aksi",
+      align: "right",
+      cell: (customer) => {
+        const deleted = customer.deletedAt !== null;
+        const active = isCustomerActive(customer);
+        /*
+          ONE KEBAB PER ROW (28 September 2026, on request), matching
+          BranchesTable and PetOptionsTable. DETAIL IS UNGATED beyond the
+          `customers:read` this table already required, so a reader opens the
+          menu and finds exactly one row rather than a button opening onto
+          nothing.
+
+          ⚠️ CHAT IS NOT HERE, and deliberately: it lives on the profile alone
+          (on request). It was the one action in this cell that left the app
+          entirely, and putting it a keystroke away from Hapus in a menu is
+          worse than having it as its own icon.
+        */
+        return (
+          <div className="flex items-center justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="size-9"
+                  disabled={busy}
+                  onClick={stop}
+                  // Names the row: twenty identical "Aksi" buttons tell a
+                  // screen reader nothing.
+                  aria-label={`Aksi untuk ${customer.name}`}
+                >
+                  <EllipsisVertical className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent align="end" onClick={stop}>
+                {deleted ? (
+                  /*
+                    A DELETED CUSTOMER HAS NO PROFILE to open and nothing to
+                    edit — restoring is the only move left, so it is the only
+                    row here.
+                  */
+                  <Can feature="customers" action="restore">
+                    <DropdownMenuItem
+                      onSelect={() => setPending({ kind: "restore", customer })}
+                    >
+                      <RotateCcw />
+                      Pulihkan
+                    </DropdownMenuItem>
+                  </Can>
+                ) : (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link href={`/dashboard/master/customers/${customer._id}`}>
+                        <Eye />
+                        Detail
+                      </Link>
+                    </DropdownMenuItem>
+                    <Can feature="customers" action="update">
+                      <DropdownMenuItem asChild>
+                        <Link
+                          href={`/dashboard/master/customers/${customer._id}/edit`}
+                        >
+                          <Pencil />
+                          Ubah
+                        </Link>
+                      </DropdownMenuItem>
+                    </Can>
+                    <Can feature="customers" action="update">
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          setPending({
+                            kind: active ? "deactivate" : "activate",
+                            customer,
+                          })
+                        }
+                      >
+                        {active ? <PowerOff /> : <Power />}
+                        {active ? "Nonaktifkan" : "Aktifkan"}
+                      </DropdownMenuItem>
+                    </Can>
+                    <Can feature="customers" action="delete">
+                      {/* Separated and tinted: deleting is the one item here
+                          that is not a toggle, and it sits next to one that
+                          looks like it does the same thing — the same
+                          separator SuppliersTable draws for the same reason. */}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() => setPending({ kind: "delete", customer })}
+                      >
+                        <Trash2 />
+                        Hapus
+                      </DropdownMenuItem>
+                    </Can>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        );
+      },
+    });
   }
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <Table className={loading ? "opacity-60" : undefined}>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Kode</TableHead>
-              <TableHead>Pelanggan</TableHead>
-              <TableHead>Kontak</TableHead>
-              <TableHead>Kategori</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Bergabung</TableHead>
-              {showActions && <TableHead className="text-right">Aksi</TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {customers.map((customer) => {
-              const deleted = customer.deletedAt !== null;
-              const active = isCustomerActive(customer);
-              return (
-                <TableRow
-                  key={customer._id}
-                  className="cursor-pointer"
-                  onClick={(event) => {
-                    /*
-                      TWO GUARDS, BOTH BORROWED FROM GroomingBookingsTable.
-
-                      React bubbles events out of PORTALS, so a press inside the
-                      confirm dialog this row opens would otherwise reach here
-                      and navigate away from the question being answered.
-
-                      And a click on a control inside the row is that control's,
-                      not the row's — otherwise opening the kebab would also
-                      navigate.
-                    */
-                    const target = event.target as HTMLElement;
-                    if (!event.currentTarget.contains(target)) return;
-                    if (target.closest("a, button, input, label")) return;
-                    router.push(`/dashboard/master/customers/${customer._id}`);
-                  }}
-                >
-                  <TableCell>
-                    {customer.code ? (
-                      // tabular-nums, never font-mono — ui-rules §5. Keeps the
-                      // column from shifting as the digits differ in width.
-                      <span className="tabular-nums text-muted">
-                        <HighlightText text={customer.code} query={search} />
-                      </span>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        href={`/dashboard/master/customers/${customer._id}`}
-                        className="font-medium text-foreground underline-offset-2 hover:underline"
-                      >
-                        <HighlightText text={customer.name} query={search} />
-                      </Link>
-                      {/*
-                        THE TIER RIDES WITH THE NAME, where the mockup puts the
-                        membership chip. It is a property of the person rather
-                        than a column anybody sorts by, and most customers have
-                        none — a column of dashes for the sake of one badge.
-                      */}
-                      {/*
-                        A COMPANY SAYS SO BESIDE ITS NAME, which is where the
-                        mockup puts it and where it is useful: "Toko Hewan Mitra
-                        Jaya" reads as a shop either way, but plenty of companies
-                        are registered under a person's name. Individuals get no
-                        badge — a label on 95% of the rows is noise.
-                      */}
-                      {customer.kind === "company" && (
-                        <Badge
-                          variant="outline"
-                          className="border-transparent bg-tint-warning text-warning"
-                        >
-                          Perusahaan
-                        </Badge>
-                      )}
-                      {customer.vipTier && (
-                        <CustomerVipBadge tier={customer.vipTier} />
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {/*
-                      PHONE ABOVE EMAIL, both in one cell, as the mockup has it:
-                      this is a shop that rings and WhatsApps people, so the
-                      number is the contact and the address is the footnote.
-                      tabular-nums keeps the digits from dancing between rows.
-                    */}
-                    <div className="tabular-nums text-foreground">
-                      {customer.phone ? (
-                        <HighlightText text={customer.phone} query={search} />
-                      ) : (
-                        <span className="text-muted">—</span>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted">
-                      {customer.email ? (
-                        <HighlightText text={customer.email} query={search} />
-                      ) : (
-                        "—"
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {customer.customerTypeName ? (
-                      <Badge
-                        variant="outline"
-                        className="border-transparent bg-tint-info text-info"
-                      >
-                        {customer.customerTypeName}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <CustomerStatusBadge
-                      isActive={customer.isActive}
-                      deleted={deleted}
-                    />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-muted">
-                    {joinedOn(customer.createdAt)}
-                  </TableCell>
-                  {showActions && (
-                    <TableCell>
-                      {/*
-                        ONE KEBAB PER ROW (28 September 2026, on request),
-                        matching BranchesTable and PetOptionsTable — the pattern
-                        this app already uses for a row with several things to
-                        do. It replaced three icon-only buttons, which is also
-                        what gives the wide columns beside it their width back.
-
-                        DETAIL IS UNGATED beyond the `customers:read` this table
-                        already required, so a reader opens the menu and finds
-                        exactly one row rather than a button opening onto
-                        nothing.
-
-                        ⚠️ CHAT IS NOT HERE, and deliberately: it lives on the
-                        profile alone now (on request). It was the one action in
-                        this cell that left the app entirely, and putting it a
-                        keystroke away from Hapus in a menu is worse than having
-                        it as its own icon — the reason it is gone rather than
-                        moved into the list below.
-                      */}
-                      <div className="flex items-center justify-end">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              className="size-9"
-                              disabled={busy}
-                              // Names the row: twenty identical "Aksi" buttons
-                              // tell a screen reader nothing.
-                              aria-label={`Aksi untuk ${customer.name}`}
-                            >
-                              <EllipsisVertical className="size-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-
-                          <DropdownMenuContent align="end">
-                            {deleted ? (
-                              /*
-                                A DELETED CUSTOMER HAS NO PROFILE to open and
-                                nothing to edit — restoring is the only move
-                                left, so it is the only row here.
-                              */
-                              <Can feature="customers" action="restore">
-                                <DropdownMenuItem
-                                  onSelect={() =>
-                                    setPending({ kind: "restore", customer })
-                                  }
-                                >
-                                  <RotateCcw />
-                                  Pulihkan
-                                </DropdownMenuItem>
-                              </Can>
-                            ) : (
-                              <>
-                                <DropdownMenuItem asChild>
-                                  <Link
-                                    href={`/dashboard/master/customers/${customer._id}`}
-                                  >
-                                    <Eye />
-                                    Detail
-                                  </Link>
-                                </DropdownMenuItem>
-                                <Can feature="customers" action="update">
-                                  <DropdownMenuItem asChild>
-                                    <Link
-                                      href={`/dashboard/master/customers/${customer._id}/edit`}
-                                    >
-                                      <Pencil />
-                                      Ubah
-                                    </Link>
-                                  </DropdownMenuItem>
-                                </Can>
-                                <Can feature="customers" action="update">
-                                  <DropdownMenuItem
-                                    onSelect={() =>
-                                      setPending({
-                                        kind: active ? "deactivate" : "activate",
-                                        customer,
-                                      })
-                                    }
-                                  >
-                                    {active ? <PowerOff /> : <Power />}
-                                    {active ? "Nonaktifkan" : "Aktifkan"}
-                                  </DropdownMenuItem>
-                                </Can>
-                                <Can feature="customers" action="delete">
-                                  {/* Separated and tinted: deleting is the one
-                                      item here that is not a toggle, and it
-                                      sits next to one that looks like it does
-                                      the same thing — the same separator
-                                      SuppliersTable draws for the same reason. */}
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onSelect={() =>
-                                      setPending({ kind: "delete", customer })
-                                    }
-                                  >
-                                    <Trash2 />
-                                    Hapus
-                                  </DropdownMenuItem>
-                                </Can>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={customers}
+        rowKey={(customer) => customer._id}
+        sort={{ value: sort, options: SORT_OPTIONS, onChange: onSortChange }}
+        loading={loading}
+        loadingLabel="Memuat daftar pelanggan…"
+        onRowClick={(customer) =>
+          router.push(`/dashboard/master/customers/${customer._id}`)
+        }
+        empty={
+          <p className="py-10 text-center text-sm text-muted">
+            Belum ada pelanggan yang cocok dengan filter ini.
+          </p>
+        }
+      />
 
       {pending && (
         <ConfirmDialog

@@ -1639,7 +1639,26 @@ export interface CustomerListQuery {
    * "registered since" filter of the register's own.
    */
   createdSince?: string;
+  /**
+   * A name from the server's closed `CUSTOMER_SORTS` — never a field. Omitted
+   * means `newest`, which is what the API defaults to anyway.
+   */
+  sort?: CustomerSort;
 }
+
+/**
+ * The orderings GET /api/customers accepts — the server's `CUSTOMER_SORTS`
+ * (BO header sorting, 20 October 2026). Kode sorts by `code`, Pelanggan by
+ * `name`, Bergabung by `createdAt` (`newest` / `oldest`). Every key is stored
+ * and indexed.
+ */
+export type CustomerSort =
+  | "newest"
+  | "oldest"
+  | "codeAsc"
+  | "codeDesc"
+  | "nameAsc"
+  | "nameDesc";
 
 /**
  * What GET /api/customers/stats answers — the numbers on the Pelanggan header's
@@ -5104,7 +5123,27 @@ export interface PetListQuery {
   tag?: string;
   /** Include soft-deleted pets (default false on the backend). */
   includeDeleted?: boolean;
+  /** One of the server's closed `PET_SORTS`; omitted means `newest`. */
+  sort?: PetSort;
 }
+
+/**
+ * Orderings accepted by GET /api/pets — the server's closed `PET_SORTS`, which
+ * the Hewan table's headers ask for (BO, 20 October 2026).
+ *
+ * `age*` orders by `birthDate`, which the Umur column is derived from:
+ * `ageDesc` is OLDEST first (earliest birth date), `ageAsc` youngest first.
+ * `weight*` orders by `weightKg`. In all four a pet with no birth date / no
+ * weight comes LAST, whichever the direction.
+ */
+export type PetSort =
+  | "newest"
+  | "nameAsc"
+  | "nameDesc"
+  | "ageAsc"
+  | "ageDesc"
+  | "weightAsc"
+  | "weightDesc";
 
 /** Body of PATCH /api/pets/:id/preferences. */
 export interface UpdatePetPreferencesInput {

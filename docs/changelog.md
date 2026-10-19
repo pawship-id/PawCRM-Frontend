@@ -7,6 +7,17 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Pelanggan: sort dari judul kolom
+
+20 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Pelanggan** dan **Hewan** kini memakai `<DataTable>` dan sort dari judul kolom — Pelanggan: Kode,
+  Pelanggan, Bergabung (aktif saat dibuka: terbaru bergabung dulu); Hewan: Nama, Umur (tertua dulu),
+  Berat (terberat dulu); hewan tanpa tanggal lahir / berat selalu di bawah.
+- Menu Aksi Hewan: garis pemisah di atas **Hapus** (hanya bila boleh menghapus).
+- Dihapus: kartu "Profil pelanggan dibuka dari baris, bukan dari menu" (Pelanggan) dan kartu "Dari sini,
+  bukan tab Analitik sendiri" (Ringkasan).
+
 ## [Unreleased] — Penjualan › Faktur: DataTable, sort Faktur, menu ⋮
 
 20 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.

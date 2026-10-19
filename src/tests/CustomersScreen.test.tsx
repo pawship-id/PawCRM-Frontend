@@ -190,3 +190,140 @@ describe("deleting a row refreshes the header's own count", () => {
     );
   });
 });
+
+/*
+  HEADER SORTING (BO, 20 October 2026). Kode, Pelanggan and Bergabung sort on
+  the server by a name from CUSTOMER_SORTS; everything else is a plain header,
+  and the filter panel has no Urutkan and no say over the ordering.
+*/
+function lastSort() {
+  const calls = mockedCustomerService.list.mock.calls;
+  return calls[calls.length - 1][0]?.sort;
+}
+
+async function renderList() {
+  const user = userEvent.setup();
+  mockedCustomerService.list.mockResolvedValue(listOf([customer()], 1));
+  renderWithAuth(<CustomersScreen />);
+  await screen.findByText("Rina Wijaya");
+  return user;
+}
+
+describe("header sorting", () => {
+  /*
+    THE DEFAULT IS A COLUMN HERE: `newest` orders by `createdAt`, which is
+    exactly what Bergabung prints, so that header says so from the first
+    render — unlike Supplier, whose default sorts by no visible column.
+  */
+  it("opens newest first, with Bergabung marked descending", async () => {
+    await renderList();
+
+    expect(lastSort()).toBe("newest");
+    expect(
+      screen.getByRole("columnheader", { name: "Bergabung" }),
+    ).toHaveAttribute("aria-sort", "descending");
+    for (const name of ["Kode", "Pelanggan"]) {
+      expect(screen.getByRole("columnheader", { name })).toHaveAttribute(
+        "aria-sort",
+        "none",
+      );
+    }
+  });
+
+  it.each([
+    ["Kode", "codeAsc"],
+    ["Pelanggan", "nameAsc"],
+  ])("asks the server to sort by %s", async (header, sort) => {
+    const user = await renderList();
+
+    await user.click(screen.getByRole("button", { name: header }));
+
+    await waitFor(() => expect(lastSort()).toBe(sort));
+    expect(screen.getByRole("columnheader", { name: header })).toHaveAttribute(
+      "aria-sort",
+      sort.endsWith("Asc") ? "ascending" : "descending",
+    );
+  });
+
+  it("takes Bergabung newest first from another column, then flips it", async () => {
+    const user = await renderList();
+
+    // Already newest: one click flips to oldest.
+    await user.click(screen.getByRole("button", { name: "Bergabung" }));
+    await waitFor(() => expect(lastSort()).toBe("oldest"));
+
+    // From another column, the first click takes the newest end.
+    await user.click(screen.getByRole("button", { name: "Kode" }));
+    await waitFor(() => expect(lastSort()).toBe("codeAsc"));
+    await user.click(screen.getByRole("button", { name: "Bergabung" }));
+    await waitFor(() => expect(lastSort()).toBe("newest"));
+  });
+
+  it("flips Pelanggan to Z first on the second click", async () => {
+    const user = await renderList();
+
+    await user.click(screen.getByRole("button", { name: "Pelanggan" }));
+    await waitFor(() => expect(lastSort()).toBe("nameAsc"));
+    await user.click(screen.getByRole("button", { name: "Pelanggan" }));
+
+    await waitFor(() => expect(lastSort()).toBe("nameDesc"));
+  });
+
+  it("leaves Kontak, Kategori, Status and Aksi plain", async () => {
+    await renderList();
+
+    for (const name of ["Kontak", "Kategori", "Status", "Aksi"]) {
+      expect(screen.getByRole("columnheader", { name })).not.toHaveAttribute(
+        "aria-sort",
+      );
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+  });
+
+  it("offers no Urutkan in the filter panel", async () => {
+    const user = await renderList();
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+
+    expect(screen.getByLabelText("Filter tier VIP")).toBeVisible();
+    expect(screen.queryByLabelText("Urutkan")).not.toBeInTheDocument();
+  });
+
+  it("keeps the header ordering through the panel's Reset", async () => {
+    const user = await renderList();
+
+    await user.click(screen.getByRole("button", { name: "Kode" }));
+    await waitFor(() => expect(lastSort()).toBe("codeAsc"));
+    // The ordering is not a filter: the trigger still reads plain "Filter".
+    expect(screen.getByText("Filter")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(screen.getByLabelText("Filter tier VIP"));
+    await user.click(await screen.findByRole("option", { name: "Gold" }));
+    await user.click(screen.getByRole("button", { name: "Terapkan" }));
+    await waitFor(() =>
+      expect(mockedCustomerService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ vipTier: "gold", sort: "codeAsc" }),
+      ),
+    );
+
+    // The tier is counted; the ordering never is.
+    expect(await screen.findByText("Filter (1)")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+
+    await waitFor(() =>
+      expect(mockedCustomerService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ vipTier: undefined, sort: "codeAsc" }),
+      ),
+    );
+  });
+});
+
+it("no longer draws the \"profile opens from the row\" callout", async () => {
+  await renderList();
+
+  expect(
+    screen.queryByText("Profil pelanggan dibuka dari baris, bukan dari menu"),
+  ).not.toBeInTheDocument();
+});

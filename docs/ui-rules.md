@@ -326,6 +326,10 @@ Faktur sortable beside Tanggal, Jatuh tempo, Nilai and Sisa, and its row
 actions — Detail, Cetak faktur, Bayar, Batalkan faktur — behind
 `RowLinkMenu`.
 
+**Pelanggan joins them** (20 October 2026, BO): Pelanggan sorts by Kode,
+Pelanggan and Bergabung; Hewan by Nama, Umur and Berat, with animals missing a
+birth date or a weight kept at the bottom in both directions.
+
 **A collapsed bar owes you its count.** A quick bar shows its values on its triggers; a panel hides them behind a button, and a hidden filter is one people forget is on and then read the wrong numbers from. `Filter (2)` is not decoration — it is what makes the collapsed form safe, and a panel button without it is a bug.
 
 Applied filters render as removable chips below the bar or panel. Anatomy and props: [`docs/ui-component-specs.md`](./ui-component-specs.md).
