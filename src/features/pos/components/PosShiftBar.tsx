@@ -85,8 +85,9 @@ export function PosShiftBar({
   statusSlot,
 }: {
   /**
-   * POS OFFLINE MODE (19 October 2026): selling from the device. The day's
-   * list, the X-Report and Tutup Kasir all read the server, so they wait.
+   * POS OFFLINE MODE (19 October 2026): selling from the device. X-Report and
+   * Tutup Kasir read the server, so they wait; the day's list opens on the
+   * device's own unsent sales.
    */
   offline?: boolean;
   /** The Online/Offline chip — see `PosOfflineStatus`. */
@@ -170,7 +171,6 @@ export function PosShiftBar({
           variant="secondary"
           size="sm"
           onClick={onOpenToday}
-          disabled={offline}
         >
           <History className="size-4" />
           Transaksi hari ini

@@ -16,6 +16,25 @@ import { posOfflineService } from "@/services/posOffline.service";
 import { isOfflineMode } from "@/lib/connectivity";
 
 import { listQueued, purgeOld, refreshCounts, UNSENT, updateQueued } from "./queue";
+
+/**
+ * Tells the server how many unsent sales this device holds, per cashier — what
+ * X-Report warns with when a cashier's takings are still on another till.
+ */
+export async function reportPending(): Promise<void> {
+  const { device } = getOfflineState();
+  if (!device) return;
+  const byCashier = new Map<string, number>();
+  for (const record of await listQueued()) {
+    if (!UNSENT.includes(record.status)) continue;
+    const id = record.sale.cashierUserId;
+    byCashier.set(id, (byCashier.get(id) ?? 0) + 1);
+  }
+  const pendingByCashier = [...byCashier].map(([cashierUserId, count]) => ({ cashierUserId, count }));
+  await posOfflineService
+    .ping(device, pendingByCashier.reduce((sum, entry) => sum + entry.count, 0), pendingByCashier)
+    .catch(() => {});
+}
 import { refreshSnapshot } from "./snapshot";
 import { getOfflineState, setOfflineState } from "./store";
 
@@ -118,7 +137,10 @@ export async function syncNow(): Promise<void> {
     }
 
     // What was sold is now on the server; the shelf counts here are stale.
-    if (sentAny) void refreshSnapshot();
+    if (sentAny) {
+      void refreshSnapshot();
+      void reportPending();
+    }
     void purgeOld();
   });
 }
@@ -146,7 +168,7 @@ async function tick() {
   }
   if (now - lastPing > PING_INTERVAL_MS) {
     lastPing = now;
-    posOfflineService.ping(state.device, getOfflineState().pendingCount).catch(() => {});
+    void reportPending();
   }
 }
 

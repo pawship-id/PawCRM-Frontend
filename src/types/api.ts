@@ -1820,6 +1820,18 @@ export interface PosPaymentBreakdownRow {
  */
 export interface PosXReport {
   shift: PosShift;
+  /**
+   * Tills still holding this cashier's sales rung up offline and not sent yet
+   * — not in the figures below (POS offline mode, 19 October 2026). As each
+   * device last reported; absent from an older server.
+   */
+  offlinePending?: Array<{
+    deviceId: string;
+    code: string;
+    name: string | null;
+    count: number;
+    lastSeenAt: string | null;
+  }>;
   transactionCount: number;
   breakdown: PosPaymentBreakdownRow[];
   /**

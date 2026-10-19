@@ -18,6 +18,16 @@ import { posService } from "@/services/pos.service";
 import { formatMoney } from "@/utils/decimal";
 import type { PosTransaction } from "@/types/api";
 
+import { listQueued, type QueuedSale } from "../offline/queue";
+
+/** What an unsent sale is waiting for, in the cashier's words. */
+const UNSENT_LABEL: Partial<Record<QueuedSale["status"], string>> = {
+  pending: "Belum terkirim",
+  waiting_cashier: "Menunggu kasir login",
+  needs_review: "Perlu dicek admin",
+  failed: "Ditolak server",
+};
+
 const PAGE_SIZE = 10;
 
 /** Midnight today, as the API wants it. */
@@ -56,7 +66,13 @@ export function TodayTransactionsDialog({
   onReceipt,
   onOpenChange,
   reloadKey = 0,
+  offline = false,
 }: {
+  /**
+   * POS offline mode (19 October 2026): selling from the device. The server's
+   * list is not asked for; the device's own unsent sales still are.
+   */
+  offline?: boolean;
   open: boolean;
   onVoid: (sale: PosTransaction) => void;
   onReturn: (sale: PosTransaction) => void;
@@ -71,13 +87,49 @@ export function TodayTransactionsDialog({
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /*
+    SALES RUNG UP ON THIS DEVICE THAT THE SERVER DOES NOT HAVE YET (offline
+    mode) — today's, newest first, above the server's list. Once one syncs it
+    leaves this list and appears in the other, so nothing is listed twice.
+  */
+  const [unsent, setUnsent] = useState<QueuedSale[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    const since = startOfToday();
+    void listQueued()
+      .then((records) => {
+        if (!active) return;
+        setUnsent(
+          records.filter(
+            (record) => record.status !== "synced" && record.status !== "rejected" && record.sale.paidAt >= since,
+          ),
+        );
+      })
+      .catch(() => {
+        if (active) setUnsent([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, reloadKey]);
 
   useEffect(() => {
     if (!open) return;
 
+    if (offline) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSales([]);
+      setTotal(0);
+      setTotalPages(1);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     let active = true;
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
 
@@ -106,7 +158,7 @@ export function TodayTransactionsDialog({
     return () => {
       active = false;
     };
-  }, [open, page, reloadKey]);
+  }, [open, page, reloadKey, offline]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -119,15 +171,61 @@ export function TodayTransactionsDialog({
         </DialogHeader>
 
         {error && <Alert variant="error">{error}</Alert>}
+        {offline && (
+          <Alert variant="info">
+            Mode offline: yang tampil hanya transaksi di perangkat ini yang
+            belum terkirim. Batalkan dan retur bisa dilakukan setelah online.
+          </Alert>
+        )}
 
-        {loading && sales.length === 0 ? (
+        {unsent.length > 0 && (
+          <ul className="divide-y divide-border rounded-xl bg-surface-hover px-3">
+            {unsent.map((record) => (
+              <li
+                key={record.clientTxnId}
+                className="flex flex-wrap items-center justify-between gap-3 py-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium tabular-nums text-foreground">
+                      {record.sale.transactionNumber}
+                    </span>
+                    <Badge
+                      variant="outline"
+                      className="border-transparent bg-tint-warning text-secondary-foreground"
+                    >
+                      {UNSENT_LABEL[record.status] ?? "Belum terkirim"}
+                    </Badge>
+                  </div>
+                  <span className="block text-xs tabular-nums text-muted">
+                    {paidAtLabel(record.sale.paidAt)} · {record.priced.items.length} item ·{" "}
+                    {formatMoney(record.sale.totals.grandTotal)}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onReceipt(record.priced)}
+                >
+                  <Receipt className="size-4" />
+                  Struk
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {offline ? null : loading && sales.length === 0 ? (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
             <Spinner /> Memuat…
           </div>
         ) : sales.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted">
-            Belum ada penjualan hari ini.
-          </p>
+          unsent.length > 0 ? null : (
+            <p className="py-10 text-center text-sm text-muted">
+              Belum ada penjualan hari ini.
+            </p>
+          )
         ) : (
           <>
             <ul className="divide-y divide-border">

@@ -42,10 +42,14 @@ export const posOfflineService = {
       timeoutMs: 8_000,
     }),
 
-  ping: (device: DeviceCredentials, pendingCount: number) =>
+  ping: (
+    device: DeviceCredentials,
+    pendingCount: number,
+    pendingByCashier: Array<{ cashierUserId: string; count: number }> = [],
+  ) =>
     apiClient.post<{ serverTime: string }>(
       "/pos/devices/current/ping",
-      { pendingCount },
+      { pendingCount, pendingByCashier },
       { headers: deviceHeaders(device), timeoutMs: 6_000 },
     ),
 

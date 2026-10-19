@@ -1137,7 +1137,8 @@ export function PosScreen() {
 
       <TodayTransactionsDialog
         open={todayOpen}
-        reloadKey={salesVersion}
+        reloadKey={salesVersion + till.state.pendingCount}
+        offline={offline}
         onOpenChange={setTodayOpen}
         onReceipt={(sale) => setReceiptFor(sale._id)}
         onVoid={setVoiding}
