@@ -166,6 +166,7 @@ export const posService = {
         shiftId: query.shiftId,
         branchId: query.branchId,
         customerId: query.customerId,
+        createdBy: query.createdBy,
         status: query.status,
         paidFrom: query.paidFrom,
         paidTo: query.paidTo,

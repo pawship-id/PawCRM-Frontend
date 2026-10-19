@@ -2223,6 +2223,8 @@ export interface PosTransaction {
   /** Where it was rung up — "offline" arrived later from a till's queue (19 Oct 2026). */
   source?: "online" | "offline";
   deviceId?: string | null;
+  /** Who rang it up — on the transaction list only (19 Oct 2026). */
+  cashierName?: string | null;
   bookingIds: string[];
   paidAt: string | null;
   createdAt: string;
@@ -2616,6 +2618,8 @@ export interface PosTransactionListQuery {
   shiftId?: string;
   branchId?: string;
   customerId?: string;
+  /** "Transaksi saya": only the sales this user rang up. */
+  createdBy?: string;
   status?: PosTransactionStatus | PosTransactionStatus[];
   paidFrom?: string;
   paidTo?: string;

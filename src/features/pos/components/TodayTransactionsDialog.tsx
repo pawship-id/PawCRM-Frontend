@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Receipt, RotateCcw, Ban } from "lucide-react";
 
-import { Alert, Pagination, Spinner } from "@/components";
+import { Alert, FilterPills, Pagination, Spinner } from "@/components";
+import { useAuth } from "@/features/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,6 +82,14 @@ export function TodayTransactionsDialog({
   /** Bumped by the caller after a void or return, to re-read the list. */
   reloadKey?: number;
 }) {
+  const { user } = useAuth();
+  /*
+    WHOSE SALES (19 October 2026). The list is every cashier's at this branch —
+    a supervisor reprints and voids for others — and "Transaksi saya" narrows it
+    to the ones this account rang up, which is what a cashier usually wants.
+  */
+  const [whose, setWhose] = useState<"all" | "mine">("all");
+  const mine = whose === "mine" && user ? user._id : null;
   const [sales, setSales] = useState<PosTransaction[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -103,7 +112,11 @@ export function TodayTransactionsDialog({
         if (!active) return;
         setUnsent(
           records.filter(
-            (record) => record.status !== "synced" && record.status !== "rejected" && record.sale.paidAt >= since,
+            (record) =>
+              record.status !== "synced" &&
+              record.status !== "rejected" &&
+              record.sale.paidAt >= since &&
+              (!mine || record.sale.cashierUserId === mine),
           ),
         );
       })
@@ -113,7 +126,7 @@ export function TodayTransactionsDialog({
     return () => {
       active = false;
     };
-  }, [open, reloadKey]);
+  }, [open, reloadKey, mine]);
 
   useEffect(() => {
     if (!open) return;
@@ -141,6 +154,7 @@ export function TodayTransactionsDialog({
         // that it is already cancelled rather than wonder where it went.
         status: ["paid", "void"],
         paidFrom: startOfToday(),
+        ...(mine ? { createdBy: mine } : {}),
       })
       .then((result) => {
         if (!active) return;
@@ -158,7 +172,7 @@ export function TodayTransactionsDialog({
     return () => {
       active = false;
     };
-  }, [open, page, reloadKey, offline]);
+  }, [open, page, reloadKey, offline, mine]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -169,6 +183,19 @@ export function TodayTransactionsDialog({
             Pilih transaksi untuk dibatalkan, diretur, atau dicetak ulang.
           </DialogDescription>
         </DialogHeader>
+
+        <FilterPills
+          ariaLabel="Transaksi siapa"
+          options={[
+            { value: "all", label: "Semua kasir" },
+            { value: "mine", label: "Transaksi saya" },
+          ]}
+          value={whose}
+          onChange={(value: "all" | "mine") => {
+            setWhose(value);
+            setPage(1);
+          }}
+        />
 
         {error && <Alert variant="error">{error}</Alert>}
         {offline && (
@@ -200,6 +227,7 @@ export function TodayTransactionsDialog({
                   <span className="block text-xs tabular-nums text-muted">
                     {paidAtLabel(record.sale.paidAt)} · {record.priced.items.length} item ·{" "}
                     {formatMoney(record.sale.totals.grandTotal)}
+                    {record.sale.cashierName ? ` · ${record.sale.cashierName}` : ""}
                   </span>
                 </div>
                 <Button
@@ -223,7 +251,7 @@ export function TodayTransactionsDialog({
         ) : sales.length === 0 ? (
           unsent.length > 0 ? null : (
             <p className="py-10 text-center text-sm text-muted">
-              Belum ada penjualan hari ini.
+              {mine ? "Belum ada transaksi kamu hari ini." : "Belum ada penjualan hari ini."}
             </p>
           )
         ) : (
@@ -261,6 +289,7 @@ export function TodayTransactionsDialog({
                     <span className="block text-xs tabular-nums text-muted">
                       {paidAtLabel(sale.paidAt)} · {sale.items.length} item ·{" "}
                       {formatMoney(sale.totals?.grandTotal ?? "0")}
+                      {sale.cashierName ? ` · ${sale.cashierName}` : ""}
                     </span>
                   </div>
 

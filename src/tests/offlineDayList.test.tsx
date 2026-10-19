@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { TodayTransactionsDialog } from "@/features/pos/components/TodayTransactionsDialog";
 import { PosXReportDialog } from "@/features/pos/components/PosXReportDialog";
@@ -126,5 +127,41 @@ describe("X-Report — a cashier's sales still on another till", () => {
 
     expect(await screen.findByText(/Masih ada 3 transaksi offline/)).toBeInTheDocument();
     expect(screen.getByText(/K2 \(Tablet belakang\): 3 transaksi/)).toBeInTheDocument();
+  });
+});
+
+describe("Transaksi hari ini — whose sales", () => {
+  it("names the cashier on each row, and narrows to mine on request", async () => {
+    const user = userEvent.setup();
+    mockedPos.listTransactions.mockResolvedValue({
+      items: [
+        {
+          _id: "x1",
+          transactionNumber: "POS-BRT-K1-261019-0001",
+          status: "paid",
+          paidAt: new Date().toISOString(),
+          items: [],
+          totals: { grandTotal: "50000.0000" },
+          cashierName: "Super Admin",
+        } as unknown as PosTransaction,
+      ],
+      pagination: { page: 1, limit: 10, total: 1, totalPages: 1 },
+    });
+    renderWithAuth(
+      <TodayTransactionsDialog open onVoid={jest.fn()} onReturn={jest.fn()} onReceipt={jest.fn()} onOpenChange={jest.fn()} />,
+    );
+
+    expect(await screen.findByText(/Super Admin/)).toBeInTheDocument();
+    expect(mockedPos.listTransactions).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ createdBy: expect.anything() }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Transaksi saya" }));
+
+    await waitFor(() =>
+      expect(mockedPos.listTransactions).toHaveBeenLastCalledWith(
+        expect.objectContaining({ createdBy: "auth-user", page: 1 }),
+      ),
+    );
   });
 });
