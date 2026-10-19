@@ -334,6 +334,12 @@ Akun Kas & Bank (sorted in the browser — every account is loaded at once — b
 Kode, Masuk, Keluar and Saldo; Ubah behind `RowLinkMenu`), Daftar transaksi,
 Biaya tetap, Komisi and Jurnal. Their private header components are gone.
 
+**Layanan joins them** (20 October 2026, BO): the Grooming and Antar-Jemput
+booking boards sort by Booking and Nilai in the browser (a period is loaded
+whole), and the two catalogues by Layanan, Harga and Durasi on the server —
+Harga and Durasi by the low end of the range the cell prints, with services
+missing either kept at the bottom.
+
 **A collapsed bar owes you its count.** A quick bar shows its values on its triggers; a panel hides them behind a button, and a hidden filter is one people forget is on and then read the wrong numbers from. `Filter (2)` is not decoration — it is what makes the collapsed form safe, and a panel button without it is a bug.
 
 Applied filters render as removable chips below the bar or panel. Anatomy and props: [`docs/ui-component-specs.md`](./ui-component-specs.md).

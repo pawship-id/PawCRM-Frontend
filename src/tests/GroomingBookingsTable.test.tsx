@@ -75,6 +75,8 @@ async function openBreakdown(one: Booking) {
     <GroomingBookingsTable
       rows={toGroomingRows([one], scope)}
       loading={false}
+      sort="schedule_asc"
+      onSortChange={jest.fn()}
       onChanged={jest.fn()}
       emptyMessage="—"
     />,
@@ -156,6 +158,8 @@ describe("GroomingBookingsTable — Tipe and Perjalanan", () => {
       <GroomingBookingsTable
         rows={toGroomingRows([one], scope)}
         loading={false}
+        sort="schedule_asc"
+        onSortChange={jest.fn()}
         onChanged={jest.fn()}
         emptyMessage="—"
       />,
@@ -182,5 +186,79 @@ describe("GroomingBookingsTable — Tipe and Perjalanan", () => {
 
     expect(screen.getByText("Di toko")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Buka perjalanan" })).not.toBeInTheDocument();
+  });
+});
+
+/*
+  SORTED FROM TWO HEADERS (BO, 20 October 2026): Booking, A first, and Nilai,
+  largest first. Every other header is plain text, not a button.
+*/
+describe("GroomingBookingsTable — header sorting", () => {
+  function drawSorted(sort: "schedule_asc" | "booking_asc" | "value_desc" = "schedule_asc") {
+    const onSortChange = jest.fn();
+    renderWithAuth(
+      <GroomingBookingsTable
+        rows={toGroomingRows([booking()], scope)}
+        loading={false}
+        sort={sort}
+        onSortChange={onSortChange}
+        onChanged={jest.fn()}
+        emptyMessage="—"
+      />,
+    );
+    return onSortChange;
+  }
+
+  it("sorts Booking A first and Nilai largest first on the first click", async () => {
+    const onSortChange = drawSorted();
+
+    await userEvent.click(screen.getByRole("button", { name: "Booking" }));
+    expect(onSortChange).toHaveBeenLastCalledWith("booking_asc");
+
+    await userEvent.click(screen.getByRole("button", { name: "Nilai" }));
+    expect(onSortChange).toHaveBeenLastCalledWith("value_desc");
+  });
+
+  it("flips the active column on the next click", async () => {
+    const onSortChange = drawSorted("booking_asc");
+
+    expect(screen.getByRole("columnheader", { name: "Booking" })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Booking" }));
+    expect(onSortChange).toHaveBeenLastCalledWith("booking_desc");
+  });
+
+  it("lights no header for the default schedule order, and leaves the rest plain", () => {
+    drawSorted();
+
+    for (const name of ["Booking", "Nilai"]) {
+      expect(screen.getByRole("columnheader", { name })).toHaveAttribute("aria-sort", "none");
+    }
+    for (const name of ["Hewan", "Layanan", "Tipe", "Perjalanan", "Jam", "Groomer", "Faktur", "Status"]) {
+      expect(screen.getByRole("columnheader", { name })).not.toHaveAttribute("aria-sort");
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+  });
+
+  it("still folds the row open on a click, and not from the status control", async () => {
+    renderWithAuth(
+      <GroomingBookingsTable
+        rows={toGroomingRows([booking({ nextStatuses: ["arrived"] })], scope)}
+        loading={false}
+        sort="schedule_asc"
+        onSortChange={jest.fn()}
+        onChanged={jest.fn()}
+        emptyMessage="—"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /^Status / }));
+    expect(screen.queryByRole("region", { name: "Rincian" })).toBeNull();
+
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(screen.getByText("Rina"));
+    expect(screen.getByRole("region", { name: "Rincian" })).toBeInTheDocument();
   });
 });

@@ -4530,6 +4530,21 @@ export interface Service {
   updatedAt: string;
 }
 
+/**
+ * The orderings GET /api/services accepts — SERVICE_SORTS on the server (BO
+ * header sorting, 20 October 2026). `nameAsc` is the default, the menu order
+ * the catalogue always had. Harga and Durasi rank by the LOW end of what their
+ * cells print (a flat service's own value, or the cheapest / shortest ACTIVE
+ * variant), with a service that has none last in both directions.
+ */
+export type ServiceSort =
+  | "nameAsc"
+  | "nameDesc"
+  | "priceAsc"
+  | "priceDesc"
+  | "durationAsc"
+  | "durationDesc";
+
 /** Query parameters accepted by GET /api/services. All optional. */
 export interface ServiceListQuery {
   page?: number;
@@ -4566,6 +4581,8 @@ export interface ServiceListQuery {
   /** Free-text over name / code. */
   search?: string;
   includeDeleted?: boolean;
+  /** A SERVICE_SORTS name; the server defaults to `nameAsc`. */
+  sort?: ServiceSort;
 }
 
 /** One variant as the form sends it — the same shape, price as typed. */

@@ -80,6 +80,8 @@ function draw(bookings: Booking[]) {
     <AntarJemputBookingsTable
       rows={toGroomingRows(bookings, scope)}
       loading={false}
+      sort="schedule_asc"
+      onSortChange={jest.fn()}
       onChanged={jest.fn()}
       emptyMessage="kosong"
     />,
@@ -180,6 +182,48 @@ describe("AntarJemputBookingsTable", () => {
        booking page — which is built round one animal and its grooming. */
     expect(push).toHaveBeenCalledWith("/dashboard/layanan/antar-jemput/bk-1");
     expect(screen.queryByRole("button", { name: /rincian/i })).toBeNull();
+  });
+
+  /*
+    SORTED FROM TWO HEADERS (BO, 20 October 2026): Booking, A first, and Nilai,
+    largest first. Every other header is plain text, not a button.
+  */
+  it("sorts Booking A first and Nilai largest first, and nothing else", async () => {
+    const onSortChange = jest.fn();
+    renderWithAuth(
+      <AntarJemputBookingsTable
+        rows={toGroomingRows([ride()], scope)}
+        loading={false}
+        sort="schedule_asc"
+        onSortChange={onSortChange}
+        onChanged={jest.fn()}
+        emptyMessage="kosong"
+      />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Booking" }));
+    expect(onSortChange).toHaveBeenLastCalledWith("booking_asc");
+    await userEvent.click(screen.getByRole("button", { name: "Nilai" }));
+    expect(onSortChange).toHaveBeenLastCalledWith("value_desc");
+
+    for (const name of ["Pelanggan & Hewan", "Arah", "Jam", "Driver", "Status"]) {
+      expect(screen.getByRole("columnheader", { name })).not.toHaveAttribute("aria-sort");
+    }
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  /* The status control is changed in place; it never also opens the page. */
+  it("does not open the booking from the status control", async () => {
+    draw([ride({ nextStatuses: ["in_progress"] })]);
+
+    await userEvent.click(screen.getByRole("button", { name: /^Status / }));
+
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    /* A pick inside the portalled menu bubbles through React to the row too. */
+    await userEvent.click(screen.getAllByRole("menuitem")[0]);
+
+    expect(push).not.toHaveBeenCalled();
   });
 
   /* A driver's note is read on the booking's page, not scanned down a list. */

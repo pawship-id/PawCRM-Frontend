@@ -7,6 +7,18 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Layanan: sort dari judul kolom
+
+20 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Booking Grooming & Antar-Jemput:** `<DataTable>`, sort Booking (nomor booking, draft di bawah) dan Nilai
+  (angka yang tampil: Grooming sebelum diskon, Antar-Jemput setelah diskon). Diurutkan di browser — satu
+  periode dimuat sekaligus. Urutan bawaan tetap jadwal terdekat. `Urutkan` dihapus dari panel.
+- **Katalog Grooming & Antar-Jemput:** `<DataTable>`, sort Layanan, Harga (termurah dulu), Durasi (terpendek
+  dulu) di server — mengikuti angka pertama yang tampil di sel (harga/durasi varian aktif terendah);
+  layanan tanpa harga/durasi selalu di bawah.
+- Antar-Jemput: sub teks "Klik baris untuk membuka halaman booking…" dihapus.
+
 ## [Unreleased] — Keuangan: satu komponen tabel, sort disesuaikan
 
 20 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
