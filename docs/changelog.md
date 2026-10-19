@@ -7,6 +7,18 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Keuangan: satu komponen tabel, sort disesuaikan
+
+20 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Akun Kas & Bank:** `<DataTable>` dengan sort di browser (semua akun dimuat sekaligus) — Kode, Masuk,
+  Keluar, Saldo; kolom Aksi jadi menu ⋮ → Ubah; kalimat "Masuk dan Keluar dihitung…" dihapus.
+- **Daftar transaksi, Biaya tetap, Komisi, Jurnal** kini memakai `<DataTable>` (komponen header sort
+  masing-masing dihapus). Sort Cabang (Transaksi), Cabang + Status (Komisi), Cabang + Keterangan (Jurnal)
+  dihapus. Catatan "Daftar ini menunjukkan yang berulang…" (Biaya tetap) dihapus.
+- Judul daftar "Daftar transaksi", "Biaya tetap", "Komisi", "Jurnal umum" tidak lagi huruf
+  kapital: `h2 text-lg font-bold` (ui-rules §5).
+
 ## [Unreleased] — Pelanggan: sort dari judul kolom
 
 20 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.

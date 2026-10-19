@@ -154,6 +154,34 @@ describe("CommissionScreen — the mockup's list", () => {
     );
   });
 
+  /** Cabang and Status stopped sorting on 20 October 2026 (BO). */
+  it("orders from Tanggal, Staf, Nilai layanan and Komisi only", async () => {
+    renderWithAuth(<CommissionScreen now={NOW} />, { permissions: MANAGER, isSuperAdmin: false });
+
+    await screen.findByText("BK-0910-014");
+    const table = screen.getByRole("table");
+
+    await userEvent.click(within(table).getByRole("button", { name: /^Komisi/ }));
+    await waitFor(() =>
+      expect(reports.commissionRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "amount", dir: "desc" }),
+      ),
+    );
+
+    await userEvent.click(within(table).getByRole("button", { name: /^Staf/ }));
+    await waitFor(() =>
+      expect(reports.commissionRecords).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "groomer", dir: "asc" }),
+      ),
+    );
+
+    expect(within(table).getByRole("button", { name: /^Tanggal/ })).toBeInTheDocument();
+    expect(within(table).getByRole("button", { name: /^Nilai layanan/ })).toBeInTheDocument();
+    expect(within(table).queryByRole("button", { name: /^Cabang/ })).not.toBeInTheDocument();
+    expect(within(table).getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+    expect(within(table).queryByRole("button", { name: /^Status$/ })).not.toBeInTheDocument();
+  });
+
   it("will not let a paid row be ticked", async () => {
     renderWithAuth(<CommissionScreen now={NOW} />, { permissions: MANAGER, isSuperAdmin: false });
 

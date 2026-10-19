@@ -3723,13 +3723,8 @@ export interface CommissionRowsResult {
   cards: { total: string; paid: string; pending: string };
 }
 
-export type CommissionSort =
-  | "bookingDate"
-  | "groomer"
-  | "branch"
-  | "basisAmount"
-  | "amount"
-  | "status";
+/** Cabang and Status stopped sorting on 20 October 2026 (BO). */
+export type CommissionSort = "bookingDate" | "groomer" | "basisAmount" | "amount";
 
 export interface CommissionRowsQuery {
   branchId?: string;
@@ -8284,10 +8279,7 @@ export type CashTransactionSort =
   | "newest"
   | "oldest"
   | "amountHighest"
-  | "amountLowest"
-  /** By the branch's NAME — the server joins the branch in for these two only. */
-  | "branchAsc"
-  | "branchDesc";
+  | "amountLowest";
 
 export type CashTransactionDocumentType =
   | "customer_invoice"

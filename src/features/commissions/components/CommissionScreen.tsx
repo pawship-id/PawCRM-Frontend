@@ -3,32 +3,26 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, ChevronsUpDown, RotateCcw } from "lucide-react";
+import { RotateCcw } from "lucide-react";
 
 import {
   Alert,
   Card,
+  DataTable,
   FilterBar,
   FinanceScopeCard,
   FilterSearch,
   FilterSelect,
   HighlightText,
   ListFooter,
-  Spinner,
   StatTile,
   withAll,
   type AppliedFilter,
+  type DataTableColumn,
+  type SortOptions,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   reportPresets,
   SHARED_LINE_LABEL,
@@ -47,11 +41,7 @@ import type {
 } from "@/types/api";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
 
-import {
-  COMMISSION_PAGE_SIZES,
-  useCommissions,
-  type CommissionsQuery,
-} from "../hooks/useCommissions";
+import { COMMISSION_PAGE_SIZES, useCommissions } from "../hooks/useCommissions";
 import {
   COMMISSION_STATUS_FILTERS,
   COMMISSION_STATUS_LABEL,
@@ -63,8 +53,34 @@ import {
 import { CommissionStatusBadge } from "./CommissionStatusBadge";
 import { PayCommissionDialog } from "./PayCommissionDialog";
 
-/** ☐ · Tanggal · Staf · Cabang · Nilai Layanan · Komisi · Status. */
-const COLUMN_COUNT = 7;
+/**
+ * THE HEADERS THAT ORDER THE LIST, on the server (§8). The API takes a column
+ * and a direction rather than one name, so each ordering here is the pair
+ * spelled `column:dir` and split again on the way out. First click takes the
+ * column's natural direction: newest date and largest amount first, A first
+ * for a name. Cabang and Status stopped sorting on 20 October 2026 (BO).
+ */
+type CommissionOrder = `${CommissionSort}:${"asc" | "desc"}`;
+
+const SORT_OPTIONS: SortOptions<CommissionOrder> = {
+  bookingDate: {
+    asc: "bookingDate:asc",
+    desc: "bookingDate:desc",
+    first: "desc",
+  },
+  groomer: { asc: "groomer:asc", desc: "groomer:desc" },
+  basisAmount: {
+    asc: "basisAmount:asc",
+    desc: "basisAmount:desc",
+    first: "desc",
+  },
+  amount: { asc: "amount:asc", desc: "amount:desc", first: "desc" },
+};
+
+/** Keeps a click inside a cell's control from also opening the row. */
+function stop(event: { stopPropagation: () => void }) {
+  event.stopPropagation();
+}
 
 const STATUS_OPTIONS = withAll(
   COMMISSION_STATUS_FILTERS.map((status) => ({
@@ -268,15 +284,17 @@ export function CommissionScreen({ now }: { now: string }) {
     });
   }
 
-  const sortHead = (sort: CommissionSort, label: string, align?: "right") => (
-    <SortHead
-      sort={sort}
-      label={label}
-      align={align}
-      query={query}
-      onSort={(next) => setQuery(next)}
-    />
-  );
+  const columns = commissionColumns({
+    search: query.search,
+    manages,
+    busy,
+    selectable,
+    pageChecked,
+    isChecked: (row) => Boolean(selected[row.key]),
+    onCheck: toggle,
+    onCheckPage: togglePage,
+    onStatus: changeStatus,
+  });
 
   return (
     <div className="flex flex-col gap-6">
@@ -349,9 +367,7 @@ export function CommissionScreen({ now }: { now: string }) {
 
       <Card>
         <div className="flex flex-col gap-4">
-          <h2 className="text-xs font-semibold tracking-widest text-muted uppercase">
-            Komisi per booking
-          </h2>
+          <h2 className="text-lg font-bold">Komisi</h2>
 
           {error && (
             <Alert variant="error">
@@ -433,92 +449,60 @@ export function CommissionScreen({ now }: { now: string }) {
             </div>
           )}
 
-          {loading && !data ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-              <Spinner /> Memuat komisi…
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-                <Table className={loading ? "opacity-60" : undefined}>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-10">
-                        <Checkbox
-                          aria-label="Pilih semua di halaman ini"
-                          disabled={selectable.length === 0}
-                          checked={
-                            pageChecked === 0
-                              ? false
-                              : pageChecked === selectable.length
-                                ? true
-                                : "indeterminate"
-                          }
-                          onCheckedChange={(value) =>
-                            togglePage(value === true)
-                          }
-                        />
-                      </TableHead>
-                      {sortHead("bookingDate", "Tanggal")}
-                      {sortHead("groomer", "Staf")}
-                      {sortHead("branch", "Cabang")}
-                      {sortHead("basisAmount", "Nilai layanan", "right")}
-                      {sortHead("amount", "Komisi", "right")}
-                      {sortHead("status", "Status")}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {rows.length === 0 && (
-                      <TableRow className="hover:bg-transparent">
-                        <TableCell
-                          colSpan={COLUMN_COUNT}
-                          className="px-4 py-16 text-center"
-                        >
-                          <p className="font-medium text-foreground">
-                            {filtered
-                              ? "Tidak ada komisi di filter ini."
-                              : "Belum ada komisi."}
-                          </p>
-                          <p className="mt-1 text-sm text-muted">
-                            {filtered
-                              ? "Coba longgarkan periode, cabang atau statusnya, atau hapus kata kuncinya."
-                              : "Komisi muncul begitu booking grooming selesai dan fakturnya terbit."}
-                          </p>
-                        </TableCell>
-                      </TableRow>
-                    )}
-
-                    {rows.map((row) => (
-                      <CommissionTableRow
-                        key={row.key}
-                        row={row}
-                        search={query.search}
-                        checked={Boolean(selected[row.key])}
-                        manages={manages}
-                        busy={busy}
-                        onCheck={(on) => toggle(row, on)}
-                        onOpen={() => router.push(commissionHref(row))}
-                        onStatus={(next) => changeStatus(row, next)}
-                      />
-                    ))}
-                  </TableBody>
-                </Table>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(row) => row.key}
+            sort={{
+              value: `${query.sort}:${query.dir}`,
+              options: SORT_OPTIONS,
+              onChange: (next) => {
+                const [sort, dir] = next.split(":") as [
+                  CommissionSort,
+                  "asc" | "desc",
+                ];
+                setQuery({ sort, dir });
+              },
+            }}
+            loading={loading}
+            loadingLabel="Memuat komisi…"
+            onRowClick={(row) => router.push(commissionHref(row))}
+            rowClassName={(row) =>
+              cn(
+                selected[row.key] && "bg-navy-100",
+                row.status === "reversed" && "text-muted",
+              )
+            }
+            empty={
+              <div className="px-4 py-16 text-center">
+                <p className="font-medium text-foreground">
+                  {filtered
+                    ? "Tidak ada komisi di filter ini."
+                    : "Belum ada komisi."}
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  {filtered
+                    ? "Coba longgarkan periode, cabang atau statusnya, atau hapus kata kuncinya."
+                    : "Komisi muncul begitu booking grooming selesai dan fakturnya terbit."}
+                </p>
               </div>
+            }
+          />
 
-              <ListFooter
-                page={data?.page ?? query.page}
-                pageSize={query.limit}
-                pageSizes={COMMISSION_PAGE_SIZES}
-                total={data?.total ?? 0}
-                totalPages={Math.max(
-                  1,
-                  Math.ceil((data?.total ?? 0) / query.limit),
-                )}
-                unit="komisi"
-                onPageChange={(page) => setQuery({ page })}
-                onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
-              />
-            </>
+          {!(loading && !data) && (
+            <ListFooter
+              page={data?.page ?? query.page}
+              pageSize={query.limit}
+              pageSizes={COMMISSION_PAGE_SIZES}
+              total={data?.total ?? 0}
+              totalPages={Math.max(
+                1,
+                Math.ceil((data?.total ?? 0) / query.limit),
+              )}
+              unit="komisi"
+              onPageChange={(page) => setQuery({ page })}
+              onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
+            />
           )}
         </div>
       </Card>
@@ -536,194 +520,176 @@ export function CommissionScreen({ now }: { now: string }) {
 }
 
 /**
- * A HEADER THAT ORDERS THE LIST — the third screen allowed to (§8, recorded
- * there). First click takes the column's natural direction: newest date and
- * largest amount first, A first for a name.
+ * ☐ · Tanggal · Staf · Cabang · Nilai Layanan · Komisi · Status. The ticks and
+ * the status control stop their clicks, so using them never opens the row.
  */
-function SortHead({
-  sort,
-  label,
-  align,
-  query,
-  onSort,
-}: {
-  sort: CommissionSort;
-  label: string;
-  align?: "right";
-  query: CommissionsQuery;
-  onSort: (patch: Pick<CommissionsQuery, "sort" | "dir">) => void;
-}) {
-  const active = query.sort === sort ? query.dir : null;
-  const Icon =
-    active === "asc" ? ArrowUp : active === "desc" ? ArrowDown : ChevronsUpDown;
-  const natural: "asc" | "desc" =
-    sort === "groomer" || sort === "branch" || sort === "status"
-      ? "asc"
-      : "desc";
-
-  return (
-    <TableHead
-      className={align === "right" ? "text-right" : undefined}
-      aria-sort={
-        active === "asc"
-          ? "ascending"
-          : active === "desc"
-            ? "descending"
-            : "none"
-      }
-    >
-      <button
-        type="button"
-        onClick={() =>
-          onSort({
-            sort,
-            dir: active ? (active === "asc" ? "desc" : "asc") : natural,
-          })
-        }
-        className={cn(
-          "inline-flex items-center gap-1 rounded-md hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
-          active && "text-foreground",
-          align === "right" && "flex-row-reverse",
-        )}
-      >
-        {label}
-        <Icon
-          className={cn("size-3.5", active ? "text-primary" : "text-muted/60")}
-          aria-hidden
-        />
-      </button>
-    </TableHead>
-  );
-}
-
-function CommissionTableRow({
-  row,
+function commissionColumns({
   search,
-  checked,
   manages,
   busy,
+  selectable,
+  pageChecked,
+  isChecked,
   onCheck,
-  onOpen,
+  onCheckPage,
   onStatus,
 }: {
-  row: CommissionRow;
   search: string;
-  checked: boolean;
   manages: boolean;
   busy: boolean;
-  onCheck: (on: boolean) => void;
-  onOpen: () => void;
-  onStatus: (next: CommissionStatus) => void;
-}) {
-  const reversed = row.status === "reversed";
-  const options = nextStatuses(row.status);
-
-  return (
-    <TableRow
-      onClick={onOpen}
-      className={cn(
-        "cursor-pointer",
-        checked && "bg-navy-100",
-        reversed && "text-muted",
-      )}
-    >
-      <TableCell
-        className="px-4 py-2.5"
-        onClick={(event) => event.stopPropagation()}
-      >
+  selectable: CommissionRow[];
+  pageChecked: number;
+  isChecked: (row: CommissionRow) => boolean;
+  onCheck: (row: CommissionRow, on: boolean) => void;
+  onCheckPage: (on: boolean) => void;
+  onStatus: (row: CommissionRow, next: CommissionStatus) => void;
+}): DataTableColumn<CommissionRow>[] {
+  return [
+    {
+      id: "select",
+      header: (
         <Checkbox
-          aria-label={`Pilih komisi ${row.groomerName ?? ""} ${row.bookingNumber ?? ""}`.trim()}
-          checked={checked}
-          disabled={!isSelectable(row)}
-          title={
-            isSelectable(row) ? undefined : COMMISSION_STATUS_LABEL[row.status]
+          aria-label="Pilih semua di halaman ini"
+          disabled={selectable.length === 0}
+          checked={
+            pageChecked === 0
+              ? false
+              : pageChecked === selectable.length
+                ? true
+                : "indeterminate"
           }
-          onCheckedChange={(value) => onCheck(value === true)}
+          onCheckedChange={(value) => onCheckPage(value === true)}
         />
-      </TableCell>
-
-      <TableCell className="px-4 py-2.5 text-sm whitespace-nowrap">
-        <Link
-          href={commissionHref(row)}
-          onClick={(event) => event.stopPropagation()}
-          className="rounded-md font-semibold tabular-nums underline-offset-4 hover:text-primary-hover hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-        >
-          <HighlightText
-            text={row.bookingNumber ?? "Tanpa nomor"}
-            query={search}
+      ),
+      headClassName: "w-10",
+      cell: (row) => (
+        <div onClick={stop}>
+          <Checkbox
+            aria-label={`Pilih komisi ${row.groomerName ?? ""} ${row.bookingNumber ?? ""}`.trim()}
+            checked={isChecked(row)}
+            disabled={!isSelectable(row)}
+            title={
+              isSelectable(row)
+                ? undefined
+                : COMMISSION_STATUS_LABEL[row.status]
+            }
+            onCheckedChange={(value) => onCheck(row, value === true)}
           />
-        </Link>
-        <p className="text-xs text-muted tabular-nums">
-          {formatDay(row.bookingDate)}
-        </p>
-      </TableCell>
-
-      <TableCell className="px-4 py-2.5 text-sm">
-        <p className="font-semibold">
-          <HighlightText text={row.groomerName ?? "—"} query={search} />
-        </p>
-        {row.petName && (
-          <p className="text-xs text-muted">
-            {row.petName}
-            {row.serviceName ? ` · ${row.serviceName}` : ""}
+        </div>
+      ),
+    },
+    {
+      id: "bookingDate",
+      header: "Tanggal",
+      cellClassName: "text-sm whitespace-nowrap",
+      cell: (row) => (
+        <>
+          <Link
+            href={commissionHref(row)}
+            onClick={stop}
+            className="rounded-md font-semibold tabular-nums underline-offset-4 hover:text-primary-hover hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            <HighlightText
+              text={row.bookingNumber ?? "Tanpa nomor"}
+              query={search}
+            />
+          </Link>
+          <p className="text-xs text-muted tabular-nums">
+            {formatDay(row.bookingDate)}
           </p>
-        )}
-      </TableCell>
-
-      <TableCell className="px-4 py-2.5 text-sm whitespace-nowrap">
+        </>
+      ),
+    },
+    {
+      id: "groomer",
+      header: "Staf",
+      cellClassName: "text-sm",
+      cell: (row) => (
+        <>
+          <p className="font-semibold">
+            <HighlightText text={row.groomerName ?? "—"} query={search} />
+          </p>
+          {row.petName && (
+            <p className="text-xs text-muted">
+              {row.petName}
+              {row.serviceName ? ` · ${row.serviceName}` : ""}
+            </p>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "branch",
+      header: "Cabang",
+      cellClassName: "text-sm whitespace-nowrap",
+      cell: (row) => (
         <HighlightText text={row.branchName ?? "—"} query={search} />
-      </TableCell>
-
-      <TableCell className="px-4 py-2.5 text-right text-sm tabular-nums whitespace-nowrap">
-        {formatMoney(row.basisAmount)}
-      </TableCell>
-
-      <TableCell
-        className={cn(
-          "px-4 py-2.5 text-right text-sm font-semibold tabular-nums whitespace-nowrap",
-          reversed && "line-through",
-        )}
-      >
-        {formatMoney(row.amount)}
-        {row.overridden && (
-          <p className="text-xs font-normal text-muted">disesuaikan</p>
-        )}
-      </TableCell>
-
-      <TableCell
-        className="px-4 py-2.5"
-        onClick={(event) => event.stopPropagation()}
-      >
-        {/*
-          THE MOCKUP'S STATUS DROPDOWN, for whoever may decide — and only the
-          moves the Owner allowed: approve a pending row, take an approval back,
-          pay an approved one. Everything else is a badge.
-        */}
-        {manages && options.length > 1 ? (
-          /*
-            `bar`, not `field`: a control in a table cell draws the value alone,
-            with no caption stacked above it — the column header already says
-            "Status".
-          */
-          <FilterSelect
-            layout="bar"
-            label="Status"
-            ariaLabel={`Ubah status komisi ${row.groomerName ?? ""}`.trim()}
-            value={row.status}
-            active={false}
-            disabled={busy}
-            options={options.map((status) => ({
-              value: status,
-              label: COMMISSION_STATUS_LABEL[status],
-            }))}
-            onChange={onStatus}
-          />
-        ) : (
-          <CommissionStatusBadge status={row.status} />
-        )}
-      </TableCell>
-    </TableRow>
-  );
+      ),
+    },
+    {
+      id: "basisAmount",
+      header: "Nilai layanan",
+      align: "right",
+      cellClassName: "text-sm whitespace-nowrap",
+      cell: (row) => formatMoney(row.basisAmount),
+    },
+    {
+      id: "amount",
+      header: "Komisi",
+      align: "right",
+      cellClassName: (row) =>
+        cn(
+          "text-sm font-semibold whitespace-nowrap",
+          row.status === "reversed" && "line-through",
+        ),
+      cell: (row) => (
+        <>
+          {formatMoney(row.amount)}
+          {row.overridden && (
+            <p className="text-xs font-normal text-muted">disesuaikan</p>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (row) => {
+        const options = nextStatuses(row.status);
+        return (
+          <div onClick={stop}>
+            {/*
+              THE MOCKUP'S STATUS DROPDOWN, for whoever may decide — and only
+              the moves the Owner allowed: approve a pending row, take an
+              approval back, pay an approved one. Everything else is a badge.
+            */}
+            {manages && options.length > 1 ? (
+              /*
+                `bar`, not `field`: a control in a table cell draws the value
+                alone, with no caption stacked above it — the column header
+                already says "Status".
+              */
+              <FilterSelect
+                layout="bar"
+                label="Status"
+                ariaLabel={`Ubah status komisi ${row.groomerName ?? ""}`.trim()}
+                value={row.status}
+                active={false}
+                disabled={busy}
+                options={options.map((status) => ({
+                  value: status,
+                  label: COMMISSION_STATUS_LABEL[status],
+                }))}
+                onChange={(next) => onStatus(row, next)}
+              />
+            ) : (
+              <CommissionStatusBadge status={row.status} />
+            )}
+          </div>
+        );
+      },
+    },
+  ];
 }
 
 /** Chrome must never be able to fail an action — see BookingForm. */

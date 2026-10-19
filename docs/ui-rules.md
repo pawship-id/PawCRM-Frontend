@@ -116,7 +116,7 @@ Two families. `font-display` (Plus Jakarta Sans) for headings only; `font-sans` 
 - **There are exactly two typefaces. There is no `font-mono`.** `--font-mono` is deliberately unbound in `globals.css`: a third family is a brand violation, and Inter's tabular figures already do the column-alignment job a monospace face was doing here.
 - Nothing below 13 px. `text-[10px]` is banned — it is the single worst offender in the current table headers.
 - **A stat/summary tile's label is sentence case. Never `uppercase`/`tracking-wide` on it.** The mockup sets these in small caps at 10 px; this product's floor is 13 px (§1.6), and a label like "OKUPANSI HOTEL" set in caps at 13 px wraps across two lines in a tile that was only ever drawn for one. `StatTile.tsx` carries the fuller rationale. Reach for the shared `<StatTile>` (§2) instead of re-deriving this per screen — that drift is exactly how Penjualan's and Keuangan Ringkasan's cards ended up louder than their neighbours (both fixed 2 October 2026).
-  **This does not reach the small-caps convention elsewhere** — a `<dt>` field label in a detail view, a table header, or a Card's small `text-xs … uppercase` caption (`JournalEntriesScreen`'s "Jurnal umum", `CashTransactionsScreen`'s "Daftar transaksi") are a different, already-consistent role and are not part of this rule.
+  **This does not reach the small-caps convention elsewhere** — a `<dt>` field label in a detail view or a table header is a different, already-consistent role and is not part of this rule. **A list's own heading is not small caps any more** (20 October 2026, BO): Keuangan's "Daftar transaksi", "Biaya tetap", "Komisi" and "Jurnal umum" are sentence-case section headings, `<h2 class="text-lg font-bold">`, per the table above.
 
 ---
 
@@ -239,10 +239,10 @@ when that column is not the active one, first click takes the column's natural
 direction — `Urutkan` is out of its filter panel, and that panel's `Reset` no
 longer touches the ordering.
 
-**ONLY THREE OF ITS EIGHT COLUMNS ARE CLICKABLE**, and that is the interesting
-part. Tanggal, Cabang and Jumlah are in `CASH_TRANSACTION_SORTS` on the server,
-each with an index; Cabang joins the branch collection in for those two orderings
-and for no others. **Deskripsi and Akun are deliberately plain.** What those two
+**ONLY TWO OF ITS EIGHT COLUMNS ARE CLICKABLE**, and that is the interesting
+part. Tanggal and Jumlah are in `CASH_TRANSACTION_SORTS` on the server, each with
+an index. Cabang sorted too, through a branch join, until BO dropped it (20
+October 2026). **Deskripsi and Akun are deliberately plain.** What those two
 cells show is assembled at render time — a note, or the document number, or the
 kind; one account name, or a count of several — so any field the server could
 actually sort would order the rows by something other than the text somebody is
@@ -251,12 +251,11 @@ does not invite the click.
 
 **THE THIRD SCREEN: Komisi, in Keuangan.** Decided 21 September 2026 with the
 BO mockup (`buloo-keuangan-komisi.html`), which draws the header row sortable.
-Same shape as the two above. **All six data columns are clickable** — Tanggal,
-Staf, Cabang, Nilai layanan, Komisi, Status — because unlike Transaksi every one
-of them shows a single stored or grouped value the server orders by
-(`SORT_FIELDS` in `commissionRecord.repository.js`), so no header sorts by
-something other than what it displays. First click: newest date and largest
-amount first, A first for a name or a status.
+Same shape as the two above. **Four columns are clickable** — Tanggal, Staf,
+Nilai layanan, Komisi — each a single stored or grouped value the server orders
+by (`SORT_FIELDS` in `commissionRecord.repository.js`). Cabang and Status sorted
+too until BO dropped them (20 October 2026). First click: newest date and
+largest amount first, A first for a name.
 
 Its only filter, Status, **stands on the bar** and applies on click, where the
 mockup put it behind a Filter button: one field is below the floor (a button
@@ -264,12 +263,12 @@ that hides one thing is worse than showing it — Transfer Stok's reasoning).
 Cabang, Lini Usaha and Periode are the module's context bar above it.
 
 **THE FOURTH SCREEN: Jurnal, in Keuangan.** Decided 21 September 2026 with the
-BO mockup (`Buloo - jurnal (2).html`). Tanggal, No. jurnal, Keterangan, Cabang
-and Nilai are clickable — Nilai sorts on the stored `total` the server keeps for
-exactly this. **Sumber is deliberately plain**: the cell shows a label ("Faktur",
+BO mockup (`Buloo - jurnal (2).html`). Tanggal, No. jurnal and Nilai are
+clickable — Nilai sorts on the stored `total` the server keeps for exactly
+this. Keterangan and Cabang sorted too until BO dropped them (20 October 2026). **Sumber is deliberately plain**: the cell shows a label ("Faktur",
 "Jurnal manual") and the server could only order by the code behind it —
 Transaksi's rule. First click: newest date and largest amount first, A first for
-a number, a name or a keterangan.
+a number.
 
 Its one filter, Sumber, **stays behind `Filter (n)`** although that is one field
 below the floor — a recorded exception: the mockup draws the button, and the
@@ -329,6 +328,11 @@ actions — Detail, Cetak faktur, Bayar, Batalkan faktur — behind
 **Pelanggan joins them** (20 October 2026, BO): Pelanggan sorts by Kode,
 Pelanggan and Bergabung; Hewan by Nama, Umur and Berat, with animals missing a
 birth date or a weight kept at the bottom in both directions.
+
+**Keuangan's four screens render through `<DataTable>` too** (20 October 2026):
+Akun Kas & Bank (sorted in the browser — every account is loaded at once — by
+Kode, Masuk, Keluar and Saldo; Ubah behind `RowLinkMenu`), Daftar transaksi,
+Biaya tetap, Komisi and Jurnal. Their private header components are gone.
 
 **A collapsed bar owes you its count.** A quick bar shows its values on its triggers; a panel hides them behind a button, and a hidden filter is one people forget is on and then read the wrong numbers from. `Filter (2)` is not decoration — it is what makes the collapsed form safe, and a panel button without it is a bug.
 
