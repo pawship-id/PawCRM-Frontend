@@ -176,7 +176,11 @@ export function TodayTransactionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      {/*
+        THE LIST SCROLLS, NOT THE PAGE: the heading, the pills and the pager
+        stay put while a busy day's rows scroll between them.
+      */}
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Transaksi hari ini</DialogTitle>
           <DialogDescription>
@@ -205,146 +209,155 @@ export function TodayTransactionsDialog({
           </Alert>
         )}
 
-        {unsent.length > 0 && (
-          <ul className="divide-y divide-border rounded-xl bg-surface-hover px-3">
-            {unsent.map((record) => (
-              <li
-                key={record.clientTxnId}
-                className="flex flex-wrap items-center justify-between gap-3 py-3"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium tabular-nums text-foreground">
-                      {record.sale.transactionNumber}
-                    </span>
-                    <Badge
-                      variant="outline"
-                      className="border-transparent bg-tint-warning text-secondary-foreground"
-                    >
-                      {UNSENT_LABEL[record.status] ?? "Belum terkirim"}
-                    </Badge>
-                  </div>
-                  <span className="block text-xs tabular-nums text-muted">
-                    {paidAtLabel(record.sale.paidAt)} · {record.priced.items.length} item ·{" "}
-                    {formatMoney(record.sale.totals.grandTotal)}
-                    {record.sale.cashierName ? ` · ${record.sale.cashierName}` : ""}
-                  </span>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => onReceipt(record.priced)}
-                >
-                  <Receipt className="size-4" />
-                  Struk
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        {offline ? null : loading && sales.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
-            <Spinner /> Memuat…
-          </div>
-        ) : sales.length === 0 ? (
-          unsent.length > 0 ? null : (
-            <p className="py-10 text-center text-sm text-muted">
-              {mine ? "Belum ada transaksi kamu hari ini." : "Belum ada penjualan hari ini."}
-            </p>
-          )
-        ) : (
-          <>
-            <ul className="divide-y divide-border">
-              {sales.map((sale) => (
+        <div className="-mx-6 min-h-0 flex-1 space-y-4 overflow-y-auto px-6">
+          {unsent.length > 0 && (
+            <ul className="divide-y divide-border rounded-xl bg-surface-hover px-3">
+              {unsent.map((record) => (
                 <li
-                  key={sale._id}
+                  key={record.clientTxnId}
                   className="flex flex-wrap items-center justify-between gap-3 py-3"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="truncate text-sm font-medium tabular-nums text-foreground">
-                        {sale.transactionNumber}
+                        {record.sale.transactionNumber}
                       </span>
-                      {/* A word, not a colour alone — ui-rules §1.3. */}
-                      {sale.status === "void" && (
-                        <Badge
-                          variant="outline"
-                          className="border-transparent bg-tint-danger text-danger"
-                        >
-                          Dibatalkan
-                        </Badge>
-                      )}
-                      {/* Rung up on a till with no connection, posted later. */}
-                      {sale.source === "offline" && (
-                        <Badge
-                          variant="outline"
-                          className="border-transparent bg-tint-neutral text-muted"
-                        >
-                          Offline
-                        </Badge>
-                      )}
+                      <Badge
+                        variant="outline"
+                        className="border-transparent bg-tint-warning text-secondary-foreground"
+                      >
+                        {UNSENT_LABEL[record.status] ?? "Belum terkirim"}
+                      </Badge>
                     </div>
                     <span className="block text-xs tabular-nums text-muted">
-                      {paidAtLabel(sale.paidAt)} · {sale.items.length} item ·{" "}
-                      {formatMoney(sale.totals?.grandTotal ?? "0")}
-                      {sale.cashierName ? ` · ${sale.cashierName}` : ""}
+                      {paidAtLabel(record.sale.paidAt)} ·{" "}
+                      {record.priced.items.length} item ·{" "}
+                      {formatMoney(record.sale.totals.grandTotal)}
+                      {record.sale.cashierName
+                        ? ` · ${record.sale.cashierName}`
+                        : ""}
                     </span>
                   </div>
-
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onReceipt(sale)}
-                    >
-                      <Receipt className="size-4" />
-                      Struk
-                    </Button>
-
-                    {sale.status === "paid" && (
-                      <>
-                        <Can feature="posTransactions" action="refund">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onReturn(sale)}
-                          >
-                            <RotateCcw className="size-4" />
-                            Retur
-                          </Button>
-                        </Can>
-
-                        <Can feature="posTransactions" action="void">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onVoid(sale)}
-                          >
-                            <Ban className="size-4" />
-                            Batalkan
-                          </Button>
-                        </Can>
-                      </>
-                    )}
-                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onReceipt(record.priced)}
+                  >
+                    <Receipt className="size-4" />
+                    Struk
+                  </Button>
                 </li>
               ))}
             </ul>
+          )}
 
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              total={total}
-              unit="transaksi"
-              unitPlural="transaksi"
-              onPageChange={setPage}
-            />
-          </>
+          {offline ? null : loading && sales.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
+              <Spinner /> Memuat…
+            </div>
+          ) : sales.length === 0 ? (
+            unsent.length > 0 ? null : (
+              <p className="py-10 text-center text-sm text-muted">
+                {mine
+                  ? "Belum ada transaksi kamu hari ini."
+                  : "Belum ada penjualan hari ini."}
+              </p>
+            )
+          ) : (
+            <>
+              <ul className="divide-y divide-border">
+                {sales.map((sale) => (
+                  <li
+                    key={sale._id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium tabular-nums text-foreground">
+                          {sale.transactionNumber}
+                        </span>
+                        {/* A word, not a colour alone — ui-rules §1.3. */}
+                        {sale.status === "void" && (
+                          <Badge
+                            variant="outline"
+                            className="border-transparent bg-tint-danger text-danger"
+                          >
+                            Dibatalkan
+                          </Badge>
+                        )}
+                        {/* Rung up on a till with no connection, posted later. */}
+                        {sale.source === "offline" && (
+                          <Badge
+                            variant="outline"
+                            className="border-transparent bg-tint-neutral text-muted"
+                          >
+                            Offline
+                          </Badge>
+                        )}
+                      </div>
+                      <span className="block text-xs tabular-nums text-muted">
+                        {paidAtLabel(sale.paidAt)} · {sale.items.length} item ·{" "}
+                        {formatMoney(sale.totals?.grandTotal ?? "0")}
+                        {sale.cashierName ? ` · ${sale.cashierName}` : ""}
+                      </span>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onReceipt(sale)}
+                      >
+                        <Receipt className="size-4" />
+                        Struk
+                      </Button>
+
+                      {sale.status === "paid" && (
+                        <>
+                          <Can feature="posTransactions" action="refund">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => onReturn(sale)}
+                            >
+                              <RotateCcw className="size-4" />
+                              Retur
+                            </Button>
+                          </Can>
+
+                          <Can feature="posTransactions" action="void">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => onVoid(sale)}
+                            >
+                              <Ban className="size-4" />
+                              Batalkan
+                            </Button>
+                          </Can>
+                        </>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+
+        {!offline && sales.length > 0 && (
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            unit="transaksi"
+            unitPlural="transaksi"
+            onPageChange={setPage}
+          />
         )}
       </DialogContent>
     </Dialog>
