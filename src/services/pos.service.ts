@@ -212,8 +212,15 @@ export const posService = {
       bookingIds,
     }),
 
-  pay: (id: string, input: PayInput) =>
-    apiClient.post<PosTransaction>(`/pos/transactions/${id}/pay`, input),
+  /*
+    `options.headers` carries a registered till's X-Pos-Device-* pair, and the
+    input its own number and sale id (POS offline mode, 19 October 2026).
+  */
+  pay: (
+    id: string,
+    input: PayInput & { transactionNumber?: string; clientTxnId?: string },
+    options: { headers?: Record<string, string> } = {},
+  ) => apiClient.post<PosTransaction>(`/pos/transactions/${id}/pay`, input, options),
 
   /**
    * GET /pos/customers/:id/credit — how much this customer may still owe (FR-7).

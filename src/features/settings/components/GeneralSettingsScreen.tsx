@@ -244,6 +244,13 @@ export function GeneralSettingsScreen() {
               />
             </>
           )}
+          {can("posTransactions", "read") && (
+            <HubLinkCard
+              title="Perangkat kasir"
+              description="Tablet atau komputer kasir, kodenya (K1, K2, …) di nomor transaksi, dan mode offline."
+              href={SETTINGS_PATHS.perangkatKasir}
+            />
+          )}
           <HubPendingCard {...LANGGANAN_CARD} />
         </div>
       </Section>

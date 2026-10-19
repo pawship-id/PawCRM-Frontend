@@ -418,6 +418,8 @@ describe("GeneralSettingsScreen", () => {
       "Notifikasi",
       "Faktur & dokumen",
       "Stok & kasir",
+      // POS offline mode (19 October 2026).
+      "Perangkat kasir",
       "Langganan & tagihan",
     ]);
     // Sanity check the query itself found the real grid, not an empty one.

@@ -1,4 +1,5 @@
 import { env } from "@/utils/env";
+import { reportReachable, reportUnreachable } from "@/lib/connectivity";
 import { ApiError } from "./api-error";
 import type { ApiResponse, ApiSuccess } from "@/types/api";
 
@@ -152,17 +153,26 @@ async function requestEnvelope<T>(
           : undefined,
     });
   } catch (error) {
+    /*
+      EVERY REQUEST IS A READING OF THE CONNECTION (POS offline mode): one that
+      never got an answer counts toward the till switching to offline, one that
+      did counts toward it switching back — see lib/connectivity.ts. A request
+      the caller aborted itself says nothing about the network.
+    */
     if (error instanceof DOMException && error.name === "AbortError") {
+      if (!init.signal?.aborted) reportUnreachable();
       throw new ApiError(`Request timed out after ${timeoutMs}ms`, 0, {
         isNetworkError: true,
         isTimeout: true,
       });
     }
+    reportUnreachable();
     throw ApiError.network();
   } finally {
     clearTimeout(timeout);
   }
 
+  reportReachable();
   const payload = await parseBody<T>(response);
 
   if (!response.ok || payload.success === false) {

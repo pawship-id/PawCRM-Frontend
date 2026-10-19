@@ -2208,6 +2208,9 @@ export interface PosTransaction {
   syncOnline?: boolean;
   /** Who opened it — tells "mine" from a synced one parked at another till. */
   createdBy?: string | null;
+  /** Where it was rung up — "offline" arrived later from a till's queue (19 Oct 2026). */
+  source?: "online" | "offline";
+  deviceId?: string | null;
   bookingIds: string[];
   paidAt: string | null;
   createdAt: string;

@@ -310,6 +310,9 @@ export const PERMISSION_CATALOG = {
     "refund",
     "discountOverride",
     "setPrice",
+    // POS offline mode (19 October 2026): register tills, work Perlu Dicek.
+    "manageDevices",
+    "reviewOffline",
   ],
   // The audit trail is read-only (mirrors the backend catalog): records are
   // system-appended and never edited or deleted, so `read` is the only action.

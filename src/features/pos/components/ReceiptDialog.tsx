@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { posService } from "@/services/pos.service";
+import { tillReceipt } from "../offline/tillApi";
 import { formatMoney } from "@/utils/decimal";
 import type { PosReceipt } from "@/types/api";
 
@@ -89,8 +89,8 @@ export function ReceiptDialog({
     setCopied(false);
     setManualText(null);
 
-    posService
-      .receipt(saleId)
+    /* A sale rung up offline prints from the device (POS offline mode). */
+    tillReceipt(saleId)
       .then((result) => {
         if (active) setReceipt(result);
       })

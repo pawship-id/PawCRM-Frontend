@@ -150,6 +150,15 @@ export function TodayTransactionsDialog({
                           Dibatalkan
                         </Badge>
                       )}
+                      {/* Rung up on a till with no connection, posted later. */}
+                      {sale.source === "offline" && (
+                        <Badge
+                          variant="outline"
+                          className="border-transparent bg-tint-neutral text-muted"
+                        >
+                          Offline
+                        </Badge>
+                      )}
                     </div>
                     <span className="block text-xs tabular-nums text-muted">
                       {paidAtLabel(sale.paidAt)} · {sale.items.length} item ·{" "}
