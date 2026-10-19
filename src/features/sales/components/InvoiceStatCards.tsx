@@ -72,10 +72,8 @@ export function InvoiceStatCards({
         }
         value={revenue !== undefined ? formatMoney(revenue) : "—"}
         caption={
-          summary
-            ? ledger
-              ? "sama dengan Laba Rugi"
-              : `${summary.revenue.invoiceCount} faktur`
+          summary && !ledger
+            ? `${summary.revenue.invoiceCount} faktur`
             : undefined
         }
         loading={loading}

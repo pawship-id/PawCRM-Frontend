@@ -188,6 +188,9 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
    */
   const lots = useWarehouseBatches(
     opname?.status === "draft" ? opname.warehouseId : "",
+    // Kept current like the system quantities: the lots of the lines on the
+    // sheet are re-read when products join and when somebody comes back.
+    items.map((item) => item.productId),
   );
 
   const editable =

@@ -32,6 +32,7 @@ const EVERY_LIST_FILTER: Required<ProductBatchListQuery> = {
   page: 2,
   limit: 20,
   productId: "p1",
+  productIds: ["p1", "p2"],
   warehouseId: "w1",
   branchId: "b1",
   hasRemaining: true,

@@ -7,6 +7,8 @@ import { ApiError } from "@/services/api-error";
 import type { Opname, OpnameItem, OpnameItemInput } from "@/types/inventory";
 import { trimQty } from "@/utils/decimal";
 
+import { useRefreshOnReturn } from "./useLiveStock";
+
 /**
  * Long enough that typing "12" is one request rather than two, short enough that
  * a counter who looks up after a line still sees it saved. The trade is a
@@ -475,6 +477,39 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
   const reload = useCallback(() => {
     setReloadKey((key) => key + 1);
   }, []);
+
+  /**
+   * THE SYSTEM QUANTITIES, RE-READ WHEN SOMEBODY COMES BACK TO THE SHEET.
+   *
+   * Every auto-save already re-reads them, but only when somebody types; a
+   * sheet left open while the shop keeps selling showed the morning's figures
+   * until then. `?fresh=true` answers the same question without saving, and
+   * its lines replace these under the auto-save's own rule: never while an
+   * edit is waiting to be saved, and not if one arrived while this was out —
+   * a refresh must not be the thing that reverts a typed count.
+   */
+  const refreshFigures = useCallback(async () => {
+    if (opname?.status !== "draft") return;
+    if (dirtyRef.current || timerRef.current) return;
+
+    const revision = revisionRef.current;
+    try {
+      const fresh = await stockOpnameService.getById(opnameId, { fresh: true });
+      if (!activeRef.current) return;
+      if (revisionRef.current !== revision || dirtyRef.current) return;
+
+      setOpname(fresh);
+      const lines = forEditing(fresh.items);
+      setItems(lines);
+      itemsRef.current = lines;
+    } catch {
+      // Silent: the figures on screen still stand, and the submit re-reads.
+    }
+  }, [opname?.status, opnameId]);
+
+  useRefreshOnReturn(() => {
+    void refreshFigures();
+  });
 
   return {
     opname,

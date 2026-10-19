@@ -6,6 +6,7 @@ import type {
   NegativeStockResult,
   Product,
   ProductListQuery,
+  ProductStockOf,
   ProductVariantsResult,
   UpdateProductInput,
 } from "@/types/inventory";
@@ -84,6 +85,16 @@ export const productService = {
 
   /** GET /products/:id — a single product. */
   getById: (id: string) => apiClient.get<Product>(`/products/${id}`),
+
+  /**
+   * GET /products/stock — on-hand rows for up to 100 products in ONE request,
+   * narrowed to the caller's shelves. What an open document form re-reads to
+   * keep "Tersedia" current; never one `getById` per line.
+   */
+  stock: (productIds: string[]) =>
+    apiClient.get<{ items: ProductStockOf[] }>("/products/stock", {
+      query: { productIds },
+    }),
 
   /**
    * GET /products/:id/variants — one parent's variants, unpaginated.

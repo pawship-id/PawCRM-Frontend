@@ -47,6 +47,7 @@ import {
 
 import { useStockCardLookups } from "../hooks/useStockCardLookups";
 import { useBranchScope, warehousesForBranch } from "../hooks/useBranchScope";
+import { useLiveStock } from "../hooks/useLiveStock";
 import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
 import { qtyAtWarehouse } from "../utils/ledger";
 import { AdjustmentAddProductsDialog } from "./AdjustmentAddProductsDialog";
@@ -191,7 +192,16 @@ export function StockAdjustmentForm() {
    */
   const [idempotencyKey] = useState(newIdempotencyKey);
 
-  const lots = useWarehouseBatches(warehouseId);
+  /*
+    KEPT CURRENT WHILE THE FORM IS OPEN, and here it is more than a display:
+    the delta this form posts is `newQty − systemQty`, so a system figure that
+    went stale while somebody counted would post the wrong correction. Re-read
+    when products join and when somebody comes back to the tab — one request
+    each for every line.
+  */
+  const lineProductIds = lines.map((line) => line.productId);
+  const liveStock = useLiveStock(lineProductIds);
+  const lots = useWarehouseBatches(warehouseId, lineProductIds);
 
   const scope = useBranchScope();
   /**
@@ -226,7 +236,10 @@ export function StockAdjustmentForm() {
       return lot?.qtyRemaining ?? null;
     }
 
-    return qtyAtWarehouse(product.stockByWarehouse ?? [], warehouseId);
+    return qtyAtWarehouse(
+      liveStock.rowsOf(line.productId) ?? product.stockByWarehouse ?? [],
+      warehouseId,
+    );
   }
 
   /**
