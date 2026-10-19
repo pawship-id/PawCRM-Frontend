@@ -64,6 +64,8 @@ export const SETTINGS_PATHS = {
   peran: `${ROOT}/peran`,
   aksesCabang: `${ROOT}/akses-cabang`,
   riwayat: `${ROOT}/riwayat`,
+  /** Read-only: a shift is closed only from the till, by its own cashier. */
+  shiftKasir: `${ROOT}/shift-kasir`,
 } as const;
 
 /** One service's edit form. */

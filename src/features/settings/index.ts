@@ -34,6 +34,7 @@ export {
 } from "./hooks/useCustomerTypeList";
 export { NotificationSettingsScreen } from "./components/NotificationSettingsScreen";
 export { NumberingSettingsScreen } from "./components/NumberingSettingsScreen";
+export { CashierShiftsScreen } from "./components/CashierShiftsScreen";
 export { SupplierTypesScreen } from "./components/SupplierTypesScreen";
 export {
   DocumentSettingsScreen,

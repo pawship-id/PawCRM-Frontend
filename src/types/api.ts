@@ -1817,6 +1817,15 @@ export interface PosShift {
   updatedAt: string;
 }
 
+/**
+ * A row of GET /pos/shifts — the shift plus the two names a list across
+ * cashiers and branches needs. Null when the branch or user is gone.
+ */
+export interface PosShiftListItem extends PosShift {
+  branchName: string | null;
+  cashierName: string | null;
+}
+
 /** One channel's takings during a shift. `net` is amount minus change given. */
 export interface PosPaymentBreakdownRow {
   channelId: string;
