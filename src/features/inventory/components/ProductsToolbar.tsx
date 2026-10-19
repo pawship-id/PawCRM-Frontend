@@ -23,18 +23,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Category } from "@/types/api";
-import type {
-  ProductSort,
-  ProductType,
-  StockWarehouse,
-} from "@/types/inventory";
+import type { ProductType, StockWarehouse } from "@/types/inventory";
 
 import type { WarehouseScope } from "../utils/catalogue";
 import type { ProductsQuery } from "../hooks/useProducts";
 
 /**
  * The catalogue's controls: one row — search and one Filter button — with every
- * filter and the sort order inside the panel.
+ * filter inside the panel. The ORDERING is not here: the table's headers set it
+ * (BO, 19 October 2026), so nothing in this panel re-sorts the list.
  *
  * Purely presentational: it renders the current query and reports changes up to
  * useProducts.
@@ -44,9 +41,9 @@ import type { ProductsQuery } from "../hooks/useProducts";
  * each tab creates a different thing.
  *
  * ONE BUTTON RATHER THAN A ROW OF TRIGGERS, at every width. Rule §8 hands a
- * quick bar to a screen of four-or-fewer single-selects, and this screen has six
- * things to set — type, category, warehouse scope, status, deleted, and now an
- * ordering. That is the panel's own threshold, and it is what the panel is for:
+ * quick bar to a screen of four-or-fewer single-selects, and this screen has five
+ * things to set — type, category, warehouse scope, status and deleted, one of
+ * them a multi-pick. That is the panel's own threshold, and it is what the panel is for:
  * the table is queried once for a decision somebody made in one sitting, rather
  * than three times while they compose it.
  *
@@ -81,31 +78,12 @@ const STATUSES: FilterOption<ProductsQuery["status"]>[] = [
   { value: "inactive", label: "Nonaktif" },
 ];
 
-/**
- * The orderings the API accepts — PRODUCT_SORTS in product.model.js.
- *
- * NO "HARGA" OR "STOK" HERE, and their absence is deliberate. A parent and a
- * bundle carry no `sellPrice` of their own (the table prints "—"), so ordering
- * by price would sort a column that is empty for two of the three row types;
- * and stock is summed across whichever warehouses are picked, on the page, from
- * an array — the server cannot order by a number it has not been asked to
- * compute. Offering either would be a control that quietly does something else.
- */
-const SORTS: FilterOption<ProductSort>[] = [
-  { value: "newest", label: "Terbaru" },
-  { value: "oldest", label: "Terlama" },
-  { value: "nameAsc", label: "Nama A–Z" },
-  { value: "nameDesc", label: "Nama Z–A" },
-  { value: "skuAsc", label: "SKU A–Z" },
-];
-
 /** Everything the panel edits, as one draft. */
 interface CatalogueFilters {
   productType: ProductsQuery["productType"];
   categoryId: string;
   status: ProductsQuery["status"];
   includeDeleted: boolean;
-  sort: ProductSort;
   /** Empty means every warehouse — see WarehouseField. */
   warehouseIds: string[];
 }
@@ -113,15 +91,15 @@ interface CatalogueFilters {
 /**
  * What Reset returns to — the query's own defaults, not "empty".
  *
- * The ordering is included: a list with no ordering is not a thing, so Reset
- * puts it back to the API's default rather than clearing it to nothing.
+ * The ordering is NOT included: it is set from the table's headers, and a
+ * button inside a filter panel must not silently re-sort a table somebody
+ * ordered from the headers they can see (ui-rules §8).
  */
 const CLEARED: CatalogueFilters = {
   productType: "",
   categoryId: "",
   status: "",
   includeDeleted: false,
-  sort: "newest",
   warehouseIds: [],
 };
 
@@ -154,7 +132,6 @@ export function ProductsToolbar({
     categoryId: query.categoryId,
     status: query.status,
     includeDeleted: query.includeDeleted,
-    sort: query.sort,
     warehouseIds: [...warehouseIds],
   };
 
@@ -171,11 +148,11 @@ export function ProductsToolbar({
     const patch: Partial<ProductsQuery> = {};
     if (rest.productType !== query.productType)
       patch.productType = rest.productType;
-    if (rest.categoryId !== query.categoryId) patch.categoryId = rest.categoryId;
+    if (rest.categoryId !== query.categoryId)
+      patch.categoryId = rest.categoryId;
     if (rest.status !== query.status) patch.status = rest.status;
     if (rest.includeDeleted !== query.includeDeleted)
       patch.includeDeleted = rest.includeDeleted;
-    if (rest.sort !== query.sort) patch.sort = rest.sort;
 
     if (Object.keys(patch).length > 0) onChange(patch);
     if (!sameScope(nextWarehouses, warehouseIds))
@@ -210,7 +187,7 @@ export function ProductsToolbar({
 }
 
 /**
- * Every filter and the sort order, behind one button.
+ * Every filter, behind one button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8). Reset returns
  * the whole set to its defaults and applies at once, because clearing a filter
@@ -230,14 +207,7 @@ function CatalogueFilterPanel({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(applied);
 
-  /**
-   * How many filters are narrowing the list right now.
-   *
-   * THE ORDERING IS NOT COUNTED. Every list has one, so it is never "on" — a
-   * badge that read `Filter (1)` on a screen showing every product would train
-   * people to ignore the number, which is the one thing here that must stay
-   * worth reading.
-   */
+  /** How many filters are narrowing the list right now. */
   const count = [
     applied.productType !== "",
     applied.categoryId !== "",
@@ -279,18 +249,6 @@ function CatalogueFilterPanel({
           setOpen(false);
         }}
       >
-        {/* Sort leads: it is the one field here that is always set, and the
-            only one that changes what the top of the list is rather than what
-            is in it. */}
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="newest"
-          onChange={(sort) => patch({ sort })}
-        />
         <FilterSelect
           layout="field"
           label="Tipe"

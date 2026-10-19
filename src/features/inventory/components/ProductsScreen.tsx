@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { Alert, Pagination, Spinner } from "@/components";
+import { Alert, Pagination } from "@/components";
 import { Can } from "@/features/permissions";
 
 import { useCatalogLookups } from "../hooks/useCatalogLookups";
@@ -55,11 +55,12 @@ import { ProductsToolbar } from "./ProductsToolbar";
  * rule over the same number.
  */
 export function ProductsScreen() {
-  const { products, pagination, query, loading, error, setQuery, refetch } =
-    useProducts();
-  const lookups = useCatalogLookups();
-
   const [warehouseIds, setWarehouseIds] = useState<string[]>([]);
+  // The picked warehouses go along only so a Stok sort ranks by the figure the
+  // column shows; every other ordering ignores them.
+  const { products, pagination, query, loading, error, setQuery, refetch } =
+    useProducts(warehouseIds);
+  const lookups = useCatalogLookups();
 
   return (
     <div className="flex flex-col gap-6">
@@ -87,29 +88,25 @@ export function ProductsScreen() {
           says out loud rather than showing as empty cells. */}
       {lookups.error && <Alert variant="error">{lookups.error}</Alert>}
 
-      {loading && products.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Memuat katalog…
-        </div>
-      ) : (
-        <>
-          <ProductsTable
-            products={products}
-            categories={lookups.categories}
-            warehouseIds={warehouseIds}
-            loading={loading}
-            onChanged={refetch}
-          />
-          <Pagination
-            page={pagination.page}
-            totalPages={pagination.totalPages}
-            total={pagination.total}
-            unit="produk"
-            unitPlural="produk"
-            onPageChange={(page) => setQuery({ page })}
-          />
-        </>
-      )}
+      {/* The table shows its own spinner until the first rows arrive, and
+          keeps them on screen, dimmed, while a re-sort or a page loads. */}
+      <ProductsTable
+        products={products}
+        categories={lookups.categories}
+        warehouseIds={warehouseIds}
+        loading={loading}
+        sort={query.sort}
+        onSortChange={(sort) => setQuery({ sort })}
+        onChanged={refetch}
+      />
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        unit="produk"
+        unitPlural="produk"
+        onPageChange={(page) => setQuery({ page })}
+      />
     </div>
   );
 }

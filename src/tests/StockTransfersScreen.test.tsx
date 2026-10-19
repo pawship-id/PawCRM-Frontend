@@ -69,9 +69,7 @@ function page(items: StockTransferSummary[] = []): StockTransferPage {
 
 beforeEach(() => {
   jest.restoreAllMocks();
-  jest
-    .spyOn(stockTransferService, "list")
-    .mockResolvedValue(page([TRANSFER]));
+  jest.spyOn(stockTransferService, "list").mockResolvedValue(page([TRANSFER]));
   // Spied so the test below can assert it is NOT the one that gets called.
   jest.spyOn(stockMovementService, "list");
   jest.spyOn(warehouseService, "list").mockResolvedValue({
@@ -110,8 +108,18 @@ it("leads each row with the number and says where the goods are", async () => {
 it("says Diterima and Dibatalkan for the other two states", async () => {
   jest.spyOn(stockTransferService, "list").mockResolvedValue(
     page([
-      { ...TRANSFER, _id: "t2", transferNumber: "TRF/2610/0043", status: "received" },
-      { ...TRANSFER, _id: "t3", transferNumber: "TRF/2610/0044", status: "cancelled" },
+      {
+        ...TRANSFER,
+        _id: "t2",
+        transferNumber: "TRF/2610/0043",
+        status: "received",
+      },
+      {
+        ...TRANSFER,
+        _id: "t3",
+        transferNumber: "TRF/2610/0044",
+        status: "cancelled",
+      },
     ]),
   );
 
@@ -144,24 +152,31 @@ it("shows both ends and what the transfer carried", async () => {
  * line at a time, and the sentence keeping it from being read as a journal
  * figure went with it.
  */
-it("carries no value column, and points at the detail instead", async () => {
+it("carries no value column, and no sub text pointing at the detail", async () => {
   renderWithAuth(<StockTransfersScreen />);
 
   const row = (await screen.findByText("Gudang Bazar")).closest("tr");
   expect(within(row!).queryByText(/450\.000/)).not.toBeInTheDocument();
+  // The line under the table is gone (BO, 19 October 2026).
   expect(
-    screen.getByText(/Buka Detail untuk melihat barang apa saja/),
-  ).toBeInTheDocument();
+    screen.queryByText(/Buka Detail untuk melihat barang apa saja/),
+  ).not.toBeInTheDocument();
 });
 
 /**
  * The number is the link, and a named action sits beside it — the action says
  * where it goes without the reader having to try the number to find out.
  */
-it("opens the transfer's own detail from the row", async () => {
+it("opens the transfer's own detail from the row's kebab", async () => {
+  const user = userEvent.setup();
   renderWithAuth(<StockTransfersScreen />);
 
-  const link = await screen.findByRole("link", { name: /^Detail transfer/ });
+  await user.click(
+    await screen.findByRole("button", {
+      name: `Aksi untuk ${TRANSFER.transferNumber}`,
+    }),
+  );
+  const link = await screen.findByRole("menuitem", { name: "Detail" });
   expect(link).toHaveAttribute(
     "href",
     `/dashboard/inventory/transfers/${TRANSFER._id}`,
@@ -271,42 +286,70 @@ it("narrows to what is still on the road", async () => {
 });
 
 /**
- * SORTING IS A FIELD IN THE PANEL, not a control of its own — and it leads the
- * stack, because it is the one field always set and the only one that changes
- * what the top of the list is rather than what is in it.
+ * THE LIST SORTS FROM ITS COLUMN HEADERS (BO, 19 October 2026), on the server.
+ * The first click takes the column's natural direction — newest date and most
+ * products first, A first for a number, a warehouse, a status or a note.
  */
-it("asks the server for the ordering the panel picked", async () => {
-  const user = await openPanel();
+describe("header sorting", () => {
+  async function renderList() {
+    const user = userEvent.setup();
+    renderWithAuth(<StockTransfersScreen />);
+    await waitFor(() => expect(stockTransferService.list).toHaveBeenCalled());
+    return user;
+  }
 
-  await user.click(screen.getByLabelText("Urutkan"));
-  await user.click(await screen.findByRole("option", { name: "Terlama" }));
-  await user.click(screen.getByRole("button", { name: "Terapkan" }));
+  function lastSort() {
+    const calls = (stockTransferService.list as jest.Mock).mock.calls;
+    return calls[calls.length - 1][0].sort;
+  }
 
-  await waitFor(() =>
-    expect(stockTransferService.list).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sort: "oldest" }),
-    ),
-  );
-});
+  it("opens on the newest first, marked on the Tanggal header", async () => {
+    await renderList();
 
-/**
- * NOT COUNTED IN THE BADGE. Every list has an ordering, so counting it would put
- * a standing number over an unnarrowed list and teach people to ignore the badge
- * — the one thing that makes a collapsed filter safe.
- */
-it("leaves the ordering out of the filter count", async () => {
-  const user = await openPanel();
+    expect(lastSort()).toBe("newest");
+    expect(
+      screen.getByRole("columnheader", { name: "Tanggal" }),
+    ).toHaveAttribute("aria-sort", "descending");
+  });
 
-  await user.click(screen.getByLabelText("Urutkan"));
-  await user.click(await screen.findByRole("option", { name: "Terlama" }));
-  await user.click(screen.getByRole("button", { name: "Terapkan" }));
+  it.each([
+    ["No. transfer", "numberAsc"],
+    ["Tanggal", "oldest"],
+    ["Produk", "productCountDesc"],
+  ])("asks the server to sort by %s", async (header, sort) => {
+    const user = await renderList();
 
-  expect(
-    await screen.findByRole("button", { name: "Filter" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: /Filter \(/ }),
-  ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: header }));
+
+    await waitFor(() => expect(lastSort()).toBe(sort));
+  });
+
+  it("flips a column on the second click", async () => {
+    const user = await renderList();
+
+    await user.click(screen.getByRole("button", { name: "No. transfer" }));
+    await waitFor(() => expect(lastSort()).toBe("numberAsc"));
+    await user.click(screen.getByRole("button", { name: "No. transfer" }));
+
+    await waitFor(() => expect(lastSort()).toBe("numberDesc"));
+  });
+
+  it("leaves Dari, Ke, Status, Catatan and Aksi plain", async () => {
+    await renderList();
+
+    for (const name of ["Dari", "Ke", "Status", "Catatan", "Aksi"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+  });
+
+  /** Urutkan left the panel when the headers took over. */
+  it("offers no Urutkan in the filter panel", async () => {
+    const user = await openPanel();
+
+    expect(screen.getByLabelText("Filter status transfer")).toBeVisible();
+    expect(screen.queryByLabelText("Urutkan")).not.toBeInTheDocument();
+    void user;
+  });
 });
 
 it("keeps 'Semua gudang' on offer after a warehouse has been picked", async () => {
@@ -348,6 +391,39 @@ it("re-queries unnarrowed on Reset", async () => {
   );
 });
 
+/**
+ * A Reset inside a filter panel must not silently re-sort a table somebody
+ * ordered from the headers it can see.
+ */
+it("keeps the header ordering through the panel's Reset", async () => {
+  const user = userEvent.setup();
+  renderWithAuth(<StockTransfersScreen />);
+  await waitFor(() => expect(warehouseService.list).toHaveBeenCalled());
+
+  await user.click(screen.getByRole("button", { name: "Produk" }));
+  await waitFor(() =>
+    expect(stockTransferService.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sort: "productCountDesc" }),
+    ),
+  );
+
+  await user.click(screen.getByRole("button", { name: "Filter" }));
+  await user.click(screen.getByLabelText("Filter gudang — asal maupun tujuan"));
+  await user.click(await screen.findByRole("option", { name: "Gudang Bazar" }));
+  await user.click(screen.getByRole("button", { name: "Terapkan" }));
+  await user.click(await screen.findByRole("button", { name: "Filter (1)" }));
+  await user.click(screen.getByRole("button", { name: "Reset" }));
+
+  await waitFor(() =>
+    expect(stockTransferService.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        warehouseId: undefined,
+        sort: "productCountDesc",
+      }),
+    ),
+  );
+});
+
 it("offers the empty list its next step", async () => {
   jest.spyOn(stockTransferService, "list").mockResolvedValue(page());
 
@@ -367,9 +443,7 @@ it("hides the create button from a role that may only read", async () => {
 
   // The list itself is gated on `read` by the page — the write is gated here and
   // on the /new route, so a reader still gets the history.
-  await waitFor(() =>
-    expect(stockTransferService.list).toHaveBeenCalled(),
-  );
+  await waitFor(() => expect(stockTransferService.list).toHaveBeenCalled());
   expect(screen.queryByRole("link", { name: /Transfer baru/ })).toBeNull();
 });
 

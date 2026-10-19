@@ -33,10 +33,17 @@ function totalling(total: number) {
   return { items: [], pagination: { page: 1, limit: 1, total, totalPages: 1 } };
 }
 
-/** Answers the catalogue query with `families`, the unfiltered one with `all`. */
-function catalogueHolds(families: number, all: number) {
+/**
+ * Answers the catalogue query with `families`, the unfiltered one with `all`,
+ * and the unfiled catalogue rows with `unfiled`.
+ */
+function catalogueHolds(families: number, all: number, unfiled = 7) {
   mockedProductService.list.mockImplementation((query = {}) =>
-    Promise.resolve(totalling(query.excludeVariants ? families : all)),
+    Promise.resolve(
+      totalling(
+        query.uncategorized ? unfiled : query.excludeVariants ? families : all,
+      ),
+    ),
   );
 }
 
@@ -133,12 +140,19 @@ describe("CatalogModuleHeader", () => {
     expect(mockedCategoryService.list).not.toHaveBeenCalled();
   });
 
-  it("badges the tile the API cannot answer", async () => {
+  it("counts the catalogue rows filed under no category", async () => {
+    catalogueHolds(248, 760, 13);
     renderWithAuth(<CatalogModuleHeader />);
 
     expect(screen.getByText("Tanpa kategori")).toBeInTheDocument();
-    expect(screen.getByText("Segera")).toBeInTheDocument();
-
-    await waitFor(() => expect(mockedCategoryService.list).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText("13")).toBeInTheDocument());
+    expect(screen.queryByText("Segera")).not.toBeInTheDocument();
+    // Catalogue rows only: a variant never stores a category of its own.
+    expect(mockedProductService.list).toHaveBeenCalledWith({
+      page: 1,
+      limit: 1,
+      excludeVariants: true,
+      uncategorized: true,
+    });
   });
 });

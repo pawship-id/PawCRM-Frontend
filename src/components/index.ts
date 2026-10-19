@@ -62,6 +62,22 @@ export { Spinner } from "./Spinner";
 export { HighlightText } from "./HighlightText";
 export { SkuText } from "./SkuText";
 export { Pagination } from "./Pagination";
+/**
+ * THE list table (19 Oct 2026, BO): columns + rows, server-side header sorting.
+ * Every list screen renders through this rather than its own `<th>` markup.
+ */
+export {
+  DataTable,
+  SortableTableHead,
+  nextSortOf,
+  sortDirectionOf,
+  type DataTableColumn,
+  type DataTableProps,
+  type DataTableSort,
+  type SortDirection,
+  type SortOption,
+  type SortOptions,
+} from "./DataTable";
 export { ListFooter } from "./ListFooter";
 export { JournalLink } from "./JournalLink";
 export { ConfirmDialog } from "./ConfirmDialog";

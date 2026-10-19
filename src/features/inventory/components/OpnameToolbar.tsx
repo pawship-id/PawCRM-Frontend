@@ -13,11 +13,10 @@ import {
   Spinner,
   namedOptions,
   withAll,
-  type FilterOption,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import type { Branch } from "@/types/api";
-import type { OpnameSort, StockWarehouse } from "@/types/inventory";
+import type { StockWarehouse } from "@/types/inventory";
 
 import { ownerBranchOf, warehousesUnder } from "../hooks/useBranchScope";
 import type { OpnameFilters } from "../hooks/useOpnames";
@@ -58,47 +57,26 @@ const STATUSES = withAll<OpnameFilters["status"]>(
 );
 
 /**
- * The orderings the API accepts — OPNAME_SORTS in stockOpname.model.js.
- *
- * BY SHEET DATE, NOT BY WHEN THE ROW WAS WRITTEN. `opnameDate` is the day the
- * shelves were actually walked, which is the date printed on the row and the
- * one somebody means by "the last count"; a sheet opened on Friday for
- * Thursday's count would sort wrongly under either of the other two.
- *
- * The number orderings are not a second date axis in disguise. They agree with
- * chronology most of the time — OPN-2026-0001 precedes OPN-2026-0002 — but they
- * are how you find one sheet in a sequence rather than one day in a year.
+ * Everything the panel edits, as one draft. The ordering is NOT here: it lives
+ * on the table's column headers (BO, 19 October 2026), and a Reset inside a
+ * filter panel must not silently re-sort a table somebody ordered from the
+ * headers it can see (docs/ui-rules.md §8).
  */
-const SORTS: FilterOption<OpnameSort>[] = [
-  { value: "newest", label: "Terbaru" },
-  { value: "oldest", label: "Terlama" },
-  { value: "numberDesc", label: "Nomor Z–A" },
-  { value: "numberAsc", label: "Nomor A–Z" },
-];
-
-/** Everything the panel edits, as one draft. */
 interface PanelFilters {
   status: OpnameFilters["status"];
   branchId: string;
   warehouseId: string;
   dateFrom: string;
   dateTo: string;
-  sort: OpnameSort;
 }
 
-/**
- * What Reset returns to — the query's own defaults, not "empty".
- *
- * The ordering is included: a list with no ordering is not a thing, so Reset
- * puts it back to the API's default rather than clearing it to nothing.
- */
+/** What Reset returns to — the query's own defaults, not "empty". */
 const CLEARED: PanelFilters = {
   status: "",
   branchId: "",
   warehouseId: "",
   dateFrom: "",
   dateTo: "",
-  sort: "newest",
 };
 
 export function OpnameToolbar({
@@ -127,7 +105,6 @@ export function OpnameToolbar({
     warehouseId: filters.warehouseId,
     dateFrom: filters.dateFrom,
     dateTo: filters.dateTo,
-    sort: filters.sort,
   };
 
   /**
@@ -143,7 +120,6 @@ export function OpnameToolbar({
       patch.warehouseId = next.warehouseId;
     if (next.dateFrom !== filters.dateFrom) patch.dateFrom = next.dateFrom;
     if (next.dateTo !== filters.dateTo) patch.dateTo = next.dateTo;
-    if (next.sort !== filters.sort) patch.sort = next.sort;
 
     if (Object.keys(patch).length > 0) onChange(patch);
   }
@@ -221,10 +197,8 @@ function OpnameFilterPanel({
   const [draft, setDraft] = useState(applied);
 
   /**
-   * How many filters are narrowing the list. The range counts once, not twice,
-   * and THE ORDERING IS NOT COUNTED AT ALL — every list has one, so a badge
-   * reading `Filter (1)` over an unnarrowed screen would teach people to ignore
-   * the number.
+   * How many filters are narrowing the list. The range counts once, not twice.
+   * The ordering is not in the panel at all — it is on the column headers.
    */
   const count = [
     applied.status !== "",
@@ -308,18 +282,6 @@ function OpnameFilterPanel({
           setOpen(false);
         }}
       >
-        {/* Sort leads: it is the one field here that is always set, and the
-            only one that changes what the top of the list is rather than what
-            is in it. */}
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="newest"
-          onChange={(sort) => patch({ sort })}
-        />
         <FilterSelect
           layout="field"
           label="Status"

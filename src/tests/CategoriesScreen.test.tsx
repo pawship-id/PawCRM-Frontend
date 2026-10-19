@@ -268,7 +268,7 @@ describe("CategoriesScreen", () => {
     );
   });
 
-  it("re-orders the list through the panel, by a name the API accepts", async () => {
+  it("sorts from the Kategori header only, by a name the API accepts", async () => {
     const list = mockList([makeCategory()]);
 
     renderWithAuth(<CategoriesScreen />);
@@ -279,54 +279,55 @@ describe("CategoriesScreen", () => {
       expect.objectContaining({ sort: "newest" }),
     );
 
-    const panel = await openFilters();
-    await userEvent.click(
-      within(panel).getByRole("button", { name: "Urutkan" }),
-    );
-    await userEvent.click(screen.getByRole("option", { name: "Nama A–Z" }));
-    await userEvent.click(
-      within(panel).getByRole("button", { name: "Terapkan" }),
-    );
-
+    await userEvent.click(screen.getByRole("button", { name: "Kategori" }));
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith(
         expect.objectContaining({ sort: "nameAsc" }),
       ),
     );
+    await userEvent.click(screen.getByRole("button", { name: "Kategori" }));
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "nameDesc" }),
+      ),
+    );
+
+    // Only Kategori sorts (BO, 19 October 2026).
+    expect(
+      screen.queryByRole("button", { name: "Status" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("counts what is applied on the button, but never the ordering", async () => {
-    mockList([makeCategory()]);
+  it("has no Urutkan in the panel, and Reset keeps the header's ordering", async () => {
+    const list = mockList([makeCategory()]);
 
     renderWithAuth(<CategoriesScreen />);
     await screen.findByText("Makanan Kucing");
 
+    await userEvent.click(screen.getByRole("button", { name: "Kategori" }));
+
     let panel = await openFilters();
+    expect(
+      within(panel).queryByRole("button", { name: "Urutkan" }),
+    ).not.toBeInTheDocument();
     await userEvent.click(
       within(panel).getByLabelText("Tampilkan kategori terhapus"),
     );
     await userEvent.click(
       within(panel).getByRole("button", { name: "Terapkan" }),
     );
-
     expect(
       await screen.findByRole("button", { name: "Filter" }),
     ).toHaveTextContent("Filter (1)");
 
-    // Every list has an ordering, so counting it would put a (1) over a screen
-    // showing everything and teach people to ignore the number.
     panel = await openFilters();
-    await userEvent.click(
-      within(panel).getByRole("button", { name: "Urutkan" }),
-    );
-    await userEvent.click(screen.getByRole("option", { name: "Terlama" }));
-    await userEvent.click(
-      within(panel).getByRole("button", { name: "Terapkan" }),
-    );
+    await userEvent.click(within(panel).getByRole("button", { name: "Reset" }));
 
-    expect(
-      await screen.findByRole("button", { name: "Filter" }),
-    ).toHaveTextContent("Filter (1)");
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ includeDeleted: undefined, sort: "nameAsc" }),
+      ),
+    );
   });
 });
 
@@ -338,6 +339,8 @@ describe("CategoriesTable", () => {
       <CategoriesTable
         categories={[makeCategory({ description: "Basah dan kering" })]}
         loading={false}
+        sort="newest"
+        onSortChange={jest.fn()}
         onChanged={jest.fn()}
       />,
     );
@@ -350,6 +353,8 @@ describe("CategoriesTable", () => {
       <CategoriesTable
         categories={[makeCategory({ image: makeImage() })]}
         loading={false}
+        sort="newest"
+        onSortChange={jest.fn()}
         onChanged={jest.fn()}
       />,
     );
@@ -367,6 +372,8 @@ describe("CategoriesTable", () => {
       <CategoriesTable
         categories={[makeCategory({ image: null })]}
         loading={false}
+        sort="newest"
+        onSortChange={jest.fn()}
         onChanged={jest.fn()}
       />,
     );
@@ -388,6 +395,8 @@ describe("CategoriesTable", () => {
           }),
         ]}
         loading={false}
+        sort="newest"
+        onSortChange={jest.fn()}
         onChanged={jest.fn()}
       />,
     );
@@ -403,6 +412,8 @@ describe("CategoriesTable", () => {
       <CategoriesTable
         categories={[makeCategory({ name: "Makanan Kucing", parent: null })]}
         loading={false}
+        sort="newest"
+        onSortChange={jest.fn()}
         onChanged={jest.fn()}
       />,
     );
@@ -415,6 +426,8 @@ describe("CategoriesTable", () => {
       <CategoriesTable
         categories={[makeCategory()]}
         loading={false}
+        sort="newest"
+        onSortChange={jest.fn()}
         onChanged={jest.fn()}
       />,
     );
@@ -439,6 +452,8 @@ describe("CategoriesTable", () => {
       <CategoriesTable
         categories={[makeCategory()]}
         loading={false}
+        sort="newest"
+        onSortChange={jest.fn()}
         onChanged={onChanged}
       />,
     );
@@ -471,6 +486,8 @@ describe("CategoriesTable", () => {
       <CategoriesTable
         categories={[makeCategory()]}
         loading={false}
+        sort="newest"
+        onSortChange={jest.fn()}
         onChanged={jest.fn()}
       />,
     );
@@ -498,6 +515,8 @@ describe("CategoriesTable", () => {
       <CategoriesTable
         categories={[makeCategory({ deletedAt: "2026-02-01T00:00:00.000Z" })]}
         loading={false}
+        sort="newest"
+        onSortChange={jest.fn()}
         onChanged={jest.fn()}
       />,
     );
@@ -528,6 +547,8 @@ describe("CategoriesTable", () => {
       <CategoriesTable
         categories={[makeCategory()]}
         loading={false}
+        sort="newest"
+        onSortChange={jest.fn()}
         onChanged={jest.fn()}
       />,
       {

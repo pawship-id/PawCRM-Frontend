@@ -25,7 +25,10 @@ export interface OpnameFilters {
   /** `yyyy-mm-dd` from a date input, or "". */
   dateFrom: string;
   dateTo: string;
-  /** Which ordering to page through. */
+  /**
+   * Which ordering to page through — set from the table's column headers (BO,
+   * 19 October 2026), never from the filter panel, whose Reset leaves it alone.
+   */
   sort: OpnameSort;
 }
 
@@ -36,8 +39,8 @@ export const EMPTY_OPNAME_FILTERS: OpnameFilters = {
   status: "",
   dateFrom: "",
   dateTo: "",
-  // The API's own default, restated rather than left out: the panel renders the
-  // current value, and a select whose value is `undefined` shows nothing.
+  // The API's own default, restated rather than left out: the headers mark the
+  // active column from it, and `undefined` would mark none.
   sort: "newest",
 };
 

@@ -25,7 +25,8 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
  *     not there, and a magnitude is a number somebody misreads as an asset;
  *  3. the filter goes to the server, because a list that pages at twenty cannot
  *     narrow in the browser without answering a different question;
- *  4. an empty answer is the GOOD outcome and says so.
+ *  4. an empty answer is the GOOD outcome and says so;
+ *  5. it opens worst-first by value, and the headers re-sort it ON THE SERVER.
  */
 jest.mock("@/services/product.service");
 jest.mock("@/services/warehouse.service");
@@ -236,6 +237,7 @@ describe("the warehouse filter", () => {
         page: 1,
         limit: 20,
         warehouseId: OTHER_WAREHOUSE_ID,
+        sort: "valueAsc",
       }),
     );
   });
@@ -252,6 +254,7 @@ describe("the warehouse filter", () => {
         page: 1,
         limit: 20,
         warehouseId: undefined,
+        sort: "valueAsc",
       }),
     );
   });
@@ -290,6 +293,61 @@ describe("the warehouse filter", () => {
   });
 });
 
+describe("header sorting", () => {
+  /*
+    WORST-FIRST BY VALUE until somebody asks otherwise — and the Nilai header
+    says so, so the order on screen is never unexplained.
+  */
+  it("opens worst-first by value, with Nilai marked as the active column", async () => {
+    renderWithAuth(<NegativeStockScreen />);
+
+    await screen.findByText("Royal Canin Adult 3kg");
+    expect(mockedProducts.negativeStock).toHaveBeenCalledWith(
+      expect.objectContaining({ sort: "valueAsc" }),
+    );
+    expect(screen.getByRole("columnheader", { name: "Nilai" })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+  });
+
+  /*
+    THE SERVER SORTS. The list pages at twenty, so a header re-sorting the rows
+    on screen would order one page while the pager walked another ordering.
+  */
+  it("asks the server for each header's ordering, from the first page", async () => {
+    mockedProducts.negativeStock.mockResolvedValue(page([row()], 43));
+    renderWithAuth(<NegativeStockScreen />);
+    await screen.findByText("Royal Canin Adult 3kg");
+
+    await userEvent.click(screen.getByRole("button", { name: /berikutnya/i }));
+    await waitFor(() =>
+      expect(mockedProducts.negativeStock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2 }),
+      ),
+    );
+
+    const clicks: Array<[string, string]> = [
+      ["Produk", "nameAsc"],
+      ["Gudang", "warehouseAsc"],
+      // Ascending is the most negative first.
+      ["Stok", "qtyAsc"],
+      ["HPP rata-rata", "hppDesc"],
+      // First click: the worst hole first; the second flips it.
+      ["Nilai", "valueAsc"],
+      ["Nilai", "valueDesc"],
+    ];
+    for (const [header, sort] of clicks) {
+      await userEvent.click(screen.getByRole("button", { name: header }));
+      await waitFor(() =>
+        expect(mockedProducts.negativeStock).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort, page: 1 }),
+        ),
+      );
+    }
+  });
+});
+
 describe("paging", () => {
   /*
     THE PAGE IS THE ONE CHANGE THAT DOES NOT RESET THE PAGE. Every other knob
@@ -310,6 +368,7 @@ describe("paging", () => {
         page: 2,
         limit: 20,
         warehouseId: undefined,
+        sort: "valueAsc",
       }),
     );
   });

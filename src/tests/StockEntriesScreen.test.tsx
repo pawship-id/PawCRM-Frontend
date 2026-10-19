@@ -84,14 +84,20 @@ function entry(overrides: Partial<StockEntry> = {}): StockEntry {
  * the movement count only means something next to the lines it is compared
  * against — both live on the detail.
  */
-it("counts products and offers one way in", async () => {
+it("counts products and offers one way in, behind the row's kebab", async () => {
   jest.spyOn(stockEntryService, "list").mockResolvedValue(page([entry()]));
+  const user = userEvent.setup();
 
   renderWithAuth(<StockEntriesScreen kind="adjustment" />);
 
   const row = (await screen.findByText("ADJ-2026-0006")).closest("tr");
   expect(within(row!).getByText("3")).toBeInTheDocument();
-  expect(within(row!).getByRole("link", { name: "Detail" })).toHaveAttribute(
+  await user.click(
+    within(row!).getByRole("button", { name: "Aksi untuk ADJ-2026-0006" }),
+  );
+  expect(
+    await screen.findByRole("menuitem", { name: "Detail" }),
+  ).toHaveAttribute(
     "href",
     "/dashboard/inventory/adjustments/se1",
   );
@@ -116,10 +122,16 @@ it("points the opening-stock row at its own detail", async () => {
       page([entry({ kind: "opening_balance", entryNumber: "OPB-2026-0001" })]),
     );
 
+  const user = userEvent.setup();
   renderWithAuth(<StockEntriesScreen kind="opening_balance" />);
 
   const row = (await screen.findByText("OPB-2026-0001")).closest("tr");
-  expect(within(row!).getByRole("link", { name: "Detail" })).toHaveAttribute(
+  await user.click(
+    within(row!).getByRole("button", { name: "Aksi untuk OPB-2026-0001" }),
+  );
+  expect(
+    await screen.findByRole("menuitem", { name: "Detail" }),
+  ).toHaveAttribute(
     "href",
     "/dashboard/inventory/opening-stock/se1",
   );
@@ -144,42 +156,109 @@ it("marks the part of the number the search matched", async () => {
 });
 
 /**
- * SORTING IS A FIELD IN THE PANEL, not a control of its own — and it leads the
- * stack, because it is the one field always set and the only one that changes
- * what the top of the list is rather than what is in it.
+ * THE LIST SORTS FROM ITS COLUMN HEADERS (BO, 19 October 2026), on the server.
+ * The first click takes the column's natural direction — newest date and most
+ * products first, A first for a number, a name or a note — and the next flips it.
  */
-it("asks the server for the ordering the panel picked", async () => {
-  const user = await openPanel();
+describe("header sorting", () => {
+  async function renderList() {
+    const user = userEvent.setup();
+    jest.spyOn(stockEntryService, "list").mockResolvedValue(page([entry()]));
+    renderWithAuth(<StockEntriesScreen kind="adjustment" />);
+    await screen.findByText("ADJ-2026-0006");
+    return user;
+  }
 
-  await user.click(screen.getByLabelText("Urutkan"));
-  await user.click(await screen.findByRole("option", { name: "Nomor A–Z" }));
-  await user.click(screen.getByRole("button", { name: "Terapkan" }));
+  function lastSort() {
+    const calls = (stockEntryService.list as jest.Mock).mock.calls;
+    return calls[calls.length - 1][0].sort;
+  }
 
-  await waitFor(() =>
-    expect(stockEntryService.list).toHaveBeenCalledWith(
-      expect.objectContaining({ sort: "numberAsc" }),
-    ),
-  );
-});
+  it("opens on the newest first, marked on the Tanggal header", async () => {
+    await renderList();
 
-/**
- * NOT COUNTED IN THE BADGE. Every list has an ordering, so counting it would put
- * a standing number over an unnarrowed list and teach people to ignore the badge
- * — the one thing that makes a collapsed filter safe.
- */
-it("leaves the ordering out of the filter count", async () => {
-  const user = await openPanel();
+    expect(lastSort()).toBe("newest");
+    expect(
+      screen.getByRole("columnheader", { name: "Tanggal" }),
+    ).toHaveAttribute("aria-sort", "descending");
+  });
 
-  await user.click(screen.getByLabelText("Urutkan"));
-  await user.click(await screen.findByRole("option", { name: "Terlama" }));
-  await user.click(screen.getByRole("button", { name: "Terapkan" }));
+  it.each([
+    ["Nomor", "numberAsc"],
+    ["Produk", "lineCountDesc"],
+  ])("asks the server to sort by %s", async (header, sort) => {
+    const user = await renderList();
 
-  expect(
-    await screen.findByRole("button", { name: "Filter" }),
-  ).toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: /Filter \(/ }),
-  ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: header }));
+
+    await waitFor(() => expect(lastSort()).toBe(sort));
+  });
+
+  it("flips Tanggal to the oldest first on a click", async () => {
+    const user = await renderList();
+
+    await user.click(screen.getByRole("button", { name: "Tanggal" }));
+
+    await waitFor(() => expect(lastSort()).toBe("oldest"));
+  });
+
+  it("flips a column on the second click", async () => {
+    const user = await renderList();
+
+    await user.click(screen.getByRole("button", { name: "Nomor" }));
+    await waitFor(() => expect(lastSort()).toBe("numberAsc"));
+    await user.click(screen.getByRole("button", { name: "Nomor" }));
+
+    await waitFor(() => expect(lastSort()).toBe("numberDesc"));
+  });
+
+  it("leaves Cabang, Gudang, Catatan and Aksi plain", async () => {
+    await renderList();
+
+    for (const name of ["Cabang", "Gudang", "Catatan", "Aksi"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+  });
+
+  /** Urutkan left the panel when the headers took over. */
+  it("offers no Urutkan in the filter panel", async () => {
+    const user = await renderList();
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+
+    expect(screen.getByRole("button", { name: "Filter cabang" })).toBeVisible();
+    expect(screen.queryByLabelText("Urutkan")).not.toBeInTheDocument();
+  });
+
+  /**
+   * A Reset inside a filter panel must not silently re-sort a table somebody
+   * ordered from the headers it can see.
+   */
+  it("keeps the header ordering through the panel's Reset", async () => {
+    const user = await renderList();
+
+    await user.click(screen.getByRole("button", { name: "Produk" }));
+    await waitFor(() => expect(lastSort()).toBe("lineCountDesc"));
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(screen.getByRole("button", { name: "Filter cabang" }));
+    await user.click(screen.getByRole("option", { name: "Cabang Timur" }));
+    await user.click(screen.getByRole("button", { name: "Terapkan" }));
+    await waitFor(() =>
+      expect(stockEntryService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ branchId: "b1", sort: "lineCountDesc" }),
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(screen.getByRole("button", { name: "Reset" }));
+
+    await waitFor(() =>
+      expect(stockEntryService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ branchId: undefined, sort: "lineCountDesc" }),
+      ),
+    );
+  });
 });
 
 /**

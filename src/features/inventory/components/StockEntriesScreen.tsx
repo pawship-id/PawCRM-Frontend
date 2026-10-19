@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ListFilter, Plus, RotateCcw } from "lucide-react";
+import { Eye, ListFilter, Plus, RotateCcw } from "lucide-react";
 
 import {
   Alert,
+  DataTable,
   FilterBar,
   HighlightText,
   FilterPanel,
@@ -13,27 +14,24 @@ import {
   FilterSelect,
   FilterTrigger,
   Pagination,
-  Spinner,
   namedOptions,
   withAll,
-  type FilterOption,
+  type DataTableColumn,
+  type SortOptions,
 } from "@/components";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Can } from "@/features/permissions";
-import type { StockEntryKind, StockEntrySort } from "@/types/inventory";
+import type {
+  StockEntry,
+  StockEntryKind,
+  StockEntrySort,
+} from "@/types/inventory";
 import type { Branch, Warehouse } from "@/types/api";
 
 import { ownerBranchOf, warehousesUnder } from "../hooks/useBranchScope";
 import { useStockEntries } from "../hooks/useStockEntries";
 import { excerptAround } from "../utils/excerpt";
+import { RowLinkMenu } from "./RowLinkMenu";
 
 /**
  * The list of hand-typed stock documents — one kind per screen.
@@ -104,9 +102,6 @@ const COPY: Record<
    "Alasan" promised a reason from a fixed list neither form ever had. */
 const NOTES_LABEL = "Catatan";
 
-/** Tanggal, Nomor, Cabang, Gudang, Produk, Catatan, Aksi. */
-const COLUMN_COUNT = 7;
-
 /** Where a row's Detail lands — each kind reads its own route. */
 function detailHref(kind: StockEntryKind, id: string): string {
   const base =
@@ -118,34 +113,121 @@ function detailHref(kind: StockEntryKind, id: string): string {
 }
 
 /**
- * The orderings the API names, and only those. A closed list on the server is
- * what stops a picker offering a column with no index behind it.
+ * THE LIST SORTS FROM ITS COLUMN HEADERS (BO, 19 October 2026), on the server:
+ * each sortable column maps to the two names ENTRY_SORTS knows for it, and a
+ * click re-fetches page 1. Newest date and most products first; A first for a
+ * number. Cabang, Gudang and Catatan are plain, on BO's call; Aksi is a way
+ * in, not a value.
  */
-const SORTS: FilterOption<StockEntrySort>[] = [
-  { value: "newest", label: "Terbaru" },
-  { value: "oldest", label: "Terlama" },
-  { value: "numberDesc", label: "Nomor Z–A" },
-  { value: "numberAsc", label: "Nomor A–Z" },
-];
+const SORT_OPTIONS: SortOptions<StockEntrySort> = {
+  date: { asc: "oldest", desc: "newest", first: "desc" },
+  number: { asc: "numberAsc", desc: "numberDesc" },
+  lineCount: { asc: "lineCountAsc", desc: "lineCountDesc", first: "desc" },
+};
 
-/** Everything the panel edits, as one draft. */
+/**
+ * Everything the panel edits, as one draft. The ordering is NOT here: it lives
+ * on the headers, and a Reset inside a filter panel must not silently re-sort a
+ * table somebody ordered from the headers it can see (docs/ui-rules.md §8).
+ */
 interface PanelFilters {
-  sort: StockEntrySort;
   branchId: string;
   warehouseId: string;
 }
 
-/**
- * What Reset returns to — the query's own defaults, not "empty".
- *
- * The ordering returns to `newest` rather than being cleared: a list with no
- * ordering is not a thing, and Reset means "back to how this screen opens".
- */
+/** What Reset returns to — the query's own defaults, not "empty". */
 const CLEARED: PanelFilters = {
-  sort: "newest",
   branchId: "",
   warehouseId: "",
 };
+
+/**
+ * Tanggal, Nomor, Cabang, Gudang, Produk, Catatan, Aksi. A function of the kind
+ * (Detail's route) and the live search term (the highlight).
+ */
+function entryColumns(
+  kind: StockEntryKind,
+  search: string,
+): DataTableColumn<StockEntry>[] {
+  return [
+    {
+      id: "date",
+      header: "Tanggal",
+      cellClassName: "tabular-nums whitespace-nowrap",
+      cell: (entry) => formatDate(entry.entryDate),
+    },
+    {
+      id: "number",
+      header: "Nomor",
+      cellClassName: "font-medium tabular-nums",
+      /* THE MATCH, MARKED. The server searches the number and the note; the
+         number is the only one of the two shown whole, so it is where a reader
+         confirms the row in front of them is the one their term found.
+
+         THE LIVE TERM, not the debounced one — the same term every other
+         highlighted list in this repo passes. For the length of one debounce
+         the marks describe what is being typed while the rows still answer the
+         term before it; they agree again the moment the fetch lands. */
+      cell: (entry) => (
+        <HighlightText text={entry.entryNumber} query={search} />
+      ),
+    },
+    {
+      id: "branch",
+      header: "Cabang",
+      cellClassName: "text-muted",
+      cell: (entry) =>
+        (typeof entry.branchId === "string" ? null : entry.branchId)?.name ??
+        "—",
+    },
+    {
+      id: "warehouse",
+      header: "Gudang",
+      cell: (entry) =>
+        (typeof entry.warehouseId === "string" ? null : entry.warehouseId)
+          ?.name ?? "—",
+    },
+    {
+      id: "lineCount",
+      header: "Produk",
+      align: "right",
+      cell: (entry) => entry.lineCount,
+    },
+    {
+      id: "notes",
+      header: NOTES_LABEL,
+      cellClassName: "max-w-xs text-muted",
+      cell: (entry) =>
+        entry.notes ? (
+          <HighlightText
+            text={excerptAround(entry.notes, search)}
+            query={search}
+          />
+        ) : (
+          "—"
+        ),
+    },
+    {
+      id: "actions",
+      header: "Aksi",
+      align: "right",
+      // Behind the row's kebab, like every other Inventori list (BO, 19
+      // October 2026).
+      cell: (entry) => (
+        <RowLinkMenu
+          name={entry.entryNumber}
+          links={[
+            {
+              href: detailHref(kind, entry._id),
+              label: "Detail",
+              icon: <Eye />,
+            },
+          ]}
+        />
+      ),
+    },
+  ];
+}
 
 export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
   const {
@@ -161,6 +243,7 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
   } = useStockEntries(kind);
 
   const copy = COPY[kind];
+  const columns = entryColumns(kind, query.search);
   const filtered =
     query.search.trim() !== "" ||
     query.branchId !== "" ||
@@ -218,7 +301,6 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
             warehouses. Neither narrows to the other. */}
         <StockEntriesFilterPanel
           applied={{
-            sort: query.sort,
             branchId: query.branchId,
             warehouseId: query.warehouseId,
           }}
@@ -229,7 +311,6 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
             // posting both back would re-fetch after a Terapkan that changed
             // nothing.
             const patch: Partial<typeof query> = {};
-            if (next.sort !== query.sort) patch.sort = next.sort;
             if (next.branchId !== query.branchId)
               patch.branchId = next.branchId;
             if (next.warehouseId !== query.warehouseId)
@@ -239,108 +320,29 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
         />
       </FilterBar>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Tanggal</TableHead>
-              <TableHead>Nomor</TableHead>
-              <TableHead>Cabang</TableHead>
-              <TableHead>Gudang</TableHead>
-              <TableHead className="text-right">Produk</TableHead>
-              <TableHead>{NOTES_LABEL}</TableHead>
-              <TableHead className="text-right">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
-              <TableRow>
-                <TableCell colSpan={COLUMN_COUNT}>
-                  <span className="flex items-center justify-center gap-2 py-8 text-sm text-muted">
-                    <Spinner /> Memuat…
-                  </span>
-                </TableCell>
-              </TableRow>
-            )}
-
-            {!loading && entries.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={COLUMN_COUNT}>
-                  <div className="flex flex-col items-center gap-1 py-10 text-center">
-                    <p className="font-medium text-foreground">
-                      {filtered
-                        ? "Tidak ada yang cocok dengan filter ini"
-                        : copy.empty}
-                    </p>
-                    <p className="max-w-md text-sm text-muted">
-                      {filtered
-                        ? "Coba ubah kata kunci, cabang, atau gudangnya."
-                        : copy.emptyHint}
-                    </p>
-                  </div>
-                </TableCell>
-              </TableRow>
-            )}
-
-            {!loading &&
-              entries.map((entry) => {
-                const branch =
-                  typeof entry.branchId === "string" ? null : entry.branchId;
-                const warehouse =
-                  typeof entry.warehouseId === "string"
-                    ? null
-                    : entry.warehouseId;
-                return (
-                  <TableRow key={entry._id}>
-                    <TableCell className="tabular-nums whitespace-nowrap">
-                      {formatDate(entry.entryDate)}
-                    </TableCell>
-                    {/* THE MATCH, MARKED. The server searches the number and
-                        the reason; the number is the only one of the two still
-                        on screen, so it is where a reader confirms the row in
-                        front of them is the one their term found.
-
-                        THE LIVE TERM, not the debounced one — the same term
-                        every other highlighted list in this repo passes. For
-                        the length of one debounce the marks describe what is
-                        being typed while the rows still answer the term before
-                        it; they agree again the moment the fetch lands, and one
-                        convention across five screens is worth more than that
-                        third of a second. */}
-                    <TableCell className="font-medium tabular-nums">
-                      <HighlightText
-                        text={entry.entryNumber}
-                        query={query.search}
-                      />
-                    </TableCell>
-                    <TableCell className="text-muted">
-                      {branch?.name ?? "—"}
-                    </TableCell>
-                    <TableCell>{warehouse?.name ?? "—"}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {entry.lineCount}
-                    </TableCell>
-                    <TableCell className="max-w-xs text-muted">
-                      {entry.notes ? (
-                        <HighlightText
-                          text={excerptAround(entry.notes, query.search)}
-                          query={query.search}
-                        />
-                      ) : (
-                        "—"
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" asChild>
-                        <Link href={detailHref(kind, entry._id)}>Detail</Link>
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={entries}
+        rowKey={(entry) => entry._id}
+        sort={{
+          value: query.sort,
+          options: SORT_OPTIONS,
+          onChange: (sort) => setQuery({ sort }),
+        }}
+        loading={loading}
+        empty={
+          <div className="flex flex-col items-center gap-1 py-10 text-center">
+            <p className="font-medium text-foreground">
+              {filtered ? "Tidak ada yang cocok dengan filter ini" : copy.empty}
+            </p>
+            <p className="max-w-md text-sm text-muted">
+              {filtered
+                ? "Coba ubah kata kunci, cabang, atau gudangnya."
+                : copy.emptyHint}
+            </p>
+          </div>
+        }
+      />
 
       {pagination.totalPages > 1 && (
         <Pagination
@@ -383,10 +385,7 @@ function StockEntriesFilterPanel({
    * THE SEARCH IS NOT COUNTED — it is on the bar with its own text visible, and
    * a badge exists to pay back what the panel CONCEALS.
    *
-   * NEITHER IS THE ORDERING, per docs/ui-rules.md §8. Every list has one, so
-   * counting it would put a standing number over an unnarrowed list and teach
-   * people to ignore the badge — the one thing that makes a collapsed filter
-   * safe. It changes what the top of the list is, not what is in it.
+   * The ordering is not in the panel at all — it is on the column headers.
    */
   const count = [applied.branchId !== "", applied.warehouseId !== ""].filter(
     Boolean,
@@ -465,18 +464,6 @@ function StockEntriesFilterPanel({
           setOpen(false);
         }}
       >
-        {/* LEADS THE STACK: it is the one field always set, and the only one
-            that changes what the top of the list is rather than what is in it. */}
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="newest"
-          onChange={(sort) => setDraft((prev) => ({ ...prev, sort }))}
-        />
-
         <FilterSelect
           layout="field"
           label="Cabang"

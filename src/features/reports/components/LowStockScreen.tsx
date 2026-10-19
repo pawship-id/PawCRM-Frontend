@@ -3,21 +3,21 @@
 import { SkuText } from "@/components/SkuText";
 import { useEffect, useState } from "react";
 
-import { Alert, Button, Card, Pagination, Spinner } from "@/components";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { cn } from "@/lib/utils";
+  Alert,
+  Button,
+  Card,
+  DataTable,
+  Pagination,
+  Spinner,
+  type DataTableColumn,
+  type SortOptions,
+} from "@/components";
 import { ApiError } from "@/services/api-error";
 import { productService } from "@/services/product.service";
 import { formatQty } from "@/utils/decimal";
 import { exportToXlsx, type XlsxColumn } from "@/utils/xlsx";
-import type { Product } from "@/types/inventory";
+import type { LowStockSort, Product } from "@/types/inventory";
 
 /** A catalogue row plus the quantity that put it below its threshold. */
 type LowStockRow = Product & { qtyOnHand: string };
@@ -40,9 +40,73 @@ type LowStockRow = Product & { qtyOnHand: string };
  * hub says on screen which comparison the numbers are then making. This is the
  * reorder REPORT: a page somebody exports and orders from, where the unqualified
  * figure is the one the threshold actually describes.
+ *
+ * THE HEADERS SORT, ON THE SERVER (BO, 19 October 2026) — `sort` on
+ * `/products/low-stock`. It opens on `stockAsc`, the API's default: the emptiest
+ * shelf first. Kurang is computed there too (batas − stok), so ordering by it
+ * walks every page, not this one.
  */
 
 const PAGE_SIZE = 50;
+
+const DEFAULT_SORT: LowStockSort = "stockAsc";
+
+const SORT_OPTIONS: SortOptions<LowStockSort> = {
+  sku: { asc: "skuAsc", desc: "skuDesc" },
+  name: { asc: "nameAsc", desc: "nameDesc" },
+  stock: { asc: "stockAsc", desc: "stockDesc" },
+  minStock: { asc: "minStockAsc", desc: "minStockDesc", first: "desc" },
+  shortage: { asc: "shortageAsc", desc: "shortageDesc", first: "desc" },
+};
+
+/** Batas − stok, as the export and the Kurang column both read it. */
+function shortageOf(row: LowStockRow) {
+  return Number(row.minStock ?? 0) - Number(row.qtyOnHand);
+}
+
+const COLUMNS: DataTableColumn<LowStockRow>[] = [
+  {
+    id: "sku",
+    header: "SKU",
+    cellClassName: "tabular-nums text-xs",
+    cell: (row) => <SkuText value={row.sku} />,
+  },
+  { id: "name", header: "Produk", cell: (row) => row.name },
+  {
+    id: "stock",
+    header: "Stok",
+    align: "right",
+    cell: (row) => `${formatQty(row.qtyOnHand)} ${row.unit}`,
+  },
+  {
+    id: "minStock",
+    header: "Batas",
+    align: "right",
+    cellClassName: "text-muted",
+    cell: (row) => row.minStock,
+  },
+  {
+    id: "shortage",
+    header: "Kurang",
+    align: "right",
+    cellClassName: "text-danger",
+    cell: (row) => formatQty(String(shortageOf(row))),
+  },
+];
+
+/** What the Card says the order is — the truth for each header's orderings. */
+const SORT_DESCRIPTIONS: Record<LowStockSort, string> = {
+  stockAsc: "Diurutkan dari stok paling sedikit.",
+  stockDesc: "Diurutkan dari stok paling banyak.",
+  skuAsc: "Diurutkan menurut SKU, A–Z.",
+  skuDesc: "Diurutkan menurut SKU, Z–A.",
+  nameAsc: "Diurutkan menurut nama produk, A–Z.",
+  nameDesc: "Diurutkan menurut nama produk, Z–A.",
+  minStockAsc: "Diurutkan dari batas minimum paling kecil.",
+  minStockDesc: "Diurutkan dari batas minimum paling besar.",
+  shortageAsc: "Diurutkan dari kekurangan paling sedikit.",
+  shortageDesc: "Diurutkan dari kekurangan paling banyak.",
+};
 
 const EXPORT_COLUMNS: XlsxColumn<LowStockRow>[] = [
   { header: "SKU", value: (row) => row.sku },
@@ -52,13 +116,14 @@ const EXPORT_COLUMNS: XlsxColumn<LowStockRow>[] = [
   { header: "Batas minimum", value: (row) => row.minStock, type: "number" },
   {
     header: "Kurang",
-    value: (row) => Number(row.minStock ?? 0) - Number(row.qtyOnHand),
+    value: shortageOf,
     type: "number",
   },
 ];
 
 export function LowStockScreen() {
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<LowStockSort>(DEFAULT_SORT);
   const [rows, setRows] = useState<LowStockRow[]>([]);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
@@ -73,7 +138,7 @@ export function LowStockScreen() {
     setError(null);
 
     productService
-      .lowStock({ page, limit: PAGE_SIZE })
+      .lowStock({ page, limit: PAGE_SIZE, sort })
       .then((result) => {
         if (!active) return;
         setRows(result.items);
@@ -95,7 +160,7 @@ export function LowStockScreen() {
     return () => {
       active = false;
     };
-  }, [page]);
+  }, [page, sort]);
 
   /**
    * Exports THIS PAGE, and says so on the button.
@@ -122,7 +187,7 @@ export function LowStockScreen() {
 
       <Card
         title={`${pagination.total} produk perlu restock`}
-        description="Diurutkan paling mendesak di atas — makin jauh di bawah batas, makin tinggi urutannya."
+        description={`${SORT_DESCRIPTIONS[sort]} Klik judul kolom untuk mengubah urutan.`}
       >
         <div className="mb-4 flex justify-end">
           <Button
@@ -135,50 +200,29 @@ export function LowStockScreen() {
           </Button>
         </div>
 
-        <div className={cn("overflow-x-auto", loading && "opacity-60")}>
-          {rows.length === 0 && !loading ? (
+        <DataTable
+          columns={COLUMNS}
+          rows={rows}
+          rowKey={(row) => row._id}
+          sort={{
+            value: sort,
+            options: SORT_OPTIONS,
+            // A new order is a new walk: back to its first page.
+            onChange: (next) => {
+              setSort(next);
+              setPage(1);
+            },
+          }}
+          loading={loading}
+          bare
+          empty={
             <p className="text-sm text-muted">
               Tidak ada produk di bawah batas minimum. Produk yang batasnya
               masih nol tidak dihitung — atur <code>min_stock</code> di detail
               produk supaya ikut terpantau.
             </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Produk</TableHead>
-                  <TableHead className="text-right">Stok</TableHead>
-                  <TableHead className="text-right">Batas</TableHead>
-                  <TableHead className="text-right">Kurang</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((row) => (
-                  <TableRow key={row._id}>
-                    <TableCell className="tabular-nums text-xs">
-                      <SkuText value={row.sku} />
-                    </TableCell>
-                    <TableCell>{row.name}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatQty(row.qtyOnHand)} {row.unit}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-muted">
-                      {row.minStock}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-destructive">
-                      {formatQty(
-                        String(
-                          Number(row.minStock ?? 0) - Number(row.qtyOnHand),
-                        ),
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </div>
+          }
+        />
 
         <div className="mt-4">
           <Pagination

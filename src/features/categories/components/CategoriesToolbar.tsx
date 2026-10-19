@@ -12,13 +12,15 @@ import {
   FilterTrigger,
   type FilterOption,
 } from "@/components";
-import type { CategorySort } from "@/types/api";
 
 import type { CategoriesQuery } from "../hooks/useCategories";
 
 /**
  * The list controls: one row — search and one Filter button — with the status
- * filter, the deleted toggle and the sort order inside a panel.
+ * filter, the tingkat filter and the deleted toggle inside a panel.
+ *
+ * NO `Urutkan`: the Kategori header sorts the list (BO, 19 October 2026), and
+ * the panel's Reset does not touch an ordering chosen from the header.
  *
  * Purely presentational: it renders the current query and reports changes up.
  *
@@ -37,8 +39,8 @@ import type { CategoriesQuery } from "../hooks/useCategories";
  * panel too, the two branches are the same tree and the media query was only
  * choosing between it and itself.
  *
- * FOUR FIELDS NOW — sort, status, tingkat, terhapus — which is still a panel
- * by §8's count, and was already one. The tingkat filter arrived with
+ * THREE FIELDS — status, tingkat, terhapus — which is still a panel by §8's
+ * count, and was already one. The tingkat filter arrived with
  * sub-categories: a flat list shows every level at once, and "which of these
  * are still ungrouped" is the one question that shape cannot answer.
  *
@@ -57,19 +59,6 @@ const STATUSES: FilterOption<CategoriesQuery["status"]>[] = [
   { value: "", label: "Semua status" },
   { value: "active", label: "Aktif" },
   { value: "inactive", label: "Nonaktif" },
-];
-
-/**
- * The orderings the API accepts — CATEGORY_SORTS in category.model.js.
- *
- * No SKU here, unlike the catalogue's: a category is a name and a date, and
- * those are the only two things there are to order it by.
- */
-const SORTS: FilterOption<CategorySort>[] = [
-  { value: "newest", label: "Terbaru" },
-  { value: "oldest", label: "Terlama" },
-  { value: "nameAsc", label: "Nama A–Z" },
-  { value: "nameDesc", label: "Nama Z–A" },
 ];
 
 /**
@@ -93,20 +82,13 @@ interface CategoryFilters {
   status: CategoriesQuery["status"];
   level: CategoriesQuery["level"];
   includeDeleted: boolean;
-  sort: CategorySort;
 }
 
-/**
- * What Reset returns to — the query's own defaults, not "empty".
- *
- * The ordering is included: a list with no ordering is not a thing, so Reset
- * puts it back to the API's default rather than clearing it to nothing.
- */
+/** What Reset returns to — the query's own defaults, not "empty". */
 const CLEARED: CategoryFilters = {
   status: "",
   level: "",
   includeDeleted: false,
-  sort: "newest",
 };
 
 export function CategoriesToolbar({
@@ -120,7 +102,6 @@ export function CategoriesToolbar({
     status: query.status,
     level: query.level,
     includeDeleted: query.includeDeleted,
-    sort: query.sort,
   };
 
   /**
@@ -136,7 +117,6 @@ export function CategoriesToolbar({
     if (next.level !== query.level) patch.level = next.level;
     if (next.includeDeleted !== query.includeDeleted)
       patch.includeDeleted = next.includeDeleted;
-    if (next.sort !== query.sort) patch.sort = next.sort;
 
     if (Object.keys(patch).length > 0) onChange(patch);
   }
@@ -163,7 +143,7 @@ export function CategoriesToolbar({
 }
 
 /**
- * The status filter, the deleted toggle and the sort order, behind one button.
+ * The status filter, the tingkat filter and the deleted toggle, behind one button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8). Reset returns the
  * whole set to its defaults and applies at once, because clearing a filter is
@@ -226,18 +206,6 @@ function CategoryFilterPanel({
           setOpen(false);
         }}
       >
-        {/* Sort leads: it is the one field here that is always set, and the
-            only one that changes what the top of the list is rather than what
-            is in it. */}
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="newest"
-          onChange={(sort) => patch({ sort })}
-        />
         <FilterSelect
           layout="field"
           label="Status"

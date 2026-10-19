@@ -17,7 +17,21 @@ export interface StockProductsQuery {
   /** "" = active and inactive both. */
   status: "" | "active" | "inactive";
   includeDeleted: boolean;
+  /** Set from the table's headers. */
   sort: ProductSort;
+}
+
+/**
+ * The orderings that read a QUANTITY — the stock, or the stock times HPP. Only
+ * these depend on which warehouse the figures are for, so only these send it.
+ */
+export function isStockSort(sort: ProductSort): boolean {
+  return (
+    sort === "stockAsc" ||
+    sort === "stockDesc" ||
+    sort === "stockValueAsc" ||
+    sort === "stockValueDesc"
+  );
 }
 
 const PAGE_SIZE = 20;
@@ -28,8 +42,8 @@ const DEFAULT_QUERY: StockProductsQuery = {
   categoryId: "",
   status: "",
   includeDeleted: false,
-  // The API's own default, restated rather than left out: the toolbar renders
-  // the current value, and a select whose value is `undefined` shows nothing.
+  // Restated rather than left out, so every page of a walk agrees on it — and
+  // the Produk header shows it as the active column.
   sort: "nameAsc",
 };
 
@@ -70,15 +84,22 @@ interface UseStockProductsResult {
  * are MUTUALLY EXCLUSIVE on the API — any pair is a 400 — so none of the others
  * may be added here later without removing this one.
  *
- * THERE IS NO `warehouseId` TO SEND. `GET /api/products` has no such filter, and
- * every row arrives carrying `stockByWarehouse` for every location it has stock
- * in. The screen's warehouse choice therefore picks which number each row shows,
- * not which rows exist — which is why no filter on this screen may be derived
- * from a quantity (see StockProductsToolbar).
+ * THE WAREHOUSE NARROWS NOTHING. `GET /api/products` has no warehouse filter,
+ * and every row arrives carrying `stockByWarehouse` for every location it has
+ * stock in. The screen's warehouse choice therefore picks which number each row
+ * shows, not which rows exist — which is why no filter on this screen may be
+ * derived from a quantity (see StockProductsToolbar).
  *
- * ORDERED BY NAME rather than by `newest`. The catalogue's default answers "what
- * did we just add"; this list is scanned for a product somebody already knows
- * the name of, and A–Z is where they will look for it.
+ * EXCEPT THAT IT DECIDES THE ORDER UNDER A STOCK SORT. Ordering by Stok or Nilai
+ * stok (BO, 19 October 2026) asks the server to sum the quantity itself, and the
+ * sum has to be the one the column shows — so `stockWarehouseId` goes along
+ * with those orderings, and only those: under a name or SKU sort, switching
+ * warehouse still re-reads the page without a request.
+ *
+ * OPENS ORDERED BY NAME rather than by `newest`. The catalogue's default answers
+ * "what did we just add"; this list is scanned for a product somebody already
+ * knows the name of, and A–Z is where they will look for it. The headers re-sort
+ * it from there.
  *
  * `enabled` IS NOT AN OPTIMISATION. `products:read` is a separate grant from the
  * `stockMovements:read` that puts this screen on the nav, and a permission check
@@ -86,7 +107,11 @@ interface UseStockProductsResult {
  * the latter fires a request guaranteed to be refused on every page load — the
  * bug useFinanceDashboard already paid for once.
  */
-export function useStockProducts(enabled: boolean): UseStockProductsResult {
+export function useStockProducts(
+  enabled: boolean,
+  /** The screen's chosen warehouse; "" is every one in reach. */
+  warehouseId = "",
+): UseStockProductsResult {
   const [query, setQueryState] = useState<StockProductsQuery>(DEFAULT_QUERY);
   const [products, setProducts] = useState<Product[]>([]);
   const [pagination, setPagination] =
@@ -99,6 +124,9 @@ export function useStockProducts(enabled: boolean): UseStockProductsResult {
   // The toolbar keeps the live query so typing stays responsive; only the
   // request waits for the search box to settle.
   const settled = useDebouncedQuery(query);
+  // A primitive, so the effect re-runs only when the ORDER would change.
+  const stockWarehouseId =
+    isStockSort(settled.sort) && warehouseId ? warehouseId : undefined;
 
   const setQuery = useCallback((patch: Partial<StockProductsQuery>) => {
     setQueryState((prev) => {
@@ -128,6 +156,7 @@ export function useStockProducts(enabled: boolean): UseStockProductsResult {
       categoryId: settled.categoryId || undefined,
       includeDeleted: settled.includeDeleted || undefined,
       sort: settled.sort,
+      stockWarehouseId,
       holdsStock: true,
       ...(settled.status === ""
         ? {}
@@ -157,7 +186,7 @@ export function useStockProducts(enabled: boolean): UseStockProductsResult {
     return () => {
       active = false;
     };
-  }, [settled, enabled]);
+  }, [settled, enabled, stockWarehouseId]);
 
   return {
     products,

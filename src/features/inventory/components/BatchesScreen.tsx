@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
-import { Alert, Spinner } from "@/components";
+import { Alert } from "@/components";
 import { cn } from "@/lib/utils";
 import type { ProductBatch } from "@/types/inventory";
 import { formatMoney } from "@/utils/decimal";
@@ -21,7 +21,8 @@ import { BatchesToolbar } from "./BatchesToolbar";
 import { BatchDetailDialog } from "./StockDetailDialogs";
 
 /**
- * Every lot across the catalogue, ordered by how soon it expires.
+ * Every lot across the catalogue — by default ordered by how soon it expires;
+ * any other order is a header click away (BO, 19 October 2026).
  *
  * WHY THIS IS A SCREEN AND NOT A TAB. The batch tab on the stock card answers
  * "which lots does THIS product have" — a question you ask while looking at one
@@ -175,22 +176,23 @@ export function BatchesScreen() {
 
       {list.error && <Alert variant="error">{list.error}</Alert>}
 
-      {list.loading ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Memuat daftar batch…
-        </div>
-      ) : (
-        <BatchesTable
-          batches={list.batches}
-          branchOf={branchOf}
-          page={list.pagination.page}
-          totalPages={list.pagination.totalPages}
-          total={list.pagination.total}
-          search={query.search}
-          onPageChange={setPage}
-          onSelect={setOpenBatch}
-        />
-      )}
+      {/* Rendered through a reload: a re-sort or a page change dims the rows
+          on screen rather than blanking the table. */}
+      <BatchesTable
+        batches={list.batches}
+        branchOf={branchOf}
+        sort={query.sort}
+        // Header sorting (BO, 19 October 2026) — one ordering for both
+        // endpoints, so it survives the horizon switching between them.
+        onSortChange={(sort) => setQuery({ sort })}
+        loading={list.loading}
+        page={list.pagination.page}
+        totalPages={list.pagination.totalPages}
+        total={list.pagination.total}
+        search={query.search}
+        onPageChange={setPage}
+        onSelect={setOpenBatch}
+      />
 
       {/* The same dialog the stock card opens for a lot — one component, so the two screens cannot drift. */}
       <BatchDetailDialog

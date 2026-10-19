@@ -42,6 +42,24 @@ describe("stockMovementService", () => {
     });
   });
 
+  // Header sorting (19 October 2026): the card's column headers send any of
+  // MOVEMENT_SORTS, so the service must forward the name it is given verbatim.
+  it.each(["balanceDesc", "hppAsc", "batchAsc"] as const)(
+    "list forwards the %s ordering",
+    async (sort) => {
+      const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
+
+      await stockMovementService.list({ productId: "p1", warehouseId: "wh1", sort });
+
+      expect(get).toHaveBeenCalledWith(
+        "/stock-movements",
+        expect.objectContaining({
+          query: expect.objectContaining({ sort }),
+        }),
+      );
+    },
+  );
+
   it("list sends no filters at all when given none", async () => {
     const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
 

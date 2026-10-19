@@ -17,6 +17,8 @@ export interface CatalogCounts {
   products: CatalogCount;
   /** The concrete sellable items under those families. See below. */
   variants: CatalogCount;
+  /** Catalogue rows filed under no category. */
+  uncategorized: CatalogCount;
   categories: CatalogCount;
 }
 
@@ -26,7 +28,7 @@ const FAILED: CatalogCount = { total: 0, loading: false, error: true };
 const UNGRANTED: CatalogCount = { total: 0, loading: false, error: false };
 
 /**
- * The three headline numbers on the Produk & Varian screen.
+ * The four headline numbers on the Produk & Varian screen.
  *
  * ONE ROW IS FETCHED PER COUNT, NOT THE LIST. `limit: 1` costs a small query and
  * `pagination.total` still reports the true figure — the trick useLowStockAlert
@@ -43,6 +45,10 @@ const UNGRANTED: CatalogCount = { total: 0, loading: false, error: false };
  * that fell to 3 as somebody typed in the search box would not be counting what
  * it says it counts.
  *
+ * "TANPA KATEGORI" counts catalogue rows (`excludeVariants`) with
+ * `uncategorized: true` — a variant inherits its parent's category and never
+ * stores one, so counting the flat list would call every variant unfiled.
+ *
  * Each side is gated by its own grant — a role that may read products but not
  * categories gets two tiles rather than a 403 painted across the header.
  */
@@ -52,6 +58,7 @@ export function useCatalogCounts(
 ): CatalogCounts {
   const [products, setProducts] = useState<CatalogCount>(PENDING);
   const [variants, setVariants] = useState<CatalogCount>(PENDING);
+  const [uncategorized, setUncategorized] = useState<CatalogCount>(PENDING);
   const [categories, setCategories] = useState<CatalogCount>(PENDING);
 
   useEffect(() => {
@@ -62,6 +69,7 @@ export function useCatalogCounts(
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setProducts(mayReadProducts ? PENDING : UNGRANTED);
     setVariants(mayReadProducts ? PENDING : UNGRANTED);
+    setUncategorized(mayReadProducts ? PENDING : UNGRANTED);
     setCategories(mayReadCategories ? PENDING : UNGRANTED);
 
     if (mayReadProducts) {
@@ -86,6 +94,26 @@ export function useCatalogCounts(
           setProducts(FAILED);
           setVariants(FAILED);
         });
+
+      // Its own request, so a failure here cannot blank the two tiles above.
+      productService
+        .list({
+          page: 1,
+          limit: 1,
+          excludeVariants: true,
+          uncategorized: true,
+        })
+        .then((result) => {
+          if (active)
+            setUncategorized({
+              total: result.pagination.total,
+              loading: false,
+              error: false,
+            });
+        })
+        .catch(() => {
+          if (active) setUncategorized(FAILED);
+        });
     }
 
     if (mayReadCategories) {
@@ -109,5 +137,5 @@ export function useCatalogCounts(
     };
   }, [mayReadProducts, mayReadCategories]);
 
-  return { products, variants, categories };
+  return { products, variants, uncategorized, categories };
 }

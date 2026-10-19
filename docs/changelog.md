@@ -7,6 +7,40 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Satu komponen tabel, sort dari judul kolom (Stok / Inventori)
+
+19 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **`<DataTable>`** (`@/components`) — satu komponen tabel daftar: kolom + baris, judul kolom yang
+  bisa diklik untuk sort, baris loading (baris lama meredup saat memuat ulang, spinner hanya sebelum
+  data pertama), baris kosong, baris yang bisa diklik, baris tambahan di bawah baris, `tfoot`, catatan.
+  ui-rules §2/§8/§10 diperbarui.
+- **Sort dari judul kolom** di Produk & Varian, Daftar Stok, Kartu Stok, Batch & Expired, tab Batch
+  kartu stok, Penyesuaian / Stok Awal, Transfer Stok, Stok Opname, Stok Minus dan Stok Minim. Klik
+  pertama: tanggal terbaru / angka terbesar dulu, teks A dulu; klik kedua membalik. Semua urutan
+  dikerjakan server (daftar berhalaman), kecuali tab Batch kartu stok yang memuat semua lot sekaligus.
+- **`Urutkan` dihapus dari panel filter** layar-layar itu; Reset tidak lagi mengubah urutan.
+- Produk & Varian: Stok bisa di-sort (induk = total varian, bundle = bisa dibuat, mengikuti gudang
+  yang dipilih — dikirim sebagai `stockWarehouseIds`); Tipe dan Kategori tidak (permintaan BO).
+- Tab Kategori: pakai `<DataTable>`; hanya judul Kategori yang bisa di-sort (nama A–Z / Z–A), `Urutkan`
+  dihapus dari panelnya.
+- Penyesuaian / Stok Awal: hanya Tanggal, Nomor, Produk yang bisa di-sort. Stok Opname: hanya Nomor,
+  Tanggal, Selisih nilai. Transfer Stok: hanya No. transfer, Tanggal, Produk. Kartu Stok: hanya Waktu,
+  Kode batch, Saldo, HPP saat itu; kolom Referensi lebih lebar (permintaan BO).
+- Daftar Stok: kolom SKU lebih lebar (`SKU_WRAP_WIDE_CLASS`), kolom "Kartu stok" jadi **Aksi** (menu ⋮ →
+  Kartu stok). Batch & Expired: kolom Produk lebih lebar, kolom **Aksi** (menu ⋮ → Cetak label). Kedua
+  tabel bergeser ke samping bila layar sempit. Menu baris: `RowLinkMenu`. Transfer Stok dan Stok Awal /
+  Penyesuaian: tombol Detail jadi menu ⋮ → Detail. Stok Opname: menu ⋮ → Lanjutkan (draft) / Lihat (final),
+  lalu Buang (merah, draft + izin hapus) di bawah garis pemisah; nomor opname kini link ke lembarnya.
+  `RowLinkMenu` menerima `actions` selain `links`.
+- Produk & Varian: kartu **Tanpa kategori** kini angka asli (`uncategorized=true` + `excludeVariants`),
+  bukan lagi "Segera".
+- Sengaja tidak bisa di-sort: Cabang dan Gudang di Batch & Expired, Referensi di Kartu Stok, Terhitung di Stok
+  Opname (alasannya di ui-rules §8).
+- Kartu Stok: baris "Saldo sebelum …" hanya muncul untuk urutan Waktu; labelnya mengikuti arah urutan.
+- Daftar Stok mengirim `stockWarehouseId` (gudang yang dipilih) saat diurutkan menurut Stok / Nilai stok.
+- Tes: `DataTable`, `BatchLotTable` (baru); layar-layar di atas dan service-nya disesuaikan.
+
 ## [Unreleased] — Transfer stok: status, ubah, terima, cetak surat jalan
 
 10 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.

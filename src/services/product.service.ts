@@ -3,7 +3,9 @@ import type { PageResult } from "@/types/api";
 import type {
   CreatedProduct,
   CreateProductInput,
+  LowStockSort,
   NegativeStockResult,
+  NegativeStockSort,
   Product,
   ProductListQuery,
   ProductStockOf,
@@ -68,6 +70,7 @@ export const productService = {
         limit: query.limit,
         search: query.search,
         categoryId: query.categoryId,
+        uncategorized: query.uncategorized,
         productType: query.productType,
         parentId: query.parentId,
         isActive: query.isActive,
@@ -80,6 +83,8 @@ export const productService = {
         includeDeleted: query.includeDeleted,
         view: query.view,
         sort: query.sort,
+        stockWarehouseId: query.stockWarehouseId,
+        stockWarehouseIds: query.stockWarehouseIds,
       },
     }),
 
@@ -122,6 +127,8 @@ export const productService = {
       /** Sets of either — sent as repeated params, intersected on the server. */
       warehouseIds?: string[];
       branchIds?: string[];
+      /** Omitted means `stockAsc` — the emptiest shelf first. */
+      sort?: LowStockSort;
     } = {},
   ) =>
     apiClient.get<PageResult<Product & { qtyOnHand: string }>>(
@@ -153,6 +160,8 @@ export const productService = {
       /** Sets of either — sent as repeated params, intersected on the server. */
       warehouseIds?: string[];
       branchIds?: string[];
+      /** Omitted means `valueAsc` — the worst hole first. */
+      sort?: NegativeStockSort;
     } = {},
   ) =>
     apiClient.get<NegativeStockResult>("/products/negative-stock", {
