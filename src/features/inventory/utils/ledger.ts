@@ -20,7 +20,7 @@ import type { ProductBatch } from "@/types/inventory";
  */
 
 /**
- * Lots in the order the tab shows them: live ones in FEFO order, then the spent
+ * Lots in the tab's DEFAULT order: live ones in FEFO order, then the spent
  * ones as history.
  *
  * The API already sorts closest-to-expiring first, so this does NOT re-sort by

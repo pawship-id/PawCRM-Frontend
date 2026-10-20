@@ -7,25 +7,24 @@ import { EllipsisVertical, Eye, Pencil, Trash2, RotateCcw } from "lucide-react";
 import { ApiError } from "@/services/api-error";
 import { petService } from "@/services/pet.service";
 import { swalToast } from "@/lib/swal";
-import { ConfirmDialog, HighlightText } from "@/components";
+import {
+  ConfirmDialog,
+  DataTable,
+  HighlightText,
+  type DataTableColumn,
+  type SortOptions,
+} from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
 import { usePetOptions } from "@/hooks/usePetOptions";
-import type { Pet } from "@/types/api";
+import type { Pet, PetSort } from "@/types/api";
 
 import { PetAvatar } from "./PetAvatar";
 import { PetSpeciesBadge, PetStatusBadge } from "./PetBadges";
@@ -60,6 +59,27 @@ function ageInYears(birthDate: string | null): number | null {
 }
 
 /**
+ * THE LIST SORTS FROM ITS COLUMN HEADERS (BO, 20 October 2026), on the server:
+ * each sortable column maps to the two names PET_SORTS knows for it, and a
+ * click re-fetches page 1.
+ *
+ *   Nama  — the name, A first.
+ *   Umur  — by the birth date the age is derived from, OLDEST FIRST on the
+ *           first click (`ageDesc`), youngest on the second.
+ *   Berat — the stored weight, heaviest first.
+ *
+ * A pet with no birth date or no weight shows "—" and sits at the END of the
+ * Umur / Berat orderings in both directions — the server reads them in two
+ * segments so the dashes never open the list. Jenis, Ras, Status and Aksi are
+ * plain.
+ */
+const SORT_OPTIONS: SortOptions<PetSort> = {
+  name: { asc: "nameAsc", desc: "nameDesc" },
+  age: { asc: "ageAsc", desc: "ageDesc", first: "desc" },
+  weight: { asc: "weightAsc", desc: "weightDesc", first: "desc" },
+};
+
+/**
  * The pet list table with its row actions.
  *
  * Read data flows in via props (from usePets); the lifecycle actions (delete,
@@ -74,12 +94,17 @@ export function PetsTable({
   loading,
   onChanged,
   search,
+  sort,
+  onSortChange,
 }: {
   pets: Pet[];
   loading: boolean;
   onChanged: () => void;
   /** Active search term, highlighted in the searchable cells (name, breed). */
   search?: string;
+  /** The ordering the list is in — a PET_SORTS name. */
+  sort: PetSort;
+  onSortChange: (sort: PetSort) => void;
 }) {
   const [pending, setPending] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
@@ -128,174 +153,184 @@ export function PetsTable({
     }
   }
 
-  if (!loading && pets.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center text-sm text-muted">
-        Belum ada hewan yang cocok dengan filter ini.
-      </div>
-    );
+  const columns: DataTableColumn<Pet>[] = [
+    {
+      id: "name",
+      header: "Nama",
+      cell: (pet) => (
+        /*
+          THE PHOTO IS IN THE NAME CELL, not a column of its own. A column would
+          need a header, and the only honest word for it ("Foto") labels
+          something most rows do not have — so the table would carry a heading
+          for a mostly-empty column. Here it reads as part of the name, which is
+          what it identifies.
+        */
+        <div className="flex items-center gap-2.5">
+          <PetAvatar pet={pet} />
+          <span className="font-medium text-foreground">
+            <HighlightText text={pet.name} query={search} />
+          </span>
+        </div>
+      ),
+    },
+    {
+      id: "species",
+      header: "Jenis",
+      cell: (pet) => (
+        <PetSpeciesBadge species={pet.species} label={pet.speciesLabel} />
+      ),
+    },
+    {
+      id: "breed",
+      header: "Ras",
+      cell: (pet) => (
+        <span className="text-muted">
+          {pet.breed ? (
+            <HighlightText
+              /*
+                THE SERVER'S WORD FIRST (25 September 2026). `breed` is an
+                option id now, so the old fallback to the stored value would
+                print `66f1a2…` in the column — the response carries the
+                resolved label for exactly this, and the hook only stands in
+                while it is missing.
+              */
+              text={pet.breedLabel ?? label("breed", pet.breed) ?? "—"}
+              query={search}
+            />
+          ) : (
+            "—"
+          )}
+        </span>
+      ),
+    },
+    {
+      // tabular-nums, never font-mono — ui-rules §5. Keeps the column from
+      // shifting as rows differ in digit width.
+      id: "age",
+      header: "Umur",
+      cellClassName: "tabular-nums text-muted",
+      cell: (pet) => {
+        const age = ageInYears(pet.birthDate);
+        return age === null ? "—" : `${age} th`;
+      },
+    },
+    {
+      id: "weight",
+      header: "Berat",
+      cellClassName: "tabular-nums text-muted",
+      cell: (pet) => (pet.weightKg === null ? "—" : `${pet.weightKg} kg`),
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (pet) => (
+        <PetStatusBadge isActive={pet.isActive} deleted={pet.deletedAt !== null} />
+      ),
+    },
+  ];
+
+  if (showActions) {
+    columns.push({
+      id: "actions",
+      header: "Aksi",
+      align: "right",
+      cell: (pet) => {
+        const deleted = pet.deletedAt !== null;
+
+        return (
+          /*
+            ONE KEBAB PER ROW (28 September 2026, on request), matching
+            CustomersTable and BranchesTable — the pattern this app already uses
+            for a row with several things to do.
+
+            DETAIL IS UNGATED beyond the `pets:read` this table already
+            required, so a reader opens the menu and finds exactly one row
+            rather than a menu opening onto nothing.
+          */
+          <div className="flex items-center justify-end">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="size-9"
+                  disabled={busy}
+                  // Names the row: twenty identical "Aksi" buttons tell a
+                  // screen reader nothing.
+                  aria-label={`Aksi untuk ${pet.name}`}
+                >
+                  <EllipsisVertical className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+
+              <DropdownMenuContent align="end">
+                {deleted ? (
+                  /*
+                    A DELETED PET HAS NO PROFILE to open and nothing to edit —
+                    restoring is the only move left, so it is the only row here.
+                  */
+                  <Can feature="pets" action="restore">
+                    <DropdownMenuItem
+                      onSelect={() => setPending({ kind: "restore", pet })}
+                    >
+                      <RotateCcw />
+                      Pulihkan
+                    </DropdownMenuItem>
+                  </Can>
+                ) : (
+                  <>
+                    <DropdownMenuItem asChild>
+                      <Link href={`/dashboard/master/pets/${pet._id}`}>
+                        <Eye />
+                        Detail
+                      </Link>
+                    </DropdownMenuItem>
+                    <Can feature="pets" action="update">
+                      <DropdownMenuItem asChild>
+                        <Link href={`/dashboard/master/pets/${pet._id}/edit`}>
+                          <Pencil />
+                          Ubah
+                        </Link>
+                      </DropdownMenuItem>
+                    </Can>
+                    <Can feature="pets" action="delete">
+                      {/* Separated and tinted (BO, 20 October 2026): deleting
+                          is the one item here that cannot be undone from the
+                          row it sits in. Inside the gate, so a reader without
+                          the grant gets no dangling rule. */}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onSelect={() => setPending({ kind: "delete", pet })}
+                      >
+                        <Trash2 />
+                        Hapus
+                      </DropdownMenuItem>
+                    </Can>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        );
+      },
+    });
   }
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <Table className={loading ? "opacity-60" : undefined}>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nama</TableHead>
-              <TableHead>Jenis</TableHead>
-              <TableHead>Ras</TableHead>
-              <TableHead>Umur</TableHead>
-              <TableHead>Berat</TableHead>
-              <TableHead>Status</TableHead>
-              {showActions && <TableHead className="text-right">Aksi</TableHead>}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {pets.map((pet) => {
-              const deleted = pet.deletedAt !== null;
-              const age = ageInYears(pet.birthDate);
-
-              return (
-                <TableRow key={pet._id}>
-                  <TableCell>
-                    {/*
-                      THE PHOTO IS IN THE NAME CELL, not a column of its own. A
-                      column would need a header, and the only honest word for it
-                      ("Foto") labels something most rows do not have — so the
-                      table would carry a heading for a mostly-empty column. Here
-                      it reads as part of the name, which is what it identifies.
-                    */}
-                    <div className="flex items-center gap-2.5">
-                      <PetAvatar pet={pet} />
-                      <span className="font-medium text-foreground">
-                        <HighlightText text={pet.name} query={search} />
-                      </span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <PetSpeciesBadge species={pet.species} label={pet.speciesLabel} />
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-muted">
-                      {pet.breed ? (
-                        <HighlightText
-                          /*
-                            THE SERVER'S WORD FIRST (25 September 2026). `breed`
-                            is an option id now, so the old fallback to the
-                            stored value would print `66f1a2…` in the column —
-                            the response carries the resolved label for exactly
-                            this, and the hook only stands in while it is
-                            missing.
-                          */
-                          text={pet.breedLabel ?? label("breed", pet.breed) ?? "—"}
-                          query={search}
-                        />
-                      ) : (
-                        "—"
-                      )}
-                    </span>
-                  </TableCell>
-                  {/* tabular-nums, never font-mono — ui-rules §5. Keeps the
-                      column from shifting as rows differ in digit width. */}
-                  <TableCell className="tabular-nums text-muted">
-                    {age === null ? "—" : `${age} th`}
-                  </TableCell>
-                  <TableCell className="tabular-nums text-muted">
-                    {pet.weightKg === null ? "—" : `${pet.weightKg} kg`}
-                  </TableCell>
-                  <TableCell>
-                    <PetStatusBadge isActive={pet.isActive} deleted={deleted} />
-                  </TableCell>
-                  {showActions && (
-                    <TableCell>
-                      {/*
-                        ONE KEBAB PER ROW (28 September 2026, on request),
-                        matching CustomersTable and BranchesTable — the pattern
-                        this app already uses for a row with several things to
-                        do. It replaced the pair of labelled buttons, which is
-                        also what gives the columns beside it their width back.
-
-                        DETAIL IS UNGATED beyond the `pets:read` this table
-                        already required, so a reader opens the menu and finds
-                        exactly one row rather than a menu opening onto nothing.
-                      */}
-                      <div className="flex items-center justify-end">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              className="size-9"
-                              disabled={busy}
-                              // Names the row: twenty identical "Aksi" buttons
-                              // tell a screen reader nothing.
-                              aria-label={`Aksi untuk ${pet.name}`}
-                            >
-                              <EllipsisVertical className="size-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-
-                          <DropdownMenuContent align="end">
-                            {deleted ? (
-                              /*
-                                A DELETED PET HAS NO PROFILE to open and nothing
-                                to edit — restoring is the only move left, so it
-                                is the only row here.
-                              */
-                              <Can feature="pets" action="restore">
-                                <DropdownMenuItem
-                                  onSelect={() =>
-                                    setPending({ kind: "restore", pet })
-                                  }
-                                >
-                                  <RotateCcw />
-                                  Pulihkan
-                                </DropdownMenuItem>
-                              </Can>
-                            ) : (
-                              <>
-                                <DropdownMenuItem asChild>
-                                  <Link
-                                    href={`/dashboard/master/pets/${pet._id}`}
-                                  >
-                                    <Eye />
-                                    Detail
-                                  </Link>
-                                </DropdownMenuItem>
-                                <Can feature="pets" action="update">
-                                  <DropdownMenuItem asChild>
-                                    <Link
-                                      href={`/dashboard/master/pets/${pet._id}/edit`}
-                                    >
-                                      <Pencil />
-                                      Ubah
-                                    </Link>
-                                  </DropdownMenuItem>
-                                </Can>
-                                <Can feature="pets" action="delete">
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onSelect={() =>
-                                      setPending({ kind: "delete", pet })
-                                    }
-                                  >
-                                    <Trash2 />
-                                    Hapus
-                                  </DropdownMenuItem>
-                                </Can>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={pets}
+        rowKey={(pet) => pet._id}
+        sort={{ value: sort, options: SORT_OPTIONS, onChange: onSortChange }}
+        loading={loading}
+        loadingLabel="Memuat daftar hewan…"
+        empty={
+          <p className="py-10 text-center text-sm text-muted">
+            Belum ada hewan yang cocok dengan filter ini.
+          </p>
+        }
+      />
 
       {pending && (
         <ConfirmDialog

@@ -2,13 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import {
-  Breadcrumb,
-  PageTabs,
-  PendingStatTile,
-  StatTile,
-  type PageTab,
-} from "@/components";
+import { Breadcrumb, PageTabs, StatTile, type PageTab } from "@/components";
 import { usePermissions } from "@/features/permissions";
 
 import { useCatalogCounts, type CatalogCount } from "../hooks/useCatalogCounts";
@@ -107,19 +101,19 @@ export function CatalogModuleHeader({
         )}
 
         {/*
-          THE ONE THE MOCKUP ASKS FOR AND THE API CANNOT ANSWER. `categoryId`
-          takes an id, and there is no value meaning "none" — so "how many are
-          still unfiled" cannot be asked without paging the whole catalogue.
-
-          The mockup's fourth tile, "Tanpa barcode", is left off rather than
-          badged beside this one: it is blocked on the very same missing filter,
-          and two identical "Segera" cards in a row of four teach people to stop
-          reading the row.
+          Catalogue rows filed under no category — counted by the API's
+          `uncategorized` filter (19 October 2026). Under the products grant,
+          because it counts products.
         */}
-        <PendingStatTile
-          label="Tanpa kategori"
-          blockedBy="Katalog belum bisa disaring untuk produk tanpa kategori"
-        />
+        {mayReadProducts && (
+          <StatTile
+            label="Tanpa kategori"
+            value={NUMBER.format(counts.uncategorized.total)}
+            caption="produk yang belum masuk kategori"
+            loading={counts.uncategorized.loading}
+            error={counts.uncategorized.error}
+          />
+        )}
       </section>
     </div>
   );

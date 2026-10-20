@@ -449,7 +449,7 @@ describe("ProductsScreen", () => {
     renderWithAuth(<ProductsScreen />);
     await screen.findByText("Shampoo Anjing");
 
-    let panel = await openFilters(user);
+    const panel = await openFilters(user);
     await user.click(
       within(panel).getByRole("button", { name: "Filter status" }),
     );
@@ -460,13 +460,9 @@ describe("ProductsScreen", () => {
       await screen.findByRole("button", { name: "Filter" }),
     ).toHaveTextContent("Filter (1)");
 
-    // The ordering is deliberately not counted — every list has one, so a badge
-    // that read "Filter (1)" over an unnarrowed list would train people to
-    // ignore the number.
-    panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Urutkan" }));
-    await user.click(screen.getByRole("option", { name: "Nama A–Z" }));
-    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+    // The ordering is not a filter — it lives on the headers now, and a badge
+    // that counted it would read "Filter (2)" over a list narrowed once.
+    await user.click(screen.getByRole("button", { name: "Produk" }));
 
     expect(
       await screen.findByRole("button", { name: "Filter" }),
@@ -481,7 +477,9 @@ describe("ProductsScreen", () => {
     await screen.findByText("Shampoo Anjing");
 
     const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Urutkan" }));
+    await user.click(
+      within(panel).getByRole("button", { name: "Filter status" }),
+    );
 
     /**
      * A DOM assertion, because the bug is a DOM fact with no visible symptom
@@ -497,7 +495,7 @@ describe("ProductsScreen", () => {
     expect(panel).toContainElement(list);
   });
 
-  it("re-orders the list through the panel, by a name the API accepts", async () => {
+  it("re-orders the list from its headers, by names the API accepts", async () => {
     const user = userEvent.setup();
     const list = mockList([makeProduct()]);
 
@@ -510,24 +508,120 @@ describe("ProductsScreen", () => {
       expect.objectContaining({ sort: "newest" }),
     );
 
-    const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Urutkan" }));
-    await user.click(screen.getByRole("option", { name: "SKU A–Z" }));
-    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+    // Text starts at A, money at the largest; the second click flips it.
+    const clicks: Array<[string, string]> = [
+      ["Produk", "nameAsc"],
+      ["Produk", "nameDesc"],
+      ["Stok", "stockDesc"],
+      ["Stok", "stockAsc"],
+      ["HPP", "hppDesc"],
+      ["Harga jual", "priceDesc"],
+      ["Harga jual", "priceAsc"],
+    ];
+    for (const [header, sort] of clicks) {
+      await user.click(screen.getByRole("button", { name: header }));
+      await waitFor(() =>
+        expect(list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort }),
+        ),
+      );
+    }
+    expect(
+      screen.getByRole("columnheader", { name: "Harga jual" }),
+    ).toHaveAttribute("aria-sort", "ascending");
 
-    await waitFor(() =>
-      expect(list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "skuAsc" }),
-      ),
-    );
+    // Tipe and Kategori do not sort (BO, 19 October 2026), nor does Aksi.
+    for (const header of ["Tipe", "Kategori", "Aksi"]) {
+      expect(
+        screen.queryByRole("button", { name: header }),
+      ).not.toBeInTheDocument();
+    }
   });
 
-  it("clears every filter in the same click on Reset, ordering included", async () => {
+  it("sums a Stok sort over the picked warehouses, and sends none for other orderings", async () => {
     const user = userEvent.setup();
     const list = mockList([makeProduct()]);
 
     renderWithAuth(<ProductsScreen />);
     await screen.findByText("Shampoo Anjing");
+
+    await tickWarehouses(user, "Gudang Pusat", "Gudang Cabang");
+    // Under the default ordering a picked warehouse only re-labels the figures.
+    expect(list).toHaveBeenLastCalledWith(
+      expect.not.objectContaining({ stockWarehouseIds: expect.anything() }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Stok" }));
+    await waitFor(() =>
+      expect(list).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          sort: "stockDesc",
+          stockWarehouseIds: [WAREHOUSE, OTHER_WAREHOUSE],
+        }),
+      ),
+    );
+  });
+
+  it("has no Urutkan in the filter panel — the headers own the ordering", async () => {
+    const user = userEvent.setup();
+    mockList([makeProduct()]);
+
+    renderWithAuth(<ProductsScreen />);
+    await screen.findByText("Shampoo Anjing");
+
+    const panel = await openFilters(user);
+    expect(
+      within(panel).queryByRole("button", { name: "Urutkan" }),
+    ).not.toBeInTheDocument();
+    expect(within(panel).queryByText("Urutkan")).not.toBeInTheDocument();
+  });
+
+  it("keeps a variant family's rows under its parent after a re-sort", async () => {
+    const user = userEvent.setup();
+    mockList([
+      makeProduct({
+        _id: "parent1",
+        name: "Royal Canin Adult",
+        productType: "parent",
+        variantCount: 1,
+      }),
+    ]);
+    jest.spyOn(productService, "listVariants").mockResolvedValue({
+      parent: makeProduct({ _id: "parent1", productType: "parent" }),
+      items: [
+        makeProduct({
+          _id: "v1",
+          sku: "RC-3KG",
+          name: "RC 3kg",
+          productType: "variant",
+          parentId: "parent1",
+          variantAttributes: { ukuran: "3kg" },
+        }),
+      ],
+    });
+
+    renderWithAuth(<ProductsScreen />);
+    await screen.findByText("Royal Canin Adult");
+    await user.click(screen.getByRole("button", { name: "Lihat varian" }));
+    await screen.findByText("3kg");
+
+    await user.click(screen.getByRole("button", { name: "Produk" }));
+
+    // The family stays open, its variant row directly beneath it.
+    const parentRow = (await screen.findByText("Royal Canin Adult")).closest(
+      "tr",
+    )!;
+    expect(parentRow.nextElementSibling).toHaveTextContent("3kg");
+  });
+
+  it("clears every filter in the same click on Reset, and leaves the ordering", async () => {
+    const user = userEvent.setup();
+    const list = mockList([makeProduct()]);
+
+    renderWithAuth(<ProductsScreen />);
+    await screen.findByText("Shampoo Anjing");
+
+    await user.click(screen.getByRole("button", { name: "Produk" }));
 
     let panel = await openFilters(user);
     await user.click(
@@ -550,10 +644,10 @@ describe("ProductsScreen", () => {
         expect.not.objectContaining({ isActive: expect.anything() }),
       ),
     );
-    // A list with no ordering is not a thing: Reset puts it back to the
-    // default rather than clearing it to nothing.
+    // The ordering came from a header somebody can see; a button inside the
+    // panel must not silently undo it (ui-rules §8).
     expect(list).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sort: "newest" }),
+      expect.objectContaining({ sort: "nameAsc" }),
     );
   });
 

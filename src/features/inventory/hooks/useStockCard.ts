@@ -21,7 +21,10 @@ export interface StockCardFilters {
   to: string;
   /** Free text over the row's note and its lot code. */
   search: string;
-  /** Which ordering to page through. */
+  /**
+   * Which ordering to page through — set from the ledger's column headers, not
+   * from the filter panel (BO, 19 October 2026).
+   */
   sort: MovementSort;
 }
 
@@ -32,8 +35,8 @@ export const EMPTY_FILTERS: StockCardFilters = {
   from: "",
   to: "",
   search: "",
-  // The API's own default, restated rather than left out: the panel renders the
-  // current value, and a select whose value is `undefined` shows nothing.
+  // The API's own default, restated rather than left out: the header arrow
+  // reads the current value, and an `undefined` one would light no column.
   sort: "newest",
 };
 
@@ -47,10 +50,13 @@ const EMPTY_PAGINATION: StockMovementPage["pagination"] = {
 };
 
 interface UseStockCardResult {
-  /** One page, newest first. Each row carries its own `balanceAfter`. */
+  /** One page, in the requested order. Each row carries its own `balanceAfter`. */
   movements: StockMovement[];
   pagination: StockMovementPage["pagination"];
-  /** The balance before the page's oldest row, or null when unanswerable. */
+  /**
+   * The balance before the page's oldest row, or null when unanswerable — which
+   * includes every non-chronological ordering.
+   */
   openingBalance: string | null;
   loading: boolean;
   error: string | null;

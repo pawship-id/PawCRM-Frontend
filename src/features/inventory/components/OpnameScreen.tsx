@@ -2,28 +2,24 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Eye, Pencil, Trash2 } from "lucide-react";
 
 import {
   Alert,
   ConfirmDialog,
+  DataTable,
   HighlightText,
   Pagination,
-  Spinner,
+  type DataTableColumn,
+  type SortOptions,
+  RowLinkMenu,
 } from "@/components";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { stockOpnameService } from "@/services/stockOpname.service";
-import type { Opname } from "@/types/inventory";
+import type { Opname, OpnameSort } from "@/types/inventory";
 import { formatMoney, toMinor } from "@/utils/decimal";
 import { exportToXlsx, type XlsxColumn } from "@/utils/xlsx";
 
@@ -78,14 +74,34 @@ const OPNAME_EXPORT_COLUMNS: XlsxColumn<Opname>[] = [
   { header: "Status", value: (row) => row.status },
   { header: "Item dihitung", value: (row) => row.countedCount, type: "number" },
   { header: "Total item", value: (row) => row.itemCount, type: "number" },
-  { header: "Selisih nilai", value: (row) => row.totalDiffValue, type: "number" },
+  {
+    header: "Selisih nilai",
+    value: (row) => row.totalDiffValue,
+    type: "number",
+  },
   { header: "Disubmit oleh", value: (row) => row.submittedByName ?? "" },
   { header: "Disubmit pada", value: (row) => row.submittedAt ?? "" },
   { header: "Catatan", value: (row) => row.notes ?? "" },
 ];
 
-/** Nomor, Tanggal, Cabang, Gudang, Terhitung, Selisih nilai, Status, Aksi. */
-const COLUMN_COUNT = 8;
+/**
+ * THE LIST SORTS FROM ITS COLUMN HEADERS (BO, 19 October 2026), on the server:
+ * each sortable column maps to the two names OPNAME_SORTS knows for it, and a
+ * click re-fetches page 1. Newest sheet date and largest selisih first; A first
+ * for a number. Cabang, Gudang and Status are plain, on BO's call.
+ *
+ * TERHITUNG IS DELIBERATELY PLAIN. `12 / 40` is computed per sheet from its
+ * items after paging — ordering by it would unpack every sheet's lines on every
+ * request. Aksi is a way in, not a value.
+ *
+ * Tanggal is the sheet's `opnameDate` — the day the shelves were walked, the
+ * date printed on the row — not when the row was written.
+ */
+const SORT_OPTIONS: SortOptions<OpnameSort> = {
+  number: { asc: "numberAsc", desc: "numberDesc" },
+  date: { asc: "oldest", desc: "newest", first: "desc" },
+  diffValue: { asc: "diffValueAsc", desc: "diffValueDesc", first: "desc" },
+};
 
 export function OpnameScreen() {
   const { can } = usePermissions();
@@ -126,8 +142,7 @@ export function OpnameScreen() {
    * Whether the empty table is empty BECAUSE of the panel.
    *
    * The sort is excluded — it reorders rows, it never removes one, so counting
-   * it would make every empty list read as filtered. Same field the trigger's
-   * `Filter (n)` badge leaves out, for the same reason.
+   * it would make every empty list read as filtered.
    */
   const filtered =
     filters.search.trim() !== "" ||
@@ -192,6 +207,140 @@ export function OpnameScreen() {
     }
   }
 
+  /** Nomor, Tanggal, Cabang, Gudang, Terhitung, Selisih nilai, Status, Aksi. */
+  const columns: DataTableColumn<Opname>[] = [
+    {
+      id: "number",
+      header: "Nomor",
+      cellClassName: "tabular-nums",
+      /* THE MATCH, MARKED. The server searches the number and the sheet note;
+         the number is the one of the two on screen, so it is where a reader
+         confirms the row in front of them is the one their term found.
+
+         NO DEBOUNCE ON THIS SCREEN'S SEARCH, unlike the stock-document list —
+         so the marks and the rows are always describing the same term. */
+      // The number opens the sheet too — the quick way in now that Lanjutkan
+      // and Lihat sit behind the row's kebab.
+      cell: (opname) => (
+        <Link
+          href={`/dashboard/inventory/opname/${opname._id}`}
+          className="font-medium text-primary-hover hover:underline"
+        >
+          <HighlightText text={opname.opnameNumber} query={filters.search} />
+        </Link>
+      ),
+    },
+    {
+      id: "date",
+      header: "Tanggal",
+      cellClassName: "tabular-nums whitespace-nowrap",
+      cell: (opname) =>
+        new Date(opname.opnameDate).toLocaleDateString("id-ID", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        }),
+    },
+    /* CABANG BEFORE GUDANG — which set of books, then which shelf. The two are
+       not 1:1, so a reader scanning a central warehouse's counts needs both to
+       tell them apart. An em dash covers both "this sheet predates the field"
+       and "the branch it named has since been deleted" — neither is a reason to
+       invent the warehouse's default in its place. */
+    {
+      id: "branch",
+      header: "Cabang",
+      cellClassName: "text-muted",
+      cell: (opname) => opname.branchName ?? "—",
+    },
+    {
+      id: "warehouse",
+      header: "Gudang",
+      cellClassName: "text-muted",
+      cell: (opname) => opname.warehouseName ?? "—",
+    },
+    {
+      id: "counted",
+      header: "Terhitung",
+      align: "right",
+      cell: (opname) =>
+        opname.itemCount === undefined ? (
+          "—"
+        ) : (
+          <span
+            className={cn(
+              opname.status === "draft" &&
+                opname.countedCount === 0 &&
+                "text-muted",
+            )}
+          >
+            {opname.countedCount ?? 0} / {opname.itemCount}
+          </span>
+        ),
+    },
+    {
+      id: "diffValue",
+      header: "Selisih nilai",
+      align: "right",
+      cellClassName: (opname) => {
+        const totalMinor = toMinor(opname.totalDiffValue) ?? 0n;
+        return cn(
+          "font-semibold",
+          totalMinor < 0n && "text-danger",
+          totalMinor > 0n && "text-success",
+        );
+      },
+      cell: (opname) =>
+        (toMinor(opname.totalDiffValue) ?? 0n) === 0n
+          ? "—"
+          : formatMoney(opname.totalDiffValue),
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (opname) => <OpnameStatusBadge status={opname.status} />,
+    },
+    {
+      id: "actions",
+      header: "Aksi",
+      align: "right",
+      // Behind the row's kebab, like every other Inventori list (BO, 19
+      // October 2026).
+      cell: (opname) => {
+        const isDraft = opname.status === "draft";
+        return (
+          <RowLinkMenu
+            name={opname.opnameNumber}
+            links={[
+              {
+                href: `/dashboard/inventory/opname/${opname._id}`,
+                label: isDraft ? "Lanjutkan" : "Lihat",
+                icon: isDraft ? <Pencil /> : <Eye />,
+              },
+            ]}
+            // Drafts only — the API refuses to discard a submitted sheet,
+            // which is the supporting document for movements and a journal
+            // entry that cannot be undone. The dialog still asks first.
+            actions={
+              isDraft && can("stockOpnames", "delete")
+                ? [
+                    {
+                      label: "Buang",
+                      icon: <Trash2 />,
+                      destructive: true,
+                      onSelect: () => {
+                        setDeleteError(null);
+                        setPendingDelete(opname);
+                      },
+                    },
+                  ]
+                : []
+            }
+          />
+        );
+      },
+    },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
       {/* Scope and a way through, not a form: the products are chosen on the
@@ -216,155 +365,36 @@ export function OpnameScreen() {
 
       {error && <Alert variant="error">{error}</Alert>}
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nomor</TableHead>
-              <TableHead>Tanggal</TableHead>
-              {/* CABANG BEFORE GUDANG — which set of books, then which shelf.
-                  The two are not 1:1, so a reader scanning a central
-                  warehouse's counts needs both to tell them apart. */}
-              <TableHead>Cabang</TableHead>
-              <TableHead>Gudang</TableHead>
-              <TableHead className="text-right">Terhitung</TableHead>
-              <TableHead className="text-right">Selisih nilai</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
-              <TableRow>
-                <TableCell colSpan={COLUMN_COUNT} className="py-16">
-                  <span className="flex items-center justify-center gap-2 text-sm text-muted">
-                    <Spinner /> Memuat daftar opname…
-                  </span>
-                </TableCell>
-              </TableRow>
-            )}
-
-            {!loading && opnames.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={COLUMN_COUNT} className="py-16 text-center">
-                  {/* TWO DIFFERENT FACTS, and telling them apart matters more
-                      now than it did: with five filters in the panel, "no
-                      counts here" is far more often "none matching THIS", and
-                      the first message would send somebody off to start a
-                      sheet that already exists one branch over. */}
-                  <p className="font-medium text-foreground">
-                    {filtered
-                      ? "Tidak ada opname yang cocok dengan filter ini"
-                      : "Belum ada opname"}
-                  </p>
-                  <p className="mx-auto mt-1 max-w-md text-sm text-muted">
-                    {filtered
-                      ? "Coba ubah kata kunci, cabang, gudang, status, atau rentang tanggalnya."
-                      : "Mulai penghitungan pertama untuk mencocokkan stok fisik dengan catatan sistem."}
-                  </p>
-                </TableCell>
-              </TableRow>
-            )}
-
-            {!loading &&
-              opnames.map((opname) => {
-                const totalMinor = toMinor(opname.totalDiffValue) ?? 0n;
-                const isDraft = opname.status === "draft";
-
-                return (
-                  <TableRow key={opname._id}>
-                    {/* THE MATCH, MARKED. The server searches the number and
-                        the sheet note; the number is the one of the two on
-                        screen, so it is where a reader confirms the row in front
-                        of them is the one their term found.
-
-                        NO DEBOUNCE ON THIS SCREEN'S SEARCH, unlike the
-                        stock-document list — so the marks and the rows are
-                        always describing the same term, with no third of a
-                        second where they disagree. */}
-                    <TableCell className="tabular-nums">
-                      <HighlightText
-                        text={opname.opnameNumber}
-                        query={filters.search}
-                      />
-                    </TableCell>
-                    <TableCell className="tabular-nums whitespace-nowrap">
-                      {new Date(opname.opnameDate).toLocaleDateString("id-ID", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </TableCell>
-                    {/* An em dash covers both "this sheet predates the field"
-                        and "the branch it named has since been deleted" — the
-                        row is worth reading either way, and neither is a reason
-                        to invent the warehouse's default in its place. */}
-                    <TableCell className="text-muted">
-                      {opname.branchName ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-muted">
-                      {opname.warehouseName ?? "—"}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {opname.itemCount === undefined ? (
-                        "—"
-                      ) : (
-                        <span
-                          className={cn(
-                            isDraft &&
-                              opname.countedCount === 0 &&
-                              "text-muted",
-                          )}
-                        >
-                          {opname.countedCount ?? 0} / {opname.itemCount}
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        "text-right tabular-nums font-semibold",
-                        totalMinor < 0n && "text-danger",
-                        totalMinor > 0n && "text-success",
-                      )}
-                    >
-                      {totalMinor === 0n
-                        ? "—"
-                        : formatMoney(opname.totalDiffValue)}
-                    </TableCell>
-                    <TableCell>
-                      <OpnameStatusBadge status={opname.status} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-3">
-                        <Link
-                          href={`/dashboard/inventory/opname/${opname._id}`}
-                          className="text-sm font-medium text-primary-hover hover:underline"
-                        >
-                          {isDraft ? "Lanjutkan" : "Lihat"}
-                        </Link>
-                        {/* Drafts only — the API refuses to discard a submitted
-                            sheet, which is the supporting document for movements
-                            and a journal entry that cannot be undone. */}
-                        {isDraft && can("stockOpnames", "delete") && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeleteError(null);
-                              setPendingDelete(opname);
-                            }}
-                            className="text-sm font-medium text-danger hover:underline"
-                          >
-                            Buang
-                          </button>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={opnames}
+        rowKey={(opname) => opname._id}
+        sort={{
+          value: filters.sort,
+          options: SORT_OPTIONS,
+          onChange: (sort) => handleFilters({ sort }),
+        }}
+        loading={loading}
+        loadingLabel="Memuat daftar opname…"
+        empty={
+          /* TWO DIFFERENT FACTS, and telling them apart matters: with five
+             filters in the panel, "no counts here" is far more often "none
+             matching THIS", and the first message would send somebody off to
+             start a sheet that already exists one branch over. */
+          <div className="py-16 text-center">
+            <p className="font-medium text-foreground">
+              {filtered
+                ? "Tidak ada opname yang cocok dengan filter ini"
+                : "Belum ada opname"}
+            </p>
+            <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+              {filtered
+                ? "Coba ubah kata kunci, cabang, gudang, status, atau rentang tanggalnya."
+                : "Mulai penghitungan pertama untuk mencocokkan stok fisik dengan catatan sistem."}
+            </p>
+          </div>
+        }
+      />
 
       <Pagination
         page={pagination.page}

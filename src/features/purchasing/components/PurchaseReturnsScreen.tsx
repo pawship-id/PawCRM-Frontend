@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 
 import { Alert, ConfirmDialog, Pagination, Spinner } from "@/components";
 import { swalToast } from "@/lib/swal";
@@ -101,19 +100,6 @@ export function PurchaseReturnsScreen() {
           />
         </>
       )}
-
-      <p className="text-xs text-muted">
-        Retur yang sudah final tidak bisa diedit atau dihapus — stok sudah
-        keluar, HPP sudah dibalik di harga beli asli, dan utang supplier sudah
-        berkurang. Koreksinya adalah menerima kembali barangnya lewat{" "}
-        <Link
-          href="/dashboard/purchasing/receipts/new"
-          className="text-primary-hover hover:underline"
-        >
-          penerimaan barang
-        </Link>
-        .
-      </p>
 
       {pendingDiscard && (
         <ConfirmDialog

@@ -70,6 +70,8 @@ export function CategoriesScreen() {
             categories={categories}
             loading={loading}
             search={query.search}
+            sort={query.sort}
+            onSortChange={(sort) => setQuery({ sort })}
             onChanged={refetch}
           />
           <Pagination

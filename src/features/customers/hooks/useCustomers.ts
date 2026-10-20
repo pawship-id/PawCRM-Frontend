@@ -8,6 +8,7 @@ import type {
   Customer,
   CustomerKind,
   CustomerListQuery,
+  CustomerSort,
   PageResult,
   VipTier,
 } from "@/types/api";
@@ -44,6 +45,12 @@ export interface CustomersQuery {
    * the Transaksi screen (`CashTransactionsQuery`).
    */
   createdSince: string;
+  /**
+   * The ordering, set from the table's column headers (BO header sorting,
+   * 20 October 2026) — a name the server knows, never a field. Not a filter:
+   * the toolbar's Reset leaves it alone and `Filter (n)` never counts it.
+   */
+  sort: CustomerSort;
 }
 
 const PAGE_SIZE = 20;
@@ -57,6 +64,7 @@ const DEFAULT_QUERY: CustomersQuery = {
   active: true,
   includeDeleted: false,
   createdSince: "",
+  sort: "newest",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */
@@ -85,8 +93,8 @@ interface UseCustomersResult {
  *
  * Mirrors useBranches: local state, a fetch effect keyed on the query, and an
  * explicit `refetch` the row actions call after they mutate a customer. Any
- * filter change (search/tier/deleted) resets to page 1 so the user is never
- * stranded on an out-of-range page.
+ * filter or ordering change (search/tier/deleted/sort) resets to page 1 so the
+ * user is never stranded on an out-of-range page.
  *
  * `initial` SEEDS THE STATE, NOT A PROP THE SCREEN RE-READS (2 October 2026)
  * — the same lazy-`useState` merge `useCashTransactions` uses for its own
@@ -147,6 +155,7 @@ export function useCustomers(
       isActive: settled.active === "" ? undefined : settled.active,
       includeDeleted: settled.includeDeleted || undefined,
       createdSince: settled.createdSince || undefined,
+      sort: settled.sort,
     };
 
     customerService

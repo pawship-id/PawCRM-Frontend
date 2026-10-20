@@ -2,6 +2,7 @@ import {
   billingOf,
   countFilters,
   DEFAULT_FILTERS,
+  DEFAULT_SORT,
   formatMoneyShort,
   isGroomingService,
   matchesFilters,
@@ -330,8 +331,10 @@ describe("filters, lens and sort", () => {
     { ...scope, serviceIds: new Set(["svc-groom", "svc-groom-plus"]) },
   );
 
-  it("never counts the sort towards Filter (n)", () => {
-    expect(countFilters({ ...DEFAULT_FILTERS, sort: "value_desc" })).toBe(0);
+  /* The ordering is the headers' since 20 October 2026, not a panel field. */
+  it("keeps the ordering out of the Filter panel's state", () => {
+    expect(DEFAULT_FILTERS).not.toHaveProperty("sort");
+    expect(countFilters(DEFAULT_FILTERS)).toBe(0);
     expect(countFilters({ ...DEFAULT_FILTERS, locations: ["in_home"] })).toBe(1);
   });
 
@@ -350,10 +353,76 @@ describe("filters, lens and sort", () => {
     ]);
   });
 
-  it("orders by schedule either way, and by value", () => {
-    expect(sortRows(rows, "schedule_asc").map((row) => row.key)).toEqual(["early", "late"]);
-    expect(sortRows(rows, "schedule_desc").map((row) => row.key)).toEqual(["late", "early"]);
+  it("orders by schedule by default, and by value either way", () => {
+    expect(sortRows(rows, DEFAULT_SORT).map((row) => row.key)).toEqual(["early", "late"]);
     expect(sortRows(rows, "value_desc").map((row) => row.key)).toEqual(["early", "late"]);
+    expect(sortRows(rows, "value_asc").map((row) => row.key)).toEqual(["late", "early"]);
+  });
+
+  /*
+    THE HEADERS SORT BY WHAT THE CELLS PRINT (BO, 20 October 2026): the booking
+    number compared naturally, a draft's missing number last either way, and
+    the money exactly — Grooming's `value`, or Antar-Jemput's `net`.
+  */
+  it("orders by booking number naturally, drafts last both ways", () => {
+    const numbered = toGroomingRows(
+      [
+        booking({ _id: "b10", bookingNumber: "BK-260913-010" }),
+        booking({ _id: "draft", bookingNumber: null }),
+        booking({ _id: "b2", bookingNumber: "BK-260913-002" }),
+        booking({ _id: "a9", bookingNumber: "BK-260912-009" }),
+      ],
+      scope,
+    );
+
+    expect(sortRows(numbered, "booking_asc").map((row) => row.key)).toEqual([
+      "a9",
+      "b2",
+      "b10",
+      "draft",
+    ]);
+    expect(sortRows(numbered, "booking_desc").map((row) => row.key)).toEqual([
+      "b10",
+      "b2",
+      "a9",
+      "draft",
+    ]);
+  });
+
+  it("orders Nilai by the amount the board prints, exactly", () => {
+    /* `value` 400.000 vs 120.000; `net` flips them with a big discount. */
+    const priced = toGroomingRows(
+      [
+        booking({
+          _id: "dear",
+          service: service({ price: "400000.0000" }),
+          discountAmount: "350000.0000",
+          netAmount: "50000.0000",
+        }),
+        booking({
+          _id: "cheap",
+          service: service({ price: "120000.0001" }),
+          netAmount: "120000.0001",
+        }),
+        booking({
+          _id: "cheaper",
+          service: service({ price: "120000.0000" }),
+          netAmount: "120000.0000",
+        }),
+      ],
+      scope,
+    );
+
+    expect(sortRows(priced, "value_desc").map((row) => row.key)).toEqual([
+      "dear",
+      "cheap",
+      "cheaper",
+    ]);
+    expect(sortRows(priced, "value_desc", "net").map((row) => row.key)).toEqual([
+      "cheap",
+      "cheaper",
+      "dear",
+    ]);
   });
 });
 

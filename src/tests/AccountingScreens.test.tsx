@@ -1299,15 +1299,33 @@ describe("JournalEntriesScreen", () => {
       ),
     );
 
-    // The column header, not the scope row's Cabang dropdown above the table.
     await userEvent.click(
-      within(screen.getByRole("table")).getByRole("button", { name: /^Cabang/ }),
+      within(screen.getByRole("table")).getByRole("button", {
+        name: /^No\. jurnal/,
+      }),
     );
     await waitFor(() =>
       expect(list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "branchAsc" }),
+        expect.objectContaining({ sort: "numberAsc" }),
       ),
     );
+  });
+
+  /** Cabang and Keterangan stopped sorting on 20 October 2026 (BO). */
+  it("does not make Cabang or Keterangan sortable", async () => {
+    await renderLedger([entry({ _id: "1" })]);
+    await screen.findByText("Penjualan POS");
+
+    const table = screen.getByRole("table");
+    expect(
+      within(table).queryByRole("button", { name: /^Cabang/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(table).queryByRole("button", { name: /^Keterangan/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "Cabang" }),
+    ).toBeInTheDocument();
   });
 
   /**
@@ -1323,7 +1341,7 @@ describe("JournalEntriesScreen", () => {
     ).not.toBeInTheDocument();
     // Its neighbours are buttons — the header row is sortable, just not here.
     expect(
-      within(screen.getByRole("table")).getByRole("button", { name: /^Cabang/ }),
+      within(screen.getByRole("table")).getByRole("button", { name: /^Nilai/ }),
     ).toBeInTheDocument();
   });
 

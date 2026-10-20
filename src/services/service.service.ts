@@ -22,11 +22,13 @@ import type {
  */
 export const serviceService = {
   /**
-   * GET /services — paginated, filterable list, **sorted by name** by the server.
+   * GET /services — paginated, filterable list, **sorted by name** by the server
+   * unless `sort` names another SERVICE_SORTS ordering.
    *
-   * The sort is not a parameter: a catalogue is read as a menu, and every caller
-   * wants it alphabetical. Spread into a fresh object literal so it satisfies
-   * apiClient's query type; apiClient drops the undefined entries.
+   * A catalogue is read as a menu, so every caller that sends no `sort` gets it
+   * alphabetical; Layanan & Harga's headers send one (BO, 20 October 2026).
+   * Spread into a fresh object literal so it satisfies apiClient's query type;
+   * apiClient drops the undefined entries.
    *
    * ⚠️ EVERY FILTER MUST BE LISTED HERE BY HAND, and one that is not is dropped
    * in SILENCE — the request simply goes out unfiltered and the screen shows
@@ -51,6 +53,7 @@ export const serviceService = {
         petType: query.petType,
         search: query.search,
         includeDeleted: query.includeDeleted,
+        sort: query.sort,
       },
     }),
 

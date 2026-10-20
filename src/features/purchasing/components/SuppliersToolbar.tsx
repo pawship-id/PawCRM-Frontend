@@ -16,7 +16,7 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import type { SupplierSort, SupplierType } from "@/types/api";
+import type { SupplierType } from "@/types/api";
 
 import type {
   SupplierActivityFilter,
@@ -25,8 +25,11 @@ import type {
 
 /**
  * The supplier list controls: one row — search, one Filter button, one create
- * button — with the sort order, the cooperation model, the activity filter and
- * "show deleted" inside the panel.
+ * button — with the cooperation model, the activity filter and "show deleted"
+ * inside the panel. The ORDERING is not here: it lives on the table's column
+ * headers (BO, 19 October 2026), and a Reset inside a filter panel must not
+ * silently re-sort a table somebody ordered from the headers it can see
+ * (docs/ui-rules.md §8).
  *
  * Purely presentational — it renders the current query and reports changes up to
  * useSuppliers.
@@ -34,8 +37,8 @@ import type {
  * ONE BUTTON RATHER THAN A ROW OF TRIGGERS, at every width, which is the
  * arrangement Produk & Varian uses and the reason the two screens now read the
  * same. Rule §8 hands a quick bar to a screen of four-or-fewer single-selects,
- * and with the ordering this screen has four — the threshold, and one the
- * viewport settles anyway: the bar only ever fit on a wide screen. Below `sm`
+ * and this screen sat on that threshold — one the viewport settles anyway: the
+ * bar only ever fit on a wide screen. Below `sm`
  * the triggers wrapped onto two or three lines of their own and pushed the table
  * off the fold, and the collapse the rule prescribes there would have meant a
  * second tree to keep in step with the first. One panel at every width is one
@@ -53,12 +56,6 @@ import type {
  * — a supplier list quietly narrowed to "hanya aktif" is one somebody concludes
  * a vendor is gone from. The count on the trigger (`Filter (2)`) is what pays
  * that back.
- *
- * THE ORDERINGS ARE THE ONES THE API NAMES, no more — `SUPPLIER_SORTS` in the
- * model. §8 is explicit about it: a picker offering a column with no index
- * behind it is a control that quietly does something else. That rules out the
- * two a reader of this screen might expect, termin and sisa utang, and the model
- * says why.
  */
 const TYPES = withAll<SupplierType | "">(
   [
@@ -80,33 +77,21 @@ const ACTIVITIES: FilterOption<SupplierActivityFilter>[] = [
   { value: "inactive", label: "Hanya nonaktif" },
 ];
 
-/** The orderings the API accepts — SUPPLIER_SORTS in supplier.model.js. */
-const SORTS: FilterOption<SupplierSort>[] = [
-  { value: "newest", label: "Terbaru" },
-  { value: "oldest", label: "Terlama" },
-  { value: "nameAsc", label: "Nama A–Z" },
-  { value: "nameDesc", label: "Nama Z–A" },
-];
-
 /** Everything the panel edits, as one draft. */
 interface SupplierFilters {
   type: SuppliersQuery["type"];
   activity: SupplierActivityFilter;
   includeDeleted: boolean;
-  sort: SupplierSort;
 }
 
 /**
- * What Reset returns to — the query's own defaults, not "empty".
- *
- * The ordering is included: a list with no ordering is not a thing, so Reset
- * puts it back to the API's default rather than clearing it to nothing.
+ * What Reset returns to — the query's own defaults, not "empty". The ordering
+ * is not part of it: Reset leaves the order the headers set alone.
  */
 const CLEARED: SupplierFilters = {
   type: "",
   activity: "all",
   includeDeleted: false,
-  sort: "newest",
 };
 
 export function SuppliersToolbar({
@@ -120,13 +105,12 @@ export function SuppliersToolbar({
     type: query.type,
     activity: query.activity,
     includeDeleted: query.includeDeleted,
-    sort: query.sort,
   };
 
   /**
    * Commits the draft — only what actually moved. `setQuery` builds a new object
    * out of whatever it is passed and the fetch effect keys on it, so posting all
-   * four back would re-query the list after pressing Terapkan on an unchanged
+   * three back would re-query the list after pressing Terapkan on an unchanged
    * panel.
    */
   function apply(next: SupplierFilters) {
@@ -135,7 +119,6 @@ export function SuppliersToolbar({
     if (next.activity !== query.activity) patch.activity = next.activity;
     if (next.includeDeleted !== query.includeDeleted)
       patch.includeDeleted = next.includeDeleted;
-    if (next.sort !== query.sort) patch.sort = next.sort;
 
     if (Object.keys(patch).length > 0) onChange(patch);
   }
@@ -180,7 +163,7 @@ export function SuppliersToolbar({
 }
 
 /**
- * The three filters and the ordering, behind one button.
+ * The three filters, behind one button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8). Reset returns the
  * whole set to its defaults and applies at once, because clearing a filter is
@@ -199,10 +182,8 @@ function SupplierFilterPanel({
   /**
    * How many filters are narrowing the list right now.
    *
-   * THE ORDERING IS NOT COUNTED, on the same grounds the catalogue's panel does
-   * not count its own: every list has one, so it is never "on". Nor is "Aktif &
-   * nonaktif", which is the activity field's unset value and narrows nothing. A
-   * badge that read `Filter (1)` over an unnarrowed list would train people to
+   * "Aktif & nonaktif" is not counted: it is the activity field's unset value
+   * and narrows nothing (the ordering is not in this panel at all). A badge that read `Filter (1)` over an unnarrowed list would train people to
    * ignore the number, which is the one thing here that must stay worth reading.
    */
   const count = [
@@ -244,18 +225,6 @@ function SupplierFilterPanel({
           setOpen(false);
         }}
       >
-        {/* Sort leads: it is the one field here that is always set, and the
-            only one that changes what the top of the list is rather than what
-            is in it. */}
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="newest"
-          onChange={(sort) => patch({ sort })}
-        />
         <FilterSelect
           layout="field"
           label="Tipe"

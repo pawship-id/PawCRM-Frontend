@@ -686,16 +686,12 @@ describe("SalesInvoiceList — the table", () => {
     ).toHaveAttribute("aria-sort", "ascending");
   });
 
-  it("sorts by Sisa over the wire, flipping on a second click", async () => {
+  // Money takes the largest first (ui-rules §8), then flips.
+  it("sorts by Sisa over the wire, largest first, flipping on a second click", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
     await screen.findByText("INV-2026-0042");
-    await user.click(screen.getByRole("button", { name: "Sisa" }));
-    await waitFor(() =>
-      expect(lastList()).toMatchObject({ sort: "outstandingLowest" }),
-    );
-
     await user.click(screen.getByRole("button", { name: "Sisa" }));
     await waitFor(() =>
       expect(lastList()).toMatchObject({ sort: "outstandingHighest" }),
@@ -704,6 +700,48 @@ describe("SalesInvoiceList — the table", () => {
       "aria-sort",
       "descending",
     );
+
+    await user.click(screen.getByRole("button", { name: "Sisa" }));
+    await waitFor(() =>
+      expect(lastList()).toMatchObject({ sort: "outstandingLowest" }),
+    );
+  });
+
+  // Text takes A first: the invoice number is a new server ordering.
+  it("sorts by Faktur number, ascending first", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await screen.findByText("INV-2026-0042");
+    await user.click(screen.getByRole("button", { name: "Faktur" }));
+    await waitFor(() =>
+      expect(lastList()).toMatchObject({ sort: "numberAsc" }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Faktur" }));
+    await waitFor(() =>
+      expect(lastList()).toMatchObject({ sort: "numberDesc" }),
+    );
+  });
+
+  it("sorts by Tanggal newest first", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await screen.findByText("INV-2026-0042");
+    await user.click(screen.getByRole("button", { name: "Tanggal" }));
+    await waitFor(() => expect(lastList()).toMatchObject({ sort: "newest" }));
+  });
+
+  it("leaves Pelanggan, Cabang, Sumber, Status and Aksi plain", async () => {
+    renderWithAuth(<ReceivablesScreen />);
+
+    await screen.findByText("INV-2026-0042");
+    for (const name of ["Pelanggan", "Cabang", "Sumber", "Status", "Aksi"]) {
+      const header = screen.getByRole("columnheader", { name });
+      expect(header).not.toHaveAttribute("aria-sort");
+      expect(within(header).queryByRole("button")).not.toBeInTheDocument();
+    }
   });
 
   it("does not re-sum the cards when only the ordering changes", async () => {
@@ -717,7 +755,7 @@ describe("SalesInvoiceList — the table", () => {
     await user.click(screen.getByRole("button", { name: "Nilai" }));
 
     await waitFor(() =>
-      expect(lastList()).toMatchObject({ sort: "totalLowest" }),
+      expect(lastList()).toMatchObject({ sort: "totalHighest" }),
     );
     expect(customerInvoiceService.summary).toHaveBeenCalledTimes(1);
   });
@@ -791,14 +829,41 @@ describe("SalesInvoiceList — the table", () => {
   });
 });
 
+const openMenu = async (user: ReturnType<typeof userEvent.setup>) =>
+  user.click(
+    await screen.findByRole("button", { name: "Aksi untuk INV-2026-0042" }),
+  );
+
 describe("SalesInvoiceList — row actions", () => {
+  it("links Detail and Cetak faktur from the row's menu", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await openMenu(user);
+
+    expect(
+      await screen.findByRole("menuitem", { name: "Detail" }),
+    ).toHaveAttribute("href", `/dashboard/sales/invoice/${INVOICE_ID}`);
+    expect(
+      screen.getByRole("menuitem", { name: "Cetak faktur" }),
+    ).toHaveAttribute("href", `/dashboard/sales/invoice/${INVOICE_ID}/print`);
+  });
+
+  it("no longer draws a Bayar button on the row itself", async () => {
+    renderWithAuth(<ReceivablesScreen />);
+
+    await screen.findByText("INV-2026-0042");
+    expect(
+      screen.queryByRole("button", { name: /^Bayar/ }),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens the payment dialog on the full invoice, read first", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
-    await user.click(
-      await screen.findByRole("button", { name: "Bayar INV-2026-0042" }),
-    );
+    await openMenu(user);
+    await user.click(await screen.findByRole("menuitem", { name: "Bayar" }));
 
     await waitFor(() =>
       expect(customerInvoiceService.getById).toHaveBeenCalledWith(INVOICE_ID),
@@ -815,46 +880,42 @@ describe("SalesInvoiceList — row actions", () => {
       ]) as never,
     );
 
+    const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
-    await screen.findByText("INV-2026-0042");
+    await openMenu(user);
     expect(
-      screen.queryByRole("button", { name: /^Bayar/ }),
+      await screen.findByRole("menuitem", { name: "Cetak faktur" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Bayar" }),
     ).not.toBeInTheDocument();
   });
 
-  it("hides Bayar from a role that may read but not take money", async () => {
+  it("hides Bayar and Batalkan from a role that may read but not take money", async () => {
+    const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />, {
       isSuperAdmin: false,
       permissions: [{ feature: "customerInvoices", actions: ["read"] }],
     });
 
-    await screen.findByText("INV-2026-0042");
+    await openMenu(user);
     expect(
-      screen.queryByRole("button", { name: /^Bayar/ }),
+      await screen.findByRole("menuitem", { name: "Detail" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Bayar" }),
     ).not.toBeInTheDocument();
-  });
-
-  it("links Cetak faktur to the print page", async () => {
-    const user = userEvent.setup();
-    renderWithAuth(<ReceivablesScreen />);
-
-    await user.click(
-      await screen.findByRole("button", { name: "Aksi lain INV-2026-0042" }),
-    );
-
     expect(
-      await screen.findByRole("menuitem", { name: "Cetak faktur" }),
-    ).toHaveAttribute("href", `/dashboard/sales/invoice/${INVOICE_ID}/print`);
+      screen.queryByRole("menuitem", { name: "Batalkan faktur" }),
+    ).not.toBeInTheDocument();
   });
 
   it("offers Batalkan on an invoice nothing has been paid against", async () => {
     const user = userEvent.setup();
     renderWithAuth(<ReceivablesScreen />);
 
-    await user.click(
-      await screen.findByRole("button", { name: "Aksi lain INV-2026-0042" }),
-    );
+    await openMenu(user);
     await user.click(
       await screen.findByRole("menuitem", { name: "Batalkan faktur" }),
     );
@@ -879,15 +940,45 @@ describe("SalesInvoiceList — row actions", () => {
 
     renderWithAuth(<ReceivablesScreen />);
 
-    await user.click(
-      await screen.findByRole("button", { name: "Aksi lain INV-2026-0042" }),
-    );
+    await openMenu(user);
 
     expect(
       await screen.findByRole("menuitem", { name: "Cetak faktur" }),
     ).toBeInTheDocument();
+    // Still owed, so still collectable.
+    expect(screen.getByRole("menuitem", { name: "Bayar" })).toBeInTheDocument();
     expect(
       screen.queryByRole("menuitem", { name: "Batalkan faktur" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers neither Bayar nor Batalkan on a void invoice", async () => {
+    const user = userEvent.setup();
+    asMock(customerInvoiceService.list).mockResolvedValue(
+      page([listRow({ status: "void" })]) as never,
+    );
+
+    renderWithAuth(<ReceivablesScreen />);
+
+    await openMenu(user);
+    expect(
+      await screen.findByRole("menuitem", { name: "Detail" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Bayar" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Batalkan faktur" }),
+    ).not.toBeInTheDocument();
+  });
+
+  // Removed 20 October 2026 on request.
+  it("no longer carries the 'cannot be changed' note under the table", async () => {
+    renderWithAuth(<ReceivablesScreen />);
+
+    await screen.findByText("INV-2026-0042");
+    expect(
+      screen.queryByText(/Faktur dan pembayaran tidak bisa diubah/),
     ).not.toBeInTheDocument();
   });
 

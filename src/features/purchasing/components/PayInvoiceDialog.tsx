@@ -1,6 +1,5 @@
 "use client";
 
-import { Alert } from "@/components";
 import {
   PaymentForm,
   RecordPaymentDialog,
@@ -54,13 +53,6 @@ export function PayInvoiceDialog({
           onPaid(next);
           onOpenChange(false);
         }}
-        note={
-          <Alert variant="info">
-            Setelah disimpan, status faktur naik sendiri ke{" "}
-            <strong>sebagian</strong> atau <strong>lunas</strong>. Pembayaran
-            langsung memposting jurnal dan tidak bisa dibatalkan dari sini.
-          </Alert>
-        }
       />
     </RecordPaymentDialog>
   );

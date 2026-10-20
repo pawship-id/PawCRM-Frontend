@@ -515,7 +515,7 @@ describe("OpnameScreen", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("offers Buang on a draft only, and only with the grant", async () => {
+  it("offers Buang on a draft only, behind the row's kebab", async () => {
     asMock(stockOpnameService.list).mockResolvedValue(
       page([
         sheet({ _id: "a", items: undefined, itemCount: 1, countedCount: 1 }),
@@ -529,18 +529,68 @@ describe("OpnameScreen", () => {
         }),
       ]),
     );
+    const user = userEvent.setup();
+
+    renderWithAuth(<OpnameScreen />);
+    await screen.findByText("OPN-2026-0001");
+
+    // The draft: Lanjutkan, then Buang below it.
+    await user.click(
+      screen.getByRole("button", { name: "Aksi untuk OPN-2026-0001" }),
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: "Lanjutkan" }),
+    ).toHaveAttribute("href", "/dashboard/inventory/opname/a");
+    expect(screen.getByRole("menuitem", { name: "Buang" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    // The final sheet: Lihat, and nothing to discard.
+    await user.click(
+      screen.getByRole("button", { name: "Aksi untuk OPN-2026-0002" }),
+    );
+    expect(
+      await screen.findByRole("menuitem", { name: "Lihat" }),
+    ).toHaveAttribute("href", "/dashboard/inventory/opname/b");
+    expect(
+      screen.queryByRole("menuitem", { name: "Buang" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("asks before discarding a draft picked from the menu", async () => {
+    asMock(stockOpnameService.list).mockResolvedValue(
+      page([sheet({ items: undefined, itemCount: 1, countedCount: 0 })]),
+    );
+    const user = userEvent.setup();
+
+    renderWithAuth(<OpnameScreen />);
+    await screen.findByText("OPN-2026-0001");
+
+    await user.click(
+      screen.getByRole("button", { name: "Aksi untuk OPN-2026-0001" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Buang" }));
+
+    expect(await screen.findByText("Buang draft opname?")).toBeInTheDocument();
+    expect(stockOpnameService.remove).not.toHaveBeenCalled();
+  });
+
+  it("opens the sheet from its number too", async () => {
+    asMock(stockOpnameService.list).mockResolvedValue(
+      page([sheet({ _id: "a", items: undefined, itemCount: 1, countedCount: 0 })]),
+    );
 
     renderWithAuth(<OpnameScreen />);
 
-    await screen.findByText("OPN-2026-0001");
-    // One draft, one final — so exactly one discard action.
-    expect(screen.getAllByRole("button", { name: "Buang" })).toHaveLength(1);
+    expect(
+      await screen.findByRole("link", { name: "OPN-2026-0001" }),
+    ).toHaveAttribute("href", "/dashboard/inventory/opname/a");
   });
 
   it("withholds Buang from a counter who may not discard", async () => {
     asMock(stockOpnameService.list).mockResolvedValue(
       page([sheet({ items: undefined, itemCount: 1, countedCount: 0 })]),
     );
+    const user = userEvent.setup();
 
     renderWithAuth(<OpnameScreen />, {
       isSuperAdmin: false,
@@ -550,8 +600,14 @@ describe("OpnameScreen", () => {
     });
 
     await screen.findByText("OPN-2026-0001");
+    await user.click(
+      screen.getByRole("button", { name: "Aksi untuk OPN-2026-0001" }),
+    );
     expect(
-      screen.queryByRole("button", { name: "Buang" }),
+      await screen.findByRole("menuitem", { name: "Lanjutkan" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Buang" }),
     ).not.toBeInTheDocument();
   });
 
@@ -665,7 +721,7 @@ describe("OpnameScreen", () => {
         ),
       );
 
-      // Counted, unlike the ordering: it changes what is IN the list, and a
+      // Counted: it changes what is IN the list, and a
       // filter hidden behind a button is one people forget is on.
       expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
         "Filter (1)",
@@ -697,33 +753,64 @@ describe("OpnameScreen", () => {
       );
     });
 
-    it("re-orders the list by a name the API accepts", async () => {
+    /** Urutkan left the panel when the headers took over (BO, 19 Oct 2026). */
+    it("offers no Urutkan in the panel", async () => {
       const user = userEvent.setup();
       renderWithAuth(<OpnameScreen />);
       await screen.findByText("OPN-2026-0001");
 
-      // Stated rather than omitted: every page of a walk has to agree.
-      expect(stockOpnameService.list).toHaveBeenCalledWith(
-        listRequest({ sort: "newest" }),
-      );
-
       const panel = await openFilters(user);
-      await user.click(within(panel).getByRole("button", { name: "Urutkan" }));
-      await user.click(screen.getByRole("option", { name: "Nomor A–Z" }));
-      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+      expect(
+        within(panel).getByRole("button", { name: "Filter status opname" }),
+      ).toBeInTheDocument();
+      expect(
+        within(panel).queryByRole("button", { name: "Urutkan" }),
+      ).not.toBeInTheDocument();
+    });
 
+    /**
+     * A Reset inside a filter panel must not silently re-sort a table somebody
+     * ordered from the headers it can see.
+     */
+    it("keeps the header ordering through Reset", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      await user.click(
+        within(
+          screen.getByRole("columnheader", { name: "Selisih nilai" }),
+        ).getByRole("button"),
+      );
       await waitFor(() =>
         expect(stockOpnameService.list).toHaveBeenCalledWith(
-          listRequest({ sort: "numberAsc" }),
+          listRequest({ sort: "diffValueDesc" }),
         ),
       );
 
-      // Read with the panel SHUT — Radix hides the trigger from the
-      // accessibility tree while its own dialog is up. The ordering is not
-      // counted: every list has one.
-      expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
-        /^Filter$/,
+      let panel = await openFilters(user);
+      await user.click(
+        within(panel).getByRole("button", { name: "Filter status opname" }),
       );
+      await user.click(screen.getByRole("option", { name: "Draft" }));
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+      await waitFor(() =>
+        expect(stockOpnameService.list).toHaveBeenCalledWith(
+          listRequest({ status: "draft", sort: "diffValueDesc" }),
+        ),
+      );
+
+      panel = await openFilters(user);
+      await user.click(within(panel).getByRole("button", { name: "Reset" }));
+
+      await waitFor(() => {
+        const listCalls = asMock(stockOpnameService.list).mock.calls.filter(
+          ([query]) => query?.limit === 20,
+        );
+        expect(listCalls[listCalls.length - 1][0]).toEqual(
+          expect.objectContaining({ status: undefined, sort: "diffValueDesc" }),
+        );
+      });
     });
 
     it("commits the date range with the panel, not with a second button", async () => {
@@ -749,6 +836,113 @@ describe("OpnameScreen", () => {
       expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
         "Filter (1)",
       );
+    });
+  });
+
+  /**
+   * THE LIST SORTS FROM ITS COLUMN HEADERS (BO, 19 October 2026), on the
+   * server. Newest sheet date and largest selisih first; A first for a number.
+   * Cabang, Gudang and Status are plain on BO's call; Terhitung is computed per
+   * sheet after paging, so it stays plain too.
+   */
+  describe("header sorting", () => {
+    const listRequest = (fields: Record<string, unknown>) =>
+      expect.objectContaining({ limit: 20, ...fields });
+
+    const headerButton = (name: string) =>
+      within(screen.getByRole("columnheader", { name })).getByRole("button");
+
+    beforeEach(() => {
+      asMock(stockOpnameService.list).mockResolvedValue(page([sheet()]));
+    });
+
+    it("opens on the newest sheet date, marked on Tanggal", async () => {
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      // Stated rather than omitted: every page of a walk has to agree.
+      expect(stockOpnameService.list).toHaveBeenCalledWith(
+        listRequest({ sort: "newest" }),
+      );
+      expect(
+        screen.getByRole("columnheader", { name: "Tanggal" }),
+      ).toHaveAttribute("aria-sort", "descending");
+    });
+
+    it.each([
+      ["Nomor", "numberAsc"],
+      ["Tanggal", "oldest"],
+      ["Selisih nilai", "diffValueDesc"],
+    ])("asks the server to sort by %s", async (header, sort) => {
+      const user = userEvent.setup();
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      await user.click(headerButton(header));
+
+      await waitFor(() =>
+        expect(stockOpnameService.list).toHaveBeenCalledWith(
+          listRequest({ sort }),
+        ),
+      );
+    });
+
+    it("flips a column on the second click", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      await user.click(headerButton("Selisih nilai"));
+      await waitFor(() =>
+        expect(stockOpnameService.list).toHaveBeenCalledWith(
+          listRequest({ sort: "diffValueDesc" }),
+        ),
+      );
+      await user.click(headerButton("Selisih nilai"));
+
+      await waitFor(() =>
+        expect(stockOpnameService.list).toHaveBeenCalledWith(
+          listRequest({ sort: "diffValueAsc" }),
+        ),
+      );
+    });
+
+    it("leaves Cabang, Gudang, Status, Terhitung and Aksi plain", async () => {
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      for (const name of ["Cabang", "Gudang", "Status", "Terhitung", "Aksi"]) {
+        expect(
+          within(screen.getByRole("columnheader", { name })).queryByRole(
+            "button",
+          ),
+        ).not.toBeInTheDocument();
+      }
+    });
+
+    /** The export takes the page in the order the server sorted it. */
+    it("exports the page in the order the headers asked for", async () => {
+      const user = userEvent.setup();
+      renderWithAuth(<OpnameScreen />);
+      await screen.findByText("OPN-2026-0001");
+
+      asMock(stockOpnameService.list).mockResolvedValue(
+        page([sheet({ _id: "o2", opnameNumber: "OPN-2026-0002" }), sheet()]),
+      );
+      await user.click(headerButton("Nomor"));
+      await user.click(headerButton("Nomor"));
+      await screen.findByText("OPN-2026-0002");
+
+      await user.click(
+        screen.getByRole("button", { name: /export halaman ini/i }),
+      );
+
+      await waitFor(() => expect(exportToXlsx).toHaveBeenCalled());
+      const [, rows] = asMock(exportToXlsx).mock.calls[0];
+      expect((rows as Opname[]).map((row) => row.opnameNumber)).toEqual([
+        "OPN-2026-0002",
+        "OPN-2026-0001",
+      ]);
     });
   });
 

@@ -221,6 +221,18 @@ function mockHappyPath(
 
 afterEach(() => jest.restoreAllMocks());
 
+/**
+ * The table once its first answer has landed. `DataTable` renders its header
+ * from the first frame — with a spinner row while nothing has arrived — so the
+ * table merely EXISTING no longer means the rows are in.
+ */
+async function findLoadedTable() {
+  return waitFor(() => {
+    expect(screen.queryByText(/^Memuat/)).not.toBeInTheDocument();
+    return screen.getByRole("table");
+  });
+}
+
 describe("StockCardScreen", () => {
   /**
    * The pair arrives from the route now: the product as a segment, the
@@ -329,7 +341,8 @@ describe("StockCardScreen", () => {
 
     renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
 
-    const rows = await screen.findAllByRole("row");
+    await findLoadedTable();
+    const rows = screen.getAllByRole("row");
     // rows[0] is the header. Each figure is the server's, attached to its own
     // row — not derived from an on-hand quantity fetched elsewhere.
     expect(within(rows[1]).getByText(/^100/)).toBeInTheDocument();
@@ -422,7 +435,8 @@ describe("StockCardScreen", () => {
    * The controls moved into one panel, the products page's shape. These pin the
    * two things that shape can get wrong — a field that queries while it is
    * being composed, and a badge that stops being worth reading once the
-   * triggers are hidden — plus the ordering, which is new.
+   * triggers are hidden — plus the ordering, which LEFT the panel for the
+   * column headers (19 October 2026) and must not come back through Reset.
    */
   describe("the filter panel", () => {
     /** Opens the one filter panel and returns it. */
@@ -436,7 +450,7 @@ describe("StockCardScreen", () => {
       mockHappyPath([movement()], []);
 
       renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
-      await screen.findByRole("table");
+      await findLoadedTable();
 
       expect(
         screen.queryByRole("button", { name: "Tipe pergerakan" }),
@@ -458,7 +472,7 @@ describe("StockCardScreen", () => {
       mockHappyPath([movement()], []);
 
       renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
-      await screen.findByRole("table");
+      await findLoadedTable();
       const calls = jest.mocked(stockMovementService.list).mock.calls.length;
 
       const panel = await openFilters(user);
@@ -481,34 +495,203 @@ describe("StockCardScreen", () => {
       );
     });
 
-    it("re-orders the ledger, and does not count the ordering as a filter", async () => {
+    it("has no Urutkan — the ledger sorts from its headers", async () => {
       const user = userEvent.setup();
       mockHappyPath([movement()], []);
 
       renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
-      await screen.findByRole("table");
+      await findLoadedTable();
+
+      const panel = await openFilters(user);
+      expect(
+        within(panel).queryByRole("button", { name: "Urutkan" }),
+      ).not.toBeInTheDocument();
+    });
+
+    it("leaves a header-chosen order alone on Reset", async () => {
+      const user = userEvent.setup();
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+      await findLoadedTable();
+
+      await user.click(screen.getByRole("button", { name: "Kode batch internal" }));
+      await waitFor(() =>
+        expect(stockMovementService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort: "batchAsc" }),
+        ),
+      );
+
+      // Narrow, then Reset: the filter clears, the ordering stays — a button in
+      // a filter panel must not re-sort a table ordered from its headers.
+      let panel = await openFilters(user);
+      await user.click(
+        within(panel).getByRole("button", { name: "Tipe pergerakan" }),
+      );
+      await user.click(screen.getByRole("option", { name: "Penyesuaian" }));
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+      await waitFor(() =>
+        expect(stockMovementService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ movementType: "adjustment", sort: "batchAsc" }),
+        ),
+      );
+
+      panel = await openFilters(user);
+      await user.click(within(panel).getByRole("button", { name: "Reset" }));
+      await waitFor(() =>
+        expect(stockMovementService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ movementType: undefined, sort: "batchAsc" }),
+        ),
+      );
+    });
+  });
+
+  /**
+   * Header sorting (BO, 19 October 2026). Every click is an API ordering the
+   * server pages through — the ledger is paged, so nothing is re-sorted here.
+   */
+  describe("sorting from the headers", () => {
+    it("opens newest-first, marked on the Waktu header", async () => {
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+      await findLoadedTable();
 
       // Stated rather than omitted: every page of a walk has to agree.
       expect(stockMovementService.list).toHaveBeenLastCalledWith(
         expect.objectContaining({ sort: "newest" }),
       );
+      expect(
+        screen.getByRole("columnheader", { name: "Waktu" }),
+      ).toHaveAttribute("aria-sort", "descending");
+    });
 
-      const panel = await openFilters(user);
-      await user.click(within(panel).getByRole("button", { name: "Urutkan" }));
-      await user.click(screen.getByRole("option", { name: "Terlama dulu" }));
-      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+    it.each([
+      ["Waktu", "oldest"],
+      ["Kode batch internal", "batchAsc"],
+      ["Saldo", "balanceDesc"],
+      ["HPP saat itu", "hppDesc"],
+    ])("asks the server for %s → %s", async (header, sort) => {
+      const user = userEvent.setup();
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+      await findLoadedTable();
+
+      await user.click(screen.getByRole("button", { name: header }));
 
       await waitFor(() =>
         expect(stockMovementService.list).toHaveBeenLastCalledWith(
-          expect.objectContaining({ sort: "oldest" }),
+          expect.objectContaining({ sort, page: 1 }),
         ),
       );
+    });
 
-      // Read with the panel SHUT — Radix hides the trigger while its dialog is
-      // up. Every ledger has an ordering, so it is never a narrowing.
+    it("flips a column on the second click", async () => {
+      const user = userEvent.setup();
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+      await findLoadedTable();
+
+      await user.click(screen.getByRole("button", { name: "Saldo" }));
+      await findLoadedTable();
+      await user.click(screen.getByRole("button", { name: "Saldo" }));
+
+      await waitFor(() =>
+        expect(stockMovementService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort: "balanceAsc" }),
+        ),
+      );
+    });
+
+    it("never offers Referensi, Tipe, Masuk / keluar or Diinput oleh as a sort", async () => {
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+      await findLoadedTable();
+
+      // Referensi: its label spans several documents. The other three: BO's
+      // call (19 October 2026).
+      for (const name of ["Referensi", "Tipe", "Masuk / keluar", "Diinput oleh"]) {
+        expect(
+          screen.getByRole("columnheader", { name }),
+        ).not.toHaveAttribute("aria-sort");
+        expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+      }
+    });
+
+    it("keeps the sort out of the Filter badge", async () => {
+      const user = userEvent.setup();
+      mockHappyPath([movement()], []);
+
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+      await findLoadedTable();
+
+      await user.click(screen.getByRole("button", { name: "Saldo" }));
+      await findLoadedTable();
+
       expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
         /^Filter$/,
       );
+    });
+
+    /**
+     * "Saldo awal plus every row equals the last balance" holds only for rows
+     * in time order, so the footer exists for the two chronological sorts only
+     * — hidden even if a figure arrived, so a re-sort never leaves the last
+     * page's opening balance under rows it no longer describes.
+     */
+    it("hides the opening balance when the whole card fits one page", async () => {
+      mockHappyPath([movement()], [], { openingBalance: "0.0000" });
+
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+      await findLoadedTable();
+
+      expect(screen.queryByText(/^Saldo sebelum baris/)).not.toBeInTheDocument();
+    });
+
+    it("shows the opening balance for the chronological orders only", async () => {
+      const user = userEvent.setup();
+      mockHappyPath([movement()], [], {
+        openingBalance: "90.0000",
+        pagination: { page: 1, limit: 50, total: 120, totalPages: 3 },
+      });
+
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+      await findLoadedTable();
+
+      expect(
+        screen.getByText("Saldo sebelum baris terakhir di halaman ini"),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Waktu" }));
+      await findLoadedTable();
+      // Oldest-first: the page's oldest row is now its FIRST.
+      expect(
+        screen.getByText("Saldo sebelum baris pertama di halaman ini"),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "HPP saat itu" }));
+      await findLoadedTable();
+      expect(screen.queryByText(/^Saldo sebelum baris/)).not.toBeInTheDocument();
+    });
+
+    it("dims the rows on screen during a re-sort instead of blanking the table", async () => {
+      const user = userEvent.setup();
+      mockHappyPath([movement({ createdByName: "Budi Santoso" })], []);
+
+      renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+      await findLoadedTable();
+
+      // The next page never answers, so the screen is caught mid-reload.
+      jest
+        .mocked(stockMovementService.list)
+        .mockReturnValue(new Promise(() => {}));
+      await user.click(screen.getByRole("button", { name: "Saldo" }));
+
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+      expect(screen.queryByText("Memuat kartu stok…")).not.toBeInTheDocument();
     });
   });
 
@@ -517,7 +700,7 @@ describe("StockCardScreen", () => {
     mockHappyPath([movement()], []);
 
     renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
-    await screen.findByRole("table");
+    await findLoadedTable();
 
     await user.type(screen.getByLabelText("Cari pergerakan"), "B26");
 
@@ -533,7 +716,7 @@ describe("StockCardScreen", () => {
     mockHappyPath([movement()], []);
 
     renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
-    await screen.findByRole("table");
+    await findLoadedTable();
 
     await user.type(screen.getByLabelText("Cari pergerakan"), "B26");
 
@@ -553,7 +736,7 @@ describe("StockCardScreen", () => {
     mockHappyPath([movement()], []);
 
     renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
-    await screen.findByRole("table");
+    await findLoadedTable();
 
     await user.type(screen.getByLabelText("Cari pergerakan"), "rusak");
     await user.click(await screen.findByRole("button", { name: /Batch \/ FEFO/ }));
@@ -569,7 +752,7 @@ describe("StockCardScreen", () => {
     mockHappyPath([movement()], []);
 
     renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
-    await screen.findByRole("table");
+    await findLoadedTable();
 
     expect(
       screen.queryByRole("button", { name: /muat ulang/i }),
@@ -689,7 +872,7 @@ describe("StockCardScreen", () => {
       await screen.findByRole("button", { name: /Batch \/ FEFO/ }),
     );
 
-    const table = await screen.findByRole("table");
+    const table = await findLoadedTable();
     expect(within(table).getByText("Urutan FEFO")).toBeInTheDocument();
     expect(within(table).getByText("RC-B26-0455")).toBeInTheDocument();
   });
@@ -706,7 +889,7 @@ describe("StockCardScreen", () => {
       ],
     });
 
-    await screen.findByText(/tidak bisa diubah/);
+    await findLoadedTable();
     expect(
       screen.queryByRole("button", { name: /Batch \/ FEFO/ }),
     ).not.toBeInTheDocument();
@@ -727,12 +910,16 @@ describe("StockCardScreen", () => {
     expect(await screen.findByText("Forbidden")).toBeInTheDocument();
   });
 
-  it("states that the ledger cannot be edited", async () => {
+  // The ledger's notes under the table and beside Export are gone (BO, 19
+  // October 2026); the card says nothing it does not need to.
+  it("shows no note under the ledger or beside Export", async () => {
     mockHappyPath([movement()], []);
 
     renderWithAuth(<StockCardScreen productId={PRODUCT} warehouseId={WAREHOUSE} />);
+    await findLoadedTable();
 
-    expect(await screen.findByText(/tidak bisa diubah/)).toBeInTheDocument();
+    expect(screen.queryByText(/tidak bisa diubah/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Export mengikuti filter/)).not.toBeInTheDocument();
   });
 });
 

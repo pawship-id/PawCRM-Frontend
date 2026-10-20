@@ -48,10 +48,11 @@ export interface BatchesQuery {
   expiryFrom: string;
   expiryTo: string;
   /**
-   * Which ordering to page through. ONE CONTROL FOR BOTH ENDPOINTS: the two
-   * answer different questions but return the same rows, and a sort that
-   * silently reset when a search flipped the screen into audit mode would be a
-   * control that undoes itself.
+   * Which ordering to page through, set from the table's column headers (BO,
+   * 19 October 2026). ONE ORDERING FOR BOTH ENDPOINTS — both accept every name
+   * in BATCH_SORTS: the two answer different questions but return the same
+   * rows, and a sort that silently reset when a search flipped the screen into
+   * audit mode would be a header click that undoes itself.
    */
   sort: BatchSort;
 }

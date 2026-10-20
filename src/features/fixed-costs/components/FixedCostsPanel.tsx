@@ -3,30 +3,24 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, ChevronsUpDown, Plus, RotateCcw } from "lucide-react";
+import { Plus, RotateCcw } from "lucide-react";
 
 import {
   Alert,
   Card,
+  DataTable,
   FilterBar,
   FilterSearch,
   FilterSelect,
   HighlightText,
   ListFooter,
-  Spinner,
   withAll,
+  type DataTableColumn,
   type FilterOption,
+  type SortOptions,
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { CASH_TRANSACTION_DETAIL_HREF } from "@/features/cash-transactions";
 import { Can } from "@/features/permissions";
 import { cn } from "@/lib/utils";
@@ -48,12 +42,9 @@ import {
 } from "../labels";
 import { PostOccurrenceDialog } from "./PostOccurrenceDialog";
 
-/** Tipe · Nama · Kategori · Jumlah · Jatuh Tempo · Akun · Status. */
-const COLUMN_COUNT = 7;
-
 /**
- * THE FIVE COLUMNS THE HEADER CAN ORDER BY, from the mockup's own `BT_SORT_COLS`
- * — minus the two it sorts client-side over a five-row array and the server
+ * THE COLUMNS THE HEADER CAN ORDER BY, from the mockup's own `BT_SORT_COLS` —
+ * minus the two it sorts client-side over a five-row array and the server
  * cannot: Tipe and Kategori.
  *
  * Tipe is a two-valued badge, so ordering by it is the Tipe FILTER with extra
@@ -61,8 +52,11 @@ const COLUMN_COUNT = 7;
  * accounts a row has, so any field the server could sort would order the rows
  * by something other than the text somebody is reading — the same rule the
  * Transaksi table's Deskripsi and Akun columns follow.
+ *
+ * Every first click is `asc`: A first on a name, the soonest on the due date
+ * (what somebody opens a schedule for), and the smallest amount first.
  */
-const SORTABLE: Record<string, { asc: FixedCostSort; desc: FixedCostSort }> = {
+const SORT_OPTIONS: SortOptions<FixedCostSort> = {
   nama: { asc: "nameAsc", desc: "nameDesc" },
   jumlah: { asc: "amountLowest", desc: "amountHighest" },
   jatuhTempo: { asc: "dueSoonest", desc: "dueLatest" },
@@ -103,15 +97,8 @@ const STATUS_OPTIONS: FilterOption<string>[] = withAll(
  */
 export function FixedCostsPanel({ state }: { state: UseFixedCostsResult }) {
   const router = useRouter();
-  const {
-    fixedCosts,
-    pagination,
-    query,
-    loading,
-    error,
-    setQuery,
-    refetch,
-  } = state;
+  const { fixedCosts, pagination, query, loading, error, setQuery, refetch } =
+    state;
 
   /** The row whose occurrence is being recorded, or null. */
   const [posting, setPosting] = useState<FixedCost | null>(null);
@@ -130,9 +117,7 @@ export function FixedCostsPanel({ state }: { state: UseFixedCostsResult }) {
           holds the controls, the table and the footer, so the search box is
           visibly about the rows beneath it.
         */}
-        <h2 className="text-xs font-semibold tracking-widest text-muted uppercase">
-          Biaya tetap
-        </h2>
+        <h2 className="text-lg font-bold">Biaya tetap</h2>
 
         {error && (
           <Alert variant="error">
@@ -192,9 +177,7 @@ export function FixedCostsPanel({ state }: { state: UseFixedCostsResult }) {
             ariaLabel="Filter tipe"
             value={query.kind}
             options={KIND_OPTIONS}
-            onChange={(kind) =>
-              setQuery({ kind: kind as typeof query.kind })
-            }
+            onChange={(kind) => setQuery({ kind: kind as typeof query.kind })}
           />
           <FilterSelect
             label="Status"
@@ -207,101 +190,53 @@ export function FixedCostsPanel({ state }: { state: UseFixedCostsResult }) {
           />
         </FilterBar>
 
-        {loading && fixedCosts.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-            <Spinner /> Memuat biaya tetap…
-          </div>
-        ) : (
-          <>
-            <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-              <Table className={loading ? "opacity-60" : undefined}>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tipe</TableHead>
-                    <SortHead
-                      column="nama"
-                      label="Nama"
-                      sort={query.sort}
-                      onSort={(sort) => setQuery({ sort, page: 1 })}
-                    />
-                    <TableHead>Kategori</TableHead>
-                    <SortHead
-                      column="jumlah"
-                      label="Jumlah"
-                      align="right"
-                      sort={query.sort}
-                      onSort={(sort) => setQuery({ sort, page: 1 })}
-                    />
-                    <SortHead
-                      column="jatuhTempo"
-                      label="Jatuh tempo"
-                      sort={query.sort}
-                      onSort={(sort) => setQuery({ sort, page: 1 })}
-                    />
-                    <TableHead>Akun</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {fixedCosts.length === 0 && (
-                    <TableRow className="hover:bg-transparent">
-                      <TableCell
-                        colSpan={COLUMN_COUNT}
-                        className="px-4 py-16 text-center"
-                      >
-                        <p className="font-medium text-foreground">
-                          {filtered
-                            ? "Tidak ada biaya tetap di filter ini."
-                            : "Belum ada biaya tetap."}
-                        </p>
-                        <p className="mt-1 text-sm text-muted">
-                          {filtered
-                            ? "Coba longgarkan tipe atau statusnya, atau hapus kata kuncinya."
-                            : "Catat gaji, sewa, atau langganan yang berulang tiap bulan supaya jatuh temponya muncul di sini."}
-                        </p>
-                      </TableCell>
-                    </TableRow>
-                  )}
-
-                  {fixedCosts.map((fixedCost) => (
-                    <FixedCostRow
-                      key={fixedCost._id}
-                      fixedCost={fixedCost}
-                      search={query.search}
-                      onOpen={() => router.push(fixedCostHref(fixedCost._id))}
-                      onPost={() => setPosting(fixedCost)}
-                    />
-                  ))}
-                </TableBody>
-              </Table>
+        <DataTable
+          columns={fixedCostColumns({
+            search: query.search,
+            onPost: setPosting,
+          })}
+          rows={fixedCosts}
+          rowKey={(fixedCost) => fixedCost._id}
+          sort={{
+            value: query.sort,
+            options: SORT_OPTIONS,
+            onChange: (sort) => setQuery({ sort, page: 1 }),
+          }}
+          loading={loading}
+          loadingLabel="Memuat biaya tetap…"
+          // The whole row opens the schedule, as the Transaksi table's rows
+          // do; the name is the keyboard's way in.
+          onRowClick={(fixedCost) => router.push(fixedCostHref(fixedCost._id))}
+          rowClassName={(fixedCost) => !fixedCost.isActive && "text-muted"}
+          empty={
+            <div className="px-4 py-16 text-center">
+              <p className="font-medium text-foreground">
+                {filtered
+                  ? "Tidak ada biaya tetap di filter ini."
+                  : "Belum ada biaya tetap."}
+              </p>
+              <p className="mt-1 text-sm text-muted">
+                {filtered
+                  ? "Coba longgarkan tipe atau statusnya, atau hapus kata kuncinya."
+                  : "Catat gaji, sewa, atau langganan yang berulang tiap bulan supaya jatuh temponya muncul di sini."}
+              </p>
             </div>
+          }
+        />
 
-            <ListFooter
-              page={pagination.page}
-              pageSize={query.limit}
-              pageSizes={FIXED_COST_PAGE_SIZES}
-              total={pagination.total}
-              totalPages={pagination.totalPages}
-              unit="biaya tetap"
-              onPageChange={(page) => setQuery({ page })}
-              onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
-            />
-          </>
+        {/* The footer waits for the first rows, as it always has. */}
+        {!(loading && fixedCosts.length === 0) && (
+          <ListFooter
+            page={pagination.page}
+            pageSize={query.limit}
+            pageSizes={FIXED_COST_PAGE_SIZES}
+            total={pagination.total}
+            totalPages={pagination.totalPages}
+            unit="biaya tetap"
+            onPageChange={(page) => setQuery({ page })}
+            onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
+          />
         )}
-
-        {/*
-          THE MOCKUP'S FOOTNOTE, corrected. It says a fixed cost is made through
-          "+ Tambah Transaksi" with a toggle — this build gives it a form of its
-          own, because the toggle would conflate "pay this now" with "expect it
-          every month", and a template with no occurrence posted yet is a real
-          and ordinary state. The rest of the sentence still holds.
-        */}
-        <p className="text-xs text-muted">
-          Daftar ini menunjukkan yang berulang — masuk maupun keluar. Penjadwal
-          otomatisnya belum ada, jadi tiap jatuh tempo dicatat lewat tombol{" "}
-          <span className="font-semibold text-foreground">Catat</span>, dan
-          transaksinya masuk ke tab Transaksi seperti biasa.
-        </p>
       </div>
 
       <PostOccurrenceDialog
@@ -313,192 +248,159 @@ export function FixedCostsPanel({ state }: { state: UseFixedCostsResult }) {
   );
 }
 
-/**
- * A column header that orders the list — first click takes the column's natural
- * direction, second flips it. The arrow is on every sortable header, greyed
- * when that column is not the active one, so the row says which columns can be
- * clicked rather than only which one is on (§8).
- */
-function SortHead({
-  column,
-  label,
-  align = "left",
-  sort,
-  onSort,
-}: {
-  column: keyof typeof SORTABLE;
-  label: string;
-  align?: "left" | "right";
-  sort: FixedCostSort;
-  onSort: (next: FixedCostSort) => void;
-}) {
-  const { asc, desc } = SORTABLE[column];
-  const active = sort === asc ? "asc" : sort === desc ? "desc" : null;
-  const Icon =
-    active === "asc" ? ArrowUp : active === "desc" ? ArrowDown : ChevronsUpDown;
-
-  return (
-    <TableHead
-      className={align === "right" ? "text-right" : undefined}
-      aria-sort={
-        active === "asc"
-          ? "ascending"
-          : active === "desc"
-            ? "descending"
-            : "none"
-      }
-    >
-      <button
-        type="button"
-        // `asc` on a name, where A is the top of the list; `asc` on the due date
-        // too, because the soonest is what somebody opens a schedule for.
-        onClick={() => onSort(active === "asc" ? desc : asc)}
-        className={cn(
-          "inline-flex items-center gap-1 rounded-md hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
-          active && "text-foreground",
-          align === "right" && "flex-row-reverse",
-        )}
-      >
-        {label}
-        <Icon
-          className={cn("size-3.5", active ? "text-primary" : "text-muted/60")}
-          aria-hidden
-        />
-      </button>
-    </TableHead>
-  );
-}
-
-function FixedCostRow({
-  fixedCost,
+/** Tipe · Nama · Kategori · Jumlah · Jatuh tempo · Akun · Status. */
+function fixedCostColumns({
   search,
-  onOpen,
   onPost,
 }: {
-  fixedCost: FixedCost;
   search: string;
-  onOpen: () => void;
-  onPost: () => void;
-}) {
-  const masuk = fixedCost.direction === "in";
-  const paused = !fixedCost.isActive;
-  const due = dueLabel(fixedCost);
-  const category = categoryLabel(fixedCost.counterAccounts);
-
-  return (
-    // The whole row opens the schedule, as the Transaksi table's rows do; the
-    // name is the keyboard's way in.
-    <TableRow
-      onClick={onOpen}
-      className={cn("cursor-pointer", paused && "text-muted")}
-    >
-      <TableCell className="px-4 py-2.5 whitespace-nowrap">
-        {/*
-          A WORD, NOT A COLOUR (§1.3). The mockup tints the Masuk badge green
-          and leaves Keluar grey; both carry their label either way.
-        */}
-        <Badge variant="outline" className={cn(masuk && "text-success")}>
+  onPost: (fixedCost: FixedCost) => void;
+}): DataTableColumn<FixedCost>[] {
+  return [
+    {
+      id: "tipe",
+      header: "Tipe",
+      cellClassName: "px-4 py-2.5 whitespace-nowrap",
+      /*
+        A WORD, NOT A COLOUR (§1.3). The mockup tints the Masuk badge green and
+        leaves Keluar grey; both carry their label either way.
+      */
+      cell: (fixedCost) => (
+        <Badge
+          variant="outline"
+          className={cn(fixedCost.direction === "in" && "text-success")}
+        >
           {KIND_BADGE[fixedCost.kind]}
         </Badge>
-      </TableCell>
-
-      <TableCell className="max-w-xs px-4 py-2.5">
-        <p className="truncate text-sm font-semibold">
-          <Link
-            href={fixedCostHref(fixedCost._id)}
-            onClick={(event) => event.stopPropagation()}
-            className="rounded-md underline-offset-4 hover:text-primary-hover hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
-          >
-            <HighlightText text={fixedCost.name} query={search} />
-          </Link>
-        </p>
-        <p className="truncate text-xs text-muted">
-          {INTERVAL_LABEL[fixedCost.interval]}
-          {fixedCost.partyName && (
-            <>
-              {" · "}
-              <HighlightText text={fixedCost.partyName} query={search} />
-            </>
-          )}
-        </p>
-      </TableCell>
-
-      <TableCell className="max-w-44 px-4 py-2.5 text-sm">
-        {category ?? <span className="text-muted">—</span>}
-      </TableCell>
-
-      {/*
+      ),
+    },
+    {
+      id: "nama",
+      header: "Nama",
+      cellClassName: "max-w-xs px-4 py-2.5",
+      cell: (fixedCost) => (
+        <>
+          <p className="truncate text-sm font-semibold">
+            <Link
+              href={fixedCostHref(fixedCost._id)}
+              onClick={(event) => event.stopPropagation()}
+              className="rounded-md underline-offset-4 hover:text-primary-hover hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <HighlightText text={fixedCost.name} query={search} />
+            </Link>
+          </p>
+          <p className="truncate text-xs text-muted">
+            {INTERVAL_LABEL[fixedCost.interval]}
+            {fixedCost.partyName && (
+              <>
+                {" · "}
+                <HighlightText text={fixedCost.partyName} query={search} />
+              </>
+            )}
+          </p>
+        </>
+      ),
+    },
+    {
+      id: "kategori",
+      header: "Kategori",
+      cellClassName: "max-w-44 px-4 py-2.5 text-sm",
+      cell: (fixedCost) =>
+        categoryLabel(fixedCost.counterAccounts) ?? (
+          <span className="text-muted">—</span>
+        ),
+    },
+    {
+      /*
         UNSIGNED, unlike the Transaksi table's amount. Nothing here has moved:
         a signed figure would read as money that went out, and this column is
         "how much it will be".
-      */}
-      <TableCell
-        className={cn(
-          "px-4 py-2.5 text-right text-sm font-semibold tabular-nums whitespace-nowrap",
-          masuk && !paused && "text-success",
-        )}
-      >
-        {formatMoney(fixedCost.amount)}
-      </TableCell>
-
-      <TableCell className="px-4 py-2.5 text-sm whitespace-nowrap tabular-nums">
-        <span className="flex flex-wrap items-center gap-2">
-          {formatDate(fixedCost.nextDueAt)}
-          {due && (
+      */
+      id: "jumlah",
+      header: "Jumlah",
+      align: "right",
+      cellClassName: (fixedCost) =>
+        cn(
+          "px-4 py-2.5 text-sm font-semibold whitespace-nowrap",
+          fixedCost.direction === "in" && fixedCost.isActive && "text-success",
+        ),
+      cell: (fixedCost) => formatMoney(fixedCost.amount),
+    },
+    {
+      id: "jatuhTempo",
+      header: "Jatuh tempo",
+      cellClassName: "px-4 py-2.5 text-sm whitespace-nowrap tabular-nums",
+      cell: (fixedCost) => {
+        const due = dueLabel(fixedCost);
+        return (
+          <span className="flex flex-wrap items-center gap-2">
+            {formatDate(fixedCost.nextDueAt)}
+            {due && (
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-xs font-medium",
+                  due.tone === "danger"
+                    ? "bg-tint-danger text-danger-ink"
+                    : "bg-tint-warning text-warning",
+                )}
+              >
+                {due.text}
+              </span>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      id: "akun",
+      header: "Akun",
+      cellClassName: "px-4 py-2.5 text-sm whitespace-nowrap",
+      cell: (fixedCost) => fixedCost.accountName ?? "—",
+    },
+    {
+      id: "status",
+      header: "Status",
+      cellClassName: "px-4 py-2.5 whitespace-nowrap",
+      cell: (fixedCost) => {
+        const paused = !fixedCost.isActive;
+        return (
+          <span className="flex items-center gap-2">
             <span
               className={cn(
-                "rounded-full px-2 py-0.5 text-xs font-medium",
-                due.tone === "danger"
-                  ? "bg-tint-danger text-danger-ink"
-                  : "bg-tint-warning text-warning",
+                "rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
+                paused
+                  ? "bg-tint-neutral text-muted"
+                  : "bg-tint-success text-success",
               )}
             >
-              {due.text}
+              {paused ? "Nonaktif" : "Aktif"}
             </span>
-          )}
-        </span>
-      </TableCell>
 
-      <TableCell className="px-4 py-2.5 text-sm whitespace-nowrap">
-        {fixedCost.accountName ?? "—"}
-      </TableCell>
-
-      <TableCell className="px-4 py-2.5 whitespace-nowrap">
-        <span className="flex items-center gap-2">
-          <span
-            className={cn(
-              "rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap",
-              paused
-                ? "bg-tint-neutral text-muted"
-                : "bg-tint-success text-success",
+            {/*
+              THE BUTTON THE MOCKUP DOES NOT HAVE, and the honest substitute for
+              the automation it promises. Offered only while something is
+              actually due — a schedule whose next date has not arrived has
+              nothing to record, and a button that refuses is worse than no
+              button.
+            */}
+            {!paused && fixedCost.dueCount > 0 && (
+              <Can feature="fixedCosts" action="post">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={(event) => {
+                    // The row navigates; this one act must not also do that.
+                    event.stopPropagation();
+                    onPost(fixedCost);
+                  }}
+                >
+                  Catat
+                </Button>
+              </Can>
             )}
-          >
-            {paused ? "Nonaktif" : "Aktif"}
           </span>
-
-          {/*
-            THE BUTTON THE MOCKUP DOES NOT HAVE, and the honest substitute for
-            the automation it promises. Offered only while something is actually
-            due — a schedule whose next date has not arrived has nothing to
-            record, and a button that refuses is worse than no button.
-          */}
-          {!paused && fixedCost.dueCount > 0 && (
-            <Can feature="fixedCosts" action="post">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={(event) => {
-                  // The row navigates; this one act must not also do that.
-                  event.stopPropagation();
-                  onPost();
-                }}
-              >
-                Catat
-              </Button>
-            </Can>
-          )}
-        </span>
-      </TableCell>
-    </TableRow>
-  );
+        );
+      },
+    },
+  ];
 }

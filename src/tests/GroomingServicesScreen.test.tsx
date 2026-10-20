@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { AntarJemputServicesScreen } from "@/features/antar-jemput";
 import { GroomingServicesScreen } from "@/features/grooming";
 import { isoDate, periodRange } from "@/features/grooming/board";
 import { bookingService } from "@/services/booking.service";
@@ -20,8 +21,10 @@ import {
 } from "./helpers/petOptions";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
+const mockPush = jest.fn();
+
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: jest.fn() }),
+  useRouter: () => ({ push: mockPush }),
   usePathname: () => "/dashboard/layanan/grooming/katalog",
   useSearchParams: () => new URLSearchParams(),
 }));
@@ -51,7 +54,10 @@ jest.mock("@/services/petOption.service");
  *  - the Filter panel sends its fields to the SERVER, only on Terapkan, and
  *    Reset clears them in the same click — the panel's and the card's alike;
  *  - the panel's Tanggal booking and the card's Periode are one value, drawn
- *    the same way: four pills, and the dates only behind Custom.
+ *    the same way: four pills, and the dates only behind Custom;
+ *  - Layanan, Harga and Durasi sort from their headers ON THE SERVER (BO, 20
+ *    October 2026), every other header is plain, and the panel's Reset keeps
+ *    the ordering — the same on Antar-Jemput's catalogue.
  */
 const GROOMING: BusinessLine = {
   _id: "bl-grooming",
@@ -468,6 +474,151 @@ describe("GroomingServicesScreen", () => {
     );
   });
 
+  describe("header sorting", () => {
+    function header(name: string) {
+      return screen.getByRole("columnheader", { name: new RegExp(`^${name}`) });
+    }
+
+    it("opens in name order — the menu order the list always had", async () => {
+      jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
+
+      renderWithAuth(<GroomingServicesScreen />);
+      await screen.findByRole("link", { name: "Express Wash" });
+
+      expect(serviceService.list).toHaveBeenCalledWith(
+        expect.objectContaining({ serviceType: "main", sort: "nameAsc" }),
+      );
+      expect(header("Layanan")).toHaveAttribute("aria-sort", "ascending");
+    });
+
+    it.each([
+      // [header, first click, second click]
+      ["Harga", "priceAsc", "priceDesc"],
+      ["Durasi", "durationAsc", "durationDesc"],
+    ])(
+      "sorts by %s from its header — %s first, then %s",
+      async (name, first, second) => {
+        jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
+
+        renderWithAuth(<GroomingServicesScreen />);
+        await screen.findByRole("link", { name: "Express Wash" });
+
+        await userEvent.click(within(header(name)).getByRole("button"));
+        await waitFor(() =>
+          expect(serviceService.list).toHaveBeenLastCalledWith(
+            expect.objectContaining({ sort: first, page: 1 }),
+          ),
+        );
+        expect(header(name)).toHaveAttribute("aria-sort", "ascending");
+
+        await userEvent.click(within(header(name)).getByRole("button"));
+        await waitFor(() =>
+          expect(serviceService.list).toHaveBeenLastCalledWith(
+            expect.objectContaining({ sort: second }),
+          ),
+        );
+        expect(header(name)).toHaveAttribute("aria-sort", "descending");
+      },
+    );
+
+    it("flips Layanan to Z first on a click, since it opens on A", async () => {
+      jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
+
+      renderWithAuth(<GroomingServicesScreen />);
+      await screen.findByRole("link", { name: "Express Wash" });
+
+      await userEvent.click(within(header("Layanan")).getByRole("button"));
+      await waitFor(() =>
+        expect(serviceService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort: "nameDesc" }),
+        ),
+      );
+    });
+
+    it("keeps every other header plain", async () => {
+      jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
+
+      renderWithAuth(<GroomingServicesScreen />);
+      await screen.findByRole("link", { name: "Express Wash" });
+
+      for (const name of ["Tempat", "Varian", "Tahapan", "Status"]) {
+        expect(header(name)).not.toHaveAttribute("aria-sort");
+        expect(within(header(name)).queryByRole("button")).toBeNull();
+      }
+    });
+
+    it("has no Urutkan in the panel, and its Reset keeps the ordering", async () => {
+      jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
+
+      renderWithAuth(<GroomingServicesScreen />);
+      await screen.findByRole("link", { name: "Express Wash" });
+
+      await userEvent.click(within(header("Harga")).getByRole("button"));
+
+      const panel = await openFilters();
+      expect(within(panel).queryByText(/Urutkan/)).not.toBeInTheDocument();
+      await userEvent.click(within(panel).getByLabelText("Tempat"));
+      await userEvent.click(screen.getByRole("option", { name: "Di rumah" }));
+      await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(serviceService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({ location: "in_home", sort: "priceAsc" }),
+        ),
+      );
+      // The sort is not a filter: only Tempat counts.
+      expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+        "Filter (1)",
+      );
+
+      await openFilters();
+      await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+
+      await waitFor(() =>
+        expect(jest.mocked(serviceService.list).mock.lastCall?.[0]).toEqual(
+          expect.objectContaining({ location: undefined, sort: "priceAsc" }),
+        ),
+      );
+      expect(header("Harga")).toHaveAttribute("aria-sort", "ascending");
+    });
+
+    it("sorts Antar-Jemput's catalogue from the same headers", async () => {
+      jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
+
+      renderWithAuth(<AntarJemputServicesScreen />);
+      await screen.findByRole("link", { name: "Express Wash" });
+
+      await userEvent.click(within(header("Durasi")).getByRole("button"));
+      await waitFor(() =>
+        expect(serviceService.list).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            serviceKind: "pickup-delivery",
+            sort: "durationAsc",
+          }),
+        ),
+      );
+      expect(within(header("Tempat")).queryByRole("button")).toBeNull();
+    });
+  });
+
+  it("opens a live row's detail page on a row click", async () => {
+    jest.mocked(serviceService.list).mockResolvedValue(page([EXPRESS]));
+    mockPush.mockClear();
+
+    renderWithAuth(<GroomingServicesScreen />);
+    await screen.findByRole("link", { name: "Express Wash" });
+
+    await userEvent.click(
+      within(screen.getByRole("row", { name: /Express Wash/ })).getByText(
+        "2 tahap",
+      ),
+    );
+
+    expect(mockPush).toHaveBeenCalledWith(
+      "/dashboard/layanan/grooming/katalog/svc-1",
+    );
+  });
+
   it("restores a deleted service from its status cell, and never links it", async () => {
     jest
       .mocked(serviceService.list)
@@ -497,7 +648,13 @@ describe("GroomingServicesScreen", () => {
       screen.queryByRole("button", { name: "Hapus" }),
     ).not.toBeInTheDocument();
 
+    // A deleted row opens nothing — the API does not return it by id.
+    mockPush.mockClear();
+    await userEvent.click(screen.getByText("Mandi Kutu"));
+    expect(mockPush).not.toHaveBeenCalled();
+
     await userEvent.click(screen.getByRole("button", { name: "Pulihkan" }));
+    expect(mockPush).not.toHaveBeenCalled();
     await userEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", {
         name: "Pulihkan",
