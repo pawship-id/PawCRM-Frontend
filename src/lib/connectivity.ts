@@ -17,8 +17,6 @@
  * so slow every request times out after a long wait, choosing offline outright
  * is faster than waiting for the detector to agree.
  */
-import { useSyncExternalStore } from "react";
-
 import { env } from "@/utils/env";
 
 export type ConnectivityStatus = "online" | "offline";
@@ -101,16 +99,15 @@ export function connectivitySnapshot(): State {
   return state;
 }
 
-function subscribe(listener: () => void): () => void {
+export type ConnectivityState = State;
+
+/**
+ * For `useConnectivity` (hooks/useConnectivity.ts). The hook lives there, not
+ * here: api-client imports this file, and Server Components import api-client.
+ */
+export function subscribeConnectivity(listener: () => void): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
-}
-
-const SERVER_STATE: State = { status: "online", forced: false, lastChange: 0 };
-
-export function useConnectivity(): State & { offline: boolean } {
-  const current = useSyncExternalStore(subscribe, connectivitySnapshot, () => SERVER_STATE);
-  return { ...current, offline: current.forced || current.status === "offline" };
 }
 
 /** One ping. Exported for the "Cek koneksi" button and for tests. */

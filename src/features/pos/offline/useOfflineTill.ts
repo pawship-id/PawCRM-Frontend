@@ -17,7 +17,8 @@ import { useCallback, useEffect, useMemo } from "react";
 
 import { useAuth } from "@/features/auth";
 import { usePermissions } from "@/features/permissions";
-import { startConnectivityWatch, useConnectivity } from "@/lib/connectivity";
+import { useConnectivity } from "@/hooks/useConnectivity";
+import { startConnectivityWatch } from "@/lib/connectivity";
 import { ApiError } from "@/services/api-error";
 import { posOfflineService } from "@/services/posOffline.service";
 
