@@ -45,7 +45,16 @@ export interface OfflineState {
   /** False until the device record has been read from storage. */
   loaded: boolean;
   tenantId: string | null;
+  /** The branch the till is selling at — which registration `device` is. */
+  branchId: string | null;
+  /** This browser's registration for `branchId`, if it has one. */
   device: StoredDevice | null;
+  /**
+   * Every registration this browser holds for the tenant, one per branch
+   * (20 October 2026) — a till carried from one shop to another keeps the
+   * first shop's sales and sends them with that shop's credentials.
+   */
+  devices: StoredDevice[];
   /** The server refused this device (switched off, or unknown). */
   deviceRejected: string | null;
   snapshot: OfflineSnapshot;
@@ -74,7 +83,9 @@ const EMPTY_SNAPSHOT: OfflineSnapshot = {
 let state: OfflineState = {
   loaded: false,
   tenantId: null,
+  branchId: null,
   device: null,
+  devices: [],
   deviceRejected: null,
   snapshot: EMPTY_SNAPSHOT,
   shift: null,
@@ -110,19 +121,49 @@ export function useOfflineStore(): OfflineState {
 
 /* ─────────────────────────── durable keys ─────────────────────────── */
 
-const deviceKey = (tenantId: string) => `device:${tenantId}`;
+/**
+ * ONE REGISTRATION PER BRANCH (20 October 2026). A device's code, counter and
+ * offline copy all belong to the branch it was registered at, so a browser used
+ * at two shops holds two registrations, keyed by branch, and sells at each
+ * under that shop's own.
+ */
+const devicesKey = (tenantId: string) => `devices:${tenantId}`;
+/** Before 20 October 2026: a single registration per tenant. Read once, then moved. */
+const legacyDeviceKey = (tenantId: string) => `device:${tenantId}`;
 const snapshotKey = (deviceId: string) => `snapshot:${deviceId}`;
 const shiftKey = (tenantId: string, userId: string, branchId: string) =>
   `shift:${tenantId}:${userId}:${branchId}`;
 
-/**
- * Loads this browser's device record and its last snapshot for `tenantId`.
- * Called once per tenant as the till mounts; cheap to call again.
- */
-export async function loadOfflineState(tenantId: string): Promise<void> {
-  if (state.loaded && state.tenantId === tenantId) return;
+type DeviceMap = Record<string, StoredDevice>;
 
-  const device = (await kvGet<StoredDevice>(deviceKey(tenantId))) ?? null;
+async function readDevices(tenantId: string): Promise<DeviceMap> {
+  const map = (await kvGet<DeviceMap>(devicesKey(tenantId))) ?? {};
+  const legacy = await kvGet<StoredDevice>(legacyDeviceKey(tenantId));
+  if (!legacy) return map;
+
+  const migrated = { [legacy.branchId]: legacy, ...map };
+  await kvSet(devicesKey(tenantId), migrated);
+  await kvDelete(legacyDeviceKey(tenantId));
+  return migrated;
+}
+
+/** Every registration this browser holds for the tenant — the sync sends for each. */
+export function registrations(): StoredDevice[] {
+  const { device, devices } = state;
+  if (!device || devices.some((entry) => entry.deviceId === device.deviceId)) return devices;
+  return [...devices, device];
+}
+
+/**
+ * Loads this browser's registrations for `tenantId`, and the one (with its last
+ * snapshot) for the branch it is selling at. Called as the till mounts and
+ * again whenever the branch changes; cheap to call again.
+ */
+export async function loadOfflineState(tenantId: string, branchId: string | null): Promise<void> {
+  if (state.loaded && state.tenantId === tenantId && state.branchId === branchId) return;
+
+  const map = await readDevices(tenantId);
+  const device = branchId ? (map[branchId] ?? null) : null;
   const snapshot = device
     ? ((await kvGet<OfflineSnapshot>(snapshotKey(device.deviceId))) ?? EMPTY_SNAPSHOT)
     : EMPTY_SNAPSHOT;
@@ -130,29 +171,56 @@ export async function loadOfflineState(tenantId: string): Promise<void> {
   setOfflineState({
     loaded: true,
     tenantId,
+    branchId,
     device,
+    devices: Object.values(map),
     deviceRejected: null,
     snapshot,
   });
 }
 
 export async function saveDevice(device: StoredDevice): Promise<void> {
-  await kvSet(deviceKey(device.tenantId), device);
-  setOfflineState({ device, deviceRejected: null, snapshot: EMPTY_SNAPSHOT });
+  const map = await readDevices(device.tenantId);
+  const replaced = map[device.branchId];
+  map[device.branchId] = device;
+  await kvSet(devicesKey(device.tenantId), map);
+  if (replaced && replaced.deviceId !== device.deviceId) {
+    await kvDelete(snapshotKey(replaced.deviceId));
+  }
+
+  const patch: Partial<OfflineState> = { devices: Object.values(map) };
+  if (!state.branchId || state.branchId === device.branchId) {
+    const same = state.device?.deviceId === device.deviceId;
+    Object.assign(patch, {
+      device,
+      deviceRejected: null,
+      snapshot: same ? state.snapshot : EMPTY_SNAPSHOT,
+    });
+  }
+  setOfflineState(patch);
 }
 
+/** Forgets this browser's registration for the branch it is selling at. */
 export async function forgetDevice(tenantId: string): Promise<void> {
   const current = state.device;
-  await kvDelete(deviceKey(tenantId));
-  if (current) await kvDelete(snapshotKey(current.deviceId));
-  setOfflineState({ device: null, snapshot: EMPTY_SNAPSHOT });
+  if (!current) return;
+  const map = await readDevices(tenantId);
+  delete map[current.branchId];
+  await kvSet(devicesKey(tenantId), map);
+  await kvDelete(snapshotKey(current.deviceId));
+  setOfflineState({ device: null, devices: Object.values(map), snapshot: EMPTY_SNAPSHOT });
 }
 
-export async function saveSnapshot(snapshot: OfflineSnapshot): Promise<void> {
-  const device = state.device;
-  if (!device) return;
-  await kvSet(snapshotKey(device.deviceId), snapshot);
-  setOfflineState({ snapshot });
+/**
+ * Stores `snapshot` for `deviceId` (the current registration when omitted). A
+ * download that finishes after the branch changed is kept for its own
+ * registration and never shown as the new branch's.
+ */
+export async function saveSnapshot(snapshot: OfflineSnapshot, deviceId?: string): Promise<void> {
+  const target = deviceId ?? state.device?.deviceId;
+  if (!target) return;
+  await kvSet(snapshotKey(target), snapshot);
+  if (state.device?.deviceId === target) setOfflineState({ snapshot });
 }
 
 export async function rememberShift(
@@ -184,7 +252,9 @@ export function __resetOfflineStore(): void {
   state = {
     loaded: false,
     tenantId: null,
+    branchId: null,
     device: null,
+    devices: [],
     deviceRejected: null,
     snapshot: EMPTY_SNAPSHOT,
     shift: null,

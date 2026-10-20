@@ -107,7 +107,7 @@ export function TodayTransactionsDialog({
     if (!open) return;
     let active = true;
     const since = startOfToday();
-    void listQueued()
+    void listQueued("current")
       .then((records) => {
         if (!active) return;
         setUnsent(

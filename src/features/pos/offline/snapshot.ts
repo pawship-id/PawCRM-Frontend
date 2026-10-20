@@ -13,14 +13,19 @@ import { raiseCounter } from "./numbering";
 import { getOfflineState, saveSnapshot, setOfflineState, type OfflineSnapshot } from "./store";
 
 let inFlight: Promise<OfflineSnapshot | null> | null = null;
+/** Whose download `inFlight` is — a branch switch mid-download starts its own. */
+let inFlightFor: string | null = null;
+let inFlightToken: object | null = null;
 
 export async function refreshSnapshot(): Promise<OfflineSnapshot | null> {
-  if (inFlight) return inFlight;
+  const { device, snapshot } = getOfflineState();
+  if (!device) return null;
+  if (inFlight && inFlightFor === device.deviceId) return inFlight;
 
-  inFlight = (async () => {
-    const { device, snapshot } = getOfflineState();
-    if (!device) return null;
-
+  inFlightFor = device.deviceId;
+  const token = {};
+  inFlightToken = token;
+  const run = (async () => {
     const sentAt = Date.now();
     try {
       const response = await posOfflineService.snapshot(device, {
@@ -44,18 +49,20 @@ export async function refreshSnapshot(): Promise<OfflineSnapshot | null> {
           : snapshot.clockOffsetMs,
       };
 
-      await saveSnapshot(next);
+      await saveSnapshot(next, device.deviceId);
       seedTillChannels(response.settings.branch._id, response.settings.channels);
 
       // The device never issues a number the server has already recorded.
       const { scope, lastSequence } = response.settings.numbering;
       if (lastSequence > 0) await raiseCounter(scope, lastSequence);
 
-      setOfflineState({ deviceRejected: null });
+      if (getOfflineState().device?.deviceId === device.deviceId) {
+        setOfflineState({ deviceRejected: null });
+      }
       return next;
     } catch (error) {
       const status = (error as { status?: number }).status;
-      if (status === 403) {
+      if (status === 403 && getOfflineState().device?.deviceId === device.deviceId) {
         setOfflineState({
           deviceRejected:
             (error as { reason?: string; message?: string }).message ??
@@ -64,11 +71,16 @@ export async function refreshSnapshot(): Promise<OfflineSnapshot | null> {
       }
       return null;
     } finally {
-      inFlight = null;
+      if (inFlightToken === token) {
+        inFlight = null;
+        inFlightFor = null;
+        inFlightToken = null;
+      }
     }
   })();
 
-  return inFlight;
+  inFlight = run;
+  return run;
 }
 
 /** True when the device holds enough to ring up a sale with nobody to ask. */

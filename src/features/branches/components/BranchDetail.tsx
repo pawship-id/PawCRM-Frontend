@@ -171,6 +171,34 @@ function IdentityCard({ branch }: { branch: Branch }) {
           {hours ?? "Belum diisi"}
         </Row>
         <Row label="Hari operasional">{days || "Belum diisi"}</Row>
+        {/*
+          THE RECEIPT'S TOP. A missing toggle is ON (lean reads skip defaults),
+          and an empty override prints the live name — said so, rather than "—",
+          because "—" would read as "nothing prints".
+        */}
+        <Row label="Logo struk">
+          {branch.receiptLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={branch.receiptLogo.thumbUrl ?? branch.receiptLogo.url}
+              alt={`Logo struk ${branch.name}`}
+              className="size-12 rounded-md border border-border object-contain"
+            />
+          ) : (
+            "—"
+          )}
+        </Row>
+        <Row label="Nama usaha di struk">
+          {branch.receiptShowTenantName === false
+            ? "Tidak ditampilkan"
+            : branch.receiptTenantName || "Nama usaha"}
+        </Row>
+        <Row label="Nama cabang di struk">
+          {branch.receiptShowBranchName === false
+            ? "Tidak ditampilkan"
+            : branch.receiptBranchName || branch.name}
+        </Row>
+        <Row label="Teks header struk">{branch.receiptHeaderText || "—"}</Row>
         <Row label="Catatan kaki struk">{branch.receiptFooter || "—"}</Row>
         {/*
           READ DEFENSIVELY. `location` arrived after the collection did and the

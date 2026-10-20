@@ -11,7 +11,7 @@ import type { PosTransaction } from "@/types/api";
 import type { OfflineReason, OfflineSaleInput, OfflineSyncStatus } from "@/types/posOffline";
 
 import { queueAll, queueDelete, queueGet, queuePut } from "./idb";
-import { getOfflineState, setOfflineState } from "./store";
+import { getOfflineState, registrations, setOfflineState } from "./store";
 
 export type QueueStatus = OfflineSyncStatus | "failed";
 
@@ -60,12 +60,27 @@ export async function getQueued(clientTxnId: string): Promise<QueuedSale | null>
   return (await queueGet<QueuedSale>(clientTxnId)) ?? null;
 }
 
-/** This device's records for the current tenant, newest first. */
-export async function listQueued(): Promise<QueuedSale[]> {
+/**
+ * This browser's records for the current tenant, newest first. `"all"` (the
+ * default) is every registration it holds — a sale rung up at another branch is
+ * still this till's to send and to answer for; `"current"` is only the branch
+ * it is selling at now.
+ */
+export async function listQueued(scope: "all" | "current" = "all"): Promise<QueuedSale[]> {
   const { tenantId, device } = getOfflineState();
+  const ids =
+    scope === "current"
+      ? device
+        ? [device.deviceId]
+        : []
+      : registrations().map((entry) => entry.deviceId);
   const all = await queueAll<QueuedSale>();
   return all
-    .filter((record) => record.tenantId === tenantId && (!device || record.deviceId === device.deviceId))
+    .filter(
+      (record) =>
+        record.tenantId === tenantId &&
+        (scope === "current" ? ids.includes(record.deviceId) : !ids.length || ids.includes(record.deviceId)),
+    )
     .sort((a, b) => b.sale.paidAt.localeCompare(a.sale.paidAt));
 }
 
@@ -81,9 +96,11 @@ export async function purgeOld(): Promise<void> {
 
 export async function refreshCounts(): Promise<void> {
   const records = await listQueued();
+  const currentId = getOfflineState().device?.deviceId ?? null;
   const pendingQty: Record<string, number> = {};
   for (const record of records) {
-    if (!UNSENT.includes(record.status)) continue;
+    // Only this branch's shelves: another branch's sales took another branch's stock.
+    if (!UNSENT.includes(record.status) || record.deviceId !== currentId) continue;
     for (const item of record.sale.items) {
       if (item.kind !== "product") continue;
       pendingQty[item.refId] = (pendingQty[item.refId] ?? 0) + Number(item.qty ?? "1");

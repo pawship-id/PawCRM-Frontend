@@ -101,7 +101,12 @@ export function PublicReceiptScreen({ token }: { token: string }) {
 
           {/* Advice about a link, which means nothing once this is on paper. */}
           <p data-screen-only className="text-center text-sm text-muted">
-            Struk ini dikirim oleh {receipt.header.tenantName}. Simpan tautannya
+            {/* The name may be hidden on this branch's receipts — "" then. */}
+            Struk ini dikirim oleh{" "}
+            {receipt.header.tenantName ||
+              receipt.header.branchName ||
+              "toko ini"}
+            . Simpan tautannya
             kalau sewaktu-waktu perlu dibuka lagi.
           </p>
         </>

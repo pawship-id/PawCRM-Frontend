@@ -7,6 +7,7 @@ import type {
   CustomerInvoicePayment,
   CustomerInvoiceStatus,
   CustomerInvoiceTotals,
+  InvoicePrintHeader,
   Tenant,
   TenantSettings,
 } from "@/types/api";
@@ -28,6 +29,11 @@ export interface InvoiceSheetInvoice {
   dueDate: string;
   customerName: string | null;
   branchName: string | null;
+  /**
+   * The branch's header settings — logo, header line, which names print. Absent
+   * (an older API) prints the sheet as it always was.
+   */
+  printHeader?: InvoicePrintHeader;
   items?: Array<
     Pick<
       CustomerInvoiceItem,
@@ -73,6 +79,34 @@ export type InvoiceSheetTenant = Pick<Tenant, "name" | "legalName" | "taxId"> & 
  */
 function issuerName(tenant: InvoiceSheetTenant | null): string {
   return tenant?.legalName || tenant?.name || "—";
+}
+
+/**
+ * THE TOP OF THE SHEET AS THE BRANCH SET IT (20 Oktober 2026: "faktur ikuti
+ * setting header di cabang") — the same switches and words its struk follows.
+ *
+ * The tenant line keeps the faktur's own fallback: the branch's override when
+ * it typed one, otherwise the legal name, otherwise the trading name. Hidden
+ * means null — the sheet prints no issuer line rather than a "—".
+ */
+function headerOf(invoice: InvoiceSheetInvoice, tenant: InvoiceSheetTenant | null) {
+  const header = invoice.printHeader;
+
+  if (!header) {
+    return {
+      issuer: issuerName(tenant),
+      branchName: invoice.branchName ?? "",
+      logoUrl: "",
+      headerText: "",
+    };
+  }
+
+  return {
+    issuer: header.showTenantName ? header.tenantName || issuerName(tenant) : null,
+    branchName: header.branchName,
+    logoUrl: header.logoUrl,
+    headerText: header.headerText,
+  };
 }
 
 function formatDate(iso: string | null): string {
@@ -177,6 +211,7 @@ export function InvoiceSheet({
   const totals = invoice.totals;
   const items = invoice.items ?? [];
   const voided = invoice.status === "void";
+  const header = headerOf(invoice, tenant);
 
   /*
     THE PAYMENTS THAT STILL COUNT. A cancelled one has posted its own reversal
@@ -210,16 +245,35 @@ export function InvoiceSheet({
       className="mx-auto w-full bg-surface p-8 text-sm text-foreground"
     >
       <header className="flex flex-wrap items-start justify-between gap-6 border-b-2 border-primary pb-4">
-        <div>
-          <p className="text-lg font-bold text-primary">{issuerName(tenant)}</p>
-          {tenant?.taxId && (
-            <p className="mt-0.5 text-xs tabular-nums text-muted">
-              NPWP {tenant.taxId}
-            </p>
+        <div className="flex items-start gap-4">
+          {header.logoUrl && (
+            // A plain img — the storage host is chosen per deployment.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={header.logoUrl}
+              alt={header.issuer ? `Logo ${header.issuer}` : "Logo toko"}
+              className="max-h-16 w-auto object-contain"
+            />
           )}
-          {invoice.branchName && (
-            <p className="mt-1 text-sm text-muted">{invoice.branchName}</p>
-          )}
+          <div>
+            {header.issuer && (
+              <p className="text-lg font-bold text-primary">{header.issuer}</p>
+            )}
+            {/* Kept whatever the name switch says — it is the tax identity. */}
+            {tenant?.taxId && (
+              <p className="mt-0.5 text-xs tabular-nums text-muted">
+                NPWP {tenant.taxId}
+              </p>
+            )}
+            {header.branchName && (
+              <p className="mt-1 text-sm text-muted">{header.branchName}</p>
+            )}
+            {header.headerText && (
+              <p className="mt-1 text-xs whitespace-pre-line text-muted">
+                {header.headerText}
+              </p>
+            )}
+          </div>
         </div>
         <div className="text-right">
           <p className="text-2xl font-extrabold text-primary">FAKTUR</p>
@@ -487,16 +541,29 @@ function ThermalSheet({
   paid: NonNullable<InvoiceSheetInvoice["payments"]>;
   voided: boolean;
 }) {
+  const header = headerOf(invoice, tenant);
+
   return (
     <div
       data-receipt-sheet={size}
       className="mx-auto w-full bg-surface p-4 text-sm text-foreground"
     >
       <div className="text-center">
-        <p className="font-semibold">{issuerName(tenant)}</p>
+        {header.logoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={header.logoUrl}
+            alt={header.issuer ? `Logo ${header.issuer}` : "Logo toko"}
+            className="mx-auto mb-2 max-h-16 w-auto object-contain"
+          />
+        )}
+        {header.issuer && <p className="font-semibold">{header.issuer}</p>}
         {/* The NPWP is left OFF the narrow paper: a thermal invoice is read at a
             counter, and the line that matters there is what is owed. */}
-        {invoice.branchName && <p className="text-xs">{invoice.branchName}</p>}
+        {header.branchName && <p className="text-xs">{header.branchName}</p>}
+        {header.headerText && (
+          <p className="text-xs whitespace-pre-line">{header.headerText}</p>
+        )}
       </div>
 
       <Rule />

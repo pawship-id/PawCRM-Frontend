@@ -34,7 +34,9 @@ export function PosDeviceSection({ till }: { till: OfflineTill }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { device, deviceRejected, snapshot } = till.state;
+  const { device, devices, deviceRejected, snapshot } = till.state;
+  // Registrations this browser holds at OTHER branches — one per branch (20 Oct 2026).
+  const elsewhere = devices.filter((entry) => entry.deviceId !== device?.deviceId);
 
   async function register() {
     setBusy(true);
@@ -103,9 +105,9 @@ export function PosDeviceSection({ till }: { till: OfflineTill }) {
       ) : can("posTransactions", "manageDevices") ? (
         <>
           <p className="text-sm text-muted">
-            Daftarkan perangkat ini supaya kasir tetap bisa berjualan saat
-            internet putus. Perangkat akan mendapat kode (K1, K2, …) yang ikut
-            tercetak di nomor transaksinya.
+            {elsewhere.length
+              ? "Perangkat ini belum didaftarkan di cabang ini. Daftarkan juga di sini supaya bisa berjualan saat internet putus — perangkat akan mendapat kode sendiri untuk cabang ini."
+              : "Daftarkan perangkat ini supaya kasir tetap bisa berjualan saat internet putus. Perangkat akan mendapat kode (K1, K2, …) yang ikut tercetak di nomor transaksinya."}
           </p>
           <div className="space-y-1">
             <Label htmlFor="device-name">Nama perangkat (opsional)</Label>
@@ -129,9 +131,25 @@ export function PosDeviceSection({ till }: { till: OfflineTill }) {
         </>
       ) : (
         <p className="text-sm text-muted">
-          Perangkat ini belum didaftarkan, jadi belum bisa berjualan saat
-          offline. Minta supervisor login di perangkat ini lalu daftarkan dari
-          Pengaturan Kasir.
+          Perangkat ini belum didaftarkan{elsewhere.length ? " di cabang ini" : ""}, jadi
+          belum bisa berjualan saat offline. Minta supervisor login di perangkat
+          ini lalu daftarkan dari Pengaturan Kasir.
+        </p>
+      )}
+
+      {elsewhere.length > 0 && (
+        <p className="text-sm text-muted">
+          Juga terdaftar di cabang lain sebagai{" "}
+          {elsewhere.map((entry, index) => (
+            <span key={entry.deviceId}>
+              {index > 0 ? ", " : ""}
+              <span className="font-semibold tabular-nums">
+                {entry.branchCode ? `${entry.branchCode}-` : ""}
+                {entry.code}
+              </span>
+            </span>
+          ))}
+          . Transaksi offline dari cabang itu tetap dikirim otomatis.
         </p>
       )}
     </div>

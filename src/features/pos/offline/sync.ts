@@ -22,21 +22,25 @@ import { listQueued, purgeOld, refreshCounts, UNSENT, updateQueued } from "./que
  * X-Report warns with when a cashier's takings are still on another till.
  */
 export async function reportPending(): Promise<void> {
-  const { device } = getOfflineState();
-  if (!device) return;
-  const byCashier = new Map<string, number>();
-  for (const record of await listQueued()) {
-    if (!UNSENT.includes(record.status)) continue;
-    const id = record.sale.cashierUserId;
-    byCashier.set(id, (byCashier.get(id) ?? 0) + 1);
+  const devices = registrations();
+  if (!devices.length) return;
+  const records = await listQueued();
+  // Each registration reports its own branch's — X-Report asks per branch.
+  for (const device of devices) {
+    const byCashier = new Map<string, number>();
+    for (const record of records) {
+      if (record.deviceId !== device.deviceId || !UNSENT.includes(record.status)) continue;
+      const id = record.sale.cashierUserId;
+      byCashier.set(id, (byCashier.get(id) ?? 0) + 1);
+    }
+    const pendingByCashier = [...byCashier].map(([cashierUserId, count]) => ({ cashierUserId, count }));
+    await posOfflineService
+      .ping(device, pendingByCashier.reduce((sum, entry) => sum + entry.count, 0), pendingByCashier)
+      .catch(() => {});
   }
-  const pendingByCashier = [...byCashier].map(([cashierUserId, count]) => ({ cashierUserId, count }));
-  await posOfflineService
-    .ping(device, pendingByCashier.reduce((sum, entry) => sum + entry.count, 0), pendingByCashier)
-    .catch(() => {});
 }
 import { refreshSnapshot } from "./snapshot";
-import { getOfflineState, setOfflineState } from "./store";
+import { getOfflineState, registrations, setOfflineState, type StoredDevice } from "./store";
 
 const BATCH = 20;
 
@@ -53,10 +57,10 @@ async function withLock(run: () => Promise<void>): Promise<void> {
   });
 }
 
-async function sendBatch(batch: Awaited<ReturnType<typeof listQueued>>): Promise<"ok" | "offline"> {
-  const { device } = getOfflineState();
-  if (!device) return "offline";
-
+async function sendBatch(
+  device: StoredDevice,
+  batch: Awaited<ReturnType<typeof listQueued>>,
+): Promise<"ok" | "offline" | "rejected"> {
   const now = new Date().toISOString();
   try {
     const { results } = await posOfflineService.sync(
@@ -81,8 +85,11 @@ async function sendBatch(batch: Awaited<ReturnType<typeof listQueued>>): Promise
       return "offline";
     }
     if (error instanceof ApiError && error.status === 403) {
-      setOfflineState({ deviceRejected: error.message });
-      return "offline";
+      // Only the branch on screen is "this device"; another one's refusal waits.
+      if (device.deviceId === getOfflineState().device?.deviceId) {
+        setOfflineState({ deviceRejected: error.message });
+      }
+      return "rejected";
     }
     /*
       A REQUEST THE SERVER REFUSED AS A WHOLE (a 400 from validation) — one
@@ -91,7 +98,8 @@ async function sendBatch(batch: Awaited<ReturnType<typeof listQueued>>): Promise
     */
     if (batch.length > 1) {
       for (const record of batch) {
-        if ((await sendBatch([record])) === "offline") return "offline";
+        const outcome = await sendBatch(device, [record]);
+        if (outcome !== "ok") return outcome;
       }
       return "ok";
     }
@@ -111,8 +119,8 @@ async function sendBatch(batch: Awaited<ReturnType<typeof listQueued>>): Promise
 
 /** Sends everything unsent. Resolves when done or when the server stops answering. */
 export async function syncNow(): Promise<void> {
-  const { device, syncing } = getOfflineState();
-  if (!device || syncing) return;
+  const { syncing } = getOfflineState();
+  if (!registrations().length || syncing) return;
 
   await withLock(async () => {
     setOfflineState({ syncing: true, lastSyncError: null });
@@ -122,13 +130,26 @@ export async function syncNow(): Promise<void> {
         .filter((record) => UNSENT.includes(record.status))
         .sort((a, b) => a.sale.paidAt.localeCompare(b.sale.paidAt));
 
-      for (let start = 0; start < unsent.length; start += BATCH) {
-        const outcome = await sendBatch(unsent.slice(start, start + BATCH));
-        if (outcome === "offline") {
-          setOfflineState({ lastSyncError: "Server belum bisa dihubungi" });
-          break;
+      /*
+        EACH REGISTRATION SENDS ITS OWN SALES, under its own credentials — the
+        server posts a sale at the branch of the device that rang it up. One
+        whose registration this browser no longer holds cannot be sent at all.
+      */
+      for (const device of registrations()) {
+        const mine = unsent.filter((record) => record.deviceId === device.deviceId);
+        let failed = false;
+        for (let start = 0; start < mine.length; start += BATCH) {
+          const outcome = await sendBatch(device, mine.slice(start, start + BATCH));
+          // A registration the server refuses keeps its sales; the others still go.
+          if (outcome === "rejected") break;
+          if (outcome === "offline") {
+            setOfflineState({ lastSyncError: "Server belum bisa dihubungi" });
+            failed = true;
+            break;
+          }
+          sentAny = true;
         }
-        sentAny = true;
+        if (failed) break;
       }
       setOfflineState({ lastSyncAt: new Date().toISOString() });
     } finally {
@@ -157,7 +178,7 @@ let lastSnapshot = 0;
 async function tick() {
   if (isOfflineMode()) return;
   const state = getOfflineState();
-  if (!state.device) return;
+  if (!registrations().length) return;
 
   if (state.pendingCount > 0) await syncNow();
 

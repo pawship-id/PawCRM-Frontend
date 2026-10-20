@@ -964,6 +964,19 @@ export interface Branch {
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter: string | null;
   /**
+   * THE TOP OF THE RECEIPT — logo, a line of the shop's own, and which names
+   * print. OPTIONAL because list reads are `.lean()`: a branch written before
+   * these existed comes back without the keys, and a missing toggle means ON.
+   */
+  receiptLogo?: MediaAsset | null;
+  receiptHeaderText?: string | null;
+  receiptShowTenantName?: boolean;
+  /** Null prints the tenant's own name; a value replaces it on this branch's receipts. */
+  receiptTenantName?: string | null;
+  receiptShowBranchName?: boolean;
+  /** Null prints the branch's own name. */
+  receiptBranchName?: string | null;
+  /**
    * When the doors are open — `HH:mm` in the tenant's timezone, both or neither.
    * Null means UNRECORDED, not closed, and nothing enforces them yet: the
    * booking validator that will read them is why they are stored as times rather
@@ -1086,6 +1099,13 @@ export interface CreateBranchInput {
   operatingDays?: OperatingDay[];
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter?: string | null;
+  /** The upload response as returned — its `token` must travel back. `null` clears it. */
+  receiptLogo?: MediaAsset | null;
+  receiptHeaderText?: string | null;
+  receiptShowTenantName?: boolean;
+  receiptTenantName?: string | null;
+  receiptShowBranchName?: boolean;
+  receiptBranchName?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
   location?: GeoLocationInput | null;
   isActive?: boolean;
@@ -1108,6 +1128,13 @@ export interface UpdateBranchInput {
   operatingDays?: OperatingDay[];
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter?: string | null;
+  /** The upload response as returned — its `token` must travel back. `null` clears it. */
+  receiptLogo?: MediaAsset | null;
+  receiptHeaderText?: string | null;
+  receiptShowTenantName?: boolean;
+  receiptTenantName?: string | null;
+  receiptShowBranchName?: boolean;
+  receiptBranchName?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
   location?: GeoLocationInput | null;
   isActive?: boolean;
@@ -2572,8 +2599,15 @@ export interface PosReceiptItem {
  */
 export interface PosReceipt {
   header: {
+    /** "" when the branch hides it — the server already applied the toggle and override. */
     tenantName: string;
     branchName: string;
+    /**
+     * The branch's receipt logo and its header line. OPTIONAL: an offline
+     * snapshot taken before they existed has neither, and "" means none.
+     */
+    logoUrl?: string;
+    headerText?: string;
     /** Empty string, never null — an unfilled field prints as a blank line. */
     address: string;
     phone: string;
@@ -7362,11 +7396,30 @@ export interface CustomerInvoiceListRow {
   notes: string | null;
 }
 
+/**
+ * The branch's header settings for a printed faktur — the same ones its struk
+ * follows (`utils/receiptHeader.js` → `brandingOf` on the server).
+ *
+ * The TENANT name is left to the sheet, which falls back to the legal name: a
+ * hidden one is `showTenantName: false`, and `tenantName` is only the branch's
+ * override (null = use the tenant's own). The BRANCH name comes resolved — ""
+ * when hidden. `logoUrl` and `headerText` are "" when unset.
+ */
+export interface InvoicePrintHeader {
+  showTenantName: boolean;
+  tenantName: string | null;
+  branchName: string;
+  logoUrl: string;
+  headerText: string;
+}
+
 /** GET /api/customer-invoices/:id — the row, plus its payments and labels. */
 export interface CustomerInvoiceDetail extends Omit<
   CustomerInvoiceListRow,
   "paymentCount"
 > {
+  /** Optional: an API older than 20 Oktober 2026 does not send it. */
+  printHeader?: InvoicePrintHeader;
   /** Trips of this bill's home bookings nobody has billed — the edit offers them (11 October 2026). */
   owedTrips?: {
     tripId: string;
@@ -7533,6 +7586,7 @@ export interface PublicCustomerInvoice {
   dueDate: string;
   customerName: string | null;
   branchName: string | null;
+  printHeader?: InvoicePrintHeader;
   items: Array<
     Pick<
       CustomerInvoiceItem,

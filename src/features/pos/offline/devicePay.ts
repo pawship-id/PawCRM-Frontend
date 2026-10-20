@@ -62,6 +62,15 @@ function numberTaken(error: unknown): boolean {
 
 export async function payOnline(cart: PosTransaction, input: PayInput): Promise<PosTransaction> {
   const { device } = getOfflineState();
+  /*
+    A BASKET AT ANOTHER BRANCH IS NOT THIS REGISTRATION'S TO NUMBER (20 October
+    2026): its number would carry the wrong branch code. The server numbers it,
+    as it does for a till that is not registered at all.
+  */
+  if (!device || String(device.branchId) !== String(cart.branchId)) {
+    return posService.pay(cart._id, input);
+  }
+
   let reservation = await reserveFor(cart._id);
 
   if (!reservation || !device) return posService.pay(cart._id, input);

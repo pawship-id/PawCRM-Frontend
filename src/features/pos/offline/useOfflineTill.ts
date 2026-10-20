@@ -42,7 +42,11 @@ import { offlineTransport, onlineTransport } from "./transport";
 /** Why offline selling is not available on this device, or null when it is. */
 function unavailableReason(state: ReturnType<typeof useOfflineStore>): string | null {
   if (!state.loaded) return "Memuat data perangkat…";
-  if (!state.device) return "Perangkat ini belum didaftarkan untuk metode offline";
+  if (!state.device) {
+    return state.devices.length
+      ? "Perangkat ini belum didaftarkan di cabang ini untuk metode offline"
+      : "Perangkat ini belum didaftarkan untuk metode offline";
+  }
   if (state.deviceRejected) return state.deviceRejected;
   if (!snapshotReady(state.snapshot)) return "Data offline belum diunduh — buka kasir sekali saat online";
   if (!state.shift) return "Shift belum terbaca — buka kasir sekali saat online";
@@ -55,21 +59,23 @@ export function useOfflineTill() {
   const connectivity = useConnectivity();
   const state = useOfflineStore();
   const tenantId = user?.tenantId ?? null;
+  const branchId = session?.currentBranchId ?? null;
 
   useEffect(() => startConnectivityWatch(), []);
   useEffect(() => registerTillServiceWorker(), []);
   useEffect(() => startSyncLoop(), []);
 
+  /* Again on every branch switch: each branch has its own registration. */
   useEffect(() => {
     if (!tenantId) return;
-    void loadOfflineState(tenantId).then(() => {
+    void loadOfflineState(tenantId, branchId).then(() => {
       /* A reload with no connection still opens the payment dialog with the
          branch's channels — from the copy the last snapshot left. */
       const settings = getOfflineState().snapshot.settings;
       if (settings) seedTillChannels(settings.branch._id, settings.channels);
       return refreshCounts();
     });
-  }, [tenantId]);
+  }, [tenantId, branchId]);
 
   /*
     WHILE ONLINE, KEEP THE COPY CURRENT: once when the device is known, and
@@ -121,7 +127,7 @@ export function useOfflineTill() {
     async (name: string | null) => {
       if (!tenantId) throw new Error("Belum masuk");
       const created = await posOfflineService.registerDevice({
-        branchId: session?.currentBranchId ?? undefined,
+        branchId: branchId ?? undefined,
         name,
       });
       await saveDevice({
@@ -137,7 +143,7 @@ export function useOfflineTill() {
       await refreshSnapshot();
       return created;
     },
-    [tenantId, session?.currentBranchId],
+    [tenantId, branchId],
   );
 
   /** Checks the stored registration with the server; forgets one it refuses. */

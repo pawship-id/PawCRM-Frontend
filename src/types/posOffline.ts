@@ -69,6 +69,8 @@ export interface OfflineSettings {
   receiptHeader: {
     tenantName: string;
     branchName: string;
+    logoUrl?: string;
+    headerText?: string;
     address: string;
     phone: string;
     receiptFooter: string;

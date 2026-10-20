@@ -68,17 +68,46 @@ export function PaymentReceipt({
   tenant: Tenant | null;
   branchName: string | null;
 }) {
+  /*
+    THE BRANCH'S HEADER SETTINGS (20 Oktober 2026), the same ones its struk and
+    faktur follow — carried on the invoice detail as `printHeader`. The tenant
+    line keeps the kwitansi's own default, the trading name; the branch's
+    override replaces it, and a switched-off name prints no line at all. Absent
+    (an older API), the sheet prints as it always did.
+  */
+  const header = invoice.printHeader;
+  const issuer = header
+    ? header.showTenantName
+      ? header.tenantName || tenant?.name || "—"
+      : null
+    : (tenant?.name ?? "—");
+  const branchLine = header ? header.branchName : branchName;
+
   return (
     <div
       data-receipt-sheet="a4"
       className="mx-auto w-full bg-surface p-8 text-sm text-foreground"
     >
       <div className="flex items-start justify-between gap-6 border-b border-border pb-4">
-        <div>
-          <p className="text-base font-semibold">
-            {tenant?.name ?? "—"}
-          </p>
-          {branchName && <p className="text-sm text-muted">{branchName}</p>}
+        <div className="flex items-start gap-4">
+          {header?.logoUrl && (
+            // A plain img — the storage host is chosen per deployment.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={header.logoUrl}
+              alt={issuer ? `Logo ${issuer}` : "Logo toko"}
+              className="max-h-16 w-auto object-contain"
+            />
+          )}
+          <div>
+            {issuer && <p className="text-base font-semibold">{issuer}</p>}
+            {branchLine && <p className="text-sm text-muted">{branchLine}</p>}
+            {header?.headerText && (
+              <p className="mt-1 text-xs whitespace-pre-line text-muted">
+                {header.headerText}
+              </p>
+            )}
+          </div>
         </div>
         <div className="text-right">
           <p className="text-lg font-bold">KWITANSI</p>

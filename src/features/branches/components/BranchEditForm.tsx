@@ -7,6 +7,7 @@ import {
   Alert,
   Button,
   Card,
+  ImageField,
   Spinner,
   TextField,
   ConfirmDialog,
@@ -18,6 +19,9 @@ import {
 import type { LocationFieldsValue } from "@/components";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { usePermissions } from "@/features/permissions";
+import { useTenant } from "@/features/tenant";
 import { ApiError } from "@/services/api-error";
 import { branchService } from "@/services/branch.service";
 import { swalToast } from "@/lib/swal";
@@ -29,6 +33,7 @@ import {
   validatePhone,
 } from "@/utils/validation";
 import type { Branch, OperatingDay } from "@/types/api";
+import type { MediaAsset } from "@/types/inventory";
 
 import { OperatingDaysField } from "./OperatingDaysField";
 import { BranchStatusBadge } from "./BranchStatusBadge";
@@ -153,6 +158,31 @@ function DetailsSection({
   );
   const [phone, setPhone] = useState(branch.phone ?? "");
   const [receiptFooter, setReceiptFooter] = useState(branch.receiptFooter ?? "");
+  /*
+    THE TOP OF THE RECEIPT. A missing toggle reads as ON — a branch written
+    before these existed always printed both names, and must keep doing so.
+  */
+  const [receiptLogo, setReceiptLogo] = useState<MediaAsset | null>(
+    branch.receiptLogo ?? null,
+  );
+  const [receiptHeaderText, setReceiptHeaderText] = useState(
+    branch.receiptHeaderText ?? "",
+  );
+  const [showTenantName, setShowTenantName] = useState(
+    branch.receiptShowTenantName !== false,
+  );
+  const [receiptTenantName, setReceiptTenantName] = useState(
+    branch.receiptTenantName ?? "",
+  );
+  const [showBranchName, setShowBranchName] = useState(
+    branch.receiptShowBranchName !== false,
+  );
+  const [receiptBranchName, setReceiptBranchName] = useState(
+    branch.receiptBranchName ?? "",
+  );
+  // The live business name, as the placeholder of its override.
+  const { can } = usePermissions();
+  const { tenant } = useTenant(can("tenants", "read"));
   // toLocationFieldsValue tolerates a missing pin, so a branch document written
   // before the field existed renders as two empty inputs rather than throwing.
   const [location, setLocation] = useState<LocationFieldsValue>(() =>
@@ -191,6 +221,17 @@ function DetailsSection({
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
+    /*
+      THE LOGO IS SENT ONLY WHEN IT CHANGED, as `PetForm` does with a photo: the
+      server strips the upload token before storing, so the logo a GET returns
+      has none — and sending it back unchanged would be refused for the missing
+      token. `null` is how it is taken off.
+    */
+    const relogoed =
+      (receiptLogo?.storageKey ?? null) !==
+      (branch.receiptLogo?.storageKey ?? null);
+    const orNull = (value: string) => (value.trim() === "" ? null : value.trim());
+
     setSaving(true);
     try {
       const updated = await branchService.update(branch._id, {
@@ -204,6 +245,12 @@ function DetailsSection({
         phone: phone.trim() === "" ? null : phone.trim(),
         receiptFooter:
           receiptFooter.trim() === "" ? null : receiptFooter.trim(),
+        ...(relogoed ? { receiptLogo } : {}),
+        receiptHeaderText: orNull(receiptHeaderText),
+        receiptShowTenantName: showTenantName,
+        receiptTenantName: orNull(receiptTenantName),
+        receiptShowBranchName: showBranchName,
+        receiptBranchName: orNull(receiptBranchName),
         location: toGeoLocation(location),
         isActive,
       });
@@ -339,6 +386,83 @@ function DetailsSection({
         </div>
 
         {/*
+          THE TOP OF THE RECEIPT, above its closing line so the two read in the
+          order they print. Each name is a switch plus an optional override:
+          on with the box empty prints the live name (a rename still reaches
+          this branch), on with a value prints that value, off prints nothing.
+        */}
+        <div className="flex flex-col gap-4 border-t border-border pt-4 sm:col-span-2">
+          <div>
+            <h3 className="text-base font-bold">Header struk</h3>
+            <p className="mt-1 text-sm text-muted">
+              Yang dicetak di bagian atas struk, faktur penjualan, dan kwitansi cabang ini.
+            </p>
+          </div>
+
+          <ImageField
+            value={receiptLogo}
+            onChange={setReceiptLogo}
+            purpose="branch"
+            label="Logo"
+            alt={`Logo struk ${branch.name}`}
+            hint="PNG, JPG atau WebP. Dipotong jadi kotak, dicetak kecil di paling atas struk dan faktur. Kosongkan kalau tidak pakai logo."
+            disabled={disabled || saving}
+          />
+
+          <HeaderNameRow
+            id="receipt-show-tenant"
+            label="Tampilkan nama usaha"
+            checked={showTenantName}
+            onCheckedChange={setShowTenantName}
+            disabled={disabled}
+          >
+            <TextField
+              label="Nama usaha di struk"
+              name="receiptTenantName"
+              placeholder={tenant?.name ?? "Nama usaha"}
+              value={receiptTenantName}
+              onChange={(e) => setReceiptTenantName(e.target.value)}
+              error={fieldErrors.receiptTenantName}
+              maxLength={120}
+              hint="Kosongkan untuk memakai nama usaha (di faktur: nama resmi, kalau ada)."
+              disabled={disabled}
+            />
+          </HeaderNameRow>
+
+          <HeaderNameRow
+            id="receipt-show-branch"
+            label="Tampilkan nama cabang"
+            checked={showBranchName}
+            onCheckedChange={setShowBranchName}
+            disabled={disabled}
+          >
+            <TextField
+              label="Nama cabang di struk"
+              name="receiptBranchName"
+              placeholder={name.trim() || "Nama cabang"}
+              value={receiptBranchName}
+              onChange={(e) => setReceiptBranchName(e.target.value)}
+              error={fieldErrors.receiptBranchName}
+              maxLength={120}
+              hint="Kosongkan untuk memakai nama cabang."
+              disabled={disabled}
+            />
+          </HeaderNameRow>
+
+          <TextField
+            label="Teks header"
+            name="receiptHeaderText"
+            placeholder="mis. Grooming & Petshop · Buka setiap hari"
+            value={receiptHeaderText}
+            onChange={(e) => setReceiptHeaderText(e.target.value)}
+            error={fieldErrors.receiptHeaderText}
+            maxLength={160}
+            hint="Dicetak di bawah nama, di atas alamat. Opsional."
+            disabled={disabled}
+          />
+        </div>
+
+        {/*
           Row 3: the receipt's closing line (FR-8).
 
           FULL WIDTH, beside the address rather than beside the phone, because it
@@ -411,6 +535,42 @@ function DetailsSection({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * One name on the receipt's header — a switch, and the override box under it
+ * while the switch is on. The box is hidden rather than disabled when off: a
+ * greyed field invites a reader to wonder whether its value still prints.
+ */
+function HeaderNameRow({
+  id,
+  label,
+  checked,
+  onCheckedChange,
+  disabled,
+  children,
+}: {
+  id: string;
+  label: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-4">
+        <Label htmlFor={id}>{label}</Label>
+        <Switch
+          id={id}
+          checked={checked}
+          onCheckedChange={onCheckedChange}
+          disabled={disabled}
+        />
+      </div>
+      {checked && children}
+    </div>
   );
 }
 
