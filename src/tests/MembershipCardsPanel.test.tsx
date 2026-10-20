@@ -113,8 +113,10 @@ describe("Anggota list", () => {
     expect(within(first).getByText("Grooming 1/3")).toBeVisible();
     expect(within(first).getByText("Mandi 2/2")).toBeVisible();
     expect(within(first).getByText("+1")).toBeVisible();
-    expect(screen.getByText("Segera berakhir", { selector: "span" })).toBeVisible();
-    expect(screen.getByText("9 hari lagi")).toBeVisible();
+    // The status badge in the row — the lens card above says the same words.
+    const second = screen.getByText("MBR-2026-0050").closest("tr") as HTMLElement;
+    expect(within(second).getByText("Segera berakhir", { selector: "span" })).toBeVisible();
+    expect(within(second).getByText("9 hari lagi")).toBeVisible();
   });
 
   it("filters by a pill and lets go when the lit pill is pressed again", async () => {
@@ -146,5 +148,24 @@ describe("Anggota list", () => {
 
     await user.click(await screen.findByText("Rina Wijaya · hewan"));
     expect(push).toHaveBeenCalledWith("/dashboard/promosi/membership/anggota/card-1");
+  });
+
+  it("filters by Melekat ke through the Filter panel, applied on Terapkan", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<MembershipCardsPanel />);
+    await screen.findByText("MBR-2026-0042");
+
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+    await user.click(within(panel).getByRole("button", { name: "Filter melekat ke" }));
+    await user.click(await screen.findByRole("option", { name: "Pelanggan" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(mocked.listMemberships).toHaveBeenLastCalledWith(
+        expect.objectContaining({ attachTo: "customer", page: 1 }),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent("Filter (1)");
   });
 });

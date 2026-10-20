@@ -21,7 +21,6 @@ export function benefitAvailability(
     scope: { target: "service", serviceIds: ["svc-basic"], productIds: [], categoryIds: [], serviceKinds: [] },
     value: null,
     quota: { total: null, perPeriod: 3, period: "month" },
-    maxPerTransaction: 1,
     options: [
       {
         id: "opt-1",

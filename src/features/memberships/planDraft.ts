@@ -31,15 +31,14 @@ import { matchVariantPrice, servicePriceFor } from "./variantKey";
  * all the QUOTA MAPPING (contract §2.2): the builder offers one count and four
  * choices, the API stores `{ total, perPeriod, period }`.
  *
- *   "N× per minggu"           ⇄ { perPeriod: N, period: "week",  total: cap? }
- *   "N× per bulan"            ⇄ { perPeriod: N, period: "month", total: cap? }
+ *   "N× per minggu"           ⇄ { perPeriod: N, period: "week",  total: null }
+ *   "N× per bulan"            ⇄ { perPeriod: N, period: "month", total: null }
  *   "N× selama masa berlaku"  ⇄ { total: N }
  *   "Tidak terbatas"          ⇄ all null
  *
- * The optional lifetime cap on top of a period quota ("1× per bulan, maksimal
- * 12×") is the one combination four choices cannot say; it rides in the
- * benefit's advanced fields (`totalCap`) so an old plan that set both is not
- * silently flattened on its first edit.
+ * Exactly one shape per benefit (BO "Skema & aturan"): the server refuses a
+ * period quota with a `total` beside it. A legacy plan that set both reads as
+ * its period choice, and saving it drops the old lifetime cap.
  *
  * INPUTS HOLD STRINGS. A number field that is half-typed is not a number, and
  * money is a decimal string end to end (never parseFloat'd for storage).
@@ -77,10 +76,6 @@ export interface BenefitDraft {
   type: BenefitType;
   quotaChoice: QuotaChoice;
   quotaCount: string;
-  /** Advanced: a lifetime cap on top of a week/month quota. Empty = none. */
-  totalCap: string;
-  /** Advanced: how many lines of one receipt may use it. */
-  maxPerTransaction: string;
   options: OptionDraft[];
 }
 
@@ -154,25 +149,21 @@ export const emptyScope = (target: BenefitScope["target"] = "service"): BenefitS
 
 /* ────────────────────────────────────────────────────────── quota mapping */
 
-/** API quota → the builder's choice + count (+ the advanced lifetime cap). */
+/**
+ * API quota → the builder's choice + count. A legacy quota carrying both a
+ * period quota and a `total` maps to the period choice.
+ */
 export function quotaToChoice(quota: Partial<BenefitQuota> | null | undefined): {
   choice: QuotaChoice;
   count: string;
-  totalCap: string;
 } {
   const perPeriod = quota?.perPeriod ?? null;
   const period = quota?.period ?? null;
   const total = quota?.total ?? null;
 
-  if (perPeriod && period) {
-    return {
-      choice: period,
-      count: String(perPeriod),
-      totalCap: total ? String(total) : "",
-    };
-  }
-  if (total) return { choice: "term", count: String(total), totalCap: "" };
-  return { choice: "unlimited", count: "", totalCap: "" };
+  if (perPeriod && period) return { choice: period, count: String(perPeriod) };
+  if (total) return { choice: "term", count: String(total) };
+  return { choice: "unlimited", count: "" };
 }
 
 /**
@@ -183,16 +174,11 @@ export function quotaToChoice(quota: Partial<BenefitQuota> | null | undefined): 
  * would sell something the owner did not choose. (The form also blocks saving
  * on it; this is the floor under that.)
  */
-export function choiceToQuota(
-  choice: QuotaChoice,
-  count: string,
-  totalCap = "",
-): BenefitQuota {
+export function choiceToQuota(choice: QuotaChoice, count: string): BenefitQuota {
   const n = positiveInt(count) ?? 1;
 
   if (choice === "week" || choice === "month") {
-    const cap = positiveInt(totalCap);
-    return { perPeriod: n, period: choice, total: cap !== null && cap >= n ? cap : null };
+    return { perPeriod: n, period: choice, total: null };
   }
   if (choice === "term") return { total: n, perPeriod: null, period: null };
   return { total: null, perPeriod: null, period: null };
@@ -232,8 +218,6 @@ export function benefitToDraft(benefit: MembershipBenefit): BenefitDraft {
     type: perk ? "perk" : "allowance",
     quotaChoice: quota.choice,
     quotaCount: quota.count,
-    totalCap: quota.totalCap,
-    maxPerTransaction: String(benefit.maxPerTransaction ?? 1),
     /*
       A LEGACY BENEFIT ARRIVES WITH ONE SYNTHESIZED OPTION whose id is the
       benefit's own (§2.2) — echoing it back is allowed and simply stores it.
@@ -261,8 +245,6 @@ export function newBenefitDraft(): BenefitDraft {
     type: "allowance",
     quotaChoice: "month",
     quotaCount: "1",
-    totalCap: "",
-    maxPerTransaction: "1",
     options: [newOptionDraft()],
   };
 }
@@ -399,8 +381,7 @@ export function draftToBenefitInput(benefit: BenefitDraft): BenefitInput {
 
   return {
     ...base,
-    quota: choiceToQuota(benefit.quotaChoice, benefit.quotaCount, benefit.totalCap),
-    maxPerTransaction: positiveInt(benefit.maxPerTransaction) ?? 1,
+    quota: choiceToQuota(benefit.quotaChoice, benefit.quotaCount),
     options: benefit.options.map(draftToOptionInput),
   };
 }

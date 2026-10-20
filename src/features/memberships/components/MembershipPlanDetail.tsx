@@ -287,9 +287,6 @@ function BenefitRow({
               : ""}
           </p>
         ))}
-      {!perk && benefit.maxPerTransaction > 1 && (
-        <p className="text-sm text-muted">Maks. {benefit.maxPerTransaction} baris per transaksi.</p>
-      )}
     </li>
   );
 }

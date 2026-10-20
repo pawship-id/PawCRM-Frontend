@@ -18,7 +18,6 @@ const benefit = (label: string, perPeriod: number | null): MembershipBenefit => 
   scope: { target: "service", serviceIds: [], productIds: [], categoryIds: [], serviceKinds: ["grooming"] },
   value: null,
   quota: { perPeriod, period: perPeriod ? "month" : null, total: null },
-  maxPerTransaction: 1,
   options: [],
   summary: "Gratis",
 });
@@ -121,19 +120,21 @@ describe("MembershipPlansPanel", () => {
     renderWithAuth(<MembershipPlansPanel />);
     await screen.findByText("Explorer – New Member");
 
-    await user.click(screen.getByRole("button", { name: "Melekat ke" }));
+    // Both live in the Filter panel and apply together on Terapkan.
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    const panel = await screen.findByRole("dialog");
+    await user.click(within(panel).getByRole("button", { name: "Filter melekat ke" }));
     await user.click(await screen.findByRole("option", { name: "Pelanggan" }));
-    await waitFor(() =>
-      expect(mocked.listPlans).toHaveBeenLastCalledWith(expect.objectContaining({ attachTo: "customer", page: 1 })),
-    );
-
-    await user.click(screen.getByRole("button", { name: "Syarat pembeli" }));
+    await user.click(within(panel).getByRole("button", { name: "Filter syarat pembeli" }));
     await user.click(await screen.findByRole("option", { name: "Lewat referral" }));
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
     await waitFor(() =>
       expect(mocked.listPlans).toHaveBeenLastCalledWith(
-        expect.objectContaining({ attachTo: "customer", eligibility: "referral" }),
+        expect.objectContaining({ attachTo: "customer", eligibility: "referral", page: 1 }),
       ),
     );
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent("Filter (2)");
   });
 
   it("searches by code or name", async () => {

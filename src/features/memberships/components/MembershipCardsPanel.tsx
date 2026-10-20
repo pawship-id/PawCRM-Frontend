@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ListFilter } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -8,9 +9,10 @@ import {
   Alert,
   Card,
   FilterBar,
-  FilterPills,
+  FilterPanel,
   FilterSearch,
   FilterSelect,
+  FilterTrigger,
   ListFooter,
   Spinner,
   withAll,
@@ -24,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 import { membershipService } from "@/services/membership.service";
 import type { AttachTo, MembershipPlan, PetMembership } from "@/types/membership";
 
@@ -42,13 +45,13 @@ import { MembershipStatusBadge } from "./MembershipStatusBadge";
  * Anggota — every membership card in the shop (BO prototype
  * `membershipAnggota`).
  *
- * THE PILL ROW IS THE LENS (ui-rules §8): Aktif · Segera berakhir · Jatah
- * belum terpakai · Berakhir, each with its count, applying on click; clicking
- * the lit pill again lets go. Ditunda and Belum lunas join the row only when
- * there is something in them — a pill reading 0 on every visit is noise.
+ * THE CARD ROW IS THE LENS (ui-rules §8, drawn as cards on request, 20
+ * October 2026): Aktif · Segera berakhir · Jatah belum terpakai · Berakhir,
+ * each with its count, applying on click; clicking the pressed card again lets
+ * go. Ditunda and Belum lunas join the row only when there is something in
+ * them — a card reading 0 on every visit is noise.
  *
- * THE QUICK BAR holds search, Paket and Melekat ke — single selects that
- * auto-apply.
+ * Below it: search, and Paket + Melekat ke behind one Filter button.
  *
  * SEARCH IS THE SERVER'S: card number, plan name, customer name or phone,
  * and pet name (contract §3.6).
@@ -164,39 +167,45 @@ export function MembershipCardsPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <FilterPills
-          ariaLabel="Status anggota"
-          value={lens}
-          options={pills}
-          onChange={pickLens}
-        />
-        {lens && <span className="text-sm text-muted">Klik lagi untuk melepas</span>}
+      <div
+        role="group"
+        aria-label="Status anggota"
+        className="grid grid-cols-2 gap-3 lg:auto-cols-fr lg:grid-flow-col lg:grid-cols-none"
+      >
+        {pills.map((pill) => (
+          <LensCard
+            key={pill.value}
+            label={pill.label}
+            count={pill.count}
+            tone={pill.value === "expiringSoon" || pill.value === "unusedQuota" ? "warning" : "default"}
+            pressed={lens === pill.value}
+            onPress={() => pickLens(pill.value)}
+          />
+        ))}
       </div>
 
       <FilterBar
         searchPlacement="leading"
+        searchClassName="min-w-[12rem] flex-1"
         search={
           <FilterSearch
             value={query.search ?? ""}
             onChange={(value) => patchQuery({ search: value || undefined })}
             ariaLabel="Cari anggota"
             placeholder="Cari pelanggan, hewan, atau nomor"
+            fill
           />
         }
       >
-        <FilterSelect
-          label="Paket"
-          value={query.planId ?? ""}
-          options={planOptions}
-          searchable
-          onChange={(value) => patchQuery({ planId: value || undefined })}
-        />
-        <FilterSelect
-          label="Melekat ke"
-          value={query.attachTo ?? ""}
-          options={ATTACH_OPTIONS}
-          onChange={(value) => patchQuery({ attachTo: (value || undefined) as AttachTo | undefined })}
+        <CardFilterPanel
+          planOptions={planOptions}
+          applied={{ planId: query.planId ?? "", attachTo: query.attachTo ?? "" }}
+          onApply={(next) =>
+            patchQuery({
+              planId: next.planId || undefined,
+              attachTo: (next.attachTo || undefined) as AttachTo | undefined,
+            })
+          }
         />
       </FilterBar>
 
@@ -291,5 +300,123 @@ export function MembershipCardsPanel() {
         />
       )}
     </div>
+  );
+}
+
+/** Everything the panel edits, as one draft. */
+interface CardFilters {
+  planId: string;
+  attachTo: string;
+}
+
+const CLEARED_CARD_FILTERS: CardFilters = { planId: "", attachTo: "" };
+
+/**
+ * Paket and Melekat ke behind one button, like Paket's list and the rest of
+ * the app (ui-rules §8). The status pills stay outside — they are the screen's
+ * main lens. Fields wait for Terapkan; Reset applies at once.
+ */
+function CardFilterPanel({
+  planOptions,
+  applied,
+  onApply,
+}: {
+  planOptions: ReturnType<typeof usePlanOptions>;
+  applied: CardFilters;
+  onApply: (next: CardFilters) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(applied);
+
+  const count = [applied.planId !== "", applied.attachTo !== ""].filter(Boolean).length;
+
+  function onOpenChange(next: boolean) {
+    // Seeded on every open, so clicking away abandons the draft.
+    if (next) setDraft(applied);
+    setOpen(next);
+  }
+
+  return (
+    <>
+      <FilterTrigger
+        label={count === 0 ? "Filter" : `Filter (${count})`}
+        active={count > 0}
+        icon={<ListFilter className="size-4" />}
+        aria-label="Filter"
+        onClick={() => onOpenChange(true)}
+      />
+
+      <FilterPanel
+        open={open}
+        onOpenChange={onOpenChange}
+        onReset={() => {
+          onApply(CLEARED_CARD_FILTERS);
+          setOpen(false);
+        }}
+        onApply={() => {
+          onApply(draft);
+          setOpen(false);
+        }}
+      >
+        <FilterSelect
+          layout="field"
+          label="Paket"
+          ariaLabel="Filter paket"
+          value={draft.planId}
+          options={planOptions}
+          searchable
+          onChange={(planId) => setDraft((prev) => ({ ...prev, planId }))}
+        />
+        <FilterSelect
+          layout="field"
+          label="Melekat ke"
+          ariaLabel="Filter melekat ke"
+          value={draft.attachTo}
+          options={ATTACH_OPTIONS}
+          onChange={(attachTo) => setDraft((prev) => ({ ...prev, attachTo }))}
+        />
+      </FilterPanel>
+    </>
+  );
+}
+
+/**
+ * One status card in the lens row — a label and its count, pressed to narrow
+ * the table, pressed again to let go. Spans, not paragraphs: it is a button.
+ */
+function LensCard({
+  label,
+  count,
+  tone,
+  pressed,
+  onPress,
+}: {
+  label: string;
+  count: number | undefined;
+  tone: "default" | "warning";
+  pressed: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onPress}
+      className={cn(
+        "flex w-full cursor-pointer flex-col items-start rounded-xl border p-4 text-left transition",
+        "hover:shadow-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        pressed ? "border-primary bg-navy-100" : "border-border bg-surface",
+      )}
+    >
+      <span className="text-sm text-muted">{label}</span>
+      <span
+        className={cn(
+          "mt-1 text-2xl font-semibold tabular-nums",
+          tone === "warning" ? "text-warning" : "text-foreground",
+        )}
+      >
+        {count ?? "—"}
+      </span>
+    </button>
   );
 }

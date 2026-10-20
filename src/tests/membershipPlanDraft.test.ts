@@ -56,9 +56,9 @@ describe("quota mapping (UI period ↔ backend quota)", () => {
     expect(choiceToQuota(choice, count)).toEqual(quota);
   });
 
-  it("keeps a lifetime cap on top of a period quota, and drops one below the count", () => {
-    expect(choiceToQuota("month", "1", "12")).toEqual({ perPeriod: 1, period: "month", total: 12 });
-    expect(choiceToQuota("month", "3", "2")).toEqual({ perPeriod: 3, period: "month", total: null });
+  it("never sends a period quota with a total beside it (one shape per benefit)", () => {
+    expect(choiceToQuota("month", "1")).toEqual({ perPeriod: 1, period: "month", total: null });
+    expect(choiceToQuota("week", "3")).toEqual({ perPeriod: 3, period: "week", total: null });
   });
 
   it("never widens an empty count on a limited choice into 'unlimited'", () => {
@@ -69,30 +69,30 @@ describe("quota mapping (UI period ↔ backend quota)", () => {
     expect(quotaToChoice({ perPeriod: 2, period: "week", total: null })).toEqual({
       choice: "week",
       count: "2",
-      totalCap: "",
-    });
-    expect(quotaToChoice({ perPeriod: 1, period: "month", total: 24 })).toEqual({
-      choice: "month",
-      count: "1",
-      totalCap: "24",
     });
     expect(quotaToChoice({ perPeriod: null, period: null, total: 6 })).toEqual({
       choice: "term",
       count: "6",
-      totalCap: "",
     });
     expect(quotaToChoice({ perPeriod: null, period: null, total: null }).choice).toBe("unlimited");
+  });
+
+  it("reads a legacy quota with both counters as its period choice, and saves it without the total", () => {
+    const legacy = { perPeriod: 1, period: "month" as const, total: 24 };
+    expect(quotaToChoice(legacy)).toEqual({ choice: "month", count: "1" });
+    const { choice, count } = quotaToChoice(legacy);
+    expect(choiceToQuota(choice, count)).toEqual({ perPeriod: 1, period: "month", total: null });
   });
 
   it("round-trips", () => {
     for (const quota of [
       { perPeriod: 1, period: "month" as const, total: null },
-      { perPeriod: 2, period: "week" as const, total: 10 },
+      { perPeriod: 2, period: "week" as const, total: null },
       { perPeriod: null, period: null, total: 5 },
       { perPeriod: null, period: null, total: null },
     ]) {
-      const { choice, count, totalCap } = quotaToChoice(quota);
-      expect(choiceToQuota(choice, count, totalCap)).toEqual(quota);
+      const { choice, count } = quotaToChoice(quota);
+      expect(choiceToQuota(choice, count)).toEqual(quota);
     }
   });
 });
@@ -165,7 +165,6 @@ describe("benefit payload", () => {
         id: "ben-1",
         quotaChoice: "month",
         quotaCount: "1",
-        maxPerTransaction: "2",
         options: [option({ id: "opt-1" }), option({ kind: "special_price", value: "120000", scope: { target: "service", serviceIds: ["svc-full"], productIds: [], categoryIds: [], serviceKinds: [] } })],
       }),
     );
@@ -173,7 +172,7 @@ describe("benefit payload", () => {
     expect(input.id).toBe("ben-1");
     expect(input.kind).toBeUndefined();
     expect(input.quota).toEqual({ perPeriod: 1, period: "month", total: null });
-    expect(input.maxPerTransaction).toBe(2);
+    expect(input).not.toHaveProperty("maxPerTransaction");
     expect(input.options).toHaveLength(2);
     expect(input.options?.[0].id).toBe("opt-1");
     expect(input.options?.[1].id).toBeUndefined();
@@ -194,7 +193,6 @@ describe("benefit payload", () => {
       scope: { target: "service", serviceIds: [], productIds: [], categoryIds: [], serviceKinds: ["grooming"] },
       value: 10,
       quota: { total: null, perPeriod: 2, period: "week" },
-      maxPerTransaction: 1,
       options: [
         {
           id: "ben-9",

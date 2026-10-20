@@ -110,16 +110,22 @@ export function PlanPreview({
   return (
     <aside
       aria-label="Pratinjau paket"
-      className="flex flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-sm"
+      className="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm"
     >
-      <div className="flex flex-col gap-2 bg-navy-100 p-4">
-        <p className="text-xs font-semibold text-muted">Pratinjau · kasir & website</p>
-        <h3 className="text-base font-bold">{draft.name.trim() || "Paket tanpa nama"}</h3>
-        <p className="text-lg font-semibold tabular-nums">
-          {priceText}{" "}
-          <span className="text-sm font-normal text-muted">/ {months || "—"} bulan</span>
+      <div className="flex flex-col gap-2 bg-primary p-5 text-primary-foreground">
+        <p className="text-xs font-semibold tracking-widest text-primary-foreground/75 uppercase">
+          Pratinjau · kasir & website
         </p>
-        <ul className="flex flex-wrap gap-1.5" aria-label="Ringkas">
+        <h3 className="text-xl font-extrabold text-primary-foreground">
+          {draft.name.trim() || "Paket tanpa nama"}
+        </h3>
+        <p className="text-3xl font-extrabold tracking-tight tabular-nums">
+          {priceText}{" "}
+          <span className="text-sm font-medium tracking-normal text-primary-foreground/75">
+            / {months || "—"} bulan
+          </span>
+        </p>
+        <ul className="mt-1 flex flex-wrap gap-1.5" aria-label="Ringkas">
           <Tag>Melekat ke {ATTACH_TO_LABEL[draft.attachTo].toLowerCase()}</Tag>
           <Tag>{ELIGIBILITY_LABEL[draft.eligibility]}</Tag>
           {species && <Tag>{species}</Tag>}
@@ -127,9 +133,11 @@ export function PlanPreview({
         </ul>
       </div>
 
-      <div className="flex flex-col gap-4 p-4">
-        <section className="flex flex-col gap-2">
-          <h4 className="text-sm font-semibold">Yang didapat</h4>
+      <div className="flex flex-col gap-4 p-5">
+        <section className="flex flex-col gap-3">
+          <h4 className="border-b border-border pb-3 text-xs font-medium text-muted">
+            Yang didapat
+          </h4>
           {draft.benefits.length === 0 ? (
             <p className="text-sm text-muted">Belum ada benefit.</p>
           ) : (
@@ -139,18 +147,17 @@ export function PlanPreview({
                   <p>
                     <span className="font-semibold">{benefit.label.trim() || "Benefit tanpa nama"}</span>
                     {benefit.type === "perk" ? (
-                      <span className="text-muted"> · fasilitas</span>
+                      <span className="ml-1.5 text-xs font-semibold text-warning">fasilitas</span>
                     ) : (
-                      <span className="text-muted">
-                        {" "}
-                        · {quotaText(choiceToQuota(benefit.quotaChoice, benefit.quotaCount, benefit.totalCap))}
+                      <span className="ml-1.5 text-xs font-semibold text-warning">
+                        {quotaText(choiceToQuota(benefit.quotaChoice, benefit.quotaCount))}
                       </span>
                     )}
                   </p>
                   {benefit.type === "allowance" &&
                     benefit.options.map((option, j) => (
-                      <p key={option.key} className="text-muted">
-                        {j > 0 && <span className="font-semibold">atau </span>}
+                      <p key={option.key}>
+                        {j > 0 && <span className="text-xs font-semibold text-muted">atau </span>}
                         {optionText(option, nameOf, serviceById)}
                       </p>
                     ))}
@@ -160,8 +167,10 @@ export function PlanPreview({
           )}
         </section>
 
-        <section className="flex flex-col gap-2 border-t border-border pt-4">
-          <h4 className="text-sm font-semibold">Estimasi nilai untuk owner</h4>
+        <section className="flex flex-col gap-3 rounded-xl bg-tint-warning p-4">
+          <h4 className="text-xs font-medium text-muted">
+            Estimasi nilai untuk owner
+          </h4>
           {!priceable ? (
             <p className="text-sm text-muted">
               Estimasi muncul setelah ada opsi yang memilih layanan tertentu.
@@ -186,7 +195,7 @@ export function PlanPreview({
                   value={estimate.price === null ? "—" : formatRupiah(rupiahString(estimate.price))}
                 />
               </dl>
-              <p className="rounded-lg bg-tint-success px-3 py-2 text-sm font-semibold text-success">
+              <p className="text-sm font-semibold text-warning">
                 {estimate.price === null
                   ? "Harga paket untuk varian ini belum diisi"
                   : estimate.price <= 0
@@ -237,7 +246,7 @@ export function optionText(
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
-    <li className="rounded-full bg-surface px-2 py-0.5 text-xs font-medium text-primary">
+    <li className="rounded-full bg-primary-foreground/15 px-2.5 py-1 text-xs font-semibold text-primary-foreground">
       {children}
     </li>
   );
@@ -246,8 +255,8 @@ function Tag({ children }: { children: React.ReactNode }) {
 function Line({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-muted">{label}</dt>
-      <dd className="font-medium tabular-nums">{value}</dd>
+      <dt>{label}</dt>
+      <dd className="font-semibold tabular-nums">{value}</dd>
     </div>
   );
 }

@@ -183,6 +183,12 @@ export const BENEFIT_KIND_HINT: Record<BenefitKind, string> = {
   perk: "Tidak memotong harga — mis. prioritas booking. Hanya tampil sebagai catatan.",
 };
 
+/** The ⓘ on "Jenis benefit" — both choices, one line each. */
+export const BENEFIT_TYPE_TOOLTIP = [
+  "Jatah & potongan: jatah layanan atau potongan harga yang dipakai di kasir dan booking.",
+  "Fasilitas: " + BENEFIT_KIND_HINT.perk,
+].join("\n");
+
 export const OPTION_PRICE_MODE_LABEL: Record<OptionPriceMode, string> = {
   same: "Sama untuk semua varian",
   variant: "Beda per varian",
@@ -221,19 +227,22 @@ export const PERIOD_RESET_HINT: Record<BenefitPeriod, string> = {
   month: "Jatah kembali tiap bulan, dihitung dari tanggal mulai.",
 };
 
-/**
- * "1× per bulan" · "4× selama masa berlaku" · "tanpa batas" — and the lifetime
- * cap on top of a period quota, when one is set ("2× per bulan, maks. 12×").
- */
+/** The ⓘ on "Periode kuota" — every choice explained in one place. */
+export const QUOTA_PERIOD_TOOLTIP = [
+  "× per minggu: jatah kembali tiap 7 hari, dihitung dari tanggal mulai.",
+  "× per bulan: jatah kembali tiap bulan, dihitung dari tanggal mulai.",
+  "× selama masa berlaku: jatah dipakai sepanjang masa berlaku dan tidak kembali.",
+  "Tidak terbatas: tanpa kuota, bisa dipakai setiap transaksi yang cocok.",
+].join("\n");
+
+/** "1× per bulan" · "4× selama masa berlaku" · "tanpa batas". */
 export function quotaText(quota: Partial<BenefitQuota> | null | undefined): string {
   const perPeriod = quota?.perPeriod ?? null;
   const period = quota?.period ?? null;
   const total = quota?.total ?? null;
 
-  if (perPeriod && period) {
-    const base = `${perPeriod}× per ${PERIOD_LABEL[period]}`;
-    return total ? `${base}, maks. ${total}×` : base;
-  }
+  // One quota shape per benefit; a legacy quota with both reads as its period.
+  if (perPeriod && period) return `${perPeriod}× per ${PERIOD_LABEL[period]}`;
   if (total) return `${total}× selama masa berlaku`;
   return "tanpa batas";
 }
@@ -269,11 +278,8 @@ export const REASON_LABEL: Record<BenefitUnavailableReason, string> = {
   period_exhausted: "Jatah periode ini sudah dipakai",
 };
 
-/** The quote adds one more: the cart already took the benefit's per-transaction limit. */
-export const QUOTE_REASON_LABEL: Record<QuoteUnavailableReason, string> = {
-  ...REASON_LABEL,
-  max_per_transaction: "Batas per transaksi sudah terpakai",
-};
+/** A quote's `unavailable[]` reasons — the same as a card's benefit. */
+export const QUOTE_REASON_LABEL: Record<QuoteUnavailableReason, string> = REASON_LABEL;
 
 /* ─────────────────────────────────────────────────────── kelola */
 

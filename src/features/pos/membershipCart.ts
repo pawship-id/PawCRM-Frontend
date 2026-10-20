@@ -253,7 +253,6 @@ export function unavailableChip(entry: BenefitQuoteUnavailable): string {
   switch (entry.reason) {
     case "quota_exhausted":
     case "period_exhausted":
-    case "max_per_transaction":
       return `${entry.benefitLabel} habis`;
     case "paused":
       return "Member ditunda";

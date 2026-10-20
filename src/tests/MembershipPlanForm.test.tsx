@@ -75,7 +75,7 @@ describe("MembershipPlanForm", () => {
     renderWithAuth(<MembershipPlanForm />);
 
     expect(screen.getByRole("heading", { name: "Paket membership baru" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Kode")).toHaveAttribute("placeholder", "Otomatis");
+    expect(screen.getByLabelText("Kode paket")).toHaveAttribute("placeholder", "Otomatis");
 
     // Blocked until a name is typed — and the bar says why.
     const save = screen.getByRole("button", { name: "Simpan paket" });
@@ -147,15 +147,15 @@ describe("MembershipPlanForm", () => {
     const user = userEvent.setup();
     renderWithAuth(<MembershipPlanForm />);
 
-    const mode = screen.getByRole("radiogroup", { name: "Mode harga" });
-    expect(within(mode).getByRole("radio", { name: "Per varian hewan" })).toBeEnabled();
+    // "Jenis harga" is a select now; the reason the variant option is closed
+    // is said under it once the package belongs to a customer.
+    const lockedNote = "Per varian hewan hanya untuk paket yang melekat ke hewan.";
+    expect(screen.getByRole("combobox", { name: /Jenis harga/ })).toBeInTheDocument();
+    expect(screen.queryByText(lockedNote)).not.toBeInTheDocument();
 
-    await user.click(
-      within(screen.getByRole("radiogroup", { name: "Melekat ke" })).getByRole("radio", {
-        name: "Pelanggan",
-      }),
-    );
-    expect(within(mode).getByRole("radio", { name: "Per varian hewan" })).toBeDisabled();
+    await user.click(screen.getByRole("combobox", { name: "Melekat ke" }));
+    await user.click(screen.getByRole("option", { name: "Pelanggan" }));
+    expect(screen.getByText(lockedNote)).toBeInTheDocument();
   });
 
   it("puts a server field error under its option", async () => {
@@ -192,7 +192,6 @@ describe("MembershipPlanForm", () => {
           scope: { target: "addon", serviceIds: [], productIds: [], categoryIds: [], serviceKinds: [] },
           value: 10,
           quota: { total: null, perPeriod: null, period: null },
-          maxPerTransaction: 5,
           options: [
             {
               id: "opt-1",
@@ -225,9 +224,9 @@ describe("MembershipPlanForm", () => {
     expect(payload.benefits?.[0]).toMatchObject({
       id: "ben-1",
       quota: { total: null, perPeriod: null, period: null },
-      maxPerTransaction: 5,
       options: [expect.objectContaining({ id: "opt-1", value: 10 })],
     });
+    expect(payload.benefits?.[0]).not.toHaveProperty("maxPerTransaction");
     expect(await screen.findByText("Persen wajib diisi")).toBeInTheDocument();
   });
 });

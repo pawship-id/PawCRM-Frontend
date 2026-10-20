@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarClock, CalendarDays, Store, Ticket } from "lucide-react";
+import {
+  BellRing,
+  CalendarDays,
+  CircleCheck,
+  Clock,
+  CreditCard,
+  Gift,
+  Store,
+  Tag,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import {
@@ -271,7 +280,17 @@ function AttentionPanel({
   }[];
 }) {
   return (
-    <Card title="Perlu tindakan" description="Mengikuti cabang di atas · 14 hari ke depan.">
+    <Card
+      title={
+        <span className="flex items-center gap-3">
+          <span className="flex size-9 items-center justify-center rounded-lg bg-tint-danger text-danger">
+            <BellRing className="size-4" aria-hidden />
+          </span>
+          Perlu tindakan
+        </span>
+      }
+      action={<span className="text-sm text-muted">Ikut cabang di atas</span>}
+    >
       {error ? (
         <Alert variant="error">{error}</Alert>
       ) : loading ? (
@@ -279,9 +298,10 @@ function AttentionPanel({
           <Spinner size={24} />
         </div>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="flex flex-col gap-4">
           <AttentionList
-            icon={<CalendarClock className="size-4" aria-hidden />}
+            tone="warning"
+            icon={<Clock className="size-4" aria-hidden />}
             title="Membership berakhir ≤14 hari"
             hint="Waktu paling tepat menawarkan perpanjangan (paket dengan syarat pembeli Perpanjangan)."
             empty="Tidak ada membership yang segera berakhir."
@@ -296,7 +316,7 @@ function AttentionPanel({
             }))}
           />
           <AttentionList
-            icon={<Ticket className="size-4" aria-hidden />}
+            icon={<CreditCard className="size-4" aria-hidden />}
             title="Jatah belum terpakai, periode hampir habis"
             hint="Jatah per bulan atau per minggu hangus di akhir periode. Mengingatkan pelanggan membuat mereka datang dan merasa paketnya bernilai."
             empty="Tidak ada jatah yang hampir hangus."
@@ -309,6 +329,26 @@ function AttentionPanel({
               actionLabel: "Ingatkan",
               message: `Halo Kak ${row.card.customerName ?? ""}, jatah ${row.benefit.label}${row.card.petName ? ` untuk ${row.card.petName}` : ""} masih ${row.remaining}× dan berlaku sampai ${formatDate(row.periodEnd)}. Mau dijadwalkan?`,
             }))}
+          />
+          {/*
+            Not in V1 (BO, 15 October 2026: membership first). Drawn now so the
+            panel already has the shape the prototype shows, and says plainly
+            that these lists arrive with kartu stempel and promo.
+          */}
+          <ComingSoonList
+            icon={<CircleCheck className="size-4" aria-hidden />}
+            title="Kartu stempel kurang 1 lagi"
+            note="Muncul setelah fitur kartu stempel tersedia."
+          />
+          <ComingSoonList
+            icon={<Gift className="size-4" aria-hidden />}
+            title="Reward stempel belum dipakai"
+            note="Muncul setelah fitur kartu stempel tersedia."
+          />
+          <ComingSoonList
+            icon={<Tag className="size-4" aria-hidden />}
+            title="Promo berakhir ≤14 hari"
+            note="Muncul setelah fitur promo tersedia."
           />
         </div>
       )}
@@ -326,13 +366,52 @@ interface AttentionRow {
   message: string;
 }
 
+/** The bordered box every list in the panel sits in; warning tint for the urgent one. */
+function AttentionBox({
+  tone,
+  label,
+  header,
+  children,
+}: {
+  tone?: "warning";
+  label: string;
+  header: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      aria-label={label}
+      className={
+        tone === "warning"
+          ? "rounded-xl border border-warning/40 bg-tint-warning/50 px-4 py-3"
+          : "rounded-xl border border-border bg-surface px-4 py-3"
+      }
+    >
+      <h3 className="flex items-center gap-2 border-b border-border pb-3 text-base font-bold">
+        {header}
+      </h3>
+      {children}
+    </section>
+  );
+}
+
+function CountBadge({ children }: { children: ReactNode }) {
+  return (
+    <span className="ml-auto inline-flex min-w-7 items-center justify-center rounded-full border border-border bg-surface px-2 py-0.5 text-xs font-semibold tabular-nums">
+      {children}
+    </span>
+  );
+}
+
 function AttentionList({
+  tone,
   icon,
   title,
   hint,
   empty,
   rows,
 }: {
+  tone?: "warning";
   icon: ReactNode;
   title: string;
   hint: string;
@@ -343,49 +422,55 @@ function AttentionList({
   const shown = all ? rows : rows.slice(0, PREVIEW_ROWS);
 
   return (
-    <section className="flex flex-col gap-2" aria-label={title}>
-      <h3 className="flex items-center gap-2 text-sm font-semibold">
-        <span className="text-primary">{icon}</span>
-        {title}
-        <InfoTooltip hint={hint} />
-        <span className="ml-auto rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted tabular-nums">
-          {rows.length}
-        </span>
-      </h3>
-
+    <AttentionBox
+      tone={tone}
+      label={title}
+      header={
+        <>
+          {icon}
+          {title}
+          <InfoTooltip hint={hint} />
+          <CountBadge>{rows.length}</CountBadge>
+        </>
+      }
+    >
       {rows.length === 0 ? (
-        <p className="py-4 text-sm text-muted">{empty}</p>
+        <p className="py-3 text-sm text-muted">{empty}</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
           {shown.map((row) => {
             const wa = whatsAppWith(row.phone, row.message);
             return (
-              <li key={row.key} className="flex flex-wrap items-center justify-between gap-3 py-3">
+              <li key={row.key} className="flex items-start justify-between gap-3 py-3">
                 <div className="min-w-0">
                   <Link
                     href={row.href}
-                    className="text-sm font-medium underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className="text-[15px] font-semibold underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                   >
                     {row.name}
                   </Link>
                   <p className="text-sm text-muted tabular-nums">{row.detail}</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  {row.phone && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => copyPhone(row.phone!)}>
-                      Salin nomor
-                    </Button>
-                  )}
-                  {wa ? (
-                    <Button asChild variant="secondary" size="sm">
-                      <a href={wa} target="_blank" rel="noopener noreferrer">
-                        {row.actionLabel}
-                      </a>
-                    </Button>
-                  ) : (
-                    <span className="text-sm text-muted">Nomor belum ada</span>
-                  )}
-                </div>
+                {wa ? (
+                  <a
+                    href={wa}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 text-sm font-semibold text-warning underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    {row.actionLabel}
+                  </a>
+                ) : row.phone ? (
+                  <button
+                    type="button"
+                    onClick={() => copyPhone(row.phone!)}
+                    className="shrink-0 cursor-pointer text-sm font-semibold text-warning underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                  >
+                    Salin nomor
+                  </button>
+                ) : (
+                  <span className="shrink-0 text-sm text-muted">Nomor belum ada</span>
+                )}
               </li>
             );
           })}
@@ -393,10 +478,29 @@ function AttentionList({
       )}
 
       {rows.length > PREVIEW_ROWS && (
-        <Button type="button" variant="ghost" size="sm" className="self-start" onClick={() => setAll(!all)}>
+        <Button type="button" variant="ghost" size="sm" className="mt-1" onClick={() => setAll(!all)}>
           {all ? "Tampilkan lebih sedikit" : `Tampilkan semua (${rows.length})`}
         </Button>
       )}
-    </section>
+    </AttentionBox>
+  );
+}
+
+function ComingSoonList({ icon, title, note }: { icon: ReactNode; title: string; note: string }) {
+  return (
+    <AttentionBox
+      label={title}
+      header={
+        <>
+          <span className="text-muted">{icon}</span>
+          <span className="text-muted">{title}</span>
+          <span className="ml-auto rounded-full bg-tint-warning px-2 py-0.5 text-xs font-semibold text-secondary-foreground">
+            Segera
+          </span>
+        </>
+      }
+    >
+      <p className="py-3 text-sm text-muted">{note}</p>
+    </AttentionBox>
   );
 }

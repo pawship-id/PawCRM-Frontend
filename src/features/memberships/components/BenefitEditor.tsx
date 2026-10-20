@@ -11,11 +11,11 @@ import { MEMBERSHIP_LIMITS } from "@/types/membership";
 import type { CatalogItem } from "../hooks/useMembershipCatalog";
 import { isHomeService } from "../hooks/useMembershipCatalog";
 import {
-  BENEFIT_KIND_HINT,
+  BENEFIT_TYPE_TOOLTIP,
   OPTION_KIND_LABEL,
   OPTION_PRICE_MODE_LABEL,
-  PERIOD_RESET_HINT,
   QUOTA_CHOICE_LABEL,
+  QUOTA_PERIOD_TOOLTIP,
   VISIT_FEE_LABEL,
   type QuotaChoice,
 } from "../labels";
@@ -28,7 +28,7 @@ import {
 } from "../planDraft";
 import { servicePriceFor, serviceVariantPrices, parseVariantKey } from "../variantKey";
 import { BenefitScopeField } from "./BenefitScopeField";
-import { FieldBlock, Segmented } from "./FormBits";
+import { FieldBlock, Segmented, SelectBlock } from "./FormBits";
 import { VariantPriceTable } from "./VariantPriceTable";
 
 /**
@@ -126,26 +126,25 @@ export function BenefitEditor({
                 </Button>
               </div>
 
-              <FieldBlock label="Jenis benefit" hint={perk ? BENEFIT_KIND_HINT.perk : undefined}>
-                <Segmented
-                  ariaLabel={`Jenis benefit ${index + 1}`}
-                  value={benefit.type}
-                  options={[
-                    { value: "allowance", label: "Jatah & potongan" },
-                    { value: "perk", label: "Fasilitas" },
-                  ]}
-                  onChange={(type) =>
-                    patch(index, {
-                      type,
-                      // Coming back from a perk, start with one option to fill.
-                      options:
-                        type === "allowance" && benefit.options.length === 0
-                          ? [newOptionDraft()]
-                          : benefit.options,
-                    })
-                  }
-                />
-              </FieldBlock>
+              <SelectBlock<"allowance" | "perk">
+                label="Jenis benefit"
+                tooltip={BENEFIT_TYPE_TOOLTIP}
+                value={benefit.type}
+                options={[
+                  { value: "allowance", label: "Jatah & potongan" },
+                  { value: "perk", label: "Fasilitas" },
+                ]}
+                onChange={(type) =>
+                  patch(index, {
+                    type,
+                    // Coming back from a perk, start with one option to fill.
+                    options:
+                      type === "allowance" && benefit.options.length === 0
+                        ? [newOptionDraft()]
+                        : benefit.options,
+                  })
+                }
+              />
 
               <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,13rem)]">
                 <TextField
@@ -169,23 +168,19 @@ export function BenefitEditor({
                       onChange={(event) => patch(index, { quotaCount: event.target.value })}
                       error={err("quota.perPeriod") ?? err("quota.total")}
                     />
-                    <SelectField
+                    <SelectBlock<QuotaChoice>
                       label="Periode kuota"
+                      tooltip={QUOTA_PERIOD_TOOLTIP}
                       value={benefit.quotaChoice}
                       options={QUOTA_OPTIONS}
                       onChange={(value) =>
                         patch(index, {
-                          quotaChoice: value as QuotaChoice,
+                          quotaChoice: value,
                           quotaCount:
                             value !== "unlimited" && !benefit.quotaCount ? "1" : benefit.quotaCount,
                         })
                       }
                       error={err("quota")}
-                      hint={
-                        benefit.quotaChoice === "week" || benefit.quotaChoice === "month"
-                          ? PERIOD_RESET_HINT[benefit.quotaChoice]
-                          : undefined
-                      }
                     />
                   </>
                 )}
@@ -248,34 +243,6 @@ export function BenefitEditor({
                     </p>
                   )}
 
-                  <details className="rounded-lg bg-surface-hover px-3 py-2">
-                    <summary className="cursor-pointer rounded-md py-1 text-sm font-medium outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
-                      Pengaturan lanjutan
-                    </summary>
-                    <div className="grid gap-4 pt-3 pb-1 sm:grid-cols-2">
-                      <TextField
-                        label="Maksimal baris per transaksi"
-                        type="number"
-                        min={1}
-                        value={benefit.maxPerTransaction}
-                        onChange={(event) => patch(index, { maxPerTransaction: event.target.value })}
-                        hint="Berapa baris dalam satu struk boleh memakai benefit ini."
-                        error={err("maxPerTransaction")}
-                      />
-                      {(benefit.quotaChoice === "week" || benefit.quotaChoice === "month") && (
-                        <TextField
-                          label="Batas total selama masa berlaku"
-                          type="number"
-                          min={1}
-                          value={benefit.totalCap}
-                          placeholder="Tanpa batas"
-                          onChange={(event) => patch(index, { totalCap: event.target.value })}
-                          hint="Opsional. Mis. 1× per bulan, maksimal 10× selama masa berlaku."
-                          error={err("quota.total")}
-                        />
-                      )}
-                    </div>
-                  </details>
                 </>
               )}
             </section>

@@ -51,7 +51,9 @@ describe("membership labels", () => {
 
   it("states a quota in a few words", () => {
     expect(quotaText({ perPeriod: 1, period: "month", total: null })).toBe("1× per bulan");
-    expect(quotaText({ perPeriod: 2, period: "week", total: 12 })).toBe("2× per minggu, maks. 12×");
+    expect(quotaText({ perPeriod: 2, period: "week", total: null })).toBe("2× per minggu");
+    // A legacy quota with both counters reads as its period quota.
+    expect(quotaText({ perPeriod: 2, period: "week", total: 12 })).toBe("2× per minggu");
     expect(quotaText({ perPeriod: null, period: null, total: 4 })).toBe("4× selama masa berlaku");
     expect(quotaText({ perPeriod: null, period: null, total: null })).toBe("tanpa batas");
   });

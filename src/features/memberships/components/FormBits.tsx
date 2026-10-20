@@ -3,6 +3,13 @@
 import { useId, type ReactNode } from "react";
 
 import { InfoTooltip } from "@/components";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 /**
@@ -115,5 +122,50 @@ export function FieldBlock({
         <p className="text-xs text-muted">{hint}</p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A short closed list (`SelectField`'s job) whose label carries an ⓘ — for a
+ * choice whose meaning takes a sentence (Melekat ke, Syarat pembeli). The
+ * explanation lives in the tooltip, not as a hint line under the control.
+ */
+export function SelectBlock<T extends string>({
+  label,
+  tooltip,
+  value,
+  options,
+  onChange,
+  error,
+  className,
+}: {
+  label: string;
+  tooltip?: string;
+  value: T;
+  options: { value: T; label: string; disabled?: boolean }[];
+  onChange: (value: T) => void;
+  error?: string;
+  className?: string;
+}) {
+  return (
+    <FieldBlock label={label} tooltip={tooltip} error={error} className={className}>
+      <Select value={value} onValueChange={(next) => onChange(next as T)}>
+        <SelectTrigger
+          size="lg"
+          aria-label={label}
+          aria-invalid={Boolean(error) || undefined}
+          className={cn("w-full", error && "border-danger focus-visible:ring-danger/40")}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </FieldBlock>
   );
 }

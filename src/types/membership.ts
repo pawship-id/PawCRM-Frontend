@@ -85,8 +85,12 @@ export type BenefitUnavailableReason =
   | "quota_exhausted"
   | "period_exhausted";
 
-/** A quote can also say the cart itself used the benefit up. */
-export type QuoteUnavailableReason = BenefitUnavailableReason | "max_per_transaction";
+/**
+ * What a quote's `unavailable[]` can say. The same reasons as a card's benefit
+ * — a cart that used the quota up reads `quota_exhausted` / `period_exhausted`
+ * (there is no per-transaction line limit).
+ */
+export type QuoteUnavailableReason = BenefitUnavailableReason;
 
 /** What a change-log row records (§3.1 `history`). */
 export type MembershipHistoryAction =
@@ -206,7 +210,6 @@ export interface MembershipBenefit {
   scope: BenefitScope;
   value: number | string | null;
   quota: BenefitQuota;
-  maxPerTransaction: number;
   /** `[]` on a perk. A legacy benefit comes back with ONE option. */
   options: BenefitOption[];
   /**
@@ -542,7 +545,6 @@ export interface BenefitInput {
   scope?: Partial<BenefitScope>;
   value?: number | string | null;
   quota?: Partial<BenefitQuota>;
-  maxPerTransaction?: number;
   options?: BenefitOptionInput[];
 }
 

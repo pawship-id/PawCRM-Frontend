@@ -102,7 +102,8 @@ describe("PromosiSummaryScreen", () => {
     expect(within(expiring).getByText("Mochi · Rina Wijaya")).toBeInTheDocument();
     const offer = within(expiring).getByRole("link", { name: "Tawarkan perpanjang" });
     expect(offer.getAttribute("href")).toMatch(/^https:\/\/wa\.me\/6281211112222\?text=/);
-    expect(within(expiring).getByRole("button", { name: "Salin nomor" })).toBeInTheDocument();
+    // One action per row, as in the prototype — the chat link, not a copy button beside it.
+    expect(within(expiring).queryByRole("button", { name: "Salin nomor" })).not.toBeInTheDocument();
 
     const unused = screen.getByRole("region", { name: "Jatah belum terpakai, periode hampir habis" });
     expect(within(unused).getByText("Budi")).toBeInTheDocument();
@@ -120,6 +121,20 @@ describe("PromosiSummaryScreen", () => {
 
     expect(await screen.findByText("Tidak ada membership yang segera berakhir.")).toBeInTheDocument();
     expect(screen.getByText("Tidak ada jatah yang hampir hangus.")).toBeInTheDocument();
+  });
+
+  it("draws the lists that arrive after V1 as Segera", async () => {
+    primeAll({ withinDays: 14, expiring: [], unusedQuota: [] });
+    renderWithAuth(<PromosiSummaryScreen />);
+
+    for (const title of [
+      "Kartu stempel kurang 1 lagi",
+      "Reward stempel belum dipakai",
+      "Promo berakhir ≤14 hari",
+    ]) {
+      const region = await screen.findByRole("region", { name: title });
+      expect(within(region).getByText("Segera")).toBeInTheDocument();
+    }
   });
 
   it("re-asks the summary for the chosen cabang and periode", async () => {

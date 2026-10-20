@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { EllipsisVertical, Eye, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { EllipsisVertical, Eye, ListFilter, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 
 import { useState } from "react";
 
@@ -10,9 +10,11 @@ import {
   Card,
   ConfirmDialog,
   FilterBar,
+  FilterPanel,
   FilterSearch,
   FilterSelect,
   FilterToggle,
+  FilterTrigger,
   ListFooter,
   Spinner,
   withAll,
@@ -59,10 +61,10 @@ import { ToneBadge } from "./MembershipStatusBadge";
 /**
  * The membership CATALOGUE — what a shop sells (BO prototype `membershipPaket`).
  *
- * A QUICK BAR, not a filter panel (ui-rules §8): Status, Melekat ke, Syarat
- * pembeli and the ordering, all single-selects that auto-apply, plus the
- * "terhapus" toggle and search. Search LEADS the row (`searchPlacement`), as in
- * the prototype: a shop looking for one package types its code or name first.
+ * ONE ROW — search, one `Filter (n)` button, Paket baru — like Supplier and
+ * the other lists (ui-rules §8). Status, Melekat ke, Syarat pembeli, the
+ * ordering and "terhapus" sit in the panel and wait for Terapkan; the ordering
+ * is not counted on the button. Search leads and takes what is left of the row.
  *
  * BENEFITS ARE CHIPS, AND SHORT (BO, 16 October 2026): at most two —
  * "Grooming 1×", "Add-on ∞" — then "+n". The sentence lives on the detail.
@@ -176,17 +178,20 @@ export function MembershipPlansPanel() {
     <div className="flex flex-col gap-4">
       <FilterBar
         searchPlacement="leading"
+        searchClassName="min-w-[12rem] flex-1"
+        actionsClassName="max-sm:w-full"
         search={
           <FilterSearch
             value={query.search ?? ""}
             onChange={(value) => patchQuery({ search: value })}
             ariaLabel="Cari paket membership"
             placeholder="Cari kode atau nama paket"
+            fill
           />
         }
         actions={
           <Can feature="membershipPlans" action="create">
-            <Button asChild>
+            <Button asChild className="w-full">
               <Link href={MEMBERSHIP_NEW_PLAN_HREF}>
                 <Plus className="size-4" aria-hidden />
                 Paket baru
@@ -195,41 +200,22 @@ export function MembershipPlansPanel() {
           </Can>
         }
       >
-        <FilterSelect
-          label="Status"
-          value={
-            query.isActive === undefined ? "" : String(query.isActive)
-          }
-          options={STATUS_OPTIONS}
-          onChange={(value) =>
-            patchQuery({ isActive: value === "" ? undefined : value === "true" })
-          }
-        />
-        <FilterSelect
-          label="Melekat ke"
-          value={query.attachTo ?? ""}
-          options={ATTACH_OPTIONS}
-          onChange={(value) => patchQuery({ attachTo: (value || undefined) as AttachTo | undefined })}
-        />
-        <FilterSelect
-          label="Syarat pembeli"
-          value={query.eligibility ?? ""}
-          options={ELIGIBILITY_OPTIONS}
-          onChange={(value) =>
-            patchQuery({ eligibility: (value || undefined) as Eligibility | undefined })
-          }
-        />
-        <FilterSelect
-          label="Urutkan"
-          value={query.sort ?? "newest"}
-          options={SORT_OPTIONS}
-          onChange={(value) => patchQuery({ sort: value })}
-        />
-        <FilterToggle
-          label="Tampilkan terhapus"
-          checked={query.includeDeleted ?? false}
-          onChange={(checked) =>
-            patchQuery({ includeDeleted: checked || undefined })
+        <PlanFilterPanel
+          applied={{
+            status: query.isActive === undefined ? "" : String(query.isActive),
+            attachTo: query.attachTo ?? "",
+            eligibility: query.eligibility ?? "",
+            sort: query.sort ?? "newest",
+            includeDeleted: query.includeDeleted ?? false,
+          }}
+          onApply={(next) =>
+            patchQuery({
+              isActive: next.status === "" ? undefined : next.status === "true",
+              attachTo: (next.attachTo || undefined) as AttachTo | undefined,
+              eligibility: (next.eligibility || undefined) as Eligibility | undefined,
+              sort: next.sort,
+              includeDeleted: next.includeDeleted || undefined,
+            })
           }
         />
       </FilterBar>
@@ -462,5 +448,120 @@ function BenefitChips({ plan }: { plan: MembershipPlan }) {
         </li>
       )}
     </ul>
+  );
+}
+
+/** Everything the panel edits, as one draft. */
+interface PlanFilters {
+  status: string;
+  attachTo: string;
+  eligibility: string;
+  sort: string;
+  includeDeleted: boolean;
+}
+
+/** What Reset returns to — the list's own defaults (the ordering is put back, not cleared). */
+const CLEARED_FILTERS: PlanFilters = {
+  status: "",
+  attachTo: "",
+  eligibility: "",
+  sort: "newest",
+  includeDeleted: false,
+};
+
+/**
+ * Status, Melekat ke, Syarat pembeli, Urutkan and "terhapus" behind one button.
+ * The fields wait for Terapkan; Reset applies at once (ui-rules §8).
+ */
+function PlanFilterPanel({
+  applied,
+  onApply,
+}: {
+  applied: PlanFilters;
+  onApply: (next: PlanFilters) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(applied);
+
+  /* The ordering is never "on" — every list has one — so it is not counted. */
+  const count = [
+    applied.status !== "",
+    applied.attachTo !== "",
+    applied.eligibility !== "",
+    applied.includeDeleted,
+  ].filter(Boolean).length;
+
+  function patch(change: Partial<PlanFilters>) {
+    setDraft((prev) => ({ ...prev, ...change }));
+  }
+
+  function onOpenChange(next: boolean) {
+    // Seeded on every open, so clicking away abandons the draft.
+    if (next) setDraft(applied);
+    setOpen(next);
+  }
+
+  return (
+    <>
+      <FilterTrigger
+        label={count === 0 ? "Filter" : `Filter (${count})`}
+        active={count > 0}
+        icon={<ListFilter className="size-4" />}
+        aria-label="Filter"
+        onClick={() => onOpenChange(true)}
+      />
+
+      <FilterPanel
+        open={open}
+        onOpenChange={onOpenChange}
+        onReset={() => {
+          onApply(CLEARED_FILTERS);
+          setOpen(false);
+        }}
+        onApply={() => {
+          onApply(draft);
+          setOpen(false);
+        }}
+      >
+        <FilterSelect
+          layout="field"
+          label="Urutkan"
+          ariaLabel="Urutkan"
+          value={draft.sort}
+          options={SORT_OPTIONS}
+          unsetValue="newest"
+          onChange={(sort) => patch({ sort })}
+        />
+        <FilterSelect
+          layout="field"
+          label="Status"
+          ariaLabel="Filter status"
+          value={draft.status}
+          options={STATUS_OPTIONS}
+          onChange={(status) => patch({ status })}
+        />
+        <FilterSelect
+          layout="field"
+          label="Melekat ke"
+          ariaLabel="Filter melekat ke"
+          value={draft.attachTo}
+          options={ATTACH_OPTIONS}
+          onChange={(attachTo) => patch({ attachTo })}
+        />
+        <FilterSelect
+          layout="field"
+          label="Syarat pembeli"
+          ariaLabel="Filter syarat pembeli"
+          value={draft.eligibility}
+          options={ELIGIBILITY_OPTIONS}
+          onChange={(eligibility) => patch({ eligibility })}
+        />
+        <FilterToggle
+          label="Tampilkan paket terhapus"
+          checked={draft.includeDeleted}
+          onChange={(includeDeleted) => patch({ includeDeleted })}
+        />
+      </FilterPanel>
+    </>
   );
 }

@@ -109,7 +109,7 @@ export function BenefitScopeField({
         : undefined;
 
   return (
-    <div className="grid gap-3 sm:grid-cols-[minmax(0,10rem)_minmax(0,11rem)_minmax(0,1fr)]">
+    <div className="grid gap-3 sm:grid-cols-2">
       <SelectField
         label="Jenis"
         value={target}
@@ -149,11 +149,10 @@ export function BenefitScopeField({
       )}
 
       {target === "any" ? (
-        <p className="self-end pb-3 text-sm text-muted">
-          Berlaku untuk baris apa pun di struk.
-        </p>
+        <p className="text-sm text-muted sm:col-span-2">Berlaku untuk baris apa pun di struk.</p>
       ) : (
         <FilterMultiSelect
+          className="sm:col-span-2"
           layout="form"
           label={target === "product" ? "Produk" : target === "addon" ? "Add-on" : "Layanan"}
           values={picked}

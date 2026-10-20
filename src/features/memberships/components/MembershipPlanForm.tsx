@@ -8,6 +8,7 @@ import {
   Card,
   CheckRow,
   CheckRowGroup,
+  FIELD_HEIGHT,
   FilterMultiSelect,
   FilterSelect,
   FormActionBar,
@@ -17,11 +18,13 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { useBranchOptions } from "@/features/inventory/hooks/useBranchOptions";
 import { usePetOptions } from "@/hooks/usePetOptions";
 import { swalToast } from "@/lib/swal";
 import { membershipService } from "@/services/membership.service";
 import type { AttachTo, Eligibility, MembershipPlan, PlanPriceMode } from "@/types/membership";
+import { cn } from "@/lib/utils";
 import { multiplyDecimals } from "@/utils/decimal";
 
 import { membershipFailure } from "../errors";
@@ -29,11 +32,9 @@ import { useMembershipCatalog } from "../hooks/useMembershipCatalog";
 import {
   ATTACH_TO_HINT,
   ATTACH_TO_LABEL,
-  DURATION_MONTH_PRESETS,
   ELIGIBILITY_HINT,
   ELIGIBILITY_LABEL,
   MEMBERSHIP_HREF,
-  PLAN_PRICE_MODE_HINT,
   PLAN_PRICE_MODE_LABEL,
   PROMOSI_HREF,
   planHref,
@@ -47,7 +48,7 @@ import {
 } from "../planDraft";
 import { parseVariantKey, serviceVariantPrices } from "../variantKey";
 import { BenefitEditor } from "./BenefitEditor";
-import { FieldBlock, Segmented } from "./FormBits";
+import { FieldBlock, SelectBlock } from "./FormBits";
 import { PlanPreview } from "./PlanPreview";
 import { VariantPriceTable } from "./VariantPriceTable";
 
@@ -132,6 +133,7 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
         </div>
 
         <FormActionBar
+          className="ml-auto"
           submitLabel="Simpan paket"
           submitting={submitting}
           disabled={Boolean(blockedReason)}
@@ -145,77 +147,99 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
           {/* ───────────────────────────────────────────── Info paket */}
           <Card title="Info paket">
             <div className="grid gap-4">
-              <TextField
-                label="Nama paket"
-                required
-                value={draft.name}
-                placeholder="mis. Explorer – New Member"
-                onChange={(event) => set("name", event.target.value)}
-                error={fieldErrors.name}
-              />
-
+              {/* Baris 1 — Kode · Nama paket */}
               <div className="grid gap-4 sm:grid-cols-2">
-                <TextField
+                <FieldBlock
                   label="Kode"
-                  value={draft.code}
-                  placeholder="Otomatis"
-                  onChange={(event) => set("code", event.target.value)}
+                  tooltip="Kosongkan untuk nomor otomatis (MSP-0001)."
                   error={fieldErrors.code}
-                  hint="Kosongkan untuk nomor otomatis (MSP-0001). Bisa diubah manual."
-                />
-
-                <div className="flex flex-col gap-2">
-                  <TextField
-                    label="Durasi (bulan)"
-                    required
-                    type="number"
-                    min={1}
-                    inputMode="numeric"
-                    value={draft.durationMonths}
-                    onChange={(event) => set("durationMonths", event.target.value)}
-                    error={fieldErrors.durationMonths ?? fieldErrors.durationDays}
-                    hint={
-                      plan && plan.durationMonths === null
-                        ? `Paket lama tercatat ${plan.durationDays} hari. Menyimpan mengubahnya ke hitungan bulan untuk kartu baru.`
-                        : "Dihitung dari tanggal aktivasi, bukan bulan kalender."
-                    }
+                >
+                  <Input
+                    aria-label="Kode paket"
+                    aria-invalid={Boolean(fieldErrors.code) || undefined}
+                    value={draft.code}
+                    placeholder="Otomatis"
+                    onChange={(event) => set("code", event.target.value)}
+                    className={cn(
+                      FIELD_HEIGHT,
+                      fieldErrors.code && "border-danger focus-visible:ring-danger/40",
+                    )}
                   />
-                  <div className="flex flex-wrap gap-1">
-                    {DURATION_MONTH_PRESETS.map((months) => (
-                      <Button
-                        key={months}
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => set("durationMonths", String(months))}
-                      >
-                        {months === 12 ? "1 tahun" : `${months} bulan`}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
+                </FieldBlock>
+                <TextField
+                  label="Nama paket"
+                  required
+                  value={draft.name}
+                  placeholder="mis. Explorer – New Member"
+                  onChange={(event) => set("name", event.target.value)}
+                  error={fieldErrors.name}
+                />
               </div>
 
+              {/* Baris 2 — Deskripsi */}
+              <TextareaField
+                label="Deskripsi"
+                value={draft.description}
+                onChange={(event) => set("description", event.target.value)}
+                error={fieldErrors.description}
+                rows={3}
+              />
+
+              {/* Baris 3 — Durasi · Tawarkan perpanjangan */}
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FieldBlock
+                  label="Durasi"
+                  required
+                  tooltip={
+                    plan && plan.durationMonths === null
+                      ? `Masa berlaku dihitung dari tanggal aktivasi, bukan bulan kalender. Paket lama ini tercatat ${plan.durationDays} hari; menyimpan mengubahnya ke hitungan bulan untuk kartu baru.`
+                      : "Masa berlaku dihitung dari tanggal aktivasi, bukan bulan kalender."
+                  }
+                  error={fieldErrors.durationMonths ?? fieldErrors.durationDays}
+                >
+                  <SuffixInput
+                    ariaLabel="Durasi dalam bulan"
+                    suffix="bulan"
+                    value={draft.durationMonths}
+                    invalid={Boolean(fieldErrors.durationMonths ?? fieldErrors.durationDays)}
+                    onChange={(value) => set("durationMonths", value.replace(/[^\d]/g, ""))}
+                  />
+                </FieldBlock>
+
+                <FieldBlock
+                  label="Tawarkan perpanjangan"
+                  tooltip="Berapa hari sebelum masa berlaku habis anggota masuk daftar perpanjangan di Ringkasan."
+                  error={fieldErrors.renewalOfferDays}
+                >
+                  <SuffixInput
+                    ariaLabel="Tawarkan perpanjangan, hari sebelum berakhir"
+                    suffix="hari sebelum berakhir"
+                    value={draft.renewalOfferDays}
+                    invalid={Boolean(fieldErrors.renewalOfferDays)}
+                    onChange={(value) => set("renewalOfferDays", value.replace(/[^\d]/g, ""))}
+                  />
+                </FieldBlock>
+              </div>
+
+              {/* Baris 4 — Status */}
               <FieldBlock label="Status">
-                <Segmented
-                  ariaLabel="Status paket"
-                  value={draft.isActive ? "on" : "off"}
-                  options={[
-                    { value: "on", label: "Aktif" },
-                    { value: "off", label: "Nonaktif" },
-                  ]}
-                  onChange={(value) => set("isActive", value === "on")}
-                />
+                <label className="flex w-fit cursor-pointer items-center gap-3">
+                  <Switch
+                    aria-label="Paket aktif"
+                    checked={draft.isActive}
+                    onCheckedChange={(checked) => set("isActive", checked)}
+                  />
+                  <span className="text-sm">
+                    {draft.isActive ? "Aktif — bisa dijual di kasir" : "Nonaktif — tidak dijual"}
+                  </span>
+                </label>
               </FieldBlock>
 
-              <FieldBlock
-                label="Harga"
-                required
-                tooltip={PLAN_PRICE_MODE_HINT}
-                error={fieldErrors.priceMode}
-              >
-                <Segmented<PlanPriceMode>
-                  ariaLabel="Mode harga"
+              {/* Baris 5 — Jenis harga · Harga paket (satu harga) */}
+              <div className={cn("grid gap-4", !variantPlan && "sm:grid-cols-2")}>
+                <SelectField
+                  label="Jenis harga"
+                  required
                   value={variantPlan ? "variant" : "fixed"}
                   options={[
                     { value: "fixed", label: PLAN_PRICE_MODE_LABEL.fixed },
@@ -225,11 +249,29 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
                       disabled: draft.attachTo !== "pet",
                     },
                   ]}
-                  onChange={(value) => set("priceMode", value)}
+                  onChange={(value) => set("priceMode", value as PlanPriceMode)}
+                  error={fieldErrors.priceMode}
+                  hint={
+                    draft.attachTo !== "pet"
+                      ? "Per varian hewan hanya untuk paket yang melekat ke hewan."
+                      : undefined
+                  }
                 />
-              </FieldBlock>
 
-              {variantPlan ? (
+                {!variantPlan && (
+                  <TextField
+                    label="Harga paket (Rp)"
+                    required
+                    inputMode="decimal"
+                    value={draft.price}
+                    placeholder="450.000"
+                    onChange={(event) => set("price", event.target.value)}
+                    error={fieldErrors.price}
+                  />
+                )}
+              </div>
+
+              {variantPlan && (
                 <VariantPriceTable
                   rows={draft.variantPrices}
                   onChange={(rows) => set("variantPrices", rows)}
@@ -258,66 +300,40 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
                         }
                         set(
                           "variantPrices",
-                          [...filled].map(([variantKey, price]) => ({ variantKey, price })),
+                          [...filled].map(([variantKey, price]) => ({
+                            variantKey,
+                            price,
+                          })),
                         );
                       }}
                     />
                   }
                 />
-              ) : (
-                <TextField
-                  label="Harga paket (Rp)"
-                  required
-                  inputMode="decimal"
-                  value={draft.price}
-                  placeholder="450.000"
-                  onChange={(event) => set("price", event.target.value)}
-                  error={fieldErrors.price}
-                  className="max-w-64"
-                />
               )}
-
-              <TextField
-                label="Tawarkan perpanjangan (hari sebelum berakhir)"
-                type="number"
-                min={0}
-                value={draft.renewalOfferDays}
-                onChange={(event) => set("renewalOfferDays", event.target.value)}
-                error={fieldErrors.renewalOfferDays}
-                className="max-w-64"
-              />
-
-              <TextareaField
-                label="Deskripsi"
-                value={draft.description}
-                onChange={(event) => set("description", event.target.value)}
-                error={fieldErrors.description}
-                rows={3}
-              />
             </div>
           </Card>
 
           {/* ───────────────────────────────────── Siapa */}
           <Card title="Siapa yang bisa beli dan pakai">
             <div className="grid gap-4 sm:grid-cols-2">
-              <FieldBlock label="Melekat ke" tooltip={ATTACH_TO_HINT} error={fieldErrors.attachTo}>
-                <Segmented<AttachTo>
-                  ariaLabel="Melekat ke"
-                  value={draft.attachTo}
-                  options={(["pet", "customer"] as const).map((value) => ({
-                    value,
-                    label: ATTACH_TO_LABEL[value],
-                  }))}
-                  onChange={(value) =>
-                    setDraft((current) => ({
-                      ...current,
-                      attachTo: value,
-                      // Per-variant pricing follows an animal; a customer has none.
-                      priceMode: value === "customer" ? "fixed" : current.priceMode,
-                    }))
-                  }
-                />
-              </FieldBlock>
+              <SelectBlock<AttachTo>
+                label="Melekat ke"
+                tooltip={ATTACH_TO_HINT}
+                value={draft.attachTo}
+                options={(["pet", "customer"] as const).map((value) => ({
+                  value,
+                  label: ATTACH_TO_LABEL[value],
+                }))}
+                onChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    attachTo: value,
+                    // Per-variant pricing follows an animal; a customer has none.
+                    priceMode: value === "customer" ? "fixed" : current.priceMode,
+                  }))
+                }
+                error={fieldErrors.attachTo}
+              />
 
               {draft.attachTo === "pet" ? (
                 <FilterMultiSelect
@@ -346,15 +362,15 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
                 </p>
               )}
 
-              <SelectField
+              <SelectBlock<Eligibility>
                 label="Syarat pembeli"
+                tooltip={ELIGIBILITY_HINT}
                 value={draft.eligibility}
                 options={(Object.keys(ELIGIBILITY_LABEL) as Eligibility[]).map((value) => ({
                   value,
                   label: ELIGIBILITY_LABEL[value],
                 }))}
-                onChange={(value) => set("eligibility", value as Eligibility)}
-                hint={ELIGIBILITY_HINT}
+                onChange={(value) => set("eligibility", value)}
                 error={fieldErrors.eligibility}
               />
 
@@ -362,7 +378,10 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
                 layout="form"
                 label="Berlaku di cabang"
                 values={draft.branchIds}
-                options={branches.map((branch) => ({ value: branch._id, label: branch.name }))}
+                options={branches.map((branch) => ({
+                  value: branch._id,
+                  label: branch.name,
+                }))}
                 onApply={(values) => set("branchIds", values)}
                 onReset={() => set("branchIds", [])}
                 formatValue={(values, options) =>
@@ -370,11 +389,13 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
                     ? "Semua cabang"
                     : values.length <= 2
                       ? values
-                          .map((value) => options.find((option) => option.value === value)?.label ?? "—")
+                          .map(
+                            (value) =>
+                              options.find((option) => option.value === value)?.label ?? "—",
+                          )
                           .join(", ")
                       : `${values.length} cabang`
                 }
-                hint="Kosongkan untuk semua cabang."
                 error={fieldErrors.branchIds}
               />
             </div>
@@ -431,9 +452,9 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
               <div className="rounded-lg bg-tint-info p-3 text-sm">
                 <p className="font-semibold">Harga coret tidak diisi di sini</p>
                 <p className="mt-1 text-muted">
-                  Untuk menampilkan harga coret di website, buat promo Harga coret untuk paket
-                  ini. Harga coret selalu punya periode, jadi angkanya jujur dan potongannya
-                  tercatat sebagai biaya promo.
+                  Untuk menampilkan harga coret di website, buat promo Harga coret untuk paket ini.
+                  Harga coret selalu punya periode, jadi angkanya jujur dan potongannya tercatat
+                  sebagai biaya promo.
                 </p>
               </div>
             </div>
@@ -478,7 +499,10 @@ function AutoFill({
         active={false}
         placeholder="Pilih layanan"
         value={serviceId}
-        options={services.map((service) => ({ value: service._id, label: service.name }))}
+        options={services.map((service) => ({
+          value: service._id,
+          label: service.name,
+        }))}
         onChange={setServiceId}
         className="min-w-56"
       />
@@ -501,6 +525,48 @@ function AutoFill({
       >
         Isi
       </Button>
+    </div>
+  );
+}
+
+/**
+ * A number box with its unit drawn inside the same border, on the right
+ * ("6 | bulan") — so nobody has to guess whether Durasi is in days or months.
+ * The unit is part of the control, not a second label.
+ */
+function SuffixInput({
+  ariaLabel,
+  suffix,
+  value,
+  invalid = false,
+  onChange,
+}: {
+  ariaLabel: string;
+  suffix: string;
+  value: string;
+  invalid?: boolean;
+  onChange: (next: string) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        FIELD_HEIGHT,
+        "flex items-stretch overflow-hidden rounded-md border border-input bg-surface shadow-xs transition-[color,box-shadow]",
+        "focus-within:border-primary focus-within:ring-[3px] focus-within:ring-ring/50",
+        invalid && "border-danger focus-within:ring-danger/40",
+      )}
+    >
+      <input
+        aria-label={ariaLabel}
+        aria-invalid={invalid || undefined}
+        inputMode="numeric"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="min-w-0 flex-1 bg-transparent px-3 text-base tabular-nums outline-none md:text-sm"
+      />
+      <span className="flex items-center border-l border-input bg-background px-4 text-sm font-semibold text-muted">
+        {suffix}
+      </span>
     </div>
   );
 }
