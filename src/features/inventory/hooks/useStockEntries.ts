@@ -20,9 +20,9 @@ import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 export interface StockEntriesQuery {
   search: string;
   /**
-   * Every list has an ordering, so this is never unset — Reset returns it to
-   * `newest` rather than clearing it, and it is not counted in the panel's
-   * badge. See docs/ui-rules.md §8.
+   * Set from the column headers (BO, 19 October 2026) and sorted by the
+   * server. Never unset — every list has an ordering — and the filter panel's
+   * Reset leaves it alone. See docs/ui-rules.md §8.
    */
   sort: StockEntrySort;
   /**

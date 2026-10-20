@@ -13,13 +13,11 @@ import {
   FilterTrigger,
   namedOptions,
   withAll,
-  type FilterOption,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import type {
   Branch,
-  GoodsReceiptSort,
   GoodsReceiptStatusFilter,
   PurchaseType,
   Supplier,
@@ -40,16 +38,17 @@ import type { GoodsReceiptsQuery } from "../hooks/useGoodsReceipts";
 
 /**
  * The goods-receipt list controls: one row — search, one Filter button, one
- * create button — with the ordering, supplier, branch, warehouse, purchase type
- * and the date range inside the panel.
+ * create button — with supplier, branch, warehouse, purchase type, status and
+ * the date range inside the panel. The ordering is the table's headers (19
+ * October 2026).
  *
  * Purely presentational — it renders the current query and reports changes up to
  * useGoodsReceipts.
  *
  * ONE BUTTON RATHER THAN A ROW OF TRIGGERS, at every width, which is the
  * arrangement Produk & Varian and Stok Opname both use. §8 sends this screen to
- * a panel on the field count alone — five, once the ordering is one of them —
- * and the date range decides it a second time: a control that carries its own
+ * a panel on the field count alone — six — and the date range decides it a
+ * second time: a control that carries its own
  * Reset/Terapkan puts a screen in the panel column whatever else is on the bar.
  * On a phone the old row of four triggers wrapped onto three lines and pushed
  * the table off the fold.
@@ -88,31 +87,11 @@ const STATUSES = withAll<GoodsReceiptStatusFilter | "">(
 );
 
 /**
- * The orderings the API accepts — GOODS_RECEIPT_SORTS in goodsReceipt.model.js.
- *
- * BY ARRIVAL DATE, NOT BY WHEN THE ROW WAS WRITTEN. `receiptDate` is the day the
- * goods physically landed, which is the date printed on the row and the one
- * somebody means by "penerimaan terakhir"; a delivery unloaded last night and
- * keyed in this morning would sort above it under the other one.
- *
- * The number orderings are not a second date axis in disguise. They agree with
- * chronology most of the time — the number is drawn against the receipt date —
- * but they are how you walk a sequence against a supplier statement rather than
- * a calendar, and they break the intra-day tie by the numbering instead of by
- * insertion order.
- *
- * NOTHING BY VALUE, though "termahal dulu" is a fair question: `total` is
- * unindexed and a busy tenant has thousands of receipts, so the ordering the
- * model refuses is the one that could take this screen down.
+ * Everything the panel edits, as one draft. The ordering is NOT here: it lives
+ * on the table's headers, and a Reset inside a filter panel must not silently
+ * re-sort a table somebody ordered from the headers it can see
+ * (docs/ui-rules.md §8).
  */
-const SORTS: FilterOption<GoodsReceiptSort>[] = [
-  { value: "newest", label: "Terbaru" },
-  { value: "oldest", label: "Terlama" },
-  { value: "numberDesc", label: "Nomor Z–A" },
-  { value: "numberAsc", label: "Nomor A–Z" },
-];
-
-/** Everything the panel edits, as one draft. */
 interface ReceiptFilters {
   supplierId: string;
   branchId: string;
@@ -121,15 +100,9 @@ interface ReceiptFilters {
   status: GoodsReceiptsQuery["status"];
   dateFrom: string;
   dateTo: string;
-  sort: GoodsReceiptSort;
 }
 
-/**
- * What Reset returns to — the query's own defaults, not "empty".
- *
- * The ordering is included: a list with no ordering is not a thing, so Reset
- * puts it back to the API's default rather than clearing it to nothing.
- */
+/** What Reset returns to — the query's own defaults, not "empty". */
 const CLEARED: ReceiptFilters = {
   supplierId: "",
   branchId: "",
@@ -138,7 +111,6 @@ const CLEARED: ReceiptFilters = {
   status: "",
   dateFrom: "",
   dateTo: "",
-  sort: "newest",
 };
 
 export function ReceiptsToolbar({
@@ -158,7 +130,6 @@ export function ReceiptsToolbar({
     status: query.status,
     dateFrom: query.dateFrom,
     dateTo: query.dateTo,
-    sort: query.sort,
   };
 
   /**
@@ -178,7 +149,6 @@ export function ReceiptsToolbar({
     if (next.status !== query.status) patch.status = next.status;
     if (next.dateFrom !== query.dateFrom) patch.dateFrom = next.dateFrom;
     if (next.dateTo !== query.dateTo) patch.dateTo = next.dateTo;
-    if (next.sort !== query.sort) patch.sort = next.sort;
 
     if (Object.keys(patch).length > 0) onChange(patch);
   }
@@ -229,11 +199,12 @@ export function ReceiptsToolbar({
 }
 
 /**
- * The five filters and the ordering, behind one button.
+ * The six filters, behind one button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8). Reset returns the
  * whole set to its defaults and applies at once, because clearing a filter is
- * not a change anyone composes.
+ * not a change anyone composes. It leaves the ordering alone — that is the
+ * table's headers.
  *
  * CABANG AND GUDANG ARE A PAIR, and they behave exactly as the stock-entries
  * panel's do — same helpers, same two rules — because two screens that scope by
@@ -260,9 +231,8 @@ function ReceiptFilterPanel({
    * How many filters are narrowing the list right now.
    *
    * THE RANGE COUNTS ONCE, not twice — one bound or both, it is one question
-   * somebody asked. THE ORDERING IS NOT COUNTED AT ALL: every list has one, so
-   * it is never "on", and a badge reading `Filter (1)` over an unnarrowed screen
-   * would train people to ignore the number.
+   * somebody asked. The ordering is not in this panel at all (it is the
+   * table's headers), so it never reaches the count.
    */
   const count = [
     applied.supplierId !== "",
@@ -355,18 +325,6 @@ function ReceiptFilterPanel({
           setOpen(false);
         }}
       >
-        {/* Sort leads: it is the one field here that is always set, and the
-            only one that changes what the top of the list is rather than what
-            is in it. */}
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="newest"
-          onChange={(sort) => patch({ sort })}
-        />
         <FilterSelect
           layout="field"
           label="Supplier"

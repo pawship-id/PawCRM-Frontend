@@ -10,7 +10,13 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { ConfirmDialog, HighlightText } from "@/components";
+import {
+  ConfirmDialog,
+  DataTable,
+  HighlightText,
+  type DataTableColumn,
+  type SortOptions,
+} from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,19 +26,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Can, usePermissions } from "@/features/permissions";
 import { ApiError } from "@/services/api-error";
 import { categoryService } from "@/services/category.service";
 import { swalToast } from "@/lib/swal";
-import type { Category } from "@/types/api";
+import type { Category, CategorySort } from "@/types/api";
+
+/**
+ * ONLY THE KATEGORI HEADER SORTS (BO, 19 October 2026) — by name, A first. The
+ * list still opens newest first, which has no column of its own.
+ */
+const SORT_OPTIONS: SortOptions<CategorySort> = {
+  category: { asc: "nameAsc", desc: "nameDesc" },
+};
 
 /** The row action awaiting confirmation, plus the category it targets. */
 type PendingAction = { kind: "delete" | "restore"; category: Category } | null;
@@ -74,12 +80,17 @@ export function CategoriesTable({
   categories,
   loading,
   search,
+  sort,
+  onSortChange,
   onChanged,
 }: {
   categories: Category[];
   loading: boolean;
   /** Active search term, highlighted in the name cell. */
   search?: string;
+  /** The ordering the page is in — an API name. */
+  sort: CategorySort;
+  onSortChange: (sort: CategorySort) => void;
   onChanged: () => void;
 }) {
   const [pending, setPending] = useState<PendingAction>(null);
@@ -126,6 +137,182 @@ export function CategoriesTable({
     }
   }
 
+  const columns: DataTableColumn<Category>[] = [
+    {
+      id: "category",
+      header: "Kategori",
+      cell: (category) => (
+        <div className="flex items-start gap-3">
+          <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border bg-surface-hover">
+            {category.image ? (
+              // A plain img, like MediaGallery's: next/image needs a
+              // remote host configured per storage driver, and the
+              // driver is a per-deployment choice.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={category.image.thumbUrl ?? category.image.url}
+                alt=""
+                className="size-full object-cover"
+              />
+            ) : (
+              <span
+                className="flex size-full items-center justify-center"
+                aria-hidden
+              >
+                <ImageOff className="size-4 text-muted" />
+              </span>
+            )}
+          </div>
+
+          <div className="min-w-0">
+            {/*
+              THE PARENT SITS ABOVE THE NAME, as a trail rather than
+              a column. A column would be empty on every top-level
+              row — most of them — and a name with no context is the
+              ambiguity sub-categories were added to remove: two
+              rows both called "Kering" are unreadable without it.
+
+              Not a link: the row's own Edit already goes to this
+              category, and a second destination in the same cell is
+              two targets a click has to choose between.
+            */}
+            {category.parent && (
+              <div className="truncate text-xs text-muted">
+                {category.parent.name} ›
+              </div>
+            )}
+            <div className="font-medium text-foreground">
+              <HighlightText text={category.name} query={search} />
+            </div>
+            {category.description && (
+              // Clamped to two lines: 500 characters is a paragraph,
+              // and a row that grows to fit one turns the table into
+              // a page nobody can scan. Plain text — the API stores
+              // it as text, never HTML.
+              <p className="mt-0.5 line-clamp-2 text-xs text-muted">
+                {category.description}
+              </p>
+            )}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (category) => {
+        const deleted = category.deletedAt !== null;
+        return (
+          <>
+            {/*
+              Three states, and deleted outranks retired: a deleted
+              category may well also be inactive, and saying "Nonaktif"
+              about a row that is gone from every ordinary read answers
+              the less important half of the question.
+            */}
+            {deleted ? (
+              <Badge variant="outline" className="text-muted">
+                Dihapus
+              </Badge>
+            ) : category.isActive ? (
+              <Badge variant="outline">Aktif</Badge>
+            ) : (
+              <Badge variant="outline" className="text-muted">
+                Nonaktif
+              </Badge>
+            )}
+          </>
+        );
+      },
+    },
+    ...(showActions
+      ? [
+          {
+            id: "actions",
+            header: "Aksi",
+            align: "right" as const,
+            cell: (category: Category) => {
+              const deleted = category.deletedAt !== null;
+              return (
+                <div className="flex items-center justify-end">
+                  {/*
+                    A KEBAB, like the catalogue's — and gated on the same
+                    `rowHasActions` as before, so the trigger never opens
+                    onto an empty menu. Unlike the catalogue's it is not
+                    rendered unconditionally: a product row always has
+                    Detail to offer, and a category has no detail page, so
+                    a read-only role here would get a button that does
+                    nothing at all.
+                  */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        // The icon carries no name of its own, so the
+                        // label says which row this menu belongs to — a
+                        // screen-reader user hearing twenty identical
+                        // "Aksi" buttons has learnt nothing.
+                        aria-label={`Aksi untuk ${category.name}`}
+                      >
+                        <EllipsisVertical className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+
+                    <DropdownMenuContent>
+                      {deleted ? (
+                        <Can feature="categories" action="restore">
+                          <DropdownMenuItem
+                            onSelect={() =>
+                              setPending({ kind: "restore", category })
+                            }
+                          >
+                            <RotateCcw />
+                            Pulihkan
+                          </DropdownMenuItem>
+                        </Can>
+                      ) : (
+                        <>
+                          <Can feature="categories" action="update">
+                            {/* asChild so the menu item IS the link:
+                                Radix would otherwise render a div around
+                                an anchor, and the keyboard activation the
+                                menu provides would not follow the href. */}
+                            <DropdownMenuItem asChild>
+                              <Link
+                                href={`/dashboard/inventory/categories/${category._id}`}
+                              >
+                                <Pencil />
+                                Edit
+                              </Link>
+                            </DropdownMenuItem>
+                          </Can>
+                          <Can feature="categories" action="delete">
+                            {/* Separated and tinted: the item above only
+                                opens a form, and this one writes. */}
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() =>
+                                setPending({ kind: "delete", category })
+                              }
+                            >
+                              <Trash2 />
+                              Hapus
+                            </DropdownMenuItem>
+                          </Can>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              );
+            },
+          },
+        ]
+      : []),
+  ];
+
   if (!loading && categories.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center text-sm text-muted">
@@ -136,178 +323,13 @@ export function CategoriesTable({
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <Table className={loading ? "opacity-60" : undefined}>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Kategori</TableHead>
-              <TableHead>Status</TableHead>
-              {showActions && (
-                <TableHead className="text-right">Aksi</TableHead>
-              )}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {categories.map((category) => {
-              const deleted = category.deletedAt !== null;
-              return (
-                <TableRow key={category._id}>
-                  <TableCell>
-                    <div className="flex items-start gap-3">
-                      <div className="size-10 shrink-0 overflow-hidden rounded-md border border-border bg-surface-hover">
-                        {category.image ? (
-                          // A plain img, like MediaGallery's: next/image needs a
-                          // remote host configured per storage driver, and the
-                          // driver is a per-deployment choice.
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={category.image.thumbUrl ?? category.image.url}
-                            alt=""
-                            className="size-full object-cover"
-                          />
-                        ) : (
-                          <span
-                            className="flex size-full items-center justify-center"
-                            aria-hidden
-                          >
-                            <ImageOff className="size-4 text-muted" />
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="min-w-0">
-                        {/*
-                          THE PARENT SITS ABOVE THE NAME, as a trail rather than
-                          a column. A column would be empty on every top-level
-                          row — most of them — and a name with no context is the
-                          ambiguity sub-categories were added to remove: two
-                          rows both called "Kering" are unreadable without it.
-
-                          Not a link: the row's own Edit already goes to this
-                          category, and a second destination in the same cell is
-                          two targets a click has to choose between.
-                        */}
-                        {category.parent && (
-                          <div className="truncate text-xs text-muted">
-                            {category.parent.name} ›
-                          </div>
-                        )}
-                        <div className="font-medium text-foreground">
-                          <HighlightText text={category.name} query={search} />
-                        </div>
-                        {category.description && (
-                          // Clamped to two lines: 500 characters is a paragraph,
-                          // and a row that grows to fit one turns the table into
-                          // a page nobody can scan. Plain text — the API stores
-                          // it as text, never HTML.
-                          <p className="mt-0.5 line-clamp-2 text-xs text-muted">
-                            {category.description}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {/*
-                      Three states, and deleted outranks retired: a deleted
-                      category may well also be inactive, and saying "Nonaktif"
-                      about a row that is gone from every ordinary read answers
-                      the less important half of the question.
-                    */}
-                    {deleted ? (
-                      <Badge variant="outline" className="text-muted">
-                        Dihapus
-                      </Badge>
-                    ) : category.isActive ? (
-                      <Badge variant="outline">Aktif</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-muted">
-                        Nonaktif
-                      </Badge>
-                    )}
-                  </TableCell>
-                  {showActions && (
-                    <TableCell>
-                      <div className="flex items-center justify-end">
-                        {/*
-                          A KEBAB, like the catalogue's — and gated on the same
-                          `rowHasActions` as before, so the trigger never opens
-                          onto an empty menu. Unlike the catalogue's it is not
-                          rendered unconditionally: a product row always has
-                          Detail to offer, and a category has no detail page, so
-                          a read-only role here would get a button that does
-                          nothing at all.
-                        */}
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              // The icon carries no name of its own, so the
-                              // label says which row this menu belongs to — a
-                              // screen-reader user hearing twenty identical
-                              // "Aksi" buttons has learnt nothing.
-                              aria-label={`Aksi untuk ${category.name}`}
-                            >
-                              <EllipsisVertical className="size-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-
-                          <DropdownMenuContent>
-                            {deleted ? (
-                              <Can feature="categories" action="restore">
-                                <DropdownMenuItem
-                                  onSelect={() =>
-                                    setPending({ kind: "restore", category })
-                                  }
-                                >
-                                  <RotateCcw />
-                                  Pulihkan
-                                </DropdownMenuItem>
-                              </Can>
-                            ) : (
-                              <>
-                                <Can feature="categories" action="update">
-                                  {/* asChild so the menu item IS the link:
-                                      Radix would otherwise render a div around
-                                      an anchor, and the keyboard activation the
-                                      menu provides would not follow the href. */}
-                                  <DropdownMenuItem asChild>
-                                    <Link
-                                      href={`/dashboard/inventory/categories/${category._id}`}
-                                    >
-                                      <Pencil />
-                                      Edit
-                                    </Link>
-                                  </DropdownMenuItem>
-                                </Can>
-                                <Can feature="categories" action="delete">
-                                  {/* Separated and tinted: the item above only
-                                      opens a form, and this one writes. */}
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onSelect={() =>
-                                      setPending({ kind: "delete", category })
-                                    }
-                                  >
-                                    <Trash2 />
-                                    Hapus
-                                  </DropdownMenuItem>
-                                </Can>
-                              </>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={categories}
+        rowKey={(category) => category._id}
+        loading={loading}
+        sort={{ value: sort, options: SORT_OPTIONS, onChange: onSortChange }}
+      />
 
       {pending && (
         <ConfirmDialog

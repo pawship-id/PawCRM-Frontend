@@ -9,6 +9,7 @@ import type {
   BookingStatus,
   TripLeg,
 } from "@/types/api";
+import type { SortOptions } from "@/components/DataTable";
 import {
   divideRound,
   formatMoneyShort,
@@ -387,11 +388,44 @@ export function summariseDay(rows: GroomingRow[]): DaySummary {
 
 /* ─── Narrowing ───────────────────────────────────────────────────────────── */
 
-export type GroomingSort = "schedule_asc" | "schedule_desc" | "value_desc";
+/**
+ * THE TABLE'S ORDERINGS (BO, 20 October 2026) — chosen from the column headers,
+ * no longer from an Urutkan field in the Filter panel. Local names: no API sees
+ * them, because the board holds the whole period and sorts it here (see the top
+ * of this file) — the same client-side sort as `CashBankAccountsTable`, which is
+ * right only because nothing is paged on the server.
+ *
+ *   schedule_asc — the default and the order before the headers existed:
+ *                  earliest appointment first. No header owns it, so on first
+ *                  load no header is lit.
+ *   booking_*    — the booking NUMBER the Booking cell prints, compared
+ *                  naturally ("BK-260923-002" before "BK-260923-010"), A first
+ *                  on the first click. A draft has no number yet (its cell
+ *                  prints "—") and sorts after every number in BOTH directions.
+ *   value_*      — the money the Nilai cell prints, compared exactly in minor
+ *                  units, largest first on the first click. Which amount that
+ *                  is depends on the board: Grooming prints `value` (before
+ *                  discount), Antar-Jemput `net` — `sortRows` takes it.
+ *
+ * Ties fall back to the schedule, then the number and the animal's name.
+ */
+export type GroomingSort =
+  | "schedule_asc"
+  | "booking_asc"
+  | "booking_desc"
+  | "value_asc"
+  | "value_desc";
 
-/** What the Filter panel holds. `sort` is in it and never counted (§8). */
+export const DEFAULT_SORT: GroomingSort = "schedule_asc";
+
+/** Column id → its orderings, for both boards' `DataTable`. Only these sort. */
+export const BOOKING_SORT_OPTIONS: SortOptions<GroomingSort> = {
+  booking: { asc: "booking_asc", desc: "booking_desc" },
+  value: { asc: "value_asc", desc: "value_desc", first: "desc" },
+};
+
+/** What the Filter panel holds. The ordering is not in it (§8). */
 export interface GroomingFilters {
-  sort: GroomingSort;
   statuses: BookingStatus[];
   /** Whoever is on a turn — the groomers, or on Antar-Jemput the drivers. */
   groomerIds: string[];
@@ -405,7 +439,6 @@ export interface GroomingFilters {
 }
 
 export const DEFAULT_FILTERS: GroomingFilters = {
-  sort: "schedule_asc",
   statuses: [],
   groomerIds: [],
   serviceIds: [],
@@ -497,21 +530,37 @@ function scheduleOf(row: GroomingRow): number {
   return Number.isNaN(at) ? 0 : at;
 }
 
-export function sortRows(rows: GroomingRow[], sort: GroomingSort): GroomingRow[] {
+/** Which amount the Nilai cell prints — `value` on Grooming, `net` on Antar-Jemput. */
+export type GroomingMoney = "value" | "net";
+
+export function sortRows(
+  rows: GroomingRow[],
+  sort: GroomingSort,
+  money: GroomingMoney = "value",
+): GroomingRow[] {
   const tieBreak = (a: GroomingRow, b: GroomingRow) =>
+    scheduleOf(a) - scheduleOf(b) ||
     (a.booking.bookingNumber ?? "").localeCompare(b.booking.bookingNumber ?? "") ||
     (a.booking.petName ?? "").localeCompare(b.booking.petName ?? "");
 
   return [...rows].sort((a, b) => {
-    if (sort === "value_desc") {
-      const x = toMinor(a.value) ?? 0n;
-      const y = toMinor(b.value) ?? 0n;
-      if (x !== y) return x > y ? -1 : 1;
-      return scheduleOf(a) - scheduleOf(b) || tieBreak(a, b);
+    if (sort === "value_asc" || sort === "value_desc") {
+      const x = toMinor(a[money]) ?? 0n;
+      const y = toMinor(b[money]) ?? 0n;
+      if (x !== y) return (x < y ? -1 : 1) * (sort === "value_desc" ? -1 : 1);
+      return tieBreak(a, b);
     }
 
-    const diff = scheduleOf(a) - scheduleOf(b);
-    return (sort === "schedule_desc" ? -diff : diff) || tieBreak(a, b);
+    if (sort === "booking_asc" || sort === "booking_desc") {
+      const x = a.booking.bookingNumber;
+      const y = b.booking.bookingNumber;
+      // A draft has no number: after every number, whichever way.
+      if (!x || !y) return x ? -1 : y ? 1 : tieBreak(a, b);
+      const diff = x.localeCompare(y, "id", { numeric: true });
+      return (sort === "booking_desc" ? -diff : diff) || tieBreak(a, b);
+    }
+
+    return tieBreak(a, b);
   });
 }
 

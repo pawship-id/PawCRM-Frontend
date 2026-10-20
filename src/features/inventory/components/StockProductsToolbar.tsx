@@ -15,13 +15,13 @@ import {
   type FilterOption,
 } from "@/components";
 import type { Category } from "@/types/api";
-import type { ProductSort } from "@/types/inventory";
 
 import type { StockProductsQuery } from "../hooks/useStockProducts";
 
 /**
  * The stock-card index's controls: one row — search and one Filter button — with
- * the ordering, the category, the status and the deleted toggle inside a panel.
+ * the category, the status and the deleted toggle inside a panel. The ordering
+ * is not here: the table's headers set it (BO, 19 October 2026).
  *
  * Purely presentational — it renders the current query and reports changes up to
  * useStockProducts, which owns it.
@@ -39,8 +39,8 @@ import type { StockProductsQuery } from "../hooks/useStockProducts";
  * table showing another — a page of twenty rendering as six, and page 2 filtered
  * from a different subset. It is the same refusal useProducts writes down for
  * `excludeVariants`: the exclusion has to happen where the count does. Ordering
- * by stock is out for the same reason — the server cannot sort by a number it
- * was never asked to compute.
+ * by stock is the server's for the same reason — the Stok header asks it to sum
+ * the quantity itself, never a re-sort of the page.
  */
 
 const STATUSES: FilterOption<StockProductsQuery["status"]>[] = [
@@ -49,41 +49,24 @@ const STATUSES: FilterOption<StockProductsQuery["status"]>[] = [
   { value: "inactive", label: "Nonaktif" },
 ];
 
-/**
- * The orderings the API accepts — PRODUCT_SORTS in product.model.js, minus the
- * two this screen cannot use.
- *
- * NO "STOK". See the header: the quantity is assembled per row from an array the
- * server does not order by. Name and SKU lead, because this list is scanned for
- * a product somebody is already holding or already knows the name of.
- */
-const SORTS: FilterOption<ProductSort>[] = [
-  { value: "nameAsc", label: "Nama A–Z" },
-  { value: "nameDesc", label: "Nama Z–A" },
-  { value: "skuAsc", label: "SKU A–Z" },
-  { value: "newest", label: "Terbaru" },
-  { value: "oldest", label: "Terlama" },
-];
-
 /** Everything the panel edits, as one draft. */
 interface PanelFilters {
   categoryId: string;
   status: StockProductsQuery["status"];
   includeDeleted: boolean;
-  sort: ProductSort;
 }
 
 /**
  * What Reset returns to — the query's own defaults, not "empty".
  *
- * The ordering is included: a list with no ordering is not a thing, so Reset
- * puts it back to A–Z rather than clearing it to nothing.
+ * The ordering is NOT included: it is set from the table's headers, and a
+ * button inside a filter panel must not silently re-sort a table somebody
+ * ordered from the headers they can see (ui-rules §8).
  */
 const CLEARED: PanelFilters = {
   categoryId: "",
   status: "",
   includeDeleted: false,
-  sort: "nameAsc",
 };
 
 export function StockProductsToolbar({
@@ -102,7 +85,6 @@ export function StockProductsToolbar({
     categoryId: query.categoryId,
     status: query.status,
     includeDeleted: query.includeDeleted,
-    sort: query.sort,
   };
 
   /**
@@ -112,11 +94,11 @@ export function StockProductsToolbar({
    */
   function apply(next: PanelFilters) {
     const patch: Partial<StockProductsQuery> = {};
-    if (next.categoryId !== query.categoryId) patch.categoryId = next.categoryId;
+    if (next.categoryId !== query.categoryId)
+      patch.categoryId = next.categoryId;
     if (next.status !== query.status) patch.status = next.status;
     if (next.includeDeleted !== query.includeDeleted)
       patch.includeDeleted = next.includeDeleted;
-    if (next.sort !== query.sort) patch.sort = next.sort;
 
     if (Object.keys(patch).length > 0) onChange(patch);
   }
@@ -150,8 +132,7 @@ export function StockProductsToolbar({
 }
 
 /**
- * The ordering, the category, the status and the deleted toggle, behind one
- * button.
+ * The category, the status and the deleted toggle, behind one button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8). Reset returns the
  * whole set to its defaults and applies at once, because clearing a filter is
@@ -171,11 +152,7 @@ function StockProductsFilterPanel({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(applied);
 
-  /**
-   * How many filters are narrowing the list. THE ORDERING IS NOT COUNTED —
-   * every list has one, so a badge reading `Filter (1)` over an unnarrowed list
-   * would teach people to ignore the number.
-   */
+  /** How many filters are narrowing the list. */
   const count = [
     applied.categoryId !== "",
     applied.status !== "",
@@ -215,18 +192,6 @@ function StockProductsFilterPanel({
           setOpen(false);
         }}
       >
-        {/* Sort leads: it is the one field here that is always set, and the
-            only one that changes what the top of the list is rather than what
-            is in it. */}
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="nameAsc"
-          onChange={(sort) => patch({ sort })}
-        />
         <FilterSelect
           layout="field"
           label="Kategori"

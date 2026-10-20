@@ -203,8 +203,7 @@ describe("SalesSummaryScreen", () => {
     });
     renderWithAuth(<SalesSummaryScreen />);
 
-    const card = (await screen.findByText("sama dengan Laba Rugi")).closest("div")!.parentElement!;
-    expect(card).toHaveTextContent("Rp 12.000.000");
+    expect(await screen.findByText("Rp 12.000.000")).toBeInTheDocument();
     expect(mocked.summary).toHaveBeenCalledWith(expect.anything(), { ledger: true });
   });
 
@@ -230,23 +229,17 @@ describe("SalesSummaryScreen", () => {
   it("draws no source note under any panel", async () => {
     renderWithAuth(<SalesSummaryScreen />);
 
-    await screen.findAllByText(/Total nilai baris/);
+    await screen.findByText(/Tanpa kategori/);
     expect(screen.queryByText(/Dikelompokkan dari/)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Produk & Varian" })).not.toBeInTheDocument();
   });
 
-  it("reconciles a line-based panel with the omzet, and says the customer one needs no allocation", async () => {
+  it("prints no total note under any panel", async () => {
     renderWithAuth(<SalesSummaryScreen />);
 
-    // Two panels are short of the omzet; both print the gap rather than hide it.
-    expect(
-      await screen.findAllByText(
-        /Total nilai baris Rp 12\.000\.000 dari omzet Rp 12\.500\.000/,
-      ),
-    ).toHaveLength(2);
-    expect(
-      screen.getByText(/Total Rp 12\.500\.000 — dari faktur, setelah diskon dan sebelum PPN/),
-    ).toBeInTheDocument();
+    await screen.findByText(/Tanpa kategori/);
+    expect(screen.queryByText(/Total nilai baris/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/dari faktur, setelah diskon/)).not.toBeInTheDocument();
   });
 
   it("counts lines on the line axes and faktur on the customer one", async () => {

@@ -4,10 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 
 import { petService } from "@/services/pet.service";
 import { ApiError } from "@/services/api-error";
-import type { Pet, PetListQuery, PageResult, PetOptionId } from "@/types/api";
+import type {
+  Pet,
+  PetListQuery,
+  PetSort,
+  PageResult,
+  PetOptionId,
+} from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
-/** The query knobs the list screen drives (page + the visible filters). */
+/** The query knobs the list screen drives (page, the ordering, the visible filters). */
 export interface PetsQuery {
   page: number;
   search: string;
@@ -20,6 +26,11 @@ export interface PetsQuery {
   /** "" = both, "true"/"false" = only pets in care / only retired ones. */
   isActive: "" | "true" | "false";
   includeDeleted: boolean;
+  /**
+   * The ordering, set from the table's column headers — not a filter: the
+   * toolbar's Reset leaves it alone and it is not counted in `Filter (n)`.
+   */
+  sort: PetSort;
   /** Fixed by the caller when the list is scoped to one owner; never a visible filter. */
   customerId?: string;
 }
@@ -32,6 +43,7 @@ const DEFAULT_QUERY: PetsQuery = {
   species: "",
   isActive: "",
   includeDeleted: false,
+  sort: "newest",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */
@@ -48,7 +60,7 @@ interface UsePetsResult {
   query: PetsQuery;
   loading: boolean;
   error: string | null;
-  /** Merge a partial query change; any change other than `page` resets to page 1. */
+  /** Merge a partial query change; any change other than `page` (a re-sort included) resets to page 1. */
   setQuery: (patch: Partial<PetsQuery>) => void;
   /** Re-run the current query — call after a mutation (delete, restore). */
   refetch: () => void;
@@ -117,6 +129,7 @@ export function usePets(customerId?: string): UsePetsResult {
       // with "no opinion".
       isActive: settled.isActive === "" ? undefined : settled.isActive === "true",
       includeDeleted: settled.includeDeleted || undefined,
+      sort: settled.sort,
     };
 
     petService

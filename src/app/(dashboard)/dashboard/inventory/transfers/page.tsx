@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 import { Breadcrumb } from "@/components";
 import { StockTransfersScreen } from "@/features/inventory";
+import { TRANSFER_MAX_ITEMS } from "@/features/inventory/utils/transferErrors";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Transfer stok · Buloo" };
@@ -36,9 +37,9 @@ export default function StockTransfersPage() {
             Transfer stok antar gudang
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Perpindahan barang antar gudang — misalnya menyiapkan stok untuk
-            bazar. Satu transfer boleh membawa beberapa produk sekaligus, dan lot
-            beserta tanggal kedaluwarsanya ikut berpindah.
+            Pindahkan barang antar gudang, misalnya untuk stok bazar. Satu
+            transfer bisa berisi hingga {TRANSFER_MAX_ITEMS} produk, dan batch-nya
+            ikut pindah.
           </p>
         </div>
 

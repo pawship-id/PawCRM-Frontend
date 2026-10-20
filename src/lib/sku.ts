@@ -19,3 +19,13 @@ export const SKU_WRAP_CLASS =
  * characters and opens the full code on hover or tap (16 October 2026).
  */
 export const SKU_MAX_CHARS = 15;
+
+/**
+ * The same whole-code wrap for a column that has the room (19 October 2026):
+ * Daftar Stok's SKU column and the SKU under a product name on Batch &
+ * Expired. At least 16 characters wide, so an ordinary code reads on ONE line
+ * instead of breaking every few letters, and wrapping only past 28. A table
+ * that no longer fits scrolls sideways rather than squeezing this back.
+ */
+export const SKU_WRAP_WIDE_CLASS =
+  "inline-block min-w-[16ch] max-w-[28ch] whitespace-normal [overflow-wrap:anywhere]";

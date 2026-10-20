@@ -246,6 +246,81 @@ describe("Kas & Bank — the account table", () => {
   });
 });
 
+describe("Kas & Bank — sorting the account table", () => {
+  /** The account names, top to bottom, as the table shows them now. */
+  const accountOrder = () =>
+    within(screen.getByText("Akun Kas & Bank").closest('[data-slot="card"]')!)
+      .getAllByRole("row")
+      .slice(1) // the header
+      .map((row) => within(row).queryAllByRole("cell")[1]?.textContent)
+      .filter((name) => name && name !== "Rp 120.600.000");
+
+  /*
+    SORTED IN THE BROWSER (BO, 20 October 2026) — every account is already
+    loaded, so a client sort orders the whole set. Money compares exactly.
+  */
+  it("keeps the arriving order until a header is clicked, then sorts locally", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<KasBankScreen now={NOW} />);
+    await rowFor("QRIS Settlement");
+    const card = within(
+      screen.getByText("Akun Kas & Bank").closest('[data-slot="card"]')!,
+    );
+
+    expect(accountOrder()).toEqual(["Kas", "Bank", "QRIS Settlement"]);
+    const reads = asMock(chartOfAccountsService.list).mock.calls.length;
+
+    // Saldo: largest first, then flipped.
+    await user.click(card.getByRole("button", { name: /Saldo/ }));
+    expect(accountOrder()).toEqual(["Bank", "Kas", "QRIS Settlement"]);
+    await user.click(card.getByRole("button", { name: /Saldo/ }));
+    expect(accountOrder()).toEqual(["QRIS Settlement", "Kas", "Bank"]);
+
+    // Masuk and Keluar: largest first too.
+    await user.click(card.getByRole("button", { name: /Masuk/ }));
+    expect(accountOrder()).toEqual(["Bank", "Kas", "QRIS Settlement"]);
+    await user.click(card.getByRole("button", { name: /Keluar/ }));
+    expect(accountOrder()).toEqual(["Bank", "Kas", "QRIS Settlement"]);
+
+    // Kode: ascending first, then flipped.
+    await user.click(card.getByRole("button", { name: /Kode/ }));
+    expect(accountOrder()).toEqual(["Kas", "Bank", "QRIS Settlement"]);
+    await user.click(card.getByRole("button", { name: /Kode/ }));
+    expect(accountOrder()).toEqual(["QRIS Settlement", "Bank", "Kas"]);
+
+    // No request was made for any of it.
+    expect(chartOfAccountsService.list).toHaveBeenCalledTimes(reads);
+
+    // Akun, Status and Aksi stay plain.
+    for (const name of ["Akun", "Status", "Aksi"]) {
+      expect(card.getByRole("columnheader", { name })).not.toHaveAttribute(
+        "aria-sort",
+      );
+    }
+  });
+
+  /** Ubah moved behind the row's ⋮ menu, still to Daftar Akun's form. */
+  it("offers Ubah from the row menu", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<KasBankScreen now={NOW} />);
+    const row = await rowFor("Kas");
+
+    await user.click(row.getByRole("button", { name: "Aksi untuk Kas" }));
+    expect(
+      await screen.findByRole("menuitem", { name: "Ubah" }),
+    ).toHaveAttribute("href", "/dashboard/pengaturan/daftar-akun/acc-1101/edit");
+  });
+
+  it("drops the sentence explaining Masuk, Keluar and Saldo", async () => {
+    renderWithAuth(<KasBankScreen now={NOW} />);
+    await rowFor("Kas");
+
+    expect(
+      screen.queryByText(/Masuk dan Keluar dihitung untuk periode/),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("Kas & Bank — one period for the whole page", () => {
   /**
    * THE CARDS, THE TABLE AND THE ROWS MUST BE ABOUT ONE MONTH. They come from

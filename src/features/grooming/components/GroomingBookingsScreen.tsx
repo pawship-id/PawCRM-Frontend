@@ -11,6 +11,7 @@ import { Can } from "@/features/permissions";
 import {
   countFilters,
   DEFAULT_FILTERS,
+  DEFAULT_SORT,
   formatMoneyShort,
   matchesFilters,
   matchesLens,
@@ -26,6 +27,7 @@ import {
   type GroomingLens,
   type GroomingPeriod,
   type GroomingScope,
+  type GroomingSort,
 } from "../board";
 import { MAX_BOOKING_PAGES, useGroomingBoard } from "../hooks/useGroomingBoard";
 import { useFirstVisits } from "../hooks/useFirstVisits";
@@ -83,6 +85,8 @@ export function GroomingBookingsScreen() {
   const [period, setPeriod] = useState<GroomingPeriod>("month");
   const [custom, setCustom] = useState<DateRange>({ from: "", to: "" });
   const [filters, setFilters] = useState<GroomingFilters>(DEFAULT_FILTERS);
+  /* From the table's headers; outside `filters`, so the panel's Reset keeps it. */
+  const [sort, setSort] = useState<GroomingSort>(DEFAULT_SORT);
   const [search, setSearch] = useState("");
   const [lens, setLens] = useState<GroomingLens>("all");
   const [page, setPage] = useState(1);
@@ -128,9 +132,9 @@ export function GroomingBookingsScreen() {
         filtered.filter(
           (row) => matchesLens(row, lens) && matchesSearch(row, search),
         ),
-        filters.sort,
+        sort,
       ),
-    [filtered, lens, search, filters.sort],
+    [filtered, lens, search, sort],
   );
 
   const totalPages = Math.ceil(visible.length / PAGE_SIZE);
@@ -336,6 +340,11 @@ export function GroomingBookingsScreen() {
           <GroomingBookingsTable
             rows={pageRows}
             loading={board.loading}
+            sort={sort}
+            onSortChange={(next) => {
+              setSort(next);
+              setPage(1);
+            }}
             onChanged={board.replaceBooking}
             emptyMessage={
               narrowed ? (

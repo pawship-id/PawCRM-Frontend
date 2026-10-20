@@ -8,7 +8,6 @@ import {
   FilterCheckList,
   FilterPanel,
   FilterSearch,
-  FilterSelect,
   FilterTrigger,
 } from "@/components";
 import { bookingStatusLabel } from "@/features/booking";
@@ -26,14 +25,7 @@ import {
   DEFAULT_FILTERS,
   isoDate,
   type GroomingFilters,
-  type GroomingSort,
 } from "../board";
-
-const SORTS: { value: GroomingSort; label: string }[] = [
-  { value: "schedule_asc", label: "Jadwal paling awal" },
-  { value: "schedule_desc", label: "Jadwal paling akhir" },
-  { value: "value_desc", label: "Nilai terbesar" },
-];
 
 /** In the order a booking walks them — see BookingsToolbar. */
 const STATUSES: BookingStatus[] = [
@@ -86,13 +78,15 @@ export type BookingsToolbarKind = "grooming" | "antar-jemput";
 /**
  * Search, and one Filter button.
  *
- * A PANEL, BY §8's COUNT: Urutkan plus four multi-selects. Every field waits for
- * Terapkan, so composing "Sinta, di rumah, In Progress" does not redraw the
- * table three times on the way.
+ * A PANEL OF FOUR MULTI-SELECTS. Every field waits for Terapkan, so composing
+ * "Sinta, di rumah, In Progress" does not redraw the table three times on the
+ * way.
  *
- * SORTING IS A FIELD HERE, NOT A CLICKABLE HEADER as the mockup draws it — §8
- * is binding, and it is also the one ordering control the rest of the app's
- * lists use.
+ * NO URUTKAN HERE (BO, 20 October 2026): the table sorts from its Booking and
+ * Nilai headers, as the mockup draws it (`BOOKING_SORT_OPTIONS` in `board.ts`).
+ * The ordering is the screen's own state, outside `GroomingFilters`, so Reset
+ * clears the fields and leaves the ordering alone, and Filter (n) never counts
+ * it.
  *
  * THE MOCKUP'S "Jenis hewan" IS NOT OFFERED. A booking does not carry the
  * animal's species, so the field would filter nothing.
@@ -185,14 +179,6 @@ export function GroomingBookingsToolbar({
           setOpen(false);
         }}
       >
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          value={draft.sort}
-          unsetValue="schedule_asc"
-          options={SORTS}
-          onChange={(sort) => patch({ sort })}
-        />
         <FilterCheckList
           label="Status"
           options={(rides ? RIDE_STATUSES : STATUSES).map((status) => ({

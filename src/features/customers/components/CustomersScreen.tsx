@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 
-import { Alert, Card, Spinner, Pagination } from "@/components";
+import { Alert, Pagination } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 
@@ -102,49 +102,24 @@ export function CustomersScreen({
 
       {error && <Alert variant="error">{error}</Alert>}
 
-      {loading && customers.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Memuat daftar pelanggan…
-        </div>
-      ) : (
-        <>
-          <CustomersTable
-            customers={customers}
-            loading={loading}
-            onChanged={handleRowChanged}
-            search={query.search}
-          />
-          <Pagination
-            page={pagination.page}
-            totalPages={pagination.totalPages}
-            total={pagination.total}
-            unit="pelanggan"
-            unitPlural="pelanggan"
-            onPageChange={(page) => setQuery({ page })}
-          />
-
-          {/*
-            THE MOCKUP'S CALLOUT, KEPT. It is the one thing on the screen that
-            teaches a gesture nothing else announces: the row is the way into a
-            customer's profile, and the icons are there so a small job never
-            needs the profile at all. Left off, people look for a menu.
-
-            A `Card` rather than the mockup's hand-rolled panel — ui-rules §2 —
-            with one borrowed detail: the navy left edge, which is what tells a
-            note apart from the table above it at a glance.
-          */}
-          <Card
-            className="border-l-[3px] border-l-primary"
-            title="Profil pelanggan dibuka dari baris, bukan dari menu"
-          >
-            <p className="text-sm text-muted">
-              Klik baris mana pun untuk membuka profilnya. Ikon di kolom
-              terakhir jalan pintas untuk chat WhatsApp, ubah, dan hapus —
-              supaya tidak perlu buka profil dulu untuk hal kecil.
-            </p>
-          </Card>
-        </>
-      )}
+      {/* The table owns its loading row and its empty row — it keeps the old
+          rows on screen, dimmed, while a re-sort or a page change loads. */}
+      <CustomersTable
+        customers={customers}
+        loading={loading}
+        onChanged={handleRowChanged}
+        search={query.search}
+        sort={query.sort}
+        onSortChange={(sort) => setQuery({ sort })}
+      />
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        unit="pelanggan"
+        unitPlural="pelanggan"
+        onPageChange={(page) => setQuery({ page })}
+      />
     </div>
   );
 }

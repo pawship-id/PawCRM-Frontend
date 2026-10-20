@@ -12,6 +12,7 @@ import type {
   PosReturnable,
   PosTransactionListQuery,
   PosShift,
+  PosShiftListItem,
   PosShiftStatus,
   PosTransaction,
   PosXReport,
@@ -57,7 +58,8 @@ export const posService = {
 
   /**
    * GET /pos/shifts — every shift in the scope, newest first. Beranda counts
-   * the day's shifts and how many are still open; `posShifts:read`.
+   * the day's shifts and how many are still open; Pengaturan › Shift kasir
+   * lists them, with branch and cashier names; `posShifts:read`.
    */
   listShifts: (
     query: {
@@ -68,7 +70,7 @@ export const posService = {
       openedFrom?: string;
       openedTo?: string;
     } = {},
-  ) => apiClient.get<PageResult<PosShift>>("/pos/shifts", { query }),
+  ) => apiClient.get<PageResult<PosShiftListItem>>("/pos/shifts", { query }),
 
   /** GET /pos/shifts/:id/x-report — read-only, and safe to run repeatedly. */
   xReport: (shiftId: string) =>

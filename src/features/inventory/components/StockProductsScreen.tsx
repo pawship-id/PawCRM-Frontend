@@ -6,7 +6,6 @@ import {
   Alert,
   FilterSelect,
   Pagination,
-  Spinner,
   namedOptions,
   withAll,
 } from "@/components";
@@ -14,7 +13,7 @@ import { useAuth } from "@/features/auth";
 import { usePermissions } from "@/features/permissions";
 
 import { useCatalogLookups } from "../hooks/useCatalogLookups";
-import { useStockProducts } from "../hooks/useStockProducts";
+import { isStockSort, useStockProducts } from "../hooks/useStockProducts";
 import { StockModuleHeader } from "./StockModuleHeader";
 import { StockProductsTable } from "./StockProductsTable";
 import { StockProductsToolbar } from "./StockProductsToolbar";
@@ -32,7 +31,9 @@ import { StockProductsToolbar } from "./StockProductsToolbar";
  * THE WAREHOUSE IS CHOSEN ABOVE, AND IT IS NOT A FILTER. Every row arrives
  * carrying its quantities for every location, so this select re-reads what is
  * already on the page rather than re-querying. Nothing is narrowed by it — the
- * same twenty products are listed whichever way it is set.
+ * same products are listed whichever way it is set. The one exception is the
+ * ORDER: sorted by Stok or Nilai stok, the server sums the chosen warehouse, so
+ * changing it re-fetches from page 1 (see useStockProducts).
  *
  * IT OPENS ON EVERY GUDANG, matching the catalogue and the hub, because "berapa
  * total stok produk ini" is the question somebody arriving at a list is usually
@@ -76,37 +77,34 @@ export function StockProductsScreen() {
   const mayReadProducts = can("products", "read");
 
   const lookups = useCatalogLookups({ includeInactive: true });
-  const { products, pagination, query, loading, error, setQuery } =
-    useStockProducts(mayReadProducts);
 
   /** Empty = every gudang, the repo's unset convention for a scope. */
   const [warehouseId, setWarehouseId] = useState("");
+
+  const { products, pagination, query, loading, error, setQuery } =
+    useStockProducts(mayReadProducts, warehouseId);
+
+  /**
+   * Under a stock sort a new warehouse is a new order, so the walk restarts at
+   * page 1 — page 3 of one ordering is not page 3 of another.
+   */
+  function changeWarehouse(next: string) {
+    setWarehouseId(next);
+    if (isStockSort(query.sort)) setQuery({ page: 1 });
+  }
 
   /**
    * How many shelves this account reaches — `null` when it reaches every one.
    *
    * FOR THE PROSE, NOT FOR THE FIGURES. The quantities arrive already narrowed
-   * (see the header); this is what lets the caption say which set they cover,
-   * and what makes an all-zero table explainable rather than mysterious. Read
-   * off the same list the dropdown renders, so the sentence and the picker
-   * cannot describe different things.
+   * (see the header); this is what makes an all-zero table explainable rather
+   * than mysterious. Read off the same list the dropdown renders, so the
+   * sentence and the picker cannot describe different things.
    */
   const reach = useMemo(
     () => (user?.allBranches ? null : lookups.warehouses.length),
     [user, lookups.warehouses],
   );
-
-  /**
-   * The chosen warehouse's name, for the caption.
-   *
-   * Undefined while the lookup is in flight, and also for an id the list does
-   * not contain — the trigger keeps showing the raw id in that case
-   * (FilterSelect does this deliberately), and a caption inventing a name for it
-   * would be the one place on screen claiming the scope is something else.
-   */
-  const warehouseName = lookups.warehouses.find(
-    (warehouse) => warehouse._id === warehouseId,
-  )?.name;
 
   return (
     <div className="flex flex-col gap-6">
@@ -134,28 +132,11 @@ export function StockProductsScreen() {
               // rows simply report it. `active` navy would claim otherwise.
               active={false}
               align="end"
-              onChange={setWarehouseId}
+              onChange={changeWarehouse}
             />
           ) : null
         }
       />
-
-      {/*
-        The caption names the scope the figures are for, which is the one
-        misreading this table invites — and it names the mismatch too: a total
-        spans locations, a card never does. It sits under the header rather than
-        in it: the other three tabs of this module have no such warning, and a
-        module header is what every tab shares.
-      */}
-      <p className="max-w-2xl text-sm text-muted">
-        Cari produknya, lalu buka kartu stoknya. Stok dan nilainya dihitung
-        {warehouseName
-          ? ` untuk ${warehouseName}`
-          : reach === null
-            ? " untuk semua gudang"
-            : " untuk semua gudang yang bisa Anda akses"}
-        ; kartu stoknya sendiri selalu dibaca per gudang.
-      </p>
 
       <StockProductsToolbar
         query={query}
@@ -194,10 +175,6 @@ export function StockProductsScreen() {
             lewat tautan dari halaman detail produk.
           </p>
         </div>
-      ) : loading && products.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Memuat daftar produk…
-        </div>
       ) : (
         <>
           <StockProductsTable
@@ -205,6 +182,8 @@ export function StockProductsScreen() {
             warehouseId={warehouseId}
             search={query.search}
             loading={loading}
+            sort={query.sort}
+            onSortChange={(sort) => setQuery({ sort })}
           />
           <Pagination
             page={pagination.page}

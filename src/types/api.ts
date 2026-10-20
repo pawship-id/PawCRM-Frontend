@@ -1639,7 +1639,26 @@ export interface CustomerListQuery {
    * "registered since" filter of the register's own.
    */
   createdSince?: string;
+  /**
+   * A name from the server's closed `CUSTOMER_SORTS` — never a field. Omitted
+   * means `newest`, which is what the API defaults to anyway.
+   */
+  sort?: CustomerSort;
 }
+
+/**
+ * The orderings GET /api/customers accepts — the server's `CUSTOMER_SORTS`
+ * (BO header sorting, 20 October 2026). Kode sorts by `code`, Pelanggan by
+ * `name`, Bergabung by `createdAt` (`newest` / `oldest`). Every key is stored
+ * and indexed.
+ */
+export type CustomerSort =
+  | "newest"
+  | "oldest"
+  | "codeAsc"
+  | "codeDesc"
+  | "nameAsc"
+  | "nameDesc";
 
 /**
  * What GET /api/customers/stats answers — the numbers on the Pelanggan header's
@@ -1796,6 +1815,15 @@ export interface PosShift {
   status: PosShiftStatus;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A row of GET /pos/shifts — the shift plus the two names a list across
+ * cashiers and branches needs. Null when the branch or user is gone.
+ */
+export interface PosShiftListItem extends PosShift {
+  branchName: string | null;
+  cashierName: string | null;
 }
 
 /** One channel's takings during a shift. `net` is amount minus change given. */
@@ -3723,13 +3751,8 @@ export interface CommissionRowsResult {
   cards: { total: string; paid: string; pending: string };
 }
 
-export type CommissionSort =
-  | "bookingDate"
-  | "groomer"
-  | "branch"
-  | "basisAmount"
-  | "amount"
-  | "status";
+/** Cabang and Status stopped sorting on 20 October 2026 (BO). */
+export type CommissionSort = "bookingDate" | "groomer" | "basisAmount" | "amount";
 
 export interface CommissionRowsQuery {
   branchId?: string;
@@ -4535,6 +4558,21 @@ export interface Service {
   updatedAt: string;
 }
 
+/**
+ * The orderings GET /api/services accepts — SERVICE_SORTS on the server (BO
+ * header sorting, 20 October 2026). `nameAsc` is the default, the menu order
+ * the catalogue always had. Harga and Durasi rank by the LOW end of what their
+ * cells print (a flat service's own value, or the cheapest / shortest ACTIVE
+ * variant), with a service that has none last in both directions.
+ */
+export type ServiceSort =
+  | "nameAsc"
+  | "nameDesc"
+  | "priceAsc"
+  | "priceDesc"
+  | "durationAsc"
+  | "durationDesc";
+
 /** Query parameters accepted by GET /api/services. All optional. */
 export interface ServiceListQuery {
   page?: number;
@@ -4571,6 +4609,8 @@ export interface ServiceListQuery {
   /** Free-text over name / code. */
   search?: string;
   includeDeleted?: boolean;
+  /** A SERVICE_SORTS name; the server defaults to `nameAsc`. */
+  sort?: ServiceSort;
 }
 
 /** One variant as the form sends it — the same shape, price as typed. */
@@ -5123,7 +5163,27 @@ export interface PetListQuery {
   tag?: string;
   /** Include soft-deleted pets (default false on the backend). */
   includeDeleted?: boolean;
+  /** One of the server's closed `PET_SORTS`; omitted means `newest`. */
+  sort?: PetSort;
 }
+
+/**
+ * Orderings accepted by GET /api/pets — the server's closed `PET_SORTS`, which
+ * the Hewan table's headers ask for (BO, 20 October 2026).
+ *
+ * `age*` orders by `birthDate`, which the Umur column is derived from:
+ * `ageDesc` is OLDEST first (earliest birth date), `ageAsc` youngest first.
+ * `weight*` orders by `weightKg`. In all four a pet with no birth date / no
+ * weight comes LAST, whichever the direction.
+ */
+export type PetSort =
+  | "newest"
+  | "nameAsc"
+  | "nameDesc"
+  | "ageAsc"
+  | "ageDesc"
+  | "weightAsc"
+  | "weightDesc";
 
 /** Body of PATCH /api/pets/:id/preferences. */
 export interface UpdatePetPreferencesInput {
@@ -5478,11 +5538,22 @@ export function isSupplierActive(
 /**
  * The orderings `GET /api/suppliers` accepts — SUPPLIER_SORTS in the model.
  *
- * No "termin" or "sisa utang": the first is a negotiated property rather than a
- * ranking, and the second is aggregated by a different endpoint, so the database
- * cannot order by it.
+ * `paymentTerm*` orders by the stored term; `receiptCount*` and `outstanding*`
+ * by the Penerimaan and Sisa utang figures, which the server sums for those
+ * orderings only, with the same definitions as `GET /goods-receipts/summary`
+ * and `GET /purchase-invoices/outstanding` (BO header sorting, 19 October 2026).
  */
-export type SupplierSort = "newest" | "oldest" | "nameAsc" | "nameDesc";
+export type SupplierSort =
+  | "newest"
+  | "oldest"
+  | "nameAsc"
+  | "nameDesc"
+  | "paymentTermAsc"
+  | "paymentTermDesc"
+  | "receiptCountAsc"
+  | "receiptCountDesc"
+  | "outstandingAsc"
+  | "outstandingDesc";
 
 /** Query parameters accepted by GET /api/suppliers. All optional. */
 export interface SupplierListQuery {
@@ -5885,10 +5956,19 @@ export interface GoodsReceiptListRow {
  *
  * `newest` / `oldest` key on `receiptDate`, the day the goods arrived, never the
  * day the row was typed. The number orderings are how you walk a sequence rather
- * than a calendar — see the model. There is no ordering by value: `total` is
- * unindexed, so it would be a blocking in-memory sort of every matched receipt.
+ * than a calendar — see the model. `itemCount*` and `value*` (header sorting,
+ * 19 October 2026) order by the Item and Nilai columns — the line count and
+ * `grandTotal` — which the server computes for those orderings alone.
  */
-export type GoodsReceiptSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
+export type GoodsReceiptSort =
+  | "newest"
+  | "oldest"
+  | "numberDesc"
+  | "numberAsc"
+  | "itemCountDesc"
+  | "itemCountAsc"
+  | "valueDesc"
+  | "valueAsc";
 
 /**
  * Query parameters accepted by GET /api/goods-receipts. All optional.
@@ -6661,9 +6741,24 @@ export interface PurchaseInvoiceListQuery {
  * Named after the axis rather than a direction, matching the batch list's
  * `expirySoonest`: on a date that means a deadline, "ascending" is not what
  * anybody calls it.
+ *
+ * Header sorting (19 October 2026) added Faktur (`number*`), Total, Dibayar
+ * (`paid*`) and Sisa (`outstanding*`, computed by the server as
+ * `total − paidAmount`).
  */
 export type PurchaseInvoiceSort =
-  "newest" | "oldest" | "dueSoonest" | "dueLatest";
+  | "newest"
+  | "oldest"
+  | "dueSoonest"
+  | "dueLatest"
+  | "numberAsc"
+  | "numberDesc"
+  | "totalDesc"
+  | "totalAsc"
+  | "paidDesc"
+  | "paidAsc"
+  | "outstandingDesc"
+  | "outstandingAsc";
 
 /**
  * POST /api/purchase-invoices — file the supplier's bill against a delivery.
@@ -7967,7 +8062,9 @@ export interface CustomerInvoiceListQuery {
     | "totalHighest"
     | "totalLowest"
     | "outstandingHighest"
-    | "outstandingLowest";
+    | "outstandingLowest"
+    | "numberAsc"
+    | "numberDesc";
 }
 
 /** What the list's Status filter may ask for — a status, or lateness. */
@@ -8227,10 +8324,7 @@ export type CashTransactionSort =
   | "newest"
   | "oldest"
   | "amountHighest"
-  | "amountLowest"
-  /** By the branch's NAME — the server joins the branch in for these two only. */
-  | "branchAsc"
-  | "branchDesc";
+  | "amountLowest";
 
 export type CashTransactionDocumentType =
   | "customer_invoice"

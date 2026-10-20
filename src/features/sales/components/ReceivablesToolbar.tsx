@@ -165,8 +165,8 @@ const sameSet = <T,>(a: T[], b: T[]) =>
  * SEARCH REACHES THE CUSTOMER'S NAME. The server resolves matching customers
  * into ids first, so the placeholder can promise what people type.
  *
- * NO ORDERING IN THE PANEL. The table's column headers sort — Tanggal, Jatuh
- * tempo, Nilai, Sisa — which is where the mockup puts it.
+ * NO ORDERING IN THE PANEL. The table's column headers sort — Faktur,
+ * Tanggal, Jatuh tempo, Nilai, Sisa — which is where the mockup puts it.
  */
 export function ReceivablesToolbar({
   query,

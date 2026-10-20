@@ -190,6 +190,58 @@ describe("Biaya Tetap — the table", () => {
   });
 });
 
+describe("Biaya Tetap — header sorting and the card", () => {
+  /** Nama, Jumlah and Jatuh tempo order the list on the server; asc first. */
+  it("orders from Nama, Jumlah and Jatuh tempo, ascending first", async () => {
+    const user = userEvent.setup();
+    openTab();
+    await screen.findByText("Sewa Toko Pusat");
+    const table = () => within(screen.getByRole("table"));
+
+    await user.click(table().getByRole("button", { name: /Nama/ }));
+    await waitFor(() =>
+      expect(fixedCostService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "nameAsc", page: 1 }),
+      ),
+    );
+    await user.click(table().getByRole("button", { name: /Nama/ }));
+    await waitFor(() =>
+      expect(fixedCostService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "nameDesc" }),
+      ),
+    );
+    await user.click(table().getByRole("button", { name: /Jumlah/ }));
+    await waitFor(() =>
+      expect(fixedCostService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "amountLowest" }),
+      ),
+    );
+    await user.click(table().getByRole("button", { name: /Jatuh tempo/ }));
+    await waitFor(() =>
+      expect(fixedCostService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "dueSoonest" }),
+      ),
+    );
+
+    // Tipe and Kategori stay plain.
+    for (const name of [/Tipe/, /Kategori/]) {
+      expect(table().queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+  });
+
+  /** BO, 20 October 2026: a sentence-case heading, and no footnote. */
+  it("heads the card in sentence case and drops the scheduler footnote", async () => {
+    openTab();
+    await screen.findByText("Sewa Toko Pusat");
+
+    const heading = screen.getByRole("heading", { name: "Biaya tetap" });
+    expect(heading).not.toHaveClass("uppercase");
+    expect(
+      screen.queryByText(/Penjadwal otomatisnya belum ada/),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("Biaya Tetap — what is due", () => {
   /*
     THE BACKLOG IS A COUNT, not a flag. A rent entered three months late owes

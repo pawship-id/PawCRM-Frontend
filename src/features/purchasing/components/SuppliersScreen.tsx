@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Pagination, Spinner } from "@/components";
+import { Alert, Pagination } from "@/components";
 import { cn } from "@/lib/utils";
 import { formatMoney, toMinor } from "@/utils/decimal";
 
@@ -13,7 +13,8 @@ import { SuppliersToolbar } from "./SuppliersToolbar";
 /**
  * The Purchasing → Supplier list. Owns the list query (useSuppliers) and the
  * cross-supplier totals (useSupplierSummaries), and wires the toolbar, table and
- * pager together. Row mutations call `refetch` on both, since deleting or
+ * pager together. The ordering is set from the table's column headers (BO,
+ * 19 October 2026), not from the filter panel. Row mutations call `refetch` on both, since deleting or
  * deactivating a vendor changes what is owed on this screen as well as which
  * rows show. Mirrors CustomersScreen.
  *
@@ -60,31 +61,27 @@ export function SuppliersScreen() {
 
       {error && <Alert variant="error">{error}</Alert>}
 
-      {loading && suppliers.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Memuat data supplier…
-        </div>
-      ) : (
-        <>
-          <SuppliersTable
-            suppliers={suppliers}
-            outstanding={summaries.outstanding}
-            purchases={summaries.purchases}
-            horizonDays={summaries.horizonDays}
-            loading={loading}
-            onChanged={handleChanged}
-            search={query.search}
-          />
-          <Pagination
-            page={pagination.page}
-            totalPages={pagination.totalPages}
-            total={pagination.total}
-            unit="supplier"
-            unitPlural="supplier"
-            onPageChange={(page) => setQuery({ page })}
-          />
-        </>
-      )}
+      {/* The table owns its loading row and its empty row now — it keeps the
+          old rows on screen, dimmed, while a re-sort or a page change loads. */}
+      <SuppliersTable
+        suppliers={suppliers}
+        outstanding={summaries.outstanding}
+        purchases={summaries.purchases}
+        horizonDays={summaries.horizonDays}
+        loading={loading}
+        onChanged={handleChanged}
+        search={query.search}
+        sort={query.sort}
+        onSortChange={(sort) => setQuery({ sort })}
+      />
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        unit="supplier"
+        unitPlural="supplier"
+        onPageChange={(page) => setQuery({ page })}
+      />
     </div>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 
 import { Alert, Card, ScopeFilterCard, Spinner } from "@/components";
 import type { RevenueBreakdown } from "@/types/api";
@@ -66,9 +65,6 @@ export function SalesSummaryScreen() {
   const { query, summary, summaryFailed, breakdowns, setQuery } =
     useSalesSummary();
   const options = useReceivableFilterOptions();
-
-  // The Omzet card's own figure on this tab — the laba rugi's Total pendapatan.
-  const revenue = summary?.ledgerRevenue;
 
   /*
     WHAT "RESET FILTER" COUNTS AND PUTS BACK (12 October 2026, on request) —
@@ -139,44 +135,15 @@ export function SalesSummaryScreen() {
       <BreakdownPanel
         title="Omzet per kategori produk"
         state={breakdowns.category}
-        revenue={revenue?.amount ?? null}
       />
       <BreakdownPanel
         title="Omzet per layanan"
         state={breakdowns.businessLine}
-        revenue={revenue?.amount ?? null}
       />
       <BreakdownPanel
         title="Omzet per kategori pelanggan"
         state={breakdowns.customerType}
-        revenue={revenue?.amount ?? null}
       />
-
-      {/* The mockup's closing note — what this tab is, and what it is not. */}
-      <Card>
-        <p className="text-base font-bold text-foreground">
-          Komposisi, bukan daftar faktur
-        </p>
-        <p className="mt-1 text-sm text-muted">
-          Kartu di atas sama dengan tab{" "}
-          <Link
-            href="/dashboard/sales/invoice"
-            className="text-primary underline-offset-2 hover:underline"
-          >
-            Faktur
-          </Link>
-          . Yang khas di sini adalah rinciannya — dari kategori, lini, dan
-          jenis pelanggan apa omzet itu berasal. Daftar fakturnya sendiri,
-          beserta aksi bayar dan batalkan, tetap di tab Faktur dan{" "}
-          <Link
-            href="/dashboard/sales/piutang"
-            className="text-primary underline-offset-2 hover:underline"
-          >
-            Piutang
-          </Link>
-          .
-        </p>
-      </Card>
     </div>
   );
 }
@@ -224,12 +191,10 @@ const groupName = (
  * handful of magnitudes with their names read better as a ranked list with the
  * money printed than as anything with an axis.
  *
- * IT SAYS WHERE ITS FIGURES COME FROM, AND WHAT THEY ADD UP TO. On a `line`
- * basis the bars are short of the omzet — the invoice discount, the other
- * charges and the tax belong to no single catalogue row — and the gap is printed
- * rather than smoothed over, because a breakdown quietly adding up to something
- * else is the bug this note exists to prevent. On the `invoice` basis it says
- * that the two agree, which is worth as much.
+ * NO TOTAL NOTE UNDER THE BARS (19 October 2026, on request): the line that
+ * reconciled each panel with the omzet was removed. On a `line` basis the bars
+ * still fall short of the omzet — discount, other charges and tax belong to no
+ * catalogue row — the ⓘ on the Omzet card is where that is explained now.
  *
  * A LONG TAIL FOLDS INTO ONE ROW. A tenant with forty categories would otherwise
  * push everything else on the page below the fold, and the rows past the eighth
@@ -238,12 +203,9 @@ const groupName = (
 function BreakdownPanel({
   title,
   state,
-  revenue,
 }: {
   title: string;
   state: BreakdownState;
-  /** The Omzet card's figure, for the line that reconciles the two. */
-  revenue: string | null;
 }) {
   const data = state.data;
   const rows = data?.groups ?? [];
@@ -270,49 +232,27 @@ function BreakdownPanel({
           {rows.length === 0 ? (
             <p className="py-2 text-sm text-muted">{copy.empty}</p>
           ) : (
-            <>
-              <ul className="divide-y divide-border rounded-lg border border-border px-4">
-                {head.map((row) => (
-                  <BreakdownRow
-                    key={row.id ?? "__unnamed"}
-                    name={groupName(data.axis, row)}
-                    amount={row.amount}
-                    share={total > 0 ? (Number(row.amount) / total) * 100 : 0}
-                    width={(Number(row.amount) / largest) * 100}
-                    meta={countLabel(row)}
-                  />
-                ))}
-                {tail.length > 0 && (
-                  <BreakdownRow
-                    name={`${tail.length} lainnya`}
-                    amount={String(tailAmount)}
-                    share={total > 0 ? (tailAmount / total) * 100 : 0}
-                    width={(tailAmount / largest) * 100}
-                    meta=""
-                  />
-                )}
-              </ul>
-
-              <p className="mt-3 text-xs text-muted">
-                {data.basis === "invoice" ? (
-                  <>
-                    Total {formatMoney(data.total)} — dari faktur, setelah
-                    diskon dan sebelum PPN, seperti omzet periode. Sama dengan
-                    omzet kecuali ada retur atau pendapatan yang dicatat lewat
-                    jurnal manual, yang tidak menempel pada faktur.
-                  </>
-                ) : (
-                  <>
-                    Total nilai baris {formatMoney(data.total)}
-                    {revenue ? ` dari omzet ${formatMoney(revenue)}` : ""} —
-                    keduanya beda karena nilai baris belum dipotong diskon faktur
-                    dan retur, dan masih termasuk PPN bila harganya sudah
-                    termasuk PPN. Baris dari kasir ikut dihitung lewat transaksi
-                    kasirnya.
-                  </>
-                )}
-              </p>
-            </>
+            <ul className="divide-y divide-border rounded-lg border border-border px-4">
+              {head.map((row) => (
+                <BreakdownRow
+                  key={row.id ?? "__unnamed"}
+                  name={groupName(data.axis, row)}
+                  amount={row.amount}
+                  share={total > 0 ? (Number(row.amount) / total) * 100 : 0}
+                  width={(Number(row.amount) / largest) * 100}
+                  meta={countLabel(row)}
+                />
+              ))}
+              {tail.length > 0 && (
+                <BreakdownRow
+                  name={`${tail.length} lainnya`}
+                  amount={String(tailAmount)}
+                  share={total > 0 ? (tailAmount / total) * 100 : 0}
+                  width={(tailAmount / largest) * 100}
+                  meta=""
+                />
+              )}
+            </ul>
           )}
         </>
       )}

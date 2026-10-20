@@ -34,7 +34,8 @@ jest.mock("next/navigation", () => ({
  *     SEARCH forces the second whatever the horizon says;
  *  3. rows render the labels the API resolved — nothing here may reintroduce a
  *     client-side join against the catalogue;
- *  4. the order is the server's; this screen never re-sorts a page.
+ *  4. the order is the server's: a header click asks the API for one of
+ *     BATCH_SORTS, and this screen never re-sorts a page.
  *
  * The Radix selects are not driven — jsdom cannot do their pointer protocol, and
  * what they set is a value that goes straight into the query.
@@ -168,6 +169,18 @@ function mockAll(lots: ProductBatch[] = [lot()], warehouses = [warehouse()]) {
 afterEach(() => jest.restoreAllMocks());
 
 /**
+ * The table once its first answer has landed. `DataTable` renders its header
+ * from the first frame — with a spinner row while nothing has arrived — so the
+ * table merely EXISTING no longer means the rows are in.
+ */
+async function findLoadedTable() {
+  return waitFor(() => {
+    expect(screen.queryByText(/^Memuat/)).not.toBeInTheDocument();
+    return screen.getByRole("table");
+  });
+}
+
+/**
  * Opens the one filter panel and returns it.
  *
  * The warehouse, the horizon, the ordering and the spent-lot toggle all live
@@ -228,7 +241,7 @@ describe("BatchesScreen", () => {
 
     const user = userEvent.setup();
     renderWithAuth(<BatchesScreen />);
-    await screen.findByRole("table");
+    await findLoadedTable();
 
     const panel = await openFilters(user);
     await user.click(
@@ -250,7 +263,7 @@ describe("BatchesScreen", () => {
     const user = userEvent.setup();
     renderWithAuth(<BatchesScreen />);
 
-    await screen.findByRole("table");
+    await findLoadedTable();
     await user.type(
       screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
       "WSK",
@@ -271,7 +284,7 @@ describe("BatchesScreen", () => {
     const user = userEvent.setup();
     renderWithAuth(<BatchesScreen />);
 
-    await screen.findByRole("table");
+    await findLoadedTable();
     await user.type(
       screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
       "WSK",
@@ -300,7 +313,7 @@ describe("BatchesScreen", () => {
     const user = userEvent.setup();
     renderWithAuth(<BatchesScreen />);
 
-    await screen.findByRole("table");
+    await findLoadedTable();
 
     // Every batch by default — the audit list, where a lot that sold out is a
     // real answer, so the toggle is in the panel from the start.
@@ -330,7 +343,7 @@ describe("BatchesScreen", () => {
     const user = userEvent.setup();
     renderWithAuth(<BatchesScreen />);
 
-    await screen.findByRole("table");
+    await findLoadedTable();
     await user.type(
       screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
       "WSK",
@@ -355,53 +368,133 @@ describe("BatchesScreen", () => {
     );
   });
 
-  it("re-orders both endpoints through one control", async () => {
-    const { listCall, expiringCall } = mockAll();
+  /**
+   * Header sorting (BO, 19 October 2026). Every click is an API ordering —
+   * the list is paged, so the server sorts and this screen never re-sorts a
+   * page.
+   */
+  describe("sorting from the headers", () => {
+    it("opens soonest-to-expire first, marked on the Kedaluwarsa header", async () => {
+      const { listCall } = mockAll();
 
-    const user = userEvent.setup();
-    renderWithAuth(<BatchesScreen />);
-    await screen.findByRole("table");
+      renderWithAuth(<BatchesScreen />);
+      await findLoadedTable();
 
-    // Stated rather than omitted: every page of a walk has to agree, and this
-    // screen exists to show what goes bad first.
-    expect(listCall).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sort: "expirySoonest" }),
-    );
-
-    const panel = await openFilters(user);
-    await user.click(within(panel).getByRole("button", { name: "Urutkan" }));
-    await user.click(screen.getByRole("option", { name: "Terbaru diterima" }));
-    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
-
-    await waitFor(() =>
+      // Stated rather than omitted: every page of a walk has to agree, and this
+      // screen exists to show what goes bad first.
       expect(listCall).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "newest" }),
-      ),
-    );
+        expect.objectContaining({ sort: "expirySoonest" }),
+      );
+      expect(
+        screen.getByRole("columnheader", { name: "Kedaluwarsa" }),
+      ).toHaveAttribute("aria-sort", "ascending");
+    });
 
-    // The ordering SURVIVES the switch to the alert endpoint. A sort that reset
-    // itself when the horizon flipped the screen would be a control that undoes
-    // its own last click.
-    const again = await openFilters(user);
-    await user.click(
-      within(again).getByRole("button", { name: "Rentang kedaluwarsa" }),
-    );
-    await user.click(screen.getByRole("option", { name: "Perhatian — 30 hari" }));
-    await user.click(within(again).getByRole("button", { name: "Terapkan" }));
+    it.each([
+      ["Kode batch internal", "batchCodeAsc"],
+      ["Produk", "productAsc"],
+      ["Kedaluwarsa", "expiryLatest"],
+      ["Sisa Stock", "qtyDesc"],
+      ["HPP", "costDesc"],
+      ["Nilai sisa", "valueDesc"],
+    ])("asks the server for %s → %s", async (header, sort) => {
+      const { listCall } = mockAll();
+      const user = userEvent.setup();
+      renderWithAuth(<BatchesScreen />);
+      await findLoadedTable();
 
-    await waitFor(() =>
-      expect(expiringCall).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "newest" }),
-      ),
-    );
+      await user.click(screen.getByRole("button", { name: header }));
 
-    // And the badge counts the horizon — moved off its resting "Semua batch" —
-    // but never the ordering, which is always set: one, not two. Read with the
-    // panel SHUT — Radix hides the trigger from the accessibility tree while its
-    // own dialog is up.
-    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
-      /^Filter \(1\)$/,
-    );
+      await waitFor(() =>
+        expect(listCall).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort, page: 1 }),
+        ),
+      );
+    });
+
+    it("never offers Cabang or Gudang as a sort", async () => {
+      mockAll();
+      renderWithAuth(<BatchesScreen />);
+      await findLoadedTable();
+
+      // Cabang: a lot has no branch to order by. Gudang: BO's call (19 Oct 2026).
+      for (const header of ["Cabang", "Gudang"]) {
+        expect(
+          screen.queryByRole("button", { name: header }),
+        ).not.toBeInTheDocument();
+      }
+    });
+
+    it("re-orders both endpoints, and the ordering survives the switch", async () => {
+      const { listCall, expiringCall } = mockAll();
+      const user = userEvent.setup();
+      renderWithAuth(<BatchesScreen />);
+      await findLoadedTable();
+
+      await user.click(screen.getByRole("button", { name: "Sisa Stock" }));
+      await waitFor(() =>
+        expect(listCall).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort: "qtyDesc" }),
+        ),
+      );
+
+      // A sort that reset itself when the horizon flipped the screen onto the
+      // alert endpoint would be a header click that undoes itself.
+      const panel = await openFilters(user);
+      await user.click(
+        within(panel).getByRole("button", { name: "Rentang kedaluwarsa" }),
+      );
+      await user.click(screen.getByRole("option", { name: "Perhatian — 30 hari" }));
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+      await waitFor(() =>
+        expect(expiringCall).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort: "qtyDesc" }),
+        ),
+      );
+
+      // The badge counts the horizon — moved off its resting "Semua batch" —
+      // and never the ordering: one, not two. Read with the panel SHUT.
+      expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+        /^Filter \(1\)$/,
+      );
+    });
+
+    it("has no Urutkan in the panel, and Reset leaves the ordering alone", async () => {
+      const { listCall } = mockAll();
+      const user = userEvent.setup();
+      renderWithAuth(<BatchesScreen />);
+      await findLoadedTable();
+
+      await user.click(screen.getByRole("button", { name: "Nilai sisa" }));
+      await waitFor(() =>
+        expect(listCall).toHaveBeenLastCalledWith(
+          expect.objectContaining({ sort: "valueDesc" }),
+        ),
+      );
+
+      const panel = await openFilters(user);
+      expect(
+        within(panel).queryByRole("button", { name: "Urutkan" }),
+      ).not.toBeInTheDocument();
+      await user.click(
+        within(panel).getByLabelText(/Tampilkan batch yang sudah habis/),
+      );
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+      await waitFor(() =>
+        expect(listCall).toHaveBeenLastCalledWith(
+          expect.objectContaining({ hasRemaining: undefined, sort: "valueDesc" }),
+        ),
+      );
+
+      const again = await openFilters(user);
+      await user.click(within(again).getByRole("button", { name: "Reset" }));
+      await waitFor(() =>
+        expect(listCall).toHaveBeenLastCalledWith(
+          expect.objectContaining({ hasRemaining: true, sort: "valueDesc" }),
+        ),
+      );
+    });
   });
 
   it("renders the product and warehouse the API named", async () => {
@@ -409,7 +502,7 @@ describe("BatchesScreen", () => {
 
     renderWithAuth(<BatchesScreen />);
 
-    const table = await screen.findByRole("table");
+    const table = await findLoadedTable();
     // Resolved server-side. A client joining these itself would need the whole
     // catalogue in memory, and one holding part of it would render blanks.
     expect(within(table).getByText("Whiskas Adult 1.2kg")).toBeInTheDocument();
@@ -420,7 +513,7 @@ describe("BatchesScreen", () => {
   // A row opens the same lot dialog the stock card uses: expiry, stock, value, cabang and where it came from.
   describe("the detail of a lot", () => {
     const open = async (user: ReturnType<typeof userEvent.setup>) => {
-      const table = await screen.findByRole("table");
+      const table = await findLoadedTable();
       await waitFor(() =>
         expect(within(table).getByText("Cabang Timur")).toBeInTheDocument(),
       );
@@ -446,12 +539,21 @@ describe("BatchesScreen", () => {
       expect(within(dialog).getByText("Cabang Timur")).toBeInTheDocument();
     });
 
-    it("does not open when the label link inside the row is used", async () => {
+    it("does not open when the row's Aksi menu is used", async () => {
       mockAll([lot()], [{ ...warehouse(), defaultBranchId: BRANCH }]);
       const user = userEvent.setup();
       renderWithAuth(<BatchesScreen />);
 
-      await user.click(await screen.findByRole("link", { name: "Cetak label" }));
+      // Cetak label sits behind the Aksi kebab (BO, 19 October 2026).
+      await user.click(
+        await screen.findByRole("button", { name: /^Aksi untuk / }),
+      );
+      const label = await screen.findByRole("menuitem", { name: "Cetak label" });
+      expect(label).toHaveAttribute(
+        "href",
+        expect.stringMatching(/^\/dashboard\/inventory\/batches\/labels\?ids=/),
+      );
+      await user.click(label);
 
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
@@ -478,7 +580,7 @@ describe("BatchesScreen", () => {
 
     renderWithAuth(<BatchesScreen />);
 
-    const table = await screen.findByRole("table");
+    const table = await findLoadedTable();
     await waitFor(() =>
       expect(within(table).getByText("Cabang Timur")).toBeInTheDocument(),
     );
@@ -491,7 +593,7 @@ describe("BatchesScreen", () => {
 
     renderWithAuth(<BatchesScreen />);
 
-    const table = await screen.findByRole("table");
+    const table = await findLoadedTable();
     await waitFor(() =>
       expect(within(table).getByText("Tanpa cabang")).toBeInTheDocument(),
     );
@@ -516,7 +618,7 @@ describe("BatchesScreen", () => {
       },
     });
 
-    const table = await screen.findByRole("table");
+    const table = await findLoadedTable();
     await waitFor(() =>
       expect(within(table).queryByText("Cabang Timur")).not.toBeInTheDocument(),
     );
@@ -533,7 +635,7 @@ describe("BatchesScreen", () => {
 
     renderWithAuth(<BatchesScreen />);
 
-    const table = await screen.findByRole("table");
+    const table = await findLoadedTable();
     await waitFor(() =>
       expect(within(table).queryByText("Tanpa cabang")).not.toBeInTheDocument(),
     );
@@ -552,7 +654,7 @@ describe("BatchesScreen", () => {
 
     renderWithAuth(<BatchesScreen />);
 
-    const table = await screen.findByRole("table");
+    const table = await findLoadedTable();
     const codes = within(table)
       .getAllByText(/^(RC|WSK)-B26-/)
       .map((node) => node.textContent);
@@ -572,7 +674,7 @@ describe("BatchesScreen", () => {
 
     expect(await screen.findByText("Forbidden")).toBeInTheDocument();
     // The report still renders — the tiles are context, not the point.
-    expect(await screen.findByRole("table")).toBeInTheDocument();
+    expect(await findLoadedTable()).toBeInTheDocument();
   });
 
   it("tells an empty search apart from an empty horizon", async () => {
@@ -600,7 +702,7 @@ describe("BatchesScreen", () => {
 
     const user = userEvent.setup();
     renderWithAuth(<BatchesScreen />);
-    await screen.findByRole("table");
+    await findLoadedTable();
 
     // The term goes to the API as one string — the lot's own code and the
     // product's name and SKU are matched server-side, because a lot carries a
@@ -633,7 +735,7 @@ describe("BatchesScreen", () => {
 
       const user = userEvent.setup();
       renderWithAuth(<BatchesScreen />);
-      await screen.findByRole("table");
+      await findLoadedTable();
       expiringCall.mockClear();
 
       const panel = await pickCustom(user);
@@ -666,7 +768,7 @@ describe("BatchesScreen", () => {
 
       const user = userEvent.setup();
       renderWithAuth(<BatchesScreen />);
-      await screen.findByRole("table");
+      await findLoadedTable();
 
       const panel = await pickCustom(user);
       await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
@@ -683,7 +785,7 @@ describe("BatchesScreen", () => {
 
       const user = userEvent.setup();
       renderWithAuth(<BatchesScreen />);
-      await screen.findByRole("table");
+      await findLoadedTable();
 
       let panel = await pickCustom(user);
       await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
@@ -692,7 +794,7 @@ describe("BatchesScreen", () => {
         screen.getByLabelText("Cari kode batch, kode supplier, nama produk, atau SKU"),
         "WSK",
       );
-      await screen.findByRole("table");
+      await findLoadedTable();
 
       // A search suspends the whole horizon, and two date inputs that accept
       // typing and change nothing are worse than two that are not there.

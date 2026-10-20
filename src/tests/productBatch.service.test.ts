@@ -88,6 +88,29 @@ describe("productBatchService", () => {
     }
   });
 
+  // Header sorting (19 October 2026): the screen switches endpoint by horizon
+  // and keeps its ordering, so BOTH must forward every BATCH_SORTS name —
+  // including the ones joined or computed server-side.
+  it.each(["productAsc", "valueDesc", "qtyAsc"] as const)(
+    "both endpoints forward the %s ordering",
+    async (sort) => {
+      const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
+
+      await productBatchService.list({ sort });
+      await productBatchService.expiring({ sort });
+
+      expect(get.mock.calls.map(([url]) => url)).toEqual([
+        "/product-batches",
+        "/product-batches/expiring",
+      ]);
+      for (const [, options] of get.mock.calls as Array<
+        [string, { query: Record<string, unknown> }]
+      >) {
+        expect(options.query.sort).toBe(sort);
+      }
+    },
+  );
+
   it("summary takes the same place filter as the list", async () => {
     const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
 

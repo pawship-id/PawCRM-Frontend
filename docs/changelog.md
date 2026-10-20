@@ -7,6 +7,101 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Layanan: sort dari judul kolom
+
+20 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Booking Grooming & Antar-Jemput:** `<DataTable>`, sort Booking (nomor booking, draft di bawah) dan Nilai
+  (angka yang tampil: Grooming sebelum diskon, Antar-Jemput setelah diskon). Diurutkan di browser — satu
+  periode dimuat sekaligus. Urutan bawaan tetap jadwal terdekat. `Urutkan` dihapus dari panel.
+- **Katalog Grooming & Antar-Jemput:** `<DataTable>`, sort Layanan, Harga (termurah dulu), Durasi (terpendek
+  dulu) di server — mengikuti angka pertama yang tampil di sel (harga/durasi varian aktif terendah);
+  layanan tanpa harga/durasi selalu di bawah.
+- Antar-Jemput: sub teks "Klik baris untuk membuka halaman booking…" dihapus.
+
+## [Unreleased] — Keuangan: satu komponen tabel, sort disesuaikan
+
+20 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Akun Kas & Bank:** `<DataTable>` dengan sort di browser (semua akun dimuat sekaligus) — Kode, Masuk,
+  Keluar, Saldo; kolom Aksi jadi menu ⋮ → Ubah; kalimat "Masuk dan Keluar dihitung…" dihapus.
+- **Daftar transaksi, Biaya tetap, Komisi, Jurnal** kini memakai `<DataTable>` (komponen header sort
+  masing-masing dihapus). Sort Cabang (Transaksi), Cabang + Status (Komisi), Cabang + Keterangan (Jurnal)
+  dihapus. Catatan "Daftar ini menunjukkan yang berulang…" (Biaya tetap) dihapus.
+- Judul daftar "Daftar transaksi", "Biaya tetap", "Komisi", "Jurnal umum" tidak lagi huruf
+  kapital: `h2 text-lg font-bold` (ui-rules §5).
+
+## [Unreleased] — Pelanggan: sort dari judul kolom
+
+20 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Pelanggan** dan **Hewan** kini memakai `<DataTable>` dan sort dari judul kolom — Pelanggan: Kode,
+  Pelanggan, Bergabung (aktif saat dibuka: terbaru bergabung dulu); Hewan: Nama, Umur (tertua dulu),
+  Berat (terberat dulu); hewan tanpa tanggal lahir / berat selalu di bawah.
+- Menu Aksi Hewan: garis pemisah di atas **Hapus** (hanya bila boleh menghapus).
+- Dihapus: kartu "Profil pelanggan dibuka dari baris, bukan dari menu" (Pelanggan) dan kartu "Dari sini,
+  bukan tab Analitik sendiri" (Ringkasan).
+
+## [Unreleased] — Penjualan › Faktur: DataTable, sort Faktur, menu ⋮
+
+20 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- Daftar faktur penjualan kini memakai `<DataTable>`; judul **Faktur** ikut bisa di-sort (A dulu).
+  Tanggal, Nilai, Sisa kini klik pertama terbesar/terbaru dulu; Jatuh tempo tetap terdekat dulu.
+- Kolom **Aksi** di kanan Status: menu ⋮ — Detail (mata), Cetak faktur (printer), Bayar
+  (`BanknoteArrowDown`, hanya faktur yang masih bisa ditagih + izin bayar), lalu Batalkan faktur (merah,
+  aturan lama). Tombol Bayar di baris dihapus.
+- Sub teks "Faktur dan pembayaran tidak bisa diubah atau dihapus…" dihapus.
+- Modal Bayar Pembelian: keterangan tanggal, "Maksimal Rp …", info status/jurnal, dan keterangan akun
+  "dikredit" dihapus (modal terima pembayaran Penjualan tidak berubah).
+
+## [Unreleased] — Pembelian: sort dari judul kolom, menu baris, Pembelian periode
+
+19 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Faktur, Penerimaan, Supplier** kini memakai `<DataTable>` dan sort dari judul kolom — Faktur: Faktur,
+  Jatuh tempo, Total, Dibayar, Sisa; Penerimaan: Nomor, Tanggal, Item, Nilai; Supplier: Supplier, Termin,
+  Penerimaan, Sisa utang. `Urutkan` dihapus dari panel; Reset tidak mengubah urutan.
+- **Menu baris:** Faktur — ikon di Detail / Buat penerimaan barang / Bayar (Bayar kini di bawah garis
+  pemisah); Penerimaan — tombol Detail jadi menu ⋮ → Detail. `RowLinkMenu` dipindah ke `@/components`.
+- **Kartu "Pembelian periode"** di tab Faktur kini angka asli: nilai faktur yang terbit bulan ini (dari
+  `/purchase-invoices/summary`, `period=month`), bukan lagi "Segera".
+- **Retur:** catatan "Retur yang sudah final tidak bisa diedit…" di bawah daftar dihapus.
+
+## [Unreleased] — Satu komponen tabel, sort dari judul kolom (Stok / Inventori)
+
+19 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **`<DataTable>`** (`@/components`) — satu komponen tabel daftar: kolom + baris, judul kolom yang
+  bisa diklik untuk sort, baris loading (baris lama meredup saat memuat ulang, spinner hanya sebelum
+  data pertama), baris kosong, baris yang bisa diklik, baris tambahan di bawah baris, `tfoot`, catatan.
+  ui-rules §2/§8/§10 diperbarui.
+- **Sort dari judul kolom** di Produk & Varian, Daftar Stok, Kartu Stok, Batch & Expired, tab Batch
+  kartu stok, Penyesuaian / Stok Awal, Transfer Stok, Stok Opname, Stok Minus dan Stok Minim. Klik
+  pertama: tanggal terbaru / angka terbesar dulu, teks A dulu; klik kedua membalik. Semua urutan
+  dikerjakan server (daftar berhalaman), kecuali tab Batch kartu stok yang memuat semua lot sekaligus.
+- **`Urutkan` dihapus dari panel filter** layar-layar itu; Reset tidak lagi mengubah urutan.
+- Produk & Varian: Stok bisa di-sort (induk = total varian, bundle = bisa dibuat, mengikuti gudang
+  yang dipilih — dikirim sebagai `stockWarehouseIds`); Tipe dan Kategori tidak (permintaan BO).
+- Tab Kategori: pakai `<DataTable>`; hanya judul Kategori yang bisa di-sort (nama A–Z / Z–A), `Urutkan`
+  dihapus dari panelnya.
+- Penyesuaian / Stok Awal: hanya Tanggal, Nomor, Produk yang bisa di-sort. Stok Opname: hanya Nomor,
+  Tanggal, Selisih nilai. Transfer Stok: hanya No. transfer, Tanggal, Produk. Kartu Stok: hanya Waktu,
+  Kode batch, Saldo, HPP saat itu; kolom Referensi lebih lebar (permintaan BO).
+- Daftar Stok: kolom SKU lebih lebar (`SKU_WRAP_WIDE_CLASS`), kolom "Kartu stok" jadi **Aksi** (menu ⋮ →
+  Kartu stok). Batch & Expired: kolom Produk lebih lebar, kolom **Aksi** (menu ⋮ → Cetak label). Kedua
+  tabel bergeser ke samping bila layar sempit. Menu baris: `RowLinkMenu`. Transfer Stok dan Stok Awal /
+  Penyesuaian: tombol Detail jadi menu ⋮ → Detail. Stok Opname: menu ⋮ → Lanjutkan (draft) / Lihat (final),
+  lalu Buang (merah, draft + izin hapus) di bawah garis pemisah; nomor opname kini link ke lembarnya.
+  `RowLinkMenu` menerima `actions` selain `links`.
+- Produk & Varian: kartu **Tanpa kategori** kini angka asli (`uncategorized=true` + `excludeVariants`),
+  bukan lagi "Segera".
+- Sengaja tidak bisa di-sort: Cabang dan Gudang di Batch & Expired, Referensi di Kartu Stok, Terhitung di Stok
+  Opname (alasannya di ui-rules §8).
+- Kartu Stok: baris "Saldo sebelum …" hanya muncul untuk urutan Waktu; labelnya mengikuti arah urutan.
+- Daftar Stok mengirim `stockWarehouseId` (gudang yang dipilih) saat diurutkan menurut Stok / Nilai stok.
+- Tes: `DataTable`, `BatchLotTable` (baru); layar-layar di atas dan service-nya disesuaikan.
+
 ## [Unreleased] — Transfer stok: status, ubah, terima, cetak surat jalan
 
 10 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.

@@ -6,24 +6,19 @@ import { RotateCcw } from "lucide-react";
 
 import {
   Alert,
+  DataTable,
   FilterBar,
   FilterSelect,
   Pagination,
-  Spinner,
   namedOptions,
   withAll,
+  type DataTableColumn,
+  type SortOptions,
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { formatMoney, formatMoneyPrecise, formatQty } from "@/utils/decimal";
+import type { NegativeStockRow, NegativeStockSort } from "@/types/inventory";
 
 import { useNegativeStock } from "../hooks/useNegativeStock";
 
@@ -48,16 +43,78 @@ import { useNegativeStock } from "../hooks/useNegativeStock";
  * behind a `Filter (1)` button is a button that hides one thing, which is worse
  * than showing it. Gudang applies on click, like Transfer Stok's.
  *
- * NO SORT CONTROL. The order is fixed at worst-first by VALUE — the −200 sacks
- * of feed matter and the −1 collar does not — and offering "by name" would be
- * offering a way to push the expensive rows below the fold.
+ * IT OPENS WORST-FIRST BY VALUE — the −200 sacks of feed matter and the −1
+ * collar does not — and the headers re-sort it on the server (BO, 19 October
+ * 2026). Stok's first click is the most negative, Nilai's the worst hole: the
+ * natural direction of a shortfall is the biggest one first.
  *
  * INACTIVE PRODUCTS ARE HERE, unlike on the restock list, and the chip says so.
  * A discontinued line is not something to reorder; a discontinued line sitting
  * at −3 is exactly the row somebody has to explain.
  */
-/** Produk, Gudang, Stok, HPP, Nilai. */
-const COLUMN_COUNT = 5;
+const SORT_OPTIONS: SortOptions<NegativeStockSort> = {
+  name: { asc: "nameAsc", desc: "nameDesc" },
+  warehouse: { asc: "warehouseAsc", desc: "warehouseDesc" },
+  // Ascending IS worst-first for both: the figures are below zero.
+  qty: { asc: "qtyAsc", desc: "qtyDesc" },
+  hpp: { asc: "hppAsc", desc: "hppDesc", first: "desc" },
+  value: { asc: "valueAsc", desc: "valueDesc" },
+};
+
+const COLUMNS: DataTableColumn<NegativeStockRow>[] = [
+  {
+    id: "name",
+    header: "Produk",
+    cell: (row) => (
+      <>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={`/dashboard/inventory/products/${row.productId}`}
+            className="font-medium text-foreground hover:text-primary-hover"
+          >
+            {row.name}
+          </Link>
+          {!row.isActive && <Badge variant="outline">nonaktif</Badge>}
+        </div>
+        <span className="block tabular-nums text-xs text-muted">
+          <SkuText value={row.sku} fallback="—" />
+        </span>
+      </>
+    ),
+  },
+  {
+    id: "warehouse",
+    header: "Gudang",
+    // Null only where the warehouse row has gone missing — the shortfall is
+    // still real, so the row still shows.
+    cell: (row) => row.warehouseName ?? "—",
+  },
+  {
+    id: "qty",
+    header: "Stok",
+    align: "right",
+    cellClassName: "font-semibold text-danger",
+    cell: (row) => `${formatQty(row.qty)}${row.unit ? ` ${row.unit}` : ""}`,
+  },
+  {
+    // UNCHANGED BY THE OVERSELL. Goods leave AT the average, so an outbound
+    // movement cannot move it — the shelf still carries what the shop last
+    // paid. Two decimals, because the next receipt weights this negative
+    // balance against it and the sen are what make the arithmetic check out.
+    id: "hpp",
+    header: "HPP rata-rata",
+    align: "right",
+    cellClassName: "text-muted",
+    cell: (row) => formatMoneyPrecise(row.hppAvg),
+  },
+  {
+    id: "value",
+    header: "Nilai",
+    align: "right",
+    cellClassName: "text-danger",
+    cell: (row) => formatMoney(row.value),
+  },
+];
 
 export function NegativeStockScreen() {
   const {
@@ -158,92 +215,30 @@ export function NegativeStockScreen() {
         terlanjur dibebankan untuk barang yang tidak ada.
       </p>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Produk</TableHead>
-              <TableHead>Gudang</TableHead>
-              <TableHead className="text-right">Stok</TableHead>
-              <TableHead className="text-right">HPP rata-rata</TableHead>
-              <TableHead className="text-right">Nilai</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading && (
-              <TableRow>
-                <TableCell colSpan={COLUMN_COUNT}>
-                  <span className="flex items-center justify-center gap-2 py-8 text-sm text-muted">
-                    <Spinner /> Memuat…
-                  </span>
-                </TableCell>
-              </TableRow>
-            )}
-
-            {!loading && items.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={COLUMN_COUNT}>
-                  {/* THE GOOD OUTCOME, said as one. An empty state here is not
-                      "no data yet" — it is the books agreeing with the room. */}
-                  <div className="flex flex-col items-center gap-1 py-10 text-center">
-                    <p className="font-medium text-foreground">
-                      Tidak ada stok minus{scope}
-                    </p>
-                    <p className="max-w-md text-sm text-muted">
-                      Semua saldo stok berada di nol atau di atasnya — catatan
-                      dan barang di rak sedang cocok.
-                    </p>
-                  </div>
-                </TableCell>
-              </TableRow>
-            )}
-
-            {!loading &&
-              items.map((row) => (
-                <TableRow key={`${row.productId}-${row.warehouseId}`}>
-                  <TableCell>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        href={`/dashboard/inventory/products/${row.productId}`}
-                        className="font-medium text-foreground hover:text-primary-hover"
-                      >
-                        {row.name}
-                      </Link>
-                      {!row.isActive && (
-                        <Badge variant="outline">nonaktif</Badge>
-                      )}
-                    </div>
-                    <span className="block tabular-nums text-xs text-muted">
-                      <SkuText value={row.sku} fallback="—" />
-                    </span>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    {/* Null only where the warehouse row has gone missing — the
-                        shortfall is still real, so the row still shows. */}
-                    {row.warehouseName ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-right font-semibold tabular-nums text-danger">
-                    {formatQty(row.qty)}
-                    {row.unit ? ` ${row.unit}` : ""}
-                  </TableCell>
-                  {/*
-                    UNCHANGED BY THE OVERSELL. Goods leave AT the average, so an
-                    outbound movement cannot move it — the shelf still carries
-                    what the shop last paid. Two decimals, because the next
-                    receipt weights this negative balance against it and the sen
-                    are what make the arithmetic check out.
-                  */}
-                  <TableCell className="text-right tabular-nums text-muted">
-                    {formatMoneyPrecise(row.hppAvg)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-danger">
-                    {formatMoney(row.value)}
-                  </TableCell>
-                </TableRow>
-              ))}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        columns={COLUMNS}
+        rows={items}
+        rowKey={(row) => `${row.productId}-${row.warehouseId}`}
+        sort={{
+          value: query.sort,
+          options: SORT_OPTIONS,
+          onChange: (sort) => setQuery({ sort }),
+        }}
+        loading={loading}
+        empty={
+          // THE GOOD OUTCOME, said as one. An empty state here is not "no data
+          // yet" — it is the books agreeing with the room.
+          <div className="flex flex-col items-center gap-1 py-10 text-center">
+            <p className="font-medium text-foreground">
+              Tidak ada stok minus{scope}
+            </p>
+            <p className="max-w-md text-sm text-muted">
+              Semua saldo stok berada di nol atau di atasnya — catatan dan
+              barang di rak sedang cocok.
+            </p>
+          </div>
+        }
+      />
 
       {pagination.totalPages > 1 && (
         <Pagination

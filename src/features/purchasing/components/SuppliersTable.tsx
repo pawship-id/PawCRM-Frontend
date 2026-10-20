@@ -15,16 +15,14 @@ import {
 import { ApiError } from "@/services/api-error";
 import { supplierService } from "@/services/supplier.service";
 import { swalToast } from "@/lib/swal";
-import { ConfirmDialog, HighlightText } from "@/components";
-import { Button } from "@/components/ui/button";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  ConfirmDialog,
+  DataTable,
+  HighlightText,
+  type DataTableColumn,
+  type SortOptions,
+} from "@/components";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,8 +36,12 @@ import { Can, usePermissions } from "@/features/permissions";
 import { isSupplierActive } from "@/types/api";
 
 import { formatSupplierAddress } from "../supplierAddress";
-import type { Supplier, SupplierOutstandingRow } from "@/types/api";
-import type { SupplierPurchaseRow } from "@/types/api";
+import type {
+  Supplier,
+  SupplierOutstandingRow,
+  SupplierPurchaseRow,
+  SupplierSort,
+} from "@/types/api";
 
 import { SupplierStatusBadge } from "./SupplierStatusBadge";
 import { SupplierTypeBadge } from "./SupplierTypeBadge";
@@ -49,6 +51,38 @@ type PendingAction = {
   kind: "delete" | "restore" | "deactivate" | "activate";
   supplier: Supplier;
 } | null;
+
+/**
+ * THE LIST SORTS FROM ITS COLUMN HEADERS (BO, 19 October 2026), on the server:
+ * each sortable column maps to the two names SUPPLIER_SORTS knows for it, and a
+ * click re-fetches page 1.
+ *
+ *   Supplier   — the name, A first.
+ *   Termin     — the stored term, SHORTEST FIRST on the first click. Terms are
+ *                read as "who wants paying soonest", so the short end is the end
+ *                somebody scans from; the second click gives the longest.
+ *   Penerimaan — the receipt count, most first.
+ *   Sisa utang — the outstanding balance, largest first.
+ *
+ * Penerimaan and Sisa utang are summed by the server for those orderings only,
+ * with the same definitions as the two summaries this table DISPLAYS them from
+ * (useSupplierSummaries), so a header never ranks a row by a number other than
+ * the one on it. Kontak, Tipe and Aksi are plain.
+ */
+const SORT_OPTIONS: SortOptions<SupplierSort> = {
+  name: { asc: "nameAsc", desc: "nameDesc" },
+  paymentTerm: { asc: "paymentTermAsc", desc: "paymentTermDesc" },
+  receiptCount: {
+    asc: "receiptCountAsc",
+    desc: "receiptCountDesc",
+    first: "desc",
+  },
+  outstanding: {
+    asc: "outstandingAsc",
+    desc: "outstandingDesc",
+    first: "desc",
+  },
+};
 
 /**
  * The supplier list table with its row actions.
@@ -94,6 +128,9 @@ export function SuppliersTable({
   loading,
   onChanged,
   search,
+  sort,
+  onSortChange,
+  empty,
 }: {
   suppliers: Supplier[];
   outstanding: Map<string, SupplierOutstandingRow>;
@@ -104,6 +141,11 @@ export function SuppliersTable({
   onChanged: () => void;
   /** Active search term, highlighted in the searchable cells. */
   search?: string;
+  /** The ordering the list is in — a SUPPLIER_SORTS name. */
+  sort: SupplierSort;
+  onSortChange: (sort: SupplierSort) => void;
+  /** What the table says when there are no rows. */
+  empty?: React.ReactNode;
 }) {
   const [pending, setPending] = useState<PendingAction>(null);
   const [busy, setBusy] = useState(false);
@@ -159,238 +201,254 @@ export function SuppliersTable({
     }
   }
 
-  if (!loading && suppliers.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center text-sm text-muted-foreground">
-        Tidak ada supplier yang cocok dengan filter ini.
-      </div>
-    );
+  const columns: DataTableColumn<Supplier>[] = [
+    {
+      id: "name",
+      header: "Supplier",
+      cell: (supplier) => (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/dashboard/purchasing/suppliers/${supplier._id}`}
+              className="font-medium text-foreground hover:text-primary-hover hover:underline"
+            >
+              <HighlightText text={supplier.name} query={search} />
+            </Link>
+            <SupplierStatusBadge supplier={supplier} />
+          </div>
+          <p className="text-xs text-muted">
+            {supplier.npwp ? (
+              <HighlightText text={supplier.npwp} query={search} />
+            ) : (
+              // The address is parts now; the row wants one line.
+              (formatSupplierAddress(supplier.address) ?? "—")
+            )}
+          </p>
+        </>
+      ),
+    },
+    {
+      id: "contact",
+      header: "Kontak",
+      cellClassName: "text-xs",
+      cell: (supplier) => (
+        <>
+          <p className="text-foreground">
+            {supplier.pic?.name ? (
+              <HighlightText text={supplier.pic.name} query={search} />
+            ) : (
+              "—"
+            )}
+          </p>
+          <p className="text-muted">
+            {supplier.phone ? (
+              <HighlightText text={supplier.phone} query={search} />
+            ) : (
+              ""
+            )}
+          </p>
+        </>
+      ),
+    },
+    {
+      id: "type",
+      header: "Tipe",
+      cell: (supplier) => <SupplierTypeBadge type={supplier.type} />,
+    },
+    {
+      id: "paymentTerm",
+      header: "Termin",
+      align: "right",
+      cellClassName: "text-xs",
+      cell: (supplier) => `${supplier.paymentTermDays} hari`,
+    },
+    {
+      id: "receiptCount",
+      header: "Penerimaan",
+      align: "right",
+      cellClassName: "text-xs",
+      // A supplier absent from the summary has received nothing — the API
+      // returns no row rather than a row of zeros.
+      cell: (supplier) => purchases.get(supplier._id)?.receiptCount ?? 0,
+    },
+    {
+      id: "outstanding",
+      header: "Sisa utang",
+      align: "right",
+      cell: (supplier) => {
+        // Absent from the summary means owing nothing, as above.
+        const debt = outstanding.get(supplier._id);
+        const owed = debt?.outstanding ?? "0";
+        const owedMinor = toMinor(owed) ?? 0n;
+        const overdueMinor = toMinor(debt?.overdueOutstanding ?? "0") ?? 0n;
+        const dueSoonMinor = toMinor(debt?.dueSoonOutstanding ?? "0") ?? 0n;
+
+        return (
+          <>
+            <p
+              className={cn(
+                "text-sm",
+                owedMinor > 0n && "font-semibold text-danger",
+              )}
+            >
+              {owedMinor > 0n ? formatMoney(owed) : "—"}
+            </p>
+            {/* WHEN, under HOW MUCH — and only the halves that exist. A
+                vendor owing nothing late this week gets no line at all rather
+                than two zeros, which would read as data where there is none.
+                Neither figure is computed here: both are subsets the server
+                cut from the amount above at one instant. */}
+            {overdueMinor > 0n && (
+              <p className="text-xs text-danger">
+                {formatMoney(debt!.overdueOutstanding)} lewat tempo
+              </p>
+            )}
+            {dueSoonMinor > 0n && (
+              <p className="text-xs text-muted">
+                {formatMoney(debt!.dueSoonOutstanding)}
+                {horizonDays == null
+                  ? " jatuh tempo"
+                  : ` ≤ ${horizonDays} hari`}
+              </p>
+            )}
+          </>
+        );
+      },
+    },
+  ];
+
+  if (showActions) {
+    columns.push({
+      id: "actions",
+      header: "Aksi",
+      align: "right",
+      cell: (supplier) => {
+        const deleted = supplier.deletedAt !== null;
+        const active = isSupplierActive(supplier);
+
+        return (
+          <div className="flex items-center justify-end">
+            {/* Rendered per row rather than once, because WHICH actions exist
+                depends on the row's state and the role — a menu that opens
+                onto nothing is worse than no menu, so the trigger only appears
+                when the row actually has something to offer. */}
+            {rowHasActions(supplier) && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    // The icon alone carries no name, so the label
+                    // says which row this menu belongs to — a
+                    // screen-reader user hearing twenty identical
+                    // "Aksi" buttons has learnt nothing.
+                    aria-label={`Aksi untuk ${supplier.name}`}
+                  >
+                    <EllipsisVertical className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent>
+                  {deleted ? (
+                    <Can feature="suppliers" action="restore">
+                      <DropdownMenuItem
+                        onSelect={() =>
+                          setPending({ kind: "restore", supplier })
+                        }
+                      >
+                        <RotateCcw />
+                        Pulihkan
+                      </DropdownMenuItem>
+                    </Can>
+                  ) : (
+                    <>
+                      {/* Ungated, unlike everything below it: this
+                      goes where the vendor's name already goes,
+                      and seeing the row is the only grant it
+                      needs. It is here as well as on the name
+                      because the detail screen is where the
+                      terms, the delivery history and the
+                      consignment exposure live — the row shows
+                      one figure of a position that has four. */}
+                      <DropdownMenuItem asChild>
+                        <Link
+                          href={`/dashboard/purchasing/suppliers/${supplier._id}`}
+                        >
+                          <Eye />
+                          Lihat detail
+                        </Link>
+                      </DropdownMenuItem>
+                      <Can feature="suppliers" action="update">
+                        <DropdownMenuItem asChild>
+                          <Link
+                            href={`/dashboard/purchasing/suppliers/${supplier._id}/edit`}
+                          >
+                            <Pencil />
+                            Ubah
+                          </Link>
+                        </DropdownMenuItem>
+                      </Can>
+                      <Can feature="suppliers" action="update">
+                        <DropdownMenuItem
+                          onSelect={() =>
+                            setPending({
+                              kind: active ? "deactivate" : "activate",
+                              supplier,
+                            })
+                          }
+                        >
+                          {active ? <PowerOff /> : <Power />}
+                          {active ? "Nonaktifkan" : "Aktifkan"}
+                        </DropdownMenuItem>
+                      </Can>
+                      <Can feature="suppliers" action="delete">
+                        {/* Separated and tinted: deleting is the
+                        one item here that is not a toggle, and
+                        it sits next to one that looks like it
+                        does the same thing. */}
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          variant="destructive"
+                          onSelect={() =>
+                            setPending({ kind: "delete", supplier })
+                          }
+                        >
+                          <Trash2 />
+                          Hapus
+                        </DropdownMenuItem>
+                      </Can>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        );
+      },
+    });
   }
 
   return (
     <>
-      <div className="overflow-x-auto rounded-xl border border-border bg-card">
-        <Table className={loading ? "opacity-60" : undefined}>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Supplier</TableHead>
-              <TableHead>Kontak</TableHead>
-              <TableHead>Tipe</TableHead>
-              <TableHead className="text-right">Termin</TableHead>
-              <TableHead className="text-right">Penerimaan</TableHead>
-              <TableHead className="text-right">Sisa utang</TableHead>
-              {showActions && (
-                <TableHead className="text-right">Aksi</TableHead>
-              )}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {suppliers.map((supplier) => {
-              const deleted = supplier.deletedAt !== null;
-              const active = isSupplierActive(supplier);
-              // A supplier absent from the summary owes nothing / has received
-              // nothing — the API returns no row rather than a row of zeros.
-              const debt = outstanding.get(supplier._id);
-              const owed = debt?.outstanding ?? "0";
-              const owedMinor = toMinor(owed) ?? 0n;
-              const overdueMinor = toMinor(debt?.overdueOutstanding ?? "0") ?? 0n;
-              const dueSoonMinor = toMinor(debt?.dueSoonOutstanding ?? "0") ?? 0n;
-              const receiptCount =
-                purchases.get(supplier._id)?.receiptCount ?? 0;
-
-              return (
-                <TableRow
-                  key={supplier._id}
-                  className={cn((deleted || !active) && "opacity-60")}
-                >
-                  <TableCell>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link
-                        href={`/dashboard/purchasing/suppliers/${supplier._id}`}
-                        className="font-medium text-foreground hover:text-primary-hover hover:underline"
-                      >
-                        <HighlightText text={supplier.name} query={search} />
-                      </Link>
-                      <SupplierStatusBadge supplier={supplier} />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {supplier.npwp ? (
-                        <HighlightText text={supplier.npwp} query={search} />
-                      ) : (
-                        // The address is parts now; the row wants one line.
-                        (formatSupplierAddress(supplier.address) ?? "—")
-                      )}
-                    </p>
-                  </TableCell>
-
-                  <TableCell className="text-xs">
-                    <p className="text-foreground">
-                      {supplier.pic?.name ? (
-                        <HighlightText text={supplier.pic.name} query={search} />
-                      ) : (
-                        "—"
-                      )}
-                    </p>
-                    <p className="text-muted-foreground">
-                      {supplier.phone ? (
-                        <HighlightText text={supplier.phone} query={search} />
-                      ) : (
-                        ""
-                      )}
-                    </p>
-                  </TableCell>
-
-                  <TableCell>
-                    <SupplierTypeBadge type={supplier.type} />
-                  </TableCell>
-
-                  <TableCell className="text-right tabular-nums text-xs">
-                    {supplier.paymentTermDays} hari
-                  </TableCell>
-
-                  <TableCell className="text-right tabular-nums text-xs">
-                    {receiptCount}
-                  </TableCell>
-
-                  <TableCell className="text-right">
-                    <p
-                      className={cn(
-                        "tabular-nums text-sm",
-                        owedMinor > 0n && "font-semibold text-danger",
-                      )}
-                    >
-                      {owedMinor > 0n ? formatMoney(owed) : "—"}
-                    </p>
-                    {/* WHEN, under HOW MUCH — and only the halves that exist.
-                        A vendor owing nothing late this week gets no line at
-                        all rather than two zeros, which would read as data
-                        where there is none. Neither figure is computed here:
-                        both are subsets the server cut from the amount above
-                        at one instant. */}
-                    {overdueMinor > 0n && (
-                      <p className="tabular-nums text-[11px] text-danger">
-                        {formatMoney(debt!.overdueOutstanding)} lewat tempo
-                      </p>
-                    )}
-                    {dueSoonMinor > 0n && (
-                      <p className="tabular-nums text-[11px] text-muted">
-                        {formatMoney(debt!.dueSoonOutstanding)}
-                        {horizonDays == null
-                          ? " jatuh tempo"
-                          : ` ≤ ${horizonDays} hari`}
-                      </p>
-                    )}
-                  </TableCell>
-
-                  {showActions && (
-                    <TableCell>
-                      <div className="flex items-center justify-end">
-                        {/* Rendered per row rather than once, because WHICH
-                            actions exist depends on the row's state and the
-                            role — a menu that opens onto nothing is worse than
-                            no menu, so the trigger only appears when the row
-                            actually has something to offer. */}
-                        {rowHasActions(supplier) && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                // The icon alone carries no name, so the label
-                                // says which row this menu belongs to — a
-                                // screen-reader user hearing twenty identical
-                                // "Aksi" buttons has learnt nothing.
-                                aria-label={`Aksi untuk ${supplier.name}`}
-                              >
-                                <EllipsisVertical className="size-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-
-                            <DropdownMenuContent>
-                              {deleted ? (
-                                <Can feature="suppliers" action="restore">
-                                  <DropdownMenuItem
-                                    onSelect={() =>
-                                      setPending({ kind: "restore", supplier })
-                                    }
-                                  >
-                                    <RotateCcw />
-                                    Pulihkan
-                                  </DropdownMenuItem>
-                                </Can>
-                              ) : (
-                                <>
-                                  {/* Ungated, unlike everything below it: this
-                                      goes where the vendor's name already goes,
-                                      and seeing the row is the only grant it
-                                      needs. It is here as well as on the name
-                                      because the detail screen is where the
-                                      terms, the delivery history and the
-                                      consignment exposure live — the row shows
-                                      one figure of a position that has four. */}
-                                  <DropdownMenuItem asChild>
-                                    <Link
-                                      href={`/dashboard/purchasing/suppliers/${supplier._id}`}
-                                    >
-                                      <Eye />
-                                      Lihat detail
-                                    </Link>
-                                  </DropdownMenuItem>
-                                  <Can feature="suppliers" action="update">
-                                    <DropdownMenuItem asChild>
-                                      <Link
-                                        href={`/dashboard/purchasing/suppliers/${supplier._id}/edit`}
-                                      >
-                                        <Pencil />
-                                        Ubah
-                                      </Link>
-                                    </DropdownMenuItem>
-                                  </Can>
-                                  <Can feature="suppliers" action="update">
-                                    <DropdownMenuItem
-                                      onSelect={() =>
-                                        setPending({
-                                          kind: active
-                                            ? "deactivate"
-                                            : "activate",
-                                          supplier,
-                                        })
-                                      }
-                                    >
-                                      {active ? <PowerOff /> : <Power />}
-                                      {active ? "Nonaktifkan" : "Aktifkan"}
-                                    </DropdownMenuItem>
-                                  </Can>
-                                  <Can feature="suppliers" action="delete">
-                                    {/* Separated and tinted: deleting is the
-                                        one item here that is not a toggle, and
-                                        it sits next to one that looks like it
-                                        does the same thing. */}
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem
-                                      variant="destructive"
-                                      onSelect={() =>
-                                        setPending({ kind: "delete", supplier })
-                                      }
-                                    >
-                                      <Trash2 />
-                                      Hapus
-                                    </DropdownMenuItem>
-                                  </Can>
-                                </>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+      <DataTable
+        columns={columns}
+        rows={suppliers}
+        rowKey={(supplier) => supplier._id}
+        sort={{ value: sort, options: SORT_OPTIONS, onChange: onSortChange }}
+        loading={loading}
+        loadingLabel="Memuat data supplier…"
+        rowClassName={(supplier) =>
+          (supplier.deletedAt !== null || !isSupplierActive(supplier)) &&
+          "opacity-60"
+        }
+        empty={
+          empty ?? (
+            <p className="py-10 text-center text-sm text-muted">
+              Tidak ada supplier yang cocok dengan filter ini.
+            </p>
+          )
+        }
+      />
 
       {pending && (
         <ConfirmDialog
@@ -409,13 +467,15 @@ export function SuppliersTable({
   );
 }
 
-const TOASTS: Record<NonNullable<PendingAction>["kind"], (n: string) => string> =
-  {
-    delete: (name) => `${name} dihapus.`,
-    restore: (name) => `${name} dipulihkan.`,
-    deactivate: (name) => `${name} dinonaktifkan.`,
-    activate: (name) => `${name} diaktifkan lagi.`,
-  };
+const TOASTS: Record<
+  NonNullable<PendingAction>["kind"],
+  (n: string) => string
+> = {
+  delete: (name) => `${name} dihapus.`,
+  restore: (name) => `${name} dipulihkan.`,
+  deactivate: (name) => `${name} dinonaktifkan.`,
+  activate: (name) => `${name} diaktifkan lagi.`,
+};
 
 /**
  * Each dialog says what will happen to the DOCUMENTS, not just to the row. The
