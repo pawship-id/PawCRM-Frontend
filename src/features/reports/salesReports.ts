@@ -388,7 +388,7 @@ const BATCH_COLUMNS: SalesReportColumn<SalesBatchReportRow>[] = [
     header: "Pelanggan",
     value: (r) => r.customerName,
     width: 24,
-    about: "Nama pelanggan (kosong untuk pembeli umum di kasir)",
+    about: "Nama pelanggan (\"Pelanggan umum\" untuk pembeli tanpa data di kasir)",
   },
   {
     header: "No. HP",
