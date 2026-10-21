@@ -1226,6 +1226,12 @@ export function InvoiceCreateForm() {
    * same way every other per-row preview read here already is.
    */
   function lineFullyDiscounted(index: number): boolean {
+    /*
+      PROMOSI V1 (21 October 2026): a row a membership benefit pays for takes
+      no typed discount at all — "baris yang memakai jatah tidak ikut promo
+      lain" — whether the benefit took it to nought or only part of the way.
+    */
+    if (lines[index]?.benefit) return true;
     const at = bookingLines.length + index;
     return (
       !lines[index]?.discountValue &&
@@ -3206,7 +3212,8 @@ export function InvoiceCreateForm() {
                 disabled={saving}
                 onApply={(key, benefit) => {
                   const index = lines.findIndex((line) => line.key === key);
-                  if (index !== -1) patchLine(index, { benefit });
+                  // A benefit takes the line: no typed discount beside it (Promosi V1).
+                  if (index !== -1) patchLine(index, { benefit, discountValue: "" });
                 }}
                 onRemove={(key) => {
                   const index = lines.findIndex((line) => line.key === key);

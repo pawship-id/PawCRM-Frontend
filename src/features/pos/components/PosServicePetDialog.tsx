@@ -34,6 +34,8 @@ import { usePetOptions } from "@/hooks/usePetOptions";
 import { branchService } from "@/services/branch.service";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
+import { posService } from "@/services/pos.service";
+import { ApiError } from "@/services/api-error";
 import { formatMoney, toDecimalString, toMinor } from "@/utils/decimal";
 import {
   AXIS_LABEL,
@@ -46,9 +48,16 @@ import type {
   Pet,
   PosCatalogAddon,
   PosCatalogItem,
+  PosAddonHost,
   PosItemTripInput,
   VariantChoice,
 } from "@/types/api";
+import {
+  addonHostKey,
+  defaultAddonHost,
+  NEW_ADDON_BOOKING,
+  PosAddonHostPicker,
+} from "./PosAddonHostPicker";
 
 /** The API's page cap. Asking for more is a 400, not a bigger page. */
 const FETCH_LIMIT = 100;
@@ -98,6 +107,7 @@ export function PosServicePetDialog({
   customerId,
   customerName,
   branchId,
+  basketId = null,
   cartBookingIds = [],
   busy = false,
   onPick,
@@ -118,6 +128,12 @@ export function PosServicePetDialog({
    * mean.
    */
   cartBookingIds?: readonly string[];
+  /**
+   * The basket being sold into. On an ADD-ON tile the dialog reads, once the
+   * animal is clicked, which of its unfinished groomings the add-on could go
+   * on (`GET /pos/transactions/:id/addon-hosts`). Null: never asked.
+   */
+  basketId?: string | null;
   /**
    * The till's branch — where a service priced by Zona is measured FROM. The
    * server measures from the same one (the session's branch), so the preview
@@ -147,6 +163,13 @@ export function PosServicePetDialog({
      * every other service.
      */
     ride: PosRidePick | null,
+    /**
+     * WHERE AN ADD-ON PICKED ALONE GOES (21 October 2026): a grooming in the
+     * basket or the diary, or `null` for a booking of its own. `undefined` on
+     * every tile that was not asked — a main service, a ride, or an add-on
+     * whose animal has no unfinished grooming.
+     */
+    host?: PosAddonHost | null,
   ) => void;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -191,6 +214,66 @@ export function PosServicePetDialog({
   const riders = pets.filter((pet) => picked.includes(pet._id));
   const offered = service?.addons ?? [];
   const ticked = offered.filter((addon) => addons.has(addon._id));
+
+  /*
+    ─── AN ADD-ON PICKED ALONE: WHICH GROOMING DOES IT GO ON? ───────────────
+
+    Read as soon as the animal is clicked and drawn in THIS dialog, under the
+    price (21 October 2026, on request) — not a second dialog after "Tambah
+    ke keranjang". Nothing to offer means the add-on is a booking of its own,
+    as before, and nothing is drawn.
+  */
+  const asksHost =
+    service?.serviceType === "addon" &&
+    service?.serviceKind !== RIDE_KIND &&
+    Boolean(basketId) &&
+    chosen !== null;
+  const [hosts, setHosts] = useState<{
+    petId: string;
+    addonId: string | null;
+    list: PosAddonHost[];
+    error: string | null;
+  } | null>(null);
+  const [hostChoice, setHostChoice] = useState<string | null>(null);
+  /* The add-on being placed — each host then says whether it already has it. */
+  const addonId = asksHost ? (service?._id ?? null) : null;
+  const hostsFor =
+    asksHost && hosts?.petId === chosen?._id && hosts?.addonId === addonId ? hosts : null;
+  const hostsLoading = asksHost && hostsFor === null;
+  const hostList = hostsFor?.list ?? [];
+  /* The first grooming is what the cashier means nearly every time — skipping
+     one that already carries this add-on (21 October 2026). */
+  const hostValue = hostChoice ?? defaultAddonHost(hostList);
+
+  useEffect(() => {
+    if (!asksHost || !chosen || !basketId) return;
+    const petId = chosen._id;
+    let live = true;
+
+    /* eslint-disable-next-line react-hooks/set-state-in-effect */
+    setHostChoice(null);
+    posService
+      .addonHosts(basketId, petId, addonId ?? undefined)
+      .then((list) => {
+        if (live) setHosts({ petId, addonId, list, error: null });
+      })
+      .catch((err) => {
+        if (!live) return;
+        setHosts({
+          petId,
+          addonId,
+          list: [],
+          error:
+            err instanceof ApiError
+              ? (err.reason ?? err.message)
+              : "Daftar grooming hewan ini tidak bisa dimuat. Coba lagi.",
+        });
+      });
+
+    return () => {
+      live = false;
+    };
+  }, [asksHost, chosen, basketId, addonId]);
 
 
   /*
@@ -558,6 +641,14 @@ export function PosServicePetDialog({
             passengerPetIds: picked,
           }
         : null,
+      /* Asked only when there was something to offer (or the list failed). */
+      asksHost && hostsFor && (hostList.length > 0 || hostsFor.error)
+        ? hostValue === NEW_ADDON_BOOKING
+          ? null
+          : (hostList.find(
+              (one) => addonHostKey(one) === hostValue && !one.hasAddon,
+            ) ?? null)
+        : undefined,
     );
   }
 
@@ -794,6 +885,17 @@ export function PosServicePetDialog({
                 </div>
               )}
 
+              {asksHost && (
+                <PosAddonHostPicker
+                  hosts={hostList}
+                  value={hostValue}
+                  onChange={setHostChoice}
+                  loading={hostsLoading}
+                  loadError={hostsFor?.error ?? null}
+                  disabled={busy}
+                />
+              )}
+
               {/*
                 THE ADD-ONS THIS SERVICE OFFERS — asked here because this is the
                 only moment the answer is cheap. An add-on tapped separately off
@@ -899,6 +1001,7 @@ export function PosServicePetDialog({
               */
               disabled={
                 busy ||
+                hostsLoading ||
                 picked.length === 0 ||
                 !quote.price ||
                 quote.inactive ||

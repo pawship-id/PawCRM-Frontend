@@ -90,6 +90,18 @@ This looks like it works until the first filter that takes more than one value, 
 
 ---
 
+## Pulled from somewhere else: an add-on's "which grooming?" (21 October 2026)
+
+The till's add-on picker (`PosAddonHostPicker` in the animal dialog, see [`pos.md`](./pos.md)) offers the animal's
+unfinished, unbilled grooming bookings from the diary — the bridge's own rules (`isPullable`,
+not pulled, the till's branch) without the date window, and grooming only. Choosing one **pulls
+it exactly as "Tarik" does** (`POST /pos/transactions/:id/pull-bookings`) and then hangs the
+add-on on it in the next cart write. The bridge's count re-asks itself afterwards like after any
+pull. Taking the booking back out of the basket before payment also takes off the add-on the
+basket put on it; the booking's own add-ons are never touched.
+
+---
+
 ## Known limits
 
 **The ad-hoc tab loads 100 pets and 100 services**, the API's page cap. For one customer's

@@ -1,4 +1,3 @@
-import { formatMoneyShort, sumDecimals } from "@/utils/decimal";
 import type {
   PosBenefitPick,
   PosItem,
@@ -182,7 +181,8 @@ export function buildQuoteInput(
       ref: item.packageRef as string,
       planId: item.refId,
       petId: item.petId ?? null,
-      startDate: item.membershipStartDate ?? null,
+      // Omitted, not null, when the package starts when paid (today).
+      ...(item.membershipStartDate ? { startDate: item.membershipStartDate } : {}),
     }));
 
   return {
@@ -238,10 +238,14 @@ export function autoApplyChanges(
 
 /* ────────────────────────────────────────────────────── what a row shows */
 
-/** "Jatah Grooming 2/3 −Rp 109 rb" — one option of the per-line select. */
+/**
+ * "Jatah Grooming 2/3" · "Member · Diskon 10%" — one option of the per-line
+ * select. NO AMOUNT (21 October 2026, on request): a rounded "−Rp 3 rb"
+ * beside a Rp 2.500 cut read as wrong, and the struck price on the row
+ * already says exactly what came off.
+ */
 export function candidateOptionLabel(candidate: BenefitCandidate): string {
-  const value = sumDecimals([candidate.discount, candidate.visitFeeDiscount ?? "0"]);
-  return `${candidate.label} −${formatMoneyShort(value)}`;
+  return candidate.label;
 }
 
 /**

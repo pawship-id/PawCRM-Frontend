@@ -551,7 +551,7 @@ describe("a member pick in the basket", () => {
     renderWithAuth(<PosScreen />);
 
     const select = await screen.findByRole("combobox", { name: /member untuk grooming lengkap/i });
-    await waitFor(() => expect(select).toHaveTextContent("Jatah Grooming 0/1 −Rp 150 rb"));
+    await waitFor(() => expect(select).toHaveTextContent("Jatah Grooming 0/1"));
     expect(screen.getByText("Member ditunda")).toBeInTheDocument();
     /* The animal's header. */
     expect(screen.getByText("Bruno")).toBeInTheDocument();

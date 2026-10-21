@@ -2386,6 +2386,12 @@ export interface PosCatalogItem {
    */
   serviceKind?: ServiceKind | null;
   /**
+   * MAIN OR ADD-ON (21 October 2026). An add-on tile, once its animal is
+   * chosen, asks which of that animal's unfinished groomings it goes on.
+   * Absent on a product tile and on a server older than the field.
+   */
+  serviceType?: "main" | "addon";
+  /**
    * How it is charged. On a ride it is the multiplier: `per_pet` is the
    * catalogue's price once per booking the van serves, `per_visit` once
    * however many ride.
@@ -2855,6 +2861,37 @@ export interface PosItemInput {
   linkedBookingIds?: string[];
   /** Every animal in the van. Only on a ride, which has no `petId`. */
   passengerPetIds?: string[];
+  /**
+   * THE MAIN SERVICE AN ADD-ON IS HUNG ON (21 October 2026) — sent ONCE, on
+   * the write where the cashier answers "Add-on ini untuk layanan yang mana?",
+   * together with that main line's `bookingId`. The server checks it and, from
+   * then on, reads the parent off the booking itself; `itemsAsInputOf` never
+   * sends it back.
+   */
+  parentServiceId?: string | null;
+}
+
+/**
+ * GET /api/pos/transactions/:id/addon-hosts — one place an add-on picked alone
+ * off the grid may go (21 October 2026): a grooming line already in this
+ * basket (`cart`), or a grooming booking in the diary the basket may pull
+ * (`diary`).
+ */
+export interface PosAddonHost {
+  source: "cart" | "diary";
+  /** Null only on a basket line not yet written — the till never offers one. */
+  bookingId: string | null;
+  bookingNumber: string | null;
+  /** The main service's catalogue id — what the add-on line sends as its parent. */
+  serviceId: string;
+  serviceName: string | null;
+  status: BookingStatus | null;
+  scheduledAt: string | null;
+  /**
+   * This host already carries the add-on asked about (`addonId`) — one add-on
+   * at most once per booking, so the till draws it disabled (21 October 2026).
+   */
+  hasAddon: boolean;
 }
 
 /** One counter line's journey, as a response carries it. */

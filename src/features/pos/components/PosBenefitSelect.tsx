@@ -31,8 +31,8 @@ const NONE = "none";
  *
  * A COMPACT SELECT, not buttons: the quote already put its best pick on the
  * line (auto-apply), so the cashier's only decision is "a different one" or
- * "Tanpa member". Each option names the benefit and what it takes off —
- * "Jatah Grooming 2/3 −Rp 109 rb", "Member · Diskon 10% −Rp 12 rb".
+ * "Tanpa member". Each option names the benefit only — "Jatah Grooming
+ * 2/3", "Member · Diskon 10%"; the struck price on the row shows the amount.
  *
  * SUCCESS TONE while a pick is on the line, so a basket read at speed shows
  * which rows a card is paying for.

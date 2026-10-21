@@ -110,7 +110,7 @@ describe("buildQuoteInput", () => {
 
     expect(input?.customerId).toBe("cust-1");
     expect(input?.packages).toEqual([
-      { ref: "pkg-1", planId: "plan-1", petId: "pet-milo", startDate: null },
+      { ref: "pkg-1", planId: "plan-1", petId: "pet-milo" },
     ]);
     expect(input?.lines.map((one) => one.ref)).toEqual(["0", "2", "3"]);
     expect(input?.lines[0]).toEqual(
@@ -259,13 +259,13 @@ describe("pickOf", () => {
 });
 
 describe("what a row says", () => {
-  it("labels an option with what it takes off", () => {
-    expect(candidateOptionLabel(candidate())).toBe("Jatah Grooming 2/3 −Rp 109 rb");
+  it("labels an option by the benefit alone — the struck price shows the amount", () => {
+    expect(candidateOptionLabel(candidate())).toBe("Jatah Grooming 2/3");
     expect(
       candidateOptionLabel(
-        candidate({ label: "Member · Diskon 10%", discount: "12000.0000", visitFeeDiscount: "40000.0000" }),
+        candidate({ label: "Member · Diskon 10%", discount: "2500.0000", visitFeeDiscount: "0.0000" }),
       ),
-    ).toBe("Member · Diskon 10% −Rp 52 rb");
+    ).toBe("Member · Diskon 10%");
   });
 
   it("shortens why a benefit cannot be used", () => {

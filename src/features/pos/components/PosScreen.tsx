@@ -6,7 +6,13 @@ import { Alert, ConfirmDialog, Spinner } from "@/components";
 import { posService } from "@/services/pos.service";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
-import type { PosBenefitPick, PosCatalogItem, PosTransaction } from "@/types/api";
+import type {
+  Pet,
+  PosBenefitPick,
+  PosCatalogItem,
+  PosTransaction,
+  VariantChoice,
+} from "@/types/api";
 
 import { useAuth } from "@/features/auth";
 import { CustomerSearchDialog } from "@/features/customers";
@@ -26,7 +32,7 @@ import { PosCatalog } from "./PosCatalog";
 import { PosCustomerPerks } from "./PosCustomerPerks";
 import { PosMembershipSaleDialog } from "./PosMembershipSaleDialog";
 import { PosSaleEffects } from "./PosSaleEffects";
-import { PosServicePetDialog } from "./PosServicePetDialog";
+import { PosServicePetDialog, type PosRidePick } from "./PosServicePetDialog";
 import { PosCloseShiftDialog } from "./PosCloseShiftDialog";
 import { PosHeldCartsDialog } from "./PosHeldCartsDialog";
 import { PosPaymentDialog } from "./PosPaymentDialog";
@@ -272,6 +278,60 @@ export function PosScreen() {
   const [pendingPackage, setPendingPackage] = useState<PosCatalogItem | null>(
     null,
   );
+
+  /**
+   * A grid service for one animal, into the basket — the service, then any
+   * add-ons ticked with it, as `addServices` lines. Also what an add-on picked
+   * alone does when it has no grooming to go on, or the cashier chose
+   * "Booking baru".
+   */
+  function addPicked(
+    tile: PosCatalogItem,
+    pet: Pet,
+    addonServiceIds: string[],
+    variantChoices: VariantChoice[],
+    ride: PosRidePick | null,
+  ) {
+    /*
+      THE SERVICE FIRST, THEN ITS ADD-ONS — one patch, one line each.
+      `addServices` already takes several per animal, so nothing here has
+      to know that an add-on is a different kind of line: the server reads
+      the catalogue and files each one under the service it hangs off.
+
+      `ride` IS NULL ON EVERYTHING BUT ANTAR-JEMPUT — the journey the
+      dialog just asked for, which becomes the booking's direction and its
+      two addresses.
+    */
+    void cart
+      .addServices([
+        {
+          petId: pet._id,
+          serviceIds: [tile._id, ...addonServiceIds],
+          variantChoices,
+          ride,
+        },
+      ])
+      .then((ok) => {
+        /* Ditolak: keranjang sudah memasang alasannya, dan "ditambahkan"
+           di atasnya hanya akan membantah panel itu. */
+        if (!ok) return;
+
+        /*
+          NAMES THE ANIMAL, or COUNTS THEM on a van carrying several —
+          "Antar-Jemput untuk Bruno" would name one of three dogs, picked
+          by nothing but the order they were ticked in.
+        */
+        const riders = ride?.passengerPetIds.length ?? 0;
+        const whose = riders > 1 ? `${riders} hewan` : pet.name;
+
+        swalToast(
+          addonServiceIds.length > 0
+            ? `${tile.name} untuk ${whose} ditambahkan, dengan ${addonServiceIds.length} tambahan.`
+            : `${tile.name} untuk ${whose} ditambahkan.`,
+        );
+      });
+  }
+
   /**
    * Whether the customer picker is closing because somebody was CHOSEN.
    *
@@ -900,53 +960,39 @@ export function PosScreen() {
         branchId={session?.currentBranchId ?? cart.cart?.branchId ?? null}
         cartBookingIds={cart.cart?.bookingIds ?? []}
         busy={cart.busy}
+        basketId={cart.cart?._id ?? null}
         onOpenChange={(next) => {
           if (!next) setPendingService(null);
         }}
-        onPick={(pet, addonServiceIds, variantChoices, ride) => {
+        onPick={(pet, addonServiceIds, variantChoices, ride, host) => {
           const tile = pendingService;
           if (!tile) return;
-
           setPendingService(null);
 
           /*
-            THE SERVICE FIRST, THEN ITS ADD-ONS — one patch, one line each.
-            `addServices` already takes several per animal, so nothing here has
-            to know that an add-on is a different kind of line: the server reads
-            the catalogue and files each one under the service it hangs off.
-
-            `ride` IS NULL ON EVERYTHING BUT ANTAR-JEMPUT — the journey the
-            dialog just asked for, which becomes the booking's direction and its
-            two addresses.
+            AN ADD-ON PICKED ALONE, put on a grooming the cashier chose in the
+            animal dialog (21 October 2026) — one in this basket, or one in the
+            diary, which is pulled in first. `null` / `undefined`: a booking of
+            its own, as before.
           */
-          void cart
-            .addServices([
-              {
+          if (host) {
+            void cart
+              .attachAddon({
+                addonId: tile._id,
                 petId: pet._id,
-                serviceIds: [tile._id, ...addonServiceIds],
                 variantChoices,
-                ride,
-              },
-            ])
-            .then((ok) => {
-              /* Ditolak: keranjang sudah memasang alasannya, dan "ditambahkan"
-                 di atasnya hanya akan membantah panel itu. */
-              if (!ok) return;
+                host,
+              })
+              .then((ok) => {
+                if (!ok) return;
+                swalToast(
+                  `${tile.name} untuk ${pet.name} ditambahkan ke ${host.serviceName ?? "groomingnya"}.`,
+                );
+              });
+            return;
+          }
 
-              /*
-                NAMES THE ANIMAL, or COUNTS THEM on a van carrying several —
-                "Antar-Jemput untuk Bruno" would name one of three dogs, picked
-                by nothing but the order they were ticked in.
-              */
-              const riders = ride?.passengerPetIds.length ?? 0;
-              const whose = riders > 1 ? `${riders} hewan` : pet.name;
-
-              swalToast(
-                addonServiceIds.length > 0
-                  ? `${tile.name} untuk ${whose} ditambahkan, dengan ${addonServiceIds.length} tambahan.`
-                  : `${tile.name} untuk ${whose} ditambahkan.`,
-              );
-            });
+          addPicked(tile, pet, addonServiceIds, variantChoices, ride);
         }}
       />
 

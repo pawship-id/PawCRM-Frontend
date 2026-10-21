@@ -5,6 +5,7 @@ import { useCallback, useState } from "react";
 import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
 import type {
+  PosAddonHost,
   PosBenefitPick,
   PosCatalogItem,
   PosItemInput,
@@ -188,6 +189,24 @@ interface UsePosCartResult {
     }>,
   ) => Promise<boolean>;
   pullBookings: (bookingIds: string[]) => Promise<void>;
+  /**
+   * AN ADD-ON PICKED ALONE, HUNG ON THE GROOMING THE CASHIER CHOSE (21 October
+   * 2026) — "Add-on ini untuk layanan yang mana?".
+   *
+   * A basket line (`source: "cart"`) is one write: the add-on line names that
+   * line's service as its parent and its booking. A diary booking
+   * (`source: "diary"`) is PULLED first — the bridge's own "Tarik" — and the
+   * add-on is hung on it in the next write, built from the basket the pull
+   * returned. One tap for the cashier either way. Resolves `false` when the
+   * server refused; the banner carries why (a refused second step leaves the
+   * booking pulled, which is what the cashier asked for anyway).
+   */
+  attachAddon: (input: {
+    addonId: string;
+    petId: string;
+    variantChoices?: VariantChoice[];
+    host: PosAddonHost;
+  }) => Promise<boolean>;
   patch: (input: UpdateCartInput) => Promise<boolean>;
   /** Retry the refused patch with an approver attached. */
   approve: (approverUserId: string) => Promise<void>;
@@ -218,6 +237,157 @@ function cartWriteError(err: unknown): string {
   if (pricing?.message) return pricing.message;
 
   return err.reason ?? err.message;
+}
+
+/**
+ * A basket's lines, as the API wants them sent back on the next write.
+ *
+ * MODULE-LEVEL so a write can be built from a basket the server JUST returned
+ * (21 October 2026) — "Add-on ini untuk layanan yang mana?" pulls a booking and
+ * then hangs the add-on on it in the same tap, and the second write must start
+ * from the pulled basket, not from the one this hook's closure still holds.
+ */
+export function itemsAsInputOf(cart: PosTransaction | null): PosItemInput[] {
+  return (cart?.items ?? []).map((item) => ({
+    kind: item.kind,
+    refId: item.refId,
+    qty: item.qty,
+    /*
+      A TYPED PRICE IS RE-SENT, OR IT EVAPORATES (28 September 2026).
+
+      The server rebuilds every line from this payload on each write, so an
+      override left out of the next one — stepping the quantity of a bag of
+      feed three lines down — would quietly put this line back to the shelf
+      price with nothing on screen saying so.
+
+      `listPrice` IS THE FLAG. It is non-null only when the two differ, so
+      this sends a price exactly for the lines that have one and leaves
+      every ordinary line alone — which matters, because sending a price at
+      all is what makes the server ask for `posTransactions:setPrice`.
+    */
+    ...(item.listPrice ? { unitPrice: item.unitPrice } : {}),
+    /*
+      THE LOT AND THE LINE NOTE, SENT BACK (8 October 2026). Same reason as
+      the price above: the server rebuilds every line from this payload, so
+      a lot or a note left out of the next write — stepping the quantity of
+      something else — would quietly fall off this line, and the sale would
+      then take from whichever lot FEFO likes instead of the one the cashier
+      picked off the shelf.
+    */
+    ...(item.lots?.length
+      ? {
+          lots: item.lots.map(({ batchId, qty }) => ({ batchId, qty })),
+        }
+      : {}),
+    ...(item.note ? { note: item.note } : {}),
+    /*
+      THE LINE'S OWN DISCOUNT, never the whole of it. A booking's share of
+      "Diskon seluruh booking" rides inside the stored figure, and the server
+      adds it back from the booking — sending it too would count it twice.
+    */
+    discount: (() => {
+      const own = ownDiscountOf(item);
+      return own
+        ? {
+            mode: own.mode,
+            value: own.value,
+            ...(own.approvedBy ? { approvedBy: own.approvedBy } : {}),
+          }
+        : null;
+    })(),
+    /*
+      THE MEMBERSHIP BENEFIT, SENT BACK (30 September 2026). Same reason as
+      the typed price above and the journey below: the server rebuilds every
+      line from this payload on each write, so a benefit left out of the
+      next one would quietly fall off the moment the cashier stepped the
+      quantity of a bag of feed three lines down — and the customer would be
+      charged full price for something they had already been told was free.
+
+      `discount.source` IS THE FLAG, the way `listPrice` is the flag for an
+      overridden price: it is `membership` only on a line a card paid for.
+      TWO IDS AND NOTHING ELSE go back — the server re-reads the card and
+      re-prices it, so a stale amount on this side can never become money.
+    */
+    /*
+      PROMOSI V1: the pick as the server hands it back (`item.benefit`) —
+      a real card by `membershipId`, a package of this same cart by
+      `packageRef`, plus the option. Never on a visit-fee waiver: that one
+      is derived by the server, not picked (contract §6.3).
+    */
+    ...(() => {
+      const pick = pickOf(item);
+      return pick ? { benefit: pick } : {};
+    })(),
+    /*
+      A PACKAGE LINE'S OWN FACTS, SENT BACK (Promosi V1). The server
+      rebuilds every line from this payload: a start date or a referral
+      code left out of the next write would silently fall off — and a
+      dropped `packageRef` orphans every line that spends the package.
+    */
+    ...(item.kind === "membership"
+      ? {
+          ...(item.membershipStartDate
+            ? { membershipStartDate: item.membershipStartDate }
+            : {}),
+          ...(item.referralCode ? { referralCode: item.referralCode } : {}),
+          ...(item.packageRef ? { packageRef: item.packageRef } : {}),
+          ...(item.renewFromId ? { renewFromId: item.renewFromId } : {}),
+        }
+      : {}),
+    bookingId: item.bookingId,
+    /*
+      THE TRIP A FEE LINE BILLS, SENT BACK (11 October 2026). Left out, the
+      server reads the line as a "Biaya Kunjungan" typed by hand and refuses
+      the whole write — the next tap on anything in the basket would fail.
+    */
+    ...(item.homeTripId ? { homeTripId: item.homeTripId } : {}),
+    petId: item.petId,
+    petName: item.petName,
+    groomerName: item.groomerName,
+    /*
+      WHAT THE LINE WAS PRICED ON, SENT BACK (17 September 2026). The server
+      rebuilds every line from this payload on each write, so a walk-in
+      grooming at home whose "Lokasi" were left out would be refused — or
+      re-priced — the moment the cashier changed the quantity of a bag of
+      feed. The snapshot's name and label are for reading; the server wants
+      only the pair.
+    */
+    ...(item.variantChoices?.length
+      ? {
+          variantChoices: item.variantChoices.map(({ optionId, code }) => ({
+            optionId,
+            code,
+          })),
+        }
+      : {}),
+    /*
+      THE JOURNEY THE LINE IS, SENT BACK (24 September 2026). Same reason as
+      the choices above: the server rebuilds every line from this payload on
+      each write, and a ride whose two ends were left out would be re-priced
+      from the customer's stored pin the moment somebody changed the
+      quantity of a bag of feed — a different fare, for a journey nobody
+      re-agreed. The response nests each end; the wire is flat.
+    */
+    ...(item.trip
+      ? {
+          trip: {
+            leg: item.trip.leg,
+            origin: {
+              address: item.trip.origin?.address ?? null,
+              lat: item.trip.origin?.lat as number,
+              lng: item.trip.origin?.lng as number,
+            },
+            destination: {
+              address: item.trip.destination?.address ?? null,
+              lat: item.trip.destination?.lat as number,
+              lng: item.trip.destination?.lng as number,
+            },
+          },
+          linkedBookingIds: item.linkedBookingIds ?? [],
+          passengerPetIds: item.passengerPetIds ?? [],
+        }
+      : {}),
+  }));
 }
 
 /**
@@ -360,149 +530,68 @@ export function usePosCart(): UsePosCartResult {
     [cart],
   );
 
+  const attachAddon = useCallback(
+    async ({
+      addonId,
+      petId,
+      variantChoices,
+      host,
+    }: {
+      addonId: string;
+      petId: string;
+      variantChoices?: VariantChoice[];
+      host: PosAddonHost;
+    }): Promise<boolean> => {
+      const line: PosItemInput = {
+        kind: "service",
+        refId: addonId,
+        petId,
+        qty: "1",
+        ...(variantChoices?.length ? { variantChoices } : {}),
+        parentServiceId: host.serviceId,
+        ...(host.bookingId ? { bookingId: host.bookingId } : {}),
+      };
+
+      if (host.source === "cart") {
+        return send({ items: [...itemsAsInputOf(cart), line] });
+      }
+
+      if (!host.bookingId) return false;
+
+      setBusy(true);
+      setError(null);
+
+      let pulled: PosTransaction | null = null;
+
+      try {
+        const target = cart ?? (await posService.createCart({}));
+        pulled = await posService.pullBookings(target._id, [host.bookingId]);
+        setCart(pulled);
+        setCart(
+          await posService.updateCart(pulled._id, {
+            items: [...itemsAsInputOf(pulled), line],
+          }),
+        );
+        return true;
+      } catch (err) {
+        setError(
+          pulled
+            ? cartWriteError(err)
+            : err instanceof ApiError
+              ? (err.reason ?? err.message)
+              : "Booking gagal ditarik. Coba lagi.",
+        );
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [cart, send],
+  );
+
   /** The current lines, as the API wants them sent back. */
   const itemsAsInput = useCallback(
-    (): PosItemInput[] =>
-      (cart?.items ?? []).map((item) => ({
-        kind: item.kind,
-        refId: item.refId,
-        qty: item.qty,
-        /*
-          A TYPED PRICE IS RE-SENT, OR IT EVAPORATES (28 September 2026).
-
-          The server rebuilds every line from this payload on each write, so an
-          override left out of the next one — stepping the quantity of a bag of
-          feed three lines down — would quietly put this line back to the shelf
-          price with nothing on screen saying so.
-
-          `listPrice` IS THE FLAG. It is non-null only when the two differ, so
-          this sends a price exactly for the lines that have one and leaves
-          every ordinary line alone — which matters, because sending a price at
-          all is what makes the server ask for `posTransactions:setPrice`.
-        */
-        ...(item.listPrice ? { unitPrice: item.unitPrice } : {}),
-        /*
-          THE LOT AND THE LINE NOTE, SENT BACK (8 October 2026). Same reason as
-          the price above: the server rebuilds every line from this payload, so
-          a lot or a note left out of the next write — stepping the quantity of
-          something else — would quietly fall off this line, and the sale would
-          then take from whichever lot FEFO likes instead of the one the cashier
-          picked off the shelf.
-        */
-        ...(item.lots?.length
-          ? {
-              lots: item.lots.map(({ batchId, qty }) => ({ batchId, qty })),
-            }
-          : {}),
-        ...(item.note ? { note: item.note } : {}),
-        /*
-          THE LINE'S OWN DISCOUNT, never the whole of it. A booking's share of
-          "Diskon seluruh booking" rides inside the stored figure, and the server
-          adds it back from the booking — sending it too would count it twice.
-        */
-        discount: (() => {
-          const own = ownDiscountOf(item);
-          return own
-            ? {
-                mode: own.mode,
-                value: own.value,
-                ...(own.approvedBy ? { approvedBy: own.approvedBy } : {}),
-              }
-            : null;
-        })(),
-        /*
-          THE MEMBERSHIP BENEFIT, SENT BACK (30 September 2026). Same reason as
-          the typed price above and the journey below: the server rebuilds every
-          line from this payload on each write, so a benefit left out of the
-          next one would quietly fall off the moment the cashier stepped the
-          quantity of a bag of feed three lines down — and the customer would be
-          charged full price for something they had already been told was free.
-
-          `discount.source` IS THE FLAG, the way `listPrice` is the flag for an
-          overridden price: it is `membership` only on a line a card paid for.
-          TWO IDS AND NOTHING ELSE go back — the server re-reads the card and
-          re-prices it, so a stale amount on this side can never become money.
-        */
-        /*
-          PROMOSI V1: the pick as the server hands it back (`item.benefit`) —
-          a real card by `membershipId`, a package of this same cart by
-          `packageRef`, plus the option. Never on a visit-fee waiver: that one
-          is derived by the server, not picked (contract §6.3).
-        */
-        ...(() => {
-          const pick = pickOf(item);
-          return pick ? { benefit: pick } : {};
-        })(),
-        /*
-          A PACKAGE LINE'S OWN FACTS, SENT BACK (Promosi V1). The server
-          rebuilds every line from this payload: a start date or a referral
-          code left out of the next write would silently fall off — and a
-          dropped `packageRef` orphans every line that spends the package.
-        */
-        ...(item.kind === "membership"
-          ? {
-              ...(item.membershipStartDate
-                ? { membershipStartDate: item.membershipStartDate }
-                : {}),
-              ...(item.referralCode ? { referralCode: item.referralCode } : {}),
-              ...(item.packageRef ? { packageRef: item.packageRef } : {}),
-              ...(item.renewFromId ? { renewFromId: item.renewFromId } : {}),
-            }
-          : {}),
-        bookingId: item.bookingId,
-        /*
-          THE TRIP A FEE LINE BILLS, SENT BACK (11 October 2026). Left out, the
-          server reads the line as a "Biaya Kunjungan" typed by hand and refuses
-          the whole write — the next tap on anything in the basket would fail.
-        */
-        ...(item.homeTripId ? { homeTripId: item.homeTripId } : {}),
-        petId: item.petId,
-        petName: item.petName,
-        groomerName: item.groomerName,
-        /*
-          WHAT THE LINE WAS PRICED ON, SENT BACK (17 September 2026). The server
-          rebuilds every line from this payload on each write, so a walk-in
-          grooming at home whose "Lokasi" were left out would be refused — or
-          re-priced — the moment the cashier changed the quantity of a bag of
-          feed. The snapshot's name and label are for reading; the server wants
-          only the pair.
-        */
-        ...(item.variantChoices?.length
-          ? {
-              variantChoices: item.variantChoices.map(({ optionId, code }) => ({
-                optionId,
-                code,
-              })),
-            }
-          : {}),
-        /*
-          THE JOURNEY THE LINE IS, SENT BACK (24 September 2026). Same reason as
-          the choices above: the server rebuilds every line from this payload on
-          each write, and a ride whose two ends were left out would be re-priced
-          from the customer's stored pin the moment somebody changed the
-          quantity of a bag of feed — a different fare, for a journey nobody
-          re-agreed. The response nests each end; the wire is flat.
-        */
-        ...(item.trip
-          ? {
-              trip: {
-                leg: item.trip.leg,
-                origin: {
-                  address: item.trip.origin?.address ?? null,
-                  lat: item.trip.origin?.lat as number,
-                  lng: item.trip.origin?.lng as number,
-                },
-                destination: {
-                  address: item.trip.destination?.address ?? null,
-                  lat: item.trip.destination?.lat as number,
-                  lng: item.trip.destination?.lng as number,
-                },
-              },
-              linkedBookingIds: item.linkedBookingIds ?? [],
-              passengerPetIds: item.passengerPetIds ?? [],
-            }
-          : {}),
-      })),
+    (): PosItemInput[] => itemsAsInputOf(cart),
     [cart],
   );
 
@@ -699,7 +788,29 @@ export function usePosCart(): UsePosCartResult {
   const removeItem = useCallback(
     async (index: number | number[]) => {
       const dropped = new Set(Array.isArray(index) ? index : [index]);
-      const items = itemsAsInput().filter((_, i) => !dropped.has(i));
+      const kept = itemsAsInput().filter((_, i) => !dropped.has(i));
+
+      /*
+        A PACKAGE TAKES ITS JATAH WITH IT (Promosi V1). A line spending a
+        package bought on this basket names it by `packageRef`; once that
+        package line is gone the pick points at nothing, and the server
+        refuses the whole write — so the package could never be removed. The
+        orphaned pick is dropped here (key absent, as in setItemBenefits) and
+        the next quote offers whatever the customer still holds.
+      */
+      const packages = new Set(
+        kept
+          .filter((item) => item.kind === "membership" && item.packageRef)
+          .map((item) => item.packageRef as string),
+      );
+      const items = kept.map((item) => {
+        const ref = item.benefit?.packageRef;
+        if (!ref || packages.has(ref)) return item;
+        const next = { ...item };
+        delete next.benefit;
+        return next;
+      });
+
       await send({ items });
     },
     [itemsAsInput, send],
@@ -811,7 +922,11 @@ export function usePosCart(): UsePosCartResult {
         if (!items[index]) continue;
         const next = { ...items[index] };
         delete next.benefit;
-        if (benefit) next.benefit = benefit;
+        if (benefit) {
+          next.benefit = benefit;
+          // A benefit takes the line: no typed discount beside it (Promosi V1).
+          next.discount = null;
+        }
         items[index] = next;
         touched = true;
       }
@@ -963,6 +1078,7 @@ export function usePosCart(): UsePosCartResult {
     setSyncOnline,
     setCustomer,
     pullBookings,
+    attachAddon,
     patch: send,
     approve,
     dismissApproval,
