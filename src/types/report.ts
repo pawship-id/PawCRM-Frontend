@@ -141,6 +141,8 @@ export interface SalesInvoiceReportRow {
   warehouseName: string | null;
   customerName: string | null;
   customerPhone: string | null;
+  /** The tenant's own label (Pengaturan › Tipe pelanggan); null when unset. */
+  customerTypeName: string | null;
   source: "manual" | "pos_bridge";
   channel: "manual" | "marketplace";
   lineCount: number;
@@ -160,6 +162,26 @@ export interface SalesInvoiceReportRow {
   createdByName: string | null;
   notes: string | null;
   voidReason: string | null;
+  /** Present only when asked with `withLines` — the rincian barang file. */
+  lines?: SalesInvoiceReportLine[];
+}
+
+/** One sold line of an invoice, as the rincian barang file prints it. */
+export interface SalesInvoiceReportLine {
+  kind: "product" | "service" | "membership";
+  sku: string | null;
+  name: string | null;
+  /** Products only; a service has neither. */
+  categoryName: string | null;
+  unit: string | null;
+  qty: string | null;
+  unitPrice: string | null;
+  /** The line's own discount. */
+  discount: string;
+  /** qty × price, before the line's discount. */
+  lineTotal: string;
+  /** `lineTotal` − `discount`: before the invoice discount and PPN. */
+  net: string;
 }
 
 export interface SalesInvoiceReportQuery {
@@ -170,6 +192,8 @@ export interface SalesInvoiceReportQuery {
   warehouseIds?: string[];
   /** Omitted = every status but `void`. */
   statuses?: SalesInvoiceReportRow["status"][];
+  /** Each invoice's lines along with it, as `lines`. */
+  withLines?: boolean;
 }
 
 export interface SalesInvoiceReport {

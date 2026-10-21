@@ -3,6 +3,7 @@ import type {
   ConsignmentSalesReportRow,
   PosSalesReportRow,
   SalesBatchReportRow,
+  SalesInvoiceReportLine,
   SalesInvoiceReportRow,
   SalesItemReportRow,
   SalesRevenueReportRow,
@@ -77,13 +78,19 @@ const INVOICE_COLUMNS: SalesReportColumn<SalesInvoiceReportRow>[] = [
     header: "Pelanggan",
     value: (r) => r.customerName,
     width: 24,
-    about: "Nama pelanggan",
+    about: "Nama pelanggan (\"Pelanggan umum\" untuk pembeli tanpa data di kasir)",
   },
   {
     header: "No. HP",
     value: (r) => r.customerPhone,
     width: 16,
     about: "Nomor HP pelanggan",
+  },
+  {
+    header: "Tipe pelanggan",
+    value: (r) => r.customerTypeName,
+    width: 16,
+    about: "Tipe pelanggan dari Pengaturan › Tipe pelanggan",
   },
   {
     header: "Sumber",
@@ -351,6 +358,127 @@ export const salesItemReport: SalesReportDefinition<SalesItemReportRow, Kind> =
     fetch: async (scope, kinds) =>
       (await reportService.salesItems({ ...scope, kinds })).rows,
   };
+
+/* ---------------------------- Penjualan per invoice, rincian barang */
+
+/** One sheet row: a line of a faktur, or the faktur alone when it has none. */
+interface InvoiceLineRow {
+  invoice: SalesInvoiceReportRow;
+  line: SalesInvoiceReportLine | null;
+}
+
+/**
+ * A per-invoice column, read off the faktur and merged down over its lines —
+ * the same definition as Penjualan per invoice, so the two files agree.
+ */
+const invoiceColumn = (
+  header: string,
+): SalesReportColumn<InvoiceLineRow> => {
+  const column = INVOICE_COLUMNS.find((c) => c.header === header);
+  if (!column) throw new Error(`Unknown invoice column: ${header}`);
+  return { ...column, value: (r) => column.value(r.invoice), merge: true };
+};
+
+/**
+ * Who and when, then the lines, then the faktur's money — the order a faktur
+ * is read in, top to bottom.
+ */
+const INVOICE_LINE_COLUMNS: SalesReportColumn<InvoiceLineRow>[] = [
+  ...[
+    "No. faktur",
+    "Tanggal faktur",
+    "Cabang",
+    "Gudang",
+    "Pelanggan",
+    "No. HP",
+    "Tipe pelanggan",
+    "Sumber",
+  ].map(invoiceColumn),
+  {
+    header: "Tipe",
+    value: (r) => (r.line ? KIND_LABEL[r.line.kind] : null),
+    about: "Produk, layanan, atau membership",
+  },
+  { header: "SKU", value: (r) => r.line?.sku, width: 16, about: "Kode produk" },
+  {
+    header: "Nama barang/layanan",
+    value: (r) => r.line?.name,
+    width: 30,
+    about: "Nama seperti tercetak di faktur",
+  },
+  {
+    header: "Kategori",
+    value: (r) => r.line?.categoryName,
+    width: 18,
+    about: "Kategori produk (kosong untuk layanan)",
+  },
+  { header: "Satuan", value: (r) => r.line?.unit, about: "Satuan produk" },
+  {
+    header: "Qty",
+    value: (r) => num(r.line?.qty ?? null),
+    type: "number",
+    about: "Jumlah barang di baris ini",
+  },
+  {
+    header: "Harga satuan",
+    value: (r) => num(r.line?.unitPrice ?? null),
+    type: "number",
+    width: 14,
+    about: "Harga per satuan",
+  },
+  {
+    header: "Diskon barang",
+    value: (r) => num(r.line?.discount ?? null),
+    type: "number",
+    width: 14,
+    about: "Diskon di baris ini",
+  },
+  {
+    header: "Subtotal barang",
+    value: (r) => num(r.line?.net ?? null),
+    type: "number",
+    width: 16,
+    about: "Qty × harga − diskon barang (sebelum diskon faktur dan PPN)",
+  },
+  ...[
+    "Diskon faktur",
+    "Biaya lain",
+    "PPN",
+    "Total",
+    "Dibayar",
+    "Sisa tagihan",
+    "Status",
+    "Dibuat oleh",
+    "Catatan",
+  ].map(invoiceColumn),
+];
+
+/**
+ * Penjualan per invoice with each faktur's lines, one sheet row per line; the
+ * faktur's own cells are merged down over them, so a SUM over Total still
+ * counts each faktur once.
+ */
+export const salesInvoiceLineReport: SalesReportDefinition<
+  InvoiceLineRow,
+  Status
+> = {
+  ...salesInvoiceReport,
+  title: "Penjualan per invoice (rincian barang)",
+  description:
+    "Setiap faktur dengan barang dan layanannya, satu baris per barang. Data faktur digabung (merge) per faktur. Diunduh sebagai Excel.",
+  fileName: "penjualan-per-invoice-rincian",
+  rowNoun: "baris barang",
+  columns: INVOICE_LINE_COLUMNS,
+  groupKey: (r) => r.invoice.invoiceNumber,
+  fetch: async (scope, statuses) =>
+    (
+      await reportService.salesInvoices({ ...scope, statuses, withLines: true })
+    ).rows.flatMap((invoice): InvoiceLineRow[] =>
+      invoice.lines?.length
+        ? invoice.lines.map((line) => ({ invoice, line }))
+        : [{ invoice, line: null }],
+    ),
+};
 
 /* ------------------------------------------------------ Batch terjual */
 
