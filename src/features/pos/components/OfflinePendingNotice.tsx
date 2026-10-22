@@ -37,8 +37,7 @@ export function OfflinePendingNotice({
       <ul className="mt-1 list-disc pl-5">
         {pending.map((device) => (
           <li key={device.deviceId}>
-            {device.code}
-            {device.name ? ` (${device.name})` : ""}: {device.count} transaksi,
+            {device.name ?? device.code}: {device.count} transaksi,
             terakhir aktif {timeOf(device.lastSeenAt)}
           </li>
         ))}

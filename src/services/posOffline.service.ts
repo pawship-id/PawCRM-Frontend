@@ -27,13 +27,13 @@ export function deviceHeaders(device: DeviceCredentials | null): Record<string, 
 }
 
 export const posOfflineService = {
-  registerDevice: (input: { branchId?: string; name?: string | null }) =>
+  registerDevice: (input: { branchId?: string; name: string }) =>
     apiClient.post<RegisteredPosDevice>("/pos/devices", input),
 
   listDevices: (query: { branchId?: string } = {}) =>
     apiClient.get<PosDevice[]>("/pos/devices", { query }),
 
-  updateDevice: (id: string, input: { name?: string | null; isActive?: boolean }) =>
+  updateDevice: (id: string, input: { name?: string; isActive?: boolean }) =>
     apiClient.patch<PosDevice>(`/pos/devices/${id}`, input),
 
   currentDevice: (device: DeviceCredentials) =>

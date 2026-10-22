@@ -59,12 +59,12 @@ export function PosDevicesScreen() {
     void load();
   }, [load]);
 
-  async function save(device: PosDevice, input: { name?: string | null; isActive?: boolean }) {
+  async function save(device: PosDevice, input: { name?: string; isActive?: boolean }) {
     setBusyId(device._id);
     try {
       await posOfflineService.updateDevice(device._id, input);
       setEditing(null);
-      swalToast(input.isActive === false ? `${device.code} dinonaktifkan.` : "Perangkat disimpan.");
+      swalToast(input.isActive === false ? `${device.name ?? device.code} dinonaktifkan.` : "Perangkat disimpan.");
       await load();
     } catch (err) {
       swalToast(err instanceof ApiError ? err.message : "Gagal menyimpan. Coba lagi.", "error", 6000);
@@ -165,8 +165,8 @@ export function PosDevicesScreen() {
                             <Button
                               type="button"
                               size="sm"
-                              disabled={busyId === device._id}
-                              onClick={() => void save(device, { name: editing.name.trim() || null })}
+                              disabled={busyId === device._id || !editing.name.trim()}
+                              onClick={() => void save(device, { name: editing.name.trim() })}
                             >
                               Simpan
                             </Button>

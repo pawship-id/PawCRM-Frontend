@@ -42,8 +42,8 @@ export function PosDeviceSection({ till }: { till: OfflineTill }) {
     setBusy(true);
     setError(null);
     try {
-      const created = await till.register(name.trim() || null);
-      swalToast(`Perangkat terdaftar sebagai ${created.branchCode}-${created.code}.`);
+      const created = await till.register(name.trim());
+      swalToast(`Perangkat terdaftar sebagai ${created.name ?? created.code}.`);
       setName("");
     } catch (err) {
       setError(
@@ -74,14 +74,10 @@ export function PosDeviceSection({ till }: { till: OfflineTill }) {
 
       {device ? (
         <>
+          {/* The name, not the K1 — the code is for the receipt and Perangkat kasir (22 Oct 2026, BO). */}
           <p className="text-sm">
             Perangkat ini terdaftar sebagai{" "}
-            <span className="font-semibold tabular-nums">
-              {device.branchCode ? `${device.branchCode}-` : ""}
-              {device.code}
-            </span>
-            {device.name ? ` (${device.name})` : ""}. Nomor transaksinya memakai
-            kode ini, online maupun offline.
+            <span className="font-semibold">{device.name ?? device.code}</span>.
           </p>
           {deviceRejected && <Alert variant="error">{deviceRejected}</Alert>}
           <p className="text-sm text-muted">
@@ -104,15 +100,18 @@ export function PosDeviceSection({ till }: { till: OfflineTill }) {
         </>
       ) : can("posTransactions", "manageDevices") ? (
         <>
-          <p className="text-sm text-muted">
-            {elsewhere.length
-              ? "Perangkat ini belum didaftarkan di cabang ini. Daftarkan juga di sini supaya bisa berjualan saat internet putus — perangkat akan mendapat kode sendiri untuk cabang ini."
-              : "Daftarkan perangkat ini supaya kasir tetap bisa berjualan saat internet putus. Perangkat akan mendapat kode (K1, K2, …) yang ikut tercetak di nomor transaksinya."}
-          </p>
+          {elsewhere.length === 0 && (
+            <p className="text-sm text-muted">
+              Daftarkan perangkat ini supaya kasir tetap bisa berjualan saat internet putus.
+              Perangkat akan mendapat kode (K1, K2, …) yang ikut tercetak di nomor transaksinya.
+            </p>
+          )}
           <div className="space-y-1">
-            <Label htmlFor="device-name">Nama perangkat (opsional)</Label>
+            <Label htmlFor="device-name">Nama perangkat</Label>
             <Input
               id="device-name"
+              required
+              aria-required
               value={name}
               maxLength={60}
               placeholder="mis. Tablet kasir depan"
@@ -122,7 +121,7 @@ export function PosDeviceSection({ till }: { till: OfflineTill }) {
           <Button
             type="button"
             size="sm"
-            disabled={busy || till.connectivity.offline}
+            disabled={busy || till.connectivity.offline || !name.trim()}
             onClick={() => void register()}
           >
             {busy && <Spinner />}
@@ -134,22 +133,6 @@ export function PosDeviceSection({ till }: { till: OfflineTill }) {
           Perangkat ini belum didaftarkan{elsewhere.length ? " di cabang ini" : ""}, jadi
           belum bisa berjualan saat offline. Minta supervisor login di perangkat
           ini lalu daftarkan dari Pengaturan Kasir.
-        </p>
-      )}
-
-      {elsewhere.length > 0 && (
-        <p className="text-sm text-muted">
-          Juga terdaftar di cabang lain sebagai{" "}
-          {elsewhere.map((entry, index) => (
-            <span key={entry.deviceId}>
-              {index > 0 ? ", " : ""}
-              <span className="font-semibold tabular-nums">
-                {entry.branchCode ? `${entry.branchCode}-` : ""}
-                {entry.code}
-              </span>
-            </span>
-          ))}
-          . Transaksi offline dari cabang itu tetap dikirim otomatis.
         </p>
       )}
     </div>

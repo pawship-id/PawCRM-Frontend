@@ -124,7 +124,7 @@ export function useOfflineTill() {
   );
 
   const register = useCallback(
-    async (name: string | null) => {
+    async (name: string) => {
       if (!tenantId) throw new Error("Belum masuk");
       const created = await posOfflineService.registerDevice({
         branchId: branchId ?? undefined,
