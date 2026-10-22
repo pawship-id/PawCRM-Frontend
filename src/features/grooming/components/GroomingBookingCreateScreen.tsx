@@ -20,7 +20,21 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { BookingBenefitField } from "@/features/booking/components/BookingBenefitField";
+import { OtherBenefitsInfo } from "@/features/booking/components/OtherBenefitsInfo";
+import { otherBenefitsOf } from "@/features/booking/otherBenefits";
 import { VisitAddressCard } from "@/features/booking/components/VisitAddressCard";
+import {
+  addonBenefitsOf,
+  benefitRefusalOf,
+  bookingQuoteInput,
+  cardBenefitView,
+  effectivePlan,
+  toPlan,
+  visitFeeDiscountOf,
+  type BenefitCardState,
+} from "@/features/booking/benefitQuote";
+import { useBookingBenefitQuote } from "@/features/booking/hooks/useBookingBenefitQuote";
 import {
   DEFAULT_VISIT_DRAFT,
   visitFeeOf,
@@ -31,6 +45,7 @@ import {
 } from "@/features/booking/visitAddress";
 import { variantRefusalOf, type VariantRefusal } from "@/features/booking/variantLine";
 import { CustomerSearchDialog } from "@/features/customers";
+import { useCustomerMemberships } from "@/features/memberships/hooks/useCustomerMemberships";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { usePermissions } from "@/features/permissions";
 import { PetFixLink, PetQuickAddDialog, PetSummaryCard } from "@/features/pets";
@@ -45,7 +60,7 @@ import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
-import { formatMoney } from "@/utils/decimal";
+import { formatMoney, isPositive, toDecimalString, toMinor } from "@/utils/decimal";
 import {
   AXIS_LABEL,
   staffAxesOf,
@@ -60,8 +75,8 @@ import type {
   Pet,
   Service,
   ServiceVariantAxis,
-  VipTier,
 } from "@/types/api";
+import type { PetMembership } from "@/types/membership";
 
 import {
   BLANK_PRICE,
@@ -107,13 +122,19 @@ const FETCH_LIMIT = 100;
 /** Mirrors NOTES_MAX_LENGTH in booking.model.js. */
 const NOTES_MAX_LENGTH = 500;
 
-const VIP_WORDS: Record<VipTier, string> = {
-  bronze: "Bronze",
-  silver: "Silver",
-  gold: "Gold",
-  platinum: "Platinum",
-};
-
+/**
+ * "Snoopy · Tes Explorer" / "Semua hewan · Keluarga" — one chip per live card
+ * the customer holds, for the "Member" fact. A customer's card covers every
+ * animal, so it says so instead of naming one.
+ */
+function memberChipText(card: PetMembership, pets: readonly Pet[]): string {
+  const plan = card.plan?.name ?? "Membership";
+  const who =
+    card.attachTo === "customer"
+      ? "Semua hewan"
+      : (pets.find((pet) => pet._id === card.petId)?.name ?? card.petName ?? "Hewan");
+  return `${who} · ${plan}${card.status === "paused" ? " (dijeda)" : ""}`;
+}
 
 /** How the summary names a variant: coat, then size, then species. */
 const VARIANT_ORDER = ["furType", "sizeCategory", "petType"] as const satisfies readonly ServiceVariantAxis[];
@@ -200,6 +221,11 @@ export function GroomingBookingCreateScreen() {
     that animal's card, under the select it is about when it names one.
   */
   const [refusal, setRefusal] = useState<(VariantRefusal & { petId: string }) | null>(null);
+  /*
+    A MEMBERSHIP BENEFIT THE SERVER REFUSED ON SAVE (membership-v1 §8), by
+    animal — shown under that animal's "Benefit membership".
+  */
+  const [benefitErrors, setBenefitErrors] = useState<Record<string, string>>({});
 
   /*
     PRICED BEYOND THE PET (17 September 2026): the zone is the customer's pin
@@ -346,6 +372,7 @@ export function GroomingBookingCreateScreen() {
     setBookingDiscount({ mode: "amount", value: "" });
     setClash(null);
     setRefusal(null);
+    setBenefitErrors({});
     /* Another customer, another address to start from. */
     setVisitDraft(DEFAULT_VISIT_DRAFT);
     setVisitError(null);
@@ -424,6 +451,12 @@ export function GroomingBookingCreateScreen() {
     );
     setClash(null);
     setRefusal(null);
+    setBenefitErrors((prev) => {
+      if (!(petId in prev)) return prev;
+      const next = { ...prev };
+      delete next[petId];
+      return next;
+    });
   }
 
   /* ─── WHAT THE FORM COMES TO ───────────────────────────────────────────── */
@@ -485,7 +518,100 @@ export function GroomingBookingCreateScreen() {
     home && customer ? visitProblem({ customer, point: visitPoint, zone: visitZone }) : null;
   const servicesSubtotal = priced.reduce((sum, row) => sum + row.net, 0n);
   const subtotal = servicesSubtotal + feeMinor;
-  const total = subtotal - split.total;
+
+  /*
+    ─── MEMBERSHIP (Promosi V1) ─────────────────────────────────────────────
+
+    THE SAME QUESTION `BookingForm` ASKS, through the same pure file
+    (`benefitQuote.ts`): one quote for the whole save, one entry per animal
+    keyed by the animal, the booking's own date and time, the visit fee once on
+    a house call, and each animal's pick. The animals compete for the same
+    jatah, which only the server can settle.
+
+    THE AMOUNT IS THE MAIN SERVICE'S EFEKTIF — after the line's own discount —
+    because that is what the till measures a planned benefit against
+    (`#applyPlannedBenefits`: "the booking's own discount comes off first").
+    Add-ons go with no pick, each at its own Efektif: the quote recommends a
+    benefit per add-on, shown on its row and counted below — never saved.
+  */
+  const benefitCards: BenefitCardState[] = priced.map(({ pet, draft }) => ({
+    key: pet._id,
+    petId: pet._id,
+    serviceId: draft.serviceId,
+    benefitPicked: draft.benefitPicked,
+    plannedBenefit: draft.plannedBenefit,
+    noMemberAddonIds: draft.noMemberAddonIds ?? [],
+  }));
+  const feeShown = home && feeMinor > 0n ? toDecimalString(feeMinor) : null;
+  const benefitQuoteState = useBookingBenefitQuote(
+    bookingQuoteInput({
+      cards: benefitCards,
+      customerId: customer?._id ?? null,
+      date: date !== "" && time !== "" ? toScheduledAt(date, time) : null,
+      visitFee: feeShown,
+      pricesOf: (card) => {
+        const row = priced.find((entry) => entry.pet._id === card.key);
+        if (!row || row.quote.inactive || row.main.price === null) return null;
+        return {
+          amount: toDecimalString(row.main.net),
+          addons: row.addons
+            .filter((addon) => !addon.quote.inactive && addon.line.price !== null)
+            .map((addon) => ({ serviceId: addon.addonId, amount: toDecimalString(addon.line.net) })),
+        };
+      },
+    }),
+  );
+  const benefitQuote = benefitQuoteState.quote;
+  const benefitViews = benefitCards.map((card) => cardBenefitView(card, benefitQuote));
+  /* Per animal, in minor units, never more than what is left of its main line. */
+  const memberOffs = priced.map((row, index) => {
+    const off = toMinor(benefitViews[index]?.discount ?? "0") ?? 0n;
+    return off > row.main.net ? row.main.net : off;
+  });
+  /*
+    EACH TICKED ADD-ON'S BENEFIT (22 October 2026) — applied automatically, no
+    radio; the till applies the add-on lines itself when the booking is billed.
+    "Tanpa member" on an add-on (`noMemberAddonIds`) takes it out of the totals
+    and is saved on the booking, so the till does not apply it either. In minor
+    units, never more than the add-on's own Efektif.
+  */
+  const addonMembers = priced.map((row, index) => {
+    const found = addonBenefitsOf(benefitCards[index], benefitQuote, benefitQuoteState.asked);
+    const out: Record<string, { label: string; off: bigint; quota: boolean; optedOut: boolean }> =
+      {};
+    for (const addonRow of row.addons) {
+      const hit = found[addonRow.addonId];
+      if (!hit || addonRow.quote.inactive || addonRow.line.price === null) continue;
+      const raw = toMinor(hit.discount) ?? 0n;
+      const off = raw > addonRow.line.net ? addonRow.line.net : raw;
+      if (off > 0n || hit.optedOut) {
+        out[addonRow.addonId] = { label: hit.label, off, quota: hit.quota, optedOut: hit.optedOut };
+      }
+    }
+    return out;
+  });
+  const addonOffs = addonMembers.map((found) =>
+    Object.values(found).reduce((sum, item) => sum + item.off, 0n),
+  );
+  const memberDiscount =
+    memberOffs.reduce((sum, off) => sum + off, 0n) +
+    addonOffs.reduce((sum, off) => sum + off, 0n);
+  /* The fee is waived when the visit line says so — never more than the fee shown. */
+  const feeWaived = feeShown && isPositive(visitFeeDiscountOf(benefitQuote)) ? feeMinor : 0n;
+
+  /*
+    WHAT THE CUSTOMER PAYS. The Ringkasan's Subtotal is AFTER the membership
+    (each animal's "Potongan member" line sits above it, like its own item
+    discount, and a waived fee is struck in its row), so the lines it shows add
+    up; the booking discount is still the one the server resolves on the nets
+    before any membership — it is fixed at create, the benefit at the till.
+  */
+  const memberSubtotal = subtotal - memberDiscount - feeWaived;
+  const total = memberSubtotal - split.total;
+  const totalBeforeMember = subtotal - split.total;
+
+  /* The "Member" fact — every live card the customer holds, in one request. */
+  const memberCards = useCustomerMemberships(customer?._id ?? null);
 
   /* WHERE THE WORK HAPPENS — every booking of one save shares it. */
   const chosenServices = priced.map((row) => row.service).filter(Boolean) as Service[];
@@ -555,6 +681,32 @@ export function GroomingBookingCreateScreen() {
     setSaving(true);
     setFormError(null);
     setRefusal(null);
+    setBenefitErrors({});
+
+    /*
+      THE BENEFIT EACH ANIMAL SAVES — what its radio shows, read off a quote for
+      THIS form's question (awaited, or asked again, when the last answer was
+      for a date or a service somebody has since changed).
+    */
+    const latestQuote = await benefitQuoteState.latest();
+    const entries = picked.map(({ pet, draft }) =>
+      toEntry(
+        {
+          ...draft,
+          plannedBenefit: effectivePlan(
+            {
+              key: pet._id,
+              petId: pet._id,
+              serviceId: draft.serviceId,
+              benefitPicked: draft.benefitPicked,
+              plannedBenefit: draft.plannedBenefit,
+            },
+            latestQuote,
+          ),
+        },
+        serviceOf,
+      ),
+    );
 
     try {
       const result = await bookingService.create({
@@ -568,7 +720,7 @@ export function GroomingBookingCreateScreen() {
         bookingDiscount: mayPrice
           ? typedDiscount(bookingDiscount.mode, bookingDiscount.value)
           : null,
-        bookings: picked.map(({ draft }) => toEntry(draft, serviceOf)),
+        bookings: entries,
       });
 
       const made = result.bookings;
@@ -633,6 +785,28 @@ export function GroomingBookingCreateScreen() {
         /* The page it landed on already shows it. */
       }
     } catch (error) {
+      /*
+        A MEMBERSHIP BENEFIT REFUSED (membership-v1 §8) — 409 for the card's
+        state (jatah habis, held by another booking, paused), 400 for a pick
+        that does not fit. Checked BEFORE the clash, exactly as `BookingForm`
+        does: a 409 naming `plannedBenefit` is not a clash. A toast says it,
+        the animal it is about says it again, and the quote is asked again.
+      */
+      const benefitRefused = benefitRefusalOf(error);
+      if (benefitRefused) {
+        const about =
+          (benefitRefused.index !== null ? picked[benefitRefused.index] : undefined) ?? picked[0];
+        if (about) setBenefitErrors({ [about.pet._id]: benefitRefused.message });
+        benefitQuoteState.refresh();
+        try {
+          swalToast(benefitRefused.message, "error", 6000);
+        } catch {
+          /* The animal's card shows it too. */
+        }
+        setSaving(false);
+        return;
+      }
+
       /*
         THE ADDRESS REFUSED — beside the address card, in the server's own
         Indonesian. The phone's refusal is filed under `customerId` there.
@@ -778,13 +952,42 @@ export function GroomingBookingCreateScreen() {
                       )}
                     </Fact>
                     <Fact label="Member">
-                      {customer.vipTier ? (
-                        <span className={`${badge} bg-tint-success text-success`}>
-                          {VIP_WORDS[customer.vipTier]}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
+                      {/*
+                        THE MEMBERSHIP CARDS, NOT THE OLD VIP TIER — a card is
+                        what the benefit below is spent from. One chip per
+                        live card: the animal's name, or "Semua hewan" for a
+                        card held by the customer.
+                      */}
+                      {(() => {
+                        /*
+                          SHORT, NEVER WIDER THAN ITS COLUMN (22 October 2026,
+                          on request). An animal's card is shown on its own tile
+                          under Hewan; here only a customer-held card ("Semua
+                          hewan") gets a chip — truncated — and the animals'
+                          cards are counted.
+                        */
+                        const shared = memberCards.filter((card) => card.attachTo === "customer");
+                        const perPet = new Set(
+                          memberCards
+                            .filter((card) => card.attachTo !== "customer" && card.petId)
+                            .map((card) => card.petId),
+                        ).size;
+                        if (shared.length === 0 && perPet === 0) return "—";
+                        return (
+                          <span className="flex min-w-0 flex-col items-start gap-1">
+                            {shared.map((card) => (
+                              <span
+                                key={card.id}
+                                data-member-chip
+                                className={`${badge} inline-block max-w-full truncate ${card.status === "paused" ? "bg-tint-neutral text-muted" : "bg-tint-success text-success"}`}
+                              >
+                                {memberChipText(card, pets)}
+                              </span>
+                            ))}
+                            {perPet > 0 && <span className="font-normal">{perPet} hewan member</span>}
+                          </span>
+                        );
+                      })()}
                     </Fact>
                   </dl>
                 )}
@@ -832,7 +1035,7 @@ export function GroomingBookingCreateScreen() {
                               }`}
                             >
                               <Initial name={pet.name} />
-                              <span className="min-w-0">
+                              <span className="min-w-0 flex-1">
                                 <span className="block truncate text-sm font-bold text-foreground">
                                   {pet.name}
                                 </span>
@@ -844,6 +1047,22 @@ export function GroomingBookingCreateScreen() {
                                     .filter(Boolean)
                                     .join(" · ") || "—"}
                                 </span>
+                                {(() => {
+                                  /* The animal's own membership, on its tile. */
+                                  const card = memberCards.find(
+                                    (one) => one.attachTo !== "customer" && one.petId === pet._id,
+                                  );
+                                  if (!card) return null;
+                                  const label = `Member · ${card.plan?.name ?? "Membership"}${card.status === "paused" ? " (dijeda)" : ""}`;
+                                  return (
+                                    <span
+                                      data-member-chip
+                                      className={`${badge} mt-1 inline-block max-w-full truncate ${card.status === "paused" ? "bg-tint-neutral text-muted" : "bg-tint-success text-success"}`}
+                                    >
+                                      {label}
+                                    </span>
+                                  );
+                                })()}
                               </span>
                             </button>
                           </li>
@@ -982,7 +1201,13 @@ export function GroomingBookingCreateScreen() {
                         (addon): addon is Service =>
                           addon !== null && offeredAt(addon, location),
                       );
-                    const share = split.shares[priced.indexOf(row)] ?? 0n;
+                    const rowIndex = priced.indexOf(row);
+                    const share = split.shares[rowIndex] ?? 0n;
+                    const benefit = benefitViews[rowIndex];
+                    const memberOff = memberOffs[rowIndex] ?? 0n;
+                    const addonMember = addonMembers[rowIndex] ?? {};
+                    /* The animal's whole membership: its service's pick and its add-ons'. */
+                    const animalMemberOff = memberOff + (addonOffs[rowIndex] ?? 0n);
                     const cards = variant.cardsFor([
                       service,
                       ...draft.addonServiceIds.map((id) => serviceOf(id)),
@@ -1158,6 +1383,32 @@ export function GroomingBookingCreateScreen() {
                                 mayPrice={mayPrice}
                                 disabled={saving}
                                 onChange={(next) => patchDraft(pet._id, { main: next })}
+                                member={
+                                  memberOff > 0n
+                                    ? { label: benefit?.appliedLabel ?? null, discount: memberOff }
+                                    : null
+                                }
+                                benefit={
+                                  /*
+                                    THE MAIN SERVICE'S MEMBER BENEFIT, on its own
+                                    row (22 October 2026) — what it shows is
+                                    what the save sends, and HOLDS.
+                                  */
+                                  benefit ? (
+                                    <BookingBenefitField
+                                      view={benefit}
+                                      serviceName={service.name}
+                                      disabled={saving}
+                                      error={benefitErrors[pet._id] ?? null}
+                                      onPick={(candidate) =>
+                                        patchDraft(pet._id, {
+                                          benefitPicked: true,
+                                          plannedBenefit: candidate ? toPlan(candidate) : null,
+                                        })
+                                      }
+                                    />
+                                  ) : null
+                                }
                               />
 
                               {row.addons.map((addonRow) => (
@@ -1175,11 +1426,33 @@ export function GroomingBookingCreateScreen() {
                                   inactive={addonRow.quote.inactive}
                                   mayPrice={mayPrice}
                                   disabled={saving}
+                                  member={
+                                    addonMember[addonRow.addonId]
+                                      ? {
+                                          label: addonMember[addonRow.addonId].label,
+                                          discount: addonMember[addonRow.addonId].off,
+                                          bare: true,
+                                          estimate: addonMember[addonRow.addonId].quota,
+                                          optedOut: addonMember[addonRow.addonId].optedOut,
+                                          onToggle: (optOut) =>
+                                            patchDraft(pet._id, {
+                                              noMemberAddonIds: optOut
+                                                ? [...(draft.noMemberAddonIds ?? []), addonRow.addonId]
+                                                : (draft.noMemberAddonIds ?? []).filter(
+                                                    (id) => id !== addonRow.addonId,
+                                                  ),
+                                            }),
+                                        }
+                                      : null
+                                  }
                                   onRemove={() => {
                                     const addons = { ...draft.addons };
                                     delete addons[addonRow.addonId];
                                     patchDraft(pet._id, {
                                       addonServiceIds: draft.addonServiceIds.filter(
+                                        (id) => id !== addonRow.addonId,
+                                      ),
+                                      noMemberAddonIds: (draft.noMemberAddonIds ?? []).filter(
                                         (id) => id !== addonRow.addonId,
                                       ),
                                       addons,
@@ -1194,6 +1467,29 @@ export function GroomingBookingCreateScreen() {
                               ))}
                             </div>
                           )}
+
+                          {/*
+                            A REFUSAL ON SAVE with no price row to sit on (the
+                            service lost its price since) still needs a home.
+                          */}
+                          {benefitErrors[pet._id] &&
+                            !(service && row.main.price !== null && !quote.inactive) && (
+                              <p role="alert" className="text-sm font-semibold text-danger-ink">
+                                {benefitErrors[pet._id]}
+                              </p>
+                            )}
+
+                          {/*
+                            What the animal's cards hold beyond this booking —
+                            each a checkbox, saved as `plannedExtras`: a note,
+                            no jatah, no price (22 October 2026).
+                          */}
+                          <OtherBenefitsInfo
+                            groups={otherBenefitsOf(memberCards, pet._id, toScheduledAt(date, time))}
+                            selected={draft.plannedExtras ?? []}
+                            disabled={saving}
+                            onChange={(plannedExtras) => patchDraft(pet._id, { plannedExtras })}
+                          />
 
                           {offered.length > 0 && (
                             <div className="flex flex-col gap-1.5">
@@ -1231,6 +1527,13 @@ export function GroomingBookingCreateScreen() {
                                           addonServiceIds: next
                                             ? [...draft.addonServiceIds, addon._id]
                                             : draft.addonServiceIds.filter((id) => id !== addon._id),
+                                          ...(next
+                                            ? {}
+                                            : {
+                                                noMemberAddonIds: (draft.noMemberAddonIds ?? []).filter(
+                                                  (id) => id !== addon._id,
+                                                ),
+                                              }),
                                           addons,
                                         });
                                       }}
@@ -1258,9 +1561,10 @@ export function GroomingBookingCreateScreen() {
                               Subtotal {money(row.gross)}
                               {row.own > 0n && ` · diskon item ${money(row.own)}`}
                               {share > 0n && ` · bagian diskon booking ${money(share)}`}
+                              {animalMemberOff > 0n && ` · potongan member ${money(animalMemberOff)}`}
                             </span>
                             <span className="font-extrabold tabular-nums">
-                              {money(row.net - share)}
+                              {money(row.net - share - animalMemberOff)}
                             </span>
                           </div>
                         </div>
@@ -1308,7 +1612,7 @@ export function GroomingBookingCreateScreen() {
                   <p className="py-2 text-muted">Belum ada hewan dipilih.</p>
                 ) : (
                   <ul className="flex flex-col gap-1 pt-2">
-                    {priced.map((row) => (
+                    {priced.map((row, index) => (
                       <li key={row.pet._id} className="flex flex-col">
                         <SummaryLine
                           label={`${row.pet.name} · ${row.service?.name ?? "belum ada layanan"}`}
@@ -1327,8 +1631,16 @@ export function GroomingBookingCreateScreen() {
                             value={`− ${money(row.main.discount)}`}
                           />
                         )}
+                        {(memberOffs[index] ?? 0n) > 0n && (
+                          <SummaryLine
+                            tone="discount"
+                            label={`Potongan member · ${benefitViews[index]?.appliedLabel ?? row.service?.name ?? ""}`}
+                            value={`− ${money(memberOffs[index])}`}
+                          />
+                        )}
                         {row.addons.map((addonRow) => {
                           const typed = row.draft.addons[addonRow.addonId] ?? BLANK_PRICE;
+                          const addonMember = addonMembers[index]?.[addonRow.addonId];
                           return (
                             <div key={addonRow.addonId} className="flex flex-col">
                               <SummaryLine
@@ -1341,6 +1653,13 @@ export function GroomingBookingCreateScreen() {
                                   tone="discount"
                                   label={`Diskon ${addonRow.addon?.name ?? ""} · ${discountWords(typed.discountMode, typed.discountValue)}`}
                                   value={`− ${money(addonRow.line.discount)}`}
+                                />
+                              )}
+                              {addonMember && addonMember.off > 0n && (
+                                <SummaryLine
+                                  tone="discount"
+                                  label={`Potongan member · ${addonMember.label}`}
+                                  value={`− ${money(addonMember.off)}`}
                                 />
                               )}
                             </div>
@@ -1365,13 +1684,14 @@ export function GroomingBookingCreateScreen() {
                           ? "sekali per kunjungan"
                           : undefined
                     }
-                    value={money(feeMinor)}
+                    struck={feeWaived > 0n ? money(feeMinor) : undefined}
+                    value={feeWaived > 0n ? `${money(feeMinor - feeWaived)} (gratis member)` : money(feeMinor)}
                   />
                 )}
 
                 <div className="mt-2 flex justify-between gap-3 border-t border-border pt-2">
                   <span className="text-muted">Subtotal</span>
-                  <span className="font-semibold tabular-nums">{money(subtotal)}</span>
+                  <span className="font-semibold tabular-nums">{money(memberSubtotal)}</span>
                 </div>
 
                 {mayPrice && (
@@ -1397,7 +1717,19 @@ export function GroomingBookingCreateScreen() {
 
                 <div className="mt-2 flex items-baseline justify-between gap-3 border-t-2 border-foreground pt-2">
                   <span className="font-extrabold">Total</span>
-                  <span className="text-xl font-extrabold tabular-nums">{money(total)}</span>
+                  <span className="text-right tabular-nums">
+                    {total !== totalBeforeMember && (
+                      <span
+                        data-total-before-member
+                        className="mr-2 text-sm text-muted line-through"
+                      >
+                        {money(totalBeforeMember)}
+                      </span>
+                    )}
+                    <span data-total className="text-xl font-extrabold">
+                      {money(total)}
+                    </span>
+                  </span>
                 </div>
 
                 {split.total > 0n && (

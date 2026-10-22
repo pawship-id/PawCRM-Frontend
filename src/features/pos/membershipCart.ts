@@ -165,7 +165,9 @@ export function buildQuoteInput(
         line.membershipId = pick.membershipId;
         line.benefitId = pick.benefitId;
         line.optionId = pick.optionId ?? null;
-      } else if (!pick && noBenefitKeys.has(lineKey(items, index))) {
+      } else if (!pick && (item.plannedNoBenefit || noBenefitKeys.has(lineKey(items, index)))) {
+        /* "Tanpa member" chosen here, or agreed at booking (the server would
+           assume it too — sent so the request says what the select shows). */
         line.noBenefit = true;
       }
     }
@@ -206,6 +208,10 @@ export function quoteLineFor(
  * WHAT TO APPLY WITHOUT ASKING (contract §6.3): the quote's `recommended` on
  * every line that has no pick yet and that nobody set to "Tanpa member".
  *
+ * A BOOKING ADD-ON AGREED "TANPA MEMBER" (`plannedNoBenefit`, 22 October
+ * 2026) is never auto-applied either; a candidate the cashier picks from its
+ * select is a pick like any other and sticks.
+ *
  * A line that already carries a pick keeps it — the quote pinned it, so its
  * `recommended` IS that pick while it still holds. A booking's planned pick is
  * pinned by the server the same way (§4.2 "Sesuai booking") and so arrives
@@ -229,6 +235,7 @@ export function autoApplyChanges(
     if (!Number.isInteger(index) || !item) return [];
     if (item.kind === "membership" || isFeeLine(item)) return [];
     if (pickOf(item)) return [];
+    if (item.plannedNoBenefit) return [];
     if (noBenefitKeys.has(lineKey(items, index))) return [];
     if (!line.recommended) return [];
 
@@ -264,10 +271,9 @@ export function unavailableChip(entry: BenefitQuoteUnavailable): string {
       return "Member belum lunas";
     case "not_started":
       return `${entry.benefitLabel} belum mulai`;
-    case "reserved": {
-      const holder = entry.reservedBy?.[0]?.bookingNumber;
-      return holder ? `${entry.benefitLabel} dipesan ${holder}` : `${entry.benefitLabel} dipesan booking lain`;
-    }
+    /* Held by another booking reads as used up (22 October 2026, on request). */
+    case "reserved":
+      return `${entry.benefitLabel} habis`;
     default:
       return entry.message ?? entry.benefitLabel;
   }
@@ -286,9 +292,13 @@ export function unavailableChips(
   return [...seen];
 }
 
-/** Whether the line's pick is the one its booking was made with — "sesuai booking". */
+/**
+ * Whether the line's pick is the one its booking was made with — "sesuai
+ * booking". A booking add-on agreed "Tanpa member" matches while it has no pick.
+ */
 export function matchesBooking(item: PosItem): boolean {
   const pick = pickOf(item);
+  if (!pick && item.plannedNoBenefit) return true;
   const plan = item.plannedBenefit;
   return Boolean(
     pick &&
@@ -347,6 +357,27 @@ export function groupByPet(items: PosItem[]): PetGroup[] {
   });
 
   return loose.lines.length > 0 ? [...groups, loose] : groups;
+}
+
+/**
+ * "BENEFIT YANG AKAN DIBERIKAN" of one animal's group (22 October 2026) — the
+ * labels its bookings noted (`bookingPlannedExtras`), each once, in the order
+ * they first appear. A reminder under the header; it applies nothing.
+ */
+export function plannedExtrasOf(lines: PetGroup["lines"]): string[] {
+  const labels: string[] = [];
+  const seen = new Set<string>();
+
+  for (const { item } of lines) {
+    for (const extra of item.bookingPlannedExtras ?? []) {
+      const key = `${extra.membershipId}|${extra.benefitId}`;
+      if (seen.has(key) || !extra.label) continue;
+      seen.add(key);
+      labels.push(extra.label);
+    }
+  }
+
+  return labels;
 }
 
 /**

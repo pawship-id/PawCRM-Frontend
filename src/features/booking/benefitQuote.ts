@@ -14,6 +14,30 @@ import { isPositive, sumDecimals } from "@/utils/decimal";
 import type { BookingCardDraft } from "./bookingDraft";
 
 /**
+ * WHAT THE QUOTE NEEDS FROM ONE CARD — the slice of `BookingCardDraft` this file
+ * reads, so a form with its own draft shape (Layanan › Grooming › Booking baru,
+ * one card per animal keyed by the animal) asks the same question and draws the
+ * same field without copying any of this.
+ */
+export type BenefitCardState = Pick<
+  BookingCardDraft,
+  "key" | "petId" | "serviceId" | "benefitPicked" | "plannedBenefit"
+> & {
+  /** Already billed — keeps what it stored. Absent on a form that only creates. */
+  locked?: boolean;
+  /**
+   * The ticked add-ons set to "Tanpa member" (22 October 2026) — sent to the
+   * quote with `noBenefit: true`, left out of the totals, and saved as
+   * `noMemberBenefitAddonIds`. Absent is none.
+   */
+  noMemberAddonIds?: readonly string[];
+};
+
+/** Whether this add-on of the card is set to "Tanpa member". */
+export const addonOptedOut = (card: BenefitCardState, serviceId: string): boolean =>
+  (card.noMemberAddonIds ?? []).includes(serviceId);
+
+/**
  * THE BOOKING FORM'S MEMBERSHIP QUOTE — membership-v1 §4.4 and §8, pure.
  *
  * ─── THE SERVER CHOOSES, THE FORM ASKS ─────────────────────────────────────
@@ -31,7 +55,8 @@ import type { BookingCardDraft } from "./bookingDraft";
  *
  * Since Promosi V1 a saved `plannedBenefit` is a HOLD: counted as used in the
  * period of the booking's date until the booking is billed or cancelled. So
- * what this file sends on save is exactly what the radio shows.
+ * what this file sends on save is exactly what the main service's price row
+ * shows (`BookingBenefitField`).
  */
 
 /** Where an entry's prices come from — the form's own quote of each line. */
@@ -41,7 +66,7 @@ export interface EntryPrices {
 }
 
 /** The pick a card sends to the quote — pinned plan, "Tanpa member", or nothing. */
-function pickFields(card: BookingCardDraft): Partial<BookingBenefitQuoteEntry> {
+function pickFields(card: BenefitCardState): Partial<BookingBenefitQuoteEntry> {
   if (!card.benefitPicked) return {};
   if (!card.plannedBenefit) return { noBenefit: true };
   return {
@@ -55,12 +80,19 @@ function pickFields(card: BookingCardDraft): Partial<BookingBenefitQuoteEntry> {
  * The form → the §4.4 request, or null when there is nothing to ask about.
  *
  * A card without an animal, a service or a price is left out — the engine
- * needs the amount to say what a benefit is worth. ADD-ONS ARE SENT AS
- * `noBenefit`: a booking's plan is for its main service only (§10, the till
- * never hands it to an add-on), and an add-on quietly taking a jatah would
- * starve the next card's main service.
+ * needs the amount to say what a benefit is worth.
+ *
+ * ADD-ONS ARE SENT WITH NO PICK (22 October 2026), so the engine recommends
+ * one per add-on line — "Add-on · Diskon 10%", "Spa 1× per bulan" — and the
+ * form can show it (`addonBenefitsOf`). No pick is saved for an add-on (the
+ * booking's `plannedBenefit` is the main service's) and the till applies it
+ * when the booking is billed — UNLESS the add-on is set to "Tanpa member":
+ * it is then sent with `noBenefit: true`, saved as `noMemberBenefit` on the
+ * booking's add-on, and the till starts that line on "Tanpa member".
+ * The server quotes every main service before any add-on, so an add-on never
+ * takes a jatah a main service — this card's or the next one's — would use.
  */
-export function bookingQuoteInput({
+export function bookingQuoteInput<Card extends BenefitCardState>({
   cards,
   customerId,
   date,
@@ -68,12 +100,12 @@ export function bookingQuoteInput({
   pricesOf,
   visitFee,
 }: {
-  cards: BookingCardDraft[];
+  cards: Card[];
   customerId: string | null;
   /** The booking's `scheduledAt`, as an ISO instant. */
   date: string | null;
   bookingId?: string | null;
-  pricesOf: (card: BookingCardDraft) => EntryPrices | null;
+  pricesOf: (card: Card) => EntryPrices | null;
   /** The visit's fee on a house call — one visit for everything saved together. */
   visitFee?: string | null;
 }): BookingBenefitQuoteInput | null {
@@ -92,7 +124,12 @@ export function bookingQuoteInput({
       serviceId: card.serviceId,
       amount: prices.amount,
       ...(prices.addons.length > 0
-        ? { addons: prices.addons.map((addon) => ({ ...addon, noBenefit: true })) }
+        ? {
+            addons: prices.addons.map((addon) => ({
+              ...addon,
+              ...(addonOptedOut(card, addon.serviceId) ? { noBenefit: true } : {}),
+            })),
+          }
         : {}),
       ...(visitFee && isPositive(visitFee)
         ? { visitGroup: "visit", ...(entries.length === 0 ? { visitFee } : {}) }
@@ -112,7 +149,7 @@ export function bookingQuoteInput({
   };
 }
 
-/** A candidate's identity, for the radio. */
+/** A candidate's identity, for the main service's select. */
 export const candidateKey = (
   candidate: Pick<BenefitCandidate, "membershipId" | "benefitId">,
 ): string => `${candidate.membershipId}|${candidate.benefitId}`;
@@ -120,7 +157,7 @@ export const candidateKey = (
 /** The main line of one card, if the quote has it. */
 export function mainLineOf(
   quote: BenefitQuoteResponse | null,
-  card: BookingCardDraft,
+  card: BenefitCardState,
 ): BenefitQuoteLineResult | null {
   /* The pet too: a card keeps its key when its animal changes, and a quote
      still on screen from before must not dress the new animal in the old one's
@@ -135,7 +172,8 @@ export function visitLineOf(quote: BenefitQuoteResponse | null): BenefitQuoteLin
   return quote?.lines.find((line) => line.lineType === "visit_fee") ?? null;
 }
 
-const toPlan = (candidate: BenefitCandidate): PlannedBenefit => ({
+/** A candidate as the `plannedBenefit` a card holds and the save sends. */
+export const toPlan = (candidate: BenefitCandidate): PlannedBenefit => ({
   membershipId: candidate.membershipId,
   benefitId: candidate.benefitId,
   optionId: candidate.optionId ?? null,
@@ -149,7 +187,7 @@ const toPlan = (candidate: BenefitCandidate): PlannedBenefit => ({
  * that confirms it lands.
  */
 function selectedCandidate(
-  card: BookingCardDraft,
+  card: BenefitCardState,
   line: BenefitQuoteLineResult,
 ): BenefitCandidate | null {
   if (card.benefitPicked) {
@@ -167,10 +205,10 @@ function selectedCandidate(
  * WHAT THIS CARD WILL SAVE — the selected candidate when the quote has the
  * card, the card's own state otherwise (no quote yet, a quote that failed, a
  * card the quote could not price). A BILLED card keeps what it stored: the
- * server no longer validates it, and the radio is locked.
+ * server no longer validates it, and the control is locked.
  */
 export function effectivePlan(
-  card: BookingCardDraft,
+  card: BenefitCardState,
   quote: BenefitQuoteResponse | null,
 ): PlannedBenefit | null {
   if (card.locked) return card.plannedBenefit;
@@ -194,11 +232,13 @@ export function holdersText(reservedBy: readonly MembershipReservation[] | undef
   return names.length > 0 ? names.join(", ") : null;
 }
 
-/** "Jatah Grooming habis periode ini · dipakai BK-…" — one unavailable benefit, said. */
+/**
+ * "Jatah periode ini sudah habis" — one unavailable benefit, said. The holding
+ * booking numbers are NOT listed (22 October 2026, on request): to the person
+ * filling the form a jatah held by another booking is simply used up.
+ */
 export function unavailableText(item: BenefitQuoteUnavailable): string {
-  const base = item.message ?? `${item.benefitLabel} tidak bisa dipakai`;
-  const holders = holdersText(item.reservedBy);
-  return holders && !base.includes(holders) ? `${base} · dipakai ${holders}` : base;
+  return item.message ?? `${item.benefitLabel} tidak bisa dipakai`;
 }
 
 /** What one card's benefit field draws. */
@@ -206,9 +246,9 @@ export interface CardBenefitView {
   /** False hides the field — the animal holds no card at all. */
   show: boolean;
   candidates: BenefitCandidate[];
-  /** The selected radio: a candidate key, or `null` for "Tanpa member". */
+  /** The selected pick: a candidate key, or `null` for "Tanpa member". */
   selectedKey: string | null;
-  /** Why nothing is offered, when nothing is. */
+  /** Why nothing is offered although a card covers the service — else null. */
   emptyMessage: string | null;
   /** Off the main service. "0" when nothing applies. */
   discount: string;
@@ -232,7 +272,7 @@ const NO_VIEW: CardBenefitView = {
 const LIVE_STATUSES = new Set(["active", "paused", "scheduled", "awaiting_payment"]);
 
 export function cardBenefitView(
-  card: BookingCardDraft,
+  card: BenefitCardState,
   quote: BenefitQuoteResponse | null,
 ): CardBenefitView {
   const line = mainLineOf(quote, card);
@@ -259,16 +299,91 @@ export function cardBenefitView(
     show: true,
     candidates,
     selectedKey: selected ? candidateKey(selected) : null,
+    /*
+      ONLY A BENEFIT THAT COVERS THIS SERVICE BUT CANNOT BE USED is said on the
+      price row (22 October 2026) — jatah habis, dipesan booking lain, ditunda.
+      A card that simply covers nothing here says nothing: what it holds
+      beyond the booking is the "Benefit lain" box.
+    */
     emptyMessage:
-      candidates.length > 0
-        ? null
-        : unavailable.length > 0
-          ? unavailableText(unavailable[0])
-          : "Tidak ada benefit untuk layanan ini",
+      candidates.length === 0 && unavailable.length > 0 ? unavailableText(unavailable[0]) : null,
     discount: selected?.discount ?? "0",
     appliedLabel: selected?.label ?? null,
     feeWaived: selected?.visitFee === "free",
   };
+}
+
+/**
+ * ONE ADD-ON'S BENEFIT, as the quote recommends it — shown on the add-on's
+ * price row and counted in the totals, never picked and never saved.
+ */
+export interface AddonBenefit {
+  /** Off the add-on, as a decimal string. Always positive. */
+  discount: string;
+  /** The candidate's own label — "Member · Diskon 10%", "Jatah Spa 1/1". */
+  label: string;
+  /** Spends a jatah — the form says it is an estimate until the till. */
+  quota: boolean;
+  /**
+   * Set to "Tanpa member" — `discount` is then "0", and `label` names the
+   * benefit "Pakai member" would bring back.
+   */
+  optedOut: boolean;
+}
+
+const NO_ADDON_BENEFITS: Readonly<Record<string, AddonBenefit>> = Object.freeze({});
+
+/**
+ * EACH TICKED ADD-ON'S BENEFIT, by its service id.
+ *
+ * The quote names an add-on line by POSITION — `<ref>:addon:<i>` (§4.4) — so
+ * the position is read against the request THAT QUOTE ANSWERED (`asked`, from
+ * `useBookingBenefitQuote`), not against the form as it is now: while the next
+ * quote is on its way the last one stays on screen, and an add-on ticked in
+ * between must not wear its neighbour's discount. A billed card shows none —
+ * what the till applied is on the bill, not in a quote.
+ *
+ * "TANPA MEMBER" IS READ OFF THE CARD AS IT IS NOW, so a click shows at once:
+ * an opted-out add-on (quoted with no `recommended`) is named by its first
+ * candidate, with nothing off. An add-on with no candidate is left out — there
+ * is nothing to switch back to.
+ */
+export function addonBenefitsOf(
+  card: BenefitCardState,
+  quote: BenefitQuoteResponse | null,
+  asked: BookingBenefitQuoteInput | null,
+): Readonly<Record<string, AddonBenefit>> {
+  if (!quote || !asked || card.locked) return NO_ADDON_BENEFITS;
+  const entry = asked.entries.find(
+    (item) => item.ref === card.key && item.petId === card.petId,
+  );
+  if (!entry?.addons?.length) return NO_ADDON_BENEFITS;
+
+  const out: Record<string, AddonBenefit> = {};
+  entry.addons.forEach((addon, index) => {
+    const line = quote.lines.find(
+      (item) => item.ref === `${card.key}:addon:${index}` && item.petId === card.petId,
+    );
+    const pick = line?.recommended ?? line?.candidates?.[0] ?? null;
+    if (!pick || !isPositive(pick.discount)) return;
+    const optedOut = addonOptedOut(card, addon.serviceId);
+    out[addon.serviceId] = {
+      discount: optedOut ? "0" : pick.discount,
+      label: pick.label,
+      quota: pick.kind === "quota",
+      optedOut,
+    };
+  });
+  return out;
+}
+
+/** Σ one card's add-on benefits. */
+export function addonDiscountOf(
+  card: BenefitCardState,
+  quote: BenefitQuoteResponse | null,
+  asked: BookingBenefitQuoteInput | null,
+): string {
+  return sumDecimals(Object.values(addonBenefitsOf(card, quote, asked)).map((item) => item.discount));
 }
 
 /** The waived visit fee, "0" when nothing waived it. */
@@ -276,12 +391,22 @@ export function visitFeeDiscountOf(quote: BenefitQuoteResponse | null): string {
   return visitLineOf(quote)?.visitFeeDiscount ?? "0";
 }
 
-/** Σ every card's membership discount — what comes off the form's total. */
+/**
+ * Σ every card's membership discount — what comes off the form's total: each
+ * main service's pick, plus (given the request the quote answered) every
+ * add-on's recommended benefit.
+ */
 export function membershipDiscountTotal(
-  cards: BookingCardDraft[],
+  cards: BenefitCardState[],
   quote: BenefitQuoteResponse | null,
+  asked: BookingBenefitQuoteInput | null = null,
 ): string {
-  return sumDecimals(cards.map((card) => cardBenefitView(card, quote).discount));
+  return sumDecimals(
+    cards.flatMap((card) => [
+      cardBenefitView(card, quote).discount,
+      addonDiscountOf(card, quote, asked),
+    ]),
+  );
 }
 
 /** A save refused over a card's `plannedBenefit` (§8, 400 or 409). */
@@ -306,12 +431,10 @@ export function benefitRefusalOf(error: unknown): BenefitRefusal | null {
   if (!detail) return null;
 
   const match = /bookings\[(\d+)\]/.exec(detail.field) ?? /bookings\.(\d+)\./.exec(detail.field);
-  const data = (error.data ?? null) as { reservedBy?: MembershipReservation[] } | null;
-  const holders = holdersText(data?.reservedBy);
   const base = detail.message || error.reason || error.message;
 
   return {
     index: match ? Number(match[1]) : null,
-    message: holders && !base.includes(holders) ? `${base} · dipakai ${holders}` : base,
+    message: base,
   };
 }

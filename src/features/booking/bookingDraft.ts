@@ -5,6 +5,7 @@ import type {
   CreateBookingEntry,
   Pet,
   PlannedBenefit,
+  PlannedExtra,
   Service,
   ServiceKind,
   UpdateBookingInput,
@@ -67,6 +68,14 @@ export interface BookingCardDraft {
   /** The add-ons ticked under it, by service id. */
   addonServiceIds: string[];
   /**
+   * TICKED ADD-ONS SET TO "TANPA MEMBER" (22 October 2026) — billed at their
+   * normal price although a member benefit fits. Saved as
+   * `noMemberBenefitAddonIds` (`service.addons[].noMemberBenefit`), and the
+   * till starts those lines on "Tanpa member". Ids no longer ticked are
+   * dropped on save.
+   */
+  noMemberAddonIds: string[];
+  /**
    * A MEMBERSHIP BENEFIT THIS BOOKING USES (30 September 2026; Promosi V1,
    * 16 October 2026).
    *
@@ -83,6 +92,13 @@ export interface BookingCardDraft {
    * is not quietly turned into one.
    */
   benefitPicked: boolean;
+  /**
+   * "BENEFIT YANG AKAN DIBERIKAN" (22 October 2026) — the animal's card
+   * benefits a booking cannot bill (product jatah, perks) ticked as a NOTE for
+   * this visit. Saved as `plannedExtras`; no jatah, no price. Cleared when the
+   * card's animal changes — the server refuses another animal's card.
+   */
+  plannedExtras: PlannedExtra[];
   /** As typed; "" means "use the catalogue's". */
   durationMin: string;
   /**
@@ -130,8 +146,10 @@ export function blankCard(petId = ""): BookingCardDraft {
     serviceKind: "",
     serviceId: "",
     addonServiceIds: [],
+    noMemberAddonIds: [],
     plannedBenefit: null,
     benefitPicked: false,
+    plannedExtras: [],
     durationMin: "",
     groomerUserId: UNASSIGNED,
     internalNotes: "",
@@ -168,6 +186,9 @@ export function cardFromBooking(booking: Booking): BookingCardDraft {
     addonServiceIds: (service?.addons ?? [])
       .filter((addon) => !addon.visitFee)
       .map((addon) => addon.serviceId),
+    noMemberAddonIds: (service?.addons ?? [])
+      .filter((addon) => !addon.visitFee && addon.noMemberBenefit === true)
+      .map((addon) => addon.serviceId),
     plannedBenefit: booking.plannedBenefit
       ? {
           membershipId: booking.plannedBenefit.membershipId,
@@ -177,6 +198,11 @@ export function cardFromBooking(booking: Booking): BookingCardDraft {
       : null,
     /* The stored answer, including "none" — an edit never adds a benefit on its own. */
     benefitPicked: true,
+    plannedExtras: (booking.plannedExtras ?? []).map((extra) => ({
+      membershipId: extra.membershipId,
+      benefitId: extra.benefitId,
+      label: extra.label ?? "",
+    })),
     // Shown as typed, so saving without touching it keeps the number.
     durationMin:
       service?.durationMin === null || service?.durationMin === undefined
@@ -209,6 +235,18 @@ const belongingsOf = (card: BookingCardDraft): BelongingDraft[] =>
     .map((belonging) => ({ ...belonging, name: belonging.name.trim() }))
     .filter((belonging) => belonging.name !== "");
 
+/** The ticked "benefit yang akan diberikan" — ids and the label shown. */
+const extrasOf = (card: BookingCardDraft): PlannedExtra[] =>
+  (card.plannedExtras ?? []).map(({ membershipId, benefitId, label }) => ({
+    membershipId,
+    benefitId,
+    ...(label ? { label } : {}),
+  }));
+
+/** The ticked add-ons set to "Tanpa member" — an add-on unticked since is dropped. */
+const noMemberIdsOf = (card: BookingCardDraft): string[] =>
+  (card.noMemberAddonIds ?? []).filter((id) => card.addonServiceIds.includes(id));
+
 /**
  * The fields one card contributes, in the names both `POST` and `PATCH` use.
  *
@@ -222,6 +260,8 @@ function cardFields(card: BookingCardDraft) {
     petId: card.petId,
     serviceId: card.serviceId,
     addonServiceIds: card.addonServiceIds,
+    /* Only ticked ones — an add-on unticked since is not on the booking. */
+    noMemberBenefitAddonIds: noMemberIdsOf(card),
     durationMin:
       card.durationMin.trim() === "" ? undefined : Number(card.durationMin),
     /* FR-3's "Belum ditentukan" is a real state, sent as null. */
@@ -245,6 +285,8 @@ function cardFields(card: BookingCardDraft) {
           optionId: card.plannedBenefit.optionId ?? null,
         }
       : null,
+    /* A note — replaces the set on an edit, `[]` clears it. */
+    plannedExtras: extrasOf(card),
   };
 }
 
@@ -273,8 +315,13 @@ export function cardsToEntries(
         card.variantChoices ?? [],
       );
 
+      /* A create sends the list only when it says something — false is the default. */
+      const { noMemberBenefitAddonIds, plannedExtras, ...fields } = cardFields(card);
+
       return {
-        ...cardFields(card),
+        ...fields,
+        ...(noMemberBenefitAddonIds.length > 0 ? { noMemberBenefitAddonIds } : {}),
+        ...(plannedExtras.length > 0 ? { plannedExtras } : {}),
         belongings: belongingsOf(card).map(({ name, checkedInAt }) => ({
           name,
           ...(checkedInAt ? { checkedInAt } : {}),
@@ -306,6 +353,8 @@ export function cardToUpdate(
   | "belongings"
   | "variantChoices"
   | "plannedBenefit"
+  | "noMemberBenefitAddonIds"
+  | "plannedExtras"
 > {
   /*
     THE CHOICES ONLY WHEN THERE ARE SOME, and never on a billed line — the server

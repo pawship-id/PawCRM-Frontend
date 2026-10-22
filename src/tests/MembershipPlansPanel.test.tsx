@@ -143,4 +143,17 @@ describe("MembershipPlansPanel", () => {
     expect(await screen.findByPlaceholderText("Cari kode atau nama paket")).toBeInTheDocument();
     expect(await screen.findByText(/Belum ada paket membership/)).toBeInTheDocument();
   });
+
+  it("marks what matched the search in yellow — the name and the code", async () => {
+    respond([plan()]);
+    const user = userEvent.setup();
+    renderWithAuth(<MembershipPlansPanel />);
+    await screen.findByText("Explorer – New Member");
+
+    await user.type(screen.getByPlaceholderText("Cari kode atau nama paket"), "explo");
+
+    const mark = await screen.findByText("Explo", { selector: "mark" });
+    expect(mark.closest("a")).toHaveTextContent("Explorer – New Member");
+    expect(screen.queryByText("MSP-0001", { selector: "mark" })).not.toBeInTheDocument();
+  });
 });

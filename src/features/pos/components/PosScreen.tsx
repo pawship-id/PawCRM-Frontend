@@ -18,7 +18,7 @@ import { useAuth } from "@/features/auth";
 import { CustomerSearchDialog } from "@/features/customers";
 import { BookingBridgeDialog, useBookingBridge } from "@/features/booking";
 import { autoApplyChanges, lineKey, petPlans } from "../membershipCart";
-import { useCustomerMemberships } from "../hooks/useCustomerMemberships";
+import { useCustomerMemberships } from "@/features/memberships/hooks/useCustomerMemberships";
 import { usePosCart } from "../hooks/usePosCart";
 import { usePosMembershipQuote } from "../hooks/usePosMembershipQuote";
 import { usePosShift } from "../hooks/usePosShift";

@@ -1,4 +1,5 @@
 import {
+  addonBenefitsOf,
   benefitRefusalOf,
   bookingQuoteInput,
   cardBenefitView,
@@ -101,8 +102,8 @@ describe("bookingQuoteInput — the §4.4 shorthand", () => {
           petId: PET,
           serviceId: SVC,
           amount: "100000",
-          /* An add-on never takes the booking's jatah. */
-          addons: [{ serviceId: "add-1", amount: "25000", noBenefit: true }],
+          /* No pick on an add-on: the server recommends one, shown only. */
+          addons: [{ serviceId: "add-1", amount: "25000" }],
         },
       ],
     });
@@ -249,7 +250,7 @@ describe("when nothing can be offered", () => {
     expect(cardBenefitView(fresh, quote)).toMatchObject({
       show: true,
       candidates: [],
-      emptyMessage: "Jatah Grooming habis periode ini · dipakai BK-2026-0012",
+      emptyMessage: "Jatah Grooming habis periode ini",
     });
   });
 
@@ -277,11 +278,13 @@ describe("when nothing can be offered", () => {
     expect(cardBenefitView(fresh, quoteOf([{ ref: fresh.key }], [])).show).toBe(false);
   });
 
-  it("shows a plain sentence when the animal has a card that covers nothing here", () => {
+  it("says nothing on the row when the animal's card simply covers nothing here", () => {
     const fresh = card();
-    expect(cardBenefitView(fresh, quoteOf([{ ref: fresh.key }])).emptyMessage).toBe(
-      "Tidak ada benefit untuk layanan ini",
-    );
+    expect(cardBenefitView(fresh, quoteOf([{ ref: fresh.key }]))).toMatchObject({
+      show: true,
+      candidates: [],
+      emptyMessage: null,
+    });
   });
 });
 
@@ -293,13 +296,111 @@ describe("the visit fee", () => {
   });
 });
 
+describe("addonBenefitsOf — the add-ons' benefits, shown only", () => {
+  const fresh = card();
+  const asked = {
+    context: "booking" as const,
+    customerId: "cust-1",
+    date: "2026-10-25T03:00:00.000Z",
+    entries: [
+      {
+        ref: fresh.key,
+        petId: PET,
+        serviceId: SVC,
+        amount: "100000",
+        addons: [
+          { serviceId: "add-parfum", amount: "20000" },
+          { serviceId: "add-spa", amount: "50000" },
+        ],
+      },
+    ],
+  };
+  const spa = candidate({ benefitId: "ben-spa", label: "Jatah Spa 1/1", discount: "50000.0000" });
+  const quote = quoteOf([
+    { ref: fresh.key, candidates: [candidate()], recommended: candidate() },
+    { ref: `${fresh.key}:addon:0`, candidates: [diskon], recommended: { ...diskon, discount: "2000.0000" } },
+    { ref: `${fresh.key}:addon:1`, candidates: [spa], recommended: spa },
+  ]);
+
+  it("reads each add-on line by its position in the request the quote answered", () => {
+    expect(addonBenefitsOf(fresh, quote, asked)).toEqual({
+      "add-parfum": { discount: "2000.0000", label: "Member · Diskon 10%", quota: false, optedOut: false },
+      "add-spa": { discount: "50000.0000", label: "Jatah Spa 1/1", quota: true, optedOut: false },
+    });
+  });
+
+  /* "Tanpa member" per add-on (22 October 2026). */
+  it("sends an add-on set to Tanpa member with noBenefit, and leaves it out of the totals", () => {
+    const optedOut = { ...fresh, noMemberAddonIds: ["add-spa"] };
+    const input = bookingQuoteInput({
+      cards: [optedOut],
+      customerId: "cust-1",
+      date: "2026-10-25T03:00:00.000Z",
+      pricesOf: () => ({
+        amount: "100000",
+        addons: [
+          { serviceId: "add-parfum", amount: "20000" },
+          { serviceId: "add-spa", amount: "50000" },
+        ],
+      }),
+    });
+    expect(input?.entries[0].addons).toEqual([
+      { serviceId: "add-parfum", amount: "20000" },
+      { serviceId: "add-spa", amount: "50000", noBenefit: true },
+    ]);
+
+    /* The quote answers with no `recommended`; the row still names what "Pakai member" brings back. */
+    const answered = quoteOf([
+      { ref: fresh.key, candidates: [candidate()], recommended: candidate() },
+      { ref: `${fresh.key}:addon:0`, candidates: [diskon], recommended: { ...diskon, discount: "2000.0000" } },
+      { ref: `${fresh.key}:addon:1`, candidates: [spa], recommended: null },
+    ]);
+    expect(addonBenefitsOf(optedOut, answered, input)["add-spa"]).toEqual({
+      discount: "0",
+      label: "Jatah Spa 1/1",
+      quota: true,
+      optedOut: true,
+    });
+    expect(membershipDiscountTotal([optedOut], answered, input)).toBe("102000.0000");
+    /* Read off the card as it is now: a click shows before the next quote lands. */
+    expect(membershipDiscountTotal([optedOut], quote, asked)).toBe("102000.0000");
+  });
+
+  it("adds them to the form's membership discount, beside the main service's", () => {
+    expect(membershipDiscountTotal([fresh], quote, asked)).toBe("152000.0000");
+    /* Without the request it answered, only the main service counts. */
+    expect(membershipDiscountTotal([fresh], quote)).toBe("100000.0000");
+  });
+
+  it("names an add-on by the request answered, not by the form as it is now", () => {
+    /* Spa was ticked first when this quote was asked — the positions follow that. */
+    const swapped = {
+      ...asked,
+      entries: [{ ...asked.entries[0], addons: [...asked.entries[0].addons].reverse() }],
+    };
+    expect(addonBenefitsOf(fresh, quote, swapped)["add-spa"]?.label).toBe("Member · Diskon 10%");
+  });
+
+  it("shows nothing for an add-on with no pick, for a billed card, or for another animal", () => {
+    const partial = quoteOf([
+      { ref: fresh.key, candidates: [], recommended: null },
+      { ref: `${fresh.key}:addon:0`, candidates: [], recommended: null },
+      { ref: `${fresh.key}:addon:1`, candidates: [spa], recommended: spa },
+    ]);
+    expect(Object.keys(addonBenefitsOf(fresh, partial, asked))).toEqual(["add-spa"]);
+    expect(addonBenefitsOf({ ...fresh, locked: true }, quote, asked)).toEqual({});
+    expect(addonBenefitsOf({ ...fresh, petId: "pet-2" }, quote, asked)).toEqual({});
+    expect(addonBenefitsOf(fresh, quote, null)).toEqual({});
+  });
+});
+
 describe("benefitRefusalOf — §8 refusals", () => {
   it("names the card and who holds the jatah on a 409", () => {
     const error = new ApiError("Benefit membership tidak bisa dipakai untuk booking ini", 409, {
       details: [
         {
           field: "bookings[1].plannedBenefit",
-          message: "Jatah periode ini sudah dipesan booking lain",
+          message: "Jatah periode ini sudah habis",
         },
       ] as never,
       data: {
@@ -310,7 +411,7 @@ describe("benefitRefusalOf — §8 refusals", () => {
 
     expect(benefitRefusalOf(error)).toEqual({
       index: 1,
-      message: "Jatah periode ini sudah dipesan booking lain · dipakai BK-2026-0012",
+      message: "Jatah periode ini sudah habis",
     });
   });
 

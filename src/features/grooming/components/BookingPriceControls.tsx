@@ -7,6 +7,7 @@ import { FIELD_HEIGHT } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { AddonMemberToggle } from "@/features/booking/components/AddonMemberToggle";
 import { formatMoney, toDecimalString } from "@/utils/decimal";
 import type { BookingLocation, Service } from "@/types/api";
 
@@ -107,6 +108,7 @@ export function SummaryLine({
   detail,
   hint,
   value,
+  struck,
   tone = "main",
 }: {
   label: string;
@@ -114,6 +116,8 @@ export function SummaryLine({
   detail?: string;
   hint?: string;
   value: string;
+  /** The figure before a membership benefit, struck through before `value`. */
+  struck?: string;
   tone?: "main" | "sub" | "discount";
 }) {
   return (
@@ -141,6 +145,7 @@ export function SummaryLine({
               : "font-semibold"
         }`}
       >
+        {struck && <span className="mr-1.5 font-normal text-muted line-through">{struck}</span>}
         {value}
       </span>
     </div>
@@ -208,6 +213,8 @@ export function PriceRow({
   disabled,
   onChange,
   onRemove,
+  member = null,
+  benefit = null,
 }: {
   name: string;
   line: PricedLine;
@@ -220,10 +227,47 @@ export function PriceRow({
   disabled: boolean;
   onChange: (next: PriceDraft) => void;
   onRemove?: () => void;
+  /**
+   * THE MEMBERSHIP BENEFIT APPLIED TO THIS LINE (Promosi V1) — the quote's
+   * figure, taken off what is left after the line's own discount (the till's
+   * order). Efektif strikes the figure before it and shows what is left, with
+   * the benefit's name under it, as `BookingCard` does.
+   *
+   * ON AN ADD-ON (22 October 2026) it is the quote's own recommendation,
+   * applied automatically and shown only: `bare` drops the amount from the
+   * name ("Member · Diskon 10%", as the till writes it — the struck Efektif
+   * already says how much), and `estimate` adds that a jatah is only spent
+   * when the booking is paid at the till.
+   *
+   * `onToggle` draws "Tanpa member" beside the name, and with `optedOut` the
+   * line stays at its normal price with "Pakai member" to switch back.
+   */
+  member?: {
+    label: string | null;
+    discount: bigint;
+    bare?: boolean;
+    estimate?: boolean;
+    optedOut?: boolean;
+    onToggle?: (optOut: boolean) => void;
+  } | null;
+  /**
+   * THE MAIN SERVICE'S OWN BENEFIT CONTROL (22 October 2026) —
+   * `BookingBenefitField`: the candidate's name or a select of them, "Tanpa
+   * member" / "Pakai member", the hold note, or why a covering benefit cannot
+   * be used. Drawn in place of `member`'s name line; `member` still strikes
+   * Efektif.
+   */
+  benefit?: ReactNode;
 }) {
   const priceId = `price-${name}`.replace(/\s+/g, "-");
   const discountId = `discount-${name}`.replace(/\s+/g, "-");
   const overridden = line.price !== null && line.quote !== null && line.price !== line.quote;
+  const memberOff =
+    member && !member.optedOut && member.discount > 0n && line.price !== null
+      ? member.discount > line.net
+        ? line.net
+        : member.discount
+      : 0n;
 
   return (
     <div className="rounded-lg border border-border bg-surface p-3">
@@ -254,7 +298,12 @@ export function PriceRow({
         <p className="flex justify-between gap-3 text-sm">
           <span className="text-muted">Harga katalog</span>
           <span className="font-semibold tabular-nums">
-            {line.price === null ? "—" : money(line.price)}
+            {memberOff > 0n && line.price !== null && (
+              <span className="mr-1.5 font-normal text-muted line-through">
+                {money(line.price)}
+              </span>
+            )}
+            {line.price === null ? "—" : money(line.price - memberOff)}
           </span>
         </p>
       ) : (
@@ -291,10 +340,13 @@ export function PriceRow({
             </div>
             <div className="text-right sm:min-w-28">
               <span className="text-xs text-muted">Efektif</span>
+              {memberOff > 0n && (
+                <p className="text-xs tabular-nums text-muted line-through">{money(line.net)}</p>
+              )}
               <p
-                className={`text-base font-extrabold tabular-nums ${line.discount > 0n ? "text-success" : "text-foreground"}`}
+                className={`text-base font-extrabold tabular-nums ${line.discount > 0n || memberOff > 0n ? "text-success" : "text-foreground"}`}
               >
-                {line.price === null ? "—" : money(line.net)}
+                {line.price === null ? "—" : money(line.net - memberOff)}
               </p>
             </div>
           </div>
@@ -313,6 +365,39 @@ export function PriceRow({
           )}
         </>
       )}
+      {memberOff > 0n && !inactive && !benefit && (
+        <div className="mt-2 flex flex-wrap items-center gap-x-2">
+          <p data-member-line className="text-xs font-semibold text-success tabular-nums">
+            {member?.label ?? "Potongan member"}
+            {!member?.bare && <> · −{money(memberOff)}</>}
+          </p>
+          {member?.onToggle && (
+            <AddonMemberToggle
+              optedOut={false}
+              addonName={name}
+              disabled={disabled}
+              onToggle={member.onToggle}
+            />
+          )}
+        </div>
+      )}
+      {member?.optedOut && member.onToggle && !inactive && line.price !== null && (
+        <p data-member-off className="mt-2 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+          <span>Tanpa member</span>
+          <AddonMemberToggle
+            optedOut
+            addonName={name}
+            disabled={disabled}
+            onToggle={member.onToggle}
+          />
+        </p>
+      )}
+      {memberOff > 0n && !inactive && member?.estimate && (
+        <p data-member-estimate className="mt-1 text-xs text-muted">
+          Perkiraan — jatah terpakai saat dibayar di kasir.
+        </p>
+      )}
+      {benefit && !inactive && line.price !== null && benefit}
       {note && line.price !== null && !inactive && (
         <p className="mt-2 text-xs text-muted tabular-nums">{note}</p>
       )}

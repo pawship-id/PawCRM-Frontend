@@ -217,6 +217,36 @@ describe("autoApplyChanges", () => {
 
     expect(autoApplyChanges(items, quote)[0].benefit.benefitId).toBe("ben-planned");
   });
+
+  /* "Tanpa member" agreed at booking for an add-on (22 October 2026). */
+  it("never auto-applies a booking add-on agreed Tanpa member, but keeps a pick made anyway", () => {
+    const addon = line({
+      refId: "svc-parfum",
+      bookingId: "bk-1",
+      parentServiceId: "svc-groom",
+      fromBooking: true,
+      plannedNoBenefit: true,
+    });
+    const quote = quoteOf([
+      quoteLine("0", { candidates: [candidate()], recommended: candidate() }),
+    ]);
+
+    /* The server would recommend nothing; even if a stale quote does, it is not applied. */
+    expect(autoApplyChanges([addon], quote)).toEqual([]);
+    expect(buildQuoteInput({ customerId: "cust-1", items: [addon] })?.lines[0]).toMatchObject({
+      kind: "addon",
+      noBenefit: true,
+    });
+    expect(matchesBooking(addon)).toBe(true);
+
+    const picked = { ...addon, benefit: { membershipId: "mem-1", benefitId: "ben-groom", optionId: null } };
+    expect(buildQuoteInput({ customerId: "cust-1", items: [picked] })?.lines[0]).toMatchObject({
+      membershipId: "mem-1",
+      benefitId: "ben-groom",
+    });
+    expect(buildQuoteInput({ customerId: "cust-1", items: [picked] })?.lines[0].noBenefit).toBeUndefined();
+    expect(matchesBooking(picked)).toBe(false);
+  });
 });
 
 describe("pickOf", () => {
@@ -295,7 +325,7 @@ describe("what a row says", () => {
           ],
         }),
       ),
-    ).toEqual(["Mandi dipesan BK-0012"]);
+    ).toEqual(["Mandi habis"]);
   });
 
   it("says sesuai booking only when the pick is the booking's plan", () => {

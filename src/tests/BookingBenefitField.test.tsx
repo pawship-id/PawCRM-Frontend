@@ -42,86 +42,100 @@ const view = (over: Partial<CardBenefitView> = {}): CardBenefitView => ({
   ...over,
 });
 
-describe("BookingBenefitField", () => {
-  it("draws one radio per candidate plus 'Tanpa member', with source and discount", () => {
-    render(<BookingBenefitField view={view()} onPick={jest.fn()} />);
+const field = (props: Partial<Parameters<typeof BookingBenefitField>[0]> = {}) => (
+  <BookingBenefitField view={view()} serviceName="Grooming" onPick={jest.fn()} {...props} />
+);
 
-    const radios = screen.getAllByRole("radio");
-    expect(radios).toHaveLength(3);
+describe("BookingBenefitField — the main service's benefit on its price row", () => {
+  it("draws a compact select when the quote offers more than one candidate", async () => {
+    const onPick = jest.fn();
+    render(field({ onPick }));
 
-    const first = screen.getByRole("radio", { name: /Jatah Grooming 1\/3/ });
-    expect(first).toHaveAttribute("aria-checked", "true");
-    expect(first).toHaveTextContent("Grooming · Explorer");
-    /* The visit fee it waives counts in what it is worth. */
-    expect(first).toHaveTextContent("−Rp 140.000");
-
-    expect(screen.getByRole("radio", { name: /Tanpa member/ })).toHaveTextContent("Harga normal");
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    const select = screen.getByRole("combobox", { name: "Member untuk Grooming" });
+    expect(select).toHaveTextContent("Jatah Grooming 1/3");
     /* A quota pick holds the jatah — and says so. */
     expect(
       screen.getByText("Jatah ditahan sampai booking dibayar atau dibatalkan."),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/Baru dicatat/)).not.toBeInTheDocument();
-  });
 
-  it("hands back the candidate picked, and null for 'Tanpa member'", async () => {
-    const onPick = jest.fn();
-    render(<BookingBenefitField view={view()} onPick={onPick} />);
-
-    await userEvent.click(screen.getByRole("radio", { name: /Member · Diskon 10%/ }));
+    await userEvent.click(select);
+    /* Names only — the struck price on the row says how much. */
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "Jatah Grooming 1/3",
+      "Member · Diskon 10%",
+      "Tanpa member",
+    ]);
+    await userEvent.click(screen.getByRole("option", { name: "Member · Diskon 10%" }));
     expect(onPick).toHaveBeenLastCalledWith(diskon);
 
-    await userEvent.click(screen.getByRole("radio", { name: /Tanpa member/ }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Member untuk Grooming" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Tanpa member" }));
     expect(onPick).toHaveBeenLastCalledWith(null);
   });
 
-  it("checks 'Tanpa member' and drops the hold note when nothing is selected", () => {
-    render(<BookingBenefitField view={view({ selectedKey: null })} onPick={jest.fn()} />);
+  it("reads 'Tanpa member' and drops the hold note when nothing is selected", () => {
+    render(field({ view: view({ selectedKey: null }) }));
 
-    expect(screen.getByRole("radio", { name: /Tanpa member/ })).toHaveAttribute(
-      "aria-checked",
-      "true",
+    expect(screen.getByRole("combobox", { name: "Member untuk Grooming" })).toHaveTextContent(
+      "Tanpa member",
     );
     expect(screen.queryByText(/Jatah ditahan/)).not.toBeInTheDocument();
   });
 
-  it("shows the server's reason in a muted box when nothing can be offered", () => {
+  it("shows one candidate's name with a Tanpa member / Pakai member toggle", async () => {
+    const onPick = jest.fn();
+    const { rerender } = render(field({ view: view({ candidates: [jatah] }), onPick }));
+
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getByText("Jatah Grooming 1/3")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Tanpa member untuk Grooming" }));
+    expect(onPick).toHaveBeenLastCalledWith(null);
+
+    rerender(field({ view: view({ candidates: [jatah], selectedKey: null }), onPick }));
+    expect(screen.getByText("Tanpa member")).toBeInTheDocument();
+    expect(screen.queryByText(/Jatah ditahan/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Pakai member untuk Grooming" }));
+    expect(onPick).toHaveBeenLastCalledWith(jatah);
+  });
+
+  it("shows the server's reason, muted, when a covering benefit cannot be used", () => {
     render(
-      <BookingBenefitField
-        view={view({
+      field({
+        view: view({
           candidates: [],
           selectedKey: null,
           emptyMessage: "Jatah Grooming habis periode ini · dipakai BK-2026-0012",
-        })}
-        onPick={jest.fn()}
-      />,
+        }),
+      }),
     );
 
-    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
     expect(
       screen.getByText("Jatah Grooming habis periode ini · dipakai BK-2026-0012"),
-    ).toBeInTheDocument();
+    ).toHaveClass("text-muted");
   });
 
-  it("draws nothing when the animal holds no card", () => {
-    const { container } = render(
-      <BookingBenefitField view={view({ show: false })} onPick={jest.fn()} />,
-    );
+  it("draws nothing when the animal holds no card, or nothing covers the service", () => {
+    const { container, rerender } = render(field({ view: view({ show: false }) }));
+    expect(container).toBeEmptyDOMElement();
+
+    rerender(field({ view: view({ candidates: [], selectedKey: null, emptyMessage: null }) }));
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("shows the server's refusal under the field", () => {
-    render(
-      <BookingBenefitField
-        view={view()}
-        error="Jatah periode ini sudah dipesan booking lain · dipakai BK-2026-0012"
-        onPick={jest.fn()}
-      />,
-    );
+  it("shows the server's refusal on the row", () => {
+    render(field({ error: "Jatah periode ini sudah habis · dipakai BK-2026-0012" }));
     expect(screen.getByRole("alert")).toHaveTextContent("dipakai BK-2026-0012");
   });
 
-  it("locks the rows on a billed booking", () => {
-    render(<BookingBenefitField view={view()} disabled onPick={jest.fn()} />);
-    for (const radio of screen.getAllByRole("radio")) expect(radio).toBeDisabled();
+  it("locks the control on a billed booking", () => {
+    const { rerender } = render(field({ disabled: true }));
+    expect(screen.getByRole("combobox", { name: "Member untuk Grooming" })).toBeDisabled();
+
+    rerender(field({ view: view({ candidates: [jatah] }), disabled: true }));
+    expect(screen.getByRole("button", { name: "Tanpa member untuk Grooming" })).toBeDisabled();
   });
 });

@@ -816,6 +816,27 @@ export function BookingDetailScreen({ id }: { id: string }) {
                 </p>
               </div>
             )}
+
+            {/*
+              "BENEFIT YANG AKAN DIBERIKAN" (22 October 2026) — the card benefits
+              ticked on the form for this visit (a product jatah, a perk). A
+              NOTE for the groomer and the cashier: nothing was deducted, and a
+              product benefit is still applied at the till.
+            */}
+            {(booking.plannedExtras ?? []).length > 0 && (
+              <div data-planned-extras className="mt-4 border-t border-border pt-3">
+                <p className="text-xs font-bold uppercase tracking-wide text-muted">
+                  Benefit yang akan diberikan
+                </p>
+                <ul className="mt-1 flex list-disc flex-col gap-0.5 pl-5 text-sm text-foreground">
+                  {(booking.plannedExtras ?? []).map((extra) => (
+                    <li key={`${extra.membershipId}-${extra.benefitId}`}>
+                      {extra.label || "Benefit membership"}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </Card>
 
           {/*

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { BenefitAvailability, PetMembership } from "@/types/membership";
 import { cn } from "@/lib/utils";
 
@@ -58,9 +59,13 @@ function JatahRow({
   const unlimited = !perk && (benefit.unlimited || benefit.cap === null);
   const cap = benefit.cap ?? 0;
   const used = benefit.used ?? 0;
-  const left = Math.max(0, benefit.remaining ?? cap - used);
+  /* Held by unbilled bookings — already taken off `remaining` by the server. */
+  const reserved = unlimited ? 0 : (benefit.reserved ?? 0);
+  const holds = unlimited ? [] : (benefit.reservedBy ?? []);
+  const left = Math.max(0, benefit.remaining ?? cap - used - reserved);
   const full = !perk && !unlimited && left <= 0;
   const pct = cap > 0 ? Math.min(100, Math.round((used / cap) * 100)) : 0;
+  const heldPct = cap > 0 ? Math.min(100 - pct, Math.round((reserved / cap) * 100)) : 0;
   const resets = benefit.quota.perPeriod
     ? benefit.resetsAt
       ? `reset ${formatDate(benefit.resetsAt)}`
@@ -82,6 +87,28 @@ function JatahRow({
         </p>
         <p className="text-sm text-muted">{detail}</p>
         {blocked && <p className="text-sm text-warning">{blocked}</p>}
+        {holds.length > 0 && (
+          /*
+            WHERE THE JATAH IS HELD (22 October 2026, on request) — a booking
+            not yet paid keeps its quota, and staff need to see which one to
+            free it (cancel it, or set it to "Tanpa member").
+          */
+          <p className="text-sm text-muted">
+            Ditahan:{" "}
+            {holds.map((hold, index) => (
+              <span key={hold.bookingId}>
+                {index > 0 && ", "}
+                <Link
+                  href={`/dashboard/booking/${hold.bookingId}`}
+                  className="font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                >
+                  {hold.bookingNumber ?? "Booking draft"}
+                </Link>{" "}
+                <span className="tabular-nums">({formatDate(hold.scheduledAt)})</span>
+              </span>
+            ))}
+          </p>
+        )}
       </div>
 
       <div>
@@ -98,12 +125,19 @@ function JatahRow({
             aria-valuemin={0}
             aria-valuemax={cap}
             aria-valuenow={Math.min(used, cap)}
-            className="h-2 overflow-hidden rounded-full bg-navy-100"
+            className="flex h-2 overflow-hidden rounded-full bg-navy-100"
           >
             <div
-              className={cn("h-full rounded-full", full ? "bg-warning" : "bg-primary")}
+              className={cn("h-full", full ? "bg-warning" : "bg-primary")}
               style={{ width: `${pct}%` }}
             />
+            {/* What bookings are holding — lighter, after what was used. */}
+            {heldPct > 0 && (
+              <div
+                className={cn("h-full", full ? "bg-warning/45" : "bg-primary/35")}
+                style={{ width: `${heldPct}%` }}
+              />
+            )}
           </div>
         )}
       </div>
@@ -117,7 +151,9 @@ function JatahRow({
               {left} tersisa
             </p>
             <p className="text-sm text-muted tabular-nums">
-              {used} dari {cap} · {resets}
+              {reserved > 0
+                ? `${used} terpakai · ${reserved} ditahan · ${resets}`
+                : `${used} dari ${cap} · ${resets}`}
             </p>
             {full && benefit.nextAvailableAt && (
               <p className="text-sm text-muted">bisa lagi {formatDate(benefit.nextAvailableAt)}</p>
@@ -165,7 +201,7 @@ export function JatahChips({
           >
             {unlimited
               ? benefitChip({ label: benefit.label, quota: null })
-              : `${benefit.label} ${benefit.used ?? 0}/${benefit.cap}`}
+              : `${benefit.label} ${(benefit.used ?? 0) + (benefit.reserved ?? 0)}/${benefit.cap}`}
           </li>
         );
       })}

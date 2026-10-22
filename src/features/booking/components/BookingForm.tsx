@@ -38,17 +38,20 @@ import {
   sumDecimals,
   toDecimalString,
 } from "@/utils/decimal";
+import { useCustomerMemberships } from "@/features/memberships/hooks/useCustomerMemberships";
 import { BookingCard } from "./BookingCard";
 import { useHomeVisitFees } from "../hooks/useHomeVisitFees";
 import { useBookingBenefitQuote } from "../hooks/useBookingBenefitQuote";
 import {
   benefitRefusalOf,
+  addonBenefitsOf,
   bookingQuoteInput,
   cardBenefitView,
   effectivePlan,
   membershipDiscountTotal,
   visitFeeDiscountOf,
 } from "../benefitQuote";
+import { otherBenefitsOf } from "../otherBenefits";
 import { VisitAddressCard } from "./VisitAddressCard";
 import {
   MAX_CARDS,
@@ -1146,7 +1149,13 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     }),
   );
   const benefitQuote = benefitQuoteState.quote;
-  const memberDiscount = membershipDiscountTotal(cards, benefitQuote);
+  /*
+    THE CUSTOMER'S LIVE CARDS, in one request — for each card's "Benefit lain"
+    box: what they hold that a booking cannot use (product benefits, perks).
+  */
+  const memberCards = useCustomerMemberships(customer?._id ?? null);
+  /* Each main service's pick, plus every ticked add-on's own benefit (display-only). */
+  const memberDiscount = membershipDiscountTotal(cards, benefitQuote, benefitQuoteState.asked);
   /* The fee is waived when the visit line says so — never more than the fee shown. */
   const feeWaivedAmount =
     feeShown && isPositive(visitFeeDiscountOf(benefitQuote)) ? feeShown : "0";
@@ -1591,6 +1600,8 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
                     refusal={cardRefusal?.key === card.key ? cardRefusal : null}
                     benefit={cardBenefitView(card, benefitQuote)}
                     benefitError={benefitErrors[card.key] ?? null}
+                    addonBenefits={addonBenefitsOf(card, benefitQuote, benefitQuoteState.asked)}
+                    otherBenefits={otherBenefitsOf(memberCards, card.petId, toScheduledAt(date, time))}
                     onChange={(patch) => updateCard(card.key, patch)}
                     onRemove={() => removeCard(card.key)}
                   />

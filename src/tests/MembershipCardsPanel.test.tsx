@@ -168,4 +168,16 @@ describe("Anggota list", () => {
     );
     expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent("Filter (1)");
   });
+
+  it("marks what matched the search in yellow — card, animal, owner and plan", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<MembershipCardsPanel />);
+    await screen.findByText("MBR-2026-0042");
+
+    await user.type(screen.getByPlaceholderText("Cari pelanggan, hewan, atau nomor"), "rina");
+
+    const marks = await screen.findAllByText(/^rina$/i, { selector: "mark" });
+    expect(marks.length).toBeGreaterThan(0);
+    expect(marks[0].closest("tr")).toHaveTextContent("Rina Wijaya");
+  });
 });

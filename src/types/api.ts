@@ -1964,6 +1964,13 @@ export interface PosItem {
   fromBooking?: boolean;
   /** The booking's agreed pick — main line only. "Sesuai booking" when it equals `benefit`. */
   plannedBenefit?: { membershipId: string; benefitId: string; optionId: string | null } | null;
+  /** A booking add-on agreed "Tanpa member" — the till does not auto-apply it. */
+  plannedNoBenefit?: boolean;
+  /**
+   * The line's booking's "Benefit yang akan diberikan" — read live from the
+   * booking. A reminder for the cashier; it applies nothing. `[]` off a booking.
+   */
+  bookingPlannedExtras?: PlannedExtra[];
   /** Package line: when cover starts (null = when paid). */
   membershipStartDate?: string | null;
   /** Package line: the referral code collected at the till. */
@@ -3173,6 +3180,8 @@ export interface Booking {
    * the benefit where the name changes what somebody does.
    */
   plannedBenefit?: PlannedBenefit | null;
+  /** "Benefit yang akan diberikan" — noted on the form, labelled by the server. */
+  plannedExtras?: PlannedExtra[];
   tripLeg?: TripLeg | null;
   /**
    * EVERY ANIMAL IN THE VAN (23 September 2026) — all of them, not "the others".
@@ -3507,6 +3516,8 @@ export interface BookingAddon {
   durationMin: number | null;
   /** Its own "Dipilih staf" values — inherited from the main service unless changed. */
   variantChoices?: VariantChoiceSnapshot[];
+  /** "Tanpa member" agreed for this add-on — billed at normal price (22 Oct 2026). */
+  noMemberBenefit?: boolean;
   /**
    * Set ONLY on the home-visit fee line (10 October 2026). The server owns the
    * row: it cannot be ticked, priced or removed from a form, and it is
@@ -4101,6 +4112,18 @@ export interface PlannedBenefit {
   optionId?: string | null;
 }
 
+/**
+ * "BENEFIT YANG AKAN DIBERIKAN" (22 October 2026) — a card benefit a booking
+ * cannot bill (a product jatah, a perk), ticked as a NOTE for this visit. No
+ * quota moves and no price changes. `label` is the server's snapshot of the
+ * card's own label; a label sent in is ignored.
+ */
+export interface PlannedExtra {
+  membershipId: string;
+  benefitId: string;
+  label?: string;
+}
+
 export interface CreateBookingEntry {
   /**
    * OMITTED ON A RIDE, and required everywhere else. A card that sends both
@@ -4159,6 +4182,10 @@ export interface CreateBookingEntry {
   belongings?: { name: string; checkedInAt?: string | null }[];
   /** The membership benefit this booking holds — see `PlannedBenefit`. */
   plannedBenefit?: PlannedBenefit | null;
+  /** Ticked add-ons agreed "Tanpa member" (`service.addons[].noMemberBenefit`). */
+  noMemberBenefitAddonIds?: string[];
+  /** "Benefit yang akan diberikan" — a note, see `PlannedExtra`. */
+  plannedExtras?: PlannedExtra[];
 }
 
 /**
@@ -4277,6 +4304,10 @@ export interface UpdateBookingInput {
   linkedBookingIds?: string[];
   /** `null` clears the plan (and releases its hold). */
   plannedBenefit?: PlannedBenefit | null;
+  /** Replaces the add-ons agreed "Tanpa member"; absent keeps them. */
+  noMemberBenefitAddonIds?: string[];
+  /** Replaces the noted benefits; absent keeps them, `[]` clears. */
+  plannedExtras?: PlannedExtra[];
   forceClash?: boolean;
 }
 /**

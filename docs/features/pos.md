@@ -250,6 +250,15 @@ Bruno · Grooming Lengkap.", which lands in the basket's error banner like any o
   the old Pakai/Lepas section under Diskon keranjang. The quote auto-applies its best pick; the
   cashier chooses another or "Tanpa member". Benefits that would cover the line but cannot be used
   show as short muted chips with the reason. The server prices it — the select only sends ids.
+- **A booking add-on agreed "Tanpa member"** (`plannedNoBenefit` on the line, 22 October 2026)
+  is pulled at its normal price and never auto-applied: its select starts on "Tanpa member" with
+  "sesuai booking", and is quoted as `noBenefit`. The cashier can still pick a candidate — that
+  pick sticks like any other.
+- **"Benefit dari booking: …"** (22 October 2026) — when a booking in the basket noted
+  "benefit yang akan diberikan" on its form (`bookingPlannedExtras` on its lines, read live from
+  the booking), the animal's group shows one line under its header naming them
+  (`plannedExtrasOf` in `membershipCart.ts`, `data-planned-extras`). Informational only: a product
+  benefit is still picked on its own line, and a perk bills nothing.
 - The cart summary and the receipt print the total as **Potongan membership**.
   `PosCustomerPerks` shows the customer's cards as chips under the name; after payment
   `PosSaleEffects` lists the cards issued and the allowances spent.

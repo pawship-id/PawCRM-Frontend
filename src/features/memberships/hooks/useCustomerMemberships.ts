@@ -6,8 +6,10 @@ import { membershipService } from "@/services/membership.service";
 import type { PetMembership } from "@/types/membership";
 
 /**
- * The cards a basket's customer holds right now — active or paused — for the
- * perk chips under the customer's name and the plan on each animal's header.
+ * The cards a customer holds right now — active or paused — in ONE request:
+ * the till's perk chips under the customer's name and the plan on each
+ * animal's header, and the "Member" fact on Layanan › Grooming › Booking baru.
+ * Promoted out of `features/pos` when that second screen needed it (§14).
  *
  * Keyed by the customer, so the answer for the last customer is never shown
  * for this one. A failure is silent: the chips are a reminder, not a gate.

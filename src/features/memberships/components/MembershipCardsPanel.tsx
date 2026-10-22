@@ -13,6 +13,7 @@ import {
   FilterSearch,
   FilterSelect,
   FilterTrigger,
+  HighlightText,
   ListFooter,
   Spinner,
   withAll,
@@ -105,16 +106,20 @@ function usePlanOptions() {
 }
 
 /** "Mochi" over "Rina Wijaya · hewan" — or the customer over "pelanggan · semua hewan". */
-function Holder({ card }: { card: PetMembership }) {
+function Holder({ card, query }: { card: PetMembership; query?: string }) {
   return (
     <>
       <span className="block font-medium text-foreground">
-        {card.petName ?? card.customerName ?? "—"}
+        <HighlightText text={card.petName ?? card.customerName ?? "—"} query={query} />
       </span>
       <span className="block text-sm text-muted">
-        {card.attachTo === "customer"
-          ? "pelanggan · semua hewan"
-          : `${card.customerName ?? "Pelanggan"} · hewan`}
+        {card.attachTo === "customer" ? (
+          "pelanggan · semua hewan"
+        ) : (
+          <>
+            <HighlightText text={card.customerName ?? "Pelanggan"} query={query} /> · hewan
+          </>
+        )}
       </span>
     </>
   );
@@ -249,14 +254,16 @@ export function MembershipCardsPanel() {
                         onClick={(event) => event.stopPropagation()}
                         className="font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
-                        {card.number}
+                        <HighlightText text={card.number} query={query.search} />
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Holder card={card} />
+                      <Holder card={card} query={query.search} />
                     </TableCell>
                     <TableCell>
-                      <span className="block">{card.plan.name ?? "—"}</span>
+                      <span className="block">
+                        <HighlightText text={card.plan.name ?? "—"} query={query.search} />
+                      </span>
                       {card.plan.code && (
                         <span className="block text-sm text-muted tabular-nums">{card.plan.code}</span>
                       )}

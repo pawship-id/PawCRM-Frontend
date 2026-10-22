@@ -89,9 +89,9 @@ describe("PromosiSummaryScreen", () => {
 
     renderWithAuth(<PromosiSummaryScreen />);
 
-    expect(await screen.findByText("Rp 5,4 jt")).toBeInTheDocument();
+    expect(await screen.findByText("Rp 5.400.000")).toBeInTheDocument();
     expect(screen.getByText("12 paket terjual")).toBeInTheDocument();
-    expect(screen.getByText("Rp 1,8 jt")).toBeInTheDocument();
+    expect(screen.getByText("Rp 1.830.000")).toBeInTheDocument();
     expect(screen.getByText("dari 18 pelanggan · 22 hewan")).toBeInTheDocument();
     expect(screen.getByText("64")).toBeInTheDocument();
     expect(screen.getByText("dari 51 pelanggan · 58 hewan")).toBeInTheDocument();
@@ -141,7 +141,7 @@ describe("PromosiSummaryScreen", () => {
     primeAll({ withinDays: 14, expiring: [], unusedQuota: [] });
     const user = userEvent.setup();
     renderWithAuth(<PromosiSummaryScreen />);
-    await screen.findByText("Rp 5,4 jt");
+    await screen.findByText("Rp 5.400.000");
 
     await user.click(screen.getByRole("button", { name: "Bulan lalu" }));
     await waitFor(() =>

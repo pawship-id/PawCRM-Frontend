@@ -39,7 +39,6 @@ import { cardHref, formatDate, formatRupiah } from "@/features/memberships/label
 import { usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import type { AttentionCard } from "@/types/membership";
-import { formatMoneyShort } from "@/utils/decimal";
 import { whatsAppLink } from "@/utils/phone";
 
 import {
@@ -125,7 +124,7 @@ export function PromosiSummaryScreen() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile
               label="Penjualan paket"
-              value={data ? formatMoneyShort(data.packagesSold.revenue) : "—"}
+              value={data ? formatRupiah(data.packagesSold.revenue) : "—"}
               caption={data ? `${data.packagesSold.count} paket terjual` : undefined}
               hint={`Nilai paket membership yang terjual ${periodLabel.toLowerCase()}, diakui sebagai pendapatan saat terjual. Paket yang dibatalkan tidak dihitung.`}
               loading={summary.loading && !data}
@@ -133,7 +132,7 @@ export function PromosiSummaryScreen() {
             />
             <StatTile
               label="Nilai benefit terpakai"
-              value={data ? formatMoneyShort(data.benefitValue.amount) : "—"}
+              value={data ? formatRupiah(data.benefitValue.amount) : "—"}
               caption={
                 data
                   ? `dari ${data.benefitValue.customers} pelanggan · ${data.benefitValue.pets} hewan`

@@ -15,6 +15,7 @@ import {
   FilterSelect,
   FilterToggle,
   FilterTrigger,
+  HighlightText,
   ListFooter,
   Spinner,
   withAll,
@@ -262,20 +263,24 @@ export function MembershipPlansPanel() {
             <TableBody>
               {plans.map((plan) => (
                 <TableRow key={plan.id}>
-                  <TableCell className="whitespace-nowrap tabular-nums">{plan.code}</TableCell>
+                  <TableCell className="whitespace-nowrap tabular-nums">
+                    <HighlightText text={plan.code ?? ""} query={query.search} />
+                  </TableCell>
                   <TableCell>
                     {/*
                       A DELETED ROW IS NOT A LINK. Its detail screen answers 404,
                       and a link that leads nowhere is worse than plain text.
                     */}
                     {plan.deletedAt ? (
-                      <span className="font-medium text-muted">{plan.name}</span>
+                      <span className="font-medium text-muted">
+                        <HighlightText text={plan.name} query={query.search} />
+                      </span>
                     ) : (
                       <Link
                         href={planHref(plan.id)}
                         className="font-medium text-foreground underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
-                        {plan.name}
+                        <HighlightText text={plan.name} query={query.search} />
                       </Link>
                     )}
                     <BenefitChips plan={plan} />

@@ -30,6 +30,7 @@ export { useMembershipPlans } from "./hooks/useMembershipPlans";
 export { useMembershipPlan } from "./hooks/useMembershipPlan";
 export { usePetMemberships } from "./hooks/usePetMemberships";
 export { usePetMembershipCards } from "./hooks/usePetMembershipCards";
+export { useCustomerMemberships } from "./hooks/useCustomerMemberships";
 export { useMembershipCard } from "./hooks/useMembershipCard";
 export { useBenefitQuote } from "./hooks/useBenefitQuote";
 

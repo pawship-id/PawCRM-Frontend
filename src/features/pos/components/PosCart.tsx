@@ -25,6 +25,7 @@ import type { BenefitQuoteResponse } from "@/types/membership";
 import { bookingShareOf, membershipShareOf } from "../bookingDiscount";
 import {
   groupByPet,
+  plannedExtrasOf,
   isFeeLine,
   quoteLineFor,
   type PetPlan,
@@ -425,6 +426,8 @@ export function PosCart({
 
             return petGroups.map((petGroup) => {
               const plan = petGroup.petId ? petPlans?.get(petGroup.petId) : undefined;
+              /* What the bookings noted to give this visit — a reminder only. */
+              const extras = plannedExtrasOf(petGroup.lines);
 
               return (
                 <div key={petGroup.key} data-pet-group>
@@ -457,6 +460,21 @@ export function PosCart({
                         </span>
                       )}
                     </div>
+                  )}
+
+                  {/*
+                    "BENEFIT YANG AKAN DIBERIKAN" (22 October 2026) — ticked on
+                    the booking form. Informational: a product benefit is still
+                    picked on its own line, and a perk has nothing to bill.
+                  */}
+                  {extras.length > 0 && (
+                    <p
+                      data-planned-extras
+                      className="bg-surface px-3 pb-1.5 text-xs text-foreground"
+                    >
+                      <span className="font-medium">Benefit dari booking:</span>{" "}
+                      {extras.join(", ")}
+                    </p>
                   )}
 
                   {groupLines(petGroup.lines).map((group, groupIndex) => (

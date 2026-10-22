@@ -231,16 +231,99 @@ service nobody touched.
 
 ### Benefit membership
 
-When the animal (or its customer) holds a membership, the card shows **Benefit membership**: one
-radio row per benefit that covers this service on the booking's date, plus "Tanpa member"
-(`BookingBenefitField`). The rows come from the server's booking quote (membership-v1 §4.4), not
-from the card — each says what it is worth ("Jatah Grooming 1/3 · −Rp 100.000"), and one that
-cannot be used says why instead of disappearing. Saved as `plannedBenefit` on the entry.
+**The main service's benefit sits on its own price line** (22 October 2026, both forms — it was a
+radio card list "Benefit membership" below the price until then), the same way an add-on's does
+(`BookingBenefitField`). The candidates come from the server's booking quote (membership-v1 §4.4),
+not from the card:
+
+- **One candidate** — its name under the struck price / Efektif ("Jatah Basic Grooming 1/3", no
+  amount: the struck figure says how much) and the text button **Tanpa member**; pressed, the line
+  reads "Tanpa member" with **Pakai member** to switch back (`AddonMemberToggle`, `min-h-11`).
+- **More than one** — the name is a compact select (`ui/select`, the till's `PosBenefitSelect`
+  styling, success tint while a pick is on): the candidates by name plus "Tanpa member".
+- **None, but a card covers the service** (jatah habis, dipesan booking lain, ditunda) — the
+  server's `unavailable[].message` muted on that line, with the holding booking numbers
+  ("· dipakai BK-…"). A card that simply covers nothing here draws nothing on the line.
+
+Semantics are unchanged: the default is the quote's `recommended`, an explicit pick is kept while
+it is still a candidate, and the save sends it as `plannedBenefit` (`null` = Tanpa member); an edit
+keeps the stored plan, and a billed card's control is disabled.
 
 **A saved choice is a HOLD** (Promosi V1): the jatah counts as used until the booking is billed or
 cancelled, so another booking in the same period sees it as taken (`reason: "reserved"`). The note
-under a quota pick says so. Nothing is drawn when the animal holds no card. More in
+"Jatah ditahan sampai booking dibayar atau dibatalkan." under a quota pick says so. More in
 [`membership.md`](./membership.md).
+
+**"Benefit lain dari {paket}"** (22 October 2026, both forms) — a muted info box per animal
+(`OtherBenefitsInfo`, rules in `otherBenefits.ts`) listing what the animal's live cards hold that a
+booking cannot use: a benefit whose options all target products → "Makanan · 2× per bulan —
+dipakai di kasir" (`quotaText`), a perk → "Prioritas antrean (fasilitas)". A benefit with any
+option on `service`, `addon` or `any` is left out — the price lines offer those. Cards come from
+`useCustomerMemberships` (one request per customer, active + paused); a customer-attached card
+counts for every animal. No amounts; hidden when there is nothing to list.
+
+**Each line is a checkbox since 22 October 2026** — "benefit yang akan diberikan di kunjungan
+ini". The box is now a legible inset (`rounded-lg border bg-background p-4`, an `h4` heading
+`text-sm font-semibold text-foreground`, a one-line hint "Centang yang akan diberikan di kunjungan
+ini — hanya catatan, jatah tidak terpotong.") and every line is a `CheckRow` (whole row is the
+44px target); several may be ticked, perks and product benefits alike. Ticked lines are saved as
+`plannedExtras: [{ membershipId, benefitId, label }]` (`card.plannedExtras` in `bookingDraft.ts`,
+`draft.plannedExtras` in `bookingCreateDraft.ts`; pure helpers `toggleExtra` / `hasExtra` in
+`otherBenefits.ts`). A NOTE: no jatah is held or consumed and no price moves. A create omits the
+field when nothing is ticked; an edit always sends the set (`[]` clears) and the edit form loads it
+back ticked. Changing a card's animal clears its ticks (another animal's card is refused by the
+server). The server re-labels each row from the card (backend `membership-v1.md` §8.2).
+
+**The booking page shows them** — `BookingDetailScreen`'s Kunjungan card gains a "Benefit yang
+akan diberikan" list under Catatan kunjungan (`data-planned-extras`), with "Catatan saja —
+benefit produk tetap dipakai di kasir."; absent when none were noted. The till repeats them under
+the animal's header (see `pos.md`).
+
+**Layanan › Grooming › Booking baru asks the same question** (`GroomingBookingCreateScreen`,
+22 October 2026) — the screen staff actually book grooming from. Each animal's card under
+"Layanan per hewan" carries the same `BookingBenefitField` (on the service's row under "Harga &
+diskon per item") and the same "Benefit lain" box, fed from one booking quote for the
+whole save (`bookingQuoteInput` with the animal's id as `ref`, the booking's date + jam, the visit
+fee once on "Grooming di rumah pelanggan"). The pure rules in `benefitQuote.ts` take a
+`BenefitCardState` — the slice of a card they read — so both drafts share them. Two differences
+from `BookingForm`, both deliberate:
+
+- **The quoted amount is the main service's Efektif** (after its own typed discount), because the
+  till measures a planned benefit against what is left after the booking's own discount. The
+  booking-wide discount is not taken out of it.
+- **The Ringkasan's Subtotal is after the membership**: each animal gets a "Potongan member · …"
+  line under its service, a waived visit fee is struck in its row, and the Total strikes the
+  figure before the membership. Per item, Efektif strikes the pre-member figure, and the
+  benefit control sits under it.
+
+A 400/409 naming `bookings[i].plannedBenefit` is a toast plus an error on that animal's main
+service line (both forms), then a re-quote — checked before the clash. The screen only creates; editing still goes through
+`/dashboard/booking/:id/edit` (`BookingForm`), which keeps the stored plan. Its "Member" fact now
+lists the customer's live cards (`useCustomerMemberships`, one request — "Bruno · Explorer",
+"Semua hewan · Keluarga", "—" when none) instead of the old `vipTier`.
+
+**Add-on benefits are applied automatically and shown only** (22 October 2026, both forms). The
+quote sends each ticked add-on with no pick, so the server recommends a benefit per add-on line
+(`<ref>:addon:<i>` — "Member · Diskon 10%" on every add-on, "Jatah Spa 1/1"). `addonBenefitsOf`
+reads them by position against the request that quote answered (the hook's `asked`), so an add-on
+ticked while the next quote is on its way never wears its neighbour's discount. The add-on's row
+strikes its price (BookingForm) or its Efektif (Grooming) and names the benefit — no amount, as
+the till writes it — with "Perkiraan — jatah terpakai saat dibayar di kasir." under a quota one.
+The discount is in the per-animal subtotal, the Ringkasan ("Potongan member · …" under the
+add-on) and the Total / "Potongan member" in the bar. **No pick is saved for an add-on**:
+`plannedBenefit` stays the main service's, and the till applies the add-on lines itself when the
+booking is billed. The server quotes every main service before any add-on (membership-v1 §4.4),
+so an add-on never takes a jatah a main service — its own or another animal's — would use.
+
+**"Tanpa member" per add-on** (22 October 2026, both forms). Beside an add-on's benefit label sits
+a text button **Tanpa member** (`AddonMemberToggle`, link-button pattern, `min-h-11`); pressed, the
+add-on shows its normal price with "Tanpa member" and a **Pakai member** button back (shown only
+while a candidate exists). The card/draft holds `noMemberAddonIds`; the quote sends those add-ons
+with `noBenefit: true`, they drop out of the subtotal, Ringkasan and Total, and the save sends
+`noMemberBenefitAddonIds` (ticked ones only; a create omits it when empty, an edit always sends
+it so `[]` clears). Stored as `service.addons[].noMemberBenefit`; the edit form loads it back
+(`cardFromBooking`), and unticking an add-on forgets it. The till starts that line on
+"Tanpa member" (membership-v1 §8.1).
 
 ### Add-ons
 

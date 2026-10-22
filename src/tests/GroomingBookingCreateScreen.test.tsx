@@ -6,6 +6,7 @@ import { bookingService } from "@/services/booking.service";
 import { branchService } from "@/services/branch.service";
 import { businessLineService } from "@/services/businessLine.service";
 import { customerService } from "@/services/customer.service";
+import { membershipService } from "@/services/membership.service";
 import { petService } from "@/services/pet.service";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
@@ -21,6 +22,13 @@ import type {
   Tenant,
   Zone,
 } from "@/types/api";
+import type {
+  BenefitCandidate,
+  BenefitQuoteResponse,
+  BookingBenefitQuoteInput,
+  PetMembership,
+} from "@/types/membership";
+import { swalToast } from "@/lib/swal";
 
 import { petOptionService } from "@/services/petOption.service";
 
@@ -42,6 +50,7 @@ jest.mock("@/services/variantOption.service");
 jest.mock("@/services/zone.service");
 jest.mock("@/services/tenant.service");
 jest.mock("@/services/petOption.service");
+jest.mock("@/services/membership.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 const push = jest.fn();
@@ -58,6 +67,7 @@ const services = serviceService as jest.Mocked<typeof serviceService>;
 const branches = branchService as jest.Mocked<typeof branchService>;
 const businessLines = businessLineService as jest.Mocked<typeof businessLineService>;
 const tenants = tenantService as jest.Mocked<typeof tenantService>;
+const memberships = membershipService as jest.Mocked<typeof membershipService>;
 
 const BRANCH_ID = "branch-1";
 
@@ -115,6 +125,9 @@ beforeEach(() => {
   bookings.create.mockResolvedValue(created);
   bookings.availability.mockResolvedValue([]);
   tenants.me.mockResolvedValue({ settings: {} } as Tenant);
+  /* Nobody holds a card unless a test says so — the field stays hidden. */
+  memberships.listMemberships.mockResolvedValue(page([]) as never);
+  memberships.quoteBooking.mockResolvedValue({ cards: [], lines: [] });
   branches.list.mockResolvedValue(page([{ _id: BRANCH_ID, name: "Cibubur" }]) as never);
   businessLines.list.mockResolvedValue(
     page([{ _id: "line-groom", name: "Grooming" }]) as never,
@@ -180,6 +193,7 @@ describe("GroomingBookingCreateScreen", () => {
             internalNotes: null,
             price: null,
             discount: null,
+            plannedBenefit: null,
           },
         ],
       }),
@@ -856,5 +870,571 @@ describe("GroomingBookingCreateScreen", () => {
       ).toBeInTheDocument();
       expect(push).not.toHaveBeenCalled();
     });
+  });
+});
+
+/*
+  PROMOSI V1 — the main service's member benefit on its own price row (a name
+  + Tanpa/Pakai member toggle, or a select when several fit), fed by the
+  booking quote (membership-v1 §4.4); the "Benefit lain" box and the "Member"
+  fact read from the customer's cards. The same field and rules as
+  BookingForm's (benefitQuote.ts).
+*/
+describe("GroomingBookingCreateScreen — membership benefit", () => {
+  const jatah: BenefitCandidate = {
+    membershipId: "mem-1",
+    membershipNumber: "MBR-1",
+    virtual: false,
+    packageRef: null,
+    planName: "Explorer",
+    attachTo: "pet",
+    benefitId: "ben-groom",
+    benefitLabel: "Grooming",
+    optionId: "opt-free",
+    optionKind: "free_item",
+    kind: "quota",
+    label: "Jatah Grooming 1/3",
+    discount: "100000.0000",
+    visitFee: "zone",
+    visitFeeDiscount: "0.0000",
+    used: 1,
+    cap: 3,
+    options: [],
+  };
+
+  function answerWith(
+    line: (input: BookingBenefitQuoteInput) => Partial<BenefitQuoteResponse["lines"][number]>,
+  ) {
+    memberships.quoteBooking.mockImplementation(
+      async (input) =>
+        ({
+          cards: [
+            { id: "mem-1", number: "MBR-1", petId: "pet-1", planName: "Explorer", status: "active", benefits: [] },
+          ],
+          lines: [
+            {
+              ref: input.entries[0].ref,
+              petId: input.entries[0].petId,
+              candidates: [],
+              recommended: null,
+              unavailable: [],
+              ...line(input),
+            },
+          ],
+        }) as BenefitQuoteResponse,
+    );
+  }
+
+  const offerJatah = () =>
+    answerWith((input) =>
+      input.entries[0].noBenefit
+        ? { candidates: [jatah], recommended: null }
+        : { candidates: [jatah], recommended: jatah },
+    );
+
+  it("shows no benefit on the row when the animal holds no card", async () => {
+    renderWithAuth(<GroomingBookingCreateScreen />);
+    await fillIn();
+
+    await waitFor(() => expect(memberships.quoteBooking).toHaveBeenCalled());
+    expect(document.querySelector("[data-main-member]")).toBeNull();
+    expect(screen.queryByRole("button", { name: /member untuk/i })).not.toBeInTheDocument();
+    expect(document.querySelector("[data-other-benefits]")).toBeNull();
+  });
+
+  it("preselects the recommended benefit, takes it off the total, and saves it", async () => {
+    offerJatah();
+    renderWithAuth(<GroomingBookingCreateScreen />);
+    await fillIn();
+
+    /* ONE candidate: its name on the service's price row, and the toggle. */
+    const toggle = await screen.findByRole("button", {
+      name: "Tanpa member untuk Basic Grooming",
+    });
+    const row = toggle.closest("[data-main-member]") as HTMLElement;
+    expect(row).toHaveTextContent("Jatah Grooming 1/3");
+    expect(row).toHaveTextContent("Jatah ditahan sampai booking dibayar atau dibatalkan.");
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+
+    /* Asked for the booking's own date and time, one entry per animal. */
+    await waitFor(() =>
+      expect(memberships.quoteBooking.mock.calls.at(-1)?.[0]).toMatchObject({
+        context: "booking",
+        customerId: "cust-1",
+        date: new Date("2026-09-16T10:30").toISOString(),
+        entries: [{ ref: "pet-1", petId: "pet-1", serviceId: "svc-1", amount: "150000.0000" }],
+      }),
+    );
+
+    /* The item row names the benefit; the struck Efektif says how much. */
+    expect(document.querySelector("[data-member-line]")).toBeNull();
+    expect(row).not.toHaveTextContent("Rp");
+    /* Ringkasan: the member line, the normal total struck, the reduced total. */
+    expect(screen.getByText("Potongan member · Jatah Grooming 1/3")).toBeInTheDocument();
+    expect(document.querySelector("[data-total]")).toHaveTextContent("Rp 50.000");
+    expect(document.querySelector("[data-total-before-member]")).toHaveTextContent("Rp 150.000");
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].bookings[0].plannedBenefit).toEqual({
+      membershipId: "mem-1",
+      benefitId: "ben-groom",
+      optionId: "opt-free",
+    });
+  });
+
+  it("sends null after 'Tanpa member', at the normal price", async () => {
+    offerJatah();
+    renderWithAuth(<GroomingBookingCreateScreen />);
+    await fillIn();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Tanpa member untuk Basic Grooming" }),
+    );
+    await waitFor(() =>
+      expect(document.querySelector("[data-total]")).toHaveTextContent("Rp 150.000"),
+    );
+    expect(screen.getByRole("button", { name: "Pakai member untuk Basic Grooming" })).toBeInTheDocument();
+    expect(document.querySelector("[data-total-before-member]")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].bookings[0].plannedBenefit).toBeNull();
+  });
+
+  it("shows why nothing is offered, naming the booking holding the jatah", async () => {
+    answerWith(() => ({
+      unavailable: [
+        {
+          membershipId: "mem-1",
+          benefitId: "ben-groom",
+          benefitLabel: "Grooming",
+          reason: "reserved",
+          message: "Jatah Grooming habis periode ini",
+          reservedBy: [{ bookingId: "b", bookingNumber: "BK-2026-0012", scheduledAt: "x", petId: "pet-1" }],
+        },
+      ],
+    }));
+    renderWithAuth(<GroomingBookingCreateScreen />);
+    await fillIn();
+
+    const message = await screen.findByText(
+      "Jatah Grooming habis periode ini",
+    );
+    /* On the service's price row, muted, with nothing to press. */
+    expect(message.closest("[data-main-member]")).not.toBeNull();
+    expect(message).toHaveClass("text-muted");
+    expect(screen.queryByRole("button", { name: /member untuk/i })).not.toBeInTheDocument();
+  });
+
+  it("offers a select on the row when more than one benefit fits", async () => {
+    const diskon: BenefitCandidate = {
+      ...jatah,
+      benefitId: "ben-disc",
+      benefitLabel: "Diskon",
+      optionId: "opt-disc",
+      optionKind: "discount_percent",
+      kind: "unlimited",
+      label: "Member · Diskon 10%",
+      discount: "15000.0000",
+      used: null,
+      cap: null,
+    };
+    answerWith((input) => {
+      const entry = input.entries[0];
+      const picked = entry.noBenefit ? null : entry.benefitId === "ben-disc" ? diskon : jatah;
+      return { candidates: [jatah, diskon], recommended: picked };
+    });
+    renderWithAuth(<GroomingBookingCreateScreen />);
+    await fillIn();
+
+    const select = await screen.findByRole("combobox", { name: "Member untuk Basic Grooming" });
+    await waitFor(() => expect(select).toHaveTextContent("Jatah Grooming 1/3"));
+    await userEvent.click(select);
+    expect((await screen.findAllByRole("option")).map((option) => option.textContent)).toEqual([
+      "Jatah Grooming 1/3",
+      "Member · Diskon 10%",
+      "Tanpa member",
+    ]);
+    await userEvent.click(screen.getByRole("option", { name: "Member · Diskon 10%" }));
+
+    await waitFor(() =>
+      expect(document.querySelector("[data-total]")).toHaveTextContent("Rp 135.000"),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].bookings[0].plannedBenefit).toEqual({
+      membershipId: "mem-1",
+      benefitId: "ben-disc",
+      optionId: "opt-disc",
+    });
+  });
+
+  it("lists the cards' product benefits and perks in 'Benefit lain', customer cards included", async () => {
+    offerJatah();
+    const scope = (target: string) => ({
+      target,
+      serviceIds: [],
+      productIds: [],
+      categoryIds: [],
+      serviceKinds: [],
+    });
+    memberships.listMemberships.mockResolvedValue(
+      page([
+        {
+          id: "mem-1",
+          attachTo: "pet",
+          petId: "pet-1",
+          status: "active",
+          plan: {
+            name: "Explorer",
+            benefits: [
+              {
+                id: "ben-groom",
+                label: "Grooming",
+                kind: "free_item",
+                scope: scope("service"),
+                quota: { total: null, perPeriod: 1, period: "month" },
+                options: [{ id: "o1", kind: "free_item", scope: scope("service") }],
+              },
+              {
+                id: "ben-prio",
+                label: "Prioritas antrean",
+                kind: "perk",
+                scope: scope("any"),
+                quota: { total: null, perPeriod: null, period: null },
+                options: [],
+              },
+            ],
+          },
+        },
+        {
+          id: "mem-2",
+          attachTo: "customer",
+          petId: null,
+          status: "active",
+          plan: {
+            name: "Keluarga",
+            benefits: [
+              {
+                id: "ben-food",
+                label: "Makanan",
+                kind: "discount_percent",
+                scope: scope("product"),
+                quota: { total: 4, perPeriod: null, period: null },
+                options: [{ id: "o2", kind: "discount_percent", scope: scope("product") }],
+              },
+            ],
+          },
+        },
+      ] as unknown as PetMembership[]) as never,
+    );
+    renderWithAuth(<GroomingBookingCreateScreen />);
+    await fillIn();
+
+    expect(await screen.findByText("Benefit lain dari Explorer")).toBeInTheDocument();
+    expect(screen.getByText("Prioritas antrean (fasilitas)")).toBeInTheDocument();
+    expect(screen.getByText("Benefit lain dari Keluarga")).toBeInTheDocument();
+    expect(
+      screen.getByText("Makanan · 4× selama masa berlaku — dipakai di kasir"),
+    ).toBeInTheDocument();
+    expect(document.querySelector("[data-other-benefits]")).not.toHaveTextContent("Grooming");
+
+    /*
+      "BENEFIT YANG AKAN DIBERIKAN" (22 October 2026) — each line is a checkbox;
+      the ticked ones are saved as `plannedExtras`, a note on the booking.
+    */
+    const perk = screen.getByRole("checkbox", { name: "Prioritas antrean (fasilitas)" });
+    const food = screen.getByRole("checkbox", {
+      name: "Makanan · 4× selama masa berlaku — dipakai di kasir",
+    });
+    await userEvent.click(food);
+    await userEvent.click(perk);
+    await userEvent.click(food);
+    await userEvent.click(food);
+    expect(perk).toBeChecked();
+    expect(food).toBeChecked();
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].bookings[0].plannedExtras).toEqual([
+      { membershipId: "mem-1", benefitId: "ben-prio", label: "Prioritas antrean" },
+      { membershipId: "mem-2", benefitId: "ben-food", label: "Makanan" },
+    ]);
+  });
+
+  /*
+    ADD-ON BENEFITS (22 October 2026) — asked with no pick, read off each
+    `<ref>:addon:<i>` line, applied automatically and shown only.
+  */
+  it("shows each add-on's member benefit on its row, in the Ringkasan and in the total — never saved", async () => {
+    const addonOf = (id: string, name: string) =>
+      ({
+        ...grooming,
+        _id: id,
+        name,
+        price: "20000.0000",
+        serviceType: "addon",
+        addonServiceIds: [],
+      }) as unknown as Service;
+    services.list.mockResolvedValue(
+      page([
+        { ...grooming, addonServiceIds: ["add-parfum", "add-spa"] } as unknown as Service,
+        addonOf("add-parfum", "Parfum"),
+        addonOf("add-spa", "Spa"),
+      ]),
+    );
+    const diskon: BenefitCandidate = {
+      ...jatah,
+      benefitId: "ben-addon",
+      benefitLabel: "Add-on",
+      optionId: "opt-disc",
+      optionKind: "discount_percent",
+      kind: "unlimited",
+      label: "Member · Diskon 10%",
+      discount: "2000.0000",
+      used: null,
+      cap: null,
+    };
+    const spa: BenefitCandidate = {
+      ...jatah,
+      benefitId: "ben-spa",
+      benefitLabel: "Spa",
+      optionId: "opt-spa",
+      label: "Jatah Spa 1/1",
+      discount: "20000.0000",
+      used: 1,
+      cap: 1,
+    };
+    memberships.quoteBooking.mockImplementation(async (input) => {
+      const entry = input.entries[0];
+      return {
+        cards: [
+          { id: "mem-1", number: "MBR-1", petId: "pet-1", planName: "Explorer", status: "active", benefits: [] },
+        ],
+        lines: [
+          { ref: entry.ref, petId: entry.petId, candidates: [jatah], recommended: jatah, unavailable: [] },
+          ...(entry.addons ?? []).map((addon, index) => {
+            const pick = addon.serviceId === "add-spa" ? spa : diskon;
+            return {
+              ref: `${entry.ref}:addon:${index}`,
+              petId: entry.petId,
+              candidates: [pick],
+              recommended: pick,
+              unavailable: [],
+            };
+          }),
+        ],
+      } as BenefitQuoteResponse;
+    });
+    renderWithAuth(<GroomingBookingCreateScreen />);
+    await fillIn();
+    await userEvent.click(await screen.findByRole("checkbox", { name: /parfum/i }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /spa/i }));
+
+    /* Asked with the add-ons and no pick on them. */
+    await waitFor(() =>
+      expect(memberships.quoteBooking.mock.calls.at(-1)?.[0].entries[0].addons).toEqual([
+        { serviceId: "add-parfum", amount: "20000.0000" },
+        { serviceId: "add-spa", amount: "20000.0000" },
+      ]),
+    );
+
+    /* Each add-on row names its benefit as the till does — no amount. */
+    await waitFor(() =>
+      expect(document.querySelectorAll("[data-member-line]")).toHaveLength(2),
+    );
+    const lines = [...document.querySelectorAll("[data-member-line]")].map((el) => el.textContent);
+    expect(lines).toEqual(["Member · Diskon 10%", "Jatah Spa 1/1"]);
+    /* The main service's row names its own, the same way. */
+    expect(document.querySelector("[data-main-member]")).toHaveTextContent("Jatah Grooming 1/3");
+
+    /* Only the quota one says it is an estimate. */
+    expect(screen.getAllByText("Perkiraan — jatah terpakai saat dibayar di kasir.")).toHaveLength(1);
+
+    /* Ringkasan and total: 150.000 + 20.000 + 20.000 − 100.000 − 2.000 − 20.000. */
+    expect(screen.getByText("Potongan member · Member · Diskon 10%")).toBeInTheDocument();
+    expect(screen.getByText("Potongan member · Jatah Spa 1/1")).toBeInTheDocument();
+    expect(document.querySelector("[data-total]")).toHaveTextContent("Rp 68.000");
+    expect(document.querySelector("[data-total-before-member]")).toHaveTextContent("Rp 190.000");
+    expect(screen.getByText(/potongan member Rp 122\.000/)).toBeInTheDocument();
+
+    /* The booking keeps the main service's plan only. */
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    const saved = bookings.create.mock.calls[0][0].bookings[0];
+    expect(saved.plannedBenefit).toEqual({
+      membershipId: "mem-1",
+      benefitId: "ben-groom",
+      optionId: "opt-free",
+    });
+    expect(JSON.stringify(saved)).not.toContain("ben-addon");
+    expect(JSON.stringify(saved)).not.toContain("ben-spa");
+  });
+
+  /* "Tanpa member" per add-on (22 October 2026) — normal price, out of the totals, saved. */
+  it("lets an add-on go without the member benefit, and saves that on the booking", async () => {
+    const addonOf = (id: string, name: string) =>
+      ({
+        ...grooming,
+        _id: id,
+        name,
+        price: "20000.0000",
+        serviceType: "addon",
+        addonServiceIds: [],
+      }) as unknown as Service;
+    services.list.mockResolvedValue(
+      page([
+        { ...grooming, addonServiceIds: ["add-parfum", "add-spa"] } as unknown as Service,
+        addonOf("add-parfum", "Parfum"),
+        addonOf("add-spa", "Spa"),
+      ]),
+    );
+    const diskon: BenefitCandidate = {
+      ...jatah,
+      benefitId: "ben-addon",
+      benefitLabel: "Add-on",
+      optionId: "opt-disc",
+      optionKind: "discount_percent",
+      kind: "unlimited",
+      label: "Member · Diskon 10%",
+      discount: "2000.0000",
+      used: null,
+      cap: null,
+    };
+    const spa: BenefitCandidate = {
+      ...jatah,
+      benefitId: "ben-spa",
+      benefitLabel: "Spa",
+      optionId: "opt-spa",
+      label: "Jatah Spa 1/1",
+      discount: "20000.0000",
+      used: 1,
+      cap: 1,
+    };
+    memberships.quoteBooking.mockImplementation(async (input) => {
+      const entry = input.entries[0];
+      return {
+        cards: [
+          { id: "mem-1", number: "MBR-1", petId: "pet-1", planName: "Explorer", status: "active", benefits: [] },
+        ],
+        lines: [
+          { ref: entry.ref, petId: entry.petId, candidates: [jatah], recommended: jatah, unavailable: [] },
+          ...(entry.addons ?? []).map((addon, index) => {
+            const pick = addon.serviceId === "add-spa" ? spa : diskon;
+            return {
+              ref: `${entry.ref}:addon:${index}`,
+              petId: entry.petId,
+              candidates: [pick],
+              recommended: addon.noBenefit ? null : pick,
+              unavailable: [],
+            };
+          }),
+        ],
+      } as BenefitQuoteResponse;
+    });
+    renderWithAuth(<GroomingBookingCreateScreen />);
+    await fillIn();
+    await userEvent.click(await screen.findByRole("checkbox", { name: /parfum/i }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /spa/i }));
+    await waitFor(() => expect(document.querySelector("[data-total]")).toHaveTextContent("Rp 68.000"));
+
+    const off = screen.getByRole("button", { name: "Tanpa member untuk Spa" });
+    expect(off).toHaveClass("min-h-11");
+    await userEvent.click(off);
+
+    await waitFor(() =>
+      expect(memberships.quoteBooking.mock.calls.at(-1)?.[0].entries[0].addons).toEqual([
+        { serviceId: "add-parfum", amount: "20000.0000" },
+        { serviceId: "add-spa", amount: "20000.0000", noBenefit: true },
+      ]),
+    );
+    /* 150.000 + 20.000 + 20.000 − 100.000 − 2.000. */
+    await waitFor(() => expect(document.querySelector("[data-total]")).toHaveTextContent("Rp 88.000"));
+    expect(document.querySelector("[data-member-off]")).toHaveTextContent("Tanpa member");
+    expect(screen.queryByText("Potongan member · Jatah Spa 1/1")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pakai member untuk Spa" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+    await waitFor(() => expect(bookings.create).toHaveBeenCalled());
+    expect(bookings.create.mock.calls[0][0].bookings[0].noMemberBenefitAddonIds).toEqual(["add-spa"]);
+  });
+
+  it("puts a 409 on the benefit in a toast and under the animal — not in the clash", async () => {
+    offerJatah();
+    bookings.create.mockRejectedValue(
+      new ApiError("Benefit membership tidak bisa dipakai untuk booking ini", 409, {
+        details: [
+          { field: "bookings[0].plannedBenefit", message: "Jatah periode ini sudah habis" },
+        ] as never,
+      }),
+    );
+    renderWithAuth(<GroomingBookingCreateScreen />);
+    await fillIn();
+
+    await screen.findByRole("button", { name: "Tanpa member untuk Basic Grooming" });
+    await userEvent.click(screen.getByRole("button", { name: /simpan booking/i }));
+
+    const message = "Jatah periode ini sudah habis";
+    await waitFor(() => expect(swalToast).toHaveBeenCalledWith(message, "error", 6000));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    /* On the service's price row. */
+    expect(alert.closest("[data-main-member]")).not.toBeNull();
+    expect(screen.queryByText(/tekan Simpan lagi/)).not.toBeInTheDocument();
+  });
+
+  it("reads the Member fact from the customer's cards, not the VIP tier", async () => {
+    customers.list.mockResolvedValue(page([{ ...customer, vipTier: "gold" } as Customer]));
+    memberships.listMemberships.mockResolvedValue(
+      page([
+        {
+          id: "mem-1",
+          attachTo: "pet",
+          petId: "pet-1",
+          petName: "Bruno",
+          status: "active",
+          plan: { name: "Tes Explorer" },
+        },
+        {
+          id: "mem-2",
+          attachTo: "customer",
+          petId: null,
+          petName: null,
+          status: "active",
+          plan: { name: "Keluarga" },
+        },
+      ] as unknown as PetMembership[]) as never,
+    );
+    renderWithAuth(<GroomingBookingCreateScreen />);
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /cari nama atau nomor whatsapp/i }),
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /ibu rina/i }));
+
+    // The animal's card sits on its tile under Hewan; the Member fact keeps
+    // only the customer-held card as a chip and counts the animals' cards.
+    expect(await screen.findByText("Member · Tes Explorer")).toBeInTheDocument();
+    expect(screen.getByText("Semua hewan · Keluarga")).toBeInTheDocument();
+    expect(screen.getByText("1 hewan member")).toBeInTheDocument();
+    expect(screen.queryByText("Gold")).not.toBeInTheDocument();
+    expect(memberships.listMemberships).toHaveBeenCalledTimes(1);
+    expect(memberships.listMemberships).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: "cust-1", status: ["active", "paused"] }),
+    );
+  });
+
+  it("says — when the customer holds no card", async () => {
+    renderWithAuth(<GroomingBookingCreateScreen />);
+    await userEvent.click(
+      screen.getByRole("button", { name: /cari nama atau nomor whatsapp/i }),
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /ibu rina/i }));
+
+    await waitFor(() => expect(memberships.listMemberships).toHaveBeenCalled());
+    const fact = screen.getByText("Member").closest("div");
+    expect(fact).toHaveTextContent("—");
+    expect(document.querySelector("[data-member-chip]")).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Pencil, Plus, Trash2 } from "lucide-react";
+import { Minus, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -65,10 +65,9 @@ export function PosCartLine({
   onQtyChange: (index: number, qty: string) => void;
   /**
    * Takes lines out — a LIST when a service goes, because its add-ons go with
-   * it. They have no bin of their own, so a service removed on its own would
-   * leave them in the basket as lines nothing can reach: `nestAddons` stands an
-   * add-on whose parent is gone back up as a top-level line, and that line has
-   * no way to be removed either.
+   * it (`nestAddons` would otherwise stand an orphaned add-on back up as a
+   * top-level line). Since 21 October 2026 each add-on also has its own × that
+   * takes just that one off.
    */
   onRemove: (index: number | number[]) => void;
   /**
@@ -325,11 +324,9 @@ export function PosCartLine({
               </span>
 
               {/*
-                NO CONTROLS OF ITS OWN — the discount and the bin belong to the
-                SERVICE, and an add-on is priced and taken off with the thing it
-                is attached to. Two icon buttons per add-on put four controls in
-                a block that sells one grooming, and the two that mattered got
-                harder to find.
+                ONE CONTROL OF ITS OWN: the ×, below (21 October 2026, on
+                request — taking one add-on off used to mean removing the whole
+                grooming). The discount still belongs to the SERVICE.
               */}
               <span className="shrink-0 text-right text-xs tabular-nums text-muted">
                 {/* A card's pick on the add-on strikes its price, like a line's. */}
@@ -342,6 +339,18 @@ export function PosCartLine({
                   formatMoney(addon.lineTotal)
                 )}
               </span>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="-my-1 size-7 shrink-0 text-muted hover:text-danger"
+                disabled={disabled || locked}
+                aria-label={`Hapus add-on ${addon.name}`}
+                onClick={() => onRemove(addonIndex)}
+              >
+                <X className="size-3.5" />
+              </Button>
             </li>
           ))}
         </ul>

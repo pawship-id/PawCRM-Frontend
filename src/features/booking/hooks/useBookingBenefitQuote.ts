@@ -47,6 +47,7 @@ export function useBookingBenefitQuote(input: BookingBenefitQuoteInput | null) {
   const [result, setResult] = useState<{
     key: string;
     nonce: number;
+    input: BookingBenefitQuoteInput;
     quote: BenefitQuoteResponse | null;
   } | null>(null);
 
@@ -55,8 +56,9 @@ export function useBookingBenefitQuote(input: BookingBenefitQuoteInput | null) {
 
     let active = true;
     const timer = setTimeout(() => {
-      void fetchBookingQuote(JSON.parse(key) as BookingBenefitQuoteInput).then((quote) => {
-        if (active) setResult({ key, nonce, quote });
+      const asked = JSON.parse(key) as BookingBenefitQuoteInput;
+      void fetchBookingQuote(asked).then((quote) => {
+        if (active) setResult({ key, nonce, input: asked, quote });
       });
     }, SETTLE_MS);
 
@@ -76,6 +78,11 @@ export function useBookingBenefitQuote(input: BookingBenefitQuoteInput | null) {
 
   return {
     quote: key !== null ? (result?.quote ?? null) : null,
+    /**
+     * The request `quote` answered — an add-on line is named by its position in
+     * it (`<ref>:addon:<i>`), so `addonBenefitsOf` reads positions from here.
+     */
+    asked: key !== null ? (result?.input ?? null) : null,
     pending: key !== null && !current,
     latest,
     refresh: useCallback(() => setNonce((n) => n + 1), []),

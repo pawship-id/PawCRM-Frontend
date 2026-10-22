@@ -297,6 +297,13 @@ export interface BenefitAvailability extends MembershipBenefit {
   periodLabel: string | null;
   available: boolean;
   reason: BenefitUnavailableReason | null;
+  /**
+   * Unbilled bookings holding this quota (§3.3) — already off `remaining`.
+   * `reserved` is the headline bucket's count (period, else lifetime), null
+   * when unlimited; `reservedBy` names them.
+   */
+  reserved?: number | null;
+  reservedBy?: MembershipReservation[];
 }
 
 /** The plan as it was SOLD — frozen into the card at issue (§3.1 `plan`). */
@@ -919,6 +926,8 @@ export interface BenefitQuoteLineResult {
   plannedBenefit?: { membershipId: string; benefitId: string; optionId: string | null } | null;
   /** `recommended` is the booking's plan — show "sesuai booking". */
   plannedApplied?: boolean;
+  /** A booking add-on agreed "Tanpa member" — quoted as `noBenefit` unless pinned. */
+  plannedNoBenefit?: boolean;
 }
 
 export interface BenefitQuoteResponse {
