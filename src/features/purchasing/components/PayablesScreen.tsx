@@ -237,6 +237,7 @@ export function PayablesScreen() {
             search={query.search}
             sort={query.sort}
             onSortChange={(sort) => setQuery({ sort })}
+            canEdit={can("purchaseInvoices", "create")}
             canPay={can("purchaseInvoices", "pay")}
             canReceive={can("goodsReceipts", "create")}
             onPay={openPay}
