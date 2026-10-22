@@ -977,6 +977,18 @@ export interface Branch {
   /** Null prints the branch's own name. */
   receiptBranchName?: string | null;
   /**
+   * THE FAKTUR'S OWN HEADER AND FOOTER (22 Oktober 2026) — the struk's rules,
+   * read by the faktur and its kwitansi, its own logo included.
+   * `invoiceFooterNote` null prints nothing (no default sentence).
+   */
+  invoiceLogo?: MediaAsset | null;
+  invoiceHeaderText?: string | null;
+  invoiceShowTenantName?: boolean;
+  invoiceTenantName?: string | null;
+  invoiceShowBranchName?: boolean;
+  invoiceBranchName?: string | null;
+  invoiceFooterNote?: string | null;
+  /**
    * When the doors are open — `HH:mm` in the tenant's timezone, both or neither.
    * Null means UNRECORDED, not closed, and nothing enforces them yet: the
    * booking validator that will read them is why they are stored as times rather
@@ -1106,6 +1118,14 @@ export interface CreateBranchInput {
   receiptTenantName?: string | null;
   receiptShowBranchName?: boolean;
   receiptBranchName?: string | null;
+  /** The faktur's logo — same upload rules as `receiptLogo`. */
+  invoiceLogo?: MediaAsset | null;
+  invoiceHeaderText?: string | null;
+  invoiceShowTenantName?: boolean;
+  invoiceTenantName?: string | null;
+  invoiceShowBranchName?: boolean;
+  invoiceBranchName?: string | null;
+  invoiceFooterNote?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
   location?: GeoLocationInput | null;
   isActive?: boolean;
@@ -1135,6 +1155,14 @@ export interface UpdateBranchInput {
   receiptTenantName?: string | null;
   receiptShowBranchName?: boolean;
   receiptBranchName?: string | null;
+  /** The faktur's logo — same upload rules as `receiptLogo`. */
+  invoiceLogo?: MediaAsset | null;
+  invoiceHeaderText?: string | null;
+  invoiceShowTenantName?: boolean;
+  invoiceTenantName?: string | null;
+  invoiceShowBranchName?: boolean;
+  invoiceBranchName?: string | null;
+  invoiceFooterNote?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
   location?: GeoLocationInput | null;
   isActive?: boolean;
@@ -7397,8 +7425,9 @@ export interface CustomerInvoiceListRow {
 }
 
 /**
- * The branch's header settings for a printed faktur — the same ones its struk
- * follows (`utils/receiptHeader.js` → `brandingOf` on the server).
+ * The branch's FAKTUR settings for a printed faktur and its kwitansi — its own
+ * set since 22 Oktober 2026, apart from the struk's, logo included
+ * (`utils/receiptHeader.js` → `invoiceBrandingOf` on the server).
  *
  * The TENANT name is left to the sheet, which falls back to the legal name: a
  * hidden one is `showTenantName: false`, and `tenantName` is only the branch's
@@ -7411,6 +7440,8 @@ export interface InvoicePrintHeader {
   branchName: string;
   logoUrl: string;
   headerText: string;
+  /** The faktur's closing note — bank details. "" prints nothing. Optional: older API. */
+  footerNote?: string;
 }
 
 /** GET /api/customer-invoices/:id — the row, plus its payments and labels. */
@@ -7616,7 +7647,6 @@ export interface PublicCustomerInvoice {
     name: string;
     legalName?: string | null;
     taxId?: string | null;
-    invoiceFooterNote: string | null;
   };
 }
 

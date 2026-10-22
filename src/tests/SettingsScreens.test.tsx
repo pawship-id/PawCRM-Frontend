@@ -272,8 +272,8 @@ describe("GeneralSettingsScreen", () => {
     renderWithAuth(<GeneralSettingsScreen />);
 
     expect(
-      screen.getByRole("link", { name: /Faktur & dokumen/ }),
-    ).toHaveAttribute("href", "/dashboard/pengaturan/faktur-dokumen");
+      screen.queryByRole("link", { name: /Faktur & dokumen/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Stok & kasir/ })).toHaveAttribute(
       "href",
       "/dashboard/pengaturan/stok-kasir",
@@ -416,7 +416,6 @@ describe("GeneralSettingsScreen", () => {
       "Tipe supplier",
       "Nomor dokumen",
       "Notifikasi",
-      "Faktur & dokumen",
       "Stok & kasir",
       // POS offline mode (19 October 2026).
       "Perangkat kasir",

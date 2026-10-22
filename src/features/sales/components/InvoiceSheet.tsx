@@ -98,6 +98,7 @@ function headerOf(invoice: InvoiceSheetInvoice, tenant: InvoiceSheetTenant | nul
       branchName: invoice.branchName ?? "",
       logoUrl: "",
       headerText: "",
+      footerNote: tenant?.settings?.invoiceFooterNote ?? "",
     };
   }
 
@@ -106,6 +107,11 @@ function headerOf(invoice: InvoiceSheetInvoice, tenant: InvoiceSheetTenant | nul
     branchName: header.branchName,
     logoUrl: header.logoUrl,
     headerText: header.headerText,
+    /*
+      THE BRANCH'S NOTE since 22 Oktober 2026 (BO: "pindah per cabang"). The
+      tenant's old one is read only when an older API sent no `footerNote`.
+    */
+    footerNote: header.footerNote ?? tenant?.settings?.invoiceFooterNote ?? "",
   };
 }
 
@@ -458,9 +464,9 @@ export function InvoiceSheet({
         NOT SHOWN ON A VOIDED INVOICE: "pembayaran ditujukan ke" on a bill that
         has been cancelled invites exactly the payment the void exists to stop.
       */}
-      {!voided && tenant?.settings?.invoiceFooterNote && (
+      {!voided && header.footerNote && (
         <p className="mt-8 whitespace-pre-line border-t border-border pt-4 text-xs text-muted">
-          {tenant.settings.invoiceFooterNote}
+          {header.footerNote}
         </p>
       )}
 
@@ -659,13 +665,13 @@ function ThermalSheet({
         )}
       </div>
 
-      {!voided && tenant?.settings?.invoiceFooterNote && (
+      {!voided && header.footerNote && (
         <>
           <Rule />
           {/* Newlines survive here for the same reason they do on A4: bank
               details run to two or three lines. */}
           <p className="whitespace-pre-line text-center text-xs">
-            {tenant.settings.invoiceFooterNote}
+            {header.footerNote}
           </p>
         </>
       )}

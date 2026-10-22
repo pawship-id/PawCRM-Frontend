@@ -55,7 +55,15 @@ const invoice = (
   voidReason: null,
   tenant: {
     name: "PawShip",
-    invoiceFooterNote: "Transfer ke BCA 123 a.n. PawShip",
+  },
+  // The faktur's closing note is the branch's since 22 Oktober 2026.
+  printHeader: {
+    showTenantName: true,
+    tenantName: null,
+    branchName: "Cabang Selatan",
+    logoUrl: "",
+    headerText: "",
+    footerNote: "Transfer ke BCA 123 a.n. PawShip",
   },
   ...overrides,
 });
