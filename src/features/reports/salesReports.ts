@@ -261,30 +261,6 @@ const INVOICE_COLUMNS: SalesReportColumn<SalesInvoiceReportRow>[] = [
   },
 ];
 
-/** Not in the per-invoice file, but the rincian barang file still prints them. */
-const PAYMENT_COLUMNS: SalesReportColumn<SalesInvoiceReportRow>[] = [
-  {
-    header: "Dibayar",
-    value: (r) => num(r.paidAmount),
-    type: "number",
-    width: 16,
-    about: "Yang sudah dibayar",
-  },
-  {
-    header: "Sisa tagihan",
-    value: (r) => num(r.outstandingAmount),
-    type: "number",
-    width: 16,
-    about: "Total − dibayar (0 untuk faktur batal)",
-  },
-  {
-    header: "Dibuat oleh",
-    value: (r) => r.createdByName,
-    width: 18,
-    about: "Kasir / admin yang membuat",
-  },
-];
-
 /**
  * One row per faktur in the period: when, where, for whom, the breakdown from
  * subtotal down to PPN, and where it stands (dibayar, sisa, status).
@@ -439,32 +415,39 @@ interface InvoiceLineRow {
 }
 
 /**
- * A per-invoice column, read off the faktur and merged down over its lines —
- * the same definition as Penjualan per invoice, so the two files agree.
+ * A per-invoice column, read off the faktur and repeated on each of its lines
+ * — the same definition as Penjualan per invoice, so the two files agree.
+ * Not merged (BO, 23 Oktober 2026): one line, one complete row, so the sheet
+ * can be filtered and sorted as it is.
  */
-const invoiceColumn = (header: string): SalesReportColumn<InvoiceLineRow> => {
-  const column = [...INVOICE_COLUMNS, ...PAYMENT_COLUMNS].find(
-    (c) => c.header === header,
-  );
+const invoiceColumn = (
+  header: string,
+  rename?: string,
+): SalesReportColumn<InvoiceLineRow> => {
+  const column = INVOICE_COLUMNS.find((c) => c.header === header);
   if (!column) throw new Error(`Unknown invoice column: ${header}`);
-  return { ...column, value: (r) => column.value(r.invoice), merge: true };
+  return {
+    ...column,
+    header: rename ?? column.header,
+    value: (r) => column.value(r.invoice),
+  };
 };
 
 /**
- * Who and when, then the lines, then the faktur's money — the order a faktur
- * is read in, top to bottom.
+ * Who and when, then the lines, then how it was paid and where it stands.
  */
 const INVOICE_LINE_COLUMNS: SalesReportColumn<InvoiceLineRow>[] = [
   ...[
     "No. faktur",
     "Tanggal faktur",
+    "Nama toko",
     "Cabang",
     "Gudang",
     "Pelanggan",
     "No. HP",
     "Tipe pelanggan",
     "Sumber",
-  ].map(invoiceColumn),
+  ].map((header) => invoiceColumn(header)),
   {
     header: "Tipe",
     value: (r) => (r.line ? KIND_LABEL[r.line.kind] : null),
@@ -489,7 +472,6 @@ const INVOICE_LINE_COLUMNS: SalesReportColumn<InvoiceLineRow>[] = [
     about:
       "Kategori produk; untuk layanan, kelompoknya (Grooming, Hotel, Antar-Jemput); Membership untuk membership",
   },
-  { header: "Satuan", value: (r) => r.line?.unit, about: "Satuan produk" },
   {
     header: "Qty",
     value: (r) => num(r.line?.qty ?? null),
@@ -517,23 +499,13 @@ const INVOICE_LINE_COLUMNS: SalesReportColumn<InvoiceLineRow>[] = [
     width: 16,
     about: "Qty × harga − diskon barang (sebelum diskon faktur dan PPN)",
   },
-  ...[
-    "Diskon faktur",
-    "Biaya lain",
-    "PPN",
-    "Grand total",
-    "Dibayar",
-    "Sisa tagihan",
-    "Status",
-    "Dibuat oleh",
-    "Catatan",
-  ].map(invoiceColumn),
+  invoiceColumn("Akun bayar", "Akun pembayaran"),
+  ...["Status", "Catatan"].map((header) => invoiceColumn(header)),
 ];
 
 /**
- * Penjualan per invoice with each faktur's lines, one sheet row per line; the
- * faktur's own cells are merged down over them, so a SUM over Total still
- * counts each faktur once.
+ * Penjualan per invoice with each faktur's lines, one sheet row per line, the
+ * faktur's own cells repeated on every line.
  */
 export const salesInvoiceLineReport: SalesReportDefinition<
   InvoiceLineRow,
@@ -542,11 +514,12 @@ export const salesInvoiceLineReport: SalesReportDefinition<
   ...salesInvoiceReport,
   title: "Penjualan per invoice (rincian barang)",
   description:
-    "Setiap faktur dengan barang dan layanannya, satu baris per barang. Data faktur digabung (merge) per faktur. Diunduh sebagai Excel.",
+    "Setiap faktur dengan barang dan layanannya, satu baris per barang. Diunduh sebagai Excel.",
   fileName: "penjualan-per-invoice-rincian",
   rowNoun: "baris barang",
   columns: INVOICE_LINE_COLUMNS,
-  groupKey: (r) => r.invoice.invoiceNumber,
+  // No merged cells: every line is a full row.
+  groupKey: undefined,
   fetch: async (scope, statuses) =>
     (
       await reportService.salesInvoices({ ...scope, statuses, withLines: true })
