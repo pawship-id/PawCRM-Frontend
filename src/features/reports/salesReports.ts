@@ -470,7 +470,12 @@ const INVOICE_LINE_COLUMNS: SalesReportColumn<InvoiceLineRow>[] = [
     value: (r) => (r.line ? KIND_LABEL[r.line.kind] : null),
     about: "Produk, layanan, atau membership",
   },
-  { header: "SKU", value: (r) => r.line?.sku, width: 16, about: "Kode produk" },
+  {
+    header: "SKU",
+    value: (r) => r.line?.sku,
+    width: 16,
+    about: "Kode produk; untuk layanan dan membership, kodenya",
+  },
   {
     header: "Nama barang/layanan",
     value: (r) => r.line?.name,
@@ -481,7 +486,8 @@ const INVOICE_LINE_COLUMNS: SalesReportColumn<InvoiceLineRow>[] = [
     header: "Kategori",
     value: (r) => r.line?.categoryName,
     width: 18,
-    about: "Kategori produk (kosong untuk layanan)",
+    about:
+      "Kategori produk; untuk layanan, kelompoknya (Grooming, Hotel, Antar-Jemput); Membership untuk membership",
   },
   { header: "Satuan", value: (r) => r.line?.unit, about: "Satuan produk" },
   {

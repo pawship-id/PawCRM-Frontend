@@ -194,7 +194,7 @@ export interface SalesInvoiceReportLine {
   kind: "product" | "service" | "membership";
   sku: string | null;
   name: string | null;
-  /** Products only; a service has neither. */
+  /** A product's category; a service's kelompok (Grooming, Hotel). */
   categoryName: string | null;
   unit: string | null;
   qty: string | null;
