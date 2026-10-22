@@ -95,6 +95,7 @@ export function BranchDetail({ id }: { id: string }) {
         <>
           <BranchHero branch={branch} />
           <IdentityCard branch={branch} />
+          <ReceiptTemplateCard branch={branch} />
           {mayReadWarehouses && <BranchWarehouses branchId={branch._id} />}
         </>
       )}
@@ -172,6 +173,42 @@ function IdentityCard({ branch }: { branch: Branch }) {
         </Row>
         <Row label="Hari operasional">{days || "Belum diisi"}</Row>
         {/*
+          READ DEFENSIVELY. `location` arrived after the collection did and the
+          backend's list reads use `.lean()`, which skips schema defaults — so a
+          branch written before the field comes back with no `location` key at
+          all, not with a pair of nulls.
+        */}
+        <Row
+          label="Titik peta"
+          note="Menentukan zona antar-jemput dihitung dari mana."
+        >
+          {branch.location?.lat != null && branch.location?.lng != null ? (
+            <span className="tabular-nums">
+              {branch.location.lat}, {branch.location.lng}
+            </span>
+          ) : (
+            "Belum dipasang"
+          )}
+        </Row>
+        <Row label="Dibuat">{fullDate(branch.createdAt)}</Row>
+        <Row label="Terakhir diubah">{fullDate(branch.updatedAt)}</Row>
+      </dl>
+    </Card>
+  );
+}
+
+/**
+ * What the top and foot of this branch's struk and faktur print — its own card
+ * so it reads apart from the branch's identity (22 October 2026, on request).
+ */
+function ReceiptTemplateCard({ branch }: { branch: Branch }) {
+  return (
+    <Card
+      title="Template invoice"
+      description="Kop dan catatan kaki yang tercetak di struk dan faktur cabang ini."
+    >
+      <dl className="divide-y divide-border">
+        {/*
           THE RECEIPT'S TOP. A missing toggle is ON (lean reads skip defaults),
           and an empty override prints the live name — said so, rather than "—",
           because "—" would read as "nothing prints".
@@ -200,26 +237,6 @@ function IdentityCard({ branch }: { branch: Branch }) {
         </Row>
         <Row label="Teks header struk">{branch.receiptHeaderText || "—"}</Row>
         <Row label="Catatan kaki struk">{branch.receiptFooter || "—"}</Row>
-        {/*
-          READ DEFENSIVELY. `location` arrived after the collection did and the
-          backend's list reads use `.lean()`, which skips schema defaults — so a
-          branch written before the field comes back with no `location` key at
-          all, not with a pair of nulls.
-        */}
-        <Row
-          label="Titik peta"
-          note="Menentukan zona antar-jemput dihitung dari mana."
-        >
-          {branch.location?.lat != null && branch.location?.lng != null ? (
-            <span className="tabular-nums">
-              {branch.location.lat}, {branch.location.lng}
-            </span>
-          ) : (
-            "Belum dipasang"
-          )}
-        </Row>
-        <Row label="Dibuat">{fullDate(branch.createdAt)}</Row>
-        <Row label="Terakhir diubah">{fullDate(branch.updatedAt)}</Row>
       </dl>
     </Card>
   );
