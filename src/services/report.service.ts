@@ -84,6 +84,7 @@ export const reportService = {
         branchIds: query.branchIds,
         warehouseIds: query.warehouseIds,
         statuses: query.statuses,
+        withLines: query.withLines,
       },
       timeoutMs: 60_000,
     }),

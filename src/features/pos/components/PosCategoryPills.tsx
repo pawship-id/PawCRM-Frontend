@@ -4,12 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { categoryService } from "@/services/category.service";
+import { tillCategories } from "../offline/tillApi";
 import type { Category } from "@/types/api";
 import type { PosCatalogState } from "../hooks/usePosCatalog";
-
-/** The API's page cap. */
-const FETCH_LIMIT = 100;
 
 /**
  * How many categories the row shows before "Lainnya" (28 September 2026, on
@@ -46,11 +43,11 @@ export function PosCategoryPills({
   useEffect(() => {
     let active = true;
 
-    categoryService
-      // `withProductCount` is what the ranking below is ordered by.
-      .list({ isActive: true, limit: FETCH_LIMIT, withProductCount: true })
-      .then((result) => {
-        if (active) setCategories(result.items);
+    // `withProductCount` is what the ranking below is ordered by; offline the
+    // counts come from the device's catalogue (POS offline mode).
+    tillCategories()
+      .then((items) => {
+        if (active) setCategories(items);
       })
       // A pill row that cannot load its categories falls back to Semua and
       // Layanan, which still works. A red banner over a working grid would not.

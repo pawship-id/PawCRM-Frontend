@@ -98,8 +98,30 @@ export function ReceiptPreview({
       className="mx-auto w-full bg-surface p-4 text-sm text-foreground"
     >
       <div className="text-center">
-        <p className="font-semibold">{header.tenantName}</p>
+        {/*
+          THE BRANCH'S OWN TOP (logo, names, header line). Every piece is
+          optional and the server has already applied the branch's toggles and
+          overrides — "" is a line the shop chose not to print.
+
+          A plain img for the reason ImageField gives: the storage host is chosen
+          per deployment. The print copy loads the same URL the preview already
+          has, so it comes from cache by the time `window.print()` runs.
+        */}
+        {header.logoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={header.logoUrl}
+            alt={header.tenantName ? `Logo ${header.tenantName}` : "Logo toko"}
+            className="mx-auto mb-2 max-h-16 w-auto object-contain"
+          />
+        )}
+        {header.tenantName && (
+          <p className="font-semibold">{header.tenantName}</p>
+        )}
         {header.branchName && <p>{header.branchName}</p>}
+        {header.headerText && (
+          <p className="text-xs whitespace-pre-line">{header.headerText}</p>
+        )}
         {header.address && <p className="text-xs">{header.address}</p>}
         {header.phone && <p className="text-xs tabular-nums">{header.phone}</p>}
       </div>

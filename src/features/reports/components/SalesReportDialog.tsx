@@ -106,6 +106,11 @@ export interface SalesReportDefinition<Row, Choice extends string> {
   locations?: "sales" | "branches" | "stock" | "none";
   columns: SalesReportColumn<Row>[];
   /**
+   * Consecutive rows sharing a key are one group, and the `merge` columns are
+   * merged down over it — a faktur's cells over its lines. See `buildXlsx`.
+   */
+  groupKey?: (row: Row) => string;
+  /**
    * The one filter particular to this report — Status, Tipe… Omitted when the
    * period, cabang and gudang are all it asks (Batch terjual).
    */
@@ -273,7 +278,7 @@ export function SalesReportDialog<Row, Choice extends string>({
         hasPeriod
           ? `${report.fileName}_${range.from}_${range.to}.xlsx`
           : `${report.fileName}_${atOneDate ? asOf : isoDate(new Date())}.xlsx`,
-        { sheetName: report.title },
+        { sheetName: report.title, groupKey: report.groupKey },
       );
       swalToast(
         rows.length === 0

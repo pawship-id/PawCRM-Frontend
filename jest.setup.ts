@@ -47,3 +47,18 @@ beforeEach(() => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   require("@/features/inventory/hooks/useProductCandidates").clearProductCandidatesCache();
 });
+
+/**
+ * A clean connection and a clean offline till between tests (POS offline mode,
+ * 19 October 2026). Both live in module-level stores that outlive a test, so a
+ * suite whose mocks reject with network errors would otherwise leave every test
+ * after it believing the till is offline.
+ */
+beforeEach(async () => {
+  const connectivity = await import("@/lib/connectivity");
+  connectivity.__resetConnectivity("online");
+  const store = await import("@/features/pos/offline/store");
+  store.__resetOfflineStore();
+  const idb = await import("@/features/pos/offline/idb");
+  idb.__resetMemoryStore();
+});

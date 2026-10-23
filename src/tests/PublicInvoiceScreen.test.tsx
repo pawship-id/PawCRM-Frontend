@@ -55,7 +55,15 @@ const invoice = (
   voidReason: null,
   tenant: {
     name: "PawShip",
-    invoiceFooterNote: "Transfer ke BCA 123 a.n. PawShip",
+  },
+  // The faktur's closing note is the branch's since 22 Oktober 2026.
+  printHeader: {
+    showTenantName: true,
+    tenantName: null,
+    branchName: "Cabang Selatan",
+    logoUrl: "",
+    headerText: "",
+    footerNote: "Transfer ke BCA 123 a.n. PawShip",
   },
   ...overrides,
 });
@@ -146,5 +154,55 @@ describe("PublicInvoiceScreen", () => {
     await screen.findByText("INV/CBS/2609/0006");
     expect(screen.queryAllByRole("button")).toHaveLength(0);
     expect(screen.queryAllByRole("link")).toHaveLength(0);
+  });
+});
+
+/*
+  THE BRANCH'S HEADER SETTINGS reach the faktur too (20 Oktober 2026) — the same
+  logo, header line and name switches its struk follows.
+*/
+describe("PublicInvoiceScreen — the branch's header", () => {
+  it("prints the branch's logo, its own names and its header line", async () => {
+    mocked.publicInvoice.mockResolvedValue(
+      invoice({
+        printHeader: {
+          showTenantName: true,
+          tenantName: "PawShip Pet Care",
+          branchName: "PawShip Selatan",
+          logoUrl: "https://cdn.test/logo.webp",
+          headerText: "Grooming & Petshop",
+        },
+      }),
+    );
+
+    render(<PublicInvoiceScreen token={TOKEN} />);
+
+    expect(await screen.findByText("PawShip Pet Care")).toBeInTheDocument();
+    expect(screen.getByText("PawShip Selatan")).toBeInTheDocument();
+    expect(screen.queryByText("Cabang Selatan")).not.toBeInTheDocument();
+    expect(screen.getByText("Grooming & Petshop")).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "Logo PawShip Pet Care" }),
+    ).toHaveAttribute("src", "https://cdn.test/logo.webp");
+  });
+
+  it("prints no names the branch switched off", async () => {
+    mocked.publicInvoice.mockResolvedValue(
+      invoice({
+        printHeader: {
+          showTenantName: false,
+          tenantName: null,
+          branchName: "",
+          logoUrl: "",
+          headerText: "",
+        },
+      }),
+    );
+
+    render(<PublicInvoiceScreen token={TOKEN} />);
+
+    expect(await screen.findByText("INV/CBS/2609/0006")).toBeInTheDocument();
+    expect(screen.queryByText("Cabang Selatan")).not.toBeInTheDocument();
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
   });
 });

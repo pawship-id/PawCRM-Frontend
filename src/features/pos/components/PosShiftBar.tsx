@@ -81,7 +81,17 @@ export function PosShiftBar({
   onXReport,
   onSettings,
   onCloseShift,
+  offline = false,
+  statusSlot,
 }: {
+  /**
+   * POS OFFLINE MODE (19 October 2026): selling from the device. X-Report and
+   * Tutup Kasir read the server, so they wait; the day's list opens on the
+   * device's own unsent sales.
+   */
+  offline?: boolean;
+  /** The Online/Offline chip — see `PosOfflineStatus`. */
+  statusSlot?: React.ReactNode;
   shift: PosShift;
   /** This shift's running figures, or null until they have been read. */
   totals: ShiftTotals | null;
@@ -137,6 +147,8 @@ export function PosShiftBar({
         including Tutup Kasir, which is the one somebody hunts for at closing.
       */}
       <div className="flex flex-wrap items-center gap-2">
+        {statusSlot}
+
         <Button
           type="button"
           variant="secondary"
@@ -164,7 +176,13 @@ export function PosShiftBar({
           Transaksi hari ini
         </Button>
 
-        <Button type="button" variant="secondary" size="sm" onClick={onXReport}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={onXReport}
+          disabled={offline}
+        >
           <Receipt className="size-4" />
           X-Report
         </Button>
@@ -199,7 +217,7 @@ export function PosShiftBar({
           cannot do it should not be shown a button that will refuse them.
         */}
         <Can feature="posShifts" action="close">
-          <Button type="button" size="sm" onClick={onCloseShift}>
+          <Button type="button" size="sm" onClick={onCloseShift} disabled={offline}>
             Tutup Kasir
           </Button>
         </Can>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BanknoteArrowUp, Eye, PackageCheck } from "lucide-react";
+import { BanknoteArrowUp, Eye, PackageCheck, Pencil } from "lucide-react";
 
 import {
   DataTable,
@@ -49,11 +49,13 @@ const SORT_OPTIONS: SortOptions<PurchaseInvoiceSort> = {
 
 function payablesColumns({
   search,
+  canEdit,
   canPay,
   canReceive,
   onPay,
 }: {
   search: string;
+  canEdit: boolean;
   canPay: boolean;
   canReceive: boolean;
   onPay: (invoice: PurchaseInvoiceListRow) => void;
@@ -189,6 +191,15 @@ function payablesColumns({
             icon: <Eye />,
           },
         ];
+        // Editable exactly while the detail page offers "Ubah faktur": no goods
+        // receipt has been made from it yet.
+        if (canEdit && !invoice.goodsReceiptId) {
+          links.push({
+            href: `/dashboard/purchasing/payables/${invoice._id}/edit`,
+            label: "Ubah faktur",
+            icon: <Pencil />,
+          });
+        }
         if (canReceive && stillToCome) {
           links.push({
             href: `/dashboard/purchasing/receipts/new?invoice=${invoice._id}`,
@@ -235,7 +246,8 @@ function payablesColumns({
  * is a local, drifting-by-a-day-at-worst nicety; the fact is the server's.
  *
  * ONE ⋮ MENU PER ROW (16 October 2026, on request) — the shared
- * `RowLinkMenu` since 19 October 2026: Detail always; "Buat penerimaan
+ * `RowLinkMenu` since 19 October 2026: Detail always; "Ubah faktur" while no
+ * goods receipt has been made from it (the edit page's own rule); "Buat penerimaan
  * barang" while goods are still to come; and, below the separator because it
  * writes, Bayar only while the status is not settled AND something is payable
  * now — "Bayar" on a settled bill, or one whose goods have not arrived, is an
@@ -251,6 +263,7 @@ export function PayablesTable({
   search,
   sort,
   onSortChange,
+  canEdit,
   canPay,
   canReceive,
   onPay,
@@ -262,6 +275,8 @@ export function PayablesTable({
   /** The ordering the list is in — a header click asks for another. */
   sort: PurchaseInvoiceSort;
   onSortChange: (next: PurchaseInvoiceSort) => void;
+  /** Whether the signed-in role may edit an invoice — `create`, as the edit route checks. */
+  canEdit: boolean;
   /** Whether the signed-in role may record a payment — decides whether Bayar is offered. */
   canPay: boolean;
   /** Whether the signed-in role may create a goods receipt. */
@@ -270,7 +285,7 @@ export function PayablesTable({
 }) {
   return (
     <DataTable
-      columns={payablesColumns({ search, canPay, canReceive, onPay })}
+      columns={payablesColumns({ search, canEdit, canPay, canReceive, onPay })}
       rows={invoices}
       rowKey={(invoice) => invoice._id}
       sort={{ value: sort, options: SORT_OPTIONS, onChange: onSortChange }}

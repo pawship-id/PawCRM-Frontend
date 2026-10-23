@@ -7,7 +7,9 @@ import {
   Alert,
   Button,
   Card,
+  ImageField,
   Spinner,
+  TextareaField,
   TextField,
   ConfirmDialog,
   LocationFields,
@@ -18,6 +20,9 @@ import {
 import type { LocationFieldsValue } from "@/components";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { usePermissions } from "@/features/permissions";
+import { useTenant } from "@/features/tenant";
 import { ApiError } from "@/services/api-error";
 import { branchService } from "@/services/branch.service";
 import { swalToast } from "@/lib/swal";
@@ -29,6 +34,7 @@ import {
   validatePhone,
 } from "@/utils/validation";
 import type { Branch, OperatingDay } from "@/types/api";
+import type { MediaAsset } from "@/types/inventory";
 
 import { OperatingDaysField } from "./OperatingDaysField";
 import { BranchStatusBadge } from "./BranchStatusBadge";
@@ -90,7 +96,9 @@ export function BranchEditForm({ id }: { id: string }) {
       {/* The header stays visible while the body loads. */}
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-extrabold text-foreground">Ubah cabang</h1>
+          <h1 className="text-2xl font-extrabold text-foreground">
+            Ubah cabang
+          </h1>
           {branch && (
             <BranchStatusBadge
               isActive={branch.isActive}
@@ -113,12 +121,7 @@ export function BranchEditForm({ id }: { id: string }) {
         </div>
       ) : (
         <>
-          <Card
-            title="Data cabang"
-            description="Nama, kontak, dan ketersediaan."
-          >
-            <DetailsSection branch={branch} onUpdated={setBranch} />
-          </Card>
+          <DetailsSection branch={branch} onUpdated={setBranch} />
 
           <Card
             title="Zona berbahaya"
@@ -152,7 +155,59 @@ function DetailsSection({
     branch.operatingDays ?? [],
   );
   const [phone, setPhone] = useState(branch.phone ?? "");
-  const [receiptFooter, setReceiptFooter] = useState(branch.receiptFooter ?? "");
+  const [receiptFooter, setReceiptFooter] = useState(
+    branch.receiptFooter ?? "",
+  );
+  /*
+    THE TOP OF THE RECEIPT. A missing toggle reads as ON — a branch written
+    before these existed always printed both names, and must keep doing so.
+  */
+  const [receiptLogo, setReceiptLogo] = useState<MediaAsset | null>(
+    branch.receiptLogo ?? null,
+  );
+  const [receiptHeaderText, setReceiptHeaderText] = useState(
+    branch.receiptHeaderText ?? "",
+  );
+  const [showTenantName, setShowTenantName] = useState(
+    branch.receiptShowTenantName !== false,
+  );
+  const [receiptTenantName, setReceiptTenantName] = useState(
+    branch.receiptTenantName ?? "",
+  );
+  const [showBranchName, setShowBranchName] = useState(
+    branch.receiptShowBranchName !== false,
+  );
+  const [receiptBranchName, setReceiptBranchName] = useState(
+    branch.receiptBranchName ?? "",
+  );
+  /*
+    THE FAKTUR'S OWN SET (22 Oktober 2026, BO) — same switches and overrides,
+    plus its closing note and its own logo.
+  */
+  const [invoiceLogo, setInvoiceLogo] = useState<MediaAsset | null>(
+    branch.invoiceLogo ?? null,
+  );
+  const [invoiceHeaderText, setInvoiceHeaderText] = useState(
+    branch.invoiceHeaderText ?? "",
+  );
+  const [invoiceShowTenantName, setInvoiceShowTenantName] = useState(
+    branch.invoiceShowTenantName !== false,
+  );
+  const [invoiceTenantName, setInvoiceTenantName] = useState(
+    branch.invoiceTenantName ?? "",
+  );
+  const [invoiceShowBranchName, setInvoiceShowBranchName] = useState(
+    branch.invoiceShowBranchName !== false,
+  );
+  const [invoiceBranchName, setInvoiceBranchName] = useState(
+    branch.invoiceBranchName ?? "",
+  );
+  const [invoiceFooterNote, setInvoiceFooterNote] = useState(
+    branch.invoiceFooterNote ?? "",
+  );
+  // The live business name, as the placeholder of its override.
+  const { can } = usePermissions();
+  const { tenant } = useTenant(can("tenants", "read"));
   // toLocationFieldsValue tolerates a missing pin, so a branch document written
   // before the field existed renders as two empty inputs rather than throwing.
   const [location, setLocation] = useState<LocationFieldsValue>(() =>
@@ -191,6 +246,21 @@ function DetailsSection({
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
 
+    /*
+      THE LOGO IS SENT ONLY WHEN IT CHANGED, as `PetForm` does with a photo: the
+      server strips the upload token before storing, so the logo a GET returns
+      has none — and sending it back unchanged would be refused for the missing
+      token. `null` is how it is taken off.
+    */
+    const relogoed =
+      (receiptLogo?.storageKey ?? null) !==
+      (branch.receiptLogo?.storageKey ?? null);
+    const invoiceRelogoed =
+      (invoiceLogo?.storageKey ?? null) !==
+      (branch.invoiceLogo?.storageKey ?? null);
+    const orNull = (value: string) =>
+      value.trim() === "" ? null : value.trim();
+
     setSaving(true);
     try {
       const updated = await branchService.update(branch._id, {
@@ -204,6 +274,19 @@ function DetailsSection({
         phone: phone.trim() === "" ? null : phone.trim(),
         receiptFooter:
           receiptFooter.trim() === "" ? null : receiptFooter.trim(),
+        ...(relogoed ? { receiptLogo } : {}),
+        receiptHeaderText: orNull(receiptHeaderText),
+        receiptShowTenantName: showTenantName,
+        receiptTenantName: orNull(receiptTenantName),
+        receiptShowBranchName: showBranchName,
+        receiptBranchName: orNull(receiptBranchName),
+        ...(invoiceRelogoed ? { invoiceLogo } : {}),
+        invoiceHeaderText: orNull(invoiceHeaderText),
+        invoiceShowTenantName,
+        invoiceTenantName: orNull(invoiceTenantName),
+        invoiceShowBranchName,
+        invoiceBranchName: orNull(invoiceBranchName),
+        invoiceFooterNote: orNull(invoiceFooterNote),
         location: toGeoLocation(location),
         isActive,
       });
@@ -224,133 +307,223 @@ function DetailsSection({
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
       {disabled && (
         <Alert variant="info">
           This branch is deleted. Restore it in the danger zone to edit.
         </Alert>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {/* Row 1: name & phone */}
-        <TextField
-          label="Nama cabang"
-          name="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          error={fieldErrors.name}
-          disabled={disabled}
-          required
-        />
-        <TextField
-          label="Telepon"
-          type="tel"
-          name="phone"
-          placeholder="Opsional"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-          error={fieldErrors.phone}
-          hint="Kosongkan untuk menghapus isinya."
-          disabled={disabled}
-        />
+      <Card title="Data cabang" description="Nama, kontak, dan ketersediaan.">
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {/* Row 1: name & phone */}
+            <TextField
+              label="Nama cabang"
+              name="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              error={fieldErrors.name}
+              disabled={disabled}
+              required
+            />
+            <TextField
+              label="Telepon"
+              type="tel"
+              name="phone"
+              placeholder="Opsional"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              error={fieldErrors.phone}
+              hint="Kosongkan untuk menghapus isinya."
+              disabled={disabled}
+            />
 
-        {/*
+            {/*
           THE CODE GOES INSIDE INVOICE NUMBERS, which is why it sits beside the
           name rather than among the contact details: it is part of the branch's
           identity, not a way to reach it. Uppercased as it is typed so what is
           on screen is what will be stored — the server uppercases too, and a
           field that silently changed its value on save reads as a bug.
         */}
-        <TextField
-          label="Kode cabang"
-          name="code"
-          placeholder="mis. CBS"
-          value={code}
-          onChange={(e) => setCode(e.target.value.toUpperCase())}
-          error={fieldErrors.code}
-          maxLength={BRANCH_CODE_MAX_LENGTH}
-          hint="Maksimal 8 karakter, huruf dan angka saja. Muncul di nomor faktur cabang ini — INV/CBS/2608/0001. Boleh dikosongkan."
-          disabled={disabled}
-        />
+            <TextField
+              label="Kode cabang"
+              name="code"
+              placeholder="mis. CBS"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              error={fieldErrors.code}
+              maxLength={BRANCH_CODE_MAX_LENGTH}
+              hint="Maksimal 8 karakter, huruf dan angka saja. Muncul di nomor faktur cabang ini — INV/CBS/2608/0001. Boleh dikosongkan."
+              disabled={disabled}
+            />
 
-        {/* Row 2: address (full width), then the city it is in */}
-        <div className="sm:col-span-2">
-          <TextField
-            label="Alamat"
-            name="address"
-            placeholder="Opsional"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            error={fieldErrors.address}
-            hint="Kosongkan untuk menghapus isinya."
-            disabled={disabled}
-          />
-        </div>
+            {/* Row 2: address (full width), then the city it is in */}
+            <div className="sm:col-span-2">
+              <TextField
+                label="Alamat"
+                name="address"
+                placeholder="Opsional"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                error={fieldErrors.address}
+                hint="Kosongkan untuk menghapus isinya."
+                disabled={disabled}
+              />
+            </div>
 
-        {/*
+            {/*
           A FIELD OF ITS OWN, not the tail of the address line: an address is
           written however the shop writes it, and a list grouped by city cannot
           be built on its last comma-separated fragment.
         */}
-        <TextField
-          label="Kota"
-          name="city"
-          placeholder="mis. Surabaya"
-          value={city}
-          onChange={(e) => setCity(e.target.value)}
-          error={fieldErrors.city}
-          disabled={disabled}
-        />
+            <TextField
+              label="Kota"
+              name="city"
+              placeholder="mis. Surabaya"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              error={fieldErrors.city}
+              disabled={disabled}
+            />
 
-        <div />
+            <div />
 
-        {/*
+            {/*
           Row 3: when the doors are open. Both times or neither — see the guard
           in handleSubmit. Nothing enforces them yet; they are read on the tenant
           profile, and the booking validator that will read them is why they are
           stored as times rather than as a sentence.
         */}
-        <TextField
-          label="Jam buka"
-          name="openTime"
-          type="time"
-          value={openTime}
-          onChange={(e) => setOpenTime(e.target.value)}
-          error={fieldErrors.openTime}
-          disabled={disabled}
-        />
-        <TextField
-          label="Jam tutup"
-          name="closeTime"
-          type="time"
-          value={closeTime}
-          onChange={(e) => setCloseTime(e.target.value)}
-          error={fieldErrors.closeTime}
-          hint="Boleh lewat tengah malam — 20:00 sampai 02:00 tetap diterima."
-          disabled={disabled}
-        />
+            <TextField
+              label="Jam buka"
+              name="openTime"
+              type="time"
+              value={openTime}
+              onChange={(e) => setOpenTime(e.target.value)}
+              error={fieldErrors.openTime}
+              disabled={disabled}
+            />
+            <TextField
+              label="Jam tutup"
+              name="closeTime"
+              type="time"
+              value={closeTime}
+              onChange={(e) => setCloseTime(e.target.value)}
+              error={fieldErrors.closeTime}
+              hint="Boleh lewat tengah malam — 20:00 sampai 02:00 tetap diterima."
+              disabled={disabled}
+            />
 
-        <div className="sm:col-span-2">
-          <OperatingDaysField
-            value={operatingDays}
-            onChange={setOperatingDays}
+            <div className="sm:col-span-2">
+              <OperatingDaysField
+                value={operatingDays}
+                onChange={setOperatingDays}
+                disabled={disabled}
+              />
+            </div>
+
+            {/* Row 4: the map pin — two half-width fields fill the existing grid. */}
+            <LocationFields
+              value={location}
+              onChange={setLocation}
+              errors={fieldErrors}
+              disabled={disabled}
+            />
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            <Checkbox
+              id="branch-active"
+              checked={isActive}
+              disabled={disabled}
+              onCheckedChange={(checked) => setIsActive(checked === true)}
+            />
+            <Label htmlFor="branch-active" className="font-normal">
+              Aktif — cabang ini buka dan bisa dipakai
+            </Label>
+          </div>
+        </div>
+      </Card>
+
+      {/*
+        TWO TEMPLATES, ONE PER DOCUMENT (22 Oktober 2026, BO: "setting struk dan
+        faktur dibedain"). Each name is a switch plus an optional override: on
+        with the box empty prints the live name (a rename still reaches this
+        branch), on with a value prints that value, off prints nothing.
+      */}
+      <Card
+        title="Template struk"
+        description="Yang tercetak di struk kasir (termasuk saat offline) dan link struk yang dikirim ke pelanggan."
+      >
+        <div className="flex flex-col gap-4">
+          <ImageField
+            value={receiptLogo}
+            onChange={setReceiptLogo}
+            purpose="branch"
+            label="Logo"
+            alt={`Logo struk ${branch.name}`}
+            hint="PNG, JPG atau WebP. Dipotong jadi kotak, dicetak kecil di paling atas struk. Untuk printer thermal, logo hitam-putih paling jelas. Kosongkan kalau tidak pakai logo."
+            disabled={disabled || saving}
+          />
+
+          <HeaderNameRow
+            id="receipt-show-tenant"
+            label="Tampilkan nama usaha"
+            checked={showTenantName}
+            onCheckedChange={setShowTenantName}
+            disabled={disabled}
+          >
+            <TextField
+              label="Nama usaha di struk"
+              name="receiptTenantName"
+              placeholder={tenant?.name ?? "Nama usaha"}
+              value={receiptTenantName}
+              onChange={(e) => setReceiptTenantName(e.target.value)}
+              error={fieldErrors.receiptTenantName}
+              maxLength={120}
+              hint="Kosongkan untuk memakai nama usaha."
+              disabled={disabled}
+            />
+          </HeaderNameRow>
+
+          <HeaderNameRow
+            id="receipt-show-branch"
+            label="Tampilkan nama cabang"
+            checked={showBranchName}
+            onCheckedChange={setShowBranchName}
+            disabled={disabled}
+          >
+            <TextField
+              label="Nama cabang di struk"
+              name="receiptBranchName"
+              placeholder={name.trim() || "Nama cabang"}
+              value={receiptBranchName}
+              onChange={(e) => setReceiptBranchName(e.target.value)}
+              error={fieldErrors.receiptBranchName}
+              maxLength={120}
+              hint="Kosongkan untuk memakai nama cabang."
+              disabled={disabled}
+            />
+          </HeaderNameRow>
+
+          <TextField
+            label="Teks header struk"
+            name="receiptHeaderText"
+            placeholder="mis. Grooming & Petshop · Buka setiap hari"
+            value={receiptHeaderText}
+            onChange={(e) => setReceiptHeaderText(e.target.value)}
+            error={fieldErrors.receiptHeaderText}
+            maxLength={160}
+            hint="Dicetak di bawah nama, di atas alamat. Opsional."
             disabled={disabled}
           />
-        </div>
 
-        {/*
-          Row 3: the receipt's closing line (FR-8).
-
-          FULL WIDTH, beside the address rather than beside the phone, because it
-          is a sentence and not a value.
-
-          THE PLACEHOLDER IS THE TRUTH, not a suggestion: leaving this empty
-          prints "Terima kasih" rather than nothing, so what the field shows
-          greyed out is exactly what the receipt will say. There is
-          no way to ask for a receipt with no closing line at all — that is the
-          price of every receipt having one.
-        */}
-        <div className="sm:col-span-2">
+          {/*
+            THE PLACEHOLDER IS THE TRUTH, not a suggestion: leaving this empty
+            prints "Terima kasih" rather than nothing, so what the field shows
+            greyed out is exactly what the receipt will say.
+          */}
           <TextField
             label="Catatan kaki struk"
             name="receiptFooter"
@@ -358,31 +531,97 @@ function DetailsSection({
             value={receiptFooter}
             onChange={(e) => setReceiptFooter(e.target.value)}
             error={fieldErrors.receiptFooter}
-            hint="Dicetak di bagian bawah struk cabang ini. Kosongkan untuk memakai kalimat bawaan."
+            hint="Dicetak di bagian bawah struk. Kosongkan untuk memakai kalimat bawaan."
             disabled={disabled}
           />
         </div>
+      </Card>
 
-        {/* Row 4: the map pin — two half-width fields fill the existing grid. */}
-        <LocationFields
-          value={location}
-          onChange={setLocation}
-          errors={fieldErrors}
-          disabled={disabled}
-        />
-      </div>
+      <Card
+        title="Template faktur"
+        description="Yang tercetak di faktur penjualan, link faktur, dan kwitansi pembayaran cabang ini."
+      >
+        <div className="flex flex-col gap-4">
+          <ImageField
+            value={invoiceLogo}
+            onChange={setInvoiceLogo}
+            purpose="branch"
+            label="Logo"
+            alt={`Logo faktur ${branch.name}`}
+            hint="PNG, JPG atau WebP. Dipotong jadi kotak, dicetak di paling atas faktur dan kwitansi. Kosongkan kalau tidak pakai logo."
+            disabled={disabled || saving}
+          />
 
-      <div className="flex items-center gap-2.5">
-        <Checkbox
-          id="branch-active"
-          checked={isActive}
-          disabled={disabled}
-          onCheckedChange={(checked) => setIsActive(checked === true)}
-        />
-        <Label htmlFor="branch-active" className="font-normal">
-          Aktif — cabang ini buka dan bisa dipakai
-        </Label>
-      </div>
+          <HeaderNameRow
+            id="invoice-show-tenant"
+            label="Tampilkan nama usaha"
+            checked={invoiceShowTenantName}
+            onCheckedChange={setInvoiceShowTenantName}
+            disabled={disabled}
+          >
+            <TextField
+              label="Nama usaha di faktur"
+              name="invoiceTenantName"
+              placeholder={tenant?.legalName || tenant?.name || "Nama usaha"}
+              value={invoiceTenantName}
+              onChange={(e) => setInvoiceTenantName(e.target.value)}
+              error={fieldErrors.invoiceTenantName}
+              maxLength={120}
+              hint="Kosongkan untuk memakai nama resmi usaha (atau nama usaha, kalau tidak ada)."
+              disabled={disabled}
+            />
+          </HeaderNameRow>
+
+          <HeaderNameRow
+            id="invoice-show-branch"
+            label="Tampilkan nama cabang"
+            checked={invoiceShowBranchName}
+            onCheckedChange={setInvoiceShowBranchName}
+            disabled={disabled}
+          >
+            <TextField
+              label="Nama cabang di faktur"
+              name="invoiceBranchName"
+              placeholder={name.trim() || "Nama cabang"}
+              value={invoiceBranchName}
+              onChange={(e) => setInvoiceBranchName(e.target.value)}
+              error={fieldErrors.invoiceBranchName}
+              maxLength={120}
+              hint="Kosongkan untuk memakai nama cabang."
+              disabled={disabled}
+            />
+          </HeaderNameRow>
+
+          <TextField
+            label="Teks header faktur"
+            name="invoiceHeaderText"
+            placeholder="mis. Grooming & Petshop · Buka setiap hari"
+            value={invoiceHeaderText}
+            onChange={(e) => setInvoiceHeaderText(e.target.value)}
+            error={fieldErrors.invoiceHeaderText}
+            maxLength={160}
+            hint="Dicetak di bawah nama. Opsional."
+            disabled={disabled}
+          />
+
+          {/*
+            EMPTY PRINTS NOTHING — unlike the struk's, there is no default
+            sentence. Newlines survive: bank details run to two or three lines.
+          */}
+          <TextareaField
+            label="Catatan kaki faktur"
+            name="invoiceFooterNote"
+            placeholder={"mis. Transfer ke BCA 1234567890\na.n. PT Contoh"}
+            value={invoiceFooterNote}
+            onChange={(e) => setInvoiceFooterNote(e.target.value)}
+            error={fieldErrors.invoiceFooterNote}
+            maxLength={600}
+            rows={3}
+            hint="Rekening tujuan dan syarat bayar. Tidak dicetak di faktur yang dibatalkan. Kosongkan kalau tidak perlu."
+            disabled={disabled}
+          />
+        </div>
+      </Card>
 
       <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Button
@@ -411,6 +650,42 @@ function DetailsSection({
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * One name on the receipt's header — a switch, and the override box under it
+ * while the switch is on. The box is hidden rather than disabled when off: a
+ * greyed field invites a reader to wonder whether its value still prints.
+ */
+function HeaderNameRow({
+  id,
+  label,
+  checked,
+  onCheckedChange,
+  disabled,
+  children,
+}: {
+  id: string;
+  label: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  disabled: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-4">
+        <Label htmlFor={id}>{label}</Label>
+        <Switch
+          id={id}
+          checked={checked}
+          onCheckedChange={onCheckedChange}
+          disabled={disabled}
+        />
+      </div>
+      {checked && children}
+    </div>
   );
 }
 

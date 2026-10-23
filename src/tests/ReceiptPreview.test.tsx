@@ -980,3 +980,53 @@ describe("ReceiptPreview — Diskon membership", () => {
     );
   });
 });
+
+/*
+  THE TOP OF THE RECEIPT — the branch's logo, names and header line. The server
+  has already applied the toggles and overrides; "" is a line the branch chose
+  not to print, and must leave no trace on the paper.
+*/
+describe("ReceiptPreview — the header", () => {
+  const withHeader = (header: Partial<PosReceipt["header"]>) =>
+    receipt({
+      header: {
+        tenantName: "Buloo Petshop",
+        branchName: "Toko Pusat",
+        address: "Jl. Melati 12",
+        phone: "081234567890",
+        receiptFooter: "Terima kasih",
+        ...header,
+      },
+    });
+
+  it("prints the logo and the header line when the branch set them", () => {
+    renderWithAuth(
+      <ReceiptPreview
+        receipt={withHeader({
+          logoUrl: "https://cdn.test/logo.webp",
+          headerText: "Grooming & Petshop",
+        })}
+        size="58"
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "Logo Buloo Petshop" })).toHaveAttribute(
+      "src",
+      "https://cdn.test/logo.webp",
+    );
+    expect(screen.getByText("Grooming & Petshop")).toBeInTheDocument();
+  });
+
+  it("prints no logo and no name the branch left out", () => {
+    renderWithAuth(
+      <ReceiptPreview
+        receipt={withHeader({ tenantName: "", logoUrl: "" })}
+        size="58"
+      />,
+    );
+
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.queryByText("Buloo Petshop")).not.toBeInTheDocument();
+    expect(screen.getByText("Toko Pusat")).toBeInTheDocument();
+  });
+});

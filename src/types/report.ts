@@ -137,29 +137,74 @@ export interface SalesInvoiceReportRow {
   invoiceNumber: string;
   invoiceDate: string | null;
   dueDate: string | null;
+  /** The till's own number (POS-…); a marketplace order's, once one syncs in. */
+  reference: string | null;
   branchName: string | null;
+  /** The cabang for a counter or hand-raised sale; a marketplace store's name later. */
+  storeName: string | null;
+  /** The invoice's gudang, or its till sale's. */
   warehouseName: string | null;
   customerName: string | null;
   customerPhone: string | null;
+  /** The tenant's own label (Pengaturan › Tipe pelanggan); null when unset. */
+  customerTypeName: string | null;
   source: "manual" | "pos_bridge";
   channel: "manual" | "marketplace";
+  /** "Umum" for a counter or hand-raised sale; the expedition's name later. */
+  courierName: string | null;
   lineCount: number;
   qtyTotal: string | null;
   subtotal: string | null;
   itemDiscount: string | null;
   invoiceDiscount: string | null;
+  /** A marketplace's own discount — nothing writes one yet. */
+  otherDiscount: string | null;
   otherCharges: string | null;
+  /** The charges by name — Ongkir, Packaging. */
+  otherChargeLabels: string[];
   dpp: string | null;
   tax: string | null;
   taxRate: number | null;
+  /** Subtotal − both discounts + charges: the bill before PPN is added on. */
+  netTotal: string | null;
+  /** What the customer owes, PPN included — Grand total. */
   total: string;
   paidAmount: string;
   outstandingAmount: string;
   status: "unpaid" | "partial" | "paid" | "void";
   isOverdue: boolean;
   createdByName: string | null;
+  /** The accounts/channels the receipts that still count arrived in. */
+  paymentAccountNames: string[];
+  /** cash, transfer, qris, edc, giro — one per distinct receipt method. */
+  paymentMethods: string[];
+  /** The till's device for a kasir sale; who raised it for a manual faktur. */
+  cashierName: string | null;
+  /** Any goods that left were titipan. */
+  isConsignment: boolean;
+  consignorNames: string[];
   notes: string | null;
   voidReason: string | null;
+  /** Present only when asked with `withLines` — the rincian barang file. */
+  lines?: SalesInvoiceReportLine[];
+}
+
+/** One sold line of an invoice, as the rincian barang file prints it. */
+export interface SalesInvoiceReportLine {
+  kind: "product" | "service" | "membership";
+  sku: string | null;
+  name: string | null;
+  /** A product's category; a service's kelompok (Grooming, Hotel). */
+  categoryName: string | null;
+  unit: string | null;
+  qty: string | null;
+  unitPrice: string | null;
+  /** The line's own discount. */
+  discount: string;
+  /** qty × price, before the line's discount. */
+  lineTotal: string;
+  /** `lineTotal` − `discount`: before the invoice discount and PPN. */
+  net: string;
 }
 
 export interface SalesInvoiceReportQuery {
@@ -170,6 +215,8 @@ export interface SalesInvoiceReportQuery {
   warehouseIds?: string[];
   /** Omitted = every status but `void`. */
   statuses?: SalesInvoiceReportRow["status"][];
+  /** Each invoice's lines along with it, as `lines`. */
+  withLines?: boolean;
 }
 
 export interface SalesInvoiceReport {

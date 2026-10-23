@@ -56,3 +56,30 @@ export function prefetchTillChannels(branchId: string | null | undefined): void 
   if (!branchId || cache.has(branchId)) return;
   loadTillChannels(branchId).catch(() => {});
 }
+
+/**
+ * Fills the cache from the offline snapshot (POS offline mode), so the payment
+ * dialog opens with the branch's channels when there is no network to ask.
+ * Only the fields the dialog reads are known offline; the rest are defaults.
+ */
+export function seedTillChannels(
+  branchId: string,
+  channels: Array<Pick<PaymentChannel, "_id" | "type" | "name" | "requiresReference" | "branchId">>,
+): void {
+  if (!branchId) return;
+  cache.set(
+    branchId,
+    channels.map((channel, index) => ({
+      tenantId: "",
+      accountId: "",
+      mdrPercent: 0,
+      usableFor: ["in"],
+      sortOrder: index,
+      isActive: true,
+      deletedAt: null,
+      createdAt: "",
+      updatedAt: "",
+      ...channel,
+    })),
+  );
+}

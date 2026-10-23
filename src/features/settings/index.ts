@@ -37,7 +37,6 @@ export { NumberingSettingsScreen } from "./components/NumberingSettingsScreen";
 export { CashierShiftsScreen } from "./components/CashierShiftsScreen";
 export { SupplierTypesScreen } from "./components/SupplierTypesScreen";
 export {
-  DocumentSettingsScreen,
   IdentitySettingsScreen,
   StockCashierSettingsScreen,
   TaxSettingsScreen,

@@ -148,11 +148,14 @@ describe("ReportsHub", () => {
     renderWithAuth(<ReportsHub />);
 
     expect(screen.getByText("Penjualan per invoice")).toBeInTheDocument();
+    expect(
+      screen.getByText("Penjualan per invoice (rincian barang)"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Segera")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Buka" }),
     ).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Unduh" })).toHaveLength(6);
+    expect(screen.getAllByRole("button", { name: "Unduh" })).toHaveLength(7);
   });
 
   it("lists the inventory reports a full grant can reach", () => {

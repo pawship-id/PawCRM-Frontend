@@ -71,4 +71,20 @@ describe("LoginForm", () => {
       await screen.findByText(/invalid email or password/i),
     ).toBeInTheDocument();
   });
+
+  it("toggles password visibility with the eye button", async () => {
+    render(withAuth(<LoginForm />));
+    const input = screen.getByLabelText(/password/i);
+    expect(input).toHaveAttribute("type", "password");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /tampilkan kata sandi/i }),
+    );
+    expect(input).toHaveAttribute("type", "text");
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /sembunyikan kata sandi/i }),
+    );
+    expect(input).toHaveAttribute("type", "password");
+  });
 });

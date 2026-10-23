@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Ban, BanknoteArrowDown, Eye, Printer } from "lucide-react";
+import { Ban, BanknoteArrowDown, Eye, Pencil, Printer } from "lucide-react";
 
 import {
   DataTable,
@@ -52,12 +52,14 @@ const SORT_OPTIONS: SortOptions<CustomerInvoiceSort> = {
 
 function receivablesColumns({
   search,
+  mayEdit,
   mayPay,
   mayVoid,
   onPay,
   onVoid,
 }: {
   search: string;
+  mayEdit: boolean;
   mayPay: boolean;
   mayVoid: boolean;
   onPay: (invoice: CustomerInvoiceListRow) => void;
@@ -115,9 +117,7 @@ function receivablesColumns({
       cell: (invoice) => (
         <>
           <span
-            className={cn(
-              invoice.isOverdue && "font-semibold text-danger-ink",
-            )}
+            className={cn(invoice.isOverdue && "font-semibold text-danger-ink")}
           >
             {formatDate(invoice.dueDate)}
           </span>
@@ -147,7 +147,9 @@ function receivablesColumns({
           invoice.status === "void" && "font-normal text-muted",
         ),
       cell: (invoice) =>
-        invoice.status === "void" ? "—" : formatMoney(invoice.outstandingAmount),
+        invoice.status === "void"
+          ? "—"
+          : formatMoney(invoice.outstandingAmount),
     },
     {
       id: "source",
@@ -169,6 +171,12 @@ function receivablesColumns({
         const voided = invoice.status === "void";
         const collectable =
           invoice.status === "unpaid" || invoice.status === "partial";
+        // The detail page's own `editable`: raised here, nothing paid.
+        const editable =
+          invoice.source !== "pos_bridge" &&
+          !invoice.posTransactionId &&
+          invoice.status === "unpaid" &&
+          !isPositive(invoice.paidAmount);
 
         const actions: RowAction[] = [];
         if (mayPay && collectable) {
@@ -192,7 +200,20 @@ function receivablesColumns({
             name={invoice.invoiceNumber}
             links={[
               { href, label: "Detail", icon: <Eye /> },
-              { href: `${href}/print`, label: "Cetak faktur", icon: <Printer /> },
+              ...(mayEdit && editable
+                ? [
+                    {
+                      href: `${href}?edit=1`,
+                      label: "Ubah faktur",
+                      icon: <Pencil />,
+                    },
+                  ]
+                : []),
+              {
+                href: `${href}/print`,
+                label: "Cetak faktur",
+                icon: <Printer />,
+              },
             ]}
             actions={actions}
           />
@@ -216,6 +237,9 @@ function receivablesColumns({
  * ROW ACTIONS sit behind one ⋮ (`RowLinkMenu`), each behind its own grant:
  *
  *   Detail         — anyone who can read the list.
+ *   Ubah faktur    — `customerInvoices:update`, only while the detail page
+ *                    would offer it: a manual faktur, unpaid. It opens the
+ *                    detail with the editor already open (`?edit=1`).
  *   Cetak faktur   — anyone who can read the list; it opens the print page.
  *   Bayar          — `customerInvoices:pay`, only while something is owed. It
  *                    opens the payment dialog in place, as on Pembelian.
@@ -245,13 +269,21 @@ export function ReceivablesTable({
   onVoid: (invoice: CustomerInvoiceListRow) => void;
 }) {
   const { can } = usePermissions();
+  const mayEdit = can("customerInvoices", "update");
   const mayPay = can("customerInvoices", "pay");
   const mayVoid = can("customerInvoices", "void");
 
   return (
     <DataTable
       bare
-      columns={receivablesColumns({ search, mayPay, mayVoid, onPay, onVoid })}
+      columns={receivablesColumns({
+        search,
+        mayEdit,
+        mayPay,
+        mayVoid,
+        onPay,
+        onVoid,
+      })}
       rows={invoices}
       rowKey={(invoice) => invoice._id}
       sort={{ value: sort, options: SORT_OPTIONS, onChange: onSort }}

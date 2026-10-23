@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 
 import { Alert, Button, Spinner } from "@/components";
 import {
-  InvoiceFooterForm,
   StockSettingsForm,
   TaxSettingsForm,
   TenantIdentityForm,
@@ -18,8 +17,8 @@ import { SETTINGS_TABS, type SettingsTab } from "../paths";
 import { SettingsPageHeader } from "./SettingsHeader";
 
 /**
- * The three Pengaturan pages that are one tenant switch each — Pajak, Stok &
- * kasir, Faktur & dokumen.
+ * The Pengaturan pages that are one tenant switch each — Pajak and Stok &
+ * kasir. (Faktur & dokumen moved to the branch, 22 Oktober 2026.)
  *
  * THE FORMS DID NOT CHANGE, ONLY THEIR ADDRESS. All three sat stacked on the
  * read-only "Business information" page until 22 September 2026; the mockup
@@ -32,7 +31,7 @@ export function TenantSettingsPage({
   title,
   description,
   /**
-   * Pajak, Stok & kasir and Faktur & dokumen are one switch or one short field
+   * Pajak and Stok & kasir are one switch or one short field
    * each, and `max-w-3xl` is what keeps a lone control from stretching across
    * a laptop screen. Identitas usaha outgrew that the day it gained a
    * two-column row of pickers (23 September 2026, on request) — a grid that
@@ -139,16 +138,3 @@ export function StockCashierSettingsScreen() {
   );
 }
 
-export function DocumentSettingsScreen() {
-  return (
-    <TenantSettingsPage
-      tab="umum"
-      title="Faktur & dokumen"
-      description="Yang tercetak di faktur. Catatan kaki struk kasir diatur per cabang."
-    >
-      {(tenant, refetch) => (
-        <InvoiceFooterForm tenant={tenant} onSaved={refetch} />
-      )}
-    </TenantSettingsPage>
-  );
-}

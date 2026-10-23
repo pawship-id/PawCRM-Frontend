@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { searchableCode } from "@/lib/batchLabel";
-import { posService } from "@/services/pos.service";
+import { tillCatalog } from "../offline/tillApi";
 import type { PosCatalogItem } from "@/types/api";
 
 import { usePosCatalog } from "../hooks/usePosCatalog";
@@ -64,7 +64,7 @@ export function PosCatalog({
     if (!code) return;
 
     try {
-      const result = await posService.catalog({
+      const result = await tillCatalog({
         search: code,
         scan: true,
         limit: 2,

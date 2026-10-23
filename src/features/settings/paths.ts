@@ -37,7 +37,8 @@ export const SETTINGS_PATHS = {
   cabang: `${ROOT}/cabang`,
   gudang: `${ROOT}/gudang`,
   stokKasir: `${ROOT}/stok-kasir`,
-  fakturDokumen: `${ROOT}/faktur-dokumen`,
+  /* The registered tills (POS offline mode, 19 October 2026). */
+  perangkatKasir: `${ROOT}/perangkat-kasir`,
   nomorDokumen: `${ROOT}/nomor-dokumen`,
   notifikasi: `${ROOT}/notifikasi`,
   tipeSupplier: `${ROOT}/tipe-supplier`,

@@ -86,14 +86,24 @@ function customerLabel(invoice: {
  *     the timeline;
  *   Batalkan faktur → the ⋮ beside Cetak, where the mockup puts it.
  */
-export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
+export function InvoiceDetail({
+  invoiceId,
+  startEditing = false,
+}: {
+  invoiceId: string;
+  /**
+   * Open on the editor — the list's "Ubah faktur". Still gated by `mayEdit`
+   * below, so a stale link to a faktur paid since opens it read-only.
+   */
+  startEditing?: boolean;
+}) {
   const { invoice, loading, error, notFound, applyInvoice, refetch } =
     useCustomerInvoice(invoiceId);
 
   const [payOpen, setPayOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startEditing);
   const [activityVersion, setActivityVersion] = useState(0);
 
   const { can } = usePermissions();
@@ -152,7 +162,8 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   */
   const hasActivePayment = payments.some((payment) => !payment.isVoided);
   const lateBy = Math.abs(daysUntil(invoice.dueDate));
-  const tillBorn = invoice.source === "pos_bridge" || !!invoice.posTransactionId;
+  const tillBorn =
+    invoice.source === "pos_bridge" || !!invoice.posTransactionId;
 
   /*
     EDITABLE EXACTLY WHEN THE SERVER WILL ACCEPT AN EDIT: raised here, nothing
@@ -239,6 +250,18 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
             </Link>
           </Button>
 
+          {/* Beside Cetak rather than in the Rincian card's ⋮ (BO, 22 Okt 2026). */}
+          {mayEdit && !isEditing && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil className="size-4" />
+              Ubah
+            </Button>
+          )}
+
           {/*
             NOT OFFERED ON A CANCELLED INVOICE — sending a customer a bill that no
             longer stands is the one message this button must not make easy.
@@ -248,7 +271,11 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           {!voided &&
             (whatsappHref ? (
               <Button variant="secondary" size="sm" asChild>
-                <a href={whatsappHref} target="_blank" rel="noopener noreferrer">
+                <a
+                  href={whatsappHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
                   <MessageCircle className="size-4" />
                   WhatsApp
                 </a>
@@ -331,12 +358,6 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    {mayEdit && (
-                      <DropdownMenuItem onSelect={() => setEditing(true)}>
-                        <Pencil className="size-4" />
-                        Ubah rincian
-                      </DropdownMenuItem>
-                    )}
                     <DropdownMenuItem onSelect={() => setJournalOpen(true)}>
                       <BookOpen className="size-4" />
                       Lihat jurnal
@@ -419,24 +440,24 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               </p>
             }
           >
-              {!voided && !settled && !isEditing && (
-                <Can
-                  feature="customerInvoices"
-                  action="pay"
-                  fallback={
-                    <p className="text-xs text-muted">
-                      Anda tidak punya izin mencatat pembayaran. Hubungi pemegang
-                      hak{" "}
-                      <span className="tabular-nums">customerInvoices:pay</span>.
-                    </p>
-                  }
-                >
-                  <Button className="w-full" onClick={() => setPayOpen(true)}>
-                    <Plus className="size-4" />
-                    Catat pembayaran
-                  </Button>
-                </Can>
-              )}
+            {!voided && !settled && !isEditing && (
+              <Can
+                feature="customerInvoices"
+                action="pay"
+                fallback={
+                  <p className="text-xs text-muted">
+                    Anda tidak punya izin mencatat pembayaran. Hubungi pemegang
+                    hak{" "}
+                    <span className="tabular-nums">customerInvoices:pay</span>.
+                  </p>
+                }
+              >
+                <Button className="w-full" onClick={() => setPayOpen(true)}>
+                  <Plus className="size-4" />
+                  Catat pembayaran
+                </Button>
+              </Can>
+            )}
           </PaymentStatusCard>
 
           {/*

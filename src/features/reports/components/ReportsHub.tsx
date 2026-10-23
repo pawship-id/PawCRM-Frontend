@@ -21,6 +21,7 @@ import {
   consignmentSalesReport,
   posSalesReport,
   salesBatchReport,
+  salesInvoiceLineReport,
   salesInvoiceReport,
   salesItemReport,
   salesRevenueReport,
@@ -110,6 +111,7 @@ interface ReportRow {
 
 type ReportDialog =
   | "salesInvoices"
+  | "salesInvoiceLines"
   | "salesItems"
   | "salesBatches"
   | "posSales"
@@ -146,6 +148,9 @@ const REPORT_DIALOGS: Record<
 > = {
   salesInvoices: (props) => (
     <SalesReportDialog report={salesInvoiceReport} {...props} />
+  ),
+  salesInvoiceLines: (props) => (
+    <SalesReportDialog report={salesInvoiceLineReport} {...props} />
   ),
   commissionPayroll: (props) => (
     <SalesReportDialog report={commissionPayrollReport} {...props} />
@@ -212,6 +217,16 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       description:
         "Daftar faktur dengan total, diskon, pajak, dan status bayar.",
       dialog: "salesInvoices",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "customerInvoices", action: "read" },
+      ],
+    },
+    {
+      title: "Penjualan per invoice (rincian barang)",
+      description:
+        "Setiap faktur dengan barang dan layanannya, satu baris per barang.",
+      dialog: "salesInvoiceLines",
       anyOf: [
         { feature: "salesReports", action: "read" },
         { feature: "customerInvoices", action: "read" },

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { Alert, Spinner } from "@/components";
+import { OfflinePendingNotice } from "./OfflinePendingNotice";
 import {
   Dialog,
   DialogContent,
@@ -75,6 +76,8 @@ export function PosXReportDialog({
         </DialogHeader>
 
         {error && <Alert variant="error">{error}</Alert>}
+
+        <OfflinePendingNotice pending={report?.offlinePending} />
 
         {loading || !report ? (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">

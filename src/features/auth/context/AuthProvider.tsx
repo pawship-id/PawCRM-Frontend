@@ -14,6 +14,7 @@ import { usePathname } from "next/navigation";
 import { authService } from "@/services/auth.service";
 import { ApiError } from "@/services/api-error";
 import { setAuthHint, clearAuthHint } from "@/utils/authHint";
+import { clearAuthCache, readAuthCache, writeAuthCache } from "@/lib/authCache";
 import type { PermissionGrant, SessionContext, User } from "@/types/api";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
@@ -132,6 +133,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Guards against a state update after unmount from the initial /me call.
   const mounted = useRef(true);
+  /* True while the screen runs on a remembered session — see `refresh`. */
+  const offlineSession = useRef(false);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -157,12 +160,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setDisabledModules(offModules);
       setDisabledFeatures(offFeatures);
       setStatus("authenticated");
+      offlineSession.current = false;
+      writeAuthCache({
+        user: me,
+        session: ctx,
+        permissions: grants,
+        isSuperAdmin: superAdmin,
+        disabledModules: offModules,
+        disabledFeatures: offFeatures,
+      });
     } catch (error) {
       if (!mounted.current) return;
-      // Any failure to prove a session leaves the user signed out. A network
-      // error is treated the same — the dashboard cannot be shown without /me.
+      /*
+        THE SERVER COULD NOT BE REACHED is not "you are signed out" (POS offline
+        mode, 19 October 2026). With a remembered session the screen carries on
+        as that user and asks again when the connection returns — see
+        lib/authCache.ts. Only a real answer (a 401) ends the session; without a
+        remembered one, any failure still leaves the user signed out.
+      */
+      const cached =
+        error instanceof ApiError && (error.isNetworkError || error.isTimeout)
+          ? readAuthCache()
+          : null;
+      if (cached) {
+        setUserState(cached.user);
+        setSession(cached.session);
+        setPermissions(cached.permissions ?? []);
+        setIsSuperAdmin(cached.isSuperAdmin ?? false);
+        setDisabledModules(cached.disabledModules ?? []);
+        setDisabledFeatures(cached.disabledFeatures ?? []);
+        setStatus("authenticated");
+        offlineSession.current = true;
+        return;
+      }
       if (!(error instanceof ApiError) || error.isUnauthorized) {
         clearAuthHint();
+        clearAuthCache();
       }
       setUserState(null);
       setSession(null);
@@ -190,6 +223,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh, isPublicRoute]);
 
+  /* Back online on a remembered session: ask the server who this really is. */
+  useEffect(() => {
+    if (isPublicRoute) return;
+    const onOnline = () => {
+      if (offlineSession.current) void refresh();
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [refresh, isPublicRoute]);
+
   const signIn = useCallback(async (email: string, password: string) => {
     const {
       user: me,
@@ -200,6 +243,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       disabledFeatures: offFeatures = [],
     } = await authService.login(email, password);
     setAuthHint();
+    writeAuthCache({
+      user: me,
+      session: ctx,
+      permissions: grants,
+      isSuperAdmin: superAdmin,
+      disabledModules: offModules,
+      disabledFeatures: offFeatures,
+    });
     setUserState(me);
     setSession(ctx);
     setPermissions(grants);
@@ -212,6 +263,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   /** Drops everything this provider holds about the signed-in user. */
   const clearSession = useCallback(() => {
     clearAuthHint();
+    clearAuthCache();
     setUserState(null);
     setSession(null);
     setPermissions([]);
@@ -250,6 +302,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Only the branch is replaced. Re-fetching /me would work and would also
     // throw away the permission set for a round trip that answers nothing new.
     setSession((current) => ({ ...current, currentBranchId }));
+    // The remembered session follows the branch, or an offline reload would
+    // put the till back in the shop it just left.
+    const cached = readAuthCache();
+    if (cached) {
+      writeAuthCache({ ...cached, session: { ...cached.session, currentBranchId } });
+    }
   }, []);
 
   const value = useMemo<AuthContextValue>(

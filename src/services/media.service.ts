@@ -56,7 +56,9 @@ export type MediaUploadPurpose =
     and removed. The claim that keeps them is
     `bookingRepository.existsByMediaKey`.
   */
-  | "booking";
+  | "booking"
+  /* A BRANCH'S RECEIPT LOGO — `branchRepository.existsByLogoKey` keeps it. */
+  | "branch";
 
 export interface UploadOptions {
   purpose?: MediaUploadPurpose;

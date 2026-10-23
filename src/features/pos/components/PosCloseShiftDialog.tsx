@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Alert, Spinner } from "@/components";
+import { OfflinePendingNotice } from "./OfflinePendingNotice";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -209,6 +210,8 @@ export function PosCloseShiftDialog({
             </DialogHeader>
 
             {loadError && <Alert variant="error">{loadError}</Alert>}
+
+            <OfflinePendingNotice pending={report?.offlinePending} closing />
 
             {!report && !loadError ? (
               <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">

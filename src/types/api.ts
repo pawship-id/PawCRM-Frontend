@@ -964,6 +964,31 @@ export interface Branch {
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter: string | null;
   /**
+   * THE TOP OF THE RECEIPT — logo, a line of the shop's own, and which names
+   * print. OPTIONAL because list reads are `.lean()`: a branch written before
+   * these existed comes back without the keys, and a missing toggle means ON.
+   */
+  receiptLogo?: MediaAsset | null;
+  receiptHeaderText?: string | null;
+  receiptShowTenantName?: boolean;
+  /** Null prints the tenant's own name; a value replaces it on this branch's receipts. */
+  receiptTenantName?: string | null;
+  receiptShowBranchName?: boolean;
+  /** Null prints the branch's own name. */
+  receiptBranchName?: string | null;
+  /**
+   * THE FAKTUR'S OWN HEADER AND FOOTER (22 Oktober 2026) — the struk's rules,
+   * read by the faktur and its kwitansi, its own logo included.
+   * `invoiceFooterNote` null prints nothing (no default sentence).
+   */
+  invoiceLogo?: MediaAsset | null;
+  invoiceHeaderText?: string | null;
+  invoiceShowTenantName?: boolean;
+  invoiceTenantName?: string | null;
+  invoiceShowBranchName?: boolean;
+  invoiceBranchName?: string | null;
+  invoiceFooterNote?: string | null;
+  /**
    * When the doors are open — `HH:mm` in the tenant's timezone, both or neither.
    * Null means UNRECORDED, not closed, and nothing enforces them yet: the
    * booking validator that will read them is why they are stored as times rather
@@ -1086,6 +1111,21 @@ export interface CreateBranchInput {
   operatingDays?: OperatingDay[];
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter?: string | null;
+  /** The upload response as returned — its `token` must travel back. `null` clears it. */
+  receiptLogo?: MediaAsset | null;
+  receiptHeaderText?: string | null;
+  receiptShowTenantName?: boolean;
+  receiptTenantName?: string | null;
+  receiptShowBranchName?: boolean;
+  receiptBranchName?: string | null;
+  /** The faktur's logo — same upload rules as `receiptLogo`. */
+  invoiceLogo?: MediaAsset | null;
+  invoiceHeaderText?: string | null;
+  invoiceShowTenantName?: boolean;
+  invoiceTenantName?: string | null;
+  invoiceShowBranchName?: boolean;
+  invoiceBranchName?: string | null;
+  invoiceFooterNote?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
   location?: GeoLocationInput | null;
   isActive?: boolean;
@@ -1108,6 +1148,21 @@ export interface UpdateBranchInput {
   operatingDays?: OperatingDay[];
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter?: string | null;
+  /** The upload response as returned — its `token` must travel back. `null` clears it. */
+  receiptLogo?: MediaAsset | null;
+  receiptHeaderText?: string | null;
+  receiptShowTenantName?: boolean;
+  receiptTenantName?: string | null;
+  receiptShowBranchName?: boolean;
+  receiptBranchName?: string | null;
+  /** The faktur's logo — same upload rules as `receiptLogo`. */
+  invoiceLogo?: MediaAsset | null;
+  invoiceHeaderText?: string | null;
+  invoiceShowTenantName?: boolean;
+  invoiceTenantName?: string | null;
+  invoiceShowBranchName?: boolean;
+  invoiceBranchName?: string | null;
+  invoiceFooterNote?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
   location?: GeoLocationInput | null;
   isActive?: boolean;
@@ -1848,6 +1903,18 @@ export interface PosPaymentBreakdownRow {
  */
 export interface PosXReport {
   shift: PosShift;
+  /**
+   * Tills still holding this cashier's sales rung up offline and not sent yet
+   * — not in the figures below (POS offline mode, 19 October 2026). As each
+   * device last reported; absent from an older server.
+   */
+  offlinePending?: Array<{
+    deviceId: string;
+    code: string;
+    name: string | null;
+    count: number;
+    lastSeenAt: string | null;
+  }>;
   transactionCount: number;
   breakdown: PosPaymentBreakdownRow[];
   /**
@@ -2236,6 +2303,11 @@ export interface PosTransaction {
   syncOnline?: boolean;
   /** Who opened it — tells "mine" from a synced one parked at another till. */
   createdBy?: string | null;
+  /** Where it was rung up — "offline" arrived later from a till's queue (19 Oct 2026). */
+  source?: "online" | "offline";
+  deviceId?: string | null;
+  /** Who rang it up — on the transaction list only (19 Oct 2026). */
+  cashierName?: string | null;
   bookingIds: string[];
   paidAt: string | null;
   createdAt: string;
@@ -2555,8 +2627,15 @@ export interface PosReceiptItem {
  */
 export interface PosReceipt {
   header: {
+    /** "" when the branch hides it — the server already applied the toggle and override. */
     tenantName: string;
     branchName: string;
+    /**
+     * The branch's receipt logo and its header line. OPTIONAL: an offline
+     * snapshot taken before they existed has neither, and "" means none.
+     */
+    logoUrl?: string;
+    headerText?: string;
     /** Empty string, never null — an unfilled field prints as a blank line. */
     address: string;
     phone: string;
@@ -2629,6 +2708,8 @@ export interface PosTransactionListQuery {
   shiftId?: string;
   branchId?: string;
   customerId?: string;
+  /** "Transaksi saya": only the sales this user rang up. */
+  createdBy?: string;
   status?: PosTransactionStatus | PosTransactionStatus[];
   paidFrom?: string;
   paidTo?: string;
@@ -7343,11 +7424,33 @@ export interface CustomerInvoiceListRow {
   notes: string | null;
 }
 
+/**
+ * The branch's FAKTUR settings for a printed faktur and its kwitansi — its own
+ * set since 22 Oktober 2026, apart from the struk's, logo included
+ * (`utils/receiptHeader.js` → `invoiceBrandingOf` on the server).
+ *
+ * The TENANT name is left to the sheet, which falls back to the legal name: a
+ * hidden one is `showTenantName: false`, and `tenantName` is only the branch's
+ * override (null = use the tenant's own). The BRANCH name comes resolved — ""
+ * when hidden. `logoUrl` and `headerText` are "" when unset.
+ */
+export interface InvoicePrintHeader {
+  showTenantName: boolean;
+  tenantName: string | null;
+  branchName: string;
+  logoUrl: string;
+  headerText: string;
+  /** The faktur's closing note — bank details. "" prints nothing. Optional: older API. */
+  footerNote?: string;
+}
+
 /** GET /api/customer-invoices/:id — the row, plus its payments and labels. */
 export interface CustomerInvoiceDetail extends Omit<
   CustomerInvoiceListRow,
   "paymentCount"
 > {
+  /** Optional: an API older than 20 Oktober 2026 does not send it. */
+  printHeader?: InvoicePrintHeader;
   /** Trips of this bill's home bookings nobody has billed — the edit offers them (11 October 2026). */
   owedTrips?: {
     tripId: string;
@@ -7514,6 +7617,7 @@ export interface PublicCustomerInvoice {
   dueDate: string;
   customerName: string | null;
   branchName: string | null;
+  printHeader?: InvoicePrintHeader;
   items: Array<
     Pick<
       CustomerInvoiceItem,
@@ -7543,7 +7647,6 @@ export interface PublicCustomerInvoice {
     name: string;
     legalName?: string | null;
     taxId?: string | null;
-    invoiceFooterNote: string | null;
   };
 }
 
