@@ -165,6 +165,8 @@ export interface SalesInvoiceReportRow {
   dpp: string | null;
   tax: string | null;
   taxRate: number | null;
+  /** The prices held the PPN; null where there was no PPN. */
+  taxInclusive: boolean | null;
   /** Subtotal − both discounts + charges: the bill before PPN is added on. */
   netTotal: string | null;
   /** What the customer owes, PPN included — Grand total. */
@@ -205,6 +207,21 @@ export interface SalesInvoiceReportLine {
   lineTotal: string;
   /** `lineTotal` − `discount`: before the invoice discount and PPN. */
   net: string;
+  /** Its share of the invoice discount, split by `net`. */
+  invoiceDiscount: string;
+  /** Its share of the PPN; null where the invoice kept no breakdown. */
+  tax: string | null;
+  /** Its tax-exclusive pendapatan — Nett sales, as the laba rugi credits it. */
+  revenue: string;
+  /** qty × HPP at the sale; null on a product with no HPP recorded. */
+  cost: string | null;
+  /** `revenue` − `cost`; null where `cost` is. */
+  profit: string | null;
+  /** The sales sub akun it was booked to, as "code name". */
+  salesAccountName: string | null;
+  /** The goods that left for it were titipan. */
+  isConsignment: boolean;
+  consignorNames: string[];
 }
 
 export interface SalesInvoiceReportQuery {
@@ -374,34 +391,16 @@ export interface ConsignmentSalesReportQuery {
 }
 
 /**
- * GET /reports/sales-revenue — Laporan › Rincian pendapatan per produk. One
- * row per produk / layanan, largest `revenue` first.
+ * GET /reports/sales-revenue — Laporan › Rincian pendapatan per produk. The
+ * period's non-cancelled invoices, each with its lines (only the `kinds` asked
+ * for); the file prints one row per line. Per line:
  *
- * gross − discount − invoiceDiscount − tax = revenue (DPP, tax-exclusive);
- * revenue − cost = profit. `qtyNoCost` is the qty sold with no HPP recorded,
- * whose cost is therefore missing from `cost`.
+ * lineTotal − discount − invoiceDiscount − (tax, when inside the price)
+ *   = revenue (Nett sales); revenue − cost = profit.
  */
-export interface SalesRevenueReportRow {
-  kind: "product" | "service" | "membership";
-  name: string | null;
-  sku: string | null;
-  unit: string | null;
-  categoryName: string | null;
-  qty: string;
-  gross: string;
-  discount: string;
-  invoiceDiscount: string;
-  tax: string;
-  revenue: string;
-  cost: string;
-  profit: string;
-  margin: number | null;
-  qtyNoCost: string;
-}
-
 export interface SalesRevenueReport {
   range: { fromDate: string | null; toDate: string | null } | null;
-  rows: SalesRevenueReportRow[];
+  rows: (SalesInvoiceReportRow & { lines: SalesInvoiceReportLine[] })[];
 }
 
 export interface SalesRevenueReportQuery {
@@ -409,7 +408,7 @@ export interface SalesRevenueReportQuery {
   dateTo: string;
   branchIds?: string[];
   warehouseIds?: string[];
-  kinds?: SalesRevenueReportRow["kind"][];
+  kinds?: SalesInvoiceReportLine["kind"][];
 }
 
 /**
