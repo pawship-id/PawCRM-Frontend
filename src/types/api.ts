@@ -828,8 +828,8 @@ export interface HomeVisitFees {
  * document every other record hangs off. Deliberately has no `tenantId` of its
  * own: a tenant IS the tenant, so there is nothing above it to scope by.
  *
- * `slug` is a public URL identifier, not a display nicety, which is why the
- * backend never re-derives it when the business is renamed.
+ * `slug` follows the business name — the backend re-derives it on a rename
+ * (24 October 2026). `code` is the one that never changes.
  */
 export interface Tenant {
   _id: string;
@@ -850,6 +850,11 @@ export interface Tenant {
    */
   taxId?: string | null;
   slug: string;
+  /**
+   * `T0001`, … — the tenant's fixed code and media folder. Optional: a tenant
+   * the backend backfill has not reached yet comes back without it.
+   */
+  code?: string;
   logoUrl: string | null;
   /**
    * The zone the tenant's day is measured in — one of the three official
