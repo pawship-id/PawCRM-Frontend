@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, TextField } from "@/components";
+import { Alert, Button, PasswordField, TextField } from "@/components";
 import { ApiError } from "@/services/api-error";
 import { validateEmail, validateRequired } from "@/utils/validation";
 import { useAuth } from "../hooks/useAuth";
@@ -76,9 +76,8 @@ export function LoginForm({ redirectTo = DASHBOARD_HOME }: LoginFormProps) {
         autoFocus
       />
 
-      <TextField
+      <PasswordField
         label="Password"
-        type="password"
         name="password"
         autoComplete="current-password"
         placeholder="••••••••"

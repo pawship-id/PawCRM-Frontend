@@ -96,9 +96,6 @@ export function PublicInvoiceScreen({ token }: { token: string }) {
                 name: invoice.tenant.name,
                 legalName: invoice.tenant.legalName ?? null,
                 taxId: invoice.tenant.taxId ?? null,
-                settings: invoice.tenant.invoiceFooterNote
-                  ? { invoiceFooterNote: invoice.tenant.invoiceFooterNote }
-                  : {},
               }}
               size={wide ? "a4" : "80"}
             />

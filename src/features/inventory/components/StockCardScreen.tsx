@@ -520,23 +520,25 @@ export function StockCardScreen({
               {tab === "ledger" ? (
                 <>
                   {ledger.error && <Alert variant="error">{ledger.error}</Alert>}
-                  {ledger.loading ? (
-                    <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-                      <Spinner /> Memuat kartu stok…
-                    </div>
-                  ) : (
-                    <StockLedgerTable
-                      movements={ledger.movements}
-                      unit={product?.unit ?? ""}
-                      openingBalance={ledger.openingBalance}
-                      page={ledger.pagination.page}
-                      totalPages={ledger.pagination.totalPages}
-                      total={ledger.pagination.total}
-                      filtered={filtered}
-                      onPageChange={setPage}
-                      onSelect={setOpenMovement}
-                    />
-                  )}
+                  {/* Rendered through a reload: a re-sort or a page change
+                      dims the rows on screen rather than blanking the table. */}
+                  <StockLedgerTable
+                    movements={ledger.movements}
+                    unit={product?.unit ?? ""}
+                    openingBalance={ledger.openingBalance}
+                    sort={filters.sort}
+                    // Header sorting (BO, 19 October 2026). Not a panel field:
+                    // the panel's Reset must not re-sort a table ordered from
+                    // the headers it can see.
+                    onSortChange={(sort) => patchFilters({ sort })}
+                    loading={ledger.loading}
+                    page={ledger.pagination.page}
+                    totalPages={ledger.pagination.totalPages}
+                    total={ledger.pagination.total}
+                    filtered={filtered}
+                    onPageChange={setPage}
+                    onSelect={setOpenMovement}
+                  />
                 </>
               ) : (
                 <>

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { Receipt, RotateCcw, Ban } from "lucide-react";
 
-import { Alert, Pagination, Spinner } from "@/components";
+import { Alert, FilterPills, Pagination, Spinner } from "@/components";
+import { useAuth } from "@/features/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +18,16 @@ import { Can } from "@/features/permissions";
 import { posService } from "@/services/pos.service";
 import { formatMoney } from "@/utils/decimal";
 import type { PosTransaction } from "@/types/api";
+
+import { listQueued, type QueuedSale } from "../offline/queue";
+
+/** What an unsent sale is waiting for, in the cashier's words. */
+const UNSENT_LABEL: Partial<Record<QueuedSale["status"], string>> = {
+  pending: "Belum terkirim",
+  waiting_cashier: "Menunggu kasir login",
+  needs_review: "Perlu dicek admin",
+  failed: "Ditolak server",
+};
 
 const PAGE_SIZE = 10;
 
@@ -56,7 +67,13 @@ export function TodayTransactionsDialog({
   onReceipt,
   onOpenChange,
   reloadKey = 0,
+  offline = false,
 }: {
+  /**
+   * POS offline mode (19 October 2026): selling from the device. The server's
+   * list is not asked for; the device's own unsent sales still are.
+   */
+  offline?: boolean;
   open: boolean;
   onVoid: (sale: PosTransaction) => void;
   onReturn: (sale: PosTransaction) => void;
@@ -65,19 +82,67 @@ export function TodayTransactionsDialog({
   /** Bumped by the caller after a void or return, to re-read the list. */
   reloadKey?: number;
 }) {
+  const { user } = useAuth();
+  /*
+    WHOSE SALES (19 October 2026). The list is every cashier's at this branch —
+    a supervisor reprints and voids for others — and "Transaksi saya" narrows it
+    to the ones this account rang up, which is what a cashier usually wants.
+  */
+  const [whose, setWhose] = useState<"all" | "mine">("all");
+  const mine = whose === "mine" && user ? user._id : null;
   const [sales, setSales] = useState<PosTransaction[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /*
+    SALES RUNG UP ON THIS DEVICE THAT THE SERVER DOES NOT HAVE YET (offline
+    mode) — today's, newest first, above the server's list. Once one syncs it
+    leaves this list and appears in the other, so nothing is listed twice.
+  */
+  const [unsent, setUnsent] = useState<QueuedSale[]>([]);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    const since = startOfToday();
+    void listQueued("current")
+      .then((records) => {
+        if (!active) return;
+        setUnsent(
+          records.filter(
+            (record) =>
+              record.status !== "synced" &&
+              record.status !== "rejected" &&
+              record.sale.paidAt >= since &&
+              (!mine || record.sale.cashierUserId === mine),
+          ),
+        );
+      })
+      .catch(() => {
+        if (active) setUnsent([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [open, reloadKey, mine]);
 
   useEffect(() => {
     if (!open) return;
 
+    if (offline) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSales([]);
+      setTotal(0);
+      setTotalPages(1);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     let active = true;
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
 
@@ -89,6 +154,7 @@ export function TodayTransactionsDialog({
         // that it is already cancelled rather than wonder where it went.
         status: ["paid", "void"],
         paidFrom: startOfToday(),
+        ...(mine ? { createdBy: mine } : {}),
       })
       .then((result) => {
         if (!active) return;
@@ -106,11 +172,15 @@ export function TodayTransactionsDialog({
     return () => {
       active = false;
     };
-  }, [open, page, reloadKey]);
+  }, [open, page, reloadKey, offline, mine]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      {/*
+        THE LIST SCROLLS, NOT THE PAGE: the heading, the pills and the pager
+        stay put while a busy day's rows scroll between them.
+      */}
+      <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Transaksi hari ini</DialogTitle>
           <DialogDescription>
@@ -118,97 +188,176 @@ export function TodayTransactionsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {error && <Alert variant="error">{error}</Alert>}
+        <FilterPills
+          ariaLabel="Transaksi siapa"
+          options={[
+            { value: "all", label: "Semua kasir" },
+            { value: "mine", label: "Transaksi saya" },
+          ]}
+          value={whose}
+          onChange={(value: "all" | "mine") => {
+            setWhose(value);
+            setPage(1);
+          }}
+        />
 
-        {loading && sales.length === 0 ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
-            <Spinner /> Memuat…
-          </div>
-        ) : sales.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted">
-            Belum ada penjualan hari ini.
-          </p>
-        ) : (
-          <>
-            <ul className="divide-y divide-border">
-              {sales.map((sale) => (
+        {error && <Alert variant="error">{error}</Alert>}
+        {offline && (
+          <Alert variant="info">
+            Mode offline: yang tampil hanya transaksi di perangkat ini yang
+            belum terkirim. Batalkan dan retur bisa dilakukan setelah online.
+          </Alert>
+        )}
+
+        <div className="-mx-6 min-h-0 flex-1 space-y-4 overflow-y-auto px-6">
+          {unsent.length > 0 && (
+            <ul className="divide-y divide-border rounded-xl bg-surface-hover px-3">
+              {unsent.map((record) => (
                 <li
-                  key={sale._id}
+                  key={record.clientTxnId}
                   className="flex flex-wrap items-center justify-between gap-3 py-3"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="truncate text-sm font-medium tabular-nums text-foreground">
-                        {sale.transactionNumber}
+                        {record.sale.transactionNumber}
                       </span>
-                      {/* A word, not a colour alone — ui-rules §1.3. */}
-                      {sale.status === "void" && (
-                        <Badge
-                          variant="outline"
-                          className="border-transparent bg-tint-danger text-danger"
-                        >
-                          Dibatalkan
-                        </Badge>
-                      )}
+                      <Badge
+                        variant="outline"
+                        className="border-transparent bg-tint-warning text-secondary-foreground"
+                      >
+                        {UNSENT_LABEL[record.status] ?? "Belum terkirim"}
+                      </Badge>
                     </div>
                     <span className="block text-xs tabular-nums text-muted">
-                      {paidAtLabel(sale.paidAt)} · {sale.items.length} item ·{" "}
-                      {formatMoney(sale.totals?.grandTotal ?? "0")}
+                      {paidAtLabel(record.sale.paidAt)} ·{" "}
+                      {record.priced.items.length} item ·{" "}
+                      {formatMoney(record.sale.totals.grandTotal)}
+                      {record.sale.cashierName
+                        ? ` · ${record.sale.cashierName}`
+                        : ""}
                     </span>
                   </div>
-
-                  <div className="flex shrink-0 items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onReceipt(sale)}
-                    >
-                      <Receipt className="size-4" />
-                      Struk
-                    </Button>
-
-                    {sale.status === "paid" && (
-                      <>
-                        <Can feature="posTransactions" action="refund">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onReturn(sale)}
-                          >
-                            <RotateCcw className="size-4" />
-                            Retur
-                          </Button>
-                        </Can>
-
-                        <Can feature="posTransactions" action="void">
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onVoid(sale)}
-                          >
-                            <Ban className="size-4" />
-                            Batalkan
-                          </Button>
-                        </Can>
-                      </>
-                    )}
-                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onReceipt(record.priced)}
+                  >
+                    <Receipt className="size-4" />
+                    Struk
+                  </Button>
                 </li>
               ))}
             </ul>
+          )}
 
-            <Pagination
-              page={page}
-              totalPages={totalPages}
-              total={total}
-              unit="transaksi"
-              unitPlural="transaksi"
-              onPageChange={setPage}
-            />
-          </>
+          {offline ? null : loading && sales.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
+              <Spinner /> Memuat…
+            </div>
+          ) : sales.length === 0 ? (
+            unsent.length > 0 ? null : (
+              <p className="py-10 text-center text-sm text-muted">
+                {mine
+                  ? "Belum ada transaksi kamu hari ini."
+                  : "Belum ada penjualan hari ini."}
+              </p>
+            )
+          ) : (
+            <>
+              <ul className="divide-y divide-border">
+                {sales.map((sale) => (
+                  <li
+                    key={sale._id}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium tabular-nums text-foreground">
+                          {sale.transactionNumber}
+                        </span>
+                        {/* A word, not a colour alone — ui-rules §1.3. */}
+                        {sale.status === "void" && (
+                          <Badge
+                            variant="outline"
+                            className="border-transparent bg-tint-danger text-danger"
+                          >
+                            Dibatalkan
+                          </Badge>
+                        )}
+                        {/* Rung up on a till with no connection, posted later. */}
+                        {sale.source === "offline" && (
+                          <Badge
+                            variant="outline"
+                            className="border-transparent bg-tint-neutral text-muted"
+                          >
+                            Offline
+                          </Badge>
+                        )}
+                      </div>
+                      <span className="block text-xs tabular-nums text-muted">
+                        {paidAtLabel(sale.paidAt)} · {sale.items.length} item ·{" "}
+                        {formatMoney(sale.totals?.grandTotal ?? "0")}
+                        {sale.cashierName ? ` · ${sale.cashierName}` : ""}
+                      </span>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onReceipt(sale)}
+                      >
+                        <Receipt className="size-4" />
+                        Struk
+                      </Button>
+
+                      {sale.status === "paid" && (
+                        <>
+                          <Can feature="posTransactions" action="refund">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => onReturn(sale)}
+                            >
+                              <RotateCcw className="size-4" />
+                              Retur
+                            </Button>
+                          </Can>
+
+                          <Can feature="posTransactions" action="void">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => onVoid(sale)}
+                            >
+                              <Ban className="size-4" />
+                              Batalkan
+                            </Button>
+                          </Can>
+                        </>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+
+        {!offline && sales.length > 0 && (
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            unit="transaksi"
+            unitPlural="transaksi"
+            onPageChange={setPage}
+          />
         )}
       </DialogContent>
     </Dialog>

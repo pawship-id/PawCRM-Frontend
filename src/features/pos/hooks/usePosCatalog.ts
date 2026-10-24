@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { posService } from "@/services/pos.service";
+import { tillCatalog } from "../offline/tillApi";
 import { ApiError } from "@/services/api-error";
 import type {
   PageResult,
@@ -90,8 +90,8 @@ export function usePosCatalog(): UsePosCatalogResult {
       kinds: settled.kind === "" ? undefined : [settled.kind],
     };
 
-    posService
-      .catalog(query)
+    /* The server online; the device's copy offline (POS offline mode). */
+    tillCatalog(query)
       .then((result) => {
         if (!active) return;
         setItems(result.items);

@@ -84,7 +84,7 @@ const DEMO_BATCH_LABELS = {
 const ACCOUNT = {
   inventory: { code: "1201", name: "Persediaan Barang" },
   cogs: { code: "5101", name: "Harga Pokok Penjualan" },
-  loss: { code: "5201", name: "Kerugian Persediaan" },
+  loss: { code: "5201", name: "Beban Penyesuaian Persediaan" },
 } as const;
 
 /**

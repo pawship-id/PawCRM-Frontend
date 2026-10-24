@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { AlertTriangle, Coins, PawPrint, UserRound } from "lucide-react";
+import { AlertTriangle, Calculator, Coins, PawPrint, UserRound } from "lucide-react";
 
 import { ActionGroup, Alert, StatTile } from "@/components";
 import {
@@ -14,18 +14,19 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { BookingStatusBadge } from "@/features/booking";
-import { clockOf, endOfMonth } from "@/features/booking/day";
+import { clockOf, dayKeyOf, endOfMonth } from "@/features/booking/day";
 import { useExpiringAlert, useLowStockAlert } from "@/features/inventory";
 import {
   MEMBERSHIP_RENEWALS_HREF,
   cardHref,
 } from "@/features/memberships/labels";
 import { usePermissions } from "@/features/permissions";
+import { SETTINGS_PATHS } from "@/features/settings";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { customerService } from "@/services/customer.service";
 import { membershipService } from "@/services/membership.service";
 import { posService } from "@/services/pos.service";
-import { formatMoney, formatMoneyShort } from "@/utils/decimal";
+import { formatMoney } from "@/utils/decimal";
 
 import { useBerandaScope } from "./BerandaShell";
 import { Panel, TileGrid } from "./parts";
@@ -123,6 +124,40 @@ export function BerandaHariIni() {
     readsShifts,
   );
 
+  /*
+    SHIFTS LEFT OPEN FROM AN EARLIER DAY — the ones the tile above cannot see,
+    since it counts today's alone. Opened before today's midnight and still
+    open; oldest first, because the longest-hanging drawer is the one to chase.
+    Same one-call-per-cabang shape as the tile.
+  */
+  const staleShifts = useRemote(
+    `staleShifts|${branchKey}|${today}`,
+    async () => {
+      const openedTo = new Date(
+        new Date(`${today}T00:00:00`).getTime() - 1,
+      ).toISOString();
+      const scopes = branchIds.length ? branchIds : [undefined];
+      const pages = await Promise.all(
+        scopes.map((branchId) =>
+          posService.listShifts({
+            branchId,
+            status: "open",
+            openedTo,
+            limit: ROWS,
+          }),
+        ),
+      );
+      return {
+        total: pages.reduce((sum, page) => sum + page.pagination.total, 0),
+        items: pages
+          .flatMap((page) => page.items)
+          .sort((a, b) => a.openedAt.localeCompare(b.openedAt))
+          .slice(0, ROWS),
+      };
+    },
+    readsShifts,
+  );
+
   const lowStock = useLowStockAlert(readsProducts, [], branchIds);
   const expiring = useExpiringAlert(readsBatches, [], branchIds);
 
@@ -203,9 +238,9 @@ export function BerandaHariIni() {
         {readsInvoices && (
           <StatTile
             label="Omzet hari ini"
-            value={formatMoneyShort(sales.data?.revenue.amount ?? "0")}
+            value={formatMoney(sales.data?.revenue.amount ?? "0")}
             caption={`${sales.data?.revenue.invoiceCount ?? 0} faktur`}
-            hint="Total faktur yang terbit hari ini — dari kasir maupun dibuat manual — sebelum pembayaran."
+            hint="Faktur yang terbit hari ini — dari kasir maupun dibuat manual — setelah diskon, sebelum PPN, tanpa ongkir. Dihitung saat faktur terbit, bukan saat dibayar."
             loading={sales.loading}
             error={sales.failed}
           />
@@ -219,7 +254,7 @@ export function BerandaHariIni() {
                 ? `${openShifts} shift belum ditutup`
                 : "semua shift sudah ditutup"
             }
-            hint="Shift yang dibuka hari ini, berapa yang sudah ditutup. Shift yang belum ditutup tidak masuk rekonsiliasi kas hari ini."
+            hint="Shift yang dibuka hari ini, berapa yang sudah ditutup. Shift yang belum ditutup tidak masuk rekonsiliasi kas hari ini. Shift dari hari sebelumnya yang masih terbuka ada di Perlu tindakan."
             loading={shifts.loading}
             error={shifts.failed}
           />
@@ -382,6 +417,46 @@ export function BerandaHariIni() {
                   ? {
                       label: `+${(dormant.data?.pagination.total ?? 0) - ROWS} pelanggan lagi`,
                       href: "/dashboard/master/customers/dormant",
+                    }
+                  : undefined
+              }
+            />
+          )}
+
+          {readsShifts && (
+            <ActionGroup
+              icon={Calculator}
+              tone="bad"
+              title="Shift kasir belum ditutup dari hari sebelumnya"
+              count={staleShifts.data?.total ?? null}
+              loading={staleShifts.loading}
+              failed={staleShifts.failed}
+              empty="Tidak ada shift lama yang masih terbuka."
+              rows={(staleShifts.data?.items ?? []).map((shift) => ({
+                key: shift._id,
+                title: (
+                  <>
+                    <span className="tabular-nums">{shift.shiftNumber}</span>
+                    {shift.cashierName ? ` · ${shift.cashierName}` : ""}
+                  </>
+                ),
+                detail: (
+                  <span className="tabular-nums">
+                    {[shift.branchName, `dibuka ${dateOf(shift.openedAt)}`]
+                      .filter(Boolean)
+                      .join(" · ")}{" "}
+                    · {daysSince(dayKeyOf(shift.openedAt), today)} hari
+                  </span>
+                ),
+              }))}
+              more={
+                (staleShifts.data?.total ?? 0) > 0
+                  ? {
+                      label:
+                        (staleShifts.data?.total ?? 0) > ROWS
+                          ? `+${(staleShifts.data?.total ?? 0) - ROWS} shift lagi`
+                          : "Lihat di Shift kasir",
+                      href: SETTINGS_PATHS.shiftKasir,
                     }
                   : undefined
               }

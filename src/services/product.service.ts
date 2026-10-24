@@ -3,9 +3,12 @@ import type { PageResult } from "@/types/api";
 import type {
   CreatedProduct,
   CreateProductInput,
+  LowStockSort,
   NegativeStockResult,
+  NegativeStockSort,
   Product,
   ProductListQuery,
+  ProductStockOf,
   ProductVariantsResult,
   UpdateProductInput,
 } from "@/types/inventory";
@@ -67,6 +70,7 @@ export const productService = {
         limit: query.limit,
         search: query.search,
         categoryId: query.categoryId,
+        uncategorized: query.uncategorized,
         productType: query.productType,
         parentId: query.parentId,
         isActive: query.isActive,
@@ -77,12 +81,25 @@ export const productService = {
         inStockAtWarehouse: query.inStockAtWarehouse,
         searchBatches: query.searchBatches,
         includeDeleted: query.includeDeleted,
+        view: query.view,
         sort: query.sort,
+        stockWarehouseId: query.stockWarehouseId,
+        stockWarehouseIds: query.stockWarehouseIds,
       },
     }),
 
   /** GET /products/:id — a single product. */
   getById: (id: string) => apiClient.get<Product>(`/products/${id}`),
+
+  /**
+   * GET /products/stock — on-hand rows for up to 100 products in ONE request,
+   * narrowed to the caller's shelves. What an open document form re-reads to
+   * keep "Tersedia" current; never one `getById` per line.
+   */
+  stock: (productIds: string[]) =>
+    apiClient.get<{ items: ProductStockOf[] }>("/products/stock", {
+      query: { productIds },
+    }),
 
   /**
    * GET /products/:id/variants — one parent's variants, unpaginated.
@@ -110,6 +127,8 @@ export const productService = {
       /** Sets of either — sent as repeated params, intersected on the server. */
       warehouseIds?: string[];
       branchIds?: string[];
+      /** Omitted means `stockAsc` — the emptiest shelf first. */
+      sort?: LowStockSort;
     } = {},
   ) =>
     apiClient.get<PageResult<Product & { qtyOnHand: string }>>(
@@ -141,6 +160,8 @@ export const productService = {
       /** Sets of either — sent as repeated params, intersected on the server. */
       warehouseIds?: string[];
       branchIds?: string[];
+      /** Omitted means `valueAsc` — the worst hole first. */
+      sort?: NegativeStockSort;
     } = {},
   ) =>
     apiClient.get<NegativeStockResult>("/products/negative-stock", {
@@ -153,7 +174,7 @@ export const productService = {
    *
    * SEPARATE FROM AN ADJUSTMENT, and the account is the whole reason: this
    * posts `opening_balance`, which credits 3101 Modal Disetor. A manual
-   * adjustment credits 5201 Kerugian Persediaan, which is right for goods that
+   * adjustment credits 5201 Beban Penyesuaian Persediaan, which is right for goods that
    * vanished and absurd for a shop's day-one inventory.
    *
    * REFUSED FOR ANY PRODUCT THAT HAS EVER MOVED, by SKU, in one answer. The

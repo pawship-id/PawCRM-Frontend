@@ -2,6 +2,10 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { PosPaymentDialog } from "@/features/pos/components/PosPaymentDialog";
+import {
+  loadTillChannels,
+  prefetchTillChannels,
+} from "@/features/pos/hooks/tillChannels";
 import { paymentChannelService } from "@/services/paymentChannel.service";
 import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
@@ -162,7 +166,9 @@ describe("PosPaymentDialog — the remainder", () => {
     open();
 
     await user.click(await screen.findByRole("button", { name: "QRIS" }));
-    await user.click(await screen.findByRole("button", { name: "QRIS Xendit" }));
+    await user.click(
+      await screen.findByRole("button", { name: "QRIS Xendit" }),
+    );
 
     const amount = screen.getByLabelText(/jumlah qris xendit/i);
     await user.clear(amount);
@@ -179,7 +185,9 @@ describe("PosPaymentDialog — the remainder", () => {
     open();
 
     await user.click(await screen.findByRole("button", { name: "QRIS" }));
-    await user.click(await screen.findByRole("button", { name: "QRIS Xendit" }));
+    await user.click(
+      await screen.findByRole("button", { name: "QRIS Xendit" }),
+    );
 
     const amount = screen.getByLabelText(/jumlah qris xendit/i);
     await user.clear(amount);
@@ -208,7 +216,9 @@ describe("PosPaymentDialog — the channel rules", () => {
     open();
 
     await user.click(await screen.findByRole("button", { name: "QRIS" }));
-    await user.click(await screen.findByRole("button", { name: "QRIS Xendit" }));
+    await user.click(
+      await screen.findByRole("button", { name: "QRIS Xendit" }),
+    );
 
     // An unmatchable QRIS line is indistinguishable from one that never arrived.
     expect(screen.getByRole("button", { name: /selesaikan/i })).toBeDisabled();
@@ -231,7 +241,9 @@ describe("PosPaymentDialog — the channel rules", () => {
     await user.type(cash, "100000");
 
     await user.click(screen.getByRole("button", { name: "QRIS" }));
-    await user.click(await screen.findByRole("button", { name: "QRIS Xendit" }));
+    await user.click(
+      await screen.findByRole("button", { name: "QRIS Xendit" }),
+    );
 
     // The second line is offered the balance, not the whole bill again.
     expect(screen.getByLabelText(/jumlah qris xendit/i)).toHaveValue("200000");
@@ -266,9 +278,7 @@ describe("PosPaymentDialog — what it sends", () => {
 
     await waitFor(() =>
       expect(mockedPos.pay).toHaveBeenCalledWith(CART_ID, {
-        payments: [
-          { channelId: CASH_ID, amount: "350000", change: "50000" },
-        ],
+        payments: [{ channelId: CASH_ID, amount: "350000", change: "50000" }],
       }),
     );
   });
@@ -347,17 +357,19 @@ describe("PosPaymentDialog — Piutang", () => {
 
   it("is offered on every sale, so a cashier can see it exists", async () => {
     open();
-    expect(await screen.findByRole("button", { name: "Piutang" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Piutang" }),
+    ).toBeInTheDocument();
   });
 
   it("is disabled with no customer, and says why in words on the screen", async () => {
     open();
 
-    expect(await screen.findByRole("button", { name: "Piutang" })).toBeDisabled();
-    // Not only in a title attribute: a till is touched, not hovered over.
     expect(
-      screen.getByText(/pilih pelanggan dulu/i),
-    ).toBeInTheDocument();
+      await screen.findByRole("button", { name: "Piutang" }),
+    ).toBeDisabled();
+    // Not only in a title attribute: a till is touched, not hovered over.
+    expect(screen.getByText(/pilih pelanggan dulu/i)).toBeInTheDocument();
   });
 
   it("carries the hint for a shop running this with a mouse too", async () => {
@@ -366,12 +378,17 @@ describe("PosPaymentDialog — Piutang", () => {
     const wrapper = (await screen.findByRole("button", { name: "Piutang" }))
       .parentElement;
 
-    expect(wrapper).toHaveAttribute("title", expect.stringMatching(/pilih pelanggan/i));
+    expect(wrapper).toHaveAttribute(
+      "title",
+      expect.stringMatching(/pilih pelanggan/i),
+    );
   });
 
   it("is enabled once a customer is on the cart", async () => {
     open(WITH_CUSTOMER);
-    expect(await screen.findByRole("button", { name: "Piutang" })).toBeEnabled();
+    expect(
+      await screen.findByRole("button", { name: "Piutang" }),
+    ).toBeEnabled();
 
     expect(screen.queryByText(/pilih pelanggan dulu/i)).not.toBeInTheDocument();
   });
@@ -382,7 +399,9 @@ describe("PosPaymentDialog — Piutang", () => {
 
     await user.click(await screen.findByRole("button", { name: "Piutang" }));
 
-    expect(await screen.findByText(/jadi piutang bu sari/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/jadi piutang bu sari/i),
+    ).toBeInTheDocument();
     /*
       The whole bill, because nothing has been paid towards it — and it appears
       TWICE, in the panel and on the "Sisa jadi piutang" line. That is the
@@ -577,7 +596,8 @@ describe("PosPaymentDialog — Piutang", () => {
     const user = userEvent.setup();
     mockedPos.pay.mockRejectedValue(
       new ApiError("Melebihi plafon kredit pelanggan", 409, {
-        reason: "Bu Sari sudah punya piutang 400000.0000 dari plafon 500000.0000.",
+        reason:
+          "Bu Sari sudah punya piutang 400000.0000 dari plafon 500000.0000.",
       }),
     );
 
@@ -666,5 +686,47 @@ describe("PosPaymentDialog — what a refusal says", () => {
     expect(
       await screen.findByText("Pembayaran gagal. Coba lagi."),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * THE LIST IS FETCHED WHEN THE TILL OPENS (18 Oct 2026), so "Bayar" does not
+ * sit on "Memuat metode bayar…" for a round trip on every sale.
+ */
+describe("PosPaymentDialog — the till's channel list", () => {
+  it("opens on the list the till already fetched, without waiting", async () => {
+    prefetchTillChannels("b-prefetched");
+    await loadTillChannels("b-prefetched");
+
+    // The refresh behind it never answers — the dialog must not need it.
+    mockedChannels.list.mockReturnValue(new Promise(() => {}));
+    open({ branchId: "b-prefetched" });
+
+    expect(
+      screen.getByRole("button", { name: "Kas Toko" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/memuat metode bayar/i)).not.toBeInTheDocument();
+  });
+
+  it("still refreshes it, so a channel added mid-shift shows up", async () => {
+    await loadTillChannels("b-refresh");
+    mockedChannels.list.mockResolvedValue({
+      items: [channel(), channel({ _id: "c-new", name: "Kas Baru" })],
+      pagination: { page: 1, limit: 100, total: 2, totalPages: 1 },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+
+    open({ branchId: "b-refresh" });
+
+    expect(
+      await screen.findByRole("button", { name: "Kas Baru" }),
+    ).toBeInTheDocument();
+  });
+
+  it("waits with the spinner when nothing was fetched yet", async () => {
+    open({ branchId: "b-cold" });
+
+    expect(screen.getByText(/memuat metode bayar/i)).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Kas Toko" });
   });
 });

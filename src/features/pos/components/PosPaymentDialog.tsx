@@ -12,11 +12,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { paymentChannelService } from "@/services/paymentChannel.service";
 import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
 import { formatMoney } from "@/utils/decimal";
-import type { PaymentChannel, PosTransaction } from "@/types/api";
+import type { PayInput, PaymentChannel, PosTransaction } from "@/types/api";
 
 import {
   PaymentChannelPicker,
@@ -24,9 +23,7 @@ import {
 } from "./PaymentChannelPicker";
 import { PosCreditPanel, defaultDueDate } from "./PosCreditPanel";
 import { PaymentLinesList, type DraftPayment } from "./PaymentLinesList";
-
-/** The API's page cap — asking for more is a 400. */
-const FETCH_LIMIT = 100;
+import { cachedTillChannels, loadTillChannels } from "../hooks/tillChannels";
 
 /**
  * What a cashier may TYPE: digits only.
@@ -87,11 +84,28 @@ export function PosPaymentDialog({
   open,
   onPaid,
   onOpenChange,
+  pay,
+  offline = false,
+  saveOffline,
 }: {
   cart: PosTransaction;
   open: boolean;
   onPaid: (sale: PosTransaction) => void;
   onOpenChange: (open: boolean) => void;
+  /**
+   * POS OFFLINE MODE (19 October 2026): who takes the money. Absent, the
+   * server's `/pay` as always; the till passes one that adds the device's own
+   * number online, or queues the sale on the device offline.
+   */
+  pay?: (input: PayInput) => Promise<PosTransaction>;
+  /** Selling from the device: no piutang, and a word about QRIS/transfer. */
+  offline?: boolean;
+  /**
+   * The way out when the connection drops DURING payment: the same sale,
+   * queued on the device under the same number. Absent where the device cannot
+   * sell offline, or the basket holds something only the server can price.
+   */
+  saveOffline?: (input: PayInput) => Promise<PosTransaction>;
 }) {
   const [channels, setChannels] = useState<PaymentChannel[]>([]);
   const [activeRoute, setActiveRoute] = useState<PaymentRoute>("cash");
@@ -107,6 +121,8 @@ export function PosPaymentDialog({
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* The payment that was in flight when the connection dropped — see `saveOffline`. */
+  const [lostInput, setLostInput] = useState<PayInput | null>(null);
 
   /*
     WHAT THE PAYMENT MUST COVER, which is NOT `net` for every shop.
@@ -135,34 +151,40 @@ export function PosPaymentDialog({
 
     let active = true;
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true);
+    // Land on a type the shop actually has, so the first tab is never empty.
+    const show = (items: PaymentChannel[]) => {
+      setChannels(items);
+      const first = items.find((channel) => channel.type === "cash");
+      setActiveRoute(first?.type ?? items[0]?.type ?? "cash");
+    };
+
+    /*
+      DRAWN FROM THE TILL'S CACHE when it has one — fetched when the till
+      opened (tillChannels.ts) — so the dialog is usable the instant it opens.
+      The fetch below still runs and quietly replaces the list, so a channel
+      added mid-shift shows up; the spinner only appears when there is nothing
+      to show yet.
+    */
+    const cached = cachedTillChannels(cart.branchId);
+    if (cached) {
+      show(cached);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError(null);
 
-    paymentChannelService
-      /*
-        `usableFor: "in"` — the till only offers channels money can ARRIVE
-        through. Without it, a bank account a tenant marked pay-out-only would
-        still appear here, and the narrowing would work in one direction only.
-
-        A channel that declares nothing still matches, by its type: every channel
-        written before the field existed is that kind.
-      */
-      .list({
-        isActive: true,
-        usableFor: "in",
-        branchId: cart.branchId,
-        limit: FETCH_LIMIT,
-      })
-      .then((result) => {
+    loadTillChannels(cart.branchId)
+      .then((items) => {
         if (!active) return;
-        setChannels(result.items);
-        // Land on a type the shop actually has, so the first tab is never empty.
-        const first = result.items.find((channel) => channel.type === "cash");
-        setActiveRoute(first?.type ?? result.items[0]?.type ?? "cash");
+        // Only re-pick the tab on the first load: a refresh must not move a
+        // cashier who already tapped QRIS back to Tunai.
+        if (cached) setChannels(items);
+        else show(items);
       })
       .catch(() => {
-        if (active) setError("Metode bayar gagal dimuat. Coba lagi.");
+        if (active && !cached) setError("Metode bayar gagal dimuat. Coba lagi.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -226,9 +248,11 @@ export function PosPaymentDialog({
    * approved. The server refuses it too; this is the courtesy that stops a
    * cashier finding out after they have bagged the goods.
    */
-  const creditBlockedReason = cart.customer
-    ? null
-    : "Pilih pelanggan dulu — piutang harus ada yang menanggung.";
+  const creditBlockedReason = offline
+    ? "Piutang butuh koneksi internet."
+    : cart.customer
+      ? null
+      : "Pilih pelanggan dulu — piutang harus ada yang menanggung.";
 
   const onCredit = activeRoute === "piutang" && creditBlockedReason === null;
 
@@ -309,25 +333,55 @@ export function PosPaymentDialog({
 
     setSubmitting(true);
     setError(null);
+    setLostInput(null);
+
+    const input: PayInput = {
+      // Sent only when the sale is actually going on account — an empty
+      // object here would be the server's cue to raise a receivable.
+      ...(onCredit ? { credit: { dueDate } } : {}),
+      payments: lines.map((line, index) => ({
+        channelId: line.channelId,
+        amount: line.amount.trim(),
+        ...(changeByIndex.has(index)
+          ? { change: changeByIndex.get(index) }
+          : {}),
+        ...(line.channel.requiresReference
+          ? { reference: line.reference?.trim() }
+          : {}),
+      })),
+    };
 
     try {
-      const sale = await posService.pay(cart._id, {
-        // Sent only when the sale is actually going on account — an empty
-        // object here would be the server's cue to raise a receivable.
-        ...(onCredit ? { credit: { dueDate } } : {}),
-        payments: lines.map((line, index) => ({
-          channelId: line.channelId,
-          amount: line.amount.trim(),
-          ...(changeByIndex.has(index)
-            ? { change: changeByIndex.get(index) }
-            : {}),
-          ...(line.channel.requiresReference
-            ? { reference: line.reference?.trim() }
-            : {}),
-        })),
-      });
+      const sale = pay ? await pay(input) : await posService.pay(cart._id, input);
 
       onPaid(sale);
+    } catch (err) {
+      /*
+        NO ANSWER IS NOT A REFUSAL (POS offline mode). The payment may or may
+        not have reached the server; sending it again is safe — the till's own
+        id for the sale makes a repeat find the first — and so is finishing it
+        offline under the same number. Both are offered; neither is guessed.
+      */
+      if (err instanceof ApiError && (err.isNetworkError || err.isTimeout)) {
+        setLostInput(input);
+        setError(
+          saveOffline && !onCredit
+            ? "Koneksi terputus saat membayar. Kirim ulang, atau simpan sebagai transaksi offline — nomornya tetap sama dan tidak akan tercatat dua kali."
+            : "Koneksi terputus saat membayar. Cek koneksi lalu kirim ulang — transaksi tidak akan tercatat dua kali.",
+        );
+      } else {
+        setError(refusalText(err));
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function finishOffline() {
+    if (!lostInput || !saveOffline) return;
+    setSubmitting(true);
+    try {
+      onPaid(await saveOffline(lostInput));
     } catch (err) {
       setError(refusalText(err));
     } finally {
@@ -361,6 +415,26 @@ export function PosPaymentDialog({
         </DialogHeader>
 
         {error && <Alert variant="error">{error}</Alert>}
+
+        {lostInput && saveOffline && !onCredit && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void finishOffline()}
+              disabled={submitting}
+            >
+              Simpan sebagai transaksi offline
+            </Button>
+          </div>
+        )}
+
+        {offline && (
+          <Alert variant="info">
+            Mode offline: QRIS dan transfer dicatat manual. Pastikan dananya
+            sudah masuk sebelum menekan Selesaikan.
+          </Alert>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">

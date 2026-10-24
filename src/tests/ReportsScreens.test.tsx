@@ -1,4 +1,5 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import {
   cashFlowRows,
@@ -147,11 +148,14 @@ describe("ReportsHub", () => {
     renderWithAuth(<ReportsHub />);
 
     expect(screen.getByText("Penjualan per invoice")).toBeInTheDocument();
+    expect(
+      screen.getByText("Penjualan per invoice (rincian barang)"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Segera")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Buka" }),
     ).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Unduh" })).toHaveLength(6);
+    expect(screen.getAllByRole("button", { name: "Unduh" })).toHaveLength(7);
   });
 
   it("lists the inventory reports a full grant can reach", () => {
@@ -295,6 +299,71 @@ describe("LowStockScreen", () => {
 
     expect(
       await screen.findByRole("button", { name: /export halaman ini/i }),
+    ).toBeInTheDocument();
+  });
+
+  /**
+   * THE HEADERS SORT ON THE SERVER — the list pages, so re-sorting the rows on
+   * screen would order one page while the pager walked another. It opens on
+   * the API's default, the emptiest shelf first, and the caption says which
+   * order is on screen rather than claiming a fixed one.
+   */
+  it("opens emptiest-first and asks the server for each header's ordering", async () => {
+    asMock(productService.lowStock).mockResolvedValue({
+      items: [
+        {
+          _id: "p1",
+          sku: "SHAMPOO",
+          name: "Shampoo Anjing",
+          unit: "pcs",
+          minStock: 5,
+          qtyOnHand: "2",
+        },
+      ],
+      pagination: { page: 1, limit: 50, total: 120, totalPages: 3 },
+    } as unknown as Awaited<ReturnType<typeof productService.lowStock>>);
+    const user = userEvent.setup();
+    renderWithAuth(<LowStockScreen />);
+
+    await screen.findByText("Shampoo Anjing");
+    expect(productService.lowStock).toHaveBeenLastCalledWith({
+      page: 1,
+      limit: 50,
+      sort: "stockAsc",
+    });
+    expect(
+      screen.getByText(/diurutkan dari stok paling sedikit/i),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /berikutnya/i }));
+    await waitFor(() =>
+      expect(productService.lowStock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2 }),
+      ),
+    );
+
+    const clicks: Array<[string, string]> = [
+      ["SKU", "skuAsc"],
+      ["Produk", "nameAsc"],
+      ["Stok", "stockAsc"],
+      ["Stok", "stockDesc"],
+      // The biggest threshold and the biggest gap first.
+      ["Batas", "minStockDesc"],
+      ["Kurang", "shortageDesc"],
+    ];
+    for (const [header, sort] of clicks) {
+      await user.click(screen.getByRole("button", { name: header }));
+      // A new order is a new walk: back to page 1.
+      await waitFor(() =>
+        expect(productService.lowStock).toHaveBeenLastCalledWith({
+          page: 1,
+          limit: 50,
+          sort,
+        }),
+      );
+    }
+    expect(
+      screen.getByText(/diurutkan dari kekurangan paling banyak/i),
     ).toBeInTheDocument();
   });
 });

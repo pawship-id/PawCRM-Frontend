@@ -14,6 +14,8 @@ import {
   RECEIPT_SIZE_LABELS,
   useReceiptSize,
 } from "../deviceSettings";
+import type { OfflineTill } from "../offline/useOfflineTill";
+import { PosDeviceSection } from "./PosDeviceSection";
 
 /**
  * Pengaturan Kasir — what this device does, not what the shop does (FR-8).
@@ -34,9 +36,12 @@ import {
 export function PosSettingsDialog({
   open,
   onOpenChange,
+  till,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** This device as a till — registration and offline data (POS offline mode). */
+  till?: OfflineTill;
 }) {
   const [size, setSize] = useReceiptSize();
 
@@ -82,6 +87,8 @@ export function PosSettingsDialog({
             58 mm dan 80 mm untuk printer struk termal, A4 untuk printer biasa.
           </p>
         </div>
+
+        {till && <PosDeviceSection till={till} />}
       </DialogContent>
     </Dialog>
   );

@@ -40,6 +40,7 @@ const EVERY_FILTER: Required<ServiceListQuery> = {
   petType: "opt-species-kucing",
   search: "mandi",
   includeDeleted: true,
+  sort: "priceDesc",
 };
 
 describe("serviceService", () => {

@@ -15,6 +15,7 @@ export {
   consignmentSalesReport,
   posSalesReport,
   salesBatchReport,
+  salesInvoiceLineReport,
   salesInvoiceReport,
   salesItemReport,
   salesRevenueReport,

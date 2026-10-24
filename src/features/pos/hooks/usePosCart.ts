@@ -17,8 +17,10 @@ import type {
 
 import type { EligibilityReason } from "@/types/membership";
 
-import { ownDiscountOf } from "../bookingDiscount";
-import { pickOf } from "../membershipCart";
+import { onlineTransport, type CartTransport } from "../offline/transport";
+import { cartItemsAsInput } from "./cartInput";
+
+export { cartItemsAsInput };
 
 /** A package line as the sell dialog hands it over (contract §6.2). */
 export interface MembershipLineInput {
@@ -214,6 +216,7 @@ interface UsePosCartResult {
   clear: () => void;
 }
 
+
 /**
  * What a refused cart write says to the cashier.
  *
@@ -240,157 +243,6 @@ function cartWriteError(err: unknown): string {
 }
 
 /**
- * A basket's lines, as the API wants them sent back on the next write.
- *
- * MODULE-LEVEL so a write can be built from a basket the server JUST returned
- * (21 October 2026) — "Add-on ini untuk layanan yang mana?" pulls a booking and
- * then hangs the add-on on it in the same tap, and the second write must start
- * from the pulled basket, not from the one this hook's closure still holds.
- */
-export function itemsAsInputOf(cart: PosTransaction | null): PosItemInput[] {
-  return (cart?.items ?? []).map((item) => ({
-    kind: item.kind,
-    refId: item.refId,
-    qty: item.qty,
-    /*
-      A TYPED PRICE IS RE-SENT, OR IT EVAPORATES (28 September 2026).
-
-      The server rebuilds every line from this payload on each write, so an
-      override left out of the next one — stepping the quantity of a bag of
-      feed three lines down — would quietly put this line back to the shelf
-      price with nothing on screen saying so.
-
-      `listPrice` IS THE FLAG. It is non-null only when the two differ, so
-      this sends a price exactly for the lines that have one and leaves
-      every ordinary line alone — which matters, because sending a price at
-      all is what makes the server ask for `posTransactions:setPrice`.
-    */
-    ...(item.listPrice ? { unitPrice: item.unitPrice } : {}),
-    /*
-      THE LOT AND THE LINE NOTE, SENT BACK (8 October 2026). Same reason as
-      the price above: the server rebuilds every line from this payload, so
-      a lot or a note left out of the next write — stepping the quantity of
-      something else — would quietly fall off this line, and the sale would
-      then take from whichever lot FEFO likes instead of the one the cashier
-      picked off the shelf.
-    */
-    ...(item.lots?.length
-      ? {
-          lots: item.lots.map(({ batchId, qty }) => ({ batchId, qty })),
-        }
-      : {}),
-    ...(item.note ? { note: item.note } : {}),
-    /*
-      THE LINE'S OWN DISCOUNT, never the whole of it. A booking's share of
-      "Diskon seluruh booking" rides inside the stored figure, and the server
-      adds it back from the booking — sending it too would count it twice.
-    */
-    discount: (() => {
-      const own = ownDiscountOf(item);
-      return own
-        ? {
-            mode: own.mode,
-            value: own.value,
-            ...(own.approvedBy ? { approvedBy: own.approvedBy } : {}),
-          }
-        : null;
-    })(),
-    /*
-      THE MEMBERSHIP BENEFIT, SENT BACK (30 September 2026). Same reason as
-      the typed price above and the journey below: the server rebuilds every
-      line from this payload on each write, so a benefit left out of the
-      next one would quietly fall off the moment the cashier stepped the
-      quantity of a bag of feed three lines down — and the customer would be
-      charged full price for something they had already been told was free.
-
-      `discount.source` IS THE FLAG, the way `listPrice` is the flag for an
-      overridden price: it is `membership` only on a line a card paid for.
-      TWO IDS AND NOTHING ELSE go back — the server re-reads the card and
-      re-prices it, so a stale amount on this side can never become money.
-    */
-    /*
-      PROMOSI V1: the pick as the server hands it back (`item.benefit`) —
-      a real card by `membershipId`, a package of this same cart by
-      `packageRef`, plus the option. Never on a visit-fee waiver: that one
-      is derived by the server, not picked (contract §6.3).
-    */
-    ...(() => {
-      const pick = pickOf(item);
-      return pick ? { benefit: pick } : {};
-    })(),
-    /*
-      A PACKAGE LINE'S OWN FACTS, SENT BACK (Promosi V1). The server
-      rebuilds every line from this payload: a start date or a referral
-      code left out of the next write would silently fall off — and a
-      dropped `packageRef` orphans every line that spends the package.
-    */
-    ...(item.kind === "membership"
-      ? {
-          ...(item.membershipStartDate
-            ? { membershipStartDate: item.membershipStartDate }
-            : {}),
-          ...(item.referralCode ? { referralCode: item.referralCode } : {}),
-          ...(item.packageRef ? { packageRef: item.packageRef } : {}),
-          ...(item.renewFromId ? { renewFromId: item.renewFromId } : {}),
-        }
-      : {}),
-    bookingId: item.bookingId,
-    /*
-      THE TRIP A FEE LINE BILLS, SENT BACK (11 October 2026). Left out, the
-      server reads the line as a "Biaya Kunjungan" typed by hand and refuses
-      the whole write — the next tap on anything in the basket would fail.
-    */
-    ...(item.homeTripId ? { homeTripId: item.homeTripId } : {}),
-    petId: item.petId,
-    petName: item.petName,
-    groomerName: item.groomerName,
-    /*
-      WHAT THE LINE WAS PRICED ON, SENT BACK (17 September 2026). The server
-      rebuilds every line from this payload on each write, so a walk-in
-      grooming at home whose "Lokasi" were left out would be refused — or
-      re-priced — the moment the cashier changed the quantity of a bag of
-      feed. The snapshot's name and label are for reading; the server wants
-      only the pair.
-    */
-    ...(item.variantChoices?.length
-      ? {
-          variantChoices: item.variantChoices.map(({ optionId, code }) => ({
-            optionId,
-            code,
-          })),
-        }
-      : {}),
-    /*
-      THE JOURNEY THE LINE IS, SENT BACK (24 September 2026). Same reason as
-      the choices above: the server rebuilds every line from this payload on
-      each write, and a ride whose two ends were left out would be re-priced
-      from the customer's stored pin the moment somebody changed the
-      quantity of a bag of feed — a different fare, for a journey nobody
-      re-agreed. The response nests each end; the wire is flat.
-    */
-    ...(item.trip
-      ? {
-          trip: {
-            leg: item.trip.leg,
-            origin: {
-              address: item.trip.origin?.address ?? null,
-              lat: item.trip.origin?.lat as number,
-              lng: item.trip.origin?.lng as number,
-            },
-            destination: {
-              address: item.trip.destination?.address ?? null,
-              lat: item.trip.destination?.lat as number,
-              lng: item.trip.destination?.lng as number,
-            },
-          },
-          linkedBookingIds: item.linkedBookingIds ?? [],
-          passengerPetIds: item.passengerPetIds ?? [],
-        }
-      : {}),
-  }));
-}
-
-/**
  * The active basket.
  *
  * EVERY MUTATION SENDS THE WHOLE BASKET, because the server prices it that way:
@@ -404,7 +256,29 @@ export function itemsAsInputOf(cart: PosTransaction | null): PosItemInput[] {
  * receipt, and the disagreement would surface as a customer being charged
  * something other than what the screen said.
  */
-export function usePosCart(): UsePosCartResult {
+/**
+ * WHERE THIS BASKET'S WRITES GO (POS offline mode, 19 October 2026) — see
+ * `offline/transport.ts`.
+ *
+ * `pick` answers for the basket on screen: the server, or the device. A basket
+ * that lives on the device stays there until it is paid, even when the
+ * connection comes back mid-sale — it has no server copy to continue.
+ *
+ * `fallback`, when given, is where a write goes if the server could not be
+ * reached: the basket is adopted onto the device and the cashier's tap lands
+ * there instead of failing. Absent (no registered device, no snapshot), a lost
+ * connection is reported as before.
+ */
+export interface CartTransportChoice {
+  pick: (cart: PosTransaction | null) => CartTransport;
+  fallback?: () => CartTransport | null;
+}
+
+const SERVER_ONLY: CartTransportChoice = { pick: () => onlineTransport };
+
+export function usePosCart(
+  transports: CartTransportChoice = SERVER_ONLY,
+): UsePosCartResult {
   const [cart, setCart] = useState<PosTransaction | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -455,8 +329,25 @@ export function usePosCart(): UsePosCartResult {
       setError(null);
 
       try {
-        const target = cart ?? (await posService.createCart({}));
-        const updated = await posService.updateCart(target._id, input);
+        const transport = transports.pick(cart);
+        let updated: PosTransaction;
+        try {
+          const target = cart ?? (await transport.createCart());
+          updated = await transport.updateCart(target, input);
+        } catch (err) {
+          /*
+            THE CONNECTION DROPPED UNDER THE CASHIER'S TAP. With somewhere to
+            fall back to, the same patch is applied on the device — the basket
+            on screen is adopted, so nothing rung up so far is lost.
+          */
+          const fallback =
+            err instanceof ApiError && (err.isNetworkError || err.isTimeout)
+              ? transports.fallback?.()
+              : null;
+          if (!fallback || fallback === transport) throw err;
+          const target = cart ?? (await fallback.createCart());
+          updated = await fallback.updateCart(target, input);
+        }
         setCart(updated);
         setPendingApproval(null);
         return true;
@@ -500,7 +391,7 @@ export function usePosCart(): UsePosCartResult {
         setBusy(false);
       }
     },
-    [cart],
+    [cart, transports],
   );
 
   const pullBookings = useCallback(
@@ -553,7 +444,7 @@ export function usePosCart(): UsePosCartResult {
       };
 
       if (host.source === "cart") {
-        return send({ items: [...itemsAsInputOf(cart), line] });
+        return send({ items: [...cartItemsAsInput(cart), line] });
       }
 
       if (!host.bookingId) return false;
@@ -569,7 +460,7 @@ export function usePosCart(): UsePosCartResult {
         setCart(pulled);
         setCart(
           await posService.updateCart(pulled._id, {
-            items: [...itemsAsInputOf(pulled), line],
+            items: [...cartItemsAsInput(pulled), line],
           }),
         );
         return true;
@@ -591,7 +482,7 @@ export function usePosCart(): UsePosCartResult {
 
   /** The current lines, as the API wants them sent back. */
   const itemsAsInput = useCallback(
-    (): PosItemInput[] => itemsAsInputOf(cart),
+    (): PosItemInput[] => cartItemsAsInput(cart),
     [cart],
   );
 

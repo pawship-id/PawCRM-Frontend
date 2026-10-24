@@ -42,6 +42,7 @@ export const petService = {
         search: query.search,
         tag: query.tag,
         includeDeleted: query.includeDeleted,
+        sort: query.sort,
       },
     }),
 

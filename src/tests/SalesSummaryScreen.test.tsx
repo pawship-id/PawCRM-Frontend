@@ -38,6 +38,8 @@ function summary(): CustomerInvoiceListSummary {
     asOf: "2026-09-28T00:00:00.000Z",
     period: PERIOD,
     revenue: figure("12500000.0000", 34),
+    // The laba rugi's Total pendapatan — what this tab's Omzet card shows.
+    ledgerRevenue: { amount: "12500000.0000" },
     collected: figure("9000000.0000", 28),
     outstanding: figure("3500000.0000", 6),
     overdue: figure("1200000.0000", 2),
@@ -157,7 +159,7 @@ describe("SalesSummaryScreen", () => {
 
     // The card and every bar under it move together — one filter, four requests.
     await waitFor(() =>
-      expect(mocked.summary).toHaveBeenLastCalledWith({ period: "today" }),
+      expect(mocked.summary).toHaveBeenLastCalledWith({ period: "today" }, { ledger: true }),
     );
     expect(mocked.revenueBreakdown).toHaveBeenLastCalledWith("customerType", {
       period: "today",
@@ -173,7 +175,7 @@ describe("SalesSummaryScreen", () => {
       expect(mocked.summary).toHaveBeenLastCalledWith({
         branchIds: ["b1"],
         period: "today",
-      }),
+      }, { ledger: true }),
     );
 
     // Two off the default — a cabang and a period that is not Bulan ini.
@@ -184,18 +186,25 @@ describe("SalesSummaryScreen", () => {
       ),
     );
     await waitFor(() =>
-      expect(mocked.summary).toHaveBeenLastCalledWith({ period: "month" }),
+      expect(mocked.summary).toHaveBeenLastCalledWith({ period: "month" }, { ledger: true }),
     );
     expect(screen.queryByRole("button", { name: /Reset filter/ })).toBeNull();
   });
 
-  it("shows the server's omzet, not a sum of rows", async () => {
+  /**
+   * BO, 18 Oktober 2026: omzet "samain ama laba rugi". This tab asks for the
+   * ledger's Total pendapatan and shows it, not the rows' own sum — which
+   * differs once a return or a hand-posted revenue line lands in the period.
+   */
+  it("shows the laba rugi's Total pendapatan as the omzet, and asks for it", async () => {
+    mocked.summary.mockResolvedValue({
+      ...summary(),
+      ledgerRevenue: { amount: "12000000.0000" },
+    });
     renderWithAuth(<SalesSummaryScreen />);
 
-    expect(await screen.findByText("Rp 12.500.000")).toBeInTheDocument();
-    // Twice: the card's caption, and the customer-type row that counted the
-    // same 34 documents.
-    expect(await screen.findAllByText("34 faktur")).toHaveLength(2);
+    expect(await screen.findByText("Rp 12.000.000")).toBeInTheDocument();
+    expect(mocked.summary).toHaveBeenCalledWith(expect.anything(), { ledger: true });
   });
 
   it("draws all three breakdowns, each naming its own unnamed bucket", async () => {
@@ -220,30 +229,25 @@ describe("SalesSummaryScreen", () => {
   it("draws no source note under any panel", async () => {
     renderWithAuth(<SalesSummaryScreen />);
 
-    await screen.findAllByText(/Total nilai baris/);
+    await screen.findByText(/Tanpa kategori/);
     expect(screen.queryByText(/Dikelompokkan dari/)).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Produk & Varian" })).not.toBeInTheDocument();
   });
 
-  it("reconciles a line-based panel with the omzet, and says the customer one needs no allocation", async () => {
+  it("prints no total note under any panel", async () => {
     renderWithAuth(<SalesSummaryScreen />);
 
-    // Two panels are short of the omzet; both print the gap rather than hide it.
-    expect(
-      await screen.findAllByText(
-        /Total nilai baris Rp 12\.000\.000 dari omzet Rp 12\.500\.000/,
-      ),
-    ).toHaveLength(2);
-    expect(
-      screen.getByText(/Total Rp 12\.500\.000 — sama dengan omzet periode/),
-    ).toBeInTheDocument();
+    await screen.findByText(/Tanpa kategori/);
+    expect(screen.queryByText(/Total nilai baris/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/dari faktur, setelah diskon/)).not.toBeInTheDocument();
   });
 
   it("counts lines on the line axes and faktur on the customer one", async () => {
     renderWithAuth(<SalesSummaryScreen />);
 
     expect(await screen.findAllByText("40 baris")).toHaveLength(2);
-    expect(screen.getAllByText("34 faktur")).toHaveLength(2);
+    // Only the customer-type row: the Omzet card's caption names the laba rugi.
+    expect(screen.getAllByText("34 faktur")).toHaveLength(1);
   });
 
   it("fails one panel at a time, keeping the answers it did get", async () => {

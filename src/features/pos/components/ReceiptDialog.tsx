@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { posService } from "@/services/pos.service";
+import { tillReceipt } from "../offline/tillApi";
 import { formatMoney } from "@/utils/decimal";
 import type { PosReceipt } from "@/types/api";
 
@@ -95,8 +95,8 @@ export function ReceiptDialog({
     setCopied(false);
     setManualText(null);
 
-    posService
-      .receipt(saleId)
+    /* A sale rung up offline prints from the device (POS offline mode). */
+    tillReceipt(saleId)
       .then((result) => {
         if (active) setReceipt(result);
       })
@@ -139,8 +139,10 @@ export function ReceiptDialog({
    */
   function asText(source: PosReceipt): string {
     const lines = [
-      source.header.tenantName,
-      source.header.branchName,
+      // A name the branch hid comes back "" — dropped rather than a blank line.
+      source.header.tenantName || null,
+      source.header.branchName || null,
+      source.header.headerText || null,
       "",
       `No: ${source.transactionNumber ?? "-"}`,
       /*

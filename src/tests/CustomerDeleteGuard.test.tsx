@@ -98,6 +98,8 @@ describe("deleting a customer that still has pets", () => {
         customers={[customer]}
         loading={false}
         onChanged={jest.fn()}
+        sort="newest"
+        onSortChange={jest.fn()}
       />,
     );
 
@@ -119,6 +121,8 @@ describe("deleting a customer that still has pets", () => {
         customers={[customer]}
         loading={false}
         onChanged={onChanged}
+        sort="newest"
+        onSortChange={jest.fn()}
       />,
     );
 
@@ -138,6 +142,8 @@ describe("deleting a customer that still has pets", () => {
         customers={[customer]}
         loading={false}
         onChanged={jest.fn()}
+        sort="newest"
+        onSortChange={jest.fn()}
       />,
     );
 

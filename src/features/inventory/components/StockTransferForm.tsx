@@ -38,6 +38,7 @@ import {
   toMinor,
 } from "@/utils/decimal";
 
+import { useLiveStock } from "../hooks/useLiveStock";
 import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
 import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
 import { newIdempotencyKey } from "../utils/idempotency";
@@ -47,6 +48,7 @@ import {
 } from "../utils/transferErrors";
 import { qtyAtWarehouse } from "../utils/ledger";
 import { TransferAddProductsDialog } from "./TransferAddProductsDialog";
+import { prefetchProductCandidates } from "../hooks/useProductCandidates";
 
 /**
  * A row's identity, independent of its product.
@@ -454,6 +456,16 @@ export function StockTransferForm({
   const [notes, setNotes] = useState(transfer?.notes ?? "");
 
   const [picking, setPicking] = useState(false);
+  // Fetched as the form opens, so "+ Tambah produk" opens on a list that is
+  // already here instead of a spinner — see prefetchProductCandidates. Re-asked
+  // for every source warehouse: the list is what THAT shelf holds.
+  useEffect(() => {
+    if (!fromWarehouseId) return;
+    prefetchProductCandidates({
+      inStockAtWarehouse: fromWarehouseId,
+      searchBatches: true,
+    });
+  }, [fromWarehouseId]);
 
   /**
    * Every lot still holding something at the SOURCE warehouse, grouped by
@@ -463,7 +475,15 @@ export function StockTransferForm({
    * different boxes, and offering them here would name a lot the source cannot
    * give up.
    */
-  const loadedLots = useWarehouseBatches(fromWarehouseId);
+  /*
+    KEPT CURRENT WHILE THE FORM IS OPEN — the lines' stock and their lots are
+    re-read when products join and when somebody comes back to the tab, one
+    request each for every line, so "Tersedia" is not the figure the picker
+    happened to carry minutes ago.
+  */
+  const lineProductIds = lines.map((line) => line.productId);
+  const liveStock = useLiveStock(lineProductIds);
+  const loadedLots = useWarehouseBatches(fromWarehouseId, lineProductIds);
 
   /**
    * WHAT THIS TRANSFER ITSELF HAS TAKEN, by product and by lot — only while the
@@ -769,7 +789,10 @@ export function StockTransferForm({
 
     // PLUS what this very transfer has taken off the shelf — see `returning`.
     return sumDecimals([
-      qtyAtWarehouse(product.stockByWarehouse, fromWarehouseId),
+      qtyAtWarehouse(
+        liveStock.rowsOf(line.productId) ?? product.stockByWarehouse,
+        fromWarehouseId,
+      ),
       returning.byProduct.get(line.productId) ?? "0",
     ]);
   }
@@ -808,7 +831,7 @@ export function StockTransferForm({
     return found;
     // `onHandOf` reads all of these, and is redefined every render by design.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lines, productById, fromWarehouseId, lots.byProduct]);
+  }, [lines, productById, fromWarehouseId, lots.byProduct, liveStock.rowsOf]);
 
   /**
    * The lot-tracked lines that have not named a lot yet, by line key.

@@ -113,6 +113,18 @@ function mockLookups(overrides: { warehouses?: unknown[] } = {}) {
     ...PRODUCT,
     stockByWarehouse: [{ warehouseId: "wh1", qty: "10.0000" }],
   } as never);
+  // The same figure through the batch read the form now uses — one request for
+  // every line, never one `getById` per product.
+  jest.spyOn(productService, "stock").mockImplementation(
+    async (productIds: string[]) =>
+      ({
+        items: productIds.map((productId) => ({
+          productId,
+          stockByWarehouse:
+            productId === "p1" ? [{ warehouseId: "wh1", qty: "10.0000" }] : [],
+        })),
+      }) as never,
+  );
   jest
     .spyOn(serviceService, "list")
     .mockResolvedValue(page([SERVICE]) as never);
@@ -198,17 +210,17 @@ describe("the customer picker", () => {
   ];
 
   beforeEach(() => {
-    jest.spyOn(customerService, "list").mockImplementation((async (
-      query: { search?: string } = {},
-    ) =>
-      page(
-        CUSTOMERS.filter(
-          (one) =>
-            !query.search ||
-            one.name.includes(query.search) ||
-            one.phone.includes(query.search),
-        ),
-      )) as never);
+    jest
+      .spyOn(customerService, "list")
+      .mockImplementation((async (query: { search?: string } = {}) =>
+        page(
+          CUSTOMERS.filter(
+            (one) =>
+              !query.search ||
+              one.name.includes(query.search) ||
+              one.phone.includes(query.search),
+          ),
+        )) as never);
   });
 
   it("shows each phone, finds a customer by it, and keeps it on the trigger", async () => {
@@ -535,6 +547,88 @@ describe("scanning a barcode", () => {
       ).toBeInTheDocument();
       expect(screen.getByText(/tercatat habis/)).toBeInTheDocument();
     });
+
+    /*
+      THE LABEL'S QR (18 Oct 2026) names the product several ways — see
+      lib/batchLabel.ts. A counter scanner types it with the newlines dropped,
+      which is the shape these cases send.
+    */
+    const qr = (fields: Record<string, string>) =>
+      [
+        "BULOO",
+        ...Object.entries(fields).map(([key, value]) => `${key}:${value}`),
+      ].join("");
+
+    async function scanLabel(fields: Record<string, string>) {
+      render(<InvoiceCreateForm />);
+      await chooseWarehouse();
+      await userEvent.type(
+        screen.getByRole("textbox", { name: /scan barcode/i }),
+        `${qr(fields)}{Enter}`,
+      );
+    }
+
+    it("reads the lot off a label's QR, and bills its product", async () => {
+      jest.spyOn(productBatchService, "lookup").mockResolvedValue(LOT as never);
+
+      await scanLabel({
+        SKU: "KLG",
+        BC: "8991234500123",
+        BATCH: "KLG-B26-0001",
+        EXP: "2027-01-31",
+      });
+
+      expect(
+        await screen.findByText(
+          "Kalung Nylon (batch KLG-B26-0001) masuk ke faktur.",
+        ),
+      ).toBeInTheDocument();
+      expect(productBatchService.lookup).toHaveBeenCalledWith("KLG-B26-0001");
+    });
+
+    it("refuses an expired lot on a QR rather than billing it by barcode", async () => {
+      jest.spyOn(productBatchService, "lookup").mockResolvedValue({
+        ...LOT,
+        expiryDate: "2020-01-31T00:00:00.000Z",
+      } as never);
+
+      await scanLabel({ BC: "8991234500123", BATCH: "KLG-B26-0001" });
+
+      expect(
+        await screen.findByText(/Batch KLG-B26-0001 sudah kedaluwarsa/),
+      ).toBeInTheDocument();
+      expect(productService.getByBarcode).not.toHaveBeenCalled();
+    });
+
+    it("falls back to the barcode when the label's lot is gone", async () => {
+      jest
+        .spyOn(productBatchService, "lookup")
+        .mockRejectedValue(new ApiError("No batch carries that code", 404));
+      jest
+        .spyOn(productService, "getByBarcode")
+        .mockResolvedValue(SCANNED as never);
+
+      await scanLabel({ BC: "8991234500123", BATCH: "KLG-B26-0001" });
+
+      expect(
+        await screen.findByText("Kalung Nylon masuk ke faktur."),
+      ).toBeInTheDocument();
+      expect(productService.getByBarcode).toHaveBeenCalledWith("8991234500123");
+    });
+
+    it("finds the product by SKU on a label with nothing else", async () => {
+      jest.spyOn(productBatchService, "lookup");
+      jest
+        .spyOn(productService, "list")
+        .mockResolvedValue(page([SCANNED]) as never);
+
+      await scanLabel({ SKU: "KLG" });
+
+      expect(
+        await screen.findByText("Kalung Nylon masuk ke faktur."),
+      ).toBeInTheDocument();
+      expect(productBatchService.lookup).not.toHaveBeenCalled();
+    });
   });
 
   describe("with the camera", () => {
@@ -617,15 +711,20 @@ describe("adding lines through the dialog", () => {
     searches what the form loaded, so a service on page two was unfindable.
   */
   it("offers a service from past the first page", async () => {
-    jest
-      .spyOn(serviceService, "list")
-      .mockImplementation((async (query: { page?: number } = {}) => ({
-        items:
-          (query.page ?? 1) === 1
-            ? [SERVICE]
-            : [{ _id: "s2", name: "Mandi Kutu", price: "80000" }],
-        pagination: { page: query.page ?? 1, limit: 100, total: 101, totalPages: 2 },
-      })) as never);
+    jest.spyOn(serviceService, "list").mockImplementation((async (
+      query: { page?: number } = {},
+    ) => ({
+      items:
+        (query.page ?? 1) === 1
+          ? [SERVICE]
+          : [{ _id: "s2", name: "Mandi Kutu", price: "80000" }],
+      pagination: {
+        page: query.page ?? 1,
+        limit: 100,
+        total: 101,
+        totalPages: 2,
+      },
+    })) as never);
     render(<InvoiceCreateForm />);
 
     await userEvent.click(
@@ -792,7 +891,9 @@ describe("the animal a service is for", () => {
     jest
       .spyOn(petService, "list")
       .mockResolvedValue(
-        page([{ _id: "pet1", name: "Miko", ...petOptionFields({ size: "Besar" }) }]) as never,
+        page([
+          { _id: "pet1", name: "Miko", ...petOptionFields({ size: "Besar" }) },
+        ]) as never,
       );
 
     render(<InvoiceCreateForm />);
@@ -940,7 +1041,9 @@ describe("the animal a service is for", () => {
 
     /* Miko's size is filled in in the other tab, and this one comes forward. */
     pets.mockResolvedValue(
-      page([{ _id: "pet1", name: "Miko", ...petOptionFields({ size: "Kecil" }) }]) as never,
+      page([
+        { _id: "pet1", name: "Miko", ...petOptionFields({ size: "Kecil" }) },
+      ]) as never,
     );
     fireEvent(document, new Event("visibilitychange"));
 
@@ -975,16 +1078,20 @@ describe("the animal a service is for", () => {
           hasVariants: true,
           variantAxes: ["sizeCategory", "furType"],
           variants: [
-            { sizeCategory: "opt-size-kecil", furType: "short", price: "120000" },
+            {
+              sizeCategory: "opt-size-kecil",
+              furType: "short",
+              price: "120000",
+            },
           ],
         },
       ]) as never,
     );
-    const pets = jest.spyOn(petService, "list").mockResolvedValue(
-      page([
-        { _id: "pet1", name: "Miko", ...petOptionFields({}) },
-      ]) as never,
-    );
+    const pets = jest
+      .spyOn(petService, "list")
+      .mockResolvedValue(
+        page([{ _id: "pet1", name: "Miko", ...petOptionFields({}) }]) as never,
+      );
 
     render(<InvoiceCreateForm />);
     await fillService();
@@ -1007,9 +1114,12 @@ describe("the animal a service is for", () => {
 
     await waitFor(() =>
       expect(
-        within(screen.getByRole("row", { name: /Grooming/ })).getByRole("link", {
-          name: /lengkapi jenis bulu miko/i,
-        }),
+        within(screen.getByRole("row", { name: /Grooming/ })).getByRole(
+          "link",
+          {
+            name: /lengkapi jenis bulu miko/i,
+          },
+        ),
       ).toBeInTheDocument(),
     );
   });
@@ -1041,7 +1151,9 @@ describe("the animal a service is for", () => {
     jest
       .spyOn(petService, "list")
       .mockResolvedValue(
-        page([{ _id: "pet1", name: "Miko", ...petOptionFields({ size: "Besar" }) }]) as never,
+        page([
+          { _id: "pet1", name: "Miko", ...petOptionFields({ size: "Besar" }) },
+        ]) as never,
       );
 
     render(<InvoiceCreateForm />);
@@ -1222,7 +1334,9 @@ describe("add-ons under a service", () => {
 
   async function tick(addon: RegExp) {
     const dialog = await openAddons();
-    await userEvent.click(within(dialog).getByRole("checkbox", { name: addon }));
+    await userEvent.click(
+      within(dialog).getByRole("checkbox", { name: addon }),
+    );
     await userEvent.click(
       within(dialog).getByRole("button", { name: "Simpan add-on" }),
     );
@@ -1339,7 +1453,9 @@ describe("add-ons under a service", () => {
     await userEvent.click(
       within(dialog).getByRole("checkbox", { name: /Parfum/ }),
     );
-    await userEvent.click(within(dialog).getByRole("button", { name: "Batal" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Batal" }),
+    );
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(
@@ -1393,7 +1509,9 @@ describe("add-ons under a service", () => {
 */
 describe("other charges", () => {
   const addRow = () =>
-    userEvent.click(screen.getByRole("button", { name: "+ Tambah biaya lain" }));
+    userEvent.click(
+      screen.getByRole("button", { name: "+ Tambah biaya lain" }),
+    );
 
   const totalShows = (amount: string) =>
     expect(
@@ -1490,8 +1608,10 @@ describe("stock under a product line", () => {
     render(<InvoiceCreateForm />);
     await fillMinimal();
 
-    expect(await within(productRow()).findByText("Stok 10")).toBeInTheDocument();
-    expect(productService.getById).toHaveBeenCalledWith("p1");
+    expect(
+      await within(productRow()).findByText("Stok 10"),
+    ).toBeInTheDocument();
+    expect(productService.stock).toHaveBeenCalledWith(["p1"]);
   });
 
   it("asks for a warehouse before it can say", async () => {
@@ -1524,12 +1644,14 @@ describe("stock under a product line", () => {
     await pick(/^Cabang$/i, /Cabang Pusat/);
     await pick(/^Gudang$/i, /^Gudang Pusat$/);
     await addItem(/Kalung Nylon/);
-    expect(await within(productRow()).findByText("Stok 10")).toBeInTheDocument();
+    expect(
+      await within(productRow()).findByText("Stok 10"),
+    ).toBeInTheDocument();
 
     await pick(/^Gudang$/i, /Gudang Pusat Bersama/);
 
     expect(within(productRow()).getByText("Stok 0")).toBeInTheDocument();
-    expect(productService.getById).toHaveBeenCalledTimes(1);
+    expect(productService.stock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -1551,7 +1673,9 @@ describe("what the form sends", () => {
   });
 
   it("sends a price typed over the catalogue's, with customerInvoices:setPrice", async () => {
-    mockGrants = [{ feature: "customerInvoices", actions: ["create", "setPrice"] }];
+    mockGrants = [
+      { feature: "customerInvoices", actions: ["create", "setPrice"] },
+    ];
     render(<InvoiceCreateForm />);
     await fillMinimal();
 
@@ -1687,8 +1811,20 @@ describe("choosing the lots a product leaves from", () => {
     jest.spyOn(customerInvoiceService, "lots").mockResolvedValue({
       hasExpiry: true,
       lots: [
-        { _id: "lotA", batchCode: "KLG-A", supplierBatchCode: null, expiryDate: null, qtyRemaining: "1" },
-        { _id: "lotB", batchCode: "KLG-B", supplierBatchCode: null, expiryDate: null, qtyRemaining: "5" },
+        {
+          _id: "lotA",
+          batchCode: "KLG-A",
+          supplierBatchCode: null,
+          expiryDate: null,
+          qtyRemaining: "1",
+        },
+        {
+          _id: "lotB",
+          batchCode: "KLG-B",
+          supplierBatchCode: null,
+          expiryDate: null,
+          qtyRemaining: "5",
+        },
       ],
     });
   });
@@ -1697,12 +1833,14 @@ describe("choosing the lots a product leaves from", () => {
     render(<InvoiceCreateForm />);
     await fillMinimal();
 
-    expect(screen.getByRole("button", { name: /^Batch Kalung Nylon$/ })).toHaveTextContent(
-      "Otomatis (FEFO)",
-    );
+    expect(
+      screen.getByRole("button", { name: /^Batch Kalung Nylon$/ }),
+    ).toHaveTextContent("Otomatis (FEFO)");
     await submit();
 
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     expect(sent().items[0]).not.toHaveProperty("lots");
   });
 
@@ -1712,18 +1850,26 @@ describe("choosing the lots a product leaves from", () => {
     await userEvent.clear(screen.getByLabelText(/^Jumlah Kalung Nylon$/i));
     await userEvent.type(screen.getByLabelText(/^Jumlah Kalung Nylon$/i), "2");
 
-    await userEvent.click(screen.getByRole("button", { name: /^Batch Kalung Nylon$/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /^Batch Kalung Nylon$/ }),
+    );
     const dialog = await screen.findByRole("dialog");
     expect(customerInvoiceService.lots).toHaveBeenCalledWith("p1", "wh1");
-    await userEvent.click(await within(dialog).findByRole("button", { name: /Tambah batch/ }));
-    await userEvent.click(within(dialog).getByRole("button", { name: /^Simpan batch$/ }));
-
-    expect(screen.getByRole("button", { name: /^Batch Kalung Nylon$/ })).toHaveTextContent(
-      "KLG-A ×1, KLG-B ×1",
+    await userEvent.click(
+      await within(dialog).findByRole("button", { name: /Tambah batch/ }),
     );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: /^Simpan batch$/ }),
+    );
+
+    expect(
+      screen.getByRole("button", { name: /^Batch Kalung Nylon$/ }),
+    ).toHaveTextContent("KLG-A ×1, KLG-B ×1");
     await submit();
 
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     expect(sent().items[0].lots).toEqual([
       { batchId: "lotA", qty: "1" },
       { batchId: "lotB", qty: "1" },
@@ -1866,7 +2012,9 @@ describe("what the form shows", () => {
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     const row = screen.getByRole("row", { name: /Booking BK-260828-001/ });
     expect(within(row).getByText("Cici")).toBeInTheDocument();
-    expect(screen.getByRole("row", { name: /Potong kuku/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("row", { name: /Potong kuku/ }),
+    ).toBeInTheDocument();
 
     await userEvent.click(
       screen.getByRole("button", { name: /Hapus booking BK-260828-001/ }),
@@ -1908,7 +2056,12 @@ describe("what the form shows", () => {
               serviceId: "svc-fee",
               name: "Biaya kunjungan · Zona B",
               price: "70000.0000",
-              visitFee: { zoneId: "z-b", zoneName: "Zona B", distanceKm: 3.9, unit: "per_visit" },
+              visitFee: {
+                zoneId: "z-b",
+                zoneName: "Zona B",
+                distanceKm: 3.9,
+                unit: "per_visit",
+              },
             },
           ],
         },
@@ -1919,7 +2072,12 @@ describe("what the form shows", () => {
         _id: "bk2",
         bookingNumber: "BK-260828-002",
         petName: "Coco",
-        service: { serviceId: "svc1", name: "Grooming", price: "120000.0000", addons: [] },
+        service: {
+          serviceId: "svc1",
+          name: "Grooming",
+          price: "120000.0000",
+          addons: [],
+        },
         groomerName: "Rina",
         visitTrip: owed,
       },
@@ -1935,7 +2093,9 @@ describe("what the form shows", () => {
     const trips = document.querySelectorAll("[data-invoice-trip]");
     expect(trips).toHaveLength(1);
     expect(trips[0]).toHaveTextContent("Perjalanan home grooming");
-    expect(trips[0]).toHaveTextContent("Biaya kunjungan · Zona B · Untuk Cici, Coco");
+    expect(trips[0]).toHaveTextContent(
+      "Biaya kunjungan · Zona B · Untuk Cici, Coco",
+    );
     expect(
       screen.queryByRole("row", { name: /^Biaya kunjungan · Zona B Add-on/ }),
     ).not.toBeInTheDocument();
@@ -1959,16 +2119,18 @@ describe("what the form shows", () => {
     await pick(/^Pelanggan$/i, /Bu Sari/);
     await pick(/^Cabang$/i, /Cabang Pusat/);
 
-    const offered = (await screen.findAllByText("Perjalanan belum ditagih"))[0].closest(
-      "[data-orphan-trip]",
-    ) as HTMLElement;
+    const offered = (
+      await screen.findAllByText("Perjalanan belum ditagih")
+    )[0].closest("[data-orphan-trip]") as HTMLElement;
     await userEvent.click(within(offered).getByRole("checkbox"));
 
     expect(document.querySelectorAll("[data-invoice-trip]")).toHaveLength(1);
     expect(document.querySelector("[data-orphan-trip]")).toBeNull();
 
     await submit();
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     expect(sent().homeTripIds).toEqual(["trip-9"]);
     expect(sent().bookingIds).toBeUndefined();
   });
@@ -1979,7 +2141,12 @@ describe("what the form shows", () => {
         _id: "bk1",
         bookingNumber: "BK-260828-001",
         petName: "Cici",
-        service: { serviceId: "svc1", name: "Grooming", price: "120000.0000", addons: [] },
+        service: {
+          serviceId: "svc1",
+          name: "Grooming",
+          price: "120000.0000",
+          addons: [],
+        },
         groomerName: "Rina",
         visitTrip: {
           state: "unbilled",
@@ -1997,10 +2164,15 @@ describe("what the form shows", () => {
     await pick(/^Pelanggan$/i, /Bu Sari/);
     await pick(/^Cabang$/i, /Cabang Pusat/);
     await userEvent.click(await screen.findByRole("checkbox"));
-    await userEvent.type(screen.getByLabelText("Diskon Biaya kunjungan · Zona B"), "10");
+    await userEvent.type(
+      screen.getByLabelText("Diskon Biaya kunjungan · Zona B"),
+      "10",
+    );
     await submit();
 
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     expect(sent().tripDiscounts).toEqual([
       { homeTripId: "trip-1", discount: { mode: "percent", value: "10" } },
     ]);
@@ -2021,7 +2193,12 @@ describe("what the form shows", () => {
         _id: "bk1",
         bookingNumber: "BK-260828-001",
         petName: "Cici",
-        service: { serviceId: "svc1", name: "Grooming", price: "120000.0000", addons: [] },
+        service: {
+          serviceId: "svc1",
+          name: "Grooming",
+          price: "120000.0000",
+          addons: [],
+        },
         groomerName: "Rina",
         visitTrip: owed,
       },
@@ -2034,18 +2211,24 @@ describe("what the form shows", () => {
 
     expect(document.querySelectorAll("[data-invoice-trip]")).toHaveLength(1);
 
-    await userEvent.click(screen.getByRole("button", { name: /Hapus perjalanan/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /Hapus perjalanan/ }),
+    );
 
     expect(document.querySelectorAll("[data-invoice-trip]")).toHaveLength(0);
     const offered = document.querySelector("[data-owed-trip]") as HTMLElement;
     expect(offered).toHaveTextContent("Biaya perjalanan belum ditagih");
 
     await submit();
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     expect(sent().homeTripIds).toEqual([]);
 
     (customerInvoiceService.create as jest.Mock).mockClear();
-    await userEvent.click(within(offered).getByRole("button", { name: /Tambahkan/ }));
+    await userEvent.click(
+      within(offered).getByRole("button", { name: /Tambahkan/ }),
+    );
 
     expect(document.querySelectorAll("[data-invoice-trip]")).toHaveLength(1);
   });
@@ -2065,7 +2248,11 @@ describe("what the form shows", () => {
           serviceId: "svc1",
           name: "Basic Grooming",
           price: "120000.0000",
-          discount: { mode: "amount", value: "5000.0000", resolvedAmount: "5000.0000" },
+          discount: {
+            mode: "amount",
+            value: "5000.0000",
+            resolvedAmount: "5000.0000",
+          },
           discountAmount: "9356.0000",
           addons: [
             {
@@ -2073,7 +2260,11 @@ describe("what the form shows", () => {
               serviceId: "svc9",
               name: "Extra Handling",
               price: "20000.0000",
-              discount: { mode: "amount", value: "3000.0000", resolvedAmount: "3000.0000" },
+              discount: {
+                mode: "amount",
+                value: "3000.0000",
+                resolvedAmount: "3000.0000",
+              },
               discountAmount: "3644.0000",
             },
           ],
@@ -2638,7 +2829,9 @@ describe("an antar-jemput line", () => {
     jest
       .spyOn(branchService, "list")
       .mockResolvedValue(
-        page([{ ...BRANCH, address: "Jl. Cabang 1", location: BRANCH_PIN }]) as never,
+        page([
+          { ...BRANCH, address: "Jl. Cabang 1", location: BRANCH_PIN },
+        ]) as never,
       );
     jest.spyOn(customerService, "list").mockResolvedValue(
       page([
@@ -2743,7 +2936,10 @@ describe("an antar-jemput line", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
 
     expect(
-      await within(dialog).findByRole("button", { name: "Jemput", pressed: true }),
+      await within(dialog).findByRole("button", {
+        name: "Jemput",
+        pressed: true,
+      }),
     ).toBeInTheDocument();
     /* Arah carries the price, but it is answered by the direction above — a
        select beside it would be two ways to disagree. */
@@ -2759,7 +2955,9 @@ describe("an antar-jemput line", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
 
     /* A pickup starts at the customer's door and finishes at the branch. */
-    expect(await within(dialog).findByText("Jl. Kemang Raya 12")).toBeInTheDocument();
+    expect(
+      await within(dialog).findByText("Jl. Kemang Raya 12"),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText("Jl. Cabang 1")).toBeInTheDocument();
 
     await saveJourney();
@@ -2827,7 +3025,9 @@ describe("an antar-jemput line", () => {
 
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
-    await userEvent.click(within(dialog).getByRole("button", { name: "Antar" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Antar" }),
+    );
     await saveJourney();
 
     const row = await screen.findByRole("row", { name: /Antar-Jemput/ });
@@ -2841,7 +3041,9 @@ describe("an antar-jemput line", () => {
 
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
-    await userEvent.click(within(dialog).getByRole("button", { name: "Bulan" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Bulan" }),
+    );
     await saveJourney();
 
     const row = await screen.findByRole("row", { name: /Antar-Jemput/ });
@@ -2857,11 +3059,15 @@ describe("an antar-jemput line", () => {
 
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
-    await userEvent.click(within(dialog).getByRole("button", { name: "Bulan" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Bulan" }),
+    );
     await saveJourney();
     await submit();
 
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     const body = sent();
     expect(body.items[0]).toMatchObject({
       kind: "service",
@@ -2951,8 +3157,12 @@ describe("an antar-jemput line", () => {
 
       await openJourney();
       const dialog = await screen.findByRole("dialog");
-      await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
-      await userEvent.click(within(dialog).getByRole("button", { name: "Bulan" }));
+      await userEvent.click(
+        within(dialog).getByRole("button", { name: "Miko" }),
+      );
+      await userEvent.click(
+        within(dialog).getByRole("button", { name: "Bulan" }),
+      );
       await saveJourney();
 
       const addon = within(
@@ -2974,7 +3184,9 @@ describe("an antar-jemput line", () => {
       await openJourney();
 
       let dialog = await screen.findByRole("dialog");
-      await userEvent.click(within(dialog).getByRole("button", { name: "Miko" }));
+      await userEvent.click(
+        within(dialog).getByRole("button", { name: "Miko" }),
+      );
       await saveJourney();
 
       await userEvent.click(
@@ -2991,7 +3203,9 @@ describe("an antar-jemput line", () => {
       );
 
       await submit();
-      await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(customerInvoiceService.create).toHaveBeenCalled(),
+      );
 
       const [main, extra] = sent().items;
       expect(main).toMatchObject({ refId: "s1", passengerPetIds: ["pet1"] });
@@ -3054,7 +3268,9 @@ describe("an antar-jemput line", () => {
     await saveJourney();
     await submit();
 
-    await waitFor(() => expect(customerInvoiceService.create).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(customerInvoiceService.create).toHaveBeenCalled(),
+    );
     expect(sent().items[0].linkedBookingIds).toEqual(["bk1"]);
   });
 });
@@ -3104,36 +3320,36 @@ describe("Benefit membership on a faktur", () => {
     row the form is holding.
   */
   function primeBenefitQuote(benefits: unknown[]) {
-    jest.spyOn(membershipService, "quote").mockImplementation(
-      (async (input: { lines: Array<{ ref: string | null; petId: string | null }> }) => ({
-        cards: [
+    jest.spyOn(membershipService, "quote").mockImplementation((async (input: {
+      lines: Array<{ ref: string | null; petId: string | null }>;
+    }) => ({
+      cards: [
+        {
+          id: "mem-1",
+          number: "MBR-0007",
+          petId: "pet1",
+          planName: "Paket VIP",
+          status: "active",
+          benefits,
+        },
+      ],
+      lines: input.lines.map((line) => ({
+        ref: line.ref,
+        petId: line.petId,
+        candidates: [
           {
-            id: "mem-1",
-            number: "MBR-0007",
-            petId: "pet1",
+            membershipId: "mem-1",
+            membershipNumber: "MBR-0007",
             planName: "Paket VIP",
-            status: "active",
-            benefits,
+            benefitId: "ben-1",
+            benefitLabel: "Gratis Grooming Lengkap",
+            kind: "free_item",
+            discount: "150000.0000",
           },
         ],
-        lines: input.lines.map((line) => ({
-          ref: line.ref,
-          petId: line.petId,
-          candidates: [
-            {
-              membershipId: "mem-1",
-              membershipNumber: "MBR-0007",
-              planName: "Paket VIP",
-              benefitId: "ben-1",
-              benefitLabel: "Gratis Grooming Lengkap",
-              kind: "free_item",
-              discount: "150000.0000",
-            },
-          ],
-          recommended: null,
-        })),
-      })) as never,
-    );
+        recommended: null,
+      })),
+    })) as never);
   }
 
   beforeEach(() => {
@@ -3154,42 +3370,30 @@ describe("Benefit membership on a faktur", () => {
     render(<InvoiceCreateForm />);
     await fillService();
 
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Pakai" }),
-    );
+    await userEvent.click(await screen.findByRole("button", { name: "Pakai" }));
 
     /* The row gets the mark (the chip); the section gets "Lepas". Both carry
        the same text — the heading above the list says it too. */
-    expect(
-      screen.getByRole("button", { name: "Lepas" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Lepas" })).toBeInTheDocument();
     expect(await screen.findAllByText("Benefit membership")).toHaveLength(2);
   });
 
   it("takes it back off from the section, and the row's mark goes with it", async () => {
     render(<InvoiceCreateForm />);
     await fillService();
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Pakai" }),
-    );
+    await userEvent.click(await screen.findByRole("button", { name: "Pakai" }));
 
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Lepas" }),
-    );
+    await userEvent.click(await screen.findByRole("button", { name: "Lepas" }));
 
     await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Pakai" }),
-      ).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: "Pakai" })).toBeInTheDocument(),
     );
   });
 
   it("sends only the membership and benefit ids, never the quoted amount", async () => {
     render(<InvoiceCreateForm />);
     await fillService();
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Pakai" }),
-    );
+    await userEvent.click(await screen.findByRole("button", { name: "Pakai" }));
 
     await submit();
 
@@ -3203,7 +3407,9 @@ describe("Benefit membership on a faktur", () => {
   });
 
   it("says why a spent benefit cannot be used, without hiding it", async () => {
-    primeBenefitQuote([benefit({ available: false, reason: "quota_exhausted" })]);
+    primeBenefitQuote([
+      benefit({ available: false, reason: "quota_exhausted" }),
+    ]);
 
     render(<InvoiceCreateForm />);
     await fillService();
@@ -3238,18 +3444,14 @@ describe("Benefit membership on a faktur", () => {
   it("keeps the applied benefit out of Diskon baris, in its own recap line", async () => {
     render(<InvoiceCreateForm />);
     await fillService();
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Pakai" }),
-    );
+    await userEvent.click(await screen.findByRole("button", { name: "Pakai" }));
 
     /* "Diskon baris" is always shown in this form (even at zero) — so the
        assertion is on its FIGURE, not on whether the row exists at all. */
+    expect(await screen.findByText("Diskon membership")).toBeInTheDocument();
     expect(
-      await screen.findByText("Diskon membership"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Diskon baris").parentElement?.textContent).toContain(
-      "Rp 0",
-    );
+      screen.getByText("Diskon baris").parentElement?.textContent,
+    ).toContain("Rp 0");
     expect(
       screen.getByText("Diskon membership").parentElement?.textContent,
     ).toContain("Rp 150.000");
@@ -3332,9 +3534,7 @@ describe("discount controls once there is nothing left to cut", () => {
     primeFullBenefit();
     render(<InvoiceCreateForm />);
     await fillService();
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Pakai" }),
-    );
+    await userEvent.click(await screen.findByRole("button", { name: "Pakai" }));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Jenis diskon Grooming")).toBeDisabled();
@@ -3365,9 +3565,7 @@ describe("discount controls once there is nothing left to cut", () => {
     primeFullBenefit();
     render(<InvoiceCreateForm />);
     await fillService();
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Pakai" }),
-    );
+    await userEvent.click(await screen.findByRole("button", { name: "Pakai" }));
 
     await waitFor(() => {
       expect(screen.getByLabelText("Jenis diskon faktur")).toBeDisabled();

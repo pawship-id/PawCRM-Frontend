@@ -6,6 +6,8 @@ import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
 import type { PosShift } from "@/types/api";
 
+import { recallShift, rememberShift } from "../offline/store";
+
 interface UsePosShiftResult {
   shift: PosShift | null;
   /** True while the first read is in flight — the screen shows nothing yet. */
@@ -37,7 +39,16 @@ interface UsePosShiftResult {
  * with a shift open at Barat was shown "Buka Kasir" because they had been at
  * Timur a moment before, and opening one was refused as a duplicate.
  */
-export function usePosShift(branchId: string | null): UsePosShiftResult {
+/**
+ * `who` (POS offline mode, 19 October 2026): with it, the shift the server
+ * confirmed is remembered on the device, and a till that cannot reach the
+ * server opens on that remembered shift instead of an error — the drawer is
+ * still open, the server simply cannot say so right now.
+ */
+export function usePosShift(
+  branchId: string | null,
+  who: { tenantId: string; userId: string } | null = null,
+): UsePosShiftResult {
   const branchChosen = Boolean(branchId);
   const [shift, setShift] = useState<PosShift | null>(null);
   const [fetching, setFetching] = useState(true);
@@ -72,9 +83,24 @@ export function usePosShift(branchId: string | null): UsePosShiftResult {
       .then((result) => {
         if (!active) return;
         setShift(result);
+        if (who && branchId) void rememberShift(who.tenantId, who.userId, branchId, result);
       })
-      .catch((err) => {
+      .catch(async (err) => {
         if (!active) return;
+        if (
+          who &&
+          branchId &&
+          err instanceof ApiError &&
+          (err.isNetworkError || err.isTimeout)
+        ) {
+          const remembered = await recallShift(who.tenantId, who.userId, branchId);
+          if (!active) return;
+          if (remembered) {
+            setShift(remembered);
+            void rememberShift(who.tenantId, who.userId, branchId, remembered);
+            return;
+          }
+        }
         setShift(null);
         /*
           THE STATUS DECIDES THE SENTENCE. The first cut said "coba muat ulang"
@@ -98,7 +124,8 @@ export function usePosShift(branchId: string | null): UsePosShiftResult {
     return () => {
       active = false;
     };
-  }, [nonce, branchChosen, branchId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nonce, branchChosen, branchId, who?.tenantId, who?.userId]);
 
   // Nothing is in flight before a branch is chosen, so this is never the
   // spinner's answer on the branch gate's behalf.

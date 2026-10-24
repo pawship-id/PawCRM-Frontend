@@ -14,13 +14,18 @@ import {
   type FilterOption,
 } from "@/components";
 import { Button } from "@/components/ui/button";
-import type { MovementSort, MovementType } from "@/types/inventory";
+import type { MovementType } from "@/types/inventory";
 
 import type { StockCardFilters as Filters } from "../hooks/useStockCard";
 
 /**
  * The ledger's controls: one row — search, one Filter button and the export —
- * with the ordering, the movement type and the date range inside a panel.
+ * with the movement type and the date range inside a panel.
+ *
+ * THE ORDERING IS NOT HERE. The ledger sorts from its column headers (BO,
+ * 19 October 2026), so `Urutkan` left the panel and Reset no longer touches the
+ * order: a button inside a filter panel must not silently re-sort a table
+ * somebody ordered from the headers they can see.
  *
  * Purely presentational — it renders the current filters and reports changes up
  * to the screen, which owns them.
@@ -71,39 +76,18 @@ const MOVEMENT_FILTERS: FilterOption<MovementType | "">[] = [
 
 const TYPES = withAll(MOVEMENT_FILTERS, "Semua tipe");
 
-/**
- * The orderings the API accepts — MOVEMENT_SORTS in stockMovement.model.js.
- *
- * TWO, AND BOTH CHRONOLOGICAL. A stock card carries a running balance, and
- * "saldo awal, plus setiap baris, sama dengan saldo terakhir" is the one
- * arithmetic a reader checks. Ordered by quantity or by type that sentence stops
- * being true while every number in it stays right — so there is nothing else
- * here to offer, and the API refuses anything else anyway.
- */
-const SORTS: FilterOption<MovementSort>[] = [
-  { value: "newest", label: "Terbaru dulu" },
-  { value: "oldest", label: "Terlama dulu" },
-];
-
 /** Everything the panel edits, as one draft. */
 interface PanelFilters {
   movementType: MovementType | "";
   from: string;
   to: string;
-  sort: MovementSort;
 }
 
-/**
- * What Reset returns to — the query's own defaults, not "empty".
- *
- * The ordering is included: a ledger with no ordering is not a thing, so Reset
- * puts it back to newest-first rather than clearing it to nothing.
- */
+/** What Reset returns to. The ordering is not in it — see the header. */
 const CLEARED: PanelFilters = {
   movementType: "",
   from: "",
   to: "",
-  sort: "newest",
 };
 
 export function StockCardFilters({
@@ -123,7 +107,6 @@ export function StockCardFilters({
     movementType: filters.movementType,
     from: filters.from,
     to: filters.to,
-    sort: filters.sort,
   };
 
   /**
@@ -137,7 +120,6 @@ export function StockCardFilters({
       patch.movementType = next.movementType;
     if (next.from !== filters.from) patch.from = next.from;
     if (next.to !== filters.to) patch.to = next.to;
-    if (next.sort !== filters.sort) patch.sort = next.sort;
 
     if (Object.keys(patch).length > 0) onChange(patch);
   }
@@ -161,12 +143,6 @@ export function StockCardFilters({
           fill
         />
       }
-      hint={
-        <>
-          Export mengikuti filter di atas dan berisi <b>seluruh</b> pergerakan
-          yang cocok — bukan hanya halaman yang sedang tampil.
-        </>
-      }
       actions={
         <Button
           onClick={onExport}
@@ -188,7 +164,7 @@ export function StockCardFilters({
 }
 
 /**
- * The ordering, the movement type and the date range, behind one button.
+ * The movement type and the date range, behind one button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8), and it is why the
  * date range renders as a field here rather than as its own popover: two pairs
@@ -207,12 +183,7 @@ function LedgerFilterPanel({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(applied);
 
-  /**
-   * How many filters are narrowing the ledger. The range counts once, not
-   * twice, and THE ORDERING IS NOT COUNTED — every ledger has one, so a badge
-   * reading `Filter (1)` over an unnarrowed card would teach people to ignore
-   * the number.
-   */
+  /** How many filters are narrowing the ledger. The range counts once, not twice. */
   const count = [
     applied.movementType !== "",
     applied.from !== "" || applied.to !== "",
@@ -251,18 +222,6 @@ function LedgerFilterPanel({
           setOpen(false);
         }}
       >
-        {/* Sort leads: it is the one field here that is always set, and the
-            only one that changes what the top of the ledger is rather than
-            what is in it. */}
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="newest"
-          onChange={(sort) => patch({ sort })}
-        />
         <FilterSelect
           layout="field"
           label="Tipe pergerakan"

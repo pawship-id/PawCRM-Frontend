@@ -45,7 +45,7 @@ The fastest way to be consistent here. Check this table before writing markup.
 | `<p role="alert">` hand-written under a `FilterSelect` | its `error` prop | 10 copies existed across three stock forms. §16 |
 | a single-line `<Input>` for Keterangan / Catatan / Alasan | `<TextareaField>` | A reason nobody can re-read is a reason nobody writes carefully. §16 |
 | a `<Button type="submit">` at the bottom of a form | `<FormActionBar>` | 20 forms, 20 slightly different footers. §16 |
-| `<table>` | `@/components/ui/table` | §10 |
+| `<table>`, or `Table…` markup for a list screen | `<DataTable>` from `@/components` (built on `@/components/ui/table`) | One list table: columns + rows, header sorting, loading and empty rows. §10 |
 | `"No data available"` | `"Belum ada … Tambah yang pertama →"` | §12 |
 
 ---
@@ -116,7 +116,7 @@ Two families. `font-display` (Plus Jakarta Sans) for headings only; `font-sans` 
 - **There are exactly two typefaces. There is no `font-mono`.** `--font-mono` is deliberately unbound in `globals.css`: a third family is a brand violation, and Inter's tabular figures already do the column-alignment job a monospace face was doing here.
 - Nothing below 13 px. `text-[10px]` is banned — it is the single worst offender in the current table headers.
 - **A stat/summary tile's label is sentence case. Never `uppercase`/`tracking-wide` on it.** The mockup sets these in small caps at 10 px; this product's floor is 13 px (§1.6), and a label like "OKUPANSI HOTEL" set in caps at 13 px wraps across two lines in a tile that was only ever drawn for one. `StatTile.tsx` carries the fuller rationale. Reach for the shared `<StatTile>` (§2) instead of re-deriving this per screen — that drift is exactly how Penjualan's and Keuangan Ringkasan's cards ended up louder than their neighbours (both fixed 2 October 2026).
-  **This does not reach the small-caps convention elsewhere** — a `<dt>` field label in a detail view, a table header, or a Card's small `text-xs … uppercase` caption (`JournalEntriesScreen`'s "Jurnal umum", `CashTransactionsScreen`'s "Daftar transaksi") are a different, already-consistent role and are not part of this rule.
+  **This does not reach the small-caps convention elsewhere** — a `<dt>` field label in a detail view or a table header is a different, already-consistent role and is not part of this rule. **A list's own heading is not small caps any more** (20 October 2026, BO): Keuangan's "Daftar transaksi", "Biaya tetap", "Komisi" and "Jurnal umum" are sentence-case section headings, `<h2 class="text-lg font-bold">`, per the table above.
 
 ---
 
@@ -209,6 +209,13 @@ Supplier is the one entry here decided by viewport rather than by field count: i
 **Sorting is a field in the panel, not a control of its own** — with one
 recorded exception, below. `Urutkan` leads the stack — it is the one field always set, and the only one that changes what the top of the list is rather than what is in it. It is **not counted** in the trigger's `Filter (n)` badge, and nor is any other field the screen is never without — Batch & Expired excludes its expiry horizon on the same grounds. Every list has an ordering, and that screen always has a horizon; counting either would put a standing number over an unnarrowed list and teach people to ignore it. Reset returns it to the default rather than clearing it — a list with no ordering is not a thing. Offer only orderings the API names: a closed list on the server (`PRODUCT_SORTS`) is what stops a client asking for one with no index behind it, and it keeps the picker from offering a column that is empty for half the rows (price on a parent, stock summed on the page).
 
+**HEADER SORTING IS NOW THE DIRECTION OF TRAVEL (19 October 2026, BO).** BO
+asked for every table to sort from its headers through one component. Stok /
+Inventori moved first (see "THE FIFTH GROUP" below); the screens beyond the
+ones recorded in this section still sort from `Urutkan` until each is moved —
+one module at a time, with its server orderings, not as a tidy-up. The four
+exceptions below are the shape every moved screen takes.
+
 **THE ONE SORTING EXCEPTION: Daftar Akun sorts from its column headers.**
 Decided 20 September 2026 on request, against the BO mockup
 (`buloo-daftar-akun-v1.html`). Kode, Nama akun and Kategori are clickable; the
@@ -232,10 +239,10 @@ when that column is not the active one, first click takes the column's natural
 direction — `Urutkan` is out of its filter panel, and that panel's `Reset` no
 longer touches the ordering.
 
-**ONLY THREE OF ITS EIGHT COLUMNS ARE CLICKABLE**, and that is the interesting
-part. Tanggal, Cabang and Jumlah are in `CASH_TRANSACTION_SORTS` on the server,
-each with an index; Cabang joins the branch collection in for those two orderings
-and for no others. **Deskripsi and Akun are deliberately plain.** What those two
+**ONLY TWO OF ITS EIGHT COLUMNS ARE CLICKABLE**, and that is the interesting
+part. Tanggal and Jumlah are in `CASH_TRANSACTION_SORTS` on the server, each with
+an index. Cabang sorted too, through a branch join, until BO dropped it (20
+October 2026). **Deskripsi and Akun are deliberately plain.** What those two
 cells show is assembled at render time — a note, or the document number, or the
 kind; one account name, or a count of several — so any field the server could
 actually sort would order the rows by something other than the text somebody is
@@ -244,12 +251,11 @@ does not invite the click.
 
 **THE THIRD SCREEN: Komisi, in Keuangan.** Decided 21 September 2026 with the
 BO mockup (`buloo-keuangan-komisi.html`), which draws the header row sortable.
-Same shape as the two above. **All six data columns are clickable** — Tanggal,
-Staf, Cabang, Nilai layanan, Komisi, Status — because unlike Transaksi every one
-of them shows a single stored or grouped value the server orders by
-(`SORT_FIELDS` in `commissionRecord.repository.js`), so no header sorts by
-something other than what it displays. First click: newest date and largest
-amount first, A first for a name or a status.
+Same shape as the two above. **Four columns are clickable** — Tanggal, Staf,
+Nilai layanan, Komisi — each a single stored or grouped value the server orders
+by (`SORT_FIELDS` in `commissionRecord.repository.js`). Cabang and Status sorted
+too until BO dropped them (20 October 2026). First click: newest date and
+largest amount first, A first for a name.
 
 Its only filter, Status, **stands on the bar** and applies on click, where the
 mockup put it behind a Filter button: one field is below the floor (a button
@@ -257,12 +263,12 @@ that hides one thing is worse than showing it — Transfer Stok's reasoning).
 Cabang, Lini Usaha and Periode are the module's context bar above it.
 
 **THE FOURTH SCREEN: Jurnal, in Keuangan.** Decided 21 September 2026 with the
-BO mockup (`Buloo - jurnal (2).html`). Tanggal, No. jurnal, Keterangan, Cabang
-and Nilai are clickable — Nilai sorts on the stored `total` the server keeps for
-exactly this. **Sumber is deliberately plain**: the cell shows a label ("Faktur",
+BO mockup (`Buloo - jurnal (2).html`). Tanggal, No. jurnal and Nilai are
+clickable — Nilai sorts on the stored `total` the server keeps for exactly
+this. Keterangan and Cabang sorted too until BO dropped them (20 October 2026). **Sumber is deliberately plain**: the cell shows a label ("Faktur",
 "Jurnal manual") and the server could only order by the code behind it —
 Transaksi's rule. First click: newest date and largest amount first, A first for
-a number, a name or a keterangan.
+a number.
 
 Its one filter, Sumber, **stays behind `Filter (n)`** although that is one field
 below the floor — a recorded exception: the mockup draws the button, and the
@@ -271,6 +277,68 @@ context bar; **there is no Lini Usaha there**, as on Kas & Bank and Arus Kas —
 entry is not in a line, its lines are, and a shared cost is split by the laba
 rugi rather than stamped with one. **The Status column stays** though the mockup
 has none: its data never reverses an entry, the ledger does.
+
+**THE FIFTH GROUP: Stok / Inventori.** Decided 19 October 2026 on request
+(BO: "semua tabel pakai 1 komponen yang sama, bisa sort sesuai header yang
+diklik"). Produk & Varian, Daftar Stok, Kartu Stok, Batch & Expired, the lot
+tab of a stock card, Penyesuaian / Stok Awal, Transfer Stok, Stok Opname, Stok
+Minus and Stok Minim all render through `<DataTable>` and sort from their
+headers — the same shape as the four above: arrow on every sortable header,
+first click newest / largest first and A first for text, `Urutkan` gone from
+every panel, and Reset no longer touches the ordering. Every ordering is a name
+in the server's closed list; a name, warehouse, branch or user that is not on
+the document is joined in **only** for the ordering that needs it, so the
+default read costs what it always did.
+
+**Stok on Produk & Varian sorts by what it shows** — a parent by its variants'
+total, a bundle by how many can be built, over the warehouses picked in the
+toolbar; the server computes those figures exactly as it hands them to the
+column. **Tipe and Kategori are plain** on BO's call (19 October 2026). On
+the **Kategori** tab only the Kategori header sorts (by name); Status is plain,
+and the list still opens newest first.
+
+**Plain on purpose:** Cabang on Batch & Expired (a lot belongs to a
+warehouse, and a central warehouse serves several branches) and Gudang there
+too (BO's call, 19 October 2026), Referensi on Kartu
+Stok (the label is assembled from several document collections) and Terhitung
+on Stok Opname (computed from each sheet's items after paging). On BO's call
+(19 October 2026) Cabang, Gudang and Status on Stok Opname, and Cabang, Gudang
+and Catatan on Penyesuaian / Stok Awal, and Dari, Ke, Status and Catatan on
+Transfer Stok, and Tipe, Masuk / keluar and Diinput oleh on Kartu Stok, are
+plain too. Transaksi's
+rule: no header sorts by something other than what it displays. **The lot tab
+is the one client-side sort** — it holds every lot of one product at one
+warehouse at once, so ordering them in the browser orders the whole set; its
+default is still the FEFO pick order, and a lot keeps its FEFO number whatever
+the order on screen.
+
+**THE SIXTH GROUP: Pembelian** (19 October 2026, BO). Same shape as the fifth.
+Faktur sorts by Faktur, Jatuh tempo, Total, Dibayar and Sisa; Penerimaan by
+Nomor, Tanggal, Item and Nilai; Supplier by Supplier, Termin, Penerimaan and
+Sisa utang. Every other column is plain. `Urutkan` is gone from all three
+panels. Row actions sit behind `RowLinkMenu` (promoted to `@/components`),
+each item with an icon — Faktur's Detail / Buat penerimaan barang /
+Bayar, Penerimaan's Detail.
+
+**Faktur Penjualan joins them** (20 October 2026, BO): on `<DataTable>`, with
+Faktur sortable beside Tanggal, Jatuh tempo, Nilai and Sisa, and its row
+actions — Detail, Cetak faktur, Bayar, Batalkan faktur — behind
+`RowLinkMenu`.
+
+**Pelanggan joins them** (20 October 2026, BO): Pelanggan sorts by Kode,
+Pelanggan and Bergabung; Hewan by Nama, Umur and Berat, with animals missing a
+birth date or a weight kept at the bottom in both directions.
+
+**Keuangan's four screens render through `<DataTable>` too** (20 October 2026):
+Akun Kas & Bank (sorted in the browser — every account is loaded at once — by
+Kode, Masuk, Keluar and Saldo; Ubah behind `RowLinkMenu`), Daftar transaksi,
+Biaya tetap, Komisi and Jurnal. Their private header components are gone.
+
+**Layanan joins them** (20 October 2026, BO): the Grooming and Antar-Jemput
+booking boards sort by Booking and Nilai in the browser (a period is loaded
+whole), and the two catalogues by Layanan, Harga and Durasi on the server —
+Harga and Durasi by the low end of the range the cell prints, with services
+missing either kept at the bottom.
 
 **A collapsed bar owes you its count.** A quick bar shows its values on its triggers; a panel hides them behind a button, and a hidden filter is one people forget is on and then read the wrong numbers from. `Filter (2)` is not decoration — it is what makes the collapsed form safe, and a panel button without it is a bug.
 
@@ -392,7 +460,7 @@ mapped from English in the client; see `validations/common.validation.js`.
 
 ## 10. Tables and empty states
 
-**Never write `<table>` directly.** Use `Table, TableHeader, TableRow, TableHead, TableBody, TableCell` from `@/components/ui/table`.
+**Never write `<table>` directly.** A list screen renders through `<DataTable>` from `@/components` (19 October 2026): it takes `columns` (id, header, align, cell) and `rows`, and owns the header row, sortable headers (`sort={{ value, options, onChange }}`, API ordering names only), the loading row (old rows dim during a reload; a spinner only before the first rows), the empty row, clickable rows, extra rows under a row (`renderAfterRow`), a `<tfoot>` and a note. One place to fix a list table. A table that is not a list — a form's row editor, a printed document — uses `Table, TableHeader, TableRow, TableHead, TableBody, TableCell` from `@/components/ui/table`.
 
 ```tsx
 // ✅

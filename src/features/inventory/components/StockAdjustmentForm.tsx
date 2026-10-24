@@ -1,7 +1,7 @@
 "use client";
 
 import { SkuText } from "@/components/SkuText";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 
@@ -47,10 +47,12 @@ import {
 
 import { useStockCardLookups } from "../hooks/useStockCardLookups";
 import { useBranchScope, warehousesForBranch } from "../hooks/useBranchScope";
+import { useLiveStock } from "../hooks/useLiveStock";
 import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
 import { qtyAtWarehouse } from "../utils/ledger";
 import { AdjustmentAddProductsDialog } from "./AdjustmentAddProductsDialog";
 import { StockEntryKindHint } from "./StockEntryKindHint";
+import { prefetchProductCandidates } from "../hooks/useProductCandidates";
 
 /**
  * A manual stock adjustment — one numbered document, however many products.
@@ -158,6 +160,11 @@ export function StockAdjustmentForm() {
     new Map(),
   );
   const [picking, setPicking] = useState(false);
+  // Fetched as the form opens, so "+ Tambah produk" opens on a list that is
+  // already here instead of a spinner — see prefetchProductCandidates.
+  useEffect(() => {
+    prefetchProductCandidates({});
+  }, []);
 
   /**
    * Which fields the user has actually engaged with.
@@ -185,7 +192,16 @@ export function StockAdjustmentForm() {
    */
   const [idempotencyKey] = useState(newIdempotencyKey);
 
-  const lots = useWarehouseBatches(warehouseId);
+  /*
+    KEPT CURRENT WHILE THE FORM IS OPEN, and here it is more than a display:
+    the delta this form posts is `newQty − systemQty`, so a system figure that
+    went stale while somebody counted would post the wrong correction. Re-read
+    when products join and when somebody comes back to the tab — one request
+    each for every line.
+  */
+  const lineProductIds = lines.map((line) => line.productId);
+  const liveStock = useLiveStock(lineProductIds);
+  const lots = useWarehouseBatches(warehouseId, lineProductIds);
 
   const scope = useBranchScope();
   /**
@@ -220,7 +236,10 @@ export function StockAdjustmentForm() {
       return lot?.qtyRemaining ?? null;
     }
 
-    return qtyAtWarehouse(product.stockByWarehouse ?? [], warehouseId);
+    return qtyAtWarehouse(
+      liveStock.rowsOf(line.productId) ?? product.stockByWarehouse ?? [],
+      warehouseId,
+    );
   }
 
   /**

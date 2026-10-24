@@ -45,8 +45,9 @@ const customer: Customer = {
  * The Pelanggan list, in the shape the mockup draws.
  *
  * THE ROW IS THE WAY INTO A PROFILE, and this suite is here because that is the
- * one thing on the screen with no visible affordance of its own — the callout
- * under the table promises it, and nothing else would notice if it broke.
+ * one thing on the screen with no visible affordance of its own (the callout
+ * that used to promise it is gone, BO 20 October 2026), and nothing else would
+ * notice if it broke.
  *
  * It also pins the two columns the database cannot fill. Dropping them is the
  * tempting tidy-up; the badge in the header is what keeps an empty cell from
@@ -75,6 +76,8 @@ describe("customers table", () => {
         customers={[{ ...customer, ...overrides }]}
         loading={false}
         onChanged={jest.fn()}
+        sort="newest"
+        onSortChange={jest.fn()}
       />,
     );
   }

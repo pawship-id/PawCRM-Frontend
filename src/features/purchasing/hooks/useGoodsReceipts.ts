@@ -39,9 +39,9 @@ export interface GoodsReceiptsQuery {
   dateFrom: string;
   dateTo: string;
   /**
-   * Which ordering the list is paged through in. Always set — a list with no
-   * ordering is not a thing — so it has no "" and Reset returns it to the
-   * default rather than clearing it.
+   * Which ordering the list is paged through in — set from the table's column
+   * headers (19 October 2026). Always set — a list with no ordering is not a
+   * thing — so it has no "", and the filter panel's Reset leaves it alone.
    */
   sort: GoodsReceiptSort;
 }

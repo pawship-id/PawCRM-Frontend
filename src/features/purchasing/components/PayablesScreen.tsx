@@ -11,6 +11,7 @@ import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { formatMoney } from "@/utils/decimal";
 import type {
+  PayablesSummary,
   PurchaseInvoiceDetail,
   PurchaseInvoiceListRow,
   SupplierOutstandingSummary,
@@ -104,6 +105,35 @@ export function PayablesScreen() {
     };
   }, [summaryNonce]);
 
+  /*
+    "PEMBELIAN PERIODE" — bills raised THIS MONTH, by invoice date, across the
+    whole book (19 October 2026). `/outstanding` knows no period, so the value
+    comes from `/summary`'s `invoiced`, the same figure Ringkasan shows; the
+    month is cut by the server in the tenant's timezone. Its own request, so a
+    failure here blanks one card, never the strip.
+  */
+  const [invoiced, setInvoiced] = useState<PayablesSummary["invoiced"] | null>(
+    null,
+  );
+  const [invoicedFailed, setInvoicedFailed] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    purchaseInvoiceService
+      .summary({ period: "month" })
+      .then((result) => {
+        if (active) setInvoiced(result.invoiced);
+      })
+      .catch(() => {
+        if (active) setInvoicedFailed(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [summaryNonce]);
+
   // The whole book, like the figures beside it. Its own request: a failure here
   // blanks one card, never the strip.
   const [pendingReceipts, setPendingReceipts] = useState<number | null>(null);
@@ -136,6 +166,7 @@ export function PayablesScreen() {
           invoiceCount: summary.totalDueSoonInvoices,
           horizonDays: summary.horizonDays,
         },
+        invoiced: invoiced ?? undefined,
         pendingReceipts,
       }
     : null;
@@ -152,6 +183,13 @@ export function PayablesScreen() {
         figures={figures}
         loading={!summary && !summaryFailed}
         failed={summaryFailed}
+        periodScoped
+        periodLabel="bulan ini"
+        // The card reads `figures`, which waits on `/outstanding` too.
+        invoicedLoading={
+          !summaryFailed && (!summary || (invoiced === null && !invoicedFailed))
+        }
+        invoicedFailed={invoicedFailed || summaryFailed}
         // Withheld once the list already shows the bucket — a control that
         // leads nowhere new is noise.
         onDueSoonClick={
@@ -197,6 +235,9 @@ export function PayablesScreen() {
             invoices={invoices}
             loading={loading}
             search={query.search}
+            sort={query.sort}
+            onSortChange={(sort) => setQuery({ sort })}
+            canEdit={can("purchaseInvoices", "create")}
             canPay={can("purchaseInvoices", "pay")}
             canReceive={can("goodsReceipts", "create")}
             onPay={openPay}

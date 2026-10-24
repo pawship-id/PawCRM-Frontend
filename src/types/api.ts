@@ -828,8 +828,8 @@ export interface HomeVisitFees {
  * document every other record hangs off. Deliberately has no `tenantId` of its
  * own: a tenant IS the tenant, so there is nothing above it to scope by.
  *
- * `slug` is a public URL identifier, not a display nicety, which is why the
- * backend never re-derives it when the business is renamed.
+ * `slug` follows the business name — the backend re-derives it on a rename
+ * (24 October 2026). `code` is the one that never changes.
  */
 export interface Tenant {
   _id: string;
@@ -850,6 +850,11 @@ export interface Tenant {
    */
   taxId?: string | null;
   slug: string;
+  /**
+   * `T0001`, … — the tenant's fixed code and media folder. Optional: a tenant
+   * the backend backfill has not reached yet comes back without it.
+   */
+  code?: string;
   logoUrl: string | null;
   /**
    * The zone the tenant's day is measured in — one of the three official
@@ -963,6 +968,31 @@ export interface Branch {
   phone: string | null;
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter: string | null;
+  /**
+   * THE TOP OF THE RECEIPT — logo, a line of the shop's own, and which names
+   * print. OPTIONAL because list reads are `.lean()`: a branch written before
+   * these existed comes back without the keys, and a missing toggle means ON.
+   */
+  receiptLogo?: MediaAsset | null;
+  receiptHeaderText?: string | null;
+  receiptShowTenantName?: boolean;
+  /** Null prints the tenant's own name; a value replaces it on this branch's receipts. */
+  receiptTenantName?: string | null;
+  receiptShowBranchName?: boolean;
+  /** Null prints the branch's own name. */
+  receiptBranchName?: string | null;
+  /**
+   * THE FAKTUR'S OWN HEADER AND FOOTER (22 Oktober 2026) — the struk's rules,
+   * read by the faktur and its kwitansi, its own logo included.
+   * `invoiceFooterNote` null prints nothing (no default sentence).
+   */
+  invoiceLogo?: MediaAsset | null;
+  invoiceHeaderText?: string | null;
+  invoiceShowTenantName?: boolean;
+  invoiceTenantName?: string | null;
+  invoiceShowBranchName?: boolean;
+  invoiceBranchName?: string | null;
+  invoiceFooterNote?: string | null;
   /**
    * When the doors are open — `HH:mm` in the tenant's timezone, both or neither.
    * Null means UNRECORDED, not closed, and nothing enforces them yet: the
@@ -1086,6 +1116,21 @@ export interface CreateBranchInput {
   operatingDays?: OperatingDay[];
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter?: string | null;
+  /** The upload response as returned — its `token` must travel back. `null` clears it. */
+  receiptLogo?: MediaAsset | null;
+  receiptHeaderText?: string | null;
+  receiptShowTenantName?: boolean;
+  receiptTenantName?: string | null;
+  receiptShowBranchName?: boolean;
+  receiptBranchName?: string | null;
+  /** The faktur's logo — same upload rules as `receiptLogo`. */
+  invoiceLogo?: MediaAsset | null;
+  invoiceHeaderText?: string | null;
+  invoiceShowTenantName?: boolean;
+  invoiceTenantName?: string | null;
+  invoiceShowBranchName?: boolean;
+  invoiceBranchName?: string | null;
+  invoiceFooterNote?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
   location?: GeoLocationInput | null;
   isActive?: boolean;
@@ -1108,6 +1153,21 @@ export interface UpdateBranchInput {
   operatingDays?: OperatingDay[];
   /** The line printed at the foot of this branch's receipts (FR-8). */
   receiptFooter?: string | null;
+  /** The upload response as returned — its `token` must travel back. `null` clears it. */
+  receiptLogo?: MediaAsset | null;
+  receiptHeaderText?: string | null;
+  receiptShowTenantName?: boolean;
+  receiptTenantName?: string | null;
+  receiptShowBranchName?: boolean;
+  receiptBranchName?: string | null;
+  /** The faktur's logo — same upload rules as `receiptLogo`. */
+  invoiceLogo?: MediaAsset | null;
+  invoiceHeaderText?: string | null;
+  invoiceShowTenantName?: boolean;
+  invoiceTenantName?: string | null;
+  invoiceShowBranchName?: boolean;
+  invoiceBranchName?: string | null;
+  invoiceFooterNote?: string | null;
   /** `null` clears the pin; both coordinates must be sent together. */
   location?: GeoLocationInput | null;
   isActive?: boolean;
@@ -1639,7 +1699,26 @@ export interface CustomerListQuery {
    * "registered since" filter of the register's own.
    */
   createdSince?: string;
+  /**
+   * A name from the server's closed `CUSTOMER_SORTS` — never a field. Omitted
+   * means `newest`, which is what the API defaults to anyway.
+   */
+  sort?: CustomerSort;
 }
+
+/**
+ * The orderings GET /api/customers accepts — the server's `CUSTOMER_SORTS`
+ * (BO header sorting, 20 October 2026). Kode sorts by `code`, Pelanggan by
+ * `name`, Bergabung by `createdAt` (`newest` / `oldest`). Every key is stored
+ * and indexed.
+ */
+export type CustomerSort =
+  | "newest"
+  | "oldest"
+  | "codeAsc"
+  | "codeDesc"
+  | "nameAsc"
+  | "nameDesc";
 
 /**
  * What GET /api/customers/stats answers — the numbers on the Pelanggan header's
@@ -1798,6 +1877,15 @@ export interface PosShift {
   updatedAt: string;
 }
 
+/**
+ * A row of GET /pos/shifts — the shift plus the two names a list across
+ * cashiers and branches needs. Null when the branch or user is gone.
+ */
+export interface PosShiftListItem extends PosShift {
+  branchName: string | null;
+  cashierName: string | null;
+}
+
 /** One channel's takings during a shift. `net` is amount minus change given. */
 export interface PosPaymentBreakdownRow {
   channelId: string;
@@ -1820,6 +1908,18 @@ export interface PosPaymentBreakdownRow {
  */
 export interface PosXReport {
   shift: PosShift;
+  /**
+   * Tills still holding this cashier's sales rung up offline and not sent yet
+   * — not in the figures below (POS offline mode, 19 October 2026). As each
+   * device last reported; absent from an older server.
+   */
+  offlinePending?: Array<{
+    deviceId: string;
+    code: string;
+    name: string | null;
+    count: number;
+    lastSeenAt: string | null;
+  }>;
   transactionCount: number;
   breakdown: PosPaymentBreakdownRow[];
   /**
@@ -2258,6 +2358,11 @@ export interface PosTransaction {
   syncOnline?: boolean;
   /** Who opened it — tells "mine" from a synced one parked at another till. */
   createdBy?: string | null;
+  /** Where it was rung up — "offline" arrived later from a till's queue (19 Oct 2026). */
+  source?: "online" | "offline";
+  deviceId?: string | null;
+  /** Who rang it up — on the transaction list only (19 Oct 2026). */
+  cashierName?: string | null;
   bookingIds: string[];
   paidAt: string | null;
   createdAt: string;
@@ -2479,6 +2584,11 @@ export interface PosCatalogQuery {
   parentId?: string;
   /** The "Layanan" pill sends ["service"]. Absent means both. */
   kinds?: PosItemKind[];
+  /**
+   * `search` came from the camera: a whole code (SKU, barcode, lot) matched
+   * EXACTLY. A batch label's QR is recognised with or without this.
+   */
+  scan?: boolean;
 }
 
 /**
@@ -2589,8 +2699,15 @@ export interface PosReceiptItem {
  */
 export interface PosReceipt {
   header: {
+    /** "" when the branch hides it — the server already applied the toggle and override. */
     tenantName: string;
     branchName: string;
+    /**
+     * The branch's receipt logo and its header line. OPTIONAL: an offline
+     * snapshot taken before they existed has neither, and "" means none.
+     */
+    logoUrl?: string;
+    headerText?: string;
     /** Empty string, never null — an unfilled field prints as a blank line. */
     address: string;
     phone: string;
@@ -2663,6 +2780,8 @@ export interface PosTransactionListQuery {
   shiftId?: string;
   branchId?: string;
   customerId?: string;
+  /** "Transaksi saya": only the sales this user rang up. */
+  createdBy?: string;
   status?: PosTransactionStatus | PosTransactionStatus[];
   paidFrom?: string;
   paidTo?: string;
@@ -2872,7 +2991,7 @@ export interface PosItemInput {
    * THE MAIN SERVICE AN ADD-ON IS HUNG ON (21 October 2026) — sent ONCE, on
    * the write where the cashier answers "Add-on ini untuk layanan yang mana?",
    * together with that main line's `bookingId`. The server checks it and, from
-   * then on, reads the parent off the booking itself; `itemsAsInputOf` never
+   * then on, reads the parent off the booking itself; `cartItemsAsInput` never
    * sends it back.
    */
   parentServiceId?: string | null;
@@ -3805,13 +3924,8 @@ export interface CommissionRowsResult {
   cards: { total: string; paid: string; pending: string };
 }
 
-export type CommissionSort =
-  | "bookingDate"
-  | "groomer"
-  | "branch"
-  | "basisAmount"
-  | "amount"
-  | "status";
+/** Cabang and Status stopped sorting on 20 October 2026 (BO). */
+export type CommissionSort = "bookingDate" | "groomer" | "basisAmount" | "amount";
 
 export interface CommissionRowsQuery {
   branchId?: string;
@@ -4654,6 +4768,21 @@ export interface Service {
   updatedAt: string;
 }
 
+/**
+ * The orderings GET /api/services accepts — SERVICE_SORTS on the server (BO
+ * header sorting, 20 October 2026). `nameAsc` is the default, the menu order
+ * the catalogue always had. Harga and Durasi rank by the LOW end of what their
+ * cells print (a flat service's own value, or the cheapest / shortest ACTIVE
+ * variant), with a service that has none last in both directions.
+ */
+export type ServiceSort =
+  | "nameAsc"
+  | "nameDesc"
+  | "priceAsc"
+  | "priceDesc"
+  | "durationAsc"
+  | "durationDesc";
+
 /** Query parameters accepted by GET /api/services. All optional. */
 export interface ServiceListQuery {
   page?: number;
@@ -4690,6 +4819,8 @@ export interface ServiceListQuery {
   /** Free-text over name / code. */
   search?: string;
   includeDeleted?: boolean;
+  /** A SERVICE_SORTS name; the server defaults to `nameAsc`. */
+  sort?: ServiceSort;
 }
 
 /** One variant as the form sends it — the same shape, price as typed. */
@@ -5242,7 +5373,27 @@ export interface PetListQuery {
   tag?: string;
   /** Include soft-deleted pets (default false on the backend). */
   includeDeleted?: boolean;
+  /** One of the server's closed `PET_SORTS`; omitted means `newest`. */
+  sort?: PetSort;
 }
+
+/**
+ * Orderings accepted by GET /api/pets — the server's closed `PET_SORTS`, which
+ * the Hewan table's headers ask for (BO, 20 October 2026).
+ *
+ * `age*` orders by `birthDate`, which the Umur column is derived from:
+ * `ageDesc` is OLDEST first (earliest birth date), `ageAsc` youngest first.
+ * `weight*` orders by `weightKg`. In all four a pet with no birth date / no
+ * weight comes LAST, whichever the direction.
+ */
+export type PetSort =
+  | "newest"
+  | "nameAsc"
+  | "nameDesc"
+  | "ageAsc"
+  | "ageDesc"
+  | "weightAsc"
+  | "weightDesc";
 
 /** Body of PATCH /api/pets/:id/preferences. */
 export interface UpdatePetPreferencesInput {
@@ -5597,11 +5748,22 @@ export function isSupplierActive(
 /**
  * The orderings `GET /api/suppliers` accepts — SUPPLIER_SORTS in the model.
  *
- * No "termin" or "sisa utang": the first is a negotiated property rather than a
- * ranking, and the second is aggregated by a different endpoint, so the database
- * cannot order by it.
+ * `paymentTerm*` orders by the stored term; `receiptCount*` and `outstanding*`
+ * by the Penerimaan and Sisa utang figures, which the server sums for those
+ * orderings only, with the same definitions as `GET /goods-receipts/summary`
+ * and `GET /purchase-invoices/outstanding` (BO header sorting, 19 October 2026).
  */
-export type SupplierSort = "newest" | "oldest" | "nameAsc" | "nameDesc";
+export type SupplierSort =
+  | "newest"
+  | "oldest"
+  | "nameAsc"
+  | "nameDesc"
+  | "paymentTermAsc"
+  | "paymentTermDesc"
+  | "receiptCountAsc"
+  | "receiptCountDesc"
+  | "outstandingAsc"
+  | "outstandingDesc";
 
 /** Query parameters accepted by GET /api/suppliers. All optional. */
 export interface SupplierListQuery {
@@ -6004,10 +6166,19 @@ export interface GoodsReceiptListRow {
  *
  * `newest` / `oldest` key on `receiptDate`, the day the goods arrived, never the
  * day the row was typed. The number orderings are how you walk a sequence rather
- * than a calendar — see the model. There is no ordering by value: `total` is
- * unindexed, so it would be a blocking in-memory sort of every matched receipt.
+ * than a calendar — see the model. `itemCount*` and `value*` (header sorting,
+ * 19 October 2026) order by the Item and Nilai columns — the line count and
+ * `grandTotal` — which the server computes for those orderings alone.
  */
-export type GoodsReceiptSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
+export type GoodsReceiptSort =
+  | "newest"
+  | "oldest"
+  | "numberDesc"
+  | "numberAsc"
+  | "itemCountDesc"
+  | "itemCountAsc"
+  | "valueDesc"
+  | "valueAsc";
 
 /**
  * Query parameters accepted by GET /api/goods-receipts. All optional.
@@ -6780,9 +6951,24 @@ export interface PurchaseInvoiceListQuery {
  * Named after the axis rather than a direction, matching the batch list's
  * `expirySoonest`: on a date that means a deadline, "ascending" is not what
  * anybody calls it.
+ *
+ * Header sorting (19 October 2026) added Faktur (`number*`), Total, Dibayar
+ * (`paid*`) and Sisa (`outstanding*`, computed by the server as
+ * `total − paidAmount`).
  */
 export type PurchaseInvoiceSort =
-  "newest" | "oldest" | "dueSoonest" | "dueLatest";
+  | "newest"
+  | "oldest"
+  | "dueSoonest"
+  | "dueLatest"
+  | "numberAsc"
+  | "numberDesc"
+  | "totalDesc"
+  | "totalAsc"
+  | "paidDesc"
+  | "paidAsc"
+  | "outstandingDesc"
+  | "outstandingAsc";
 
 /**
  * POST /api/purchase-invoices — file the supplier's bill against a delivery.
@@ -7386,11 +7572,33 @@ export interface CustomerInvoiceListRow {
   notes: string | null;
 }
 
+/**
+ * The branch's FAKTUR settings for a printed faktur and its kwitansi — its own
+ * set since 22 Oktober 2026, apart from the struk's, logo included
+ * (`utils/receiptHeader.js` → `invoiceBrandingOf` on the server).
+ *
+ * The TENANT name is left to the sheet, which falls back to the legal name: a
+ * hidden one is `showTenantName: false`, and `tenantName` is only the branch's
+ * override (null = use the tenant's own). The BRANCH name comes resolved — ""
+ * when hidden. `logoUrl` and `headerText` are "" when unset.
+ */
+export interface InvoicePrintHeader {
+  showTenantName: boolean;
+  tenantName: string | null;
+  branchName: string;
+  logoUrl: string;
+  headerText: string;
+  /** The faktur's closing note — bank details. "" prints nothing. Optional: older API. */
+  footerNote?: string;
+}
+
 /** GET /api/customer-invoices/:id — the row, plus its payments and labels. */
 export interface CustomerInvoiceDetail extends Omit<
   CustomerInvoiceListRow,
   "paymentCount"
 > {
+  /** Optional: an API older than 20 Oktober 2026 does not send it. */
+  printHeader?: InvoicePrintHeader;
   /** Trips of this bill's home bookings nobody has billed — the edit offers them (11 October 2026). */
   owedTrips?: {
     tripId: string;
@@ -7557,6 +7765,7 @@ export interface PublicCustomerInvoice {
   dueDate: string;
   customerName: string | null;
   branchName: string | null;
+  printHeader?: InvoicePrintHeader;
   items: Array<
     Pick<
       CustomerInvoiceItem,
@@ -7586,7 +7795,6 @@ export interface PublicCustomerInvoice {
     name: string;
     legalName?: string | null;
     taxId?: string | null;
-    invoiceFooterNote: string | null;
   };
 }
 
@@ -8086,7 +8294,9 @@ export interface CustomerInvoiceListQuery {
     | "totalHighest"
     | "totalLowest"
     | "outstandingHighest"
-    | "outstandingLowest";
+    | "outstandingLowest"
+    | "numberAsc"
+    | "numberDesc";
 }
 
 /** What the list's Status filter may ask for — a status, or lateness. */
@@ -8126,7 +8336,13 @@ export interface CustomerInvoiceListSummary {
     fromDate: string | null;
     toDate: string | null;
   } | null;
+  /** Before PPN and ongkir: what the rows put into the laba rugi's pendapatan. */
   revenue: CustomerInvoiceSummaryFigure;
+  /**
+   * The laba rugi's Total pendapatan for the period and cabang, returns and
+   * hand-posted revenue included. Only with `ledger: true`; null otherwise.
+   */
+  ledgerRevenue?: { amount: string } | null;
   collected: CustomerInvoiceSummaryFigure;
   outstanding: CustomerInvoiceSummaryFigure;
   overdue: CustomerInvoiceSummaryFigure;
@@ -8340,10 +8556,7 @@ export type CashTransactionSort =
   | "newest"
   | "oldest"
   | "amountHighest"
-  | "amountLowest"
-  /** By the branch's NAME — the server joins the branch in for these two only. */
-  | "branchAsc"
-  | "branchDesc";
+  | "amountLowest";
 
 export type CashTransactionDocumentType =
   | "customer_invoice"

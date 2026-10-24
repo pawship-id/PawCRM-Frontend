@@ -1,7 +1,7 @@
 "use client";
 
 import { SkuText } from "@/components/SkuText";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Trash2 } from "lucide-react";
 
@@ -51,6 +51,7 @@ import { useStockCardLookups } from "../hooks/useStockCardLookups";
 import { useBranchScope, warehousesForBranch } from "../hooks/useBranchScope";
 import { OpeningStockAddProductsDialog } from "./OpeningStockAddProductsDialog";
 import { StockEntryKindHint } from "./StockEntryKindHint";
+import { prefetchProductCandidates } from "../hooks/useProductCandidates";
 
 /**
  * OPENING STOCK for products that were registered without any.
@@ -59,7 +60,7 @@ import { StockEntryKindHint } from "./StockEntryKindHint";
  * instant in a product's life — the moment it was created — and a tenant that
  * registered its catalogue first and counted its shelves afterwards had no way
  * back to it. The only route left was a manual adjustment, and that credits
- * 5201 Kerugian Persediaan: a shop's entire day-one inventory arriving as a
+ * 5201 Beban Penyesuaian Persediaan: a shop's entire day-one inventory arriving as a
  * negative expense, which reads on the P&L as a profit earned by a shop that has
  * sold nothing. Registering the catalogue before counting the shelves is an
  * ordinary way to work and should not cost a wrong set of books.
@@ -159,6 +160,12 @@ export function OpeningStockForm() {
     new Map(),
   );
   const [picking, setPicking] = useState(false);
+  // Fetched as the form opens, so "+ Tambah produk" opens on a list that is
+  // already here instead of a spinner — see prefetchProductCandidates. Re-asked
+  // for every warehouse: what has never moved is a per-shelf answer.
+  useEffect(() => {
+    if (warehouseId) prefetchProductCandidates({ neverMovedInWarehouse: warehouseId });
+  }, [warehouseId]);
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);

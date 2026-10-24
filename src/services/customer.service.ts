@@ -39,6 +39,7 @@ export const customerService = {
         includeDeleted: query.includeDeleted,
         isActive: query.isActive,
         createdSince: query.createdSince,
+        sort: query.sort,
       },
     }),
 

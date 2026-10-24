@@ -1,6 +1,7 @@
 export { Logo } from "./Logo";
 export { Button } from "./Button";
 export { TextField } from "./TextField";
+export { PasswordField } from "./PasswordField";
 export {
   LocationFields,
   toGeoLocation,
@@ -62,9 +63,38 @@ export { Spinner } from "./Spinner";
 export { HighlightText } from "./HighlightText";
 export { SkuText } from "./SkuText";
 export { Pagination } from "./Pagination";
+/**
+ * THE list table (19 Oct 2026, BO): columns + rows, server-side header sorting.
+ * Every list screen renders through this rather than its own `<th>` markup.
+ */
+export {
+  DataTable,
+  SortableTableHead,
+  nextSortOf,
+  sortDirectionOf,
+  type DataTableColumn,
+  type DataTableProps,
+  type DataTableSort,
+  type SortDirection,
+  type SortOption,
+  type SortOptions,
+} from "./DataTable";
+/**
+ * A row's Aksi kebab — links, then actions behind a separator; clicks stop at
+ * the menu so a clickable row does not also open. Inventori and Pembelian.
+ */
+export {
+  RowLinkMenu,
+  type RowAction,
+  type RowLink,
+} from "./RowLinkMenu";
 export { ListFooter } from "./ListFooter";
 export { JournalLink } from "./JournalLink";
 export { ConfirmDialog } from "./ConfirmDialog";
+export {
+  BarcodeCameraDialog,
+  type ScanStatus,
+} from "./BarcodeCameraDialog";
 export {
   InternalBatchCodeDisplay,
   SupplierBatchCodeInput,

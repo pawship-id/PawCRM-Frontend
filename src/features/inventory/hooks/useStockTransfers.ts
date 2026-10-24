@@ -33,8 +33,9 @@ export interface StockTransfersQuery {
    */
   status: StockTransferStatus | "";
   /**
-   * Always set, never cleared: a list with no ordering is not a thing. Reset
-   * returns it to `newest` rather than emptying it.
+   * Set from the column headers (BO, 19 October 2026) and sorted by the
+   * server. Always set — a list with no ordering is not a thing — and the
+   * filter panel's Reset leaves it alone.
    */
   sort: StockTransferSort;
   page: number;

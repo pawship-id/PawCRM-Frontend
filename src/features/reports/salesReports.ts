@@ -3,9 +3,9 @@ import type {
   ConsignmentSalesReportRow,
   PosSalesReportRow,
   SalesBatchReportRow,
+  SalesInvoiceReportLine,
   SalesInvoiceReportRow,
   SalesItemReportRow,
-  SalesRevenueReportRow,
 } from "@/types/report";
 
 import type {
@@ -36,17 +36,30 @@ const DEFAULT_STATUSES: Status[] = ["unpaid", "partial", "paid"];
 
 const num = (value: string | null) => (value === null ? null : Number(value));
 
+const METHOD_LABEL: Record<string, string> = {
+  cash: "Tunai",
+  transfer: "Transfer",
+  qris: "QRIS",
+  edc: "EDC",
+  giro: "Giro",
+};
+
+const SOURCE_LABEL = (r: SalesInvoiceReportRow) =>
+  r.channel === "marketplace"
+    ? "Marketplace"
+    : r.source === "pos_bridge"
+      ? "Kasir"
+      : "Manual";
+
+/** A list cell: the names joined, or empty when there are none. */
+const joined = (values: string[]) => (values.length ? values.join(", ") : null);
+
 /**
- * The file's columns, in the order a faktur is read: who and when, then the
- * money top to bottom, then where it stands.
+ * The file's columns, in the order BO asked for (22 Oktober 2026): which
+ * faktur and where from, who bought, the money top to bottom, how it was paid,
+ * then whose goods and what was noted.
  */
 const INVOICE_COLUMNS: SalesReportColumn<SalesInvoiceReportRow>[] = [
-  {
-    header: "No. faktur",
-    value: (r) => r.invoiceNumber,
-    width: 22,
-    about: "Nomor faktur",
-  },
   {
     header: "Tanggal faktur",
     value: (r) => r.invoiceDate,
@@ -55,11 +68,27 @@ const INVOICE_COLUMNS: SalesReportColumn<SalesInvoiceReportRow>[] = [
     about: "Tanggal faktur diterbitkan",
   },
   {
-    header: "Jatuh tempo",
-    value: (r) => r.dueDate,
-    type: "date",
-    width: 14,
-    about: "Batas pembayaran",
+    header: "REF",
+    value: (r) => r.reference,
+    width: 20,
+    about: "Nomor transaksi kasir (POS-…), atau nomor pesanan e-commerce",
+  },
+  {
+    header: "No. faktur",
+    value: (r) => r.invoiceNumber,
+    width: 22,
+    about: "Nomor faktur",
+  },
+  {
+    header: "Sumber",
+    value: SOURCE_LABEL,
+    about: "Kasir, Manual (faktur back office), atau marketplace",
+  },
+  {
+    header: "Nama toko",
+    value: (r) => r.storeName,
+    width: 18,
+    about: "Cabang untuk kasir dan faktur manual; nama toko untuk e-commerce",
   },
   {
     header: "Cabang",
@@ -77,7 +106,8 @@ const INVOICE_COLUMNS: SalesReportColumn<SalesInvoiceReportRow>[] = [
     header: "Pelanggan",
     value: (r) => r.customerName,
     width: 24,
-    about: "Nama pelanggan",
+    about:
+      'Nama pelanggan ("Pelanggan umum" untuk pembeli tanpa data di kasir)',
   },
   {
     header: "No. HP",
@@ -86,14 +116,10 @@ const INVOICE_COLUMNS: SalesReportColumn<SalesInvoiceReportRow>[] = [
     about: "Nomor HP pelanggan",
   },
   {
-    header: "Sumber",
-    value: (r) => (r.source === "pos_bridge" ? "Kasir" : "Manual"),
-    about: "Dibuat dari kasir atau manual di back office",
-  },
-  {
-    header: "Channel",
-    value: (r) => (r.channel === "marketplace" ? "Marketplace" : "Manual"),
-    about: "Channel penjualan",
+    header: "Tipe pelanggan",
+    value: (r) => r.customerTypeName,
+    width: 16,
+    about: "Tipe pelanggan dari Pengaturan › Tipe pelanggan",
   },
   {
     header: "Jumlah baris",
@@ -115,38 +141,57 @@ const INVOICE_COLUMNS: SalesReportColumn<SalesInvoiceReportRow>[] = [
     about: "Qty × harga, sebelum diskon",
   },
   {
+    header: "Kurir",
+    value: (r) => r.courierName,
+    width: 14,
+    about:
+      "Umum untuk kasir dan faktur manual; nama ekspedisi untuk e-commerce",
+  },
+  {
+    header: "Status",
+    value: (r) => STATUS_LABEL[r.status],
+    width: 16,
+    about: "Belum lunas / Lunas sebagian / Lunas / Batal",
+  },
+  {
     header: "Diskon baris",
     value: (r) => num(r.itemDiscount),
     type: "number",
     width: 14,
-    about: "Total diskon per baris",
+    about: "Total diskon per baris (kasir dan faktur manual)",
   },
   {
     header: "Diskon faktur",
     value: (r) => num(r.invoiceDiscount),
     type: "number",
     width: 14,
-    about: "Diskon di level faktur",
+    about: "Diskon di level faktur (kasir dan faktur manual)",
+  },
+  {
+    header: "Diskon lainnya",
+    value: (r) => num(r.otherDiscount),
+    type: "number",
+    width: 14,
+    about: "Diskon dari e-commerce",
   },
   {
     header: "Biaya lain",
     value: (r) => num(r.otherCharges),
     type: "number",
     width: 14,
-    about: "Ongkir, packaging, dll.",
+    about: "Total biaya lain",
   },
   {
-    header: "DPP",
-    value: (r) => num(r.dpp),
-    type: "number",
-    width: 14,
-    about: "Dasar pengenaan pajak",
+    header: "Nama biaya lain",
+    value: (r) => joined(r.otherChargeLabels),
+    width: 24,
+    about: "Nama setiap biaya lain, misal Ongkir, Packaging",
   },
   {
     header: "Tarif PPN (%)",
     value: (r) => r.taxRate,
     type: "number",
-    about: "Tarif PPN saat faktur terbit",
+    about: "Tarif PPN saat faktur terbit (kasir: PPN ÷ DPP)",
   },
   {
     header: "PPN",
@@ -157,41 +202,49 @@ const INVOICE_COLUMNS: SalesReportColumn<SalesInvoiceReportRow>[] = [
   },
   {
     header: "Total",
+    value: (r) => num(r.netTotal),
+    type: "number",
+    width: 16,
+    about:
+      "Subtotal − diskon baris − diskon faktur + biaya lain, sebelum PPN ditambahkan",
+  },
+  {
+    header: "Grand total",
     value: (r) => num(r.total),
     type: "number",
     width: 16,
-    about: "Total tagihan",
+    about: "Total tagihan, termasuk PPN",
   },
   {
-    header: "Dibayar",
-    value: (r) => num(r.paidAmount),
-    type: "number",
+    header: "Akun bayar",
+    value: (r) =>
+      r.channel === "marketplace" ? null : joined(r.paymentAccountNames),
+    width: 22,
+    about: "Akun/channel tempat uang masuk (kasir dan faktur manual)",
+  },
+  {
+    header: "Metode bayar",
+    value: (r) => joined(r.paymentMethods.map((m) => METHOD_LABEL[m] ?? m)),
     width: 16,
-    about: "Yang sudah dibayar",
+    about: "Tunai / Transfer / QRIS / EDC",
   },
   {
-    header: "Sisa tagihan",
-    value: (r) => num(r.outstandingAmount),
-    type: "number",
-    width: 16,
-    about: "Total − dibayar (0 untuk faktur batal)",
-  },
-  {
-    header: "Status",
-    value: (r) => STATUS_LABEL[r.status],
-    width: 16,
-    about: "Belum lunas / Lunas sebagian / Lunas / Batal",
-  },
-  {
-    header: "Lewat jatuh tempo",
-    value: (r) => (r.isOverdue ? "Ya" : "Tidak"),
-    about: "Belum lunas dan sudah lewat jatuh tempo",
-  },
-  {
-    header: "Dibuat oleh",
-    value: (r) => r.createdByName,
+    header: "Nama kasir",
+    value: (r) => (r.channel === "marketplace" ? null : r.cashierName),
     width: 18,
-    about: "Kasir / admin yang membuat",
+    about: "Nama device kasir; untuk faktur manual, yang membuat faktur",
+  },
+  {
+    header: "Supplier",
+    value: (r) => joined(r.consignorNames),
+    width: 20,
+    about: "Penitip barang, jika ada barang konsinyasi",
+  },
+  {
+    header: "Konsinyasi",
+    value: (r) => (r.isConsignment ? "KONSINYASI" : "NON KONSINYASI"),
+    width: 16,
+    about: "KONSINYASI jika ada minimal satu barang titipan di faktur",
   },
   {
     header: "Catatan",
@@ -217,7 +270,7 @@ export const salesInvoiceReport: SalesReportDefinition<
 > = {
   title: "Penjualan per invoice",
   description:
-    "Satu baris per faktur: total, diskon, pajak, dan status bayar. Diunduh sebagai Excel.",
+    "Satu baris per faktur: sumber, diskon, biaya lain, pajak, pembayaran, dan konsinyasi. Diunduh sebagai Excel.",
   fileName: "penjualan-per-invoice",
   rowNoun: "faktur",
   columns: INVOICE_COLUMNS,
@@ -352,6 +405,130 @@ export const salesItemReport: SalesReportDefinition<SalesItemReportRow, Kind> =
       (await reportService.salesItems({ ...scope, kinds })).rows,
   };
 
+/* ---------------------------- Penjualan per invoice, rincian barang */
+
+/** One sheet row: a line of a faktur, or the faktur alone when it has none. */
+interface InvoiceLineRow {
+  invoice: SalesInvoiceReportRow;
+  line: SalesInvoiceReportLine | null;
+}
+
+/**
+ * A per-invoice column, read off the faktur and repeated on each of its lines
+ * — the same definition as Penjualan per invoice, so the two files agree.
+ * Not merged (BO, 23 Oktober 2026): one line, one complete row, so the sheet
+ * can be filtered and sorted as it is.
+ */
+const invoiceColumn = (
+  header: string,
+  rename?: string,
+): SalesReportColumn<InvoiceLineRow> => {
+  const column = INVOICE_COLUMNS.find((c) => c.header === header);
+  if (!column) throw new Error(`Unknown invoice column: ${header}`);
+  return {
+    ...column,
+    header: rename ?? column.header,
+    value: (r) => column.value(r.invoice),
+  };
+};
+
+/**
+ * Who and when, then the lines, then how it was paid and where it stands.
+ */
+const INVOICE_LINE_COLUMNS: SalesReportColumn<InvoiceLineRow>[] = [
+  ...[
+    "No. faktur",
+    "Tanggal faktur",
+    "Nama toko",
+    "Cabang",
+    "Gudang",
+    "Pelanggan",
+    "No. HP",
+    "Tipe pelanggan",
+    "Sumber",
+  ].map((header) => invoiceColumn(header)),
+  {
+    header: "Tipe",
+    value: (r) => (r.line ? KIND_LABEL[r.line.kind] : null),
+    about: "Produk, layanan, atau membership",
+  },
+  {
+    header: "SKU",
+    value: (r) => r.line?.sku,
+    width: 16,
+    about: "Kode produk; untuk layanan dan membership, kodenya",
+  },
+  {
+    header: "Nama barang/layanan",
+    value: (r) => r.line?.name,
+    width: 30,
+    about: "Nama seperti tercetak di faktur",
+  },
+  {
+    header: "Kategori",
+    value: (r) => r.line?.categoryName,
+    width: 18,
+    about:
+      "Kategori produk; untuk layanan, kelompoknya (Grooming, Hotel, Antar-Jemput); Membership untuk membership",
+  },
+  {
+    header: "Qty",
+    value: (r) => num(r.line?.qty ?? null),
+    type: "number",
+    about: "Jumlah barang di baris ini",
+  },
+  {
+    header: "Harga satuan",
+    value: (r) => num(r.line?.unitPrice ?? null),
+    type: "number",
+    width: 14,
+    about: "Harga per satuan",
+  },
+  {
+    header: "Diskon barang",
+    value: (r) => num(r.line?.discount ?? null),
+    type: "number",
+    width: 14,
+    about: "Diskon di baris ini",
+  },
+  {
+    header: "Subtotal barang",
+    value: (r) => num(r.line?.net ?? null),
+    type: "number",
+    width: 16,
+    about: "Qty × harga − diskon barang (sebelum diskon faktur dan PPN)",
+  },
+  invoiceColumn("Akun bayar", "Akun pembayaran"),
+  ...["Status", "Catatan"].map((header) => invoiceColumn(header)),
+];
+
+/**
+ * Penjualan per invoice with each faktur's lines, one sheet row per line, the
+ * faktur's own cells repeated on every line.
+ */
+export const salesInvoiceLineReport: SalesReportDefinition<
+  InvoiceLineRow,
+  Status
+> = {
+  ...salesInvoiceReport,
+  title: "Penjualan per invoice (rincian barang)",
+  description:
+    "Setiap faktur dengan barang dan layanannya, satu baris per barang. Diunduh sebagai Excel.",
+  fileName: "penjualan-per-invoice-rincian",
+  rowNoun: "baris barang",
+  columns: INVOICE_LINE_COLUMNS,
+  // No merged cells: every line is a full row.
+  groupKey: undefined,
+  fetch: async (scope, statuses) =>
+    (
+      await reportService.salesInvoices({ ...scope, statuses, withLines: true })
+    ).rows.flatMap((invoice): InvoiceLineRow[] =>
+      invoice.lines?.length
+        ? invoice.lines.map((line) => ({ invoice, line }))
+        : [{ invoice, line: null }],
+    ),
+};
+
 /* ------------------------------------------------------ Batch terjual */
 
 /**
@@ -388,7 +565,8 @@ const BATCH_COLUMNS: SalesReportColumn<SalesBatchReportRow>[] = [
     header: "Pelanggan",
     value: (r) => r.customerName,
     width: 24,
-    about: "Nama pelanggan (kosong untuk pembeli umum di kasir)",
+    about:
+      'Nama pelanggan ("Pelanggan umum" untuk pembeli tanpa data di kasir)',
   },
   {
     header: "No. HP",
@@ -762,116 +940,158 @@ export const consignmentSalesReport: SalesReportDefinition<
 
 /* ---------------------------------------- Rincian pendapatan per produk */
 
+/** One sheet row: a sold line, with its faktur beside it. */
+interface RevenueLineRow {
+  invoice: SalesInvoiceReportRow;
+  line: SalesInvoiceReportLine;
+}
+
 /**
- * What it is, then the money from the shelf price down to profit, left to
- * right — each column is the one before it less something named.
+ * In the order BO asked for (24 Oktober 2026): which faktur and where from,
+ * who bought, the line from its price down to Nett sales and Gross profit,
+ * then how it was paid and whose goods. The faktur's columns are Penjualan
+ * per invoice's own, repeated on each line like the rincian barang file.
  */
-const REVENUE_COLUMNS: SalesReportColumn<SalesRevenueReportRow>[] = [
+const REVENUE_COLUMNS: SalesReportColumn<RevenueLineRow>[] = [
   {
-    header: "Tipe",
-    value: (r) => KIND_LABEL[r.kind],
-    about: "Produk, Layanan, atau Membership",
+    header: "Tipe transaksi",
+    value: () => "Faktur",
+    width: 14,
+    about: "Faktur penjualan (kasir dan manual). Retur belum masuk laporan ini",
   },
-  { header: "SKU", value: (r) => r.sku, width: 16, about: "Kode produk" },
+  invoiceColumn("Tanggal faktur", "Tanggal"),
+  ...[
+    "No. faktur",
+    "REF",
+    "Status",
+    "Sumber",
+    "Nama toko",
+    "Cabang",
+    "Gudang",
+  ].map((header) => invoiceColumn(header)),
+  ...["Pelanggan", "Tipe pelanggan"].map((header) => invoiceColumn(header)),
   {
-    header: "Nama",
-    value: (r) => r.name,
-    width: 32,
-    about: "Nama yang terakhir tercetak di faktur (termasuk varian)",
-  },
-  {
-    header: "Kategori",
-    value: (r) => r.categoryName,
-    width: 18,
-    about: "Kategori di katalog",
-  },
-  { header: "Satuan", value: (r) => r.unit, about: "Satuan produk" },
-  {
-    header: "Qty terjual",
-    value: (r) => num(r.qty),
-    type: "number",
-    about: "Total qty terjual",
+    header: "Nama barang",
+    value: (r) => r.line.name,
+    width: 30,
+    about: "Nama seperti tercetak di faktur (termasuk varian)",
   },
   {
-    header: "Pendapatan kotor",
-    value: (r) => num(r.gross),
-    type: "number",
+    header: "SKU",
+    value: (r) => r.line.sku,
     width: 16,
-    about: "Qty × harga jual, sebelum diskon",
+    about: "Kode produk; untuk layanan dan membership, kodenya",
   },
   {
-    header: "Diskon baris",
-    value: (r) => num(r.discount),
+    header: "Qty",
+    value: (r) => num(r.line.qty),
+    type: "number",
+    about: "Jumlah di baris ini",
+  },
+  {
+    header: "Harga",
+    value: (r) => num(r.line.unitPrice),
     type: "number",
     width: 14,
-    about: "Diskon yang diberikan di baris itu",
+    about: "Harga jual per satuan",
+  },
+  {
+    header: "Sub total",
+    value: (r) => num(r.line.lineTotal),
+    type: "number",
+    width: 14,
+    about: "Qty × harga, sebelum diskon",
+  },
+  {
+    header: "Diskon barang",
+    value: (r) => num(r.line.discount),
+    type: "number",
+    width: 14,
+    about: "Diskon di baris ini",
+  },
+  {
+    header: "Termasuk pajak",
+    value: (r) =>
+      r.invoice.taxInclusive === null
+        ? null
+        : r.invoice.taxInclusive
+          ? "Ya"
+          : "Tidak",
+    width: 14,
+    about:
+      "Ya jika harga sudah termasuk PPN; Tidak jika PPN ditambahkan di atas harga. Kosong jika tanpa PPN",
+  },
+  {
+    header: "Pajak",
+    value: (r) => num(r.line.tax),
+    type: "number",
+    width: 14,
+    about: "Bagian PPN baris ini, dibagi sebanding nilai baris",
   },
   {
     header: "Diskon faktur",
-    value: (r) => num(r.invoiceDiscount),
+    value: (r) => num(r.line.invoiceDiscount),
     type: "number",
     width: 14,
     about: "Bagian dari diskon faktur, dibagi sebanding nilai baris",
   },
+  invoiceColumn("Diskon lainnya"),
   {
-    header: "PPN",
-    value: (r) => num(r.tax),
+    header: "HPP",
+    value: (r) => num(r.line.cost),
     type: "number",
     width: 14,
     about:
-      "PPN yang sudah termasuk di harga jual. 0 kalau harga belum termasuk PPN",
+      "Qty × harga pokok saat barang keluar. 0 untuk layanan; kosong jika HPP produk tidak tercatat",
   },
   {
-    header: "Pendapatan bersih",
-    value: (r) => num(r.revenue),
+    header: "Nett sales",
+    value: (r) => num(r.line.revenue),
     type: "number",
     width: 16,
     about:
-      "Kotor − diskon baris − diskon faktur − PPN. Sama dengan pendapatan di laba rugi",
+      "Sub total − diskon barang − diskon faktur − PPN (jika termasuk di harga). Sama dengan pendapatan di laba rugi",
   },
   {
-    header: "HPP",
-    value: (r) => num(r.cost),
+    header: "Gross profit",
+    value: (r) => num(r.line.profit),
     type: "number",
     width: 16,
-    about: "Qty × harga pokok saat barang keluar. Layanan tidak punya HPP",
+    about: "Nett sales − HPP. Kosong jika HPP tidak tercatat",
+  },
+  invoiceColumn("Akun bayar", "Akun pembayaran"),
+  {
+    header: "Akun penjualan",
+    value: (r) => r.line.salesAccountName,
+    width: 26,
+    about: "Sub akun pendapatan tempat baris ini dibukukan",
+  },
+  invoiceColumn("Nama kasir"),
+  {
+    header: "Supplier",
+    value: (r) => joined(r.line.consignorNames),
+    width: 20,
+    about: "Penitip barang, jika barang ini titipan",
   },
   {
-    header: "Profit",
-    value: (r) => num(r.profit),
-    type: "number",
+    header: "Konsinyasi",
+    value: (r) => (r.line.isConsignment ? "KONSINYASI" : "NON KONSINYASI"),
     width: 16,
-    about: "Pendapatan bersih − HPP",
-  },
-  {
-    header: "Margin (%)",
-    value: (r) => r.margin,
-    type: "number",
-    about: "Profit ÷ pendapatan bersih",
-  },
-  {
-    header: "Qty tanpa HPP",
-    value: (r) => num(r.qtyNoCost),
-    type: "number",
-    about:
-      "Qty yang terjual tanpa HPP tercatat. Kalau lebih dari 0, profit baris itu terlalu besar",
+    about: "KONSINYASI jika barang yang keluar untuk baris ini titipan",
   },
 ];
 
 /**
- * Revenue, discounts, HPP and profit per produk — one row per produk (or
- * layanan, when asked for).
+ * Every sold line of the period with its Nett sales, HPP and Gross profit —
+ * one row per barang, the faktur's columns beside it.
  */
-export const salesRevenueReport: SalesReportDefinition<
-  SalesRevenueReportRow,
-  Kind
-> = {
+export const salesRevenueReport: SalesReportDefinition<RevenueLineRow, Kind> = {
   title: "Rincian pendapatan per produk",
   description:
-    "Pendapatan, diskon, HPP, dan profit per produk. Diunduh sebagai Excel.",
+    "Setiap barang terjual dengan pajak, diskon, HPP, nett sales, dan gross profit. Diunduh sebagai Excel.",
   fileName: "rincian-pendapatan-per-produk",
-  rowNoun: "produk",
-  note: "Retur penjualan belum mengurangi angka di laporan ini. Profit layanan belum dikurangi komisi atau biaya kerja.",
+  rowNoun: "baris barang",
+  note: "Faktur batal tidak termasuk. Retur penjualan belum mengurangi angka di laporan ini. Profit layanan belum dikurangi komisi atau biaya kerja.",
   columns: REVENUE_COLUMNS,
   choice: {
     label: "Tipe",
@@ -884,5 +1104,7 @@ export const salesRevenueReport: SalesReportDefinition<
         : values.map((v) => KIND_LABEL[v]).join(", "),
   },
   fetch: async (scope, kinds) =>
-    (await reportService.salesRevenue({ ...scope, kinds })).rows,
+    (await reportService.salesRevenue({ ...scope, kinds })).rows.flatMap(
+      (invoice) => invoice.lines.map((line) => ({ invoice, line })),
+    ),
 };

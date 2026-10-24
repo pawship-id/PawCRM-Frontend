@@ -14,6 +14,7 @@ import { ApiError } from "@/services/api-error";
 import { branchService } from "@/services/branch.service";
 import { warehouseService } from "@/services/warehouse.service";
 import type { Branch, Warehouse } from "@/types/api";
+import type { MediaAsset } from "@/types/inventory";
 
 import { branchHoursSummary, formatOperatingDays } from "../hours";
 import { BranchStatusBadge } from "./BranchStatusBadge";
@@ -95,6 +96,8 @@ export function BranchDetail({ id }: { id: string }) {
         <>
           <BranchHero branch={branch} />
           <IdentityCard branch={branch} />
+          <ReceiptTemplateCard branch={branch} />
+          <InvoiceTemplateCard branch={branch} />
           {mayReadWarehouses && <BranchWarehouses branchId={branch._id} />}
         </>
       )}
@@ -135,7 +138,7 @@ function IdentityCard({ branch }: { branch: Branch }) {
   return (
     <Card
       title="Identitas & jam buka"
-      description="Dipakai di struk cabang ini dan di nomor dokumennya."
+      description="Alamat dan kontak yang tercetak di struk dan faktur, serta kode untuk nomor dokumennya."
     >
       <dl className="divide-y divide-border">
         {/*
@@ -144,7 +147,10 @@ function IdentityCard({ branch }: { branch: Branch }) {
           branch — so an empty one is not a cosmetic gap, it is a branch that
           will fail at the till.
         */}
-        <Row label="Kode cabang" note="Muncul di tengah nomor dokumen, mis. INV/CBS/2609/0001.">
+        <Row
+          label="Kode cabang"
+          note="Muncul di tengah nomor dokumen, mis. INV/CBS/2609/0001."
+        >
           {branch.code ? (
             <span className="tabular-nums">{branch.code}</span>
           ) : (
@@ -171,7 +177,6 @@ function IdentityCard({ branch }: { branch: Branch }) {
           {hours ?? "Belum diisi"}
         </Row>
         <Row label="Hari operasional">{days || "Belum diisi"}</Row>
-        <Row label="Catatan kaki struk">{branch.receiptFooter || "—"}</Row>
         {/*
           READ DEFENSIVELY. `location` arrived after the collection did and the
           backend's list reads use `.lean()`, which skips schema defaults — so a
@@ -194,6 +199,97 @@ function IdentityCard({ branch }: { branch: Branch }) {
         <Row label="Terakhir diubah">{fullDate(branch.updatedAt)}</Row>
       </dl>
     </Card>
+  );
+}
+
+/**
+ * What the top and foot of this branch's struk print — its own card so it reads
+ * apart from the branch's identity (22 October 2026, on request).
+ */
+function ReceiptTemplateCard({ branch }: { branch: Branch }) {
+  return (
+    <Card
+      title="Template struk"
+      description="Yang tercetak di struk kasir (termasuk saat offline) dan link struk yang dikirim ke pelanggan."
+    >
+      <dl className="divide-y divide-border">
+        {/*
+          THE RECEIPT'S TOP. A missing toggle is ON (lean reads skip defaults),
+          and an empty override prints the live name — said so, rather than "—",
+          because "—" would read as "nothing prints".
+        */}
+        <LogoRow logo={branch.receiptLogo} alt={`Logo struk ${branch.name}`} />
+        <Row label="Nama usaha di struk">
+          {branch.receiptShowTenantName === false
+            ? "Tidak ditampilkan"
+            : branch.receiptTenantName || "Nama usaha"}
+        </Row>
+        <Row label="Nama cabang di struk">
+          {branch.receiptShowBranchName === false
+            ? "Tidak ditampilkan"
+            : branch.receiptBranchName || branch.name}
+        </Row>
+        <Row label="Teks header struk">{branch.receiptHeaderText || "—"}</Row>
+        <Row label="Catatan kaki struk">
+          {branch.receiptFooter || "Terima kasih"}
+        </Row>
+      </dl>
+    </Card>
+  );
+}
+
+/**
+ * The faktur's own set (22 Oktober 2026, BO: "setting struk dan faktur
+ * dibedain") — read by the faktur, its public link and its kwitansi, with its
+ * own logo.
+ */
+function InvoiceTemplateCard({ branch }: { branch: Branch }) {
+  return (
+    <Card
+      title="Template faktur"
+      description="Yang tercetak di faktur penjualan, link faktur, dan kwitansi pembayaran cabang ini."
+    >
+      <dl className="divide-y divide-border">
+        <LogoRow logo={branch.invoiceLogo} alt={`Logo faktur ${branch.name}`} />
+        <Row label="Nama usaha di faktur">
+          {branch.invoiceShowTenantName === false
+            ? "Tidak ditampilkan"
+            : branch.invoiceTenantName || "Nama resmi usaha"}
+        </Row>
+        <Row label="Nama cabang di faktur">
+          {branch.invoiceShowBranchName === false
+            ? "Tidak ditampilkan"
+            : branch.invoiceBranchName || branch.name}
+        </Row>
+        <Row label="Teks header faktur">{branch.invoiceHeaderText || "—"}</Row>
+        <Row label="Catatan kaki faktur">
+          {branch.invoiceFooterNote ? (
+            <span className="whitespace-pre-line">
+              {branch.invoiceFooterNote}
+            </span>
+          ) : (
+            "—"
+          )}
+        </Row>
+      </dl>
+    </Card>
+  );
+}
+
+function LogoRow({ logo, alt }: { logo?: MediaAsset | null; alt: string }) {
+  return (
+    <Row label="Logo">
+      {logo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logo.thumbUrl ?? logo.url}
+          alt={alt}
+          className="size-12 rounded-md border border-border object-contain"
+        />
+      ) : (
+        "—"
+      )}
+    </Row>
   );
 }
 
@@ -296,8 +392,7 @@ function BranchWarehouses({ branchId }: { branchId: string }) {
           before that, or one whose warehouses were all deleted.
         */
         <p className="py-4 text-sm text-muted">
-          Belum ada gudang di cabang ini. Stok tidak bisa masuk sampai ada
-          satu.{" "}
+          Belum ada gudang di cabang ini. Stok tidak bisa masuk sampai ada satu.{" "}
           <Link
             href={`${SETTINGS_PATHS.gudang}/new`}
             className="font-semibold text-foreground underline underline-offset-2"
@@ -317,7 +412,9 @@ function BranchWarehouses({ branchId }: { branchId: string }) {
 }
 
 function WarehouseRow({ warehouse }: { warehouse: Warehouse }) {
-  const pic = [warehouse.picName, warehouse.picPhone].filter(Boolean).join(" · ");
+  const pic = [warehouse.picName, warehouse.picPhone]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <li className="flex flex-wrap items-center gap-3 py-3">
@@ -328,7 +425,9 @@ function WarehouseRow({ warehouse }: { warehouse: Warehouse }) {
         <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-foreground">
           {warehouse.name}
           {warehouse.hasPos && <Badge variant="outline">Kasir</Badge>}
-          {warehouse.isDefault && <Badge variant="outline">Bawaan cabang</Badge>}
+          {warehouse.isDefault && (
+            <Badge variant="outline">Bawaan cabang</Badge>
+          )}
           {!warehouse.isActive && <Badge variant="outline">Nonaktif</Badge>}
         </p>
         <p className="text-xs text-muted">

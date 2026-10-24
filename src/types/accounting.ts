@@ -474,11 +474,8 @@ export type JournalEntrySort =
   | "oldest"
   | "numberDesc"
   | "numberAsc"
-  // The column orderings of the Jurnal list (mockup, 21 September 2026).
-  | "descriptionAsc"
-  | "descriptionDesc"
-  | "branchAsc"
-  | "branchDesc"
+  // The Nilai column of the Jurnal list (mockup, 21 September 2026). Keterangan
+  // and Cabang stopped sorting on 20 October 2026 (BO).
   | "totalDesc"
   | "totalAsc";
 

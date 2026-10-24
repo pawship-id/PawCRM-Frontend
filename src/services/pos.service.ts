@@ -13,6 +13,7 @@ import type {
   PosReturnable,
   PosTransactionListQuery,
   PosShift,
+  PosShiftListItem,
   PosShiftStatus,
   PosTransaction,
   PosXReport,
@@ -58,7 +59,8 @@ export const posService = {
 
   /**
    * GET /pos/shifts — every shift in the scope, newest first. Beranda counts
-   * the day's shifts and how many are still open; `posShifts:read`.
+   * the day's shifts and how many are still open; Pengaturan › Shift kasir
+   * lists them, with branch and cashier names; `posShifts:read`.
    */
   listShifts: (
     query: {
@@ -69,7 +71,7 @@ export const posService = {
       openedFrom?: string;
       openedTo?: string;
     } = {},
-  ) => apiClient.get<PageResult<PosShift>>("/pos/shifts", { query }),
+  ) => apiClient.get<PageResult<PosShiftListItem>>("/pos/shifts", { query }),
 
   /** GET /pos/shifts/:id/x-report — read-only, and safe to run repeatedly. */
   xReport: (shiftId: string) =>
@@ -104,6 +106,7 @@ export const posService = {
         parentId: query.parentId,
         // An array becomes repeated params — see buildUrl in api-client.ts.
         kinds: query.kinds,
+        scan: query.scan,
       },
     }),
 
@@ -166,6 +169,7 @@ export const posService = {
         shiftId: query.shiftId,
         branchId: query.branchId,
         customerId: query.customerId,
+        createdBy: query.createdBy,
         status: query.status,
         paidFrom: query.paidFrom,
         paidTo: query.paidTo,
@@ -224,8 +228,15 @@ export const posService = {
       query: addonId ? { petId, addonId } : { petId },
     }),
 
-  pay: (id: string, input: PayInput) =>
-    apiClient.post<PosTransaction>(`/pos/transactions/${id}/pay`, input),
+  /*
+    `options.headers` carries a registered till's X-Pos-Device-* pair, and the
+    input its own number and sale id (POS offline mode, 19 October 2026).
+  */
+  pay: (
+    id: string,
+    input: PayInput & { transactionNumber?: string; clientTxnId?: string },
+    options: { headers?: Record<string, string> } = {},
+  ) => apiClient.post<PosTransaction>(`/pos/transactions/${id}/pay`, input, options),
 
   /**
    * GET /pos/customers/:id/credit — how much this customer may still owe (FR-7).

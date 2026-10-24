@@ -285,7 +285,7 @@ export function JournalEntryCreateForm() {
   function applyPreset() {
     if (!presetLines) return;
     setDescription(
-      "Koreksi stok awal — pindah dari Kerugian Persediaan ke Modal",
+      "Koreksi stok awal — pindah dari Beban Penyesuaian Persediaan ke Modal",
     );
     setLines([
       {
@@ -293,7 +293,7 @@ export function JournalEntryCreateForm() {
         accountId: presetLines.from._id,
         // Memos are LEDGER TEXT: what this line does, for whoever reads the
         // posting later. What the user must do next is `expects`, below.
-        memo: "Membatalkan kredit yang salah di Kerugian Persediaan",
+        memo: "Membatalkan kredit yang salah di Beban Penyesuaian Persediaan",
         expects: "debit",
       },
       {
@@ -589,7 +589,7 @@ export function JournalEntryCreateForm() {
                 <li>
                   <b>Nominalnya</b> ambil dari jurnal penyesuaiannya, jangan
                   dihitung ulang. Cari di Jurnal dengan keterangan{" "}
-                  <b>Stock adjustment</b> — angka pada baris Kerugian Persediaan
+                  <b>Stock adjustment</b> — angka pada baris Beban Penyesuaian Persediaan
                   itulah yang dipindah.
                 </li>
                 <li>

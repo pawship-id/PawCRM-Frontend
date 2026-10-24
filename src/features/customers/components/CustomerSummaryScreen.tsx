@@ -158,34 +158,6 @@ export function CustomerSummaryScreen() {
         <MembershipPanel />
       </Can>
 
-      {/*
-        THE MOCKUP'S CLOSING NOTE, minus its line about cabang: a customer has no
-        branch in this database, so a sentence promising the lists follow the
-        branch picker would promise something no control here does.
-      */}
-      <div className="rounded-xl border border-border border-l-[3px] border-l-primary bg-surface px-4 py-3">
-        <p className="text-sm font-semibold text-foreground">
-          Dari sini, bukan tab Analitik sendiri
-        </p>
-        <p className="mt-0.5 text-[13px] text-muted">
-          Metrik dan worklist di halaman ini khusus pelanggan. Untuk laba per
-          lini, arus kas, dan laporan formal, lihat{" "}
-          <Link
-            href="/dashboard/keuangan"
-            className="text-primary underline-offset-2 hover:underline"
-          >
-            Keuangan
-          </Link>{" "}
-          dan{" "}
-          <Link
-            href="/dashboard/reports"
-            className="text-primary underline-offset-2 hover:underline"
-          >
-            Laporan
-          </Link>
-          .
-        </p>
-      </div>
     </div>
   );
 }

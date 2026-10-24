@@ -33,6 +33,7 @@ const EVERY_FILTER: Required<
   limit: 20,
   search: "royal canin",
   categoryId: "c1",
+  uncategorized: true,
   productType: "standalone",
   parentId: "p1",
   isActive: true,
@@ -41,7 +42,10 @@ const EVERY_FILTER: Required<
   inStockAtWarehouse: "wh2",
   searchBatches: true,
   includeDeleted: true,
+  view: "picker",
   sort: "nameAsc",
+  stockWarehouseId: "wh3",
+  stockWarehouseIds: ["wh4", "wh5"],
 };
 
 describe("productService", () => {
@@ -89,6 +93,31 @@ describe("productService", () => {
       "/products",
       expect.objectContaining({
         query: expect.objectContaining({ sort: "skuAsc" }),
+      }),
+    );
+  });
+
+  it("sends the low-stock and negative-stock orderings", async () => {
+    // Both lists are paged, so their header sorts only mean anything if the
+    // NAME reaches the server — a dropped key would leave the default order
+    // under a header that claims otherwise.
+    const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
+
+    await productService.lowStock({ page: 1, sort: "shortageDesc" });
+    await productService.negativeStock({ page: 1, sort: "warehouseAsc" });
+
+    expect(get).toHaveBeenNthCalledWith(
+      1,
+      "/products/low-stock",
+      expect.objectContaining({
+        query: expect.objectContaining({ sort: "shortageDesc" }),
+      }),
+    );
+    expect(get).toHaveBeenNthCalledWith(
+      2,
+      "/products/negative-stock",
+      expect.objectContaining({
+        query: expect.objectContaining({ sort: "warehouseAsc" }),
       }),
     );
   });

@@ -65,9 +65,9 @@ export interface PurchaseInvoicesQuery {
   dateFrom: string;
   dateTo: string;
   /**
-   * Which ordering the list is paged through in. Always set — a list with no
-   * ordering is not a thing — so it has no "" and Reset returns it to the
-   * default rather than clearing it.
+   * Which ordering the list is paged through in — set from the table's column
+   * headers (19 October 2026). Always set — a list with no ordering is not a
+   * thing — so it has no "", and the filter panel's Reset leaves it alone.
    *
    * INDEPENDENT OF `view`. The lens decides WHICH bills are on the page and the
    * ordering decides what the top of it is; "Jatuh tempo" with "Terlama" is a
@@ -93,8 +93,8 @@ const DEFAULT_QUERY: PurchaseInvoicesQuery = {
   dateTo: "",
   // NEWEST BILL FIRST, matching the endpoint's own default rather than
   // second-guessing it. Urgency is what the `overdue` / `dueSoon` views are
-  // for; somebody who wants the book ordered by deadline picks "Jatuh tempo
-  // terdekat", and that is one click away.
+  // for; somebody who wants the book ordered by deadline clicks the Jatuh
+  // tempo header, and that is one click away.
   sort: "newest",
 };
 

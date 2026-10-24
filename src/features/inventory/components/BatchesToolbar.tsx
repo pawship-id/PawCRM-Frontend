@@ -17,15 +17,20 @@ import {
   type FilterOption,
 } from "@/components";
 import type { Branch } from "@/types/api";
-import type { BatchSort, StockWarehouse } from "@/types/inventory";
+import type { StockWarehouse } from "@/types/inventory";
 
 import { ownerBranchOf, warehousesUnder } from "../hooks/useBranchScope";
 import type { BatchesQuery, Horizon } from "../hooks/useBatches";
 
 /**
  * The batch list controls: one row — search and one Filter button — with the
- * warehouse, the expiry horizon, the ordering and, in audit mode, the "show
- * spent lots" toggle inside a panel.
+ * branch, the warehouse, the expiry horizon and, in audit mode, the "show spent
+ * lots" toggle inside a panel.
+ *
+ * THE ORDERING IS NOT HERE. The table sorts from its column headers (BO,
+ * 19 October 2026), so `Urutkan` left the panel and Reset no longer touches the
+ * order: a button inside a filter panel must not silently re-sort a table
+ * somebody ordered from the headers they can see.
  *
  * Purely presentational — it renders the current query and reports changes up.
  *
@@ -64,27 +69,12 @@ const HORIZONS: FilterOption<Horizon>[] = [
   { value: "custom", label: "Rentang khusus" },
 ];
 
-/**
- * The orderings the API accepts — BATCH_SORTS in productBatch.model.js.
- *
- * NO "SISA QTY" HERE. `qtyRemaining` is a decimal string the API does not index
- * and the screen re-reads per warehouse; ordering by it would be a control that
- * quietly sorts something other than what the column shows.
- */
-const SORTS: FilterOption<BatchSort>[] = [
-  { value: "expirySoonest", label: "Paling cepat kedaluwarsa" },
-  { value: "expiryLatest", label: "Paling lama kedaluwarsa" },
-  { value: "newest", label: "Terbaru diterima" },
-  { value: "oldest", label: "Terlama diterima" },
-];
-
 /** Everything the panel edits, as one draft. */
 interface BatchFilters {
   branchId: string;
   warehouseId: string;
   horizon: Horizon;
   includeSpent: boolean;
-  sort: BatchSort;
   /** ISO `yyyy-mm-dd`, or "" — only read while `horizon` is "custom". */
   expiryFrom: string;
   expiryTo: string;
@@ -96,15 +86,13 @@ interface BatchFilters {
  * The horizon goes back to "Semua batch", the screen's own default since
  * 12 Sep 2026 — see `DEFAULT_BATCHES_QUERY`. A Reset that landed on a narrower
  * list than the one the page opened on would hide lots somebody had just seen.
- * The ordering goes back to soonest-first, which still puts what goes bad
- * first at the top.
+ * The ordering is not in it — see the header.
  */
 const CLEARED: BatchFilters = {
   branchId: "",
   warehouseId: "",
   horizon: "all",
   includeSpent: false,
-  sort: "expirySoonest",
   // Reset empties the window as well as leaving the custom horizon. Switching
   // AWAY from "Rentang khusus" keeps the dates — see BatchesQuery — but Reset
   // means "back to the report", and a window that survived it would come back
@@ -224,7 +212,6 @@ export function BatchesToolbar({
     warehouseId: query.warehouseId,
     horizon: query.horizon,
     includeSpent: query.includeSpent,
-    sort: query.sort,
     expiryFrom: query.expiryFrom,
     expiryTo: query.expiryTo,
   };
@@ -242,7 +229,6 @@ export function BatchesToolbar({
     if (next.horizon !== query.horizon) patch.horizon = next.horizon;
     if (next.includeSpent !== query.includeSpent)
       patch.includeSpent = next.includeSpent;
-    if (next.sort !== query.sort) patch.sort = next.sort;
     if (next.expiryFrom !== query.expiryFrom)
       patch.expiryFrom = next.expiryFrom;
     if (next.expiryTo !== query.expiryTo) patch.expiryTo = next.expiryTo;
@@ -281,7 +267,7 @@ export function BatchesToolbar({
 }
 
 /**
- * The warehouse, the horizon, the ordering and the spent-lot toggle, behind one
+ * The branch, the warehouse, the horizon and the spent-lot toggle, behind one
  * button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8). Reset returns the
@@ -308,12 +294,12 @@ function BatchFilterPanel({
   /**
    * How many filters are narrowing the list right now.
    *
-   * NEITHER THE ORDERING NOR THE RESTING HORIZON IS COUNTED. Every list has an
-   * ordering, and this screen always has a horizon — "Semua batch" is its
-   * resting state, so only a horizon moved OFF it counts. Counting either
-   * resting value would put a standing number over an unnarrowed list and teach
-   * people to ignore it, which is the one thing the badge cannot afford now
-   * that the controls are hidden.
+   * THE RESTING HORIZON IS NOT COUNTED. This screen always has a horizon —
+   * "Semua batch" is its resting state, so only a horizon moved OFF it counts.
+   * Counting the resting value would put a standing number over an unnarrowed
+   * list and teach people to ignore it, which is the one thing the badge cannot
+   * afford now that the controls are hidden. (The ordering lives on the
+   * table's headers, not here, so there is nothing of it to count.)
    */
   const count = [
     applied.branchId !== "",
@@ -398,15 +384,6 @@ function BatchFilterPanel({
           setOpen(false);
         }}
       >
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="expirySoonest"
-          onChange={(sort) => patch({ sort })}
-        />
         {/* CABANG ABOVE GUDANG, the order every stock screen asks its two
             scoping questions in: branch is a unit of bookkeeping and warehouse a
             unit of stock, and somebody reading an expiry report thinks in the

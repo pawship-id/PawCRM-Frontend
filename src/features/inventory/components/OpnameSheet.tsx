@@ -37,6 +37,7 @@ import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
 import { JournalPreview } from "./JournalPreview";
 import { OpnameAddProductsDialog } from "./OpnameAddProductsDialog";
 import { OpnameStatusBadge } from "./OpnameStatusBadge";
+import { prefetchProductCandidates } from "../hooks/useProductCandidates";
 
 /**
  * The count sheet: system quantity on one side, what the counter found on the
@@ -187,6 +188,9 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
    */
   const lots = useWarehouseBatches(
     opname?.status === "draft" ? opname.warehouseId : "",
+    // Kept current like the system quantities: the lots of the lines on the
+    // sheet are re-read when products join and when somebody comes back.
+    items.map((item) => item.productId),
   );
 
   const editable =
@@ -231,6 +235,12 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
   }, [editable, lots.loading, lots.byProduct, items, changeBatch]);
 
   const [addingProducts, setAddingProducts] = useState(false);
+  // Fetched as the form opens, so "+ Tambah produk" opens on a list that is
+  // already here instead of a spinner — see prefetchProductCandidates. Only for a
+  // sheet that can still take products.
+  useEffect(() => {
+    if (editable) prefetchProductCandidates({});
+  }, [editable]);
   const [addError, setAddError] = useState<string | null>(null);
   /** A counted line waiting on confirmation — see `handleRemove`. */
   const [pendingRemove, setPendingRemove] = useState<{

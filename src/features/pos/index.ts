@@ -13,3 +13,9 @@ export { PosScreen } from "./components/PosScreen";
  * imports it and nothing else.
  */
 export { PublicReceiptScreen } from "./components/PublicReceiptScreen";
+/*
+ * POS OFFLINE MODE (19 October 2026): Kasir › Perlu dicek, and Pengaturan ›
+ * Perangkat kasir — each a route of its own.
+ */
+export { OfflineReviewScreen } from "./components/OfflineReviewScreen";
+export { PosDevicesScreen } from "./components/PosDevicesScreen";

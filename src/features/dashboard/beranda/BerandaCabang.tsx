@@ -23,7 +23,7 @@ import {
 } from "@/features/accounting/financeSummary";
 import { cn } from "@/lib/utils";
 import { journalEntryService } from "@/services/journalEntry.service";
-import { formatMoneyShort, sumDecimals } from "@/utils/decimal";
+import { formatMoney, sumDecimals } from "@/utils/decimal";
 
 import { useBerandaScope } from "./BerandaShell";
 import { Panel } from "./parts";
@@ -178,7 +178,7 @@ export function BerandaCabang() {
                           loss && "font-semibold text-danger",
                         )}
                       >
-                        {formatMoneyShort(row.now.netProfit)}
+                        {formatMoney(row.now.netProfit)}
                       </TableCell>
                       <TableCell className="text-right">
                         <span
@@ -245,7 +245,7 @@ function Money({ value, strong = false }: { value: string; strong?: boolean }) {
     <TableCell
       className={cn("text-right tabular-nums", strong && "font-extrabold")}
     >
-      {formatMoneyShort(value)}
+      {formatMoney(value)}
     </TableCell>
   );
 }

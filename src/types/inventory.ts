@@ -280,6 +280,8 @@ export interface ProductBatch {
 
   productName: string | null;
   productSku: string | null;
+  /** The packaging barcode, carried on the batch label's QR. */
+  productBarcode?: string | null;
   productUnit: string | null;
   /** Decimal string — the product's selling price, for the shelf label. */
   productSellPrice: string | null;
@@ -886,6 +888,12 @@ export interface ProductStockRow {
   qty: string;
 }
 
+/** GET /api/products/stock — one product's on-hand rows, by id. */
+export interface ProductStockOf {
+  productId: string;
+  stockByWarehouse: ProductStockRow[];
+}
+
 /** How many whole bundles one warehouse can assemble, and what caps it. */
 export interface BundleAvailabilityRow {
   warehouseId: string;
@@ -909,6 +917,11 @@ export interface ProductListQuery {
   limit?: number;
   search?: string;
   categoryId?: string;
+  /**
+   * Only rows filed under no category — pair with `excludeVariants` (a variant
+   * never carries one of its own). Refused beside `categoryId`.
+   */
+  uncategorized?: boolean;
   productType?: ProductType;
   parentId?: string;
   isActive?: boolean;
@@ -967,17 +980,84 @@ export interface ProductListQuery {
   searchBatches?: boolean;
   includeDeleted?: boolean;
   /**
+   * `"picker"` — the "+ Tambah produk" dialogs' shape: no description, media
+   * or shipping, and no inherited `resolved` block. Those dialogs and the
+   * forms behind them read none of it.
+   *
+   * `"index"` — EVERY match in one answer (the server caps it at 10,000; a cut
+   * list says so through `total`), in the few fields the dialogs and their
+   * forms read, so the dialog can search in the browser. Ignores page/limit.
+   */
+  view?: "picker" | "index";
+  /**
    * Which ordering to page through. A NAME, not a field plus a direction —
    * the API accepts a closed list, so a client cannot ask for an ordering with
    * no index behind it. Omitted means `newest`, which is what the API defaults
    * to anyway.
    */
   sort?: ProductSort;
+  /**
+   * Which warehouse a STOCK sort (`stockAsc`, `stockValueDesc`, …) sums the
+   * quantity over; omitted, every shelf in reach. Intersected with the caller's
+   * reach on the server, so an id outside it sums nothing. Ignored by every
+   * other ordering.
+   */
+  stockWarehouseId?: string;
+  /**
+   * The same as a set — Produk & Varian's Gudang picker takes several and its
+   * Stok column adds them up. Unioned with `stockWarehouseId` on the server.
+   */
+  stockWarehouseIds?: string[];
 }
 
 /** The orderings `GET /api/products` accepts — PRODUCT_SORTS in the model. */
 export type ProductSort =
-  "newest" | "oldest" | "nameAsc" | "nameDesc" | "skuAsc";
+  | "newest"
+  | "oldest"
+  | "nameAsc"
+  | "nameDesc"
+  | "skuAsc"
+  | "skuDesc"
+  | "hppAsc"
+  | "hppDesc"
+  | "priceAsc"
+  | "priceDesc"
+  // The figure the Stok column shows — on-hand, a parent's variants' total, a
+  // bundle's buildable count — summed over `stockWarehouseId(s)`, or every
+  // shelf in reach. The value pair needs `holdsStock: true`.
+  | "stockAsc"
+  | "stockDesc"
+  | "stockValueAsc"
+  | "stockValueDesc";
+
+/** The orderings `GET /api/products/low-stock` accepts. Default `stockAsc`. */
+export type LowStockSort =
+  | "stockAsc"
+  | "stockDesc"
+  | "skuAsc"
+  | "skuDesc"
+  | "nameAsc"
+  | "nameDesc"
+  | "minStockAsc"
+  | "minStockDesc"
+  | "shortageAsc"
+  | "shortageDesc";
+
+/**
+ * The orderings `GET /api/products/negative-stock` accepts. Default `valueAsc`
+ * — the most negative value, the worst hole, first.
+ */
+export type NegativeStockSort =
+  | "valueAsc"
+  | "valueDesc"
+  | "nameAsc"
+  | "nameDesc"
+  | "warehouseAsc"
+  | "warehouseDesc"
+  | "qtyAsc"
+  | "qtyDesc"
+  | "hppAsc"
+  | "hppDesc";
 
 /** GET /api/products/:id/variants — the parent and every variant of it. */
 export interface ProductVariantsResult {
@@ -1553,7 +1633,13 @@ export interface OpnameListQuery {
 }
 
 /** The orderings `GET /api/stock-opnames` accepts — OPNAME_SORTS in the model. */
-export type OpnameSort = "newest" | "oldest" | "numberDesc" | "numberAsc";
+export type OpnameSort =
+  | "newest"
+  | "oldest"
+  | "numberDesc"
+  | "numberAsc"
+  | "diffValueAsc"
+  | "diffValueDesc";
 
 /**
  * One line as the CLIENT sends it — four fields, and not one of them a quantity
@@ -1869,10 +1955,21 @@ export type StockTransferSort =
   | "newest"
   | "oldest"
   | "numberDesc"
-  | "numberAsc";
+  | "numberAsc"
+  | "productCountAsc"
+  | "productCountDesc";
 
 /** The orderings `GET /api/stock-movements` accepts — MOVEMENT_SORTS in the model. */
-export type MovementSort = "newest" | "oldest";
+export type MovementSort =
+  | "newest"
+  | "oldest"
+  | "batchAsc"
+  | "batchDesc"
+  // Only with both `productId` and `warehouseId` — a balance is per pair.
+  | "balanceAsc"
+  | "balanceDesc"
+  | "hppAsc"
+  | "hppDesc";
 
 /**
  * GET /api/product-batches.
@@ -1885,6 +1982,8 @@ export interface ProductBatchListQuery {
   page?: number;
   limit?: number;
   productId?: string;
+  /** The lots of these products only — what an open form refreshes. Max 100. */
+  productIds?: string[];
   warehouseId?: string;
   /**
    * WHICH SHOP, rather than which shelf.
@@ -1924,7 +2023,21 @@ export interface ProductBatchListQuery {
 }
 
 /** The orderings the batch endpoints accept — BATCH_SORTS in the model. */
-export type BatchSort = "expirySoonest" | "expiryLatest" | "newest" | "oldest";
+export type BatchSort =
+  | "expirySoonest"
+  | "expiryLatest"
+  | "newest"
+  | "oldest"
+  | "batchCodeAsc"
+  | "batchCodeDesc"
+  | "productAsc"
+  | "productDesc"
+  | "qtyAsc"
+  | "qtyDesc"
+  | "costAsc"
+  | "costDesc"
+  | "valueAsc"
+  | "valueDesc";
 
 /** GET /api/product-batches/expiring. */
 export interface ExpiringBatchListQuery {
@@ -1967,7 +2080,7 @@ export interface ExpiringBatchesResult {
  * Which kind of hand-typed stock document, and through it which account the
  * value lands on.
  *
- * `adjustment` credits 5201 Kerugian Persediaan — goods that vanished, broke, or
+ * `adjustment` credits 5201 Beban Penyesuaian Persediaan — goods that vanished, broke, or
  * were used by the shop. `opening_balance` credits 3101 Modal Disetor —
  * goods a tenant already owned, bought from nobody in this system.
  */
@@ -2043,7 +2156,13 @@ export interface StockEntry {
  * The orderings the API names. A closed list, so a client cannot ask for one
  * with no index behind it.
  */
-export type StockEntrySort = "newest" | "oldest" | "numberDesc" | "numberAsc";
+export type StockEntrySort =
+  | "newest"
+  | "oldest"
+  | "numberDesc"
+  | "numberAsc"
+  | "lineCountAsc"
+  | "lineCountDesc";
 
 export interface StockEntryListQuery {
   page?: number;
@@ -2098,7 +2217,6 @@ export interface StockEntryInput {
    */
   idempotencyKey?: string;
 }
-
 
 /**
  * ONE SHELF THAT OWES WHAT IT HAS ALREADY SOLD — a row of

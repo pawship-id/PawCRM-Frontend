@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import { Alert, Spinner, Pagination } from "@/components";
+import { Alert, Pagination } from "@/components";
 import { Button } from "@/components/ui/button";
 import { CustomerModuleHeader } from "@/features/customers";
 import { Can } from "@/features/permissions";
@@ -58,28 +58,24 @@ export function PetsScreen() {
 
       {error && <Alert variant="error">{error}</Alert>}
 
-      {loading && pets.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Memuat daftar hewan…
-        </div>
-      ) : (
-        <>
-          <PetsTable
-            pets={pets}
-            loading={loading}
-            onChanged={handleRowChanged}
-            search={query.search}
-          />
-          <Pagination
-            page={pagination.page}
-            totalPages={pagination.totalPages}
-            total={pagination.total}
-            unit="hewan"
-            unitPlural="hewan"
-            onPageChange={(page) => setQuery({ page })}
-          />
-        </>
-      )}
+      {/* The table owns its loading row and its empty row now — it keeps the
+          old rows on screen, dimmed, while a re-sort or a page change loads. */}
+      <PetsTable
+        pets={pets}
+        loading={loading}
+        onChanged={handleRowChanged}
+        search={query.search}
+        sort={query.sort}
+        onSortChange={(sort) => setQuery({ sort })}
+      />
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        unit="hewan"
+        unitPlural="hewan"
+        onPageChange={(page) => setQuery({ page })}
+      />
     </div>
   );
 }

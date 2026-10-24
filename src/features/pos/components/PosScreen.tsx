@@ -36,6 +36,7 @@ import { PosServicePetDialog, type PosRidePick } from "./PosServicePetDialog";
 import { PosCloseShiftDialog } from "./PosCloseShiftDialog";
 import { PosHeldCartsDialog } from "./PosHeldCartsDialog";
 import { PosPaymentDialog } from "./PosPaymentDialog";
+import { prefetchTillChannels } from "../hooks/tillChannels";
 import { ReceiptDialog } from "./ReceiptDialog";
 import { PosSettingsDialog } from "./PosSettingsDialog";
 import { PosShiftBar } from "./PosShiftBar";
@@ -45,6 +46,18 @@ import { TodayTransactionsDialog } from "./TodayTransactionsDialog";
 import { VoidTransactionDialog } from "./VoidTransactionDialog";
 import { PosVariantDialog } from "./PosVariantDialog";
 import { PosXReportDialog } from "./PosXReportDialog";
+import { OfflineCustomerDialog } from "./OfflineCustomerDialog";
+import { OfflineQueueDialog } from "./OfflineQueueDialog";
+import { OfflineServiceDialog } from "./OfflineServiceDialog";
+import { PosOfflineStatus } from "./PosOfflineStatus";
+import { PosReviewLink } from "./PosReviewLink";
+import { useOfflineTill } from "../offline/useOfflineTill";
+import { isLocalId } from "../offline/ids";
+import { payOnline, reservationOf } from "../offline/devicePay";
+import { unsentFor } from "../offline/queue";
+import { syncNow } from "../offline/sync";
+import { isOfflineSaleId } from "../offline/tillApi";
+import { registerSignOutGuard } from "@/lib/signOutGuards";
 
 /** "Tanpa member" on nothing — one shared empty set, so it never re-quotes. */
 const NO_KEYS: ReadonlySet<string> = new Set();
@@ -68,22 +81,38 @@ const NO_KEYS: ReadonlySet<string> = new Set();
  * grid: what has been rung up matters more than what could be.
  */
 export function PosScreen() {
-  const { session } = useAuth();
+  const { session, user } = useAuth();
   const branchChosen = Boolean(session?.currentBranchId);
 
+  /*
+    POS OFFLINE MODE (19 October 2026): where this till is selling from right
+    now — the server, or the device — and everything the device needs to sell
+    alone. See `offline/useOfflineTill.ts`.
+  */
+  const till = useOfflineTill();
+  const offline = till.selling === "offline";
+  const { local: localTill } = till;
+
+  const shiftWho = useMemo(
+    () => (user ? { tenantId: user.tenantId, userId: user._id } : null),
+    [user],
+  );
   const {
     shift,
     loading: shiftLoading,
     error: shiftError,
     refetch,
-  } = usePosShift(session?.currentBranchId ?? null);
-  const cart = usePosCart();
+  } = usePosShift(session?.currentBranchId ?? null, shiftWho);
+  const cart = usePosCart(till.transports);
   /*
     FR-3. Asks nothing until a customer is attached — the banner only exists once
     somebody has been chosen, and a till showing the catalogue to a walk-in must
     not be querying appointments on every render.
   */
-  const bridge = useBookingBridge(cart.cart?.customer?._id ?? null);
+  const bridge = useBookingBridge(
+    // Appointments live on the server; offline there is nothing to pull.
+    offline ? null : (cart.cart?.customer?._id ?? null),
+  );
   // Pulled out so the effect below can depend on the stable callback rather
   // than on the hook's result object, which is new on every render.
   const { refetch: refetchBridge } = bridge;
@@ -190,6 +219,21 @@ export function PosScreen() {
   const [rechooseBranch, setRechooseBranch] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [queueOpen, setQueueOpen] = useState(false);
+
+  /*
+    A TILL HOLDING UNSENT SALES MUST NOT BE SIGNED OUT — they are this
+    cashier's, and only this cashier's session may send them.
+  */
+  useEffect(() => {
+    if (!user) return;
+    return registerSignOutGuard(async () => {
+      const unsent = await unsentFor(user._id);
+      return unsent > 0
+        ? `Masih ada ${unsent} transaksi offline yang belum terkirim. Tunggu sampai terkirim sebelum keluar.`
+        : null;
+    });
+  }, [user]);
 
   /*
     FR-9's running figures. Read from the X-Report so the bar and Tutup Kasir
@@ -201,14 +245,36 @@ export function PosScreen() {
     setHeldLoading(true);
     setHeldError(null);
 
+    /* Baskets parked on the device are listed beside the server's (offline mode). */
+    const parkedHere = localTill ? await localTill.listHeld().catch(() => []) : [];
+
     try {
-      setHeldCarts(await posService.heldCarts());
+      setHeldCarts([...parkedHere, ...(offline ? [] : await posService.heldCarts())]);
     } catch {
-      setHeldError("Keranjang tersimpan gagal dimuat. Coba lagi.");
+      setHeldCarts(parkedHere);
+      if (parkedHere.length === 0) {
+        setHeldError("Keranjang tersimpan gagal dimuat. Coba lagi.");
+      }
     } finally {
       setHeldLoading(false);
     }
-  }, []);
+  }, [localTill, offline]);
+
+  /*
+    THE DEVICE'S COPY FOLLOWS THE SHIFT (offline mode): the stock it holds is
+    the shift's warehouse, so a newly opened shift is re-read at once.
+  */
+  const { refreshSnapshot } = till;
+  const tillOnline = !till.connectivity.offline;
+  useEffect(() => {
+    if (shift?._id && tillOnline) void refreshSnapshot();
+  }, [shift?._id, tillOnline, refreshSnapshot]);
+
+  // The payment dialog's channel list, fetched while the cashier is still
+  // ringing items up so "Bayar" opens without a spinner (tillChannels.ts).
+  useEffect(() => {
+    prefetchTillChannels(shift?.branchId);
+  }, [shift?.branchId]);
 
   // The count on the shift bar has to be right before anybody opens the dialog,
   // so the list is fetched once the till is up rather than on first open.
@@ -237,16 +303,25 @@ export function PosScreen() {
 
     let active = true;
 
-    posService
-      .activeCart()
-      .then((found) => {
-        if (active && found) cart.openIfEmpty(found);
-      })
-      .catch(() => {
-        // Silent. A basket that cannot be recovered is not an error worth a red
-        // banner on a till that is otherwise working — the cashier rings it up
-        // again, which is what they would do anyway.
-      });
+    void (async () => {
+      /*
+        A BASKET LEFT ON THE DEVICE COMES FIRST (offline mode): it is the one the
+        cashier carried on with after the connection dropped, and the server's
+        copy of it — if there is one — is what the sync will throw away.
+      */
+      const onDevice = localTill ? await localTill.findActive().catch(() => null) : null;
+      if (active && onDevice) {
+        cart.openIfEmpty(onDevice);
+        return;
+      }
+      if (offline) return;
+
+      // Silent. A basket that cannot be recovered is not an error worth a red
+      // banner on a till that is otherwise working — the cashier rings it up
+      // again, which is what they would do anyway.
+      const found = await posService.activeCart().catch(() => null);
+      if (active && found) cart.openIfEmpty(found);
+    })();
 
     return () => {
       active = false;
@@ -363,6 +438,14 @@ export function PosScreen() {
         a second thing for a cashier to learn.
       */
       if (tile.kind === "service" || tile.kind === "membership") {
+        if (tile.kind === "membership" && offline) {
+          swalToast(
+            "Paket membership butuh koneksi internet — tunggu sampai kasir online lagi.",
+            "error",
+          );
+          return;
+        }
+
         if (tile.kind === "membership") setPendingPackage(tile);
         else setPendingService(tile);
 
@@ -394,7 +477,7 @@ export function PosScreen() {
           if (ok) swalToast(`${tile.name} ditambahkan.`);
         });
     },
-    [cart],
+    [cart, offline],
   );
 
   /**
@@ -446,6 +529,16 @@ export function PosScreen() {
 
   async function hold() {
     if (!cart.cart) return;
+
+    /* A basket on the device is parked on the device (offline mode). */
+    if (isLocalId(cart.cart._id)) {
+      if (await cart.patch({ status: "held" })) {
+        cart.clear();
+        await loadHeld();
+        setNotice("Keranjang disimpan di perangkat ini.");
+      }
+      return;
+    }
 
     try {
       await posService.updateCart(cart.cart._id, { status: "held" });
@@ -519,6 +612,12 @@ export function PosScreen() {
 
     cart.open(target);
 
+    if (isLocalId(target._id)) {
+      await localTill?.updateCart(target, { status: "active" }).catch(() => null);
+      await loadHeld();
+      return;
+    }
+
     try {
       await posService.updateCart(target._id, { status: "active" });
     } catch {
@@ -531,7 +630,8 @@ export function PosScreen() {
 
   async function discardHeld(target: PosTransaction) {
     try {
-      await posService.discardCart(target._id);
+      if (isLocalId(target._id)) await localTill?.discard(target._id);
+      else await posService.discardCart(target._id);
       if (cart.cart?._id === target._id) cart.clear();
       await loadHeld();
     } catch {
@@ -558,7 +658,8 @@ export function PosScreen() {
   }>({ cartId: null, keys: NO_KEYS });
   const noBenefitKeys = noBenefit.cartId === cartId ? noBenefit.keys : NO_KEYS;
 
-  const memberQuote = usePosMembershipQuote(cart.cart, noBenefitKeys);
+  // Membership benefits are priced by the server; offline none are offered.
+  const memberQuote = usePosMembershipQuote(offline ? null : cart.cart, noBenefitKeys);
   const autoTried = useRef("");
   const { setItemBenefits, setItemBenefit } = cart;
   const cartItems = cart.cart?.items;
@@ -586,7 +687,9 @@ export function PosScreen() {
   }
 
   /* The customer's cards — chips under their name, plans on the pet headers. */
-  const customerCards = useCustomerMemberships(cart.cart?.customer?._id ?? null);
+  const customerCards = useCustomerMemberships(
+    offline ? null : (cart.cart?.customer?._id ?? null),
+  );
   const plansByPet = useMemo(
     () =>
       petPlans(cart.cart?.items ?? [], [
@@ -621,10 +724,24 @@ export function PosScreen() {
   }
 
   if (shiftError) {
-    return <Alert variant="error">{shiftError}</Alert>;
+    return (
+      <Alert variant="error">
+        {till.connectivity.offline
+          ? "Kasir sedang offline dan shift belum pernah terbaca di perangkat ini. Sambungkan internet sekali untuk membuka kasir."
+          : shiftError}
+      </Alert>
+    );
   }
 
   if (!shift) {
+    if (till.connectivity.offline) {
+      return (
+        <Alert variant="warning">
+          Buka Kasir butuh koneksi internet. Setelah shift dibuka, kasir tetap
+          bisa berjualan walaupun internet putus.
+        </Alert>
+      );
+    }
     return <PosShiftGate onOpened={refetch} />;
   }
 
@@ -639,8 +756,52 @@ export function PosScreen() {
         onOpenToday={() => setTodayOpen(true)}
         onXReport={() => setXReportFor(shift._id)}
         onSettings={() => setSettingsOpen(true)}
-        onCloseShift={() => setClosing(true)}
+        onCloseShift={() => {
+          /* Sales still on the device belong to this drawer — send them first. */
+          void (async () => {
+            const unsent = user ? await unsentFor(user._id, shift._id) : 0;
+            if (unsent > 0) {
+              setNotice(
+                `Masih ada ${unsent} transaksi offline yang belum terkirim. Kirim dulu sebelum tutup kasir.`,
+              );
+              return;
+            }
+            setClosing(true);
+          })();
+        }}
+        offline={offline}
+        statusSlot={
+          <>
+          <PosReviewLink
+            branchId={shift.branchId}
+            refreshKey={till.state.lastSyncAt}
+            offline={till.connectivity.offline}
+          />
+          <PosOfflineStatus
+            selling={till.selling}
+            connectionDown={till.connectivity.offline}
+            pendingCount={till.state.pendingCount}
+            reviewCount={till.state.reviewCount}
+            syncing={till.state.syncing}
+            onOpen={() => setQueueOpen(true)}
+          />
+          </>
+        }
       />
+
+      {offline && (
+        <Alert variant="info">
+          Mode offline — transaksi disimpan di perangkat ini dan dikirim
+          otomatis saat koneksi kembali. Membership, piutang, booking,
+          antar-jemput, void, dan retur menunggu online.
+        </Alert>
+      )}
+      {!offline && till.connectivity.offline && (
+        <Alert variant="warning">
+          Koneksi terputus. Mode offline belum siap di perangkat ini:{" "}
+          {till.unavailableReason}.
+        </Alert>
+      )}
 
       {notice && <Alert variant="info">{notice}</Alert>}
 
@@ -664,14 +825,15 @@ export function PosScreen() {
           onItemDetails={(index, details) =>
             cart.setLineDetails(index, details)
           }
-          onItemBenefit={chooseBenefit}
-          memberQuote={memberQuote.quote}
+          onItemBenefit={offline ? undefined : chooseBenefit}
+          memberQuote={offline ? null : memberQuote.quote}
           petPlans={plansByPet}
           customerPerks={<PosCustomerPerks cards={customerCards} />}
           onCartDiscount={(discount) => void cart.setCartDiscount(discount)}
           onCharges={(charges) => void cart.setCharges(charges)}
           onNote={(note) => void cart.setNote(note)}
-          onSyncOnline={(on) => void cart.setSyncOnline(on)}
+          // Sharing a basket with other tills needs the server (offline mode).
+          onSyncOnline={offline ? undefined : (on) => void cart.setSyncOnline(on)}
           onPickCustomer={() => {
             // Opened on its own, with no tile waiting behind it.
             customerChosen.current = false;
@@ -689,7 +851,7 @@ export function PosScreen() {
             exactly who the shortcut was built for.
           */
           bookingSlot={
-            cart.cart?.customer ? (
+            !offline && cart.cart?.customer ? (
               <>
                 <PosBookingBanner
                   count={bridge.bookings.length}
@@ -772,6 +934,24 @@ export function PosScreen() {
           cart={cart.cart}
           open={paying}
           onOpenChange={setPaying}
+          offline={offline || isLocalId(cart.cart._id)}
+          /*
+            WHO TAKES THE MONEY (offline mode): the device's queue for a basket
+            that lives on the device; otherwise the server, numbered by this
+            device when it is a registered till.
+          */
+          pay={(input) => {
+            const target = cart.cart as PosTransaction;
+            return localTill && (offline || isLocalId(target._id))
+              ? localTill.pay(target, input)
+              : payOnline(target, input);
+          }}
+          saveOffline={
+            localTill && till.available && !isLocalId(cart.cart._id) && localTill.canAdopt(cart.cart)
+              ? (input) =>
+                  localTill.pay(cart.cart as PosTransaction, input, reservationOf(cart.cart!._id))
+              : undefined
+          }
           onPaid={(sale) => {
             setPaying(false);
             /*
@@ -786,6 +966,8 @@ export function PosScreen() {
             void loadHeld();
             // The shift bar and the day's list both just went stale (FR-9).
             setSalesVersion((version) => version + 1);
+            // Sold on the device while the server is reachable: send it now.
+            if (isOfflineSaleId(sale._id) && !till.connectivity.offline) void syncNow();
           }}
         />
       )}
@@ -809,43 +991,58 @@ export function PosScreen() {
         number does not type it again. Mounting the two separately here would
         have rebuilt that seam badly.
       */}
-      <CustomerSearchDialog
-        open={pickingCustomer}
-        onOpenChange={(next) => {
-          setPickingCustomer(next);
+      {offline ? (
+        <OfflineCustomerDialog
+          open={pickingCustomer}
+          onOpenChange={(next) => {
+            setPickingCustomer(next);
+            if (!next && !customerChosen.current) setPendingService(null);
+          }}
+          onSelect={(customer) => {
+            customerChosen.current = true;
+            setPickingCustomer(false);
+            changeCustomer(customer._id, customer.name);
+          }}
+        />
+      ) : (
+        <CustomerSearchDialog
+          open={pickingCustomer}
+          onOpenChange={(next) => {
+            setPickingCustomer(next);
 
-          /*
-            A SERVICE WAITING FOR AN OWNER IS ABANDONED WITH THE DIALOG. The
-            cashier tapped a grooming, was asked who it was for, and backed out —
-            leaving it queued would pop the pet picker later, the next time a
-            customer was chosen for some unrelated reason.
+            /*
+              A SERVICE WAITING FOR AN OWNER IS ABANDONED WITH THE DIALOG. The
+              cashier tapped a grooming, was asked who it was for, and backed out —
+              leaving it queued would pop the pet picker later, the next time a
+              customer was chosen for some unrelated reason.
 
-            ONLY ON A DISMISSAL. Choosing somebody fires this too, and there the
-            tile is meant to go on waiting for them — which is why the flag
-            exists rather than a bare `if (!next)`.
-          */
-          if (!next && !customerChosen.current) {
-            setPendingService(null);
-            setPendingPackage(null);
-          }
-        }}
-        onSelect={(customer, warnings) => {
-          customerChosen.current = true;
-          setPickingCustomer(false);
-          changeCustomer(customer._id, customer.name);
+              ONLY ON A DISMISSAL. Choosing somebody fires this too, and there the
+              tile is meant to go on waiting for them — which is why the flag
+              exists rather than a bare `if (!next)`.
+            */
+            if (!next && !customerChosen.current) {
+              setPendingService(null);
+              setPendingPackage(null);
+            }
+          }}
+          onSelect={(customer, warnings) => {
+            customerChosen.current = true;
+            setPickingCustomer(false);
+            changeCustomer(customer._id, customer.name);
 
-          /*
-            THE DUPLICATE-PHONE WARNING, surfaced (FR-2). The server produces it
-            when a quick-add reuses a number, and this is the only place it can
-            reach a person: the customer IS saved either way, so this is a
-            "check this" rather than a failure — which is why it is a toast and
-            not a blocking dialog.
-          */
-          warnings
-            ?.filter((warning) => warning.message)
-            .forEach((warning) => swalToast(warning.message, "error"));
-        }}
-      />
+            /*
+              THE DUPLICATE-PHONE WARNING, surfaced (FR-2). The server produces it
+              when a quick-add reuses a number, and this is the only place it can
+              reach a person: the customer IS saved either way, so this is a
+              "check this" rather than a failure — which is why it is a toast and
+              not a blocking dialog.
+            */
+            warnings
+              ?.filter((warning) => warning.message)
+              .forEach((warning) => swalToast(warning.message, "error"));
+          }}
+        />
+      )}
 
       {/*
         FR-3's bridge. Mounted ONLY while open and only with a customer: the
@@ -953,48 +1150,72 @@ export function PosScreen() {
         basket — see `addTile`, and `PosServicePetDialog` for why the order is
         not negotiable.
       */}
-      <PosServicePetDialog
-        service={cart.cart?.customer ? pendingService : null}
-        customerId={cart.cart?.customer?._id ?? ""}
-        customerName={cart.cart?.customer?.name}
-        branchId={session?.currentBranchId ?? cart.cart?.branchId ?? null}
-        cartBookingIds={cart.cart?.bookingIds ?? []}
-        busy={cart.busy}
-        basketId={cart.cart?._id ?? null}
-        onOpenChange={(next) => {
-          if (!next) setPendingService(null);
-        }}
-        onPick={(pet, addonServiceIds, variantChoices, ride, host) => {
-          const tile = pendingService;
-          if (!tile) return;
-          setPendingService(null);
-
-          /*
-            AN ADD-ON PICKED ALONE, put on a grooming the cashier chose in the
-            animal dialog (21 October 2026) — one in this basket, or one in the
-            diary, which is pulled in first. `null` / `undefined`: a booking of
-            its own, as before.
-          */
-          if (host) {
+      {offline ? (
+        <OfflineServiceDialog
+          service={cart.cart?.customer ? pendingService : null}
+          customerId={cart.cart?.customer?._id ?? ""}
+          customerName={cart.cart?.customer?.name}
+          busy={cart.busy}
+          onOpenChange={(next) => {
+            if (!next) setPendingService(null);
+          }}
+          onPick={(pet, addonServiceIds, variantChoices) => {
+            const tile = pendingService;
+            if (!tile) return;
+            setPendingService(null);
             void cart
-              .attachAddon({
-                addonId: tile._id,
-                petId: pet._id,
-                variantChoices,
-                host,
-              })
+              .addServices([
+                { petId: pet._id, serviceIds: [tile._id, ...addonServiceIds], variantChoices },
+              ])
               .then((ok) => {
-                if (!ok) return;
-                swalToast(
-                  `${tile.name} untuk ${pet.name} ditambahkan ke ${host.serviceName ?? "groomingnya"}.`,
-                );
+                if (ok) swalToast(`${tile.name} untuk ${pet.name} ditambahkan.`);
               });
-            return;
-          }
+          }}
+        />
+      ) : (
+        <PosServicePetDialog
+          service={cart.cart?.customer ? pendingService : null}
+          customerId={cart.cart?.customer?._id ?? ""}
+          customerName={cart.cart?.customer?.name}
+          branchId={session?.currentBranchId ?? cart.cart?.branchId ?? null}
+          cartBookingIds={cart.cart?.bookingIds ?? []}
+          busy={cart.busy}
+          basketId={cart.cart?._id ?? null}
+          onOpenChange={(next) => {
+            if (!next) setPendingService(null);
+          }}
+          onPick={(pet, addonServiceIds, variantChoices, ride, host) => {
+            const tile = pendingService;
+            if (!tile) return;
+            setPendingService(null);
 
-          addPicked(tile, pet, addonServiceIds, variantChoices, ride);
-        }}
-      />
+            /*
+              AN ADD-ON PICKED ALONE, put on a grooming the cashier chose in the
+              animal dialog (21 October 2026) — one in this basket, or one in the
+              diary, which is pulled in first. `null` / `undefined`: a booking of
+              its own, as before.
+            */
+            if (host) {
+              void cart
+                .attachAddon({
+                  addonId: tile._id,
+                  petId: pet._id,
+                  variantChoices,
+                  host,
+                })
+                .then((ok) => {
+                  if (!ok) return;
+                  swalToast(
+                    `${tile.name} untuk ${pet.name} ditambahkan ke ${host.serviceName ?? "groomingnya"}.`,
+                  );
+                });
+              return;
+            }
+
+            addPicked(tile, pet, addonServiceIds, variantChoices, ride);
+          }}
+        />
+      )}
 
       {/*
         SELLING A PACKAGE (Promosi V1) — its own dialog: whose, from when, the
@@ -1028,7 +1249,8 @@ export function PosScreen() {
 
       <TodayTransactionsDialog
         open={todayOpen}
-        reloadKey={salesVersion}
+        reloadKey={salesVersion + till.state.pendingCount}
+        offline={offline}
         onOpenChange={setTodayOpen}
         onReceipt={(sale) => setReceiptFor(sale._id)}
         onVoid={setVoiding}
@@ -1086,7 +1308,17 @@ export function PosScreen() {
         THIS browser remembers about the printer in front of it — so it needs no
         shift, no permission and no refetch when it closes.
       */}
-      <PosSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <PosSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} till={till} />
+
+      <OfflineQueueDialog
+        open={queueOpen}
+        till={till}
+        onOpenChange={setQueueOpen}
+        onReceipt={(saleId) => {
+          setQueueOpen(false);
+          setReceiptFor(saleId);
+        }}
+      />
     </div>
   );
 }

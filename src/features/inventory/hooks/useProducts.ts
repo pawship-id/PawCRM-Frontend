@@ -13,6 +13,8 @@ import type {
 } from "@/types/inventory";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
+import { isStockSort } from "./useStockProducts";
+
 /** The query knobs the catalogue screen drives (page + the visible filters). */
 export interface ProductsQuery {
   page: number;
@@ -24,7 +26,7 @@ export interface ProductsQuery {
   /** "" = active and inactive both. */
   status: "" | "active" | "inactive";
   includeDeleted: boolean;
-  /** Which ordering to page through. */
+  /** Which ordering to page through — set from the table's headers. */
   sort: ProductSort;
 }
 
@@ -37,8 +39,9 @@ const DEFAULT_QUERY: ProductsQuery = {
   categoryId: "",
   status: "",
   includeDeleted: false,
-  // The API's own default, restated rather than left out: the toolbar renders
-  // the current value, and a select whose value is `undefined` shows nothing.
+  // The API's own default, restated rather than left out: every page of a walk
+  // has to agree on the ordering. No header shows it as active — clicking one
+  // moves to that column's ordering, and a reload comes back here.
   sort: "newest",
 };
 
@@ -81,7 +84,7 @@ interface UseProductsResult {
  * for the pair), which costs nothing here: picking a specific top-level type
  * already excludes variants, so exactly one of the two is ever sent.
  */
-export function useProducts(): UseProductsResult {
+export function useProducts(warehouseIds: string[] = []): UseProductsResult {
   const [query, setQueryState] = useState<ProductsQuery>(DEFAULT_QUERY);
   const [products, setProducts] = useState<Product[]>([]);
   const [pagination, setPagination] =
@@ -94,6 +97,14 @@ export function useProducts(): UseProductsResult {
   // The toolbar keeps the live query so typing stays responsive; only the
   // request waits for the search box to settle.
   const settled = useDebouncedQuery(query);
+
+  // The warehouses a Stok sort sums over, as one primitive: the effect re-runs
+  // when the ORDER would change — a picked warehouse under a stock sort — and
+  // not on a warehouse change that only re-labels the figures on screen.
+  const stockWarehouseKey =
+    isStockSort(settled.sort) && warehouseIds.length > 0
+      ? warehouseIds.join(",")
+      : "";
 
   const setQuery = useCallback((patch: Partial<ProductsQuery>) => {
     setQueryState((prev) => {
@@ -120,10 +131,15 @@ export function useProducts(): UseProductsResult {
       categoryId: settled.categoryId || undefined,
       includeDeleted: settled.includeDeleted || undefined,
       sort: settled.sort,
+      ...(stockWarehouseKey
+        ? { stockWarehouseIds: stockWarehouseKey.split(",") }
+        : {}),
       ...(settled.productType === ""
         ? { excludeVariants: true }
         : { productType: settled.productType }),
-      ...(settled.status === "" ? {} : { isActive: settled.status === "active" }),
+      ...(settled.status === ""
+        ? {}
+        : { isActive: settled.status === "active" }),
     };
 
     productService
@@ -149,7 +165,7 @@ export function useProducts(): UseProductsResult {
     return () => {
       active = false;
     };
-  }, [settled, nonce]);
+  }, [settled, nonce, stockWarehouseKey]);
 
   return { products, pagination, query, loading, error, setQuery, refetch };
 }

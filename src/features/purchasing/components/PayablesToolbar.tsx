@@ -17,7 +17,7 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
-import type { Branch, PurchaseInvoiceSort, Supplier } from "@/types/api";
+import type { Branch, Supplier } from "@/types/api";
 import type { StockWarehouse } from "@/types/inventory";
 /**
  * THE SAME TWO RULES THE RECEIPTS AND STOCK-ENTRIES FILTERS USE, from the same
@@ -68,38 +68,11 @@ const VIEWS: FilterOption<PayablesView>[] = [
 ];
 
 /**
- * The orderings the API accepts — PURCHASE_INVOICE_SORTS in the model.
- *
- * TWO DATE AXES, which is what makes this list longer than the usual pair, and
- * the labels have to say which one is which because the row shows both dates:
- *
- *   Terbaru / Terlama — by `invoiceDate`, the day the SUPPLIER issued the bill.
- *                       The date printed on the document somebody is holding.
- *   Jatuh tempo …     — by `dueDate`, the day we have to pay. The question this
- *                       screen exists for.
- *
- * "Terdekat" / "terjauh" rather than a direction, because on a deadline that is
- * what people say; the model names its keys the same way for the same reason.
- *
- * THIS IS NOT A SECOND COPY OF THE PILL ROW. "Jatuh tempo" up there narrows to
- * the bills already late; "Jatuh tempo terdekat" down here orders whatever is on
- * the page by deadline without removing anything. They compose — the late bills,
- * oldest deadline first — which is why one is a lens and the other an ordering.
- *
- * NOTHING BY WHAT IS OWED, though it is the column people scan. The outstanding
- * amount is not stored on the invoice (it is total + tax − Σ payments, computed
- * per row), so the server cannot order by it — see the model. The per-supplier
- * version of that question is what `/purchase-invoices/outstanding` answers, and
- * it is already on the supplier list.
+ * Everything the panel edits, as one draft. The ordering is NOT here (19
+ * October 2026): it lives on the table's headers, and a Reset inside a filter
+ * panel must not silently re-sort a table somebody ordered from the headers it
+ * can see (docs/ui-rules.md §8).
  */
-const SORTS: FilterOption<PurchaseInvoiceSort>[] = [
-  { value: "newest", label: "Terbaru" },
-  { value: "oldest", label: "Terlama" },
-  { value: "dueSoonest", label: "Jatuh tempo terdekat" },
-  { value: "dueLatest", label: "Jatuh tempo terjauh" },
-];
-
-/** Everything the panel edits, as one draft. */
 interface PayablesFilters {
   view: PayablesView;
   supplierId: string;
@@ -107,18 +80,15 @@ interface PayablesFilters {
   warehouseId: string;
   dateFrom: string;
   dateTo: string;
-  sort: PurchaseInvoiceSort;
 }
 
 /**
  * What Reset returns to — the query's own defaults, not "empty".
  *
- * The ordering is included: a list with no ordering is not a thing, so Reset
- * puts it back to the API's default rather than clearing it to nothing. THE
- * VIEW IS NOW IN HERE TOO (2 October 2026): it moved from a pill row outside
- * the panel to a field inside it, and Reset clears what the panel holds —
- * "Belum lunas" is `usePurchaseInvoices`'s own default, the same reasoning
- * `sort: "newest"` already follows.
+ * THE VIEW IS IN HERE (2 October 2026): it moved from a pill row outside the
+ * panel to a field inside it, and Reset clears what the panel holds — "Belum
+ * lunas" is `usePurchaseInvoices`'s own default. The ordering is not: Reset
+ * leaves the headers' choice alone.
  */
 const CLEARED: PayablesFilters = {
   view: "outstanding",
@@ -127,13 +97,12 @@ const CLEARED: PayablesFilters = {
   warehouseId: "",
   dateFrom: "",
   dateTo: "",
-  sort: "newest",
 };
 
 /**
  * The payables list controls: search, one Filter button and the way to file a
- * new supplier bill — with the view lens, supplier, cabang, gudang, the
- * issue-date range and the ordering all inside the panel.
+ * new supplier bill — with the view lens, supplier, cabang, gudang and the
+ * issue-date range inside the panel. The ordering is the table's headers.
  *
  * Purely presentational — it renders the current query and reports changes up to
  * usePurchaseInvoices. Mirrors ReceiptsToolbar.
@@ -155,8 +124,8 @@ const CLEARED: PayablesFilters = {
  * THE DATE RANGE BOUNDS `invoiceDate` — the day the SUPPLIER issued the bill,
  * not when it was keyed in and not when it falls due. That is the date printed
  * on the document somebody is holding while they search, and it is what an AP
- * ageing report groups by. Lateness is the lens's job and the deadline
- * orderings' job, so the three never share a control.
+ * ageing report groups by. Lateness is the lens's job and the Jatuh tempo
+ * header's job, so the three never share a control.
  *
  * NO "TAMPILKAN TERHAPUS" TOGGLE: no route deletes an invoice, so no invoice is
  * ever in a state to reveal.
@@ -185,7 +154,6 @@ export function PayablesToolbar({
     warehouseId: query.warehouseId,
     dateFrom: query.dateFrom,
     dateTo: query.dateTo,
-    sort: query.sort,
   };
 
   /**
@@ -203,7 +171,6 @@ export function PayablesToolbar({
       patch.warehouseId = next.warehouseId;
     if (next.dateFrom !== query.dateFrom) patch.dateFrom = next.dateFrom;
     if (next.dateTo !== query.dateTo) patch.dateTo = next.dateTo;
-    if (next.sort !== query.sort) patch.sort = next.sort;
 
     if (Object.keys(patch).length > 0) onChange(patch);
   }
@@ -254,7 +221,7 @@ export function PayablesToolbar({
 }
 
 /**
- * Supplier, cabang, gudang, the issue-date range and the ordering, behind one
+ * The view, supplier, cabang, gudang and the issue-date range, behind one
  * button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8). Reset returns the
@@ -287,8 +254,8 @@ function PayablesFilterPanel({
    * How many filters are narrowing the list right now.
    *
    * THE RANGE COUNTS ONCE, not twice — one bound or both, it is one question
-   * somebody asked. THE ORDERING IS NOT COUNTED AT ALL: every list has one, so
-   * it is never "on".
+   * somebody asked. The ordering is not in this panel at all (it is the
+   * table's headers), so it never reaches the count.
    *
    * THE VIEW IS COUNTED NOW (2 October 2026), unlike when it stood outside the
    * panel as a pill row: the badge exists to pay back what a panel CONCEALS, and
@@ -386,20 +353,8 @@ function PayablesFilterPanel({
           setOpen(false);
         }}
       >
-        {/* Sort leads: it is the one field here that is always set, and the
-            only one that changes what the top of the list is rather than what
-            is in it. */}
-        <FilterSelect
-          layout="field"
-          label="Urutkan"
-          ariaLabel="Urutkan"
-          value={draft.sort}
-          options={SORTS}
-          unsetValue="newest"
-          onChange={(sort) => patch({ sort })}
-        />
         {/* The former pill row, now a field: this is the dimension the screen
-            is opened to use, so it follows Urutkan rather than sitting among
+            is opened to use, so it leads the panel rather than sitting among
             the narrowing fields below it. */}
         <FilterSelect
           layout="field"

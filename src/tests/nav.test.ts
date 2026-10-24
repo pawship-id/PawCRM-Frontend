@@ -128,7 +128,7 @@ describe("filterNavItems", () => {
     // sit directly above Penyesuaian Stok, and the adjacency was the point —
     // those two are the pair somebody chooses between, and the wrong choice is
     // invisible until a P&L is read (opening stock credits 3101 Modal / Saldo
-    // Awal; an adjustment credits 5201 Kerugian Persediaan, which turns a shop's
+    // Awal; an adjustment credits 5201 Beban Penyesuaian Persediaan, which turns a shop's
     // starting inventory into a negative expense). The adjustment is a tab of
     // Koreksi Stok now. The mockup does not list Stok Awal here at all — it is a
     // step of Pengaturan › Data Awal there — so this row is on its way out.

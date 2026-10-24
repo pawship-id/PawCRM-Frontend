@@ -8,6 +8,8 @@ import { useRouter } from "next/navigation";
    ChevronDownIcon, and this file is being touched anyway for the navy bar. */
 import { ChevronDown, LogOut, Store, UserRound } from "lucide-react";
 import { usePermissions } from "@/features/permissions";
+import { swalToast } from "@/lib/swal";
+import { signOutBlockedReason } from "@/lib/signOutGuards";
 import { useAuth } from "../hooks/useAuth";
 
 /**
@@ -57,6 +59,12 @@ export function UserMenu() {
 
   async function handleSignOut() {
     setOpen(false);
+    /* A till with sales it has not sent yet must not be left (POS offline mode). */
+    const blocked = await signOutBlockedReason();
+    if (blocked) {
+      swalToast(blocked, "error", 6000);
+      return;
+    }
     await signOut();
     router.replace("/login");
   }

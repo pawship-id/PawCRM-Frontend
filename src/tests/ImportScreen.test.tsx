@@ -613,7 +613,7 @@ describe("ImportScreen", () => {
         Re-importing would collide on the SKU, so the way out is a second
         screen — and WHICH screen decides the accounts. It used to point at
         Penyesuaian Stok, the only route that existed, which credits 5201
-        Kerugian Persediaan: an import of a day-one catalogue would have booked
+        Beban Penyesuaian Persediaan: an import of a day-one catalogue would have booked
         the whole of it as a negative expense. Stok Awal posts the same
         quantities to 3101 Modal Disetor, and the products it names have
         by definition never moved, so they qualify.

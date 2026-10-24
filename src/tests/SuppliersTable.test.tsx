@@ -8,9 +8,12 @@ import type {
   Supplier,
   SupplierOutstandingRow,
   SupplierPurchaseRow,
+  SupplierSort,
 } from "@/types/api";
 
-jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+}));
 
 // Row actions fire a SweetAlert2 toast on success; mock the library so no real
 // dialog is created during the test.
@@ -89,6 +92,7 @@ function renderTable(
     purchases?: Map<string, SupplierPurchaseRow>;
     horizonDays?: number | null;
     onChanged?: () => void;
+    onSortChange?: (sort: SupplierSort) => void;
     permissions?: Parameters<typeof renderWithAuth>[1];
   } = {},
 ) {
@@ -100,6 +104,8 @@ function renderTable(
       horizonDays={options.horizonDays ?? 7}
       loading={false}
       onChanged={options.onChanged ?? jest.fn()}
+      sort="newest"
+      onSortChange={options.onSortChange ?? jest.fn()}
     />,
     options.permissions,
   );
@@ -119,6 +125,48 @@ async function openRowMenu(name = "PT Sumber Pangan") {
 
 describe("SuppliersTable", () => {
   afterEach(() => jest.restoreAllMocks());
+
+  /**
+   * HEADER SORTING (BO, 19 October 2026). Each sortable header asks for a
+   * SUPPLIER_SORTS name; the first click takes the column's natural direction —
+   * A first for a name, the SHORTEST term first, most deliveries and the
+   * largest debt first.
+   */
+  describe("header sorting", () => {
+    it.each([
+      ["Supplier", "nameAsc"],
+      ["Termin", "paymentTermAsc"],
+      ["Penerimaan", "receiptCountDesc"],
+      ["Sisa utang", "outstandingDesc"],
+    ] as const)(
+      "asks for %s by %s on the first click",
+      async (header, sort) => {
+        const onSortChange = jest.fn();
+        renderTable([makeSupplier()], { onSortChange });
+
+        await userEvent.click(screen.getByRole("button", { name: header }));
+
+        expect(onSortChange).toHaveBeenCalledWith(sort);
+      },
+    );
+
+    it("leaves Kontak, Tipe and Aksi plain", () => {
+      renderTable([makeSupplier()]);
+
+      for (const name of ["Kontak", "Tipe", "Aksi"]) {
+        expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+      }
+    });
+  });
+
+  it("says so when no supplier matches", () => {
+    renderTable([]);
+
+    expect(
+      screen.getByText("Tidak ada supplier yang cocok dengan filter ini."),
+    ).toBeInTheDocument();
+  });
 
   it("shows the terms and the cooperation model", () => {
     renderTable([makeSupplier()]);
@@ -202,15 +250,22 @@ describe("SuppliersTable", () => {
 
       const menu = await openRowMenu();
 
-      expect(within(menu).getByRole("menuitem", { name: /Ubah/ })).toBeInTheDocument();
+      expect(
+        within(menu).getByRole("menuitem", { name: /Ubah/ }),
+      ).toBeInTheDocument();
       expect(
         within(menu).getByRole("menuitem", { name: /Nonaktifkan/ }),
       ).toBeInTheDocument();
-      expect(within(menu).getByRole("menuitem", { name: /Hapus/ })).toBeInTheDocument();
+      expect(
+        within(menu).getByRole("menuitem", { name: /Hapus/ }),
+      ).toBeInTheDocument();
     });
 
     it("names the row in the trigger, since the icon does not", () => {
-      renderTable([makeSupplier(), makeSupplier({ _id: "s2", name: "CV Mitra" })]);
+      renderTable([
+        makeSupplier(),
+        makeSupplier({ _id: "s2", name: "CV Mitra" }),
+      ]);
 
       // Twenty identical "Aksi" buttons would tell a screen-reader user nothing.
       expect(
@@ -225,10 +280,9 @@ describe("SuppliersTable", () => {
       renderTable([makeSupplier()]);
       const menu = await openRowMenu();
 
-      expect(within(menu).getByRole("menuitem", { name: /Ubah/ })).toHaveAttribute(
-        "href",
-        "/dashboard/purchasing/suppliers/s1/edit",
-      );
+      expect(
+        within(menu).getByRole("menuitem", { name: /Ubah/ }),
+      ).toHaveAttribute("href", "/dashboard/purchasing/suppliers/s1/edit");
     });
   });
 
@@ -253,8 +307,12 @@ describe("SuppliersTable", () => {
         within(menu).getByRole("menuitem", { name: /Pulihkan/ }),
       ).toBeInTheDocument();
       // Restoring first is what makes the others meaningful again.
-      expect(within(menu).queryByRole("menuitem", { name: /Nonaktifkan/ })).toBeNull();
-      expect(within(menu).queryByRole("menuitem", { name: /Hapus/ })).toBeNull();
+      expect(
+        within(menu).queryByRole("menuitem", { name: /Nonaktifkan/ }),
+      ).toBeNull();
+      expect(
+        within(menu).queryByRole("menuitem", { name: /Hapus/ }),
+      ).toBeNull();
     });
 
     /**
@@ -347,7 +405,9 @@ describe("SuppliersTable", () => {
     renderTable([makeSupplier()]);
 
     const menu = await openRowMenu();
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /Hapus/ }));
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /Hapus/ }),
+    );
     await userEvent.click(
       within(await screen.findByRole("dialog")).getByRole("button", {
         name: "Hapus",
@@ -362,9 +422,10 @@ describe("SuppliersTable", () => {
     jest
       .spyOn(supplierService, "restore")
       .mockRejectedValue(
-        new (
-          await import("@/services/api-error")
-        ).ApiError("Supplier 'PT Sumber Pangan' already exists", 409),
+        new (await import("@/services/api-error")).ApiError(
+          "Supplier 'PT Sumber Pangan' already exists",
+          409,
+        ),
       );
 
     renderTable([makeSupplier({ deletedAt: "2026-08-01T00:00:00.000Z" })]);
@@ -407,7 +468,9 @@ describe("SuppliersTable", () => {
       expect(
         within(menu).queryByRole("menuitem", { name: /Nonaktifkan/ }),
       ).toBeNull();
-      expect(within(menu).queryByRole("menuitem", { name: /Hapus/ })).toBeNull();
+      expect(
+        within(menu).queryByRole("menuitem", { name: /Hapus/ }),
+      ).toBeNull();
     });
 
     it("points the detail link at the supplier's own page", async () => {
@@ -433,7 +496,9 @@ describe("SuppliersTable", () => {
       expect(
         within(menu).getByRole("menuitem", { name: /Nonaktifkan/ }),
       ).toBeInTheDocument();
-      expect(within(menu).queryByRole("menuitem", { name: /Hapus/ })).toBeNull();
+      expect(
+        within(menu).queryByRole("menuitem", { name: /Hapus/ }),
+      ).toBeNull();
     });
 
     /**
@@ -456,7 +521,9 @@ describe("SuppliersTable", () => {
         {
           permissions: {
             isSuperAdmin: false,
-            permissions: [{ feature: "suppliers", actions: ["read", "restore"] }],
+            permissions: [
+              { feature: "suppliers", actions: ["read", "restore"] },
+            ],
           },
         },
       );

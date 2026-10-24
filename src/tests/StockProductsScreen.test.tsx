@@ -44,10 +44,10 @@ jest.mock("@/features/inventory/components/StockModuleHeader", () => ({
  *     number than the one on screen;
  *  5. no `products:read` asks for nothing.
  *
- * The Radix selects are deliberately not driven — jsdom cannot do their pointer
- * protocol. The screen's default scope (every warehouse) is asserted through the
- * screen; one chosen warehouse is asserted on the table, which is where that
- * prop is actually read.
+ * The screen's default scope (every warehouse) is asserted through the screen;
+ * one chosen warehouse's FIGURES are asserted on the table, which is where that
+ * prop is actually read. The Gudang select is driven only where the choice
+ * reaches the request — the stock sorts, under "header sorting".
  */
 const WAREHOUSE = "wh1";
 const OTHER_WAREHOUSE = "wh2";
@@ -243,12 +243,17 @@ describe("StockProductsScreen", () => {
      */
     it("links without a warehouse", async () => {
       mockHappyPath([spread()]);
+      const user = userEvent.setup();
 
       renderWithAuth(<StockProductsScreen />);
 
-      const link = await screen.findByRole("link", {
-        name: "Kartu stok Royal Canin Adult 3kg",
-      });
+      // Behind the row's Aksi kebab (BO, 19 October 2026).
+      await user.click(
+        await screen.findByRole("button", {
+          name: "Aksi untuk Royal Canin Adult 3kg",
+        }),
+      );
+      const link = await screen.findByRole("menuitem", { name: "Kartu stok" });
       expect(link).toHaveAttribute(
         "href",
         "/dashboard/inventory/stock-card/p1",
@@ -307,23 +312,16 @@ describe("StockProductsScreen", () => {
       });
     }
 
-    it("says the figures are for the gudang this account can reach", async () => {
+    // The scope caption under the header is gone (BO, 19 October 2026).
+    it("shows no scope caption under the header", async () => {
       mockBranchedWarehouses([spread()]);
 
       renderWithAuth(<StockProductsScreen />, { user: scopedUser });
+      await screen.findByText("Royal Canin Adult 3kg");
 
       expect(
-        await screen.findByText(/untuk semua gudang yang bisa Anda akses/i),
-      ).toBeInTheDocument();
-    });
-
-    it("says plain 'semua gudang' for an account that reaches every branch", async () => {
-      mockBranchedWarehouses([spread()]);
-
-      renderWithAuth(<StockProductsScreen />);
-
-      const caption = await screen.findByText(/untuk semua gudang/i);
-      expect(caption).not.toHaveTextContent(/bisa Anda akses/i);
+        screen.queryByText(/Cari produknya, lalu buka kartu stoknya/),
+      ).not.toBeInTheDocument();
     });
 
     /**
@@ -372,8 +370,8 @@ describe("StockProductsScreen", () => {
   });
 
   /**
-   * One chosen warehouse, asserted on the table — the Radix select cannot be
-   * driven in jsdom, and the prop is what the screen would be setting.
+   * One chosen warehouse, asserted on the table — the prop the screen's Gudang
+   * select sets, read where it is used.
    */
   describe("one chosen warehouse", () => {
     function renderTable(product: Product) {
@@ -383,6 +381,8 @@ describe("StockProductsScreen", () => {
           warehouseId={WAREHOUSE}
           search=""
           loading={false}
+          sort="nameAsc"
+          onSortChange={jest.fn()}
         />,
       );
     }
@@ -423,15 +423,153 @@ describe("StockProductsScreen", () => {
      * link naming only the product would land the user on a different shelf's
      * number than the one they just read.
      */
-    it("links to the card for this product at this warehouse", () => {
+    it("links to the card for this product at this warehouse", async () => {
+      const user = userEvent.setup();
       renderTable(makeProduct());
 
       expect(
-        screen.getByRole("link", { name: "Kartu stok Royal Canin Adult 3kg" }),
+        screen.getByRole("columnheader", { name: "Aksi" }),
+      ).toBeInTheDocument();
+      await user.click(
+        screen.getByRole("button", { name: "Aksi untuk Royal Canin Adult 3kg" }),
+      );
+      expect(
+        await screen.findByRole("menuitem", { name: "Kartu stok" }),
       ).toHaveAttribute(
         "href",
         `/dashboard/inventory/stock-card/p1?warehouseId=${WAREHOUSE}`,
       );
+    });
+  });
+
+  /**
+   * THE HEADERS SORT, ON THE SERVER (BO, 19 October 2026). The list is paged,
+   * so a header re-sorting the twenty rows it holds would order one page while
+   * the pager walked another ordering. Each click sends an API name.
+   */
+  describe("header sorting", () => {
+    function lastQuery() {
+      return jest.mocked(productService.list).mock.calls.at(-1)![0]!;
+    }
+
+    it("opens A–Z on Produk, and each header asks the server for its ordering", async () => {
+      mockHappyPath([makeProduct()]);
+      const user = userEvent.setup();
+
+      renderWithAuth(<StockProductsScreen />);
+      await screen.findByText("Royal Canin Adult 3kg");
+
+      expect(lastQuery()).toMatchObject({ sort: "nameAsc" });
+      expect(
+        screen.getByRole("columnheader", { name: "Produk" }),
+      ).toHaveAttribute("aria-sort", "ascending");
+
+      const clicks: Array<[string, string]> = [
+        ["Produk", "nameDesc"],
+        ["SKU", "skuAsc"],
+        // Quantities and money: the largest first.
+        ["Stok", "stockDesc"],
+        ["HPP", "hppDesc"],
+        ["Nilai stok", "stockValueDesc"],
+        ["Nilai stok", "stockValueAsc"],
+      ];
+      for (const [header, sort] of clicks) {
+        await user.click(screen.getByRole("button", { name: header }));
+        await waitFor(() => expect(lastQuery()).toMatchObject({ sort }));
+      }
+
+      // A link column, not a value.
+      expect(
+        screen.queryByRole("button", { name: "Kartu stok" }),
+      ).not.toBeInTheDocument();
+    });
+
+    /**
+     * A STOCK SORT SUMS THE CHOSEN WAREHOUSE, so the order matches the column.
+     * Any other ordering leaves the warehouse out — switching it then re-reads
+     * the page without a request, as it always has.
+     */
+    it("sends the chosen warehouse with a stock sort, and only then", async () => {
+      mockHappyPath([makeProduct()]);
+      const user = userEvent.setup();
+
+      renderWithAuth(<StockProductsScreen />);
+      await screen.findByText("Royal Canin Adult 3kg");
+
+      await user.click(await screen.findByRole("button", { name: "Gudang" }));
+      await user.click(screen.getByRole("option", { name: "Gudang Pusat" }));
+
+      // Name order: the warehouse is a view, not a request.
+      expect(productService.list).toHaveBeenCalledTimes(1);
+      expect(lastQuery()).not.toHaveProperty("stockWarehouseId", WAREHOUSE);
+
+      await user.click(screen.getByRole("button", { name: "Stok" }));
+      await waitFor(() =>
+        expect(lastQuery()).toMatchObject({
+          sort: "stockDesc",
+          stockWarehouseId: WAREHOUSE,
+        }),
+      );
+
+      // Under a stock sort a new warehouse is a new order — re-fetched.
+      await user.click(screen.getByRole("button", { name: "Gudang" }));
+      await user.click(screen.getByRole("option", { name: "Semua gudang" }));
+      await waitFor(() =>
+        expect(lastQuery()).toMatchObject({
+          sort: "stockDesc",
+          stockWarehouseId: undefined,
+        }),
+      );
+    });
+
+    it("has no Urutkan in the filter panel", async () => {
+      mockHappyPath([makeProduct()]);
+      const user = userEvent.setup();
+
+      renderWithAuth(<StockProductsScreen />);
+      await screen.findByText("Royal Canin Adult 3kg");
+
+      await user.click(screen.getByRole("button", { name: "Filter" }));
+      const panel = await screen.findByRole("dialog");
+      expect(
+        within(panel).queryByRole("button", { name: "Urutkan" }),
+      ).not.toBeInTheDocument();
+      expect(within(panel).queryByText("Urutkan")).not.toBeInTheDocument();
+    });
+
+    it("leaves the ordering alone on the panel's Reset", async () => {
+      mockHappyPath([makeProduct()]);
+      const user = userEvent.setup();
+
+      renderWithAuth(<StockProductsScreen />);
+      await screen.findByText("Royal Canin Adult 3kg");
+
+      await user.click(screen.getByRole("button", { name: "SKU" }));
+      await waitFor(() =>
+        expect(lastQuery()).toMatchObject({ sort: "skuAsc" }),
+      );
+
+      await user.click(screen.getByRole("button", { name: "Filter" }));
+      const panel = await screen.findByRole("dialog");
+      await user.click(
+        within(panel).getByRole("button", { name: "Filter status" }),
+      );
+      await user.click(screen.getByRole("option", { name: "Aktif" }));
+      await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+      await waitFor(() =>
+        expect(lastQuery()).toMatchObject({ isActive: true, sort: "skuAsc" }),
+      );
+
+      await user.click(screen.getByRole("button", { name: "Filter" }));
+      await user.click(
+        within(await screen.findByRole("dialog")).getByRole("button", {
+          name: "Reset",
+        }),
+      );
+      await waitFor(() =>
+        expect(lastQuery()).not.toHaveProperty("isActive", true),
+      );
+      expect(lastQuery()).toMatchObject({ sort: "skuAsc" });
     });
   });
 

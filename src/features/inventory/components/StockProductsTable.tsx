@@ -1,18 +1,16 @@
 "use client";
 
-import { SKU_WRAP_CLASS } from "@/lib/sku";
+import { SKU_WRAP_WIDE_CLASS } from "@/lib/sku";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowDownUp } from "lucide-react";
 
-import { HighlightText } from "@/components";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  HighlightText,
+  type DataTableColumn,
+  type SortOptions,
+  RowLinkMenu,
+} from "@/components";
 import { cn } from "@/lib/utils";
 import {
   formatMoney,
@@ -20,7 +18,7 @@ import {
   multiplyDecimals,
   toMinor,
 } from "@/utils/decimal";
-import type { Product } from "@/types/inventory";
+import type { Product, ProductSort } from "@/types/inventory";
 
 import { qtyIn } from "../utils/catalogue";
 
@@ -81,12 +79,68 @@ import { qtyIn } from "../utils/catalogue";
  * there is no single shelf to name, so the card is left to pick — it opens on
  * the warehouse holding the most of that product, which is the closest thing to
  * the total the row was showing.
+ *
+ * THE HEADERS SORT, ON THE SERVER (BO, 19 October 2026). Stok and Nilai stok
+ * are summed there over the same warehouse this table reads — the hook sends it
+ * along with those orderings — so the order and the figures agree. Kartu stok
+ * is a link, not a value, and does not sort.
  */
+const SORT_OPTIONS: SortOptions<ProductSort> = {
+  name: { asc: "nameAsc", desc: "nameDesc" },
+  sku: { asc: "skuAsc", desc: "skuDesc" },
+  stock: { asc: "stockAsc", desc: "stockDesc", first: "desc" },
+  hpp: { asc: "hppAsc", desc: "hppDesc", first: "desc" },
+  stockValue: { asc: "stockValueAsc", desc: "stockValueDesc", first: "desc" },
+};
+
+/** What a row shows, worked out once for every cell that reads it. */
+interface StockRow {
+  product: Product;
+  qty: string;
+  spread: number;
+  deleted: boolean;
+  low: boolean;
+  value: string | null;
+  href: string;
+}
+
+function toStockRow(product: Product, warehouseId: string): StockRow {
+  // One id, or none at all — `qtyIn` reads an empty scope as every warehouse,
+  // which is the same convention the catalogue uses. Every row the API sent is
+  // already one this account may read, so "every warehouse" and "every
+  // warehouse of theirs" are the same set here.
+  const rows = product.stockByWarehouse;
+  const qty = qtyIn(rows, warehouseId ? [warehouseId] : []);
+  return {
+    product,
+    qty,
+    // How many locations that figure came from. Only interesting when it came
+    // from more than one: "12" and "12, across three shelves" are different
+    // answers to "can I pick twelve today".
+    spread: warehouseId
+      ? 0
+      : rows.filter((row) => (toMinor(row.qty) ?? 0n) !== 0n).length,
+    deleted: Boolean(product.deletedAt),
+    // The `minStock > 0` guard is load-bearing: zero means "no threshold set",
+    // and without it every product with no stock and no threshold reads as
+    // being below one.
+    low:
+      product.minStock > 0 &&
+      (toMinor(qty) ?? 0n) <= BigInt(product.minStock) * 10_000n,
+    value: product.hppAvg ? multiplyDecimals(qty, product.hppAvg) : null,
+    href: warehouseId
+      ? `/dashboard/inventory/stock-card/${product._id}?warehouseId=${warehouseId}`
+      : `/dashboard/inventory/stock-card/${product._id}`,
+  };
+}
+
 export function StockProductsTable({
   products,
   warehouseId,
   search,
   loading,
+  sort,
+  onSortChange,
 }: {
   products: Product[];
   /**
@@ -97,161 +151,138 @@ export function StockProductsTable({
   /** The live search term, highlighted in the columns it matched. */
   search: string;
   loading: boolean;
+  /** The ordering the page is in — an API name. */
+  sort: ProductSort;
+  onSortChange: (sort: ProductSort) => void;
 }) {
-  return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Produk</TableHead>
-            <TableHead>SKU</TableHead>
-            <TableHead className="text-right">Stok</TableHead>
-            <TableHead className="text-right">HPP</TableHead>
-            <TableHead className="text-right">Nilai stok</TableHead>
-            <TableHead className="text-right">Kartu stok</TableHead>
-          </TableRow>
-        </TableHeader>
+  const rows = products.map((product) => toStockRow(product, warehouseId));
 
-        <TableBody className={cn(loading && "opacity-60")}>
-          {products.length === 0 && !loading && (
-            <TableRow>
-              <TableCell colSpan={6} className="py-16 text-center">
-                <p className="font-medium text-foreground">
-                  Tidak ada produk cocok
-                </p>
-                <p className="mt-1 text-sm text-muted">
-                  Ubah kata kunci atau filternya.
-                </p>
-              </TableCell>
-            </TableRow>
+  const columns: DataTableColumn<StockRow>[] = [
+    {
+      id: "name",
+      header: "Produk",
+      cell: ({ product, deleted, href }) => (
+        <div className="flex items-center gap-2">
+          {/* The thumbnail, resolved: a variant with no image of its own shows
+              its parent's, so a row is never a blank square. */}
+          {product.resolved?.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={
+                product.resolved.image.thumbUrl ??
+                product.resolved.image.mediumUrl ??
+                product.resolved.image.url
+              }
+              alt=""
+              className="size-10 shrink-0 rounded-md border border-border object-cover"
+            />
+          ) : (
+            <span className="size-10 shrink-0 rounded-md border border-dashed border-border" />
           )}
 
-          {products.map((product) => {
-            // One id, or none at all — `qtyIn` reads an empty scope as every
-            // warehouse, which is the same convention the catalogue uses. Every
-            // row the API sent is already one this account may read, so "every
-            // warehouse" and "every warehouse of theirs" are the same set here.
-            const rows = product.stockByWarehouse;
-            const qty = qtyIn(rows, warehouseId ? [warehouseId] : []);
-            // How many locations that figure came from. Only interesting when
-            // it came from more than one: "12" and "12, across three shelves"
-            // are different answers to "can I pick twelve today".
-            const spread = warehouseId
-              ? 0
-              : rows.filter((row) => (toMinor(row.qty) ?? 0n) !== 0n).length;
-            const deleted = Boolean(product.deletedAt);
-            // The `minStock > 0` guard is load-bearing: zero means "no threshold
-            // set", and without it every product with no stock and no threshold
-            // reads as being below one.
-            const low =
-              product.minStock > 0 &&
-              (toMinor(qty) ?? 0n) <= BigInt(product.minStock) * 10_000n;
-            const value = product.hppAvg
-              ? multiplyDecimals(qty, product.hppAvg)
-              : null;
-            const href = warehouseId
-              ? `/dashboard/inventory/stock-card/${product._id}?warehouseId=${warehouseId}`
-              : `/dashboard/inventory/stock-card/${product._id}`;
+          <div>
+            <Link
+              href={href}
+              className="font-medium hover:text-primary-hover hover:underline"
+            >
+              <HighlightText text={product.name} query={search} />
+            </Link>
+            {(deleted || !product.isActive) && (
+              <p className="mt-0.5">
+                <Tag tone={deleted ? "danger" : "neutral"}>
+                  {deleted ? "terhapus" : "nonaktif"}
+                </Tag>
+              </p>
+            )}
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "sku",
+      header: "SKU",
+      cellClassName: "tabular-nums text-xs text-muted",
+      // Every row here holds stock, so every row has a SKU — only a parent may
+      // be without one, and parents are not listed.
+      cell: ({ product }) => (
+        <span className={SKU_WRAP_WIDE_CLASS}>
+          <HighlightText text={product.sku || "—"} query={search} />
+        </span>
+      ),
+    },
+    {
+      id: "stock",
+      header: "Stok",
+      align: "right",
+      cell: ({ product, qty, spread, low }) => (
+        <>
+          <span
+            className={cn("tabular-nums", low && "font-semibold text-danger")}
+          >
+            {formatQty(qty)}
+          </span>{" "}
+          <span className="text-xs text-muted">{product.unit}</span>
+          {spread > 1 && (
+            <p className="mt-0.5 text-xs text-muted">di {spread} gudang</p>
+          )}
+          {low && (
+            <p className="mt-0.5">
+              <Tag tone="danger">menipis · min {product.minStock}</Tag>
+            </p>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "hpp",
+      header: "HPP",
+      align: "right",
+      // Null until the first valued receipt — "—" rather than 0, which would
+      // claim the goods cost nothing.
+      cell: ({ product }) =>
+        product.hppAvg ? formatMoney(product.hppAvg) : "—",
+    },
+    {
+      id: "stockValue",
+      header: "Nilai stok",
+      align: "right",
+      cell: ({ value }) => (value ? formatMoney(value) : "—"),
+    },
+    {
+      // Behind the row's kebab (BO, 19 October 2026); the name stays the
+      // first way in, to the same card.
+      id: "actions",
+      header: "Aksi",
+      align: "right",
+      cell: ({ product, href }) => (
+        <RowLinkMenu
+          name={product.name}
+          links={[{ href, label: "Kartu stok", icon: <ArrowDownUp /> }]}
+        />
+      ),
+    },
+  ];
 
-            return (
-              <TableRow
-                key={product._id}
-                className={cn(deleted && "opacity-60")}
-              >
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                    {/* The thumbnail, resolved: a variant with no image of its
-                        own shows its parent's, so a row is never a blank
-                        square. */}
-                    {product.resolved?.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={
-                          product.resolved.image.thumbUrl ??
-                          product.resolved.image.mediumUrl ??
-                          product.resolved.image.url
-                        }
-                        alt=""
-                        className="size-10 shrink-0 rounded-md border border-border object-cover"
-                      />
-                    ) : (
-                      <span className="size-10 shrink-0 rounded-md border border-dashed border-border" />
-                    )}
-
-                    <div>
-                      <Link
-                        href={href}
-                        className="font-medium hover:text-primary-hover hover:underline"
-                      >
-                        <HighlightText text={product.name} query={search} />
-                      </Link>
-                      {(deleted || !product.isActive) && (
-                        <p className="mt-0.5">
-                          <Tag tone={deleted ? "danger" : "neutral"}>
-                            {deleted ? "terhapus" : "nonaktif"}
-                          </Tag>
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </TableCell>
-
-                <TableCell className="tabular-nums text-xs text-muted">
-                  {/* Every row here holds stock, so every row has a SKU — only a
-                      parent may be without one, and parents are not listed. */}
-                  <span className={SKU_WRAP_CLASS}>
-                    <HighlightText text={product.sku || "—"} query={search} />
-                  </span>
-                </TableCell>
-
-                <TableCell className="text-right">
-                  <span
-                    className={cn(
-                      "tabular-nums",
-                      low && "font-semibold text-danger",
-                    )}
-                  >
-                    {formatQty(qty)}
-                  </span>{" "}
-                  <span className="text-xs text-muted">{product.unit}</span>
-                  {spread > 1 && (
-                    <p className="mt-0.5 text-xs text-muted">
-                      di {spread} gudang
-                    </p>
-                  )}
-                  {low && (
-                    <p className="mt-0.5">
-                      <Tag tone="danger">menipis · min {product.minStock}</Tag>
-                    </p>
-                  )}
-                </TableCell>
-
-                <TableCell className="text-right tabular-nums">
-                  {/* Null until the first valued receipt — "—" rather than 0,
-                      which would claim the goods cost nothing. */}
-                  {product.hppAvg ? formatMoney(product.hppAvg) : "—"}
-                </TableCell>
-
-                <TableCell className="text-right tabular-nums">
-                  {value ? formatMoney(value) : "—"}
-                </TableCell>
-
-                <TableCell className="text-right">
-                  <Link
-                    href={href}
-                    aria-label={`Kartu stok ${product.name}`}
-                    className="inline-flex items-center gap-1 text-xs whitespace-nowrap text-primary hover:underline"
-                  >
-                    Kartu stok
-                    <ArrowRight className="size-4" />
-                  </Link>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
+  return (
+    <DataTable
+      columns={columns}
+      rows={rows}
+      rowKey={(row) => row.product._id}
+      sort={{ value: sort, options: SORT_OPTIONS, onChange: onSortChange }}
+      loading={loading}
+      loadingLabel="Memuat daftar produk…"
+      // Below this the frame scrolls sideways rather than squeezing the SKU.
+      tableClassName="min-w-[56rem]"
+      rowClassName={(row) => row.deleted && "opacity-60"}
+      empty={
+        <div className="py-16 text-center">
+          <p className="font-medium text-foreground">Tidak ada produk cocok</p>
+          <p className="mt-1 text-sm text-muted">
+            Ubah kata kunci atau filternya.
+          </p>
+        </div>
+      }
+    />
   );
 }
 

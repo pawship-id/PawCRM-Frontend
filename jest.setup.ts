@@ -41,4 +41,24 @@ beforeEach(() => {
   } catch {
     // A test environment without storage is fine; there is nothing to reset.
   }
+  // The product pickers' cache is module state — same reasoning as storage.
+  // Required here, not imported at the top: an import would load the real
+  // product service before a test file's `jest.mock` of it had registered.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("@/features/inventory/hooks/useProductCandidates").clearProductCandidatesCache();
+});
+
+/**
+ * A clean connection and a clean offline till between tests (POS offline mode,
+ * 19 October 2026). Both live in module-level stores that outlive a test, so a
+ * suite whose mocks reject with network errors would otherwise leave every test
+ * after it believing the till is offline.
+ */
+beforeEach(async () => {
+  const connectivity = await import("@/lib/connectivity");
+  connectivity.__resetConnectivity("online");
+  const store = await import("@/features/pos/offline/store");
+  store.__resetOfflineStore();
+  const idb = await import("@/features/pos/offline/idb");
+  idb.__resetMemoryStore();
 });

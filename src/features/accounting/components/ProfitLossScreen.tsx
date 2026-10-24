@@ -50,6 +50,9 @@ import {
  * the month before wears a label under it: green when the move helps (revenue or
  * profit up, cost down), red when it hurts. 25% or more also tints the cell.
  *
+ * EVERY ACCOUNT THAT MOVED IS A ROW, under its category, so laba bersih is
+ * always the rows above it added up — see `profitLossStatement`.
+ *
  * TWO VIEWS OF THE SAME NUMBERS. Gabungan is the whole shop; Per lini bisnis
  * keeps the same rows but each can be opened to show its share per lini, the
  * unattributed bucket included. The lini filter drops columns, it does not
@@ -109,11 +112,7 @@ export function ProfitLossScreen({ now }: { now: string }) {
   );
 
   const current = months[2];
-  const rows = statement
-    ? view === "lini"
-      ? statement.rows.filter((r) => r.inLini)
-      : statement.rows
-    : [];
+  const rows = statement?.rows ?? [];
   const allOpen = rows.length > 0 && rows.every((r) => open.has(r.key));
 
   const scopeCount =
@@ -125,7 +124,7 @@ export function ProfitLossScreen({ now }: { now: string }) {
     const lines: Line[] = [];
     for (const row of rows) {
       lines.push({ label: row.label, pct: row.pct, v: row.v.map((m) => m[0]) });
-      if (view === "lini") {
+      if (view === "lini" && row.kind !== "h") {
         statement.columns.forEach((col, i) =>
           lines.push({
             label: `   ${col.label}`,
@@ -322,7 +321,7 @@ export function ProfitLossScreen({ now }: { now: string }) {
                     column={0}
                     label={row.label}
                     expander={
-                      view === "lini"
+                      view === "lini" && row.kind !== "h"
                         ? {
                             open: open.has(row.key),
                             onToggle: () => toggle(row.key),
@@ -331,6 +330,7 @@ export function ProfitLossScreen({ now }: { now: string }) {
                     }
                   />
                   {view === "lini" &&
+                    row.kind !== "h" &&
                     open.has(row.key) &&
                     statement.columns.map((col, i) => (
                       <StatementLine
@@ -347,21 +347,6 @@ export function ProfitLossScreen({ now }: { now: string }) {
           </Table>
         </div>
       )}
-
-      <div className="rounded-xl border border-border border-l-[3px] border-l-primary bg-surface px-4 py-3">
-        <p className="text-sm font-bold text-foreground">Cara membaca</p>
-        <p className="mt-0.5 text-xs text-muted">
-          Angka yang berubah {CHANGE_THRESHOLD}% atau lebih dari bulan
-          sebelumnya diberi label di bawahnya: hijau kalau menguntungkan
-          (pendapatan atau laba naik, biaya turun), merah kalau merugikan.
-          Perubahan {CHANGE_BIG}% atau lebih juga diberi warna tipis pada
-          selnya. Laba bersih di sini sama dengan laba bersih di Beranda dan
-          menjadi laba tahun berjalan di Neraca.{" "}
-          {view === "lini"
-            ? "Kategori bertanda Bersama (sewa, utilitas, gaji admin) dibagi ke tiap lini memakai dasar yang diatur di Pengaturan > Keuangan > Lini bisnis. Kategori lain dibebankan langsung ke lini."
-            : "Di versi engineering, tiap angka bisa diklik ke saldo per akun, lalu mutasi jurnal, lalu dokumen sumber."}
-        </p>
-      </div>
     </div>
   );
 }
@@ -380,6 +365,22 @@ function StatementLine({
   child?: boolean;
   expander?: { open: boolean; onToggle: () => void };
 }) {
+  // A section heading: the word that says what the rows under it do to laba,
+  // and no figures of its own.
+  if (row.kind === "h") {
+    return (
+      <TableRow className="hover:bg-transparent">
+        <TableCell
+          // Uraian and the three months.
+          colSpan={4}
+          className="pt-4 pb-1.5 pl-4 text-xs font-semibold tracking-wide text-muted uppercase"
+        >
+          {label}
+        </TableCell>
+      </TableRow>
+    );
+  }
+
   return (
     <TableRow
       className={cn(
@@ -421,7 +422,7 @@ function StatementLine({
         const value = perMonth[column];
         const previous = m > 0 ? row.v[m - 1][column] : undefined;
         const change =
-          !row.pct && m > 0 ? changeOf(row, value, previous) : null;
+          !row.pct && m > 0 ? changeOf(value, previous) : null;
         const shown =
           change !== null && Math.abs(change.pct) >= CHANGE_THRESHOLD;
         const big = shown && Math.abs(change.pct) >= CHANGE_BIG;
@@ -460,22 +461,25 @@ function StatementLine({
 
 /** Percent change vs the month before, and whether that move is bad news. */
 function changeOf(
-  row: StatementRow,
   value: StatementValue,
   previous: StatementValue | undefined,
 ): { pct: number; bad: boolean } | null {
   if (typeof value !== "string" || typeof previous !== "string") return null;
-  let pct = changeAgainst(value, previous);
+  const pct = changeAgainst(value, previous);
   if (pct === null) return null;
-  // A discount is stored negative: a larger magnitude is a lower figure, but it
-  // is the same event as a cost rising, so read its direction the other way.
-  if (row.invert) pct = -pct;
-  return { pct, bad: row.riseIsBad ? pct > 0 : pct < 0 };
+  // Every row is signed by its effect on laba, so a fall is always bad news.
+  return { pct, bad: pct < 0 };
 }
 
+/**
+ * A negative figure in BRACKETS, as a laba rugi is usually printed. A minus sign
+ * already meant "subtracted" to the reader of a cost line, so it could not also
+ * mean "below zero" without a credit balance on a biaya account reading as its
+ * opposite.
+ */
 function format(value: StatementValue, pct?: boolean): string {
   if (pct) return typeof value === "number" ? formatPercent(value) : "—";
   if (typeof value !== "string") return "—";
-  if (value.startsWith("-")) return `−${formatMoney(absDecimal(value))}`;
+  if (value.startsWith("-")) return `(${formatMoney(absDecimal(value))})`;
   return formatMoney(value);
 }

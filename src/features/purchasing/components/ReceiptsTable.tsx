@@ -1,20 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { Eye } from "lucide-react";
 
-import { HighlightText } from "@/components";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+  DataTable,
+  HighlightText,
+  RowLinkMenu,
+  type DataTableColumn,
+  type SortOptions,
+} from "@/components";
+import { Badge } from "@/components/ui/badge";
 import { formatMoney } from "@/utils/decimal";
-import type { GoodsReceiptListRow } from "@/types/api";
+import type { GoodsReceiptListRow, GoodsReceiptSort } from "@/types/api";
 
 import { ReceiptStatusBadge } from "./ReceiptStatusBadge";
 import { SupplierTypeBadge } from "./SupplierTypeBadge";
@@ -29,13 +27,143 @@ function formatDate(iso: string): string {
 }
 
 /**
+ * THE LIST SORTS FROM ITS COLUMN HEADERS (BO, 19 October 2026), on the server:
+ * each sortable column maps to the two names GOODS_RECEIPT_SORTS knows for it.
+ * Nomor takes A first; Tanggal (the arrival date), Item and Nilai take the
+ * newest / largest first. Item is the line count and Nilai the grand total,
+ * tax included — the server computes both exactly as the cells show them.
+ * Supplier, Cabang, Gudang, Jenis, Status, Faktur and Aksi are plain.
+ */
+const SORT_OPTIONS: SortOptions<GoodsReceiptSort> = {
+  number: { asc: "numberAsc", desc: "numberDesc" },
+  date: { asc: "oldest", desc: "newest", first: "desc" },
+  itemCount: { asc: "itemCountAsc", desc: "itemCountDesc", first: "desc" },
+  value: { asc: "valueAsc", desc: "valueDesc", first: "desc" },
+};
+
+function receiptColumns(search: string): DataTableColumn<GoodsReceiptListRow>[] {
+  return [
+    {
+      id: "number",
+      header: "Nomor",
+      cellClassName: "tabular-nums text-xs",
+      cell: (receipt) => (
+        <Link
+          href={`/dashboard/purchasing/receipts/${receipt._id}`}
+          className="text-primary-hover hover:underline"
+        >
+          <HighlightText text={receipt.receiptNumber} query={search} />
+        </Link>
+      ),
+    },
+    {
+      id: "date",
+      header: "Tanggal",
+      cellClassName: "text-xs tabular-nums",
+      cell: (receipt) => formatDate(receipt.receiptDate),
+    },
+    {
+      id: "supplier",
+      header: "Supplier",
+      cellClassName: "text-sm font-medium",
+      cell: (receipt) => receipt.supplierName ?? "—",
+    },
+    /* BRANCH BEFORE WAREHOUSE — widest scope first, the way the receipt form
+       asks the same two questions. They are not the same answer either: a
+       branch may receive at its own warehouse AND at the shared central one,
+       so a column of warehouses cannot be read as a column of branches. */
+    {
+      id: "branch",
+      header: "Cabang",
+      cellClassName: "text-xs text-muted",
+      // "—" for a delivery written before the branch was recorded; those stay
+      // blank until the backfill has run.
+      cell: (receipt) => receipt.branchName ?? "—",
+    },
+    {
+      id: "warehouse",
+      header: "Gudang",
+      cellClassName: "text-xs text-muted",
+      cell: (receipt) => receipt.warehouseName ?? "—",
+    },
+    {
+      id: "type",
+      header: "Jenis",
+      cell: (receipt) => <SupplierTypeBadge type={receipt.purchaseType} />,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (receipt) => <ReceiptStatusBadge status={receipt.status} />,
+    },
+    {
+      id: "itemCount",
+      header: "Item",
+      align: "right",
+      cellClassName: "text-xs",
+      cell: (receipt) => receipt.itemCount,
+    },
+    {
+      id: "value",
+      header: "Nilai",
+      align: "right",
+      cellClassName: "text-sm",
+      // `grandTotal` — what the supplier is owed, tax included. The ex-tax
+      // `total` is on the detail, where the split is the point.
+      cell: (receipt) => formatMoney(receipt.grandTotal),
+    },
+    {
+      id: "invoice",
+      header: "Faktur",
+      cell: (receipt) =>
+        receipt.invoiceId ? (
+          <Link
+            href={`/dashboard/purchasing/payables/${receipt.invoiceId}`}
+            className="tabular-nums text-xs text-primary-hover hover:underline"
+          >
+            Lihat faktur
+          </Link>
+        ) : (
+          <Badge
+            variant="outline"
+            className="border-transparent bg-secondary/25 text-secondary-foreground"
+          >
+            {receipt.purchaseType === "konsinyasi"
+              ? "tanpa faktur"
+              : "belum difakturkan"}
+          </Badge>
+        ),
+    },
+    {
+      id: "actions",
+      header: "Aksi",
+      align: "right",
+      // Behind the row's kebab, like every Inventori list (BO, 19 October
+      // 2026). Detail is the one place a posted receipt leads.
+      cell: (receipt) => (
+        <RowLinkMenu
+          name={receipt.receiptNumber}
+          links={[
+            {
+              href: `/dashboard/purchasing/receipts/${receipt._id}`,
+              label: "Detail",
+              icon: <Eye />,
+            },
+          ]}
+        />
+      ),
+    },
+  ];
+}
+
+/**
  * The goods-receipt list table.
  *
- * READ-ONLY, AND THAT IS THE WHOLE SHAPE OF IT. There is no actions column, no
- * dropdown and no ConfirmDialog — unlike SuppliersTable — because a posted
- * receipt has nothing to act on: the API offers no update and no delete, since
- * the delivery has already raised stock, created lots and moved the weighted
- * average. Every row leads to one place, its detail.
+ * NOTHING TO ACT ON IN THE ROW ITSELF, and that is the whole shape of it: the
+ * kebab holds Detail and nothing that writes, and there is no ConfirmDialog —
+ * unlike SuppliersTable — because a posted receipt is changed only from its
+ * detail (receiving, closing), never from the list. Every row leads to one
+ * place, its detail.
  *
  * THE FAKTUR COLUMN IS WHERE THE TWO PURCHASE TYPES VISIBLY DIVERGE, and it is
  * the fastest way to answer "why does this delivery not appear in my payables"
@@ -49,127 +177,34 @@ export function ReceiptsTable({
   receipts,
   loading,
   search,
+  sort,
+  onSortChange,
 }: {
   receipts: GoodsReceiptListRow[];
   loading: boolean;
   /** Echoed into HighlightText so a hit explains itself. */
   search: string;
+  /** The ordering the list is in — a header click asks for another. */
+  sort: GoodsReceiptSort;
+  onSortChange: (next: GoodsReceiptSort) => void;
 }) {
-  if (!loading && receipts.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center">
-        <p className="text-sm font-medium text-foreground">
-          Tidak ada penerimaan yang cocok dengan filter ini.
-        </p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Catat barang masuk — penerimaan inilah yang membentuk HPP.
-        </p>
-      </div>
-    );
-  }
-
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <Table className={loading ? "opacity-60" : undefined}>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Nomor</TableHead>
-            <TableHead>Tanggal</TableHead>
-            <TableHead>Supplier</TableHead>
-            {/* BRANCH BEFORE WAREHOUSE — widest scope first, the way the
-                receipt form asks the same two questions. They are not the same
-                answer either: a branch may receive at its own warehouse AND at
-                the shared central one, so a column of warehouses cannot be read
-                as a column of branches. */}
-            <TableHead>Cabang</TableHead>
-            <TableHead>Gudang</TableHead>
-            <TableHead>Jenis</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Item</TableHead>
-            <TableHead className="text-right">Nilai</TableHead>
-            <TableHead>Faktur</TableHead>
-            <TableHead className="text-right">Aksi</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {receipts.map((receipt) => (
-            <TableRow key={receipt._id}>
-              <TableCell className="tabular-nums text-xs">
-                <Link
-                  href={`/dashboard/purchasing/receipts/${receipt._id}`}
-                  className="text-primary-hover hover:underline"
-                >
-                  <HighlightText text={receipt.receiptNumber} query={search} />
-                </Link>
-              </TableCell>
-
-              <TableCell className="text-xs">
-                {formatDate(receipt.receiptDate)}
-              </TableCell>
-
-              <TableCell className="text-sm font-medium">
-                {receipt.supplierName ?? "—"}
-              </TableCell>
-
-              {/* "—" for a delivery written before the branch was recorded;
-                  those stay blank until the backfill has run. */}
-              <TableCell className="text-xs text-muted">
-                {receipt.branchName ?? "—"}
-              </TableCell>
-
-              <TableCell className="text-xs text-muted">
-                {receipt.warehouseName ?? "—"}
-              </TableCell>
-
-              <TableCell>
-                <SupplierTypeBadge type={receipt.purchaseType} />
-              </TableCell>
-
-              <TableCell>
-                <ReceiptStatusBadge status={receipt.status} />
-              </TableCell>
-
-              <TableCell className="text-right tabular-nums text-xs">
-                {receipt.itemCount}
-              </TableCell>
-
-              {/* `grandTotal` — what the supplier is owed, tax included. The
-                  ex-tax `total` is on the detail, where the split is the point. */}
-              <TableCell className="text-right tabular-nums text-sm">
-                {formatMoney(receipt.grandTotal)}
-              </TableCell>
-
-              <TableCell>
-                {receipt.invoiceId ? (
-                  <Link
-                    href={`/dashboard/purchasing/payables/${receipt.invoiceId}`}
-                    className="tabular-nums text-xs text-primary-hover hover:underline"
-                  >
-                    Lihat faktur
-                  </Link>
-                ) : (
-                  <Badge
-                    variant="outline"
-                    className="border-transparent bg-secondary/25 text-secondary-foreground"
-                  >
-                    {receipt.purchaseType === "konsinyasi"
-                      ? "tanpa faktur"
-                      : "belum difakturkan"}
-                  </Badge>
-                )}
-              </TableCell>
-
-              <TableCell className="text-right whitespace-nowrap">
-                <Button variant="ghost" size="sm" asChild>
-                  <Link href={`/dashboard/purchasing/receipts/${receipt._id}`}>
-                    Detail
-                  </Link>
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <DataTable
+      columns={receiptColumns(search)}
+      rows={receipts}
+      rowKey={(receipt) => receipt._id}
+      sort={{ value: sort, options: SORT_OPTIONS, onChange: onSortChange }}
+      loading={loading}
+      empty={
+        <div className="flex flex-col items-center gap-1 py-10 text-center">
+          <p className="font-medium text-foreground">
+            Tidak ada penerimaan yang cocok dengan filter ini.
+          </p>
+          <p className="max-w-md text-sm text-muted">
+            Catat barang masuk — penerimaan inilah yang membentuk HPP.
+          </p>
+        </div>
+      }
+    />
   );
 }

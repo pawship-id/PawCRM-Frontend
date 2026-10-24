@@ -26,6 +26,13 @@ import type {
  * invoice table of its own to drill into, so the two balance cards render as
  * plain figures there, same as Omzet and Tertagih always have.
  *
+ * OMZET IS BEFORE PPN AND ONGKIR (BO, 18 Oktober 2026: "samain ama laba rugi
+ * … umumnya semua sebelum PPN"). On Ringkasan (`ledger`) it IS the laba rugi's
+ * Total pendapatan, read from the ledger, so returns and hand-posted revenue are
+ * in it. On Faktur it stays what the rows below add up to — the same base per
+ * invoice, but only the invoices the filter shows, and no returns, which are not
+ * rows. Tertagih is money that actually came in, so it keeps PPN and ongkir.
+ *
  * A FAILED SUMMARY IS A DASH, never "Rp 0" — zero is a confident answer to a
  * question that was never answered.
  *
@@ -39,22 +46,36 @@ export function InvoiceStatCards({
   summary,
   failed,
   onDrill,
+  ledger = false,
 }: {
   summary: CustomerInvoiceListSummary | null;
   failed: boolean;
+  /** Omzet from the laba rugi rather than the rows — Penjualan › Ringkasan. */
+  ledger?: boolean;
   onDrill?: (statuses: CustomerInvoiceStatusFilter[], label: string) => void;
 }) {
   const loading = !summary && !failed;
   const overdueCount = summary?.overdue.invoiceCount ?? 0;
   const collectedCount = summary?.collected.invoiceCount ?? 0;
+  const revenue = ledger
+    ? summary?.ledgerRevenue?.amount
+    : summary?.revenue.amount;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
       <StatTile
         label="Omzet periode"
-        hint="Jumlah total tagihan faktur: sudah dikurangi diskon item dan diskon faktur, sudah termasuk biaya lain, ongkos kirim, dan PPN. Faktur yang dibatalkan tidak dihitung. Untuk pendapatan tanpa PPN dan ongkir, lihat Keuangan › Laba Rugi."
-        value={summary ? formatMoney(summary.revenue.amount) : "—"}
-        caption={summary ? `${summary.revenue.invoiceCount} faktur` : undefined}
+        hint={
+          ledger
+            ? "Penjualan barang dan jasa setelah diskon dan retur, sebelum PPN — sama dengan Total pendapatan di Laba Rugi untuk periode dan cabang ini. Ongkir dan biaya lain tidak termasuk; di Laba Rugi keduanya masuk Pendapatan lain-lain."
+            : "Penjualan dari faktur di tabel: setelah diskon, sebelum PPN, tanpa ongkir dan biaya lain. Ikut filter yang dipilih; faktur yang dibatalkan tidak dihitung. Retur tidak mengurangi angka ini — yang sudah dikurangi retur ada di tab Ringkasan dan Laba Rugi."
+        }
+        value={revenue !== undefined ? formatMoney(revenue) : "—"}
+        caption={
+          summary && !ledger
+            ? `${summary.revenue.invoiceCount} faktur`
+            : undefined
+        }
         loading={loading}
         error={failed}
       />
@@ -81,6 +102,7 @@ export function InvoiceStatCards({
       />
       <StatTile
         label="Tertagih"
+        hint="Uang yang sudah dibayar untuk faktur-faktur ini — termasuk PPN dan ongkir, karena itu yang benar-benar diterima."
         value={summary ? formatMoney(summary.collected.amount) : "—"}
         caption={summary ? `dari ${collectedCount} faktur` : undefined}
         loading={loading}

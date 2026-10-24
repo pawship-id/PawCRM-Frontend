@@ -233,16 +233,18 @@ export function GeneralSettingsScreen() {
                 href={SETTINGS_PATHS.notifikasi}
               />
               <HubLinkCard
-                title="Faktur & dokumen"
-                description="Catatan kaki faktur — rekening tujuan dan syarat bayar."
-                href={SETTINGS_PATHS.fakturDokumen}
-              />
-              <HubLinkCard
                 title="Stok & kasir"
                 description="Boleh tidaknya kasir menjual barang yang stoknya sudah habis."
                 href={SETTINGS_PATHS.stokKasir}
               />
             </>
+          )}
+          {can("posTransactions", "read") && (
+            <HubLinkCard
+              title="Perangkat kasir"
+              description="Tablet atau komputer kasir, kodenya (K1, K2, …) di nomor transaksi, dan mode offline."
+              href={SETTINGS_PATHS.perangkatKasir}
+            />
           )}
           <HubPendingCard {...LANGGANAN_CARD} />
         </div>

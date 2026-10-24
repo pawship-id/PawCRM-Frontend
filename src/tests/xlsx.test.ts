@@ -152,6 +152,53 @@ describe("buildXlsx", () => {
   });
 });
 
+describe("buildXlsx — grouped rows", () => {
+  interface Line {
+    invoice: string;
+    item: string;
+    total: string;
+  }
+
+  const LINES: Line[] = [
+    { invoice: "INV-1", item: "Pakan", total: "150000" },
+    { invoice: "INV-1", item: "Pasir", total: "150000" },
+    { invoice: "INV-1", item: "Mandi", total: "150000" },
+    { invoice: "INV-2", item: "Snack", total: "20000" },
+  ];
+
+  const LINE_COLUMNS: XlsxColumn<Line>[] = [
+    { header: "No. faktur", value: (r) => r.invoice, merge: true },
+    { header: "Barang", value: (r) => r.item },
+    { header: "Total", value: (r) => r.total, type: "number", merge: true },
+  ];
+
+  // A faktur's cells once, merged over its lines — so a SUM over Total counts
+  // each faktur once.
+  it("writes a merge column once per group and merges it down", async () => {
+    const { sheet } = await readBack(
+      await buildXlsx(LINE_COLUMNS, LINES, { groupKey: (r) => r.invoice }),
+    );
+
+    expect(sheet.A2.v).toBe("INV-1");
+    expect(sheet.A3?.v).toBeUndefined();
+    expect(sheet.B3.v).toBe("Pasir");
+    expect(sheet.C2.v).toBe(150000);
+    expect(sheet.C4?.v).toBeUndefined();
+    expect(sheet.A5.v).toBe("INV-2");
+    expect(sheet["!merges"]).toEqual([
+      { s: { r: 1, c: 0 }, e: { r: 3, c: 0 } },
+      { s: { r: 1, c: 2 }, e: { r: 3, c: 2 } },
+    ]);
+  });
+
+  it("ignores merge without a group key", async () => {
+    const { sheet } = await readBack(await buildXlsx(LINE_COLUMNS, LINES));
+
+    expect(sheet.A3.v).toBe("INV-1");
+    expect(sheet["!merges"]).toBeUndefined();
+  });
+});
+
 describe("csvToXlsx", () => {
   const CSV = [
     "Cabang,SKU,Qty,Nilai persediaan",

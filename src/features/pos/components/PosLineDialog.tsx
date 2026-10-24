@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { posService } from "@/services/pos.service";
+import { isOfflineMode } from "@/lib/connectivity";
 import { formatMoney } from "@/utils/decimal";
 import type { PosDiscountMode, PosItem, PosLots } from "@/types/api";
 
@@ -116,7 +117,9 @@ export function PosLineDialog({
 
   // Only products have lots; ask the server which of them expire.
   useEffect(() => {
-    if (!open || !item || item.kind !== "product") {
+    /* Offline there is nobody to ask which lots are in date, so the line goes
+       to FEFO at sync — the shelf's first-expiring lot (POS offline mode). */
+    if (!open || !item || item.kind !== "product" || isOfflineMode()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLots(null);
       return;

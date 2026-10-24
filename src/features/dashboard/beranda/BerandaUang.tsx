@@ -21,7 +21,6 @@ import { reportService } from "@/services/report.service";
 import {
   divideRound,
   formatMoney,
-  formatMoneyShort,
   toDecimalString,
   toMinor,
 } from "@/utils/decimal";
@@ -152,22 +151,27 @@ export function BerandaUang() {
       <Panel icon={Coins} tone="green" title="Pendapatan" tag="Cabang · Periode">
         <div className="flex flex-col gap-3">
           <TileGrid columns={2}>
+            {/*
+              NET, LIKE EVERY OTHER OMZET (BO, 18 Oktober 2026: "samain ama laba
+              rugi … kalo net"). It was the gross figure, which put three
+              different omzet on three screens for one month.
+            */}
             <StatTile
-              label="Omzet kotor"
-              value={formatMoneyShort(headline?.grossRevenue ?? "0")}
+              label="Omzet"
+              value={formatMoney(headline?.netRevenue ?? "0")}
               caption={
-                delta(headline?.grossRevenue, before?.grossRevenue) ??
-                `Setelah diskon & retur ${formatMoneyShort(headline?.netRevenue ?? "0")}`
+                delta(headline?.netRevenue, before?.netRevenue) ??
+                `Sebelum diskon & retur ${formatMoney(headline?.grossRevenue ?? "0")}`
               }
-              hint="Pendapatan sebelum diskon, retur dan HPP. Setelah diskon dan retur, angkanya jadi pendapatan bersih yang dipakai laba rugi."
+              hint="Penjualan barang dan jasa setelah diskon dan retur, sebelum PPN — sama dengan Total pendapatan di Laba Rugi dan Omzet periode di Penjualan › Ringkasan. Ongkir dan biaya lain tidak termasuk."
               {...ledger}
             />
             <StatTile
               label="Laba bersih"
-              value={formatMoneyShort(headline?.netProfit ?? "0")}
+              value={formatMoney(headline?.netProfit ?? "0")}
               caption={
                 delta(headline?.netProfit, before?.netProfit) ??
-                `Setelah HPP ${formatMoneyShort(headline?.hpp ?? "0")} dan biaya ${formatMoneyShort(headline?.operatingExpense ?? "0")}`
+                `Setelah HPP ${formatMoney(headline?.hpp ?? "0")} dan biaya ${formatMoney(headline?.operatingExpense ?? "0")}`
               }
               tone={headline?.netProfit.startsWith("-") ? "danger" : "plain"}
               {...ledger}
@@ -197,7 +201,7 @@ export function BerandaUang() {
               value={formatPercent(
                 headline ? marginPct(headline.grossProfit, headline.netRevenue) : null,
               )}
-              caption={`Laba kotor ${formatMoneyShort(headline?.grossProfit ?? "0")}`}
+              caption={`Laba kotor ${formatMoney(headline?.grossProfit ?? "0")}`}
               {...ledger}
             />
           </TileGrid>
@@ -209,7 +213,7 @@ export function BerandaUang() {
               .map((line) => ({
                 label: line.label,
                 value: Number(line.revenue),
-                display: formatMoneyShort(line.revenue),
+                display: formatMoney(line.revenue),
               }))
               .filter((row) => row.value > 0)
               .sort((a, b) => b.value - a.value)}
@@ -222,7 +226,7 @@ export function BerandaUang() {
           {can("petMemberships", "read") && (
             <StatTile
               label="Benefit membership"
-              value={formatMoneyShort(membership.data?.summary.benefitValue ?? "0")}
+              value={formatMoney(membership.data?.summary.benefitValue ?? "0")}
               caption={`${membership.data?.summary.cards ?? 0} kartu terjual`}
               hint="Nilai benefit membership yang dipakai di periode ini, dihitung dengan harga katalog. Tidak mengikuti filter cabang."
               loading={membership.loading}
@@ -244,7 +248,7 @@ export function BerandaUang() {
                 ? marginPct(headline.deductions, headline.grossRevenue)
                 : null,
             )}
-            caption={`Diskon & retur ${formatMoneyShort(headline?.deductions ?? "0")}`}
+            caption={`Diskon & retur ${formatMoney(headline?.deductions ?? "0")}`}
             hint="Total diskon dan retur penjualan dibagi omzet kotor, dari akun kontra pendapatan di laba rugi."
             {...ledger}
           />
@@ -271,7 +275,7 @@ export function BerandaUang() {
           {readsCash && (
             <StatTile
               label="Saldo kas & bank"
-              value={formatMoneyShort(cash.totalSaldo)}
+              value={formatMoney(cash.totalSaldo)}
               caption={`${cash.rows.length} akun aktif`}
               loading={cash.loading}
               error={cash.error !== null}
@@ -280,7 +284,7 @@ export function BerandaUang() {
           {can("customerInvoices", "read") && (
             <StatTile
               label="Piutang belum lunas"
-              value={formatMoneyShort(data.receivables?.totalOutstanding ?? "0")}
+              value={formatMoney(data.receivables?.totalOutstanding ?? "0")}
               caption={`${data.receivables?.totalOverdueInvoices ?? 0} lewat jatuh tempo`}
               loading={data.loading && !data.receivables}
             />
@@ -288,7 +292,7 @@ export function BerandaUang() {
           {can("purchaseInvoices", "read") && (
             <StatTile
               label="Utang belum lunas"
-              value={formatMoneyShort(data.payables?.totalOutstanding ?? "0")}
+              value={formatMoney(data.payables?.totalOutstanding ?? "0")}
               caption={`${data.payables?.totalInvoices ?? 0} faktur pembelian`}
               hint="Semua cabang — utang supplier belum bisa dipisah per cabang."
               loading={data.loading && !data.payables}
@@ -297,7 +301,7 @@ export function BerandaUang() {
           {readsCommissions && (
             <StatTile
               label="Komisi belum dibayar"
-              value={formatMoneyShort(commissions.data?.cards.pending ?? "0")}
+              value={formatMoney(commissions.data?.cards.pending ?? "0")}
               caption="komisi periode ini yang belum dibayar"
               loading={commissions.loading}
               error={commissions.failed}

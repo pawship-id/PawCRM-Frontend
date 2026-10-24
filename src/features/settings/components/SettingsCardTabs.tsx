@@ -85,6 +85,13 @@ const SYSTEM_CARDS: SettingsCard[] = [
     href: SETTINGS_PATHS.riwayat,
     permission: { feature: "auditLogs", action: "read" },
   },
+  {
+    title: "Shift kasir",
+    description:
+      "Semua shift kasir per cabang, termasuk yang belum ditutup dari hari sebelumnya.",
+    href: SETTINGS_PATHS.shiftKasir,
+    permission: { feature: "posShifts", action: "read" },
+  },
 ];
 
 function CardTab({ cards }: { cards: SettingsCard[] }) {

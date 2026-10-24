@@ -5,25 +5,37 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError } from "@/services/api-error";
 import { productService } from "@/services/product.service";
 import { warehouseService } from "@/services/warehouse.service";
-import type { NegativeStockRow } from "@/types/inventory";
+import type { NegativeStockRow, NegativeStockSort } from "@/types/inventory";
 import type { Warehouse } from "@/types/api";
 import { useAuth } from "@/features/auth";
 import { accessibleWarehouses } from "@/utils/accessScope";
 
-/** The one knob this list offers, plus the page. */
+/** The one filter this list offers, its ordering, and the page. */
 export interface NegativeStockQuery {
   /** Empty means every warehouse in reach. */
   warehouseId: string;
+  /** Set from the table's headers. */
+  sort: NegativeStockSort;
   page: number;
 }
 
-const DEFAULT_QUERY: NegativeStockQuery = { warehouseId: "", page: 1 };
+const DEFAULT_QUERY: NegativeStockQuery = {
+  warehouseId: "",
+  // The API's default, stated so the Nilai header shows it as active.
+  sort: "valueAsc",
+  page: 1,
+};
 
 const LIMIT = 20;
 
 export interface UseNegativeStockResult {
   items: NegativeStockRow[];
-  pagination: { page: number; limit: number; total: number; totalPages: number };
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
   /** What the WHOLE hole is worth, across every row — not this page's. */
   shortfall: string | null;
   /** The filter's options. Empty when the user cannot read them. */
@@ -48,10 +60,10 @@ export interface UseNegativeStockResult {
  * in the browser) or need a server field nobody has asked for. Twenty rows below
  * zero is already an unusual amount of wrong.
  *
- * NO SORT EITHER. The order is fixed at worst-first BY VALUE, which is the only
- * order this list is read in: the −200 sacks of feed matter and the −1 collar
- * does not, and offering "by name" would be offering a way to hide the
- * expensive rows below the fold.
+ * IT OPENS WORST-FIRST BY VALUE (`valueAsc`): the −200 sacks of feed matter and
+ * the −1 collar does not. The headers re-sort it on the server (BO, 19 October
+ * 2026) — by product, warehouse, quantity, HPP or value — and a reload comes
+ * back to worst-first.
  *
  * THE WAREHOUSE LOOKUP FAILS SOFTLY, like every other stock picker here: a user
  * may hold `products:read` without `warehouses:read`, and a list that refused to
@@ -78,8 +90,9 @@ export function useNegativeStock(): UseNegativeStockResult {
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 
   /**
-   * A CHANGED FILTER RESETS TO PAGE 1 — unless the change IS the page. Staying
-   * on page 3 of a narrower result answers a fresh question with an empty table.
+   * A CHANGED FILTER OR ORDER RESETS TO PAGE 1 — unless the change IS the
+   * page. Staying on page 3 of a narrower result answers a fresh question with
+   * an empty table.
    */
   const setQuery = useCallback((patch: Partial<NegativeStockQuery>) => {
     setQueryState((prev) => ({ ...prev, ...patch, page: patch.page ?? 1 }));
@@ -116,6 +129,7 @@ export function useNegativeStock(): UseNegativeStockResult {
         // `|| undefined` so "every warehouse" drops out of the query string
         // rather than reaching the API as an empty string it refuses as a 400.
         warehouseId: query.warehouseId || undefined,
+        sort: query.sort,
       })
       .then((result) => {
         if (!active) return;
@@ -140,7 +154,7 @@ export function useNegativeStock(): UseNegativeStockResult {
     return () => {
       active = false;
     };
-  }, [query.page, query.warehouseId, nonce]);
+  }, [query.page, query.warehouseId, query.sort, nonce]);
 
   return {
     items,

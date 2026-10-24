@@ -153,32 +153,52 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     expect(within(row).getAllByRole("cell")[2]).toHaveTextContent("2 akun");
   });
 
-  /** Only the three the server can order correctly — see `SORTABLE`. */
+  /** Only the two the server can order correctly — see `SORT_OPTIONS`. */
   it("orders from the column headers it can order by", async () => {
     const user = userEvent.setup();
     renderWithAuth(<KasBankScreen now={NOW} />);
     await screen.findByText("BKM/CBS/2609/0001");
 
-    await user.click(within(screen.getByRole("table")).getByRole("button", { name: /Cabang/ }));
+    // Jumlah's first click takes the largest first.
+    await user.click(
+      within(screen.getByRole("table")).getByRole("button", { name: /Jumlah/ }),
+    );
     await waitFor(() =>
       expect(cashTransactionService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "branchDesc", page: 1 }),
+        expect.objectContaining({ sort: "amountHighest", page: 1 }),
       ),
     );
 
     // A second click on the same column flips it.
-    await user.click(within(screen.getByRole("table")).getByRole("button", { name: /Cabang/ }));
+    await user.click(
+      within(screen.getByRole("table")).getByRole("button", { name: /Jumlah/ }),
+    );
     await waitFor(() =>
       expect(cashTransactionService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ sort: "branchAsc" }),
+        expect.objectContaining({ sort: "amountLowest" }),
+      ),
+    );
+
+    // Tanggal's first click, from another column, takes the newest first.
+    await user.click(
+      within(screen.getByRole("table")).getByRole("button", { name: /Tanggal/ }),
+    );
+    await waitFor(() =>
+      expect(cashTransactionService.list).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "newest" }),
       ),
     );
 
     // Deskripsi and Akun are plain headers — the server has no ordering for
-    // what those cells actually show.
+    // what those cells actually show — and Cabang stopped sorting on BO's call
+    // (20 October 2026).
+    const table = within(screen.getByRole("table"));
+    for (const name of [/Deskripsi/, /^Akun$/, /Cabang/]) {
+      expect(table.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
     expect(
-      screen.queryByRole("button", { name: /Deskripsi/ }),
-    ).not.toBeInTheDocument();
+      table.getByRole("columnheader", { name: "Cabang" }),
+    ).not.toHaveAttribute("aria-sort");
   });
 
   it("asks for a bigger page when the size is changed", async () => {
@@ -337,6 +357,9 @@ describe("Kas & Bank — transaksi: the card", () => {
     await screen.findByText("BKM/CBS/2609/0001");
 
     const heading = screen.getByRole("heading", { name: "Daftar transaksi" });
+    // Sentence case at the §5 size since 20 October 2026 — no longer a small
+    // uppercase caption.
+    expect(heading).not.toHaveClass("uppercase");
     // The vendored Card's own marker — steadier than walking parentElement.
     const card = heading.closest<HTMLElement>('[data-slot="card"]')!;
 

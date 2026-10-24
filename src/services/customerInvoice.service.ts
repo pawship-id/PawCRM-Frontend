@@ -126,9 +126,11 @@ export const customerInvoiceService = {
    */
   summary: (
     query: Omit<CustomerInvoiceListQuery, "page" | "limit" | "sort"> = {},
+    /** Also read the laba rugi's Total pendapatan — Penjualan › Ringkasan. */
+    { ledger = false }: { ledger?: boolean } = {},
   ) =>
     apiClient.get<CustomerInvoiceListSummary>("/customer-invoices/summary", {
-      query: filterParams(query),
+      query: { ...filterParams(query), ...(ledger ? { ledger: true } : {}) },
     }),
 
   /**

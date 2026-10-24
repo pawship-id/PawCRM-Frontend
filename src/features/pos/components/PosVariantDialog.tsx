@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { posService } from "@/services/pos.service";
+import { tillCatalog } from "../offline/tillApi";
 import { formatMoney } from "@/utils/decimal";
 import type { PosCatalogItem } from "@/types/api";
 
@@ -106,8 +106,7 @@ export function PosVariantDialog({
     setLoading(true);
     setError(null);
 
-    posService
-      .catalog({ parentId, limit: VARIANT_LIMIT })
+    tillCatalog({ parentId, limit: VARIANT_LIMIT })
       .then((result) => {
         if (!active) return;
         setVariants(result.items);

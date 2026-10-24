@@ -10,6 +10,7 @@ import type {
   Service,
   ServiceKind,
   ServiceLocation,
+  ServiceSort,
 } from "@/types/api";
 
 export interface GroomingServicesQuery {
@@ -28,6 +29,12 @@ export interface GroomingServicesQuery {
   location: "" | ServiceLocation;
   /** Deleted services too — the only way to reach one to Pulihkan it. */
   includeDeleted: boolean;
+  /**
+   * The table's header sort — a SERVICE_SORTS name (BO, 20 October 2026). NOT
+   * a filter: the panel's Reset leaves it alone and `Filter (n)` never counts
+   * it. Changing it goes back to page 1 like any other change here.
+   */
+  sort: ServiceSort;
 }
 
 const PAGE_SIZE = 20;
@@ -40,6 +47,7 @@ const DEFAULT_QUERY: GroomingServicesQuery = {
   petType: "",
   location: "",
   includeDeleted: false,
+  sort: "nameAsc",
 };
 
 const EMPTY_PAGE: PageResult<Service>["pagination"] = {
@@ -75,7 +83,9 @@ interface Loaded {
  *
  * EVERY FILTER IS THE SERVER'S. Cabang, Jenis hewan and Tempat narrow the query
  * rather than the page, so the pager's total is the total of what was asked for
- * and page 2 is not a page of leftovers.
+ * and page 2 is not a page of leftovers. So is the header SORT (20 October
+ * 2026): the list is paged, and re-sorting the twenty rows on screen would
+ * misorder every page after the first.
  */
 export function useGroomingServices(serviceKind: ServiceKind) {
   const [query, setQueryState] = useState<GroomingServicesQuery>(DEFAULT_QUERY);
@@ -117,6 +127,7 @@ export function useGroomingServices(serviceKind: ServiceKind) {
         petType: settled.petType || undefined,
         location: settled.location || undefined,
         includeDeleted: settled.includeDeleted || undefined,
+        sort: settled.sort,
       })
       .then((result) => {
         if (active) {

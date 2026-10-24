@@ -79,6 +79,7 @@ import { InvoiceLineVariant } from "./InvoiceLineVariant";
 import { InvoiceLotDialog, type InvoiceLotShare } from "./InvoiceLotDialog";
 import { usePermissions } from "@/features/permissions";
 import { PosLinePrice } from "@/features/pos/components/PosLinePrice";
+import { prefetchProductCandidates } from "@/features/inventory/hooks/useProductCandidates";
 
 /** A line as the editor holds it. */
 interface EditLine {
@@ -278,6 +279,11 @@ export function InvoiceEditor({
   );
   /** Whether the "+ Tambah barang atau jasa" dialog is open. */
   const [picking, setPicking] = useState(false);
+  // Fetched as the form opens, so "+ Tambah produk" opens on a list that is
+  // already here instead of a spinner — see prefetchProductCandidates.
+  useEffect(() => {
+    prefetchProductCandidates({});
+  }, []);
   const [dueDate, setDueDate] = useState(toDateInput(invoice.dueDate));
   const [warehouseId, setWarehouseId] = useState(invoice.warehouseId ?? "");
   /* The row whose lots are being picked — see `InvoiceLotDialog`. */

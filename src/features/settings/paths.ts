@@ -37,7 +37,8 @@ export const SETTINGS_PATHS = {
   cabang: `${ROOT}/cabang`,
   gudang: `${ROOT}/gudang`,
   stokKasir: `${ROOT}/stok-kasir`,
-  fakturDokumen: `${ROOT}/faktur-dokumen`,
+  /* The registered tills (POS offline mode, 19 October 2026). */
+  perangkatKasir: `${ROOT}/perangkat-kasir`,
   nomorDokumen: `${ROOT}/nomor-dokumen`,
   notifikasi: `${ROOT}/notifikasi`,
   tipeSupplier: `${ROOT}/tipe-supplier`,
@@ -64,6 +65,8 @@ export const SETTINGS_PATHS = {
   peran: `${ROOT}/peran`,
   aksesCabang: `${ROOT}/akses-cabang`,
   riwayat: `${ROOT}/riwayat`,
+  /** Read-only: a shift is closed only from the till, by its own cashier. */
+  shiftKasir: `${ROOT}/shift-kasir`,
 } as const;
 
 /** One service's edit form. */

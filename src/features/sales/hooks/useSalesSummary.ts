@@ -104,7 +104,8 @@ export function useSalesSummary(): UseSalesSummaryResult {
     setSummaryFailed(false);
 
     customerInvoiceService
-      .summary(JSON.parse(filterKey))
+      // The ledger's figure is what this tab's Omzet card shows.
+      .summary(JSON.parse(filterKey), { ledger: true })
       .then((result) => {
         if (!active) return;
         setSummary(result);

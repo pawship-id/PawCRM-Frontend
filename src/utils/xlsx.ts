@@ -41,6 +41,24 @@ export interface XlsxColumn<Row> {
   type?: XlsxColumnType;
   /** Column width in characters. Defaults to the header's own length. */
   width?: number;
+  /**
+   * Written once per group and merged down over the group's rows — see
+   * `groupKey` on `buildXlsx`. Ignored when the export has no groups.
+   */
+  merge?: boolean;
+}
+
+export interface XlsxOptions<Row> {
+  sheetName?: string;
+  /**
+   * CONSECUTIVE rows with the same key are one group: a `merge` column is
+   * written on the group's first row and merged down over the rest. The rows
+   * must already arrive grouped — this never sorts.
+   *
+   * Only the first cell of a merge holds the value, so a SUM over a merged
+   * column counts each group once.
+   */
+  groupKey?: (row: Row) => string;
 }
 
 /** Excel's day zero in the 1900 date system — 1899-12-30, not the 31st. */
@@ -102,7 +120,7 @@ function toCell(
 export async function buildXlsx<Row>(
   columns: XlsxColumn<Row>[],
   rows: Row[],
-  { sheetName = "Data" }: { sheetName?: string } = {},
+  { sheetName = "Data", groupKey }: XlsxOptions<Row> = {},
 ): Promise<Blob> {
   const XLSX = await import("xlsx");
 
@@ -115,14 +133,37 @@ export async function buildXlsx<Row>(
     };
   });
 
+  // Each group as [first, last] row index; only filled when grouping.
+  const groups: [number, number][] = [];
+  rows.forEach((row, rowIndex) => {
+    if (!groupKey) return;
+    const key = groupKey(row);
+    const last = groups[groups.length - 1];
+    if (last && groupKey(rows[last[1]]) === key) last[1] = rowIndex;
+    else groups.push([rowIndex, rowIndex]);
+  });
+  const groupStarts = new Set(groups.map(([first]) => first));
+
   rows.forEach((row, rowIndex) => {
     columns.forEach((column, index) => {
+      if (groupKey && column.merge && !groupStarts.has(rowIndex)) return;
+
       const cell = toCell(column.value(row), column.type ?? "text");
       if (!cell) return;
 
       sheet[XLSX.utils.encode_cell({ r: rowIndex + 1, c: index })] = cell;
     });
   });
+
+  // +1 throughout: the header occupies row 0.
+  const merges = groups
+    .filter(([first, last]) => last > first)
+    .flatMap(([first, last]) =>
+      columns.flatMap((column, c) =>
+        column.merge ? [{ s: { r: first + 1, c }, e: { r: last + 1, c } }] : [],
+      ),
+    );
+  if (merges.length > 0) sheet["!merges"] = merges;
 
   sheet["!ref"] = XLSX.utils.encode_range({
     s: { r: 0, c: 0 },
@@ -171,7 +212,7 @@ export async function exportToXlsx<Row>(
   columns: XlsxColumn<Row>[],
   rows: Row[],
   filename: string,
-  options: { sheetName?: string } = {},
+  options: XlsxOptions<Row> = {},
 ): Promise<void> {
   saveBlob(await buildXlsx(columns, rows, options), filename);
 }
