@@ -1,26 +1,12 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { CustomerModuleHeader } from "@/features/customers";
-import { MembershipCardsPanel, MembershipSubTabs } from "@/features/memberships";
-import { RequirePermission } from "@/features/permissions";
-
-export const metadata: Metadata = {
-  title: "Kartu membership · Pelanggan · Buloo",
-};
+import { MEMBERSHIP_CARDS_HREF } from "@/features/memberships/labels";
 
 /**
- * Every card in the shop. A card is issued from a PET's profile — that is where
- * the animal is, and a card belongs to an animal — so this screen lists and
- * finds rather than creates.
+ * MOVED TO PROMOSI — 16 October 2026: Membership left Pelanggan for its own
+ * rail module. Kept so old links and bookmarks land; delete once nothing links
+ * here any more. `params` is a Promise in this version of Next — see AGENTS.md.
  */
-export default function MembershipCardsPage() {
-  return (
-    <RequirePermission feature="petMemberships">
-      <div className="flex flex-col gap-6">
-        <CustomerModuleHeader />
-        <MembershipSubTabs />
-        <MembershipCardsPanel />
-      </div>
-    </RequirePermission>
-  );
+export default function MovedMembershipCardsPage() {
+  redirect(MEMBERSHIP_CARDS_HREF);
 }

@@ -1,117 +1,142 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import type { BenefitCandidate } from "@/types/membership";
 
-import { usePetMembershipCards } from "@/features/memberships";
-import type { BenefitAvailability } from "@/types/membership";
+import { candidateKey, type CardBenefitView } from "../benefitQuote";
+import { AddonMemberToggle } from "./AddonMemberToggle";
+
+/** Radix Select forbids `value=""`, so "Tanpa member" needs a value of its own. */
+const NONE = "none";
 
 /**
- * "Pakai benefit membership" on a booking card.
+ * THE MAIN SERVICE'S MEMBER BENEFIT, ON ITS OWN PRICE ROW (22 October 2026) —
+ * the same place and the same words as an add-on's: the benefit's name under
+ * the struck Efektif, and a way to switch it off.
  *
- * ─── IT PLANS, IT DOES NOT SPEND ───────────────────────────────────────────
+ * ─── IT USED TO BE A RADIO CARD LIST ───────────────────────────────────────
  *
- * Nothing is deducted when the booking is saved. The quota moves when the
- * booking is BILLED, and the till re-reads the card then — a booking is a
- * promise, and one that ate a customer's weekly free bath and was then
- * cancelled would have taken something from somebody who received nothing.
+ * "Benefit membership" drew one bordered row per candidate plus "Tanpa
+ * member", below the price. It said the same amount twice (the row and the
+ * struck price) and pushed the add-ons a screen down. Now:
  *
- * That is the single most important thing this control has to communicate, so
- * it says it in words under the choice rather than leaving somebody to assume
- * the jatah is already gone.
+ *   - ONE candidate — its name, and the text button "Tanpa member" (or, once
+ *     switched off, "Tanpa member" and "Pakai member"), the add-on's toggle.
+ *   - MORE THAN ONE — the name IS a compact select, the till's
+ *     `PosBenefitSelect`: the candidates by name (no amounts — the struck
+ *     price already says how much) and "Tanpa member".
+ *   - NONE, but the card covers the service (jatah habis, dipesan booking
+ *     lain, ditunda) — the server's sentence, muted, instead.
  *
- * ─── IT DRAWS NOTHING WHEN THERE IS NOTHING TO OFFER ───────────────────────
+ * ─── THE ROWS COME FROM THE SERVER'S QUOTE, NOT FROM THE CARD ──────────────
  *
- * No animal chosen yet, no card, or no benefit covering this service: blank. A
- * permanently empty section on every booking card would be a control that never
- * works, on a form that already has plenty to read.
+ * The quote (membership-v1 §4.4) knows the scope, the holds of other bookings
+ * and the period of the booking's own date. What this shows is what the save
+ * sends as `plannedBenefit` — and, since Promosi V1, HOLDS: the one-line note
+ * under a quota pick says so.
  *
- * ─── AND IT DOES NOT CHECK THE QUOTA ───────────────────────────────────────
+ * ─── IT DRAWS NOTHING WHEN THERE IS NOTHING TO SAY ─────────────────────────
  *
- * A booking may be a fortnight out. Whether the jatah is still there is a
- * question about the day it is billed, and greying out a plan today for a quota
- * that will have reset by then would be refusing a fact about the future. The
- * server takes the same view and validates only the shape.
+ * No card, or a card that covers nothing on this service: the row stays a
+ * plain price row. What the card holds beyond the booking is the per-animal
+ * "Benefit lain" box (`OtherBenefitsInfo`).
  */
 export function BookingBenefitField({
-  petId,
-  serviceId,
-  value,
-  onChange,
+  view,
+  serviceName,
+  disabled = false,
+  error = null,
+  onPick,
 }: {
-  petId: string;
-  serviceId: string;
-  value: { membershipId: string; benefitId: string } | null;
-  onChange: (next: { membershipId: string; benefitId: string } | null) => void;
+  view: CardBenefitView;
+  /** For the controls' accessible names — "Tanpa member untuk Grooming". */
+  serviceName: string;
+  disabled?: boolean;
+  /** The server refused this card's benefit on save (§8). */
+  error?: string | null;
+  /** A candidate, or `null` for "Tanpa member". */
+  onPick: (candidate: BenefitCandidate | null) => void;
 }) {
-  const { cards } = usePetMembershipCards(petId || null);
+  const candidates = view.show ? view.candidates : [];
+  const selected =
+    candidates.find((candidate) => candidateKey(candidate) === view.selectedKey) ?? null;
+  const unavailable = view.show && candidates.length === 0 ? view.emptyMessage : null;
 
-  /*
-    EVERY BENEFIT ON EVERY LIVE CARD THAT COVERS THIS SERVICE, paired with the
-    card it belongs to — a customer may hold two packages, and the choice has to
-    say which one is being spent.
+  if (candidates.length === 0 && !unavailable && !error) return null;
 
-    SCOPE IS MATCHED LOOSELY HERE, on the service alone: the engine's full rule
-    (kelompok layanan, add-on parents, targets) lives on the server and is
-    applied for real when the line is priced. A form offering one benefit too
-    many is recoverable; one that hid a benefit the customer is entitled to is
-    the failure nobody notices.
-  */
-  const options = cards
-    .filter((membership) => membership.status === "active")
-    .flatMap((membership) =>
-      (membership.benefits ?? [])
-        .filter(
-          (benefit: BenefitAvailability) =>
-            benefit.kind !== "perk" &&
-            (benefit.scope.serviceIds.length === 0 ||
-              benefit.scope.serviceIds.includes(serviceId)),
-        )
-        .map((benefit: BenefitAvailability) => ({
-          membershipId: membership.id,
-          benefitId: benefit.id,
-          label: benefit.label,
-          planName: membership.plan.name,
-        })),
-    );
-
-  if (!petId || !serviceId || options.length === 0) return null;
-
-  const selectedKey = value ? `${value.membershipId}|${value.benefitId}` : "";
+  const only = candidates.length === 1 ? candidates[0] : null;
 
   return (
-    <div className="mt-3">
-      <p className="text-xs font-medium text-muted">Membership</p>
-
-      <select
-        aria-label="Benefit membership yang dipakai"
-        className="mt-1 h-9 w-full rounded-md border border-border bg-surface px-2 text-sm focus-visible:border-primary focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        value={selectedKey}
-        onChange={(event) => {
-          if (!event.target.value) {
-            onChange(null);
-            return;
-          }
-
-          const [membershipId, benefitId] = event.target.value.split("|");
-          onChange({ membershipId, benefitId });
-        }}
-      >
-        <option value="">Tidak pakai benefit</option>
-        {options.map((option) => (
-          <option
-            key={`${option.membershipId}|${option.benefitId}`}
-            value={`${option.membershipId}|${option.benefitId}`}
+    <div data-main-member className="mt-2">
+      {candidates.length > 1 && (
+        <Select
+          value={selected ? candidateKey(selected) : NONE}
+          disabled={disabled}
+          onValueChange={(next) => {
+            if (next === NONE) return onPick(null);
+            const chosen = candidates.find((candidate) => candidateKey(candidate) === next);
+            if (chosen) onPick(chosen);
+          }}
+        >
+          <SelectTrigger
+            size="sm"
+            aria-label={`Member untuk ${serviceName}`}
+            className={cn(
+              "max-w-full min-w-0 text-xs",
+              selected && "border-transparent bg-tint-success font-medium text-success",
+            )}
           >
-            {option.label} — {option.planName}
-          </option>
-        ))}
-      </select>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {candidates.map((candidate) => (
+              <SelectItem key={candidateKey(candidate)} value={candidateKey(candidate)}>
+                {candidate.label}
+              </SelectItem>
+            ))}
+            <SelectItem value={NONE}>Tanpa member</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
 
-      {value && (
-        <p className="mt-1 flex items-start gap-1 text-xs text-muted">
-          <Sparkles className="mt-0.5 size-3 shrink-0" aria-hidden />
-          Baru dicatat sebagai rencana. Jatahnya berkurang saat booking ini
-          ditagih di kasir, bukan sekarang.
+      {only && (
+        <p className="flex flex-wrap items-center gap-x-2 text-xs">
+          {selected ? (
+            <span className="font-semibold text-success">{only.label}</span>
+          ) : (
+            <span className="text-muted">Tanpa member</span>
+          )}
+          <AddonMemberToggle
+            optedOut={!selected}
+            addonName={serviceName}
+            disabled={disabled}
+            onToggle={(optOut) => onPick(optOut ? null : only)}
+          />
+        </p>
+      )}
+
+      {unavailable && (
+        <p data-benefit-unavailable className="text-xs text-muted">
+          {unavailable}
+        </p>
+      )}
+
+      {selected?.kind === "quota" && (
+        <p className="mt-1 text-xs text-muted">
+          Jatah ditahan sampai booking dibayar atau dibatalkan.
+        </p>
+      )}
+
+      {error && (
+        <p role="alert" className="mt-1 text-sm font-semibold text-danger-ink">
+          {error}
         </p>
       )}
     </div>

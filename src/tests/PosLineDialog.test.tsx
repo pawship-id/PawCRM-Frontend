@@ -257,4 +257,20 @@ describe("PosLineDialog", () => {
     expect(mockedLots).not.toHaveBeenCalled();
     expect(screen.queryByText("Jumlah")).not.toBeInTheDocument();
   });
+
+  /* Promosi V1: "baris yang memakai jatah tidak ikut promo lain". */
+  it("offers no discount on a line a membership benefit pays for, and saves none", async () => {
+    const user = userEvent.setup();
+    const onSave = renderDialog({
+      kind: "service",
+      benefit: { membershipId: "card-1", packageRef: null, benefitId: "ben-1", optionId: null },
+    } as Partial<PosItem>);
+
+    expect(screen.queryByRole("textbox", { name: /Nilai diskon/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/sudah dipotong benefit membership/)).toBeInTheDocument();
+
+    await user.click(simpan());
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0][0].discount).toBeNull();
+  });
 });

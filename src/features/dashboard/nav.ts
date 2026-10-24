@@ -27,6 +27,7 @@ import {
   ScrollText,
   Settings,
   ShoppingCart,
+  Tag,
   Truck,
   Users,
   Wallet,
@@ -305,8 +306,6 @@ export const NAV_SECTIONS: NavSection[] = [
           { feature: "customerSummary", action: "read" },
           { feature: "customers", action: "read" },
           { feature: "pets", action: "read" },
-          { feature: "membershipPlans", action: "read" },
-          { feature: "petMemberships", action: "read" },
           { feature: "customerHistory", action: "read" },
         ],
         /*
@@ -314,7 +313,9 @@ export const NAV_SECTIONS: NavSection[] = [
           matched, and `/…/customers/ringkasan` is not a prefix of
           `/…/customers`, so without this the row would go dark the moment the
           reader opened the Pelanggan tab. Listed as a prefix, it also covers
-          Membership, Riwayat and every customer detail route in one entry.
+          Riwayat and every customer detail route in one entry. (Membership
+          left for Promosi on 16 October 2026; its old addresses under this
+          prefix only redirect now.)
         */
         match: ["/dashboard/master/customers", "/dashboard/master/pets"],
       },
@@ -355,6 +356,34 @@ export const NAV_SECTIONS: NavSection[] = [
           { feature: "salesReturns", action: "read" },
         ],
         match: ["/dashboard/ecommerce-sync"],
+      },
+      {
+        /**
+         * Promosi (16 October 2026) — every member price and allowance the till,
+         * booking and website apply. V1 carries Membership only; Loyalti, Promo
+         * and Voucher join as tabs later. It took Membership over from
+         * Pelanggan, whose old routes redirect here.
+         *
+         * `permissionAny` IS LEGAL HERE because the href is a redirect to
+         * Ringkasan, which itself forwards a role that may not see it to the
+         * first Promosi tab it may — so nobody the row is shown to lands on a
+         * refusal.
+         *
+         * `module: "membership"` is the tab-level switch Buloo admin turns
+         * Membership off with (permissionModules.js `toggle`). It already closes
+         * `membershipPlans` and `petMemberships`, but not `membershipReports`,
+         * which belongs to Laporan — without the module gate a role holding the
+         * report grant would see a row onto a switched-off module.
+         */
+        label: "Promosi",
+        href: "/dashboard/promosi",
+        icon: Tag,
+        module: "membership",
+        permissionAny: [
+          { feature: "membershipPlans", action: "read" },
+          { feature: "petMemberships", action: "read" },
+          { feature: "membershipReports", action: "read" },
+        ],
       },
       /**
        * Pembelian — the supply side, and ONE ROW rather than the six-child group

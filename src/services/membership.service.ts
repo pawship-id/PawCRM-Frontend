@@ -1,31 +1,46 @@
 import { apiClient } from "./api-client";
 import type {
-  BenefitQuoteLine,
+  AdjustDatesInput,
+  AdjustQuotaInput,
+  BenefitQuoteInput,
   BenefitQuoteResponse,
+  BookingBenefitQuoteInput,
+  CancelMembershipInput,
   CreateMembershipPlanInput,
   IssueMembershipInput,
+  MembershipAttention,
+  MembershipAttentionQuery,
+  MembershipEligibility,
+  MembershipEligibilityQuery,
   MembershipPlan,
   MembershipPlanListQuery,
   MembershipPlanListResponse,
   MembershipReport,
+  MembershipSummary,
+  MembershipSummaryQuery,
+  MoveRedemptionInput,
+  PauseMembershipInput,
   PetMembership,
   PetMembershipListQuery,
   PetMembershipListResponse,
+  PetMembershipsByPet,
   RenewMembershipInput,
+  TransferMembershipInput,
   UpdateMembershipPlanInput,
 } from "@/types/membership";
 
 /**
- * Membership, against /api/membership-plans and /api/pet-memberships.
+ * Membership, against /api/membership-plans and /api/pet-memberships — the V1
+ * contract in PawCRM-Backend/docs/membership-v1.md, every endpoint of it.
  *
  * TWO RESOURCES, ONE FILE, because they are one module and never used apart:
  * every screen that lists cards also needs the packages behind them.
  *
  * BENEFITS HAVE NO CALLS OF THEIR OWN. A benefit is edited by sending the plan's
- * whole `benefits` array through `updatePlan` — the server matches each entry by
- * the `key` it hands back, which is what keeps a benefit's redemption history
- * attached to it across an edit. Omit the key and you have added a new benefit;
- * leave one out and you have removed it.
+ * whole `benefits` array through `updatePlan` — the server matches each entry
+ * (and each of its `options`) by the `id` it handed back, which is what keeps a
+ * benefit's redemption history attached across an edit. Omit the id and you
+ * have added a new one; leave one out and you have removed it.
  *
  * One typed operation per apiClient request, no React. The tenant comes from the
  * session cookie.
@@ -82,31 +97,35 @@ export const membershipService = {
    * ledger read per card and is drawn once, on one animal's profile.
    */
   listForPet: (petId: string) =>
-    apiClient.get<{ petId: string; items: PetMembership[] }>(
-      `/pet-memberships/by-pet/${petId}`,
-    ),
+    apiClient.get<PetMembershipsByPet>(`/pet-memberships/by-pet/${petId}`),
 
-  /** One card, WITH its live benefit counters and its spend history. */
+  /**
+   * One card, WITH its live benefit counters, its ledger (`redemptions`) and
+   * its change log (`history`). ⚠️ The ledger used to come back as `history`.
+   */
   getMembership: (id: string) =>
     apiClient.get<PetMembership>(`/pet-memberships/${id}`),
 
   /**
-   * Issue a card by hand.
+   * Issue a card by hand — `petId` for a pet plan, `customerId` for a customer
+   * plan.
    *
-   * 409 when the animal already holds a live card for this plan — the error
-   * carries the existing card's end date, so the caller offers "Perpanjang"
-   * rather than simply refusing.
+   * 409 when the holder already has a card of ANY plan overlapping the dates
+   * (`details[0].field = "startDate"`, `reason` names the card in the way), or
+   * when the buyer rule refuses ("Tidak memenuhi syarat paket"). Ask
+   * `eligibility` first to offer the right start date instead of a refusal.
    */
   issue: (input: IssueMembershipInput) =>
     apiClient.post<PetMembership>("/pet-memberships", input),
 
   /**
-   * Withdraw a card. REFUSED once any benefit has been used on it: the card is
-   * what explains why a service was free, and deleting that explanation after
-   * the fact erases a discharged debt.
+   * Withdraw a card. `reason` IS REQUIRED (send a Kelola reason). REFUSED once
+   * any benefit has been used on it: the card is what explains why a service
+   * was free, and deleting that explanation after the fact erases a discharged
+   * debt.
    */
-  cancel: (id: string, reason?: string) =>
-    apiClient.patch<PetMembership>(`/pet-memberships/${id}/cancel`, { reason }),
+  cancel: (id: string, input: CancelMembershipInput) =>
+    apiClient.patch<PetMembership>(`/pet-memberships/${id}/cancel`, input),
 
   /**
    * Sell the next card in the chain. A NEW card with its own number, never an
@@ -117,6 +136,70 @@ export const membershipService = {
    */
   renew: (id: string, input: RenewMembershipInput = {}) =>
     apiClient.post<PetMembership>(`/pet-memberships/${id}/renew`, input),
+
+  /* ── kelola (§3.7) — permission `petMemberships:manage` ──────────────
+     Every one takes a Kelola `reason`, appends a `history` row, and answers
+     with the FULL detail card — so the caller swaps its state for the
+     response rather than re-fetching. */
+
+  /**
+   * Move the start (only while nothing was ever spent) or the end (not before
+   * today) of a card. `date` is `"YYYY-MM-DD"`.
+   */
+  adjustDates: (id: string, input: AdjustDatesInput) =>
+    apiClient.post<PetMembership>(`/pet-memberships/${id}/adjust-dates`, input),
+
+  /** Freeze a card for `days` (1–30, ≤ 30 in total); its end moves out by as many. */
+  pause: (id: string, input: PauseMembershipInput) =>
+    apiClient.post<PetMembership>(`/pet-memberships/${id}/pause`, input),
+
+  /** Add or take back allowance in the CURRENT bucket (or the lifetime cap). */
+  adjustQuota: (id: string, input: AdjustQuotaInput) =>
+    apiClient.post<PetMembership>(`/pet-memberships/${id}/adjust-quota`, input),
+
+  /** Move a pet card to another animal of the same owner. */
+  transfer: (id: string, input: TransferMembershipInput) =>
+    apiClient.post<PetMembership>(`/pet-memberships/${id}/transfer`, input),
+
+  /**
+   * "Ubah tanggal pakai" — re-date one ledger row inside the card. 409 when the
+   * target period is full (suggest Koreksi jatah).
+   */
+  moveRedemption: (id: string, redemptionId: string, input: MoveRedemptionInput) =>
+    apiClient.post<PetMembership>(
+      `/pet-memberships/${id}/redemptions/${redemptionId}/move`,
+      input,
+    ),
+
+  /** Only `note` and `branchId` are editable on a card. */
+  updateMembership: (id: string, input: { note?: string | null; branchId?: string | null }) =>
+    apiClient.patch<PetMembership>(`/pet-memberships/${id}`, input),
+
+  /* ── questions (§3.9–3.11) ──────────────────────────────────────── */
+
+  /**
+   * "May this holder buy this plan, from when, and for how much?" — the sell
+   * dialog asks before issuing. `price` is what THIS pet pays on a variant plan.
+   */
+  eligibility: (query: MembershipEligibilityQuery) =>
+    apiClient.get<MembershipEligibility>("/pet-memberships/eligibility", {
+      query: { ...query },
+    }),
+
+  /**
+   * "Perlu tindakan": cards ending within `withinDays` (default 14) and
+   * week/month allowances that will lapse unused in that window.
+   */
+  attention: (query: MembershipAttentionQuery = {}) =>
+    apiClient.get<MembershipAttention>("/pet-memberships/attention", {
+      query: { ...query },
+    }),
+
+  /** The Ringkasan tiles: packages sold, benefit value spent, active members. */
+  summary: (query: MembershipSummaryQuery = {}) =>
+    apiClient.get<MembershipSummary>("/pet-memberships/summary", {
+      query: { ...query },
+    }),
 
   /** The renewal list, most urgent first, with the owner's phone number. */
   expiring: (query: { page?: number; limit?: number; withinDays?: number } = {}) =>
@@ -135,14 +218,22 @@ export const membershipService = {
     apiClient.get<MembershipReport>("/reports/membership", { query }),
 
   /**
-   * "For this cart, what could this customer be given?"
+   * "For this cart, what could this customer be given?" — per line, every
+   * candidate (jatah first, then unlimited), the recommended one, and why the
+   * others cannot be used. `packages` turns unpaid package lines into virtual
+   * cards (§4.3).
    *
    * WRITES NOTHING. A POST only because it carries a cart in its body, which a
    * GET cannot. Safe to call on every edit of a cart that has not been saved.
    */
-  quote: (input: {
-    customerId?: string;
-    at?: string;
-    lines: BenefitQuoteLine[];
-  }) => apiClient.post<BenefitQuoteResponse>("/pet-memberships/quote", input),
+  quote: (input: BenefitQuoteInput) =>
+    apiClient.post<BenefitQuoteResponse>("/pet-memberships/quote", input),
+
+  /**
+   * The booking form's shorthand (§4.4): one entry per animal, the server
+   * builds the lines from the catalogue. Same engine, same response shape —
+   * plus `context: "booking"`.
+   */
+  quoteBooking: (input: BookingBenefitQuoteInput) =>
+    apiClient.post<BenefitQuoteResponse>("/pet-memberships/quote", input),
 };

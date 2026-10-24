@@ -10,9 +10,10 @@ import type { BenefitCandidate, BenefitQuoteResponse } from "@/types/membership"
  * BENEFIT MEMBERSHIP on a faktur — every benefit the customer's animals hold,
  * under Diskon faktur (1 October 2026, on request).
  *
- * THE SAME MOVE THE TILL ALREADY MADE (`PosBenefitSection`), for the same
- * reason: a benefit offered as a chip on the row it could pay for showed only
- * what happened to MATCH. A customer holding four benefits saw one button on
+ * WHY A SECTION, NOT A CHIP PER ROW: a benefit offered as a chip on the row it
+ * could pay for showed only what happened to MATCH. (The till once made the
+ * same move with a section of its own; it has since gone to a benefit select
+ * on each cart line — `PosBenefitSelect` — which the faktur has not followed.) A customer holding four benefits saw one button on
  * one row and no sign the other three existed — a question nobody typing a
  * faktur could answer by looking at it.
  *
@@ -52,8 +53,7 @@ export interface BenefitLineLike {
 /**
  * Every benefit, with what the faktur can currently do with it.
  *
- * EXPORTED AND PURE so the arithmetic is testable without a DOM — the same
- * reason `benefitRows` is separate from `PosBenefitSection`.
+ * EXPORTED AND PURE so the arithmetic is testable without a DOM.
  */
 export function invoiceBenefitRows(
   quote: BenefitQuoteResponse | null,

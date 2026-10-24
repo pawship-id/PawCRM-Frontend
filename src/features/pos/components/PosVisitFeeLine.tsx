@@ -67,9 +67,21 @@ export function PosVisitFeeLine({
       </div>
 
       <div className="mt-2 flex items-center justify-between gap-2">
-        <Badge variant="outline" className="border-transparent bg-tint-info text-info">
-          Perjalanan
-        </Badge>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge variant="outline" className="border-transparent bg-tint-info text-info">
+            Perjalanan
+          </Badge>
+          {/*
+            WAIVED BY A MEMBER PICK (Promosi V1, contract §6.3) — the server
+            discounts the fee in full when a service on this trip is priced
+            with a free-visit option. Derived, not picked: there is no control.
+          */}
+          {item.discount?.visitFeeWaiver && (
+            <Badge variant="outline" className="border-transparent bg-tint-success text-success">
+              Gratis dari member
+            </Badge>
+          )}
+        </div>
         <div className="flex items-center gap-1">
           <Button
             type="button"

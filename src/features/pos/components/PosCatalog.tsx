@@ -125,7 +125,7 @@ export function PosCatalog({
               setScanStatus(null);
               setState({ search: event.target.value });
             }}
-            placeholder="Cari nama, SKU, kode batch, atau scan barcode…"
+            placeholder='Cari nama, SKU, kode batch, scan barcode, atau "member" untuk paket…'
             aria-label="Cari produk atau layanan"
             className="pl-9"
             autoFocus

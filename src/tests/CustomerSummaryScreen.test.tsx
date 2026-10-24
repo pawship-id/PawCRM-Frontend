@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 
 import { CustomerSummaryScreen } from "@/features/customers";
 import { customerService } from "@/services/customer.service";
+import { membershipService } from "@/services/membership.service";
 import { petService } from "@/services/pet.service";
 import type { Customer, CustomerStats, DormantCustomer } from "@/types/api";
 
@@ -10,6 +11,7 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/customer.service");
 jest.mock("@/services/pet.service");
+jest.mock("@/services/membership.service");
 
 jest.mock("next/navigation", () => ({
   usePathname: () => "/dashboard/master/customers/ringkasan",
@@ -19,6 +21,7 @@ const mockedCustomerService = customerService as jest.Mocked<
   typeof customerService
 >;
 const mockedPetService = petService as jest.Mocked<typeof petService>;
+const mockedMemberships = membershipService as jest.Mocked<typeof membershipService>;
 
 const DAY = 24 * 60 * 60 * 1000;
 const daysAgo = (days: number) => new Date(Date.now() - days * DAY).toISOString();
@@ -109,6 +112,7 @@ beforeEach(() => {
     pagination: { page: 1, limit: 10, total: 1, totalPages: 1 },
   });
   mockedCustomerService.list.mockResolvedValue(listOf([customer()], 23));
+  mockedMemberships.attention.mockResolvedValue({ withinDays: 14, expiring: [], unusedQuota: [] });
 });
 
 describe("customer summary tab", () => {
@@ -325,12 +329,57 @@ describe("customer summary tab", () => {
     ).toBeVisible();
   });
 
-  it("marks membership expiry as not built, and offers no contacted marker on new customers", async () => {
+  it("offers no contacted marker on new customers", async () => {
     renderWithAuth(<CustomerSummaryScreen />);
 
     await screen.findByText("Fajar Ramadhan");
     expect(screen.queryByText(/sudah dihubungi/)).not.toBeInTheDocument();
-    expect(screen.getByText(/Membership belum ada di sistem/)).toBeVisible();
+  });
+
+  it("lists memberships ending within 14 days from the attention endpoint, with a way to call", async () => {
+    mockedMemberships.attention.mockResolvedValue({
+      withinDays: 14,
+      unusedQuota: [],
+      expiring: [
+        {
+          id: "card-1",
+          number: "MBR-2026-0042",
+          attachTo: "pet",
+          petId: "pet-1",
+          petName: "Mochi",
+          customerId: "cus-1",
+          customerName: "Rina Wijaya",
+          customerPhone: "0812-1111-2222",
+          planId: "p1",
+          planName: "Explorer",
+          startDate: "2026-04-16T03:00:00.000Z",
+          endDate: "2026-10-25T03:00:00.000Z",
+          daysLeft: 9,
+          status: "active",
+        },
+      ],
+    });
+
+    renderWithAuth(<CustomerSummaryScreen />);
+
+    const name = await screen.findByRole("link", { name: "Mochi · Rina Wijaya" });
+    expect(name).toHaveAttribute("href", "/dashboard/promosi/membership/anggota/card-1");
+    expect(screen.getByText(/Explorer · berakhir .* · 9 hari lagi/)).toBeVisible();
+    // The dormant list above has its own "Hubungi"; this one rings the member.
+    const row = name.closest("li") as HTMLElement;
+    expect(within(row).getByRole("link", { name: "Hubungi" })).toHaveAttribute(
+      "href",
+      "https://wa.me/6281211112222",
+    );
+    expect(screen.queryByText(/Membership belum ada di sistem/)).not.toBeInTheDocument();
+  });
+
+  it("says when no membership is ending soon", async () => {
+    renderWithAuth(<CustomerSummaryScreen />);
+
+    expect(
+      await screen.findByText("Tidak ada membership yang berakhir dalam 14 hari."),
+    ).toBeVisible();
   });
 
   it("says a list failed rather than showing it as empty", async () => {

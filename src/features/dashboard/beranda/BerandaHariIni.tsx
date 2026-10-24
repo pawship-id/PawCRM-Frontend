@@ -16,6 +16,10 @@ import {
 import { BookingStatusBadge } from "@/features/booking";
 import { clockOf, dayKeyOf, endOfMonth } from "@/features/booking/day";
 import { useExpiringAlert, useLowStockAlert } from "@/features/inventory";
+import {
+  MEMBERSHIP_RENEWALS_HREF,
+  cardHref,
+} from "@/features/memberships/labels";
 import { usePermissions } from "@/features/permissions";
 import { SETTINGS_PATHS } from "@/features/settings";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
@@ -331,14 +335,14 @@ export function BerandaHariIni() {
                 ),
                 action: {
                   label: "Tawarkan perpanjang",
-                  href: `/dashboard/master/customers/membership/kartu/${card.id}`,
+                  href: cardHref(card.id),
                 },
               }))}
               more={
                 (memberships.data?.pagination.total ?? 0) > ROWS
                   ? {
                       label: `+${(memberships.data?.pagination.total ?? 0) - ROWS} membership lagi`,
-                      href: "/dashboard/master/customers/membership/perpanjangan",
+                      href: MEMBERSHIP_RENEWALS_HREF,
                     }
                   : undefined
               }

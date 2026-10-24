@@ -651,11 +651,12 @@ describe("PosCart — the pulled lines", () => {
       }),
     );
 
-    /* The line's title carries the animal too, so the two group headers are
-       still the only bare "Bruno" on the screen. */
+    /* Promosi V1: ONE header per animal, and under it each booking keeps a
+       run of its own — two bookings stay two, never merged. */
     await screen.findByText("Bruno - Mandi");
-    // Two headers, not one merged group.
-    expect(screen.getAllByText("Bruno")).toHaveLength(2);
+    expect(screen.getAllByText("Bruno")).toHaveLength(1);
+    expect(screen.getByText("Booking ·bk-1")).toBeInTheDocument();
+    expect(screen.getByText("Booking ·bk-2")).toBeInTheDocument();
   });
 });
 

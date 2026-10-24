@@ -27,11 +27,14 @@ export function PosCustomerSection({
   busy = false,
   onPick,
   onClear,
+  perks,
 }: {
   customer: PosTransaction["customer"];
   busy?: boolean;
   onPick: () => void;
   onClear: () => void;
+  /** The customer's membership chips (Promosi V1) — see `PosCustomerPerks`. */
+  perks?: React.ReactNode;
 }) {
   if (!customer) {
     return (
@@ -65,6 +68,7 @@ export function PosCustomerSection({
             {customer.phone}
           </span>
         )}
+        {perks}
       </div>
 
       <div className="flex shrink-0 items-center gap-1">

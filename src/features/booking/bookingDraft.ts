@@ -4,6 +4,8 @@ import type {
   BookingBelongingInput,
   CreateBookingEntry,
   Pet,
+  PlannedBenefit,
+  PlannedExtra,
   Service,
   ServiceKind,
   UpdateBookingInput,
@@ -66,20 +68,37 @@ export interface BookingCardDraft {
   /** The add-ons ticked under it, by service id. */
   addonServiceIds: string[];
   /**
-   * A MEMBERSHIP BENEFIT THIS BOOKING MEANS TO USE (30 September 2026).
-   *
-   * A PLAN, NOT A SPEND: nothing is deducted when the booking is made. The
-   * quota moves when it is BILLED, and the till re-reads the card then — a
-   * booking is a promise, and one that ate a customer's weekly free bath and
-   * was then cancelled would have taken something from somebody who received
-   * nothing.
-   *
-   * WHAT IT IS FOR is the conversation at the counter: "pakai jatah gratisnya
-   * ya" is agreed when the appointment is made, days before anybody rings it
-   * up. Without it, that has to be remembered by whoever happens to be on the
-   * till.
+   * TICKED ADD-ONS SET TO "TANPA MEMBER" (22 October 2026) — billed at their
+   * normal price although a member benefit fits. Saved as
+   * `noMemberBenefitAddonIds` (`service.addons[].noMemberBenefit`), and the
+   * till starts those lines on "Tanpa member". Ids no longer ticked are
+   * dropped on save.
    */
-  plannedBenefit: { membershipId: string; benefitId: string } | null;
+  noMemberAddonIds: string[];
+  /**
+   * A MEMBERSHIP BENEFIT THIS BOOKING USES (30 September 2026; Promosi V1,
+   * 16 October 2026).
+   *
+   * IT HOLDS THE JATAH since Promosi V1: a saved plan counts as used in the
+   * period of the booking's own date until the booking is billed or cancelled
+   * (membership-v1 §3.3, §8). What the radio shows is what gets saved — see
+   * `effectivePlan` in `benefitQuote.ts`.
+   */
+  plannedBenefit: PlannedBenefit | null;
+  /**
+   * WHETHER SOMEBODY ANSWERED THE BENEFIT QUESTION — a pick, or "Tanpa member"
+   * (`plannedBenefit: null`). False on a new card: the quote's recommended
+   * candidate is then preselected. True on an edit, so a stored "no benefit"
+   * is not quietly turned into one.
+   */
+  benefitPicked: boolean;
+  /**
+   * "BENEFIT YANG AKAN DIBERIKAN" (22 October 2026) — the animal's card
+   * benefits a booking cannot bill (product jatah, perks) ticked as a NOTE for
+   * this visit. Saved as `plannedExtras`; no jatah, no price. Cleared when the
+   * card's animal changes — the server refuses another animal's card.
+   */
+  plannedExtras: PlannedExtra[];
   /** As typed; "" means "use the catalogue's". */
   durationMin: string;
   /**
@@ -127,7 +146,10 @@ export function blankCard(petId = ""): BookingCardDraft {
     serviceKind: "",
     serviceId: "",
     addonServiceIds: [],
+    noMemberAddonIds: [],
     plannedBenefit: null,
+    benefitPicked: false,
+    plannedExtras: [],
     durationMin: "",
     groomerUserId: UNASSIGNED,
     internalNotes: "",
@@ -164,12 +186,23 @@ export function cardFromBooking(booking: Booking): BookingCardDraft {
     addonServiceIds: (service?.addons ?? [])
       .filter((addon) => !addon.visitFee)
       .map((addon) => addon.serviceId),
+    noMemberAddonIds: (service?.addons ?? [])
+      .filter((addon) => !addon.visitFee && addon.noMemberBenefit === true)
+      .map((addon) => addon.serviceId),
     plannedBenefit: booking.plannedBenefit
       ? {
           membershipId: booking.plannedBenefit.membershipId,
           benefitId: booking.plannedBenefit.benefitId,
+          optionId: booking.plannedBenefit.optionId ?? null,
         }
       : null,
+    /* The stored answer, including "none" — an edit never adds a benefit on its own. */
+    benefitPicked: true,
+    plannedExtras: (booking.plannedExtras ?? []).map((extra) => ({
+      membershipId: extra.membershipId,
+      benefitId: extra.benefitId,
+      label: extra.label ?? "",
+    })),
     // Shown as typed, so saving without touching it keeps the number.
     durationMin:
       service?.durationMin === null || service?.durationMin === undefined
@@ -202,6 +235,18 @@ const belongingsOf = (card: BookingCardDraft): BelongingDraft[] =>
     .map((belonging) => ({ ...belonging, name: belonging.name.trim() }))
     .filter((belonging) => belonging.name !== "");
 
+/** The ticked "benefit yang akan diberikan" — ids and the label shown. */
+const extrasOf = (card: BookingCardDraft): PlannedExtra[] =>
+  (card.plannedExtras ?? []).map(({ membershipId, benefitId, label }) => ({
+    membershipId,
+    benefitId,
+    ...(label ? { label } : {}),
+  }));
+
+/** The ticked add-ons set to "Tanpa member" — an add-on unticked since is dropped. */
+const noMemberIdsOf = (card: BookingCardDraft): string[] =>
+  (card.noMemberAddonIds ?? []).filter((id) => card.addonServiceIds.includes(id));
+
 /**
  * The fields one card contributes, in the names both `POST` and `PATCH` use.
  *
@@ -215,6 +260,8 @@ function cardFields(card: BookingCardDraft) {
     petId: card.petId,
     serviceId: card.serviceId,
     addonServiceIds: card.addonServiceIds,
+    /* Only ticked ones — an add-on unticked since is not on the booking. */
+    noMemberBenefitAddonIds: noMemberIdsOf(card),
     durationMin:
       card.durationMin.trim() === "" ? undefined : Number(card.durationMin),
     /* FR-3's "Belum ditentukan" is a real state, sent as null. */
@@ -223,12 +270,23 @@ function cardFields(card: BookingCardDraft) {
     internalNotes: noteOf(card.internalNotes),
     customerNotes: noteOf(card.customerNotes),
     /*
-      TWO IDS AND NOTHING ELSE — which card, which benefit. The server stores
-      the plan as sent and deducts nothing; the till prices it for real when the
-      booking is billed. `null` clears a plan somebody changed their mind about,
-      which is why it is sent rather than omitted when empty.
+      WHICH CARD, WHICH BENEFIT, WHICH OPTION — the server validates it against
+      the card on the booking's date and then HOLDS the jatah (membership-v1
+      §8). `null` clears a plan somebody changed their mind about (and releases
+      its hold), which is why it is sent rather than omitted when empty.
+
+      The form resolves the card's plan against the latest quote BEFORE calling
+      this (`effectivePlan`), so a preselected candidate is saved too.
     */
-    plannedBenefit: card.plannedBenefit,
+    plannedBenefit: card.plannedBenefit
+      ? {
+          membershipId: card.plannedBenefit.membershipId,
+          benefitId: card.plannedBenefit.benefitId,
+          optionId: card.plannedBenefit.optionId ?? null,
+        }
+      : null,
+    /* A note — replaces the set on an edit, `[]` clears it. */
+    plannedExtras: extrasOf(card),
   };
 }
 
@@ -257,8 +315,13 @@ export function cardsToEntries(
         card.variantChoices ?? [],
       );
 
+      /* A create sends the list only when it says something — false is the default. */
+      const { noMemberBenefitAddonIds, plannedExtras, ...fields } = cardFields(card);
+
       return {
-        ...cardFields(card),
+        ...fields,
+        ...(noMemberBenefitAddonIds.length > 0 ? { noMemberBenefitAddonIds } : {}),
+        ...(plannedExtras.length > 0 ? { plannedExtras } : {}),
         belongings: belongingsOf(card).map(({ name, checkedInAt }) => ({
           name,
           ...(checkedInAt ? { checkedInAt } : {}),
@@ -289,6 +352,9 @@ export function cardToUpdate(
   | "customerNotes"
   | "belongings"
   | "variantChoices"
+  | "plannedBenefit"
+  | "noMemberBenefitAddonIds"
+  | "plannedExtras"
 > {
   /*
     THE CHOICES ONLY WHEN THERE ARE SOME, and never on a billed line — the server

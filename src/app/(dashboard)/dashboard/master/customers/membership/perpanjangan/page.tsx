@@ -1,27 +1,12 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { CustomerModuleHeader } from "@/features/customers";
-import { MembershipSubTabs, RenewalPanel } from "@/features/memberships";
-import { RequirePermission } from "@/features/permissions";
-
-export const metadata: Metadata = {
-  title: "Perpanjangan · Membership · Buloo",
-};
+import { MEMBERSHIP_RENEWALS_HREF } from "@/features/memberships/labels";
 
 /**
- * TAWARAN PERPANJANGAN — a call list, not a report. Nothing here sends anything:
- * this system has no scheduler and no message blaster. What it gives is the
- * right list, in the place somebody is already standing, with the owner's number
- * on every row.
+ * MOVED TO PROMOSI — 16 October 2026: Membership left Pelanggan for its own
+ * rail module. Kept so old links and bookmarks land; delete once nothing links
+ * here any more. `params` is a Promise in this version of Next — see AGENTS.md.
  */
-export default function MembershipRenewalsPage() {
-  return (
-    <RequirePermission feature="petMemberships">
-      <div className="flex flex-col gap-6">
-        <CustomerModuleHeader />
-        <MembershipSubTabs />
-        <RenewalPanel />
-      </div>
-    </RequirePermission>
-  );
+export default function MovedMembershipRenewalsPage() {
+  redirect(MEMBERSHIP_RENEWALS_HREF);
 }

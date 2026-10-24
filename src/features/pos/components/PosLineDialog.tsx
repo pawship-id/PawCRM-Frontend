@@ -21,6 +21,7 @@ import { formatMoney } from "@/utils/decimal";
 import type { PosDiscountMode, PosItem, PosLots } from "@/types/api";
 
 import { ownDiscountOf } from "../bookingDiscount";
+import { pickOf } from "../membershipCart";
 import { LotSplitEditor, lotRowsValid, type LotRow } from "./LotSplitEditor";
 import { PERCENT, storedToInput, WHOLE_RUPIAH } from "./PosDiscountPopover";
 
@@ -143,7 +144,14 @@ export function PosLineDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, itemKey]);
 
-  const trimmed = amount.trim();
+  /*
+    A LINE A MEMBERSHIP BENEFIT PAYS FOR TAKES NO DISCOUNT (Promosi V1, BO
+    schema: "baris yang memakai jatah tidak ikut promo lain"). The box is not
+    offered, and Simpan sends none — the server refuses the pair anyway.
+  */
+  const memberLine = item ? pickOf(item) !== null : false;
+
+  const trimmed = memberLine ? "" : amount.trim();
   const normalised = trimmed.replace(",", ".");
   // An empty box means "no discount", which is a valid thing to save.
   const discountValid =
@@ -306,63 +314,72 @@ export function PosLineDialog({
           )}
 
           {/* ─── DISKON — two icon toggles and the box on ONE line ─── */}
-          <div className="space-y-1">
+          {memberLine ? (
             <div className="flex items-center gap-3">
-              <Label className="w-16 shrink-0 text-sm font-semibold">
-                Diskon
-              </Label>
-              <div className="flex shrink-0 gap-1">
-                <Button
-                  type="button"
-                  size="icon"
-                  className="size-8"
-                  variant={mode === "percent" ? "default" : "secondary"}
-                  aria-label="Diskon persen"
-                  aria-pressed={mode === "percent"}
-                  onClick={() => setMode("percent")}
-                >
-                  <Percent className="size-4" />
-                </Button>
-                <Button
-                  type="button"
-                  size="icon"
-                  className="size-8 text-xs font-semibold"
-                  variant={mode === "amount" ? "default" : "secondary"}
-                  aria-label="Diskon rupiah"
-                  aria-pressed={mode === "amount"}
-                  onClick={() => setMode("amount")}
-                >
-                  Rp
-                </Button>
-              </div>
-              <Input
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
-                inputMode="decimal"
-                placeholder="0"
-                aria-label={
-                  mode === "percent"
-                    ? "Nilai diskon persen"
-                    : "Nilai diskon rupiah"
-                }
-                className="h-9 min-w-0 flex-1 tabular-nums"
-              />
+              <Label className="w-16 shrink-0 text-sm font-semibold">Diskon</Label>
+              <p className="text-sm text-muted">
+                Tidak bisa diberi diskon — baris ini sudah dipotong benefit membership.
+              </p>
             </div>
+          ) : (
+            <div className="space-y-1">
+              <div className="flex items-center gap-3">
+                <Label className="w-16 shrink-0 text-sm font-semibold">
+                  Diskon
+                </Label>
+                <div className="flex shrink-0 gap-1">
+                  <Button
+                    type="button"
+                    size="icon"
+                    className="size-8"
+                    variant={mode === "percent" ? "default" : "secondary"}
+                    aria-label="Diskon persen"
+                    aria-pressed={mode === "percent"}
+                    onClick={() => setMode("percent")}
+                  >
+                    <Percent className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    size="icon"
+                    className="size-8 text-xs font-semibold"
+                    variant={mode === "amount" ? "default" : "secondary"}
+                    aria-label="Diskon rupiah"
+                    aria-pressed={mode === "amount"}
+                    onClick={() => setMode("amount")}
+                  >
+                    Rp
+                  </Button>
+                </div>
+                <Input
+                  value={amount}
+                  onChange={(event) => setAmount(event.target.value)}
+                  inputMode="decimal"
+                  placeholder="0"
+                  aria-label={
+                    mode === "percent"
+                      ? "Nilai diskon persen"
+                      : "Nilai diskon rupiah"
+                  }
+                  className="h-9 min-w-0 flex-1 tabular-nums"
+                />
+              </div>
 
-            {trimmed && !discountValid && (
-              <p className="pl-[76px] text-xs text-danger">
-                {mode === "percent"
-                  ? "Isi persentase 0–100, misalnya 7,5."
-                  : "Isi angka rupiah tanpa titik, misalnya 15000."}
-              </p>
-            )}
-            {own && trimmed === storedToInput(own) && (
-              <p className="pl-[76px] text-xs text-muted">
-                Terpotong {formatMoney(own.resolvedAmount)}. Kosongkan kotak
-                untuk menghapus diskon.
-              </p>
-            )}
-          </div>
+              {trimmed && !discountValid && (
+                <p className="pl-[76px] text-xs text-danger">
+                  {mode === "percent"
+                    ? "Isi persentase 0–100, misalnya 7,5."
+                    : "Isi angka rupiah tanpa titik, misalnya 15000."}
+                </p>
+              )}
+              {own && trimmed === storedToInput(own) && (
+                <p className="pl-[76px] text-xs text-muted">
+                  Terpotong {formatMoney(own.resolvedAmount)}. Kosongkan kotak
+                  untuk menghapus diskon.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* ─── CATATAN — above the batches ─── */}
           <div className="space-y-2">

@@ -125,13 +125,14 @@ describe("PosCart — Diskon booking", () => {
 });
 
 /**
- * "DISKON MEMBERSHIP" — a card's own line, apart from "Diskon item"
+ * "POTONGAN MEMBERSHIP" — a card's own line, apart from "Diskon item"
  * (1 October 2026, on request).
  *
  * It used to be folded into "Diskon item" — one figure answering two different
  * questions, "how much did we choose to give away" and "how much had the
- * customer already paid for". A card's part now gets its own line, with which
- * lines it paid for underneath; "Diskon item" is cashier-typed discounts only.
+ * customer already paid for". A card's part now gets its own row, "Potongan
+ * membership" (Promosi V1 — which line it paid for is on that line's own
+ * select now); "Diskon item" is cashier-typed discounts only.
  */
 const cartWithBenefit = () =>
   ({
@@ -218,8 +219,8 @@ const openWithBenefit = () =>
     />,
   );
 
-describe("PosCart — Diskon membership", () => {
-  it("keeps a card's giveaway out of Diskon item, in its own line", () => {
+describe("PosCart — Potongan membership", () => {
+  it("keeps a card's giveaway out of Diskon item, in its own row", () => {
     openWithBenefit();
 
     /* Only the cashier's own 5.000 off the shampoo — the card's 169.000 is not
@@ -228,31 +229,51 @@ describe("PosCart — Diskon membership", () => {
       "Rp 5.000",
     );
     expect(
-      screen.getByText("Diskon membership").parentElement?.textContent,
+      screen.getByText("Potongan membership").parentElement?.textContent,
     ).toContain("Rp 169.000");
   });
 
-  it("lists which line the card paid for, under the total", () => {
-    openWithBenefit();
+  /* The server's own figure wins — it includes visit-fee waivers (§6.4). */
+  it("reads runningTotals.membershipDiscount when the server sends it", () => {
+    const basket = cartWithBenefit();
+    basket.runningTotals = {
+      ...basket.runningTotals,
+      itemDiscount: "214000.0000",
+      membershipDiscount: "209000.0000",
+    };
 
-    /* It also names the line as the cart line's own title does — appears
-       twice, once on the row and once in this list. */
+    renderWithAuth(
+      <PosCart
+        cart={basket}
+        busy={false}
+        error={null}
+        onQtyChange={jest.fn()}
+        onRemove={jest.fn()}
+        onItemDetails={jest.fn()}
+        onLinePrice={jest.fn()}
+        onCartDiscount={jest.fn()}
+        onCharges={jest.fn()}
+        onHold={jest.fn()}
+        onCheckout={jest.fn()}
+        onNote={jest.fn()}
+        onPickCustomer={jest.fn()}
+        onClearCustomer={jest.fn()}
+      />,
+    );
+
     expect(
-      screen.getAllByText("Bruno - Full Grooming - In Store"),
-    ).toHaveLength(2);
-    /* The shampoo was the cashier's own discount, not the card's — it stays off
-       the "Diskon membership" list, even though it is still in the basket. */
-    const membershipList = screen
-      .getByText("Diskon membership")
-      .closest("div")?.nextElementSibling;
-    expect(membershipList?.textContent).not.toContain("Sampo Kutu");
+      screen.getByText("Potongan membership").parentElement?.textContent,
+    ).toContain("Rp 209.000");
+    expect(screen.getByText("Diskon item").parentElement?.textContent).toContain(
+      "Rp 5.000",
+    );
   });
 
-  /* No membership on the basket at all: the line does not appear as "Rp 0". */
+  /* No membership on the basket at all: the row does not appear as "Rp 0". */
   it("says nothing when no line was paid by a card", () => {
     open();
 
-    expect(screen.queryByText("Diskon membership")).not.toBeInTheDocument();
+    expect(screen.queryByText("Potongan membership")).not.toBeInTheDocument();
   });
 });
 

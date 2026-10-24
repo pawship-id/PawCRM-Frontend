@@ -2,6 +2,8 @@ import { divideRound, toMinor } from "@/utils/decimal";
 import { splitChoices } from "@/features/booking/variantLine";
 import type {
   CreateBookingEntry,
+  PlannedBenefit,
+  PlannedExtra,
   Service,
   TypedDiscountInput,
   VariantChoice,
@@ -57,6 +59,28 @@ export interface PetDraft {
    * add-ons declare (17 September 2026). Emptied when the service changes.
    */
   variantChoices: VariantChoice[];
+  /**
+   * THE MEMBERSHIP BENEFIT THIS BOOKING USES (Promosi V1) — the same pair
+   * `BookingCardDraft` holds, read by the same `benefitQuote.ts`. A saved plan
+   * HOLDS the jatah until the booking is billed or cancelled.
+   */
+  plannedBenefit: PlannedBenefit | null;
+  /**
+   * Whether somebody answered the benefit question — a pick or "Tanpa member".
+   * False on a new animal: the quote's recommended candidate is preselected.
+   */
+  benefitPicked: boolean;
+  /**
+   * Ticked add-ons set to "Tanpa member" (22 October 2026) — billed at normal
+   * price, saved as `noMemberBenefitAddonIds`, honoured by the till.
+   */
+  noMemberAddonIds: string[];
+  /**
+   * "Benefit yang akan diberikan" (22 October 2026) — the animal's card
+   * benefits a booking cannot bill, ticked as a NOTE. Saved as
+   * `plannedExtras`; no jatah, no price.
+   */
+  plannedExtras: PlannedExtra[];
 }
 
 export function blankPetDraft(petId: string): PetDraft {
@@ -69,6 +93,10 @@ export function blankPetDraft(petId: string): PetDraft {
     main: BLANK_PRICE,
     addons: {},
     variantChoices: [],
+    plannedBenefit: null,
+    benefitPicked: false,
+    noMemberAddonIds: [],
+    plannedExtras: [],
   };
 }
 
@@ -266,6 +294,9 @@ export function toEntry(
     .filter((row) => row.price !== null || row.discount !== null || "variantChoices" in row);
 
   const note = draft.internalNotes.trim();
+  const noMember = (draft.noMemberAddonIds ?? []).filter((id) =>
+    draft.addonServiceIds.includes(id),
+  );
 
   return {
     petId: draft.petId,
@@ -276,6 +307,30 @@ export function toEntry(
     price: draft.main.price === "" ? null : draft.main.price,
     discount: typedDiscount(draft.main.discountMode, draft.main.discountValue),
     ...(addonPricing.length > 0 ? { addonPricing } : {}),
+    /* "Tanpa member" per add-on — only ticked ones, and only when there are some. */
+    ...(noMember.length > 0 ? { noMemberBenefitAddonIds: noMember } : {}),
+    /* "Benefit yang akan diberikan" — a note, only when something is ticked. */
+    ...((draft.plannedExtras ?? []).length > 0
+      ? {
+          plannedExtras: draft.plannedExtras.map(({ membershipId, benefitId, label }) => ({
+            membershipId,
+            benefitId,
+            ...(label ? { label } : {}),
+          })),
+        }
+      : {}),
     ...(choices.main.length > 0 ? { variantChoices: choices.main } : {}),
+    /*
+      ALWAYS SENT, null included — as `BookingForm` sends it. The screen resolves
+      the draft's plan against the latest quote first (`effectivePlan`), so a
+      preselected candidate is saved too, and "Tanpa member" is an answer.
+    */
+    plannedBenefit: draft.plannedBenefit
+      ? {
+          membershipId: draft.plannedBenefit.membershipId,
+          benefitId: draft.plannedBenefit.benefitId,
+          optionId: draft.plannedBenefit.optionId ?? null,
+        }
+      : null,
   };
 }

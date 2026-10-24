@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { PawPrint, Plus, User } from "lucide-react";
+import { CalendarClock, PawPrint, Plus, User } from "lucide-react";
 
 import { Alert, FilterSelect, InfoTooltip, Spinner } from "@/components";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PROMOSI_SUMMARY_HREF, cardHref } from "@/features/memberships";
 import { Can } from "@/features/permissions";
+import { membershipService } from "@/services/membership.service";
+import type { AttentionCard } from "@/types/membership";
 import { customerService } from "@/services/customer.service";
 import type { Customer, CustomerStats, DormantCustomer } from "@/types/api";
 import { formatMoney } from "@/utils/decimal";
@@ -58,8 +60,9 @@ function daysSince(iso: string): number {
  * the day they were registered, because an inner join would have dropped exactly
  * the most neglected contacts a shop has.
  *
- * WHAT IS BADGED RATHER THAN BUILT: the mockup's membership-expiry worklist.
- * There is no membership in the system.
+ * "MEMBERSHIP MENDEKATI HABIS" READS THE PROMOSI ATTENTION ENDPOINT
+ * (`GET /pet-memberships/attention`, 14 days) — the same list Promosi ›
+ * Ringkasan works from, so the two never disagree about who to call.
  *
  * "PELANGGAN BARU DALAM" ONLY SHOWS WHO JOINED. The mockup's "Tandai sudah
  * dihubungi" was dropped on request (3 October 2026) rather than built, and the
@@ -150,7 +153,11 @@ export function CustomerSummaryScreen() {
 
       <DormantPanel />
       <NewCustomersPanel />
-      <MembershipPanel />
+      {/* Membership is its own grant; without it the panel would only ever show a 403. */}
+      <Can feature="petMemberships" action="read">
+        <MembershipPanel />
+      </Can>
+
     </div>
   );
 }
@@ -602,19 +609,77 @@ function NewCustomersPanel() {
 /* -------------------------------------------------------------------------- */
 
 function MembershipPanel() {
+  const [rows, setRows] = useState<AttentionCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    membershipService
+      .attention({})
+      .then((result) => {
+        if (!active) return;
+        setRows(result.expiring);
+        setError(null);
+      })
+      .catch(() => {
+        if (active) setError("Daftar membership tidak bisa dimuat.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <Panel
-      icon={<User className="size-4" />}
+      icon={<CalendarClock className="size-4" />}
       title="Membership mendekati habis"
+      tone={rows.length > 0 ? "warn" : "plain"}
+      count={loading || error ? undefined : rows.length}
+      seeAll={
+        !loading && !error && rows.length > 0
+          ? { href: PROMOSI_SUMMARY_HREF, label: "Lihat di Promosi" }
+          : undefined
+      }
     >
-      <div className="flex flex-wrap items-center gap-3 py-2">
-        <Badge variant="outline">Segera</Badge>
-        <p className="text-sm text-muted">
-          Membership belum ada di sistem, jadi belum ada masa berlaku yang bisa
-          diingatkan. Untuk sekarang tier VIP tiap pelanggan ada di tab
-          Pelanggan.
+      {error ? (
+        <Alert variant="error">{error}</Alert>
+      ) : loading ? (
+        <div className="flex items-center gap-2 py-3 text-sm text-muted">
+          <Spinner /> Memuat…
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="py-3 text-sm text-muted">
+          Tidak ada membership yang berakhir dalam 14 hari.
         </p>
-      </div>
+      ) : (
+        <ul>
+          {rows.slice(0, ROWS).map((card) => {
+            const chat = whatsAppLink(card.customerPhone);
+            const holder = card.petName
+              ? `${card.petName} · ${card.customerName ?? "Pelanggan"}`
+              : (card.customerName ?? "Pelanggan");
+
+            return (
+              <WorkRow
+                key={card.id}
+                name={
+                  <Link href={cardHref(card.id)} className="underline-offset-2 hover:underline">
+                    {holder}
+                  </Link>
+                }
+                meta={`${card.planName ?? "Membership"} · berakhir ${day(card.endDate)} · ${card.daysLeft} hari lagi`}
+                action={chat && <RowAction href={chat}>Hubungi</RowAction>}
+              />
+            );
+          })}
+        </ul>
+      )}
     </Panel>
   );
 }

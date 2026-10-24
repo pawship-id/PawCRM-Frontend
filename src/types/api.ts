@@ -1990,6 +1990,27 @@ export interface PosDiscount {
   benefitId?: string | null;
   /** Frozen onto the line so a reprinted receipt can name it without a lookup. */
   benefitLabel?: string | null;
+  /** Promosi V1 (contract §6.4): a package of the SAME cart paid for it. */
+  packageRef?: string | null;
+  optionId?: string | null;
+  /** Quota uses spent (>1 only for a free item on qty > 1). */
+  units?: number | null;
+  visitFee?: "free" | "zone" | null;
+  /** True on a visit-fee line waived by a member pick — derived, not picked. */
+  visitFeeWaiver?: boolean;
+}
+
+/**
+ * WHICH CARD, WHICH BENEFIT, WHICH OPTION — never an amount (contract §6.3).
+ *
+ * A real card is named by `membershipId`; a package bought in this same cart
+ * by `packageRef` (its virtual card's id changes on every quote).
+ */
+export interface PosBenefitPick {
+  membershipId?: string | null;
+  packageRef?: string | null;
+  benefitId: string;
+  optionId?: string | null;
 }
 
 /** One line in the basket. `name` and `unitPrice` are snapshots. */
@@ -2034,6 +2055,30 @@ export interface PosItem {
   membershipDiscount?: string | null;
   /** The card this line minted, once the sale is paid. Membership lines only. */
   membershipId?: string | null;
+  /**
+   * PROMOSI V1 (contract §6.4) — the line's current member pick in the shape a
+   * write sends back. Null when none, and on a visit-fee waiver line.
+   */
+  benefit?: PosBenefitPick | null;
+  /** The line bills a booking. */
+  fromBooking?: boolean;
+  /** The booking's agreed pick — main line only. "Sesuai booking" when it equals `benefit`. */
+  plannedBenefit?: { membershipId: string; benefitId: string; optionId: string | null } | null;
+  /** A booking add-on agreed "Tanpa member" — the till does not auto-apply it. */
+  plannedNoBenefit?: boolean;
+  /**
+   * The line's booking's "Benefit yang akan diberikan" — read live from the
+   * booking. A reminder for the cashier; it applies nothing. `[]` off a booking.
+   */
+  bookingPlannedExtras?: PlannedExtra[];
+  /** Package line: when cover starts (null = when paid). */
+  membershipStartDate?: string | null;
+  /** Package line: the referral code collected at the till. */
+  referralCode?: string | null;
+  /** Package line: the client's id for it, so same-cart lines can spend it. */
+  packageRef?: string | null;
+  /** Package line: the card it renews. */
+  renewFromId?: string | null;
   hppAtTime: string | null;
   /**
    * THE BOOKING BEHIND THIS LINE — and since one booking is one animal and one
@@ -2184,6 +2229,11 @@ export interface PosTotals {
 export interface PosRunningTotals {
   subtotal: string;
   itemDiscount: string;
+  /**
+   * Σ the lines' `membershipDiscount`, visit-fee waivers included — "Potongan
+   * membership" (contract §6.4). A part of `itemDiscount`, never beside it.
+   */
+  membershipDiscount?: string;
   cartDiscount: string;
   otherCharges: string;
   /** What is owed BEFORE tax is separated out. Not what a payment must cover. */
@@ -2357,6 +2407,17 @@ export interface PosCatalogItem {
    */
   durationDays?: number | null;
   benefitCount?: number;
+  /** Promosi V1 (contract §6.1) — months win over days when set. */
+  durationMonths?: number | null;
+  /** On a `variant` plan `price` is the lowest variant price: print "mulai". */
+  priceFrom?: boolean;
+  priceMode?: "fixed" | "variant";
+  eligibility?: "all" | "new_customer" | "renewal" | "referral";
+  attachTo?: "pet" | "customer";
+  /** Pet-option ids; empty = every species. */
+  petSpecies?: string[];
+  /** Empty = every branch. */
+  branchIds?: string[];
   _id: string;
   name: string;
   code: string | null;
@@ -2436,6 +2497,12 @@ export interface PosCatalogItem {
    * Null on an add-on and on a service saved before the field existed.
    */
   serviceKind?: ServiceKind | null;
+  /**
+   * MAIN OR ADD-ON (21 October 2026). An add-on tile, once its animal is
+   * chosen, asks which of that animal's unfinished groomings it goes on.
+   * Absent on a product tile and on a server older than the field.
+   */
+  serviceType?: "main" | "addon";
   /**
    * How it is charged. On a ride it is the multiplier: `per_pet` is the
    * catalogue's price once per booking the van serves, `per_visit` once
@@ -2891,11 +2958,15 @@ export interface PosItemInput {
    * `unitPrice`: the server rebuilds each line from this payload, so a benefit
    * left out of the next write silently drops off that line.
    */
-  benefit?: { membershipId: string; benefitId: string } | null;
+  benefit?: PosBenefitPick | null;
   /** On a `membership` line: when cover starts. Default is the day it is paid. */
   membershipStartDate?: string;
   /** On a `membership` line: the card this one renews. */
   renewFromId?: string;
+  /** On a `membership` line: required by a `referral` plan (stored, not verified). */
+  referralCode?: string;
+  /** On a `membership` line: unique per cart — the quote's `packages[].ref`. */
+  packageRef?: string;
   bookingId?: string | null;
   /** A home-grooming trip's fee line — sent back so the server keeps it (11 October 2026). */
   homeTripId?: string | null;
@@ -2916,6 +2987,37 @@ export interface PosItemInput {
   linkedBookingIds?: string[];
   /** Every animal in the van. Only on a ride, which has no `petId`. */
   passengerPetIds?: string[];
+  /**
+   * THE MAIN SERVICE AN ADD-ON IS HUNG ON (21 October 2026) — sent ONCE, on
+   * the write where the cashier answers "Add-on ini untuk layanan yang mana?",
+   * together with that main line's `bookingId`. The server checks it and, from
+   * then on, reads the parent off the booking itself; `cartItemsAsInput` never
+   * sends it back.
+   */
+  parentServiceId?: string | null;
+}
+
+/**
+ * GET /api/pos/transactions/:id/addon-hosts — one place an add-on picked alone
+ * off the grid may go (21 October 2026): a grooming line already in this
+ * basket (`cart`), or a grooming booking in the diary the basket may pull
+ * (`diary`).
+ */
+export interface PosAddonHost {
+  source: "cart" | "diary";
+  /** Null only on a basket line not yet written — the till never offers one. */
+  bookingId: string | null;
+  bookingNumber: string | null;
+  /** The main service's catalogue id — what the add-on line sends as its parent. */
+  serviceId: string;
+  serviceName: string | null;
+  status: BookingStatus | null;
+  scheduledAt: string | null;
+  /**
+   * This host already carries the add-on asked about (`addonId`) — one add-on
+   * at most once per booking, so the till draws it disabled (21 October 2026).
+   */
+  hasAddon: boolean;
 }
 
 /** One counter line's journey, as a response carries it. */
@@ -3196,7 +3298,9 @@ export interface Booking {
    * client text or a card read per booking to decorate a board. The till names
    * the benefit where the name changes what somebody does.
    */
-  plannedBenefit?: { membershipId: string; benefitId: string } | null;
+  plannedBenefit?: PlannedBenefit | null;
+  /** "Benefit yang akan diberikan" — noted on the form, labelled by the server. */
+  plannedExtras?: PlannedExtra[];
   tripLeg?: TripLeg | null;
   /**
    * EVERY ANIMAL IN THE VAN (23 September 2026) — all of them, not "the others".
@@ -3531,6 +3635,8 @@ export interface BookingAddon {
   durationMin: number | null;
   /** Its own "Dipilih staf" values — inherited from the main service unless changed. */
   variantChoices?: VariantChoiceSnapshot[];
+  /** "Tanpa member" agreed for this add-on — billed at normal price (22 Oct 2026). */
+  noMemberBenefit?: boolean;
   /**
    * Set ONLY on the home-visit fee line (10 October 2026). The server owns the
    * row: it cannot be ticked, priced or removed from a form, and it is
@@ -4107,6 +4213,31 @@ export interface BookingBelongingInput {
  * it is a receptionist recording that this nervous dog takes longer than the
  * catalogue thinks, which is not the same kind of fact at all.
  */
+/**
+ * THE MEMBERSHIP BENEFIT A BOOKING MEANS TO USE (membership-v1 §8).
+ *
+ * Since Promosi V1 it HOLDS the quota: a live, unbilled booking counts as used
+ * in the period of its own date until it is billed, cancelled or rescheduled.
+ * `optionId` null = the best covering option when billed.
+ */
+export interface PlannedBenefit {
+  membershipId: string;
+  benefitId: string;
+  optionId?: string | null;
+}
+
+/**
+ * "BENEFIT YANG AKAN DIBERIKAN" (22 October 2026) — a card benefit a booking
+ * cannot bill (a product jatah, a perk), ticked as a NOTE for this visit. No
+ * quota moves and no price changes. `label` is the server's snapshot of the
+ * card's own label; a label sent in is ignored.
+ */
+export interface PlannedExtra {
+  membershipId: string;
+  benefitId: string;
+  label?: string;
+}
+
 export interface CreateBookingEntry {
   /**
    * OMITTED ON A RIDE, and required everywhere else. A card that sends both
@@ -4163,6 +4294,12 @@ export interface CreateBookingEntry {
   internalNotes?: string | null;
   customerNotes?: string | null;
   belongings?: { name: string; checkedInAt?: string | null }[];
+  /** The membership benefit this booking holds — see `PlannedBenefit`. */
+  plannedBenefit?: PlannedBenefit | null;
+  /** Ticked add-ons agreed "Tanpa member" (`service.addons[].noMemberBenefit`). */
+  noMemberBenefitAddonIds?: string[];
+  /** "Benefit yang akan diberikan" — a note, see `PlannedExtra`. */
+  plannedExtras?: PlannedExtra[];
 }
 
 /**
@@ -4279,6 +4416,12 @@ export interface UpdateBookingInput {
   passengerPetIds?: string[];
   /** The bookings the ride serves. Re-quotes a `per_pet` ride. */
   linkedBookingIds?: string[];
+  /** `null` clears the plan (and releases its hold). */
+  plannedBenefit?: PlannedBenefit | null;
+  /** Replaces the add-ons agreed "Tanpa member"; absent keeps them. */
+  noMemberBenefitAddonIds?: string[];
+  /** Replaces the noted benefits; absent keeps them, `[]` clears. */
+  plannedExtras?: PlannedExtra[];
   forceClash?: boolean;
 }
 /**
