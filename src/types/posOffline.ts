@@ -9,6 +9,7 @@ import type {
   PosCharge,
   PosDiscountMode,
   PosItemInput,
+  PosLot,
   PosPaymentInput,
 } from "./api";
 
@@ -87,6 +88,12 @@ export interface OfflineCatalogSection {
 export interface OfflineStockSection {
   warehouseId: string | null;
   qty: Record<string, string>;
+  /**
+   * The shelf's expiring lots by product, soonest first (25 Oct 2026) — what
+   * lets the till find a product by its batch label and sell from that lot
+   * while offline. Absent in a snapshot taken before it existed.
+   */
+  lots?: Record<string, PosLot[]>;
   allowNegativeStock: boolean;
 }
 

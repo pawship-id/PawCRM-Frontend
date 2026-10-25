@@ -58,7 +58,8 @@ async function writeCarts(context: OfflineTillContext, carts: LocalCart[]): Prom
 }
 
 function pricingOf(context: OfflineTillContext) {
-  return { snapshot: getOfflineState().snapshot, maySetPrice: context.maySetPrice };
+  const { snapshot, pendingLotQty } = getOfflineState();
+  return { snapshot, maySetPrice: context.maySetPrice, pendingLotQty };
 }
 
 function shiftOrRefuse() {

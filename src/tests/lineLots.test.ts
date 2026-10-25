@@ -66,7 +66,7 @@ describe("lotsWithOneMore — one more unit on a product line", () => {
     ]);
   });
 
-  it("gives up when the shelf in the books cannot cover the line", () => {
+  it("puts what the books cannot cover on the last lot, keeping the scanned one", () => {
     expect(
       lotsWithOneMore({
         named: [],
@@ -74,6 +74,26 @@ describe("lotsWithOneMore — one more unit on a product line", () => {
         scannedBatchId: "b1",
         lots: SHELF,
       }),
+    ).toEqual([
+      { batchId: "b1", qty: "2" },
+      { batchId: "b2", qty: "11" },
+    ]);
+  });
+
+  it("puts a tap on the line's last lot when there is no shelf to read", () => {
+    expect(
+      lotsWithOneMore({
+        named: [{ batchId: "b1", qty: "1" }],
+        lineQty: 1,
+        scannedBatchId: null,
+        lots: [],
+      }),
+    ).toEqual([{ batchId: "b1", qty: "2" }]);
+  });
+
+  it("names nothing when there is no lot at all", () => {
+    expect(
+      lotsWithOneMore({ named: [], lineQty: 1, scannedBatchId: null, lots: [] }),
     ).toBeNull();
   });
 });
@@ -104,7 +124,10 @@ describe("lotsAtQty — stepping a line's quantity in the basket", () => {
     ]);
   });
 
-  it("gives up when the shelf in the books cannot cover a plus", () => {
-    expect(lotsAtQty({ named, qty: 13, lots: SHELF })).toBeNull();
+  it("keeps the lots when the books cannot cover a plus", () => {
+    expect(lotsAtQty({ named, qty: 14, lots: SHELF })).toEqual([
+      { batchId: "b2", qty: "12" },
+      { batchId: "b1", qty: "2" },
+    ]);
   });
 });

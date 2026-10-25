@@ -4,8 +4,8 @@ import type { PosShift, PosTransaction } from "@/types/api";
 
 import { offlineTransport } from "@/features/pos/offline/transport";
 import { getQueued, listQueued } from "@/features/pos/offline/queue";
-import { localCatalog, tillReceipt } from "@/features/pos/offline/tillApi";
-import { setOfflineState, type OfflineSnapshot } from "@/features/pos/offline/store";
+import { localCatalog, localLots, tillReceipt } from "@/features/pos/offline/tillApi";
+import { getOfflineState, setOfflineState, type OfflineSnapshot } from "@/features/pos/offline/store";
 import { syncNow } from "@/features/pos/offline/sync";
 import {
   __resetConnectivity,
@@ -191,6 +191,119 @@ describe("localCatalog — the grid from the snapshot", () => {
     expect(tile.stock).toEqual({ qty: "-2", state: "out" });
     // The shop allows negative stock, so it still sells.
     expect(tile.sellable).toBe(true);
+  });
+});
+
+/*
+  A BATCH SCANNED WHILE OFFLINE (25 Oct 2026, BO) — the snapshot's lots find
+  the product and name the lot, as the server would.
+*/
+describe("lots on the offline shelf", () => {
+  const lot = (_id: string, batchCode: string, expiryDate: string, over = {}) => ({
+    _id,
+    batchCode,
+    supplierBatchCode: null as string | null,
+    expiryDate,
+    qtyRemaining: "5.0000",
+    ...over,
+  });
+
+  beforeEach(() => {
+    setOfflineState({
+      snapshot: {
+        ...snapshot,
+        stock: {
+          ...snapshot.stock!,
+          lots: {
+            p1: [
+              lot("old", "B2401-0001", "2024-01-31T00:00:00.000Z"),
+              lot("b1", "B2610-0042", "2027-01-31T00:00:00.000Z", { supplierBatchCode: "SPL7" }),
+              lot("b2", "B2610-0043", "2027-03-31T00:00:00.000Z", { supplierBatchCode: "SPL7" }),
+            ],
+          },
+        },
+      },
+      pendingLotQty: {},
+    });
+  });
+
+  it("finds the product by our lot code and names that lot", () => {
+    const [tile] = localCatalog({ search: "B2610-0042", scan: true }).items;
+    expect(tile._id).toBe("p1");
+    expect(tile.scannedLot).toEqual({
+      batchId: "b1",
+      batchCode: "B2610-0042",
+      expiryDate: "2027-01-31T00:00:00.000Z",
+    });
+  });
+
+  it("reads a batch label's QR as a scanner types it, newlines dropped", () => {
+    const [tile] = localCatalog({ search: "BULOOSKU:RC2BATCH:B2610-0043" }).items;
+    expect(tile.scannedLot?.batchId).toBe("b2");
+  });
+
+  it("names no lot when the supplier's code is on two of ours", () => {
+    const [tile] = localCatalog({ search: "SPL7", scan: true }).items;
+    expect(tile._id).toBe("p1");
+    expect(tile.scannedLot).toBeNull();
+  });
+
+  it("offers only lots in date, less what unsent sales named from them", () => {
+    setOfflineState({ pendingLotQty: { b1: 5, b2: 2 } });
+    expect(localLots("p1")).toEqual({
+      hasExpiry: true,
+      lots: [expect.objectContaining({ _id: "b2", qtyRemaining: "3" })],
+    });
+  });
+
+  it("finds a typed piece of a lot code, as online, and names the code that matched", () => {
+    const [tile] = localCatalog({ search: "spl" }).items;
+    expect(tile._id).toBe("p1");
+    expect(tile.batchCode).toBe("SPL7");
+    expect(localCatalog({ search: "2610-0043" }).items[0].batchCode).toBe("B2610-0043");
+  });
+
+  it("says a product expires by its key in the snapshot, lots or none", () => {
+    setOfflineState({
+      snapshot: { ...snapshot, stock: { ...snapshot.stock!, lots: { p1: [] } } },
+    });
+    expect(localLots("p1")).toEqual({ hasExpiry: true, lots: [] });
+    expect(localLots("v1")).toEqual({ hasExpiry: false, lots: [] });
+  });
+
+  /* SHORT ON PAPER (25 Oct 2026, BO): the shop's negative-stock setting decides. */
+  const sellFromB1 = async (qty: string) => {
+    const till = offlineTransport(context);
+    return till.updateCart(await till.createCart(), {
+      items: [{ kind: "product", refId: "p1", qty, lots: [{ batchId: "b1", qty }] }],
+    });
+  };
+
+  it("sells from a lot short on paper where the shop allows negative stock", async () => {
+    setOfflineState({ pendingLotQty: { b1: 4 } });
+    const cart = await sellFromB1("3");
+    expect(cart.items[0].lots).toEqual([
+      { batchId: "b1", batchCode: "B2610-0042", qty: "3.0000" },
+    ]);
+  });
+
+  it("refuses it, naming the lot, where the shop refuses negative stock", async () => {
+    const current = getOfflineState().snapshot;
+    setOfflineState({
+      snapshot: { ...current, stock: { ...current.stock!, allowNegativeStock: false } },
+      pendingLotQty: { b1: 4 },
+    });
+    await expect(sellFromB1("3")).rejects.toThrow(/Batch B2610-0042 hanya tersisa 1/);
+  });
+
+  it("prices and keeps a lot named on a basket", async () => {
+    const till = offlineTransport(context);
+    const cart = await till.updateCart(await till.createCart(), {
+      items: [{ kind: "product", refId: "p1", qty: "1", lots: [{ batchId: "b1", qty: "1" }] }],
+    });
+    expect(cart.items[0].lots).toEqual([
+      { batchId: "b1", batchCode: "B2610-0042", qty: "1.0000" },
+    ]);
   });
 });
 

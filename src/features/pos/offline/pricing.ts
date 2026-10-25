@@ -17,9 +17,13 @@
  *
  * WHAT IS NOT PRICED OFFLINE, and refused with a sentence instead of guessed:
  * membership packages and benefits, pulled bookings, home-visit trips and
- * antar-jemput rides, a service priced by ZONE (it needs the customer's
- * distance), and a hand-picked lot. Each needs the server to answer something
- * the device does not hold.
+ * antar-jemput rides, and a service priced by ZONE (it needs the customer's
+ * distance). Each needs the server to answer something the device does not
+ * hold.
+ *
+ * A HAND-PICKED LOT IS SOLD OFFLINE (25 Oct 2026, BO) — from the snapshot's
+ * lots, by the same rule as online: a lot short on paper is still sold from
+ * where the shop allows negative stock, and refused where it does not.
  */
 import { ApiError } from "@/services/api-error";
 import { divideRound, toDecimalString, toMinor } from "@/utils/decimal";
@@ -30,6 +34,7 @@ import type {
   PosDiscountMode,
   PosItem,
   PosItemInput,
+  PosLineLot,
   PosRunningTotals,
   PosTransaction,
   ServiceVariant,
@@ -65,6 +70,8 @@ export interface PricingContext {
   snapshot: OfflineSnapshot;
   /** `posTransactions:setPrice` — checked here, since the sync cannot. */
   maySetPrice: boolean;
+  /** Units unsent sales named from each lot — see `lotsOf`. */
+  pendingLotQty?: Record<string, number>;
 }
 
 /** A refusal shaped like the server's, so the cart shows it the same way. */
@@ -251,7 +258,46 @@ function refuseOnlineOnly(line: PosItemInput) {
   if (line.bookingId) throw NEEDS_ONLINE("Booking yang ditarik");
   if (line.homeTripId) throw NEEDS_ONLINE("Biaya kunjungan");
   if (line.trip || (line.passengerPetIds?.length ?? 0) > 0) throw NEEDS_ONLINE("Antar-jemput");
-  if ((line.lots?.length ?? 0) > 0) throw NEEDS_ONLINE("Memilih batch");
+}
+
+/**
+ * A line's named lots, checked as the server checks them and labelled from the
+ * snapshot. A lot the snapshot does not hold is left for the sync to judge.
+ */
+function lotsOf(line: PosItemInput, qty: bigint, context: PricingContext): PosLineLot[] {
+  if (!line.lots?.length) return [];
+  if (line.kind !== "product") throw offlineRefusal("Batch hanya untuk produk");
+
+  const { snapshot, pendingLotQty = {} } = context;
+  const shelf = snapshot.stock?.lots?.[String(line.refId)] ?? [];
+  const allowShort = snapshot.stock?.allowNegativeStock !== false;
+  let total = 0n;
+  const lots = line.lots.map((share) => {
+    const wanted = minor(share.qty, "Jumlah dari batch");
+    if (wanted <= 0n) throw offlineRefusal("Jumlah dari batch harus lebih dari 0");
+    total += wanted;
+
+    const lot = shelf.find((row) => row._id === share.batchId);
+    if (lot && !allowShort) {
+      const held =
+        minor(lot.qtyRemaining, "Sisa batch") -
+        minor(String(pendingLotQty[lot._id] ?? 0), "Sisa batch");
+      if (held < wanted) {
+        throw offlineRefusal(`Batch ${lot.batchCode} hanya tersisa ${toDecimalString(held)}`);
+      }
+    }
+    return {
+      batchId: share.batchId,
+      batchCode: lot?.batchCode ?? null,
+      qty: toDecimalString(wanted),
+    };
+  });
+  if (total !== qty) {
+    throw offlineRefusal(
+      `Jumlah dari batch (${toDecimalString(total)}) harus sama dengan jumlah barang (${toDecimalString(qty)})`,
+    );
+  }
+  return lots;
 }
 
 /**
@@ -404,7 +450,7 @@ export function priceCart(cart: LocalCart, context: PricingContext): PosTransact
       bookingId: null,
       parentServiceId: parentOf(line, cart.items, index),
       variantChoices,
-      lots: [],
+      lots: lotsOf(line, qty, context),
       note: line.note ?? null,
       petId: line.petId ? String(line.petId) : null,
       petName: pet?.name ?? null,

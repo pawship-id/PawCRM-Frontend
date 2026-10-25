@@ -65,6 +65,8 @@ export interface OfflineState {
   reviewCount: number;
   /** Units of each product in unsent sales — taken off the shelf counts shown. */
   pendingQty: Record<string, number>;
+  /** The same, per lot named on an unsent sale — taken off the lots offered. */
+  pendingLotQty: Record<string, number>;
   syncing: boolean;
   lastSyncAt: string | null;
   lastSyncError: string | null;
@@ -92,6 +94,7 @@ let state: OfflineState = {
   pendingCount: 0,
   reviewCount: 0,
   pendingQty: {},
+  pendingLotQty: {},
   syncing: false,
   lastSyncAt: null,
   lastSyncError: null,
@@ -261,6 +264,7 @@ export function __resetOfflineStore(): void {
     pendingCount: 0,
     reviewCount: 0,
     pendingQty: {},
+    pendingLotQty: {},
     syncing: false,
     lastSyncAt: null,
     lastSyncError: null,

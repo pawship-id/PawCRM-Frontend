@@ -20,6 +20,7 @@ import type { EligibilityReason } from "@/types/membership";
 import { onlineTransport, type CartTransport } from "../offline/transport";
 import { cartItemsAsInput } from "./cartInput";
 import { lotsAtQty, lotsWithOneMore } from "./lineLots";
+import { tillLots } from "../offline/tillApi";
 
 export { cartItemsAsInput };
 
@@ -502,8 +503,8 @@ export function usePosCart(
    * a second tap is a second line — which the server will also force to qty 1.
    *
    * A LINE THAT NAMES LOTS KEEPS NAMING THEM (25 Oct 2026, BO), and a scanned
-   * lot joins them — see `lotsWithOneMore`. Only when the lots cannot be made
-   * to add up does the line fall back to FEFO, as stepping the quantity does.
+   * lot joins them — see `lotsWithOneMore`, short on paper or not. FEFO is
+   * only for a line nobody ever named a lot on.
    */
   const addItem = useCallback(
     async (tile: PosCatalogItem, scan?: { batchId: string }) => {
@@ -532,7 +533,7 @@ export function usePosCart(
           // Somebody has to say where the unplaced units come from.
           setBusy(true);
           try {
-            const { lots: shelf } = await posService.lots(tile._id);
+            const { lots: shelf } = await tillLots(tile._id);
             lots = lotsWithOneMore({
               named,
               lineQty,
@@ -540,8 +541,11 @@ export function usePosCart(
               lots: shelf,
             });
           } catch {
-            // Offline, or the lots would not load: FEFO decides at posting.
-            lots = null;
+            // The shelf would not load: the line's own lots take the unit.
+            lots =
+              named.length > 0
+                ? lotsWithOneMore({ named, lineQty, scannedBatchId: scan?.batchId ?? null, lots: [] })
+                : null;
           }
         }
 
@@ -708,7 +712,7 @@ export function usePosCart(
         to drop them back to FEFO). The server refuses a line whose lots no
         longer add up, so they are re-split here — see `lotsAtQty`. Stepping
         up asks the shelf where the extra units come from; stepping down does
-        not need to. Only when they cannot add up does the line go to FEFO.
+        not need to. Short on paper, they still stay — see `lotsAtQty`.
       */
       const { lots: named = [], ...rest } = items[index];
       const target = Number(qty);
@@ -721,11 +725,11 @@ export function usePosCart(
         } else {
           setBusy(true);
           try {
-            const { lots: shelf } = await posService.lots(items[index].refId);
+            const { lots: shelf } = await tillLots(items[index].refId);
             lots = lotsAtQty({ named, qty: target, lots: shelf });
           } catch {
-            // Offline, or the lots would not load: FEFO decides at posting.
-            lots = null;
+            // The shelf would not load: the line's own lots take the units.
+            lots = lotsAtQty({ named, qty: target, lots: [] });
           }
         }
       }

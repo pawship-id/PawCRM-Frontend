@@ -20,9 +20,13 @@ export interface LotShare {
  * each lot still holds after the named shares. `lots` must be in that order
  * (it is, from GET /pos/catalog/:id/lots).
  *
- * NULL WHEN IT CANNOT ADD UP — the shelf in the books holds less than the line
- * asks. The caller then drops the named lots and lets FEFO decide at posting,
- * which is what stepping the quantity has always done.
+ * SHORT ON PAPER, THE NAMED LOTS STAY (25 Oct 2026, BO). What the books cannot
+ * place goes on the LAST lot — as the server's FEFO does with a shortfall —
+ * or, with no shelf to read, on the last lot the line names. Whether a lot may
+ * go below zero is the shop's setting, judged by the server: it sells, or
+ * refuses with the lot's name.
+ *
+ * NULL ONLY WHEN THERE IS NO LOT TO NAME AT ALL; the line then stays FEFO.
  */
 export function lotsWithOneMore({
   named,
@@ -59,7 +63,11 @@ export function lotsWithOneMore({
     left -= take;
   }
 
-  if (left > 0) return null;
+  if (left > 0) {
+    const last = lots.at(-1)?._id ?? [...shares.keys()].at(-1);
+    if (!last) return null;
+    shares.set(last, (shares.get(last) ?? 0) + left);
+  }
 
   return [...shares].map(([batchId, qty]) => ({ batchId, qty: String(qty) }));
 }
@@ -73,7 +81,7 @@ export function lotsWithOneMore({
  * `lotsWithOneMore`. DOWN: the units come off the END of the list, so a minus
  * undoes the last lot that was scanned or added, and needs no `lots` at all.
  *
- * Null when it cannot add up; the caller falls back to FEFO.
+ * Short on paper, the extra units go on the last lot — see `lotsWithOneMore`.
  */
 export function lotsAtQty({
   named,

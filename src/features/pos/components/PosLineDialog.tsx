@@ -15,13 +15,12 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { posService } from "@/services/pos.service";
-import { isOfflineMode } from "@/lib/connectivity";
 import { formatMoney } from "@/utils/decimal";
 import type { PosDiscountMode, PosItem, PosLots } from "@/types/api";
 
 import { ownDiscountOf } from "../bookingDiscount";
 import { pickOf } from "../membershipCart";
+import { tillLots } from "../offline/tillApi";
 import { LotSplitEditor, lotRowsValid, type LotRow } from "./LotSplitEditor";
 import { PERCENT, storedToInput, WHOLE_RUPIAH } from "./PosDiscountPopover";
 
@@ -115,11 +114,12 @@ export function PosLineDialog({
     setSubmitError(null);
   }, [rows, qty, amount, mode, price]);
 
-  // Only products have lots; ask the server which of them expire.
+  /*
+    Only products have lots; ask which of them expire. Offline the answer is
+    the snapshot's lots (25 Oct 2026) — see `tillLots`.
+  */
   useEffect(() => {
-    /* Offline there is nobody to ask which lots are in date, so the line goes
-       to FEFO at sync — the shelf's first-expiring lot (POS offline mode). */
-    if (!open || !item || item.kind !== "product" || isOfflineMode()) {
+    if (!open || !item || item.kind !== "product") {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLots(null);
       return;
@@ -129,8 +129,7 @@ export function PosLineDialog({
 
     setLotsError(null);
 
-    posService
-      .lots(item.refId)
+    tillLots(item.refId)
       .then((result) => {
         if (active) setLots(result);
       })
