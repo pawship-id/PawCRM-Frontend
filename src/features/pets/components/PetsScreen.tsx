@@ -44,7 +44,7 @@ export function PetsScreen() {
         action={
           <Can feature="pets" action="create">
             <Button asChild>
-              <Link href="/dashboard/master/pets/new">
+              <Link href="/dashboard/pets/new">
                 <Plus className="size-4" />
                 Hewan baru
               </Link>

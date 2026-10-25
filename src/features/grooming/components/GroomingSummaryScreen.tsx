@@ -334,14 +334,14 @@ export function GroomingSummaryScreen() {
           ),
           action: {
             label: "Hubungi",
-            href: `/dashboard/master/customers/${customer.customerId}`,
+            href: `/dashboard/customers/${customer.customerId}`,
           },
         }))}
         more={
           dormant.length > LIST_ROWS
             ? {
                 label: `+${dormant.length - LIST_ROWS} pelanggan lagi`,
-                href: "/dashboard/master/customers/dormant",
+                href: "/dashboard/customers/dormant",
               }
             : undefined
         }
@@ -360,14 +360,14 @@ export function GroomingSummaryScreen() {
           detail: `Kunjungan grooming ke-${pet.visit}`,
           action: {
             label: "Lihat hewan",
-            href: `/dashboard/master/pets/${pet.petId}`,
+            href: `/dashboard/pets/${pet.petId}`,
           },
         }))}
         more={
           pets.length > LIST_ROWS
             ? {
                 label: `+${pets.length - LIST_ROWS} hewan lagi`,
-                href: "/dashboard/master/pets",
+                href: "/dashboard/pets",
               }
             : undefined
         }

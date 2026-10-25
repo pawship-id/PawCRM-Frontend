@@ -236,21 +236,21 @@ describe("filterNavItems", () => {
       Ringkasan is the module's first tab and what somebody opens it to find
       out. The register is a screen you go to already knowing a name.
     */
-    expect(pelanggan?.href).toBe("/dashboard/master/customers/ringkasan");
+    expect(pelanggan?.href).toBe("/dashboard/customers/summary");
   });
 
   it("keeps the Pelanggan row lit on every one of its tabs", () => {
     const pelanggan = groupOf("Pelanggan")!;
-    expect(isActive(pelanggan, "/dashboard/master/customers/ringkasan")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/customers/summary")).toBe(true);
     /*
       THE REGISTER IS THE ONE THAT WOULD HAVE GONE DARK. `href` is prefix
-      matched and `/…/customers/ringkasan` is not a prefix of `/…/customers`,
+      matched and `/…/customers/summary` is not a prefix of `/…/customers`,
       so the row only stays lit here because the register is listed in `match`.
     */
-    expect(isActive(pelanggan, "/dashboard/master/customers")).toBe(true);
-    expect(isActive(pelanggan, "/dashboard/master/customers/507f1f")).toBe(true);
-    expect(isActive(pelanggan, "/dashboard/master/pets")).toBe(true);
-    expect(isActive(pelanggan, "/dashboard/master/pets/507f1f")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/customers")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/customers/507f1f")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/pets")).toBe(true);
+    expect(isActive(pelanggan, "/dashboard/pets/507f1f")).toBe(true);
     // A sibling under the same /master prefix must not borrow the row.
     expect(isActive(pelanggan, "/dashboard/master/users")).toBe(false);
   });

@@ -1792,6 +1792,67 @@ export interface DormantCustomerList {
 }
 
 /**
+ * What a Riwayat row is about: a service kelompok, or one of the three kinds the
+ * history adds itself — a sale's products, a membership, a back-office invoice.
+ * `service` is a service with no kelompok set.
+ */
+export type CustomerHistoryKind =
+  | ServiceKind
+  | "service"
+  | "product"
+  | "membership"
+  | "invoice";
+
+/** Where a Riwayat row was written: the till, or the invoice book. */
+export type CustomerHistorySource = "pos" | "invoice";
+
+/** A name the server joined in, by id. `name` is null when the record is gone. */
+export interface NamedRef {
+  id: string;
+  name: string | null;
+}
+
+/**
+ * One row of GET /api/customers/history (25 October 2026) — one service done
+ * for one animal, one sale's products, or one invoice typed in the back office.
+ */
+export interface CustomerHistoryRow {
+  id: string;
+  date: string;
+  source: CustomerHistorySource;
+  kind: CustomerHistoryKind;
+  /** The till transaction's id, or the invoice's. */
+  documentId: string;
+  documentNumber: string | null;
+  /** The line's name, or "Faktur INV-…" for an invoice. */
+  activity: string;
+  /** How many more product lines the row folds in — "+2 lainnya". */
+  otherLines: number;
+  customer: NamedRef | null;
+  pet: NamedRef | null;
+  branch: NamedRef | null;
+  warehouse: NamedRef | null;
+  amount: string;
+}
+
+/** Orderings GET /api/customers/history accepts — the server's `HISTORY_SORTS`. */
+export type CustomerHistorySort = "dateDesc" | "dateAsc" | "amountDesc" | "amountAsc";
+
+/** Query for GET /api/customers/history. Dates are `yyyy-mm-dd`. */
+export interface CustomerHistoryQuery {
+  dateFrom?: string;
+  dateTo?: string;
+  kind?: CustomerHistoryKind;
+  source?: CustomerHistorySource;
+  customerId?: string;
+  search?: string;
+  /** Omitted means `dateDesc`. */
+  sort?: CustomerHistorySort;
+  page?: number;
+  limit?: number;
+}
+
+/**
  * Body of POST /api/customers. Only `name` is required; `tenantId` and
  * `createdBy` are derived from the session, never sent from here. The nullable
  * fields accept `null` to leave them unset.

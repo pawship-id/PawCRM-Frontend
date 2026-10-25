@@ -14,7 +14,7 @@ jest.mock("@/services/pet.service");
 jest.mock("@/services/membership.service");
 
 jest.mock("next/navigation", () => ({
-  usePathname: () => "/dashboard/master/customers/ringkasan",
+  usePathname: () => "/dashboard/customers/summary",
 }));
 
 const mockedCustomerService = customerService as jest.Mocked<
@@ -202,7 +202,7 @@ describe("customer summary tab", () => {
     const seeAll = within(panel).getByRole("link", { name: /Lihat semua/ });
     expect(seeAll).toHaveAttribute(
       "href",
-      "/dashboard/master/customers/dormant?days=60",
+      "/dashboard/customers/dormant?days=60",
     );
   });
 
@@ -308,7 +308,7 @@ describe("customer summary tab", () => {
     expect(seeAll).toHaveAttribute(
       "href",
       expect.stringMatching(
-        /^\/dashboard\/master\/customers\?createdSince=/,
+        /^\/dashboard\/customers\?createdSince=/,
       ),
     );
     // The panel's own window, asked for by the panel — not the tiles' default.

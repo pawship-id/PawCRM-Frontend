@@ -154,7 +154,7 @@ function elapsed(session: BookingSession): number | null {
  *
  * ─── THIS IS NOT THE PET PROFILE ───────────────────────────────────────────
  *
- * `/dashboard/master/pets/:id` is about the animal in general — allergies,
+ * `/dashboard/pets/:id` is about the animal in general — allergies,
  * preferences, a lifetime of visits. This is about ONE booking's work.
  */
 export function BookingDetailScreen({ id }: { id: string }) {
@@ -532,7 +532,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
               no button.
             */}
             <Button variant="ghost" size="sm" asChild>
-              <Link href={`/dashboard/master/pets/${booking.petId}/print`}>
+              <Link href={`/dashboard/pets/${booking.petId}/print`}>
                 <Printer className="size-4" aria-hidden />
                 Cetak
               </Link>
@@ -927,7 +927,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                     asChild
                     className="shrink-0"
                   >
-                    <Link href={`/dashboard/master/pets/${booking.petId}`}>
+                    <Link href={`/dashboard/pets/${booking.petId}`}>
                       Profil {petName}
                     </Link>
                   </Button>

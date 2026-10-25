@@ -279,14 +279,14 @@ export function PetsTable({
                 ) : (
                   <>
                     <DropdownMenuItem asChild>
-                      <Link href={`/dashboard/master/pets/${pet._id}`}>
+                      <Link href={`/dashboard/pets/${pet._id}`}>
                         <Eye />
                         Detail
                       </Link>
                     </DropdownMenuItem>
                     <Can feature="pets" action="update">
                       <DropdownMenuItem asChild>
-                        <Link href={`/dashboard/master/pets/${pet._id}/edit`}>
+                        <Link href={`/dashboard/pets/${pet._id}/edit`}>
                           <Pencil />
                           Ubah
                         </Link>

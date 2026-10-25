@@ -18,7 +18,7 @@ export { CustomerModuleHeader } from "./components/CustomerModuleHeader";
 export { CustomerSummaryScreen } from "./components/CustomerSummaryScreen";
 /**
  * The read side of one customer — the mockup's `profilPelanggan`, at
- * `/master/customers/:id`. The form it links to is `CustomerEditForm`, one route
+ * `/customers/:id`. The form it links to is `CustomerEditForm`, one route
  * deeper; the two used to be the same screen. See CustomerProfileScreen.
  */
 export { CustomerProfileScreen } from "./components/CustomerProfileScreen";
@@ -35,6 +35,7 @@ export { CustomerQuickAddDialog } from "./components/CustomerQuickAddDialog";
  * the Ringkasan tab's panel — not one of the module's tabs. See its own file.
  */
 export { DormantCustomersScreen } from "./components/DormantCustomersScreen";
+export { CustomerHistoryScreen } from "./components/CustomerHistoryScreen";
 /** The server page's URL parser for `?createdSince=` — see its own file. */
 export { customersQueryFromParams } from "./query";
 export type { CustomersQuery } from "./hooks/useCustomers";

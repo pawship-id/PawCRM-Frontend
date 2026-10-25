@@ -88,7 +88,7 @@ describe("customers table", () => {
     await userEvent.click(screen.getByText("Rina Wijaya").closest("tr")!);
 
     expect(push).toHaveBeenCalledWith(
-      "/dashboard/master/customers/5a7f1f77bcf86cd799439022",
+      "/dashboard/customers/5a7f1f77bcf86cd799439022",
     );
   });
 
@@ -133,7 +133,7 @@ describe("customers table", () => {
     // handler on a <tr> is not.
     expect(screen.getByRole("link", { name: "Rina Wijaya" })).toHaveAttribute(
       "href",
-      "/dashboard/master/customers/5a7f1f77bcf86cd799439022",
+      "/dashboard/customers/5a7f1f77bcf86cd799439022",
     );
   });
 
@@ -144,11 +144,11 @@ describe("customers table", () => {
 
     expect(within(menu).getByRole("menuitem", { name: /detail/i })).toHaveAttribute(
       "href",
-      "/dashboard/master/customers/5a7f1f77bcf86cd799439022",
+      "/dashboard/customers/5a7f1f77bcf86cd799439022",
     );
     expect(within(menu).getByRole("menuitem", { name: /ubah/i })).toHaveAttribute(
       "href",
-      "/dashboard/master/customers/5a7f1f77bcf86cd799439022/edit",
+      "/dashboard/customers/5a7f1f77bcf86cd799439022/edit",
     );
     expect(
       within(menu).getByRole("menuitem", { name: /hapus/i }),

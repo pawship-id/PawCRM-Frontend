@@ -34,7 +34,7 @@ import { KELOLA_REASONS } from "@/types/membership";
 
 /**
  * WHERE MEMBERSHIP LIVES: the Promosi module (16 October 2026), not Pelanggan.
- * The old /dashboard/master/customers/membership/** addresses redirect here.
+ * The old /dashboard/customers/membership/** addresses redirect here.
  *
  * `MEMBERSHIP_HREF` is the Membership tab, which opens on the Paket list; each
  * package and each card has its own address one segment further down.

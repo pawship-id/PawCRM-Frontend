@@ -92,7 +92,7 @@ export function PetInfoTab({
             /* A LINK, because "whose dog is this" is usually followed by
                "what else do they have" or "what do they owe". */
             <Link
-              href={`/dashboard/master/customers/${pet.customerId}`}
+              href={`/dashboard/customers/${pet.customerId}`}
               className="text-primary underline-offset-2 hover:underline"
             >
               {ownerName}

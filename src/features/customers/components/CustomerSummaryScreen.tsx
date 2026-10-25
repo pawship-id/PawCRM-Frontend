@@ -103,7 +103,7 @@ export function CustomerSummaryScreen() {
         action={
           <Can feature="customers" action="create">
             <Button asChild>
-              <Link href="/dashboard/master/customers/new">
+              <Link href="/dashboard/customers/new">
                 <Plus className="size-4" />
                 Pelanggan baru
               </Link>
@@ -372,7 +372,7 @@ function RowAction({ href, children }: { href: string; children: string }) {
 function CustomerName({ id, children }: { id: string; children: string }) {
   return (
     <Link
-      href={`/dashboard/master/customers/${id}`}
+      href={`/dashboard/customers/${id}`}
       className="underline-offset-2 hover:underline"
     >
       {children}
@@ -424,7 +424,7 @@ function DormantPanel() {
       seeAll={
         !loading && !error && total > 0
           ? {
-              href: `/dashboard/master/customers/dormant?days=${days}`,
+              href: `/dashboard/customers/dormant?days=${days}`,
               label: "Lihat semua",
             }
           : undefined
@@ -546,7 +546,7 @@ function NewCustomersPanel() {
       seeAll={
         !loading && !error && total !== null && total > 0 && cutoffIso
           ? {
-              href: `/dashboard/master/customers?createdSince=${encodeURIComponent(cutoffIso)}`,
+              href: `/dashboard/customers?createdSince=${encodeURIComponent(cutoffIso)}`,
               label: "Lihat semua",
             }
           : undefined

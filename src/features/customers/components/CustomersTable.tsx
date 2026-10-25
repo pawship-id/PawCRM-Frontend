@@ -221,7 +221,7 @@ export function CustomersTable({
       cell: (customer) => (
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            href={`/dashboard/master/customers/${customer._id}`}
+            href={`/dashboard/customers/${customer._id}`}
             onClick={stop}
             className="font-medium text-foreground underline-offset-2 hover:underline"
           >
@@ -366,7 +366,7 @@ export function CustomersTable({
                 ) : (
                   <>
                     <DropdownMenuItem asChild>
-                      <Link href={`/dashboard/master/customers/${customer._id}`}>
+                      <Link href={`/dashboard/customers/${customer._id}`}>
                         <Eye />
                         Detail
                       </Link>
@@ -374,7 +374,7 @@ export function CustomersTable({
                     <Can feature="customers" action="update">
                       <DropdownMenuItem asChild>
                         <Link
-                          href={`/dashboard/master/customers/${customer._id}/edit`}
+                          href={`/dashboard/customers/${customer._id}/edit`}
                         >
                           <Pencil />
                           Ubah
@@ -428,7 +428,7 @@ export function CustomersTable({
         loading={loading}
         loadingLabel="Memuat daftar pelanggan…"
         onRowClick={(customer) =>
-          router.push(`/dashboard/master/customers/${customer._id}`)
+          router.push(`/dashboard/customers/${customer._id}`)
         }
         empty={
           <p className="py-10 text-center text-sm text-muted">

@@ -1000,7 +1000,7 @@ describe("the animal a service is for", () => {
     */
     expect(
       row.getByRole("link", { name: /lengkapi ukuran miko/i }),
-    ).toHaveAttribute("href", "/dashboard/master/pets/pet1/edit");
+    ).toHaveAttribute("href", "/dashboard/pets/pet1/edit");
   });
 
   /*

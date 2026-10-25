@@ -1097,7 +1097,7 @@ describe("BookingForm — layanan, add-on dan varian", () => {
     await choose(/^layanan$/i, /full grooming/i);
 
     const fix = await screen.findByRole("link", { name: /lengkapi ukuran bruno/i });
-    expect(fix).toHaveAttribute("href", "/dashboard/master/pets/pet-1/edit");
+    expect(fix).toHaveAttribute("href", "/dashboard/pets/pet-1/edit");
     expect(fix).toHaveAttribute("target", "_blank");
   });
 

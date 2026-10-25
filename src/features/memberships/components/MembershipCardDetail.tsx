@@ -217,7 +217,7 @@ function Hero({
 
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="secondary" size="sm">
-            <Link href={`/dashboard/master/customers/${card.customerId}`}>
+            <Link href={`/dashboard/customers/${card.customerId}`}>
               <UserRound className="size-4" aria-hidden />
               Profil pelanggan
             </Link>

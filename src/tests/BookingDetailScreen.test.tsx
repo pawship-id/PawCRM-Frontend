@@ -342,7 +342,7 @@ describe("BookingDetailScreen — the header", () => {
 
     expect(await screen.findByRole("link", { name: /cetak/i })).toHaveAttribute(
       "href",
-      "/dashboard/master/pets/pet-1/print",
+      "/dashboard/pets/pet-1/print",
     );
   });
 

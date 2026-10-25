@@ -409,14 +409,14 @@ export function BerandaHariIni() {
                 ),
                 action: {
                   label: "Hubungi",
-                  href: `/dashboard/master/customers/${customer._id}`,
+                  href: `/dashboard/customers/${customer._id}`,
                 },
               }))}
               more={
                 (dormant.data?.pagination.total ?? 0) > ROWS
                   ? {
                       label: `+${(dormant.data?.pagination.total ?? 0) - ROWS} pelanggan lagi`,
-                      href: "/dashboard/master/customers/dormant",
+                      href: "/dashboard/customers/dormant",
                     }
                   : undefined
               }

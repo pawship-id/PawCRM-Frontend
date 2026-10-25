@@ -12,7 +12,7 @@ export const metadata: Metadata = {
  *
  * SPLIT OUT OF `../page.tsx` so that reading a customer and changing one are two
  * screens behind two grants — the same split the pet module made at
- * `/master/pets/:id/edit`. Wrapped in RequirePermission so a direct link without
+ * `/pets/:id/edit`. Wrapped in RequirePermission so a direct link without
  * `customers:update` shows access-denied rather than a form that cannot save.
  */
 export default async function EditCustomerPage({

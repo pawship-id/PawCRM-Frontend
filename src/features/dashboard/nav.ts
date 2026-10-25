@@ -118,8 +118,8 @@ export interface NavItem {
    * Extra route prefixes that light this row up as well as `href` does — see
    * NavChild.match, which is the same field for a submenu row.
    *
-   * The leaf case is Pelanggan: its Hewan tab lives at /dashboard/master/pets,
-   * which no amount of prefix-matching on /dashboard/master/customers covers.
+   * The leaf case is Pelanggan: its Hewan tab lives at /dashboard/pets,
+   * which no amount of prefix-matching on /dashboard/customers covers.
    *
    * Prefix-matched like `href`, so a tab's own detail routes (…/pets/[id]) keep
    * the row lit too.
@@ -286,7 +286,7 @@ export const NAV_SECTIONS: NavSection[] = [
          * Gated on `customers:read` — the grant its own href enforces. Every
          * seeded role holding `pets:read` holds it too (Owner, Manager, Staff),
          * so no role loses its way to the animal register; a hand-made role
-         * granted pets alone would reach /dashboard/master/pets by URL only.
+         * granted pets alone would reach /dashboard/pets by URL only.
          */
         label: "Pelanggan",
         /*
@@ -300,7 +300,7 @@ export const NAV_SECTIONS: NavSection[] = [
           "Lihat" now, and the Ringkasan route sends a role that may not see it
           to the first tab it may.
         */
-        href: "/dashboard/master/customers/ringkasan",
+        href: "/dashboard/customers/summary",
         icon: Users,
         permissionAny: [
           { feature: "customerSummary", action: "read" },
@@ -310,14 +310,14 @@ export const NAV_SECTIONS: NavSection[] = [
         ],
         /*
           THE REGISTER IS A `match` NOW, and it has to be: `href` is prefix
-          matched, and `/…/customers/ringkasan` is not a prefix of
+          matched, and `/…/customers/summary` is not a prefix of
           `/…/customers`, so without this the row would go dark the moment the
           reader opened the Pelanggan tab. Listed as a prefix, it also covers
           Riwayat and every customer detail route in one entry. (Membership
           left for Promosi on 16 October 2026; its old addresses under this
           prefix only redirect now.)
         */
-        match: ["/dashboard/master/customers", "/dashboard/master/pets"],
+        match: ["/dashboard/customers", "/dashboard/pets"],
       },
     ],
   },

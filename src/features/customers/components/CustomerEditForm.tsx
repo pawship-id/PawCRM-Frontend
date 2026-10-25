@@ -76,18 +76,18 @@ export function CustomerEditForm({ id }: { id: string }) {
       {/*
         The header stays visible while the body loads. THE TRAIL GOES BACK TO THE
         PROFILE, not to the list: this route is one level under it now
-        (`/master/customers/:id/edit`), and somebody who came here from a customer's
+        (`/customers/:id/edit`), and somebody who came here from a customer's
         page is returning to that page rather than to two hundred rows.
       */}
       <div>
         <Breadcrumb
           items={[
-            { label: "Pelanggan", href: "/dashboard/master/customers" },
+            { label: "Pelanggan", href: "/dashboard/customers" },
             ...(customer
               ? [
                   {
                     label: customer.name,
-                    href: `/dashboard/master/customers/${customer._id}`,
+                    href: `/dashboard/customers/${customer._id}`,
                   },
                 ]
               : []),
@@ -275,7 +275,7 @@ function DetailsSection({
           variant="ghost"
           className="w-full sm:w-auto"
           onClick={() =>
-            router.push(`/dashboard/master/customers/${customer._id}`)
+            router.push(`/dashboard/customers/${customer._id}`)
           }
         >
           Batal
@@ -324,7 +324,7 @@ function DangerSection({
     try {
       if (pending === "delete") {
         await customerService.remove(customer._id);
-        router.push("/dashboard/master/customers");
+        router.push("/dashboard/customers");
         swalToast("Pelanggan dihapus.");
         return;
       }

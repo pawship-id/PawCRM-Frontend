@@ -143,7 +143,10 @@ export function PetTimelineTab({ petId }: { petId: string }) {
         <ol className="flex flex-col gap-3">
           {data?.entries.map((entry, index) => (
             <li
-              key={`${entry.kind}-${entry.reference ?? index}-${entry.at}`}
+              // The index is part of the key, not a fallback: one till sale can
+              // hold two lines for this animal (a bath and its add-on), which
+              // share a reference and a moment. The list is never reordered.
+              key={`${entry.kind}-${entry.reference ?? ""}-${entry.at}-${index}`}
               className="rounded-lg border border-border px-3 py-2"
             >
               <div className="flex flex-wrap items-baseline justify-between gap-2">

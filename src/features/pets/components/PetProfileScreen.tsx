@@ -189,14 +189,14 @@ export function PetProfileScreen({ petId }: { petId: string }) {
      has something to say on this line. */
   const kind = label("breed", pet.breed) ?? label("species", pet.species);
 
-  const editLink = `/dashboard/master/pets/${pet._id}/edit`;
+  const editLink = `/dashboard/pets/${pet._id}/edit`;
 
   return (
     <div className="flex flex-col gap-4">
       <Breadcrumb
         items={[
-          { label: "Pelanggan", href: "/dashboard/master/customers" },
-          { label: "Hewan", href: "/dashboard/master/pets" },
+          { label: "Pelanggan", href: "/dashboard/customers" },
+          { label: "Hewan", href: "/dashboard/pets" },
           { label: pet.name },
         ]}
       />
@@ -215,7 +215,7 @@ export function PetProfileScreen({ petId }: { petId: string }) {
               Milik{" "}
               {ownerName ? (
                 <Link
-                  href={`/dashboard/master/customers/${pet.customerId}`}
+                  href={`/dashboard/customers/${pet.customerId}`}
                   className="font-semibold text-primary underline-offset-2 hover:underline"
                 >
                   {ownerName}
@@ -246,7 +246,7 @@ export function PetProfileScreen({ petId }: { petId: string }) {
               it from them would keep the allergy off the cage door.
             */}
             <Button asChild variant="secondary" size="sm">
-              <Link href={`/dashboard/master/pets/${pet._id}/print`}>
+              <Link href={`/dashboard/pets/${pet._id}/print`}>
                 <Printer className="size-4" />
                 Cetak kartu
               </Link>

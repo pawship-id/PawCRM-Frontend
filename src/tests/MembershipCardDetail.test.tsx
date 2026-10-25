@@ -79,7 +79,7 @@ describe("Anggota detail", () => {
     expect(screen.getByText("3 tersisa")).toBeVisible();
     expect(screen.getByRole("link", { name: /Profil pelanggan/ })).toHaveAttribute(
       "href",
-      "/dashboard/master/customers/cus-1",
+      "/dashboard/customers/cus-1",
     );
     expect(screen.getByRole("link", { name: /Hubungi/ })).toHaveAttribute(
       "href",
