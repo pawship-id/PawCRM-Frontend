@@ -536,7 +536,7 @@ describe("BookingBridgeDialog — the ad-hoc tab", () => {
     ).toBeDisabled();
     expect(
       screen.getByRole("link", { name: /lengkapi ukuran bella/i }),
-    ).toHaveAttribute("href", `/dashboard/master/pets/${PET_ID}/edit`);
+    ).toHaveAttribute("href", `/dashboard/pets/${PET_ID}/edit`);
   });
 
   /*

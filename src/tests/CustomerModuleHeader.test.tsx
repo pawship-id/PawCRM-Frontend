@@ -10,7 +10,7 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 jest.mock("@/services/customer.service");
 jest.mock("@/services/pet.service");
 
-const pathname = jest.fn(() => "/dashboard/master/customers");
+const pathname = jest.fn(() => "/dashboard/customers");
 jest.mock("next/navigation", () => ({
   usePathname: () => pathname(),
 }));
@@ -56,7 +56,7 @@ function totalling(total: number) {
 }
 
 beforeEach(() => {
-  pathname.mockReturnValue("/dashboard/master/customers");
+  pathname.mockReturnValue("/dashboard/customers");
   mockedCustomerService.stats.mockResolvedValue(stats());
   mockedPetService.list.mockResolvedValue(totalling(587));
 });
@@ -77,10 +77,10 @@ describe("CustomerModuleHeader", () => {
     );
 
     expect(hrefs).toEqual({
-      Ringkasan: "/dashboard/master/customers/ringkasan",
-      Pelanggan: "/dashboard/master/customers",
-      Hewan: "/dashboard/master/pets",
-      Riwayat: "/dashboard/master/customers/riwayat",
+      Ringkasan: "/dashboard/customers/summary",
+      Pelanggan: "/dashboard/customers",
+      Hewan: "/dashboard/pets",
+      Riwayat: "/dashboard/customers/history",
     });
 
     await waitFor(() => expect(mockedPetService.list).toHaveBeenCalled());
@@ -89,7 +89,7 @@ describe("CustomerModuleHeader", () => {
   it("does not leave the Pelanggan tab lit on the tabs nested under it", async () => {
     // Its href is the prefix of every other tab's, so a prefix match would mark
     // two tabs current at once.
-    pathname.mockReturnValue("/dashboard/master/customers/ringkasan");
+    pathname.mockReturnValue("/dashboard/customers/summary");
     renderWithAuth(<CustomerModuleHeader />);
 
     expect(screen.getByRole("link", { name: "Ringkasan" })).toHaveAttribute(
@@ -104,7 +104,7 @@ describe("CustomerModuleHeader", () => {
   });
 
   it("marks the tab the reader is on, and only that one", async () => {
-    pathname.mockReturnValue("/dashboard/master/pets");
+    pathname.mockReturnValue("/dashboard/pets");
     renderWithAuth(<CustomerModuleHeader />);
 
     expect(screen.getByRole("link", { name: "Hewan" })).toHaveAttribute(

@@ -10,7 +10,7 @@ import { petOptionService } from "@/services/petOption.service";
 import type { PageResult, Pet, PetListQuery } from "@/types/api";
 
 jest.mock("next/navigation", () => ({
-  usePathname: () => "/dashboard/master/pets",
+  usePathname: () => "/dashboard/pets",
   useRouter: () => ({ push: jest.fn() }),
 }));
 jest.mock("@/services/petOption.service");

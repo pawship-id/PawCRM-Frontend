@@ -50,7 +50,7 @@ function initials(name: string): string {
  *
  *   AND IT ASKED FOR A PERMISSION IT DOES NOT NEED. A groomer who may not edit a
  *   customer still has to know whose dog this is and which number to ring. Editing
- *   has its own route now — `/master/customers/:id/edit`, behind `update` — and the
+ *   has its own route now — `/customers/:id/edit`, behind `update` — and the
  *   button to it is hidden from anybody who cannot use it.
  *
  * THE SAME SHAPE THE PET PROFILE TOOK (PetProfileScreen, PCR-044), with one
@@ -122,7 +122,7 @@ export function CustomerProfileScreen({ id }: { id: string }) {
     <div className="flex flex-col gap-5">
       <Breadcrumb
         items={[
-          { label: "Pelanggan", href: "/dashboard/master/customers" },
+          { label: "Pelanggan", href: "/dashboard/customers" },
           { label: customer.name },
         ]}
       />
@@ -177,7 +177,7 @@ export function CustomerProfileScreen({ id }: { id: string }) {
           )}
           <Can feature="customers" action="update">
             <Button asChild size="sm">
-              <Link href={`/dashboard/master/customers/${customer._id}/edit`}>
+              <Link href={`/dashboard/customers/${customer._id}/edit`}>
                 <Pencil className="size-4" />
                 Ubah
               </Link>

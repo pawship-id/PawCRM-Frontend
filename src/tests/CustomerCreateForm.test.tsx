@@ -108,7 +108,7 @@ describe("CustomerCreateForm", () => {
         },
       }),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/master/customers");
+    expect(push).toHaveBeenCalledWith("/dashboard/customers");
   });
 
   it("sends the address's pin, pasted as one pair — what a Zona price is quoted from", async () => {

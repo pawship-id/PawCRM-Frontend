@@ -60,7 +60,7 @@ function PetRow({ pet }: { pet: Pet }) {
       </div>
       <Can feature="pets" action="update">
         <Button variant="ghost" size="sm" asChild>
-          <Link href={`/dashboard/master/pets/${pet._id}`}>
+          <Link href={`/dashboard/pets/${pet._id}`}>
             <Pencil className="size-4" />
             Ubah
           </Link>

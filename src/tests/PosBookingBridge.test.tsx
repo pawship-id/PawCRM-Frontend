@@ -1393,7 +1393,7 @@ describe("PosScreen — a service tapped in the grid", () => {
 
     expect(fix).toHaveAttribute(
       "href",
-      `/dashboard/master/pets/${PET_ID}/edit`,
+      `/dashboard/pets/${PET_ID}/edit`,
     );
     expect(fix).toHaveAttribute("target", "_blank");
 

@@ -18,7 +18,7 @@ jest.mock("@/services/pos.service");
 jest.mock("@/services/membership.service");
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
-  usePathname: () => "/dashboard/master/customers/x",
+  usePathname: () => "/dashboard/customers/x",
 }));
 jest.mock("@/services/petOption.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
@@ -64,7 +64,7 @@ function page<T>(items: T[], total = items.length) {
 }
 
 /**
- * The customer profile — the read side of `/master/customers/:id`, which used to
+ * The customer profile — the read side of `/customers/:id`, which used to
  * be the edit form.
  *
  * WHAT THIS SUITE IS FOR. Three of the screen's decisions are the kind that a

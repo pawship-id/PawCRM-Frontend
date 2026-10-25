@@ -34,7 +34,7 @@ const COLUMN_COUNT = 4;
 
 /** This screen's own URL, carrying the window that is currently applied. */
 function dormantCustomersPath(days: number): string {
-  return `/dashboard/master/customers/dormant?days=${days}`;
+  return `/dashboard/customers/dormant?days=${days}`;
 }
 
 /**
@@ -179,7 +179,7 @@ export function DormantCustomersScreen({
                   <TableRow key={row._id}>
                     <TableCell>
                       <Link
-                        href={`/dashboard/master/customers/${row._id}`}
+                        href={`/dashboard/customers/${row._id}`}
                         className="font-medium text-foreground hover:text-primary-hover"
                       >
                         {row.name}

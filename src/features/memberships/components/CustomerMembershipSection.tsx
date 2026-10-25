@@ -96,7 +96,7 @@ export function CustomerMembershipSection({ customerId }: { customerId: string }
             key={pet._id}
             title={pet.name}
             subtitle={variant || undefined}
-            link={{ href: `/dashboard/master/pets/${pet._id}`, label: "Detail hewan" }}
+            link={{ href: `/dashboard/pets/${pet._id}`, label: "Detail hewan" }}
           >
             {card ? (
               <MemberRow card={card} />

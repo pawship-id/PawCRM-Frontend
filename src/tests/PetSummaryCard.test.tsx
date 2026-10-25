@@ -146,7 +146,7 @@ describe("PetSummaryCard", () => {
  * THE OWNER IS A NAME, NOT AN ID — and this is a regression test for something
  * a shop owner actually saw on screen.
  *
- * `/dashboard/master/pets/:id` used to mount the EDIT FORM as its landing tab.
+ * `/dashboard/pets/:id` used to mount the EDIT FORM as its landing tab.
  * A form answers in field values, so the owner rendered as a disabled select
  * holding a customer id: somebody opening a profile to see whose dog this is
  * read `6a9797bacc28e96138ba7764`.

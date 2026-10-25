@@ -18,7 +18,7 @@ export { CustomerModuleHeader } from "./components/CustomerModuleHeader";
 export { CustomerSummaryScreen } from "./components/CustomerSummaryScreen";
 /**
  * The read side of one customer — the mockup's `profilPelanggan`, at
- * `/master/customers/:id`. The form it links to is `CustomerEditForm`, one route
+ * `/customers/:id`. The form it links to is `CustomerEditForm`, one route
  * deeper; the two used to be the same screen. See CustomerProfileScreen.
  */
 export { CustomerProfileScreen } from "./components/CustomerProfileScreen";

@@ -56,7 +56,7 @@ export default async function DormantCustomersPage({
         <div>
           <Breadcrumb
             items={[
-              { label: "Pelanggan", href: "/dashboard/master/customers/ringkasan" },
+              { label: "Pelanggan", href: "/dashboard/customers/summary" },
               { label: "Pelanggan tidak aktif" },
             ]}
           />
