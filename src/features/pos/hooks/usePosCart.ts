@@ -19,7 +19,7 @@ import type { EligibilityReason } from "@/types/membership";
 
 import { onlineTransport, type CartTransport } from "../offline/transport";
 import { cartItemsAsInput } from "./cartInput";
-import { lotsWithOneMore } from "./lineLots";
+import { lotsAtQty, lotsWithOneMore } from "./lineLots";
 
 export { cartItemsAsInput };
 
@@ -704,14 +704,33 @@ export function usePosCart(
       const items = itemsAsInput();
       if (!items[index]) return;
       /*
-        A STEPPED QUANTITY DROPS THE NAMED LOTS (8 October 2026). Their shares
-        added up to the old quantity, and the server refuses a line whose lots
-        no longer do — so the line goes back to FEFO, and the cashier names them
-        again in the dialog, where the quantity and the lots sit side by side.
+        A STEPPED QUANTITY KEEPS THE NAMED LOTS (25 October 2026, BO; it used
+        to drop them back to FEFO). The server refuses a line whose lots no
+        longer add up, so they are re-split here — see `lotsAtQty`. Stepping
+        up asks the shelf where the extra units come from; stepping down does
+        not need to. Only when they cannot add up does the line go to FEFO.
       */
-      const { lots, ...rest } = items[index];
-      void lots;
-      items[index] = { ...rest, qty };
+      const { lots: named = [], ...rest } = items[index];
+      const target = Number(qty);
+      let lots: Array<{ batchId: string; qty: string }> | null = null;
+
+      if (named.length > 0) {
+        const held = named.reduce((sum, share) => sum + Number(share.qty), 0);
+        if (target <= held) {
+          lots = lotsAtQty({ named, qty: target, lots: [] });
+        } else {
+          setBusy(true);
+          try {
+            const { lots: shelf } = await posService.lots(items[index].refId);
+            lots = lotsAtQty({ named, qty: target, lots: shelf });
+          } catch {
+            // Offline, or the lots would not load: FEFO decides at posting.
+            lots = null;
+          }
+        }
+      }
+
+      items[index] = { ...rest, qty, ...(lots ? { lots } : {}) };
       await send({ items });
     },
     [itemsAsInput, send],

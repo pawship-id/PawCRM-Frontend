@@ -63,3 +63,50 @@ export function lotsWithOneMore({
 
   return [...shares].map(([batchId, qty]) => ({ batchId, qty: String(qty) }));
 }
+
+/**
+ * The lots of a line whose quantity was STEPPED in the basket (25 Oct 2026, BO)
+ * — the named lots are kept, not dropped back to FEFO.
+ *
+ * UP: the extra units go where FEFO would put them, on what each lot still
+ * holds after the named shares — `lots` in that order, as for
+ * `lotsWithOneMore`. DOWN: the units come off the END of the list, so a minus
+ * undoes the last lot that was scanned or added, and needs no `lots` at all.
+ *
+ * Null when it cannot add up; the caller falls back to FEFO.
+ */
+export function lotsAtQty({
+  named,
+  qty,
+  lots,
+}: {
+  named: LotShare[];
+  qty: number;
+  lots: PosLot[];
+}): LotShare[] | null {
+  const held = named.reduce((sum, share) => sum + Number(share.qty), 0);
+
+  if (qty <= held) {
+    let drop = held - qty;
+    const kept: LotShare[] = [];
+    for (const share of [...named].reverse()) {
+      const take = Math.min(drop, Number(share.qty));
+      drop -= take;
+      const left = Number(share.qty) - take;
+      if (left > 0) kept.unshift({ batchId: share.batchId, qty: String(left) });
+    }
+    return kept.length > 0 ? kept : null;
+  }
+
+  let result: LotShare[] | null = named;
+  for (let count = held; count < qty && result; count += 1) {
+    result = lotsWithOneMore({
+      named: result,
+      lineQty: count,
+      scannedBatchId: null,
+      lots,
+    });
+  }
+  return result;
+}
+
