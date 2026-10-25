@@ -166,7 +166,7 @@ export interface NavSection {
  * WHY SOME MOCKUP LEAVES ARE STILL GROUPS HERE.
  *
  * buloo-navbar-v3 draws Pelanggan, Penjualan, Pembelian and Inventori as single
- * rows whose screens carry tabs (Faktur / Piutang / E-commerce / Retur…). Those
+ * rows whose screens carry tabs (Faktur / E-commerce / Retur…). Those
  * tabbed screens do not exist yet, and collapsing the menu to match would leave
  * the routes that DO exist — /purchasing/receipts, seven inventory screens —
  * reachable only by typing a URL. So each is a group over its real routes today,
@@ -326,8 +326,8 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       {
         /**
-         * A LEAF, as the mockup draws it, with its five tabs on the screen (see
-         * SalesModuleHeader): Ringkasan, Faktur, Piutang, E-commerce, Retur.
+         * A LEAF, as the mockup draws it, with its four tabs on the screen (see
+         * SalesModuleHeader): Ringkasan, Faktur, E-commerce, Retur.
          *
          * THE HREF OPENS RINGKASAN, which took `/dashboard/sales` on 29
          * September 2026 (on request). The invoice list moved a segment down to
@@ -351,7 +351,6 @@ export const NAV_SECTIONS: NavSection[] = [
         permissionAny: [
           { feature: "salesSummary", action: "read" },
           { feature: "customerInvoices", action: "read" },
-          { feature: "receivables", action: "read" },
           { feature: "ecommerce", action: "read" },
           { feature: "salesReturns", action: "read" },
         ],

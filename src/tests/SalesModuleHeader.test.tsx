@@ -30,7 +30,6 @@ describe("SalesModuleHeader", () => {
     expect(tabNames()).toEqual([
       "Ringkasan",
       "Faktur",
-      "Piutang",
       "E-commerce",
       "Retur",
     ]);
@@ -43,10 +42,6 @@ describe("SalesModuleHeader", () => {
     expect(screen.getByRole("link", { name: "Faktur" })).toHaveAttribute(
       "href",
       "/dashboard/sales/invoice",
-    );
-    expect(screen.getByRole("link", { name: "Piutang" })).toHaveAttribute(
-      "href",
-      "/dashboard/sales/piutang",
     );
     // E-commerce predates this module and keeps its own route, outside the
     // /dashboard/sales prefix — which is why the rail needs a `match` entry.
@@ -87,10 +82,10 @@ describe("SalesModuleHeader", () => {
   });
 
   it("does not leave Ringkasan lit on the tabs nested under it", () => {
-    pathname.mockReturnValue("/dashboard/sales/piutang");
+    pathname.mockReturnValue("/dashboard/sales/retur");
     renderWithAuth(<SalesModuleHeader />);
 
-    expect(screen.getByRole("link", { name: "Piutang" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Retur" })).toHaveAttribute(
       "aria-current",
       "page",
     );
@@ -112,15 +107,6 @@ describe("SalesModuleHeader", () => {
   it("shows each tab only to its own grant (14 Oct 2026)", () => {
     renderWithAuth(<SalesModuleHeader />, { isSuperAdmin: false, permissions: [] });
     expect(screen.queryAllByRole("link")).toHaveLength(0);
-  });
-
-  it("gives a collections role Piutang without Faktur", () => {
-    renderWithAuth(<SalesModuleHeader />, {
-      isSuperAdmin: false,
-      permissions: [{ feature: "receivables", actions: ["read"] }],
-    });
-
-    expect(tabNames()).toEqual(["Piutang"]);
   });
 
   it("renders the tab's own create button in the action slot", () => {

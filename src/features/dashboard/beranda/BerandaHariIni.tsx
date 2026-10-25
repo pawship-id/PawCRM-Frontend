@@ -380,7 +380,7 @@ export function BerandaHariIni() {
                 (overdue.data?.pagination.total ?? 0) > ROWS
                   ? {
                       label: `+${(overdue.data?.pagination.total ?? 0) - ROWS} faktur lagi`,
-                      href: "/dashboard/sales/piutang",
+                      href: "/dashboard/sales/invoice",
                     }
                   : undefined
               }

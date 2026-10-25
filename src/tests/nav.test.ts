@@ -274,7 +274,7 @@ describe("filterNavItems", () => {
 
     expect(isActive(sales!, "/dashboard/sales")).toBe(true);
     // Its own placeholder tabs and detail routes ride on the href's prefix.
-    expect(isActive(sales!, "/dashboard/sales/piutang")).toBe(true);
+    expect(isActive(sales!, "/dashboard/sales/retur")).toBe(true);
     expect(isActive(sales!, "/dashboard/ecommerce-sync")).toBe(true);
   });
 
