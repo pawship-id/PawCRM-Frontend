@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { PosCatalog } from "@/features/pos/components/PosCatalog";
@@ -59,46 +59,56 @@ beforeEach(() => {
   mockedPos.catalog.mockResolvedValue(page([]));
 });
 
-async function scan(code: string) {
+function renderCatalog() {
   const onAdd = jest.fn();
+  const onScan = jest.fn().mockResolvedValue(true);
   const onExpand = jest.fn();
+  renderWithAuth(
+    <PosCatalog onAdd={onAdd} onScan={onScan} onExpand={onExpand} />,
+  );
+  return { onAdd, onScan, onExpand };
+}
+
+async function scan(code: string) {
+  const handlers = renderCatalog();
   const user = userEvent.setup();
-  renderWithAuth(<PosCatalog onAdd={onAdd} onExpand={onExpand} />);
 
   await user.click(screen.getByRole("button", { name: /scan pakai kamera/i }));
   nextCode = code;
   await user.click(screen.getByRole("button", { name: "kamera membaca" }));
 
-  return { onAdd, onExpand };
+  return handlers;
 }
 
 describe("scanning at the till", () => {
   it("asks for an exact match on the code the camera read", async () => {
     await scan("8991234567890");
 
-    expect(mockedPos.catalog).toHaveBeenCalledWith(
-      expect.objectContaining({ search: "8991234567890", scan: true }),
+    await waitFor(() =>
+      expect(mockedPos.catalog).toHaveBeenCalledWith(
+        expect.objectContaining({ search: "8991234567890", scan: true }),
+      ),
     );
   });
 
   it("puts the one product it names straight into the basket", async () => {
     mockedPos.catalog.mockResolvedValue(page([tile()]));
 
-    const { onAdd } = await scan("RC-KIT");
+    const { onScan } = await scan("RC-KIT");
 
-    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ _id: "p1" }));
     expect(
       await screen.findByText("Kitten 2kg masuk ke keranjang."),
     ).toBeInTheDocument();
+    expect(onScan).toHaveBeenCalledWith(expect.objectContaining({ _id: "p1" }));
   });
 
   it("refuses a product the shelf is out of, and says so", async () => {
     mockedPos.catalog.mockResolvedValue(page([tile({ sellable: false })]));
 
-    const { onAdd } = await scan("RC-KIT");
+    const { onScan } = await scan("RC-KIT");
 
-    expect(onAdd).not.toHaveBeenCalled();
     expect(await screen.findByText(/stoknya habis/i)).toBeInTheDocument();
+    expect(onScan).not.toHaveBeenCalled();
   });
 
   it("opens the size picker for a family instead of guessing a size", async () => {
@@ -106,10 +116,10 @@ describe("scanning at the till", () => {
       page([tile({ productType: "parent" })]),
     );
 
-    const { onAdd, onExpand } = await scan("RC-KIT");
+    const { onScan, onExpand } = await scan("RC-KIT");
 
-    expect(onAdd).not.toHaveBeenCalled();
-    expect(onExpand).toHaveBeenCalled();
+    expect(onScan).not.toHaveBeenCalled();
+    await waitFor(() => expect(onExpand).toHaveBeenCalled());
   });
 
   it("hands several matches to the search box, by the label's SKU", async () => {
@@ -117,12 +127,96 @@ describe("scanning at the till", () => {
       page([tile(), tile({ _id: "p2", name: "Kitten XL" })], 2),
     );
 
-    const { onAdd } = await scan("BULOO\nSKU:RC-KIT\nBATCH:B2610-0042");
+    const { onScan } = await scan("BULOO\nSKU:RC-KIT\nBATCH:B2610-0042");
 
-    expect(onAdd).not.toHaveBeenCalled();
-    expect(
-      await screen.findByRole("textbox", { name: /cari produk/i }),
-    ).toHaveValue("RC-KIT");
     expect(await screen.findByText(/2 produk cocok/i)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /cari produk/i })).toHaveValue(
+      "RC-KIT",
+    );
+    expect(onScan).not.toHaveBeenCalled();
+  });
+
+  it("refuses a lot that has expired, and says so", async () => {
+    mockedPos.catalog.mockResolvedValue(
+      page([
+        tile({
+          scannedLot: {
+            batchId: "b1",
+            batchCode: "B2401-0001",
+            expiryDate: "2024-01-31",
+          },
+        }),
+      ]),
+    );
+
+    const { onScan } = await scan("B2401-0001");
+
+    expect(await screen.findByText(/sudah kedaluwarsa/i)).toBeInTheDocument();
+    expect(onScan).not.toHaveBeenCalled();
+  });
+});
+
+/*
+  A HANDHELD SCANNER (25 Oct 2026, BO) types into the search box — fast. Typed
+  with no delay, every key lands inside SCAN_KEY_GAP_MS, which is what tells
+  it from a person.
+*/
+describe("a handheld scanner typing into the search box", () => {
+  const box = () => screen.getByRole("textbox", { name: /cari produk/i });
+
+  it("puts the one product it names in the basket and empties the box", async () => {
+    mockedPos.catalog.mockResolvedValue(page([tile()]));
+    const { onScan } = renderCatalog();
+    const user = userEvent.setup({ delay: null });
+
+    await user.type(box(), "RC-KIT{Enter}");
+
+    await waitFor(() =>
+      expect(onScan).toHaveBeenCalledWith(expect.objectContaining({ _id: "p1" })),
+    );
+    expect(mockedPos.catalog).toHaveBeenCalledWith(
+      expect.objectContaining({ search: "RC-KIT", scan: true }),
+    );
+    await waitFor(() => expect(box()).toHaveValue(""));
+  });
+
+  it("takes a batch label's QR whole, Enter between its lines and all", async () => {
+    mockedPos.catalog.mockResolvedValue(page([tile()]));
+    const { onScan } = renderCatalog();
+    const user = userEvent.setup({ delay: null });
+
+    await user.type(box(), "BULOO{Enter}SKU:RC-KIT{Enter}BATCH:B2610-0042{Enter}");
+
+    await waitFor(() => expect(onScan).toHaveBeenCalledTimes(1));
+    expect(mockedPos.catalog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: "BULOOSKU:RC-KITBATCH:B2610-0042",
+        scan: true,
+      }),
+    );
+  });
+
+  it("leaves the code in the box when nothing matches it exactly", async () => {
+    mockedPos.catalog.mockResolvedValue(page([]));
+    const { onScan } = renderCatalog();
+    const user = userEvent.setup({ delay: null });
+
+    await user.type(box(), "RC-KI{Enter}");
+
+    expect(await screen.findByText(/tidak ada produk dengan kode/i)).toBeInTheDocument();
+    expect(box()).toHaveValue("RC-KI");
+    expect(onScan).not.toHaveBeenCalled();
+  });
+
+  it("treats a person typing a code and pressing Enter as a search", async () => {
+    mockedPos.catalog.mockResolvedValue(page([tile()]));
+    const { onScan } = renderCatalog();
+    const user = userEvent.setup({ delay: 80 });
+
+    await user.type(box(), "RC-KIT{Enter}");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    expect(onScan).not.toHaveBeenCalled();
+    expect(box()).toHaveValue("RC-KIT");
   });
 });

@@ -2504,6 +2504,16 @@ export interface PosCatalogItem {
    */
   batchCode: string | null;
   /**
+   * THE ONE LOT A SCAN NAMED (25 Oct 2026) — only on a scan's result, and only
+   * when exactly one lot of this product matched. The till pins it on the line
+   * so the sale takes from the carton that was scanned, not from FEFO's pick.
+   */
+  scannedLot?: {
+    batchId: string;
+    batchCode: string;
+    expiryDate: string | null;
+  } | null;
+  /**
    * The one photo a tile draws, at the three sizes it may draw it at.
    *
    * RESOLVED BY THE SERVER through `variant's own → its own gallery → its

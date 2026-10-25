@@ -481,6 +481,38 @@ export function PosScreen() {
   );
 
   /**
+   * A PRODUCT A SCAN NAMED — the camera or a handheld scanner (25 Oct 2026, BO).
+   *
+   * Straight into the basket like a tap, but from THE LOT ON THE LABEL when the
+   * scan named one: that carton is the one leaving the shelf. Only a lot that
+   * expires is pinned — the line dialog offers lots for nothing else, so a lot
+   * named on any other product could be neither seen nor changed.
+   *
+   * Resolves once the write has landed, so the caller can queue the next scan
+   * behind it: every write sends the whole basket, and two in flight would
+   * each be built without the other's line.
+   */
+  const addScanned = useCallback(
+    async (tile: PosCatalogItem) => {
+      setNotice(null);
+      const lot = tile.scannedLot?.expiryDate ? tile.scannedLot : null;
+      const ok = await cart.addItem(
+        tile,
+        lot ? { batchId: lot.batchId } : undefined,
+      );
+      if (ok) {
+        swalToast(
+          lot
+            ? `${tile.name} (batch ${lot.batchCode}) ditambahkan.`
+            : `${tile.name} ditambahkan.`,
+        );
+      }
+      return ok;
+    },
+    [cart],
+  );
+
+  /**
    * Parks the basket (FR-6).
    *
    * IT WRITES SOMETHING NOW, and until recently it did not. Every cart was born
@@ -808,6 +840,7 @@ export function PosScreen() {
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <PosCatalog
           onAdd={addTile}
+          onScan={addScanned}
           onExpand={setVariantParent}
           busy={cart.busy}
         />

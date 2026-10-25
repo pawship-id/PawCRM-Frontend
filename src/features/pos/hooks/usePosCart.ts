@@ -19,6 +19,7 @@ import type { EligibilityReason } from "@/types/membership";
 
 import { onlineTransport, type CartTransport } from "../offline/transport";
 import { cartItemsAsInput } from "./cartInput";
+import { lotsWithOneMore } from "./lineLots";
 
 export { cartItemsAsInput };
 
@@ -67,7 +68,11 @@ interface UsePosCartResult {
    * `addMembership`. Gate any "… ditambahkan" toast on it; the basket's banner
    * carries the reason. See `send`.
    */
-  addItem: (tile: PosCatalogItem) => Promise<boolean>;
+  addItem: (
+    tile: PosCatalogItem,
+    /** The lot a scan named — the unit is taken from it. See `lotsWithOneMore`. */
+    scan?: { batchId: string },
+  ) => Promise<boolean>;
   /** Puts a trip's fee back on the basket — see `owedTrips` on the cart. */
   addTrip: (tripId: string) => Promise<boolean>;
   /** Several trips at once — the trips left behind a pull ticks (11 October 2026). */
@@ -495,9 +500,13 @@ export function usePosCart(
    *
    * A SERVICE IS NEVER BUMPED: it is one line per animal per service (FR-3), so
    * a second tap is a second line — which the server will also force to qty 1.
+   *
+   * A LINE THAT NAMES LOTS KEEPS NAMING THEM (25 Oct 2026, BO), and a scanned
+   * lot joins them — see `lotsWithOneMore`. Only when the lots cannot be made
+   * to add up does the line fall back to FEFO, as stepping the quantity does.
    */
   const addItem = useCallback(
-    async (tile: PosCatalogItem) => {
+    async (tile: PosCatalogItem, scan?: { batchId: string }) => {
       const items = itemsAsInput();
       const existing =
         tile.kind === "product"
@@ -507,15 +516,47 @@ export function usePosCart(
           : -1;
 
       if (existing >= 0) {
-        // The named lots no longer add up once the quantity moves — see `setQty`.
-        const { lots, ...rest } = items[existing];
-        void lots;
+        const { lots: named = [], ...rest } = items[existing];
+        const lineQty = Number(items[existing].qty ?? "1");
+        let lots: Array<{ batchId: string; qty: string }> | null = null;
+
+        if (scan && named.length > 0) {
+          // Nothing left to place by FEFO: the scanned lot just gains one.
+          lots = lotsWithOneMore({
+            named,
+            lineQty,
+            scannedBatchId: scan.batchId,
+            lots: [],
+          });
+        } else if (scan || named.length > 0) {
+          // Somebody has to say where the unplaced units come from.
+          setBusy(true);
+          try {
+            const { lots: shelf } = await posService.lots(tile._id);
+            lots = lotsWithOneMore({
+              named,
+              lineQty,
+              scannedBatchId: scan?.batchId ?? null,
+              lots: shelf,
+            });
+          } catch {
+            // Offline, or the lots would not load: FEFO decides at posting.
+            lots = null;
+          }
+        }
+
         items[existing] = {
           ...rest,
-          qty: String(Number(items[existing].qty ?? "1") + 1),
+          qty: String(lineQty + 1),
+          ...(lots ? { lots } : {}),
         };
       } else {
-        items.push({ kind: tile.kind, refId: tile._id, qty: "1" });
+        items.push({
+          kind: tile.kind,
+          refId: tile._id,
+          qty: "1",
+          ...(scan ? { lots: [{ batchId: scan.batchId, qty: "1" }] } : {}),
+        });
       }
 
       return send({ items });
