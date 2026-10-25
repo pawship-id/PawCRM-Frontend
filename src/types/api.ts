@@ -1835,6 +1835,9 @@ export interface CustomerHistoryRow {
   amount: string;
 }
 
+/** Orderings GET /api/customers/history accepts — the server's `HISTORY_SORTS`. */
+export type CustomerHistorySort = "dateDesc" | "dateAsc" | "amountDesc" | "amountAsc";
+
 /** Query for GET /api/customers/history. Dates are `yyyy-mm-dd`. */
 export interface CustomerHistoryQuery {
   dateFrom?: string;
@@ -1843,6 +1846,8 @@ export interface CustomerHistoryQuery {
   source?: CustomerHistorySource;
   customerId?: string;
   search?: string;
+  /** Omitted means `dateDesc`. */
+  sort?: CustomerHistorySort;
   page?: number;
   limit?: number;
 }

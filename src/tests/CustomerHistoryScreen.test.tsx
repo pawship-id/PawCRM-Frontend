@@ -152,9 +152,46 @@ describe("asking the server", () => {
       dateTo: undefined,
       kind: undefined,
       source: undefined,
+      sort: "dateDesc",
       page: 1,
       limit: 20,
     });
+  });
+
+  it("sorts by Nilai from its header — largest first, then smallest — and leaves Pelanggan plain", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CustomerHistoryScreen />);
+    await screen.findByText("Basic Grooming");
+
+    await user.click(screen.getByRole("button", { name: /Nilai/ }));
+    await waitFor(() =>
+      expect(mockedCustomerService.history).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "amountDesc", page: 1 }),
+      ),
+    );
+
+    await user.click(screen.getByRole("button", { name: /Nilai/ }));
+    await waitFor(() =>
+      expect(mockedCustomerService.history).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "amountAsc" }),
+      ),
+    );
+
+    const pelanggan = screen.getByRole("columnheader", { name: "Pelanggan" });
+    expect(within(pelanggan).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("sorts by Tanggal oldest first on a click, since newest is where it starts", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CustomerHistoryScreen />);
+    await screen.findByText("Basic Grooming");
+
+    await user.click(screen.getByRole("button", { name: /Tanggal/ }));
+    await waitFor(() =>
+      expect(mockedCustomerService.history).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sort: "dateAsc" }),
+      ),
+    );
   });
 
   it("sends the search to the server", async () => {

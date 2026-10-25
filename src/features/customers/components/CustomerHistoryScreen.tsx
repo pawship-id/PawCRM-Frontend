@@ -17,11 +17,13 @@ import {
   Pagination,
   withAll,
   type DataTableColumn,
+  type SortOptions,
 } from "@/components";
 import {
   SERVICE_KIND_LABELS,
   type CustomerHistoryKind,
   type CustomerHistoryRow,
+  type CustomerHistorySort,
   type CustomerHistorySource,
 } from "@/types/api";
 import { formatMoney } from "@/utils/decimal";
@@ -62,6 +64,12 @@ const SOURCES = withAll<CustomerHistoryQuery["source"]>(
   })),
   "Semua sumber",
 );
+
+/** Tanggal and Nilai sort, on the server; the first click is newest / largest. */
+const SORT_OPTIONS: SortOptions<CustomerHistorySort> = {
+  date: { asc: "dateAsc", desc: "dateDesc", first: "desc" },
+  amount: { asc: "amountAsc", desc: "amountDesc", first: "desc" },
+};
 
 const BADGE = "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold";
 
@@ -164,6 +172,9 @@ const columnsFor = (search: string): DataTableColumn<CustomerHistoryRow>[] => [
  * every invoice typed in the back office. See `findHistory` on the server for
  * what makes a row.
  *
+ * TANGGAL AND NILAI SORT FROM THEIR HEADERS (25 October 2026, on request) —
+ * every other column is plain.
+ *
  * Search leads the bar like the Pelanggan tab's; Periode, Jenis and Sumber sit
  * behind one `Filter (n)` — a date range carries its own Terapkan, which is a
  * panel's case (ui-rules §8).
@@ -197,6 +208,11 @@ export function CustomerHistoryScreen() {
         columns={columnsFor(query.search)}
         rows={items}
         rowKey={(row) => row.id}
+        sort={{
+          value: query.sort,
+          options: SORT_OPTIONS,
+          onChange: (sort) => setQuery({ sort }),
+        }}
         loading={loading}
         loadingLabel="Memuat riwayat…"
         tableClassName="min-w-[64rem]"

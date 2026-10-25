@@ -85,6 +85,7 @@ export const customerService = {
         source: query.source,
         customerId: query.customerId,
         search: query.search,
+        sort: query.sort,
         page: query.page,
         limit: query.limit,
       },

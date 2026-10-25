@@ -7,6 +7,7 @@ import { ApiError } from "@/services/api-error";
 import type {
   CustomerHistoryKind,
   CustomerHistoryRow,
+  CustomerHistorySort,
   CustomerHistorySource,
   PageResult,
 } from "@/types/api";
@@ -18,6 +19,7 @@ export interface CustomerHistoryQuery {
   dateTo: string;
   kind: CustomerHistoryKind | "";
   source: CustomerHistorySource | "";
+  sort: CustomerHistorySort;
   page: number;
 }
 
@@ -29,6 +31,7 @@ export const DEFAULT_HISTORY_QUERY: CustomerHistoryQuery = {
   dateTo: "",
   kind: "",
   source: "",
+  sort: "dateDesc",
   page: 1,
 };
 
@@ -53,7 +56,7 @@ interface UseCustomerHistoryResult {
  * The Riwayat tab's list — every customer's services, purchases and
  * back-office invoices, newest first, paged and filtered on the server.
  *
- * ANY FILTER CHANGE RESETS TO PAGE 1, as every other list here does: page 3 of
+ * ANY FILTER OR SORT CHANGE RESETS TO PAGE 1, as every other list here does: page 3 of
  * a narrower list is whatever happens to land there.
  */
 export function useCustomerHistory(): UseCustomerHistoryResult {
@@ -84,6 +87,7 @@ export function useCustomerHistory(): UseCustomerHistoryResult {
         dateTo: query.dateTo || undefined,
         kind: query.kind || undefined,
         source: query.source || undefined,
+        sort: query.sort,
         page: query.page,
         limit: LIMIT,
       })
@@ -112,6 +116,7 @@ export function useCustomerHistory(): UseCustomerHistoryResult {
     query.dateTo,
     query.kind,
     query.source,
+    query.sort,
     query.page,
     nonce,
   ]);
