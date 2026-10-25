@@ -1,24 +1,21 @@
 import type { Metadata } from "next";
-import { History } from "lucide-react";
 
-import { CustomerModuleHeader } from "@/features/customers";
-import { ModuleTabPlaceholder } from "@/features/dashboard";
+import { CustomerHistoryScreen } from "@/features/customers";
+import { CUSTOMER_TABS } from "@/features/customers/components/CustomerModuleHeader";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
   title: "Riwayat · Pelanggan · Buloo",
 };
 
-/** The Riwayat tab. Ungated for the same reason Membership is. */
+/**
+ * The Riwayat tab (25 October 2026) — every customer's services, purchases and
+ * back-office invoices in one timeline. See CustomerHistoryScreen.
+ */
 export default function CustomerHistoryPage() {
   return (
-    <RequirePermission feature="customerHistory">
-      <ModuleTabPlaceholder
-        header={<CustomerModuleHeader />}
-        title="Riwayat"
-        note="Kunjungan, booking, dan transaksi seluruh pelanggan dalam satu urutan waktu. Untuk sekarang, riwayat per hewan ada di profil hewannya."
-        icon={History}
-      />
+    <RequirePermission feature="customerHistory" redirectTo={CUSTOMER_TABS}>
+      <CustomerHistoryScreen />
     </RequirePermission>
   );
 }

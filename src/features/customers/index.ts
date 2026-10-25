@@ -35,6 +35,7 @@ export { CustomerQuickAddDialog } from "./components/CustomerQuickAddDialog";
  * the Ringkasan tab's panel — not one of the module's tabs. See its own file.
  */
 export { DormantCustomersScreen } from "./components/DormantCustomersScreen";
+export { CustomerHistoryScreen } from "./components/CustomerHistoryScreen";
 /** The server page's URL parser for `?createdSince=` — see its own file. */
 export { customersQueryFromParams } from "./query";
 export type { CustomersQuery } from "./hooks/useCustomers";

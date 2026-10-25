@@ -2,6 +2,8 @@ import { apiClient } from "./api-client";
 import type {
   Customer,
   CustomerListQuery,
+  CustomerHistoryQuery,
+  CustomerHistoryRow,
   CustomerStats,
   DormantCustomerList,
   CreateCustomerInput,
@@ -68,6 +70,24 @@ export const customerService = {
   dormant: (query: { days?: number; page?: number; limit?: number } = {}) =>
     apiClient.get<DormantCustomerList>("/customers/dormant", {
       query: { days: query.days, page: query.page, limit: query.limit },
+    }),
+
+  /**
+   * GET /customers/history — the Riwayat tab: every customer's services,
+   * purchases and back-office invoices, newest first, paged on the server.
+   */
+  history: (query: CustomerHistoryQuery = {}) =>
+    apiClient.get<PageResult<CustomerHistoryRow>>("/customers/history", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        kind: query.kind,
+        source: query.source,
+        customerId: query.customerId,
+        search: query.search,
+        page: query.page,
+        limit: query.limit,
+      },
     }),
 
   /** GET /customers/:id — a single customer. */
