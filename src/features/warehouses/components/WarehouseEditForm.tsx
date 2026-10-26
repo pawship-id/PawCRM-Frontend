@@ -341,7 +341,7 @@ function DetailsSection({
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/pengaturan/gudang")}
+          onClick={() => router.push("/dashboard/settings/warehouses")}
         >
           Batal
         </Button>
@@ -389,7 +389,7 @@ function DangerSection({
     try {
       if (pending === "delete") {
         await warehouseService.remove(warehouse._id);
-        router.push("/dashboard/pengaturan/gudang");
+        router.push("/dashboard/settings/warehouses");
         swalToast("Gudang dihapus.");
         return;
       }

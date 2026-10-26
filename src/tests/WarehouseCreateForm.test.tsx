@@ -106,7 +106,7 @@ describe("WarehouseCreateForm", () => {
         hasPos: false,
       }),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/gudang");
+    expect(push).toHaveBeenCalledWith("/dashboard/settings/warehouses");
   });
 
   it("sends the till flag when the warehouse asks for one", async () => {

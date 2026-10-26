@@ -66,7 +66,7 @@ import {
 export const PURCHASING_TABS: GatedTab[] = [
   {
     label: "Ringkasan",
-    href: "/dashboard/purchasing",
+    href: "/dashboard/purchasing/summary",
     // EXACT, because its href is the prefix of every sibling's.
     exact: true,
     anyOf: [{ feature: "purchasingSummary" }],

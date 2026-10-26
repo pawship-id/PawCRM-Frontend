@@ -54,7 +54,7 @@ function dayOf(iso: string | null): string | null {
 }
 
 /**
- * ONE TRIP, WHOLE — `/dashboard/booking/perjalanan/:tripId` (11 October 2026,
+ * ONE TRIP, WHOLE — `/dashboard/booking/rides/:tripId` (11 October 2026,
  * on request).
  *
  * ─── WHY THE TRIP LEFT THE BOOKING PAGE ─────────────────────────────────────

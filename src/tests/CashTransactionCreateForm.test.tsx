@@ -405,7 +405,7 @@ describe("CashTransactionCreateForm", () => {
       // path, and no chance of the money landing twice.
       expect(cashTransactionService.create).not.toHaveBeenCalled();
       expect(mockPush).toHaveBeenCalledWith(
-        "/dashboard/keuangan/kas-bank/biaya-tetap/fc9",
+        "/dashboard/finance/cash-bank/fixed-costs/fc9",
       );
     });
 
@@ -503,7 +503,7 @@ describe("CashTransactionCreateForm", () => {
       }),
     );
     expect(swalToast).toHaveBeenCalledWith("Transaksi BKK/CBS/2609/0004 tersimpan.");
-    expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/kas-bank/transaksi/ct9");
+    expect(mockPush).toHaveBeenCalledWith("/dashboard/finance/cash-bank/transactions/ct9");
   });
 
   it("has no Lini Usaha field, in the header or on any row", async () => {

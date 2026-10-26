@@ -4,7 +4,7 @@ import { SalesModuleHeader } from "@/features/sales";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
-const pathname = jest.fn(() => "/dashboard/sales");
+const pathname = jest.fn(() => "/dashboard/sales/summary");
 jest.mock("next/navigation", () => ({
   usePathname: () => pathname(),
 }));
@@ -20,7 +20,7 @@ function tabNames() {
 }
 
 beforeEach(() => {
-  pathname.mockReturnValue("/dashboard/sales");
+  pathname.mockReturnValue("/dashboard/sales/summary");
 });
 
 describe("SalesModuleHeader", () => {
@@ -37,7 +37,7 @@ describe("SalesModuleHeader", () => {
     // invoices moved a segment down to make room for it.
     expect(screen.getByRole("link", { name: "Ringkasan" })).toHaveAttribute(
       "href",
-      "/dashboard/sales",
+      "/dashboard/sales/summary",
     );
     expect(screen.getByRole("link", { name: "Faktur" })).toHaveAttribute(
       "href",
@@ -82,7 +82,7 @@ describe("SalesModuleHeader", () => {
   });
 
   it("does not leave Ringkasan lit on the tabs nested under it", () => {
-    pathname.mockReturnValue("/dashboard/sales/retur");
+    pathname.mockReturnValue("/dashboard/sales/returns");
     renderWithAuth(<SalesModuleHeader />);
 
     expect(screen.getByRole("link", { name: "Retur" })).toHaveAttribute(

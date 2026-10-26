@@ -730,7 +730,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
                   Selisih ini sudah dibukukan ke jurnal umum.
                 </p>
                 <Link
-                  href={`/dashboard/keuangan?entryId=${opname.journalEntryId}`}
+                  href={`/dashboard/finance?entryId=${opname.journalEntryId}`}
                   className="mt-2 inline-block text-sm font-medium text-primary-hover hover:underline"
                 >
                   Lihat jurnal →

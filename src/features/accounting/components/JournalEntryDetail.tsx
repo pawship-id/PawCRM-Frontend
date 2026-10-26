@@ -467,13 +467,13 @@ function documentHref(document: JournalSourceDocument | null): string | null {
     case "stock_opname":
       return `/dashboard/inventory/opname/${document.id}`;
     case "cash_transaction":
-      return `/dashboard/keuangan/kas-bank/transaksi/${document.id}`;
+      return `/dashboard/finance/cash-bank/transactions/${document.id}`;
     case "customer_invoice":
       return `/dashboard/sales/invoice/${document.id}`;
     case "purchase_invoice":
       return `/dashboard/purchasing/payables/${document.id}`;
     case "pet_membership":
-      return `/dashboard/promosi/membership/anggota/${document.id}`;
+      return `/dashboard/promotion/membership/member/${document.id}`;
     default:
       return null;
   }

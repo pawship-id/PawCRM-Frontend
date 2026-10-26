@@ -172,7 +172,7 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
         action={
           can("cashTransactions", "create") ? (
             <SlotButton asChild>
-              <Link href={`${ACCOUNTING_CRUMBS.cashBank.href}/transaksi/new`}>
+              <Link href={`${ACCOUNTING_CRUMBS.cashBank.href}/transactions/new`}>
                 <Plus className="size-4" aria-hidden />
                 Tambah transaksi
               </Link>

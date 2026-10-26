@@ -36,7 +36,7 @@ import {
   ELIGIBILITY_LABEL,
   MEMBERSHIP_HREF,
   PLAN_PRICE_MODE_LABEL,
-  PROMOSI_HREF,
+  PROMOSI_SUMMARY_HREF,
   planHref,
 } from "../labels";
 import {
@@ -120,7 +120,7 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
         <div className="min-w-0">
           <Breadcrumb
             items={[
-              { label: "Promosi", href: PROMOSI_HREF },
+              { label: "Promosi", href: PROMOSI_SUMMARY_HREF },
               { label: "Membership", href: MEMBERSHIP_HREF },
               { label: editing ? (plan!.code || plan!.name) : "Paket baru" },
             ]}

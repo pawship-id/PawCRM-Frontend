@@ -92,7 +92,7 @@ export function WarehouseCreateForm() {
         hasPos,
       });
       // Redirect first, then fire the toast so it rides along on the list screen.
-      router.push("/dashboard/pengaturan/gudang");
+      router.push("/dashboard/settings/warehouses");
       swalToast(`${created.name} sudah dibuat.`);
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
@@ -214,7 +214,7 @@ export function WarehouseCreateForm() {
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/pengaturan/gudang")}
+          onClick={() => router.push("/dashboard/settings/warehouses")}
         >
           Batal
         </Button>

@@ -109,7 +109,7 @@ describe("SupplierCategoriesScreen", () => {
 
     expect(screen.getByRole("link", { name: /kategori baru/i })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/kategori-supplier/new",
+      "/dashboard/settings/supplier-categories/new",
     );
   });
 
@@ -223,7 +223,7 @@ describe("SupplierCategoriesScreen", () => {
 
     expect(within(menu).getByRole("menuitem", { name: /edit/i })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/kategori-supplier/sc1",
+      "/dashboard/settings/supplier-categories/sc1",
     );
   });
 

@@ -325,7 +325,7 @@ export function PurchaseReturnDetail({ returnId }: { returnId: string }) {
           <p className="mt-4 text-xs text-muted">
             Jurnal yang diposting:{" "}
             <Link
-              href={`/dashboard/keuangan/journal-entries/${purchaseReturn.journalEntryId}`}
+              href={`/dashboard/finance/journal-entries/${purchaseReturn.journalEntryId}`}
               className="tabular-nums text-primary-hover hover:underline"
             >
               lihat entri jurnal

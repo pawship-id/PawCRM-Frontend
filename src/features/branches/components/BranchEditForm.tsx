@@ -635,7 +635,7 @@ function DetailsSection({
             list, below — that branch has no page left to go back to.
           */
           onClick={() =>
-            router.push(`/dashboard/pengaturan/cabang/${branch._id}`)
+            router.push(`/dashboard/settings/branches/${branch._id}`)
           }
         >
           Batal
@@ -720,7 +720,7 @@ function DangerSection({
     try {
       if (pending === "delete") {
         await branchService.remove(branch._id);
-        router.push("/dashboard/pengaturan/cabang");
+        router.push("/dashboard/settings/branches");
         swalToast("Cabang dihapus.");
         return;
       }

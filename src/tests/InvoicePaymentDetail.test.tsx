@@ -385,7 +385,7 @@ describe("InvoicePaymentDetail — the ledger reference", () => {
     const link = await screen.findByRole("link", { name: "JE-2026-08-0412" });
     expect(link).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/journal-entries/je-pay1",
+      "/dashboard/finance/journal-entries/je-pay1",
     );
     expect(screen.queryByText("je-pay1")).not.toBeInTheDocument();
   });
@@ -408,7 +408,7 @@ describe("InvoicePaymentDetail — the ledger reference", () => {
 
     expect(
       await screen.findByRole("link", { name: "JE-2026-08-0498" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/je-rev1");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries/je-rev1");
   });
 
   it("shows the number as plain text without `journalEntries:read`", async () => {
@@ -462,7 +462,7 @@ describe("InvoicePaymentDetail — Transaksi Keuangan", () => {
 
     expect(
       await screen.findByRole("link", { name: /Lihat di Transaksi Keuangan/ }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/pay1");
+    ).toHaveAttribute("href", "/dashboard/finance/cash-bank/transactions/pay1");
   });
 
   it("opens the shared edit dialog for the transaction and re-reads the invoice after", async () => {

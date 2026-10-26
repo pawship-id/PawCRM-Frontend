@@ -47,7 +47,7 @@ export const SALES_TABS: GatedTab[] = [
   */
   {
     label: "Ringkasan",
-    href: "/dashboard/sales",
+    href: "/dashboard/sales/summary",
     exact: true,
     anyOf: [{ feature: "salesSummary" }],
   },
@@ -57,7 +57,7 @@ export const SALES_TABS: GatedTab[] = [
   */
   { label: "Faktur", href: "/dashboard/sales/invoice", anyOf: [{ feature: "customerInvoices" }] },
   { label: "E-commerce", href: "/dashboard/ecommerce-sync", anyOf: [{ feature: "ecommerce" }] },
-  { label: "Retur", href: "/dashboard/sales/retur", anyOf: [{ feature: "salesReturns" }] },
+  { label: "Retur", href: "/dashboard/sales/returns", anyOf: [{ feature: "salesReturns" }] },
 ];
 
 export function SalesModuleHeader({

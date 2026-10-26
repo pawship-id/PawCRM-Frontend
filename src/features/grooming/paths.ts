@@ -5,11 +5,11 @@
  * rail's Grooming row opens on the period's performance, and the booking board
  * moved one segment down to `/booking`.
  */
-export const GROOMING_PATH = "/dashboard/layanan/grooming";
+export const GROOMING_PATH = "/dashboard/service/grooming";
 /** The booking board — the Booking tab. */
 export const GROOMING_BOOKINGS_PATH = `${GROOMING_PATH}/booking`;
-export const GROOMING_CATALOG_PATH = `${GROOMING_PATH}/katalog`;
-export const GROOMING_SETTINGS_PATH = `${GROOMING_PATH}/pengaturan`;
+export const GROOMING_CATALOG_PATH = `${GROOMING_PATH}/catalog`;
+export const GROOMING_SETTINGS_PATH = `${GROOMING_PATH}/settings`;
 
 /**
  * Taking grooming bookings — from `buloo-booking-v2.html`, "Booking baru" only.

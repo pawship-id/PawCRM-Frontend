@@ -161,7 +161,7 @@ describe("BranchDetail", () => {
 
     expect(
       await screen.findByRole("link", { name: /Ubah cabang/ }),
-    ).toHaveAttribute("href", "/dashboard/pengaturan/cabang/br-1/edit");
+    ).toHaveAttribute("href", "/dashboard/settings/branches/br-1/edit");
   });
 
   /*

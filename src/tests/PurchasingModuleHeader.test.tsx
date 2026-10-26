@@ -4,7 +4,7 @@ import { PurchasingModuleHeader } from "@/features/purchasing";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
-const pathname = jest.fn(() => "/dashboard/purchasing");
+const pathname = jest.fn(() => "/dashboard/purchasing/summary");
 jest.mock("next/navigation", () => ({
   usePathname: () => pathname(),
 }));
@@ -39,7 +39,7 @@ function tabNames() {
 }
 
 beforeEach(() => {
-  pathname.mockReturnValue("/dashboard/purchasing");
+  pathname.mockReturnValue("/dashboard/purchasing/summary");
 });
 
 describe("PurchasingModuleHeader", () => {

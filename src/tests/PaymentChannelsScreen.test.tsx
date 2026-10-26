@@ -17,7 +17,7 @@ jest.mock("@/services/chartOfAccounts.service");
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
-  usePathname: () => "/dashboard/pengaturan/channel-pembayaran",
+  usePathname: () => "/dashboard/settings/payment-channels",
 }));
 
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
@@ -138,7 +138,7 @@ describe("Channel Pembayaran — the rows", () => {
     expect(within(row).getByText("Tidak aktif")).toBeInTheDocument();
     expect(within(row).getByRole("link", { name: "Ubah" })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/channel-pembayaran/ch-bank",
+      "/dashboard/settings/payment-channels/ch-bank",
     );
   });
 

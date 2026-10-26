@@ -733,7 +733,7 @@ describe("PurchaseReturnDetail", () => {
     const link = await screen.findByRole("link", { name: /lihat entri jurnal/i });
     expect(link).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/journal-entries/je9",
+      "/dashboard/finance/journal-entries/je9",
     );
   });
 

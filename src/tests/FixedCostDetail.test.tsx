@@ -15,7 +15,7 @@ const mockPush = jest.fn();
 const mockRefresh = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush, refresh: mockRefresh }),
-  usePathname: () => "/dashboard/keuangan/kas-bank/biaya-tetap/fc1",
+  usePathname: () => "/dashboard/finance/cash-bank/fixed-costs/fc1",
 }));
 
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
@@ -92,7 +92,7 @@ describe("Biaya Tetap — the detail page", () => {
       screen.getByRole("link", { name: /Buka transaksinya/ }),
     ).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/kas-bank/transaksi/ct7",
+      "/dashboard/finance/cash-bank/transactions/ct7",
     );
   });
 
@@ -131,7 +131,7 @@ describe("Biaya Tetap — the detail page", () => {
 
     expect(screen.getByRole("link", { name: /Ubah/ })).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/kas-bank/transaksi/fc1/edit",
+      "/dashboard/finance/cash-bank/transactions/fc1/edit",
     );
   });
 });
@@ -189,7 +189,7 @@ describe("Biaya Tetap — pausing and deleting", () => {
     // The redirect lands a tick after the call resolves, so it is awaited too.
     await waitFor(() =>
       expect(mockPush).toHaveBeenCalledWith(
-        "/dashboard/keuangan/kas-bank/biaya-tetap",
+        "/dashboard/finance/cash-bank/fixed-costs",
       ),
     );
   });

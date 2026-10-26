@@ -241,7 +241,7 @@ export function StockEntryDetail({
           <p className="text-sm text-muted">
             Jurnal yang terbentuk:{" "}
             <Link
-              href={`/dashboard/keuangan/journal-entries/${entry.journalEntryId}`}
+              href={`/dashboard/finance/journal-entries/${entry.journalEntryId}`}
               className="font-medium text-primary hover:underline"
             >
               lihat di Jurnal Umum

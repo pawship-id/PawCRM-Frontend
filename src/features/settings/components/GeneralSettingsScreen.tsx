@@ -170,7 +170,7 @@ export function GeneralSettingsScreen() {
             a tenant cannot add a branch, so a way in there led nowhere new.
             A warehouse is the opposite — the tenant creates, renames and
             deactivates its own, and until 27 September 2026 nothing in the app
-            pointed at /dashboard/pengaturan/gudang at all, so the CRUD sat
+            pointed at /dashboard/settings/warehouses at all, so the CRUD sat
             unreachable. The count comes from the directory the section already
             loads, so the card costs no extra request.
           */}

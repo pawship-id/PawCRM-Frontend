@@ -78,7 +78,7 @@ export function PosDevicesScreen() {
       <div>
         <Breadcrumb
           items={[
-            { label: "Pengaturan", href: "/dashboard/pengaturan" },
+            { label: "Pengaturan", href: "/dashboard/settings/general" },
             { label: "Perangkat kasir" },
           ]}
         />
@@ -90,7 +90,7 @@ export function PosDevicesScreen() {
         </p>
         {can("posTransactions", "reviewOffline") && (
           <p className="mt-2 text-sm">
-            <Link className="font-semibold text-primary underline" href="/dashboard/pos/perlu-dicek">
+            <Link className="font-semibold text-primary underline" href="/dashboard/pos/needs-review">
               Lihat transaksi offline yang perlu dicek →
             </Link>
           </p>

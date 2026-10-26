@@ -747,7 +747,7 @@ describe("ChartOfAccountsScreen", () => {
       }),
     ).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/daftar-akun/1101/edit",
+      "/dashboard/settings/chart-of-accounts/1101/edit",
     );
   });
 
@@ -873,7 +873,7 @@ describe("ChartOfAccountForm", () => {
     );
     // Back to the list once it lands — the page's job, where the dialog used to
     // just close itself.
-    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/daftar-akun");
+    expect(push).toHaveBeenCalledWith("/dashboard/settings/chart-of-accounts");
   });
 
   /**
@@ -1198,7 +1198,7 @@ describe("JournalEntriesScreen", () => {
 
     expect(
       await screen.findByRole("link", { name: /Tambah jurnal manual/ }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/new");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries/new");
   });
 
   /** Paging the ledger is not the same privilege as adding to it. */
@@ -1408,7 +1408,7 @@ describe("JournalEntriesScreen", () => {
 
     await userEvent.click(await screen.findByText("Penjualan POS"));
 
-    expect(push).toHaveBeenCalledWith("/dashboard/keuangan/journal-entries/1");
+    expect(push).toHaveBeenCalledWith("/dashboard/finance/journal-entries/1");
   });
 
   it("distinguishes an empty book from an empty filter", async () => {
@@ -1488,7 +1488,7 @@ describe("JournalEntryDetail", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: /Kembali ke Jurnal/ }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries");
   });
 
   /**
@@ -1511,7 +1511,7 @@ describe("JournalEntryDetail", () => {
 
     expect(
       await screen.findByRole("link", { name: /Buka BKK\/PST\/2609\/0001/ }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/tx-1");
+    ).toHaveAttribute("href", "/dashboard/finance/cash-bank/transactions/tx-1");
   });
 
   it("says a manual entry has no source document", async () => {
@@ -1591,7 +1591,7 @@ describe("JournalEntryDetail", () => {
 
     expect(
       await within(banner).findByRole("link", { name: "JE-2026-08-0002" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/2");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries/2");
   });
 
   it("offers no reverse action on an entry already reversed", async () => {
@@ -1920,7 +1920,7 @@ describe("JournalEntryCreateForm", () => {
     ]);
     expect(sent.lines[0]).not.toHaveProperty("credit");
     expect(sent.lines[1]).not.toHaveProperty("debit");
-    expect(push).toHaveBeenCalledWith("/dashboard/keuangan/journal-entries/je-1");
+    expect(push).toHaveBeenCalledWith("/dashboard/finance/journal-entries/je-1");
   });
 
   /**

@@ -179,8 +179,8 @@ describe("ReportsHub", () => {
       .getAllByRole("link", { name: "Buka" })
       .map((a) => a.getAttribute("href"));
     expect(hrefs).toEqual([
-      "/dashboard/keuangan/laba-rugi",
-      "/dashboard/keuangan/neraca",
+      "/dashboard/finance/profit-loss",
+      "/dashboard/finance/balance-sheet",
     ]);
     const umur = screen.getByText("Umur piutang & utang").closest("tr")!;
     expect(

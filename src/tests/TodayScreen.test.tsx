@@ -381,7 +381,7 @@ describe("Hari Ini", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("link", { name: /grooming/i })).toHaveAttribute(
       "href",
-      "/dashboard/layanan/grooming/new",
+      "/dashboard/service/grooming/new",
     );
     expect(
       within(dialog).getByRole("link", { name: /layanan lain/i }),

@@ -362,7 +362,7 @@ describe("customer summary tab", () => {
     renderWithAuth(<CustomerSummaryScreen />);
 
     const name = await screen.findByRole("link", { name: "Mochi · Rina Wijaya" });
-    expect(name).toHaveAttribute("href", "/dashboard/promosi/membership/anggota/card-1");
+    expect(name).toHaveAttribute("href", "/dashboard/promotion/membership/member/card-1");
     expect(screen.getByText(/Explorer · berakhir .* · 9 hari lagi/)).toBeVisible();
     // The dormant list above has its own "Hubungi"; this one rings the member.
     const row = name.closest("li") as HTMLElement;

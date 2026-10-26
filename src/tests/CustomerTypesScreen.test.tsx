@@ -10,7 +10,7 @@ import type { PageResult } from "@/types/api";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
-  usePathname: () => "/dashboard/pengaturan/tipe-pelanggan",
+  usePathname: () => "/dashboard/settings/customer-types",
 }));
 
 jest.mock("@/lib/swal", () => ({

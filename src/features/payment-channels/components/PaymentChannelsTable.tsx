@@ -207,7 +207,7 @@ export function PaymentChannelsTable({
                             <Can feature="paymentChannels" action="update">
                               <Button variant="ghost" size="sm" asChild>
                                 <Link
-                                  href={`/dashboard/pengaturan/channel-pembayaran/${channel._id}`}
+                                  href={`/dashboard/settings/payment-channels/${channel._id}`}
                                 >
                                   <Pencil className="size-4" />
                                   Ubah

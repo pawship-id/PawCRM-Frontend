@@ -21,7 +21,7 @@ import {
   ELIGIBILITY_LABEL,
   MEMBERSHIP_HREF,
   PLAN_PRICE_MODE_LABEL,
-  PROMOSI_HREF,
+  PROMOSI_SUMMARY_HREF,
   VISIT_FEE_LABEL,
   formatPlanDuration,
   formatRupiah,
@@ -139,7 +139,7 @@ export function MembershipPlanDetail({ id }: { id: string }) {
         <div className="min-w-0">
           <Breadcrumb
             items={[
-              { label: "Promosi", href: PROMOSI_HREF },
+              { label: "Promosi", href: PROMOSI_SUMMARY_HREF },
               { label: "Membership", href: MEMBERSHIP_HREF },
               { label: plan.code },
             ]}

@@ -68,7 +68,7 @@ describe("RoleCreateForm", () => {
         permissions: [{ feature: "users", actions: ["read"] }],
       }),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/peran");
+    expect(push).toHaveBeenCalledWith("/dashboard/settings/roles");
   });
 
   it("surfaces a duplicate-name conflict as an alert", async () => {

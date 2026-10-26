@@ -37,7 +37,7 @@ import {
   KELOLA_CANCEL,
   KELOLA_ROLES_TEXT,
   MEMBERSHIP_CARDS_HREF,
-  PROMOSI_HREF,
+  PROMOSI_SUMMARY_HREF,
   REDEMPTION_CONTEXT_LABEL,
   formatDate,
   formatRupiah,
@@ -101,7 +101,7 @@ export function MembershipCardDetail({ id }: { id: string }) {
     <div className="flex flex-col gap-6">
       <Breadcrumb
         items={[
-          { label: "Promosi", href: PROMOSI_HREF },
+          { label: "Promosi", href: PROMOSI_SUMMARY_HREF },
           { label: "Anggota", href: MEMBERSHIP_CARDS_HREF },
           { label: card.number },
         ]}

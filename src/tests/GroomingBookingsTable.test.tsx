@@ -12,7 +12,7 @@ jest.mock("@/services/booking.service");
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }),
-  usePathname: () => "/dashboard/layanan/grooming/booking",
+  usePathname: () => "/dashboard/service/grooming/booking",
 }));
 
 const scope: GroomingScope = {
@@ -177,7 +177,7 @@ describe("GroomingBookingsTable — Tipe and Perjalanan", () => {
     expect(screen.getByText("Home grooming")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Buka perjalanan" })).toHaveAttribute(
       "href",
-      "/dashboard/booking/perjalanan/trip-9",
+      "/dashboard/booking/rides/trip-9",
     );
   });
 

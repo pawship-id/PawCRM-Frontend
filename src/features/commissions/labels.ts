@@ -1,7 +1,7 @@
 import type { CommissionRow, CommissionStatus } from "@/types/api";
 
 /** Where the Komisi tab lives, and where one row of it opens. */
-export const COMMISSIONS_HREF = "/dashboard/keuangan/komisi";
+export const COMMISSIONS_HREF = "/dashboard/finance/commissions";
 
 export function commissionHref(row: {
   bookingId: string;

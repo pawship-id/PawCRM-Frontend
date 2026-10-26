@@ -25,7 +25,7 @@ const mockPush = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
-  usePathname: () => "/dashboard/layanan/grooming/katalog",
+  usePathname: () => "/dashboard/service/grooming/catalog",
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -152,7 +152,7 @@ describe("GroomingServicesScreen", () => {
 
     expect(
       await screen.findByRole("link", { name: "Express Wash" }),
-    ).toHaveAttribute("href", "/dashboard/layanan/grooming/katalog/svc-1");
+    ).toHaveAttribute("href", "/dashboard/service/grooming/catalog/svc-1");
 
     expect(
       screen.getAllByRole("columnheader").map((header) => header.textContent),
@@ -216,13 +216,13 @@ describe("GroomingServicesScreen", () => {
     // One plain address from every module (22 September 2026); the module is
     // left in the tab as the link is clicked.
     const link = await screen.findByRole("link", { name: /Layanan baru/ });
-    expect(link).toHaveAttribute("href", "/dashboard/pengaturan/layanan/new");
+    expect(link).toHaveAttribute("href", "/dashboard/settings/services/new");
 
     link.addEventListener("click", (event) => event.preventDefault());
     await userEvent.click(link);
     expect(JSON.parse(window.sessionStorage.getItem("buloo.serviceFormOrigin")!)).toEqual({
       serviceKind: "grooming",
-      listPath: "/dashboard/layanan/grooming/katalog",
+      listPath: "/dashboard/service/grooming/catalog",
     });
   });
 
@@ -615,7 +615,7 @@ describe("GroomingServicesScreen", () => {
     );
 
     expect(mockPush).toHaveBeenCalledWith(
-      "/dashboard/layanan/grooming/katalog/svc-1",
+      "/dashboard/service/grooming/catalog/svc-1",
     );
   });
 

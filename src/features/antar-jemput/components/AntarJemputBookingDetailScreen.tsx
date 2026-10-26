@@ -28,7 +28,7 @@ import { RoundTripCard } from "./RoundTripCard";
 import { LEG_LABEL, rideOf } from "../ride";
 
 /**
- * ONE RIDE, WHOLE — `/dashboard/layanan/antar-jemput/:bookingId`
+ * ONE RIDE, WHOLE — `/dashboard/service/pickup-delivery/:bookingId`
  * (23 September 2026, on request, from `buloo-antar-jemput-v5.html`).
  *
  * ─── WHY A RIDE LEFT `/dashboard/booking/:id` ───────────────────────────────

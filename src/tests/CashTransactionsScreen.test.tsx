@@ -21,7 +21,7 @@ jest.mock("@/services/journalEntry.service");
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: (href: string) => mockPush(href) }),
-  usePathname: () => "/dashboard/keuangan/kas-bank",
+  usePathname: () => "/dashboard/finance/cash-bank",
 }));
 
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
@@ -340,7 +340,7 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     // Any cell opens it; the description is the one somebody reads first.
     await user.click(await screen.findByText("INV/CBS/2609/0012"));
 
-    expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/kas-bank/transaksi/ct1");
+    expect(mockPush).toHaveBeenCalledWith("/dashboard/finance/cash-bank/transactions/ct1");
   });
 });
 
@@ -510,7 +510,7 @@ describe("Kas & Bank — transaksi: empty and gated", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Catat yang pertama →" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/new");
+    ).toHaveAttribute("href", "/dashboard/finance/cash-bank/transactions/new");
   });
 
   it("tells a filtered empty list apart from an empty book", async () => {
@@ -552,7 +552,7 @@ describe("Kas & Bank — transaksi: empty and gated", () => {
     const { unmount } = renderWithAuth(<KasBankScreen now={NOW} />);
     expect(
       await screen.findByRole("link", { name: /Tambah transaksi/ }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/new");
+    ).toHaveAttribute("href", "/dashboard/finance/cash-bank/transactions/new");
     unmount();
 
     renderWithAuth(<KasBankScreen now={NOW} />, {

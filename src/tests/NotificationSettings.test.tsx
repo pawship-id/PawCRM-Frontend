@@ -11,7 +11,7 @@ import type { Tenant } from "@/types/api";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
-  usePathname: () => "/dashboard/pengaturan/notifikasi",
+  usePathname: () => "/dashboard/settings/notifications",
 }));
 jest.mock("@/lib/swal", () => ({
   ...jest.requireActual("@/lib/swal"),
@@ -134,6 +134,6 @@ describe("SupplierTypesScreen", () => {
 
     expect(
       screen.getByRole("link", { name: /Kategori Supplier/ }),
-    ).toHaveAttribute("href", "/dashboard/pengaturan/kategori-supplier");
+    ).toHaveAttribute("href", "/dashboard/settings/supplier-categories");
   });
 });

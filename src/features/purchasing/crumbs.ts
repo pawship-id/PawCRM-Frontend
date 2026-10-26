@@ -19,7 +19,7 @@ import { SETTINGS_PATHS, SETTINGS_TABS } from "@/features/settings/paths";
  * current one. See components/Breadcrumb.
  */
 export const PURCHASING_CRUMBS = {
-  hub: { label: "Pembelian", href: "/dashboard/purchasing" },
+  hub: { label: "Pembelian", href: "/dashboard/purchasing/summary" },
   /**
    * WHERE THE KATEGORI SUPPLIER PAGES HANG FROM (1 October 2026, on request),
    * in place of `hub`: the tab was dropped from Pembelian and the screen is

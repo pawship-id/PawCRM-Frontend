@@ -35,7 +35,7 @@ const mockRouter = { push: mockPush, replace: mockReplace };
 
 jest.mock("next/navigation", () => ({
   useRouter: () => mockRouter,
-  usePathname: () => "/dashboard/layanan/grooming/katalog/svc-1",
+  usePathname: () => "/dashboard/service/grooming/catalog/svc-1",
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -193,7 +193,7 @@ describe("GroomingServiceDetailScreen", () => {
 
     expect(screen.getByRole("link", { name: /Ubah/ })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/layanan/svc-1",
+      "/dashboard/settings/services/svc-1",
     );
 
     expect(screen.getByText("Rp 89 rb")).toBeInTheDocument();
@@ -248,7 +248,7 @@ describe("GroomingServiceDetailScreen", () => {
     await waitFor(() =>
       expect(serviceService.remove).toHaveBeenCalledWith("svc-1"),
     );
-    expect(mockPush).toHaveBeenCalledWith("/dashboard/layanan/grooming/katalog");
+    expect(mockPush).toHaveBeenCalledWith("/dashboard/service/grooming/catalog");
   });
 
   it("duplicates as an inactive copy, trying the next code when one is taken", async () => {
@@ -265,7 +265,7 @@ describe("GroomingServiceDetailScreen", () => {
 
     await waitFor(() =>
       expect(mockPush).toHaveBeenCalledWith(
-        "/dashboard/layanan/grooming/katalog/svc-9",
+        "/dashboard/service/grooming/catalog/svc-9",
       ),
     );
     expect(serviceService.create).toHaveBeenNthCalledWith(
@@ -687,7 +687,7 @@ describe("GroomingServiceDetailScreen", () => {
     renderDetail();
 
     await waitFor(() =>
-      expect(mockReplace).toHaveBeenCalledWith("/dashboard/pengaturan/layanan/svc-1"),
+      expect(mockReplace).toHaveBeenCalledWith("/dashboard/settings/services/svc-1"),
     );
     expect(screen.queryByRole("tab", { name: "Tahapan & Add-on" })).not.toBeInTheDocument();
   });

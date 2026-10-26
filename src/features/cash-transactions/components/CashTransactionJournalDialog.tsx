@@ -65,7 +65,7 @@ function Body({ transaction }: { transaction: CashTransaction }) {
     useJournalEntry(entryId);
 
   const number = entry?.entryNumber ?? transaction.journalEntryNumber;
-  const href = `/dashboard/keuangan/journal-entries/${entryId}`;
+  const href = `/dashboard/finance/journal-entries/${entryId}`;
 
   const totalDebit = sumDecimals((entry?.lines ?? []).map((line) => line.debit));
   const totalCredit = sumDecimals(

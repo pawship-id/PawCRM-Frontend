@@ -1,7 +1,7 @@
 /** The Antar-Jemput module's three tabs — each its own route, as Grooming's. */
-export const ANTAR_JEMPUT_PATH = "/dashboard/layanan/antar-jemput";
-export const ANTAR_JEMPUT_CATALOG_PATH = `${ANTAR_JEMPUT_PATH}/katalog`;
-export const ANTAR_JEMPUT_SETTINGS_PATH = `${ANTAR_JEMPUT_PATH}/pengaturan`;
+export const ANTAR_JEMPUT_PATH = "/dashboard/service/pickup-delivery";
+export const ANTAR_JEMPUT_CATALOG_PATH = `${ANTAR_JEMPUT_PATH}/catalog`;
+export const ANTAR_JEMPUT_SETTINGS_PATH = `${ANTAR_JEMPUT_PATH}/settings`;
 
 /** Booking a ride — a form reached from the Booking tab, not a fourth tab. */
 export const ANTAR_JEMPUT_NEW_PATH = `${ANTAR_JEMPUT_PATH}/new`;
@@ -27,7 +27,7 @@ export function antarJemputEditPath(bookingId: string): string {
 }
 
 /**
- * ONE RIDE, WHOLE — `/dashboard/layanan/antar-jemput/:bookingId`
+ * ONE RIDE, WHOLE — `/dashboard/service/pickup-delivery/:bookingId`
  * (23 September 2026, on request).
  *
  * A ride does NOT open at `/dashboard/booking/:id`. That page is built round an

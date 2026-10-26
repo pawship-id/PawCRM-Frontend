@@ -403,7 +403,7 @@ const ENTITY_HREF: Partial<Record<string, (id: string) => string>> = {
   purchase_invoice: (id) => `/dashboard/purchasing/payables/${id}`,
   goods_receipt: (id) => `/dashboard/purchasing/receipts/${id}`,
   purchase_return: (id) => `/dashboard/purchasing/returns/${id}`,
-  cash_transaction: (id) => `/dashboard/keuangan/kas-bank/transaksi/${id}`,
+  cash_transaction: (id) => `/dashboard/finance/cash-bank/transactions/${id}`,
   stock_opname: (id) => `/dashboard/inventory/opname/${id}`,
   stock_transfer: (id) => `/dashboard/inventory/transfers/${id}`,
   petmembership: cardHref,

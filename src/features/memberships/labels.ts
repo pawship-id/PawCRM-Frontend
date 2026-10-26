@@ -39,12 +39,12 @@ import { KELOLA_REASONS } from "@/types/membership";
  * `MEMBERSHIP_HREF` is the Membership tab, which opens on the Paket list; each
  * package and each card has its own address one segment further down.
  */
-export const PROMOSI_HREF = "/dashboard/promosi";
-export const PROMOSI_SUMMARY_HREF = `${PROMOSI_HREF}/ringkasan`;
+export const PROMOSI_HREF = "/dashboard/promotion";
+export const PROMOSI_SUMMARY_HREF = `${PROMOSI_HREF}/summary`;
 export const MEMBERSHIP_HREF = `${PROMOSI_HREF}/membership`;
-export const MEMBERSHIP_PLANS_HREF = `${MEMBERSHIP_HREF}/paket`;
+export const MEMBERSHIP_PLANS_HREF = `${MEMBERSHIP_HREF}/plans`;
 export const MEMBERSHIP_NEW_PLAN_HREF = `${MEMBERSHIP_PLANS_HREF}/new`;
-export const MEMBERSHIP_CARDS_HREF = `${MEMBERSHIP_HREF}/anggota`;
+export const MEMBERSHIP_CARDS_HREF = `${MEMBERSHIP_HREF}/member`;
 /** Renewals are folded into Promosi › Ringkasan (no tab of their own). */
 export const MEMBERSHIP_RENEWALS_HREF = PROMOSI_SUMMARY_HREF;
 

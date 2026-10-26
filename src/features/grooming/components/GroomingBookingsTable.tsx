@@ -266,7 +266,7 @@ export function GroomingBookingsTable({
         const tripId = booking.homeTrip?._id ?? booking.homeTripId;
         return booking.location === "in_home" && tripId ? (
           <Link
-            href={`/dashboard/booking/perjalanan/${tripId}`}
+            href={`/dashboard/booking/rides/${tripId}`}
             onClick={stop}
             className="rounded text-sm font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >

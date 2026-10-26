@@ -20,7 +20,7 @@ import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { usePaymentChannelList } from "../hooks/usePaymentChannelList";
 import { PaymentChannelsTable } from "./PaymentChannelsTable";
 
-const NEW_HREF = "/dashboard/pengaturan/channel-pembayaran/new";
+const NEW_HREF = "/dashboard/settings/payment-channels/new";
 
 /**
  * CHANNEL PEMBAYARAN — the named places money can arrive, and the account each

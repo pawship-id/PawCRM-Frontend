@@ -164,7 +164,7 @@ export function ImportResultPanel({
 
           <div className="mt-4 flex flex-wrap gap-2">
             <Button variant="secondary" asChild>
-              <Link href="/dashboard/pengaturan/daftar-akun">
+              <Link href="/dashboard/settings/chart-of-accounts">
                 Cek Chart of Accounts
               </Link>
             </Button>

@@ -339,7 +339,7 @@ function DetailsSection({
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/pengaturan/pengguna")}
+          onClick={() => router.push("/dashboard/settings/users")}
         >
           Cancel
         </Button>
@@ -522,7 +522,7 @@ function DangerSection({
     try {
       if (pending === "delete") {
         await userService.remove(user._id);
-        router.push("/dashboard/pengaturan/pengguna");
+        router.push("/dashboard/settings/users");
         swalToast("User deleted.");
         return;
       }

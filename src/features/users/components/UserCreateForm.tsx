@@ -113,7 +113,7 @@ export function UserCreateForm() {
             ),
       });
       // Redirect first, then fire the toast so it rides along on the list screen.
-      router.push("/dashboard/pengaturan/pengguna");
+      router.push("/dashboard/settings/users");
       swalToast(`${created.fullName} has been created.`);
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
@@ -228,7 +228,7 @@ export function UserCreateForm() {
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/pengaturan/pengguna")}
+          onClick={() => router.push("/dashboard/settings/users")}
         >
           Cancel
         </Button>

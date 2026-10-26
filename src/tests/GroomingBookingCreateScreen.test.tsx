@@ -57,7 +57,7 @@ const push = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push, refresh: jest.fn() }),
-  usePathname: () => "/dashboard/layanan/grooming/new",
+  usePathname: () => "/dashboard/service/grooming/new",
 }));
 
 const bookings = bookingService as jest.Mocked<typeof bookingService>;
@@ -160,7 +160,7 @@ async function fillIn() {
 }
 
 /**
- * Layanan › Grooming › Booking baru — `/dashboard/layanan/grooming/new`.
+ * Layanan › Grooming › Booking baru — `/dashboard/service/grooming/new`.
  *
  * WHAT IS PINNED HERE:
  *  - one `bookings[]` entry per picked animal, and no price or discount crosses

@@ -247,7 +247,7 @@ describe("PaymentChannelForm — editing", () => {
     // The list moved to Pengaturan on 20 September 2026 — see
     // PaymentChannelsScreen. Kas & Bank lists ledger accounts now.
     expect(push).toHaveBeenCalledWith(
-      "/dashboard/pengaturan/channel-pembayaran",
+      "/dashboard/settings/payment-channels",
     );
   });
 });

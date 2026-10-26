@@ -248,7 +248,7 @@ function DetailsSection({
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/pengaturan/peran")}
+          onClick={() => router.push("/dashboard/settings/roles")}
         >
           Batal
         </Button>
@@ -296,7 +296,7 @@ function DangerSection({
     try {
       if (pending === "delete") {
         await roleService.remove(role._id);
-        router.push("/dashboard/pengaturan/peran");
+        router.push("/dashboard/settings/roles");
         swalToast("Peran dihapus.");
         return;
       }

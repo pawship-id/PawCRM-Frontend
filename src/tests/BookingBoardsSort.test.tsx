@@ -14,7 +14,7 @@ jest.mock("@/services/booking.service", () => ({
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }),
-  usePathname: () => "/dashboard/layanan",
+  usePathname: () => "/dashboard/service",
 }));
 
 /* The scope row and the tabs fetch branches and read the route — not under test. */

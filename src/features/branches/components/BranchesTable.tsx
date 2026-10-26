@@ -202,7 +202,7 @@ export function BranchesTable({
                               <>
                                 <DropdownMenuItem asChild>
                                   <Link
-                                    href={`/dashboard/pengaturan/cabang/${branch._id}`}
+                                    href={`/dashboard/settings/branches/${branch._id}`}
                                   >
                                     <Eye />
                                     Detail
@@ -211,7 +211,7 @@ export function BranchesTable({
                                 <Can feature="branches" action="update">
                                   <DropdownMenuItem asChild>
                                     <Link
-                                      href={`/dashboard/pengaturan/cabang/${branch._id}/edit`}
+                                      href={`/dashboard/settings/branches/${branch._id}/edit`}
                                     >
                                       <Pencil />
                                       Ubah

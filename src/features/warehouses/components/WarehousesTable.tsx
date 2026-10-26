@@ -215,7 +215,7 @@ export function WarehousesTable({
                             <Can feature="warehouses" action="update">
                               <Button variant="ghost" size="sm" asChild>
                                 <Link
-                                  href={`/dashboard/pengaturan/gudang/${warehouse._id}`}
+                                  href={`/dashboard/settings/warehouses/${warehouse._id}`}
                                 >
                                   <Pencil className="size-4" />
                                   Ubah

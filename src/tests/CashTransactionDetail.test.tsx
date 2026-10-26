@@ -274,10 +274,10 @@ describe("CashTransactionDetail — what it shows", () => {
     expect(screen.getByText(/Rp 120\.000/)).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "JE-2026-09-0000" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/je0");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries/je0");
     expect(
       screen.getByRole("link", { name: "JE-2026-09-0002" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/je0r");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries/je0r");
   });
 });
 
@@ -301,7 +301,7 @@ describe("CashTransactionDetail — Ubah and Batalkan", () => {
     // A LINK, not a button: Ubah opens a page of its own now.
     expect(await screen.findByRole("link", { name: "Ubah" })).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/kas-bank/transaksi/ct1/edit",
+      "/dashboard/finance/cash-bank/transactions/ct1/edit",
     );
 
     await openActions(user);
@@ -329,7 +329,7 @@ describe("CashTransactionDetail — Ubah and Batalkan", () => {
     const dialog = within(await screen.findByRole("dialog"));
     expect(
       await dialog.findByRole("link", { name: "JE-2026-09-0001" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/je1");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries/je1");
 
     // Both sides, named from the chart, and a balanced total.
     expect(dialog.getByText("Kas")).toBeInTheDocument();
@@ -433,7 +433,7 @@ describe("CashTransactionDetail — Ubah and Batalkan", () => {
     expect(screen.getByText(/oleh Jess/)).toBeInTheDocument();
     expect(
       screen.getAllByRole("link", { name: "JE-2026-09-0009" })[0],
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/je-rev");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries/je-rev");
   });
 });
 

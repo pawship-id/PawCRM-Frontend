@@ -24,7 +24,7 @@ jest.mock("@/services/journalEntry.service");
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }),
-  usePathname: () => "/dashboard/keuangan/kas-bank/biaya-tetap",
+  usePathname: () => "/dashboard/finance/cash-bank/fixed-costs",
 }));
 
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>

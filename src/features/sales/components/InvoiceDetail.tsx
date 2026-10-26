@@ -176,7 +176,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
     will be asked about. The number is the server's `wa.me` form — derived by the
     one module that decides what a WhatsApp number looks like.
 
-    WITH A LINK TO THE FAKTUR ITSELF — /faktur/:token, the customer's own copy,
+    WITH A LINK TO THE FAKTUR ITSELF — /invoice/:token, the customer's own copy,
     opened with no account: the invoice's counterpart of the till's /struk link.
     Built from `window.location.origin` for the reason `ReceiptDialog` gives: the
     dashboard and the public page are one app, so whatever host the shop is on is
@@ -189,7 +189,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const outstanding = toMinor(invoice.outstandingAmount) ?? BigInt(0);
   const invoiceLink =
     invoice.publicToken && typeof window !== "undefined"
-      ? `${window.location.origin}/faktur/${invoice.publicToken}`
+      ? `${window.location.origin}/invoice/${invoice.publicToken}`
       : null;
   const whatsappText = [
     `Halo ${invoice.customerName ?? "Kak"}, berikut faktur ${invoice.invoiceNumber} sebesar ${formatMoney(invoice.total)}`,

@@ -401,7 +401,7 @@ describe("customer profile", () => {
     expect(screen.getByText("+1")).toBeVisible();
     expect(screen.getByRole("link", { name: "Lihat & kelola" })).toHaveAttribute(
       "href",
-      "/dashboard/promosi/membership/anggota/card-1",
+      "/dashboard/promotion/membership/member/card-1",
     );
     expect(screen.getByText("Belum punya membership.")).toBeVisible();
     expect(screen.getByRole("link", { name: "Jual paket di kasir" })).toHaveAttribute(

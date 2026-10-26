@@ -10,7 +10,7 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
-  usePathname: () => "/dashboard/pengaturan/data-awal/kas-bank",
+  usePathname: () => "/dashboard/settings/opening-balances/cash-bank",
 }));
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 jest.mock("@/services/openingBalance.service");

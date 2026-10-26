@@ -29,7 +29,7 @@ const push = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push, refresh: jest.fn() }),
-  usePathname: () => "/dashboard/layanan/antar-jemput/new",
+  usePathname: () => "/dashboard/service/pickup-delivery/new",
 }));
 
 const bookings = bookingService as jest.Mocked<typeof bookingService>;
@@ -240,7 +240,7 @@ describe("AntarJemputBookingForm", () => {
       ],
     });
 
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard/layanan/antar-jemput/bk-1"));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard/service/pickup-delivery/bk-1"));
   });
 
   /*
@@ -557,7 +557,7 @@ describe("AntarJemputBookingForm", () => {
     expect(await screen.findByText(/belum punya add-on/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Layanan & Harga/ })).toHaveAttribute(
       "href",
-      "/dashboard/layanan/antar-jemput/katalog/svc-aj",
+      "/dashboard/service/pickup-delivery/catalog/svc-aj",
     );
   });
 

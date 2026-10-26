@@ -149,7 +149,7 @@ const COLUMNS: DataTableColumn<CashBankAccountRow>[] = [
           name={account.name}
           links={[
             {
-              href: `/dashboard/pengaturan/daftar-akun/${account._id}/edit`,
+              href: `/dashboard/settings/chart-of-accounts/${account._id}/edit`,
               label: "Ubah",
               icon: <Pencil />,
             },

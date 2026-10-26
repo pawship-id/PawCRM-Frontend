@@ -126,7 +126,7 @@ describe("UserCreateForm", () => {
         warehouseAccess: [],
       }),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/pengguna");
+    expect(push).toHaveBeenCalledWith("/dashboard/settings/users");
   });
 
   describe("warehouse scope", () => {

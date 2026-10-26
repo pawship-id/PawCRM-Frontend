@@ -40,7 +40,7 @@ const MAX_MDR_PERCENT = 100;
 const FETCH_LIMIT = 100;
 
 /** Moved out of Keuangan on 20 September 2026 — see PaymentChannelsScreen. */
-const LIST_PATH = "/dashboard/pengaturan/channel-pembayaran";
+const LIST_PATH = "/dashboard/settings/payment-channels";
 
 /** The two types a processor actually deducts a fee from. Mirrors MDR_TYPES. */
 const MDR_TYPES: PaymentChannelType[] = ["qris", "edc"];

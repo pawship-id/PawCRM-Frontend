@@ -21,7 +21,7 @@ jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: (href: string) => mockPush(href) }),
-  usePathname: () => "/dashboard/keuangan/komisi",
+  usePathname: () => "/dashboard/finance/commissions",
 }));
 
 const reports = reportService as jest.Mocked<typeof reportService>;
@@ -197,7 +197,7 @@ describe("CommissionScreen — the mockup's list", () => {
     await screen.findByText("BK-0910-014");
     await userEvent.click(within(rowOf("Sari")).getByText("Rp 320.000"));
 
-    expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/komisi/bk-1/sari");
+    expect(mockPush).toHaveBeenCalledWith("/dashboard/finance/commissions/bk-1/sari");
   });
 });
 
