@@ -223,6 +223,19 @@ describe("ProductsScreen", () => {
     );
   });
 
+  it("highlights the searched term in the name and the SKU", async () => {
+    const user = userEvent.setup();
+    mockList([makeProduct({ name: "Shampoo Anjing", sku: "SHAMPOO-01" })]);
+
+    renderWithAuth(<ProductsScreen />);
+    await screen.findByText("Shampoo Anjing");
+
+    await user.type(screen.getByPlaceholderText("Cari nama atau SKU…"), "sham");
+
+    const marks = await screen.findAllByText(/^sham$/i, { selector: "mark" });
+    expect(marks.map((mark) => mark.textContent)).toEqual(["Sham", "SHAM"]);
+  });
+
   it("shows the variant count the API computed, without expanding anything", async () => {
     mockList([
       makeProduct({

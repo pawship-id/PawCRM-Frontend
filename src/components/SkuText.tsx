@@ -1,5 +1,6 @@
 import { SKU_MAX_CHARS } from "@/lib/sku";
 
+import { HighlightText } from "./HighlightText";
 import { InfoTooltip } from "./InfoTooltip";
 
 /**
@@ -12,13 +13,20 @@ import { InfoTooltip } from "./InfoTooltip";
 export function SkuText({
   value,
   fallback = "",
+  query,
 }: {
   value: string | null | undefined;
   /** Shown when there is no SKU — a parent product, a service line. */
   fallback?: string;
+  /** A search term to highlight in a whole SKU. A cut one stays plain. */
+  query?: string;
 }) {
   if (!value) return <>{fallback}</>;
-  if (value.length <= SKU_MAX_CHARS) return <>{value}</>;
+  if (value.length <= SKU_MAX_CHARS) {
+    return <HighlightText text={value} query={query} />;
+  }
 
-  return <InfoTooltip hint={value} label={`${value.slice(0, SKU_MAX_CHARS)}…`} />;
+  return (
+    <InfoTooltip hint={value} label={`${value.slice(0, SKU_MAX_CHARS)}…`} />
+  );
 }

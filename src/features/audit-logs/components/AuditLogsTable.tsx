@@ -1,68 +1,112 @@
 "use client";
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { HighlightText } from "@/components";
+import Link from "next/link";
+
+import { DataTable, HighlightText, type DataTableColumn } from "@/components";
+import { formatMoney } from "@/utils/decimal";
 import type { AuditLog } from "@/types/api";
 
+import { entityHref } from "../constants";
 import { AuditActionBadge } from "./AuditActionBadge";
 
-/**
- * Formats an ISO timestamp as a readable local date-time. Falls back to the raw
- * string if the value is unparseable, so a bad record never crashes the row.
- */
 function formatWhen(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return date.toLocaleString("id-ID", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-/** The actor's display name, degrading to a clear label when it is absent. */
-function actorName(log: AuditLog): string {
-  if (log.userId) return log.userId.fullName;
-  return "Unknown user";
-}
+const text = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() !== "" ? value : null;
 
 /**
- * A one-line summary of the record's free-form metadata, so the operator sees
- * WHY without expanding raw JSON. The shape varies by action (see
- * auditLog.service.js) — `reason` for a failed login, `revokedCount` for a
- * logout-all, `lockedUntil` for a lockout — so each known key is rendered on its
- * own terms and anything else is skipped rather than dumped.
+ * The document the act was on, by the number people know it by. The keys are the
+ * ones the server searches (DOCUMENT_NUMBER_KEYS in auditLog.repository.js) —
+ * the parent document first, so a payment row names its invoice.
  */
-function metadataSummary(log: AuditLog): string | null {
+const DOCUMENT_KEYS = [
+  "invoiceNumber",
+  "returnNumber",
+  "receiptNumber",
+  "opnameNumber",
+  "transferNumber",
+  "entryNumber",
+  "number",
+] as const;
+
+export function documentNumber(log: AuditLog): string | null {
   const meta = log.metadata ?? {};
-  if (typeof meta.reason === "string") return `Reason: ${meta.reason}`;
-  if (typeof meta.revokedCount === "number") {
-    return `${meta.revokedCount} session${meta.revokedCount === 1 ? "" : "s"} revoked`;
-  }
-  if (typeof meta.lockedUntil === "string") {
-    return `Locked until ${formatWhen(meta.lockedUntil)}`;
+  for (const key of DOCUMENT_KEYS) {
+    const value = text(meta[key]);
+    if (value) return value;
   }
   return null;
 }
 
 /**
- * The audit-log list table (shadcn/ui Table) — READ-ONLY.
- *
- * Data flows in via props (from useAuditLogs); there are no row actions because
- * an audit record is immutable — it cannot be edited, deleted or restored. The
- * Actor cell shows the populated user's name and email; the Details cell distils
- * the action's metadata into one line. Mirrors RolesTable's structure minus the
- * Actions column and its lifecycle machinery.
- *
- * `search` is the active search term (the same one the backend filtered on, over
- * action / IP): the matching characters are highlighted in the Action and IP
- * cells so the user sees why each row was returned.
+ * One line of what changed, in figures — READ FROM WHAT THE TRAIL RECORDED at
+ * the time, never from the document as it is now. Generic on purpose: every
+ * emitter writes the same handful of keys (amount, total, previousTotal,
+ * reason), so one reader covers them without a case per action.
+ */
+export function describe(log: AuditLog): string | null {
+  const meta = log.metadata ?? {};
+  const parts: (string | null)[] = [];
+
+  if (
+    text(meta.paymentNumber) &&
+    text(meta.paymentNumber) !== documentNumber(log)
+  ) {
+    parts.push(text(meta.paymentNumber));
+  }
+
+  if (text(meta.previousTotal) && text(meta.total)) {
+    parts.push(
+      `Total ${formatMoney(text(meta.previousTotal))} → ${formatMoney(text(meta.total))}`,
+    );
+  } else if (text(meta.computed) && text(meta.amount)) {
+    parts.push(
+      `${formatMoney(text(meta.computed))} → ${formatMoney(text(meta.amount))}`,
+    );
+  } else if (text(meta.amount)) {
+    parts.push(formatMoney(text(meta.amount)));
+  } else if (text(meta.total) ?? text(meta.totalAmount)) {
+    parts.push(
+      `Total ${formatMoney(text(meta.total) ?? text(meta.totalAmount))}`,
+    );
+  } else if (text(meta.totalDiffValue)) {
+    parts.push(`Selisih ${formatMoney(text(meta.totalDiffValue))}`);
+  }
+
+  parts.push(text(meta.supplierName), text(meta.channelName));
+
+  const after = meta.after;
+  if (
+    log.action === "tenant_identity_updated" &&
+    after &&
+    typeof after === "object"
+  ) {
+    const fields = Object.keys(after);
+    if (fields.length) parts.push(`Diubah: ${fields.join(", ")}`);
+  }
+
+  const headline = parts.filter(Boolean).join(" · ");
+  const reason = text(meta.reason) ?? text(meta.notes);
+  const tail = reason ? `Alasan: ${reason}` : null;
+
+  return [headline || null, tail].filter(Boolean).join(" — ") || null;
+}
+
+/**
+ * Riwayat perubahan — READ-ONLY. An audit record is immutable, so there are no
+ * row actions; the document number links to the document itself where it has a
+ * page. `search` (a document number, matched on the server) is highlighted in
+ * the Dokumen cell so the reader sees why each row was returned.
  */
 export function AuditLogsTable({
   logs,
@@ -71,69 +115,71 @@ export function AuditLogsTable({
 }: {
   logs: AuditLog[];
   loading: boolean;
-  /** Active search term, highlighted in the searchable cells. */
   search?: string;
 }) {
-  if (!loading && logs.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center text-sm text-muted-foreground">
-        No audit logs match the current filters.
-      </div>
-    );
-  }
+  const columns: DataTableColumn<AuditLog>[] = [
+    {
+      id: "when",
+      header: "Waktu",
+      cellClassName: "whitespace-nowrap text-muted tabular-nums",
+      cell: (log) => formatWhen(log.createdAt),
+    },
+    {
+      id: "actor",
+      header: "Pengguna",
+      cell: (log) => (
+        <>
+          <div className="font-medium">
+            {log.userId?.fullName ?? "Pengguna terhapus"}
+          </div>
+          {log.branchId?.name && (
+            <div className="text-xs text-muted">{log.branchId.name}</div>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "action",
+      header: "Aktivitas",
+      cell: (log) => <AuditActionBadge action={log.action} />,
+    },
+    {
+      id: "document",
+      header: "Dokumen",
+      cellClassName: "whitespace-nowrap tabular-nums",
+      cell: (log) => {
+        const number = documentNumber(log);
+        if (!number) return <span className="text-muted">—</span>;
+        const href = entityHref(log.entityType, log.entityId);
+        const label = <HighlightText text={number} query={search} />;
+        return href ? (
+          <Link
+            href={href}
+            className="rounded-sm font-medium text-primary underline-offset-2 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            {label}
+          </Link>
+        ) : (
+          label
+        );
+      },
+    },
+    {
+      id: "details",
+      header: "Detail",
+      cellClassName: "text-muted",
+      cell: (log) => describe(log) ?? "—",
+    },
+  ];
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card">
-      <Table className={loading ? "opacity-60" : undefined}>
-        <TableHeader>
-          <TableRow>
-            <TableHead>When</TableHead>
-            <TableHead>Actor</TableHead>
-            <TableHead>Action</TableHead>
-            <TableHead>Entity</TableHead>
-            <TableHead>Details</TableHead>
-            <TableHead>IP address</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {logs.map((log) => {
-            const details = metadataSummary(log);
-            return (
-              <TableRow key={log._id}>
-                <TableCell className="whitespace-nowrap text-muted-foreground">
-                  {formatWhen(log.createdAt)}
-                </TableCell>
-                <TableCell>
-                  <div className="font-medium text-foreground">
-                    {actorName(log)}
-                  </div>
-                  {log.userId?.email && (
-                    <div className="text-xs text-muted-foreground">
-                      {log.userId.email}
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <AuditActionBadge action={log.action} query={search} />
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {log.entityType}
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {details ?? "—"}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-muted-foreground">
-                  {log.ipAddress ? (
-                    <HighlightText text={log.ipAddress} query={search} />
-                  ) : (
-                    "—"
-                  )}
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
+    <DataTable
+      columns={columns}
+      rows={logs}
+      rowKey={(log) => log._id}
+      loading={loading}
+      loadingLabel="Memuat riwayat…"
+      empty="Belum ada perubahan yang cocok dengan filter ini."
+    />
   );
 }
