@@ -3,16 +3,23 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { CustomerProfileScreen } from "@/features/customers";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { customerService } from "@/services/customer.service";
+import { membershipService } from "@/services/membership.service";
 import { petService } from "@/services/pet.service";
 import { posService } from "@/services/pos.service";
-import type { Customer } from "@/types/api";
+import type { Customer, Pet } from "@/types/api";
 
+import { benefitAvailability, membershipCard } from "./helpers/membershipFixture";
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/customer.service");
 jest.mock("@/services/customerInvoice.service");
 jest.mock("@/services/pet.service");
 jest.mock("@/services/pos.service");
+jest.mock("@/services/membership.service");
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ push: jest.fn() }),
+  usePathname: () => "/dashboard/customers/x",
+}));
 jest.mock("@/services/petOption.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
@@ -22,6 +29,7 @@ const mockedInvoices = customerInvoiceService as jest.Mocked<
 >;
 const mockedPets = petService as jest.Mocked<typeof petService>;
 const mockedPos = posService as jest.Mocked<typeof posService>;
+const mockedMemberships = membershipService as jest.Mocked<typeof membershipService>;
 
 const customer: Customer = {
   _id: "5a7f1f77bcf86cd799439022",
@@ -56,7 +64,7 @@ function page<T>(items: T[], total = items.length) {
 }
 
 /**
- * The customer profile — the read side of `/master/customers/:id`, which used to
+ * The customer profile — the read side of `/customers/:id`, which used to
  * be the edit form.
  *
  * WHAT THIS SUITE IS FOR. Three of the screen's decisions are the kind that a
@@ -79,6 +87,7 @@ describe("customer profile", () => {
     mockedCustomers.getById.mockResolvedValue(customer);
     mockedPets.list.mockResolvedValue(page([]));
     mockedPos.listTransactions.mockResolvedValue(page([]));
+    mockedMemberships.listMemberships.mockResolvedValue(page([]));
     mockedInvoices.summary.mockResolvedValue({
       asOf: "2026-09-26T00:00:00.000Z",
       period: null,
@@ -334,5 +343,98 @@ describe("customer profile", () => {
     renderWithAuth(<CustomerProfileScreen id={customer._id} />);
 
     expect(await screen.findByText(/sudah dihapus/i)).toBeVisible();
+  });
+
+  /* ── Membership (Promosi V1) ─────────────────────────────────────────── */
+
+  const pet = (overrides: Partial<Pet>): Pet =>
+    ({
+      _id: "pet-1",
+      customerId: customer._id,
+      name: "Mochi",
+      species: "sp-cat",
+      speciesLabel: "Kucing",
+      sizeLabel: "Kecil",
+      furTypeLabel: null,
+      isActive: true,
+      deletedAt: null,
+      ...overrides,
+    }) as Pet;
+
+  it("shows each pet's membership with short jatah chips, and the way to sell one to a pet without", async () => {
+    mockedPets.list.mockResolvedValue(
+      page([pet({}), pet({ _id: "pet-2", name: "Bruno", speciesLabel: "Anjing" })]),
+    );
+    mockedMemberships.listMemberships.mockResolvedValue(
+      page([
+        membershipCard({
+          benefits: [
+            benefitAvailability(),
+            benefitAvailability({ id: "b2", label: "Mandi", cap: 2, used: 0, remaining: 2 }),
+            benefitAvailability({ id: "b3", label: "Potong kuku", cap: 1, used: 0, remaining: 1 }),
+          ],
+        }),
+      ]),
+    );
+
+    renderWithAuth(<CustomerProfileScreen id={customer._id} />);
+
+    expect(await screen.findByText("Grooming 1/3")).toBeVisible();
+    expect(screen.getByText("Mandi 0/2")).toBeVisible();
+    // At most two chips, then "+n" — the BO's rule for tags.
+    expect(screen.getByText("+1")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Lihat & kelola" })).toHaveAttribute(
+      "href",
+      "/dashboard/promosi/membership/anggota/card-1",
+    );
+    expect(screen.getByText("Belum punya membership.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Jual paket di kasir" })).toHaveAttribute(
+      "href",
+      "/dashboard/pos",
+    );
+    expect(mockedMemberships.listMemberships).toHaveBeenCalledWith(
+      expect.objectContaining({ customerId: customer._id }),
+    );
+  });
+
+  it("draws a customer-held card as one block for every pet, and lists the history", async () => {
+    mockedPets.list.mockResolvedValue(page([pet({})]));
+    mockedMemberships.listMemberships.mockResolvedValue(
+      page([
+        membershipCard({
+          id: "card-c",
+          number: "MBR-2026-0050",
+          attachTo: "customer",
+          petId: null,
+          petName: null,
+        }),
+        membershipCard({
+          id: "card-old",
+          number: "MBR-2025-0001",
+          status: "expired",
+          benefits: [],
+        }),
+      ]),
+    );
+
+    renderWithAuth(<CustomerProfileScreen id={customer._id} />);
+
+    expect(await screen.findByRole("heading", { name: "Semua hewan" })).toBeVisible();
+    expect(screen.getByText(/kuota dipakai bergantian/)).toBeVisible();
+    const history = screen.getByRole("heading", { name: "Riwayat membership" }).parentElement!;
+    expect(within(history).getByText("MBR-2026-0050")).toBeVisible();
+    expect(within(history).getByText("MBR-2025-0001")).toBeVisible();
+    expect(within(history).getByText("Berakhir")).toBeVisible();
+  });
+
+  it("hides the Membership card from a reader without the membership grant", async () => {
+    renderWithAuth(<CustomerProfileScreen id={customer._id} />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "customers", actions: ["read"] }],
+    });
+
+    await screen.findByRole("heading", { level: 1, name: "Rina Wijaya" });
+    expect(screen.queryByText("Riwayat membership")).not.toBeInTheDocument();
+    expect(mockedMemberships.listMemberships).not.toHaveBeenCalled();
   });
 });

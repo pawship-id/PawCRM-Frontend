@@ -203,7 +203,7 @@ function receivablesColumns({
               ...(mayEdit && editable
                 ? [
                     {
-                      href: `${href}?edit=1`,
+                      href: `${href}/edit`,
                       label: "Ubah faktur",
                       icon: <Pencil />,
                     },
@@ -239,7 +239,7 @@ function receivablesColumns({
  *   Detail         — anyone who can read the list.
  *   Ubah faktur    — `customerInvoices:update`, only while the detail page
  *                    would offer it: a manual faktur, unpaid. It opens the
- *                    detail with the editor already open (`?edit=1`).
+ *                    edit page (`/edit`), like Ubah faktur on Pembelian.
  *   Cetak faktur   — anyone who can read the list; it opens the print page.
  *   Bayar          — `customerInvoices:pay`, only while something is owed. It
  *                    opens the payment dialog in place, as on Pembelian.

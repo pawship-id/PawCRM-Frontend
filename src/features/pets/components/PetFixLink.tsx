@@ -48,7 +48,7 @@ export function PetFixLink({
 
   return (
     <Link
-      href={`/dashboard/master/pets/${pet._id}/edit`}
+      href={`/dashboard/pets/${pet._id}/edit`}
       className="underline underline-offset-2"
       target="_blank"
     >

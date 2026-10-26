@@ -88,7 +88,7 @@ interface UseCustomersResult {
 }
 
 /**
- * Owns the customer-list query state and fetching for the master/customers
+ * Owns the customer-list query state and fetching for the customers
  * screen.
  *
  * Mirrors useBranches: local state, a fetch effect keyed on the query, and an

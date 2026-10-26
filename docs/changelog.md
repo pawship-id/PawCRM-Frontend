@@ -102,6 +102,34 @@ This project uses [Semantic Versioning](https://semver.org/).
 - Daftar Stok mengirim `stockWarehouseId` (gudang yang dipilih) saat diurutkan menurut Stok / Nilai stok.
 - Tes: `DataTable`, `BatchLotTable` (baru); layar-layar di atas dan service-nya disesuaikan.
 
+## [Unreleased] — Promosi V1: Membership
+
+16–17 Oktober 2026. Backend: `PawCRM-Backend/docs/membership-v1.md`. Dokumen fitur:
+`docs/features/membership.md`.
+
+- **Modul Promosi** di rail (Ringkasan · Membership › Paket / Anggota). Rute lama
+  `/dashboard/master/customers/membership/**` hanya redirect.
+- **Anggota**: pill **Aktif** memakai `status=activeNotExpiring` (aktif, sisa > 14 hari), jadi
+  kartu yang segera berakhir tidak terhitung dua kali. Pencarian kembali "Cari pelanggan, hewan,
+  atau nomor" — server kini mencari nama/telepon pelanggan dan nama hewan.
+- **Detail anggota**: kolom Transaksi di Riwayat pemakaian menampilkan nomor dokumen
+  (`documentNumber`, link ke faktur bila faktur) dengan konteksnya di bawah; kolom Item memakai
+  `itemName`, jatuh ke ruang lingkup opsi untuk baris lama. Kelola keanggotaan (ubah masa berlaku,
+  tunda, koreksi jatah, pindah hewan, ubah tanggal pakai) butuh `petMemberships:manage`.
+- **Paket**: kolom **Anggota aktif** (`activeMembers`, rata kanan; "—" bila tidak ada).
+- **Ringkasan**: baris "Jatah belum terpakai" menyebut "· n dipesan" bila booking menahan jatah.
+- **Kasir**: jual paket lewat `PosMembershipSaleDialog`; benefit dipilih per baris
+  (`PosBenefitSelect`, menggantikan `PosBenefitSection`). Struk kini menulis **Potongan
+  membership** (dulu "Diskon membership"), sama dengan ringkasan keranjang.
+- **Booking**: Benefit membership berupa radio dari quote server; pilihan yang tersimpan menahan
+  jatah sampai ditagih atau dibatalkan.
+- Tipe (`types/membership.ts`, aditif): `activeNotExpiring`, `MembershipPlan.activeMembers`,
+  `MembershipRedemption.documentNumber`/`itemName`, `AttentionUnusedQuota.reserved`.
+- Tes: `MembershipCardsPanel`, `MembershipCardDetail`, `MembershipPlansPanel`,
+  `PromosiSummaryScreen`, `ReceiptPreview` disesuaikan.
+
+---
+
 ## [Unreleased] — Transfer stok: status, ubah, terima, cetak surat jalan
 
 10 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.

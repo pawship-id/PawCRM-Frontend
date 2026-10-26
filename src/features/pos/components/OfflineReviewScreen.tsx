@@ -36,6 +36,7 @@ const REASON_LABELS: Record<string, string> = {
   negative_stock: "Stok minus",
   price_changed: "Harga berubah",
   shift_closed: "Shift sudah tutup",
+  lot_changed: "Batch diganti",
 };
 
 function timeOf(value: string | null): string {

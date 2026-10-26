@@ -35,7 +35,7 @@ jest.mock("next/navigation", () => {
     useRouter: () => router,
     // CustomerModuleHeader's tab row (PageTabs) reads this to underline the
     // current tab — not under test here, just needs a value to render at all.
-    usePathname: () => "/dashboard/master/customers",
+    usePathname: () => "/dashboard/customers",
   };
 });
 
@@ -131,7 +131,7 @@ describe("the \"Pelanggan baru\" chip, from the Ringkasan drill", () => {
 
     await waitFor(() =>
       expect(replace).toHaveBeenCalledWith(
-        "/dashboard/master/customers",
+        "/dashboard/customers",
         { scroll: false },
       ),
     );

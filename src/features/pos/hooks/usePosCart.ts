@@ -5,6 +5,8 @@ import { useCallback, useState } from "react";
 import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
 import type {
+  PosAddonHost,
+  PosBenefitPick,
   PosCatalogItem,
   PosItemInput,
   PosItemTripInput,
@@ -13,10 +15,34 @@ import type {
   VariantChoice,
 } from "@/types/api";
 
+import type { EligibilityReason } from "@/types/membership";
+
 import { onlineTransport, type CartTransport } from "../offline/transport";
 import { cartItemsAsInput } from "./cartInput";
+import { lotsAtQty, lotsWithOneMore } from "./lineLots";
+import { tillLots } from "../offline/tillApi";
 
 export { cartItemsAsInput };
+
+/** A package line as the sell dialog hands it over (contract §6.2). */
+export interface MembershipLineInput {
+  planId: string;
+  /** Null for a plan held by the customer. */
+  petId: string | null;
+  /** Absent = starts when paid. `suggestedStartDate` as returned, or "YYYY-MM-DD". */
+  membershipStartDate?: string;
+  referralCode?: string;
+  packageRef: string;
+}
+
+/**
+ * What `addMembership` answers. A refusal of the plan's sale rules (409 with
+ * `data.reasons`) comes back to the DIALOG, which shows it beside the row it
+ * is about — it is not put in the basket's banner.
+ */
+export type MembershipAddResult =
+  | { ok: true }
+  | { ok: false; message: string; reasons: EligibilityReason[] };
 
 /**
  * A discount the till is trying to apply and the server has refused pending
@@ -43,13 +69,17 @@ interface UsePosCartResult {
    * `addMembership`. Gate any "… ditambahkan" toast on it; the basket's banner
    * carries the reason. See `send`.
    */
-  addItem: (tile: PosCatalogItem) => Promise<boolean>;
+  addItem: (
+    tile: PosCatalogItem,
+    /** The lot a scan named — the unit is taken from it. See `lotsWithOneMore`. */
+    scan?: { batchId: string },
+  ) => Promise<boolean>;
   /** Puts a trip's fee back on the basket — see `owedTrips` on the cart. */
   addTrip: (tripId: string) => Promise<boolean>;
   /** Several trips at once — the trips left behind a pull ticks (11 October 2026). */
   addTrips: (tripIds: string[]) => Promise<boolean>;
-  /** Sells one membership package to one animal — see the implementation. */
-  addMembership: (planId: string, petId: string) => Promise<boolean>;
+  /** Sells one membership package — see the implementation. */
+  addMembership: (input: MembershipLineInput) => Promise<MembershipAddResult>;
   setQty: (index: number, qty: string) => Promise<void>;
   /** Type a price over the catalogue's; `null` puts the line back to it. */
   setLinePrice: (index: number, unitPrice: string | null) => Promise<void>;
@@ -64,10 +94,11 @@ interface UsePosCartResult {
    */
   removeItem: (index: number | number[]) => Promise<void>;
   /** Apply or remove a membership benefit on one line — see the implementation. */
-  setItemBenefit: (
-    index: number,
-    benefit: { membershipId: string; benefitId: string } | null,
-  ) => Promise<void>;
+  setItemBenefit: (index: number, benefit: PosBenefitPick | null) => Promise<void>;
+  /** Several lines' picks in ONE write — the auto-apply after a quote. */
+  setItemBenefits: (
+    changes: Array<{ index: number; benefit: PosBenefitPick | null }>,
+  ) => Promise<boolean>;
   setItemDiscount: (
     index: number,
     discount: UpdateCartInput["cartDiscount"],
@@ -166,6 +197,24 @@ interface UsePosCartResult {
     }>,
   ) => Promise<boolean>;
   pullBookings: (bookingIds: string[]) => Promise<void>;
+  /**
+   * AN ADD-ON PICKED ALONE, HUNG ON THE GROOMING THE CASHIER CHOSE (21 October
+   * 2026) — "Add-on ini untuk layanan yang mana?".
+   *
+   * A basket line (`source: "cart"`) is one write: the add-on line names that
+   * line's service as its parent and its booking. A diary booking
+   * (`source: "diary"`) is PULLED first — the bridge's own "Tarik" — and the
+   * add-on is hung on it in the next write, built from the basket the pull
+   * returned. One tap for the cashier either way. Resolves `false` when the
+   * server refused; the banner carries why (a refused second step leaves the
+   * booking pulled, which is what the cashier asked for anyway).
+   */
+  attachAddon: (input: {
+    addonId: string;
+    petId: string;
+    variantChoices?: VariantChoice[];
+    host: PosAddonHost;
+  }) => Promise<boolean>;
   patch: (input: UpdateCartInput) => Promise<boolean>;
   /** Retry the refused patch with an approver attached. */
   approve: (approverUserId: string) => Promise<void>;
@@ -378,6 +427,65 @@ export function usePosCart(
     [cart],
   );
 
+  const attachAddon = useCallback(
+    async ({
+      addonId,
+      petId,
+      variantChoices,
+      host,
+    }: {
+      addonId: string;
+      petId: string;
+      variantChoices?: VariantChoice[];
+      host: PosAddonHost;
+    }): Promise<boolean> => {
+      const line: PosItemInput = {
+        kind: "service",
+        refId: addonId,
+        petId,
+        qty: "1",
+        ...(variantChoices?.length ? { variantChoices } : {}),
+        parentServiceId: host.serviceId,
+        ...(host.bookingId ? { bookingId: host.bookingId } : {}),
+      };
+
+      if (host.source === "cart") {
+        return send({ items: [...cartItemsAsInput(cart), line] });
+      }
+
+      if (!host.bookingId) return false;
+
+      setBusy(true);
+      setError(null);
+
+      let pulled: PosTransaction | null = null;
+
+      try {
+        const target = cart ?? (await posService.createCart({}));
+        pulled = await posService.pullBookings(target._id, [host.bookingId]);
+        setCart(pulled);
+        setCart(
+          await posService.updateCart(pulled._id, {
+            items: [...cartItemsAsInput(pulled), line],
+          }),
+        );
+        return true;
+      } catch (err) {
+        setError(
+          pulled
+            ? cartWriteError(err)
+            : err instanceof ApiError
+              ? (err.reason ?? err.message)
+              : "Booking gagal ditarik. Coba lagi.",
+        );
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [cart, send],
+  );
+
   /** The current lines, as the API wants them sent back. */
   const itemsAsInput = useCallback(
     (): PosItemInput[] => cartItemsAsInput(cart),
@@ -393,9 +501,13 @@ export function usePosCart(
    *
    * A SERVICE IS NEVER BUMPED: it is one line per animal per service (FR-3), so
    * a second tap is a second line — which the server will also force to qty 1.
+   *
+   * A LINE THAT NAMES LOTS KEEPS NAMING THEM (25 Oct 2026, BO), and a scanned
+   * lot joins them — see `lotsWithOneMore`, short on paper or not. FEFO is
+   * only for a line nobody ever named a lot on.
    */
   const addItem = useCallback(
-    async (tile: PosCatalogItem) => {
+    async (tile: PosCatalogItem, scan?: { batchId: string }) => {
       const items = itemsAsInput();
       const existing =
         tile.kind === "product"
@@ -405,15 +517,50 @@ export function usePosCart(
           : -1;
 
       if (existing >= 0) {
-        // The named lots no longer add up once the quantity moves — see `setQty`.
-        const { lots, ...rest } = items[existing];
-        void lots;
+        const { lots: named = [], ...rest } = items[existing];
+        const lineQty = Number(items[existing].qty ?? "1");
+        let lots: Array<{ batchId: string; qty: string }> | null = null;
+
+        if (scan && named.length > 0) {
+          // Nothing left to place by FEFO: the scanned lot just gains one.
+          lots = lotsWithOneMore({
+            named,
+            lineQty,
+            scannedBatchId: scan.batchId,
+            lots: [],
+          });
+        } else if (scan || named.length > 0) {
+          // Somebody has to say where the unplaced units come from.
+          setBusy(true);
+          try {
+            const { lots: shelf } = await tillLots(tile._id);
+            lots = lotsWithOneMore({
+              named,
+              lineQty,
+              scannedBatchId: scan?.batchId ?? null,
+              lots: shelf,
+            });
+          } catch {
+            // The shelf would not load: the line's own lots take the unit.
+            lots =
+              named.length > 0
+                ? lotsWithOneMore({ named, lineQty, scannedBatchId: scan?.batchId ?? null, lots: [] })
+                : null;
+          }
+        }
+
         items[existing] = {
           ...rest,
-          qty: String(Number(items[existing].qty ?? "1") + 1),
+          qty: String(lineQty + 1),
+          ...(lots ? { lots } : {}),
         };
       } else {
-        items.push({ kind: tile.kind, refId: tile._id, qty: "1" });
+        items.push({
+          kind: tile.kind,
+          refId: tile._id,
+          qty: "1",
+          ...(scan ? { lots: [{ batchId: scan.batchId, qty: "1" }] } : {}),
+        });
       }
 
       return send({ items });
@@ -444,27 +591,71 @@ export function usePosCart(
   const addTrip = useCallback((tripId: string) => addTrips([tripId]), [addTrips]);
 
   /**
-   * A MEMBERSHIP PACKAGE, FOR ONE ANIMAL (30 September 2026).
+   * A MEMBERSHIP PACKAGE (30 September 2026; Promosi V1, 16 October 2026).
    *
-   * Its own path because it is its own `kind`. The till asks whose animal it is
-   * with the SAME dialog a service uses, and that shared dialog is exactly how
-   * this went wrong: `onPick` fed every answer to `addServices`, which stamps
-   * `kind: "service"` on what it is given, so a package's id was looked up in
-   * the service catalogue and came back "Service not found".
+   * Its own path because it is its own `kind` — a package's id sent through
+   * `addServices` was once looked up in the service catalogue.
    *
-   * `petId` IS THE POINT, not a detail. A card belongs to an animal; the server
-   * refuses a package line without one, because there would be nobody to mint
-   * the card for.
+   * `petId` for a plan held by an animal, null for one held by the customer;
+   * the server runs the plan's sale rules on every save and prices the line
+   * from the animal's variant (contract §6.2).
+   *
+   * A REFUSAL OF THOSE RULES GOES BACK TO THE DIALOG (409 with
+   * `data.reasons`), not into the basket's banner: the dialog is still open
+   * and can say it next to the animal it is about. Anything else is reported
+   * the way every other write is.
    */
   const addMembership = useCallback(
-    async (planId: string, petId: string) => {
+    async (input: MembershipLineInput): Promise<MembershipAddResult> => {
       const items = itemsAsInput();
       // One card per line — never bumped, never merged. Two cards is two lines.
-      items.push({ kind: "membership", refId: planId, petId, qty: "1" });
+      items.push({
+        kind: "membership",
+        refId: input.planId,
+        petId: input.petId,
+        qty: "1",
+        packageRef: input.packageRef,
+        ...(input.membershipStartDate
+          ? { membershipStartDate: input.membershipStartDate }
+          : {}),
+        ...(input.referralCode ? { referralCode: input.referralCode } : {}),
+      });
 
-      return send({ items });
+      setBusy(true);
+      setError(null);
+
+      try {
+        const target = cart ?? (await posService.createCart({}));
+        setCart(await posService.updateCart(target._id, { items }));
+        return { ok: true };
+      } catch (err) {
+        const data =
+          err instanceof ApiError
+            ? (err.data as { reasons?: EligibilityReason[] } | undefined)
+            : undefined;
+
+        if (err instanceof ApiError && (err.status === 409 || err.status === 400)) {
+          const reasons = Array.isArray(data?.reasons)
+            ? data.reasons
+            : (err.details ?? [])
+                .filter((detail) => detail?.message)
+                .map((detail) => ({
+                  code: ((detail as { code?: string }).code ?? "plan_inactive") as EligibilityReason["code"],
+                  field: detail.field ?? null,
+                  message: detail.message,
+                }));
+
+          return { ok: false, message: err.reason ?? err.message, reasons };
+        }
+
+        const message = cartWriteError(err);
+        setError(message);
+        return { ok: false, message, reasons: [] };
+      } finally {
+        setBusy(false);
+      }
     },
-    [itemsAsInput, send],
+    [cart, itemsAsInput],
   );
 
   const addServices = useCallback(
@@ -517,14 +708,33 @@ export function usePosCart(
       const items = itemsAsInput();
       if (!items[index]) return;
       /*
-        A STEPPED QUANTITY DROPS THE NAMED LOTS (8 October 2026). Their shares
-        added up to the old quantity, and the server refuses a line whose lots
-        no longer do — so the line goes back to FEFO, and the cashier names them
-        again in the dialog, where the quantity and the lots sit side by side.
+        A STEPPED QUANTITY KEEPS THE NAMED LOTS (25 October 2026, BO; it used
+        to drop them back to FEFO). The server refuses a line whose lots no
+        longer add up, so they are re-split here — see `lotsAtQty`. Stepping
+        up asks the shelf where the extra units come from; stepping down does
+        not need to. Short on paper, they still stay — see `lotsAtQty`.
       */
-      const { lots, ...rest } = items[index];
-      void lots;
-      items[index] = { ...rest, qty };
+      const { lots: named = [], ...rest } = items[index];
+      const target = Number(qty);
+      let lots: Array<{ batchId: string; qty: string }> | null = null;
+
+      if (named.length > 0) {
+        const held = named.reduce((sum, share) => sum + Number(share.qty), 0);
+        if (target <= held) {
+          lots = lotsAtQty({ named, qty: target, lots: [] });
+        } else {
+          setBusy(true);
+          try {
+            const { lots: shelf } = await tillLots(items[index].refId);
+            lots = lotsAtQty({ named, qty: target, lots: shelf });
+          } catch {
+            // The shelf would not load: the line's own lots take the units.
+            lots = lotsAtQty({ named, qty: target, lots: [] });
+          }
+        }
+      }
+
+      items[index] = { ...rest, qty, ...(lots ? { lots } : {}) };
       await send({ items });
     },
     [itemsAsInput, send],
@@ -533,7 +743,29 @@ export function usePosCart(
   const removeItem = useCallback(
     async (index: number | number[]) => {
       const dropped = new Set(Array.isArray(index) ? index : [index]);
-      const items = itemsAsInput().filter((_, i) => !dropped.has(i));
+      const kept = itemsAsInput().filter((_, i) => !dropped.has(i));
+
+      /*
+        A PACKAGE TAKES ITS JATAH WITH IT (Promosi V1). A line spending a
+        package bought on this basket names it by `packageRef`; once that
+        package line is gone the pick points at nothing, and the server
+        refuses the whole write — so the package could never be removed. The
+        orphaned pick is dropped here (key absent, as in setItemBenefits) and
+        the next quote offers whatever the customer still holds.
+      */
+      const packages = new Set(
+        kept
+          .filter((item) => item.kind === "membership" && item.packageRef)
+          .map((item) => item.packageRef as string),
+      );
+      const items = kept.map((item) => {
+        const ref = item.benefit?.packageRef;
+        if (!ref || packages.has(ref)) return item;
+        const next = { ...item };
+        delete next.benefit;
+        return next;
+      });
+
       await send({ items });
     },
     [itemsAsInput, send],
@@ -619,11 +851,13 @@ export function usePosCart(
   );
 
   /**
-   * Apply or remove a membership benefit on one line (29 September 2026).
+   * Apply or remove membership picks — several lines in ONE write (Promosi
+   * V1: the auto-apply after a quote changes many lines at once, and the quote
+   * priced them together).
    *
    * ─── IT SENDS A NAME, NOT A NUMBER ────────────────────────────────────────
    *
-   * `{ membershipId, benefitId }` and nothing else. The server reads the card,
+   * `{ membershipId | packageRef, benefitId, optionId }` and nothing else. The server reads the card,
    * its frozen plan and the redemption ledger, and prices the benefit itself —
    * so a till that had been tampered with, or that was simply looking at a
    * stale quote, cannot decide what the shop gives away.
@@ -634,22 +868,35 @@ export function usePosCart(
    * line from this payload, so removing a benefit has to mean the key is
    * ABSENT, not present and null-ish.
    */
-  const setItemBenefit = useCallback(
-    async (
-      index: number,
-      benefit: { membershipId: string; benefitId: string } | null,
-    ) => {
+  const setItemBenefits = useCallback(
+    async (changes: Array<{ index: number; benefit: PosBenefitPick | null }>) => {
       const items = itemsAsInput();
-      if (!items[index]) return;
+      let touched = false;
 
-      const next = { ...items[index] };
-      delete next.benefit;
-      if (benefit) next.benefit = benefit;
-      items[index] = next;
+      for (const { index, benefit } of changes) {
+        if (!items[index]) continue;
+        const next = { ...items[index] };
+        delete next.benefit;
+        if (benefit) {
+          next.benefit = benefit;
+          // A benefit takes the line: no typed discount beside it (Promosi V1).
+          next.discount = null;
+        }
+        items[index] = next;
+        touched = true;
+      }
 
-      await send({ items });
+      if (!touched) return false;
+      return send({ items });
     },
     [itemsAsInput, send],
+  );
+
+  const setItemBenefit = useCallback(
+    async (index: number, benefit: PosBenefitPick | null) => {
+      await setItemBenefits([{ index, benefit }]);
+    },
+    [setItemBenefits],
   );
 
   const setCartDiscount = useCallback(
@@ -779,12 +1026,14 @@ export function usePosCart(
     setItemDiscount,
     setLineDetails,
     setItemBenefit,
+    setItemBenefits,
     setCartDiscount,
     setCharges,
     setNote,
     setSyncOnline,
     setCustomer,
     pullBookings,
+    attachAddon,
     patch: send,
     approve,
     dismissApproval,

@@ -19,7 +19,7 @@ import {
  * The head of the Pelanggan module, shared by every tab under it — the title,
  * the tab row, and the four numbers that describe the register.
  *
- * ONE HEADER FOR EVERY TAB. /master/customers, /master/pets and the Ringkasan
+ * ONE HEADER FOR EVERY TAB. /customers, /pets and the Ringkasan
  * tab are separate screens with separate grants, but the mockup draws them as
  * one page with tabs, and the rail has one row for all of them. Rendering the
  * same header from each screen is what makes the routes read as the one module
@@ -48,32 +48,27 @@ import {
 /**
  * Pelanggan's tabs, each opened by its own "Lihat" (14 October 2026).
  *
- * Membership opens with either of its sub-tabs' grants (Paket, or Kartu with
- * Perpanjangan), and is NOT exact: it stays underlined on all three sub-tabs.
+ * NO MEMBERSHIP TAB since 16 October 2026: Membership moved to its own rail
+ * module, Promosi (see PromosiModuleHeader). The old routes redirect there.
  */
 export const CUSTOMER_TABS: GatedTab[] = [
   {
     label: "Ringkasan",
-    href: "/dashboard/master/customers/ringkasan",
+    href: "/dashboard/customers/summary",
     exact: true,
     anyOf: [{ feature: "customerSummary" }],
   },
   {
     label: "Pelanggan",
-    href: "/dashboard/master/customers",
+    href: "/dashboard/customers",
     // EXACT, because the other tabs are routes UNDER this one.
     exact: true,
     anyOf: [{ feature: "customers" }],
   },
-  { label: "Hewan", href: "/dashboard/master/pets", anyOf: [{ feature: "pets" }] },
-  {
-    label: "Membership",
-    href: "/dashboard/master/customers/membership",
-    anyOf: [{ feature: "membershipPlans" }, { feature: "petMemberships" }],
-  },
+  { label: "Hewan", href: "/dashboard/pets", anyOf: [{ feature: "pets" }] },
   {
     label: "Riwayat",
-    href: "/dashboard/master/customers/riwayat",
+    href: "/dashboard/customers/history",
     anyOf: [{ feature: "customerHistory" }],
   },
 ];

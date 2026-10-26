@@ -6,14 +6,21 @@ import { Alert, ConfirmDialog, Spinner } from "@/components";
 import { posService } from "@/services/pos.service";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
-import type { PosCatalogItem, PosTransaction } from "@/types/api";
+import type {
+  Pet,
+  PosBenefitPick,
+  PosCatalogItem,
+  PosTransaction,
+  VariantChoice,
+} from "@/types/api";
 
 import { useAuth } from "@/features/auth";
 import { CustomerSearchDialog } from "@/features/customers";
 import { BookingBridgeDialog, useBookingBridge } from "@/features/booking";
-import { useBenefitQuote } from "@/features/memberships";
-
+import { autoApplyChanges, lineKey, petPlans } from "../membershipCart";
+import { useCustomerMemberships } from "@/features/memberships/hooks/useCustomerMemberships";
 import { usePosCart } from "../hooks/usePosCart";
+import { usePosMembershipQuote } from "../hooks/usePosMembershipQuote";
 import { usePosShift } from "../hooks/usePosShift";
 import { useShiftTotals } from "../hooks/useShiftTotals";
 import { PosApprovalDialog } from "./PosApprovalDialog";
@@ -22,7 +29,10 @@ import { PosBookingActions } from "./PosBookingActions";
 import { PosBookingBanner } from "./PosBookingBanner";
 import { PosCart } from "./PosCart";
 import { PosCatalog } from "./PosCatalog";
-import { PosServicePetDialog } from "./PosServicePetDialog";
+import { PosCustomerPerks } from "./PosCustomerPerks";
+import { PosMembershipSaleDialog } from "./PosMembershipSaleDialog";
+import { PosSaleEffects } from "./PosSaleEffects";
+import { PosServicePetDialog, type PosRidePick } from "./PosServicePetDialog";
 import { PosCloseShiftDialog } from "./PosCloseShiftDialog";
 import { PosHeldCartsDialog } from "./PosHeldCartsDialog";
 import { PosPaymentDialog } from "./PosPaymentDialog";
@@ -48,6 +58,9 @@ import { unsentFor } from "../offline/queue";
 import { syncNow } from "../offline/sync";
 import { isOfflineSaleId } from "../offline/tillApi";
 import { registerSignOutGuard } from "@/lib/signOutGuards";
+
+/** "Tanpa member" on nothing — one shared empty set, so it never re-quotes. */
+const NO_KEYS: ReadonlySet<string> = new Set();
 
 /**
  * The till.
@@ -155,6 +168,8 @@ export function PosScreen() {
   const [heldError, setHeldError] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
   const [receiptFor, setReceiptFor] = useState<string | null>(null);
+  /** The sale just paid — what its receipt dialog lists as membership effects. */
+  const [paidSale, setPaidSale] = useState<PosTransaction | null>(null);
   const [pickingCustomer, setPickingCustomer] = useState(false);
   /**
    * Which half of the Booking Bridge to open on, or null while it is closed.
@@ -331,6 +346,68 @@ export function PosScreen() {
     null,
   );
   /**
+   * A membership package tapped in the grid, waiting for its sell dialog
+   * (Promosi V1). Same order as a service: the customer first — a package is
+   * always sold to somebody.
+   */
+  const [pendingPackage, setPendingPackage] = useState<PosCatalogItem | null>(
+    null,
+  );
+
+  /**
+   * A grid service for one animal, into the basket — the service, then any
+   * add-ons ticked with it, as `addServices` lines. Also what an add-on picked
+   * alone does when it has no grooming to go on, or the cashier chose
+   * "Booking baru".
+   */
+  function addPicked(
+    tile: PosCatalogItem,
+    pet: Pet,
+    addonServiceIds: string[],
+    variantChoices: VariantChoice[],
+    ride: PosRidePick | null,
+  ) {
+    /*
+      THE SERVICE FIRST, THEN ITS ADD-ONS — one patch, one line each.
+      `addServices` already takes several per animal, so nothing here has
+      to know that an add-on is a different kind of line: the server reads
+      the catalogue and files each one under the service it hangs off.
+
+      `ride` IS NULL ON EVERYTHING BUT ANTAR-JEMPUT — the journey the
+      dialog just asked for, which becomes the booking's direction and its
+      two addresses.
+    */
+    void cart
+      .addServices([
+        {
+          petId: pet._id,
+          serviceIds: [tile._id, ...addonServiceIds],
+          variantChoices,
+          ride,
+        },
+      ])
+      .then((ok) => {
+        /* Ditolak: keranjang sudah memasang alasannya, dan "ditambahkan"
+           di atasnya hanya akan membantah panel itu. */
+        if (!ok) return;
+
+        /*
+          NAMES THE ANIMAL, or COUNTS THEM on a van carrying several —
+          "Antar-Jemput untuk Bruno" would name one of three dogs, picked
+          by nothing but the order they were ticked in.
+        */
+        const riders = ride?.passengerPetIds.length ?? 0;
+        const whose = riders > 1 ? `${riders} hewan` : pet.name;
+
+        swalToast(
+          addonServiceIds.length > 0
+            ? `${tile.name} untuk ${whose} ditambahkan, dengan ${addonServiceIds.length} tambahan.`
+            : `${tile.name} untuk ${whose} ditambahkan.`,
+        );
+      });
+  }
+
+  /**
    * Whether the customer picker is closing because somebody was CHOSEN.
    *
    * Choosing fires the dialog's `onOpenChange` as well as `onSelect`, so the two
@@ -361,7 +438,16 @@ export function PosScreen() {
         a second thing for a cashier to learn.
       */
       if (tile.kind === "service" || tile.kind === "membership") {
-        setPendingService(tile);
+        if (tile.kind === "membership" && offline) {
+          swalToast(
+            "Paket membership butuh koneksi internet — tunggu sampai kasir online lagi.",
+            "error",
+          );
+          return;
+        }
+
+        if (tile.kind === "membership") setPendingPackage(tile);
+        else setPendingService(tile);
 
         // No customer yet: that question comes first, and the tile waits.
         if (!cart.cart?.customer) {
@@ -390,6 +476,38 @@ export function PosScreen() {
         .then((ok) => {
           if (ok) swalToast(`${tile.name} ditambahkan.`);
         });
+    },
+    [cart, offline],
+  );
+
+  /**
+   * A PRODUCT A SCAN NAMED — the camera or a handheld scanner (25 Oct 2026, BO).
+   *
+   * Straight into the basket like a tap, but from THE LOT ON THE LABEL when the
+   * scan named one: that carton is the one leaving the shelf. Only a lot that
+   * expires is pinned — the line dialog offers lots for nothing else, so a lot
+   * named on any other product could be neither seen nor changed.
+   *
+   * Resolves once the write has landed, so the caller can queue the next scan
+   * behind it: every write sends the whole basket, and two in flight would
+   * each be built without the other's line.
+   */
+  const addScanned = useCallback(
+    async (tile: PosCatalogItem) => {
+      setNotice(null);
+      const lot = tile.scannedLot?.expiryDate ? tile.scannedLot : null;
+      const ok = await cart.addItem(
+        tile,
+        lot ? { batchId: lot.batchId } : undefined,
+      );
+      if (ok) {
+        swalToast(
+          lot
+            ? `${tile.name} (batch ${lot.batchCode}) ditambahkan.`
+            : `${tile.name} ditambahkan.`,
+        );
+      }
+      return ok;
     },
     [cart],
   );
@@ -554,50 +672,70 @@ export function PosScreen() {
   }
 
   /*
-    ─── WHAT A MEMBERSHIP CARD COULD PAY FOR, ON THIS BASKET ────────────────
+    ─── MEMBERSHIP IN THE BASKET (Promosi V1, contract §6.3) ─────────────────
 
-    Asked of the server on every change to the lines, and asked as an OFFER: the
-    answer never touches a total. Applying one sends `{ membershipId,
-    benefitKey }` back on the line and lets the server price it for real — a
-    till that could name its own benefit amount could give away the shop.
+    The quote is asked on every change to the basket; its `recommended` pick is
+    APPLIED AUTOMATICALLY to every line nobody has chosen for, in one write.
+    The cashier changes it per line from the line's select — a candidate, or
+    "Tanpa member", which is remembered for that line (by what the line is, a
+    cart line has no id) so the next quote does not put the pick straight back.
 
-    ONLY LINES THAT NAME AN ANIMAL ARE ASKED ABOUT, because a card belongs to an
-    animal: a bag of food on the same receipt is nobody's. Membership lines are
-    left out too — a package is not something a benefit can be spent on.
-
-    `ref` IS THE POSITION, STRINGIFIED. The cart renumbers when a line is
-    removed, so both the question and the map below are rebuilt from the same
-    array the rows are drawn from.
+    THE SERVER PRICES EVERYTHING. A pick is ids; the line totals and "Potongan
+    membership" are read back from the cart.
   */
-  const benefitLines = useMemo(
-    () =>
-      (cart.cart?.items ?? []).flatMap((item, index) =>
-        item.petId && item.kind !== "membership"
-          ? [
-              {
-                ref: String(index),
-                kind: item.kind as "service" | "product",
-                refId: item.refId,
-                petId: item.petId,
-                amount: item.lineTotal,
-                parentServiceId: item.parentServiceId ?? null,
-              },
-            ]
-          : [],
-      ),
-    [cart.cart],
+  const cartId = cart.cart?._id ?? null;
+  const [noBenefit, setNoBenefit] = useState<{
+    cartId: string | null;
+    keys: ReadonlySet<string>;
+  }>({ cartId: null, keys: NO_KEYS });
+  const noBenefitKeys = noBenefit.cartId === cartId ? noBenefit.keys : NO_KEYS;
+
+  // Membership benefits are priced by the server; offline none are offered.
+  const memberQuote = usePosMembershipQuote(offline ? null : cart.cart, noBenefitKeys);
+  const autoTried = useRef("");
+  const { setItemBenefits, setItemBenefit } = cart;
+  const cartItems = cart.cart?.items;
+
+  useEffect(() => {
+    if (!memberQuote.quote || !memberQuote.digest || cart.busy) return;
+    /* One try per basket state: a refused write leaves the basket — and so the
+       digest — as it was, and must not be retried in a loop. */
+    if (autoTried.current === memberQuote.digest) return;
+    autoTried.current = memberQuote.digest;
+
+    const changes = autoApplyChanges(cartItems ?? [], memberQuote.quote, noBenefitKeys);
+    if (changes.length > 0) void setItemBenefits(changes);
+  }, [memberQuote.quote, memberQuote.digest, cart.busy, cartItems, noBenefitKeys, setItemBenefits]);
+
+  function chooseBenefit(index: number, pick: PosBenefitPick | null) {
+    const items = cart.cart?.items ?? [];
+    if (!items[index]) return;
+    const key = lineKey(items, index);
+    const next = new Set(noBenefitKeys);
+    if (pick) next.delete(key);
+    else next.add(key);
+    setNoBenefit({ cartId, keys: next });
+    void setItemBenefit(index, pick);
+  }
+
+  /* The customer's cards — chips under their name, plans on the pet headers. */
+  const customerCards = useCustomerMemberships(
+    offline ? null : (cart.cart?.customer?._id ?? null),
   );
-
-  /*
-    THE WHOLE QUOTE GOES DOWN, not a per-line map of offers (30 September 2026).
-    `PosBenefitSection` lists EVERY benefit — including the ones no line in the
-    basket matches — and a map keyed by line cannot express those at all.
-  */
-  const { quote: benefitQuote } = useBenefitQuote({
-    // Membership benefits are priced by the server; offline none are offered.
-    customerId: offline ? null : (cart.cart?.customerId ?? null),
-    lines: benefitLines,
-  });
+  const plansByPet = useMemo(
+    () =>
+      petPlans(cart.cart?.items ?? [], [
+        ...customerCards.map((card) => ({
+          petId: card.petId,
+          planName: card.plan?.name ?? null,
+          status: card.status,
+        })),
+        ...(memberQuote.quote?.cards ?? [])
+          .filter((card) => !card.virtual)
+          .map((card) => ({ petId: card.petId, planName: card.planName, status: card.status })),
+      ]),
+    [cart.cart, customerCards, memberQuote.quote],
+  );
 
   /*
     THE BRANCH COMES BEFORE THE SHIFT, and before the loading state — there is
@@ -702,6 +840,7 @@ export function PosScreen() {
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <PosCatalog
           onAdd={addTile}
+          onScan={addScanned}
           onExpand={setVariantParent}
           busy={cart.busy}
         />
@@ -719,12 +858,10 @@ export function PosScreen() {
           onItemDetails={(index, details) =>
             cart.setLineDetails(index, details)
           }
-          onItemBenefit={
-            offline
-              ? undefined
-              : (index, benefit) => void cart.setItemBenefit(index, benefit)
-          }
-          benefitQuote={offline ? null : benefitQuote}
+          onItemBenefit={offline ? undefined : chooseBenefit}
+          memberQuote={offline ? null : memberQuote.quote}
+          petPlans={plansByPet}
+          customerPerks={<PosCustomerPerks cards={customerCards} />}
           onCartDiscount={(discount) => void cart.setCartDiscount(discount)}
           onCharges={(charges) => void cart.setCharges(charges)}
           onNote={(note) => void cart.setNote(note)}
@@ -857,6 +994,7 @@ export function PosScreen() {
               cashier can accidentally ring up twice.
             */
             cart.clear();
+            setPaidSale(sale);
             setReceiptFor(sale._id);
             void loadHeld();
             // The shift bar and the day's list both just went stale (FR-9).
@@ -872,6 +1010,12 @@ export function PosScreen() {
         onOpenChange={(open) => {
           if (!open) setReceiptFor(null);
         }}
+        /* Only for the sale just paid — a reprint from the day's list has none. */
+        effects={
+          paidSale && paidSale._id === receiptFor ? (
+            <PosSaleEffects sale={paidSale} />
+          ) : undefined
+        }
       />
 
       {/*
@@ -911,6 +1055,7 @@ export function PosScreen() {
             */
             if (!next && !customerChosen.current) {
               setPendingService(null);
+              setPendingPackage(null);
             }
           }}
           onSelect={(customer, warnings) => {
@@ -1068,72 +1213,72 @@ export function PosScreen() {
           branchId={session?.currentBranchId ?? cart.cart?.branchId ?? null}
           cartBookingIds={cart.cart?.bookingIds ?? []}
           busy={cart.busy}
+          basketId={cart.cart?._id ?? null}
           onOpenChange={(next) => {
             if (!next) setPendingService(null);
           }}
-          onPick={(pet, addonServiceIds, variantChoices, ride) => {
+          onPick={(pet, addonServiceIds, variantChoices, ride, host) => {
             const tile = pendingService;
             if (!tile) return;
-
             setPendingService(null);
 
             /*
-              A PACKAGE IS NOT A SERVICE, and this is the branch that says so. The
-              dialog is shared on purpose — "untuk hewan yang mana?" is one
-              question — but its answer used to go to `addServices` whatever was
-              being sold, which stamped `kind: "service"` on a membership plan's
-              id and earned a "Service not found" from the catalogue it was then
-              looked up in. Add-ons, variants and rides mean nothing here: a card
-              has one price, one animal and one line.
+              AN ADD-ON PICKED ALONE, put on a grooming the cashier chose in the
+              animal dialog (21 October 2026) — one in this basket, or one in the
+              diary, which is pulled in first. `null` / `undefined`: a booking of
+              its own, as before.
             */
-            if (tile.kind === "membership") {
-              void cart.addMembership(tile._id, pet._id).then((ok) => {
-                if (ok) swalToast(`${tile.name} untuk ${pet.name} ditambahkan.`);
-              });
+            if (host) {
+              void cart
+                .attachAddon({
+                  addonId: tile._id,
+                  petId: pet._id,
+                  variantChoices,
+                  host,
+                })
+                .then((ok) => {
+                  if (!ok) return;
+                  swalToast(
+                    `${tile.name} untuk ${pet.name} ditambahkan ke ${host.serviceName ?? "groomingnya"}.`,
+                  );
+                });
               return;
             }
 
-            /*
-              THE SERVICE FIRST, THEN ITS ADD-ONS — one patch, one line each.
-              `addServices` already takes several per animal, so nothing here has
-              to know that an add-on is a different kind of line: the server reads
-              the catalogue and files each one under the service it hangs off.
-
-              `ride` IS NULL ON EVERYTHING BUT ANTAR-JEMPUT — the journey the
-              dialog just asked for, which becomes the booking's direction and its
-              two addresses.
-            */
-            void cart
-              .addServices([
-                {
-                  petId: pet._id,
-                  serviceIds: [tile._id, ...addonServiceIds],
-                  variantChoices,
-                  ride,
-                },
-              ])
-              .then((ok) => {
-                /* Ditolak: keranjang sudah memasang alasannya, dan "ditambahkan"
-                   di atasnya hanya akan membantah panel itu. */
-                if (!ok) return;
-
-                /*
-                  NAMES THE ANIMAL, or COUNTS THEM on a van carrying several —
-                  "Antar-Jemput untuk Bruno" would name one of three dogs, picked
-                  by nothing but the order they were ticked in.
-                */
-                const riders = ride?.passengerPetIds.length ?? 0;
-                const whose = riders > 1 ? `${riders} hewan` : pet.name;
-
-                swalToast(
-                  addonServiceIds.length > 0
-                    ? `${tile.name} untuk ${whose} ditambahkan, dengan ${addonServiceIds.length} tambahan.`
-                    : `${tile.name} untuk ${whose} ditambahkan.`,
-                );
-              });
+            addPicked(tile, pet, addonServiceIds, variantChoices, ride);
           }}
         />
       )}
+
+      {/*
+        SELLING A PACKAGE (Promosi V1) — its own dialog: whose, from when, the
+        referral code, and the server's eligibility per animal. Opens only once
+        a customer is on the basket, like the service dialog above.
+      */}
+      <PosMembershipSaleDialog
+        plan={cart.cart?.customer ? pendingPackage : null}
+        customerId={cart.cart?.customer?._id ?? ""}
+        customerName={cart.cart?.customer?.name}
+        branchId={session?.currentBranchId ?? cart.cart?.branchId ?? null}
+        cartItems={cart.cart?.items ?? []}
+        busy={cart.busy}
+        onOpenChange={(next) => {
+          if (!next) setPendingPackage(null);
+        }}
+        onAdd={async (input, summary) => {
+          const tile = pendingPackage;
+          const result = await cart.addMembership(input);
+          if (result.ok) {
+            setPendingPackage(null);
+            swalToast(
+              `${tile?.name ?? "Paket"} untuk ${summary.holderName} ditambahkan${
+                summary.startsNow ? " · jatah langsung berlaku di keranjang" : ""
+              }.`,
+            );
+          }
+          return result;
+        }}
+      />
 
       <TodayTransactionsDialog
         open={todayOpen}

@@ -2,355 +2,474 @@
 
 import { Plus, Trash2 } from "lucide-react";
 
-import { Button, Card, SelectField, TextField } from "@/components";
-import type { BenefitInput, BenefitKind, BenefitPeriod } from "@/types/membership";
+import { Card, SelectField, TextField } from "@/components";
+import { Button } from "@/components/ui/button";
+import type { Service } from "@/types/api";
+import type { OptionKind } from "@/types/membership";
+import { MEMBERSHIP_LIMITS } from "@/types/membership";
 
-import { BenefitScopeField } from "./BenefitScopeField";
+import type { CatalogItem } from "../hooks/useMembershipCatalog";
+import { isHomeService } from "../hooks/useMembershipCatalog";
 import {
-  BENEFIT_KIND_HINT,
-  BENEFIT_KIND_LABEL,
-  PERIOD_RESET_HINT,
+  BENEFIT_TYPE_TOOLTIP,
+  OPTION_KIND_LABEL,
+  OPTION_PRICE_MODE_LABEL,
+  QUOTA_CHOICE_LABEL,
+  QUOTA_PERIOD_TOOLTIP,
+  VISIT_FEE_LABEL,
+  type QuotaChoice,
 } from "../labels";
+import {
+  newBenefitDraft,
+  newOptionDraft,
+  specialPriceAllowed,
+  type BenefitDraft,
+  type OptionDraft,
+} from "../planDraft";
+import { servicePriceFor, serviceVariantPrices, parseVariantKey } from "../variantKey";
+import { BenefitScopeField } from "./BenefitScopeField";
+import { FieldBlock, Segmented, SelectBlock } from "./FormBits";
+import { VariantPriceTable } from "./VariantPriceTable";
 
 /**
- * The benefit list, edited INSIDE the package form.
+ * THE BENEFIT BUILDER, inside the plan form.
+ *
+ * ONE BENEFIT = ONE ALLOWANCE (contract §2.2): a name, a quota, and one or more
+ * OPTIONS joined by "ATAU". Whichever option prices the line, one use spends
+ * the benefit's quota once — "Grooming 1× per bulan: Basic gratis ATAU Full
+ * jadi Rp 120.000".
+ *
+ * A benefit can also be a FASILITAS (`perk`) — a promise with no price, no quota
+ * and no options ("Prioritas booking"). It is a type of benefit, not an option.
  *
  * THERE IS NO BENEFIT SCREEN AND NO BENEFIT ROUTE. A benefit belongs to its
- * package: it is never used outside one, never shared between two, and has to
- * freeze into a card when one is issued. Editing it anywhere else would be a
- * second place for the keys the redemption ledger points at to be written.
+ * package and freezes into a card when one is sold; editing it anywhere else
+ * would be a second place for the ids the ledger points at to be written.
  *
- * ─── THE QUOTA CONTROLS ARE WHERE THIS SCREEN IS WON OR LOST ───────────────
- *
- * Three numbers — per-period, period, lifetime — and every combination of them
- * means something different. An owner filling them in from memory will get it
- * wrong, so the editor states the result back in a sentence under the row
- * (`quotaSentence`) rather than leaving them to imagine it. That sentence is
- * the single most useful thing on this component.
- *
- * `null` MEANS UNLIMITED, and the fields say so in their placeholders. An empty
- * box is not zero — a quota of zero would be a benefit that can never be spent,
- * which is not a thing anybody sets out to sell.
+ * Errors arrive keyed the way `membershipFailure` normalises them:
+ * `benefits[0].label`, `benefits[0].options[1].value`.
  */
 
-const KIND_OPTIONS = (Object.keys(BENEFIT_KIND_LABEL) as BenefitKind[]).map(
-  (kind) => ({ value: kind, label: BENEFIT_KIND_LABEL[kind] }),
-);
+const QUOTA_OPTIONS = (Object.keys(QUOTA_CHOICE_LABEL) as QuotaChoice[]).map((value) => ({
+  value,
+  label: QUOTA_CHOICE_LABEL[value],
+}));
 
-const PERIOD_OPTIONS = [
-  { value: "", label: "Tanpa periode" },
-  { value: "week", label: "Per minggu" },
-  { value: "month", label: "Per bulan" },
-];
-
-/**
- * "2× per bulan, maksimal 24× selama kartu berlaku."
- *
- * Composed here rather than read from the server, because the row is being
- * TYPED — there is nothing saved to ask about yet. The server composes the same
- * sentence for everything already stored (`benefit.summary`), and the two are
- * deliberately worded alike.
- */
-function quotaSentence(benefit: BenefitInput): string {
-  if (benefit.kind === "perk") {
-    return "Fasilitas tidak memotong harga dan tidak memakai jatah.";
-  }
-
-  const perPeriod = benefit.quota?.perPeriod ?? null;
-  const period = benefit.quota?.period ?? null;
-  const total = benefit.quota?.total ?? null;
-
-  const parts: string[] = [];
-  if (perPeriod && period) {
-    parts.push(`${perPeriod}× per ${period === "week" ? "minggu" : "bulan"}`);
-  }
-  if (total) {
-    parts.push(
-      parts.length
-        ? `maksimal ${total}× selama kartu berlaku`
-        : `${total}× selama kartu berlaku`,
-    );
-  }
-
-  if (!parts.length) {
-    return "Tanpa batas — boleh dipakai berapa kali pun selama kartu masih aktif.";
-  }
-
-  const reset = period ? ` ${PERIOD_RESET_HINT[period as BenefitPeriod]}` : "";
-  return `Boleh dipakai ${parts.join(", ")}.${reset}`;
-}
-
-/** The value field's label and unit change with the kind; its absence too. */
-function valueField(kind: BenefitKind): { label: string; hint: string } | null {
-  if (kind === "discount_percent") {
-    return { label: "Persen", hint: "0–100." };
-  }
-  if (kind === "discount_amount") {
-    return {
-      label: "Potongan (Rp)",
-      hint: "Tidak pernah melebihi harga barisnya.",
-    };
-  }
-  return null;
-}
+const KIND_ORDER: OptionKind[] = ["free_item", "discount_percent", "special_price", "discount_amount"];
 
 export function BenefitEditor({
   benefits,
   onChange,
+  services,
+  serviceById,
+  products,
+  catalogLoading,
+  petSpecies,
   errors = {},
 }: {
-  benefits: BenefitInput[];
-  onChange: (next: BenefitInput[]) => void;
-  /** Server-side field errors, keyed `benefits[0].scope` as the API sends them. */
+  benefits: BenefitDraft[];
+  onChange: (next: BenefitDraft[]) => void;
+  services: Service[];
+  serviceById: Map<string, Service>;
+  products: CatalogItem[];
+  catalogLoading: boolean;
+  /** The plan's species — the variant tables only offer these. */
+  petSpecies: string[];
   errors?: Record<string, string>;
 }) {
-  const patch = (index: number, changes: Partial<BenefitInput>) => {
-    onChange(
-      benefits.map((benefit, i) =>
-        i === index ? { ...benefit, ...changes } : benefit,
+  const patch = (index: number, changes: Partial<BenefitDraft>) =>
+    onChange(benefits.map((benefit, i) => (i === index ? { ...benefit, ...changes } : benefit)));
+
+  const patchOption = (index: number, optionIndex: number, changes: Partial<OptionDraft>) =>
+    patch(index, {
+      options: benefits[index].options.map((option, j) =>
+        j === optionIndex ? { ...option, ...changes } : option,
       ),
-    );
-  };
+    });
 
-  const patchQuota = (index: number, changes: Partial<BenefitInput["quota"]>) => {
-    patch(index, { quota: { ...benefits[index].quota, ...changes } });
-  };
-
-  const add = () => {
-    onChange([
-      ...benefits,
-      {
-        label: "",
-        kind: "free_item",
-        scope: { target: "service", serviceKinds: [] },
-        quota: { total: null, perPeriod: null, period: null },
-        maxPerTransaction: 1,
-      },
-    ]);
-  };
-
-  /*
-    REMOVING A SAVED BENEFIT IS ALLOWED, and the warning under the list says what
-    it does and does not do. Cards already issued keep their own frozen copy and
-    go on honouring it — which is the correct outcome, and is not obvious, so it
-    is written on the screen rather than left to be discovered.
-  */
-  const remove = (index: number) => {
-    onChange(benefits.filter((_, i) => i !== index));
-  };
+  const atLimit = benefits.length >= MEMBERSHIP_LIMITS.maxBenefitsPerPlan;
 
   return (
     <Card
       title="Benefit"
-      description="Apa yang didapat pemilik hewan selama kartu berlaku."
-      action={
-        <Button type="button" variant="secondary" onClick={add}>
-          <Plus className="size-4" aria-hidden />
-          Tambah benefit
-        </Button>
-      }
+      description={`${benefits.length} benefit · Satu benefit = satu jatah. Kalau jatahnya bisa dipakai untuk beberapa layanan, tambahkan sebagai opsi "atau", lalu atur harga tiap opsi.`}
     >
-      {benefits.length === 0 ? (
-        <p className="text-sm text-muted">
-          Belum ada benefit. Paket tanpa benefit tetap bisa disimpan dan dijual,
-          tapi kartunya tidak memberi potongan apa pun —{" "}
-          <button
-            type="button"
-            onClick={add}
-            className="font-medium text-primary underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-          >
-            tambah yang pertama →
-          </button>
-        </p>
-      ) : (
-        <ul className="flex flex-col gap-4">
-          {benefits.map((benefit, index) => {
-            const value = valueField(benefit.kind);
+      <div className="flex flex-col gap-4">
+        {benefits.length === 0 && (
+          <p className="text-sm text-muted">
+            Belum ada benefit. Paket tanpa benefit tetap bisa dijual, tapi tidak memberi
+            potongan apa pun.
+          </p>
+        )}
 
-            return (
-              <li
-                key={benefit.id ?? `new-${index}`}
-                className="rounded-lg border border-border p-4"
-              >
-                <div className="mb-3 flex items-start justify-between gap-3">
-                  <p className="text-sm font-medium text-foreground">
-                    Benefit {index + 1}
-                    {/*
-                      ONLY THE "BARU" BADGE. This used to print the benefit's
-                      handle beside the number, which was worth reading while it
-                      was a slug (`gratis-full-grooming`) and is noise now that
-                      it is a 24-character id (29 September 2026). What a reader
-                      needs from this line is whether the row is saved yet.
-                    */}
-                    {!benefit.id && (
-                      <span className="ml-2 rounded bg-info/15 px-1.5 py-0.5 text-xs font-normal text-foreground">
-                        Baru
-                      </span>
-                    )}
-                  </p>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => remove(index)}
-                    aria-label={`Hapus benefit ${index + 1}`}
-                    className="size-9"
-                  >
-                    <Trash2 className="size-4" aria-hidden />
-                  </Button>
-                </div>
+        {benefits.map((benefit, index) => {
+          const err = (field: string) => errors[`benefits[${index}].${field}`];
+          const perk = benefit.type === "perk";
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <TextField
-                    label="Nama benefit"
-                    required
-                    value={benefit.label}
-                    placeholder="Gratis full grooming"
-                    onChange={(event) =>
-                      patch(index, { label: event.target.value })
-                    }
-                    error={errors[`benefits[${index}].label`]}
-                    hint="Kalimat yang dibaca pemilik hewan."
-                  />
+          return (
+            <section
+              key={benefit.key}
+              aria-label={`Benefit ${index + 1}`}
+              className="flex flex-col gap-4 rounded-xl border border-border p-4"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-base font-bold">Benefit {index + 1}</h3>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="text-danger-ink"
+                  onClick={() => onChange(benefits.filter((_, i) => i !== index))}
+                  aria-label={`Hapus benefit ${index + 1}`}
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                  Hapus benefit
+                </Button>
+              </div>
 
-                  <SelectField
-                    label="Jenis"
-                    required
-                    value={benefit.kind}
-                    onChange={(next) =>
-                      patch(index, {
-                        kind: next as BenefitKind,
-                        // A kind change makes the old number meaningless —
-                        // a percentage left behind on a `free_item` would be
-                        // sent and refused, naming a field nobody can see.
-                        value: null,
-                      })
-                    }
-                    options={KIND_OPTIONS}
-                    hint={BENEFIT_KIND_HINT[benefit.kind]}
-                    error={errors[`benefits[${index}].kind`]}
-                  />
+              <SelectBlock<"allowance" | "perk">
+                label="Jenis benefit"
+                tooltip={BENEFIT_TYPE_TOOLTIP}
+                value={benefit.type}
+                options={[
+                  { value: "allowance", label: "Jatah & potongan" },
+                  { value: "perk", label: "Fasilitas" },
+                ]}
+                onChange={(type) =>
+                  patch(index, {
+                    type,
+                    // Coming back from a perk, start with one option to fill.
+                    options:
+                      type === "allowance" && benefit.options.length === 0
+                        ? [newOptionDraft()]
+                        : benefit.options,
+                  })
+                }
+              />
 
-                  {value && (
+              <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_7rem_minmax(0,13rem)]">
+                <TextField
+                  label="Nama benefit"
+                  required
+                  value={benefit.label}
+                  placeholder={perk ? "mis. Prioritas booking" : "mis. Basic Grooming"}
+                  onChange={(event) => patch(index, { label: event.target.value })}
+                  error={err("label")}
+                />
+                {!perk && (
+                  <>
                     <TextField
-                      label={value.label}
-                      required
-                      inputMode="decimal"
-                      value={String(benefit.value ?? "")}
-                      onChange={(event) =>
-                        patch(index, { value: event.target.value })
-                      }
-                      hint={value.hint}
-                      error={errors[`benefits[${index}].value`]}
-                    />
-                  )}
-
-                  <TextField
-                    label="Maksimal baris per transaksi"
-                    type="number"
-                    min={1}
-                    value={String(benefit.maxPerTransaction ?? 1)}
-                    onChange={(event) =>
-                      patch(index, {
-                        maxPerTransaction: Number(event.target.value) || 1,
-                      })
-                    }
-                    hint="Berapa baris dalam satu struk boleh memakai benefit ini."
-                    error={errors[`benefits[${index}].maxPerTransaction`]}
-                  />
-                </div>
-
-                <fieldset className="mt-4 rounded-md bg-surface-hover p-3">
-                  <legend className="px-1 text-sm font-medium text-foreground">
-                    Jatah pemakaian
-                  </legend>
-
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <TextField
-                      label="Berapa kali"
+                      label="Kuota"
                       type="number"
                       min={1}
-                      placeholder="Tanpa batas"
-                      value={String(benefit.quota?.perPeriod ?? "")}
-                      onChange={(event) =>
-                        patchQuota(index, {
-                          perPeriod: event.target.value
-                            ? Number(event.target.value)
-                            : null,
+                      inputMode="numeric"
+                      value={benefit.quotaChoice === "unlimited" ? "" : benefit.quotaCount}
+                      placeholder={benefit.quotaChoice === "unlimited" ? "—" : "1"}
+                      disabled={benefit.quotaChoice === "unlimited"}
+                      onChange={(event) => patch(index, { quotaCount: event.target.value })}
+                      error={err("quota.perPeriod") ?? err("quota.total")}
+                    />
+                    <SelectBlock<QuotaChoice>
+                      label="Periode kuota"
+                      tooltip={QUOTA_PERIOD_TOOLTIP}
+                      value={benefit.quotaChoice}
+                      options={QUOTA_OPTIONS}
+                      onChange={(value) =>
+                        patch(index, {
+                          quotaChoice: value,
+                          quotaCount:
+                            value !== "unlimited" && !benefit.quotaCount ? "1" : benefit.quotaCount,
                         })
                       }
-                      disabled={benefit.kind === "perk"}
+                      error={err("quota")}
                     />
+                  </>
+                )}
+              </div>
 
-                    <SelectField
-                      label="Per periode"
-                      value={benefit.quota?.period ?? ""}
-                      onChange={(next) =>
-                        patchQuota(index, {
-                          period: (next || null) as BenefitPeriod | null,
-                          // The two travel together; the API refuses one
-                          // without the other, so clearing the period clears
-                          // the count rather than sending half a sentence.
-                          perPeriod: next ? benefit.quota?.perPeriod ?? 1 : null,
-                        })
-                      }
-                      options={PERIOD_OPTIONS}
-                      placeholder="Tanpa periode"
-                      disabled={benefit.kind === "perk"}
-                    />
-
-                    <TextField
-                      label="Total selama kartu berlaku"
-                      type="number"
-                      min={1}
-                      placeholder="Tanpa batas"
-                      value={String(benefit.quota?.total ?? "")}
-                      onChange={(event) =>
-                        patchQuota(index, {
-                          total: event.target.value
-                            ? Number(event.target.value)
-                            : null,
-                        })
-                      }
-                      disabled={benefit.kind === "perk"}
-                    />
+              {!perk && (
+                <>
+                  <div className="flex flex-col gap-3">
+                    {benefit.options.map((option, optionIndex) => (
+                      <div key={option.key} className="flex flex-col gap-3">
+                        {optionIndex > 0 && (
+                          <div className="flex items-center gap-3" aria-hidden>
+                            <span className="h-px flex-1 bg-border" />
+                            <span className="text-xs font-semibold text-muted">ATAU</span>
+                            <span className="h-px flex-1 bg-border" />
+                          </div>
+                        )}
+                        <OptionRow
+                          option={option}
+                          index={index}
+                          optionIndex={optionIndex}
+                          removable={benefit.options.length > 1}
+                          onChange={(changes) => patchOption(index, optionIndex, changes)}
+                          onRemove={() =>
+                            patch(index, {
+                              options: benefit.options.filter((_, j) => j !== optionIndex),
+                            })
+                          }
+                          services={services}
+                          serviceById={serviceById}
+                          products={products}
+                          catalogLoading={catalogLoading}
+                          petSpecies={petSpecies}
+                          errors={errors}
+                        />
+                      </div>
+                    ))}
                   </div>
 
-                  {/*
-                    THE SENTENCE IS THE POINT OF THIS FIELDSET. Three numbers
-                    describe a rule nobody can hold in their head; saying it
-                    back is what stops "2× seminggu" being typed into the
-                    lifetime box.
-                  */}
-                  <p className="mt-3 text-sm text-foreground" aria-live="polite">
-                    {quotaSentence(benefit)}
-                  </p>
-                  {errors[`benefits[${index}].quota`] && (
-                    <p role="alert" className="mt-1 text-sm text-danger">
-                      {errors[`benefits[${index}].quota`]}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      disabled={benefit.options.length >= MEMBERSHIP_LIMITS.maxOptionsPerBenefit}
+                      onClick={() => patch(index, { options: [...benefit.options, newOptionDraft()] })}
+                    >
+                      <Plus className="size-4" aria-hidden />
+                      Opsi lain (atau)
+                    </Button>
+                    {benefit.options.length > 1 && (
+                      <p className="text-sm text-muted">
+                        Tiap pemakaian mengambil 1 dari kuota yang sama, opsi mana pun yang dipilih.
+                      </p>
+                    )}
+                  </div>
+                  {err("options") && (
+                    <p role="alert" className="text-xs font-semibold text-danger">
+                      {err("options")}
                     </p>
                   )}
-                </fieldset>
 
-                <BenefitScopeField
-                  benefit={benefit}
-                  onChange={(scope) =>
-                    patch(index, { scope: { ...benefit.scope, ...scope } })
-                  }
-                  error={errors[`benefits[${index}].scope`]}
-                />
-              </li>
-            );
-          })}
-        </ul>
-      )}
+                </>
+              )}
+            </section>
+          );
+        })}
 
-      {benefits.length > 0 && (
-        <p className="mt-4 text-sm text-muted">
-          Mengubah atau menghapus benefit di sini hanya berlaku untuk kartu yang
-          dijual setelahnya. Kartu yang sudah terbit memegang salinannya sendiri
-          dan tetap dihormati sampai masa berlakunya habis.
-        </p>
-      )}
+        <div>
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={atLimit}
+            onClick={() => onChange([...benefits, newBenefitDraft()])}
+          >
+            <Plus className="size-4" aria-hidden />
+            Tambah benefit
+          </Button>
+        </div>
+
+        {benefits.some((benefit) => benefit.id) && (
+          <p className="text-sm text-muted">
+            Mengubah atau menghapus benefit hanya berlaku untuk kartu yang dijual setelahnya.
+            Kartu yang sudah terbit memegang salinannya sendiri.
+          </p>
+        )}
+      </div>
     </Card>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────── one option */
+
+function OptionRow({
+  option,
+  index,
+  optionIndex,
+  removable,
+  onChange,
+  onRemove,
+  services,
+  serviceById,
+  products,
+  catalogLoading,
+  petSpecies,
+  errors,
+}: {
+  option: OptionDraft;
+  index: number;
+  optionIndex: number;
+  removable: boolean;
+  onChange: (changes: Partial<OptionDraft>) => void;
+  onRemove: () => void;
+  services: Service[];
+  serviceById: Map<string, Service>;
+  products: CatalogItem[];
+  catalogLoading: boolean;
+  petSpecies: string[];
+  errors: Record<string, string>;
+}) {
+  const err = (field: string) => errors[`benefits[${index}].options[${optionIndex}].${field}`];
+  const named = option.scope.serviceIds.map((id) => serviceById.get(id)).filter(Boolean) as Service[];
+  const priced = named.find((service) => service.hasVariants) ?? named[0];
+  const homeService = named.some(isHomeService);
+  const specialAllowed = specialPriceAllowed(option.scope);
+
+  const kindOptions = KIND_ORDER.map((kind) => ({
+    value: kind,
+    label: OPTION_KIND_LABEL[kind],
+    disabled: kind === "special_price" && !specialAllowed && option.kind !== "special_price",
+  }));
+
+  /** Seed "Beda per varian" from the service's own grid, so the rows line up. */
+  const seedVariantRows = () =>
+    serviceVariantPrices(priced)
+      .filter(
+        (row) =>
+          petSpecies.length === 0 || petSpecies.includes(parseVariantKey(row.variantKey).species),
+      )
+      .map((row) => ({ variantKey: row.variantKey, price: "" }));
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-border bg-background p-3">
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-sm font-medium">Opsi {optionIndex + 1}</p>
+        {removable && (
+          <Button
+            type="button"
+            variant="ghost"
+            className="size-9"
+            onClick={onRemove}
+            aria-label={`Hapus opsi ${optionIndex + 1} dari benefit ${index + 1}`}
+          >
+            <Trash2 className="size-4" aria-hidden />
+          </Button>
+        )}
+      </div>
+
+      <BenefitScopeField
+        scope={option.scope}
+        onChange={(scope) => onChange({ scope })}
+        services={services}
+        products={products}
+        loading={catalogLoading}
+        error={err("scope")}
+      />
+
+      <div className="grid gap-3 sm:grid-cols-[minmax(0,13rem)_minmax(0,1fr)]">
+        <SelectField
+          label="Perlakuan harga"
+          value={option.kind}
+          options={kindOptions}
+          onChange={(value) =>
+            onChange({
+              kind: value as OptionKind,
+              // The old number means something else under a new kind.
+              value: "",
+              priceMode: "same",
+              variantPrices: [],
+            })
+          }
+          hint={
+            option.kind === "special_price" && !specialAllowed
+              ? "Harga khusus butuh layanan atau produk tertentu."
+              : undefined
+          }
+          error={err("kind")}
+        />
+
+        {option.kind === "free_item" && (
+          <p className="self-end pb-3 text-sm text-muted">Harga jadi Rp 0.</p>
+        )}
+        {option.kind === "discount_percent" && (
+          <TextField
+            label="Diskon (%)"
+            inputMode="decimal"
+            value={option.value}
+            placeholder="10"
+            onChange={(event) => onChange({ value: event.target.value })}
+            error={err("value")}
+          />
+        )}
+        {option.kind === "discount_amount" && (
+          <TextField
+            label="Potongan (Rp)"
+            inputMode="decimal"
+            value={option.value}
+            placeholder="20.000"
+            onChange={(event) => onChange({ value: event.target.value })}
+            hint="Tidak pernah melebihi harga barisnya."
+            error={err("value")}
+          />
+        )}
+        {option.kind === "special_price" && option.priceMode === "same" && (
+          <TextField
+            label="Harga member (Rp)"
+            inputMode="decimal"
+            value={option.value}
+            placeholder="120.000"
+            onChange={(event) => onChange({ value: event.target.value })}
+            error={err("value")}
+          />
+        )}
+        {option.kind === "special_price" && option.priceMode === "variant" && (
+          <TextField
+            label="Harga cadangan (Rp)"
+            inputMode="decimal"
+            value={option.value}
+            placeholder="Opsional"
+            onChange={(event) => onChange({ value: event.target.value })}
+            hint="Dipakai kalau varian hewannya tidak ada di tabel."
+            error={err("value")}
+          />
+        )}
+      </div>
+
+      {(option.kind === "special_price" || homeService) && (
+        <div className="flex flex-wrap gap-4">
+          {option.kind === "special_price" && (
+            <FieldBlock label="Harga khusus">
+              <Segmented
+                ariaLabel={`Harga khusus opsi ${optionIndex + 1}`}
+                value={option.priceMode}
+                options={(["same", "variant"] as const).map((mode) => ({
+                  value: mode,
+                  label: OPTION_PRICE_MODE_LABEL[mode],
+                }))}
+                onChange={(priceMode) =>
+                  onChange({
+                    priceMode,
+                    variantPrices:
+                      priceMode === "variant" && option.variantPrices.length === 0
+                        ? seedVariantRows()
+                        : option.variantPrices,
+                  })
+                }
+              />
+            </FieldBlock>
+          )}
+          {homeService && (
+            <FieldBlock
+              label="Biaya kunjungan"
+              tooltip="Untuk layanan di rumah pelanggan: Gratis membebaskan biaya kunjungan (TRV) perjalanan itu saat opsi ini dipakai."
+            >
+              <Segmented
+                ariaLabel={`Biaya kunjungan opsi ${optionIndex + 1}`}
+                value={option.visitFee}
+                options={(["free", "zone"] as const).map((fee) => ({
+                  value: fee,
+                  label: VISIT_FEE_LABEL[fee],
+                }))}
+                onChange={(visitFee) => onChange({ visitFee })}
+              />
+            </FieldBlock>
+          )}
+        </div>
+      )}
+
+      {option.kind === "special_price" && option.priceMode === "variant" && (
+        <VariantPriceTable
+          rows={option.variantPrices}
+          onChange={(variantPrices) => onChange({ variantPrices })}
+          species={petSpecies}
+          normalPrice={priced ? (key) => servicePriceFor(priced, key) : undefined}
+          priceLabel="Harga member"
+          ariaLabel={`Harga member per varian, opsi ${optionIndex + 1}`}
+          error={err("variantPrices")}
+        />
+      )}
+    </div>
   );
 }

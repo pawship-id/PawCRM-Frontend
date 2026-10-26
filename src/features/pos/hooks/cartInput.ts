@@ -1,6 +1,7 @@
 import type { PosItemInput, PosTransaction } from "@/types/api";
 
 import { ownDiscountOf } from "../bookingDiscount";
+import { pickOf } from "../membershipCart";
 
 /**
  * The basket as the payload a cart write sends — every line, with everything
@@ -57,26 +58,29 @@ export function cartItemsAsInput(cart: PosTransaction | null): PosItemInput[] {
         : null;
     })(),
     /*
-      THE MEMBERSHIP BENEFIT, SENT BACK (30 September 2026). Same reason as
-      the typed price above and the journey below: the server rebuilds every
-      line from this payload on each write, so a benefit left out of the
-      next one would quietly fall off the moment the cashier stepped the
-      quantity of a bag of feed three lines down — and the customer would be
-      charged full price for something they had already been told was free.
-
-      `discount.source` IS THE FLAG, the way `listPrice` is the flag for an
-      overridden price: it is `membership` only on a line a card paid for.
-      TWO IDS AND NOTHING ELSE go back — the server re-reads the card and
-      re-prices it, so a stale amount on this side can never become money.
+      PROMOSI V1: the pick as the server hands it back (`item.benefit`) —
+      a real card by `membershipId`, a package of this same cart by
+      `packageRef`, plus the option. Never on a visit-fee waiver: that one
+      is derived by the server, not picked (contract §6.3).
     */
-    ...(item.discount?.source === "membership" &&
-    item.discount.membershipId &&
-    item.discount.benefitId
+    ...(() => {
+      const pick = pickOf(item);
+      return pick ? { benefit: pick } : {};
+    })(),
+    /*
+      A PACKAGE LINE'S OWN FACTS, SENT BACK (Promosi V1). The server
+      rebuilds every line from this payload: a start date or a referral
+      code left out of the next write would silently fall off — and a
+      dropped `packageRef` orphans every line that spends the package.
+    */
+    ...(item.kind === "membership"
       ? {
-          benefit: {
-            membershipId: item.discount.membershipId,
-            benefitId: item.discount.benefitId,
-          },
+          ...(item.membershipStartDate
+            ? { membershipStartDate: item.membershipStartDate }
+            : {}),
+          ...(item.referralCode ? { referralCode: item.referralCode } : {}),
+          ...(item.packageRef ? { packageRef: item.packageRef } : {}),
+          ...(item.renewFromId ? { renewFromId: item.renewFromId } : {}),
         }
       : {}),
     bookingId: item.bookingId,

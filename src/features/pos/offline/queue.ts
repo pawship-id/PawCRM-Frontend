@@ -98,16 +98,21 @@ export async function refreshCounts(): Promise<void> {
   const records = await listQueued();
   const currentId = getOfflineState().device?.deviceId ?? null;
   const pendingQty: Record<string, number> = {};
+  const pendingLotQty: Record<string, number> = {};
   for (const record of records) {
     // Only this branch's shelves: another branch's sales took another branch's stock.
     if (!UNSENT.includes(record.status) || record.deviceId !== currentId) continue;
     for (const item of record.sale.items) {
       if (item.kind !== "product") continue;
       pendingQty[item.refId] = (pendingQty[item.refId] ?? 0) + Number(item.qty ?? "1");
+      for (const share of item.lots ?? []) {
+        pendingLotQty[share.batchId] = (pendingLotQty[share.batchId] ?? 0) + Number(share.qty);
+      }
     }
   }
   setOfflineState({
     pendingQty,
+    pendingLotQty,
     pendingCount: records.filter((record) => UNSENT.includes(record.status)).length,
     reviewCount: records.filter((record) => record.status === "needs_review" || record.status === "failed").length,
   });

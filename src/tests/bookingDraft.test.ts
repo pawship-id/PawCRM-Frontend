@@ -240,6 +240,10 @@ describe("bookingDraft — one card is one booking", () => {
         benefit somebody changed their mind about reaches the server.
       */
       plannedBenefit: null,
+      /* Always sent on an edit — an empty list clears "Tanpa member". */
+      noMemberBenefitAddonIds: [],
+      /* "Benefit yang akan diberikan" — always sent on an edit, [] clears. */
+      plannedExtras: [],
       /* THE ID GOES BACK, so the stored item keeps its check-in. */
       belongings: [
         {
@@ -499,5 +503,83 @@ describe("bookingDraft — opsi dipilih staf", () => {
     expect(
       cardToUpdate(card({ variantChoices: choices, locked: true }), serviceOf),
     ).not.toHaveProperty("variantChoices");
+  });
+});
+
+describe("bookingDraft — the membership benefit (Promosi V1)", () => {
+  const plan = { membershipId: "mem-1", benefitId: "ben-1", optionId: "opt-1" };
+
+  it("starts a new card unanswered, so the quote may preselect", () => {
+    expect(blankCard()).toMatchObject({ plannedBenefit: null, benefitPicked: false });
+  });
+
+  it("loads the stored plan with its option, and counts it as answered", () => {
+    const loaded = cardFromBooking(booking({ plannedBenefit: plan }));
+    expect(loaded.plannedBenefit).toEqual(plan);
+    expect(loaded.benefitPicked).toBe(true);
+  });
+
+  it("counts a stored 'no benefit' as answered too — an edit never adds one on its own", () => {
+    const loaded = cardFromBooking(booking({ plannedBenefit: null }));
+    expect(loaded).toMatchObject({ plannedBenefit: null, benefitPicked: true });
+  });
+
+  it("sends {membershipId, benefitId, optionId} on a create and on an update", () => {
+    const [entry] = cardsToEntries([card({ plannedBenefit: plan, benefitPicked: true })]);
+    expect(entry.plannedBenefit).toEqual(plan);
+
+    expect(cardToUpdate(card({ plannedBenefit: plan })).plannedBenefit).toEqual(plan);
+  });
+
+  it("sends optionId null when the plan named none", () => {
+    const [entry] = cardsToEntries([
+      card({ plannedBenefit: { membershipId: "mem-1", benefitId: "ben-1" } }),
+    ]);
+    expect(entry.plannedBenefit).toEqual({
+      membershipId: "mem-1",
+      benefitId: "ben-1",
+      optionId: null,
+    });
+  });
+
+  it("sends null to clear a plan on an update", () => {
+    expect(cardToUpdate(card({ plannedBenefit: null, benefitPicked: true }))).toHaveProperty(
+      "plannedBenefit",
+      null,
+    );
+  });
+});
+
+/* "Tanpa member" per add-on (22 October 2026) — loaded, kept, and sent. */
+describe("bookingDraft — Tanpa member per add-on", () => {
+  const SPA = "5a7f1f77bcf86cd7994390e8";
+
+  it("loads the flag on an edit and sends it back with the update", () => {
+    const loaded = cardFromBooking(
+      booking({
+        service: {
+          addons: [
+            { itemId: "ad-1", serviceId: ADDON, name: "Parfum", price: "20000.0000", durationMin: 10, noMemberBenefit: true },
+            { itemId: "ad-2", serviceId: SPA, name: "Spa", price: "50000.0000", durationMin: 20 },
+          ],
+        },
+      }),
+    );
+
+    expect(loaded.noMemberAddonIds).toEqual([ADDON]);
+    expect(cardToUpdate(loaded).noMemberBenefitAddonIds).toEqual([ADDON]);
+  });
+
+  it("sends only ticked add-ons on a create, and nothing when there are none", () => {
+    const card = {
+      ...blankCard(PET_A),
+      serviceId: MAIN,
+      addonServiceIds: [SPA],
+      noMemberAddonIds: [SPA, ADDON],
+    };
+    expect(cardsToEntries([card])[0].noMemberBenefitAddonIds).toEqual([SPA]);
+    expect(
+      "noMemberBenefitAddonIds" in cardsToEntries([{ ...card, noMemberAddonIds: [] }])[0],
+    ).toBe(false);
   });
 });

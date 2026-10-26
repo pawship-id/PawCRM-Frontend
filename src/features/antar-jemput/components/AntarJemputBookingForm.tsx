@@ -892,6 +892,8 @@ export function AntarJemputBookingForm({
     */
     const entry = toEntry(draft, serviceOf);
     delete entry.petId;
+    /* A ride spends no membership benefit; its payload stays as it was. */
+    delete entry.plannedBenefit;
 
     return {
       ...entry,

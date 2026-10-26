@@ -31,9 +31,27 @@ import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
 import { serviceService } from "@/services/service.service";
 import { swalToast } from "@/lib/swal";
-import { formatMoney, sumDecimals, toDecimalString } from "@/utils/decimal";
+import {
+  formatMoney,
+  isPositive,
+  subtractDecimals,
+  sumDecimals,
+  toDecimalString,
+} from "@/utils/decimal";
+import { useCustomerMemberships } from "@/features/memberships/hooks/useCustomerMemberships";
 import { BookingCard } from "./BookingCard";
 import { useHomeVisitFees } from "../hooks/useHomeVisitFees";
+import { useBookingBenefitQuote } from "../hooks/useBookingBenefitQuote";
+import {
+  benefitRefusalOf,
+  addonBenefitsOf,
+  bookingQuoteInput,
+  cardBenefitView,
+  effectivePlan,
+  membershipDiscountTotal,
+  visitFeeDiscountOf,
+} from "../benefitQuote";
+import { otherBenefitsOf } from "../otherBenefits";
 import { VisitAddressCard } from "./VisitAddressCard";
 import {
   MAX_CARDS,
@@ -326,6 +344,11 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     on that card, under the select it names when it names one.
   */
   const [cardRefusal, setCardRefusal] = useState<(VariantRefusal & { key: string }) | null>(null);
+  /*
+    A MEMBERSHIP BENEFIT THE SERVER REFUSED ON SAVE (membership-v1 §8) — by card
+    key, shown under that card's "Benefit membership".
+  */
+  const [benefitErrors, setBenefitErrors] = useState<Record<string, string>>({});
   /*
     THE ZONE THE STORED BOOKING WAS PRICED IN. An edit is re-quoted there by the
     server, so the preview uses it rather than measuring again.
@@ -622,10 +645,30 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
 
   function updateCard(key: string, patch: Partial<BookingCardDraft>) {
     setCards((prev) =>
-      prev.map((card) => (card.key === key ? { ...card, ...patch } : card)),
+      prev.map((card) => {
+        if (card.key !== key) return card;
+        /*
+          ANOTHER ANIMAL, ANOTHER SET OF CARDS: a benefit picked for the old one
+          is not this one's, so the question is asked afresh (the quote then
+          preselects again). A changed service or date keeps the pick — the
+          quote drops it on its own if it no longer fits.
+        */
+        const petMoved = patch.petId !== undefined && patch.petId !== card.petId;
+        return {
+          ...card,
+          ...(petMoved ? { benefitPicked: false, plannedBenefit: null } : {}),
+          ...patch,
+        };
+      }),
     );
     setFieldErrors({});
     setCardRefusal(null);
+    setBenefitErrors((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
 
     /*
       CHOOSING AN ANIMAL RE-READS IT. The record may have been corrected since
@@ -677,6 +720,18 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     setFormError(null);
     setFieldErrors({});
     setCardRefusal(null);
+    setBenefitErrors({});
+
+    /*
+      THE BENEFIT EACH CARD SAVES — what its radio shows, read off a quote for
+      THIS form's question. A quote still on its way is awaited (or asked for)
+      here rather than saving a jatah from a date somebody just changed.
+    */
+    const benefitQuote = await benefitQuoteState.latest();
+    const planned = cards.map((card) => ({
+      ...card,
+      plannedBenefit: effectivePlan(card, benefitQuote),
+    }));
 
     /*
       WHAT THE BOOKINGS SHARE — the header. On a create it is written onto every
@@ -740,7 +795,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
       if (editing) {
         const updated = await bookingService.update(bookingId, {
           ...payload,
-          ...cardToUpdate(cards[0], serviceOf),
+          ...cardToUpdate(planned[0], serviceOf),
         });
         message = `Booking ${updated.bookingNumber ?? "draf"} diperbarui.`;
       } else {
@@ -748,7 +803,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
           ...header,
           ...(location === "in_home" ? { visitAddress: visitInput } : {}),
           status: SAVE_AS[as],
-          bookings: cardsToEntries(cards, serviceOf),
+          bookings: cardsToEntries(planned, serviceOf),
         });
         const made = result.bookings;
 
@@ -789,6 +844,31 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
         /* The page it landed on already shows it. */
       }
     } catch (error) {
+      /*
+        A MEMBERSHIP BENEFIT REFUSED (membership-v1 §8) — 409 for the card's
+        state (jatah habis, held by another booking, paused), 400 for a pick
+        that does not fit. Checked BEFORE the clash: a 409 naming
+        `plannedBenefit` is not a clash. A toast says it (§9: a failed act), the
+        card it is about says it again, and the quote is asked again so the
+        radio stops offering what was just refused.
+      */
+      const benefitRefused = benefitRefusalOf(error);
+      if (benefitRefused) {
+        const sent = cards.filter((card) => card.petId !== "" && card.serviceId !== "");
+        const card = editing
+          ? cards[0]
+          : ((benefitRefused.index !== null ? sent[benefitRefused.index] : undefined) ?? sent[0]);
+        if (card) setBenefitErrors({ [card.key]: benefitRefused.message });
+        benefitQuoteState.refresh();
+        try {
+          swalToast(benefitRefused.message, "error", 6000);
+        } catch {
+          /* The card shows it too. */
+        }
+        setSaving(false);
+        return;
+      }
+
       /*
         THE ADDRESS REFUSED — beside the address card, in the server's own
         Indonesian. The phone's refusal is filed under `customerId` there.
@@ -1036,7 +1116,55 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
         ? 0n
         : visitFeeOf(visitZone, homeFees, editing ? 1 : Math.max(bookingCount, 1));
   const feeShown = keepStoredFee ? (original?.fee?.price ?? null) : visitFee > 0n ? toDecimalString(visitFee) : null;
-  const total = sumDecimals(feeShown ? [servicesTotal, feeShown] : [servicesTotal]);
+
+  /*
+    ─── MEMBERSHIP (Promosi V1, 16 October 2026) ─────────────────────────────
+
+    ONE QUOTE FOR THE WHOLE FORM (membership-v1 §4.4): an entry per card, the
+    booking's own date, the visit fee once for the visit, and each card's pick.
+    The cards compete for the same jatah, which only the server can settle.
+  */
+  const scheduledAtNow = toScheduledAt(date, time);
+  const benefitQuoteState = useBookingBenefitQuote(
+    bookingQuoteInput({
+      cards,
+      customerId: customer?._id ?? null,
+      date: scheduledAtNow,
+      bookingId: editing ? bookingId : null,
+      visitFee: feeShown,
+      pricesOf: (card) => {
+        if (refusedInactive(card, card.serviceId)) return null;
+        const amount = quoteOn(card, card.serviceId).price;
+        if (!amount) return null;
+        return {
+          amount,
+          addons: card.addonServiceIds
+            .filter((id) => !refusedInactive(card, id))
+            .map((id) => ({ serviceId: id, amount: quoteOn(card, id).price }))
+            .filter((addon): addon is { serviceId: string; amount: string } =>
+              Boolean(addon.amount),
+            ),
+        };
+      },
+    }),
+  );
+  const benefitQuote = benefitQuoteState.quote;
+  /*
+    THE CUSTOMER'S LIVE CARDS, in one request — for each card's "Benefit lain"
+    box: what they hold that a booking cannot use (product benefits, perks).
+  */
+  const memberCards = useCustomerMemberships(customer?._id ?? null);
+  /* Each main service's pick, plus every ticked add-on's own benefit (display-only). */
+  const memberDiscount = membershipDiscountTotal(cards, benefitQuote, benefitQuoteState.asked);
+  /* The fee is waived when the visit line says so — never more than the fee shown. */
+  const feeWaivedAmount =
+    feeShown && isPositive(visitFeeDiscountOf(benefitQuote)) ? feeShown : "0";
+
+  /* WHAT THE CUSTOMER PAYS — the services less their membership discount, plus the fee less its waiver. */
+  const total = subtractDecimals(
+    sumDecimals(feeShown ? [servicesTotal, feeShown] : [servicesTotal]),
+    sumDecimals([memberDiscount, feeWaivedAmount]),
+  );
 
   const blockedReason = !branchId
     ? "Cabang belum dipilih."
@@ -1080,7 +1208,22 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
           meta={
             <span className="flex flex-wrap gap-x-4 tabular-nums">
               <span>Total {formatMoney(total)}</span>
-              {feeShown && <span>Termasuk biaya kunjungan {formatMoney(feeShown)}</span>}
+              {isPositive(memberDiscount) && (
+                <span data-member-discount>Potongan member {formatMoney(memberDiscount)}</span>
+              )}
+              {feeShown && (
+                <span data-visit-fee>
+                  Termasuk biaya kunjungan{" "}
+                  {isPositive(feeWaivedAmount) ? (
+                    <>
+                      <span className="line-through">{formatMoney(feeShown)}</span>{" "}
+                      {formatMoney(subtractDecimals(feeShown, feeWaivedAmount))} (gratis member)
+                    </>
+                  ) : (
+                    formatMoney(feeShown)
+                  )}
+                </span>
+              )}
               {finishesAt && <span>Selesai sekitar {finishesAt}</span>}
               {!editing && bookingCount > 1 && (
                 <span>{bookingCount} booking</span>
@@ -1455,6 +1598,10 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
                     cardsFor={variant.cardsFor}
                     zoneText={zoneText}
                     refusal={cardRefusal?.key === card.key ? cardRefusal : null}
+                    benefit={cardBenefitView(card, benefitQuote)}
+                    benefitError={benefitErrors[card.key] ?? null}
+                    addonBenefits={addonBenefitsOf(card, benefitQuote, benefitQuoteState.asked)}
+                    otherBenefits={otherBenefitsOf(memberCards, card.petId, toScheduledAt(date, time))}
                     onChange={(patch) => updateCard(card.key, patch)}
                     onRemove={() => removeCard(card.key)}
                   />

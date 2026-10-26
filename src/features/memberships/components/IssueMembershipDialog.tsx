@@ -16,8 +16,11 @@ import { membershipService } from "@/services/membership.service";
 import { swalToast } from "@/lib/swal";
 import type { MembershipPlan, PetMembership } from "@/types/membership";
 
+import { isoDate } from "@/utils/date";
+
 import { membershipFailure } from "../errors";
-import { formatDuration, formatRupiah } from "../labels";
+import { formatDay, planEnd } from "../kelola";
+import { ATTACH_TO_LABEL, formatPlanDuration, formatRupiah } from "../labels";
 
 /**
  * Issue a card to one animal, by hand.
@@ -33,22 +36,30 @@ import { formatDuration, formatRupiah } from "../labels";
  * nobody should have to add 365 days in their head.
  *
  * THIS DIALOG TAKES NO MONEY. It records that a card exists. Selling one at the
- * till is a POS line and goes through the till's own journal.
+ * till is a POS line and goes through the till's own journal — which is why the
+ * profile leads with "Jual paket di kasir" and labels this "Terbitkan manual".
+ *
+ * A CUSTOMER-HELD PLAN is offered too when the owner is known (`customerId`):
+ * it is issued to the owner (`customerId`), not to this animal, and shared by
+ * all their pets (contract §3.8).
  */
 export function IssueMembershipDialog({
   petId,
   petName,
+  customerId = null,
   open,
   onClose,
   onIssued,
 }: {
   petId: string;
   petName?: string | null;
+  /** The owner. Without it only pet-held plans are offered. */
+  customerId?: string | null;
   open: boolean;
   onClose: () => void;
   onIssued: (membership: PetMembership) => void;
 }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = isoDate(new Date());
 
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [planId, setPlanId] = useState("");
@@ -68,8 +79,11 @@ export function IssueMembershipDialog({
       .listPlans({ isActive: true, limit: 100, sort: "nameAsc" })
       .then((result) => {
         if (!active) return;
-        setPlans(result.items);
-        setPlanId((current) => current || (result.items[0]?.id ?? ""));
+        const offered = result.items.filter(
+          (entry) => (entry.attachTo ?? "pet") === "pet" || Boolean(customerId),
+        );
+        setPlans(offered);
+        setPlanId((current) => current || (offered[0]?.id ?? ""));
       })
       .catch(() => {
         if (active) setPlans([]);
@@ -78,30 +92,17 @@ export function IssueMembershipDialog({
     return () => {
       active = false;
     };
-  }, [open]);
+  }, [open, customerId]);
 
   const plan = plans.find((entry) => entry.id === planId) ?? null;
 
   /**
-   * The last day of cover, previewed.
-   *
-   * `- 1` BECAUSE THE FIRST DAY COUNTS — a 30-day card starting on the 1st
-   * covers the 1st to the 30th. The server computes the same way; showing a
-   * different number here would be worse than showing none.
+   * The last day of cover, previewed — N months − 1 day when the plan counts
+   * months (they win), else N days − 1. The server computes the same way;
+   * showing a different number here would be worse than showing none.
    */
-  const endPreview = (() => {
-    if (!plan || !startDate) return null;
-    const start = new Date(`${startDate}T00:00:00`);
-    if (Number.isNaN(start.getTime())) return null;
-    const end = new Date(
-      start.getTime() + (plan.durationDays - 1) * 86_400_000,
-    );
-    return end.toLocaleDateString("id-ID", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  })();
+  const endPreview =
+    plan && /^\d{4}-\d{2}-\d{2}$/.test(startDate) ? formatDay(planEnd(startDate, plan)) : null;
 
   const startsBeforePurchase =
     Boolean(purchasedAt && startDate) && startDate < purchasedAt;
@@ -110,8 +111,10 @@ export function IssueMembershipDialog({
     setSubmitting(true);
 
     try {
+      const forCustomer = plan?.attachTo === "customer";
       const membership = await membershipService.issue({
-        petId,
+        petId: forCustomer ? null : petId,
+        customerId: forCustomer ? customerId : null,
         planId,
         purchasedAt,
         startDate,
@@ -142,10 +145,12 @@ export function IssueMembershipDialog({
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Beli membership</DialogTitle>
+          <DialogTitle>Terbitkan manual</DialogTitle>
           <DialogDescription>
-            {petName ? `Untuk ${petName}.` : "Untuk hewan ini."} Membership
-            melekat pada hewan, bukan pemiliknya.
+            {plan?.attachTo === "customer"
+              ? "Untuk pemiliknya — jatahnya dipakai bergantian oleh semua hewannya."
+              : `Untuk ${petName ?? "hewan ini"}.`}{" "}
+            Tidak mencatat pembayaran; jual di kasir kalau ada uang masuk.
           </DialogDescription>
         </DialogHeader>
 
@@ -157,12 +162,12 @@ export function IssueMembershipDialog({
             onChange={setPlanId}
             options={plans.map((entry) => ({
               value: entry.id,
-              label: `${entry.name} — ${formatRupiah(entry.price)}`,
+              label: `${entry.name} — ${formatRupiah(entry.price)}${entry.attachTo === "customer" ? ` · ${ATTACH_TO_LABEL.customer}` : ""}`,
             }))}
             placeholder="Pilih paket"
             hint={
               plan
-                ? `${formatDuration(plan.durationDays)} · ${plan.benefits.length} benefit`
+                ? `${formatPlanDuration(plan)} · ${plan.benefits.length} benefit`
                 : "Hanya paket yang masih dijual yang muncul di sini."
             }
           />
@@ -207,14 +212,14 @@ export function IssueMembershipDialog({
         </div>
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Kembali
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>
+            Batal
           </Button>
           <Button
             onClick={submit}
             disabled={submitting || !planId || startsBeforePurchase}
           >
-            Beli
+            Terbitkan membership
           </Button>
         </DialogFooter>
       </DialogContent>

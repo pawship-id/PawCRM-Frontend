@@ -46,6 +46,8 @@ PosScreen
     ├── PosCart              PosCartLine · PosDiscountPopover · PosOtherChargesEditor
     └── dialogs
         ├── PosHeldCartsDialog     parked baskets (FR-6)
+        ├── PosServicePetDialog    which animal a grid service is for
+        │   └── PosAddonHostPicker an add-on picked alone: which grooming it goes on
         ├── PosApprovalDialog      a discount past the cashier's limit (FR-4)
         ├── PosPaymentDialog       PaymentChannelPicker · PaymentLinesList (FR-7)
         ├── ReceiptDialog          ReceiptPreview, 58/80 mm and A4 (FR-8)
@@ -202,6 +204,66 @@ make the drawer agree with, and the count stops being independent evidence of an
 **A large variance does not block closing.** A shop cannot stop trading tomorrow because
 money went missing today, and a system that refused would be worked around by counting the
 drawer to match. It asks for a note instead.
+
+---
+
+## An add-on picked alone (21 October 2026)
+
+Tapping an **add-on** tile (`serviceType: "addon"` on the catalogue) and choosing the animal no
+longer raises a booking for the add-on straight away. The till asks
+`GET /pos/transactions/:id/addon-hosts?petId=&addonId=` as soon as the animal is clicked and, when there
+is anything to offer, draws `PosAddonHostPicker` — "Tambahkan ke layanan yang mana?" — **inside
+the animal dialog, under the price** (not a second dialog after "Tambah ke keranjang"; the button
+waits while the list loads):
+
+- the animal's **grooming lines already in this basket** (raised drafts and pulled bookings,
+  "Di keranjang ini"), then
+- its **grooming bookings in the diary** that are not finished and not billed — any date —
+  with the date/time, status badge and booking number ("Booking ini ikut ditarik ke keranjang"),
+- and always **"Booking baru (hanya add-on ini)"** last.
+
+The list is shown even with one option (the first is pre-selected). With nothing to offer, or
+a ride tile, the step is skipped and the add-on is added as before. Choosing a basket line sends
+the add-on with `parentServiceId` (that line's service) and its `bookingId`; choosing a diary
+booking runs the bridge's pull first and then that write, built from the pulled basket
+(`usePosCart.attachAddon`, `itemsAsInputOf`). The server checks the pick, puts the add-on on the
+booking (so the groomer sees it and it settles with it) and stores the line's parent — which is
+also what the membership scope and the quote read, so Grooming add-on benefits match.
+
+**One add-on, once per booking.** The dialog sends the tile's id as `addonId`; a host that already
+carries it comes back `hasAddon: true` and is drawn **disabled** with "Sudah ada add-on ini" — kept
+in the list so the cashier sees why. The pre-selection skips it (first enabled host, else "Booking
+baru"). The server refuses a second copy on any cart write — this picker, a main service's add-on
+ticks, or a pulled booking's own add-on picked again — with "Add-on Parfum sudah ada di booking
+Bruno · Grooming Lengkap.", which lands in the basket's error banner like any other refused write.
+
+---
+
+## Membership (Promosi V1)
+
+- **A package tile** opens `PosMembershipSaleDialog` instead of the service dialog: whose (an
+  animal, or the customer for a customer-held plan), from when (Hari ini / Setelah yang aktif
+  berakhir / Pilih tanggal), and a referral code when the plan wants one. Who may buy and at what
+  price is the server's answer (`/pet-memberships/eligibility`); an animal that may not buy is
+  listed, disabled, with the reason. One package per holder per basket.
+- **A benefit is picked per cart line** with a compact select (`PosBenefitSelect`), which replaced
+  the old Pakai/Lepas section under Diskon keranjang. The quote auto-applies its best pick; the
+  cashier chooses another or "Tanpa member". Benefits that would cover the line but cannot be used
+  show as short muted chips with the reason. The server prices it — the select only sends ids.
+- **A booking add-on agreed "Tanpa member"** (`plannedNoBenefit` on the line, 22 October 2026)
+  is pulled at its normal price and never auto-applied: its select starts on "Tanpa member" with
+  "sesuai booking", and is quoted as `noBenefit`. The cashier can still pick a candidate — that
+  pick sticks like any other.
+- **"Benefit dari booking: …"** (22 October 2026) — when a booking in the basket noted
+  "benefit yang akan diberikan" on its form (`bookingPlannedExtras` on its lines, read live from
+  the booking), the animal's group shows one line under its header naming them
+  (`plannedExtrasOf` in `membershipCart.ts`, `data-planned-extras`). Informational only: a product
+  benefit is still picked on its own line, and a perk bills nothing.
+- The cart summary and the receipt print the total as **Potongan membership**.
+  `PosCustomerPerks` shows the customer's cards as chips under the name; after payment
+  `PosSaleEffects` lists the cards issued and the allowances spent.
+
+Details in [`membership.md`](./membership.md).
 
 ---
 

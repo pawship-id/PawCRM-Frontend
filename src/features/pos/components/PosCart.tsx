@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bookmark, House, Plus, ShoppingCart } from "lucide-react";
+import { Bookmark, House, PawPrint, Plus, ShoppingCart } from "lucide-react";
 
 import { Alert, InfoTooltip, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -14,12 +14,23 @@ import {
   sumDecimals,
 } from "@/utils/decimal";
 import { usePermissions } from "@/features/permissions";
-import type { PosDiscountMode, PosItem, PosTransaction } from "@/types/api";
-
-import { bookingShareOf, membershipShareOf } from "../bookingDiscount";
+import type {
+  PosBenefitPick,
+  PosDiscountMode,
+  PosItem,
+  PosTransaction,
+} from "@/types/api";
 import type { BenefitQuoteResponse } from "@/types/membership";
 
-import { PosBenefitSection } from "./PosBenefitSection";
+import { bookingShareOf, membershipShareOf } from "../bookingDiscount";
+import {
+  groupByPet,
+  plannedExtrasOf,
+  isFeeLine,
+  quoteLineFor,
+  type PetPlan,
+} from "../membershipCart";
+import { PosBenefitSelect } from "./PosBenefitSelect";
 import { PosCartLine } from "./PosCartLine";
 import { PosLineDialog } from "./PosLineDialog";
 import { PosCustomerSection } from "./PosCustomerSection";
@@ -46,7 +57,7 @@ import { PosVisitFeeLine } from "./PosVisitFeeLine";
  * remove, quantity, discount — addresses a line by its position in the cart. A
  * grouped view that renumbered them would delete the wrong row.
  */
-function groupLines(items: PosItem[]): Array<{
+function groupLines(entries: Array<{ item: PosItem; index: number }>): Array<{
   bookingId: string | null;
   /** The booking's animal — every line of one booking names the same one. */
   petName: string | null;
@@ -56,7 +67,7 @@ function groupLines(items: PosItem[]): Array<{
 }> {
   const groups: ReturnType<typeof groupLines> = [];
 
-  items.forEach((item, index) => {
+  entries.forEach(({ item, index }) => {
     /* A home-visit fee is a row of its own — see `tripLines`. */
     if (item.visitFee) return;
 
@@ -192,7 +203,9 @@ export function PosCart({
   onRemove,
   onItemDetails,
   onItemBenefit,
-  benefitQuote,
+  memberQuote,
+  petPlans,
+  customerPerks,
   onCartDiscount,
   onCharges,
   onNote,
@@ -211,25 +224,19 @@ export function PosCart({
   /** One line, or a service and the add-ons under it — see `PosCartLine`. */
   onRemove: (index: number | number[]) => void;
   /**
-   * Apply or remove a membership benefit on one line (29 September 2026).
-   *
-   * OPTIONAL, so a caller that has not wired the quote yet simply renders no
-   * chips rather than a control that cannot work — the same shape `maySetPrice`
-   * takes for a cashier who may not re-price.
+   * The cashier's member pick on one line — a candidate, or `null` for "Tanpa
+   * member" (Promosi V1). OPTIONAL: without it no select is drawn.
    */
-  onItemBenefit?: (
-    index: number,
-    benefit: { membershipId: string; benefitId: string } | null,
-  ) => void;
+  onItemBenefit?: (index: number, benefit: PosBenefitPick | null) => void;
   /**
-   * THE WHOLE QUOTE, not a per-line map (30 September 2026).
-   *
-   * The benefits moved off the rows into one section under Diskon keranjang —
-   * see `PosBenefitSection` — and that section lists EVERY benefit, including
-   * the ones no line matches. A map keyed by line could not express those at
-   * all: a benefit with nothing to land on has no line to be keyed by.
+   * The member quote for THIS basket (refs are line indexes) — null while none
+   * is current. Each line reads its own answer from it.
    */
-  benefitQuote?: BenefitQuoteResponse | null;
+  memberQuote?: BenefitQuoteResponse | null;
+  /** The plan each animal's header names — see `petPlans` in membershipCart. */
+  petPlans?: ReadonlyMap<string, PetPlan>;
+  /** The customer's membership chips, under their name. */
+  customerPerks?: React.ReactNode;
   /**
    * Everything the line dialog edits, in one write — see `PosLineDialog`.
    * Resolves `false` when the server refused it, so the dialog stays open.
@@ -381,6 +388,7 @@ export function PosCart({
         busy={busy}
         onPick={onPickCustomer}
         onClear={onClearCustomer}
+        perks={customerPerks}
       />
 
       {/*
@@ -396,50 +404,122 @@ export function PosCart({
             Pilih produk atau layanan di sebelah kiri untuk mulai.
           </p>
         ) : (
-          groupLines(items).map((group, groupIndex) => (
-            <div key={group.bookingId ?? `retail-${groupIndex}`}>
-              {/*
-                FR-3: "setiap grup booking menampilkan header dengan nomor
-                booking/ID dan nama hewan". Retail lines get no header — see
-                `groupLines`.
+          (() => {
+            const petGroups = groupByPet(items);
+            const hasPets = petGroups.some((group) => group.petId);
 
-                THE NUMBER WHEN THERE IS ONE. A draft this basket raised has
-                none until the sale is paid, so its short id stands in — a
-                header with a blank where the number goes reads as broken.
-              */}
-              {group.bookingId && (
-                <div className="flex items-baseline justify-between gap-2 bg-surface px-3 py-1.5">
-                  <span className="truncate text-xs font-medium text-foreground">
-                    {group.petName ?? "Hewan tidak diketahui"}
-                  </span>
-                  <span className="shrink-0 text-xs tabular-nums text-muted">
-                    {group.bookingNumber ??
-                      `Booking ·${group.bookingId.slice(-6)}`}
-                  </span>
-                </div>
-              )}
-
-              {nestAddons(group.lines).map(({ item, index, addons }) => (
-                <PosCartLine
-                  key={`${item.kind}-${item.refId}-${index}`}
+            /* The member select for one line — only where a card could act. */
+            const benefitFor = (index: number) => {
+              const item = items[index];
+              if (!onItemBenefit || !item || item.kind === "membership" || isFeeLine(item)) {
+                return null;
+              }
+              return (
+                <PosBenefitSelect
                   item={item}
-                  index={index}
-                  addons={addons}
+                  line={quoteLineFor(memberQuote ?? null, index)}
                   disabled={busy}
-                  onQtyChange={onQtyChange}
-                  onRemove={removeLines}
-                  onEdit={setEditingIndex}
-                  onPriceChange={onLinePrice}
-                  /*
-                    READ FROM THE GRANT, not passed down as a flag somebody
-                    might forget to set: a price box drawn for a cashier the
-                    server will refuse is a control that exists to fail.
-                  */
-                  maySetPrice={can("posTransactions", "setPrice")}
+                  onChange={(pick) => onItemBenefit(index, pick)}
                 />
-              ))}
-            </div>
-          )).concat(
+              );
+            };
+
+            return petGroups.map((petGroup) => {
+              const plan = petGroup.petId ? petPlans?.get(petGroup.petId) : undefined;
+              /* What the bookings noted to give this visit — a reminder only. */
+              const extras = plannedExtrasOf(petGroup.lines);
+
+              return (
+                <div key={petGroup.key} data-pet-group>
+                  {/*
+                    ONE HEADER PER ANIMAL (Promosi V1): its name and the plan it
+                    holds — "(dibeli sekarang)" for a package in this basket,
+                    "· sedang ditunda" for a paused card. Lines without an
+                    animal sit last under "Tanpa hewan", which is only said when
+                    there is an animal to tell them apart from.
+                  */}
+                  {(petGroup.petId || hasPets) && (
+                    <div className="flex items-center gap-1.5 bg-surface px-3 py-1.5 text-xs">
+                      {petGroup.petId && (
+                        <PawPrint className="size-3.5 shrink-0 text-muted" aria-hidden />
+                      )}
+                      <span className="shrink-0 font-medium text-foreground">
+                        {petGroup.petId
+                          ? (petGroup.petName ?? "Hewan tidak diketahui")
+                          : "Tanpa hewan"}
+                      </span>
+                      {plan && (
+                        <span className="min-w-0 truncate text-muted">
+                          {`· ${plan.name}${
+                            plan.state === "new"
+                              ? " (dibeli sekarang)"
+                              : plan.state === "paused"
+                                ? " · sedang ditunda"
+                                : ""
+                          }`}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {/*
+                    "BENEFIT YANG AKAN DIBERIKAN" (22 October 2026) — ticked on
+                    the booking form. Informational: a product benefit is still
+                    picked on its own line, and a perk has nothing to bill.
+                  */}
+                  {extras.length > 0 && (
+                    <p
+                      data-planned-extras
+                      className="bg-surface px-3 pb-1.5 text-xs text-foreground"
+                    >
+                      <span className="font-medium">Benefit dari booking:</span>{" "}
+                      {extras.join(", ")}
+                    </p>
+                  )}
+
+                  {groupLines(petGroup.lines).map((group, groupIndex) => (
+                    <div key={group.bookingId ?? `retail-${groupIndex}`}>
+                      {/*
+                        FR-3: a booking's lines stay together under its number —
+                        two bookings for one animal remain two runs. A draft
+                        this basket raised has no number until it is paid, so
+                        its short id stands in.
+                      */}
+                      {group.bookingId && (
+                        <div className="px-3 pt-1.5 text-xs tabular-nums text-muted">
+                          {group.bookingNumber ??
+                            `Booking ·${group.bookingId.slice(-6)}`}
+                        </div>
+                      )}
+
+                      {nestAddons(group.lines).map(({ item, index, addons }) => (
+                        <PosCartLine
+                          key={`${item.kind}-${item.refId}-${index}`}
+                          item={item}
+                          index={index}
+                          addons={addons}
+                          disabled={busy}
+                          onQtyChange={onQtyChange}
+                          onRemove={removeLines}
+                          onEdit={setEditingIndex}
+                          onPriceChange={onLinePrice}
+                          /*
+                            READ FROM THE GRANT, not passed down as a flag
+                            somebody might forget to set: a price box drawn for
+                            a cashier the server will refuse is a control that
+                            exists to fail.
+                          */
+                          maySetPrice={can("posTransactions", "setPrice")}
+                          benefitSlot={benefitFor(index)}
+                          addonBenefitSlot={benefitFor}
+                        />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              );
+            });
+          })().concat(
             tripLines(items).map((group) => (
               <div key={`trip-${group.key}`} data-trip-group>
                 <div className="flex items-baseline justify-between gap-2 bg-surface px-3 py-1.5">
@@ -536,31 +616,27 @@ export function PosCart({
             {/*
               THE SERVER'S ITEM DISCOUNT, SPLIT THREE WAYS — the lines' own
               typed discount, the bookings' shares of "Diskon seluruh booking",
-              and what a membership card paid for. The three always add up to
+              and what membership cards paid for. The three always add up to
               `totals.itemDiscount`. The booking share is shown HERE ONLY, once
-              for the whole basket — not under each booking, which read as a
-              second discount per animal (15 September 2026).
+              for the whole basket (15 September 2026).
 
-              ⚠️ A CARD'S GIVEAWAY IS NOT "DISKON ITEM" (1 October 2026, on
-              request). It used to be folded into the same figure as whatever the
-              cashier typed — one number answering two different questions: "how
-              much did we choose to give away" and "how much had the customer
-              already paid for". `own` now excludes it, so Diskon item is
-              CASHIER-TYPED DISCOUNTS ONLY; a card's part gets its own line below,
-              with which lines it paid for.
+              "POTONGAN MEMBERSHIP" (Promosi V1) reads the server's
+              `runningTotals.membershipDiscount` — visit-fee waivers included —
+              falling back to the lines' own shares on an older server. Which
+              line a card paid for is on that line now (its select), so the
+              per-line list that used to sit under this row is gone.
             */}
             {(() => {
               const shares = sumDecimals((cart?.items ?? []).map(bookingShareOf));
-              const membershipShares = sumDecimals(
-                (cart?.items ?? []).map((item) => membershipShareOf(item) ?? "0"),
-              );
+              const membershipShares =
+                totals.membershipDiscount ??
+                sumDecimals(
+                  (cart?.items ?? []).map((item) => membershipShareOf(item) ?? "0"),
+                );
               const own = subtractDecimals(
                 subtractDecimals(totals.itemDiscount, shares),
                 membershipShares,
               );
-              const membershipLines = (cart?.items ?? [])
-                .map((item, index) => ({ item, index }))
-                .filter(({ item }) => membershipShareOf(item) !== null);
 
               return (
                 <>
@@ -581,34 +657,11 @@ export function PosCart({
                     </div>
                   )}
                   {isPositive(membershipShares) && (
-                    <div>
-                      <div className="flex justify-between">
-                        <dt className="text-muted">Diskon membership</dt>
-                        <dd className="tabular-nums text-success">
-                          −{formatMoney(membershipShares)}
-                        </dd>
-                      </div>
-                      {/*
-                        WHICH LINES IT PAID FOR — the question a number alone
-                        cannot answer once a basket holds more than one.
-                      */}
-                      <ul className="mt-0.5 flex flex-col gap-0.5 pl-4">
-                        {membershipLines.map(({ item, index }) => (
-                          <li
-                            key={`${item.kind}-${item.refId}-${index}`}
-                            className="flex justify-between gap-2 text-xs text-muted"
-                          >
-                            <span className="min-w-0 truncate">
-                              {item.petName
-                                ? `${item.petName} - ${item.name}`
-                                : item.name}
-                            </span>
-                            <span className="shrink-0 tabular-nums">
-                              −{formatMoney(membershipShareOf(item)!)}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
+                    <div className="flex justify-between">
+                      <dt className="text-muted">Potongan membership</dt>
+                      <dd className="tabular-nums text-success">
+                        −{formatMoney(membershipShares)}
+                      </dd>
                     </div>
                   )}
                 </>
@@ -644,19 +697,6 @@ export function PosCart({
                   : `−${formatMoney(totals.cartDiscount)}`}
               </dd>
             </div>
-
-            {/* UNDER DISKON KERANJANG, where the owner asked for it — the two
-                are the same kind of thing: money coming off the whole basket
-                rather than off one row. */}
-            {onItemBenefit && (
-              <PosBenefitSection
-                quote={benefitQuote ?? null}
-                items={cart?.items ?? []}
-                disabled={busy}
-                onApply={(index, benefit) => onItemBenefit(index, benefit)}
-                onRemove={(index) => onItemBenefit(index, null)}
-              />
-            )}
 
             {totals.otherCharges !== "0.0000" && (
               <div className="flex justify-between">

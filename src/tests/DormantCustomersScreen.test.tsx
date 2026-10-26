@@ -103,7 +103,7 @@ describe("a row", () => {
 
     expect(
       await screen.findByRole("link", { name: "Dewi Anggraini" }),
-    ).toHaveAttribute("href", "/dashboard/master/customers/c1");
+    ).toHaveAttribute("href", "/dashboard/customers/c1");
   });
 
   it("offers a WhatsApp chat when there is a number to reach", async () => {
@@ -198,7 +198,7 @@ describe("the dormancy window", () => {
 
     await waitFor(() =>
       expect(replace).toHaveBeenCalledWith(
-        "/dashboard/master/customers/dormant?days=120",
+        "/dashboard/customers/dormant?days=120",
         { scroll: false },
       ),
     );

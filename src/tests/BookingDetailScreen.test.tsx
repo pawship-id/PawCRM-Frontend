@@ -342,7 +342,7 @@ describe("BookingDetailScreen — the header", () => {
 
     expect(await screen.findByRole("link", { name: /cetak/i })).toHaveAttribute(
       "href",
-      "/dashboard/master/pets/pet-1/print",
+      "/dashboard/pets/pet-1/print",
     );
   });
 
@@ -515,6 +515,31 @@ describe("BookingDetailScreen — the status track", () => {
 });
 
 describe("BookingDetailScreen — the Kunjungan card", () => {
+  /* "Benefit yang akan diberikan" (22 October 2026) — a note from the form. */
+  it("lists the benefits noted for this visit, and says nothing when none were", async () => {
+    bookings.getById.mockResolvedValue(
+      booking({
+        plannedExtras: [
+          { membershipId: "mem-1", benefitId: "ben-prio", label: "Prioritas booking" },
+          { membershipId: "mem-1", benefitId: "ben-food", label: "Gratis makanan" },
+        ],
+      } as never),
+    );
+
+    const { unmount } = show();
+
+    expect(await screen.findByText("Benefit yang akan diberikan")).toBeInTheDocument();
+    const block = document.querySelector("[data-planned-extras]") as HTMLElement;
+    expect(within(block).getByText("Prioritas booking")).toBeInTheDocument();
+    expect(within(block).getByText("Gratis makanan")).toBeInTheDocument();
+    unmount();
+
+    bookings.getById.mockResolvedValue(booking());
+    show();
+    await screen.findByText("Kunjungan");
+    expect(screen.queryByText("Benefit yang akan diberikan")).not.toBeInTheDocument();
+  });
+
   it("shows the total the API sent", async () => {
     bookings.getById.mockResolvedValue(booking({ totalAmount: "274000.0000" }));
 

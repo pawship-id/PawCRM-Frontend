@@ -120,7 +120,7 @@ export function InitialDataScreen() {
     {
       title: "Pelanggan & supplier",
       description: "Impor daftar dari file lama, atau daftarkan seperlunya.",
-      href: mayReadCustomers ? "/dashboard/master/customers" : undefined,
+      href: mayReadCustomers ? "/dashboard/customers" : undefined,
       status:
         mayReadCustomers || mayReadSuppliers
           ? [

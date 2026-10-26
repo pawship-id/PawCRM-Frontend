@@ -8,6 +8,7 @@ import { Alert, Breadcrumb, Card, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
+import { CustomerMembershipSection } from "@/features/memberships";
 import { CustomerPetsSection } from "@/features/pets";
 import { ApiError } from "@/services/api-error";
 import { customerService } from "@/services/customer.service";
@@ -49,7 +50,7 @@ function initials(name: string): string {
  *
  *   AND IT ASKED FOR A PERMISSION IT DOES NOT NEED. A groomer who may not edit a
  *   customer still has to know whose dog this is and which number to ring. Editing
- *   has its own route now — `/master/customers/:id/edit`, behind `update` — and the
+ *   has its own route now — `/customers/:id/edit`, behind `update` — and the
  *   button to it is hidden from anybody who cannot use it.
  *
  * THE SAME SHAPE THE PET PROFILE TOOK (PetProfileScreen, PCR-044), with one
@@ -121,7 +122,7 @@ export function CustomerProfileScreen({ id }: { id: string }) {
     <div className="flex flex-col gap-5">
       <Breadcrumb
         items={[
-          { label: "Pelanggan", href: "/dashboard/master/customers" },
+          { label: "Pelanggan", href: "/dashboard/customers" },
           { label: customer.name },
         ]}
       />
@@ -176,7 +177,7 @@ export function CustomerProfileScreen({ id }: { id: string }) {
           )}
           <Can feature="customers" action="update">
             <Button asChild size="sm">
-              <Link href={`/dashboard/master/customers/${customer._id}/edit`}>
+              <Link href={`/dashboard/customers/${customer._id}/edit`}>
                 <Pencil className="size-4" />
                 Ubah
               </Link>
@@ -312,21 +313,14 @@ export function CustomerProfileScreen({ id }: { id: string }) {
       </Can>
 
       {/* ── MEMBERSHIP ── */}
-      <Card
-        title="Membership"
-        description="Paket keanggotaan, masa berlaku, dan pengingat perpanjangan."
-      >
-        <div className="flex flex-wrap items-center gap-3 py-2">
-          <Badge variant="outline">Segera</Badge>
-          <p className="text-sm text-muted">
-            Membership belum ada di sistem. Untuk sekarang tier VIP{" "}
-            <span className="font-medium text-foreground">
-              {customer.vipTier ?? "belum diisi"}
-            </span>{" "}
-            yang dipakai sebagai penanda pelanggan istimewa.
-          </p>
-        </div>
-      </Card>
+      <Can feature="petMemberships" action="read">
+        <Card
+          title="Membership"
+          description="Kartu per hewan, kartu yang melekat ke pelanggan, dan riwayatnya."
+        >
+          <CustomerMembershipSection customerId={customer._id} />
+        </Card>
+      </Can>
 
       {/* ── NILAI PELANGGAN ── */}
       <Can feature="customerInvoices" action="read">

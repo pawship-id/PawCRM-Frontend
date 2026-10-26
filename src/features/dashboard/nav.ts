@@ -27,6 +27,7 @@ import {
   ScrollText,
   Settings,
   ShoppingCart,
+  Tag,
   Truck,
   Users,
   Wallet,
@@ -117,8 +118,8 @@ export interface NavItem {
    * Extra route prefixes that light this row up as well as `href` does — see
    * NavChild.match, which is the same field for a submenu row.
    *
-   * The leaf case is Pelanggan: its Hewan tab lives at /dashboard/master/pets,
-   * which no amount of prefix-matching on /dashboard/master/customers covers.
+   * The leaf case is Pelanggan: its Hewan tab lives at /dashboard/pets,
+   * which no amount of prefix-matching on /dashboard/customers covers.
    *
    * Prefix-matched like `href`, so a tab's own detail routes (…/pets/[id]) keep
    * the row lit too.
@@ -165,7 +166,7 @@ export interface NavSection {
  * WHY SOME MOCKUP LEAVES ARE STILL GROUPS HERE.
  *
  * buloo-navbar-v3 draws Pelanggan, Penjualan, Pembelian and Inventori as single
- * rows whose screens carry tabs (Faktur / Piutang / E-commerce / Retur…). Those
+ * rows whose screens carry tabs (Faktur / E-commerce / Retur…). Those
  * tabbed screens do not exist yet, and collapsing the menu to match would leave
  * the routes that DO exist — /purchasing/receipts, seven inventory screens —
  * reachable only by typing a URL. So each is a group over its real routes today,
@@ -285,7 +286,7 @@ export const NAV_SECTIONS: NavSection[] = [
          * Gated on `customers:read` — the grant its own href enforces. Every
          * seeded role holding `pets:read` holds it too (Owner, Manager, Staff),
          * so no role loses its way to the animal register; a hand-made role
-         * granted pets alone would reach /dashboard/master/pets by URL only.
+         * granted pets alone would reach /dashboard/pets by URL only.
          */
         label: "Pelanggan",
         /*
@@ -299,24 +300,24 @@ export const NAV_SECTIONS: NavSection[] = [
           "Lihat" now, and the Ringkasan route sends a role that may not see it
           to the first tab it may.
         */
-        href: "/dashboard/master/customers/ringkasan",
+        href: "/dashboard/customers/summary",
         icon: Users,
         permissionAny: [
           { feature: "customerSummary", action: "read" },
           { feature: "customers", action: "read" },
           { feature: "pets", action: "read" },
-          { feature: "membershipPlans", action: "read" },
-          { feature: "petMemberships", action: "read" },
           { feature: "customerHistory", action: "read" },
         ],
         /*
           THE REGISTER IS A `match` NOW, and it has to be: `href` is prefix
-          matched, and `/…/customers/ringkasan` is not a prefix of
+          matched, and `/…/customers/summary` is not a prefix of
           `/…/customers`, so without this the row would go dark the moment the
           reader opened the Pelanggan tab. Listed as a prefix, it also covers
-          Membership, Riwayat and every customer detail route in one entry.
+          Riwayat and every customer detail route in one entry. (Membership
+          left for Promosi on 16 October 2026; its old addresses under this
+          prefix only redirect now.)
         */
-        match: ["/dashboard/master/customers", "/dashboard/master/pets"],
+        match: ["/dashboard/customers", "/dashboard/pets"],
       },
     ],
   },
@@ -325,8 +326,8 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       {
         /**
-         * A LEAF, as the mockup draws it, with its five tabs on the screen (see
-         * SalesModuleHeader): Ringkasan, Faktur, Piutang, E-commerce, Retur.
+         * A LEAF, as the mockup draws it, with its four tabs on the screen (see
+         * SalesModuleHeader): Ringkasan, Faktur, E-commerce, Retur.
          *
          * THE HREF OPENS RINGKASAN, which took `/dashboard/sales` on 29
          * September 2026 (on request). The invoice list moved a segment down to
@@ -350,11 +351,38 @@ export const NAV_SECTIONS: NavSection[] = [
         permissionAny: [
           { feature: "salesSummary", action: "read" },
           { feature: "customerInvoices", action: "read" },
-          { feature: "receivables", action: "read" },
           { feature: "ecommerce", action: "read" },
           { feature: "salesReturns", action: "read" },
         ],
         match: ["/dashboard/ecommerce-sync"],
+      },
+      {
+        /**
+         * Promosi (16 October 2026) — every member price and allowance the till,
+         * booking and website apply. V1 carries Membership only; Loyalti, Promo
+         * and Voucher join as tabs later. It took Membership over from
+         * Pelanggan, whose old routes redirect here.
+         *
+         * `permissionAny` IS LEGAL HERE because the href is a redirect to
+         * Ringkasan, which itself forwards a role that may not see it to the
+         * first Promosi tab it may — so nobody the row is shown to lands on a
+         * refusal.
+         *
+         * `module: "membership"` is the tab-level switch Buloo admin turns
+         * Membership off with (permissionModules.js `toggle`). It already closes
+         * `membershipPlans` and `petMemberships`, but not `membershipReports`,
+         * which belongs to Laporan — without the module gate a role holding the
+         * report grant would see a row onto a switched-off module.
+         */
+        label: "Promosi",
+        href: "/dashboard/promosi",
+        icon: Tag,
+        module: "membership",
+        permissionAny: [
+          { feature: "membershipPlans", action: "read" },
+          { feature: "petMemberships", action: "read" },
+          { feature: "membershipReports", action: "read" },
+        ],
       },
       /**
        * Pembelian — the supply side, and ONE ROW rather than the six-child group

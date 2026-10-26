@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Camera, Search } from "lucide-react";
 
 import {
@@ -32,12 +32,28 @@ import { PosProductCard } from "./PosProductCard";
  * FR-1's rule and the reason a pager exists at all here — a till on a small
  * screen scrolling a thousand products is how the wrong thing gets tapped.
  */
+/**
+ * HOW A HANDHELD SCANNER IS TOLD FROM A PERSON (25 Oct 2026, BO): it types the
+ * whole code in one burst, a few milliseconds a key. Nobody types four keys
+ * under 50 ms apart, so a burst that long is a scan, and a pause after it is
+ * its end. No Enter is needed: some scanners send none, and a batch label's QR
+ * sends one per line, mid-code.
+ */
+const SCAN_KEY_GAP_MS = 50;
+const SCAN_MIN_LENGTH = 4;
+const SCAN_END_MS = 100;
+
+type ScanSource = "camera" | "scanner";
+
 export function PosCatalog({
   onAdd,
+  onScan,
   onExpand,
   busy = false,
 }: {
   onAdd: (item: PosCatalogItem) => void;
+  /** A product a scan named exactly — resolves once it is in the basket. */
+  onScan: (item: PosCatalogItem) => Promise<boolean>;
   onExpand: (item: PosCatalogItem) => void;
   /** True while a cart write is in flight — tiles stop accepting taps. */
   busy?: boolean;
@@ -46,22 +62,63 @@ export function PosCatalog({
     usePosCatalog();
   const [camera, setCamera] = useState(false);
   const [scanStatus, setScanStatus] = useState<ScanStatus>(null);
+  const [queue, setQueue] = useState<Array<{ code: string; source: ScanSource }>>(
+    [],
+  );
+  const working = useRef(false);
+  const burst = useRef({ text: "", last: 0 });
+  const burstEnd = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (burstEnd.current) clearTimeout(burstEnd.current);
+    },
+    [],
+  );
+
+  function enqueue(code: string, source: ScanSource) {
+    setQueue((current) => [...current, { code, source }]);
+  }
+
+  /** Tells a scanner's burst from typing — see SCAN_KEY_GAP_MS. */
+  function trackKey(event: KeyboardEvent<HTMLInputElement>) {
+    // Shift, Enter and the rest: not part of the code, not a break in it.
+    if (event.key.length !== 1) return;
+
+    const now = performance.now();
+    const current = burst.current;
+    burst.current =
+      now - current.last <= SCAN_KEY_GAP_MS
+        ? { text: current.text + event.key, last: now }
+        : { text: event.key, last: now };
+
+    if (burstEnd.current) clearTimeout(burstEnd.current);
+    burstEnd.current = setTimeout(() => {
+      const { text } = burst.current;
+      burst.current = { text: "", last: 0 };
+      if (text.trim().length >= SCAN_MIN_LENGTH) enqueue(text, "scanner");
+    }, SCAN_END_MS);
+  }
 
   /**
-   * A code the camera read (18 Oct 2026) — a packaging barcode, a SKU, a lot
-   * code, or a batch label's whole QR.
+   * A code the camera read (18 Oct 2026) or a handheld scanner typed (25 Oct
+   * 2026) — a packaging barcode, a SKU, a lot code, or a batch label's QR.
    *
    * MATCHED EXACTLY by the server (`scan: true`), so one code names one
-   * product, and that product goes STRAIGHT INTO THE BASKET with the camera
-   * left open for the next carton — the same flow as scanning into a faktur.
+   * product, and that product goes STRAIGHT INTO THE BASKET — from the lot on
+   * the label, when it named one. The camera stays open for the next carton;
+   * the scanner's search box is EMPTIED, ready for the next code.
    *
    * ANYTHING ELSE LANDS IN THE SEARCH BOX: no exact match, several matches, or a
    * parent whose size has to be chosen. The grid then shows the candidates and
    * the cashier picks, exactly as if they had typed the code.
    */
-  async function scanned(raw: string) {
+  async function scanned(raw: string, source: ScanSource) {
     const code = raw.trim();
     if (!code) return;
+    const reset = () => {
+      if (source === "scanner") setState({ search: "" });
+    };
 
     try {
       const result = await tillCatalog({
@@ -74,11 +131,14 @@ export function PosCatalog({
       if (only && only.kind === "product" && only.productType === "parent") {
         // A family: the size is the cashier's to choose, in the picker.
         setCamera(false);
+        reset();
         onExpand(only);
         return;
       }
 
       if (only && only.kind === "product") {
+        reset();
+
         if (only.sellable === false) {
           setScanStatus({
             tone: "error",
@@ -87,11 +147,24 @@ export function PosCatalog({
           return;
         }
 
-        onAdd(only);
-        setScanStatus({
-          tone: "success",
-          text: `${only.name} masuk ke keranjang.`,
-        });
+        const lot = only.scannedLot;
+        if (lot?.expiryDate && lot.expiryDate.slice(0, 10) < todayIso()) {
+          setScanStatus({
+            tone: "error",
+            text: `Batch ${lot.batchCode} sudah kedaluwarsa — tidak bisa dijual.`,
+          });
+          return;
+        }
+
+        const ok = await onScan(only);
+        setScanStatus(
+          ok
+            ? { tone: "success", text: `${only.name} masuk ke keranjang.` }
+            : {
+                tone: "error",
+                text: `${only.name} tidak bisa ditambahkan — lihat keterangan di keranjang.`,
+              },
+        );
         return;
       }
 
@@ -114,6 +187,22 @@ export function PosCatalog({
     }
   }
 
+  /*
+    SCANS GO IN ONE AT A TIME. Every cart write sends the whole basket, so a
+    second scan written before the first has landed would be built without
+    its line. The next one starts only after a render that holds the last
+    write — which is what `onScan` from THIS render's props is.
+  */
+  useEffect(() => {
+    if (working.current || busy || queue.length === 0) return;
+    working.current = true;
+    const [next] = queue;
+    void scanned(next.code, next.source).finally(() => {
+      working.current = false;
+      setQueue((current) => current.slice(1));
+    });
+  });
+
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <div className="flex gap-2">
@@ -125,7 +214,8 @@ export function PosCatalog({
               setScanStatus(null);
               setState({ search: event.target.value });
             }}
-            placeholder="Cari nama, SKU, kode batch, atau scan barcode…"
+            onKeyDown={trackKey}
+            placeholder='Cari nama, SKU, kode batch, scan barcode, atau "member" untuk paket…'
             aria-label="Cari produk atau layanan"
             className="pl-9"
             autoFocus
@@ -162,7 +252,7 @@ export function PosCatalog({
 
       {camera && (
         <BarcodeCameraDialog
-          onDetected={(code) => void scanned(code)}
+          onDetected={(code) => enqueue(code, "camera")}
           status={scanStatus}
           onClose={() => setCamera(false)}
           description="Arahkan kamera ke barcode kemasan, SKU, atau label batch. Produk yang cocok langsung masuk ke keranjang — lanjut scan tanpa menutup ini."
@@ -217,4 +307,11 @@ export function PosCatalog({
       )}
     </div>
   );
+}
+
+/** Today on the till's own calendar, as `YYYY-MM-DD` — a lot expiring today still sells. */
+function todayIso(): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }

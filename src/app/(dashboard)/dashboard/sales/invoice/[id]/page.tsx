@@ -15,18 +15,14 @@ export const metadata: Metadata = { title: "Detail Faktur · Buloo" };
  */
 export default async function SalesInvoicePage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  /** `?edit=1` — the list's "Ubah faktur" opens the editor straight away. */
-  searchParams: Promise<{ edit?: string }>;
 }) {
   const { id } = await params;
-  const { edit } = await searchParams;
 
   return (
     <RequirePermission feature="customerInvoices" action="read">
-      <InvoiceDetail invoiceId={id} startEditing={edit === "1"} />
+      <InvoiceDetail invoiceId={id} />
     </RequirePermission>
   );
 }

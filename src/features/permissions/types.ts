@@ -171,8 +171,11 @@ export const PERMISSION_CATALOG = {
    *
    * No `delete`: a card is business history the moment it is issued, and one
    * sold by mistake is cancelled, which leaves a trail.
+   *
+   *   manage — Kelola (V1): ubah masa berlaku, tunda, koreksi jatah, pindah
+   *            hewan, ubah tanggal pakai. Owner and Manager by default.
    */
-  petMemberships: ["create", "read", "update", "cancel", "redeem"],
+  petMemberships: ["create", "read", "update", "cancel", "redeem", "manage"],
   // `remapHistory`: re-point OLD lines at a new lini/cabang (Terapkan ke data lama, 6 Okt). Owner only by default.
   chartOfAccounts: ["create", "read", "update", "delete", "restore", "remapHistory"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is

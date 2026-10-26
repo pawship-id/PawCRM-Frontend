@@ -16,6 +16,10 @@ import {
 import { BookingStatusBadge } from "@/features/booking";
 import { clockOf, dayKeyOf, endOfMonth } from "@/features/booking/day";
 import { useExpiringAlert, useLowStockAlert } from "@/features/inventory";
+import {
+  MEMBERSHIP_RENEWALS_HREF,
+  cardHref,
+} from "@/features/memberships/labels";
 import { usePermissions } from "@/features/permissions";
 import { SETTINGS_PATHS } from "@/features/settings";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
@@ -331,14 +335,14 @@ export function BerandaHariIni() {
                 ),
                 action: {
                   label: "Tawarkan perpanjang",
-                  href: `/dashboard/master/customers/membership/kartu/${card.id}`,
+                  href: cardHref(card.id),
                 },
               }))}
               more={
                 (memberships.data?.pagination.total ?? 0) > ROWS
                   ? {
                       label: `+${(memberships.data?.pagination.total ?? 0) - ROWS} membership lagi`,
-                      href: "/dashboard/master/customers/membership/perpanjangan",
+                      href: MEMBERSHIP_RENEWALS_HREF,
                     }
                   : undefined
               }
@@ -376,7 +380,7 @@ export function BerandaHariIni() {
                 (overdue.data?.pagination.total ?? 0) > ROWS
                   ? {
                       label: `+${(overdue.data?.pagination.total ?? 0) - ROWS} faktur lagi`,
-                      href: "/dashboard/sales/piutang",
+                      href: "/dashboard/sales/invoice",
                     }
                   : undefined
               }
@@ -405,14 +409,14 @@ export function BerandaHariIni() {
                 ),
                 action: {
                   label: "Hubungi",
-                  href: `/dashboard/master/customers/${customer._id}`,
+                  href: `/dashboard/customers/${customer._id}`,
                 },
               }))}
               more={
                 (dormant.data?.pagination.total ?? 0) > ROWS
                   ? {
                       label: `+${(dormant.data?.pagination.total ?? 0) - ROWS} pelanggan lagi`,
-                      href: "/dashboard/master/customers/dormant",
+                      href: "/dashboard/customers/dormant",
                     }
                   : undefined
               }

@@ -3,6 +3,7 @@ import type {
   CloseShiftInput,
   OpenShiftInput,
   PageResult,
+  PosAddonHost,
   PosCatalogItem,
   PosCatalogQuery,
   PosLots,
@@ -213,6 +214,18 @@ export const posService = {
   pullBookings: (id: string, bookingIds: string[]) =>
     apiClient.post<PosTransaction>(`/pos/transactions/${id}/pull-bookings`, {
       bookingIds,
+    }),
+
+  /**
+   * GET /pos/transactions/:id/addon-hosts — where an add-on picked alone may go
+   * for this animal: its grooming lines already in the basket, then its
+   * unfinished, unbilled grooming bookings in the diary (21 October 2026).
+   * With `addonId`, each host says whether it already carries that add-on
+   * (`hasAddon`).
+   */
+  addonHosts: (id: string, petId: string, addonId?: string) =>
+    apiClient.get<PosAddonHost[]>(`/pos/transactions/${id}/addon-hosts`, {
+      query: addonId ? { petId, addonId } : { petId },
     }),
 
   /*

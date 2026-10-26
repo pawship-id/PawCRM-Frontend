@@ -10,7 +10,7 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 jest.mock("@/services/customer.service");
 jest.mock("@/services/pet.service");
 
-const pathname = jest.fn(() => "/dashboard/master/customers");
+const pathname = jest.fn(() => "/dashboard/customers");
 jest.mock("next/navigation", () => ({
   usePathname: () => pathname(),
 }));
@@ -56,19 +56,19 @@ function totalling(total: number) {
 }
 
 beforeEach(() => {
-  pathname.mockReturnValue("/dashboard/master/customers");
+  pathname.mockReturnValue("/dashboard/customers");
   mockedCustomerService.stats.mockResolvedValue(stats());
   mockedPetService.list.mockResolvedValue(totalling(587));
 });
 
 describe("CustomerModuleHeader", () => {
-  it("draws the module's five tabs, every one of them a route", async () => {
+  it("draws the module's four tabs, every one of them a route", async () => {
     renderWithAuth(<CustomerModuleHeader />);
 
-    // The unbuilt two included: they open on a "belum tersedia" page rather
-    // than sitting on the row as inert grey words.
+    // Riwayat included: it opens on a "belum tersedia" page rather than
+    // sitting on the row as inert grey words. Membership moved to Promosi.
     const hrefs = Object.fromEntries(
-      ["Ringkasan", "Pelanggan", "Hewan", "Membership", "Riwayat"].map(
+      ["Ringkasan", "Pelanggan", "Hewan", "Riwayat"].map(
         (label) => [
           label,
           screen.getByRole("link", { name: label }).getAttribute("href"),
@@ -77,11 +77,10 @@ describe("CustomerModuleHeader", () => {
     );
 
     expect(hrefs).toEqual({
-      Ringkasan: "/dashboard/master/customers/ringkasan",
-      Pelanggan: "/dashboard/master/customers",
-      Hewan: "/dashboard/master/pets",
-      Membership: "/dashboard/master/customers/membership",
-      Riwayat: "/dashboard/master/customers/riwayat",
+      Ringkasan: "/dashboard/customers/summary",
+      Pelanggan: "/dashboard/customers",
+      Hewan: "/dashboard/pets",
+      Riwayat: "/dashboard/customers/history",
     });
 
     await waitFor(() => expect(mockedPetService.list).toHaveBeenCalled());
@@ -90,7 +89,7 @@ describe("CustomerModuleHeader", () => {
   it("does not leave the Pelanggan tab lit on the tabs nested under it", async () => {
     // Its href is the prefix of every other tab's, so a prefix match would mark
     // two tabs current at once.
-    pathname.mockReturnValue("/dashboard/master/customers/ringkasan");
+    pathname.mockReturnValue("/dashboard/customers/summary");
     renderWithAuth(<CustomerModuleHeader />);
 
     expect(screen.getByRole("link", { name: "Ringkasan" })).toHaveAttribute(
@@ -105,7 +104,7 @@ describe("CustomerModuleHeader", () => {
   });
 
   it("marks the tab the reader is on, and only that one", async () => {
-    pathname.mockReturnValue("/dashboard/master/pets");
+    pathname.mockReturnValue("/dashboard/pets");
     renderWithAuth(<CustomerModuleHeader />);
 
     expect(screen.getByRole("link", { name: "Hewan" })).toHaveAttribute(

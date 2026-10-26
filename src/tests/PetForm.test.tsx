@@ -382,7 +382,7 @@ describe("PetForm — editing", () => {
         expect.objectContaining({ name: "Milo" }),
       ),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/master/pets");
+    expect(push).toHaveBeenCalledWith("/dashboard/pets");
   });
 
   /*

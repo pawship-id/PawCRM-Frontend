@@ -177,7 +177,7 @@ export function PetCardPrintScreen({ petId }: { petId: string }) {
       <div className="flex flex-col gap-4">
         <Alert variant="error">{error ?? "Hewan tidak ditemukan."}</Alert>
         <Button variant="secondary" asChild className="self-start">
-          <Link href="/dashboard/master/pets">Kembali ke daftar hewan</Link>
+          <Link href="/dashboard/pets">Kembali ke daftar hewan</Link>
         </Button>
       </div>
     );
@@ -199,7 +199,7 @@ export function PetCardPrintScreen({ petId }: { petId: string }) {
       {!printing && (
         <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
           <Button variant="secondary" asChild>
-            <Link href={`/dashboard/master/pets/${pet._id}`}>Kembali</Link>
+            <Link href={`/dashboard/pets/${pet._id}`}>Kembali</Link>
           </Button>
           <Button onClick={print}>Cetak kartu</Button>
         </div>

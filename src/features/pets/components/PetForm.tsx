@@ -34,7 +34,7 @@ const INTERNAL_NOTES_MAX_LENGTH = 500;
 const MAX_WEIGHT_KG = 500;
 
 /** Where both verbs return to, and what Batal goes back to. */
-const LIST_PATH = "/dashboard/master/pets";
+const LIST_PATH = "/dashboard/pets";
 
 const SEX_OPTIONS: { value: PetSex; label: string }[] = [
   { value: "male", label: "Jantan" },
@@ -226,9 +226,9 @@ export function PetForm({ petId }: { petId?: string }) {
   }, [petId]);
 
   /*
-    `/master/pets` IS A DIFFERENT ROUTE from this form's own
-    `/master/pets/new` (or `/master/pets/:id`), so landing there mounts a
-    genuinely fresh `PetsScreen` — and `master/pets/page.tsx` is
+    `/pets` IS A DIFFERENT ROUTE from this form's own
+    `/pets/new` (or `/pets/:id`), so landing there mounts a
+    genuinely fresh `PetsScreen` — and `pets/page.tsx` is
     `force-dynamic` (3 October 2026, fixing a bug report) — so
     `CustomerModuleHeader`'s "Jumlah hewan" re-fetches rather than showing
     the count from before this pet existed. See that page's own comment for

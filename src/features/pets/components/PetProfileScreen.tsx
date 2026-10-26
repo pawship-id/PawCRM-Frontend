@@ -7,7 +7,7 @@ import { Pencil, Printer } from "lucide-react";
 import { Alert, Breadcrumb, Card, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Can } from "@/features/permissions";
+import { Can, usePermissions } from "@/features/permissions";
 import { usePetOptions } from "@/hooks/usePetOptions";
 import { customerService } from "@/services/customer.service";
 import { petService } from "@/services/pet.service";
@@ -24,20 +24,24 @@ import { PetPreferencesTab } from "./PetPreferencesTab";
 import { PetSummaryCard } from "./PetSummaryCard";
 import { PetTimelineTab } from "./PetTimelineTab";
 
-type Tab = "info" | "riwayat" | "preferensi" | "medis";
+type Tab = "info" | "riwayat" | "preferensi" | "medis" | "membership";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "info", label: "Info" },
   { id: "riwayat", label: "Riwayat" },
   { id: "preferensi", label: "Preferensi" },
   { id: "medis", label: "Medis" },
+  /* Moved in from above the tab strip (Promosi V1, 16 October 2026): the
+     panel grew a jatah table, Kelola shortcuts and the owner's customer card,
+     which is a tab's worth of reading rather than a strip on every tab. */
+  { id: "membership", label: "Membership" },
 ];
 
 /**
  * The pet profile — FR-5 / PCR-044, in the shape the mockup draws
  * (buloo-navigation-v3, `pelHewanDetail`).
  *
- * FOUR TABS, ALL OF THEM READ-FIRST. Info shows the animal's own details;
+ * FIVE TABS, ALL OF THEM READ-FIRST (Membership joined in Promosi V1). Info shows the animal's own details;
  * Riwayat, Preferensi and Medis are what make a groomer look like they know it.
  *
  * INFO USED TO MOUNT THE EDIT FORM, and that was wrong twice over. A form
@@ -93,6 +97,11 @@ export function PetProfileScreen({ petId }: { petId: string }) {
   const tabRefs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
   /* Breed and species under the name are CODES; the words are the tenant's. */
   const { label } = usePetOptions();
+  /* Membership is its own grant; without it the tab would only ever show a 403. */
+  const { can } = usePermissions();
+  const tabs = TABS.filter(
+    (entry) => entry.id !== "membership" || can("petMemberships", "read"),
+  );
 
   useEffect(() => {
     let active = true;
@@ -143,16 +152,16 @@ export function PetProfileScreen({ petId }: { petId: string }) {
 
   /** Arrows, Home and End move between tabs — ARIA's tablist contract. */
   function onTabKey(event: KeyboardEvent<HTMLButtonElement>) {
-    const index = TABS.findIndex((entry) => entry.id === tab);
+    const index = tabs.findIndex((entry) => entry.id === tab);
     const next =
       event.key === "ArrowRight"
-        ? TABS[(index + 1) % TABS.length]
+        ? tabs[(index + 1) % tabs.length]
         : event.key === "ArrowLeft"
-          ? TABS[(index - 1 + TABS.length) % TABS.length]
+          ? tabs[(index - 1 + tabs.length) % tabs.length]
           : event.key === "Home"
-            ? TABS[0]
+            ? tabs[0]
             : event.key === "End"
-              ? TABS[TABS.length - 1]
+              ? tabs[tabs.length - 1]
               : null;
 
     if (!next) return;
@@ -180,14 +189,14 @@ export function PetProfileScreen({ petId }: { petId: string }) {
      has something to say on this line. */
   const kind = label("breed", pet.breed) ?? label("species", pet.species);
 
-  const editLink = `/dashboard/master/pets/${pet._id}/edit`;
+  const editLink = `/dashboard/pets/${pet._id}/edit`;
 
   return (
     <div className="flex flex-col gap-4">
       <Breadcrumb
         items={[
-          { label: "Pelanggan", href: "/dashboard/master/customers" },
-          { label: "Hewan", href: "/dashboard/master/pets" },
+          { label: "Pelanggan", href: "/dashboard/customers" },
+          { label: "Hewan", href: "/dashboard/pets" },
           { label: pet.name },
         ]}
       />
@@ -206,7 +215,7 @@ export function PetProfileScreen({ petId }: { petId: string }) {
               Milik{" "}
               {ownerName ? (
                 <Link
-                  href={`/dashboard/master/customers/${pet.customerId}`}
+                  href={`/dashboard/customers/${pet.customerId}`}
                   className="font-semibold text-primary underline-offset-2 hover:underline"
                 >
                   {ownerName}
@@ -237,7 +246,7 @@ export function PetProfileScreen({ petId }: { petId: string }) {
               it from them would keep the allergy off the cage door.
             */}
             <Button asChild variant="secondary" size="sm">
-              <Link href={`/dashboard/master/pets/${pet._id}/print`}>
+              <Link href={`/dashboard/pets/${pet._id}/print`}>
                 <Printer className="size-4" />
                 Cetak kartu
               </Link>
@@ -271,25 +280,13 @@ export function PetProfileScreen({ petId }: { petId: string }) {
       */}
       <PetSummaryCard pet={pet} />
 
-      {/*
-        
-        
-        
-        
-        SITS ABOVE THE TABS, beside the summary card, for the reason
-        that card does: it answers "what has this animal already been promised",
-        and a front desk asking it is not going to hunt for the right tab first.
-        It is also the panel with a BUTTON on it — Terbitkan, Perpanjang — and a
-        control hidden behind a tab is a control nobody finds.
-      */}
-      <PetMembershipPanel petId={pet._id} petName={pet.name} />
 
       <div
         role="tablist"
         aria-label="Bagian profil hewan"
         className="flex gap-1 overflow-x-auto border-b border-border"
       >
-        {TABS.map((entry) => {
+        {tabs.map((entry) => {
           const selected = entry.id === tab;
 
           return (
@@ -363,6 +360,14 @@ export function PetProfileScreen({ petId }: { petId: string }) {
           <Card title={`Catatan medis ${pet.name}`}>
             <PetMedicalTab pet={pet} onSaved={setPet} />
           </Card>
+        )}
+
+        {tab === "membership" && (
+          <PetMembershipPanel
+            petId={pet._id}
+            petName={pet.name}
+            customerId={pet.customerId}
+          />
         )}
       </div>
     </div>

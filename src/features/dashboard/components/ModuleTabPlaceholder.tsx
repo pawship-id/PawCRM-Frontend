@@ -4,7 +4,7 @@ import { SectionPlaceholderPanel } from "./SectionPlaceholder";
 
 /**
  * A tab of a tabbed module whose screen has not been built — Membership and
- * Riwayat under Pelanggan, Piutang and Retur under Penjualan.
+ * Riwayat under Pelanggan, Retur under Penjualan.
  *
  * IT IS A REAL PAGE, not a greyed-out tab. Both modules started with inert
  * labels, and a dead control is the worse of the two: it cannot say why it does

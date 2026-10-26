@@ -9,6 +9,11 @@ import {
 } from "lucide-react";
 
 import { HighlightText } from "@/components";
+import {
+  ATTACH_TO_LABEL,
+  ELIGIBILITY_LABEL,
+  formatPlanDuration,
+} from "@/features/memberships/labels";
 
 import { PosStockBadge } from "./PosStockBadge";
 import { Button } from "@/components/ui/button";
@@ -143,6 +148,7 @@ export function PosProductCard({
 }) {
   const isParent = item.variantCount !== null;
   const unsellable = item.sellable === false;
+  const isPackage = item.kind === "membership";
 
   return (
     <div className="flex flex-col justify-between gap-3 rounded-xl border border-border bg-surface p-3">
@@ -160,6 +166,24 @@ export function PosProductCard({
           <span className="mt-0.5 block truncate text-xs tabular-nums text-muted">
             <HighlightText text={item.code} query={search} />
           </span>
+        )}
+
+        {/*
+          A PACKAGE ANSWERS THE COUNTER'S TWO QUESTIONS ON THE TILE (Promosi
+          V1): how long, and who may buy / who holds it — "6 bulan",
+          "Pelanggan baru · melekat ke hewan". Short, per BO.
+        */}
+        {isPackage && (
+          <>
+            <span className="mt-0.5 block truncate text-xs text-muted">
+              {`Membership · ${formatPlanDuration(item)}`}
+            </span>
+            <span className="mt-0.5 block truncate text-xs text-muted">
+              {`${ELIGIBILITY_LABEL[item.eligibility ?? "all"]} · melekat ke ${ATTACH_TO_LABEL[
+                item.attachTo ?? "pet"
+              ].toLowerCase()}`}
+            </span>
+          </>
         )}
 
         {/*
@@ -215,7 +239,10 @@ export function PosProductCard({
         <span className="truncate text-sm font-semibold tabular-nums text-foreground">
           {isParent
             ? `${item.variantCount} varian`
-            : (priceRange(item, formatMoney) ?? formatMoney(item.price))}
+            : isPackage
+              ? /* A per-variant package's `price` is its lowest variant. */
+                `${item.priceFrom ? "mulai " : ""}${formatMoney(item.price)}`
+              : (priceRange(item, formatMoney) ?? formatMoney(item.price))}
         </span>
 
         {isParent ? (

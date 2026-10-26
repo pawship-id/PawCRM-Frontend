@@ -1000,7 +1000,7 @@ describe("the animal a service is for", () => {
     */
     expect(
       row.getByRole("link", { name: /lengkapi ukuran miko/i }),
-    ).toHaveAttribute("href", "/dashboard/master/pets/pet1/edit");
+    ).toHaveAttribute("href", "/dashboard/pets/pet1/edit");
   });
 
   /*
@@ -3279,8 +3279,7 @@ describe("an antar-jemput line", () => {
  * ─── BENEFIT MEMBERSHIP, AS ITS OWN SECTION (1 October 2026, on request) ────
  *
  * Applying and removing a benefit moved off the row and into one section under
- * Diskon faktur — the same move `PosBenefitSection` made at the till, for the
- * same reason: a per-row offer could only show what happened to match a row
+ * Diskon faktur, because a per-row offer could only show what happened to match a row
  * already typed, which answered nothing for the other benefits a customer held.
  */
 describe("Benefit membership on a faktur", () => {
@@ -3303,7 +3302,6 @@ describe("Benefit membership on a faktur", () => {
       serviceKinds: [],
     },
     quota: { total: null, perPeriod: null, period: null },
-    maxPerTransaction: 1,
     usedTotal: 0,
     usedThisPeriod: 0,
     remainingTotal: null,
@@ -3477,60 +3475,59 @@ describe("discount controls once there is nothing left to cut", () => {
   }
 
   function primeFullBenefit() {
-    jest.spyOn(membershipService, "quote").mockImplementation((async (input: {
-      lines: Array<{ ref: string | null; petId: string | null }>;
-    }) => ({
-      cards: [
-        {
-          id: "mem-1",
-          number: "MBR-0007",
-          petId: "pet1",
-          planName: "Paket VIP",
-          status: "active",
-          benefits: [
-            {
-              id: "ben-1",
-              label: "Gratis Grooming Lengkap",
-              kind: "free_item",
-              scope: {
-                target: "service",
-                serviceIds: [],
-                productIds: [],
-                categoryIds: [],
-                serviceKinds: [],
-              },
-              quota: { total: null, perPeriod: null, period: null },
-              maxPerTransaction: 1,
-              usedTotal: 0,
-              usedThisPeriod: 0,
-              remainingTotal: null,
-              remainingThisPeriod: null,
-              nextAvailableAt: null,
-              periodLabel: null,
-              available: true,
-              reason: null,
-            },
-          ],
-        },
-      ],
-      lines: input.lines.map((line) => ({
-        ref: line.ref,
-        petId: line.petId,
-        candidates: [
+    jest.spyOn(membershipService, "quote").mockImplementation(
+      (async (input: { lines: Array<{ ref: string | null; petId: string | null }> }) => ({
+        cards: [
           {
-            membershipId: "mem-1",
-            membershipNumber: "MBR-0007",
+            id: "mem-1",
+            number: "MBR-0007",
+            petId: "pet1",
             planName: "Paket VIP",
-            benefitId: "ben-1",
-            benefitLabel: "Gratis Grooming Lengkap",
-            kind: "free_item",
-            // The whole Rp 150.000 line, same as "Grooming"'s price.
-            discount: "150000.0000",
+            status: "active",
+            benefits: [
+              {
+                id: "ben-1",
+                label: "Gratis Grooming Lengkap",
+                kind: "free_item",
+                scope: {
+                  target: "service",
+                  serviceIds: [],
+                  productIds: [],
+                  categoryIds: [],
+                  serviceKinds: [],
+                },
+                quota: { total: null, perPeriod: null, period: null },
+                usedTotal: 0,
+                usedThisPeriod: 0,
+                remainingTotal: null,
+                remainingThisPeriod: null,
+                nextAvailableAt: null,
+                periodLabel: null,
+                available: true,
+                reason: null,
+              },
+            ],
           },
         ],
-        recommended: null,
-      })),
-    })) as never);
+        lines: input.lines.map((line) => ({
+          ref: line.ref,
+          petId: line.petId,
+          candidates: [
+            {
+              membershipId: "mem-1",
+              membershipNumber: "MBR-0007",
+              planName: "Paket VIP",
+              benefitId: "ben-1",
+              benefitLabel: "Gratis Grooming Lengkap",
+              kind: "free_item",
+              // The whole Rp 150.000 line, same as "Grooming"'s price.
+              discount: "150000.0000",
+            },
+          ],
+          recommended: null,
+        })),
+      })) as never,
+    );
   }
 
   it("dies on the row once a benefit takes it to nought", async () => {
@@ -3621,7 +3618,6 @@ describe("where Biaya lain sits", () => {
                 serviceKinds: [],
               },
               quota: { total: null, perPeriod: null, period: null },
-              maxPerTransaction: 1,
               usedTotal: 0,
               usedThisPeriod: 0,
               remainingTotal: null,

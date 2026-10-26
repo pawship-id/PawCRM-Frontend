@@ -148,14 +148,14 @@ describe("RequirePermission — redirectTo", () => {
         feature="salesSummary"
         redirectTo={[
           { label: "Faktur", href: "/dashboard/sales/invoice", anyOf: [{ feature: "customerInvoices" }] },
-          { label: "Piutang", href: "/dashboard/sales/piutang", anyOf: [{ feature: "receivables" }] },
+          { label: "Retur", href: "/dashboard/sales/retur", anyOf: [{ feature: "salesReturns" }] },
         ]}
       >
         <span>ringkasan</span>
       </RequirePermission>,
-      { permissions: [{ feature: "receivables", actions: ["read"] }] },
+      { permissions: [{ feature: "salesReturns", actions: ["read"] }] },
     );
     expect(screen.queryByText("ringkasan")).not.toBeInTheDocument();
-    expect(replace).toHaveBeenCalledWith("/dashboard/sales/piutang");
+    expect(replace).toHaveBeenCalledWith("/dashboard/sales/retur");
   });
 });

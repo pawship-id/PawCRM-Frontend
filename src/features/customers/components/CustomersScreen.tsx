@@ -76,8 +76,8 @@ export function CustomersScreen({
     }
     router.replace(
       query.createdSince
-        ? `/dashboard/master/customers?createdSince=${encodeURIComponent(query.createdSince)}`
-        : "/dashboard/master/customers",
+        ? `/dashboard/customers?createdSince=${encodeURIComponent(query.createdSince)}`
+        : "/dashboard/customers",
       { scroll: false },
     );
   }, [query.createdSince, router]);
@@ -88,7 +88,7 @@ export function CustomersScreen({
         action={
           <Can feature="customers" action="create">
             <Button asChild>
-              <Link href="/dashboard/master/customers/new">
+              <Link href="/dashboard/customers/new">
                 <Plus className="size-4" />
                 Pelanggan baru
               </Link>

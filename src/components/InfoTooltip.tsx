@@ -121,7 +121,7 @@ export function InfoTooltip({
       <PopoverContent
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
-        className="w-72 max-w-[calc(100vw-2rem)] p-3 text-sm text-foreground"
+        className="w-72 max-w-[calc(100vw-2rem)] p-3 text-sm whitespace-pre-line text-foreground"
       >
         {hint}
       </PopoverContent>

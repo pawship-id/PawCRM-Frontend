@@ -97,12 +97,67 @@ describe("offline pricing — what it refuses rather than guesses", () => {
     ["a membership package", { kind: "membership", refId: "plan1" }],
     ["a pulled booking", { kind: "service", refId: "s1", bookingId: "b1" }],
     ["a home-visit fee", { kind: "service", refId: "s1", homeTripId: "t1" }],
-    ["a hand-picked lot", { kind: "product", refId: "p0", lots: [{ batchId: "x", qty: "1" }] }],
     ["a membership benefit", { kind: "product", refId: "p0", benefit: { membershipId: "m", benefitId: "b" } }],
   ])("refuses %s with a sentence about the connection", (_label, line) => {
     expect(() =>
       priceCart({ ...base, items: [line as never] }, { snapshot, maySetPrice: true }),
     ).toThrow(/butuh koneksi internet/);
+  });
+
+  /* A lot picked offline (25 Oct 2026, BO) — sold from the snapshot's lots. */
+  it("sells a hand-picked lot, labelled from the snapshot's shelf", () => {
+    const shelf = {
+      ...snapshot,
+      stock: {
+        warehouseId: "w1",
+        qty: {},
+        allowNegativeStock: true,
+        lots: {
+          p0: [
+            {
+              _id: "b1",
+              batchCode: "B2610-0042",
+              supplierBatchCode: null,
+              expiryDate: "2027-01-31T00:00:00.000Z",
+              qtyRemaining: "5",
+            },
+          ],
+        },
+      },
+    };
+    const priced = priceCart(
+      {
+        ...base,
+        items: [
+          {
+            kind: "product",
+            refId: "p0",
+            qty: "2",
+            lots: [
+              { batchId: "b1", qty: "1" },
+              { batchId: "b9", qty: "1" },
+            ],
+          },
+        ],
+      },
+      { snapshot: shelf, maySetPrice: true },
+    );
+    expect(priced.items[0].lots).toEqual([
+      { batchId: "b1", batchCode: "B2610-0042", qty: "1.0000" },
+      { batchId: "b9", batchCode: null, qty: "1.0000" },
+    ]);
+  });
+
+  it("refuses lots that do not add up to the line", () => {
+    expect(() =>
+      priceCart(
+        {
+          ...base,
+          items: [{ kind: "product", refId: "p0", qty: "2", lots: [{ batchId: "b1", qty: "1" }] }],
+        },
+        { snapshot, maySetPrice: true },
+      ),
+    ).toThrow(/harus sama dengan jumlah barang/);
   });
 
   it("refuses a typed price without the set-price grant, and records one with it", () => {

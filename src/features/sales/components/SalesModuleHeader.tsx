@@ -10,9 +10,12 @@ import {
 } from "@/features/permissions";
 
 /**
- * The head of the Penjualan module, worn by all five of its tabs.
+ * The head of the Penjualan module, worn by all four of its tabs.
  *
- * THE FIVE TABS ARE THE MOCKUP'S, and two of them open on "belum tersedia":
+ * FOUR TABS. The mockup drew five, but Piutang was removed on 25 October 2026
+ * (on request) — it was only ever a placeholder, and the Faktur tab's
+ * "Belum lunas" card already lists every unpaid invoice. Two of the four still
+ * open on "belum tersedia":
  *
  *   Ringkasan   — where the period's omzet came from, rather than what each
  *                 bill's status is. THE MODULE'S LANDING PAGE since 29 September
@@ -21,9 +24,6 @@ import {
  *   Faktur      — the invoice list, at `/dashboard/sales/invoice` with every
  *                 invoice screen under it (detail, print, payment, the create
  *                 form). It used to be the landing page.
- *   Piutang     — not a screen yet. It is a LENS on Faktur today (the pill row's
- *                 default), which is exactly why it cannot simply link there:
- *                 two tabs pointing at one route is one of them lying.
  *   E-commerce  — a placeholder since before this module had tabs, at a route
  *                 that predates it (/dashboard/ecommerce-sync).
  *   Retur       — no sales-return feature exists at all; there is not even a
@@ -56,7 +56,6 @@ export const SALES_TABS: GatedTab[] = [
     live under `/invoice`, and every one of them keeps this tab lit.
   */
   { label: "Faktur", href: "/dashboard/sales/invoice", anyOf: [{ feature: "customerInvoices" }] },
-  { label: "Piutang", href: "/dashboard/sales/piutang", anyOf: [{ feature: "receivables" }] },
   { label: "E-commerce", href: "/dashboard/ecommerce-sync", anyOf: [{ feature: "ecommerce" }] },
   { label: "Retur", href: "/dashboard/sales/retur", anyOf: [{ feature: "salesReturns" }] },
 ];

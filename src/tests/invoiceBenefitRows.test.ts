@@ -16,7 +16,6 @@ const benefit = (over: Record<string, unknown> = {}) =>
     kind: "free_item",
     scope: { target: "service", serviceIds: [], productIds: [], categoryIds: [], serviceKinds: [] },
     quota: { total: null, perPeriod: null, period: null },
-    maxPerTransaction: 1,
     usedTotal: 0,
     usedThisPeriod: 0,
     remainingTotal: null,

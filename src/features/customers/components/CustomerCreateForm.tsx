@@ -68,15 +68,15 @@ export function CustomerCreateForm() {
       const created = await customerService.create(customerFormToPayload(value));
       /*
         Redirect first, then fire the toast so it rides along on the list
-        screen. `/master/customers` is a different route from this form's own
-        `/master/customers/new`, so landing there mounts a genuinely fresh
+        screen. `/customers` is a different route from this form's own
+        `/customers/new`, so landing there mounts a genuinely fresh
         `CustomersScreen` — and its `page.tsx` is `force-dynamic` — so
         `CustomerModuleHeader`'s "Jumlah pelanggan" re-fetches rather than
         showing the count from before this customer existed (3 October 2026,
-        fixing a bug report: see `master/pets/page.tsx`'s own comment for the
+        fixing a bug report: see `pets/page.tsx`'s own comment for the
         version of this gap that was still open).
       */
-      router.push("/dashboard/master/customers");
+      router.push("/dashboard/customers");
       swalToast(`${created.name} tersimpan.`);
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
@@ -111,7 +111,7 @@ export function CustomerCreateForm() {
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/master/customers")}
+          onClick={() => router.push("/dashboard/customers")}
         >
           Batal
         </Button>

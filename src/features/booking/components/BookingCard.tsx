@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { PetFixLink, PetSummaryCard } from "@/features/pets";
 import { VariantChoicePicker } from "@/features/services";
 import { usePetOptions } from "@/hooks/usePetOptions";
-import { formatMoney } from "@/utils/decimal";
+import { formatMoney, isPositive, subtractDecimals, toMinor } from "@/utils/decimal";
 import {
   AXIS_LABEL,
   priceForPet,
@@ -32,7 +32,11 @@ import {
   type ServiceKind,
   type VariantOption,
 } from "@/types/api";
+import { AddonMemberToggle } from "./AddonMemberToggle";
 import { BookingBenefitField } from "./BookingBenefitField";
+import { OtherBenefitsInfo } from "./OtherBenefitsInfo";
+import type { AddonBenefit, CardBenefitView } from "../benefitQuote";
+import type { OtherBenefitsGroup } from "../otherBenefits";
 import { petServiceKey, UNASSIGNED } from "../bookingDraft";
 import type { BelongingDraft, BookingCardDraft } from "../bookingDraft";
 import type { VariantRefusal } from "../variantLine";
@@ -48,6 +52,20 @@ const NO_STORED_KEYS: ReadonlySet<string> = new Set();
 const petOnlyQuote = (service: Service | null, pet: Pet | null) => priceForPet(service, pet);
 const noCards = (): VariantOption[] => [];
 const noProblem = (): string | null => null;
+const NO_ADDON_BENEFITS: Readonly<Record<string, AddonBenefit>> = {};
+const NO_OTHER_BENEFITS: readonly OtherBenefitsGroup[] = [];
+/** The smaller of two amounts — a benefit never takes more than the line. */
+const minDecimal = (a: string, b: string) =>
+  (toMinor(a) ?? 0n) > (toMinor(b) ?? 0n) ? b : a;
+const NO_BENEFIT: CardBenefitView = {
+  show: false,
+  candidates: [],
+  selectedKey: null,
+  emptyMessage: null,
+  discount: "0",
+  appliedLabel: null,
+  feeWaived: false,
+};
 
 /**
  * ONE BOOKING ON THE FORM — its animal, its one main service, the add-ons under
@@ -101,6 +119,10 @@ export function BookingCard({
   cardsFor = noCards,
   zoneText = null,
   refusal = null,
+  benefit = NO_BENEFIT,
+  benefitError = null,
+  addonBenefits = NO_ADDON_BENEFITS,
+  otherBenefits = NO_OTHER_BENEFITS,
   onChange,
   onRemove,
 }: {
@@ -138,6 +160,22 @@ export function BookingCard({
   zoneText?: string | null;
   /** The server's refusal of this card's choices or zone. */
   refusal?: VariantRefusal | null;
+  /** This card's slice of the form's membership quote — see `cardBenefitView`. */
+  benefit?: CardBenefitView;
+  /** The server refused this card's benefit on save. */
+  benefitError?: string | null;
+  /**
+   * Each ticked add-on's benefit, by service id — the quote's recommendation,
+   * applied automatically (`addonBenefitsOf`). "Tanpa member" beside it sets
+   * the add-on to normal price (`card.noMemberAddonIds`), saved on the booking.
+   */
+  addonBenefits?: Readonly<Record<string, AddonBenefit>>;
+  /**
+   * What this animal's live cards hold that a booking cannot use — product
+   * benefits and perks (`otherBenefitsOf`). Ticking one notes it on the booking
+   * (`card.plannedExtras`) — no jatah, no price.
+   */
+  otherBenefits?: readonly OtherBenefitsGroup[];
   onChange: (next: Partial<BookingCardDraft>) => void;
   onRemove: () => void;
 }) {
@@ -264,7 +302,10 @@ export function BookingCard({
           <SelectField
             label="Hewan"
             value={card.petId}
-            onChange={(value) => onChange({ petId: value })}
+            /* Another animal's cards are not this one's — the noted benefits go. */
+            onChange={(value) =>
+              onChange(value === card.petId ? { petId: value } : { petId: value, plannedExtras: [] })
+            }
             options={pets.map((item) => ({
               value: item._id,
               label: item.name,
@@ -418,8 +459,22 @@ export function BookingCard({
                   </>
                 ) : price ? (
                   <>
+                    {/*
+                      A MEMBERSHIP DISCOUNT STRIKES THE NORMAL PRICE and shows
+                      what is left, with the benefit's name under it — the same
+                      figure the bar's total is summed from.
+                    */}
+                    {isPositive(benefit.discount) && (
+                      <span className="mr-1.5 tabular-nums text-muted line-through">
+                        {formatMoney(price)}
+                      </span>
+                    )}
                     <span className="font-medium tabular-nums text-foreground">
-                      {formatMoney(price)}
+                      {formatMoney(
+                        isPositive(benefit.discount)
+                          ? subtractDecimals(price, benefit.discount)
+                          : price,
+                      )}
                     </span>
                     {variantLabel && (
                       <span className="text-muted"> · varian {variantLabel}</span>
@@ -456,21 +511,55 @@ export function BookingCard({
             )}
 
             {/*
-              ─── MEMBERSHIP (30 September 2026) ──────────────────────────────
+              ─── THE MAIN SERVICE'S MEMBER BENEFIT (22 October 2026) ─────────
 
-              Shown only when this animal holds a card with a benefit that
-              covers what is being booked. A PLAN, not a spend: the badge under
-              it says so, because "pakai jatah gratisnya" agreed at the counter
-              and a quota actually deducted are two different promises, and a
-              customer told the wrong one at the till is the failure this whole
-              field exists to prevent.
+              On the price line it changes, as an add-on's is: the benefit's
+              name (a select when the quote offers more than one), "Tanpa
+              member" / "Pakai member", or why a covering benefit cannot be
+              used. What it shows is what the save sends — and HOLDS.
             */}
-            <BookingBenefitField
-              petId={card.petId}
-              serviceId={card.serviceId}
-              value={card.plannedBenefit}
-              onChange={(plannedBenefit) => onChange({ plannedBenefit })}
-            />
+            {service && price && !inactive && (
+              <BookingBenefitField
+                view={benefit}
+                serviceName={service.name}
+                disabled={disabled || locked}
+                error={benefitError}
+                onPick={(candidate) =>
+                  onChange({
+                    benefitPicked: true,
+                    plannedBenefit: candidate
+                      ? {
+                          membershipId: candidate.membershipId,
+                          benefitId: candidate.benefitId,
+                          optionId: candidate.optionId ?? null,
+                        }
+                      : null,
+                  })
+                }
+              />
+            )}
+            {/* A refusal on save still needs a home when the price line has none. */}
+            {!(service && price && !inactive) && benefitError && (
+              <p role="alert" className="mt-2 text-sm font-semibold text-danger-ink">
+                {benefitError}
+              </p>
+            )}
+
+            {/*
+              What the animal's cards hold beyond this booking. Each line is a
+              checkbox: "benefit yang akan diberikan di kunjungan ini", saved
+              as `plannedExtras` — a note, no jatah, no price (22 Oct 2026).
+            */}
+            {otherBenefits.length > 0 && (
+              <div className="mt-3">
+                <OtherBenefitsInfo
+                  groups={otherBenefits}
+                  selected={card.plannedExtras ?? []}
+                  disabled={disabled}
+                  onChange={(plannedExtras) => onChange({ plannedExtras })}
+                />
+              </div>
+            )}
 
             {offeredAddons.length > 0 && (
               <div className="mt-3">
@@ -494,6 +583,33 @@ export function BookingCard({
                     */
                     const addonInactive =
                       addonPrice.inactive && !wasStored(addon._id);
+                    /*
+                      THE ADD-ON'S MEMBER BENEFIT (22 October 2026) — applied by
+                      the quote, not chosen: the normal price struck, what is
+                      left, and the benefit's name as the till writes it.
+                    */
+                    const addonMember =
+                      checked && addonPrice.price && !addonInactive
+                        ? (addonBenefits[addon._id] ?? null)
+                        : null;
+                    const addonOff =
+                      addonMember && !addonMember.optedOut && addonPrice.price
+                        ? minDecimal(addonMember.discount, addonPrice.price)
+                        : null;
+                    const memberToggle = (optedOut: boolean) => (
+                      <AddonMemberToggle
+                        optedOut={optedOut}
+                        addonName={addon.name}
+                        disabled={disabled || locked}
+                        onToggle={(optOut) =>
+                          onChange({
+                            noMemberAddonIds: optOut
+                              ? [...(card.noMemberAddonIds ?? []), addon._id]
+                              : (card.noMemberAddonIds ?? []).filter((id) => id !== addon._id),
+                          })
+                        }
+                      />
+                    );
 
                     return (
                       <CheckRow
@@ -502,6 +618,40 @@ export function BookingCard({
                         description={
                           addonInactive ? (
                             `Varian nonaktif — tidak bisa dipilih untuk ${pet?.name ?? "hewan ini"}.`
+                          ) : addonPrice.price && addonMember && addonOff ? (
+                            <span data-addon-member className="block">
+                              <span className="tabular-nums">
+                                <span className="mr-1.5 line-through">
+                                  {formatMoney(addonPrice.price)}
+                                </span>
+                                <span className="font-medium text-foreground">
+                                  {formatMoney(subtractDecimals(addonPrice.price, addonOff))}
+                                </span>
+                                {addonPrice.durationMin ? ` · +${addonPrice.durationMin} mnt` : ""}
+                              </span>
+                              <span className="flex flex-wrap items-center gap-x-2">
+                                <span className="font-semibold text-success">
+                                  {addonMember.label}
+                                </span>
+                                {memberToggle(false)}
+                              </span>
+                              {addonMember.quota && (
+                                <span className="block">
+                                  Perkiraan — jatah terpakai saat dibayar di kasir.
+                                </span>
+                              )}
+                            </span>
+                          ) : addonPrice.price && addonMember?.optedOut ? (
+                            /* "Tanpa member" — the normal price, and the way back. */
+                            <span data-addon-no-member className="block">
+                              <span className="tabular-nums">
+                                {`${formatMoney(addonPrice.price)}${addonPrice.durationMin ? ` · +${addonPrice.durationMin} mnt` : ""}`}
+                              </span>
+                              <span className="flex flex-wrap items-center gap-x-2">
+                                <span>Tanpa member</span>
+                                {memberToggle(true)}
+                              </span>
+                            </span>
                           ) : addonPrice.price ? (
                             `${formatMoney(addonPrice.price)}${addonPrice.durationMin ? ` · +${addonPrice.durationMin} mnt` : ""}`
                           ) : addonPrice.missingAxis === "sizeCategory" && pet ? (
@@ -532,6 +682,14 @@ export function BookingCard({
                               : card.addonServiceIds.filter(
                                   (id) => id !== addon._id,
                                 ),
+                            /* Unticked, it forgets "Tanpa member" too. */
+                            ...(next
+                              ? {}
+                              : {
+                                  noMemberAddonIds: (card.noMemberAddonIds ?? []).filter(
+                                    (id) => id !== addon._id,
+                                  ),
+                                }),
                           })
                         }
                       />
