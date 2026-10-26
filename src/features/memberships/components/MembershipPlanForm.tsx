@@ -49,6 +49,7 @@ import {
 import { parseVariantKey, serviceVariantPrices } from "../variantKey";
 import { BenefitEditor } from "./BenefitEditor";
 import { FieldBlock, SelectBlock } from "./FormBits";
+import { PlanAccountingCard, useTenantRecognition } from "./PlanAccountingCard";
 import { PlanPreview } from "./PlanPreview";
 import { VariantPriceTable } from "./VariantPriceTable";
 
@@ -78,6 +79,7 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
   const { choices } = usePetOptions();
   const { branches } = useBranchOptions();
   const catalog = useMembershipCatalog();
+  const tenantRecognition = useTenantRecognition();
 
   const set = <K extends keyof PlanDraft>(key: K, value: PlanDraft[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
@@ -92,7 +94,7 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
     setFieldErrors({});
 
     try {
-      const payload = draftToPayload(draft, { editing });
+      const payload = draftToPayload(draft, { editing, tenantRecognition });
       const saved = editing
         ? await membershipService.updatePlan(plan!.id, payload)
         : await membershipService.createPlan(payload);
@@ -413,6 +415,13 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
             errors={fieldErrors}
           />
 
+          {/* ───────────────────────────────────── Pengakuan pendapatan */}
+          <PlanAccountingCard
+            draft={draft}
+            onChange={(patch) => setDraft((current) => ({ ...current, ...patch }))}
+            disabled={submitting}
+          />
+
           {/* ───────────────────────────────────── Tampilan publik */}
           <Card title="Tampilan publik" description="Halaman /membership di website.">
             <div className="flex flex-col gap-4">
@@ -474,9 +483,17 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
 }
 
 /**
- * "Isi otomatis dari [layanan] × N" — the package price per variant taken from
- * a service's own grid, times N (a "bayar 5" prepaid package). Merges into the
- * table: a variant already typed for another key stays.
+ * "SALIN HARGA DARI LAYANAN" — a typing shortcut for the per-variant price
+ * table, and NOTHING ELSE: the grid of one service, times N (a "bayar 5×"
+ * prepaid package), copied into the rows once.
+ *
+ * IT USED TO SIT OPEN AS "Isi otomatis dari [layanan]", and read as if the
+ * package belonged to that service (26 October 2026, on request: "jangan
+ * sampai ambigu"). It is now folded behind a button marked optional, and the
+ * open box says in words that it copies prices only — what a member may use
+ * is the Benefit card's business — and that later price changes do not follow.
+ *
+ * MERGES into the table: a variant the service does not price stays as typed.
  */
 function AutoFill({
   services,
@@ -485,46 +502,78 @@ function AutoFill({
   services: { _id: string; name: string }[];
   onFill: (serviceId: string, times: number) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const [serviceId, setServiceId] = useState("");
-  const [times, setTimes] = useState("5");
+  const [times, setTimes] = useState("1");
   const count = Number.parseInt(times, 10);
 
   if (services.length === 0) return null;
 
+  if (!open) {
+    return (
+      <div>
+        <Button type="button" variant="secondary" size="sm" onClick={() => setOpen(true)}>
+          Salin harga dari layanan (opsional)
+        </Button>
+      </div>
+    );
+  }
+
+  const name = services.find((service) => service._id === serviceId)?.name;
+
   return (
-    <div className="flex flex-wrap items-end gap-2 rounded-lg bg-surface-hover p-3">
-      <FilterSelect
-        layout="field"
-        label="Isi otomatis dari"
-        active={false}
-        placeholder="Pilih layanan"
-        value={serviceId}
-        options={services.map((service) => ({
-          value: service._id,
-          label: service.name,
-        }))}
-        onChange={setServiceId}
-        className="min-w-56"
-      />
-      <label className="flex flex-col gap-1.5">
-        <span className="text-xs font-semibold">Dikali</span>
-        <Input
-          type="number"
-          min={1}
-          value={times}
-          onChange={(event) => setTimes(event.target.value)}
-          className="h-10 w-20 tabular-nums"
-          aria-label="Dikali berapa"
+    <div className="flex flex-col gap-3 rounded-lg bg-surface-hover p-3">
+      <div className="flex flex-col gap-1">
+        <p className="text-sm font-semibold">Salin harga dari layanan</p>
+        <p className="max-w-prose text-sm text-muted">
+          Hanya untuk mengisi tabel harga di bawah dengan cepat: harga tiap varian layanan
+          dikali jumlah yang kamu isi. Ini <strong>tidak</strong> membatasi paket ke layanan
+          tersebut. Apa yang bisa dipakai anggota diatur di bagian Benefit. Kalau harga
+          layanan berubah nanti, harga paket tidak ikut berubah.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <FilterSelect
+          layout="field"
+          label="Layanan"
+          active={false}
+          placeholder="Pilih layanan"
+          value={serviceId}
+          options={services.map((service) => ({
+            value: service._id,
+            label: service.name,
+          }))}
+          onChange={setServiceId}
+          className="min-w-56"
         />
-      </label>
-      <Button
-        type="button"
-        variant="secondary"
-        disabled={!serviceId || !(count > 0)}
-        onClick={() => onFill(serviceId, count)}
-      >
-        Isi
-      </Button>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs font-semibold">Dikali (jumlah sesi)</span>
+          <Input
+            type="number"
+            min={1}
+            value={times}
+            onChange={(event) => setTimes(event.target.value)}
+            className="h-10 w-24 tabular-nums"
+            aria-label="Dikali berapa"
+          />
+        </label>
+        <Button
+          type="button"
+          disabled={!serviceId || !(count > 0)}
+          onClick={() => {
+            onFill(serviceId, count);
+            swalToast(
+              `Harga ${name ?? "layanan"} × ${count} disalin ke tabel. Ubah per baris kalau perlu.`,
+            );
+            setOpen(false);
+          }}
+        >
+          Salin ke tabel
+        </Button>
+        <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+          Tutup
+        </Button>
+      </div>
     </div>
   );
 }

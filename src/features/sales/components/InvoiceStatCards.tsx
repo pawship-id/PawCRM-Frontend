@@ -67,8 +67,8 @@ export function InvoiceStatCards({
         label="Omzet periode"
         hint={
           ledger
-            ? "Penjualan barang dan jasa setelah diskon dan retur, sebelum PPN — sama dengan Total pendapatan di Laba Rugi untuk periode dan cabang ini. Ongkir dan biaya lain tidak termasuk; di Laba Rugi keduanya masuk Pendapatan lain-lain."
-            : "Penjualan dari faktur di tabel: setelah diskon, sebelum PPN, tanpa ongkir dan biaya lain. Ikut filter yang dipilih; faktur yang dibatalkan tidak dihitung. Retur tidak mengurangi angka ini — yang sudah dikurangi retur ada di tab Ringkasan dan Laba Rugi."
+            ? "Penjualan barang dan jasa setelah diskon dan retur, sebelum PPN — sama dengan Total pendapatan di Laba Rugi untuk periode dan cabang ini. Ongkir dan biaya lain tidak termasuk; di Laba Rugi keduanya masuk Pendapatan lain-lain. Paket membership yang diakui bertahap hanya dihitung bagian yang sudah diakui."
+            : "Penjualan dari faktur di tabel: setelah diskon, sebelum PPN, tanpa ongkir dan biaya lain. Ikut filter yang dipilih; faktur yang dibatalkan tidak dihitung. Retur tidak mengurangi angka ini — yang sudah dikurangi retur ada di tab Ringkasan dan Laba Rugi. Paket membership dihitung penuh di bulan terjual, walau di Laba Rugi diakui bertahap."
         }
         value={revenue !== undefined ? formatMoney(revenue) : "—"}
         caption={

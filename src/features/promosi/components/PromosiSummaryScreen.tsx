@@ -47,6 +47,7 @@ import {
   type SummaryPeriod,
 } from "../hooks/usePromosiSummary";
 import { PromosiModuleHeader } from "./PromosiModuleHeader";
+import { UnrecognizedBalanceCard } from "./UnrecognizedBalanceCard";
 
 /**
  * Promosi › Ringkasan — the membership version of the BO prototype's
@@ -126,7 +127,7 @@ export function PromosiSummaryScreen() {
               label="Penjualan paket"
               value={data ? formatRupiah(data.packagesSold.revenue) : "—"}
               caption={data ? `${data.packagesSold.count} paket terjual` : undefined}
-              hint={`Nilai paket membership yang terjual ${periodLabel.toLowerCase()}, diakui sebagai pendapatan saat terjual. Paket yang dibatalkan tidak dihitung.`}
+              hint={`Nilai paket membership yang terjual ${periodLabel.toLowerCase()}. Paket yang diterima di muka baru jadi pendapatan bertahap, lihat Saldo membership belum diakui. Paket yang dibatalkan tidak dihitung.`}
               loading={summary.loading && !data}
               error={Boolean(summary.error)}
             />
@@ -173,6 +174,8 @@ export function PromosiSummaryScreen() {
               error={Boolean(summary.error)}
             />
           </div>
+
+          <UnrecognizedBalanceCard branchId={branchId} />
 
           <AttentionPanel
             loading={attention.loading && !attention.data}

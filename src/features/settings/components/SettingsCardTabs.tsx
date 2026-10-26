@@ -52,6 +52,13 @@ const FINANCE_CARDS: SettingsCard[] = [
     href: SETTINGS_PATHS.pajak,
     permission: { feature: "tenants", action: "read" },
   },
+  {
+    title: "Membership",
+    description:
+      "Uang paket langsung jadi pendapatan, atau diterima di muka lalu diakui selama masa aktif kartu.",
+    href: SETTINGS_PATHS.membership,
+    permission: { feature: "tenants", action: "read" },
+  },
 ];
 
 const SYSTEM_CARDS: SettingsCard[] = [

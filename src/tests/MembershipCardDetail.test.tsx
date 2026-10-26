@@ -56,6 +56,7 @@ const card = membershipCard({
 beforeEach(() => {
   jest.clearAllMocks();
   mocked.getMembership.mockResolvedValue(card);
+  mocked.recognition.mockResolvedValue({ mode: "legacy", rows: [] });
   (branchService.list as jest.Mock).mockResolvedValue(listPage([{ _id: "b1", name: "Pusat" }]));
   (serviceService.list as jest.Mock).mockResolvedValue(
     listPage([{ _id: "svc-basic", name: "Basic Grooming" }]),

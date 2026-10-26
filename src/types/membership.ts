@@ -103,7 +103,8 @@ export type MembershipHistoryAction =
   | "transferred"
   | "redemption_moved"
   | "payment_received"
-  | "cancelled";
+  | "cancelled"
+  | "refunded";
 
 /**
  * The Kelola reasons — EXACT STRINGS, stored and shown as they are. Every
@@ -227,6 +228,99 @@ export interface PublicDisplay {
   badge: string | null;
 }
 
+/* ─────────────────────────────── pengakuan pendapatan (26 Okt 2026) */
+
+/** `immediate` — revenue the day it is sold; `deferred` — Pendapatan Diterima di Muka. */
+export type RecognitionMode = "immediate" | "deferred";
+
+/** How a deferred card earns: per day (posted at month end), or per use. */
+export type RecognitionMethod = "straight_line" | "per_use";
+
+/**
+ * A plan's own choice (BO no. 1: "di paket, prefilled dengan default tenant").
+ * Null on any field = whatever the tenant says at the moment of sale.
+ */
+export interface PlanAccounting {
+  recognition: RecognitionMode | null;
+  method: RecognitionMethod | null;
+  revenueSubAccountId: string | null;
+}
+
+/** The headline a card carries; the schedule is `GET /:id/recognition`. */
+export interface CardRecognition {
+  mode: RecognitionMode;
+  method: RecognitionMethod | null;
+  amount: string;
+  recognized: string;
+  closedAt: string | null;
+  refundedAmount: string | null;
+  refundedAt: string | null;
+}
+
+/** One row of the card's "Pengakuan pendapatan" table. */
+export interface RecognitionRow {
+  id: string | null;
+  kind: "period" | "use" | "forfeit" | "closing" | "sale";
+  key: string;
+  label: string | null;
+  date: string | null;
+  amount: string;
+  /** `planned` rows are projections from today's dates — not posted yet. */
+  status: "posted" | "planned" | "reversed";
+  journalEntryId: string | null;
+}
+
+export interface RecognitionSchedule {
+  /** `legacy` — sold before recognition existed; nothing else is filled. */
+  mode: RecognitionMode | "legacy";
+  method?: RecognitionMethod | null;
+  amount?: string;
+  recognized?: string;
+  remaining?: string;
+  totalDays?: number;
+  perDay?: string | null;
+  closedAt?: string | null;
+  refundedAmount?: string | null;
+  refundedAt?: string | null;
+  refundTransactionId?: string | null;
+  revenueAccount?: string | null;
+  unearnedAccount?: string | null;
+  units?: { benefitId: string; label: string | null; qty: number; used: number; total: string; perUse: string }[];
+  rows: RecognitionRow[];
+}
+
+export interface RecognitionSummary {
+  recognition: RecognitionMode;
+  unrecognized: string;
+  cards: number;
+}
+
+export interface RecognitionRunResult {
+  cards: number;
+  posted: number;
+  failures: { membershipId: string; number: string; message: string }[];
+}
+
+export interface RefundPreview {
+  mode: RecognitionMode;
+  method: RecognitionMethod | null;
+  paid: string;
+  recognized: string;
+  /** What a straight-line card earns for the days of this month before the refund. */
+  earnedNow: string;
+  suggested: string;
+  max: string;
+}
+
+export interface RefundMembershipInput {
+  /** A Kas & Bank account. */
+  accountId: string;
+  /** Omit to refund the suggested amount. */
+  amount?: string | null;
+  reason: string;
+  note?: string | null;
+}
+
 /** §2.1 — a plan as the API returns it. */
 export interface MembershipPlan {
   id: string;
@@ -251,6 +345,8 @@ export interface MembershipPlan {
   publicDisplay: PublicDisplay;
   renewalOfferDays: number;
   isActive: boolean;
+  /** Pengakuan pendapatan — see `PlanAccounting`. */
+  accounting?: PlanAccounting;
   benefits: MembershipBenefit[];
   createdAt: string | null;
   updatedAt: string | null;
@@ -412,6 +508,8 @@ export interface PetMembership {
   sourcePosTransactionId: string | null;
   renewedFromId: string | null;
   note: string | null;
+  /** Null on a card sold before recognition existed, or issued by hand. */
+  recognition?: CardRecognition | null;
   activePause: MembershipPause | null;
   /** In write order. */
   pauses: MembershipPause[];
@@ -575,6 +673,7 @@ export interface CreateMembershipPlanInput {
   publicDisplay?: Partial<PublicDisplay>;
   renewalOfferDays?: number;
   isActive?: boolean;
+  accounting?: Partial<PlanAccounting>;
   /** On PATCH this REPLACES the whole list — send back ids to keep benefits. */
   benefits?: BenefitInput[];
 }

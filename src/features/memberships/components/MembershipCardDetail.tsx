@@ -47,6 +47,7 @@ import { scopeSummary } from "./BenefitScopeField";
 import { JatahRows } from "./JatahRows";
 import { KelolaDialog, type KelolaTarget } from "./KelolaDialog";
 import { MembershipStatusBadge, ToneBadge } from "./MembershipStatusBadge";
+import { RecognitionPanel } from "./RecognitionPanel";
 
 /**
  * One member — the BO prototype's `anggotaDetail`: a hero saying whose card
@@ -112,6 +113,7 @@ export function MembershipCardDetail({ id }: { id: string }) {
         <div className="flex min-w-0 flex-col gap-6">
           <SisaJatah card={card} optionText={optionText} />
           <Ledger card={card} names={names} onMove={(row) => open("move", row)} />
+          <RecognitionPanel card={card} onChanged={reload} />
           <ChangeLog card={card} />
         </div>
 

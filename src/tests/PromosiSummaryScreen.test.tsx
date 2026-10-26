@@ -49,6 +49,11 @@ function primeAll(attention: MembershipAttention) {
     activeMembers: { count: 64, customers: 51, pets: 58 },
   });
   mocked.attention.mockResolvedValue(attention);
+  mocked.recognitionSummary.mockResolvedValue({
+    recognition: "immediate",
+    unrecognized: "0",
+    cards: 0,
+  });
   mocked.report.mockResolvedValue({
     summary: { cards: 12, revenue: "5400000.0000", benefitValue: "1830000.0000", margin: "0" },
     plans: [
@@ -154,6 +159,19 @@ describe("PromosiSummaryScreen", () => {
       expect(mocked.summary).toHaveBeenLastCalledWith(expect.objectContaining({ branchId: "b1" })),
     );
     expect(mocked.attention).toHaveBeenLastCalledWith({ branchId: "b1", withinDays: 14 });
+  });
+
+  it("shows the unrecognised membership balance once the tenant defers", async () => {
+    primeAll({ withinDays: 14, expiring: [], unusedQuota: [] });
+    mocked.recognitionSummary.mockResolvedValue({
+      recognition: "deferred",
+      unrecognized: "1072826.0000",
+      cards: 3,
+    });
+    renderWithAuth(<PromosiSummaryScreen />);
+
+    expect(await screen.findByText("Saldo membership belum diakui")).toBeInTheDocument();
+    expect(screen.getByText("dari 3 kartu yang masih berjalan")).toBeInTheDocument();
   });
 
   it("computes the three windows by calendar day", () => {
