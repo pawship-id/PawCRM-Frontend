@@ -285,12 +285,6 @@ export function ServiceSummaryPanel({
               : `${(service.addonServiceIds ?? []).length} terpasang`}
           </Fact>
         </dl>
-        {service.billingUnit === "per_visit" && (
-          <p className="mt-4 text-xs text-muted">
-            Per kunjungan belum mengubah tagihan: sampai fitur antar-jemput
-            tersedia, layanan ini masih ditagih per hewan.
-          </p>
-        )}
       </Card>
 
       <Card title="Yang perlu dilengkapi">
