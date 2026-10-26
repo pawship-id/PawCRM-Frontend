@@ -1578,13 +1578,6 @@ export interface UpdateSupplierCategoryInput {
 }
 
 /**
- * A customer's VIP tier — a closed enum mirroring VIP_TIERS in
- * customer.model.js. Most customers have none, so the field is nullable and the
- * screens treat `null` as "no tier".
- */
-export type VipTier = "bronze" | "silver" | "gold" | "platinum";
-
-/**
  * A customer, as returned by GET /api/customers. A person a tenant does business
  * with (pet owner, buyer, client).
  *
@@ -1645,6 +1638,13 @@ export interface Customer {
   /** What the shop needs to remember. Read at the till and on a booking card. */
   notes: string | null;
   /**
+   * Free-form labels (26 October 2026) — `pelanggan-lama`, `reseller`. Stored
+   * normalised (trim, lowercase, spaces → hyphens, deduped; the pet tag limits)
+   * and always present, `[]` when none. A LABEL ONLY: shown on the profile, not
+   * filtered on, not carried into the list, the booking card or the till.
+   */
+  tags: string[];
+  /**
    * ⚠️ ABSENT ON A CUSTOMER WRITTEN BEFORE THE FIELD — the API reads with
    * `.lean()`, which skips the schema defaults behind it, exactly as `location`
    * below is absent for its own reason. Never read a flag off this directly;
@@ -1657,7 +1657,6 @@ export interface Customer {
    * lng: null}` = no pin. Absent on a customer read before the field existed.
    */
   location?: GeoLocation;
-  vipTier: VipTier | null;
   /**
    * Whether this customer appears in another module's picker (POS, booking,
    * the sales invoice form) — orthogonal to `deletedAt`, the same pair
@@ -1665,7 +1664,7 @@ export interface Customer {
    *
    * ⚠️ ABSENT ON A CUSTOMER WRITTEN BEFORE THE FIELD EXISTED, same reason as
    * `notifications` above. Never compare this directly — `isCustomerActive()`
-   * in `CustomerVipBadge.tsx` is the one place that resolves it, and absent
+   * in `CustomerStatusBadge.tsx` is the one place that resolves it, and absent
    * reads as active.
    */
   isActive?: boolean;
@@ -1679,7 +1678,6 @@ export interface Customer {
 export interface CustomerListQuery {
   page?: number;
   limit?: number;
-  vipTier?: VipTier;
   /** The toolbar's Kategori and Jenis — narrowed on the server, never here. */
   customerTypeId?: string;
   kind?: CustomerKind;
@@ -1767,7 +1765,6 @@ export interface DormantCustomer {
   name: string;
   phone: string | null;
   email: string | null;
-  vipTier: VipTier | null;
   createdAt: string;
   /** Their last settled sale. ABSENT when they have never bought anything. */
   lastVisitAt?: string | null;
@@ -1863,12 +1860,13 @@ export interface CreateCustomerInput {
   phone?: string | null;
   address?: string | null;
   location?: GeoLocationInput | null;
-  vipTier?: VipTier | null;
   kind?: CustomerKind;
   customerTypeId?: string | null;
   taxId?: string | null;
   picName?: string | null;
   notes?: string | null;
+  /** Normalised by the server too. `[]` clears them. */
+  tags?: string[];
   /** Partial: a form that flips one switch may send one key. */
   notifications?: Partial<CustomerNotifications>;
   /** Defaults to `true` on the server when omitted. */
@@ -1886,12 +1884,13 @@ export interface UpdateCustomerInput {
   phone?: string | null;
   address?: string | null;
   location?: GeoLocationInput | null;
-  vipTier?: VipTier | null;
   kind?: CustomerKind;
   customerTypeId?: string | null;
   taxId?: string | null;
   picName?: string | null;
   notes?: string | null;
+  /** Normalised by the server too. `[]` clears them. */
+  tags?: string[];
   notifications?: Partial<CustomerNotifications>;
   isActive?: boolean;
 }

@@ -92,7 +92,7 @@ export function CustomerSearchDialog({
         limit: RESULT_LIMIT,
         search: search || undefined,
         // A picker never offers a customer somebody switched off (2 October
-        // 2026) — see `isCustomerActive` in `CustomerVipBadge.tsx`.
+        // 2026) — see `isCustomerActive` in `CustomerStatusBadge.tsx`.
         isActive: true,
       })
       .then((result) => {

@@ -58,9 +58,9 @@ function customer(overrides: Partial<Customer> = {}): Customer {
     taxId: null,
     picName: null,
     notes: null,
+    tags: [],
     notifications: { bookingReminder: true, membershipRenewal: true, promo: false },
     isActive: true,
-    vipTier: null,
     deletedAt: null,
     createdAt: "2025-01-12T00:00:00.000Z",
     updatedAt: "2025-01-12T00:00:00.000Z",
@@ -285,7 +285,7 @@ describe("header sorting", () => {
 
     await user.click(screen.getByRole("button", { name: "Filter" }));
 
-    expect(screen.getByLabelText("Filter tier VIP")).toBeVisible();
+    expect(screen.getByLabelText("Filter jenis pelanggan")).toBeVisible();
     expect(screen.queryByLabelText("Urutkan")).not.toBeInTheDocument();
   });
 
@@ -298,23 +298,23 @@ describe("header sorting", () => {
     expect(screen.getByText("Filter")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Filter" }));
-    await user.click(screen.getByLabelText("Filter tier VIP"));
-    await user.click(await screen.findByRole("option", { name: "Gold" }));
+    await user.click(screen.getByLabelText("Filter jenis pelanggan"));
+    await user.click(await screen.findByRole("option", { name: "Perusahaan" }));
     await user.click(screen.getByRole("button", { name: "Terapkan" }));
     await waitFor(() =>
       expect(mockedCustomerService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ vipTier: "gold", sort: "codeAsc" }),
+        expect.objectContaining({ kind: "company", sort: "codeAsc" }),
       ),
     );
 
-    // The tier is counted; the ordering never is.
+    // The kind is counted; the ordering never is.
     expect(await screen.findByText("Filter (1)")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Filter" }));
     await user.click(screen.getByRole("button", { name: "Reset" }));
 
     await waitFor(() =>
       expect(mockedCustomerService.list).toHaveBeenLastCalledWith(
-        expect.objectContaining({ vipTier: undefined, sort: "codeAsc" }),
+        expect.objectContaining({ kind: undefined, sort: "codeAsc" }),
       ),
     );
   });

@@ -34,7 +34,6 @@ export const customerService = {
       query: {
         page: query.page,
         limit: query.limit,
-        vipTier: query.vipTier,
         customerTypeId: query.customerTypeId,
         kind: query.kind,
         search: query.search,
@@ -71,6 +70,14 @@ export const customerService = {
     apiClient.get<DormantCustomerList>("/customers/dormant", {
       query: { days: query.days, page: query.page, limit: query.limit },
     }),
+
+  /**
+   * GET /customers/tags — every customer tag the tenant already uses, sorted.
+   *
+   * A BARE ARRAY, like `petService.tags()`: the vocabulary the customer form
+   * offers as suggestions, so a tag is typed once and picked thereafter.
+   */
+  tags: () => apiClient.get<string[]>("/customers/tags"),
 
   /**
    * GET /customers/history — the Riwayat tab: every customer's services,

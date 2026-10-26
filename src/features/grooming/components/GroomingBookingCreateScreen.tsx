@@ -953,10 +953,10 @@ export function GroomingBookingCreateScreen() {
                     </Fact>
                     <Fact label="Member">
                       {/*
-                        THE MEMBERSHIP CARDS, NOT THE OLD VIP TIER — a card is
-                        what the benefit below is spent from. One chip per
-                        live card: the animal's name, or "Semua hewan" for a
-                        card held by the customer.
+                        SHOWS THE MEMBERSHIP CARDS — a card is what the
+                        benefit below is spent from. One chip per live card:
+                        the animal's name, or "Semua hewan" for a card held by
+                        the customer.
                       */}
                       {(() => {
                         /*

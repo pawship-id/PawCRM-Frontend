@@ -36,10 +36,9 @@ import { Can, usePermissions } from "@/features/permissions";
 import type { Customer, CustomerSort } from "@/types/api";
 
 import {
-  CustomerVipBadge,
   CustomerStatusBadge,
   isCustomerActive,
-} from "./CustomerVipBadge";
+} from "./CustomerStatusBadge";
 
 /** The row action that opens a confirm dialog, plus the customer it targets. */
 type PendingAction = {
@@ -241,12 +240,6 @@ export function CustomersTable({
               Perusahaan
             </Badge>
           )}
-          {/*
-            THE TIER RIDES WITH THE NAME, where the mockup puts the membership
-            chip. It is a property of the person rather than a column, and most
-            customers have none — a column of dashes for the sake of one badge.
-          */}
-          {customer.vipTier && <CustomerVipBadge tier={customer.vipTier} />}
         </div>
       ),
     },

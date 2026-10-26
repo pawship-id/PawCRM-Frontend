@@ -19,8 +19,8 @@ import { useCustomerTypeList } from "@/features/settings";
 import type { CustomersQuery } from "../hooks/useCustomers";
 
 /**
- * The list controls: one row — search, and one Filter button — with the VIP tier
- * and the deleted toggle inside a panel.
+ * The list controls: one row — search, and one Filter button — with Kategori,
+ * Jenis, Status and the deleted toggle inside a panel.
  *
  * Purely presentational: it renders the current query and reports changes up to
  * useCustomers via `onChange`.
@@ -31,34 +31,21 @@ import type { CustomersQuery } from "../hooks/useCustomers";
  * between them should not have to notice which arrangement each screen picked —
  * and search taking the whole row is what narrowing a list of names starts with.
  *
- * FIVE FIELDS IN THE PANEL, AND ALL FIVE NARROW SOMETHING — Kategori and Jenis
+ * FOUR FIELDS IN THE PANEL, AND ALL FOUR NARROW SOMETHING — Kategori and Jenis
  * went live with the form's own fields on 27 September 2026, and the Kategori
  * list is the tenant's own from Pengaturan › Tipe pelanggan. Status joined
- * them on 2 October 2026, the day the customer gained an `isActive` axis.
- * Five fields is comfortably over the floor §8 sets for a panel; it was the
- * neighbourhood argument that carried it when there were two.
+ * them on 2 October 2026, the day the customer gained an `isActive` axis. The
+ * VIP tier filter left with the tier itself (26 October 2026). Four fields is
+ * comfortably over the floor §8 sets for a panel; it was the neighbourhood
+ * argument that carried it when there were two.
  *
  * NO CREATE BUTTON — it moved up to CustomerModuleHeader when the module grew a
  * tab bar, because the button belongs to the page rather than to the narrowing
  * controls, and each tab creates a different thing.
- *
- * The tiers are spelled out rather than mapped from the `VipTier` union with a
- * capitalize class: the label is copy, and copy that happens to match the API's
- * value is a coincidence, not a rule.
  */
-const TIERS = withAll<CustomersQuery["vipTier"]>(
-  [
-    { value: "bronze", label: "Bronze" },
-    { value: "silver", label: "Silver" },
-    { value: "gold", label: "Gold" },
-    { value: "platinum", label: "Platinum" },
-  ],
-  "Semua tier",
-);
 
 /** Everything the panel edits, as one draft. */
 interface CustomerFilters {
-  vipTier: CustomersQuery["vipTier"];
   customerTypeId: CustomersQuery["customerTypeId"];
   kind: CustomersQuery["kind"];
   active: CustomersQuery["active"];
@@ -71,7 +58,6 @@ interface CustomerFilters {
  * opens on "Aktif", so Reset puts it back there rather than to "Semua status".
  */
 const CLEARED: CustomerFilters = {
-  vipTier: "",
   customerTypeId: "",
   kind: "",
   active: true,
@@ -106,7 +92,6 @@ export function CustomersToolbar({
   onChange: (patch: Partial<CustomersQuery>) => void;
 }) {
   const applied: CustomerFilters = {
-    vipTier: query.vipTier,
     customerTypeId: query.customerTypeId,
     kind: query.kind,
     active: query.active,
@@ -121,7 +106,6 @@ export function CustomersToolbar({
    */
   function apply(next: CustomerFilters) {
     const patch: Partial<CustomersQuery> = {};
-    if (next.vipTier !== query.vipTier) patch.vipTier = next.vipTier;
     if (next.customerTypeId !== query.customerTypeId)
       patch.customerTypeId = next.customerTypeId;
     if (next.kind !== query.kind) patch.kind = next.kind;
@@ -169,7 +153,8 @@ export function CustomersToolbar({
 }
 
 /**
- * The tier filter and the deleted toggle, behind one button.
+ * The Kategori, Jenis and Status filters and the deleted toggle, behind one
+ * button.
  *
  * The fields wait for Terapkan — that is what a panel is (§8). Reset returns the
  * whole set to its defaults and applies at once, because clearing a filter is
@@ -206,7 +191,6 @@ function CustomerFilterPanel({
    * should admit to.
    */
   const count = [
-    applied.vipTier !== "",
     applied.customerTypeId !== "",
     applied.kind !== "",
     applied.active !== true,
@@ -246,17 +230,8 @@ function CustomerFilterPanel({
           setOpen(false);
         }}
       >
-        <FilterSelect
-          layout="field"
-          label="Tier"
-          ariaLabel="Filter tier VIP"
-          value={draft.vipTier}
-          options={TIERS}
-          onChange={(vipTier) => patch({ vipTier })}
-        />
-
         {/*
-          THE MOCKUP'S OTHER TWO, LIVE SINCE 27 September 2026. They were drawn
+          KATEGORI AND JENIS, LIVE SINCE 27 September 2026. They were drawn
           disabled while the fields did not exist — a filter that narrows nothing
           is worse than a missing one, because somebody sets it and then reads the
           list as though it had been applied. Both narrow on the SERVER: sifting
@@ -286,7 +261,7 @@ function CustomerFilterPanel({
           AKTIF / NONAKTIF / SEMUA (2 October 2026) — the same question
           `BranchesToolbar` asks, now that a customer carries the same
           `isActive` axis a branch does. See `isCustomerActive` in
-          `CustomerVipBadge.tsx`.
+          `CustomerStatusBadge.tsx`.
         */}
         <FilterSelect
           layout="field"

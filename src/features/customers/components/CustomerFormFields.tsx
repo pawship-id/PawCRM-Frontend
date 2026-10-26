@@ -1,11 +1,14 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import {
   CheckRow,
   CheckRowGroup,
   FilterSelect,
   LocationFields,
   SelectField,
+  TagField,
   TextField,
   TextareaField,
   toGeoLocation,
@@ -13,18 +16,17 @@ import {
   type LocationFieldsValue,
 } from "@/components";
 import { useCustomerTypeList } from "@/features/settings";
+import { customerService } from "@/services/customer.service";
 import type {
   CreateCustomerInput,
   Customer,
   CustomerKind,
-  VipTier,
 } from "@/types/api";
 
 import {
   customerNotifications,
   DEFAULT_CUSTOMER_NOTIFICATIONS,
 } from "../notifications";
-import { VipTierSelect } from "./VipTierSelect";
 
 /**
  * Everything the Pelanggan form holds, as one object.
@@ -44,8 +46,9 @@ export interface CustomerFormValue {
   location: LocationFieldsValue;
   taxId: string;
   picName: string;
-  vipTier: VipTier | "";
   notes: string;
+  /** Already normalised — `TagField` normalises as each one is added. */
+  tags: string[];
   notifications: {
     bookingReminder: boolean;
     membershipRenewal: boolean;
@@ -65,8 +68,8 @@ export function emptyCustomerForm(): CustomerFormValue {
     location: { lat: "", lng: "" },
     taxId: "",
     picName: "",
-    vipTier: "",
     notes: "",
+    tags: [],
     // The mockup's own: the two service messages on, marketing off. Promo is
     // opted INTO, never out of. Shared with `customerToForm` so a blank form
     // and an old customer with no stored flags start from the same answer.
@@ -86,8 +89,8 @@ export function customerToForm(customer: Customer): CustomerFormValue {
     location: toLocationFieldsValue(customer.location),
     taxId: customer.taxId ?? "",
     picName: customer.picName ?? "",
-    vipTier: customer.vipTier ?? "",
     notes: customer.notes ?? "",
+    tags: customer.tags ?? [],
     /*
       RESOLVED, NOT SPREAD. Spreading an absent `notifications` used to leave
       all three flags `undefined`, which drew the boxes unticked and then SAVED
@@ -123,8 +126,9 @@ export function customerFormToPayload(
     location: toGeoLocation(value.location),
     taxId: company ? blankToNull(value.taxId) : null,
     picName: company ? blankToNull(value.picName) : null,
-    vipTier: value.vipTier === "" ? null : value.vipTier,
     notes: blankToNull(value.notes),
+    // Always sent, `[]` included: an emptied list is how tags are cleared.
+    tags: value.tags,
     notifications: value.notifications,
   };
 }
@@ -145,8 +149,12 @@ const KINDS = [
  *
  * FIELD ORDER IS ui-rules §16's Form Entitas: the name first and full width,
  * then what KIND of customer this is, then how to reach them, then the optional
- * attributes, with Catatan last. Jenis and Kategori lead because they change what
- * the rest of the form shows.
+ * attributes, then Tag (§16's "metadata ringan"), with Catatan last. Jenis and
+ * Kategori lead because they change what the rest of the form shows.
+ *
+ * TAG IS A LABEL ONLY (BO, 26 October 2026): free text, with the tenant's own
+ * tags offered from `GET /customers/tags`. It shows on the profile and nowhere
+ * else — no list filter, no column, nothing at the till or on a booking.
  *
  * KATEGORI IS THE TENANT'S OWN LIST, read from Pengaturan › Tipe pelanggan
  * through that feature's own hook — not a copy of it. A shop that has never
@@ -170,6 +178,23 @@ export function CustomerFormFields({
   disabled?: boolean;
 }) {
   const { types, loading, error } = useCustomerTypeList();
+  const [knownTags, setKnownTags] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+
+    customerService
+      .tags()
+      .then((result) => {
+        if (active) setKnownTags(result);
+      })
+      /* Suggestions are a convenience. A shop can still type the tag. */
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const categoryOptions = [
     { value: "", label: "Tanpa kategori" },
@@ -298,14 +323,17 @@ export function CustomerFormFields({
             />
           </>
         )}
-
-        <VipTierSelect
-          value={value.vipTier}
-          onChange={(vipTier) => onChange({ vipTier })}
-          error={errors.vipTier}
-          disabled={disabled}
-        />
       </div>
+
+      <TagField
+        value={value.tags}
+        onChange={(tags) => onChange({ tags })}
+        suggestions={knownTags}
+        name="customer-tag"
+        placeholder="pelanggan-lama"
+        disabled={disabled}
+        error={errors.tags}
+      />
 
       {/* Catatan last, as §16 has it — an internal note, not published copy. */}
       <TextareaField

@@ -1384,8 +1384,8 @@ describe("GroomingBookingCreateScreen — membership benefit", () => {
     expect(screen.queryByText(/tekan Simpan lagi/)).not.toBeInTheDocument();
   });
 
-  it("reads the Member fact from the customer's cards, not the VIP tier", async () => {
-    customers.list.mockResolvedValue(page([{ ...customer, vipTier: "gold" } as Customer]));
+  it("reads the Member fact from the customer's cards", async () => {
+    customers.list.mockResolvedValue(page([customer]));
     memberships.listMemberships.mockResolvedValue(
       page([
         {
@@ -1418,7 +1418,6 @@ describe("GroomingBookingCreateScreen — membership benefit", () => {
     expect(await screen.findByText("Member · Tes Explorer")).toBeInTheDocument();
     expect(screen.getByText("Semua hewan · Keluarga")).toBeInTheDocument();
     expect(screen.getByText("1 hewan member")).toBeInTheDocument();
-    expect(screen.queryByText("Gold")).not.toBeInTheDocument();
     expect(memberships.listMemberships).toHaveBeenCalledTimes(1);
     expect(memberships.listMemberships).toHaveBeenCalledWith(
       expect.objectContaining({ customerId: "cust-1", status: ["active", "paused"] }),

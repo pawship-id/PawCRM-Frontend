@@ -41,7 +41,6 @@ function dormant(overrides: Partial<DormantCustomer> = {}): DormantCustomer {
     name: "Dewi Anggraini",
     phone: "081722225566",
     email: null,
-    vipTier: null,
     createdAt: "2025-01-01T00:00:00.000Z",
     lastVisitAt: "2025-06-01T00:00:00.000Z",
     daysSinceLastVisit: 83,
