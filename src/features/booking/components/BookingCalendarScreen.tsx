@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 
 import {
   Alert,
@@ -260,40 +260,63 @@ export function BookingCalendarScreen() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            aria-label="Sebelumnya"
-            onClick={() => setAnchor((prev) => addDays(prev, view === "harian" ? -1 : -7))}
-          >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <span className="text-sm font-semibold text-foreground">
+      {/*
+        THE SAME CARD AS THE DAY BOARD'S DATE BAR, stacking the same way on a
+        phone: the date and its arrows, then the way back beside Hari ini, then
+        Cabang and the view pills each across the full width. From `md` up it is
+        one row.
+      */}
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface px-4 py-3 md:flex-row md:flex-wrap md:items-center">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex flex-none items-center gap-1">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              aria-label="Sebelumnya"
+              onClick={() => setAnchor((prev) => addDays(prev, view === "harian" ? -1 : -7))}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              aria-label="Berikutnya"
+              onClick={() => setAnchor((prev) => addDays(prev, view === "harian" ? 1 : 7))}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+          <p className="min-w-0 text-base font-bold text-foreground">
             {view === "harian" ? longDay(anchor) : `${longDay(from)} – ${longDay(to)}`}
-          </span>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            aria-label="Berikutnya"
-            onClick={() => setAnchor((prev) => addDays(prev, view === "harian" ? 1 : 7))}
-          >
-            <ChevronRight className="size-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setAnchor(todayValue())}
-          >
-            Hari ini
-          </Button>
+          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-col gap-3 md:ml-auto md:flex-row md:flex-wrap md:items-center">
+          <div className="flex gap-2 md:gap-3">
+            {/*
+              THE WAY BACK TO THE DAY BOARD, mirroring its "Kalender groomer"
+              button — the breadcrumb alone is too small a target on a tablet.
+            */}
+            <Button asChild variant="secondary" size="sm" className="flex-1 md:flex-none">
+              <Link href="/dashboard/booking">
+                <ArrowLeft className="size-4" aria-hidden />
+                Kembali ke Kalender
+              </Link>
+            </Button>
+
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="flex-none"
+              onClick={() => setAnchor(todayValue())}
+            >
+              Hari ini
+            </Button>
+          </div>
+
           {/*
             EMPTY MEANS EVERY BRANCH, which is a legitimate question for an owner
             with two shops — and a wrong DEFAULT for one, which is why
@@ -306,6 +329,7 @@ export function BookingCalendarScreen() {
               value={branchId}
               options={namedOptions(scope.branches)}
               onChange={setPickedBranch}
+              className="w-full max-w-none md:w-auto md:max-w-60 [&>svg:last-child]:ml-auto md:[&>svg:last-child]:ml-0"
             />
           )}
 
@@ -314,6 +338,7 @@ export function BookingCalendarScreen() {
             options={VIEWS}
             onChange={setView}
             ariaLabel="Tampilan kalender"
+            className="grid grid-cols-2 md:flex [&>button]:justify-center"
           />
         </div>
       </div>

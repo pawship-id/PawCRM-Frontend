@@ -177,7 +177,11 @@ export function TodayScreen({
           Semua layanan dalam satu layar operasional.
         </PageHeading>
 
-        <div className="ml-auto flex flex-none flex-wrap items-center gap-2">
+        {/*
+          ON A PHONE THE TWO SPLIT THE WIDTH under the heading, rather than
+          hanging off its right edge with empty space beside them.
+        */}
+        <div className="flex w-full items-center gap-2 md:ml-auto md:w-auto md:flex-none [&>button]:flex-1 [&>button]:justify-center md:[&>button]:flex-none">
           <TodayFilterButton
             rows={board.rows}
             filters={filters}
@@ -197,54 +201,64 @@ export function TodayScreen({
         a step MEANS — a day, a week, a month — which is why they sit on the same
         row rather than in the filter panel.
       */}
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3">
-        <div className="flex items-center gap-1">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            aria-label="Sebelumnya"
-            onClick={() => step(-1)}
-          >
-            <ChevronLeft className="size-4" aria-hidden />
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            aria-label="Berikutnya"
-            onClick={() => step(1)}
-          >
-            <ChevronRight className="size-4" aria-hidden />
-          </Button>
+      {/*
+        ON A PHONE IT STACKS: the date and its arrows, then the two shortcuts
+        side by side, then Cabang and the view pills each across the full width
+        — the one-row bar wrapped into a ragged pile of mismatched widths there.
+        From `md` up it is the single row it always was.
+      */}
+      <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface px-4 py-3 md:flex-row md:flex-wrap md:items-center">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex flex-none items-center gap-1">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              aria-label="Sebelumnya"
+              onClick={() => step(-1)}
+            >
+              <ChevronLeft className="size-4" aria-hidden />
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              aria-label="Berikutnya"
+              onClick={() => step(1)}
+            >
+              <ChevronRight className="size-4" aria-hidden />
+            </Button>
+          </div>
+
+          <div className="min-w-0">
+            <p className="text-base font-bold text-foreground">{title}</p>
+            <p className="text-xs text-muted">{caption}</p>
+          </div>
         </div>
 
-        <div>
-          <p className="text-base font-bold text-foreground">{title}</p>
-          <p className="text-xs text-muted">{caption}</p>
-        </div>
+        <div className="flex flex-col gap-3 md:ml-auto md:flex-row md:flex-wrap md:items-center">
+          <div className="grid grid-cols-2 gap-2 md:flex md:items-center md:gap-3">
+            {/*
+              THE HOUR GRID IS A SECOND WAY TO READ THE SAME DAY — who is free at
+              two o'clock, which this board's columns do not answer. Its only link
+              used to sit on the booking list's toolbar, which is gone.
+            */}
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/dashboard/booking/kalender">Kalender groomer</Link>
+            </Button>
 
-        <div className="ml-auto flex flex-wrap items-center gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setAnchor(today);
-              setView("harian");
-            }}
-          >
-            Hari ini
-          </Button>
-
-          {/*
-            THE HOUR GRID IS A SECOND WAY TO READ THE SAME DAY — who is free at
-            two o'clock, which this board's columns do not answer. Its only link
-            used to sit on the booking list's toolbar, which is gone.
-          */}
-          <Button asChild variant="secondary" size="sm">
-            <Link href="/dashboard/booking/kalender">Kalender groomer</Link>
-          </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setAnchor(today);
+                setView("harian");
+              }}
+            >
+              Hari ini
+            </Button>
+          </div>
 
           {/*
             EMPTY MEANS EVERY BRANCH — a legitimate question for an owner with
@@ -258,6 +272,7 @@ export function TodayScreen({
               value={branchId}
               options={namedOptions(scope.branches)}
               onChange={setPickedBranch}
+              className="w-full max-w-none md:w-auto md:max-w-60 [&>svg:last-child]:ml-auto md:[&>svg:last-child]:ml-0"
             />
           )}
 
@@ -266,6 +281,7 @@ export function TodayScreen({
             value={view}
             options={VIEWS}
             onChange={setView}
+            className="grid grid-cols-3 md:flex [&>button]:justify-center [&>button]:px-2 md:[&>button]:px-4"
           />
         </div>
       </div>
