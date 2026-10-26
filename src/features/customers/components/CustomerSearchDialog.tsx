@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type UIEvent } from "react";
 import { Search, Plus, UserRound } from "lucide-react";
 
 import { Alert, Spinner } from "@/components";
@@ -16,14 +16,22 @@ import {
 } from "@/components/ui/dialog";
 import { Can } from "@/features/permissions";
 import { customerService } from "@/services/customer.service";
-import { ApiError } from "@/services/api-error";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import type { ApiWarning, Customer } from "@/types/api";
 
 import { CustomerQuickAddDialog } from "./CustomerQuickAddDialog";
 
-/** How many matches the list shows. A till picks one; it does not browse. */
-const RESULT_LIMIT = 8;
+/**
+ * How many customers one request brings back. The list SCROLLS (26 October
+ * 2026): it used to stop at 8, which left somebody browsing without a search
+ * term unable to see past the eighth name. The next page is asked for only
+ * when the list is scrolled near its end, so the dialog never loads the whole
+ * register up front.
+ */
+const PAGE_SIZE = 30;
+
+/** How close to the bottom (px) the list may get before the next page is asked for. */
+const LOAD_MORE_THRESHOLD = 160;
 
 /**
  * Finds an existing customer, or registers one on the spot.
@@ -70,53 +78,101 @@ export function CustomerSearchDialog({
   */
   const [query, setQuery] = useState({ search: "" });
   const [results, setResults] = useState<Customer[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+
+  /*
+    BUMPED ON EVERY NEW SEARCH, so a "next page" still in flight for the old
+    term cannot append its rows under the new one.
+  */
+  const searchRun = useRef(0);
+  const listRef = useRef<HTMLUListElement>(null);
 
   const term = query.search;
   const settled = useDebouncedQuery(query);
 
+  function fetchPage(nextPage: number) {
+    return customerService.list({
+      page: nextPage,
+      limit: PAGE_SIZE,
+      search: settled.search.trim() || undefined,
+      // A–Z, so a scrolled list reads like a register. Indexed on the server.
+      sort: "nameAsc",
+      // A picker never offers a customer somebody switched off (2 October
+      // 2026) — see `isCustomerActive` in `CustomerStatusBadge.tsx`.
+      isActive: true,
+    });
+  }
+
   useEffect(() => {
     if (!open) return;
 
-    let active = true;
-    const search = settled.search.trim();
+    const run = ++searchRun.current;
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
+    setLoadingMore(false);
     setError(null);
+    listRef.current?.scrollTo?.({ top: 0 });
 
-    customerService
-      .list({
-        limit: RESULT_LIMIT,
-        search: search || undefined,
-        // A picker never offers a customer somebody switched off (2 October
-        // 2026) — see `isCustomerActive` in `CustomerStatusBadge.tsx`.
-        isActive: true,
-      })
+    fetchPage(1)
       .then((result) => {
-        if (!active) return;
+        if (run !== searchRun.current) return;
         setResults(result.items);
+        setPage(1);
+        setHasMore(1 < (result.pagination?.totalPages ?? 1));
       })
-      .catch((err) => {
-        if (!active) return;
+      .catch(() => {
+        if (run !== searchRun.current) return;
         setResults([]);
+        setHasMore(false);
         // Our own sentence, never the server's — the API answers in English.
-        setError(
-          err instanceof ApiError
-            ? "Pencarian pelanggan gagal. Coba lagi."
-            : "Pencarian pelanggan gagal. Coba lagi.",
-        );
+        setError("Pencarian pelanggan gagal. Coba lagi.");
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (run === searchRun.current) setLoading(false);
       });
-
-    return () => {
-      active = false;
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settled, open]);
+
+  function loadMore() {
+    if (loading || loadingMore || !hasMore) return;
+
+    const run = searchRun.current;
+    const nextPage = page + 1;
+    setLoadingMore(true);
+
+    fetchPage(nextPage)
+      .then((result) => {
+        if (run !== searchRun.current) return;
+        setResults((current) => {
+          // A customer registered between pages shifts the order by one; never
+          // show the same row twice.
+          const seen = new Set(current.map((one) => one._id));
+          return [...current, ...result.items.filter((one) => !seen.has(one._id))];
+        });
+        setPage(nextPage);
+        setHasMore(nextPage < (result.pagination?.totalPages ?? nextPage));
+      })
+      .catch(() => {
+        if (run !== searchRun.current) return;
+        setError("Gagal memuat pelanggan berikutnya. Gulir lagi untuk mencoba.");
+      })
+      .finally(() => {
+        if (run === searchRun.current) setLoadingMore(false);
+      });
+  }
+
+  function handleScroll(event: UIEvent<HTMLUListElement>) {
+    const list = event.currentTarget;
+    if (list.scrollHeight - list.scrollTop - list.clientHeight < LOAD_MORE_THRESHOLD) {
+      loadMore();
+    }
+  }
 
   function choose(customer: Customer, warnings?: ApiWarning[]) {
     onSelect(customer, warnings);
@@ -174,7 +230,12 @@ export function CustomerSearchDialog({
               )}
             </div>
           ) : (
-            <ul className={loading ? "opacity-60" : undefined}>
+            <ul
+              ref={listRef}
+              onScroll={handleScroll}
+              aria-label="Daftar pelanggan"
+              className={`-mx-2 max-h-[min(24rem,50vh)] overflow-y-auto overscroll-contain px-2${loading ? " opacity-60" : ""}`}
+            >
               {results.map((customer) => (
                 <li key={customer._id}>
                   <button
@@ -216,6 +277,11 @@ export function CustomerSearchDialog({
                   </button>
                 </li>
               ))}
+              {loadingMore && (
+                <li className="flex items-center gap-2 px-2 py-3 text-sm text-muted">
+                  <Spinner /> Memuat…
+                </li>
+              )}
             </ul>
           )}
 

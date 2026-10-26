@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import {
@@ -231,6 +231,35 @@ describe("CustomerSearchDialog", () => {
       expect(mocked.list).toHaveBeenCalledWith(
         expect.objectContaining({ search: "rina" }),
       ),
+    );
+  });
+
+  it("scrolls past the first page instead of stopping at a handful of names", async () => {
+    const pageOne = Array.from({ length: 30 }, (_, i) =>
+      customer({ _id: `c${i}`, name: `Pelanggan ${i}` }),
+    );
+    const pageTwo = [customer({ _id: "c30", name: "Pelanggan 30" })];
+    mocked.list
+      .mockResolvedValueOnce({
+        items: pageOne,
+        pagination: { page: 1, limit: 30, total: 31, totalPages: 2 },
+      })
+      .mockResolvedValueOnce({
+        items: pageTwo,
+        pagination: { page: 2, limit: 30, total: 31, totalPages: 2 },
+      });
+    renderWithAuth(
+      <CustomerSearchDialog open onOpenChange={jest.fn()} onSelect={jest.fn()} />,
+    );
+
+    expect(await screen.findByText("Pelanggan 29")).toBeInTheDocument();
+
+    // jsdom has no layout: every size is 0, so any scroll reads as "at the end".
+    fireEvent.scroll(screen.getByRole("list", { name: /daftar pelanggan/i }));
+
+    expect(await screen.findByText("Pelanggan 30")).toBeInTheDocument();
+    expect(mocked.list).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2 }),
     );
   });
 
