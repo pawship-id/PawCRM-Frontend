@@ -38,6 +38,7 @@ export { CashierShiftsScreen } from "./components/CashierShiftsScreen";
 export { SupplierTypesScreen } from "./components/SupplierTypesScreen";
 export {
   IdentitySettingsScreen,
+  MembershipAccountingSettingsScreen,
   StockCashierSettingsScreen,
   TaxSettingsScreen,
 } from "./components/TenantSettingsScreens";

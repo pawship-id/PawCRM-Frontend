@@ -453,6 +453,12 @@ export type JournalSourceType =
    * Data awal.
    */
   | "opening_balance"
+  /**
+   * A membership card's money released from Pendapatan Diterima di Muka into
+   * revenue — a month end, a use, jatah hangus, or a paid faktur's package.
+   * Its Referensi is the card (MBR-…).
+   */
+  | "membership_recognition"
   | "manual";
 
 /**
@@ -493,7 +499,8 @@ export interface JournalSourceDocument {
     | "stock_opname"
     | "cash_transaction"
     | "customer_invoice"
-    | "purchase_invoice";
+    | "purchase_invoice"
+    | "pet_membership";
   id: string;
 }
 

@@ -472,6 +472,8 @@ function documentHref(document: JournalSourceDocument | null): string | null {
       return `/dashboard/sales/invoice/${document.id}`;
     case "purchase_invoice":
       return `/dashboard/purchasing/payables/${document.id}`;
+    case "pet_membership":
+      return `/dashboard/promosi/membership/anggota/${document.id}`;
     default:
       return null;
   }

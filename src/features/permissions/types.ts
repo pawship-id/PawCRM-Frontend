@@ -175,7 +175,7 @@ export const PERMISSION_CATALOG = {
    *   manage — Kelola (V1): ubah masa berlaku, tunda, koreksi jatah, pindah
    *            hewan, ubah tanggal pakai. Owner and Manager by default.
    */
-  petMemberships: ["create", "read", "update", "cancel", "redeem", "manage"],
+  petMemberships: ["create", "read", "update", "cancel", "redeem", "manage", "refund"],
   // `remapHistory`: re-point OLD lines at a new lini/cabang (Terapkan ke data lama, 6 Okt). Owner only by default.
   chartOfAccounts: ["create", "read", "update", "delete", "restore", "remapHistory"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is

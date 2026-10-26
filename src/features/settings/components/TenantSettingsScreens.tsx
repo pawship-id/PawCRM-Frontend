@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { Alert, Button, Spinner } from "@/components";
 import {
+  MembershipAccountingForm,
   StockSettingsForm,
   TaxSettingsForm,
   TenantIdentityForm,
@@ -119,6 +120,22 @@ export function TaxSettingsScreen() {
     >
       {(tenant, refetch) => (
         <TaxSettingsForm tenant={tenant} onSaved={refetch} />
+      )}
+    </TenantSettingsPage>
+  );
+}
+
+/** Pengaturan › Keuangan › Membership — see MembershipAccountingForm. */
+export function MembershipAccountingSettingsScreen() {
+  return (
+    <TenantSettingsPage
+      tab="keuangan"
+      title="Membership"
+      description="Pilihan bawaan untuk paket baru. Kartu yang sudah terjual tetap memakai cara saat dijual."
+      fullWidth
+    >
+      {(tenant, refetch) => (
+        <MembershipAccountingForm tenant={tenant} onSaved={refetch} />
       )}
     </TenantSettingsPage>
   );

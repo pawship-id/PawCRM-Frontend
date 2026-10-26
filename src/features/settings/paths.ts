@@ -57,6 +57,8 @@ export const SETTINGS_PATHS = {
   channelPembayaran: `${ROOT}/channel-pembayaran`,
   liniBisnis: `${ROOT}/lini-bisnis`,
   pajak: `${ROOT}/pajak`,
+  /** Kapan uang paket membership jadi pendapatan (26 Oktober 2026). */
+  membership: `${ROOT}/membership`,
   // Pengguna & Sistem
   dataAwal: `${ROOT}/data-awal`,
   /** The Data awal step "Saldo awal kas & bank" — a page that step opens. */
