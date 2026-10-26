@@ -49,6 +49,7 @@ import type {
   InvoiceDiscountMode,
   InvoiceItemKind,
   Pet,
+  PosCharge,
   Service,
   UpdateCustomerInvoiceInput,
   VariantChoice,
@@ -222,7 +223,8 @@ export function InvoiceEditor({
           A line with a share holds a nominal figure by then, so its own part is
           shown in rupiah.
         */
-        const share = invoiceBookingShareOf(item, invoice.bookings ?? []) ?? "0";
+        const share =
+          invoiceBookingShareOf(item, invoice.bookings ?? []) ?? "0";
         const own =
           item.discount && isPositive(share)
             ? subtractDecimals(item.discount.resolvedAmount, share)
@@ -296,6 +298,43 @@ export function InvoiceEditor({
   const [invoiceDiscountValue, setInvoiceDiscountValue] = useState(
     invoice.invoiceDiscount ? trimDecimal(invoice.invoiceDiscount.value) : "",
   );
+  /*
+    BIAYA LAIN, EDITABLE HERE TOO (26 October 2026, BO) — Faktur baru's rows,
+    starting from what is stored. Sent whole on every save: the server replaces
+    the stored charges with the array, so deleting the last row clears them.
+    `key` is the row's own handle, never the label — see Faktur baru.
+  */
+  const initialCharges = useMemo(
+    () =>
+      (invoice.otherCharges ?? []).map((charge) => ({
+        label: charge.label,
+        amount: trimDecimal(charge.amount),
+      })),
+    [invoice.otherCharges],
+  );
+  const [charges, setCharges] = useState<(PosCharge & { key: string })[]>(() =>
+    initialCharges.map((charge, index) => ({
+      ...charge,
+      key: `biaya-${index}`,
+    })),
+  );
+  /** The rows somebody actually typed into, trimmed — what is sent. */
+  const filledCharges = charges
+    .map((charge) => ({
+      label: charge.label.trim(),
+      amount: charge.amount.trim(),
+    }))
+    .filter((charge) => charge.label !== "" || charge.amount !== "");
+
+  /** One charge row typed into, found by its own `key`. */
+  function patchCharge(key: string, patch: Partial<PosCharge>) {
+    setCharges((current) =>
+      current.map((charge) =>
+        charge.key === key ? { ...charge, ...patch } : charge,
+      ),
+    );
+  }
+
   const [saving, setSaving] = useState(false);
   /** The row whose journey is being filled in, by its `key`. */
   const [rideRow, setRideRow] = useState<string | null>(null);
@@ -414,7 +453,9 @@ export function InvoiceEditor({
   /** A ride row's two ends, resolved against the registers it may copy from. */
   const endsOf = useCallback(
     (line: EditLine) =>
-      line.ride ? resolveLeg(line.ride.points, customerRecord, branchRecord) : null,
+      line.ride
+        ? resolveLeg(line.ride.points, customerRecord, branchRecord)
+        : null,
     [customerRecord, branchRecord],
   );
 
@@ -436,7 +477,12 @@ export function InvoiceEditor({
       const unit = variant.quote(
         service,
         null,
-        choicesForLeg(service, variant.cardsFor([service]), line.ride.leg, line.choices),
+        choicesForLeg(
+          service,
+          variant.cardsFor([service]),
+          line.ride.leg,
+          line.choices,
+        ),
         variant.zoneBetween(from, to),
       ).price;
 
@@ -447,7 +493,9 @@ export function InvoiceEditor({
           ? Math.max(1, line.ride.linkedBookingIds.length)
           : 1;
 
-      return riders > 1 ? toDecimalString(toMinor(unit)! * BigInt(riders)) : unit;
+      return riders > 1
+        ? toDecimalString(toMinor(unit)! * BigInt(riders))
+        : unit;
     },
     [lookups.services, endsOf, variant],
   );
@@ -504,7 +552,6 @@ export function InvoiceEditor({
     );
   }
 
-
   /* The shelves of the invoice's branch, plus every central one. */
   const warehousesHere = useMemo(
     () =>
@@ -534,7 +581,11 @@ export function InvoiceEditor({
     const priceMinor = toMinor(line.unitPrice) ?? BigInt(0);
     const shareMinor = toMinor(line.bookingShare) ?? BigInt(0);
     const capped = shareMinor > priceMinor ? priceMinor : shareMinor;
-    const own = ownDiscountMinor(priceMinor - capped, line.discountMode, line.discountValue);
+    const own = ownDiscountMinor(
+      priceMinor - capped,
+      line.discountMode,
+      line.discountValue,
+    );
 
     return { mode: "amount" as const, value: toDecimalString(own + capped) };
   }
@@ -552,7 +603,10 @@ export function InvoiceEditor({
 
   /** A row's OWN discount: what the preview takes off it, less the booking's share. */
   function ownOffAt(index: number, line: EditLine): string {
-    const own = subtractDecimals(preview.lineDiscounts[index], line.bookingShare);
+    const own = subtractDecimals(
+      preview.lineDiscounts[index],
+      line.bookingShare,
+    );
     return isPositive(own) ? own : "0";
   }
 
@@ -565,7 +619,10 @@ export function InvoiceEditor({
    * recap — so the rows add up to the total plus that share.
    */
   function rowTotal(index: number, line: EditLine): string {
-    const net = subtractDecimals(preview.lineTotals[index], ownOffAt(index, line));
+    const net = subtractDecimals(
+      preview.lineTotals[index],
+      ownOffAt(index, line),
+    );
     return taxOnTop() ? sumDecimals([net, preview.lineTaxes[index]]) : net;
   }
   /*
@@ -586,18 +643,11 @@ export function InvoiceEditor({
         invoiceDiscountValue
           ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
           : null,
-        /* THE STORED CHARGES COUNT TOWARD THE TOTAL. The editor does not change
-           them — the server keeps them when none are sent — but a total that
-           left out the ongkir would not be the bill that gets saved. */
-        { ...lookups.tax, otherCharges: invoice.otherCharges ?? [] },
+        /* The charges as typed count toward the total straight away. */
+        { ...lookups.tax, otherCharges: filledCharges },
       ),
-    [
-      lines,
-      invoiceDiscountMode,
-      invoiceDiscountValue,
-      lookups.tax,
-      invoice.otherCharges,
-    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `filledCharges` is derived from `charges` every render
+    [lines, invoiceDiscountMode, invoiceDiscountValue, lookups.tax, charges],
   );
 
   /** A ride row's two ends, flat as the payload carries them. */
@@ -634,10 +684,14 @@ export function InvoiceEditor({
             (one) =>
               one.fromIndex !== null &&
               (invoice.bookings ?? []).find(
-                (booking) => booking._id === invoice.items?.[one.fromIndex as number]?.bookingId,
+                (booking) =>
+                  booking._id ===
+                  invoice.items?.[one.fromIndex as number]?.bookingId,
               )?.homeTripId === line.tripId,
           ) ||
-            !(invoice.bookings ?? []).some((booking) => booking.homeTripId === line.tripId)),
+            !(invoice.bookings ?? []).some(
+              (booking) => booking.homeTripId === line.tripId,
+            )),
       )
       .map((line) => ({
         tripId: line.tripId as string,
@@ -650,7 +704,8 @@ export function InvoiceEditor({
 
   function addOwedTrip(owed: (typeof owedHere)[number]) {
     /* A trip starts with the discount set on its page (12 October 2026). */
-    const own = (owed as { discount?: TripFeeDiscount | null }).discount ?? null;
+    const own =
+      (owed as { discount?: TripFeeDiscount | null }).discount ?? null;
     setLineRefusals({});
     setLines((current) => [
       ...current,
@@ -681,11 +736,14 @@ export function InvoiceEditor({
   /** The trip a row's booking rides, from the bookings this bill carries. */
   const tripOfBooking = (bookingId: string | null | undefined) =>
     bookingId
-      ? ((invoice.bookings ?? []).find((booking) => booking._id === bookingId)?.homeTripId ?? null)
+      ? ((invoice.bookings ?? []).find((booking) => booking._id === bookingId)
+          ?.homeTripId ?? null)
       : null;
   /** The booking a row bills — a kept row's stored one. */
   const bookingOfLine = (line: EditLine) =>
-    line.fromIndex !== null ? (invoice.items?.[line.fromIndex]?.bookingId ?? null) : null;
+    line.fromIndex !== null
+      ? (invoice.items?.[line.fromIndex]?.bookingId ?? null)
+      : null;
 
   /*
     TAKING A ROW OFF (11 October 2026): the last grooming of a trip takes the
@@ -698,13 +756,16 @@ export function InvoiceEditor({
       const tripId = tripOfBooking(bookingOfLine(line));
       if (!tripId) return rest;
 
-      const stillRiding = rest.some((one) => tripOfBooking(bookingOfLine(one)) === tripId);
+      const stillRiding = rest.some(
+        (one) => tripOfBooking(bookingOfLine(one)) === tripId,
+      );
       return stillRiding ? rest : rest.filter((one) => one.tripId !== tripId);
     });
   }
 
   /** A trip row added on this edit — sent by id, not as an item. */
-  const isAddedTrip = (line: EditLine) => Boolean(line.tripId) && line.fromIndex === null;
+  const isAddedTrip = (line: EditLine) =>
+    Boolean(line.tripId) && line.fromIndex === null;
 
   function payload(): UpdateCustomerInvoiceInput {
     const addedTrips = lines.filter(isAddedTrip);
@@ -727,64 +788,70 @@ export function InvoiceEditor({
             })),
           }
         : {}),
-      items: lines.filter((line) => !isAddedTrip(line)).map((line) => ({
-        kind: line.kind,
-        refId: line.refId,
-        qty: line.qty,
-        discount: line.discountValue
-          ? { mode: line.discountMode, value: line.discountValue }
-          : null,
-        ...(line.fromIndex !== null ? { fromIndex: line.fromIndex } : {}),
-        /*
+      items: lines
+        .filter((line) => !isAddedTrip(line))
+        .map((line) => ({
+          kind: line.kind,
+          refId: line.refId,
+          qty: line.qty,
+          discount: line.discountValue
+            ? { mode: line.discountMode, value: line.discountValue }
+            : null,
+          ...(line.fromIndex !== null ? { fromIndex: line.fromIndex } : {}),
+          /*
           A TYPED PRICE (13 October 2026). A new row sends its override; a kept
           row sends one only when it moved — null puts it back to the
           catalogue's recorded price, and absent keeps what it was billed at.
         */
-        ...(line.fromIndex === null
-          ? line.priceOverride != null
-            ? { unitPrice: line.priceOverride }
-            : {}
-          : (line.priceOverride ?? null) !== (line.storedOverride ?? null)
-            ? { unitPrice: line.priceOverride ?? null }
+          ...(line.fromIndex === null
+            ? line.priceOverride != null
+              ? { unitPrice: line.priceOverride }
+              : {}
+            : (line.priceOverride ?? null) !== (line.storedOverride ?? null)
+              ? { unitPrice: line.priceOverride ?? null }
+              : {}),
+          /* Named lots only — none is FEFO, the server's default. */
+          ...(line.lots?.length
+            ? {
+                lots: line.lots.map((lot) => ({
+                  batchId: lot.batchId,
+                  qty: String(lot.qty),
+                })),
+              }
             : {}),
-        /* Named lots only — none is FEFO, the server's default. */
-        ...(line.lots?.length
-          ? {
-              lots: line.lots.map((lot) => ({
-                batchId: lot.batchId,
-                qty: String(lot.qty),
-              })),
-            }
-          : {}),
-        // A kept line's animal is the one it was billed for; only a new one
-        // names one, and the server refuses a pet on a product line.
-        ...(line.fromIndex === null && line.petId ? { petId: line.petId } : {}),
-        /*
+          // A kept line's animal is the one it was billed for; only a new one
+          // names one, and the server refuses a pet on a product line.
+          ...(line.fromIndex === null && line.petId
+            ? { petId: line.petId }
+            : {}),
+          /*
           ONLY ON A NEW LINE. A kept line is sent by `fromIndex`, and the server
           keeps the choices and zone it was priced on — sending them back would
           ask for a re-quote the revision does not do.
         */
-        ...(line.fromIndex === null &&
-        line.kind === "service" &&
-        line.choices.length > 0
-          ? { variantChoices: line.choices }
-          : {}),
-        /*
+          ...(line.fromIndex === null &&
+          line.kind === "service" &&
+          line.choices.length > 0
+            ? { variantChoices: line.choices }
+            : {}),
+          /*
           THE JOURNEY, ON A NEW ANTAR-JEMPUT ROW. Flat on the wire, nested in
           the document. The van goes in `passengerPetIds` rather than `petId` —
           the same shape the booking it raises keeps its animals in.
         */
-        ...(line.ride
-          ? {
-              passengerPetIds: line.passengers,
-              trip: tripInputOf(line),
-              linkedBookingIds: line.ride.linkedBookingIds,
-            }
-          : {}),
-      })),
+          ...(line.ride
+            ? {
+                passengerPetIds: line.passengers,
+                trip: tripInputOf(line),
+                linkedBookingIds: line.ride.linkedBookingIds,
+              }
+            : {}),
+        })),
       invoiceDiscount: invoiceDiscountValue
         ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
         : null,
+      // Always sent: an empty array is what removes the last charge.
+      otherCharges: filledCharges,
       dueDate: new Date(dueDate).toISOString(),
       ...(needsWarehouse && warehouseId ? { warehouseId } : {}),
     };
@@ -808,7 +875,10 @@ export function InvoiceEditor({
           fromIndex: line.fromIndex,
           unitPrice: undefined,
           lots: line.lots?.length
-            ? line.lots.map((lot) => ({ batchId: lot.batchId, qty: String(lot.qty) }))
+            ? line.lots.map((lot) => ({
+                batchId: lot.batchId,
+                qty: String(lot.qty),
+              }))
             : undefined,
         })),
         invoiceDiscount: invoice.invoiceDiscount
@@ -819,8 +889,9 @@ export function InvoiceEditor({
           : null,
         dueDate: new Date(toDateInput(invoice.dueDate)).toISOString(),
         homeTripIds: [],
+        otherCharges: initialCharges,
       }),
-    [initialLines, invoice.invoiceDiscount, invoice.dueDate],
+    [initialLines, invoice.invoiceDiscount, invoice.dueDate, initialCharges],
   );
 
   /*
@@ -897,6 +968,16 @@ export function InvoiceEditor({
     /* Its own sentence: the price is known, so "belum punya harga" would be
        wrong — the variant exists and is switched off. */
     const inactive = lines.find(variantInactive);
+
+    /* A half-filled charge, named by the half that is missing — Faktur baru's rule. */
+    const unnamed = filledCharges.find((charge) => charge.label === "");
+    if (unnamed)
+      return `Beri nama biaya lain yang nominalnya ${formatMoney(unnamed.amount)}.`;
+    const nothingToCharge = filledCharges.find(
+      (charge) => !(Number(charge.amount) > 0),
+    );
+    if (nothingToCharge)
+      return `Isi nominal ${nothingToCharge.label} — harus lebih dari 0.`;
 
     if (inactive) {
       const pet = pets.find((one) => one._id === inactive.petId);
@@ -980,7 +1061,10 @@ export function InvoiceEditor({
   }
 
   /** A new row, as `addItems` and the scanner both build it. */
-  function newRow(kind: "product" | "service", found: Product | Service): EditLine {
+  function newRow(
+    kind: "product" | "service",
+    found: Product | Service,
+  ): EditLine {
     return {
       key: nextKey(),
       fromIndex: null,
@@ -997,7 +1081,8 @@ export function InvoiceEditor({
         kind === "product"
           ? String((found as Product).sellPrice ?? "0")
           : priceOf({ kind, refId: found._id, petId: "" }),
-      hasExpiry: kind === "product" ? (found as Product).hasExpiry === true : undefined,
+      hasExpiry:
+        kind === "product" ? (found as Product).hasExpiry === true : undefined,
       qty: "1",
       discountMode: "percent",
       discountValue: "",
@@ -1048,7 +1133,9 @@ export function InvoiceEditor({
   function changeWarehouse(value: string) {
     if (value !== warehouseId) {
       setLines((current) =>
-        current.map((line) => (line.lots?.length ? { ...line, lots: [] } : line)),
+        current.map((line) =>
+          line.lots?.length ? { ...line, lots: [] } : line,
+        ),
       );
     }
     setWarehouseId(value);
@@ -1063,8 +1150,7 @@ export function InvoiceEditor({
     if (line.kind !== "product" || !warehouseId) return null;
 
     const known = productSearch.find(line.refId) as
-      | { hasExpiry?: boolean }
-      | undefined;
+      { hasExpiry?: boolean } | undefined;
     const hasExpiry =
       (line.lots?.length ?? 0) > 0 ||
       (line.hasExpiry ?? known?.hasExpiry ?? line.fromIndex !== null);
@@ -1075,7 +1161,8 @@ export function InvoiceEditor({
       lots.length === 0
         ? "Otomatis (FEFO)"
         : lots.map((lot) => `${lot.label} ×${lot.qty}`).join(", ");
-    const adds = lots.reduce((sum, lot) => sum + lot.qty, 0) === Number(line.qty);
+    const adds =
+      lots.reduce((sum, lot) => sum + lot.qty, 0) === Number(line.qty);
 
     return (
       <span className="block text-xs">
@@ -1133,6 +1220,7 @@ export function InvoiceEditor({
         invoiceDiscount: body.invoiceDiscount ?? null,
         dueDate: body.dueDate,
         homeTripIds: body.homeTripIds ?? [],
+        otherCharges: body.otherCharges ?? [],
       }) === untouched
     ) {
       swalToast("Belum ada yang diubah.");
@@ -1164,7 +1252,8 @@ export function InvoiceEditor({
           : found.index !== null
             ? lines[found.index]
             : (added.find(
-                (line) => asks(line) && !hasChoice(line.choices, optionId ?? ""),
+                (line) =>
+                  asks(line) && !hasChoice(line.choices, optionId ?? ""),
               ) ?? added.find(asks));
 
         if (found && target) setLineRefusals({ [target.key]: found.refusal });
@@ -1267,58 +1356,60 @@ export function InvoiceEditor({
                       {line.storedVariant}
                     </span>
                   )}
-                  {line.fromIndex === null && line.kind === "service" && (() => {
-                    const service = serviceOf(line.refId);
-                    if (!service) return null;
+                  {line.fromIndex === null &&
+                    line.kind === "service" &&
+                    (() => {
+                      const service = serviceOf(line.refId);
+                      if (!service) return null;
 
-                    const lookup = quoteOf(line);
-                    const cards = variant.cardsFor([service]);
-                    /*
+                      const lookup = quoteOf(line);
+                      const cards = variant.cardsFor([service]);
+                      /*
                       ⚠️ "ARAH" IS ANSWERED BY THE DIRECTION, NOT ASKED TWICE.
                       It carries the price like any owner's option, but a select
                       here beside the direction chosen in the journey dialog is
                       two ways to disagree. Same rule as the create form's.
                     */
-                    /* ⚠️ KEYED ON THE SERVICE, NOT ON `line.ride`: before a
+                      /* ⚠️ KEYED ON THE SERVICE, NOT ON `line.ride`: before a
                        journey is filled in the row has no `ride` yet, which is
                        exactly when the select was still drawn. The direction
                        only ever comes from the dialog. */
-                    const arah = isRideService(line.refId)
-                      ? arahCardOf(service, cards)
-                      : null;
+                      const arah = isRideService(line.refId)
+                        ? arahCardOf(service, cards)
+                        : null;
 
-                    return (
-                      <InvoiceLineVariant
-                        cards={
-                          arah
-                            ? cards.filter(
-                                (card) => card.axisKey !== arah.card.axisKey,
-                              )
-                            : cards
-                        }
-                        choices={line.choices}
-                        onChange={(next) => setChoices(line.key, next)}
-                        /* A ride's zone is its own journey's — the bill's
+                      return (
+                        <InvoiceLineVariant
+                          cards={
+                            arah
+                              ? cards.filter(
+                                  (card) => card.axisKey !== arah.card.axisKey,
+                                )
+                              : cards
+                          }
+                          choices={line.choices}
+                          onChange={(next) => setChoices(line.key, next)}
+                          /* A ride's zone is its own journey's — the bill's
                            would be a different distance for a different trip,
                            and before there is a journey it is about a pin the
                            fare will never be measured from. */
-                        zoneText={
-                          isRideService(line.refId)
-                            ? null
-                            : variant.needsZone([service])
-                              ? variant.zoneText
+                          zoneText={
+                            isRideService(line.refId)
+                              ? null
+                              : variant.needsZone([service])
+                                ? variant.zoneText
+                                : null
+                          }
+                          problem={
+                            line.petId && !variant.loading
+                              ? variant.problemOf(service, lookup)
                               : null
-                        }
-                        problem={
-                          line.petId && !variant.loading
-                            ? variant.problemOf(service, lookup)
-                            : null
-                        }
-                        refusal={lineRefusals[line.key] ?? null}
-                        disabled={saving}
-                      />
-                    );
-                  })()}
+                          }
+                          refusal={lineRefusals[line.key] ?? null}
+                          disabled={saving}
+                        />
+                      );
+                    })()}
                 </TableCell>
 
                 {hasServiceLine && (
@@ -1486,12 +1577,18 @@ export function InvoiceEditor({
                   </div>
                   {/* The line's own part only — the share is in the recap. */}
                   {isPositive(
-                    subtractDecimals(preview.lineDiscounts[index], line.bookingShare),
+                    subtractDecimals(
+                      preview.lineDiscounts[index],
+                      line.bookingShare,
+                    ),
                   ) && (
                     <span className="mt-1 block text-xs text-danger-ink tabular-nums">
                       −
                       {formatMoney(
-                        subtractDecimals(preview.lineDiscounts[index], line.bookingShare),
+                        subtractDecimals(
+                          preview.lineDiscounts[index],
+                          line.bookingShare,
+                        ),
                       )}
                     </span>
                   )}
@@ -1555,10 +1652,14 @@ export function InvoiceEditor({
         >
           <House className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground">Biaya perjalanan belum ditagih</p>
+            <p className="text-sm font-medium text-foreground">
+              Biaya perjalanan belum ditagih
+            </p>
             <p className="truncate text-xs text-muted">
               {owed.name} · {formatMoney(owed.amount)}
-              {owed.petNames.length > 0 ? ` · untuk ${owed.petNames.join(", ")}` : ""}
+              {owed.petNames.length > 0
+                ? ` · untuk ${owed.petNames.join(", ")}`
+                : ""}
             </p>
           </div>
           <Button
@@ -1614,7 +1715,9 @@ export function InvoiceEditor({
               className="h-11 rounded-md border border-border bg-surface px-2 text-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
               value={invoiceDiscountMode}
               onChange={(event) =>
-                setInvoiceDiscountMode(event.target.value as InvoiceDiscountMode)
+                setInvoiceDiscountMode(
+                  event.target.value as InvoiceDiscountMode,
+                )
               }
               disabled={saving}
             >
@@ -1645,7 +1748,10 @@ export function InvoiceEditor({
           <div className="flex justify-between gap-4">
             <dt className="text-muted">Diskon item</dt>
             <dd className="tabular-nums">
-              −{formatMoney(subtractDecimals(preview.itemDiscount, bookingShares))}
+              −
+              {formatMoney(
+                subtractDecimals(preview.itemDiscount, bookingShares),
+              )}
             </dd>
           </div>
           {isPositive(bookingShares) && (
@@ -1660,17 +1766,75 @@ export function InvoiceEditor({
               −{formatMoney(preview.invoiceDiscount)}
             </dd>
           </div>
-          {/* THE STORED CHARGES, read-only — this screen does not change them,
-              and the server keeps them on the revised bill. */}
-          {(invoice.otherCharges ?? []).map((charge, index) => (
-            <div
-              key={`${charge.label}-${index}`}
-              className="flex justify-between gap-4"
-            >
-              <dt className="text-muted">{charge.label}</dt>
-              <dd className="tabular-nums">+{formatMoney(charge.amount)}</dd>
+          {/*
+            BIAYA LAIN — one editable row each, as on Faktur baru. Each row and
+            the link keep a `dt` of their own, visually hidden: bare inputs in a
+            `dl` are invalid markup a screen reader stumbles over.
+          */}
+          {charges.map((charge, index) => (
+            <div key={charge.key}>
+              <dt className="sr-only">{`Biaya lain ${index + 1}`}</dt>
+              <dd className="flex items-center gap-1">
+                <Input
+                  aria-label={`Nama biaya ${index + 1}`}
+                  placeholder="Ongkos kirim"
+                  className="h-9 flex-1"
+                  value={charge.label}
+                  onChange={(event) =>
+                    patchCharge(charge.key, { label: event.target.value })
+                  }
+                  disabled={saving}
+                />
+                <Input
+                  aria-label={`Nominal biaya ${index + 1}`}
+                  placeholder="10000"
+                  inputMode="numeric"
+                  className="h-9 w-28 text-right tabular-nums"
+                  value={charge.amount}
+                  onChange={(event) =>
+                    patchCharge(charge.key, {
+                      /* DIGITS ONLY — "10.000" is ten thousand here. */
+                      amount: event.target.value.replace(/\D/g, ""),
+                    })
+                  }
+                  disabled={saving}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Hapus biaya lain ${index + 1}`}
+                  onClick={() =>
+                    setCharges((current) =>
+                      current.filter((one) => one.key !== charge.key),
+                    )
+                  }
+                  disabled={saving}
+                >
+                  <Trash2 className="size-4 text-danger" />
+                </Button>
+              </dd>
             </div>
           ))}
+          <div className="flex justify-end">
+            <dt className="sr-only">Biaya lain</dt>
+            <dd>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() =>
+                  setCharges((current) => [
+                    ...current,
+                    { key: nextKey(), label: "", amount: "" },
+                  ])
+                }
+                disabled={saving}
+              >
+                + Tambah biaya lain
+              </Button>
+            </dd>
+          </div>
           {/*
             THE PPN STANDS ON ITS BASE — "Dasar pengenaan pajak" directly above
             it, under a dashed rule, as the read view and Faktur baru draw it
@@ -1696,7 +1860,9 @@ export function InvoiceEditor({
                 {/* One template string, not `PPN {rate}%` — interpolation splits
                     it into three text nodes a query cannot match as a label. */}
                 <dt className="text-muted">{`PPN ${lookups.tax.taxRate}%`}</dt>
-                <dd className="tabular-nums">{formatMoney(preview.taxAdded)}</dd>
+                <dd className="tabular-nums">
+                  {formatMoney(preview.taxAdded)}
+                </dd>
               </div>
             </div>
           )}

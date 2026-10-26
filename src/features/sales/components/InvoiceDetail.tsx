@@ -31,7 +31,6 @@ import { cn } from "@/lib/utils";
 import { SALES_CRUMBS } from "../crumbs";
 import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
 import { InvoiceActivityCard } from "./InvoiceActivityCard";
-import { InvoiceEditor } from "./InvoiceEditor";
 import { InvoiceItemsTable } from "./InvoiceItemsTable";
 import { InvoiceJournalDialog } from "./InvoiceJournalDialog";
 import { InvoicePaymentTimeline } from "./InvoicePaymentTimeline";
@@ -86,24 +85,13 @@ function customerLabel(invoice: {
  *     the timeline;
  *   Batalkan faktur → the ⋮ beside Cetak, where the mockup puts it.
  */
-export function InvoiceDetail({
-  invoiceId,
-  startEditing = false,
-}: {
-  invoiceId: string;
-  /**
-   * Open on the editor — the list's "Ubah faktur". Still gated by `mayEdit`
-   * below, so a stale link to a faktur paid since opens it read-only.
-   */
-  startEditing?: boolean;
-}) {
+export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const { invoice, loading, error, notFound, applyInvoice, refetch } =
     useCustomerInvoice(invoiceId);
 
   const [payOpen, setPayOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
   const [journalOpen, setJournalOpen] = useState(false);
-  const [editing, setEditing] = useState(startEditing);
   const [activityVersion, setActivityVersion] = useState(0);
 
   const { can } = usePermissions();
@@ -168,24 +156,20 @@ export function InvoiceDetail({
   /*
     EDITABLE EXACTLY WHEN THE SERVER WILL ACCEPT AN EDIT: raised here, nothing
     paid, not cancelled — and `update` held. A button that 409s is a button that
-    should not have been drawn. `editing` is re-checked against it, so a payment
-    recorded in another tab closes an open editor on the next read rather than
-    letting it save into a refusal.
+    should not have been drawn. The edit page (`/edit`) re-checks the same
+    rule on load, so a link opened after a payment lands on the reason.
   */
   const editable =
     !tillBorn && invoice.status === "unpaid" && !hasActivePayment;
   const mayEdit = editable && can("customerInvoices", "update");
-  const isEditing = editing && mayEdit;
 
-  const lockNote = isEditing
-    ? "Sedang diubah — belum tersimpan."
-    : voided
-      ? "Faktur ini sudah dibatalkan."
-      : tillBorn
-        ? "Lahir dari penjualan kasir — barisnya milik transaksi kasir dan tidak diubah di sini."
-        : editable
-          ? "Belum ada pembayaran — faktur masih bisa diubah. Terkunci otomatis begitu pembayaran pertama tercatat."
-          : "Terkunci sejak ada pembayaran tercatat — batalkan pembayarannya dulu untuk mengubah.";
+  const lockNote = voided
+    ? "Faktur ini sudah dibatalkan."
+    : tillBorn
+      ? "Lahir dari penjualan kasir — barisnya milik transaksi kasir dan tidak diubah di sini."
+      : editable
+        ? "Belum ada pembayaran — faktur masih bisa diubah. Terkunci otomatis begitu pembayaran pertama tercatat."
+        : "Terkunci sejak ada pembayaran tercatat — batalkan pembayarannya dulu untuk mengubah.";
 
   /*
     THE WHATSAPP MESSAGE, in the shop's voice and with the figures the customer
@@ -251,14 +235,12 @@ export function InvoiceDetail({
           </Button>
 
           {/* Beside Cetak rather than in the Rincian card's ⋮ (BO, 22 Okt 2026). */}
-          {mayEdit && !isEditing && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setEditing(true)}
-            >
-              <Pencil className="size-4" />
-              Ubah
+          {mayEdit && (
+            <Button variant="secondary" size="sm" asChild>
+              <Link href={`/dashboard/sales/invoice/${invoiceId}/edit`}>
+                <Pencil className="size-4" />
+                Ubah
+              </Link>
             </Button>
           )}
 
@@ -346,25 +328,23 @@ export function InvoiceDetail({
             title="Rincian faktur"
             description={lockNote}
             action={
-              !isEditing && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Aksi rincian faktur"
-                    >
-                      <EllipsisVertical className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem onSelect={() => setJournalOpen(true)}>
-                      <BookOpen className="size-4" />
-                      Lihat jurnal
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Aksi rincian faktur"
+                  >
+                    <EllipsisVertical className="size-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setJournalOpen(true)}>
+                    <BookOpen className="size-4" />
+                    Lihat jurnal
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             }
           >
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
@@ -394,24 +374,13 @@ export function InvoiceDetail({
             </dl>
 
             <div className="mt-5 border-t border-border pt-4">
-              {isEditing ? (
-                <InvoiceEditor
-                  invoice={invoice}
-                  onCancel={() => setEditing(false)}
-                  onSaved={(updated) => {
-                    setEditing(false);
-                    applyWrite(updated);
-                  }}
-                />
-              ) : (
-                <InvoiceItemsTable
-                  invoice={invoice}
-                  canOpenBookings={can("bookings", "read")}
-                />
-              )}
+              <InvoiceItemsTable
+                invoice={invoice}
+                canOpenBookings={can("bookings", "read")}
+              />
             </div>
 
-            {invoice.notes && !isEditing && (
+            {invoice.notes && (
               <p className="mt-4 border-t border-border pt-4 text-sm whitespace-pre-wrap">
                 {invoice.notes}
               </p>
@@ -440,7 +409,7 @@ export function InvoiceDetail({
               </p>
             }
           >
-            {!voided && !settled && !isEditing && (
+            {!voided && !settled && (
               <Can
                 feature="customerInvoices"
                 action="pay"
