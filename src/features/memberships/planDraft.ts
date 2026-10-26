@@ -13,6 +13,8 @@ import type {
   OptionKind,
   OptionPriceMode,
   PlanPriceMode,
+  RecognitionMethod,
+  RecognitionMode,
   VariantPrice,
   VisitFee,
 } from "@/types/membership";
@@ -97,6 +99,14 @@ export interface PlanDraft {
   publicFeatured: boolean;
   publicOrder: string;
   publicBadge: string;
+  /**
+   * Pengakuan pendapatan. `recognition` null = not chosen yet: the form shows
+   * the tenant's default and saves it explicitly (BO no. 1). `method` null =
+   * follow what the benefits suggest, recomputed whenever they change.
+   */
+  recognition: RecognitionMode | null;
+  method: RecognitionMethod | null;
+  revenueSubAccountId: string;
   benefits: BenefitDraft[];
 }
 
@@ -278,6 +288,9 @@ export function planToDraft(plan?: MembershipPlan | null): PlanDraft {
       publicFeatured: false,
       publicOrder: "0",
       publicBadge: "",
+      recognition: null,
+      method: null,
+      revenueSubAccountId: "",
       benefits: [newBenefitDraft()],
     };
   }
@@ -303,6 +316,9 @@ export function planToDraft(plan?: MembershipPlan | null): PlanDraft {
     publicFeatured: plan.publicDisplay?.featured ?? false,
     publicOrder: String(plan.publicDisplay?.order ?? 0),
     publicBadge: plan.publicDisplay?.badge ?? "",
+    recognition: plan.accounting?.recognition ?? null,
+    method: plan.accounting?.method ?? null,
+    revenueSubAccountId: plan.accounting?.revenueSubAccountId ?? "",
     benefits: (plan.benefits ?? []).map(benefitToDraft),
   };
 }
@@ -393,8 +409,12 @@ export function draftToBenefitInput(benefit: BenefitDraft): BenefitInput {
  */
 export function draftToPayload(
   draft: PlanDraft,
-  { editing = false }: { editing?: boolean } = {},
+  {
+    editing = false,
+    tenantRecognition = "immediate",
+  }: { editing?: boolean; tenantRecognition?: RecognitionMode } = {},
 ): CreateMembershipPlanInput {
+  const recognition = draft.recognition ?? tenantRecognition;
   const variant = draft.attachTo === "pet" && draft.priceMode === "variant";
   const code = draft.code.trim().toUpperCase();
 
@@ -416,6 +436,11 @@ export function draftToPayload(
     },
     renewalOfferDays: Math.max(0, Number.parseInt(draft.renewalOfferDays, 10) || 0),
     isActive: draft.isActive,
+    accounting: {
+      recognition,
+      method: recognition === "deferred" ? draft.method : null,
+      revenueSubAccountId: draft.revenueSubAccountId || null,
+    },
     benefits: draft.benefits.map(draftToBenefitInput),
   };
 

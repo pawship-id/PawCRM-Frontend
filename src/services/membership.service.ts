@@ -24,6 +24,11 @@ import type {
   PetMembershipListQuery,
   PetMembershipListResponse,
   PetMembershipsByPet,
+  RecognitionRunResult,
+  RecognitionSchedule,
+  RecognitionSummary,
+  RefundMembershipInput,
+  RefundPreview,
   RenewMembershipInput,
   TransferMembershipInput,
   UpdateMembershipPlanInput,
@@ -194,6 +199,32 @@ export const membershipService = {
     apiClient.get<MembershipAttention>("/pet-memberships/attention", {
       query: { ...query },
     }),
+
+  /* ── pengakuan pendapatan (PLAN-Membership-Pengakuan-Pendapatan.md) ── */
+
+  /** The card's schedule — what has been posted, and on a straight-line card what is still to come. */
+  recognition: (id: string) =>
+    apiClient.get<RecognitionSchedule>(`/pet-memberships/${id}/recognition`),
+
+  /** "Saldo membership belum diakui". */
+  recognitionSummary: (query: { branchId?: string } = {}) =>
+    apiClient.get<RecognitionSummary>("/pet-memberships/recognition/summary", {
+      query: { ...query },
+    }),
+
+  /** The month-end job, by hand. Idempotent — a month already posted is skipped. */
+  runRecognition: (input: { branchId?: string | null } = {}) =>
+    apiClient.post<RecognitionRunResult>("/pet-memberships/recognition/run", input),
+
+  refundPreview: (id: string) =>
+    apiClient.get<RefundPreview>(`/pet-memberships/${id}/refund-preview`),
+
+  /** Pays the refund, cancels the card, returns its detail and the BKK/BBK. */
+  refund: (id: string, input: RefundMembershipInput) =>
+    apiClient.post<{ membership: PetMembership; transaction: { id: string; number: string } }>(
+      `/pet-memberships/${id}/refund`,
+      input,
+    ),
 
   /** The Ringkasan tiles: packages sold, benefit value spent, active members. */
   summary: (query: MembershipSummaryQuery = {}) =>

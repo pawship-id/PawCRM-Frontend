@@ -334,6 +334,7 @@ export const HISTORY_ACTION_LABEL: Record<MembershipHistoryAction, string> = {
   redemption_moved: "Ubah tanggal pakai",
   payment_received: "Lunas",
   cancelled: "Dibatalkan",
+  refunded: "Direfund",
 };
 
 /** Where a redemption was spent. */

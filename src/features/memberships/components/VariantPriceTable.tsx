@@ -130,7 +130,7 @@ export function VariantPriceTable({
         </div>
       ) : (
         <p className="text-sm text-muted">
-          Belum ada varian. Tambahkan di bawah, atau isi otomatis dari layanan.
+          Belum ada varian. Tambahkan di bawah, atau salin harga dari layanan.
         </p>
       )}
 

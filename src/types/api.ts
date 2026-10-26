@@ -551,8 +551,23 @@ export interface TenantSubscription {
   trialEndsAt: string | null;
 }
 
+/**
+ * Pengaturan › Keuangan › Membership — the tenant's DEFAULT for how a package's
+ * money becomes revenue (PLAN-Membership-Pengakuan-Pendapatan.md). Each package
+ * form opens prefilled with `recognition`. A null account is the seeded 4104 /
+ * 2104. Absent until saved once; WRITTEN WHOLE.
+ */
+export interface MembershipAccountingSettings {
+  recognition: "immediate" | "deferred";
+  revenueAccountId: string | null;
+  unearnedAccountId: string | null;
+}
+
 /** Per-tenant behaviour switches. */
 export interface TenantSettings {
+  /** See `MembershipAccountingSettings`. */
+  membershipAccounting?: MembershipAccountingSettings;
+
   /**
    * Whether boarding capacity is addressed by numbered cages or named zones.
    * It changes how the hotel module reads and writes, hence a tenant-level
@@ -8612,7 +8627,9 @@ export type CashTransactionKind =
   | "commission_payment"
   | "expense"
   | "other_income"
-  | "pos_refund";
+  | "pos_refund"
+  /** What is left of a membership card, handed back. Read-only; the card owns it. */
+  | "membership_refund";
 
 export type CashTransactionDirection = "in" | "out";
 
@@ -8631,7 +8648,8 @@ export type CashTransactionSort =
 export type CashTransactionDocumentType =
   | "customer_invoice"
   | "purchase_invoice"
-  | "pos_return";
+  | "pos_return"
+  | "pet_membership";
 
 /**
  * One account line of an `expense` / `other_income` — what the money became.

@@ -45,6 +45,7 @@ export const CASH_TRANSACTION_KINDS: CashTransactionKind[] = [
   "commission_payment",
   "expense",
   "pos_refund",
+  "membership_refund",
 ];
 
 export const KIND_LABEL: Record<CashTransactionKind, string> = {
@@ -54,6 +55,7 @@ export const KIND_LABEL: Record<CashTransactionKind, string> = {
   expense: "Pengeluaran",
   other_income: "Pemasukan lain",
   pos_refund: "Refund retur",
+  membership_refund: "Refund membership",
 };
 
 /** Falls back to the raw value, so a kind this build does not know still draws. */
@@ -91,7 +93,7 @@ const SOURCES = {
   manual: { label: "Manual", kinds: ["expense", "other_income"] },
   payment: { label: "Pembayaran", kinds: ["customer_payment"] },
   purchase: { label: "Pembelian", kinds: ["supplier_payment"] },
-  return: { label: "Retur", kinds: ["pos_refund"] },
+  return: { label: "Retur", kinds: ["pos_refund", "membership_refund"] },
   commission: { label: "Komisi", kinds: ["commission_payment"] },
   transfer: { label: "Transfer", kinds: [] },
 } as const satisfies Record<
@@ -171,6 +173,7 @@ export const DOCUMENT_TYPE_LABEL: Record<CashTransactionDocumentType, string> = 
   customer_invoice: "Faktur penjualan",
   purchase_invoice: "Faktur supplier",
   pos_return: "Retur kasir",
+  pet_membership: "Kartu membership",
 };
 
 /** Where a document opens. A till return has no page of its own yet. */
@@ -182,6 +185,9 @@ export function documentHref(
   }
   if (document.type === "purchase_invoice") {
     return `/dashboard/purchasing/payables/${document.id}`;
+  }
+  if (document.type === "pet_membership") {
+    return `/dashboard/promosi/membership/anggota/${document.id}`;
   }
   return null;
 }
@@ -261,6 +267,9 @@ export function lockedReason(transaction: CashTransaction): string | null {
   }
   if (transaction.kind === "pos_refund") {
     return "Refund retur diatur dari returnya di kasir.";
+  }
+  if (transaction.kind === "membership_refund") {
+    return "Refund membership menutup kartunya, jadi tidak bisa diubah dari sini.";
   }
   return null;
 }
