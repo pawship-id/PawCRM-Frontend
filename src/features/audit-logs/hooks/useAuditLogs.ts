@@ -7,17 +7,22 @@ import { ApiError } from "@/services/api-error";
 import type { AuditLog, AuditLogListQuery, PageResult } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
+import { categoryActions, type AuditCategory } from "../constants";
+
 /** The query knobs the audit-log screen drives (page + the visible filters). */
 export interface AuditLogsQuery {
   page: number;
   search: string;
-  /** "" means "all actions". */
+  /** "" means "all modules". */
+  category: AuditCategory | "";
+  /** "" means "all actions" (of the module, when one is picked). */
   action: string;
 }
 
 const DEFAULT_QUERY: AuditLogsQuery = {
   page: 1,
   search: "",
+  category: "",
   action: "",
 };
 
@@ -88,7 +93,12 @@ export function useAuditLogs(): UseAuditLogsResult {
     const apiQuery: AuditLogListQuery = {
       page: settled.page,
       limit: 20,
-      action: settled.action || undefined,
+      // One action, or — with only a module picked — every action of it.
+      action:
+        settled.action ||
+        (settled.category
+          ? categoryActions(settled.category).join(",")
+          : undefined),
       search: settled.search.trim() || undefined,
     };
 
@@ -105,7 +115,7 @@ export function useAuditLogs(): UseAuditLogsResult {
         setError(
           err instanceof ApiError
             ? err.message
-            : "Could not load audit logs. Please try again.",
+            : "Riwayat perubahan gagal dimuat. Coba lagi.",
         );
       })
       .finally(() => {

@@ -7426,13 +7426,13 @@ export interface AuditLog {
 export interface AuditLogListQuery {
   page?: number;
   limit?: number;
-  /** Narrow to one kind of event, e.g. "failed_login". */
+  /** One action, or several comma-separated, e.g. "invoice_void,invoice_update". */
   action?: string;
   /** Narrow to one kind of target, e.g. "user" / "session". */
   entityType?: string;
   /** Narrow to one actor. */
   userId?: string;
-  /** Free-text over action / ipAddress. */
+  /** Free-text over the document numbers in metadata. */
   search?: string;
 }
 

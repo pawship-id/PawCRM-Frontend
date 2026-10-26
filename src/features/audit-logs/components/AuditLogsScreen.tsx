@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Spinner, Pagination } from "@/components";
+import { Alert, Pagination } from "@/components";
 import { SettingsPageHeader } from "@/features/settings/components/SettingsHeader";
 
 import { useAuditLogs } from "../hooks/useAuditLogs";
@@ -22,29 +22,21 @@ export function AuditLogsScreen() {
       <SettingsPageHeader
         tab="sistem"
         title="Riwayat perubahan"
-        description="Siapa melakukan apa, dari mana, dan kapan. Sistem yang menulis catatan ini, jadi hanya bisa dibaca."
+        description="Siapa mengubah faktur, pembayaran, kas, dan stok — dan kapan. Sistem yang menulis catatan ini, jadi hanya bisa dibaca."
       />
 
       <AuditLogsToolbar query={query} onChange={setQuery} onRefresh={refetch} />
 
       {error && <Alert variant="error">{error}</Alert>}
 
-      {loading && logs.length === 0 ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Loading audit logs…
-        </div>
-      ) : (
-        <>
-          <AuditLogsTable logs={logs} loading={loading} search={query.search} />
-          <Pagination
-            page={pagination.page}
-            totalPages={pagination.totalPages}
-            total={pagination.total}
-            unit="event"
-            onPageChange={(page) => setQuery({ page })}
-          />
-        </>
-      )}
+      <AuditLogsTable logs={logs} loading={loading} search={query.search} />
+      <Pagination
+        page={pagination.page}
+        totalPages={pagination.totalPages}
+        total={pagination.total}
+        unit="aktivitas"
+        onPageChange={(page) => setQuery({ page })}
+      />
     </div>
   );
 }
