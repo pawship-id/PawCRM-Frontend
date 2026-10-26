@@ -98,6 +98,7 @@ export function ProductsScreen() {
         sort={query.sort}
         onSortChange={(sort) => setQuery({ sort })}
         onChanged={refetch}
+        search={query.search}
       />
       <Pagination
         page={pagination.page}

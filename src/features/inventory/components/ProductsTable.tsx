@@ -8,6 +8,7 @@ import { EllipsisVertical, Eye, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import {
   ConfirmDialog,
   DataTable,
+  HighlightText,
   type DataTableColumn,
   type SortOptions,
 } from "@/components";
@@ -81,6 +82,10 @@ import { ProductTypeBadge } from "./ProductTypeBadge";
  * and a bundle by how many can be built, over the warehouses picked in the
  * toolbar — the same figures this column adds up. Tipe and Kategori do not sort
  * (BO, 19 October 2026).
+ *
+ * THE SEARCH TERM IS HIGHLIGHTED where the server matched it — the name and the
+ * SKU, a variant's too — so a row that surfaced through one of its variants
+ * says why once it is opened. Not the barcode: the list search does not read it.
  */
 const SORT_OPTIONS: SortOptions<ProductSort> = {
   name: { asc: "nameAsc", desc: "nameDesc" },
@@ -97,6 +102,7 @@ export function ProductsTable({
   sort,
   onSortChange,
   onChanged,
+  search,
 }: {
   products: Product[];
   categories: Category[];
@@ -107,6 +113,8 @@ export function ProductsTable({
   sort: ProductSort;
   onSortChange: (sort: ProductSort) => void;
   onChanged: () => void;
+  /** The term the list was searched by, highlighted in the cells it matched. */
+  search?: string;
 }) {
   const variants = useProductVariants();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -227,7 +235,7 @@ export function ProductsTable({
                 href={`/dashboard/inventory/products/${product._id}`}
                 className="font-medium hover:text-primary-hover hover:underline"
               >
-                {product.name}
+                <HighlightText text={product.name} query={search} />
               </Link>
               {product.resolved?.brand && (
                 <p className="text-xs text-muted">{product.resolved.brand}</p>
@@ -235,7 +243,7 @@ export function ProductsTable({
               <p className="tabular-nums text-xs text-muted">
                 {/* A parent carries no SKU — its variants do. "—" rather than
                     a blank line, which reads as a rendering bug. */}
-                <SkuText value={product.sku} fallback="—" />
+                <SkuText value={product.sku} fallback="—" query={search} />
                 {product.barcode && ` · ⦀ ${product.barcode}`}
                 {product.isPreorder && (
                   <span className="ml-2 font-sans text-secondary-foreground">
@@ -387,10 +395,15 @@ export function ProductsTable({
                   href={`/dashboard/inventory/products/${variant._id}`}
                   className="text-sm hover:text-primary-hover hover:underline"
                 >
-                  {Object.values(variant.variantAttributes ?? {}).join(" / ")}
+                  <HighlightText
+                    text={Object.values(variant.variantAttributes ?? {}).join(
+                      " / ",
+                    )}
+                    query={search}
+                  />
                 </Link>
                 <p className="tabular-nums text-xs text-muted">
-                  <SkuText value={variant.sku} />
+                  <SkuText value={variant.sku} query={search} />
                   {variant.barcode && ` · ⦀ ${variant.barcode}`}
                 </p>
               </TableCell>

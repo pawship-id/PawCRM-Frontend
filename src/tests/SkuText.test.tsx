@@ -15,6 +15,12 @@ describe("SkuText", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  it("highlights a search term in a whole SKU", () => {
+    render(<SkuText value="WHISKAS:TUNA" query="tuna" />);
+
+    expect(screen.getByText("TUNA").tagName).toBe("MARK");
+  });
+
   it("shows the fallback when there is no SKU", () => {
     render(<SkuText value={null} fallback="—" />);
 
