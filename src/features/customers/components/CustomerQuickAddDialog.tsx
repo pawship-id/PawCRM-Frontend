@@ -27,7 +27,7 @@ const PHONE_MAX_LENGTH = 32;
  * customer module would abandon a half-built cart.
  *
  * TWO FIELDS, NOT FIVE. Name and phone are what a person at a counter can answer
- * while holding a dog's lead; email, address and VIP tier are filled in later
+ * while holding a dog's lead; email and address are filled in later
  * from the full form. The PRD is explicit that quick-add must not block a
  * transaction waiting for a complete profile.
  *

@@ -7,6 +7,31 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Pelanggan: tag
+
+26 Oktober 2026, keputusan BO. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Tag pelanggan** — label bebas di form Pelanggan (tambah & ubah), tepat di atas Catatan, dengan saran
+  dari tag yang sudah dipakai toko (`GET /customers/tags`). Normalisasi sama dengan tag hewan (huruf kecil,
+  spasi jadi tanda hubung, tanpa duplikat; maks. 10 tag, 40 karakter). Enter menambah tag, tidak menyimpan
+  form. Tag selalu ikut dikirim saat simpan; daftar kosong (`[]`) menghapus semuanya.
+- **Hanya label:** tampil sebagai chip `#tag` di profil pelanggan (baris Tag, "—" bila kosong) — baris
+  "Segera" diganti. Tidak ada filter daftar, kolom tabel, atau tampilan di booking/kasir.
+- `TagField` baru di `@/components` (`components/form/TagField.tsx`), diangkat dari tab Preferensi hewan;
+  `PetPreferencesTab` kini memakainya (tampilan sama, kini juga membatasi 40 karakter per tag).
+- `Customer.tags`, `tags?` di `CreateCustomerInput`/`UpdateCustomerInput`, dan `customerService.tags()`.
+
+## [Unreleased] — Pelanggan: tier VIP dihapus
+
+26 Oktober 2026. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Tier VIP dihapus seluruhnya** — tidak dipakai logika apa pun; penanda member kini kartu membership.
+  Pilihan Tier di form Pelanggan, badge tier (daftar, profil, halaman Ubah), baris "Tier VIP" di profil,
+  dan filter Tier di panel Filter dihapus. Panel Filter tetap berisi Kategori, Jenis, Status, dan
+  "Tampilkan pelanggan terhapus".
+- `VipTier` dan semua field `vipTier` dihapus dari `types/api.ts`; `VipTierSelect.tsx` dihapus;
+  `CustomerVipBadge.tsx` diganti nama jadi `CustomerStatusBadge.tsx` (isinya tinggal badge status).
+
 ## [Unreleased] — Layanan: sort dari judul kolom
 
 20 Oktober 2026, atas permintaan BO. Backend: `PawCRM-Backend/docs/changelog.md`.

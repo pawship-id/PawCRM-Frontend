@@ -300,7 +300,7 @@ A 400/409 naming `bookings[i].plannedBenefit` is a toast plus an error on that a
 service line (both forms), then a re-quote — checked before the clash. The screen only creates; editing still goes through
 `/dashboard/booking/:id/edit` (`BookingForm`), which keeps the stored plan. Its "Member" fact now
 lists the customer's live cards (`useCustomerMemberships`, one request — "Bruno · Explorer",
-"Semua hewan · Keluarga", "—" when none) instead of the old `vipTier`.
+"Semua hewan · Keluarga", "—" when none).
 
 **Add-on benefits are applied automatically and shown only** (22 October 2026, both forms). The
 quote sends each ticked add-on with no pick, so the server recommends a benefit per add-on line

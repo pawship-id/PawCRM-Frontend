@@ -30,12 +30,12 @@ const customer: Customer = {
   taxId: null,
   picName: null,
   notes: null,
+  tags: [],
   notifications: {
     bookingReminder: true,
     membershipRenewal: true,
     promo: false,
   },
-  vipTier: "gold",
   deletedAt: null,
   createdAt: "2025-01-12T00:00:00.000Z",
   updatedAt: "2025-01-12T00:00:00.000Z",
@@ -197,11 +197,10 @@ describe("customers table", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 
-  it("shows when the customer joined, and their tier beside their name", () => {
+  it("shows when the customer joined", () => {
     renderTable();
 
     expect(screen.getByText("12 Jan 2025")).toBeVisible();
-    expect(screen.getByText("Gold")).toBeVisible();
   });
 
   it("offers no chat button for a number nobody can dial", () => {

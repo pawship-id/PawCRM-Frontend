@@ -362,7 +362,7 @@ border border-transparent
 | `users/StatusBadge`, `BranchStatusBadge`, `WarehouseStatusBadge`, `RoleStatusBadge` | active → `success`, inactive → `neutral` |
 | `SupplierStatusBadge` | overdue → `danger`, else render nothing (current behaviour is right) |
 | `SupplierTypeBadge`, `ProductTypeBadge` | `brand` for the primary type, `neutral` otherwise |
-| `CustomerVipBadge`, `TenantSubscriptionBadge` | `warning` — the one sanctioned orange tint |
+| `TenantSubscriptionBadge` | `warning` — the one sanctioned orange tint |
 | `InvoiceStatusBadge`, `PurchaseReturnStatusBadge`, `OpnameStatusBadge` | paid/done → `success`, draft → `neutral`, pending → `info`, overdue/void → `danger` |
 | `MovementBadge` | in → `success`, out → `danger`, adjust → `info` |
 | `AuditActionBadge` | create → `success`, update → `info`, delete → `danger` |

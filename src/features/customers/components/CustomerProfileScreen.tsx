@@ -18,7 +18,7 @@ import { whatsAppLink } from "@/utils/phone";
 import { customerNotifications } from "../notifications";
 import { CustomerHistorySection } from "./CustomerHistorySection";
 import { CustomerValueSection } from "./CustomerValueSection";
-import { CustomerVipBadge, CustomerStatusBadge } from "./CustomerVipBadge";
+import { CustomerStatusBadge } from "./CustomerStatusBadge";
 
 /** "12 Januari 2025" — a date somebody reads aloud. */
 function day(iso: string): string {
@@ -60,11 +60,10 @@ function initials(name: string): string {
  * "should I chase this person" is their piutang next to their last visit, and a tab
  * would hide one of the two.
  *
- * MOST OF THE MOCKUP'S FIELDS ARE REAL NOW (27 September 2026) — jenis,
- * kategori, NPWP, PIC, catatan and the notification consents all landed with the
- * form. What is left badged "Segera" is Tag, which has no field: a row that is
- * simply missing is one somebody assumes exists and goes hunting for in the
- * form.
+ * EVERY ONE OF THE MOCKUP'S FIELDS IS REAL NOW. Jenis, kategori, NPWP, PIC,
+ * catatan and the notification consents landed with the form (27 September
+ * 2026); Tag was the last one badged "Segera" and landed on 26 October 2026 —
+ * free-form labels, shown here and nowhere else (BO: a label, not a filter).
  */
 export function CustomerProfileScreen({ id }: { id: string }) {
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -159,7 +158,6 @@ export function CustomerProfileScreen({ id }: { id: string }) {
               isActive={customer.isActive}
               deleted={deleted}
             />
-            {customer.vipTier && <CustomerVipBadge tier={customer.vipTier} />}
             <Badge variant="outline" className="font-normal text-muted">
               Sejak {day(customer.createdAt)}
             </Badge>
@@ -214,7 +212,6 @@ export function CustomerProfileScreen({ id }: { id: string }) {
           <Row label="Nama" value={customer.name} />
           <Row label="WhatsApp / telepon" value={customer.phone ?? "—"} />
           <Row label="Email" value={customer.email ?? "—"} />
-          <Row label="Tier VIP" value={<CustomerVipBadge tier={customer.vipTier} />} />
           <Row
             label="Alamat"
             value={customer.address ?? "—"}
@@ -291,9 +288,10 @@ export function CustomerProfileScreen({ id }: { id: string }) {
             className="sm:col-span-2"
           />
 
-          <PendingRow
+          <Row
             label="Tag"
-            blockedBy="Belum ada tag pelanggan — catatan penanganan per hewan sudah ada di profil hewannya"
+            value={<Tags tags={customer.tags ?? []} />}
+            className="sm:col-span-2"
           />
         </dl>
       </Card>
@@ -393,23 +391,20 @@ function Row({
   );
 }
 
-/** A field the mockup asks for that this database has no column for. */
-function PendingRow({
-  label,
-  blockedBy,
-}: {
-  label: string;
-  blockedBy: string;
-}) {
+/** The customer's labels as chips — the pet profile's look — or a dash. */
+function Tags({ tags }: { tags: string[] }) {
+  if (tags.length === 0) return <>—</>;
+
   return (
-    <div aria-disabled="true" className="opacity-60">
-      <dt className="flex items-center gap-1.5 text-xs text-muted">
-        {label}
-        <Badge variant="outline" className="font-normal">
-          Segera
-        </Badge>
-      </dt>
-      <dd className="text-xs text-muted">{blockedBy}</dd>
-    </div>
+    <ul className="mt-0.5 flex flex-wrap gap-1.5">
+      {tags.map((tag) => (
+        <li
+          key={tag}
+          className="rounded-full bg-surface-hover px-2 py-0.5 text-xs font-medium text-muted"
+        >
+          #{tag}
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -1,28 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { X } from "lucide-react";
 
-import { Alert, FormActionBar, TextField, TextareaField } from "@/components";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
+import { Alert, FormActionBar, TagField, TextareaField } from "@/components";
 import { swalToast } from "@/lib/swal";
 import { petService } from "@/services/pet.service";
 import type { Pet } from "@/types/api";
-
-/** Mirrors MAX_TAGS in pet.model.js. */
-const MAX_TAGS = 10;
-
-/**
- * The same normalisation the server applies, run here so the chip somebody sees
- * is the chip that gets stored.
- *
- * WITHOUT IT the form shows `#Galak` and the list filters on `galak`, and the
- * two disagreeing is how people stop trusting a filter.
- */
-function normalize(raw: string): string {
-  return raw.trim().toLowerCase().replace(/^#/, "").replace(/\s+/g, "-");
-}
 
 /**
  * How the shop handles this animal — FR-5's Preferensi tab.
@@ -36,6 +19,9 @@ function normalize(raw: string): string {
  * already uses, so `galak` is typed once and picked thereafter. FR-5 asked for a
  * managed list with an editor behind it; this is the deviation, and it is
  * written down in pet.model.js rather than left to be discovered.
+ *
+ * The tag control itself is `TagField` from `@/components` (26 October 2026),
+ * shared with the customer form — normalisation and MAX_TAGS live there.
  */
 export function PetPreferencesTab({
   pet,
@@ -46,7 +32,6 @@ export function PetPreferencesTab({
 }) {
   const [text, setText] = useState(pet.preferences?.text ?? "");
   const [tags, setTags] = useState<string[]>(pet.preferences?.tags ?? []);
-  const [draft, setDraft] = useState("");
   const [known, setKnown] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,18 +51,6 @@ export function PetPreferencesTab({
       active = false;
     };
   }, []);
-
-  function addTag(raw: string) {
-    const tag = normalize(raw);
-
-    if (!tag || tags.includes(tag) || tags.length >= MAX_TAGS) {
-      setDraft("");
-      return;
-    }
-
-    setTags((prev) => [...prev, tag]);
-    setDraft("");
-  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -107,8 +80,6 @@ export function PetPreferencesTab({
     }
   }
 
-  const unused = known.filter((tag) => !tags.includes(tag));
-
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
       <FormActionBar
@@ -130,81 +101,14 @@ export function PetPreferencesTab({
         disabled={saving}
       />
 
-      <div className="flex flex-col gap-2">
-        <Label>Tag</Label>
-
-        {tags.length > 0 && (
-          <ul className="flex flex-wrap gap-2">
-            {tags.map((tag) => (
-              <li key={tag}>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={saving}
-                  aria-label={`Hapus tag ${tag}`}
-                  onClick={() =>
-                    setTags((prev) => prev.filter((item) => item !== tag))
-                  }
-                >
-                  #{tag}
-                  <X className="size-3.5" />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <div className="flex flex-wrap items-end gap-2">
-          <TextField
-            label="Tambah tag"
-            name="pet-tag"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              /*
-                ENTER ADDS THE TAG, IT DOES NOT SUBMIT THE FORM. Without the
-                preventDefault a single-field form saves on Enter, and somebody
-                adding their second tag would find the first one saved and the
-                page moved on.
-              */
-              if (event.key === "Enter") {
-                event.preventDefault();
-                addTag(draft);
-              }
-            }}
-            placeholder="galak"
-            hint={`Maksimal ${MAX_TAGS} tag. Huruf kecil, spasi jadi tanda hubung.`}
-            disabled={saving || tags.length >= MAX_TAGS}
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={saving || draft.trim() === "" || tags.length >= MAX_TAGS}
-            onClick={() => addTag(draft)}
-          >
-            Tambah
-          </Button>
-        </div>
-
-        {unused.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted">Sudah dipakai di toko:</span>
-            {unused.slice(0, 12).map((tag) => (
-              <Button
-                key={tag}
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={saving || tags.length >= MAX_TAGS}
-                onClick={() => addTag(tag)}
-              >
-                #{tag}
-              </Button>
-            ))}
-          </div>
-        )}
-      </div>
+      <TagField
+        value={tags}
+        onChange={setTags}
+        suggestions={known}
+        name="pet-tag"
+        placeholder="galak"
+        disabled={saving}
+      />
     </form>
   );
 }

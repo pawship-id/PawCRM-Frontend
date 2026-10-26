@@ -47,13 +47,13 @@ const customer: Customer = {
   taxId: null,
   picName: null,
   notes: null,
+  tags: [],
   notifications: {
     bookingReminder: true,
     membershipRenewal: true,
     promo: false,
   },
   location: { lat: null, lng: null, source: "manual" },
-  vipTier: "gold",
   deletedAt: null,
   createdAt: "2025-01-12T00:00:00.000Z",
   updatedAt: "2026-09-01T00:00:00.000Z",
@@ -74,9 +74,9 @@ function page<T>(items: T[], total = items.length) {
  *   whose animals these are and which number to ring. A profile that mounted a
  *   form again would put that behind `update`.
  *
- *   THE FIELDS THE DATABASE HAS NOT GOT SAY SO. Jenis, Kategori, NPWP and catatan
- *   are drawn with a "Segera" badge rather than left out — a missing row is a field
- *   somebody hunts for in the form.
+ *   EVERY FIELD THE FORM HOLDS IS DRAWN, empty ones as a dash — Tag, the last
+ *   one that used to carry a "Segera" badge, landed on 26 October 2026. A
+ *   missing row is a field somebody hunts for in the form.
  *
  *   THE FIGURES ARE ASKED FOR PER CUSTOMER, not summed in the browser. Both the
  *   invoice summary and the till's list carry this customer's id.
@@ -248,13 +248,29 @@ describe("customer profile", () => {
     ).toBeVisible();
   });
 
-  it("still marks Tag as coming rather than leaving the row out", async () => {
+  it("shows the customer's tags as chips where the Segera placeholder was", async () => {
+    mockedCustomers.getById.mockResolvedValue({
+      ...customer,
+      tags: ["pelanggan-lama", "reseller"],
+    });
+
     renderWithAuth(<CustomerProfileScreen id={customer._id} />);
 
     await screen.findByRole("heading", { level: 1, name: "Rina Wijaya" });
-    expect(screen.getByText("Tag")).toBeVisible();
-    // Said in words, not by styling alone — ui-rules §1.3.
-    expect(screen.getAllByText("Segera").length).toBeGreaterThan(0);
+    const row = screen.getByText("Tag").closest("div") as HTMLElement;
+    expect(within(row).getByText("#pelanggan-lama")).toBeVisible();
+    expect(within(row).getByText("#reseller")).toBeVisible();
+    // Said as a real row now — the "Segera" placeholder is gone from it.
+    expect(within(row).queryByText("Segera")).not.toBeInTheDocument();
+  });
+
+  it("draws a dash when the customer has no tags", async () => {
+    renderWithAuth(<CustomerProfileScreen id={customer._id} />);
+
+    await screen.findByRole("heading", { level: 1, name: "Rina Wijaya" });
+    const row = screen.getByText("Tag").closest("div") as HTMLElement;
+    expect(within(row).getByText("—")).toBeVisible();
+    expect(within(row).queryByRole("listitem")).not.toBeInTheDocument();
   });
 
   it("says when an address has no pin, because a zone-priced service needs one", async () => {

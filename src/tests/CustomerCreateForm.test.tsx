@@ -42,6 +42,8 @@ describe("CustomerCreateForm", () => {
       items: [{ _id: "type-1", name: "B2B", note: null }],
       pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
     });
+    // The Tag field's suggestions — unmocked, a real fetch jsdom refuses.
+    jest.spyOn(customerService, "tags").mockResolvedValue([]);
   });
   afterEach(() => jest.restoreAllMocks());
 
@@ -93,7 +95,6 @@ describe("CustomerCreateForm", () => {
         address: null,
         // No pin typed — sent as "no pin", not as a pair of zeros.
         location: null,
-        vipTier: null,
         // The form's own fields, at their defaults: a private customer with no
         // category, who gets service messages but no marketing.
         kind: "individual",
@@ -101,6 +102,7 @@ describe("CustomerCreateForm", () => {
         taxId: null,
         picName: null,
         notes: null,
+        tags: [],
         notifications: {
           bookingReminder: true,
           membershipRenewal: true,
@@ -239,6 +241,96 @@ describe("CustomerCreateForm", () => {
           promo: true,
         },
       }),
+    );
+  });
+
+  /* ── Tag (26 October 2026) — a label only, free text with suggestions ── */
+
+  it("adds a typed tag on Enter, normalised the way the server stores it, without submitting", async () => {
+    const create = jest
+      .spyOn(customerService, "create")
+      .mockResolvedValue({} as never);
+    render(<CustomerCreateForm />);
+
+    await userEvent.type(screen.getByLabelText(/nama pelanggan/i), "Budi");
+    await userEvent.type(
+      screen.getByLabelText(/tambah tag/i),
+      "  #Pelanggan Lama{Enter}",
+    );
+
+    // Enter added the chip; it did not save the form.
+    expect(
+      screen.getByRole("button", { name: "Hapus tag pelanggan-lama" }),
+    ).toBeVisible();
+    expect(create).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/tambah tag/i)).toHaveValue("");
+
+    // The same tag twice is one tag.
+    await userEvent.type(screen.getByLabelText(/tambah tag/i), "pelanggan-lama");
+    await userEvent.click(screen.getByRole("button", { name: /^tambah$/i }));
+    expect(
+      screen.getAllByRole("button", { name: /^Hapus tag/ }),
+    ).toHaveLength(1);
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan pelanggan/i }));
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: ["pelanggan-lama"] }),
+    );
+  });
+
+  it("offers the tenant's tags in use, and a picked one leaves the suggestions", async () => {
+    (customerService.tags as jest.Mock).mockResolvedValue(["reseller", "vip-lama"]);
+    const create = jest
+      .spyOn(customerService, "create")
+      .mockResolvedValue({} as never);
+    render(<CustomerCreateForm />);
+
+    await userEvent.type(screen.getByLabelText(/nama pelanggan/i), "Budi");
+    expect(await screen.findByText(/sudah dipakai di toko/i)).toBeVisible();
+    await userEvent.click(screen.getByRole("button", { name: "#reseller" }));
+
+    expect(screen.getByRole("button", { name: "Hapus tag reseller" })).toBeVisible();
+    // Picked, so no longer offered.
+    expect(screen.queryByRole("button", { name: "#reseller" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "#vip-lama" })).toBeVisible();
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan pelanggan/i }));
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: ["reseller"] }),
+    );
+  });
+
+  it("removes a tag when its chip is pressed", async () => {
+    const create = jest
+      .spyOn(customerService, "create")
+      .mockResolvedValue({} as never);
+    render(<CustomerCreateForm />);
+
+    await userEvent.type(screen.getByLabelText(/nama pelanggan/i), "Budi");
+    await userEvent.type(screen.getByLabelText(/tambah tag/i), "reseller{Enter}");
+    await userEvent.type(screen.getByLabelText(/tambah tag/i), "grosir{Enter}");
+    await userEvent.click(screen.getByRole("button", { name: "Hapus tag reseller" }));
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan pelanggan/i }));
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: ["grosir"] }),
+    );
+  });
+
+  it("still saves when the suggestions cannot be loaded", async () => {
+    (customerService.tags as jest.Mock).mockRejectedValue(new Error("offline"));
+    const create = jest
+      .spyOn(customerService, "create")
+      .mockResolvedValue({} as never);
+    render(<CustomerCreateForm />);
+
+    await userEvent.type(screen.getByLabelText(/nama pelanggan/i), "Budi");
+    await userEvent.type(screen.getByLabelText(/tambah tag/i), "reseller{Enter}");
+    expect(screen.queryByText(/sudah dipakai di toko/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /simpan pelanggan/i }));
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ tags: ["reseller"] }),
     );
   });
 });

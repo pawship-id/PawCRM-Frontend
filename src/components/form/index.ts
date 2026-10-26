@@ -15,10 +15,11 @@
  * panel, a form. A second implementation would have been the fifteen-toolbars
  * mistake with a different noun.
  *
- * `TagField` is not here either, and that is a decision, not an omission — the
- * guideline gives Tag a slot in every transaction header, but no `tags` field
- * exists on the stock or purchasing API, and a control with nowhere to save to is
- * worse than no control. It goes in when the backend does.
+ * `TagField` IS HERE NOW (26 October 2026), and only as free-form labels with
+ * suggestions: it was promoted out of the pet Preferensi tab when customer tags
+ * became the second caller. It is still NOT in the stock or purchasing headers
+ * the guideline gives Tag a slot in — no `tags` field exists on those APIs, and
+ * a control with nowhere to save to is worse than no control.
  */
 export {
   FIELD_HEIGHT,
@@ -34,3 +35,10 @@ export {
   type SelectFieldProps,
 } from "./SelectField";
 export { TextareaField, type TextareaFieldProps } from "./TextareaField";
+export {
+  MAX_TAGS,
+  TAG_MAX_LENGTH,
+  TagField,
+  normalizeTag,
+  type TagFieldProps,
+} from "./TagField";

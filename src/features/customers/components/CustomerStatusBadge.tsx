@@ -1,43 +1,13 @@
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
-import type { VipTier } from "@/types/api";
 
 /**
- * Badges for a customer row. A customer has two independent axes — its VIP tier
- * (a marketing tag, usually absent) and its lifecycle state (active / inactive /
- * deleted, see the model) — so they are two separate badges. The lifecycle one
- * is a single combined badge, the same shape `BranchStatusBadge` uses, now that
- * a customer has the same `isActive`/`deletedAt` pair a branch does (2 October
- * 2026). Both apply the brand tint tokens over the outline badge (ui-rules §9).
+ * The lifecycle badge for a customer (active / inactive / deleted, see the
+ * model) — a single combined badge, the same shape `BranchStatusBadge` uses,
+ * now that a customer has the same `isActive`/`deletedAt` pair a branch does
+ * (2 October 2026). It applies the brand tint tokens over the outline badge
+ * (ui-rules §9).
  */
-
-const TIER_STYLES: Record<VipTier, string> = {
-  bronze: "bg-secondary text-secondary-foreground",
-  silver: "bg-muted/60 text-foreground",
-  gold: "bg-accent text-accent-foreground",
-  platinum: "bg-primary/12 text-primary",
-};
-
-const TIER_LABELS: Record<VipTier, string> = {
-  bronze: "Bronze",
-  silver: "Silver",
-  gold: "Gold",
-  platinum: "Platinum",
-};
-
-/** The customer's VIP tier, or a muted dash when they have none. */
-export function CustomerVipBadge({ tier }: { tier: VipTier | null }) {
-  if (!tier) return <span className="text-muted-foreground">—</span>;
-
-  return (
-    <Badge
-      variant="outline"
-      className={cn("border-transparent capitalize", TIER_STYLES[tier])}
-    >
-      {TIER_LABELS[tier]}
-    </Badge>
-  );
-}
 
 /**
  * Terhapus beats Nonaktif beats Aktif — the three states `deletedAt` and

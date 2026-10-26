@@ -33,14 +33,13 @@ import {
   type CustomerFormValue,
 } from "./CustomerFormFields";
 import {
-  CustomerVipBadge,
   CustomerStatusBadge,
   isCustomerActive,
-} from "./CustomerVipBadge";
+} from "./CustomerStatusBadge";
 
 /**
  * Edit an existing customer. Mirrors BranchEditForm: the details (name, email,
- * phone, address, VIP tier) go through a single PATCH /customers/:id, and the
+ * phone, address) go through a single PATCH /customers/:id, and the
  * soft-delete lifecycle (delete / restore) lives in its own danger-zone Card.
  *
  * It fetches the customer on mount, then hands it to each section. Sections lift
@@ -104,12 +103,11 @@ export function CustomerEditForm({ id }: { id: string }) {
                 isActive={customer.isActive}
                 deleted={customer.deletedAt !== null}
               />
-              {customer.vipTier && <CustomerVipBadge tier={customer.vipTier} />}
             </>
           )}
         </div>
         <p className="mt-1 text-sm text-muted">
-          Data pemilik dan tier VIP-nya. Data hewan diubah dari kartunya
+          Data pemilik. Data hewan diubah dari kartunya
           masing-masing.
         </p>
       </div>
@@ -122,7 +120,7 @@ export function CustomerEditForm({ id }: { id: string }) {
         </div>
       ) : (
         <>
-          <Card title="Identitas" description="Kontak dan tier VIP.">
+          <Card title="Identitas" description="Kontak dan alamat.">
             <DetailsSection customer={customer} onUpdated={setCustomer} />
           </Card>
 

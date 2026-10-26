@@ -10,7 +10,6 @@ import type {
   CustomerListQuery,
   CustomerSort,
   PageResult,
-  VipTier,
 } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
@@ -18,8 +17,6 @@ import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 export interface CustomersQuery {
   page: number;
   search: string;
-  /** "" = any tier, otherwise a specific VIP tier. */
-  vipTier: VipTier | "";
   /** "" = any category, otherwise one of the tenant's Tipe pelanggan. */
   customerTypeId: string;
   /** "" = both, otherwise Perorangan or Perusahaan. */
@@ -58,7 +55,6 @@ const PAGE_SIZE = 20;
 const DEFAULT_QUERY: CustomersQuery = {
   page: 1,
   search: "",
-  vipTier: "",
   customerTypeId: "",
   kind: "",
   active: true,
@@ -93,8 +89,8 @@ interface UseCustomersResult {
  *
  * Mirrors useBranches: local state, a fetch effect keyed on the query, and an
  * explicit `refetch` the row actions call after they mutate a customer. Any
- * filter or ordering change (search/tier/deleted/sort) resets to page 1 so the
- * user is never stranded on an out-of-range page.
+ * filter or ordering change (search/category/kind/status/deleted/sort) resets
+ * to page 1 so the user is never stranded on an out-of-range page.
  *
  * `initial` SEEDS THE STATE, NOT A PROP THE SCREEN RE-READS (2 October 2026)
  * — the same lazy-`useState` merge `useCashTransactions` uses for its own
@@ -145,7 +141,6 @@ export function useCustomers(
       page: settled.page,
       limit: PAGE_SIZE,
       search: settled.search.trim() || undefined,
-      vipTier: settled.vipTier === "" ? undefined : settled.vipTier,
       // "" means "not filtering", which is an ABSENT parameter rather than an
       // empty one: sent as "" the server would look for a customer filed under
       // the empty string and answer with nothing.

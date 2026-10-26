@@ -988,7 +988,7 @@ the rows they add up. Do not split it back into a card of its own as a tidy-up.
 
 ### Not decided
 
-- **Tag has no home yet.** The guideline gives it a slot in every transaction header, but no `tags` field exists on the stock or purchasing API. `TagField` is not built. Do not add a control with nowhere to save to.
+- **Tag has no home in a transaction header yet.** The guideline gives it a slot in every transaction header, but no `tags` field exists on the stock or purchasing API. Do not add a control with nowhere to save to. `TagField` itself is built (26 October 2026, `@/components`) — free-form labels with suggestions, used by the pet Preferensi tab and the Pelanggan form (Tag sits just above Catatan, §16's "metadata ringan" slot).
 - **Akun Penyesuaian** is chosen by the server today (5201 Kerugian Persediaan). Whether a user may override it is a permissions question, not a form question.
 - **Transfer Stok has no Tanggal**, in the form or in `CreateTransferInput` — it is stamped by the server. §Diterapkan of the guideline lists it as required. Answer this before adding the field.
 - **Switch vs check-row for "Aktif".** Three entity forms use a switch; the guideline only knows check-rows. Both are correct; having both is not. Record the answer here before changing either.
