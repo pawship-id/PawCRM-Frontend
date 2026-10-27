@@ -183,7 +183,7 @@ describe("Biaya Tetap — the table", () => {
     openTab();
 
     const row = (await screen.findByText("Sewa Toko Pusat")).closest("tr")!;
-    expect(within(row).getByText("Nonaktif")).toBeInTheDocument();
+    expect(within(row).getByText("Dijeda")).toBeInTheDocument();
     expect(
       within(row).queryByRole("button", { name: "Catat" }),
     ).not.toBeInTheDocument();

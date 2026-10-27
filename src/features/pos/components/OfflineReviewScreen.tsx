@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Alert, Breadcrumb, FilterPills, Pagination, Spinner, TextareaField } from "@/components";
+import { Alert, Breadcrumb, ConfirmDialog, FilterPills, Pagination, Spinner, TextareaField } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -72,6 +72,14 @@ export function OfflineReviewScreen() {
   const [rejecting, setRejecting] = useState<OfflineSubmission | null>(null);
   const [note, setNote] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  /*
+    "Tandai sudah dicek" ASKS FIRST (27 October 2026): it closes the review for
+    good — the sale moves to "Selesai" and there is no button to reopen it.
+    "Coba lagi" does not ask: it only re-runs the posting the till already
+    tried, the server claims the item so a double press cannot post it twice,
+    and a sale that still fails simply stays here.
+  */
+  const [accepting, setAccepting] = useState<OfflineSubmission | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -107,6 +115,7 @@ export function OfflineReviewScreen() {
         action === "retry" && result.status !== "synced" ? 6000 : 3000,
       );
       setRejecting(null);
+      setAccepting(null);
       setNote("");
       await load();
     } catch (err) {
@@ -168,7 +177,12 @@ export function OfflineReviewScreen() {
                     <TableCell className="tabular-nums">{timeOf(row.paidAt)}</TableCell>
                     <TableCell>{row.cashierName ?? "—"}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatMoney(row.grandTotal)}</TableCell>
-                    <TableCell className="max-w-md">
+                    {/*
+                      THE NOTES WRAP. Table cells are nowrap by default, so a long
+                      server message pushed "Tolak" / "Tandai sudah dicek" past the
+                      right edge of the card.
+                    */}
+                    <TableCell className="min-w-64 max-w-md whitespace-normal break-words">
                       <ul className="space-y-1">
                         {notes.map((item, index) => (
                           <li key={index} className="text-sm">
@@ -212,7 +226,7 @@ export function OfflineReviewScreen() {
                             variant="secondary"
                             size="sm"
                             disabled={busyId === row._id}
-                            onClick={() => void resolve(row, "accept")}
+                            onClick={() => setAccepting(row)}
                           >
                             Tandai sudah dicek
                           </Button>
@@ -235,6 +249,19 @@ export function OfflineReviewScreen() {
           unitPlural="transaksi"
           onPageChange={setPage}
         />}
+
+      {accepting && (
+        <ConfirmDialog
+          title={`Tandai ${accepting.transactionNumber} sudah dicek?`}
+          confirmLabel="Tandai sudah dicek"
+          busy={busyId === accepting._id}
+          onCancel={() => setAccepting(null)}
+          onConfirm={() => void resolve(accepting, "accept")}
+        >
+          Transaksi ini sudah terposting. Setelah ditandai, transaksi pindah ke
+          &quot;Selesai&quot; dan tidak muncul lagi di daftar yang perlu dicek.
+        </ConfirmDialog>
+      )}
 
       {rejecting && (
         <div className="space-y-3 rounded-xl border border-border bg-surface p-4">

@@ -2615,7 +2615,8 @@ describe("PurchasingHub — Utang konsinyasi", () => {
     const { user, dialog } = await openDialog();
 
     const amount = within(dialog).getByLabelText("Nominal setor");
-    expect(amount).toHaveValue("300000.0000");
+    // The ledger's four zeros are trimmed off what the box shows.
+    expect(amount).toHaveValue("300000");
 
     await user.clear(amount);
     await user.type(amount, "300001");

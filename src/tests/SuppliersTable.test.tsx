@@ -172,7 +172,7 @@ describe("SuppliersTable", () => {
     renderTable([makeSupplier()]);
 
     expect(screen.getByText("PT Sumber Pangan")).toBeInTheDocument();
-    expect(screen.getByText("beli putus")).toBeInTheDocument();
+    expect(screen.getByText("Beli putus")).toBeInTheDocument();
     expect(screen.getByText("30 hari")).toBeInTheDocument();
   });
 

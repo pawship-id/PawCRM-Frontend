@@ -131,6 +131,27 @@ describe("CashTransactionDetail — what it shows", () => {
     expect(screen.queryByText("Masuk bersih")).not.toBeInTheDocument();
   });
 
+  it("names the Biaya Tetap it was recorded from, with a link to it", async () => {
+    asMock(cashTransactionService.getById).mockResolvedValue(
+      cashTx({ fixedCostId: "fc1", fixedCostName: "Sewa ruko" }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByRole("link", { name: "Sewa ruko" })).toHaveAttribute(
+      "href",
+      "/dashboard/finance/cash-bank/fixed-costs/fc1",
+    );
+    expect(screen.queryByText("Segera")).not.toBeInTheDocument();
+  });
+
+  it("says — in Biaya tetap when it did not come from one", async () => {
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Uang masuk – BKM/CBS/2609/0001" });
+    expect(screen.getByText("Biaya tetap").parentElement).toHaveTextContent(/^Biaya tetap—$/);
+  });
+
   it("falls back to the kind and amount for migrated history with no number", async () => {
     asMock(cashTransactionService.getById).mockResolvedValue(
       cashTx({ number: null }),

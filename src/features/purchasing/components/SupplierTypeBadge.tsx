@@ -11,12 +11,12 @@ import type { SupplierType } from "@/types/api";
  * they are not is this badge.
  */
 const LABELS: Record<SupplierType, { label: string; tone: string }> = {
-  beli_putus: { label: "beli putus", tone: "bg-accent text-muted" },
+  beli_putus: { label: "Beli putus", tone: "bg-accent text-muted" },
   konsinyasi: {
-    label: "konsinyasi",
+    label: "Konsinyasi",
     tone: "bg-secondary/25 text-secondary-foreground",
   },
-  both: { label: "keduanya", tone: "bg-primary/12 text-primary-hover" },
+  both: { label: "Keduanya", tone: "bg-primary/12 text-primary-hover" },
 };
 
 export function SupplierTypeBadge({ type }: { type: SupplierType }) {

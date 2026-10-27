@@ -3,7 +3,14 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Alert, Button, Card, Spinner, TextField, ConfirmDialog } from "@/components";
+import {
+  Alert,
+  Button,
+  Card,
+  Spinner,
+  TextField,
+  ConfirmDialog,
+} from "@/components";
 import { ApiError } from "@/services/api-error";
 import { userService } from "@/services/user.service";
 import { swalToast } from "@/lib/swal";
@@ -23,6 +30,7 @@ import { RoleSelect } from "./RoleSelect";
 import { RosterSection } from "./RosterSection";
 import { BranchScopeField } from "./BranchScopeField";
 import { StatusBadge } from "./StatusBadge";
+import { DeletedUserNotice } from "./DeletedUserNotice";
 
 function isLocked(user: User): boolean {
   if (!user.lockedUntil) return false;
@@ -58,14 +66,18 @@ export function UserEditForm({ id }: { id: string }) {
   useEffect(() => {
     let active = true;
     userService
-      .getById(id)
+      // includeDeleted: a deleted user must still open here — Zona berbahaya
+      // is the only place that offers "Pulihkan pengguna".
+      .getById(id, { includeDeleted: true })
       .then((result) => {
         if (active) setUser(result);
       })
       .catch((error) => {
         if (!active) return;
         setLoadError(
-          error instanceof ApiError ? error.message : "Pengguna ini tidak bisa dimuat.",
+          error instanceof ApiError
+            ? error.message
+            : "Pengguna ini tidak bisa dimuat.",
         );
       });
     return () => {
@@ -78,7 +90,9 @@ export function UserEditForm({ id }: { id: string }) {
       {/* The header stays visible while the body loads. */}
       <div>
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-extrabold text-foreground">Ubah pengguna</h1>
+          <h1 className="text-2xl font-extrabold text-foreground">
+            Ubah pengguna
+          </h1>
           {user && (
             <StatusBadge
               status={user.status}
@@ -140,7 +154,10 @@ export function UserEditForm({ id }: { id: string }) {
             title="Password"
             description="Buat password baru untuk pengguna ini."
           >
-            <PasswordSection userId={user._id} />
+            <PasswordSection
+              userId={user._id}
+              deleted={user.deletedAt !== null}
+            />
           </Card>
 
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -266,11 +283,7 @@ function DetailsSection({
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
       {formError && <Alert variant="error">{formError}</Alert>}
-      {disabled && (
-        <Alert variant="info">
-          Pengguna ini sudah dihapus. Pulihkan dulu di Zona berbahaya supaya bisa diubah.
-        </Alert>
-      )}
+      {disabled && <DeletedUserNotice />}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Row 1: full name & email */}
@@ -380,12 +393,16 @@ function StatusSection({
       onUpdated(updated);
       setConfirming(false);
       swalToast(
-        nextStatus === "suspended" ? "Pengguna ditangguhkan." : "Pengguna diaktifkan.",
+        nextStatus === "suspended"
+          ? "Pengguna ditangguhkan."
+          : "Pengguna diaktifkan.",
       );
     } catch (err) {
       // A failed act is a toast — ui-rules §9.
       swalToast(
-        err instanceof ApiError ? err.fullMessage : "Status tidak bisa diubah. Coba lagi.",
+        err instanceof ApiError
+          ? err.fullMessage
+          : "Status tidak bisa diubah. Coba lagi.",
         "error",
         6000,
       );
@@ -412,7 +429,9 @@ function StatusSection({
             nextStatus === "suspended" ? setConfirming(true) : void toggle()
           }
         >
-          {nextStatus === "suspended" ? "Tangguhkan pengguna" : "Aktifkan pengguna"}
+          {nextStatus === "suspended"
+            ? "Tangguhkan pengguna"
+            : "Aktifkan pengguna"}
         </Button>
       </div>
 
@@ -437,7 +456,13 @@ function StatusSection({
 
 /* -------------------------------------------------------------------------- */
 
-function PasswordSection({ userId }: { userId: string }) {
+function PasswordSection({
+  userId,
+  deleted,
+}: {
+  userId: string;
+  deleted: boolean;
+}) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -478,36 +503,40 @@ function PasswordSection({ userId }: { userId: string }) {
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
       {formError && <Alert variant="error">{formError}</Alert>}
+      {deleted && <DeletedUserNotice />}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <TextField
-          label="Password baru"
-          type="password"
-          name="newPassword"
-          autoComplete="new-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          error={fieldErrors.newPassword}
-          hint={`Minimal ${PASSWORD_MIN_LENGTH} karakter.`}
-          required
-        />
-        <TextField
-          label="Ulangi password baru"
-          type="password"
-          name="confirm"
-          autoComplete="new-password"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          error={fieldErrors.confirm}
-          required
-        />
-      </div>
+      {/* A disabled fieldset locks every input and the save button at once. */}
+      <fieldset disabled={deleted} className="contents">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <TextField
+            label="Password baru"
+            type="password"
+            name="newPassword"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            error={fieldErrors.newPassword}
+            hint={`Minimal ${PASSWORD_MIN_LENGTH} karakter.`}
+            required
+          />
+          <TextField
+            label="Ulangi password baru"
+            type="password"
+            name="confirm"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            error={fieldErrors.confirm}
+            required
+          />
+        </div>
 
-      <div className="flex justify-end">
-        <Button type="submit" loading={saving} className="w-full sm:w-auto">
-          Simpan password
-        </Button>
-      </div>
+        <div className="flex justify-end">
+          <Button type="submit" loading={saving} className="w-full sm:w-auto">
+            Simpan password
+          </Button>
+        </div>
+      </fieldset>
     </form>
   );
 }
@@ -554,7 +583,9 @@ function DangerSection({
           : await userService.unlock(user._id);
       onUpdated(updated);
       setPending(null);
-      swalToast(pending === "restore" ? "Pengguna dipulihkan." : "Kunci akun dibuka.");
+      swalToast(
+        pending === "restore" ? "Pengguna dipulihkan." : "Kunci akun dibuka.",
+      );
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -616,8 +647,8 @@ function DangerSection({
             </>
           ) : pending === "restore" ? (
             <>
-              Pulihkan <strong>{user.fullName}</strong>? Bisa gagal kalau emailnya
-              sudah dipakai akun lain.
+              Pulihkan <strong>{user.fullName}</strong>? Bisa gagal kalau
+              emailnya sudah dipakai akun lain.
             </>
           ) : (
             <>

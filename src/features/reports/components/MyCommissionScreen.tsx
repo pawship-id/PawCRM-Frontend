@@ -2,16 +2,57 @@
 
 import { useEffect, useState } from "react";
 
-import { Alert, Card, Spinner, TextField } from "@/components";
+import { Alert, Card, FilterSelect, Spinner } from "@/components";
 import { ApiError } from "@/services/api-error";
 import { reportService } from "@/services/report.service";
 import { formatMoney } from "@/utils/decimal";
 import type { MyCommission } from "@/types/api";
 
-/** This month, as `<input type="month">` holds it — in the shop's own clock. */
+/** This month as `YYYY-MM` — the period the API takes — in the shop's own clock. */
 function thisMonth(): string {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+const MONTH_NAMES = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+
+/** "2026-10" → "Oktober 2026". Anything unreadable is returned as it came. */
+export function monthName(period: string): string {
+  const [year, month] = period.split("-");
+  const name = MONTH_NAMES[Number(month) - 1];
+  return year && name ? `${name} ${year}` : period;
+}
+
+/**
+ * THE MONTHS ON OFFER — this one and the 23 before it, newest first.
+ *
+ * A picker of our own words rather than `<input type="month">`, whose popup is
+ * drawn by the browser in the browser's language ("October 2026") and cannot be
+ * translated from here (27 October 2026). Two years back covers every payslip
+ * question anybody has asked at the counter.
+ */
+const MONTHS_BACK = 24;
+
+function monthOptions(current: string) {
+  const [year, month] = current.split("-").map(Number);
+  return Array.from({ length: MONTHS_BACK }, (_, back) => {
+    const index = year * 12 + (month - 1) - back;
+    const value = `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}`;
+    return { value, label: monthName(value) };
+  });
 }
 
 /**
@@ -40,7 +81,8 @@ function thisMonth(): string {
  * accepted it as owed. Said on screen rather than left as a discrepancy.
  */
 export function MyCommissionScreen() {
-  const [period, setPeriod] = useState(thisMonth);
+  const [current] = useState(thisMonth);
+  const [period, setPeriod] = useState(current);
   const [data, setData] = useState<MyCommission | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,12 +124,13 @@ export function MyCommissionScreen() {
   return (
     <div className="flex flex-col gap-4">
       <Card title="Periode">
-        <TextField
+        <FilterSelect
           label="Bulan"
-          name="my-commission-period"
-          type="month"
+          layout="field"
+          active={false}
           value={period}
-          onChange={(event) => setPeriod(event.target.value)}
+          options={monthOptions(current)}
+          onChange={setPeriod}
           hint="Komisi dihitung per bulan."
         />
       </Card>
@@ -100,14 +143,22 @@ export function MyCommissionScreen() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          <Card title={`Bulan ini (${period})`}>
+          <Card
+            title={
+              period === current
+                ? `Bulan ini (${monthName(period)})`
+                : monthName(period)
+            }
+          >
             {data?.earned ? (
               <>
                 <p className="text-2xl font-bold tabular-nums text-foreground">
                   {formatMoney(data.earned.amount)}
                 </p>
                 <p className="mt-1 text-sm text-muted">
-                  dari {data.earned.rows} layanan
+                  {/* One commission record is one SESSION (a turn of a
+                      booking), not one booking — so the count says sesi. */}
+                  dari {data.earned.rows} sesi
                   {data.earned.reversedRows > 0
                     ? ` · ${data.earned.reversedRows} dibatalkan`
                     : ""}
@@ -132,9 +183,9 @@ export function MyCommissionScreen() {
             <p className="mt-1 text-sm text-muted">
               {(outstanding?.recordCount ?? 0) === 0
                 ? "Tidak ada yang menunggu dibayar."
-                : `dari ${outstanding?.recordCount} layanan${
+                : `dari ${outstanding?.recordCount} sesi${
                     outstanding?.periods.length
-                      ? ` · ${outstanding.periods.join(", ")}`
+                      ? ` · ${outstanding.periods.map(monthName).join(", ")}`
                       : ""
                   }`}
             </p>

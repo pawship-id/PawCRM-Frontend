@@ -364,7 +364,7 @@ export function PosCart({
             >
               Bagikan ke kasir lain
             </Label>
-            <InfoTooltip hint="Kalau aktif, setelah disimpan keranjang ini muncul di daftar simpanan semua kasir di cabang ini, jadi kasir lain bisa melanjutkan dan menerima pembayarannya. Kalau mati, hanya kamu yang bisa melihatnya." />
+            <InfoTooltip hint="Kalau aktif, setelah disimpan keranjang ini muncul di daftar simpanan semua kasir di cabang ini, jadi kasir lain bisa melanjutkan dan menerima pembayarannya. Kalau mati, hanya Anda yang bisa melihatnya." />
             <Switch
               id="pos-sync-online"
               checked={cart.syncOnline === true}

@@ -116,7 +116,7 @@ function CardTab({ cards }: { cards: SettingsCard[] }) {
 
       {visible.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted">
-          Belum ada pengaturan di bagian ini yang bisa kamu buka.
+          Belum ada pengaturan di bagian ini yang bisa Anda buka.
         </p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">

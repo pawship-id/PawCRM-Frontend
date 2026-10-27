@@ -36,6 +36,11 @@ export interface ConfirmDialogProps {
   error?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
+  /**
+   * Phone-sized buttons (44px tall, §1.5) — for screens used on a phone, like
+   * the groomer app. The footer already stacks the buttons full-width below `sm`.
+   */
+  touch?: boolean;
 }
 
 export function ConfirmDialog({
@@ -47,6 +52,7 @@ export function ConfirmDialog({
   error,
   onConfirm,
   onCancel,
+  touch = false,
 }: ConfirmDialogProps) {
   return (
     <Dialog
@@ -70,11 +76,17 @@ export function ConfirmDialog({
             not, and an English word on a cashier's screen is the one place it
             cannot pass.
           */}
-          <Button variant="outline" onClick={onCancel} disabled={busy}>
+          <Button
+            variant="outline"
+            className={touch ? "min-h-11" : undefined}
+            onClick={onCancel}
+            disabled={busy}
+          >
             Batal
           </Button>
           <Button
             variant={destructive ? "destructive" : "default"}
+            className={touch ? "min-h-11" : undefined}
             onClick={onConfirm}
             disabled={busy}
           >

@@ -212,12 +212,44 @@ describe("CommissionScreen — approving and paying", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Setujui terpilih" }));
 
+    // Asks first, naming the pending row and its amount — nothing saved yet.
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Setujui komisi?")).toBeInTheDocument();
+    expect(within(dialog).getByText("Rp 57.600")).toBeInTheDocument();
+    expect(reports.approveCommissions).not.toHaveBeenCalled();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Setujui komisi" }));
+
     await waitFor(() =>
       expect(reports.approveCommissions).toHaveBeenCalledWith([
         { bookingId: "bk-1", groomerUserId: "sari" },
       ]),
     );
     expect(swalToast).toHaveBeenCalledWith("1 komisi disetujui.", "success");
+  });
+
+  it("names the count and the total before approving several", async () => {
+    const SECOND = row({
+      key: "bk-4:sari",
+      bookingId: "bk-4",
+      groomerName: "Sari",
+      bookingNumber: "BK-0912-001",
+      amount: "42400.0000",
+    });
+    reports.commissionRecords.mockResolvedValue(page([PENDING, SECOND]));
+    renderWithAuth(<CommissionScreen now={NOW} />, { permissions: MANAGER, isSuperAdmin: false });
+    await screen.findByText("BK-0912-001");
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /semua/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Setujui terpilih" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Setujui 2 komisi?")).toBeInTheDocument();
+    expect(within(dialog).getByText("Rp 100.000")).toBeInTheDocument();
+
+    // Batal leaves everything as it was.
+    await userEvent.click(within(dialog).getByRole("button", { name: "Batal" }));
+    expect(reports.approveCommissions).not.toHaveBeenCalled();
   });
 
   /* The Owner's rule, 21 September 2026: approval first, then payment. */

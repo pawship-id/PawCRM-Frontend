@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Trash2 } from "lucide-react";
 
-import { Alert, Spinner } from "@/components";
+import { Alert, ConfirmDialog, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -67,6 +68,11 @@ function cartLabel(cart: PosTransaction, index: number): string {
   return `Keranjang ${cart.cartNumber ?? index + 1}`;
 }
 
+/** "Hapus keranjang Ibu Sri?" — but "Hapus Keranjang 3?", not "keranjang Keranjang 3". */
+function discardTitle(label: string): string {
+  return /^keranjang\b/i.test(label) ? `Hapus ${label}?` : `Hapus keranjang ${label}?`;
+}
+
 /**
  * The parked baskets of this shift (FR-6).
  *
@@ -101,120 +107,156 @@ export function PosHeldCartsDialog({
    */
   blockedReason?: string | null;
   onResume: (cart: PosTransaction) => void;
-  onDiscard: (cart: PosTransaction) => void;
+  /**
+   * Called only after the cashier confirms (27 October 2026) — a parked basket
+   * that is thrown away cannot be brought back, so the bin icon asks first.
+   * Awaited so the confirm stays busy until the delete has landed.
+   */
+  onDiscard: (cart: PosTransaction) => Promise<void> | void;
   onOpenChange: (open: boolean) => void;
 }) {
+  const [discarding, setDiscarding] = useState<{ cart: PosTransaction; label: string } | null>(null);
+  const [discardBusy, setDiscardBusy] = useState(false);
+
+  async function confirmDiscard() {
+    if (!discarding) return;
+    setDiscardBusy(true);
+    try {
+      await onDiscard(discarding.cart);
+    } finally {
+      setDiscardBusy(false);
+      setDiscarding(null);
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Keranjang tersimpan</DialogTitle>
-          <DialogDescription>
-            Keranjang yang kamu simpan di shift ini, ditambah keranjang sync
-            online dari kasir lain di cabang ini.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Keranjang tersimpan</DialogTitle>
+            <DialogDescription>
+              Keranjang yang Anda simpan di shift ini, ditambah keranjang yang
+              dibagikan kasir lain di cabang ini.
+            </DialogDescription>
+          </DialogHeader>
 
-        {error && <Alert variant="error">{error}</Alert>}
+          {error && <Alert variant="error">{error}</Alert>}
 
-        {/*
-          PRD FR-6: melanjutkan diblokir selama keranjang aktif belum kosong.
-          Said once, above the list, rather than repeated on every row — the
-          reason is about the till, not about any one basket here.
-        */}
-        {blockedReason && (
-          <p className="rounded-lg bg-tint-warning px-3 py-2 text-sm text-foreground">
-            {blockedReason}
-          </p>
-        )}
+          {/*
+            PRD FR-6: melanjutkan diblokir selama keranjang aktif belum kosong.
+            Said once, above the list, rather than repeated on every row — the
+            reason is about the till, not about any one basket here.
+          */}
+          {blockedReason && (
+            <p className="rounded-lg bg-tint-warning px-3 py-2 text-sm text-foreground">
+              {blockedReason}
+            </p>
+          )}
 
-        {loading ? (
-          <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
-            <Spinner /> Memuat…
-          </div>
-        ) : carts.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted">
-            Belum ada keranjang yang disimpan.
-          </p>
-        ) : (
-          <ul className="divide-y divide-border">
-            {carts.map((cart, index) => (
-              <li
-                key={cart._id}
-                className="flex items-center justify-between gap-3 py-3"
-              >
-                <div className="min-w-0">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="truncate text-sm font-medium text-foreground">
-                      {cartLabel(cart, index)}
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted">
+              <Spinner /> Memuat…
+            </div>
+          ) : carts.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted">
+              Belum ada keranjang yang disimpan.
+            </p>
+          ) : (
+            <ul className="divide-y divide-border">
+              {carts.map((cart, index) => (
+                <li
+                  key={cart._id}
+                  className="flex items-center justify-between gap-3 py-3"
+                >
+                  <div className="min-w-0">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-sm font-medium text-foreground">
+                        {cartLabel(cart, index)}
+                      </span>
+                      {/*
+                        SAID IN WORDS (§1.3): this basket is visible at every till
+                        of the branch, and may have been parked by somebody else.
+                      */}
+                      {cart.syncOnline && (
+                        <span className="shrink-0 rounded-full bg-tint-info px-2 py-0.5 text-xs font-medium text-info">
+                          Dibagikan
+                        </span>
+                      )}
                     </span>
+                    <span className="block text-xs tabular-nums text-muted">
+                      {cart.items.length} item ·{" "}
+                      {formatMoney(cart.runningTotals.net)}
+                      {/*
+                        WHEN IT WAS LAST SAVED, which FR-6 asks the list to carry.
+                        It is what a cashier scans for: the trolley nobody has
+                        touched since before the last customer.
+                      */}
+                      {cart.updatedAt ? ` · ${savedAtLabel(cart.updatedAt)}` : ""}
+                    </span>
+
                     {/*
-                      SAID IN WORDS (§1.3): this basket is visible at every till
-                      of the branch, and may have been parked by somebody else.
+                      The phone on its own line, as a second identifier when the row
+                      is named after a customer. Two people called "Ibu Sri" is
+                      ordinary; two on one number is not — and since 25 Aug the
+                      system refuses the second. Moved off the line above once the
+                      time joined it: four facts separated by three dots is a row
+                      somebody has to parse rather than glance at.
                     */}
-                    {cart.syncOnline && (
-                      <span className="shrink-0 rounded-full bg-tint-info px-2 py-0.5 text-xs font-medium text-info">
-                        Dibagikan
+                    {!cart.heldLabel && cart.customer?.phone && (
+                      <span className="block text-xs tabular-nums text-muted">
+                        {cart.customer.phone}
                       </span>
                     )}
-                  </span>
-                  <span className="block text-xs tabular-nums text-muted">
-                    {cart.items.length} item ·{" "}
-                    {formatMoney(cart.runningTotals.net)}
-                    {/*
-                      WHEN IT WAS LAST SAVED, which FR-6 asks the list to carry.
-                      It is what a cashier scans for: the trolley nobody has
-                      touched since before the last customer.
-                    */}
-                    {cart.updatedAt ? ` · ${savedAtLabel(cart.updatedAt)}` : ""}
-                  </span>
+                  </div>
 
-                  {/*
-                    The phone on its own line, as a second identifier when the row
-                    is named after a customer. Two people called "Ibu Sri" is
-                    ordinary; two on one number is not — and since 25 Aug the
-                    system refuses the second. Moved off the line above once the
-                    time joined it: four facts separated by three dots is a row
-                    somebody has to parse rather than glance at.
-                  */}
-                  {!cart.heldLabel && cart.customer?.phone && (
-                    <span className="block text-xs tabular-nums text-muted">
-                      {cart.customer.phone}
-                    </span>
-                  )}
-                </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      /*
+                        Nothing here may be opened while a basket with anything in
+                        it is on screen. Left visible rather than removed so the
+                        row keeps the shape every other row has — and the reason
+                        is stated once above the list.
+                      */
+                      disabled={blockedReason !== null}
+                      onClick={() => onResume(cart)}
+                    >
+                      Lanjutkan
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-9 text-danger"
+                      aria-label={`Hapus ${cartLabel(cart, index)}`}
+                      onClick={() => setDiscarding({ cart, label: cartLabel(cart, index) })}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogContent>
+      </Dialog>
 
-                <div className="flex shrink-0 items-center gap-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    /*
-                      Nothing here may be opened while a basket with anything in
-                      it is on screen. Left visible rather than removed so the
-                      row keeps the shape every other row has — and the reason
-                      is stated once above the list.
-                    */
-                    disabled={blockedReason !== null}
-                    onClick={() => onResume(cart)}
-                  >
-                    Lanjutkan
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-9 text-danger"
-                    aria-label={`Hapus ${cartLabel(cart, index)}`}
-                    onClick={() => onDiscard(cart)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </DialogContent>
-    </Dialog>
+      {discarding && (
+        <ConfirmDialog
+          title={discardTitle(discarding.label)}
+          confirmLabel="Hapus keranjang"
+          destructive
+          busy={discardBusy}
+          onCancel={() => setDiscarding(null)}
+          onConfirm={() => void confirmDiscard()}
+        >
+          Isi keranjang ini ({discarding.cart.items.length} item ·{" "}
+          {formatMoney(discarding.cart.runningTotals.net)}) akan dibuang dan tidak
+          bisa dikembalikan.
+        </ConfirmDialog>
+      )}
+    </>
   );
 }

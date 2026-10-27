@@ -527,7 +527,7 @@ function AutoFill({
         <p className="text-sm font-semibold">Salin harga dari layanan</p>
         <p className="max-w-prose text-sm text-muted">
           Hanya untuk mengisi tabel harga di bawah dengan cepat: harga tiap varian layanan
-          dikali jumlah yang kamu isi. Ini <strong>tidak</strong> membatasi paket ke layanan
+          dikali jumlah yang Anda isi. Ini <strong>tidak</strong> membatasi paket ke layanan
           tersebut. Apa yang bisa dipakai anggota diatur di bagian Benefit. Kalau harga
           layanan berubah nanti, harga paket tidak ikut berubah.
         </p>

@@ -175,6 +175,9 @@ describe("GeneralSettingsScreen", () => {
       await screen.findByRole("heading", { name: "Klinik Hewan Sehat" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Paket Pro")).toBeInTheDocument();
+    // Same word as the Identitas form it opens: "Nama usaha", not "Nama tampilan".
+    expect(screen.getByText("Nama usaha")).toBeInTheDocument();
+    expect(screen.queryByText("Nama tampilan")).not.toBeInTheDocument();
     /*
       THE FRIENDLY LABEL, not the raw IANA string — matching what the identity
       form's own picker offers, so the summary and the picker never disagree.

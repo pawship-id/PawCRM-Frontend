@@ -59,7 +59,7 @@ export function FixedCostEditScreen({ id }: { id: string }) {
   if (!can("fixedCosts", "update")) {
     return (
       <Alert variant="error">
-        Kamu belum punya akses untuk mengubah biaya tetap. Minta admin
+        Anda belum punya akses untuk mengubah biaya tetap. Minta admin
         menambahkan izinnya.
       </Alert>
     );

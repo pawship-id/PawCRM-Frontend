@@ -56,6 +56,17 @@ describe("CustomerTypesScreen", () => {
     expect(screen.getAllByText("—")).toHaveLength(1);
   });
 
+  it("does not promise special pricing the type does not drive yet", async () => {
+    jest.spyOn(customerTypeService, "list").mockResolvedValue(page([REGULER]));
+
+    renderWithAuth(<CustomerTypesScreen />);
+
+    expect(
+      await screen.findByText(/Belum dipakai untuk harga khusus/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/jadi dasar aturan harga khusus/)).not.toBeInTheDocument();
+  });
+
   it("deletes a type after confirmation and refreshes the list", async () => {
     jest
       .spyOn(customerTypeService, "list")

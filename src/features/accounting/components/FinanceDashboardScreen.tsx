@@ -184,7 +184,7 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
       {!readsLedger ? (
         <Card>
           <p className="text-sm text-muted">
-            Kamu belum punya akses ke jurnal umum, jadi ringkasan keuangan tidak
+            Anda belum punya akses ke jurnal umum, jadi ringkasan keuangan tidak
             bisa ditampilkan. Minta admin menambahkan izin baca jurnal umum.
           </p>
         </Card>

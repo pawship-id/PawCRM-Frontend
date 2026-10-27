@@ -2236,7 +2236,7 @@ function ProductFormFields({
                 hint={
                   mode === "variants"
                     ? "Opsional — dipakai sebagai awalan SKU varian. Induk tidak dijual, jadi boleh dikosongkan."
-                    : "Unik per tenant"
+                    : "Tidak boleh sama dengan produk lain di usaha Anda."
                 }
                 placeholder="RC-ADULT"
                 className="tabular-nums"
@@ -2332,7 +2332,7 @@ function ProductFormFields({
               value={brand}
               onChange={(event) => setBrand(event.target.value)}
               error={fieldErrors.brand}
-              hint="Opsional. Dipakai untuk filter katalog dan listing marketplace."
+              hint="Opsional. Dipakai untuk filter katalog dan daftar produk di marketplace."
               placeholder="Royal Canin"
             />
           </div>
@@ -2703,7 +2703,7 @@ function ProductFormFields({
                 inputMode="numeric"
                 value={minStock}
                 onChange={(event) => setMinStock(event.target.value)}
-                hint="Ambang alert restock. 0 = tidak dialerti."
+                hint="Batas pengingat restock. Isi 0 kalau tidak perlu diingatkan."
               />
             </div>
 
@@ -3231,7 +3231,7 @@ function ProductFormFields({
         >
           {!openingEnabled ? (
             <p className="text-sm text-muted">
-              Produk dibuat tanpa stok. Kalau barangnya sudah ada tapi kamu
+              Produk dibuat tanpa stok. Kalau barangnya sudah ada tapi Anda
               sedang mendaftarkan katalog lebih dulu, isi nanti lewat{" "}
               <b>Inventori → Stok Awal</b> — tercatat sebagai modal, sama
               seperti mengisinya di sini. Kalau barangnya memang belum datang,

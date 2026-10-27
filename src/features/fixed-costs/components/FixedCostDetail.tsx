@@ -63,6 +63,7 @@ export function FixedCostDetail({ fixedCost }: { fixedCost: FixedCost }) {
 
   const [posting, setPosting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmPause, setConfirmPause] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,16 +87,21 @@ export function FixedCostDetail({ fixedCost }: { fixedCost: FixedCost }) {
     try {
       await fixedCostService.update(fixedCost._id, { isActive });
     } catch (err) {
-      setError(
+      // A failed act is a toast (§9) — the page behind it is still intact.
+      swalToast(
         err instanceof ApiError
           ? err.fullMessage
           : "Gagal mengubah status. Coba lagi.",
+        "error",
+        6000,
       );
       setBusy(false);
+      setConfirmPause(false);
       return;
     }
 
     setBusy(false);
+    setConfirmPause(false);
     swalToast(isActive ? "Biaya tetap diaktifkan." : "Biaya tetap dijeda.");
     router.refresh();
   }
@@ -140,7 +146,7 @@ export function FixedCostDetail({ fixedCost }: { fixedCost: FixedCost }) {
                   : "bg-tint-success text-success",
               )}
             >
-              {paused ? "Nonaktif" : "Aktif"}
+              {paused ? "Dijeda" : "Aktif"}
             </span>
             {due && (
               <span
@@ -216,7 +222,16 @@ export function FixedCostDetail({ fixedCost }: { fixedCost: FixedCost }) {
                 what it missed.
               */}
               <Can feature="fixedCosts" action="update">
-                <DropdownMenuItem onSelect={() => setActive(paused)}>
+                {/*
+                  PAUSING ASKS FIRST (27 October 2026): one stray click in this
+                  menu used to stop a schedule outright. Resuming does not ask —
+                  it only puts back what somebody already set up.
+                */}
+                <DropdownMenuItem
+                  onSelect={() =>
+                    paused ? void setActive(true) : setConfirmPause(true)
+                  }
+                >
                   {paused ? (
                     <>
                       <Play className="size-4" />
@@ -354,6 +369,21 @@ export function FixedCostDetail({ fixedCost }: { fixedCost: FixedCost }) {
         onClose={() => setPosting(false)}
         onPosted={() => router.refresh()}
       />
+
+      {confirmPause && (
+        <ConfirmDialog
+          title="Jeda biaya tetap?"
+          confirmLabel="Jeda biaya tetap"
+          busy={busy}
+          onConfirm={() => void setActive(false)}
+          onCancel={() => setConfirmPause(false)}
+        >
+          Jeda <strong>{fixedCost.name}</strong>? Jatuh temponya berhenti
+          dihitung dan tombol Catat hilang sampai diaktifkan lagi. Transaksi yang
+          sudah dicatat tidak berubah, dan biaya tetap ini bisa diaktifkan lagi
+          kapan saja.
+        </ConfirmDialog>
+      )}
 
       {/* Rendered only while the act is pending — the component is always open
           and `onCancel` is how it shuts. */}

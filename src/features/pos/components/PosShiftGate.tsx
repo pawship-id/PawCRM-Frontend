@@ -138,8 +138,8 @@ export function PosShiftGate({ onOpened }: { onOpened: () => void }) {
 
         swalToast(
           number
-            ? `Kamu masih punya shift ${number} yang terbuka di cabang ini — dilanjutkan.`
-            : "Kamu masih punya shift yang terbuka di cabang ini — dilanjutkan.",
+            ? `Anda masih punya shift ${number} yang terbuka di cabang ini — dilanjutkan.`
+            : "Anda masih punya shift yang terbuka di cabang ini — dilanjutkan.",
         );
         setSaving(false);
         onOpened();

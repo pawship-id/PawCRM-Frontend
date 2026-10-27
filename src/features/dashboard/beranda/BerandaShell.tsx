@@ -116,8 +116,8 @@ export function BerandaShell({
   const firstName = user?.fullName.split(" ")[0];
   const subtitle =
     access.branches
-      ? "Ringkasan cabang yang kamu pegang."
-      : "Yang perlu kamu kerjakan hari ini.";
+      ? "Ringkasan cabang yang Anda pegang."
+      : "Yang perlu Anda kerjakan hari ini.";
 
   return (
     <div className="flex flex-col gap-6">

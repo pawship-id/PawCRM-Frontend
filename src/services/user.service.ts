@@ -39,8 +39,15 @@ export const userService = {
       },
     }),
 
-  /** GET /users/:id — a single staff user. */
-  getById: (id: string) => apiClient.get<User>(`/users/${id}`),
+  /**
+   * GET /users/:id — a single staff user. `includeDeleted` opens a soft-deleted
+   * user too (the edit screen needs it to offer "Pulihkan pengguna"); the API
+   * gates that variant behind users:update / users:restore.
+   */
+  getById: (id: string, options: { includeDeleted?: boolean } = {}) =>
+    apiClient.get<User>(`/users/${id}`, {
+      query: { includeDeleted: options.includeDeleted || undefined },
+    }),
 
   /** POST /users — create a staff user (201). */
   create: (input: CreateUserInput) => apiClient.post<User>("/users", input),

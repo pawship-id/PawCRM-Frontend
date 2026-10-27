@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { StockCardScreen } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Kartu stok · Buloo" };
+export const metadata: Metadata = { title: "Kartu Stok · Buloo" };
 
 /**
  * One product's stock card and lot list.

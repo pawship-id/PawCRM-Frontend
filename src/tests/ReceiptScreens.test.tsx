@@ -792,8 +792,8 @@ describe("ReceiptsScreen", () => {
 
     // A beli_putus receipt already owes money — it just has no vendor document
     // yet. A consignment will never have one.
-    expect(await screen.findByText("belum difakturkan")).toBeInTheDocument();
-    expect(screen.getByText("tanpa faktur")).toBeInTheDocument();
+    expect(await screen.findByText("Belum difakturkan")).toBeInTheDocument();
+    expect(screen.getByText("Tanpa faktur")).toBeInTheDocument();
   });
 
   it("surfaces a failed list as an error rather than an empty table", async () => {

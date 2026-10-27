@@ -501,7 +501,7 @@ export function ProductDetail({ productId }: { productId: string }) {
               </dd>
             </dl>
             <p className="mt-3 text-xs text-muted">
-              Em dash berarti memakai akun bawaan: 1201 Persediaan Barang
+              Tanda — berarti memakai akun bawaan: 1201 Persediaan Barang
               Dagangan dan 5101 Harga Pokok Penjualan.
             </p>
           </Card>

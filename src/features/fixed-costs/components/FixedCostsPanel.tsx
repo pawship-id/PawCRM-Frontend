@@ -73,9 +73,9 @@ const KIND_OPTIONS: FilterOption<string>[] = withAll(
 const STATUS_OPTIONS: FilterOption<string>[] = withAll(
   [
     { value: "active", label: "Aktif" },
-    { value: "paused", label: "Nonaktif" },
+    { value: "paused", label: "Dijeda" },
   ],
-  "Termasuk nonaktif",
+  "Termasuk dijeda",
 );
 
 /**
@@ -304,7 +304,13 @@ function fixedCostColumns({
     {
       id: "kategori",
       header: "Kategori",
-      cellClassName: "max-w-44 px-4 py-2.5 text-sm",
+      /*
+        WRAPS, never runs on (27 October 2026). The table cell is `nowrap` by
+        default, and "Beban Administrasi & Umum" spilled across the Jumlah
+        beside it. A wrapping cell also lets the table shrink to its card, so
+        the Catat button at the far end is not cut off.
+      */
+      cellClassName: "min-w-32 max-w-44 px-4 py-2.5 text-sm whitespace-normal",
       cell: (fixedCost) =>
         categoryLabel(fixedCost.counterAccounts) ?? (
           <span className="text-muted">—</span>
@@ -354,7 +360,8 @@ function fixedCostColumns({
     {
       id: "akun",
       header: "Akun",
-      cellClassName: "px-4 py-2.5 text-sm whitespace-nowrap",
+      // Wraps for the same reason Kategori does — "1111 · Kas Cabang Barat".
+      cellClassName: "min-w-28 max-w-40 px-4 py-2.5 text-sm whitespace-normal",
       cell: (fixedCost) => fixedCost.accountName ?? "—",
     },
     {
@@ -373,7 +380,7 @@ function fixedCostColumns({
                   : "bg-tint-success text-success",
               )}
             >
-              {paused ? "Nonaktif" : "Aktif"}
+              {paused ? "Dijeda" : "Aktif"}
             </span>
 
             {/*

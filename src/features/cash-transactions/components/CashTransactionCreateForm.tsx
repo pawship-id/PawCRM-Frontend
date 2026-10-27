@@ -215,10 +215,10 @@ export function CashTransactionCreateForm() {
     */
     if (recur) {
       if (!can("fixedCosts", "create")) {
-        return "Kamu belum boleh membuat biaya tetap";
+        return "Anda belum boleh membuat biaya tetap";
       }
       if (!can("fixedCosts", "post")) {
-        return "Kamu belum boleh mencatat biaya tetap";
+        return "Anda belum boleh mencatat biaya tetap";
       }
     }
     if (date === "") return "Tanggal belum diisi";

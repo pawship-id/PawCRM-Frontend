@@ -12,6 +12,7 @@ import { useNow } from "../hooks/useNow";
 import { HOME_TRIP_LABELS } from "@/features/booking/homeTrip";
 import { BookingHead } from "./BookingHead";
 import { HomeTripButton } from "./HomeVisit";
+import { arriveAsk, claimAsk, finishAsk, tripAsk, useGroomerConfirm } from "./GroomerConfirm";
 import { RecordSheet } from "./RecordSheet";
 import { SessionRow } from "./SessionRow";
 
@@ -34,6 +35,7 @@ export function GroomerBookingScreen() {
 
   const { data, loading, error, reload } = useGroomerBooking(id);
   const { busy, claim, move, arrive, moveTrip } = useGroomerActions(reload);
+  const { confirm, dialog } = useGroomerConfirm();
 
   /** The session whose sheet is open, and whether it opened to ask for the photo. */
   const [sheet, setSheet] = useState<{ sessionId: string; needAfter: boolean } | null>(() => {
@@ -66,7 +68,7 @@ export function GroomerBookingScreen() {
       {error && (
         <div className="mt-3 space-y-3">
           <Alert variant="error">
-            {error.status === 404 ? "Booking ini tidak ada di daftarmu." : error.message}
+            {error.status === 404 ? "Booking ini tidak ada di daftar Anda." : error.message}
           </Alert>
           {error.status !== 404 && (
             <Button variant="secondary" className="min-h-11" onClick={() => void reload()}>
@@ -85,7 +87,7 @@ export function GroomerBookingScreen() {
             booking={booking}
             busy={busy === `trip:${booking.homeTrip?._id}`}
             onMove={(tripId, to) =>
-              void moveTrip(tripId, to, `${HOME_TRIP_LABELS[to]} dicatat`)
+              confirm(tripAsk(to, () => moveTrip(tripId, to, `${HOME_TRIP_LABELS[to]} dicatat`)))
             }
           />
 
@@ -94,7 +96,7 @@ export function GroomerBookingScreen() {
               variant="secondary"
               fullWidth
               className="mt-3 min-h-11"
-              onClick={() => void arrive(booking.bookingId, petName)}
+              onClick={() => confirm(arriveAsk(petName, () => arrive(booking.bookingId, petName)))}
               loading={busy === `arrive:${booking.bookingId}`}
             >
               <Dog className="size-4" aria-hidden="true" />
@@ -119,9 +121,19 @@ export function GroomerBookingScreen() {
                     setSheet({ sessionId: session.sessionId, needAfter: true });
                     return;
                   }
-                  void move(booking.bookingId, session.sessionId, "done", `${petName ?? "Sesi"} selesai`);
+                  confirm(
+                    finishAsk(session.sessionName, petName, () =>
+                      move(booking.bookingId, session.sessionId, "done", `${petName ?? "Sesi"} selesai`),
+                    ),
+                  );
                 }}
-                onClaim={() => void claim(booking.bookingId, session.sessionId, petName)}
+                onClaim={() =>
+                  confirm(
+                    claimAsk(session.sessionName, petName, () =>
+                      claim(booking.bookingId, session.sessionId, petName),
+                    ),
+                  )
+                }
                 onRecord={() => setSheet({ sessionId: session.sessionId, needAfter: false })}
                 recordLabel={session.notesSession || (session.media?.length ?? 0) > 0 ? "Lihat catatan & foto" : "Catatan & foto"}
               />
@@ -140,6 +152,8 @@ export function GroomerBookingScreen() {
           onChanged={() => void reload()}
         />
       )}
+
+      {dialog}
     </div>
   );
 }

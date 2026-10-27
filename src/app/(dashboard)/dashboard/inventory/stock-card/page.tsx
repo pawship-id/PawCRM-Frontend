@@ -5,7 +5,7 @@ import { StockProductsScreen } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 import { INVENTORY_TAB } from "@/features/inventory/pages";
 
-export const metadata: Metadata = { title: "Kartu stok · Buloo" };
+export const metadata: Metadata = { title: "Kartu Stok · Buloo" };
 
 /**
  * The stock card's index: which product's ledger to read.

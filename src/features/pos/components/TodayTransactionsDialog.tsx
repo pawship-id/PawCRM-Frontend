@@ -260,7 +260,7 @@ export function TodayTransactionsDialog({
             unsent.length > 0 ? null : (
               <p className="py-10 text-center text-sm text-muted">
                 {mine
-                  ? "Belum ada transaksi kamu hari ini."
+                  ? "Belum ada transaksi Anda hari ini."
                   : "Belum ada penjualan hari ini."}
               </p>
             )

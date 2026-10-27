@@ -331,7 +331,7 @@ describe("PurchaseReturnsScreen", () => {
     expect(await screen.findByText("PR-260807-001")).toBeInTheDocument();
     expect(screen.getByText("GR-260806-001")).toBeInTheDocument();
     expect(screen.getByText("PT Sumber Pangan")).toBeInTheDocument();
-    expect(screen.getByText("draft")).toBeInTheDocument();
+    expect(screen.getByText("Draft")).toBeInTheDocument();
   });
 
   /**

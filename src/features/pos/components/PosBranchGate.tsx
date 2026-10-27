@@ -94,7 +94,7 @@ export function PosBranchGate({ onChosen }: { onChosen?: () => void } = {}) {
     <div className="mx-auto w-full max-w-md rounded-2xl border border-border bg-surface p-6">
       <h1 className="text-2xl font-extrabold text-foreground">Pilih cabang</h1>
       <p className="mt-1 text-[15px] text-muted">
-        Kasir mencatat penjualan per cabang, yuk pilih cabangmu!
+        Kasir mencatat penjualan per cabang. Pilih cabang Anda dulu.
       </p>
 
       {error && (

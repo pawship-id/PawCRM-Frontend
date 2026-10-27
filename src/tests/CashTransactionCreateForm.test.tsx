@@ -456,7 +456,7 @@ describe("CashTransactionCreateForm", () => {
       await turnOn(user);
 
       expect(
-        await screen.findByText("Kamu belum boleh mencatat biaya tetap"),
+        await screen.findByText("Anda belum boleh mencatat biaya tetap"),
       ).toBeInTheDocument();
     });
   });

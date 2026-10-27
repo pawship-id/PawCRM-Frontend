@@ -82,3 +82,64 @@ describe("UserEditForm — Tangguhkan pengguna", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
+
+/**
+ * A deleted user must still open here: Zona berbahaya is the only place that
+ * offers "Pulihkan pengguna", so a 404 for deleted users made it unreachable.
+ */
+describe("UserEditForm — pengguna terhapus", () => {
+  const DELETED: User = { ...RINA, deletedAt: "2026-10-01T00:00:00.000Z" };
+
+  it("loads with includeDeleted and shows Terhapus + Pulihkan pengguna", async () => {
+    mocked.getById.mockResolvedValue(DELETED);
+    renderWithAuth(<UserEditForm id="u-rina" />);
+
+    expect(
+      await screen.findByRole("button", { name: "Pulihkan pengguna" }),
+    ).toBeInTheDocument();
+    expect(mocked.getById).toHaveBeenCalledWith("u-rina", { includeDeleted: true });
+    expect(screen.getByText("Terhapus")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Hapus pengguna" })).not.toBeInTheDocument();
+  });
+
+  it("locks Jadwal and Password too, with the same pulihkan-dulu note", async () => {
+    mocked.getById.mockResolvedValue(DELETED);
+    renderWithAuth(<UserEditForm id="u-rina" />);
+
+    await screen.findByRole("button", { name: "Pulihkan pengguna" });
+    // Detail, Jadwal and Password each say it.
+    expect(
+      screen.getAllByText(/Pengguna ini sudah dihapus. Pulihkan dulu di Zona berbahaya/),
+    ).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Simpan jadwal" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Simpan password" })).toBeDisabled();
+    expect(screen.getByLabelText(/^Password baru/)).toBeDisabled();
+    expect(screen.getByLabelText(/^Ulangi password baru/)).toBeDisabled();
+    expect(screen.getByRole("checkbox", { name: /Groomer/ })).toBeDisabled();
+    // Restore stays reachable — it lives outside the locked cards.
+    expect(screen.getByRole("button", { name: "Pulihkan pengguna" })).toBeEnabled();
+  });
+
+  it("leaves Jadwal and Password open for a live user", async () => {
+    renderWithAuth(<UserEditForm id="u-rina" />);
+
+    expect(await screen.findByRole("button", { name: "Simpan password" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Simpan jadwal" })).toBeEnabled();
+    expect(screen.queryByText(/Pengguna ini sudah dihapus/)).not.toBeInTheDocument();
+  });
+
+  it("asks before restoring, then calls restore", async () => {
+    const user = userEvent.setup();
+    mocked.getById.mockResolvedValue(DELETED);
+    mocked.restore.mockResolvedValue({ ...RINA, deletedAt: null });
+    renderWithAuth(<UserEditForm id="u-rina" />);
+
+    await user.click(await screen.findByRole("button", { name: "Pulihkan pengguna" }));
+    const dialog = await screen.findByRole("dialog", { name: "Pulihkan pengguna" });
+    expect(dialog).toHaveTextContent("Rina");
+    expect(mocked.restore).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole("button", { name: "Pulihkan" }));
+    await waitFor(() => expect(mocked.restore).toHaveBeenCalledWith("u-rina"));
+  });
+});

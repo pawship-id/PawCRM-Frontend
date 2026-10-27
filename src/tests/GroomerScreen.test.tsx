@@ -121,6 +121,12 @@ async function unfold(user: ReturnType<typeof setup>) {
   }
 }
 
+/** The confirm dialog behind an irreversible tap — press its yes. */
+async function confirmIn(user: ReturnType<typeof setup>, name: string) {
+  const dialog = await screen.findByRole("dialog");
+  await user.click(within(dialog).getByRole("button", { name }));
+}
+
 describe("GroomerScreen — the list", () => {
   describe("folding a card", () => {
     const threeSessions = () =>
@@ -184,11 +190,11 @@ describe("GroomerScreen — the list", () => {
       expect(screen.getByRole("button", { name: /Lihat sesi/ })).toHaveAttribute("aria-expanded", "false");
     });
 
-    it("says on a folded Open Job card how many sessions have nobody", async () => {
+    it("says on a folded Sesi terbuka card how many sessions have nobody", async () => {
       const user = setup();
       render();
 
-      await user.click(await screen.findByRole("tab", { name: /Open Job/ }));
+      await user.click(await screen.findByRole("tab", { name: /Sesi terbuka/ }));
 
       expect(await screen.findByText("1 belum ada groomer")).toBeInTheDocument();
     });
@@ -280,6 +286,8 @@ describe("GroomerScreen — the list", () => {
     expect(screen.getByText("Tandai hewan sudah datang dulu")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Hewan sudah datang/ }));
+    expect(bookings.changeStatus).not.toHaveBeenCalled();
+    await confirmIn(user, "Tandai sudah datang");
 
     expect(bookings.changeStatus).toHaveBeenCalledWith("b1", "arrived");
     expect(swalToast).toHaveBeenCalledWith("Coco ditandai sudah datang");
@@ -328,6 +336,8 @@ describe("GroomerScreen — the list", () => {
     render();
 
     await user.click(await screen.findByRole("button", { name: /Selesaikan/ }));
+    expect(bookings.advanceSessionWork).not.toHaveBeenCalled();
+    await confirmIn(user, "Selesaikan sesi");
 
     expect(bookings.advanceSessionWork).toHaveBeenCalledWith("b1", "s1", "done");
   });
@@ -412,31 +422,48 @@ describe("GroomerScreen — the list", () => {
     const user = setup();
     render();
 
-    await user.click(await screen.findByRole("tab", { name: /Open Job/ }));
+    await user.click(await screen.findByRole("tab", { name: /Sesi terbuka/ }));
     await unfold(user);
     await user.click(screen.getByRole("button", { name: "Ambil sesi ini" }));
+    expect(bookings.claimSession).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toHaveTextContent("Blow Dry & Combing untuk Oyen");
+    await confirmIn(user, "Ambil sesi");
 
     expect(bookings.claimSession).toHaveBeenCalledWith("b2", "s2");
   });
 
+  it("takes nothing when the groomer backs out of the dialog", async () => {
+    const user = setup();
+    render();
+
+    await user.click(await screen.findByRole("tab", { name: /Sesi terbuka/ }));
+    await unfold(user);
+    await user.click(screen.getByRole("button", { name: "Ambil sesi ini" }));
+    await confirmIn(user, "Batal");
+
+    expect(bookings.claimSession).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
   it("shows the server's own words when somebody got there first, then reloads", async () => {
     bookings.claimSession.mockRejectedValue(
-      new ApiError("Job ini sudah dipegang groomer lain", 409),
+      new ApiError("Sesi ini sudah dipegang groomer lain", 409),
     );
     const user = setup();
     render();
 
-    await user.click(await screen.findByRole("tab", { name: /Open Job/ }));
+    await user.click(await screen.findByRole("tab", { name: /Sesi terbuka/ }));
     await unfold(user);
     await user.click(screen.getByRole("button", { name: "Ambil sesi ini" }));
+    await confirmIn(user, "Ambil sesi");
 
     await waitFor(() =>
-      expect(swalToast).toHaveBeenCalledWith("Job ini sudah dipegang groomer lain", "error", 5000),
+      expect(swalToast).toHaveBeenCalledWith("Sesi ini sudah dipegang groomer lain", "error", 5000),
     );
     expect(groomer.jobs).toHaveBeenCalledTimes(2);
   });
 
-  it("has no Open Job tab while the manager has claiming off", async () => {
+  it("has no Sesi terbuka tab while the manager has claiming off", async () => {
     groomer.jobs.mockResolvedValue(
       day({ settings: { showOwnCommission: false, allowOpenJobClaim: false }, open: [] }),
     );
@@ -444,7 +471,19 @@ describe("GroomerScreen — the list", () => {
 
     await screen.findByRole("heading", { name: "Coco" });
 
-    expect(screen.queryByRole("tab", { name: /Open Job/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Sesi terbuka/ })).not.toBeInTheDocument();
+  });
+
+  it("names the day the load belongs to — 'hari ini' only for today", async () => {
+    const user = setup();
+    render();
+
+    expect(await screen.findByText("Beban hari ini")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: /Jum/ }));
+
+    expect(await screen.findByText("Beban 4 Sep")).toBeInTheDocument();
+    expect(screen.queryByText("Beban hari ini")).not.toBeInTheDocument();
   });
 
   it("asks for another day when its tab is pressed", async () => {
@@ -535,7 +574,7 @@ describe("GroomerBookingScreen — the detail", () => {
     groomer.booking.mockRejectedValue(new ApiError("Booking tidak ditemukan", 404));
     renderDetail();
 
-    expect(await screen.findByText("Booking ini tidak ada di daftarmu.")).toBeInTheDocument();
+    expect(await screen.findByText("Booking ini tidak ada di daftar Anda.")).toBeInTheDocument();
   });
 
   it("finishes from the detail only once there is an after photo", async () => {
@@ -551,6 +590,8 @@ describe("GroomerBookingScreen — the detail", () => {
     renderDetail();
 
     await user.click(await screen.findByRole("button", { name: /Selesaikan/ }));
+    expect(bookings.advanceSessionWork).not.toHaveBeenCalled();
+    await confirmIn(user, "Selesaikan sesi");
 
     expect(bookings.advanceSessionWork).toHaveBeenCalledWith("b1", "s1", "done");
   });
@@ -587,6 +628,8 @@ describe("Groomer app — the journey to a house", () => {
     render();
 
     await user.click(await screen.findByRole("button", { name: "Sampai di rumah" }));
+    expect(trips.changeStatus).not.toHaveBeenCalled();
+    await confirmIn(user, "Sampai di rumah");
 
     expect(trips.changeStatus).toHaveBeenCalledWith("t1", "arrived_customer");
     await waitFor(() => expect(groomer.jobs).toHaveBeenCalledTimes(2));
@@ -600,6 +643,7 @@ describe("Groomer app — the journey to a house", () => {
     render();
 
     await user.click(await screen.findByRole("button", { name: "Pulang" }));
+    await confirmIn(user, "Pulang");
 
     await waitFor(() =>
       expect(swalToast).toHaveBeenCalledWith("Coco belum selesai dikerjakan.", "error", 5000),
@@ -632,6 +676,7 @@ describe("Groomer app — the journey to a house", () => {
     renderWithAuth(<GroomerBookingScreen />);
 
     await user.click(await screen.findByRole("button", { name: "Berangkat" }));
+    await confirmIn(user, "Berangkat");
 
     expect(trips.changeStatus).toHaveBeenCalledWith("t1", "otw_customer");
   });

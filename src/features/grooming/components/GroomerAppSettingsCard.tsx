@@ -68,8 +68,8 @@ export function GroomerAppSettingsCard() {
 
           <SwitchRow
             id="groomer-app-open-job"
-            label="Groomer boleh mengambil open job"
-            hint="Sesi yang belum ada groomernya muncul di tab Open Job, dan groomer bisa mengambilnya sendiri. Kalau dimatikan, semua penugasan lewat admin dan tab Open Job hilang."
+            label="Groomer boleh mengambil sesi terbuka"
+            hint="Sesi yang belum ada groomernya muncul di tab Sesi terbuka, dan groomer bisa mengambilnya sendiri. Kalau dimatikan, semua penugasan lewat admin dan tab Sesi terbuka hilang."
             checked={draft.allowOpenJobClaim}
             disabled={!mayUpdate || state.saving}
             onChange={(checked) => state.setDraft({ ...draft, allowOpenJobClaim: checked })}

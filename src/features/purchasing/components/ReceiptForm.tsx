@@ -1326,7 +1326,7 @@ function ReceiptFormBody({
           </div>
           {consignment && (
             <p className="mt-1.5 text-xs text-muted">
-              <b>Harga setor</b> = harga per unit yang kamu bayar ke supplier.
+              <b>Harga setor</b> = harga per unit yang Anda bayar ke supplier.
               Dibayar ke supplier saat barang terjual — bukan saat diterima.
             </p>
           )}

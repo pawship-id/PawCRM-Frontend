@@ -130,6 +130,24 @@ describe("BookingStatusActions", () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
+  it("words the confirm button on a ride the same as the row that opened it", async () => {
+    /* 27 Oct 2026: the dialog titled "Start the trip" confirmed with "Start work". */
+    render(booking({ status: "confirmed", tripLeg: "pickup" } as Partial<Booking>));
+
+    const menu = await openMenu();
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: "Start the trip" }),
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).getByRole("button", { name: "Start the trip" }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByRole("button", { name: "Start work" }),
+    ).toBeNull();
+  });
+
   it("names the booking and its animal in the dialog, and nothing about others", async () => {
     render(booking());
     const menu = await openMenu();

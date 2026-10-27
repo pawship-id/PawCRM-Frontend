@@ -946,7 +946,7 @@ export function PosScreen() {
           setHeldOpen(false);
           void resume(target);
         }}
-        onDiscard={(target) => void discardHeld(target)}
+        onDiscard={discardHeld}
         onOpenChange={setHeldOpen}
       />
 

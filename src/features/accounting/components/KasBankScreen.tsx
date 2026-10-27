@@ -254,7 +254,7 @@ export function KasBankScreen({
         ) : (
           <Card>
             <p className="text-sm text-muted">
-              Kamu belum punya akses ke daftar transaksi. Minta admin
+              Anda belum punya akses ke daftar transaksi. Minta admin
               menambahkan izin baca transaksi keuangan.
             </p>
           </Card>
@@ -264,7 +264,7 @@ export function KasBankScreen({
       ) : (
         <Card>
           <p className="text-sm text-muted">
-            Kamu belum punya akses ke daftar biaya tetap. Minta admin
+            Anda belum punya akses ke daftar biaya tetap. Minta admin
             menambahkan izin baca biaya tetap.
           </p>
         </Card>

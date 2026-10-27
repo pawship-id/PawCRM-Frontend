@@ -22,7 +22,7 @@ beforeEach(() => {
   tenants.me.mockResolvedValue(tenant());
 });
 
-const openJob = () => screen.findByRole("switch", { name: /mengambil open job/ });
+const openJob = () => screen.findByRole("switch", { name: /mengambil sesi terbuka/ });
 const commission = () => screen.findByRole("switch", { name: /melihat komisinya sendiri/ });
 
 describe("GroomerAppSettingsCard", () => {

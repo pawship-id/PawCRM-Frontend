@@ -11,7 +11,7 @@ import type { PurchaseReturnStatus } from "@/types/api";
  * because it is DONE — the stock has left, the weighted average has been reversed
  * at the original purchase price, and the supplier's payable has been reduced.
  *
- * "final" rather than "submitted" in the label, matching OpnameStatusBadge. The
+ * "Final" rather than "submitted" in the label, matching OpnameStatusBadge. The
  * API's word describes the request that happened; a user needs the word that
  * describes what it means for them — that this one can no longer be changed, and
  * a correction now means receiving the goods back in.
@@ -27,7 +27,7 @@ export function PurchaseReturnStatusBadge({
         variant="outline"
         className="border-transparent bg-success/12 text-success"
       >
-        final
+        Final
       </Badge>
     );
   }
@@ -37,7 +37,7 @@ export function PurchaseReturnStatusBadge({
       variant="outline"
       className="border-transparent bg-secondary/25 text-secondary-foreground"
     >
-      draft
+      Draft
     </Badge>
   );
 }

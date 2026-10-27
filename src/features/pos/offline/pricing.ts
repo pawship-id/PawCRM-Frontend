@@ -428,7 +428,7 @@ export function priceCart(cart: LocalCart, context: PricingContext): PosTransact
     if (typed !== null && typed < 0n) throw offlineRefusal("Harga tidak boleh minus");
     const overridden = typed !== null && typed !== catalogued;
     if (overridden && !context.maySetPrice) {
-      throw offlineRefusal("Kamu tidak punya izin mengubah harga");
+      throw offlineRefusal("Anda tidak punya izin mengubah harga");
     }
     const unitPrice = overridden ? (typed as bigint) : catalogued;
     const lineTotal = divideRound(qty * unitPrice, ONE);

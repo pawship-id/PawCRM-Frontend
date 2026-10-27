@@ -8788,6 +8788,14 @@ export interface CashTransaction {
   lines: CashTransactionLine[] | null;
   posTransactionId: string | null;
   shiftId: string | null;
+  /**
+   * The Biaya Tetap this transaction was recorded from — sent by the detail
+   * endpoint only (absent from list rows). Null when it did not come from one.
+   */
+  fixedCostId?: string | null;
+  fixedCostName?: string | null;
+  /** The schedule has since been deleted; its name is still history. */
+  fixedCostDeleted?: boolean;
   journalEntryId: string | null;
   journalEntryNumber: string | null;
   voidedAt: string | null;

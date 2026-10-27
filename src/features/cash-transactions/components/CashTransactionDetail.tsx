@@ -27,6 +27,9 @@ import {
   NO_SUB_ACCOUNT_LABEL,
   subAccountLabel,
 } from "@/features/accounting";
+// The labels file directly, not the feature index — fixed-costs imports this
+// feature, and its index would make the two a cycle.
+import { fixedCostHref } from "@/features/fixed-costs/labels";
 import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
 import { lineSubAccountId } from "@/types/accounting";
@@ -300,13 +303,28 @@ export function CashTransactionDetail({
             honest answer where a single name would be a wrong one.
           */}
           <Field label="Lini bisnis">{businessLineSummary(transaction)}</Field>
+          {/*
+            THE SCHEDULE IT CAME FROM, when it came from one (27 October 2026)
+            — a link while the schedule exists, its name alone once deleted.
+          */}
           <Field label="Biaya tetap">
-            <span className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">Segera</Badge>
-              <span className="text-muted">
-                Penjadwal biaya berulang belum ada.
-              </span>
-            </span>
+            {transaction.fixedCostId && transaction.fixedCostName ? (
+              transaction.fixedCostDeleted ? (
+                <span>
+                  {transaction.fixedCostName}{" "}
+                  <span className="text-muted">(sudah dihapus)</span>
+                </span>
+              ) : (
+                <Link
+                  href={fixedCostHref(transaction.fixedCostId)}
+                  className="rounded-md font-medium text-primary underline-offset-4 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                >
+                  {transaction.fixedCostName}
+                </Link>
+              )
+            ) : (
+              "—"
+            )}
           </Field>
 
           <Field label="Deskripsi" className="sm:col-span-2">

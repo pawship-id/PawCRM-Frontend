@@ -189,7 +189,7 @@ export function GeneralSettingsScreen() {
           {mayReadCustomerTypes && (
             <HubLinkCard
               title="Tipe pelanggan"
-              description="Reguler, Reseller, Grosir — menempel di profil pelanggan dan jadi dasar aturan harga khusus nanti."
+              description="Reguler, Reseller, Grosir — menempel di profil pelanggan dan muncul di laporan penjualan."
               href={SETTINGS_PATHS.tipePelanggan}
             />
           )}
@@ -384,7 +384,7 @@ function IdentitySection({ tenant }: { tenant: Tenant }) {
     >
       <dl className="divide-y divide-border">
         <IdentityRow
-          label="Nama tampilan"
+          label="Nama usaha"
           note="Muncul di kiri atas dan di semua ekspor"
         >
           {tenant.name}

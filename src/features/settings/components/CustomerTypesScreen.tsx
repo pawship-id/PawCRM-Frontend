@@ -69,7 +69,7 @@ export function CustomerTypesScreen() {
       <SettingsPageHeader
         tab="umum"
         title="Tipe pelanggan"
-        description="Kategori ini menempel di profil pelanggan dan jadi dasar aturan harga khusus."
+        description="Kategori ini menempel di profil pelanggan dan muncul di laporan penjualan. Belum dipakai untuk harga khusus."
         action={
           <Can feature="customerTypes" action="create">
             <Button onClick={() => setDialog({ mode: "create" })}>

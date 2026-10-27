@@ -103,7 +103,7 @@ describe("Biaya Tetap — the detail page", () => {
   it("says plainly when a schedule is paused", async () => {
     renderWithAuth(<FixedCostDetail fixedCost={fixedCost({ isActive: false })} />);
 
-    expect(screen.getByText("Nonaktif")).toBeInTheDocument();
+    expect(screen.getByText("Dijeda")).toBeInTheDocument();
     expect(screen.getByText(/tidak bisa dicatat sampai diaktifkan/i)).toBeInTheDocument();
   });
 
@@ -137,12 +137,19 @@ describe("Biaya Tetap — the detail page", () => {
 });
 
 describe("Biaya Tetap — pausing and deleting", () => {
-  it("pauses a running schedule from the menu", async () => {
+  it("asks before pausing a running schedule from the menu", async () => {
     const user = userEvent.setup();
     renderWithAuth(<FixedCostDetail fixedCost={fixedCost()} />);
 
     await user.click(screen.getByRole("button", { name: "Tindakan lain" }));
     await user.click(await screen.findByText("Jeda biaya tetap"));
+
+    // One stray click in the menu no longer stops the schedule outright.
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Jeda biaya tetap?")).toBeInTheDocument();
+    expect(fixedCostService.update).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole("button", { name: "Jeda biaya tetap" }));
 
     await waitFor(() =>
       expect(fixedCostService.update).toHaveBeenCalledWith("fc1", {

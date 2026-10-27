@@ -37,7 +37,7 @@ import type {
   FixedCostKind,
 } from "@/types/accounting";
 import { lineSubAccountId } from "@/types/accounting";
-import { formatMoney, toDecimalString } from "@/utils/decimal";
+import { formatMoney, toDecimalString, trimDecimal } from "@/utils/decimal";
 
 import { fixedCostHref, INTERVAL_LABEL } from "../labels";
 
@@ -55,7 +55,8 @@ function draftsFrom(fixedCost: FixedCost): DraftLine[] {
   return fixedCost.lines.map((line, index) => ({
     key: `fixed-cost-line-${index}`,
     accountId: line.accountId,
-    amount: line.amount,
+    // "385000.0000" in the box reads as a far larger figure than it is.
+    amount: trimDecimal(line.amount),
     businessLineId: line.businessLineId ?? "",
     subAccountId: lineSubAccountId(line) ?? "",
     memo: line.memo ?? "",

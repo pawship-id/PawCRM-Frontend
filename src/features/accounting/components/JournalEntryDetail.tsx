@@ -80,7 +80,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
       <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center">
         <p className="font-medium text-foreground">Entri tidak ditemukan.</p>
         <p className="mt-1 text-sm text-muted">
-          Nomor jurnal ini tidak ada di buku besar tenant kamu. Mungkin
+          Nomor jurnal ini tidak ada di buku besar usaha Anda. Mungkin
           tautannya sudah usang.
         </p>
         <Button variant="secondary" size="sm" asChild className="mt-4">

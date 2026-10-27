@@ -15,8 +15,8 @@ import { SessionRow } from "./SessionRow";
 /**
  * One booking in the list — the animal once, its sessions as rows.
  *
- * `kind` decides what the rows offer: on Job Saya and Selesai a groomer works
- * their own sessions; on Open Job the rows nobody holds get "Ambil"; a booking
+ * `kind` decides what the rows offer: on Tugas saya and Selesai a groomer works
+ * their own sessions; on Sesi terbuka the rows nobody holds get "Ambil"; a booking
  * held entirely by others (`lain`) is drawn dashed and has no control.
  *
  * NOTES AND PHOTOS ARE NOT HERE. A card is for the quick things — arrive, start,

@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import { MyCommissionScreen } from "@/features/reports";
 import { reportService } from "@/services/report.service";
@@ -55,7 +56,54 @@ describe("MyCommissionScreen", () => {
 
     expect(await screen.findByText("Rp 300.000")).toBeInTheDocument();
     expect(screen.getByText("Rp 450.000")).toBeInTheDocument();
-    expect(screen.getByText(/2026-08, 2026-09/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Agustus 2026, September 2026/),
+    ).toBeInTheDocument();
+  });
+
+  it("counts sessions, not services, and names the month in Indonesian", async () => {
+    /*
+      27 Oct 2026: the card read "Bulan ini (2026-10)" and "dari 12 layanan",
+      though every record is one session (a turn of a booking).
+    */
+    jest.useFakeTimers({ advanceTimers: true }).setSystemTime(
+      new Date("2026-10-15T03:00:00.000Z"),
+    );
+    try {
+      renderWithAuth(<MyCommissionScreen />, { isSuperAdmin: false });
+
+      expect(await screen.findByText("Bulan ini (Oktober 2026)")).toBeInTheDocument();
+      expect(screen.getByText(/dari 12 sesi/)).toBeInTheDocument();
+      expect(screen.getByText(/dari 18 sesi/)).toBeInTheDocument();
+      expect(screen.queryByText(/layanan/)).not.toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("picks another month from Indonesian names, not the browser's month input", async () => {
+    jest.useFakeTimers({ advanceTimers: true }).setSystemTime(
+      new Date("2026-10-15T03:00:00.000Z"),
+    );
+    try {
+      const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+      const { container } = renderWithAuth(<MyCommissionScreen />, {
+        isSuperAdmin: false,
+      });
+      await screen.findByText("Rp 300.000");
+
+      expect(container.querySelector('input[type="month"]')).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: /Bulan/ }));
+      await user.click(await screen.findByRole("option", { name: "September 2026" }));
+
+      await waitFor(() =>
+        expect(reports.myCommissions).toHaveBeenLastCalledWith({ period: "2026-09" }),
+      );
+      expect(await screen.findByText("September 2026", { selector: "*" })).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("never asks the server about anybody else", async () => {

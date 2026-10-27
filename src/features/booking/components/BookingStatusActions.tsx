@@ -429,7 +429,7 @@ export function BookingStatusActions({
                 onClick={submit}
                 disabled={busy}
               >
-                {busy ? "Menyimpan…" : BOOKING_STATUS_ACTIONS[next]}
+                {busy ? "Menyimpan…" : bookingStatusAction(next, booking)}
               </Button>
             </DialogFooter>
           </DialogContent>

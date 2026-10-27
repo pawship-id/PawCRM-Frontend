@@ -331,7 +331,7 @@ export function InventoryHub() {
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <h2 className="text-lg font-bold text-foreground">Perlu tindakan</h2>
           <span className="text-xs text-muted sm:ml-auto">
-            {warehouseName ?? "Gudang dalam akses kamu"}
+            {warehouseName ?? "Gudang dalam akses Anda"}
           </span>
         </div>
 
