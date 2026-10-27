@@ -155,7 +155,7 @@ export function BatchesScreen() {
               : undefined
           }
           loading={summary.loading}
-          note="sisa qty × harga beli batch, ketiga bucket di atas"
+          note="sisa qty × harga beli batch, dari ketiga kelompok di atas"
         />
       </div>
 

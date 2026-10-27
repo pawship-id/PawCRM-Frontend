@@ -30,7 +30,7 @@ export function RolesScreen() {
 
       {loading && roles.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Loading roles…
+          <Spinner /> Memuat peran…
         </div>
       ) : (
         <>
@@ -44,7 +44,7 @@ export function RolesScreen() {
             page={pagination.page}
             totalPages={pagination.totalPages}
             total={pagination.total}
-            unit="role"
+            unit="peran"
             onPageChange={(page) => setQuery({ page })}
           />
         </>

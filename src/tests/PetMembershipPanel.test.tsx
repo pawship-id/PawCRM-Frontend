@@ -46,7 +46,7 @@ describe("pet Membership tab", () => {
     expect(screen.getAllByText("2 tersisa").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "Riwayat pemakaian" })).toHaveAttribute(
       "href",
-      "/dashboard/promosi/membership/anggota/card-1",
+      "/dashboard/promotion/membership/member/card-1",
     );
     expect(screen.getByRole("button", { name: "Ubah masa berlaku" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Koreksi jatah" })).toBeVisible();

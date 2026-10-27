@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { ApiError } from "@/services/api-error";
 import { bookingService } from "@/services/booking.service";
 import { userService } from "@/services/user.service";
+import { DeletedUserNotice } from "./DeletedUserNotice";
 import { swalToast } from "@/lib/swal";
 import {
   GROOMER_LEVEL_LABELS,
@@ -127,6 +128,7 @@ export function RosterSection({
     it existed all three read "every active user", so a shop with ten staff and
     two groomers picked from ten names.
   */
+  const deleted = user.deletedAt !== null;
   const [isGroomer, setIsGroomer] = useState(user.isGroomer === true);
   /* The antar-jemput PIC roster — the same kind of shop fact (21 Sep 2026). */
   const [isDriver, setIsDriver] = useState(user.isDriver === true);
@@ -296,138 +298,144 @@ export function RosterSection({
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-5">
       {error && <Alert variant="error">{error}</Alert>}
+      {deleted && <DeletedUserNotice />}
 
-      {/*
+      {/* A deleted user cannot be saved (the API answers 404), so the whole
+          roster is locked — a disabled fieldset disables every control in it. */}
+      <fieldset disabled={deleted} className="contents">
+        {/*
         FIRST, because it decides whether the rest of this card matters at all.
         The weekly pattern and the leave dates exist to keep somebody OUT of a
         booking form they have to be in first.
       */}
-      <div className="flex flex-col gap-2">
-        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
-          <Checkbox
-            checked={isGroomer}
-            onCheckedChange={() => setIsGroomer((prev) => !prev)}
-            disabled={saving}
-            aria-label="Groomer"
-          />
-          Groomer — bisa ditugaskan menangani hewan
-        </label>
-        <p className="text-xs text-muted">
-          Hanya yang ditandai di sini yang muncul di pilihan groomer saat membuat
-          booking, dan di kolom kalender. Kasir dan resepsionis tidak perlu
-          ditandai.
-        </p>
-        <p className="text-xs text-muted">
-          Yang ditandai otomatis boleh membuka aplikasi groomer di /groomer:
-          melihat dan mengerjakan sesinya, mengambil open job (jika diizinkan
-          manager), serta mengisi catatan dan foto. Tidak perlu mengatur role
-          khusus, dan tidak membuka akses lain.
-        </p>
-        <p className="text-xs text-muted">
-          Komisi diatur untuk seluruh toko di Layanan › Grooming › Pengaturan.
-        </p>
-      </div>
+        <div className="flex flex-col gap-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+            <Checkbox
+              checked={isGroomer}
+              onCheckedChange={() => setIsGroomer((prev) => !prev)}
+              disabled={saving}
+              aria-label="Groomer"
+            />
+            Groomer — bisa ditugaskan menangani hewan
+          </label>
+          <p className="text-xs text-muted">
+            Hanya yang ditandai di sini yang muncul di pilihan groomer saat
+            membuat booking, dan di kolom kalender. Kasir dan resepsionis tidak
+            perlu ditandai.
+          </p>
+          <p className="text-xs text-muted">
+            Yang ditandai otomatis boleh membuka aplikasi groomer di /groomer:
+            melihat dan mengerjakan sesinya, mengambil sesi terbuka (jika
+            diizinkan manager), serta mengisi catatan dan foto. Tidak perlu
+            mengatur peran khusus, dan tidak membuka akses lain.
+          </p>
+          <p className="text-xs text-muted">
+            Komisi diatur untuk seluruh toko di Layanan › Grooming › Pengaturan.
+          </p>
+        </div>
 
-      <div className="flex flex-col gap-2">
-        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
-          <Checkbox
-            checked={isDriver}
-            onCheckedChange={() => setIsDriver((prev) => !prev)}
-            disabled={saving}
-            aria-label="Driver"
-          />
-          Driver — bisa ditugaskan antar-jemput
-        </label>
-        <p className="text-xs text-muted">
-          Hanya yang ditandai di sini yang muncul di pilihan driver booking
-          antar-jemput. Libur dan cuti di bawah berlaku juga untuk driver.
-        </p>
-      </div>
+        <div className="flex flex-col gap-2">
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+            <Checkbox
+              checked={isDriver}
+              onCheckedChange={() => setIsDriver((prev) => !prev)}
+              disabled={saving}
+              aria-label="Driver"
+            />
+            Driver — bisa ditugaskan antar-jemput
+          </label>
+          <p className="text-xs text-muted">
+            Hanya yang ditandai di sini yang muncul di pilihan driver booking
+            antar-jemput. Libur dan cuti di bawah berlaku juga untuk driver.
+          </p>
+        </div>
 
-      {/*
+        {/*
         ONLY FOR A GROOMER — it is the label beside their name when they are put
         on a booking's session. Kept when the box is unticked, so ticking it
         back does not lose it.
       */}
-      {isGroomer && (
-        <SelectField
-          label="Level groomer"
-          value={groomerLevel ?? NO_LEVEL}
-          onChange={(value) =>
-            setGroomerLevel(value === NO_LEVEL ? null : (value as GroomerLevel))
-          }
-          options={[
-            { value: NO_LEVEL, label: "Belum diatur" },
-            ...GROOMER_LEVELS.map((level) => ({
-              value: level,
-              label: GROOMER_LEVEL_LABELS[level],
-            })),
-          ]}
-          hint="Tampil di samping nama saat groomer ditugaskan ke sesi booking."
-          disabled={saving}
-          className="max-w-xs"
-        />
-      )}
-
-      <div className="flex flex-col gap-2">
-        <Label>Libur mingguan</Label>
-        <p className="text-xs text-muted">
-          Groomer yang libur tidak bisa dipilih di form booking pada hari itu.
-        </p>
-
-        <div className="flex flex-wrap gap-3">
-          {WEEKDAYS.map((weekday) => (
-            <label
-              key={weekday.value}
-              className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
-            >
-              <Checkbox
-                checked={weeklyOff.includes(weekday.value)}
-                onCheckedChange={() => toggleWeekday(weekday.value)}
-                disabled={saving}
-                aria-label={weekday.label}
-              />
-              {weekday.label}
-            </label>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label>Cuti tanggal tertentu</Label>
-
-        {leaveDates.length > 0 && (
-          <ul className="flex flex-wrap gap-2">
-            {leaveDates.map((date) => (
-              <li key={date}>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={saving}
-                  aria-label={`Hapus cuti ${date}`}
-                  onClick={() =>
-                    setLeaveDates((prev) => prev.filter((d) => d !== date))
-                  }
-                >
-                  {day(date)}
-                  <X className="size-3.5" />
-                </Button>
-              </li>
-            ))}
-          </ul>
+        {isGroomer && (
+          <SelectField
+            label="Level groomer"
+            value={groomerLevel ?? NO_LEVEL}
+            onChange={(value) =>
+              setGroomerLevel(
+                value === NO_LEVEL ? null : (value as GroomerLevel),
+              )
+            }
+            options={[
+              { value: NO_LEVEL, label: "Belum diatur" },
+              ...GROOMER_LEVELS.map((level) => ({
+                value: level,
+                label: GROOMER_LEVEL_LABELS[level],
+              })),
+            ]}
+            hint="Tampil di samping nama saat groomer ditugaskan ke sesi booking."
+            disabled={saving}
+            className="max-w-xs"
+          />
         )}
 
-        <div className="flex flex-wrap items-end gap-2">
-          <TextField
-            label="Dari tanggal"
-            name="leave-date"
-            type="date"
-            value={draftDate}
-            onChange={(event) => setDraftDate(event.target.value)}
-            disabled={saving}
-          />
-          {/*
+        <div className="flex flex-col gap-2">
+          <Label>Libur mingguan</Label>
+          <p className="text-xs text-muted">
+            Groomer yang libur tidak bisa dipilih di form booking pada hari itu.
+          </p>
+
+          <div className="flex flex-wrap gap-3">
+            {WEEKDAYS.map((weekday) => (
+              <label
+                key={weekday.value}
+                className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
+              >
+                <Checkbox
+                  checked={weeklyOff.includes(weekday.value)}
+                  onCheckedChange={() => toggleWeekday(weekday.value)}
+                  disabled={saving}
+                  aria-label={weekday.label}
+                />
+                {weekday.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label>Cuti tanggal tertentu</Label>
+
+          {leaveDates.length > 0 && (
+            <ul className="flex flex-wrap gap-2">
+              {leaveDates.map((date) => (
+                <li key={date}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    disabled={saving}
+                    aria-label={`Hapus cuti ${date}`}
+                    onClick={() =>
+                      setLeaveDates((prev) => prev.filter((d) => d !== date))
+                    }
+                  >
+                    {day(date)}
+                    <X className="size-3.5" />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="flex flex-wrap items-end gap-2">
+            <TextField
+              label="Dari tanggal"
+              name="leave-date"
+              type="date"
+              value={draftDate}
+              onChange={(event) => setDraftDate(event.target.value)}
+              disabled={saving}
+            />
+            {/*
             "SAMPAI" IS OPTIONAL AND EMPTY BY DEFAULT. One day off is the common
             case and must stay one field and one button; a required second date
             would make every single-day absence a decision about whether to
@@ -437,80 +445,83 @@ export function RosterSection({
             expander refuses a backwards one anyway — this only saves somebody
             finding that out after typing.
           */}
-          <TextField
-            label="Sampai (opsional)"
-            name="leave-date-until"
-            type="date"
-            value={draftUntil}
-            min={draftDate || undefined}
-            onChange={(event) => setDraftUntil(event.target.value)}
-            disabled={saving || draftDate === ""}
-            hint="Kosongkan kalau cuma sehari."
-          />
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={saving || draftDate === "" || rangeSize === 0}
-            onClick={() => void addLeaveDates(draftDate, draftUntil)}
-          >
-            {rangeSize > 1 ? `Tambah ${rangeSize} hari` : "Tambah"}
-          </Button>
-        </div>
+            <TextField
+              label="Sampai (opsional)"
+              name="leave-date-until"
+              type="date"
+              value={draftUntil}
+              min={draftDate || undefined}
+              onChange={(event) => setDraftUntil(event.target.value)}
+              disabled={saving || draftDate === ""}
+              hint="Kosongkan kalau cuma sehari."
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={saving || draftDate === "" || rangeSize === 0}
+              onClick={() => void addLeaveDates(draftDate, draftUntil)}
+            >
+              {rangeSize > 1 ? `Tambah ${rangeSize} hari` : "Tambah"}
+            </Button>
+          </div>
 
-        {/*
+          {/*
           THE TWO WAYS A RANGE CAN BE UNUSABLE, said before the button is
           pressed rather than by silently doing nothing.
         */}
-        {draftUntil !== "" && rangeSize === 0 && (
-          <p role="alert" className="text-xs font-semibold text-danger">
-            Tanggal &ldquo;sampai&rdquo; harus setelah tanggal mulai.
-          </p>
-        )}
-        {rangeSize === MAX_RANGE_DAYS && (
-          <p className="text-xs text-muted">
-            Maksimal {MAX_RANGE_DAYS} hari sekali tambah.
-          </p>
-        )}
-      </div>
+          {draftUntil !== "" && rangeSize === 0 && (
+            <p role="alert" className="text-xs font-semibold text-danger">
+              Tanggal &ldquo;sampai&rdquo; harus setelah tanggal mulai.
+            </p>
+          )}
+          {rangeSize === MAX_RANGE_DAYS && (
+            <p className="text-xs text-muted">
+              Maksimal {MAX_RANGE_DAYS} hari sekali tambah.
+            </p>
+          )}
+        </div>
 
-      {/*
+        {/*
         KRITERIA 4.9 — the four animals, made visible before the decision.
         Nothing here refuses; it only shows.
       */}
-      {checking && (
-        <p className="text-xs text-muted">Memeriksa booking yang terdampak…</p>
-      )}
+        {checking && (
+          <p className="text-xs text-muted">
+            Memeriksa booking yang terdampak…
+          </p>
+        )}
 
-      {affected && (
-        <Alert variant="warning">
-          <span className="block font-semibold">
-            {affected.length} layanan sudah terjadwal di hari libur itu.
-          </span>
-          <ul className="mt-1 list-disc pl-5">
-            {affected.slice(0, 6).map((row) => (
-              <li key={row._id}>
-                {row.name} — {day(row.scheduledAt)}
-                {row.bookingNumber ? ` (${row.bookingNumber})` : ""}
-              </li>
-            ))}
-          </ul>
-          {affected.length > 6 && (
-            <span className="mt-1 block">
-              …dan {affected.length - 6} lagi.
+        {affected && (
+          <Alert variant="warning">
+            <span className="block font-semibold">
+              {affected.length} layanan sudah terjadwal di hari libur itu.
             </span>
-          )}
-          <span className="mt-1 block">
-            Menyimpan tetap boleh — bookingnya tidak ikut berubah, jadi
-            hubungi pelanggannya atau pindahkan groomernya.
-          </span>
-        </Alert>
-      )}
+            <ul className="mt-1 list-disc pl-5">
+              {affected.slice(0, 6).map((row) => (
+                <li key={row._id}>
+                  {row.name} — {day(row.scheduledAt)}
+                  {row.bookingNumber ? ` (${row.bookingNumber})` : ""}
+                </li>
+              ))}
+            </ul>
+            {affected.length > 6 && (
+              <span className="mt-1 block">
+                …dan {affected.length - 6} lagi.
+              </span>
+            )}
+            <span className="mt-1 block">
+              Menyimpan tetap boleh — bookingnya tidak ikut berubah, jadi
+              hubungi pelanggannya atau pindahkan groomernya.
+            </span>
+          </Alert>
+        )}
 
-      <div>
-        <Button type="submit" disabled={saving}>
-          {saving ? "Menyimpan…" : "Simpan jadwal"}
-        </Button>
-      </div>
+        <div>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Menyimpan…" : "Simpan jadwal"}
+          </Button>
+        </div>
+      </fieldset>
     </form>
   );
 }

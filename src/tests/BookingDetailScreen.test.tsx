@@ -29,7 +29,7 @@ jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 
 /*
   THE SCREEN NAVIGATES NOW (23 September 2026) — a ride is sent to its own page
-  at `/dashboard/layanan/antar-jemput/:id`, so the router has to be here.
+  at `/dashboard/service/pickup-delivery/:id`, so the router has to be here.
 
   ⚠️ ONE OBJECT, NOT A FRESH ONE PER CALL. Next's own `useRouter` is stable, and
   the load effect depends on it; a mock that built a new object each render made
@@ -306,7 +306,7 @@ describe("BookingDetailScreen — the header", () => {
         screen.queryByRole("link", { name: /^ubah$/i }),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole("link", { name: /edit layanan/i }),
+        screen.queryByRole("link", { name: /ubah layanan/i }),
       ).not.toBeInTheDocument();
     },
   );
@@ -373,7 +373,7 @@ describe("BookingDetailScreen — the header", () => {
   /*
     ─── A RIDE IS NOT THIS DOCUMENT (23 September 2026) ─────────────────────
 
-    It goes to `/dashboard/layanan/antar-jemput/:id`. Answered HERE, after the
+    It goes to `/dashboard/service/pickup-delivery/:id`. Answered HERE, after the
     read, because half the links that reach a booking — a commission row, an
     invoice line — hold nothing but an id and cannot know which page to aim at.
   */
@@ -386,7 +386,7 @@ describe("BookingDetailScreen — the header", () => {
 
     await waitFor(() =>
       expect(replace).toHaveBeenCalledWith(
-        "/dashboard/layanan/antar-jemput/bk-aj",
+        "/dashboard/service/pickup-delivery/bk-aj",
       ),
     );
   });
@@ -607,7 +607,7 @@ describe("BookingDetailScreen — the Kunjungan card", () => {
     const { unmount } = show();
 
     expect(
-      await screen.findByRole("link", { name: /edit layanan/i }),
+      await screen.findByRole("link", { name: /ubah layanan/i }),
     ).toHaveAttribute("href", "/dashboard/booking/bk-1/edit");
 
     unmount();
@@ -615,7 +615,7 @@ describe("BookingDetailScreen — the Kunjungan card", () => {
 
     await screen.findByText("BK-260903-001");
     expect(
-      screen.queryByRole("link", { name: /edit layanan/i }),
+      screen.queryByRole("link", { name: /ubah layanan/i }),
     ).not.toBeInTheDocument();
   });
 
@@ -1013,7 +1013,7 @@ describe("BookingDetailScreen — the rail and the cards beside the work", () =>
 
     expect(
       await screen.findByRole("link", { name: /laporan › komisi/i }),
-    ).toHaveAttribute("href", "/dashboard/reports/commissions");
+    ).toHaveAttribute("href", "/dashboard/finance/commissions");
   });
 });
 
@@ -1104,7 +1104,7 @@ describe("BookingDetailScreen — the journey to the house", () => {
     expect(screen.getByText("Berangkat")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Lihat perjalanan/ })).toHaveAttribute(
       "href",
-      "/dashboard/booking/perjalanan/trip-1",
+      "/dashboard/booking/rides/trip-1",
     );
     /* The buttons live on the trip's page now. */
     expect(screen.queryByRole("button", { name: "Sampai di rumah" })).not.toBeInTheDocument();
@@ -1156,7 +1156,7 @@ describe("BookingDetailScreen — the journey to the house", () => {
     expect(note).toHaveTextContent("Belum termasuk biaya kunjungan");
     expect(within(note).getByRole("link", { name: "lihat di perjalanan" })).toHaveAttribute(
       "href",
-      "/dashboard/booking/perjalanan/trip-1",
+      "/dashboard/booking/rides/trip-1",
     );
   });
 });

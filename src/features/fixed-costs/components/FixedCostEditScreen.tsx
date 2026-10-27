@@ -59,7 +59,7 @@ export function FixedCostEditScreen({ id }: { id: string }) {
   if (!can("fixedCosts", "update")) {
     return (
       <Alert variant="error">
-        Kamu belum punya akses untuk mengubah biaya tetap. Minta admin
+        Anda belum punya akses untuk mengubah biaya tetap. Minta admin
         menambahkan izinnya.
       </Alert>
     );
@@ -70,8 +70,8 @@ export function FixedCostEditScreen({ id }: { id: string }) {
       {/* BARE TEXT, not a <p>: `PageHeading` wraps its children in one already. */}
       <PageHeading
         crumbs={[
-          { label: "Keuangan", href: "/dashboard/keuangan" },
-          { label: "Kas & Bank", href: "/dashboard/keuangan/kas-bank" },
+          { label: "Keuangan", href: "/dashboard/finance" },
+          { label: "Kas & Bank", href: "/dashboard/finance/cash-bank" },
           { label: "Biaya Tetap", href: FIXED_COSTS_HREF },
           { label: fixedCost.name },
         ]}

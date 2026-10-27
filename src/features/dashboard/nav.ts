@@ -177,7 +177,7 @@ export interface NavSection {
  * worked example the other three follow.
  *
  * PENGATURAN MADE IT TOO (22 September 2026): four tabs — Umum, Layanan,
- * Keuangan, Pengguna & Sistem — and every page under /dashboard/pengaturan, so
+ * Keuangan, Pengguna & Sistem — and every page under /dashboard/settings, so
  * the ten-child group it used to be is one row again.
  */
 export const NAV_SECTIONS: NavSection[] = [
@@ -198,9 +198,9 @@ export const NAV_SECTIONS: NavSection[] = [
         ],
         // Its Uang / Operasional / Cabang tabs are routes of their own.
         match: [
-          "/dashboard/uang",
-          "/dashboard/operasional",
-          "/dashboard/cabang",
+          "/dashboard/money",
+          "/dashboard/operations",
+          "/dashboard/branches",
         ],
       },
       {
@@ -228,7 +228,7 @@ export const NAV_SECTIONS: NavSection[] = [
             /**
              * Kalender (renamed from Hari Ini, 17 Sep 2026) — the day board, every line of business on one screen
              * (`TodayScreen`, from `buloo-hari-ini-v1.html`). Prefix-matched
-             * (no `exact`) so /kalender, /new and /[id] keep the row lit.
+             * (no `exact`) so /calendar, /new and /[id] keep the row lit.
              *
              * Gated `bookings:read`, the same grant every booking route
              * enforces — without it a user who cannot read bookings would see
@@ -242,7 +242,7 @@ export const NAV_SECTIONS: NavSection[] = [
           },
           {
             label: "Grooming",
-            href: "/dashboard/layanan/grooming",
+            href: "/dashboard/service/grooming",
             icon: Scissors,
             module: "layanan",
             permissionAny: [
@@ -254,14 +254,14 @@ export const NAV_SECTIONS: NavSection[] = [
           },
           {
             label: "Hotel",
-            href: "/dashboard/hotel",
+            href: "/dashboard/service/hotel",
             icon: Bed,
             module: "layanan",
             permission: { feature: "hotel", action: "read" },
           },
           {
             label: "Antar-Jemput",
-            href: "/dashboard/layanan/antar-jemput",
+            href: "/dashboard/service/pickup-delivery",
             icon: Car,
             module: "layanan",
             permissionAny: [
@@ -345,7 +345,7 @@ export const NAV_SECTIONS: NavSection[] = [
          * ungated placeholder tabs riding along inside it.
          */
         label: "Penjualan",
-        href: "/dashboard/sales",
+        href: "/dashboard/sales/summary",
         icon: ShoppingCart,
         // Any tab opens the row; Ringkasan redirects to the first one allowed.
         permissionAny: [
@@ -354,7 +354,9 @@ export const NAV_SECTIONS: NavSection[] = [
           { feature: "ecommerce", action: "read" },
           { feature: "salesReturns", action: "read" },
         ],
-        match: ["/dashboard/ecommerce-sync"],
+        // The href is Ringkasan (/sales/summary, 26 October 2026), so the
+        // module's own prefix has to be listed for Faktur and Retur too.
+        match: ["/dashboard/sales", "/dashboard/ecommerce-sync"],
       },
       {
         /**
@@ -363,10 +365,9 @@ export const NAV_SECTIONS: NavSection[] = [
          * and Voucher join as tabs later. It took Membership over from
          * Pelanggan, whose old routes redirect here.
          *
-         * `permissionAny` IS LEGAL HERE because the href is a redirect to
-         * Ringkasan, which itself forwards a role that may not see it to the
-         * first Promosi tab it may — so nobody the row is shown to lands on a
-         * refusal.
+         * `permissionAny` IS LEGAL HERE because the href is Ringkasan, which
+         * forwards a role that may not see it to the first Promosi tab it may —
+         * so nobody the row is shown to lands on a refusal.
          *
          * `module: "membership"` is the tab-level switch Buloo admin turns
          * Membership off with (permissionModules.js `toggle`). It already closes
@@ -375,8 +376,9 @@ export const NAV_SECTIONS: NavSection[] = [
          * report grant would see a row onto a switched-off module.
          */
         label: "Promosi",
-        href: "/dashboard/promosi",
+        href: "/dashboard/promotion/summary",
         icon: Tag,
+        match: ["/dashboard/promotion"],
         module: "membership",
         permissionAny: [
           { feature: "membershipPlans", action: "read" },
@@ -413,8 +415,11 @@ export const NAV_SECTIONS: NavSection[] = [
        */
       {
         label: "Pembelian",
-        href: "/dashboard/purchasing",
+        href: "/dashboard/purchasing/summary",
         icon: Truck,
+        // Ringkasan moved to /purchasing/summary (26 October 2026); the prefix
+        // keeps the row lit on every other tab.
+        match: ["/dashboard/purchasing"],
         permissionAny: [
           { feature: "purchasingSummary", action: "read" },
           { feature: "suppliers", action: "read" },
@@ -609,7 +614,7 @@ export const NAV_SECTIONS: NavSection[] = [
          * lini bisnis" panel ("Kelola lini bisnis"); the mockup files it under
          * `Pengaturan › Keuangan`, which is not built yet.
          *
-         * NO `match` NEEDED. Komisi moved to /dashboard/keuangan/komisi, inside
+         * NO `match` NEEDED. Komisi moved to /dashboard/finance/commissions, inside
          * this href's own prefix; its old address under /dashboard/reports
          * redirects there on the server, so the rail never renders on it.
          *
@@ -621,7 +626,7 @@ export const NAV_SECTIONS: NavSection[] = [
          * whole finance module.
          */
         label: "Keuangan",
-        href: "/dashboard/keuangan",
+        href: "/dashboard/finance",
         icon: Wallet,
         permissionAny: [
           { feature: "financeSummary", action: "read" },
@@ -662,7 +667,7 @@ export const NAV_SECTIONS: NavSection[] = [
          * ONE ROW SINCE 22 SEPTEMBER 2026, as the mockup draws it
          * (`buloo-navigation-v3`): its screen carries four tabs — Umum, Layanan,
          * Keuangan, Pengguna & Sistem — and every page they open lives under
-         * /dashboard/pengaturan, so prefix-matching `href`'s parent keeps the
+         * /dashboard/settings, so prefix-matching `href`'s parent keeps the
          * row lit on all of them. It used to be a group of ten children, which
          * is what the tabs replaced.
          *

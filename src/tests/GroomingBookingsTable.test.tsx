@@ -12,7 +12,7 @@ jest.mock("@/services/booking.service");
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }),
-  usePathname: () => "/dashboard/layanan/grooming/booking",
+  usePathname: () => "/dashboard/service/grooming/booking",
 }));
 
 const scope: GroomingScope = {
@@ -124,8 +124,8 @@ describe("GroomingBookingsTable — Rincian", () => {
     );
 
     expect(detail.getAllByText("Diskon item")).toHaveLength(2);
-    expect(detail.getByText(`− ${formatMoney("5000.0000")}`)).toBeInTheDocument();
-    expect(detail.getByText(`− ${formatMoney("2000.0000")}`)).toBeInTheDocument();
+    expect(detail.getByText(`−${formatMoney("5000.0000")}`)).toBeInTheDocument();
+    expect(detail.getByText(`−${formatMoney("2000.0000")}`)).toBeInTheDocument();
 
     /* The lines after their own discounts: 140.000 − 7.000. */
     expect(detail.getByText("Subtotal").nextSibling).toHaveTextContent(
@@ -177,7 +177,7 @@ describe("GroomingBookingsTable — Tipe and Perjalanan", () => {
     expect(screen.getByText("Home grooming")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Buka perjalanan" })).toHaveAttribute(
       "href",
-      "/dashboard/booking/perjalanan/trip-9",
+      "/dashboard/booking/rides/trip-9",
     );
   });
 

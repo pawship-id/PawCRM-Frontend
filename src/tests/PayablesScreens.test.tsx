@@ -1074,7 +1074,7 @@ describe("InvoiceDetail", () => {
     expect(
       await screen.findByRole("columnheader", { name: "Sisa qty" }),
     ).toBeInTheDocument();
-    const row = screen.getByText("diterima sebagian").closest("tr") as HTMLElement;
+    const row = screen.getByText("Diterima sebagian").closest("tr") as HTMLElement;
     expect(within(row).getByText("6")).toBeInTheDocument();
     expect(within(row).getByText("4")).toBeInTheDocument();
   });
@@ -1398,7 +1398,7 @@ describe("InvoiceDetail", () => {
     const arrived = screen.getByText(/Barang diterima/);
     expect(arrived).toHaveTextContent("Rp 66.600 dari Rp 166.500");
     expect(arrived).toHaveTextContent("bisa dibayar sekarang Rp 66.600");
-    expect(screen.getByText("diterima sebagian")).toBeInTheDocument();
+    expect(screen.getByText("Diterima sebagian")).toBeInTheDocument();
   });
 
   it("caps the payment at what has arrived, not at the whole bill", async () => {
@@ -1658,7 +1658,7 @@ describe("PurchasePaymentDetail — the sales payment page, for a supplier", () 
     expect(screen.getByText("JU/2608/0012")).toBeInTheDocument();
     expect(screen.getByText("TRF/998877")).toBeInTheDocument();
     expect(screen.getByText("Faktur ini sekarang")).toBeInTheDocument();
-    expect(screen.getByText("aktif")).toBeInTheDocument();
+    expect(screen.getByText("Aktif")).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: /Ubah pembayaran/ }),
     ).toBeInTheDocument();
@@ -1712,7 +1712,7 @@ describe("PurchasePaymentDetail — the sales payment page, for a supplier", () 
     );
 
     expect(await screen.findByText("Alasan: salah nominal")).toBeInTheDocument();
-    expect(screen.getByText("dibatalkan")).toBeInTheDocument();
+    expect(screen.getAllByText("Dibatalkan").length).toBeGreaterThan(0);
     expect(
       screen.queryByRole("button", { name: /Batalkan pembayaran/ }),
     ).not.toBeInTheDocument();
@@ -2270,7 +2270,7 @@ describe("PurchasingHub — the Ringkasan tab", () => {
     await waitFor(() => expect(purchaseInvoiceService.summary).toHaveBeenCalled());
     expect(screen.queryByText("Rentang khusus")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Custom" }));
+    await user.click(screen.getByRole("button", { name: "Pilih tanggal" }));
 
     // Open in the card — no trigger to press first, because the chip already
     // said a range is being typed.
@@ -2306,7 +2306,7 @@ describe("PurchasingHub — the Ringkasan tab", () => {
     renderWithAuth(<PurchasingHub />);
 
     await waitFor(() => expect(purchaseInvoiceService.summary).toHaveBeenCalled());
-    await user.click(screen.getByRole("button", { name: "Custom" }));
+    await user.click(screen.getByRole("button", { name: "Pilih tanggal" }));
 
     await user.type(
       await screen.findByLabelText("Tanggal bayar dari"),
@@ -2350,11 +2350,11 @@ describe("PurchasingHub — the Ringkasan tab", () => {
     // say the job was nearly done.
     await waitFor(() =>
       expect(
-        within(panel("Hutang lewat jatuh tempo")).getByText("7"),
+        within(panel("Utang lewat jatuh tempo")).getByText("7"),
       ).toBeInTheDocument(),
     );
     expect(
-      within(panel("Hutang lewat jatuh tempo")).getByText("Rp 2.750.000"),
+      within(panel("Utang lewat jatuh tempo")).getByText("Rp 2.750.000"),
     ).toBeInTheDocument();
   });
 
@@ -2369,7 +2369,7 @@ describe("PurchasingHub — the Ringkasan tab", () => {
   it("asks the server for the due-soon bucket rather than filtering here", async () => {
     renderWithAuth(<PurchasingHub />);
 
-    await screen.findByText("Hutang jatuh tempo minggu ini");
+    await screen.findByText("Utang jatuh tempo minggu ini");
 
     await waitFor(() =>
       expect(purchaseInvoiceService.list).toHaveBeenCalledWith({
@@ -2411,13 +2411,13 @@ describe("PurchasingHub — the Ringkasan tab", () => {
 
     await waitFor(() =>
       expect(
-        within(panel("Hutang jatuh tempo minggu ini")).getByText(
+        within(panel("Utang jatuh tempo minggu ini")).getByText(
           /CV Mitra Ternak/,
         ),
       ).toBeInTheDocument(),
     );
 
-    const soon = panel("Hutang jatuh tempo minggu ini");
+    const soon = panel("Utang jatuh tempo minggu ini");
     // The whole bucket beside one row of it, and a total nothing here summed.
     expect(within(soon).getByText("4")).toBeInTheDocument();
     expect(within(soon).getByText("Rp 1.250.000")).toBeInTheDocument();
@@ -2451,7 +2451,7 @@ describe("PurchasingHub — the Ringkasan tab", () => {
     expect(
       await screen.findByText(/hanya untuk peran yang boleh membaca faktur/),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Hutang lewat jatuh tempo")).not.toBeInTheDocument();
+    expect(screen.queryByText("Utang lewat jatuh tempo")).not.toBeInTheDocument();
     expect(purchaseInvoiceService.list).not.toHaveBeenCalled();
     expect(purchaseInvoiceService.summary).not.toHaveBeenCalled();
   });
@@ -2460,13 +2460,13 @@ describe("PurchasingHub — the Ringkasan tab", () => {
     renderWithAuth(<PurchasingHub />);
 
     expect(
-      await screen.findByText("Tidak ada hutang yang lewat jatuh tempo."),
+      await screen.findByText("Tidak ada utang yang lewat jatuh tempo."),
     ).toBeInTheDocument();
     // Awaited, not read synchronously: the sentence names the server's horizon,
     // so it cannot be written until the figures arrive — until then the panel
     // says nothing about a window rather than naming one it is guessing at.
     expect(
-      await screen.findByText(/Tidak ada hutang yang jatuh tempo dalam 7 hari/),
+      await screen.findByText(/Tidak ada utang yang jatuh tempo dalam 7 hari/),
     ).toBeInTheDocument();
   });
 
@@ -2607,7 +2607,7 @@ describe("PurchasingHub — Utang konsinyasi", () => {
       await screen.findByText(/Utang konsinyasi gagal dimuat/),
     ).toBeInTheDocument();
     expect(
-      await screen.findByText("Hutang lewat jatuh tempo"),
+      await screen.findByText("Utang lewat jatuh tempo"),
     ).toBeInTheDocument();
   });
 
@@ -2615,7 +2615,8 @@ describe("PurchasingHub — Utang konsinyasi", () => {
     const { user, dialog } = await openDialog();
 
     const amount = within(dialog).getByLabelText("Nominal setor");
-    expect(amount).toHaveValue("300000.0000");
+    // The ledger's four zeros are trimmed off what the box shows.
+    expect(amount).toHaveValue("300000");
 
     await user.clear(amount);
     await user.type(amount, "300001");

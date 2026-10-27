@@ -1043,8 +1043,8 @@ export function StockAdjustmentForm() {
 
         <div className="flex flex-col gap-2">
           <p className="text-xs text-muted">
-            Kartu stok bersifat <b>append-only</b>. Dokumen ini tidak bisa
-            diubah atau dihapus - salah angka dikoreksi dengan dokumen baru, dan
+            Catatan di kartu stok <b>tidak bisa dihapus</b>. Dokumen ini tidak
+            bisa diubah atau dihapus — salah angka dikoreksi dengan dokumen baru, dan
             keduanya tetap terlihat.
           </p>
         </div>

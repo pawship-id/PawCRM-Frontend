@@ -20,7 +20,7 @@ export function OpnameStatusBadge({ status }: { status: "draft" | "submitted" })
         variant="outline"
         className="border-transparent bg-success/12 text-success"
       >
-        final
+        Final
       </Badge>
     );
   }
@@ -30,7 +30,7 @@ export function OpnameStatusBadge({ status }: { status: "draft" | "submitted" })
       variant="outline"
       className="border-transparent bg-secondary/25 text-secondary-foreground"
     >
-      draft
+      Draft
     </Badge>
   );
 }

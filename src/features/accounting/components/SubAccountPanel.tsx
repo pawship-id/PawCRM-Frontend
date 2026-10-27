@@ -212,7 +212,7 @@ export function SubAccountPanel({
       return;
     }
     if (draft.allocationType === "direct" && !draft.businessLineId) {
-      setError("Pilih lini usahanya dulu.");
+      setError("Pilih lini bisnisnya dulu.");
       return;
     }
     if (draft.allocationType === "direct" && draft.branchMode === "pinned" && !draft.branchId) {
@@ -377,7 +377,7 @@ export function SubAccountPanel({
             <FilterSelect
               layout="field"
               label=""
-              ariaLabel="Lini usaha"
+              ariaLabel="Lini bisnis"
               value={current.businessLineId ?? ""}
               active={false}
               placeholder="Pilih lini…"
@@ -490,7 +490,7 @@ export function SubAccountPanel({
                 <TableHead className="min-w-40">Kode</TableHead>
                 <TableHead className="min-w-52">Nama sub akun</TableHead>
                 <TableHead className="min-w-44">Tipe alokasi</TableHead>
-                <TableHead className="min-w-44">Lini usaha</TableHead>
+                <TableHead className="min-w-44">Lini bisnis</TableHead>
                 <TableHead className="min-w-48">Cabang</TableHead>
                 <TableHead className="w-24">Aktif</TableHead>
                 {(editable || canRemap) && <TableHead className="w-28" />}

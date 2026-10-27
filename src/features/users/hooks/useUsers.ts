@@ -107,7 +107,7 @@ export function useUsers(): UseUsersResult {
         setError(
           err instanceof ApiError
             ? err.message
-            : "Could not load users. Please try again.",
+            : "Daftar pengguna tidak bisa dimuat. Coba lagi.",
         );
       })
       .finally(() => {

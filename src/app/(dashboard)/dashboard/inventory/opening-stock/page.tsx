@@ -13,7 +13,7 @@ export default function OpeningStockPage() {
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Inventori", href: "/dashboard/inventory" },
               { label: "Stok Awal" },
             ]}
           />

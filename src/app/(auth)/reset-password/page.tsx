@@ -3,17 +3,17 @@ import type { Metadata } from "next";
 import { ResetPasswordForm } from "@/features/auth";
 import { Spinner } from "@/components";
 
-export const metadata: Metadata = { title: "Reset password · Buloo" };
+export const metadata: Metadata = { title: "Buat password baru · Buloo" };
 
 export default function ResetPasswordPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-extrabold text-foreground">
-          Set a new password
+          Buat password baru
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Choose a new password for your account.
+          Pilih password baru untuk akun Anda.
         </p>
       </div>
       {/* ResetPasswordForm reads the ?token= via useSearchParams, which requires

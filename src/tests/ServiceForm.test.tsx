@@ -176,8 +176,8 @@ function openedFrom(serviceKind: ServiceKind) {
     serviceKind,
     listPath:
       serviceKind === "pickup-delivery"
-        ? "/dashboard/layanan/antar-jemput/katalog"
-        : "/dashboard/layanan/grooming/katalog",
+        ? "/dashboard/service/pickup-delivery/catalog"
+        : "/dashboard/service/grooming/catalog",
   });
 }
 
@@ -496,7 +496,7 @@ describe("ServiceForm — variant pricing", () => {
     expect(screen.getByRole("link", { name: /buka opsi varian/i })).toHaveAttribute(
       "href",
       /* Opsi Varian is the page's default section. */
-      "/dashboard/pengaturan/layanan",
+      "/dashboard/settings/services",
     );
   });
 
@@ -595,7 +595,7 @@ describe("ServiceForm — variant pricing", () => {
       ),
     );
     await waitFor(() =>
-      expect(push).toHaveBeenCalledWith("/dashboard/layanan/antar-jemput/katalog"),
+      expect(push).toHaveBeenCalledWith("/dashboard/service/pickup-delivery/catalog"),
     );
   });
 
@@ -1138,7 +1138,7 @@ describe("ServiceForm — add-ons", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Batal" }));
 
-    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/layanan?bagian=addon");
+    expect(push).toHaveBeenCalledWith("/dashboard/settings/services?bagian=addon");
   });
 
   it("sends an edited add-on back to Master › Layanan › Add-on, not to a module (22 September 2026)", async () => {
@@ -1150,7 +1150,7 @@ describe("ServiceForm — add-ons", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Batal" }));
 
-    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/layanan?bagian=addon");
+    expect(push).toHaveBeenCalledWith("/dashboard/settings/services?bagian=addon");
   });
 
   it("keeps Batal going to Layanan & Harga on the ordinary new-service form", async () => {
@@ -1158,7 +1158,7 @@ describe("ServiceForm — add-ons", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Batal" }));
 
-    expect(push).toHaveBeenCalledWith("/dashboard/layanan/grooming/katalog");
+    expect(push).toHaveBeenCalledWith("/dashboard/service/grooming/catalog");
   });
 
   it("loads an add-on's two switches and saves what was changed", async () => {
@@ -1604,7 +1604,7 @@ describe("ServiceForm — editing", () => {
     );
     // Back to the service's own detail page, not the list it was found in.
     expect(push).toHaveBeenCalledWith(
-      `/dashboard/layanan/grooming/katalog/${SERVICE_ID}`,
+      `/dashboard/service/grooming/catalog/${SERVICE_ID}`,
     );
   });
 

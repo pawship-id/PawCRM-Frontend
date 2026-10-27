@@ -253,9 +253,9 @@ export function GroomingSummaryScreen() {
           value={formatMoneyShort(figures.net)}
           caption={
             (prior && delta(changePct(figures.net, prior.net))) ||
-            `Gross ${formatMoneyShort(figures.gross)} sebelum diskon`
+            `Kotor ${formatMoneyShort(figures.gross)} sebelum diskon`
           }
-          hint={`Nilai booking setelah diskon masing-masing booking (membership, potongan). Gross-nya ${formatMoney(figures.gross)} sebelum diskon. Belum dikurangi HPP atau biaya operasional.`}
+          hint={`Nilai booking setelah diskon masing-masing booking (membership, potongan). Nilai kotornya ${formatMoney(figures.gross)} sebelum diskon. Belum dikurangi HPP atau biaya operasional.`}
           {...periodState}
         />
         <StatTile
@@ -267,7 +267,7 @@ export function GroomingSummaryScreen() {
         />
 
         <StatTile
-          label={`Rebook rate (${REBOOK_DAYS} hari)`}
+          label={`Booking ulang (${REBOOK_DAYS} hari)`}
           value={rebook.percent === null ? "—" : `${rebook.percent}%`}
           caption={`${rebook.rebooked} dari ${rebook.animals} hewan booking lagi dalam ${REBOOK_DAYS} hari`}
           hint={`Dari hewan yang di-grooming 30–60 hari lalu, berapa yang booking Grooming lagi dalam ${REBOOK_DAYS} hari sejak kunjungan terakhirnya. Sengaja tidak ikut Periode di atas, supaya bisa dibandingkan dari waktu ke waktu. Ikut filter cabang.`}
@@ -293,7 +293,7 @@ export function GroomingSummaryScreen() {
           error={utilisation.failed}
         />
         <StatTile
-          label="Add-on attach rate"
+          label="Booking dengan add-on"
           value={figures.addonRate === null ? "—" : `${figures.addonRate}%`}
           caption={`${figures.withAddon} dari ${figures.count} booking pakai minimal 1 add-on`}
           hint="Persentase booking yang menambah minimal satu add-on di luar layanan utama — indikator upsell di meja groomer."

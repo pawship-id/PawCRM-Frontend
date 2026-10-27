@@ -517,7 +517,7 @@ function PaymentCard({
           <Field label="Akun kas/bank">{detail.payment.cashAccountName ?? "—"}</Field>
           <Field label="No. transaksi">
             <Link
-              href={`/dashboard/keuangan/kas-bank/transaksi/${detail.payment.id}`}
+              href={`/dashboard/finance/cash-bank/transactions/${detail.payment.id}`}
               className="rounded-md tabular-nums text-primary-hover underline-offset-2 hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
             >
               {detail.payment.number ?? "Lihat transaksi"}

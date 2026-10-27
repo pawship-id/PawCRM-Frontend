@@ -130,7 +130,7 @@ export function StockCorrectionModuleHeader({
         */}
         <PendingStatTile
           label="Selisih nilai"
-          blockedBy="Belum ada endpoint yang menjumlahkan selisih per periode"
+          blockedBy="Total selisih nilai per periode belum dihitung."
         />
       </section>
     </div>

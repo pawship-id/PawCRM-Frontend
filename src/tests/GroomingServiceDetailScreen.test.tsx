@@ -35,7 +35,7 @@ const mockRouter = { push: mockPush, replace: mockReplace };
 
 jest.mock("next/navigation", () => ({
   useRouter: () => mockRouter,
-  usePathname: () => "/dashboard/layanan/grooming/katalog/svc-1",
+  usePathname: () => "/dashboard/service/grooming/catalog/svc-1",
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -193,7 +193,7 @@ describe("GroomingServiceDetailScreen", () => {
 
     expect(screen.getByRole("link", { name: /Ubah/ })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/layanan/svc-1",
+      "/dashboard/settings/services/svc-1",
     );
 
     expect(screen.getByText("Rp 89 rb")).toBeInTheDocument();
@@ -248,7 +248,7 @@ describe("GroomingServiceDetailScreen", () => {
     await waitFor(() =>
       expect(serviceService.remove).toHaveBeenCalledWith("svc-1"),
     );
-    expect(mockPush).toHaveBeenCalledWith("/dashboard/layanan/grooming/katalog");
+    expect(mockPush).toHaveBeenCalledWith("/dashboard/service/grooming/catalog");
   });
 
   it("duplicates as an inactive copy, trying the next code when one is taken", async () => {
@@ -263,9 +263,19 @@ describe("GroomingServiceDetailScreen", () => {
       await screen.findByRole("button", { name: "Duplikat" }),
     );
 
+    // It asks first: the copy is a whole new (inactive) service.
+    const dialog = await screen.findByRole("dialog", { name: "Duplikat layanan" });
+    expect(dialog).toHaveTextContent("Express Wash (salinan)");
+    expect(dialog).toHaveTextContent("nonaktif");
+    expect(serviceService.create).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Duplikat layanan" }),
+    );
+
     await waitFor(() =>
       expect(mockPush).toHaveBeenCalledWith(
-        "/dashboard/layanan/grooming/katalog/svc-9",
+        "/dashboard/service/grooming/catalog/svc-9",
       ),
     );
     expect(serviceService.create).toHaveBeenNthCalledWith(
@@ -286,6 +296,22 @@ describe("GroomingServiceDetailScreen", () => {
     expect(payload.sessionWeights).toEqual([70, 30]);
     expect(payload).not.toHaveProperty("image");
     expect(payload).not.toHaveProperty("price");
+  });
+
+  it("creates no copy when the Duplikat dialog is cancelled", async () => {
+    renderDetail();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Duplikat" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Duplikat layanan" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Batal" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(serviceService.create).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   /*
@@ -687,7 +713,7 @@ describe("GroomingServiceDetailScreen", () => {
     renderDetail();
 
     await waitFor(() =>
-      expect(mockReplace).toHaveBeenCalledWith("/dashboard/pengaturan/layanan/svc-1"),
+      expect(mockReplace).toHaveBeenCalledWith("/dashboard/settings/services/svc-1"),
     );
     expect(screen.queryByRole("tab", { name: "Tahapan & Add-on" })).not.toBeInTheDocument();
   });

@@ -6759,7 +6759,7 @@ export interface PurchaseInvoicePayment {
   journalEntryId: string;
   /**
    * The bukti kas/bank number (`BBK/CBS/2609/0001`). `paymentId` is the cash
-   * transaction's id, so the row opens `/dashboard/keuangan/transaksi/:id` —
+   * transaction's id, so the row opens `/dashboard/finance/transactions/:id` —
    * which is where a supplier payment is now changed or cancelled.
    *
    * Optional (and null on migrated history) because older payloads lack it.
@@ -7568,7 +7568,7 @@ export interface CustomerInvoicePayment {
    * person can quote.
    *
    * BESIDE THE ID, NEVER INSTEAD OF IT. The number is the LABEL;
-   * `/dashboard/keuangan/journal-entries/:id` is addressed by ID, so a link
+   * `/dashboard/finance/journal-entries/:id` is addressed by ID, so a link
    * needs both. Null only when the entry could not be resolved (hard-deleted by
    * a repair script) — the link still works, the label degrades.
    */
@@ -7819,7 +7819,7 @@ export interface CustomerInvoiceDetail extends Omit<
   customerPhone?: string | null;
   customerWhatsApp?: string | null;
   /**
-   * The unguessable name this invoice answers to at `/faktur/:token` — the
+   * The unguessable name this invoice answers to at `/invoice/:token` — the
    * customer's own copy, no login. The WhatsApp button links it. Null on an
    * invoice raised before links existed, until the backend backfill has run.
    */
@@ -8788,6 +8788,14 @@ export interface CashTransaction {
   lines: CashTransactionLine[] | null;
   posTransactionId: string | null;
   shiftId: string | null;
+  /**
+   * The Biaya Tetap this transaction was recorded from — sent by the detail
+   * endpoint only (absent from list rows). Null when it did not come from one.
+   */
+  fixedCostId?: string | null;
+  fixedCostName?: string | null;
+  /** The schedule has since been deleted; its name is still history. */
+  fixedCostDeleted?: boolean;
   journalEntryId: string | null;
   journalEntryNumber: string | null;
   voidedAt: string | null;

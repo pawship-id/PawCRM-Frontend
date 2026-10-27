@@ -44,7 +44,7 @@ import { primeServiceSteps } from "./helpers/serviceSteps";
 const replace = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace, push: jest.fn() }),
-  usePathname: () => "/dashboard/pengaturan/umum",
+  usePathname: () => "/dashboard/settings/general",
 }));
 
 jest.mock("@/lib/swal", () => ({
@@ -175,6 +175,9 @@ describe("GeneralSettingsScreen", () => {
       await screen.findByRole("heading", { name: "Klinik Hewan Sehat" }),
     ).toBeInTheDocument();
     expect(screen.getByText("Paket Pro")).toBeInTheDocument();
+    // Same word as the Identitas form it opens: "Nama usaha", not "Nama tampilan".
+    expect(screen.getByText("Nama usaha")).toBeInTheDocument();
+    expect(screen.queryByText("Nama tampilan")).not.toBeInTheDocument();
     /*
       THE FRIENDLY LABEL, not the raw IANA string — matching what the identity
       form's own picker offers, so the summary and the picker never disagree.
@@ -206,7 +209,7 @@ describe("GeneralSettingsScreen", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ubah" })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/identitas",
+      "/dashboard/settings/business-profile",
     );
     expect(await screen.findByText("2 cabang · 3 gudang")).toBeInTheDocument();
     expect(await screen.findByText("14 pengguna")).toBeInTheDocument();
@@ -251,7 +254,7 @@ describe("GeneralSettingsScreen", () => {
     expect(screen.getByText("Alamat belum diisi")).toBeInTheDocument();
 
     const manage = screen.getAllByRole("link", { name: "Detail" });
-    expect(manage[0]).toHaveAttribute("href", "/dashboard/pengaturan/cabang/br-1");
+    expect(manage[0]).toHaveAttribute("href", "/dashboard/settings/branches/br-1");
     expect(
       screen.queryByRole("link", { name: /cabang baru/i }),
     ).not.toBeInTheDocument();
@@ -276,25 +279,25 @@ describe("GeneralSettingsScreen", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Stok & kasir/ })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/stok-kasir",
+      "/dashboard/settings/pos-stock",
     );
     expect(screen.getByRole("link", { name: /Nomor dokumen/ })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/nomor-dokumen",
+      "/dashboard/settings/document-numbering",
     );
     expect(screen.getByRole("link", { name: /Notifikasi/ })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/notifikasi",
+      "/dashboard/settings/notifications",
     );
     /* Ungated, unlike its neighbours: it reads no tenant setting at all. */
     expect(screen.getByRole("link", { name: /Tipe supplier/ })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/tipe-supplier",
+      "/dashboard/settings/supplier-types",
     );
     /* Gated on its own `customerTypes:read`, built 24 September 2026. */
     expect(
       screen.getByRole("link", { name: /Tipe pelanggan/ }),
-    ).toHaveAttribute("href", "/dashboard/pengaturan/tipe-pelanggan");
+    ).toHaveAttribute("href", "/dashboard/settings/customer-types");
     expect(
       screen.queryByRole("link", { name: /Langganan/ }),
     ).not.toBeInTheDocument();
@@ -303,7 +306,7 @@ describe("GeneralSettingsScreen", () => {
 
   /**
    * THE ONLY WAY IN TO THE WAREHOUSE CRUD. Until 27 September 2026 nothing in
-   * the app linked /dashboard/pengaturan/gudang — the list, the create form and
+   * the app linked /dashboard/settings/warehouses — the list, the create form and
    * the edit form were all built and all unreachable — so this asserts the link
    * itself, not just the label.
    */
@@ -311,7 +314,7 @@ describe("GeneralSettingsScreen", () => {
     renderWithAuth(<GeneralSettingsScreen />);
 
     const card = await screen.findByRole("link", { name: /Gudang/ });
-    expect(card).toHaveAttribute("href", "/dashboard/pengaturan/gudang");
+    expect(card).toHaveAttribute("href", "/dashboard/settings/warehouses");
     expect(card).toHaveTextContent("3 gudang");
   });
 
@@ -338,11 +341,11 @@ describe("GeneralSettingsScreen", () => {
     renderWithAuth(<GeneralSettingsScreen />);
 
     const card = await screen.findByRole("link", {
-      name: /^Kategori Supplier/,
+      name: /^Kategori supplier/,
     });
     expect(card).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/kategori-supplier",
+      "/dashboard/settings/supplier-categories",
     );
   });
 
@@ -354,7 +357,7 @@ describe("GeneralSettingsScreen", () => {
 
     await screen.findByRole("heading", { name: "Klinik Hewan Sehat" });
     expect(
-      screen.queryByRole("link", { name: /^Kategori Supplier/ }),
+      screen.queryByRole("link", { name: /^Kategori supplier/ }),
     ).not.toBeInTheDocument();
     // Tipe supplier stays — it is ungated, and explains the types rather than
     // listing any vendor group.
@@ -412,7 +415,7 @@ describe("GeneralSettingsScreen", () => {
     expect(titles).toEqual([
       "Gudang",
       "Tipe pelanggan",
-      "Kategori Supplier",
+      "Kategori supplier",
       "Tipe supplier",
       "Nomor dokumen",
       "Notifikasi",
@@ -516,7 +519,7 @@ describe("GeneralSettingsScreen", () => {
     */
     expect(
       screen.getAllByRole("link", { name: "Detail" })[0],
-    ).toHaveAttribute("href", "/dashboard/pengaturan/cabang/br-1");
+    ).toHaveAttribute("href", "/dashboard/settings/branches/br-1");
 
     const tabs = screen.getByRole("navigation", { name: "Bagian pengaturan" });
     expect(
@@ -555,18 +558,18 @@ describe("the card tabs", () => {
 
     expect(screen.getByRole("link", { name: /Daftar akun/ })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/daftar-akun",
+      "/dashboard/settings/chart-of-accounts",
     );
     expect(
       screen.getByRole("link", { name: /Channel pembayaran/ }),
-    ).toHaveAttribute("href", "/dashboard/pengaturan/channel-pembayaran");
+    ).toHaveAttribute("href", "/dashboard/settings/payment-channels");
     expect(screen.getByRole("link", { name: /Lini bisnis/ })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/lini-bisnis",
+      "/dashboard/settings/business-lines",
     );
     expect(screen.getByRole("link", { name: /Pajak/ })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/pajak",
+      "/dashboard/settings/tax",
     );
   });
 
@@ -580,12 +583,12 @@ describe("the card tabs", () => {
       .getAllByRole("link")
       .filter((link) => link.getAttribute("href") !== null)
       .map((link) => link.getAttribute("href"))
-      .filter((href) => !href?.match(/\/pengaturan\/(umum|layanan|keuangan|sistem)$/));
+      .filter((href) => !href?.match(/\/settings\/(general|services|finance|system)$/));
 
     expect(cards).toEqual([
-      "/dashboard/pengaturan/data-awal",
-      "/dashboard/pengaturan/pengguna",
-      "/dashboard/pengaturan/akses-cabang",
+      "/dashboard/settings/opening-balances",
+      "/dashboard/settings/users",
+      "/dashboard/settings/branch-access",
     ]);
   });
 });
@@ -641,7 +644,7 @@ describe("InitialDataScreen", () => {
     );
     expect(
       screen.getAllByRole("link", { name: /Buka/ }).map((a) => a.getAttribute("href")),
-    ).toContain("/dashboard/pengaturan/data-awal/kas-bank");
+    ).toContain("/dashboard/settings/opening-balances/cash-bank");
   });
 
   it("reads the saved total on the cash & bank step", async () => {
@@ -788,7 +791,7 @@ describe("ServiceSettingsScreen", () => {
     await waitFor(() => expect(rail("Zona")).toHaveTextContent("2"));
 
     await userEvent.click(rail("Ras"));
-    expect(replace).toHaveBeenCalledWith("/dashboard/pengaturan/layanan?bagian=ras", {
+    expect(replace).toHaveBeenCalledWith("/dashboard/settings/services?bagian=ras", {
       scroll: false,
     });
     expect(screen.getByText("Poodle")).toBeInTheDocument();
@@ -952,7 +955,7 @@ describe("ServiceSettingsScreen", () => {
     expect(within(kutu).getByText(/dipakai 2 layanan/)).toBeInTheDocument();
     expect(within(kutu).getByRole("link", { name: "Obat Kutu" })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/layanan/kutu",
+      "/dashboard/settings/services/kutu",
     );
     expect(within(kutu).getByLabelText("Harga Obat Kutu")).toHaveValue("35.000");
     expect(within(kutu).getByLabelText("Durasi Obat Kutu dalam menit")).toHaveValue(15);
@@ -971,7 +974,7 @@ describe("ServiceSettingsScreen", () => {
     expect(screen.queryByText("Basic Grooming")).not.toBeInTheDocument();
     // The form's plain address; "an add-on" is left in the tab on the click.
     const add = screen.getByRole("link", { name: /Tambah add-on/ });
-    expect(add).toHaveAttribute("href", "/dashboard/pengaturan/layanan/new");
+    expect(add).toHaveAttribute("href", "/dashboard/settings/services/new");
     add.addEventListener("click", (event) => event.preventDefault());
     await userEvent.click(add);
     expect(window.sessionStorage.getItem("buloo.serviceFormOrigin")).toBe(

@@ -69,7 +69,7 @@ const invoice = (
 });
 
 /**
- * /faktur/:token — the faktur a CUSTOMER opens from the shop's WhatsApp message.
+ * /invoice/:token — the faktur a CUSTOMER opens from the shop's WhatsApp message.
  *
  * RENDERED WITH PLAIN `render`, not `renderWithAuth`, and that is the test: this
  * page has no session and no permissions. If it ever grows a dependency on

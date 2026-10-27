@@ -147,7 +147,7 @@ export function ProductBatchPanel({ productId }: { productId: string }) {
           {total > batches.length && (
             <p className="mt-3 text-xs text-muted">
               Menampilkan {batches.length} dari {total} batch. Selengkapnya di
-              Inventory → Batch &amp; Expired.
+              Inventori → Batch &amp; Kedaluwarsa.
             </p>
           )}
         </div>

@@ -18,7 +18,7 @@ export default function NewCategoryPage() {
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Inventori", href: "/dashboard/inventory" },
               { label: "Kategori", href: "/dashboard/inventory/categories" },
               // No href: this is the page. See Breadcrumb for why the last
               // crumb must not link to itself.

@@ -121,7 +121,7 @@ export function CashTransactionEditScreen({
   if (!can("cashTransactions", "update")) {
     return (
       <Alert variant="error">
-        Kamu belum punya akses untuk mengubah transaksi. Minta admin
+        Anda belum punya akses untuk mengubah transaksi. Minta admin
         menambahkan izinnya.
       </Alert>
     );

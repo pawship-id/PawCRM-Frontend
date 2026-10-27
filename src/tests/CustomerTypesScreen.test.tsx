@@ -10,7 +10,7 @@ import type { PageResult } from "@/types/api";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
-  usePathname: () => "/dashboard/pengaturan/tipe-pelanggan",
+  usePathname: () => "/dashboard/settings/customer-types",
 }));
 
 jest.mock("@/lib/swal", () => ({
@@ -54,6 +54,17 @@ describe("CustomerTypesScreen", () => {
     expect(screen.getByText("Reguler")).toBeInTheDocument();
     // "Belum diisi" would claim a fact nobody typed — a plain dash is honest.
     expect(screen.getAllByText("—")).toHaveLength(1);
+  });
+
+  it("does not promise special pricing the type does not drive yet", async () => {
+    jest.spyOn(customerTypeService, "list").mockResolvedValue(page([REGULER]));
+
+    renderWithAuth(<CustomerTypesScreen />);
+
+    expect(
+      await screen.findByText(/Belum dipakai untuk harga khusus/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/jadi dasar aturan harga khusus/)).not.toBeInTheDocument();
   });
 
   it("deletes a type after confirmation and refreshes the list", async () => {

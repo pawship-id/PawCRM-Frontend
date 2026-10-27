@@ -58,7 +58,7 @@ describe("RoleCreateForm", () => {
 
     await userEvent.type(screen.getByLabelText(/nama peran/i), "Cashier");
     // Tick a single action checkbox (users → Read).
-    await userEvent.click(screen.getByLabelText(/^read$/i));
+    await userEvent.click(screen.getByLabelText(/^lihat$/i));
     await userEvent.click(screen.getByRole("button", { name: /simpan peran/i }));
 
     expect(create).toHaveBeenCalledWith(
@@ -68,19 +68,19 @@ describe("RoleCreateForm", () => {
         permissions: [{ feature: "users", actions: ["read"] }],
       }),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/peran");
+    expect(push).toHaveBeenCalledWith("/dashboard/settings/roles");
   });
 
   it("surfaces a duplicate-name conflict as an alert", async () => {
     jest
       .spyOn(roleService, "create")
-      .mockRejectedValue(new ApiError("Role 'Cashier' already exists", 409));
+      .mockRejectedValue(new ApiError("Nama peran Cashier sudah dipakai.", 409));
     await renderForm();
 
     await userEvent.type(screen.getByLabelText(/nama peran/i), "Cashier");
     await userEvent.click(screen.getByRole("button", { name: /simpan peran/i }));
 
-    expect(await screen.findByText(/already exists/i)).toBeInTheDocument();
+    expect(await screen.findByText(/sudah dipakai/i)).toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
   });
 });

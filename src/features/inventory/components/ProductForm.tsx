@@ -46,6 +46,7 @@ import {
   sumDecimals,
   toDecimalString,
   toMinor,
+  trimQty,
 } from "@/utils/decimal";
 import type { Category } from "@/types/api";
 import { SubAccountSelect } from "@/features/accounting/components/SubAccountSelect";
@@ -659,7 +660,7 @@ export function ProductForm({
   if (lookups.categories.length === 0) {
     return (
       <Alert variant="error">
-        Belum ada kategori produk. Buat satu dulu di Inventory → Kategori —
+        Belum ada kategori produk. Buat satu dulu di Inventori → Kategori —
         setiap produk harus difilekan di bawah kategori.
       </Alert>
     );
@@ -686,7 +687,7 @@ export function ProductForm({
   if (selectable.length === 0) {
     return (
       <Alert variant="error">
-        Semua kategori sedang nonaktif. Aktifkan salah satu di Inventory →
+        Semua kategori sedang nonaktif. Aktifkan salah satu di Inventori →
         Kategori — produk baru hanya bisa difilekan di kategori yang aktif.
       </Alert>
     );
@@ -802,7 +803,7 @@ function ProductFormFields({
   // Debounced advisory lookup — see the hook. Passes the product being edited so
   // it does not report itself as its own duplicate.
   const { takenBy: barcodeTaken } = useBarcodeCheck(barcode, existing?._id);
-  const [sellPrice, setSellPrice] = useState(existing?.sellPrice ?? "");
+  const [sellPrice, setSellPrice] = useState(trimQty(existing?.sellPrice));
   const [minStock, setMinStock] = useState(String(existing?.minStock ?? 0));
   const [hasExpiry, setHasExpiry] = useState(existing?.hasExpiry ?? false);
   const [isConsignment, setIsConsignment] = useState(
@@ -972,7 +973,8 @@ function ProductFormFields({
         combo,
         sku: override.sku ?? previous?.sku ?? defaultVariantSku(prefix, combo),
         barcode: override.barcode ?? previous?.barcode ?? "",
-        sellPrice: override.sellPrice ?? previous?.sellPrice ?? "",
+        // trimQty: the API stores "159000.0000"; the box shows "159000".
+        sellPrice: override.sellPrice ?? trimQty(previous?.sellPrice),
         minStock: override.minStock ?? String(previous?.minStock ?? 0),
         // No `previous` fallback: opening stock is a one-off event at creation,
         // not a property of the variant. A row that already exists has whatever
@@ -2234,7 +2236,7 @@ function ProductFormFields({
                 hint={
                   mode === "variants"
                     ? "Opsional — dipakai sebagai awalan SKU varian. Induk tidak dijual, jadi boleh dikosongkan."
-                    : "Unik per tenant"
+                    : "Tidak boleh sama dengan produk lain di usaha Anda."
                 }
                 placeholder="RC-ADULT"
                 className="tabular-nums"
@@ -2330,7 +2332,7 @@ function ProductFormFields({
               value={brand}
               onChange={(event) => setBrand(event.target.value)}
               error={fieldErrors.brand}
-              hint="Opsional. Dipakai untuk filter katalog dan listing marketplace."
+              hint="Opsional. Dipakai untuk filter katalog dan daftar produk di marketplace."
               placeholder="Royal Canin"
             />
           </div>
@@ -2366,7 +2368,7 @@ function ProductFormFields({
                   <>
                     Kalau dicentang, setiap penerimaan <b>wajib</b> mengisi kode
                     batch dan tanggal kedaluwarsa — itulah yang membuat FEFO dan
-                    laporan expired bisa bekerja.
+                    laporan kedaluwarsa bisa bekerja.
                     {/* On an EXISTING family the change cascades, which is a
                         bigger action than the checkbox looks. Saying so here is
                         cheaper than a user discovering it from a stock card six
@@ -2393,7 +2395,7 @@ function ProductFormFields({
                 description={
                   <>
                     Barang ada di toko tapi <b>belum jadi milik toko</b> —
-                    pemasok dibayar dari yang laku, sisanya dikembalikan.
+                    supplier dibayar dari yang laku, sisanya dikembalikan.
                     Dipakai untuk menandai dan memfilter di katalog serta
                     laporan.
                     {/* Says what the flag does NOT do, deliberately.
@@ -2402,7 +2404,7 @@ function ProductFormFields({
                         will assume this checkbox reroutes the journal, and it
                         does not. */}{" "}
                     Penentuan jurnal dan pembayaran tetap mengikuti penerimaan
-                    barang serta tipe pemasoknya.
+                    barang serta tipe suppliernya.
                     {mode === "variants" &&
                       (existing
                         ? " Mengubahnya ikut mengubah SEMUA varian produk ini — setelan ini milik induk, bukan milik ukurannya."
@@ -2701,7 +2703,7 @@ function ProductFormFields({
                 inputMode="numeric"
                 value={minStock}
                 onChange={(event) => setMinStock(event.target.value)}
-                hint="Ambang alert restock. 0 = tidak dialerti."
+                hint="Batas pengingat restock. Isi 0 kalau tidak perlu diingatkan."
               />
             </div>
 
@@ -3201,9 +3203,8 @@ function ProductFormFields({
 
           <p className="text-xs text-muted">
             Bundle tidak menyimpan stok sendiri. Saat terjual, komponennya yang
-            berkurang — satu baris{" "}
-            <span className="tabular-nums">bundle_consume</span> per komponen di
-            kartu stok.
+            berkurang — satu baris &ldquo;Penjualan bundle&rdquo; per komponen
+            di kartu stok.
           </p>
         </>
       )}
@@ -3230,9 +3231,9 @@ function ProductFormFields({
         >
           {!openingEnabled ? (
             <p className="text-sm text-muted">
-              Produk dibuat tanpa stok. Kalau barangnya sudah ada tapi kamu
+              Produk dibuat tanpa stok. Kalau barangnya sudah ada tapi Anda
               sedang mendaftarkan katalog lebih dulu, isi nanti lewat{" "}
-              <b>Inventory → Stok Awal</b> — tercatat sebagai modal, sama
+              <b>Inventori → Stok Awal</b> — tercatat sebagai modal, sama
               seperti mengisinya di sini. Kalau barangnya memang belum datang,
               biarkan saja: stoknya masuk sendiri lewat Penerimaan Barang.
             </p>
@@ -3243,7 +3244,7 @@ function ProductFormFields({
               <div className="rounded-lg border border-secondary/40 bg-secondary/15 px-4 py-3 text-sm text-secondary-foreground">
                 Stok awal tercatat sebagai <b>saldo awal persediaan</b> di kartu
                 stok, jadi ada jejak dari mana kuantitas pertama datang.{" "}
-                <b>Baris itu tidak bisa dihapus atau diedit</b> — salah angka
+                <b>Baris itu tidak bisa dihapus atau diubah</b> — salah angka
                 dikoreksi dengan penyesuaian lagi, dan keduanya tetap terlihat.
                 Produk yang sudah memegang stok juga tidak bisa dihapus.
               </div>

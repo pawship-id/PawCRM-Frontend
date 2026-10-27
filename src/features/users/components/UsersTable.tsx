@@ -30,10 +30,10 @@ function isLocked(user: User): boolean {
 }
 
 function branchScope(user: User): string {
-  if (user.allBranches) return "All branches";
+  if (user.allBranches) return "Semua cabang";
   const count = user.branchAccess.length;
-  if (count === 0) return "No branch";
-  return `${count} branch${count === 1 ? "" : "es"}`;
+  if (count === 0) return "Belum ada cabang";
+  return `${count} cabang`;
 }
 
 /** The row action that opens a confirm dialog, plus the user it targets. */
@@ -103,16 +103,16 @@ export function UsersTable({
       onChanged();
       swalToast(
         kind === "delete"
-          ? "User deleted."
+          ? "Pengguna dihapus."
           : kind === "restore"
-            ? "User restored."
-            : "User unlocked.",
+            ? "Pengguna dipulihkan."
+            : "Kunci akun dibuka.",
       );
     } catch (error) {
       setActionError(
         error instanceof ApiError
-          ? error.message
-          : "Something went wrong. Please try again.",
+          ? error.fullMessage
+          : "Terjadi kesalahan. Coba lagi.",
       );
     } finally {
       setBusy(false);
@@ -122,7 +122,7 @@ export function UsersTable({
   if (!loading && users.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center text-sm text-muted-foreground">
-        No users match the current filters.
+        Tidak ada pengguna yang cocok dengan filter ini.
       </div>
     );
   }
@@ -133,12 +133,12 @@ export function UsersTable({
         <Table className={loading ? "opacity-60" : undefined}>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Branch access</TableHead>
+              <TableHead>Nama</TableHead>
+              <TableHead>Peran</TableHead>
+              <TableHead>Akses cabang</TableHead>
               <TableHead>Status</TableHead>
               {showActions && (
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="text-right">Aksi</TableHead>
               )}
             </TableRow>
           </TableHeader>
@@ -165,11 +165,11 @@ export function UsersTable({
                       <StatusBadge status={user.status} deleted={deleted} />
                       {locked && (
                         <span
-                          title="Account locked"
+                          title="Akun terkunci"
                           className="inline-flex items-center gap-1 rounded-full bg-danger/12 px-2 py-0.5 text-xs font-medium text-danger"
                         >
                           <Lock className="size-3" />
-                          Locked
+                          Terkunci
                         </span>
                       )}
                     </div>
@@ -187,7 +187,7 @@ export function UsersTable({
                             }
                           >
                             <RotateCcw className="size-4" />
-                            Restore
+                            Pulihkan
                           </Button>
                         </Can>
                       ) : (
@@ -202,17 +202,17 @@ export function UsersTable({
                                 }
                               >
                                 <Lock className="size-4" />
-                                Unlock
+                                Buka kunci
                               </Button>
                             </Can>
                           )}
                           <Can feature="users" action="update">
                             <Button variant="ghost" size="sm" asChild>
                               <Link
-                                href={`/dashboard/pengaturan/pengguna/${user._id}`}
+                                href={`/dashboard/settings/users/${user._id}`}
                               >
                                 <Pencil className="size-4" />
-                                Edit
+                                Ubah
                               </Link>
                             </Button>
                           </Can>
@@ -226,7 +226,7 @@ export function UsersTable({
                               }
                             >
                               <Trash2 className="size-4" />
-                              Delete
+                              Hapus
                             </Button>
                           </Can>
                         </>
@@ -245,17 +245,17 @@ export function UsersTable({
         <ConfirmDialog
           title={
             pending.kind === "delete"
-              ? "Delete user"
+              ? "Hapus pengguna"
               : pending.kind === "restore"
-                ? "Restore user"
-                : "Unlock user"
+                ? "Pulihkan pengguna"
+                : "Buka kunci akun"
           }
           confirmLabel={
             pending.kind === "delete"
-              ? "Delete"
+              ? "Hapus"
               : pending.kind === "restore"
-                ? "Restore"
-                : "Unlock"
+                ? "Pulihkan"
+                : "Buka kunci"
           }
           destructive={pending.kind === "delete"}
           busy={busy}
@@ -265,17 +265,17 @@ export function UsersTable({
         >
           {pending.kind === "delete" ? (
             <>
-              Delete <strong>{pending.user.fullName}</strong>? Their account will
-              be deactivated and hidden. You can restore it later.
+              Hapus <strong>{pending.user.fullName}</strong>? Akunnya dinonaktifkan
+              dan disembunyikan. Anda bisa memulihkannya nanti.
             </>
           ) : pending.kind === "restore" ? (
             <>
-              Restore <strong>{pending.user.fullName}</strong>? This may fail if
-              their email address has since been reused.
+              Pulihkan <strong>{pending.user.fullName}</strong>? Bisa gagal kalau
+              emailnya sudah dipakai akun lain.
             </>
           ) : (
             <>
-              Clear the login lockout for{" "}
+              Buka kunci login untuk{" "}
               <strong>{pending.user.fullName}</strong>?
             </>
           )}

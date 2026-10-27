@@ -2,7 +2,7 @@ import { SERVICE_KINDS, type ServiceKind } from "@/types/api";
 
 /**
  * WHERE THE SERVICE FORM WAS OPENED FROM — kept in the tab, not in the URL
- * (22 September 2026, on request: `/dashboard/pengaturan/layanan/new` reads the
+ * (22 September 2026, on request: `/dashboard/settings/services/new` reads the
  * same from every module).
  *
  * A module's "Layanan baru" and "Ubah" leave this behind as they are clicked
@@ -36,7 +36,7 @@ export const ADDON_FORM_ORIGIN: ServiceFormOrigin = { addon: true };
 const KEY = "buloo.serviceFormOrigin";
 
 /** Only a module's own catalogue — a stored value must not send anybody elsewhere. */
-const LIST_PATH = /^\/dashboard\/layanan\/[a-z-]+\/katalog$/;
+const LIST_PATH = /^\/dashboard\/service\/[a-z-]+\/catalog$/;
 
 export function rememberServiceFormOrigin(origin: ServiceFormOrigin): void {
   try {

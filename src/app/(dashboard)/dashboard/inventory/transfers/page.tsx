@@ -5,7 +5,7 @@ import { StockTransfersScreen } from "@/features/inventory";
 import { TRANSFER_MAX_ITEMS } from "@/features/inventory/utils/transferErrors";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Transfer stok · Buloo" };
+export const metadata: Metadata = { title: "Transfer Stok · Buloo" };
 
 /**
  * THE LIST COMES FIRST, and the form is behind a button — the same move the
@@ -29,8 +29,8 @@ export default function StockTransfersPage() {
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
-              { label: "Transfer stok" },
+              { label: "Inventori", href: "/dashboard/inventory" },
+              { label: "Transfer Stok" },
             ]}
           />
           <h1 className="mt-1 text-2xl font-extrabold text-foreground">

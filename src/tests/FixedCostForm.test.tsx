@@ -101,6 +101,24 @@ beforeEach(() => {
 });
 
 describe("FixedCostForm", () => {
+  it("shows a saved amount without the ledger's four zeros", async () => {
+    renderWithAuth(
+      <FixedCostForm
+        fixedCost={fixedCost([
+          {
+            accountId: "acc-sewa",
+            amount: "385000.0000",
+            businessLineId: null,
+            subAccountId: null,
+            memo: null,
+          } as never,
+        ])}
+      />,
+    );
+
+    expect(await screen.findByLabelText("Jumlah baris 1")).toHaveValue("385000");
+  });
+
   it("has no Lini bisnis column, and sends a line without one as null", async () => {
     const user = userEvent.setup();
     renderWithAuth(

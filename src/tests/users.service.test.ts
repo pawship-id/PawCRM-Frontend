@@ -23,7 +23,17 @@ describe("userService CRUD", () => {
   it("getById gets /users/:id", async () => {
     const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
     await userService.getById("u1");
-    expect(get).toHaveBeenCalledWith("/users/u1");
+    expect(get).toHaveBeenCalledWith("/users/u1", {
+      query: { includeDeleted: undefined },
+    });
+  });
+
+  it("getById asks for a deleted user only when told to", async () => {
+    const get = jest.spyOn(apiClient, "get").mockResolvedValue({} as never);
+    await userService.getById("u1", { includeDeleted: true });
+    expect(get).toHaveBeenCalledWith("/users/u1", {
+      query: { includeDeleted: true },
+    });
   });
 
   it("create posts /users with the body", async () => {

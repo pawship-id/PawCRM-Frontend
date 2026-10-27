@@ -220,11 +220,11 @@ export function ProductDetail({ productId }: { productId: string }) {
                 variant="outline"
                 className="border-transparent bg-secondary/25 text-secondary-foreground"
               >
-                expiry
+                Kedaluwarsa
               </Badge>
             )}
-            {!product.isActive && <Badge variant="outline">nonaktif</Badge>}
-            {deleted && <Badge variant="outline">terhapus</Badge>}
+            {!product.isActive && <Badge variant="outline">Nonaktif</Badge>}
+            {deleted && <Badge variant="outline">Terhapus</Badge>}
           </div>
           <p className="mt-1 tabular-nums text-xs text-muted">
             {/* Null on a parent, which is never sold or scanned. */}
@@ -501,7 +501,7 @@ export function ProductDetail({ productId }: { productId: string }) {
               </dd>
             </dl>
             <p className="mt-3 text-xs text-muted">
-              Em dash berarti memakai akun bawaan: 1201 Persediaan Barang
+              Tanda — berarti memakai akun bawaan: 1201 Persediaan Barang
               Dagangan dan 5101 Harga Pokok Penjualan.
             </p>
           </Card>
@@ -897,7 +897,7 @@ function VariantTable({
                       </p>
                       {(!variant.isActive || variant.deletedAt) && (
                         <Badge variant="outline" className="mt-1">
-                          {variant.deletedAt ? "terhapus" : "nonaktif"}
+                          {variant.deletedAt ? "Terhapus" : "Nonaktif"}
                         </Badge>
                       )}
                     </td>

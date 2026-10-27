@@ -266,7 +266,7 @@ export function GroomingBookingsTable({
         const tripId = booking.homeTrip?._id ?? booking.homeTripId;
         return booking.location === "in_home" && tripId ? (
           <Link
-            href={`/dashboard/booking/perjalanan/${tripId}`}
+            href={`/dashboard/booking/rides/${tripId}`}
             onClick={stop}
             className="rounded text-sm font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
@@ -400,7 +400,7 @@ function DiscountLine({ amount }: { amount?: string | null }) {
   return (
     <div className="flex justify-between gap-3 pl-3 text-xs text-success">
       <span>Diskon item</span>
-      <span className="font-semibold tabular-nums">− {formatMoney(amount)}</span>
+      <span className="font-semibold tabular-nums">−{formatMoney(amount)}</span>
     </div>
   );
 }
@@ -479,7 +479,7 @@ export function RowBreakdown({ row }: { row: GroomingRow }) {
             <div className="flex justify-between gap-3 pt-1 text-xs text-success">
               <span>Diskon booking</span>
               <span className="font-semibold tabular-nums">
-                − {formatMoney(bookingShare)}
+                −{formatMoney(bookingShare)}
               </span>
             </div>
           )}

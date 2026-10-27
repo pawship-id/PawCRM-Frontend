@@ -78,7 +78,7 @@ export function UserCreateForm() {
     if (passwordError) nextErrors.password = passwordError;
     if (confirmError) nextErrors.confirm = confirmError;
     if (!allBranches && branchAccess.length === 0)
-      nextErrors.branchAccess = "Select all branches or at least one branch";
+      nextErrors.branchAccess = "Pilih semua cabang, atau minimal satu cabang.";
 
     // Only meaningful under specific branches: "all branches" carries no rows.
     const nextWarehouseErrors = allBranches
@@ -113,15 +113,15 @@ export function UserCreateForm() {
             ),
       });
       // Redirect first, then fire the toast so it rides along on the list screen.
-      router.push("/dashboard/pengaturan/pengguna");
-      swalToast(`${created.fullName} has been created.`);
+      router.push("/dashboard/settings/users");
+      swalToast(`${created.fullName} sudah ditambahkan.`);
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
         setFieldErrors(error.fieldErrors);
       } else if (error instanceof ApiError) {
-        setFormError(error.message);
+        setFormError(error.fullMessage);
       } else {
-        setFormError("Something went wrong. Please try again.");
+        setFormError("Terjadi kesalahan. Coba lagi.");
       }
       setSaving(false);
     }
@@ -130,7 +130,7 @@ export function UserCreateForm() {
   if (lookupsLoading) {
     return (
       <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted">
-        <Spinner /> Loading form create user...
+        <Spinner /> Memuat formulir…
       </div>
     );
   }
@@ -143,7 +143,7 @@ export function UserCreateForm() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {/* Row 1: full name & email */}
         <TextField
-          label="Full name"
+          label="Nama lengkap"
           name="fullName"
           autoComplete="name"
           value={fullName}
@@ -171,11 +171,11 @@ export function UserCreateForm() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           error={fieldErrors.password}
-          hint={`At least ${PASSWORD_MIN_LENGTH} characters.`}
+          hint={`Minimal ${PASSWORD_MIN_LENGTH} karakter.`}
           required
         />
         <TextField
-          label="Confirm password"
+          label="Ulangi password"
           type="password"
           name="confirm"
           autoComplete="new-password"
@@ -187,11 +187,11 @@ export function UserCreateForm() {
 
         {/* Row 3: phone & role */}
         <TextField
-          label="Phone"
+          label="Telepon"
           type="tel"
           name="phone"
           autoComplete="tel"
-          placeholder="Optional"
+          placeholder="Opsional"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           error={fieldErrors.phone}
@@ -228,12 +228,12 @@ export function UserCreateForm() {
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/pengaturan/pengguna")}
+          onClick={() => router.push("/dashboard/settings/users")}
         >
-          Cancel
+          Batal
         </Button>
         <Button type="submit" loading={saving} className="w-full sm:w-auto">
-          Create user
+          Simpan pengguna
         </Button>
       </div>
     </form>

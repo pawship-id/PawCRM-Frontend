@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useState, type ReactNode } from "react";
 import { ChevronRight, MessageCircle, UserRound } from "lucide-react";
 
-import { Alert, Breadcrumb, Card, Spinner } from "@/components";
+import { Alert, Breadcrumb, Card, ConfirmDialog, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -30,14 +30,22 @@ import { whatsAppLink } from "@/utils/phone";
 import { membershipFailure } from "../errors";
 import { useMembershipCard } from "../hooks/useMembershipCard";
 import { useMembershipCatalog } from "../hooks/useMembershipCatalog";
-import { benefitOfRow, canMoveRow, dayKey, formatDayRange, type KelolaType } from "../kelola";
+import {
+  addDays,
+  benefitOfRow,
+  canMoveRow,
+  dayKey,
+  formatDayRange,
+  planEnd,
+  type KelolaType,
+} from "../kelola";
 import {
   HISTORY_ACTION_LABEL,
   KELOLA_ACTIONS,
   KELOLA_CANCEL,
   KELOLA_ROLES_TEXT,
   MEMBERSHIP_CARDS_HREF,
-  PROMOSI_HREF,
+  PROMOSI_SUMMARY_HREF,
   REDEMPTION_CONTEXT_LABEL,
   formatDate,
   formatRupiah,
@@ -63,6 +71,8 @@ export function MembershipCardDetail({ id }: { id: string }) {
   const { card, loading, error, reload } = useMembershipCard(id);
   const [kelola, setKelola] = useState<KelolaTarget | null>(null);
   const [renewing, setRenewing] = useState(false);
+  /* Perpanjang asks first — it issues a whole new card (ui-rules §9). */
+  const [confirmRenew, setConfirmRenew] = useState(false);
   /* One catalogue fetch for the whole screen — names what each option covers. */
   const { optionText, names } = useOptionText();
 
@@ -88,6 +98,7 @@ export function MembershipCardDetail({ id }: { id: string }) {
     setRenewing(true);
     try {
       const next = await membershipService.renew(card.id);
+      setConfirmRenew(false);
       swalToast(`Kartu baru ${next.number}, berlaku sampai ${formatDate(next.endDate)}.`, "success");
       reload();
     } catch (err) {
@@ -101,13 +112,13 @@ export function MembershipCardDetail({ id }: { id: string }) {
     <div className="flex flex-col gap-6">
       <Breadcrumb
         items={[
-          { label: "Promosi", href: PROMOSI_HREF },
+          { label: "Promosi", href: PROMOSI_SUMMARY_HREF },
           { label: "Anggota", href: MEMBERSHIP_CARDS_HREF },
           { label: card.number },
         ]}
       />
 
-      <Hero card={card} renewing={renewing} onRenew={renew} />
+      <Hero card={card} renewing={renewing} onRenew={() => setConfirmRenew(true)} />
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="flex min-w-0 flex-col gap-6">
@@ -121,7 +132,74 @@ export function MembershipCardDetail({ id }: { id: string }) {
       </div>
 
       <KelolaDialog card={card} target={kelola} onClose={() => setKelola(null)} onSaved={reload} />
+
+      {confirmRenew && (
+        <RenewDialog
+          card={card}
+          busy={renewing}
+          onConfirm={() => void renew()}
+          onCancel={() => setConfirmRenew(false)}
+        />
+      )}
     </div>
+  );
+}
+
+/* ───────────────────────────────────────────────────────── perpanjang */
+
+/**
+ * The new card's cover, as the server will count it: the day after this one
+ * ends while it still runs, else today — for the plan's length. A preview
+ * only; the toast after the save quotes the server's own dates.
+ */
+function renewalRange(card: PetMembership, today = dayKey(new Date())) {
+  const end = dayKey(card.endDate);
+  const start = end >= today ? addDays(end, 1) : today;
+  return { start, end: planEnd(start, card.plan) };
+}
+
+/**
+ * WHAT PERPANJANG DOES, said before it happens. It issues a NEW card (own
+ * number, own cover) — and records NO payment: no faktur, no struk, no
+ * journal (petMembership.service `renew` → `issue`, source "manual"). A
+ * renewal the customer pays for is sold through the till or a faktur, which
+ * issue the card themselves — doing both would leave two cards.
+ */
+function RenewDialog({
+  card,
+  busy,
+  onConfirm,
+  onCancel,
+}: {
+  card: PetMembership;
+  busy: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const range = renewalRange(card);
+  const holder = card.petName
+    ? `${card.petName} (${card.customerName ?? "Pelanggan"})`
+    : (card.customerName ?? "pelanggan ini");
+
+  return (
+    <ConfirmDialog
+      title="Perpanjang membership"
+      confirmLabel="Perpanjang membership"
+      busy={busy}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    >
+      Perpanjang <strong>{card.plan.name ?? "membership"}</strong> untuk{" "}
+      <strong>{holder}</strong>? Kartu baru diterbitkan dengan masa berlaku{" "}
+      <strong className="tabular-nums">{formatDayRange(range.start, range.end)}</strong>
+      ; kartu {card.number} tetap tercatat seperti sekarang.
+      <br />
+      <br />
+      Perpanjangan dari sini <strong>tidak mencatat pembayaran</strong> — tidak
+      ada faktur, struk, atau jurnal yang dibuat. Kalau pelanggan membayar,
+      jual paketnya lewat kasir atau faktur penjualan saja, supaya kartunya
+      tidak dobel.
+    </ConfirmDialog>
   );
 }
 

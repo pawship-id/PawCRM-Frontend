@@ -13,7 +13,7 @@ jest.mock("@/lib/swal", () => ({
 }));
 
 /** Where Batal goes — Pengaturan › Umum, the tab this page is reached from. */
-const CANCEL_HREF = "/dashboard/pengaturan/umum";
+const CANCEL_HREF = "/dashboard/settings/general";
 
 function makeTenant(overrides: Partial<Tenant> = {}): Tenant {
   return {

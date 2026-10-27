@@ -217,7 +217,7 @@ describe("CommissionDetailScreen", () => {
 
     expect(await screen.findByRole("link", { name: "BKK/BRT/2609/0001" })).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/kas-bank/transaksi/pay-1",
+      "/dashboard/finance/cash-bank/transactions/pay-1",
     );
     expect(screen.getByRole("link", { name: "JE-260912-001" })).toBeInTheDocument();
     // Paid: the figure can no longer be changed.

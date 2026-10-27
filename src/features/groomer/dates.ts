@@ -33,6 +33,15 @@ export function longDate(key: string): string {
   });
 }
 
+/** "2 Sep" — short enough for a label beside a figure. */
+export function shortDate(key: string): string {
+  const [year, month, day] = key.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString("id-ID", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
 /** "11.00" — Indonesian clocks use a dot. */
 export function clock(iso: string | Date): string {
   return new Date(iso)

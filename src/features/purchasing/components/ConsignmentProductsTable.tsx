@@ -104,7 +104,7 @@ export function ConsignmentProductsTable({
             <TableHead>SKU</TableHead>
             <TableHead>Produk</TableHead>
             <TableHead className="text-right">Sisa</TableHead>
-            <TableHead className="text-right">Lot</TableHead>
+            <TableHead className="text-right">Batch</TableHead>
             <TableHead className="text-right">Nilai</TableHead>
             <TableHead>Kedaluwarsa terdekat</TableHead>
           </TableRow>

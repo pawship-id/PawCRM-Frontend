@@ -13,7 +13,7 @@ const push = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push, refresh: jest.fn() }),
-  usePathname: () => "/dashboard/layanan/antar-jemput",
+  usePathname: () => "/dashboard/service/pickup-delivery",
 }));
 
 beforeEach(() => push.mockClear());
@@ -180,7 +180,7 @@ describe("AntarJemputBookingsTable", () => {
 
     /* A RIDE OPENS IN ITS OWN MODULE (23 September 2026), not on the
        booking page — which is built round one animal and its grooming. */
-    expect(push).toHaveBeenCalledWith("/dashboard/layanan/antar-jemput/bk-1");
+    expect(push).toHaveBeenCalledWith("/dashboard/service/pickup-delivery/bk-1");
     expect(screen.queryByRole("button", { name: /rincian/i })).toBeNull();
   });
 

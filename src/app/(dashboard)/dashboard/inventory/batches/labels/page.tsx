@@ -50,8 +50,8 @@ export default async function BatchLabelsPage({
       <div className="print:hidden">
         <Breadcrumb
           items={[
-            { label: "Inventory", href: "/dashboard/inventory" },
-            { label: "Batch & Expired", href: "/dashboard/inventory/batches" },
+            { label: "Inventori", href: "/dashboard/inventory" },
+            { label: "Batch & Kedaluwarsa", href: "/dashboard/inventory/batches" },
             { label: "Cetak label" },
           ]}
         />
@@ -60,7 +60,7 @@ export default async function BatchLabelsPage({
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-muted">
           Tempel di kartonnya. Pilih barcode atau QR untuk kode batch — kasir
-          tinggal scan, dan stok yang berkurang persis dari lot itu, bukan tebakan
+          tinggal scan, dan stok yang berkurang persis dari batch itu, bukan tebakan
           FEFO. Label juga memuat SKU, harga, dan tanggal kedaluwarsa.
         </p>
       </div>

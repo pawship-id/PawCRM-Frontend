@@ -27,14 +27,14 @@ export function RolesToolbar({
         <FilterSearch
           value={query.search}
           onChange={(search) => onChange({ search })}
-          placeholder="Cari nama atau deskripsi"
+          placeholder="Cari nama atau keterangan"
           ariaLabel="Cari peran"
         />
       }
       actions={
         <Can feature="roles" action="create">
           <Button asChild>
-            <Link href="/dashboard/pengaturan/peran/new">
+            <Link href="/dashboard/settings/roles/new">
               <Plus className="size-4" />
               Peran baru
             </Link>

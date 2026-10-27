@@ -25,7 +25,7 @@ export { InvoiceEditScreen } from "./components/InvoiceEditScreen";
 export { InvoicePaymentDetail } from "./components/InvoicePaymentDetail";
 export { InvoicePrintScreen } from "./components/InvoicePrintScreen";
 export { InvoiceCreateForm } from "./components/InvoiceCreateForm";
-/** The one screen here a CUSTOMER opens — /faktur/:token, outside the dashboard. */
+/** The one screen here a CUSTOMER opens — /invoice/:token, outside the dashboard. */
 export { PublicInvoiceScreen } from "./components/PublicInvoiceScreen";
 /** Invoice filter-options gudang → the shared scope row's shape. */
 export { toScopeWarehouses } from "./components/ReceivablesToolbar";

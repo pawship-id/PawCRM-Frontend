@@ -211,7 +211,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
 
         /*
           A RIDE HAS ITS OWN PAGE (23 September 2026) —
-          `/dashboard/layanan/antar-jemput/:id`. This page is built round one
+          `/dashboard/service/pickup-delivery/:id`. This page is built round one
           animal and its grooming; a van has two ends, a direction and a driver.
 
           REDIRECTED RATHER THAN RE-POINTED EVERYWHERE. Half the links that
@@ -650,7 +650,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                   <Button asChild variant="ghost" size="sm">
                     <Link href={editHref}>
                       <Pencil className="size-4" aria-hidden />
-                      Edit layanan &amp; harga
+                      Ubah layanan &amp; harga
                     </Link>
                   </Button>
                 </Can>
@@ -1270,7 +1270,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
             <p className="text-xs text-muted">
               Angka komisi ada di{" "}
               <Link
-                href="/dashboard/reports/commissions"
+                href="/dashboard/finance/commissions"
                 className="font-semibold text-primary underline-offset-2 hover:underline"
               >
                 Laporan › Komisi

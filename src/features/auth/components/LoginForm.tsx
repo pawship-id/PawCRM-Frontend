@@ -50,10 +50,10 @@ export function LoginForm({ redirectTo = DASHBOARD_HOME }: LoginFormProps) {
       if (error instanceof ApiError && error.isValidationError) {
         setFieldErrors(error.fieldErrors);
       } else if (error instanceof ApiError) {
-        // 401 is the deliberately generic "Invalid email or password".
+        // 401 is the deliberately generic "wrong email or password" message.
         setFormError(error.message);
       } else {
-        setFormError("Something went wrong. Please try again.");
+        setFormError("Terjadi kesalahan. Coba lagi.");
       }
       setSubmitting(false);
     }
@@ -68,7 +68,7 @@ export function LoginForm({ redirectTo = DASHBOARD_HOME }: LoginFormProps) {
         type="email"
         name="email"
         autoComplete="email"
-        placeholder="you@clinic.com"
+        placeholder="nama@petshop.com"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         error={fieldErrors.email}
@@ -92,12 +92,12 @@ export function LoginForm({ redirectTo = DASHBOARD_HOME }: LoginFormProps) {
           href="/forgot-password"
           className="text-sm font-medium text-primary hover:text-primary-hover"
         >
-          Forgot password?
+          Lupa password?
         </Link>
       </div>
 
       <Button type="submit" loading={submitting} fullWidth>
-        Sign in
+        Masuk
       </Button>
     </form>
   );

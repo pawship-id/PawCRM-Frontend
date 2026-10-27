@@ -30,10 +30,10 @@ import { CashBankAccountsTable } from "./CashBankAccountsTable";
 /** The two halves of Kas & Bank, as the mockup names them. */
 export type KasBankSection = "transaksi" | "biaya-tetap";
 
-const KAS_BANK_HREF = "/dashboard/keuangan/kas-bank";
+const KAS_BANK_HREF = "/dashboard/finance/cash-bank";
 
 /** Where the channel list moved to on 20 September 2026 — see the header. */
-const CHANNELS_HREF = "/dashboard/pengaturan/channel-pembayaran";
+const CHANNELS_HREF = "/dashboard/settings/payment-channels";
 
 /**
  * KAS & BANK — where the shop's money sits, and everything that moved it.
@@ -126,7 +126,7 @@ export function KasBankScreen({
 
   const tabs = [
     { label: "Transaksi", href: KAS_BANK_HREF, exact: true },
-    { label: "Biaya Tetap", href: `${KAS_BANK_HREF}/biaya-tetap` },
+    { label: "Biaya Tetap", href: `${KAS_BANK_HREF}/fixed-costs` },
   ];
 
   return (
@@ -254,7 +254,7 @@ export function KasBankScreen({
         ) : (
           <Card>
             <p className="text-sm text-muted">
-              Kamu belum punya akses ke daftar transaksi. Minta admin
+              Anda belum punya akses ke daftar transaksi. Minta admin
               menambahkan izin baca transaksi keuangan.
             </p>
           </Card>
@@ -264,7 +264,7 @@ export function KasBankScreen({
       ) : (
         <Card>
           <p className="text-sm text-muted">
-            Kamu belum punya akses ke daftar biaya tetap. Minta admin
+            Anda belum punya akses ke daftar biaya tetap. Minta admin
             menambahkan izin baca biaya tetap.
           </p>
         </Card>

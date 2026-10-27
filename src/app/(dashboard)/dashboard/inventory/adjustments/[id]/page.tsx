@@ -19,8 +19,8 @@ export default async function StockAdjustmentDetailPage({
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
-              { label: "Penyesuaian Stok", href: "/dashboard/inventory/adjustments" },
+              { label: "Inventori", href: "/dashboard/inventory" },
+              { label: "Koreksi Stok", href: "/dashboard/inventory/adjustments" },
               { label: "Dokumen" },
             ]}
           />

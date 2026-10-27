@@ -405,7 +405,7 @@ describe("CashTransactionCreateForm", () => {
       // path, and no chance of the money landing twice.
       expect(cashTransactionService.create).not.toHaveBeenCalled();
       expect(mockPush).toHaveBeenCalledWith(
-        "/dashboard/keuangan/kas-bank/biaya-tetap/fc9",
+        "/dashboard/finance/cash-bank/fixed-costs/fc9",
       );
     });
 
@@ -456,7 +456,7 @@ describe("CashTransactionCreateForm", () => {
       await turnOn(user);
 
       expect(
-        await screen.findByText("Kamu belum boleh mencatat biaya tetap"),
+        await screen.findByText("Anda belum boleh mencatat biaya tetap"),
       ).toBeInTheDocument();
     });
   });
@@ -503,7 +503,7 @@ describe("CashTransactionCreateForm", () => {
       }),
     );
     expect(swalToast).toHaveBeenCalledWith("Transaksi BKK/CBS/2609/0004 tersimpan.");
-    expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/kas-bank/transaksi/ct9");
+    expect(mockPush).toHaveBeenCalledWith("/dashboard/finance/cash-bank/transactions/ct9");
   });
 
   it("has no Lini Usaha field, in the header or on any row", async () => {
@@ -518,7 +518,7 @@ describe("CashTransactionCreateForm", () => {
     expect(screen.queryByRole("button", { name: "Lini Usaha" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Lini bisnis baris/ })).not.toBeInTheDocument();
     expect(screen.queryByText("Lini bisnis")).not.toBeInTheDocument();
-    expect(screen.getByText(/Lini usaha mengikuti pemetaan akun dan sub akunnya/)).toBeInTheDocument();
+    expect(screen.getByText(/Lini bisnis mengikuti pemetaan akun dan sub akunnya/)).toBeInTheDocument();
   });
 
   it("sends a null line with the sub akun as picked, never the sub akun's own line", async () => {

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Check, House, MapPin } from "lucide-react";
 
-import { Alert, Card, SelectField, Spinner } from "@/components";
+import { Alert, Card, ConfirmDialog, SelectField, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +20,13 @@ import type {
 } from "@/types/api";
 import { formatMoney, trimDecimal } from "@/utils/decimal";
 
-import { HOME_TRIP_LABELS, HOME_TRIP_RUNGS, nextTripRung, tripStamp } from "../homeTrip";
+import {
+  HOME_TRIP_LABELS,
+  HOME_TRIP_RUNGS,
+  homeTripConfirmCopy,
+  nextTripRung,
+  tripStamp,
+} from "../homeTrip";
 import { useTripPerformers } from "../hooks/useHomeTrip";
 import { BookingStatusBadge } from "./BookingStatusBadge";
 
@@ -54,7 +60,7 @@ function dayOf(iso: string | null): string | null {
 }
 
 /**
- * ONE TRIP, WHOLE — `/dashboard/booking/perjalanan/:tripId` (11 October 2026,
+ * ONE TRIP, WHOLE — `/dashboard/booking/rides/:tripId` (11 October 2026,
  * on request).
  *
  * ─── WHY THE TRIP LEFT THE BOOKING PAGE ─────────────────────────────────────
@@ -82,6 +88,8 @@ export function HomeTripDetailScreen({ id }: { id: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* The rung waiting for an explicit yes — §9, a rung cannot be walked back. */
+  const [confirming, setConfirming] = useState<HomeTripStatus | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -359,7 +367,7 @@ export function HomeTripDetailScreen({ id }: { id: string }) {
           <div className="mt-3">
             {next ? (
               <>
-                <Button disabled={busy || !canMove} onClick={() => void move(next)}>
+                <Button disabled={busy || !canMove} onClick={() => setConfirming(next)}>
                   {busy ? "Menyimpan…" : HOME_TRIP_LABELS[next]}
                 </Button>
                 {!canMove && (
@@ -374,6 +382,21 @@ export function HomeTripDetailScreen({ id }: { id: string }) {
               )
             )}
           </div>
+
+          {confirming && (
+            <ConfirmDialog
+              title={homeTripConfirmCopy(confirming).title}
+              confirmLabel={homeTripConfirmCopy(confirming).confirmLabel}
+              busy={busy}
+              onCancel={() => setConfirming(null)}
+              onConfirm={async () => {
+                await move(confirming);
+                setConfirming(null);
+              }}
+            >
+              {homeTripConfirmCopy(confirming).body}
+            </ConfirmDialog>
+          )}
         </Card>
       </div>
 

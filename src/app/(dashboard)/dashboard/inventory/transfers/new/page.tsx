@@ -13,9 +13,9 @@ export default function NewStockTransferPage() {
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Inventori", href: "/dashboard/inventory" },
               {
-                label: "Transfer stok",
+                label: "Transfer Stok",
                 href: "/dashboard/inventory/transfers",
               },
               { label: "Transfer baru" },
@@ -26,7 +26,7 @@ export default function NewStockTransferPage() {
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
             Pindahkan barang antar gudang — misalnya menyiapkan stok untuk
-            bazar. Satu transfer boleh membawa beberapa produk sekaligus, dan lot
+            bazar. Satu transfer boleh membawa beberapa produk sekaligus, dan batch
             beserta tanggal kedaluwarsanya ikut berpindah.
           </p>
         </div>

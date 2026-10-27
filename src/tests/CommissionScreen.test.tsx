@@ -21,7 +21,7 @@ jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: (href: string) => mockPush(href) }),
-  usePathname: () => "/dashboard/keuangan/komisi",
+  usePathname: () => "/dashboard/finance/commissions",
 }));
 
 const reports = reportService as jest.Mocked<typeof reportService>;
@@ -197,7 +197,7 @@ describe("CommissionScreen — the mockup's list", () => {
     await screen.findByText("BK-0910-014");
     await userEvent.click(within(rowOf("Sari")).getByText("Rp 320.000"));
 
-    expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/komisi/bk-1/sari");
+    expect(mockPush).toHaveBeenCalledWith("/dashboard/finance/commissions/bk-1/sari");
   });
 });
 
@@ -212,12 +212,44 @@ describe("CommissionScreen — approving and paying", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Setujui terpilih" }));
 
+    // Asks first, naming the pending row and its amount — nothing saved yet.
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Setujui komisi?")).toBeInTheDocument();
+    expect(within(dialog).getByText("Rp 57.600")).toBeInTheDocument();
+    expect(reports.approveCommissions).not.toHaveBeenCalled();
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "Setujui komisi" }));
+
     await waitFor(() =>
       expect(reports.approveCommissions).toHaveBeenCalledWith([
         { bookingId: "bk-1", groomerUserId: "sari" },
       ]),
     );
     expect(swalToast).toHaveBeenCalledWith("1 komisi disetujui.", "success");
+  });
+
+  it("names the count and the total before approving several", async () => {
+    const SECOND = row({
+      key: "bk-4:sari",
+      bookingId: "bk-4",
+      groomerName: "Sari",
+      bookingNumber: "BK-0912-001",
+      amount: "42400.0000",
+    });
+    reports.commissionRecords.mockResolvedValue(page([PENDING, SECOND]));
+    renderWithAuth(<CommissionScreen now={NOW} />, { permissions: MANAGER, isSuperAdmin: false });
+    await screen.findByText("BK-0912-001");
+
+    await userEvent.click(screen.getByRole("checkbox", { name: /semua/i }));
+    await userEvent.click(screen.getByRole("button", { name: "Setujui terpilih" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Setujui 2 komisi?")).toBeInTheDocument();
+    expect(within(dialog).getByText("Rp 100.000")).toBeInTheDocument();
+
+    // Batal leaves everything as it was.
+    await userEvent.click(within(dialog).getByRole("button", { name: "Batal" }));
+    expect(reports.approveCommissions).not.toHaveBeenCalled();
   });
 
   /* The Owner's rule, 21 September 2026: approval first, then payment. */
@@ -272,7 +304,7 @@ describe("CommissionScreen — approving and paying", () => {
     expect(screen.queryByRole("button", { name: "Setujui terpilih" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Bayar terpilih" })).not.toBeInTheDocument();
     // A badge, not a control.
-    expect(within(rowOf("Sari")).getByText("Menunggu Persetujuan")).toBeInTheDocument();
+    expect(within(rowOf("Sari")).getByText("Menunggu persetujuan")).toBeInTheDocument();
   });
 });
 

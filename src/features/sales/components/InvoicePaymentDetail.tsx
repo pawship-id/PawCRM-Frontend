@@ -155,7 +155,7 @@ export function InvoicePaymentDetail({
                 : "bg-tint-success text-success",
             )}
           >
-            {payment.isVoided ? "dibatalkan" : "aktif"}
+            {payment.isVoided ? "Dibatalkan" : "Aktif"}
           </span>
           {/* A cancelled payment still prints: re-printing one is usually done
               precisely because it was cancelled. */}

@@ -13,7 +13,7 @@ jest.mock("@/services/membership.service");
 jest.mock("@/services/branch.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 jest.mock("next/navigation", () => ({
-  usePathname: () => "/dashboard/promosi/ringkasan",
+  usePathname: () => "/dashboard/promotion/summary",
 }));
 
 const mocked = membershipService as jest.Mocked<typeof membershipService>;

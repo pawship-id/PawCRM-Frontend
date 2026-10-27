@@ -23,7 +23,7 @@ jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 const push = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push, refresh: jest.fn() }),
-  usePathname: () => "/dashboard/promosi/membership/paket/new",
+  usePathname: () => "/dashboard/promotion/membership/plans/new",
 }));
 
 const mocked = membershipService as jest.Mocked<typeof membershipService>;
@@ -140,7 +140,7 @@ describe("MembershipPlanForm", () => {
         ],
       }),
     ]);
-    expect(push).toHaveBeenCalledWith("/dashboard/promosi/membership/paket/new-plan");
+    expect(push).toHaveBeenCalledWith("/dashboard/promotion/membership/plans/new-plan");
   });
 
   it("per-variant pricing follows an animal, never a customer", async () => {

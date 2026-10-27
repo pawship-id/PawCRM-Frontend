@@ -227,7 +227,7 @@ describe("SubAccountPanel", () => {
       await userEvent.click(screen.getByRole("button", { name: /Tambah sub akun/ }));
       await userEvent.type(screen.getByLabelText("Kode sub akun setelah 5101-"), "05");
       await userEvent.type(screen.getByLabelText("Nama sub akun"), "Gaji - Grooming");
-      await userEvent.click(screen.getByLabelText("Lini usaha"));
+      await userEvent.click(screen.getByLabelText("Lini bisnis"));
       await userEvent.click(screen.getByRole("option", { name: "Grooming" }));
     };
     const save = () => userEvent.click(screen.getByRole("button", { name: "Simpan" }));
@@ -452,7 +452,7 @@ describe("SubAccountPanel", () => {
       await userEvent.click(
         screen.getByRole("button", { name: "Ubah sub akun 5101-01" }),
       );
-      await userEvent.click(screen.getByLabelText("Lini usaha"));
+      await userEvent.click(screen.getByLabelText("Lini bisnis"));
       await userEvent.click(screen.getByRole("option", { name: "Retail" }));
       await userEvent.click(screen.getByRole("button", { name: "Simpan" }));
       return within(await screen.findByRole("dialog"));

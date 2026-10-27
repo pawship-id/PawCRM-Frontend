@@ -36,7 +36,7 @@ export const SCOPE_PERIODS: PillOption<ScopePeriod>[] = [
   { value: "today", label: "Hari ini" },
   { value: "week", label: "Minggu ini" },
   { value: "month", label: "Bulan ini" },
-  { value: "custom", label: "Custom" },
+  { value: "custom", label: "Pilih tanggal" },
 ];
 
 /**

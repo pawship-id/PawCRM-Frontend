@@ -56,7 +56,7 @@ describe("CustomerCreateForm", () => {
     );
 
     expect(create).not.toHaveBeenCalled();
-    expect(screen.getByText(/customer name is required/i)).toBeInTheDocument();
+    expect(screen.getByText(/nama pelanggan wajib diisi/i)).toBeInTheDocument();
   });
 
   it("flags an invalid email before submitting", async () => {
@@ -71,7 +71,7 @@ describe("CustomerCreateForm", () => {
 
     expect(create).not.toHaveBeenCalled();
     expect(
-      screen.getByText(/enter a valid email address/i),
+      screen.getByText(/alamat email tidak valid/i),
     ).toBeInTheDocument();
   });
 
@@ -142,6 +142,17 @@ describe("CustomerCreateForm", () => {
     );
 
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it("offers the map picker for the address's pin, falling back to typing without a Maps key", () => {
+    render(<CustomerCreateForm />);
+
+    // No Maps key in tests, so the button is there but disabled, with the
+    // manual fields named as the way in.
+    expect(
+      screen.getByRole("button", { name: /pilih dari peta/i }),
+    ).toBeDisabled();
+    expect(screen.getByText(/peta belum diaktifkan/i)).toBeInTheDocument();
   });
 
   it("surfaces a duplicate-email conflict as an alert", async () => {

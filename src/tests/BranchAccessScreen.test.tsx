@@ -78,7 +78,7 @@ describe("BranchAccessScreen", () => {
     renderWithAuth(<BranchAccessScreen />);
 
     const edits = await screen.findAllByRole("link", { name: "Ubah" });
-    expect(edits[1]).toHaveAttribute("href", "/dashboard/pengaturan/pengguna/u2");
+    expect(edits[1]).toHaveAttribute("href", "/dashboard/settings/users/u2");
   });
 
   it("offers no Ubah to a role that may only read users", async () => {

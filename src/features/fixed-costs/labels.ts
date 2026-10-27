@@ -5,7 +5,7 @@ import type { FixedCostInterval, FixedCostKind } from "@/types/accounting";
  * vocabulary (`expense`, `monthly`) stays in the API.
  */
 
-export const FIXED_COSTS_HREF = "/dashboard/keuangan/kas-bank/biaya-tetap";
+export const FIXED_COSTS_HREF = "/dashboard/finance/cash-bank/fixed-costs";
 
 export function fixedCostHref(id: string): string {
   return `${FIXED_COSTS_HREF}/${id}`;

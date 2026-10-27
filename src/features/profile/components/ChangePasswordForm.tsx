@@ -55,7 +55,7 @@ export function ChangePasswordForm() {
       } else if (error instanceof ApiError) {
         setFormError(error.message);
       } else {
-        setFormError("Something went wrong. Please try again.");
+        setFormError("Terjadi kesalahan. Coba lagi.");
       }
     } finally {
       setSaving(false);
@@ -65,22 +65,22 @@ export function ChangePasswordForm() {
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
       {formError && <Alert variant="error">{formError}</Alert>}
-      {done && <Alert variant="success">Password changed.</Alert>}
+      {done && <Alert variant="success">Password baru tersimpan.</Alert>}
 
       <TextField
-        label="New password"
+        label="Password baru"
         type="password"
         name="newPassword"
         autoComplete="new-password"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         error={fieldErrors.newPassword}
-        hint={`At least ${PASSWORD_MIN_LENGTH} characters.`}
+        hint={`Minimal ${PASSWORD_MIN_LENGTH} karakter.`}
         required
       />
 
       <TextField
-        label="Confirm new password"
+        label="Ulangi password baru"
         type="password"
         name="confirm"
         autoComplete="new-password"
@@ -92,7 +92,7 @@ export function ChangePasswordForm() {
 
       <div className="flex justify-end">
         <Button type="submit" loading={saving}>
-          Change password
+          Simpan password
         </Button>
       </div>
     </form>

@@ -131,6 +131,27 @@ describe("CashTransactionDetail — what it shows", () => {
     expect(screen.queryByText("Masuk bersih")).not.toBeInTheDocument();
   });
 
+  it("names the Biaya Tetap it was recorded from, with a link to it", async () => {
+    asMock(cashTransactionService.getById).mockResolvedValue(
+      cashTx({ fixedCostId: "fc1", fixedCostName: "Sewa ruko" }),
+    );
+
+    renderPage();
+
+    expect(await screen.findByRole("link", { name: "Sewa ruko" })).toHaveAttribute(
+      "href",
+      "/dashboard/finance/cash-bank/fixed-costs/fc1",
+    );
+    expect(screen.queryByText("Segera")).not.toBeInTheDocument();
+  });
+
+  it("says — in Biaya tetap when it did not come from one", async () => {
+    renderPage();
+
+    await screen.findByRole("heading", { name: "Uang masuk – BKM/CBS/2609/0001" });
+    expect(screen.getByText("Biaya tetap").parentElement).toHaveTextContent(/^Biaya tetap—$/);
+  });
+
   it("falls back to the kind and amount for migrated history with no number", async () => {
     asMock(cashTransactionService.getById).mockResolvedValue(
       cashTx({ number: null }),
@@ -274,10 +295,10 @@ describe("CashTransactionDetail — what it shows", () => {
     expect(screen.getByText(/Rp 120\.000/)).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "JE-2026-09-0000" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/je0");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries/je0");
     expect(
       screen.getByRole("link", { name: "JE-2026-09-0002" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/je0r");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries/je0r");
   });
 });
 
@@ -301,7 +322,7 @@ describe("CashTransactionDetail — Ubah and Batalkan", () => {
     // A LINK, not a button: Ubah opens a page of its own now.
     expect(await screen.findByRole("link", { name: "Ubah" })).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/kas-bank/transaksi/ct1/edit",
+      "/dashboard/finance/cash-bank/transactions/ct1/edit",
     );
 
     await openActions(user);
@@ -329,7 +350,7 @@ describe("CashTransactionDetail — Ubah and Batalkan", () => {
     const dialog = within(await screen.findByRole("dialog"));
     expect(
       await dialog.findByRole("link", { name: "JE-2026-09-0001" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/je1");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries/je1");
 
     // Both sides, named from the chart, and a balanced total.
     expect(dialog.getByText("Kas")).toBeInTheDocument();
@@ -433,7 +454,7 @@ describe("CashTransactionDetail — Ubah and Batalkan", () => {
     expect(screen.getByText(/oleh Jess/)).toBeInTheDocument();
     expect(
       screen.getAllByRole("link", { name: "JE-2026-09-0009" })[0],
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/je-rev");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries/je-rev");
   });
 });
 

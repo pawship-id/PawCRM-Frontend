@@ -244,7 +244,7 @@ export function TodayScreen({
               used to sit on the booking list's toolbar, which is gone.
             */}
             <Button asChild variant="secondary" size="sm">
-              <Link href="/dashboard/booking/kalender">Kalender groomer</Link>
+              <Link href="/dashboard/booking/calendar">Kalender groomer</Link>
             </Button>
 
             <Button

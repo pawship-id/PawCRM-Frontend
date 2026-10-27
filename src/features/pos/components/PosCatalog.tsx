@@ -272,7 +272,7 @@ export function PosCatalog({
         <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center text-sm text-muted">
           {state.search.trim()
             ? `Tidak ada hasil untuk "${state.search.trim()}".`
-            : "Belum ada produk atau layanan yang bisa dijual. Tambah di menu Inventory atau Layanan."}
+            : "Belum ada produk atau layanan yang bisa dijual. Tambah di menu Inventori atau Layanan."}
         </div>
       ) : (
         <>

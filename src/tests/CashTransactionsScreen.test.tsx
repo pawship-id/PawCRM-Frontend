@@ -21,7 +21,7 @@ jest.mock("@/services/journalEntry.service");
 const mockPush = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: (href: string) => mockPush(href) }),
-  usePathname: () => "/dashboard/keuangan/kas-bank",
+  usePathname: () => "/dashboard/finance/cash-bank",
 }));
 
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
@@ -113,7 +113,7 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     expect(inCells[1]).toHaveTextContent("Bu Sari");
     expect(inCells[2]).toHaveTextContent("Piutang Usaha");
     expect(inCells[3]).toHaveTextContent("Cabang Pusat");
-    expect(inCells[4]).toHaveTextContent("+ Rp 150.000");
+    expect(inCells[4]).toHaveTextContent("+Rp 150.000");
     expect(inCells[5]).toHaveTextContent("Kas");
     expect(inCells[6]).toHaveTextContent("Pembayaran");
     // Seven cells, and the last of them is Sumber.
@@ -125,7 +125,7 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     const outRow = screen.getByText("BKK/CBS/2609/0003").closest("tr")!;
     const outCells = within(outRow).getAllByRole("cell");
     expect(outCells[1]).toHaveTextContent("Listrik Agustus");
-    expect(outCells[4]).toHaveTextContent("− Rp 75.000");
+    expect(outCells[4]).toHaveTextContent("−Rp 75.000");
     // Typed by hand, so it says so — and carries the pencil that edits it.
     expect(outCells[6]).toHaveTextContent("Manual");
     expect(
@@ -340,7 +340,7 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     // Any cell opens it; the description is the one somebody reads first.
     await user.click(await screen.findByText("INV/CBS/2609/0012"));
 
-    expect(mockPush).toHaveBeenCalledWith("/dashboard/keuangan/kas-bank/transaksi/ct1");
+    expect(mockPush).toHaveBeenCalledWith("/dashboard/finance/cash-bank/transactions/ct1");
   });
 });
 
@@ -510,7 +510,7 @@ describe("Kas & Bank — transaksi: empty and gated", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Catat yang pertama →" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/new");
+    ).toHaveAttribute("href", "/dashboard/finance/cash-bank/transactions/new");
   });
 
   it("tells a filtered empty list apart from an empty book", async () => {
@@ -552,7 +552,7 @@ describe("Kas & Bank — transaksi: empty and gated", () => {
     const { unmount } = renderWithAuth(<KasBankScreen now={NOW} />);
     expect(
       await screen.findByRole("link", { name: /Tambah transaksi/ }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank/transaksi/new");
+    ).toHaveAttribute("href", "/dashboard/finance/cash-bank/transactions/new");
     unmount();
 
     renderWithAuth(<KasBankScreen now={NOW} />, {

@@ -12,7 +12,7 @@ import { InvoiceSheet } from "./InvoiceSheet";
 import "@/features/pos/print/receipt.css";
 
 /**
- * The faktur as its customer sees it — /faktur/:token, from a WhatsApp message.
+ * The faktur as its customer sees it — /invoice/:token, from a WhatsApp message.
  *
  * THE SAME SHEET THE SHOP PRINTS, not a second rendering of the bill. A customer
  * comparing the link on their phone with the paper in their hand must not find

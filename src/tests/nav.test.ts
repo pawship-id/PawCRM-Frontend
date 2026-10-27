@@ -68,7 +68,7 @@ describe("filterNavItems", () => {
     ONE ROW WITH FOUR TABS since 22 September 2026 (mockup
     `buloo-navigation-v3`). Any one grant a Pengaturan page reads opens it — the
     href is Umum, which gates its own sections — and every page under
-    /dashboard/pengaturan keeps it lit.
+    /dashboard/settings keeps it lit.
   */
   it("carries Pengaturan as one row, lit on every page under it", () => {
     const onlyUsers: CanFn = (feature, action) =>
@@ -76,10 +76,10 @@ describe("filterNavItems", () => {
     const settings = itemsOf(onlyUsers).find((i) => i.label === "Pengaturan");
 
     expect(settings?.children).toBeUndefined();
-    expect(settings?.href).toBe("/dashboard/pengaturan/umum");
-    expect(isActive(settings!, "/dashboard/pengaturan/pengguna/u-1")).toBe(true);
-    expect(isActive(settings!, "/dashboard/pengaturan/layanan")).toBe(true);
-    expect(isActive(settings!, "/dashboard/keuangan")).toBe(false);
+    expect(settings?.href).toBe("/dashboard/settings/general");
+    expect(isActive(settings!, "/dashboard/settings/users/u-1")).toBe(true);
+    expect(isActive(settings!, "/dashboard/settings/services")).toBe(true);
+    expect(isActive(settings!, "/dashboard/finance")).toBe(false);
   });
 
   /*
@@ -270,11 +270,11 @@ describe("filterNavItems", () => {
   it("carries Penjualan as one row, lit on its E-commerce tab too", () => {
     const sales = itemsOf(allowAll).find((i) => i.label === "Penjualan");
     expect(sales?.children).toBeUndefined();
-    expect(sales?.href).toBe("/dashboard/sales");
+    expect(sales?.href).toBe("/dashboard/sales/summary");
 
-    expect(isActive(sales!, "/dashboard/sales")).toBe(true);
+    expect(isActive(sales!, "/dashboard/sales/summary")).toBe(true);
     // Its own placeholder tabs and detail routes ride on the href's prefix.
-    expect(isActive(sales!, "/dashboard/sales/retur")).toBe(true);
+    expect(isActive(sales!, "/dashboard/sales/returns")).toBe(true);
     expect(isActive(sales!, "/dashboard/ecommerce-sync")).toBe(true);
   });
 
@@ -296,9 +296,9 @@ describe("filterNavItems", () => {
 
     const promosi = itemsOf(allowAll).find((i) => i.label === "Promosi")!;
     expect(promosi.children).toBeUndefined();
-    expect(promosi.href).toBe("/dashboard/promosi");
-    expect(isActive(promosi, "/dashboard/promosi/ringkasan")).toBe(true);
-    expect(isActive(promosi, "/dashboard/promosi/membership/anggota/507f1f")).toBe(true);
+    expect(promosi.href).toBe("/dashboard/promotion/summary");
+    expect(isActive(promosi, "/dashboard/promotion/summary")).toBe(true);
+    expect(isActive(promosi, "/dashboard/promotion/membership/member/507f1f")).toBe(true);
   });
 
   it("shows Promosi to a role holding any one membership grant", () => {
@@ -327,11 +327,11 @@ describe("filterNavItems", () => {
   it("carries Pembelian as one row pointing at its hub", () => {
     const purchasing = itemsOf(allowAll).find((i) => i.label === "Pembelian");
     expect(purchasing?.children).toBeUndefined();
-    expect(purchasing?.href).toBe("/dashboard/purchasing");
-    // No `match` and no `exact`: every tab lives under this href's own prefix,
-    // so it lights up on all six and on their detail routes.
+    expect(purchasing?.href).toBe("/dashboard/purchasing/summary");
+    // Ringkasan is /purchasing/summary, so the module prefix is a `match`: the
+    // row lights up on every tab and on their detail routes.
     expect(purchasing?.exact).toBeUndefined();
-    expect(purchasing?.match).toBeUndefined();
+    expect(purchasing?.match).toEqual(["/dashboard/purchasing"]);
   });
 
   it("shows Pembelian to a role holding ANY ONE of its grants", () => {
@@ -366,8 +366,8 @@ describe("filterNavItems", () => {
   it("carries Keuangan as one row pointing at its hub", () => {
     const finance = itemsOf(allowAll).find((i) => i.label === "Keuangan");
     expect(finance?.children).toBeUndefined();
-    expect(finance?.href).toBe("/dashboard/keuangan");
-    // Komisi moved INSIDE this prefix (/dashboard/keuangan/komisi), so no
+    expect(finance?.href).toBe("/dashboard/finance");
+    // Komisi moved INSIDE this prefix (/dashboard/finance/commissions), so no
     // `match` is owed — unlike Penjualan, whose E-commerce tab sits outside.
     expect(finance?.match).toBeUndefined();
   });

@@ -28,7 +28,7 @@ export default async function StockTransferDetailPage({
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Inventori", href: "/dashboard/inventory" },
               {
                 label: "Transfer Stok",
                 href: "/dashboard/inventory/transfers",

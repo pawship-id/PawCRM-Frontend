@@ -23,15 +23,13 @@ import type { Role } from "@/types/api";
 import { RoleStatusBadge } from "./RoleStatusBadge";
 import { countGrantedActions } from "../permissions";
 
-/** A short human summary of a role's grants for the Permissions column. */
+/** A short human summary of a role's grants for the Hak akses column. */
 function permissionsSummary(role: Role): string {
-  if (role.isSuperAdmin) return "Full access";
+  if (role.isSuperAdmin) return "Akses penuh";
   const features = role.permissions.length;
-  if (features === 0) return "No permissions";
+  if (features === 0) return "Belum ada hak akses";
   const actions = countGrantedActions(role.permissions);
-  return `${features} feature${features === 1 ? "" : "s"} · ${actions} action${
-    actions === 1 ? "" : "s"
-  }`;
+  return `${features} fitur · ${actions} aksi`;
 }
 
 /** The row action that opens a confirm dialog, plus the role it targets. */
@@ -91,12 +89,12 @@ export function RolesTable({
       else await roleService.restore(role._id);
       setPending(null);
       onChanged();
-      swalToast(kind === "delete" ? "Role deleted." : "Role restored.");
+      swalToast(kind === "delete" ? "Peran dihapus." : "Peran dipulihkan.");
     } catch (error) {
       setActionError(
         error instanceof ApiError
-          ? error.message
-          : "Something went wrong. Please try again.",
+          ? error.fullMessage
+          : "Terjadi kesalahan. Coba lagi.",
       );
     } finally {
       setBusy(false);
@@ -106,7 +104,7 @@ export function RolesTable({
   if (!loading && roles.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center text-sm text-muted-foreground">
-        No roles match the current filters.
+        Tidak ada peran yang cocok dengan filter ini.
       </div>
     );
   }
@@ -117,11 +115,11 @@ export function RolesTable({
         <Table className={loading ? "opacity-60" : undefined}>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Permissions</TableHead>
-              <TableHead>Type</TableHead>
+              <TableHead>Nama</TableHead>
+              <TableHead>Hak akses</TableHead>
+              <TableHead>Jenis</TableHead>
               {showActions && (
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="text-right">Aksi</TableHead>
               )}
             </TableRow>
           </TableHeader>
@@ -157,16 +155,16 @@ export function RolesTable({
                             }
                           >
                             <RotateCcw className="size-4" />
-                            Restore
+                            Pulihkan
                           </Button>
                         </Can>
                       ) : (
                         <>
                           <Can feature="roles" action="update">
                             <Button variant="ghost" size="sm" asChild>
-                              <Link href={`/dashboard/pengaturan/peran/${role._id}`}>
+                              <Link href={`/dashboard/settings/roles/${role._id}`}>
                                 <Pencil className="size-4" />
-                                Edit
+                                Ubah
                               </Link>
                             </Button>
                           </Can>
@@ -181,7 +179,7 @@ export function RolesTable({
                                 }
                               >
                                 <Trash2 className="size-4" />
-                                Delete
+                                Hapus
                               </Button>
                             </Can>
                           )}
@@ -199,8 +197,8 @@ export function RolesTable({
 
       {pending && (
         <ConfirmDialog
-          title={pending.kind === "delete" ? "Delete role" : "Restore role"}
-          confirmLabel={pending.kind === "delete" ? "Delete" : "Restore"}
+          title={pending.kind === "delete" ? "Hapus peran" : "Pulihkan peran"}
+          confirmLabel={pending.kind === "delete" ? "Hapus" : "Pulihkan"}
           destructive={pending.kind === "delete"}
           busy={busy}
           error={actionError}
@@ -209,14 +207,14 @@ export function RolesTable({
         >
           {pending.kind === "delete" ? (
             <>
-              Delete <strong>{pending.role.name}</strong>? It will be hidden and
-              can be restored later. A role still assigned to a user cannot be
-              deleted.
+              Hapus <strong>{pending.role.name}</strong>? Peran akan disembunyikan dan
+              bisa dipulihkan nanti. Peran yang masih dipakai pengguna tidak
+              bisa dihapus.
             </>
           ) : (
             <>
-              Restore <strong>{pending.role.name}</strong>? This may fail if
-              another role has since taken its name.
+              Pulihkan <strong>{pending.role.name}</strong>? Bisa gagal kalau
+              namanya sudah dipakai peran lain.
             </>
           )}
         </ConfirmDialog>

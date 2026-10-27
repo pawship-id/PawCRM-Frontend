@@ -19,7 +19,7 @@ import { variantSummary } from "../variantLine";
  *
  * NARROWER THAN `CustomerInvoiceDetail` so two readers print through this one
  * component: the shop's own detail read (Cetak Faktur) and the customer's public
- * copy (`PublicCustomerInvoice`, /faktur/:token), which carries no ids at all.
+ * copy (`PublicCustomerInvoice`, /invoice/:token), which carries no ids at all.
  * A second sheet for the public page would be two documents for one bill.
  */
 export interface InvoiceSheetInvoice {

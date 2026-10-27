@@ -190,21 +190,37 @@ export function trimQty(value: string | null | undefined): string {
   return text.replace(/0+$/, "").replace(/\.$/, "");
 }
 
+/**
+ * "Rp 1.200.000", and a negative as "−Rp 1.200.000" — a true minus sign leading
+ * the whole amount, the way a ledger prints it and the way every "−{formatMoney}"
+ * deduction line already reads. "Rp -1.200.000" (a hyphen glued to the digits)
+ * read as a typo and made two minus formats on one app (27 October 2026).
+ */
+function rupiah(minor: bigint, figures: Intl.NumberFormat): string {
+  const negative = minor < 0n;
+  const size = negative ? -minor : minor;
+  const text = `Rp ${figures.format(Number(toDecimalString(size)))}`;
+  // A value that rounds to zero is not shown as "−Rp 0".
+  return negative && /[1-9]/.test(text) ? `−${text}` : text;
+}
+
 /** Rupiah for display. Rounded to whole units — nobody prices in sen. */
 export function formatMoney(value: string | null | undefined): string {
   const minor = toMinor(value ?? "");
   if (minor === null) return "—";
-  return `Rp ${MONEY_FORMAT.format(Number(toDecimalString(minor)))}`;
+  return rupiah(minor, MONEY_FORMAT);
 }
+
+const MONEY_PRECISE_FORMAT = new Intl.NumberFormat("id-ID", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 /** Rupiah keeping 2 decimals — for a computed average, where the sen matter. */
 export function formatMoneyPrecise(value: string | null | undefined): string {
   const minor = toMinor(value ?? "");
   if (minor === null) return "—";
-  return `Rp ${new Intl.NumberFormat("id-ID", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number(toDecimalString(minor)))}`;
+  return rupiah(minor, MONEY_PRECISE_FORMAT);
 }
 
 const ONE_DECIMAL = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 1 });
@@ -220,12 +236,13 @@ export function formatMoneyShort(value: string | null | undefined): string {
   const minor = toMinor(value ?? "");
   if (minor === null) return "—";
 
-  const rupiah = Number(minor) / 10_000;
-  const size = Math.abs(rupiah);
+  const amount = Number(minor) / 10_000;
+  const size = Math.abs(amount);
+  const sign = amount < 0 ? "−" : "";
 
-  if (size >= 999_500_000) return `Rp ${ONE_DECIMAL.format(rupiah / 1e9)} M`;
-  if (size >= 999_500) return `Rp ${ONE_DECIMAL.format(rupiah / 1e6)} jt`;
-  if (size >= 1_000) return `Rp ${Math.round(rupiah / 1_000)} rb`;
+  if (size >= 999_500_000) return `${sign}Rp ${ONE_DECIMAL.format(size / 1e9)} M`;
+  if (size >= 999_500) return `${sign}Rp ${ONE_DECIMAL.format(size / 1e6)} jt`;
+  if (size >= 1_000) return `${sign}Rp ${Math.round(size / 1_000)} rb`;
 
   return formatMoney(value);
 }

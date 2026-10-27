@@ -8,17 +8,17 @@ function formatDate(value: string | null): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "—"
-    : date.toLocaleString(undefined, {
+    : date.toLocaleString("id-ID", {
         dateStyle: "medium",
         timeStyle: "short",
       });
 }
 
 function branchScope(user: User): string {
-  if (user.allBranches) return "All branches";
+  if (user.allBranches) return "Semua cabang";
   const count = user.branchAccess.length;
-  if (count === 0) return "No branch assigned";
-  return `${count} branch${count === 1 ? "" : "es"}`;
+  if (count === 0) return "Belum ada cabang";
+  return `${count} cabang`;
 }
 
 /** Read-only account facts that the user cannot edit here. */
@@ -30,11 +30,11 @@ export function ProfileSummary() {
     { label: "Email", value: user.email },
     {
       label: "Status",
-      value: user.status === "active" ? "Active" : "Suspended",
+      value: user.status === "active" ? "Aktif" : "Ditangguhkan",
     },
-    { label: "Branch access", value: branchScope(user) },
-    { label: "Last sign-in", value: formatDate(user.lastLoginAt) },
-    { label: "Member since", value: formatDate(user.createdAt) },
+    { label: "Akses cabang", value: branchScope(user) },
+    { label: "Terakhir masuk", value: formatDate(user.lastLoginAt) },
+    { label: "Terdaftar sejak", value: formatDate(user.createdAt) },
   ];
 
   return (

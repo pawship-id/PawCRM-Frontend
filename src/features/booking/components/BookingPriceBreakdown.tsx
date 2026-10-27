@@ -132,7 +132,7 @@ export function BookingPriceBreakdown({
         <div className="flex justify-between gap-3 pl-3 text-sm">
           <span className="text-success">Diskon item</span>
           <span className="font-semibold tabular-nums text-success">
-            − {formatMoney(ownDiscountOfLine(service)!)}
+            −{formatMoney(ownDiscountOfLine(service)!)}
           </span>
         </div>
       )}
@@ -159,7 +159,7 @@ export function BookingPriceBreakdown({
                 <span className="flex w-full justify-between gap-3 pl-3">
                   <span className="text-success">Diskon item</span>
                   <span className="font-semibold tabular-nums text-success">
-                    − {formatMoney(ownDiscountOfLine(addon)!)}
+                    −{formatMoney(ownDiscountOfLine(addon)!)}
                   </span>
                 </span>
               )}
@@ -179,7 +179,7 @@ export function BookingPriceBreakdown({
           <div className="flex justify-between gap-3 py-1 text-sm">
             <span className="text-success">Diskon booking</span>
             <span className="font-semibold tabular-nums text-success">
-              − {formatMoney(bookingShareOf(shown))}
+              −{formatMoney(bookingShareOf(shown))}
             </span>
           </div>
         </div>

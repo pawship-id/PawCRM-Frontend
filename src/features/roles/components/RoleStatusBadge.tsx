@@ -17,7 +17,7 @@ export function RoleStatusBadge({ role }: { role: Role }) {
           variant="outline"
           className="border-transparent bg-muted/40 text-muted"
         >
-          Deleted
+          Terhapus
         </Badge>
       )}
       {role.isSuperAdmin && (
@@ -33,7 +33,7 @@ export function RoleStatusBadge({ role }: { role: Role }) {
           variant="outline"
           className="border-transparent bg-primary/10 text-primary"
         >
-          System
+          Bawaan
         </Badge>
       )}
     </div>

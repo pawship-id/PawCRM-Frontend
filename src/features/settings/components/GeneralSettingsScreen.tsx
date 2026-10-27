@@ -170,7 +170,7 @@ export function GeneralSettingsScreen() {
             a tenant cannot add a branch, so a way in there led nowhere new.
             A warehouse is the opposite — the tenant creates, renames and
             deactivates its own, and until 27 September 2026 nothing in the app
-            pointed at /dashboard/pengaturan/gudang at all, so the CRUD sat
+            pointed at /dashboard/settings/warehouses at all, so the CRUD sat
             unreachable. The count comes from the directory the section already
             loads, so the card costs no extra request.
           */}
@@ -189,7 +189,7 @@ export function GeneralSettingsScreen() {
           {mayReadCustomerTypes && (
             <HubLinkCard
               title="Tipe pelanggan"
-              description="Reguler, Reseller, Grosir — menempel di profil pelanggan dan jadi dasar aturan harga khusus nanti."
+              description="Reguler, Reseller, Grosir — menempel di profil pelanggan dan muncul di laporan penjualan."
               href={SETTINGS_PATHS.tipePelanggan}
             />
           )}
@@ -205,7 +205,7 @@ export function GeneralSettingsScreen() {
           */}
           {can("supplierCategories", "read") && (
             <HubLinkCard
-              title="Kategori Supplier"
+              title="Kategori supplier"
               description="Kelompok seperti Makanan, Perlengkapan, atau Obat — dipakai untuk memilah supplier."
               href={SETTINGS_PATHS.kategoriSupplier}
             />
@@ -384,7 +384,7 @@ function IdentitySection({ tenant }: { tenant: Tenant }) {
     >
       <dl className="divide-y divide-border">
         <IdentityRow
-          label="Nama tampilan"
+          label="Nama usaha"
           note="Muncul di kiri atas dan di semua ekspor"
         >
           {tenant.name}

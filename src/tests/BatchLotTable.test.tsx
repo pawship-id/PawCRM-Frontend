@@ -153,7 +153,7 @@ describe("BatchLotTable", () => {
     const user = userEvent.setup();
     renderTable();
 
-    await user.click(screen.getByRole("button", { name: "Sisa Stock" }));
+    await user.click(screen.getByRole("button", { name: "Sisa stok" }));
     expect(rowsOnScreen()).toEqual(["C-3:3", "B-10:1", "B-2:2", "A-1:habis"]);
 
     await user.click(screen.getByRole("button", { name: "Harga beli batch" }));

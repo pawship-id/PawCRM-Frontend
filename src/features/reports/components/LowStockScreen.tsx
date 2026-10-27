@@ -196,7 +196,7 @@ export function LowStockScreen() {
             disabled={exporting || loading || rows.length === 0}
           >
             {exporting ? <Spinner /> : null}
-            Export halaman ini (.xlsx)
+            Unduh halaman ini (.xlsx)
           </Button>
         </div>
 
@@ -218,7 +218,7 @@ export function LowStockScreen() {
           empty={
             <p className="text-sm text-muted">
               Tidak ada produk di bawah batas minimum. Produk yang batasnya
-              masih nol tidak dihitung — atur <code>min_stock</code> di detail
+              masih nol tidak dihitung — atur <b>Stok minimum</b> di detail
               produk supaya ikut terpantau.
             </p>
           }

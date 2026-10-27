@@ -21,6 +21,7 @@ const user = (overrides: Partial<User> = {}): User =>
     fullName: "Sinta",
     commissionRate: null,
     availability: { weeklyOff: [], leaveDates: [] },
+    deletedAt: null,
     ...overrides,
   }) as User;
 

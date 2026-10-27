@@ -464,7 +464,7 @@ function MethodDetail({
         </div>
 
         <div>
-          <div className="flex justify-between rounded-lg bg-secondary px-3 py-2 text-xs font-semibold uppercase text-foreground">
+          <div className="flex justify-between rounded-lg bg-secondary px-3 py-2 text-xs font-semibold text-foreground">
             <span>No transaksi</span>
             <span>Total transaksi</span>
           </div>

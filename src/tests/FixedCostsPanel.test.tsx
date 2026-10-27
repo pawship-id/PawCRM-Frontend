@@ -24,7 +24,7 @@ jest.mock("@/services/journalEntry.service");
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), refresh: jest.fn() }),
-  usePathname: () => "/dashboard/keuangan/kas-bank/biaya-tetap",
+  usePathname: () => "/dashboard/finance/cash-bank/fixed-costs",
 }));
 
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
@@ -183,7 +183,7 @@ describe("Biaya Tetap — the table", () => {
     openTab();
 
     const row = (await screen.findByText("Sewa Toko Pusat")).closest("tr")!;
-    expect(within(row).getByText("Nonaktif")).toBeInTheDocument();
+    expect(within(row).getByText("Dijeda")).toBeInTheDocument();
     expect(
       within(row).queryByRole("button", { name: "Catat" }),
     ).not.toBeInTheDocument();

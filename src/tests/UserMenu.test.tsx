@@ -30,11 +30,11 @@ describe("UserMenu", () => {
     await openMenu();
 
     expect(
-      screen.getByRole("menuitem", { name: "My profile" }),
+      screen.getByRole("menuitem", { name: "Profil saya" }),
     ).toHaveAttribute("href", "/dashboard/profile");
     expect(
-      screen.getByRole("menuitem", { name: "Business information" }),
-    ).toHaveAttribute("href", "/dashboard/pengaturan/umum");
+      screen.getByRole("menuitem", { name: "Profil usaha" }),
+    ).toHaveAttribute("href", "/dashboard/settings/general");
   });
 
   it("hides Business information from a role without the grant", async () => {
@@ -47,11 +47,11 @@ describe("UserMenu", () => {
     await openMenu();
 
     // The profile link is never gated — it is this user's own account.
-    expect(screen.getByRole("menuitem", { name: "My profile" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Profil saya" })).toBeInTheDocument();
     expect(
-      screen.queryByRole("menuitem", { name: "Business information" }),
+      screen.queryByRole("menuitem", { name: "Profil usaha" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Logout" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Keluar" })).toBeInTheDocument();
   });
 
   it("closes the menu when an item is chosen", async () => {
@@ -59,7 +59,7 @@ describe("UserMenu", () => {
 
     await openMenu();
     await userEvent.click(
-      screen.getByRole("menuitem", { name: "Business information" }),
+      screen.getByRole("menuitem", { name: "Profil usaha" }),
     );
 
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();

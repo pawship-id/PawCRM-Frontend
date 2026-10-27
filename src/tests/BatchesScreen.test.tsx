@@ -394,7 +394,7 @@ describe("BatchesScreen", () => {
       ["Kode batch internal", "batchCodeAsc"],
       ["Produk", "productAsc"],
       ["Kedaluwarsa", "expiryLatest"],
-      ["Sisa Stock", "qtyDesc"],
+      ["Sisa stok", "qtyDesc"],
       ["HPP", "costDesc"],
       ["Nilai sisa", "valueDesc"],
     ])("asks the server for %s → %s", async (header, sort) => {
@@ -431,7 +431,7 @@ describe("BatchesScreen", () => {
       renderWithAuth(<BatchesScreen />);
       await findLoadedTable();
 
-      await user.click(screen.getByRole("button", { name: "Sisa Stock" }));
+      await user.click(screen.getByRole("button", { name: "Sisa stok" }));
       await waitFor(() =>
         expect(listCall).toHaveBeenLastCalledWith(
           expect.objectContaining({ sort: "qtyDesc" }),

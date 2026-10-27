@@ -9,7 +9,7 @@ import type { DocumentNumberSeries } from "@/types/api";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
-  usePathname: () => "/dashboard/pengaturan/nomor-dokumen",
+  usePathname: () => "/dashboard/settings/document-numbering",
 }));
 jest.mock("@/lib/swal", () => ({
   ...jest.requireActual("@/lib/swal"),

@@ -25,7 +25,7 @@ const mockPush = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: mockPush }),
-  usePathname: () => "/dashboard/layanan/grooming/katalog",
+  usePathname: () => "/dashboard/service/grooming/catalog",
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -152,7 +152,7 @@ describe("GroomingServicesScreen", () => {
 
     expect(
       await screen.findByRole("link", { name: "Express Wash" }),
-    ).toHaveAttribute("href", "/dashboard/layanan/grooming/katalog/svc-1");
+    ).toHaveAttribute("href", "/dashboard/service/grooming/catalog/svc-1");
 
     expect(
       screen.getAllByRole("columnheader").map((header) => header.textContent),
@@ -216,13 +216,13 @@ describe("GroomingServicesScreen", () => {
     // One plain address from every module (22 September 2026); the module is
     // left in the tab as the link is clicked.
     const link = await screen.findByRole("link", { name: /Layanan baru/ });
-    expect(link).toHaveAttribute("href", "/dashboard/pengaturan/layanan/new");
+    expect(link).toHaveAttribute("href", "/dashboard/settings/services/new");
 
     link.addEventListener("click", (event) => event.preventDefault());
     await userEvent.click(link);
     expect(JSON.parse(window.sessionStorage.getItem("buloo.serviceFormOrigin")!)).toEqual({
       serviceKind: "grooming",
-      listPath: "/dashboard/layanan/grooming/katalog",
+      listPath: "/dashboard/service/grooming/catalog",
     });
   });
 
@@ -295,7 +295,7 @@ describe("GroomingServicesScreen", () => {
     await screen.findByRole("link", { name: "Express Wash" });
 
     const panel = await openFilters();
-    await userEvent.click(within(panel).getByRole("button", { name: "Custom" }));
+    await userEvent.click(within(panel).getByRole("button", { name: "Pilih tanggal" }));
 
     // Seeded with the period in force, this month — and no preset chips.
     const month = periodRange("month");
@@ -319,7 +319,7 @@ describe("GroomingServicesScreen", () => {
         }),
       ),
     );
-    expect(screen.getByRole("button", { name: "Custom" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Pilih tanggal" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -337,9 +337,9 @@ describe("GroomingServicesScreen", () => {
 
     expect(screen.queryByLabelText("Tanggal booking dari")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+    await userEvent.click(screen.getByRole("button", { name: "Pilih tanggal" }));
 
-    expect(screen.getByRole("button", { name: "Custom" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Pilih tanggal" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -615,7 +615,7 @@ describe("GroomingServicesScreen", () => {
     );
 
     expect(mockPush).toHaveBeenCalledWith(
-      "/dashboard/layanan/grooming/katalog/svc-1",
+      "/dashboard/service/grooming/catalog/svc-1",
     );
   });
 

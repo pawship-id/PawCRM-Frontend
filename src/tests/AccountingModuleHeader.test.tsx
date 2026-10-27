@@ -4,7 +4,7 @@ import { AccountingModuleHeader } from "@/features/accounting";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
-const pathname = jest.fn(() => "/dashboard/keuangan");
+const pathname = jest.fn(() => "/dashboard/finance");
 jest.mock("next/navigation", () => ({
   usePathname: () => pathname(),
 }));
@@ -21,7 +21,7 @@ function tabNames() {
 }
 
 beforeEach(() => {
-  pathname.mockReturnValue("/dashboard/keuangan");
+  pathname.mockReturnValue("/dashboard/finance");
 });
 
 describe("AccountingModuleHeader", () => {
@@ -42,17 +42,17 @@ describe("AccountingModuleHeader", () => {
     ]);
     expect(screen.getByRole("link", { name: "Kas & Bank" })).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/kas-bank",
+      "/dashboard/finance/cash-bank",
     );
     // Komisi moved under Keuangan; its old /dashboard/reports address redirects.
     expect(screen.getByRole("link", { name: "Komisi" })).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/komisi",
+      "/dashboard/finance/commissions",
     );
   });
 
   it("does not leave the hub tab lit on the tabs nested under it", () => {
-    pathname.mockReturnValue("/dashboard/keuangan/journal-entries");
+    pathname.mockReturnValue("/dashboard/finance/journal-entries");
     renderWithAuth(<AccountingModuleHeader />);
 
     expect(screen.getByRole("link", { name: "Jurnal" })).toHaveAttribute(

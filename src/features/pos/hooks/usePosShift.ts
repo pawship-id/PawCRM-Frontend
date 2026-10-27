@@ -111,7 +111,7 @@ export function usePosShift(
         */
         setError(
           err instanceof ApiError && err.status === 403
-            ? "Akun kamu belum punya akses kasir. Minta admin menambahkannya."
+            ? "Akun Anda belum punya akses kasir. Minta admin menambahkannya."
             : err instanceof ApiError && err.status >= 400 && err.status < 500
               ? (err.reason ?? "Status kasir tidak bisa dibaca.")
               : "Status kasir tidak bisa dibaca. Coba muat ulang halaman.",

@@ -129,8 +129,8 @@ function receiptColumns(search: string): DataTableColumn<GoodsReceiptListRow>[] 
             className="border-transparent bg-secondary/25 text-secondary-foreground"
           >
             {receipt.purchaseType === "konsinyasi"
-              ? "tanpa faktur"
-              : "belum difakturkan"}
+              ? "Tanpa faktur"
+              : "Belum difakturkan"}
           </Badge>
         ),
     },

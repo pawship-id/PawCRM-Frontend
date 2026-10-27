@@ -41,7 +41,7 @@ export function SessionRow({
   session: GroomerSession;
   now: number;
   busy: boolean;
-  /** Offer "Ambil" on a session nobody holds — only the Open Job tab does. */
+  /** Offer "Ambil" on a session nobody holds — only the Sesi terbuka tab does. */
   showClaim: boolean;
   onStart: () => void;
   onFinish: () => void;

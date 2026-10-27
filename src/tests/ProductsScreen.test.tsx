@@ -723,7 +723,7 @@ describe("ProductsScreen", () => {
     ).not.toBeInTheDocument();
     // Restoring it first is what makes editing it meaningful again.
     expect(
-      within(menu).queryByRole("menuitem", { name: "Edit" }),
+      within(menu).queryByRole("menuitem", { name: "Ubah" }),
     ).not.toBeInTheDocument();
   });
 
@@ -747,7 +747,7 @@ describe("ProductsScreen", () => {
       within(menu).queryByRole("menuitem", { name: "Hapus" }),
     ).not.toBeInTheDocument();
     expect(
-      within(menu).queryByRole("menuitem", { name: "Edit" }),
+      within(menu).queryByRole("menuitem", { name: "Ubah" }),
     ).not.toBeInTheDocument();
     // The create menu is a BUTTON, not a link — querying for a link here would
     // pass whether or not the gate works.
@@ -800,7 +800,7 @@ describe("ProductsScreen", () => {
       within(menu).getByRole("menuitem", { name: "Detail" }),
     ).toHaveAttribute("href", "/dashboard/inventory/products/p1");
     expect(
-      within(menu).getByRole("menuitem", { name: "Edit" }),
+      within(menu).getByRole("menuitem", { name: "Ubah" }),
     ).toHaveAttribute("href", "/dashboard/inventory/products/p1/edit");
   });
 

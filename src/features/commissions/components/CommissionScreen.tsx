@@ -8,6 +8,7 @@ import { RotateCcw } from "lucide-react";
 import {
   Alert,
   Card,
+  ConfirmDialog,
   DataTable,
   FilterBar,
   FinanceScopeCard,
@@ -128,6 +129,8 @@ export function CommissionScreen({ now }: { now: string }) {
     /** Pending rows in the selection, left out of the payment and said so. */
     skipped: number;
   } | null>(null);
+  /** Pending rows waiting for an explicit yes before they are approved. */
+  const [approving, setApproving] = useState<CommissionRow[] | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Approving, correcting and paying: the report's own grant, or the ledger
@@ -185,7 +188,12 @@ export function CommissionScreen({ now }: { now: string }) {
     });
   }
 
-  async function approve(targets: CommissionRow[]) {
+  /**
+   * SETUJUI ASKS FIRST (27 October 2026). An approved commission is cleared
+   * for payment, and the bulk button and the row dropdown used to do it on one
+   * click — the dialog names how many and how much before anything is saved.
+   */
+  function requestApprove(targets: CommissionRow[]) {
     const pending = targets.filter((row) => row.status === "pending");
 
     if (pending.length === 0) {
@@ -196,6 +204,10 @@ export function CommissionScreen({ now }: { now: string }) {
       return;
     }
 
+    setApproving(pending);
+  }
+
+  async function approve(pending: CommissionRow[]) {
     setBusy(true);
 
     try {
@@ -215,6 +227,7 @@ export function CommissionScreen({ now }: { now: string }) {
       );
     } finally {
       setBusy(false);
+      setApproving(null);
     }
   }
 
@@ -258,7 +271,7 @@ export function CommissionScreen({ now }: { now: string }) {
 
   function changeStatus(row: CommissionRow, next: CommissionStatus) {
     if (next === row.status) return;
-    if (next === "approved") void approve([row]);
+    if (next === "approved") requestApprove([row]);
     else if (next === "pending") void unapprove(row);
     else if (next === "paid") startPayment([row]);
   }
@@ -357,7 +370,7 @@ export function CommissionScreen({ now }: { now: string }) {
           error={Boolean(error) && !data}
         />
         <StatTile
-          label="Komisi pending"
+          label="Komisi belum dibayar"
           value={data ? formatMoney(data.cards.pending) : "—"}
           caption="Total dikurangi terbayar"
           loading={!data && !error}
@@ -432,7 +445,7 @@ export function CommissionScreen({ now }: { now: string }) {
                       variant="secondary"
                       size="sm"
                       disabled={busy}
-                      onClick={() => void approve(picked)}
+                      onClick={() => requestApprove(picked)}
                     >
                       Setujui terpilih
                     </Button>
@@ -506,6 +519,38 @@ export function CommissionScreen({ now }: { now: string }) {
           )}
         </div>
       </Card>
+
+      {approving && (
+        <ConfirmDialog
+          title={
+            approving.length === 1
+              ? "Setujui komisi?"
+              : `Setujui ${approving.length} komisi?`
+          }
+          confirmLabel="Setujui komisi"
+          busy={busy}
+          onConfirm={() => void approve(approving)}
+          onCancel={() => setApproving(null)}
+        >
+          {approving.length === 1 ? (
+            <>
+              Komisi <strong>{approving[0].groomerName ?? "staf"}</strong>{" "}
+              senilai{" "}
+              <strong>{formatMoney(approving[0].amount)}</strong> akan
+              disetujui dan siap dibayar.
+            </>
+          ) : (
+            <>
+              <strong>{approving.length} komisi</strong> dengan total{" "}
+              <strong>
+                {formatMoney(sumDecimals(approving.map((row) => row.amount)))}
+              </strong>{" "}
+              akan disetujui dan siap dibayar.
+            </>
+          )}{" "}
+          Persetujuan masih bisa dibatalkan selama komisinya belum dibayar.
+        </ConfirmDialog>
+      )}
 
       {paying && (
         <PayCommissionDialog

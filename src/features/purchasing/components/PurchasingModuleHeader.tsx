@@ -66,7 +66,7 @@ import {
 export const PURCHASING_TABS: GatedTab[] = [
   {
     label: "Ringkasan",
-    href: "/dashboard/purchasing",
+    href: "/dashboard/purchasing/summary",
     // EXACT, because its href is the prefix of every sibling's.
     exact: true,
     anyOf: [{ feature: "purchasingSummary" }],
@@ -94,7 +94,7 @@ export function PurchasingModuleHeader({
           <h1 className="text-2xl font-extrabold text-foreground">Pembelian</h1>
           {/* The mockup's own subtitle, in the shape `PageHeading` gives one. */}
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Faktur pemasok, penerimaan barang, dan utang.
+            Faktur supplier, penerimaan barang, dan utang.
           </p>
         </div>
         {action && <div className="ml-auto flex flex-none gap-2">{action}</div>}

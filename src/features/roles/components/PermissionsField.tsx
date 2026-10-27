@@ -26,6 +26,21 @@ function humanize(token: string): string {
 }
 
 /**
+ * The common actions in Bahasa, the same words the module tree's labels use
+ * (permissionModules.js ACTION_LABELS). This grid is only the fallback for a
+ * catalog without a module tree, so the rarer actions fall back to `humanize`.
+ */
+const ACTION_LABELS: Record<string, string> = {
+  read: "Lihat",
+  create: "Tambah",
+  update: "Ubah",
+  delete: "Hapus",
+  restore: "Pulihkan",
+};
+
+const actionLabel = (action: string) => ACTION_LABELS[action] ?? humanize(action);
+
+/**
  * `read` is the prerequisite for every other action: you cannot update, delete
  * or otherwise touch a feature you cannot see. So granting any action implies
  * `read`, and revoking `read` revokes the whole feature.
@@ -123,7 +138,7 @@ export function PermissionsField({
                   onCheckedChange={(checked) =>
                     toggleFeature(feature, available, checked === true)
                   }
-                  aria-label={`All ${feature} permissions`}
+                  aria-label={`Semua akses ${humanize(feature)}`}
                 />
                 {humanize(feature)}
               </label>
@@ -150,7 +165,7 @@ export function PermissionsField({
                         htmlFor={checkboxId}
                         className="font-normal text-muted-foreground"
                       >
-                        {humanize(action)}
+                        {actionLabel(action)}
                       </Label>
                     </div>
                   );
@@ -169,7 +184,7 @@ export function PermissionsField({
 
       {catalog.length > 0 && !disabled && (
         <p className="text-xs text-muted">
-          “Read” wajib untuk akses — memilih aksi lain ikut mencentangnya, dan
+          “Lihat” wajib untuk akses — memilih aksi lain ikut mencentangnya, dan
           menghapusnya menghapus seluruh fitur.
         </p>
       )}

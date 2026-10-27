@@ -634,7 +634,7 @@ describe("ReceiptDialog — the WhatsApp link", () => {
     renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
 
     await user.click(
-      await screen.findByRole("button", { name: /salin link wa/i }),
+      await screen.findByRole("button", { name: /salin tautan whatsapp/i }),
     );
 
     /*
@@ -654,7 +654,7 @@ describe("ReceiptDialog — the WhatsApp link", () => {
 
     renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
     await user.click(
-      await screen.findByRole("button", { name: /salin link wa/i }),
+      await screen.findByRole("button", { name: /salin tautan whatsapp/i }),
     );
 
     expect(
@@ -691,7 +691,7 @@ describe("ReceiptDialog — the WhatsApp link", () => {
 
     renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
     await user.click(
-      await screen.findByRole("button", { name: /salin link wa/i }),
+      await screen.findByRole("button", { name: /salin tautan whatsapp/i }),
     );
 
     // An insecure origin has no clipboard API at all — and a till on plain

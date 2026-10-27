@@ -1326,7 +1326,7 @@ function ReceiptFormBody({
           </div>
           {consignment && (
             <p className="mt-1.5 text-xs text-muted">
-              <b>Harga setor</b> = harga per unit yang kamu bayar ke supplier.
+              <b>Harga setor</b> = harga per unit yang Anda bayar ke supplier.
               Dibayar ke supplier saat barang terjual — bukan saat diterima.
             </p>
           )}
@@ -1613,7 +1613,7 @@ function ReceiptFormBody({
                             something is being TYPED, though — a lot being joined
                             brings its own date, and the box showing it is
                             disabled. */}
-                        Expired
+                        Kedaluwarsa
                         {anyNewLot && <Required />}
                       </th>
                       <th className="min-w-32 px-2 py-2 text-right font-medium">Subtotal</th>
@@ -1842,7 +1842,7 @@ function ReceiptFormBody({
                             {namedLot ? (
                               namedLot.expiryDate ? (
                                 <Input
-                                  aria-label={`Expired ${product?.name ?? ""}`}
+                                  aria-label={`Kedaluwarsa ${product?.name ?? ""}`}
                                   type="date"
                                   value={namedLot.expiryDate.slice(0, 10)}
                                   disabled
@@ -1853,7 +1853,7 @@ function ReceiptFormBody({
                               )
                             ) : describingLot && expiryRequired ? (
                               <Input
-                                aria-label={`Expired ${product?.name ?? ""}`}
+                                aria-label={`Kedaluwarsa ${product?.name ?? ""}`}
                                 type="date"
                                 required
                                 aria-required

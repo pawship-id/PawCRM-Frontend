@@ -336,8 +336,8 @@ export function StockCardScreen({
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
-              { label: "Kartu stok", href: "/dashboard/inventory/stock-card" },
+              { label: "Inventori", href: "/dashboard/inventory" },
+              { label: "Kartu Stok", href: "/dashboard/inventory/stock-card" },
               { label: product?.name ?? "Detail" },
             ]}
           />
@@ -357,7 +357,7 @@ export function StockCardScreen({
                 mana yang keluar duluan.
               </>
             ) : (
-              "Riwayat setiap pergerakan barang, dan urutan lot mana yang keluar duluan. Keduanya berasal dari catatan yang sama."
+              "Riwayat setiap pergerakan barang, dan urutan batch mana yang keluar duluan. Keduanya berasal dari catatan yang sama."
             )}
           </p>
         </div>

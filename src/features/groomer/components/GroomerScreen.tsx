@@ -9,21 +9,22 @@ import { HOME_TRIP_LABELS } from "@/features/booking/homeTrip";
 import { cn } from "@/lib/utils";
 import type { HomeTripStatus } from "@/types/api";
 import type { GroomerJobs } from "@/types/groomer";
-import { longDate, todayKey } from "../dates";
+import { longDate, shortDate, todayKey } from "../dates";
 import { useGroomerActions } from "../hooks/useGroomerActions";
 import { useGroomerJobs } from "../hooks/useGroomerJobs";
 import { useNow } from "../hooks/useNow";
 import { DayStrip } from "./DayStrip";
 import { BookingCard } from "./BookingCard";
 import { CommissionSummary } from "./CommissionSummary";
+import { arriveAsk, claimAsk, finishAsk, tripAsk, useGroomerConfirm } from "./GroomerConfirm";
 
 type Tab = "saya" | "open" | "selesai";
 
 /**
- * The groomer's day — Job Saya, Open Job, Selesai.
+ * The groomer's day — Tugas saya, Sesi terbuka, Selesai.
  *
  * ─── WHAT THE MANAGER SWITCHES CHANGE ──────────────────────────────────────
- * With open-job claiming off there is no Open Job tab at all, and the server
+ * With open-job claiming off there is no Sesi terbuka tab at all, and the server
  * returns an empty list besides: hiding it here is the courtesy, the server is
  * the rule. Per-job commission is not on this screen in any case (decision of
  * 8 Oktober 2026); the summary on Selesai appears only if the shop allows it.
@@ -35,6 +36,7 @@ export function GroomerScreen() {
 
   const { data, loading, error, reload } = useGroomerJobs(date);
   const { busy, claim, move, arrive, moveTrip } = useGroomerActions(reload);
+  const { confirm, dialog } = useGroomerConfirm();
 
   const running = Boolean(
     data?.saya.some((booking) => booking.sessions.some((one) => one.mine && one.status === "in_progress")),
@@ -45,14 +47,17 @@ export function GroomerScreen() {
   // A tab that vanished (the manager switched it off) must not strand the screen.
   const activeTab: Tab = tab === "open" && !openTab ? "saya" : tab;
 
-  const petName = (bookingId: string) =>
+  const findBooking = (bookingId: string) =>
     [...(data?.saya ?? []), ...(data?.open ?? []), ...(data?.selesai ?? [])].find(
       (one) => one.bookingId === bookingId,
-    )?.pet.name ?? null;
+    );
+  const petName = (bookingId: string) => findBooking(bookingId)?.pet.name ?? null;
+  const sessionName = (bookingId: string, sessionId: string) =>
+    findBooking(bookingId)?.sessions.find((one) => one.sessionId === sessionId)?.sessionName ?? "Sesi ini";
 
   /** The card's handlers for one booking. */
   const handlers = (bookingId: string) => ({
-    onArrive: () => void arrive(bookingId, petName(bookingId)),
+    onArrive: () => confirm(arriveAsk(petName(bookingId), () => arrive(bookingId, petName(bookingId)))),
     onStart: (sessionId: string) =>
       void move(bookingId, sessionId, "in_progress", `${petName(bookingId) ?? "Sesi"} dimulai`),
     onFinish: (sessionId: string, afterCount: number) => {
@@ -62,11 +67,20 @@ export function GroomerScreen() {
         router.push(`/groomer/booking/${bookingId}?foto=after&sesi=${sessionId}`);
         return;
       }
-      void move(bookingId, sessionId, "done", `${petName(bookingId) ?? "Sesi"} selesai`);
+      confirm(
+        finishAsk(sessionName(bookingId, sessionId), petName(bookingId), () =>
+          move(bookingId, sessionId, "done", `${petName(bookingId) ?? "Sesi"} selesai`),
+        ),
+      );
     },
-    onClaim: (sessionId: string) => void claim(bookingId, sessionId, petName(bookingId)),
+    onClaim: (sessionId: string) =>
+      confirm(
+        claimAsk(sessionName(bookingId, sessionId), petName(bookingId), () =>
+          claim(bookingId, sessionId, petName(bookingId)),
+        ),
+      ),
     onTrip: (tripId: string, to: HomeTripStatus) =>
-      void moveTrip(tripId, to, `${HOME_TRIP_LABELS[to]} dicatat`),
+      confirm(tripAsk(to, () => moveTrip(tripId, to, `${HOME_TRIP_LABELS[to]} dicatat`))),
   });
 
   const list = (kind: "saya" | "open" | "selesai" | "lain", bookings: GroomerJobs["saya"]) =>
@@ -88,13 +102,13 @@ export function GroomerScreen() {
       <div className="px-4 pb-24 pt-4">
         <Header data={data} date={date} />
 
-        <div role="tablist" aria-label="Daftar job" className="mt-4 flex gap-1.5 rounded-xl bg-tint-neutral p-1">
+        <div role="tablist" aria-label="Daftar tugas" className="mt-4 flex gap-1.5 rounded-xl bg-tint-neutral p-1">
           <TabButton on={activeTab === "saya"} count={data?.saya.length} onClick={() => setTab("saya")}>
-            Job Saya
+            Tugas saya
           </TabButton>
           {openTab && (
             <TabButton on={activeTab === "open"} count={data?.open.length} onClick={() => setTab("open")}>
-              Open Job
+              Sesi terbuka
             </TabButton>
           )}
           <TabButton on={activeTab === "selesai"} count={data?.selesai.length} onClick={() => setTab("selesai")}>
@@ -121,7 +135,7 @@ export function GroomerScreen() {
 
           {data && activeTab === "saya" && (
             <>
-              <Section title="Ditugaskan ke kamu" note={`${data.saya.length} hewan`}>
+              <Section title="Ditugaskan ke Anda" note={`${data.saya.length} hewan`}>
                 {data.saya.length === 0 ? (
                   <Empty icon={<Coffee className="size-7" aria-hidden="true" />}>
                     Belum ada tugas di hari ini.
@@ -143,7 +157,7 @@ export function GroomerScreen() {
             <Section title="Ada sesi yang belum ada groomer" note="siapa cepat">
               {data.open.length === 0 ? (
                 <Empty icon={<Sun className="size-7" aria-hidden="true" />}>
-                  Tidak ada open job hari ini.
+                  Tidak ada sesi terbuka di hari ini.
                 </Empty>
               ) : (
                 list("open", data.open)
@@ -166,6 +180,8 @@ export function GroomerScreen() {
           )}
         </div>
       </div>
+
+      {dialog}
     </div>
   );
 }
@@ -174,6 +190,8 @@ function Header({ data, date }: { data: GroomerJobs | null; date: string }) {
   const load = data?.load;
   const pct = load ? Math.min(100, Math.round((load.plannedMin / Math.max(1, load.capacityMin)) * 100)) : 0;
   const isToday = date === todayKey();
+  // "Beban hari ini" only when it is today; another day names its own date.
+  const loadLabel = isToday ? "Beban hari ini" : `Beban ${shortDate(date)}`;
 
   return (
     <div>
@@ -184,7 +202,7 @@ function Header({ data, date }: { data: GroomerJobs | null; date: string }) {
         </div>
         {load && (
           <p className="text-right text-xs text-muted tabular-nums">
-            Beban hari ini
+            {loadLabel}
             <b className="block text-sm text-foreground">
               {load.plannedMin}/{load.capacityMin} mnt
             </b>
@@ -195,7 +213,7 @@ function Header({ data, date }: { data: GroomerJobs | null; date: string }) {
       {load && (
         <div
           role="progressbar"
-          aria-label="Beban hari ini"
+          aria-label={loadLabel}
           aria-valuemin={0}
           aria-valuemax={load.capacityMin}
           aria-valuenow={Math.min(load.plannedMin, load.capacityMin)}

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
 import { Card } from "@/components";
+import { formatPercent } from "@/features/accounting/financeSummary";
 import { cn } from "@/lib/utils";
 
 /**
@@ -131,7 +132,8 @@ export function BarList({
                 />
               </span>
               <span className="ml-auto flex-none text-right font-semibold whitespace-nowrap text-muted tabular-nums sm:ml-0 sm:w-40">
-                {row.display} · {((row.value / total) * 100).toFixed(1)}%
+                {/* id-ID like every other percent on Beranda: 69,4%, not 69.4%. */}
+                {row.display} · {formatPercent((row.value / total) * 100)}
               </span>
             </li>
           ))}

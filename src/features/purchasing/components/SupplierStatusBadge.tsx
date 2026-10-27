@@ -22,13 +22,13 @@ export function SupplierStatusBadge({
   if (supplier.deletedAt !== null) {
     return (
       <Badge variant="outline" className="border-danger/40 text-danger">
-        terhapus
+        Terhapus
       </Badge>
     );
   }
 
   if (!isSupplierActive(supplier)) {
-    return <Badge variant="outline">nonaktif</Badge>;
+    return <Badge variant="outline">Nonaktif</Badge>;
   }
 
   return null;

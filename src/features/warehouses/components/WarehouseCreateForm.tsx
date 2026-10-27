@@ -26,7 +26,7 @@ import {
 
 import { useWarehouseBranches } from "../hooks/useWarehouseBranches";
 import { WarehouseBranchSelect } from "./WarehouseBranchSelect";
-import { WarehousePinButton } from "./WarehousePinButton";
+import { MapPinButton } from "@/features/antar-jemput/components/MapPinButton";
 
 /**
  * Create a warehouse via POST /warehouses, then return to the list.
@@ -92,7 +92,7 @@ export function WarehouseCreateForm() {
         hasPos,
       });
       // Redirect first, then fire the toast so it rides along on the list screen.
-      router.push("/dashboard/pengaturan/gudang");
+      router.push("/dashboard/settings/warehouses");
       swalToast(`${created.name} sudah dibuat.`);
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
@@ -142,7 +142,8 @@ export function WarehouseCreateForm() {
 
         {/* Row 3: the map pin — picked from the map, or typed below */}
         <div className="sm:col-span-2">
-          <WarehousePinButton
+          <MapPinButton
+            title="Lokasi gudang"
             address={address}
             location={location}
             onPick={(point) => {
@@ -214,7 +215,7 @@ export function WarehouseCreateForm() {
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/pengaturan/gudang")}
+          onClick={() => router.push("/dashboard/settings/warehouses")}
         >
           Batal
         </Button>

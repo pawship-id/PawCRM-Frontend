@@ -19,7 +19,7 @@ export default async function OpeningStockDetailPage({
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Inventori", href: "/dashboard/inventory" },
               {
                 label: "Stok Awal",
                 href: "/dashboard/inventory/opening-stock",

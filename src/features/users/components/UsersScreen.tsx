@@ -39,7 +39,7 @@ export function UsersScreen() {
 
       {loading && users.length === 0 ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">
-          <Spinner /> Loading users…
+          <Spinner /> Memuat pengguna…
         </div>
       ) : (
         <>
@@ -54,7 +54,7 @@ export function UsersScreen() {
             page={pagination.page}
             totalPages={pagination.totalPages}
             total={pagination.total}
-            unit="user"
+            unit="pengguna"
             onPageChange={(page) => setQuery({ page })}
           />
         </>

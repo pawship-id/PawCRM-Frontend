@@ -63,7 +63,7 @@ export function TenantIdentityForm({
    * Where Batal returns to — a route, passed in rather than hardcoded.
    *
    * This form lives in `features/tenant` and the page it is reached from lives
-   * in `features/settings`; a literal "/dashboard/pengaturan/umum" here would
+   * in `features/settings`; a literal "/dashboard/settings/general" here would
    * put one feature's routing table inside another's, where the settings paths
    * module could not keep it in step.
    */

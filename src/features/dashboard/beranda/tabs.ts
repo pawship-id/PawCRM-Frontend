@@ -32,12 +32,12 @@ export function berandaTabs(
     ...(access.today
       ? [{ label: "Hari Ini", href: BERANDA_HREF, exact: true }]
       : []),
-    ...(access.money ? [{ label: "Uang", href: `${BERANDA_HREF}/uang` }] : []),
+    ...(access.money ? [{ label: "Uang", href: `${BERANDA_HREF}/money` }] : []),
     ...(access.operations
-      ? [{ label: "Operasional", href: `${BERANDA_HREF}/operasional` }]
+      ? [{ label: "Operasional", href: `${BERANDA_HREF}/operations` }]
       : []),
     ...(access.branches
-      ? [{ label: "Cabang", href: `${BERANDA_HREF}/cabang` }]
+      ? [{ label: "Cabang", href: `${BERANDA_HREF}/branches` }]
       : []),
   ];
 }
@@ -48,11 +48,11 @@ export function berandaTabs(
  */
 export const BERANDA_TABS: GatedTab[] = [
   { label: "Hari Ini", href: BERANDA_HREF, exact: true, anyOf: [{ feature: "berandaToday" }] },
-  { label: "Uang", href: `${BERANDA_HREF}/uang`, anyOf: [{ feature: "berandaMoney" }] },
+  { label: "Uang", href: `${BERANDA_HREF}/money`, anyOf: [{ feature: "berandaMoney" }] },
   {
     label: "Operasional",
-    href: `${BERANDA_HREF}/operasional`,
+    href: `${BERANDA_HREF}/operations`,
     anyOf: [{ feature: "berandaOperations" }],
   },
-  { label: "Cabang", href: `${BERANDA_HREF}/cabang`, anyOf: [{ feature: "berandaBranches" }] },
+  { label: "Cabang", href: `${BERANDA_HREF}/branches`, anyOf: [{ feature: "berandaBranches" }] },
 ];

@@ -550,7 +550,7 @@ describe("CashTransactionEditScreen — the form as a page", () => {
       }),
     );
     expect(mockPush).toHaveBeenCalledWith(
-      "/dashboard/keuangan/kas-bank/transaksi/ct1",
+      "/dashboard/finance/cash-bank/transactions/ct1",
     );
   });
 
@@ -563,7 +563,7 @@ describe("CashTransactionEditScreen — the form as a page", () => {
     await user.click(await screen.findByRole("button", { name: "Batal" }));
 
     expect(mockPush).toHaveBeenCalledWith(
-      "/dashboard/keuangan/kas-bank/transaksi/ct1",
+      "/dashboard/finance/cash-bank/transactions/ct1",
     );
     expect(cashTransactionService.update).not.toHaveBeenCalled();
   });

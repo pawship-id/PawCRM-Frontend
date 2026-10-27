@@ -36,7 +36,7 @@ import {
   ELIGIBILITY_LABEL,
   MEMBERSHIP_HREF,
   PLAN_PRICE_MODE_LABEL,
-  PROMOSI_HREF,
+  PROMOSI_SUMMARY_HREF,
   planHref,
 } from "../labels";
 import {
@@ -120,7 +120,7 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
         <div className="min-w-0">
           <Breadcrumb
             items={[
-              { label: "Promosi", href: PROMOSI_HREF },
+              { label: "Promosi", href: PROMOSI_SUMMARY_HREF },
               { label: "Membership", href: MEMBERSHIP_HREF },
               { label: editing ? (plan!.code || plan!.name) : "Paket baru" },
             ]}
@@ -423,17 +423,17 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
           />
 
           {/* ───────────────────────────────────── Tampilan publik */}
-          <Card title="Tampilan publik" description="Halaman /membership di website.">
+          <Card title="Tampilan publik" description="Halaman membership di website toko.">
             <div className="flex flex-col gap-4">
               <CheckRowGroup>
                 <CheckRow
-                  label="Tampil di halaman /membership"
+                  label="Tampil di website"
                   description="Paket ini muncul di website dan bisa dibeli dari sana."
                   checked={draft.publicVisible}
                   onCheckedChange={(checked) => set("publicVisible", checked)}
                 />
                 <CheckRow
-                  label="Featured (kartu disorot)"
+                  label="Tonjolkan paket ini"
                   description="Kartunya ditonjolkan di antara paket lain."
                   checked={draft.publicFeatured}
                   onCheckedChange={(checked) => set("publicFeatured", checked)}
@@ -450,7 +450,7 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
                   error={fieldErrors["publicDisplay.order"]}
                 />
                 <TextField
-                  label="Label badge"
+                  label="Label sorotan"
                   value={draft.publicBadge}
                   placeholder="mis. Paling laris"
                   onChange={(event) => set("publicBadge", event.target.value)}
@@ -527,7 +527,7 @@ function AutoFill({
         <p className="text-sm font-semibold">Salin harga dari layanan</p>
         <p className="max-w-prose text-sm text-muted">
           Hanya untuk mengisi tabel harga di bawah dengan cepat: harga tiap varian layanan
-          dikali jumlah yang kamu isi. Ini <strong>tidak</strong> membatasi paket ke layanan
+          dikali jumlah yang Anda isi. Ini <strong>tidak</strong> membatasi paket ke layanan
           tersebut. Apa yang bisa dipakai anggota diatur di bagian Benefit. Kalau harga
           layanan berubah nanti, harga paket tidak ikut berubah.
         </p>

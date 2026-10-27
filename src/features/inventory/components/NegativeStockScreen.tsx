@@ -74,7 +74,7 @@ const COLUMNS: DataTableColumn<NegativeStockRow>[] = [
           >
             {row.name}
           </Link>
-          {!row.isActive && <Badge variant="outline">nonaktif</Badge>}
+          {!row.isActive && <Badge variant="outline">Nonaktif</Badge>}
         </div>
         <span className="block tabular-nums text-xs text-muted">
           <SkuText value={row.sku} fallback="—" />

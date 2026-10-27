@@ -8,5 +8,5 @@ import type { Crumb } from "@/components";
  */
 export const ANTAR_JEMPUT_CRUMBS: Crumb[] = [
   { label: "Layanan" },
-  { label: "Antar-Jemput", href: "/dashboard/layanan/antar-jemput" },
+  { label: "Antar-Jemput", href: "/dashboard/service/pickup-delivery" },
 ];

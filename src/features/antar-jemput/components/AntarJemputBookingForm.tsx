@@ -1847,7 +1847,7 @@ export function AntarJemputBookingForm({
                           value={row.main.price === null ? "—" : money(row.main.price)}
                         />
                         {row.main.discount > 0n && (
-                          <SummaryLine tone="discount" label="Diskon" value={`− ${money(row.main.discount)}`} />
+                          <SummaryLine tone="discount" label="Diskon" value={`−${money(row.main.discount)}`} />
                         )}
                         {row.addons.map((addonRow) => (
                           <SummaryLine

@@ -152,7 +152,7 @@ function batchText(item: OpnameItem): string | null {
 function lotLabel(lot: ProductBatch): string {
   const expiry = formatExpiry(lot.expiryDate);
   return expiry
-    ? `${lotOptionLabel(lot)} · exp ${expiry}`
+    ? `${lotOptionLabel(lot)} · kedaluwarsa ${expiry}`
     : lotOptionLabel(lot);
 }
 
@@ -730,7 +730,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
                   Selisih ini sudah dibukukan ke jurnal umum.
                 </p>
                 <Link
-                  href={`/dashboard/keuangan?entryId=${opname.journalEntryId}`}
+                  href={`/dashboard/finance?entryId=${opname.journalEntryId}`}
                   className="mt-2 inline-block text-sm font-medium text-primary-hover hover:underline"
                 >
                   Lihat jurnal →

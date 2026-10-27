@@ -67,13 +67,13 @@ export function RoleCreateForm() {
         permissions: selectionToGrants(selection),
       });
       // Redirect first, then fire the toast so it rides along on the list screen.
-      router.push("/dashboard/pengaturan/peran");
+      router.push("/dashboard/settings/roles");
       swalToast(`Peran ${created.name} tersimpan.`);
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
         setFieldErrors(error.fieldErrors);
       } else if (error instanceof ApiError) {
-        setFormError(error.message);
+        setFormError(error.fullMessage);
       } else {
         setFormError("Terjadi kesalahan. Coba lagi.");
       }
@@ -147,7 +147,7 @@ export function RoleCreateForm() {
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/pengaturan/peran")}
+          onClick={() => router.push("/dashboard/settings/roles")}
         >
           Batal
         </Button>

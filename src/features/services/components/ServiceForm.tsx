@@ -1041,17 +1041,16 @@ export function ServiceForm({
           {/*
             ─── PER HEWAN OR PER KUNJUNGAN (13 September 2026) ─────────────────
 
-            STORED, NOT YET BILLED BY. The antar-jemput feature that charges a
-            visit once, however many animals ride along, is still to come; until
-            then every service is charged per animal, and the hint says so rather
-            than letting somebody believe the choice already moves a bill.
+            Antar-jemput bills by it now (a `per_visit` ride is charged once
+            however many animals ride), so the hint no longer says it is
+            stored-only (27 October 2026).
           */}
           <SelectField
             label="Ditagih"
             value={billingUnit}
             onChange={(next) => setBillingUnit(next as ServiceBillingUnit)}
             options={BILLING_UNIT_OPTIONS}
-            hint="Per kunjungan: hewan yang datang bareng cuma bayar sekali, mis. antar-jemput. Sampai fitur antar-jemput tersedia, tagihannya masih dihitung per hewan."
+            hint="Per kunjungan: hewan yang datang bareng cuma bayar sekali, mis. antar-jemput. Per hewan: tiap hewan ditagih sendiri."
             disabled={saving}
             required
           />

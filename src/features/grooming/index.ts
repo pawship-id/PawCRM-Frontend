@@ -1,7 +1,7 @@
 /**
  * Public surface of the Grooming module — Layanan › Grooming.
  *
- * Four tabs, four routes: Ringkasan (`/dashboard/layanan/grooming`), the booking
+ * Four tabs, four routes: Ringkasan (`/dashboard/service/grooming`), the booking
  * board (`…/booking`), Layanan & Harga (`…/katalog`) and Pengaturan
  * (`…/pengaturan` — commission and capacity). Built from `buloo-grooming-v3.html` on the API as it stands.
  */

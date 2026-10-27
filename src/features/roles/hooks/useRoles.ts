@@ -103,7 +103,7 @@ export function useRoles(): UseRolesResult {
         setError(
           err instanceof ApiError
             ? err.message
-            : "Could not load roles. Please try again.",
+            : "Daftar peran tidak bisa dimuat. Coba lagi.",
         );
       })
       .finally(() => {

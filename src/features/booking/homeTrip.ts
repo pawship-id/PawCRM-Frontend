@@ -37,3 +37,27 @@ export function nextTripRung(status: HomeTripStatus): HomeTripStatus | null {
   if (index < 0) return null;
   return HOME_TRIP_RUNGS[index + 1] ?? null;
 }
+
+/**
+ * THE CONFIRM DIALOG BEFORE A TRIP RUNG (27 October 2026) — one wording for the
+ * groomer app and the admin's trip page. A rung only moves forward, is stamped
+ * with the hour, and the next rung's button appears where this one was, so a
+ * double tap would otherwise record two.
+ */
+export function homeTripConfirmCopy(to: HomeTripStatus): {
+  title: string;
+  body: string;
+  confirmLabel: string;
+} {
+  const label = HOME_TRIP_LABELS[to];
+  const extra =
+    to === "arrived_customer"
+      ? " Hewan yang belum ditandai datang sekalian ditandai sudah datang."
+      : "";
+
+  return {
+    title: `${label}?`,
+    body: `"${label}" dicatat dengan jam sekarang. Langkah perjalanan tidak bisa diundur.${extra}`,
+    confirmLabel: label,
+  };
+}

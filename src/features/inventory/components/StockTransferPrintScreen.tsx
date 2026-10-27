@@ -102,7 +102,7 @@ export function StockTransferPrintScreen({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <PageHeading
           crumbs={[
-            { label: "Inventory", href: "/dashboard/inventory" },
+            { label: "Inventori", href: "/dashboard/inventory" },
             {
               label: "Transfer Stok",
               href: "/dashboard/inventory/transfers",

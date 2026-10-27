@@ -126,7 +126,7 @@ describe("BranchesTable", () => {
     expect(within(menu).getAllByRole("menuitem")).toHaveLength(1);
     expect(within(menu).getByRole("menuitem", { name: /detail/i })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/cabang/b1",
+      "/dashboard/settings/branches/b1",
     );
   });
 
@@ -151,7 +151,7 @@ describe("BranchesTable", () => {
     expect(within(menu).getByRole("menuitem", { name: /detail/i })).toBeInTheDocument();
     expect(within(menu).getByRole("menuitem", { name: /ubah/i })).toHaveAttribute(
       "href",
-      "/dashboard/pengaturan/cabang/b1/edit",
+      "/dashboard/settings/branches/b1/edit",
     );
     // Delete not granted → its row stays out even though the menu opens.
     expect(

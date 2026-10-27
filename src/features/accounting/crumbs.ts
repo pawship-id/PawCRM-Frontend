@@ -13,22 +13,22 @@ import type { Crumb } from "@/components";
  * the current one. See components/Breadcrumb.
  */
 export const ACCOUNTING_CRUMBS = {
-  hub: { label: "Keuangan", href: "/dashboard/keuangan" },
+  hub: { label: "Keuangan", href: "/dashboard/finance" },
   /**
    * Kas & Bank — and the trail a transaction hangs from, since Transaksi became
    * its first sub-tab rather than a tab of its own.
    */
   cashBank: {
     label: "Kas & Bank",
-    href: "/dashboard/keuangan/kas-bank",
+    href: "/dashboard/finance/cash-bank",
   },
   profitLoss: {
     label: "Laba Rugi",
-    href: "/dashboard/keuangan/laba-rugi",
+    href: "/dashboard/finance/profit-loss",
   },
   balanceSheet: {
     label: "Neraca",
-    href: "/dashboard/keuangan/neraca",
+    href: "/dashboard/finance/balance-sheet",
   },
   /**
    * THE ONE ENTRY THAT IS NOT UNDER /keuangan — the chart of accounts moved to
@@ -38,13 +38,13 @@ export const ACCOUNTING_CRUMBS = {
    */
   accounts: {
     label: "Daftar Akun",
-    href: "/dashboard/pengaturan/daftar-akun",
+    href: "/dashboard/settings/chart-of-accounts",
   },
   journal: {
     // "Jurnal", the tab's own name — the mockup's trail and the tab it came
     // from read the same word (21 September 2026).
     label: "Jurnal",
-    href: "/dashboard/keuangan/journal-entries",
+    href: "/dashboard/finance/journal-entries",
   },
   /**
    * Also under Pengaturan since 22 September 2026, beside Daftar Akun — the
@@ -52,6 +52,6 @@ export const ACCOUNTING_CRUMBS = {
    */
   businessLines: {
     label: "Lini Bisnis",
-    href: "/dashboard/pengaturan/lini-bisnis",
+    href: "/dashboard/settings/business-lines",
   },
 } satisfies Record<string, Crumb>;

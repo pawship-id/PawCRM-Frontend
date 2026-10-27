@@ -198,14 +198,30 @@ describe("HomeTripDetailScreen", () => {
     show();
 
     await userEvent.click(await screen.findByRole("button", { name: word }));
+    expect(trips.changeStatus).not.toHaveBeenCalled();
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(`${word}?`)).toBeInTheDocument();
+    await userEvent.click(within(dialog).getByRole("button", { name: word }));
 
     expect(trips.changeStatus).toHaveBeenCalledWith("trip-1", to);
+  });
+
+  it("moves nothing when the dialog is dismissed", async () => {
+    show();
+
+    await userEvent.click(await screen.findByRole("button", { name: "Berangkat" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Batal" }));
+
+    expect(trips.changeStatus).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   it("re-reads the trip after a move — the door also moves the bookings", async () => {
     show();
 
     await userEvent.click(await screen.findByRole("button", { name: "Berangkat" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Berangkat" }));
 
     await waitFor(() => expect(trips.get).toHaveBeenCalledTimes(2));
   });
@@ -226,6 +242,7 @@ describe("HomeTripDetailScreen", () => {
     show();
 
     await userEvent.click(await screen.findByRole("button", { name: "Pulang" }));
+    await userEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Pulang" }));
 
     expect(
       await screen.findByText(/Hewan Mochi belum selesai dikerjakan/),

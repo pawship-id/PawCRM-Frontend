@@ -84,7 +84,7 @@ async function renderForm() {
   render(<UserCreateForm />);
   // Wait for the lookups spinner to disappear (form is ready).
   await waitForElementToBeRemoved(() =>
-    screen.queryByText(/loading form create user/i),
+    screen.queryByText(/memuat formulir/i),
   );
 }
 
@@ -98,10 +98,10 @@ describe("UserCreateForm", () => {
     const create = jest.spyOn(userService, "create");
     await renderForm();
 
-    await userEvent.click(screen.getByRole("button", { name: /create user/i }));
+    await userEvent.click(screen.getByRole("button", { name: /simpan pengguna/i }));
 
     expect(create).not.toHaveBeenCalled();
-    expect(screen.getByText(/full name is required/i)).toBeInTheDocument();
+    expect(screen.getByText(/nama lengkap wajib diisi/i)).toBeInTheDocument();
   });
 
   it("creates the user and redirects on success", async () => {
@@ -110,12 +110,12 @@ describe("UserCreateForm", () => {
       .mockResolvedValue({} as never);
     await renderForm();
 
-    await userEvent.type(screen.getByLabelText(/full name/i), "Ana Diaz");
+    await userEvent.type(screen.getByLabelText(/nama lengkap/i), "Ana Diaz");
     await userEvent.type(screen.getByLabelText(/email/i), "ana@paw.com");
     await userEvent.type(screen.getByLabelText(/^password/i), "secret123");
-    await userEvent.type(screen.getByLabelText(/confirm password/i), "secret123");
+    await userEvent.type(screen.getByLabelText(/ulangi password/i), "secret123");
     await userEvent.click(screen.getByLabelText(/semua cabang/i));
-    await userEvent.click(screen.getByRole("button", { name: /create user/i }));
+    await userEvent.click(screen.getByRole("button", { name: /simpan pengguna/i }));
 
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -126,16 +126,16 @@ describe("UserCreateForm", () => {
         warehouseAccess: [],
       }),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/pengguna");
+    expect(push).toHaveBeenCalledWith("/dashboard/settings/users");
   });
 
   describe("warehouse scope", () => {
     async function fillIdentity() {
-      await userEvent.type(screen.getByLabelText(/full name/i), "Ana Diaz");
+      await userEvent.type(screen.getByLabelText(/nama lengkap/i), "Ana Diaz");
       await userEvent.type(screen.getByLabelText(/email/i), "ana@paw.com");
       await userEvent.type(screen.getByLabelText(/^password/i), "secret123");
       await userEvent.type(
-        screen.getByLabelText(/confirm password/i),
+        screen.getByLabelText(/ulangi password/i),
         "secret123",
       );
     }
@@ -159,7 +159,7 @@ describe("UserCreateForm", () => {
 
       await userEvent.click(screen.getByLabelText(/cabang tertentu/i));
       await userEvent.click(screen.getByLabelText("Jakarta"));
-      await userEvent.click(screen.getByRole("button", { name: /create user/i }));
+      await userEvent.click(screen.getByRole("button", { name: /simpan pengguna/i }));
 
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -182,7 +182,7 @@ describe("UserCreateForm", () => {
       await userEvent.click(screen.getByLabelText("Jakarta"));
       await userEvent.click(screen.getByLabelText(/gudang tertentu/i));
       await userEvent.click(screen.getByLabelText("Gudang Jakarta Depan"));
-      await userEvent.click(screen.getByRole("button", { name: /create user/i }));
+      await userEvent.click(screen.getByRole("button", { name: /simpan pengguna/i }));
 
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -201,7 +201,7 @@ describe("UserCreateForm", () => {
       await userEvent.click(screen.getByLabelText(/cabang tertentu/i));
       await userEvent.click(screen.getByLabelText("Jakarta"));
       await userEvent.click(screen.getByLabelText(/gudang tertentu/i));
-      await userEvent.click(screen.getByRole("button", { name: /create user/i }));
+      await userEvent.click(screen.getByRole("button", { name: /simpan pengguna/i }));
 
       expect(create).not.toHaveBeenCalled();
       expect(
@@ -222,7 +222,7 @@ describe("UserCreateForm", () => {
       // Unticking is how access is revoked; a leftover row would take effect
       // again the day the branch is granted back.
       await userEvent.click(screen.getByLabelText("Jakarta"));
-      await userEvent.click(screen.getByRole("button", { name: /create user/i }));
+      await userEvent.click(screen.getByRole("button", { name: /simpan pengguna/i }));
 
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -257,7 +257,7 @@ describe("UserCreateForm", () => {
       await userEvent.click(screen.getByLabelText(/cabang tertentu/i));
       await userEvent.click(screen.getByLabelText("Jakarta"));
       await userEvent.click(screen.getByLabelText(/semua cabang/i));
-      await userEvent.click(screen.getByRole("button", { name: /create user/i }));
+      await userEvent.click(screen.getByRole("button", { name: /simpan pengguna/i }));
 
       expect(create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -272,18 +272,18 @@ describe("UserCreateForm", () => {
   it("surfaces a duplicate-email conflict as an alert", async () => {
     jest
       .spyOn(userService, "create")
-      .mockRejectedValue(new ApiError("Email already in use", 409));
+      .mockRejectedValue(new ApiError("Email ana@paw.com sudah dipakai akun lain.", 409));
     await renderForm();
 
-    await userEvent.type(screen.getByLabelText(/full name/i), "Ana Diaz");
+    await userEvent.type(screen.getByLabelText(/nama lengkap/i), "Ana Diaz");
     await userEvent.type(screen.getByLabelText(/email/i), "ana@paw.com");
     await userEvent.type(screen.getByLabelText(/^password/i), "secret123");
-    await userEvent.type(screen.getByLabelText(/confirm password/i), "secret123");
+    await userEvent.type(screen.getByLabelText(/ulangi password/i), "secret123");
     await userEvent.click(screen.getByLabelText(/semua cabang/i));
-    await userEvent.click(screen.getByRole("button", { name: /create user/i }));
+    await userEvent.click(screen.getByRole("button", { name: /simpan pengguna/i }));
 
     expect(
-      await screen.findByText(/email already in use/i),
+      await screen.findByText(/sudah dipakai akun lain/i),
     ).toBeInTheDocument();
     expect(push).not.toHaveBeenCalled();
   });

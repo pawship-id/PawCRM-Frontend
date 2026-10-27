@@ -17,7 +17,7 @@ jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 const push = jest.fn();
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push }),
-  usePathname: () => "/dashboard/promosi/membership/anggota",
+  usePathname: () => "/dashboard/promotion/membership/member",
 }));
 
 const mocked = membershipService as jest.Mocked<typeof membershipService>;
@@ -147,7 +147,7 @@ describe("Anggota list", () => {
     renderWithAuth(<MembershipCardsPanel />);
 
     await user.click(await screen.findByText("Rina Wijaya · hewan"));
-    expect(push).toHaveBeenCalledWith("/dashboard/promosi/membership/anggota/card-1");
+    expect(push).toHaveBeenCalledWith("/dashboard/promotion/membership/member/card-1");
   });
 
   it("filters by Melekat ke through the Filter panel, applied on Terapkan", async () => {

@@ -80,7 +80,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
       <div className="rounded-xl border border-dashed border-border bg-surface px-6 py-16 text-center">
         <p className="font-medium text-foreground">Entri tidak ditemukan.</p>
         <p className="mt-1 text-sm text-muted">
-          Nomor jurnal ini tidak ada di buku besar tenant kamu. Mungkin
+          Nomor jurnal ini tidak ada di buku besar usaha Anda. Mungkin
           tautannya sudah usang.
         </p>
         <Button variant="secondary" size="sm" asChild className="mt-4">
@@ -467,13 +467,13 @@ function documentHref(document: JournalSourceDocument | null): string | null {
     case "stock_opname":
       return `/dashboard/inventory/opname/${document.id}`;
     case "cash_transaction":
-      return `/dashboard/keuangan/kas-bank/transaksi/${document.id}`;
+      return `/dashboard/finance/cash-bank/transactions/${document.id}`;
     case "customer_invoice":
       return `/dashboard/sales/invoice/${document.id}`;
     case "purchase_invoice":
       return `/dashboard/purchasing/payables/${document.id}`;
     case "pet_membership":
-      return `/dashboard/promosi/membership/anggota/${document.id}`;
+      return `/dashboard/promotion/membership/member/${document.id}`;
     default:
       return null;
   }

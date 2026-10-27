@@ -3,7 +3,7 @@
  * that lists services borrows from it.
  *
  * Pages import from here, never from deep component paths. `ServiceForm` backs
- * `/dashboard/pengaturan/layanan/new` and `/[id]`. The hub at that prefix belongs to
+ * `/dashboard/settings/services/new` and `/[id]`. The hub at that prefix belongs to
  * `features/settings`, and the list is Grooming › Layanan & Harga — there is no
  * catalogue-wide list since 13 September 2026.
  */

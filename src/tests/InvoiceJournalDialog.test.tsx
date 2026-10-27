@@ -72,7 +72,7 @@ describe("InvoiceJournalDialog", () => {
 
     expect(
       screen.getByRole("link", { name: "JE-2026-08-0411" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/journal-entries/je1");
+    ).toHaveAttribute("href", "/dashboard/finance/journal-entries/je1");
   });
 
   it("shows the number as plain text without `journalEntries:read`", () => {

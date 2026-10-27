@@ -119,11 +119,11 @@ export function CustomerValueSection({ customerId }: { customerId: string }) {
       <dl className="grid gap-x-6 gap-y-3 border-t border-border pt-4 sm:grid-cols-3">
         <Pending
           label="Lifetime value"
-          blockedBy="Belum ada agregasi omzet per pelanggan lintas kasir dan faktur"
+          blockedBy="Total belanja per pelanggan dari kasir dan faktur belum dihitung."
         />
         <Pending
           label="Rata-rata per kunjungan"
-          blockedBy="Menunggu lifetime value dan jumlah kunjungan"
+          blockedBy="Menunggu total belanja dan jumlah kunjungan pelanggan."
         />
         <Pending
           label="Produk paling sering dibeli"

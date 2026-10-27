@@ -37,7 +37,7 @@ export function RecordPaymentForm({
       note={
         <Alert variant="info">
           Jumlah tidak boleh melebihi sisa tagihan. Setelah disimpan, status
-          faktur naik sendiri ke <strong>DP sebagian</strong> atau{" "}
+          faktur naik sendiri ke <strong>Lunas sebagian</strong> atau{" "}
           <strong>Lunas</strong> — tidak ada aksi manual terpisah.
         </Alert>
       }

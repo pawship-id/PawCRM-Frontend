@@ -20,7 +20,7 @@ import { variantOptionService } from "@/services/variantOption.service";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
-  usePathname: () => "/dashboard/layanan/grooming/pengaturan",
+  usePathname: () => "/dashboard/service/grooming/settings",
   useSearchParams: () => new URLSearchParams(),
 }));
 
@@ -193,7 +193,7 @@ describe("GroomingSettingsScreen — lists shared by every service", () => {
     renderWithAuth(<GroomingSettingsScreen />);
 
     const link = await screen.findByRole("link", { name: /Data hewan/ });
-    expect(link).toHaveAttribute("href", "/dashboard/pengaturan/layanan");
+    expect(link).toHaveAttribute("href", "/dashboard/settings/services");
     expect(screen.queryByText("Opsi Varian")).not.toBeInTheDocument();
     // Nothing is waiting on anything any more.
     expect(screen.queryByText("Segera")).not.toBeInTheDocument();
@@ -203,7 +203,7 @@ describe("GroomingSettingsScreen — lists shared by every service", () => {
     renderWithAuth(<GroomingSettingsScreen />);
 
     const link = await screen.findByRole("link", { name: /^Ras/ });
-    expect(link).toHaveAttribute("href", "/dashboard/pengaturan/layanan?bagian=ras");
+    expect(link).toHaveAttribute("href", "/dashboard/settings/services?bagian=ras");
 
     const titles = screen
       .getAllByRole("link")
@@ -216,21 +216,21 @@ describe("GroomingSettingsScreen — lists shared by every service", () => {
     renderWithAuth(<GroomingSettingsScreen />);
 
     const link = await screen.findByRole("link", { name: /^Add-on/ });
-    expect(link).toHaveAttribute("href", "/dashboard/pengaturan/layanan?bagian=addon");
+    expect(link).toHaveAttribute("href", "/dashboard/settings/services?bagian=addon");
   });
 
   it("leads Zona & Perjalanan to the Zona section", async () => {
     renderWithAuth(<GroomingSettingsScreen />);
 
     const link = await screen.findByRole("link", { name: /Zona & Perjalanan/ });
-    expect(link).toHaveAttribute("href", "/dashboard/pengaturan/layanan?bagian=zona");
+    expect(link).toHaveAttribute("href", "/dashboard/settings/services?bagian=zona");
   });
 
   it("leads to the Tahapan list, not the catalogue", async () => {
     renderWithAuth(<GroomingSettingsScreen />);
 
     const link = await screen.findByRole("link", { name: /Tahapan/ });
-    expect(link).toHaveAttribute("href", "/dashboard/pengaturan/layanan?bagian=tahapan");
+    expect(link).toHaveAttribute("href", "/dashboard/settings/services?bagian=tahapan");
     expect(link).toHaveTextContent("Urutan kerja yang dipakai jadwal dan komisi");
   });
 

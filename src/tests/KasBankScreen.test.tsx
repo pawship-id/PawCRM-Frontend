@@ -21,7 +21,7 @@ jest.mock("@/services/journalEntry.service");
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn() }),
-  usePathname: () => "/dashboard/keuangan/kas-bank",
+  usePathname: () => "/dashboard/finance/cash-bank",
 }));
 
 const asMock = <T extends (...args: never[]) => unknown>(fn: T) =>
@@ -242,7 +242,7 @@ describe("Kas & Bank — the account table", () => {
     expect(screen.queryByText("Kas Pusat")).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Channel pembayaran" }),
-    ).toHaveAttribute("href", "/dashboard/pengaturan/channel-pembayaran");
+    ).toHaveAttribute("href", "/dashboard/settings/payment-channels");
   });
 });
 
@@ -308,7 +308,7 @@ describe("Kas & Bank — sorting the account table", () => {
     await user.click(row.getByRole("button", { name: "Aksi untuk Kas" }));
     expect(
       await screen.findByRole("menuitem", { name: "Ubah" }),
-    ).toHaveAttribute("href", "/dashboard/pengaturan/daftar-akun/acc-1101/edit");
+    ).toHaveAttribute("href", "/dashboard/settings/chart-of-accounts/acc-1101/edit");
   });
 
   it("drops the sentence explaining Masuk, Keluar and Saldo", async () => {
@@ -375,10 +375,10 @@ describe("Kas & Bank — the sub-tabs", () => {
 
     expect(
       await screen.findByRole("link", { name: "Transaksi" }),
-    ).toHaveAttribute("href", "/dashboard/keuangan/kas-bank");
+    ).toHaveAttribute("href", "/dashboard/finance/cash-bank");
     expect(screen.getByRole("link", { name: "Biaya Tetap" })).toHaveAttribute(
       "href",
-      "/dashboard/keuangan/kas-bank/biaya-tetap",
+      "/dashboard/finance/cash-bank/fixed-costs",
     );
     // The list's own controls, which only the first sub-tab carries.
     expect(screen.getByLabelText("Cari transaksi")).toBeInTheDocument();

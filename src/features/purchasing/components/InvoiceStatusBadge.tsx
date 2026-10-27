@@ -28,9 +28,9 @@ const TONE: Record<InvoiceStatus, string> = {
 };
 
 const LABEL: Record<InvoiceStatus, string> = {
-  unpaid: "belum dibayar",
-  partial: "dibayar sebagian",
-  paid: "lunas",
+  unpaid: "Belum dibayar",
+  partial: "Dibayar sebagian",
+  paid: "Lunas",
 };
 
 export function InvoiceStatusBadge({ status }: { status: InvoiceStatus }) {

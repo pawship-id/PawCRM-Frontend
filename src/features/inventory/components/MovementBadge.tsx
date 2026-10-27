@@ -13,7 +13,7 @@ import type { MovementType } from "@/types/inventory";
  */
 const LABELS: Record<MovementType, { label: string; tone: string }> = {
   receipt: { label: "Penerimaan", tone: "bg-success/12 text-success" },
-  customer_return: { label: "Retur customer", tone: "bg-success/12 text-success" },
+  customer_return: { label: "Retur pelanggan", tone: "bg-success/12 text-success" },
   transfer_in: { label: "Transfer masuk", tone: "bg-secondary/25 text-secondary-foreground" },
   pos_sale: { label: "Penjualan", tone: "bg-danger/10 text-danger" },
   /*
@@ -45,7 +45,7 @@ const LABELS: Record<MovementType, { label: string; tone: string }> = {
   // from somewhere. They are coming back because the transfer was edited or
   // cancelled before anybody received it.
   transfer_cancel: { label: "Transfer dibatalkan", tone: "bg-secondary/25 text-secondary-foreground" },
-  bundle_consume: { label: "Bundle consume", tone: "bg-danger/10 text-danger" },
+  bundle_consume: { label: "Penjualan bundle", tone: "bg-danger/10 text-danger" },
   opname_diff: { label: "Selisih opname", tone: "bg-primary/12 text-primary-hover" },
   adjustment: { label: "Penyesuaian", tone: "bg-primary/12 text-primary-hover" },
   // Green, because it brings goods in — but its own label rather than

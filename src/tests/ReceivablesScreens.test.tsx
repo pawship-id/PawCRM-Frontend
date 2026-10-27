@@ -1282,7 +1282,7 @@ describe("InvoiceDetail — the title line", () => {
     const titleLine = heading.parentElement as HTMLElement;
     const block = titleLine.parentElement as HTMLElement;
 
-    expect(within(titleLine).getByText("belum lunas")).toBeInTheDocument();
+    expect(within(titleLine).getByText("Belum lunas")).toBeInTheDocument();
     expect(within(block).getByText("Kasir")).toBeInTheDocument();
     expect(within(block).queryByText("dari kasir")).not.toBeInTheDocument();
   });
@@ -1329,7 +1329,7 @@ describe("InvoiceDetail — WhatsApp", () => {
     const link = await screen.findByRole("link", { name: /WhatsApp/ });
     const text = decodeURIComponent(link.getAttribute("href") ?? "");
     expect(text).toContain(
-      `${window.location.origin}/faktur/Hq3vR8nLpW2kTz6yXb4cZA`,
+      `${window.location.origin}/invoice/Hq3vR8nLpW2kTz6yXb4cZA`,
     );
     expect(text).toContain("sisa tagihan Rp 300.000");
   });
@@ -1347,7 +1347,7 @@ describe("InvoiceDetail — WhatsApp", () => {
 
     const link = await screen.findByRole("link", { name: /WhatsApp/ });
     const text = decodeURIComponent(link.getAttribute("href") ?? "");
-    expect(text).not.toContain("/faktur/");
+    expect(text).not.toContain("/invoice/");
     expect(text).toContain("Terima kasih.");
   });
 

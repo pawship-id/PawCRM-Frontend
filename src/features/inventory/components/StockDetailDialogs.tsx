@@ -83,7 +83,7 @@ const REFERENCE_NAMES: Record<ReferenceType, string> = {
   pos_void: "Pembatalan transaksi",
   stock_opname: "Stok opname",
   purchase_return: "Retur pembelian",
-  customer_return: "Retur customer",
+  customer_return: "Retur pelanggan",
   // The goods leaving. The two below are the same transfer's later acts, and
   // each is a row of its own so a card shows "sent", "received" and "undone" as
   // three events rather than one document appearing three times.
@@ -267,7 +267,7 @@ export function MovementDetailDialog({
                         </Badge>
                       )}
                     </Field>
-                    <Field label="Kode batch pemasok">
+                    <Field label="Kode batch supplier">
                       {lot.supplierBatchCode ? (
                         <span className="tabular-nums">{lot.supplierBatchCode}</span>
                       ) : (
@@ -281,7 +281,7 @@ export function MovementDetailDialog({
                           <ExpiryBadge date={lot.expiryDate} />
                         </span>
                       ) : (
-                        <span className="text-muted">tanpa expiry</span>
+                        <span className="text-muted">tanpa kedaluwarsa</span>
                       )}
                     </Field>
                     <Field label="Sisa stok batch ini">
@@ -422,7 +422,7 @@ export function BatchDetailDialog({
                   {batch.expiryDate ? (
                     new Date(batch.expiryDate).toLocaleDateString("id-ID", DATE_ONLY)
                   ) : (
-                    <span className="text-muted">tanpa expiry</span>
+                    <span className="text-muted">tanpa kedaluwarsa</span>
                   )}
                 </Field>
                 <Field label="Sisa waktu">
@@ -431,7 +431,7 @@ export function BatchDetailDialog({
                 <Field label="Kode batch internal">
                   <span className="tabular-nums">{batch.batchCode}</span>
                 </Field>
-                <Field label="Kode batch pemasok">
+                <Field label="Kode batch supplier">
                   {batch.supplierBatchCode ? (
                     <span className="tabular-nums">{batch.supplierBatchCode}</span>
                   ) : (

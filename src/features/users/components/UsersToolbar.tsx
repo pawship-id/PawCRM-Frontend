@@ -51,7 +51,7 @@ export function UsersToolbar({
       actions={
         <Can feature="users" action="create">
           <Button asChild>
-            <Link href="/dashboard/pengaturan/pengguna/new">
+            <Link href="/dashboard/settings/users/new">
               <Plus className="size-4" />
               Pengguna baru
             </Link>

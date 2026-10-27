@@ -251,7 +251,7 @@ export function FinanceReportToolbar({
               // "which period", so it wears the shape of the others. What it
               // does differently is open the two inputs below rather than
               // answer on the spot.
-              { value: CUSTOM_PERIOD, label: "Custom" },
+              { value: CUSTOM_PERIOD, label: "Pilih tanggal" },
             ]}
             onChange={(picked) => {
               if (picked === CUSTOM_PERIOD) {

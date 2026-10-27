@@ -60,7 +60,7 @@ describe("WarehouseCreateForm", () => {
     );
 
     expect(create).not.toHaveBeenCalled();
-    expect(screen.getByText(/warehouse name is required/i)).toBeInTheDocument();
+    expect(screen.getByText(/nama gudang wajib diisi/i)).toBeInTheDocument();
   });
 
   it("rejects a PIC phone with letters before calling create", async () => {
@@ -74,7 +74,7 @@ describe("WarehouseCreateForm", () => {
     );
 
     expect(create).not.toHaveBeenCalled();
-    expect(screen.getByText(/only digits, spaces/i)).toBeInTheDocument();
+    expect(screen.getByText(/hanya angka, spasi/i)).toBeInTheDocument();
   });
 
   it("creates the warehouse and redirects on success", async () => {
@@ -106,7 +106,7 @@ describe("WarehouseCreateForm", () => {
         hasPos: false,
       }),
     );
-    expect(push).toHaveBeenCalledWith("/dashboard/pengaturan/gudang");
+    expect(push).toHaveBeenCalledWith("/dashboard/settings/warehouses");
   });
 
   it("sends the till flag when the warehouse asks for one", async () => {

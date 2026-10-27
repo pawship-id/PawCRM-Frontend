@@ -2,7 +2,7 @@
  * Public surface of the booking feature.
  *
  * `/dashboard/booking` is HARI INI — the day board, every line of business on
- * one screen (`TodayScreen`); `/dashboard/booking/kalender` is the same day as
+ * one screen (`TodayScreen`); `/dashboard/booking/calendar` is the same day as
  * an hour grid per groomer; `/dashboard/booking/new` is where bookings are
  * taken — one card per booking, one animal and one main service each — and
  * `/dashboard/booking/:id` is one booking, whole.

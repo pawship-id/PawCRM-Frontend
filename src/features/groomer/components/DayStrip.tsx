@@ -50,7 +50,7 @@ export function DayStrip({
               {dayNumber(day.date)}
             </span>
             <span className={cn("text-xs tabular-nums", on ? "text-primary-foreground/80" : "text-muted")}>
-              {day.mine > 0 ? `${day.mine} job` : "—"}
+              {day.mine > 0 ? `${day.mine} tugas` : "—"}
             </span>
             {day.isToday && (
               <>

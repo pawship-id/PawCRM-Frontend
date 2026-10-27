@@ -1,7 +1,7 @@
 import type { CommissionRow, CommissionStatus } from "@/types/api";
 
 /** Where the Komisi tab lives, and where one row of it opens. */
-export const COMMISSIONS_HREF = "/dashboard/keuangan/komisi";
+export const COMMISSIONS_HREF = "/dashboard/finance/commissions";
 
 export function commissionHref(row: {
   bookingId: string;
@@ -12,7 +12,7 @@ export function commissionHref(row: {
 
 /** The mockup's words for each status, plus the two it had no row for. */
 export const COMMISSION_STATUS_LABEL: Record<CommissionStatus, string> = {
-  pending: "Menunggu Persetujuan",
+  pending: "Menunggu persetujuan",
   approved: "Disetujui",
   paid: "Dibayar",
   reversed: "Dibatalkan",

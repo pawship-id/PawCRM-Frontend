@@ -44,7 +44,7 @@ export function PosReviewLink({
 
   return (
     <Button asChild type="button" variant="secondary" size="sm">
-      <Link href="/dashboard/pos/perlu-dicek">
+      <Link href="/dashboard/pos/needs-review">
         <ClipboardCheck className="size-4" />
         Perlu dicek ({count})
       </Link>

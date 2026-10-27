@@ -589,7 +589,7 @@ export function JournalEntryCreateForm() {
                 <li>
                   <b>Nominalnya</b> ambil dari jurnal penyesuaiannya, jangan
                   dihitung ulang. Cari di Jurnal dengan keterangan{" "}
-                  <b>Stock adjustment</b> — angka pada baris Beban Penyesuaian Persediaan
+                  <b>Penyesuaian stok</b> — angka pada baris Beban Penyesuaian Persediaan
                   itulah yang dipindah.
                 </li>
                 <li>

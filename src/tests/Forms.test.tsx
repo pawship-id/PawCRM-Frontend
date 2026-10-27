@@ -309,7 +309,7 @@ describe("FormActionBar", () => {
       <form>
         <FormActionBar
           submitLabel="Simpan faktur"
-          cancelHref="/dashboard/sales"
+          cancelHref="/dashboard/sales/summary"
           disabled
           blockedReason="Pilih pelanggan dulu"
         />

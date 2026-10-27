@@ -39,10 +39,10 @@ describe("LoginForm", () => {
 
   it("validates before calling signIn", async () => {
     render(withAuth(<LoginForm />));
-    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^masuk$/i }));
 
     expect(signIn).not.toHaveBeenCalled();
-    expect(screen.getByText(/email is required/i)).toBeInTheDocument();
+    expect(screen.getByText(/email wajib diisi/i)).toBeInTheDocument();
   });
 
   it("signs in and redirects on success", async () => {
@@ -51,7 +51,7 @@ describe("LoginForm", () => {
 
     await userEvent.type(screen.getByLabelText(/email/i), "a@b.com");
     await userEvent.type(screen.getByLabelText(/password/i), "secret1");
-    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^masuk$/i }));
 
     expect(signIn).toHaveBeenCalledWith("a@b.com", "secret1");
     expect(replace).toHaveBeenCalledWith("/dashboard/profile");
@@ -59,16 +59,16 @@ describe("LoginForm", () => {
 
   it("shows the generic error message on a 401", async () => {
     signIn.mockRejectedValueOnce(
-      new ApiError("Invalid email or password", 401),
+      new ApiError("Email atau password-nya belum cocok. Coba cek lagi.", 401),
     );
     render(withAuth(<LoginForm />));
 
     await userEvent.type(screen.getByLabelText(/email/i), "a@b.com");
     await userEvent.type(screen.getByLabelText(/password/i), "wrongpass");
-    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^masuk$/i }));
 
     expect(
-      await screen.findByText(/invalid email or password/i),
+      await screen.findByText(/email atau password-nya belum cocok/i),
     ).toBeInTheDocument();
   });
 

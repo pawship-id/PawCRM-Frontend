@@ -61,7 +61,7 @@ export function ProfileForm() {
       } else if (error instanceof ApiError) {
         setFormError(error.message);
       } else {
-        setFormError("Something went wrong. Please try again.");
+        setFormError("Terjadi kesalahan. Coba lagi.");
       }
     } finally {
       setSaving(false);
@@ -71,10 +71,10 @@ export function ProfileForm() {
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
       {formError && <Alert variant="error">{formError}</Alert>}
-      {saved && <Alert variant="success">Profile updated.</Alert>}
+      {saved && <Alert variant="success">Profil tersimpan.</Alert>}
 
       <TextField
-        label="Full name"
+        label="Nama lengkap"
         name="fullName"
         autoComplete="name"
         value={fullName}
@@ -101,23 +101,23 @@ export function ProfileForm() {
       />
 
       <TextField
-        label="Phone"
+        label="Telepon"
         type="tel"
         name="phone"
         autoComplete="tel"
-        placeholder="Optional"
+        placeholder="Opsional"
         value={phone ?? ""}
         onChange={(e) => {
           setPhone(e.target.value);
           setSaved(false);
         }}
         error={fieldErrors.phone}
-        hint="Leave blank to remove."
+        hint="Kosongkan kalau mau dihapus."
       />
 
       <div className="flex justify-end">
         <Button type="submit" loading={saving}>
-          Save changes
+          Simpan profil
         </Button>
       </div>
     </form>

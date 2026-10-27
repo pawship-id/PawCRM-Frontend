@@ -363,6 +363,12 @@ const ACTION_META: Record<string, ActionMeta> = {
 /** Old rows written before a rename; labelled, but not offered as a filter. */
 const LEGACY_LABEL: Record<string, string> = {
   customer_invoice_payment: "Pembayaran faktur dicatat",
+  // The till's own events, written with a dotted slug — labelled so the list
+  // never shows "Pos device register" (27 October 2026).
+  "pos.device_register": "Perangkat kasir didaftarkan",
+  "pos.void": "Transaksi kasir dibatalkan",
+  "pos.return": "Retur kasir dicatat",
+  "pos.discountOverride": "Diskon kasir melewati batas",
 };
 
 /** The actions offered in the "Aksi" filter — one module's, or all of them. */
@@ -403,7 +409,7 @@ const ENTITY_HREF: Partial<Record<string, (id: string) => string>> = {
   purchase_invoice: (id) => `/dashboard/purchasing/payables/${id}`,
   goods_receipt: (id) => `/dashboard/purchasing/receipts/${id}`,
   purchase_return: (id) => `/dashboard/purchasing/returns/${id}`,
-  cash_transaction: (id) => `/dashboard/keuangan/kas-bank/transaksi/${id}`,
+  cash_transaction: (id) => `/dashboard/finance/cash-bank/transactions/${id}`,
   stock_opname: (id) => `/dashboard/inventory/opname/${id}`,
   stock_transfer: (id) => `/dashboard/inventory/transfers/${id}`,
   petmembership: cardHref,

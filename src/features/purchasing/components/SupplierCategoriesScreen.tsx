@@ -33,7 +33,7 @@ export function SupplierCategoriesScreen() {
   return (
     <div className="flex flex-col gap-6">
       <SettingsPageHeader
-        title="Kategori Supplier"
+        title="Kategori supplier"
         tab="umum"
         description="Kelompok seperti Makanan, Perlengkapan, atau Obat — dipakai untuk memilah supplier, bukan untuk harga atau pajak."
       />

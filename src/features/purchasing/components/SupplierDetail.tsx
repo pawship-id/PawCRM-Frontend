@@ -202,7 +202,7 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
                 {supplier.category?.name ??
                   (supplier.categoryId ? "Kategori terhapus" : "—")}
               </dd>
-              <dt className="text-muted">Tipe pemasok</dt>
+              <dt className="text-muted">Tipe supplier</dt>
               <dd className="font-medium">
                 {supplier.entityType === "perusahaan"
                   ? "Perusahaan"
@@ -245,7 +245,7 @@ export function SupplierDetail({ supplierId }: { supplierId: string }) {
               </dd>
               <dt className="text-muted">Email</dt>
               <dd className="truncate font-medium">{supplier.email ?? "—"}</dd>
-              <dt className="text-muted">Faximili</dt>
+              <dt className="text-muted">Faksimile</dt>
               <dd className="font-medium tabular-nums">
                 {supplier.fax ?? "—"}
               </dd>

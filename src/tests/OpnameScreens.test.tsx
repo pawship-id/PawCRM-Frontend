@@ -1462,7 +1462,7 @@ describe("OpnameSheet", () => {
 
     renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
 
-    expect(await screen.findByText("final")).toBeInTheDocument();
+    expect(await screen.findByText("Final")).toBeInTheDocument();
     expect(screen.getByText(/oleh Budi/)).toBeInTheDocument();
     expect(
       screen.queryByLabelText(/Qty fisik Shampoo Anjing/),

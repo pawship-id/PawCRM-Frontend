@@ -17,7 +17,7 @@ const replace = jest.fn();
 const router = { replace, push: jest.fn(), refresh: jest.fn() };
 jest.mock("next/navigation", () => ({
   useRouter: () => router,
-  usePathname: () => "/dashboard/layanan/antar-jemput/bk-aj",
+  usePathname: () => "/dashboard/service/pickup-delivery/bk-aj",
 }));
 
 const bookings = bookingService as jest.Mocked<typeof bookingService>;
@@ -157,7 +157,7 @@ async function terkaitCard(): Promise<HTMLElement> {
 }
 
 /**
- * THE RIDE'S OWN PAGE — `/dashboard/layanan/antar-jemput/:bookingId`
+ * THE RIDE'S OWN PAGE — `/dashboard/service/pickup-delivery/:bookingId`
  * (23 September 2026, from `buloo-antar-jemput-v5.html`).
  */
 describe("AntarJemputBookingDetailScreen", () => {
@@ -304,11 +304,11 @@ describe("AntarJemputBookingDetailScreen", () => {
     const harga = within(await hargaCard());
 
     expect(harga.getByText("Diskon item")).toBeInTheDocument();
-    expect(harga.getByText("− Rp 2.000")).toBeInTheDocument();
+    expect(harga.getByText("−Rp 2.000")).toBeInTheDocument();
     expect(harga.getByText("Subtotal")).toBeInTheDocument();
     expect(harga.getByText("Rp 43.000")).toBeInTheDocument();
     expect(harga.getByText("Diskon booking")).toBeInTheDocument();
-    expect(harga.getByText("− Rp 5.000")).toBeInTheDocument();
+    expect(harga.getByText("−Rp 5.000")).toBeInTheDocument();
     expect(harga.getByText("Rp 38.000")).toBeInTheDocument();
   });
 
@@ -384,7 +384,7 @@ describe("AntarJemputBookingDetailScreen", () => {
     expect(trip.getByText("Halaman ini")).toBeInTheDocument();
     expect(trip.getByRole("link", { name: /buka/i })).toHaveAttribute(
       "href",
-      "/dashboard/layanan/antar-jemput/bk-aj-2",
+      "/dashboard/service/pickup-delivery/bk-aj-2",
     );
   });
 

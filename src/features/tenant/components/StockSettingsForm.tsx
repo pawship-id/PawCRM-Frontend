@@ -113,8 +113,8 @@ export function StockSettingsForm({
               </Label>
               <p className="mt-1 max-w-prose text-xs text-muted">
                 {allowed
-                  ? "Kasir tetap bisa menambahkan barang yang stoknya nol, dan saldonya jadi minus setelah dibayar. Barisnya muncul di Inventory, bagian Stok minus, supaya bisa dibereskan."
-                  : "Kasir tidak bisa menambahkan barang yang stoknya nol, dan pembayaran ditolak kalau stoknya kurang. Terima dulu barangnya, atau perbaiki lewat Stok Opname."}{" "}
+                  ? "Kasir tetap bisa menambahkan barang yang stoknya nol, dan saldonya jadi minus setelah dibayar. Barisnya muncul di Inventori, bagian Stok minus, supaya bisa dibereskan."
+                  : "Kasir tidak bisa menambahkan barang yang stoknya nol, dan pembayaran ditolak kalau stoknya kurang. Terima dulu barangnya, atau perbaiki lewat Koreksi Stok."}{" "}
                 Mengubahnya <strong>tidak</strong> mengubah stok yang sudah
                 minus — itu hanya beres lewat penerimaan barang atau opname.
               </p>

@@ -105,7 +105,7 @@ describe("what a row says", () => {
       `getByText` would not say which of the two it found.
     */
     const cells = screen.getByText("-3 pcs").closest("tr") as HTMLElement;
-    expect(within(cells).getByText("Rp -30.000")).toBeInTheDocument();
+    expect(within(cells).getByText("−Rp 30.000")).toBeInTheDocument();
   });
 
   /*
@@ -135,7 +135,7 @@ describe("what a row says", () => {
 
     renderWithAuth(<NegativeStockScreen />);
 
-    expect(await screen.findByText("nonaktif")).toBeInTheDocument();
+    expect(await screen.findByText("Nonaktif")).toBeInTheDocument();
   });
 
   it("still lists a row whose warehouse has gone missing", async () => {
@@ -171,7 +171,7 @@ describe("the total above the table", () => {
     renderWithAuth(<NegativeStockScreen />);
 
     expect(await screen.findByText("43")).toBeInTheDocument();
-    expect(screen.getByText("Rp -910.000")).toBeInTheDocument();
+    expect(screen.getByText("−Rp 910.000")).toBeInTheDocument();
   });
 
   /*

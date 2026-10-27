@@ -172,7 +172,7 @@ describe("SuppliersTable", () => {
     renderTable([makeSupplier()]);
 
     expect(screen.getByText("PT Sumber Pangan")).toBeInTheDocument();
-    expect(screen.getByText("beli putus")).toBeInTheDocument();
+    expect(screen.getByText("Beli putus")).toBeInTheDocument();
     expect(screen.getByText("30 hari")).toBeInTheDocument();
   });
 
@@ -290,7 +290,7 @@ describe("SuppliersTable", () => {
     it("badges a deactivated supplier and offers to reactivate it", async () => {
       renderTable([makeSupplier({ isActive: false })]);
 
-      expect(screen.getByText("nonaktif")).toBeInTheDocument();
+      expect(screen.getByText("Nonaktif")).toBeInTheDocument();
       const menu = await openRowMenu();
       expect(
         within(menu).getByRole("menuitem", { name: /Aktifkan/ }),
@@ -300,7 +300,7 @@ describe("SuppliersTable", () => {
     it("badges a deleted supplier and offers only restore", async () => {
       renderTable([makeSupplier({ deletedAt: "2026-08-01T00:00:00.000Z" })]);
 
-      expect(screen.getByText("terhapus")).toBeInTheDocument();
+      expect(screen.getByText("Terhapus")).toBeInTheDocument();
       const menu = await openRowMenu();
 
       expect(

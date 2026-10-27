@@ -68,7 +68,7 @@ const INVOICE_COLUMNS: SalesReportColumn<SalesInvoiceReportRow>[] = [
     about: "Tanggal faktur diterbitkan",
   },
   {
-    header: "REF",
+    header: "Ref",
     value: (r) => r.reference,
     width: 20,
     about: "Nomor transaksi kasir (POS-…), atau nomor pesanan e-commerce",
@@ -268,10 +268,10 @@ export const salesInvoiceReport: SalesReportDefinition<
   SalesInvoiceReportRow,
   Status
 > = {
-  title: "Penjualan per invoice",
+  title: "Penjualan per faktur",
   description:
     "Satu baris per faktur: sumber, diskon, biaya lain, pajak, pembayaran, dan konsinyasi. Diunduh sebagai Excel.",
-  fileName: "penjualan-per-invoice",
+  fileName: "penjualan-per-faktur",
   rowNoun: "faktur",
   columns: INVOICE_COLUMNS,
   choice: {
@@ -511,10 +511,10 @@ export const salesInvoiceLineReport: SalesReportDefinition<
   Status
 > = {
   ...salesInvoiceReport,
-  title: "Penjualan per invoice (rincian barang)",
+  title: "Penjualan per faktur (rincian barang)",
   description:
     "Setiap faktur dengan barang dan layanannya, satu baris per barang. Diunduh sebagai Excel.",
-  fileName: "penjualan-per-invoice-rincian",
+  fileName: "penjualan-per-faktur-rincian",
   rowNoun: "baris barang",
   columns: INVOICE_LINE_COLUMNS,
   // No merged cells: every line is a full row.
@@ -962,7 +962,7 @@ const REVENUE_COLUMNS: SalesReportColumn<RevenueLineRow>[] = [
   invoiceColumn("Tanggal faktur", "Tanggal"),
   ...[
     "No. faktur",
-    "REF",
+    "Ref",
     "Status",
     "Sumber",
     "Nama toko",

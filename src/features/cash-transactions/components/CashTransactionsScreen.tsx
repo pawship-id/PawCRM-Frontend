@@ -387,7 +387,7 @@ function transactionColumns({
       },
       cell: (transaction) => (
         <>
-          {transaction.direction === "in" ? "+ " : "− "}
+          {transaction.direction === "in" ? "+" : "−"}
           {formatMoney(transaction.amount)}
         </>
       ),

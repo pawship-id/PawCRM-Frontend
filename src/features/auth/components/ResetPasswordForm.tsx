@@ -35,7 +35,7 @@ export function ResetPasswordForm() {
           href="/forgot-password"
           className="text-sm font-medium text-primary hover:text-primary-hover"
         >
-          Request a new reset link
+          Minta link reset baru
         </Link>
       </div>
     );
@@ -45,13 +45,13 @@ export function ResetPasswordForm() {
     return (
       <div className="flex flex-col gap-4">
         <Alert variant="success">
-          Your password has been reset. You can now sign in with it.
+          Password baru sudah tersimpan. Silakan masuk dengan password baru.
         </Alert>
         <Link
           href="/login"
           className="text-sm font-medium text-primary hover:text-primary-hover"
         >
-          Go to sign in →
+          Ke halaman masuk →
         </Link>
       </div>
     );
@@ -80,10 +80,10 @@ export function ResetPasswordForm() {
         // A used, expired or unknown token is a generic 400 from the backend.
         setFormError(
           error.message ||
-            "This reset link is invalid or has expired. Request a new one.",
+            "Link reset ini sudah tidak berlaku. Minta link baru, ya.",
         );
       } else {
-        setFormError("Something went wrong. Please try again.");
+        setFormError("Terjadi kesalahan. Coba lagi.");
       }
       setSubmitting(false);
     }
@@ -94,7 +94,7 @@ export function ResetPasswordForm() {
       {formError && <Alert variant="error">{formError}</Alert>}
 
       <TextField
-        label="New password"
+        label="Password baru"
         type="password"
         name="newPassword"
         autoComplete="new-password"
@@ -102,13 +102,13 @@ export function ResetPasswordForm() {
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         error={fieldErrors.newPassword}
-        hint={`At least ${PASSWORD_MIN_LENGTH} characters.`}
+        hint={`Minimal ${PASSWORD_MIN_LENGTH} karakter.`}
         required
         autoFocus
       />
 
       <TextField
-        label="Confirm new password"
+        label="Ulangi password baru"
         type="password"
         name="confirm"
         autoComplete="new-password"
@@ -120,7 +120,7 @@ export function ResetPasswordForm() {
       />
 
       <Button type="submit" loading={submitting} fullWidth>
-        Reset password
+        Simpan password baru
       </Button>
     </form>
   );

@@ -123,12 +123,12 @@ function batchColumns(
         batch.expiryDate ? (
           <ExpiryBadge date={batch.expiryDate} />
         ) : (
-          <span className="text-xs text-muted">tanpa expiry</span>
+          <span className="text-xs text-muted">tanpa kedaluwarsa</span>
         ),
     },
     {
       id: "qty",
-      header: "Sisa Stock",
+      header: "Sisa stok",
       align: "right",
       // A withdrawal outran this lot. The row that needs fixing must not look
       // like the rows that do not.

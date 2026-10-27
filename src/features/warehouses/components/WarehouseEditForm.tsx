@@ -33,7 +33,7 @@ import type { Branch, Warehouse } from "@/types/api";
 import { useWarehouseBranches } from "../hooks/useWarehouseBranches";
 import { WarehouseStatusBadge } from "./WarehouseStatusBadge";
 import { WarehouseBranchSelect } from "./WarehouseBranchSelect";
-import { WarehousePinButton } from "./WarehousePinButton";
+import { MapPinButton } from "@/features/antar-jemput/components/MapPinButton";
 
 /**
  * Edit an existing warehouse. Mirrors BranchEditForm: the details (name, branch,
@@ -264,7 +264,8 @@ function DetailsSection({
 
         {/* Row 3: the map pin — picked from the map, or typed below */}
         <div className="sm:col-span-2">
-          <WarehousePinButton
+          <MapPinButton
+            title="Lokasi gudang"
             address={address}
             location={location}
             disabled={disabled}
@@ -341,7 +342,7 @@ function DetailsSection({
           type="button"
           variant="ghost"
           className="w-full sm:w-auto"
-          onClick={() => router.push("/dashboard/pengaturan/gudang")}
+          onClick={() => router.push("/dashboard/settings/warehouses")}
         >
           Batal
         </Button>
@@ -389,7 +390,7 @@ function DangerSection({
     try {
       if (pending === "delete") {
         await warehouseService.remove(warehouse._id);
-        router.push("/dashboard/pengaturan/gudang");
+        router.push("/dashboard/settings/warehouses");
         swalToast("Gudang dihapus.");
         return;
       }

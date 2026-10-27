@@ -97,15 +97,15 @@ describe("validateLocationFields", () => {
   it("reports a non-numeric coordinate", () => {
     const errors = validateLocationFields({ lat: "utara", lng: "106.8" });
 
-    expect(errors["location.lat"]).toBe("Latitude must be a number");
+    expect(errors["location.lat"]).toBe("Latitude harus berupa angka");
   });
 
   it("reports a half pair against the field still to be filled", () => {
     expect(validateLocationFields({ lat: "-6.2", lng: "" })).toEqual({
-      "location.lng": "Latitude and longitude must be filled in together",
+      "location.lng": "Latitude dan longitude harus diisi keduanya",
     });
     expect(validateLocationFields({ lat: "", lng: "106.8" })).toEqual({
-      "location.lat": "Latitude and longitude must be filled in together",
+      "location.lat": "Latitude dan longitude harus diisi keduanya",
     });
   });
 
@@ -164,12 +164,12 @@ describe("LocationFields", () => {
   it("offers a Maps link only once both coordinates are present", async () => {
     render(<Harness />);
 
-    expect(screen.queryByRole("link", { name: /verify this pin/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /cek titik ini/i })).toBeNull();
 
     await userEvent.click(screen.getByLabelText(/latitude/i));
     await userEvent.paste("-6.26, 106.81");
 
-    const link = screen.getByRole("link", { name: /verify this pin/i });
+    const link = screen.getByRole("link", { name: /cek titik ini/i });
     expect(link).toHaveAttribute(
       "href",
       "https://www.google.com/maps/search/?api=1&query=-6.26%2C106.81",

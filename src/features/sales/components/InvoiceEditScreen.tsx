@@ -96,7 +96,7 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
         ? "sudah dibatalkan"
         : !editable
           ? "sudah ada pembayaran tercatat — batalkan pembayarannya dulu"
-          : "kamu tidak punya izin mengubah faktur";
+          : "Anda tidak punya izin mengubah faktur";
 
     return (
       <div className="flex flex-col gap-6">

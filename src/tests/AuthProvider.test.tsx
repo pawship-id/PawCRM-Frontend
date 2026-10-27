@@ -112,7 +112,7 @@ describe("AuthProvider — hydrating the session", () => {
     dashboard hydrating. This test fails the moment somebody loosens it.
   */
   it("does not treat every route as public just because / is listed", async () => {
-    pathname.mockReturnValue("/dashboard/keuangan");
+    pathname.mockReturnValue("/dashboard/finance");
 
     render(
       <AuthProvider>

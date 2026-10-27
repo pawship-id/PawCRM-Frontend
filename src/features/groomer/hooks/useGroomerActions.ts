@@ -17,7 +17,7 @@ import type { BookingWorkStatus, HomeTripStatus } from "@/types/api";
  * work out by itself, and a screen that guessed would show a job as taken that
  * somebody else had just taken.
  *
- * A REFUSAL IS A TOAST, in the server's own words ("Job ini sudah dipegang
+ * A REFUSAL IS A TOAST, in the server's own words ("Sesi ini sudah dipegang
  * groomer lain") — they were written to be read on a phone — and the screen is
  * reloaded after it too, because a refusal usually means it was stale.
  *

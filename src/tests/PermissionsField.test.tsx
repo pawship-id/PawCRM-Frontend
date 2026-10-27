@@ -30,7 +30,7 @@ describe("PermissionsField — read is mandatory", () => {
   it("auto-selects read when another action is checked from empty", async () => {
     const { onChange } = setup();
 
-    await userEvent.click(screen.getByLabelText("Update"));
+    await userEvent.click(screen.getByLabelText("Ubah"));
 
     expect(onChange).toHaveBeenCalledTimes(1);
     const next = onChange.mock.calls[0][0];
@@ -41,7 +41,7 @@ describe("PermissionsField — read is mandatory", () => {
   it("keeps read when adding a further action to an existing grant", async () => {
     const { onChange } = setup({ tenants: ["read", "update"] });
 
-    await userEvent.click(screen.getByLabelText("Delete"));
+    await userEvent.click(screen.getByLabelText("Hapus"));
 
     const next = onChange.mock.calls[0][0];
     expect(next.tenants).toEqual(
@@ -53,7 +53,7 @@ describe("PermissionsField — read is mandatory", () => {
   it("clears the whole feature when read is unchecked", async () => {
     const { onChange } = setup({ tenants: ["read", "update", "delete"] });
 
-    await userEvent.click(screen.getByLabelText("Read"));
+    await userEvent.click(screen.getByLabelText("Lihat"));
 
     // Dropping read drops access entirely — the feature key is removed.
     expect(onChange).toHaveBeenCalledWith({});
@@ -62,7 +62,7 @@ describe("PermissionsField — read is mandatory", () => {
   it("only removes the single action when a non-read action is unchecked", async () => {
     const { onChange } = setup({ tenants: ["read", "update", "delete"] });
 
-    await userEvent.click(screen.getByLabelText("Delete"));
+    await userEvent.click(screen.getByLabelText("Hapus"));
 
     const next = onChange.mock.calls[0][0];
     expect(next.tenants).toEqual(["read", "update"]);

@@ -15,6 +15,7 @@ import {
   toLocationFieldsValue,
   type LocationFieldsValue,
 } from "@/components";
+import { MapPinButton } from "@/features/antar-jemput/components/MapPinButton";
 import { useCustomerTypeList } from "@/features/settings";
 import { customerService } from "@/services/customer.service";
 import type {
@@ -289,7 +290,18 @@ export function CustomerFormFields({
           />
         </div>
 
-        {/* The address's pin — paste "lat, lng" from Google Maps. */}
+        {/* The address's pin — picked from the map, or typed below. */}
+        <div className="sm:col-span-2">
+          <MapPinButton
+            title="Lokasi pelanggan"
+            address={value.address}
+            location={value.location}
+            disabled={disabled}
+            onPick={(point) =>
+              onChange({ address: point.address, location: point.location })
+            }
+          />
+        </div>
         <LocationFields
           value={value.location}
           onChange={(location) => onChange({ location })}

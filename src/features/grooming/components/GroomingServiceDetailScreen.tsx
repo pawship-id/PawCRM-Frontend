@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Copy, Pencil, Trash2 } from "lucide-react";
 
-import { Alert, Spinner } from "@/components";
+import { Alert, ConfirmDialog, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Can, usePermissions } from "@/features/permissions";
@@ -192,6 +192,8 @@ export function GroomingServiceDetailScreen({
   const [pending, setPending] = useState<ServiceLifecycleAction | null>(null);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  /** Duplikat asks first — it creates a whole new service (ui-rules §9). */
+  const [confirmCopy, setConfirmCopy] = useState(false);
   /** Bumped by a save from the Varian & Harga tab, to re-seed its draft. */
   const [variantsVersion, setVariantsVersion] = useState(0);
   const tabRefs = useRef<Partial<Record<DetailTab, HTMLButtonElement | null>>>({});
@@ -247,6 +249,7 @@ export function GroomingServiceDetailScreen({
       for (const suffix of COPY_SUFFIXES) {
         try {
           const created = await serviceService.create(copyOf(service, suffix));
+          setConfirmCopy(false);
           swalToast(
             "Disalin sebagai nonaktif. Harga, varian, dan tahapan ikut; fotonya tidak.",
           );
@@ -258,14 +261,21 @@ export function GroomingServiceDetailScreen({
           throw err;
         }
       }
-      setActionError(
+      // A failed act is a toast — ui-rules §9.
+      setConfirmCopy(false);
+      swalToast(
         "Kode untuk salinannya sudah terpakai semua. Buat lewat Layanan baru saja.",
+        "error",
+        6000,
       );
     } catch (err) {
-      setActionError(
+      setConfirmCopy(false);
+      swalToast(
         err instanceof ApiError
           ? (err.reason ?? err.message)
           : "Layanan tidak bisa disalin. Coba lagi.",
+        "error",
+        6000,
       );
     } finally {
       setBusy(false);
@@ -364,7 +374,7 @@ export function GroomingServiceDetailScreen({
               variant="secondary"
               disabled={busy || blockedCopy !== null}
               title={blockedCopy ?? undefined}
-              onClick={() => void duplicate()}
+              onClick={() => setConfirmCopy(true)}
             >
               <Copy className="size-4" />
               Duplikat
@@ -489,6 +499,23 @@ export function GroomingServiceDetailScreen({
           />
         </div>
       </div>
+
+      {confirmCopy && (
+        <ConfirmDialog
+          title="Duplikat layanan"
+          confirmLabel="Duplikat layanan"
+          busy={busy}
+          onConfirm={() => void duplicate()}
+          onCancel={() => setConfirmCopy(false)}
+        >
+          Duplikat <strong>{service.name}</strong>? Layanan baru &ldquo;
+          {service.name} (salinan)&rdquo; dibuat dalam keadaan{" "}
+          <strong>nonaktif</strong>, dengan harga, varian, tahapan, dan add-on
+          yang sama — fotonya tidak ikut. Layanan ini sendiri tidak berubah.
+          Salinannya baru muncul di booking dan kasir setelah diaktifkan, dan
+          bisa dihapus kalau tidak jadi dipakai.
+        </ConfirmDialog>
+      )}
 
       <ServiceLifecycleDialog
         action={pending}

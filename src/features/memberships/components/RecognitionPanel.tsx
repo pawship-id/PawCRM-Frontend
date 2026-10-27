@@ -264,7 +264,7 @@ function ScheduleBody({ schedule }: { schedule: RecognitionSchedule }) {
                   <TableCell>
                     {row.journalEntryId ? (
                       <Link
-                        href={`/dashboard/keuangan/journal-entries/${row.journalEntryId}`}
+                        href={`/dashboard/finance/journal-entries/${row.journalEntryId}`}
                         className="text-primary underline-offset-2 hover:underline"
                       >
                         {row.label ?? row.key}

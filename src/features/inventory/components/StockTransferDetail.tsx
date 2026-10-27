@@ -322,7 +322,7 @@ export function StockTransferDetail({ transferId }: { transferId: string }) {
             <Badge variant="outline">{lines.length} baris batch</Badge>
           </span>
         }
-        description="Satu baris per lot yang diambil — barang yang tersebar di beberapa batch keluar sebagai beberapa baris."
+        description="Satu baris per batch yang diambil — barang yang tersebar di beberapa batch keluar sebagai beberapa baris."
       >
         <div className="overflow-x-auto">
           <Table>

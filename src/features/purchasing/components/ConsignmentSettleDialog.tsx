@@ -15,7 +15,7 @@ import {
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { consignmentSettlementService } from "@/services/consignmentSettlement.service";
-import { formatMoney, isDecimal, toMinor } from "@/utils/decimal";
+import { formatMoney, isDecimal, toMinor, trimDecimal } from "@/utils/decimal";
 import type { ConsignmentOutstandingRow, PaymentMethod } from "@/types/api";
 
 import { PaymentAccountFields } from "./PaymentAccountFields";
@@ -53,7 +53,8 @@ export function ConsignmentSettleDialog({
   onClose: () => void;
   onSettled: () => void;
 }) {
-  const [amount, setAmount] = useState(row.outstanding);
+  // "20000", not the ledger's "20000.0000" — a pre-filled box reads at face value.
+  const [amount, setAmount] = useState(trimDecimal(row.outstanding));
   const [method, setMethod] = useState<PaymentMethod>("transfer");
   const [channelId, setChannelId] = useState("");
   const [at, setAt] = useState(today);

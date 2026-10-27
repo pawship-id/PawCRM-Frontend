@@ -23,7 +23,7 @@ import {
  * stopgap: the mockup files it under Pengaturan, that section did not exist yet,
  * and a card at the foot of Ringkasan was too far down for the screen every
  * journal line depends on. It moved on 20 September, on request, to
- * /dashboard/pengaturan/daftar-akun — the old address redirects, and Ringkasan's
+ * /dashboard/settings/chart-of-accounts — the old address redirects, and Ringkasan's
  * card list still reaches it, which is how the other three non-tab screens are
  * reached too.
  *
@@ -47,17 +47,17 @@ export const ACCOUNTING_TABS: GatedTab[] = [
   // EXACT: its href is the prefix of every sibling.
   {
     label: "Ringkasan",
-    href: "/dashboard/keuangan",
+    href: "/dashboard/finance",
     exact: true,
     anyOf: [{ feature: "financeSummary" }],
   },
   {
     label: "Kas & Bank",
-    href: "/dashboard/keuangan/kas-bank",
+    href: "/dashboard/finance/cash-bank",
     anyOf: [{ feature: "cashTransactions" }, { feature: "fixedCosts" }],
   },
-  { label: "Komisi", href: "/dashboard/keuangan/komisi", anyOf: [{ feature: "commissionReports" }] },
-  { label: "Jurnal", href: "/dashboard/keuangan/journal-entries", anyOf: [{ feature: "journalEntries" }] },
+  { label: "Komisi", href: "/dashboard/finance/commissions", anyOf: [{ feature: "commissionReports" }] },
+  { label: "Jurnal", href: "/dashboard/finance/journal-entries", anyOf: [{ feature: "journalEntries" }] },
 ];
 
 export function AccountingModuleHeader({

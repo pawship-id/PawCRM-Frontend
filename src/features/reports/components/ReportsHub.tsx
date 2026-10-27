@@ -213,7 +213,7 @@ const SOON = "Segera";
 const ROWS: Record<TabKey, ReportRow[]> = {
   penjualan: [
     {
-      title: "Penjualan per invoice",
+      title: "Penjualan per faktur",
       description:
         "Daftar faktur dengan total, diskon, pajak, dan status bayar.",
       dialog: "salesInvoices",
@@ -223,7 +223,7 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       ],
     },
     {
-      title: "Penjualan per invoice (rincian barang)",
+      title: "Penjualan per faktur (rincian barang)",
       description:
         "Setiap faktur dengan barang dan layanannya, satu baris per barang.",
       dialog: "salesInvoiceLines",
@@ -289,13 +289,13 @@ const ROWS: Record<TabKey, ReportRow[]> = {
     {
       title: "Laba rugi",
       description: "Hasil usaha per bulan, gabungan atau per lini bisnis.",
-      href: "/dashboard/keuangan/laba-rugi",
+      href: "/dashboard/finance/profit-loss",
       anyOf: [{ feature: "financeReports", action: "read" }],
     },
     {
       title: "Neraca",
       description: "Aset, kewajiban, dan ekuitas pada satu tanggal.",
-      href: "/dashboard/keuangan/neraca",
+      href: "/dashboard/finance/balance-sheet",
       anyOf: [{ feature: "financeReports", action: "read" }],
     },
     {
@@ -466,7 +466,7 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Rekap komisi",
       description:
         "Komisi groomer per bulan, dihitung dari booking yang selesai. Siap diunduh untuk payroll.",
-      // A download here; /dashboard/keuangan/komisi stays the screen where
+      // A download here; /dashboard/finance/commissions stays the screen where
       // commission is approved and paid.
       dialog: "commissionPayroll",
       // Payroll data: the report's own grant, or the staff register it used to need.
