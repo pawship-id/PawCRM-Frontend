@@ -15,18 +15,18 @@ describe("ForgotPasswordForm", () => {
 
   it("shows the generic confirmation returned by the backend", async () => {
     forgot.mockResolvedValueOnce({
-      message: "If an account exists, a link is on its way.",
+      message: "Kalau email ini terdaftar, link reset sudah dikirim.",
     });
     render(<ForgotPasswordForm />);
 
     await userEvent.type(screen.getByLabelText(/email/i), "a@b.com");
     await userEvent.click(
-      screen.getByRole("button", { name: /send reset link/i }),
+      screen.getByRole("button", { name: /kirim link reset/i }),
     );
 
     expect(forgot).toHaveBeenCalledWith("a@b.com");
     expect(
-      await screen.findByText(/a link is on its way/i),
+      await screen.findByText(/link reset sudah dikirim/i),
     ).toBeInTheDocument();
   });
 
@@ -34,10 +34,10 @@ describe("ForgotPasswordForm", () => {
     render(<ForgotPasswordForm />);
     await userEvent.type(screen.getByLabelText(/email/i), "bad");
     await userEvent.click(
-      screen.getByRole("button", { name: /send reset link/i }),
+      screen.getByRole("button", { name: /kirim link reset/i }),
     );
 
     expect(forgot).not.toHaveBeenCalled();
-    expect(screen.getByText(/valid email/i)).toBeInTheDocument();
+    expect(screen.getByText(/email tidak valid/i)).toBeInTheDocument();
   });
 });

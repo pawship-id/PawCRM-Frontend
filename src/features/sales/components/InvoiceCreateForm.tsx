@@ -2045,8 +2045,8 @@ export function InvoiceCreateForm() {
 
             <FilterSelect
               layout="form"
-              label="Channel"
-              ariaLabel="Channel"
+              label="Sumber"
+              ariaLabel="Sumber"
               value={channel}
               options={CHANNEL_OPTIONS}
               active={false}
@@ -3278,8 +3278,8 @@ export function InvoiceCreateForm() {
                 note about how the recap is computed (14 September 2026, on
                 request). True to `#assertRevisable`: editable until a payment. */}
             <p className="text-xs text-muted">
-              Faktur ini akan tersimpan berstatus Belum Lunas — masih bisa
-              diedit sampai pembayaran pertama tercatat (lihat halaman Detail
+              Faktur ini akan tersimpan berstatus Belum lunas — masih bisa
+              diubah sampai pembayaran pertama tercatat (lihat halaman Detail
               Faktur).
             </p>
           </div>

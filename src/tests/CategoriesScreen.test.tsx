@@ -438,7 +438,7 @@ describe("CategoriesTable", () => {
     // work — the row used to raise this to the screen, which turned it into a
     // dialog.
     expect(
-      within(menu).getByRole("menuitem", { name: /^edit$/i }),
+      within(menu).getByRole("menuitem", { name: /^ubah$/i }),
     ).toHaveAttribute("href", "/dashboard/inventory/categories/c1");
   });
 
@@ -525,7 +525,7 @@ describe("CategoriesTable", () => {
 
     const menu = await openRowMenu();
     expect(
-      within(menu).queryByRole("menuitem", { name: /^edit$/i }),
+      within(menu).queryByRole("menuitem", { name: /^ubah$/i }),
     ).not.toBeInTheDocument();
     expect(
       within(menu).queryByRole("menuitem", { name: /hapus/i }),

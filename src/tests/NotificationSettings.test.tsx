@@ -133,7 +133,7 @@ describe("SupplierTypesScreen", () => {
     renderWithAuth(<SupplierTypesScreen />);
 
     expect(
-      screen.getByRole("link", { name: /Kategori Supplier/ }),
+      screen.getByRole("link", { name: /Kategori supplier/ }),
     ).toHaveAttribute("href", "/dashboard/settings/supplier-categories");
   });
 });

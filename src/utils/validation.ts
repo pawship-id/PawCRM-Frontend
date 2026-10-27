@@ -149,33 +149,33 @@ export function normalizePhone(value: string | null): string | null {
 /** Returns an error message, or undefined when valid. */
 export function validateEmail(value: string): string | undefined {
   const email = value.trim();
-  if (!email) return "Email is required";
-  if (email.length > EMAIL_MAX_LENGTH) return "Email is too long";
-  if (!EMAIL_PATTERN.test(email)) return "Enter a valid email address";
+  if (!email) return "Email wajib diisi";
+  if (email.length > EMAIL_MAX_LENGTH) return "Email terlalu panjang";
+  if (!EMAIL_PATTERN.test(email)) return "Alamat email tidak valid";
   return undefined;
 }
 
 export function validatePassword(value: string): string | undefined {
-  if (!value) return "Password is required";
+  if (!value) return "Password wajib diisi";
   if (value.length < PASSWORD_MIN_LENGTH)
-    return `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+    return `Password minimal ${PASSWORD_MIN_LENGTH} karakter`;
   if (value.length > PASSWORD_MAX_LENGTH)
-    return `Password must be at most ${PASSWORD_MAX_LENGTH} characters`;
+    return `Password maksimal ${PASSWORD_MAX_LENGTH} karakter`;
   return undefined;
 }
 
 /** A non-empty presence check, for the login password (any stored value is ok). */
 export function validateRequired(
   value: string,
-  label = "This field",
+  label = "Kolom ini",
 ): string | undefined {
-  return value.trim() ? undefined : `${label} is required`;
+  return value.trim() ? undefined : `${label} wajib diisi`;
 }
 
 export function validateFullName(value: string): string | undefined {
   const name = value.trim();
-  if (!name) return "Full name is required";
-  if (name.length > FULL_NAME_MAX_LENGTH) return "Full name is too long";
+  if (!name) return "Nama lengkap wajib diisi";
+  if (name.length > FULL_NAME_MAX_LENGTH) return "Nama lengkap terlalu panjang";
   return undefined;
 }
 
@@ -184,7 +184,7 @@ export function validatePhone(value: string): string | undefined {
   const phone = value.trim();
   if (!phone) return undefined;
   if (!PHONE_PATTERN.test(phone))
-    return "Only digits, spaces and + ( ) - . are allowed";
+    return "Hanya angka, spasi, dan karakter + ( ) - .";
   return undefined;
 }
 
@@ -232,9 +232,9 @@ export function validateAddress(value: string): string | undefined {
 
 export function validateWarehouseName(value: string): string | undefined {
   const name = value.trim();
-  if (!name) return "Warehouse name is required";
+  if (!name) return "Nama gudang wajib diisi";
   if (name.length > WAREHOUSE_NAME_MAX_LENGTH)
-    return "Warehouse name is too long";
+    return "Nama gudang terlalu panjang";
   return undefined;
 }
 
@@ -243,7 +243,7 @@ export function validateWarehouseAddress(value: string): string | undefined {
   const address = value.trim();
   if (!address) return undefined;
   if (address.length > WAREHOUSE_ADDRESS_MAX_LENGTH)
-    return "Address is too long";
+    return "Alamat terlalu panjang";
   return undefined;
 }
 
@@ -251,7 +251,7 @@ export function validateWarehouseAddress(value: string): string | undefined {
 export function validatePicName(value: string): string | undefined {
   const name = value.trim();
   if (!name) return undefined;
-  if (name.length > WAREHOUSE_PIC_NAME_MAX_LENGTH) return "PIC name is too long";
+  if (name.length > WAREHOUSE_PIC_NAME_MAX_LENGTH) return "Nama PIC terlalu panjang";
   return undefined;
 }
 
@@ -260,9 +260,9 @@ export function validatePicPhone(value: string): string | undefined {
   const phone = value.trim();
   if (!phone) return undefined;
   if (phone.length > WAREHOUSE_PIC_PHONE_MAX_LENGTH)
-    return "PIC phone is too long";
+    return "Nomor HP PIC terlalu panjang";
   if (!PHONE_PATTERN.test(phone))
-    return "Only digits, spaces and + ( ) - . are allowed";
+    return "Hanya angka, spasi, dan karakter + ( ) - .";
   return undefined;
 }
 
@@ -275,9 +275,9 @@ export function validateLatitude(value: string): string | undefined {
   const raw = value.trim();
   if (!raw) return undefined;
   const lat = Number(raw);
-  if (!Number.isFinite(lat)) return "Latitude must be a number";
+  if (!Number.isFinite(lat)) return "Latitude harus berupa angka";
   if (lat < LATITUDE_MIN || lat > LATITUDE_MAX)
-    return `Latitude must be between ${LATITUDE_MIN} and ${LATITUDE_MAX}`;
+    return `Latitude harus di antara ${LATITUDE_MIN} dan ${LATITUDE_MAX}`;
   return undefined;
 }
 
@@ -285,9 +285,9 @@ export function validateLongitude(value: string): string | undefined {
   const raw = value.trim();
   if (!raw) return undefined;
   const lng = Number(raw);
-  if (!Number.isFinite(lng)) return "Longitude must be a number";
+  if (!Number.isFinite(lng)) return "Longitude harus berupa angka";
   if (lng < LONGITUDE_MIN || lng > LONGITUDE_MAX)
-    return `Longitude must be between ${LONGITUDE_MIN} and ${LONGITUDE_MAX}`;
+    return `Longitude harus di antara ${LONGITUDE_MIN} dan ${LONGITUDE_MAX}`;
   return undefined;
 }
 
@@ -309,14 +309,14 @@ export function validateCoordinatePair(
 
   return {
     field: hasLat ? "lng" : "lat",
-    message: "Latitude and longitude must be filled in together",
+    message: "Latitude dan longitude harus diisi keduanya",
   };
 }
 
 export function validateCustomerName(value: string): string | undefined {
   const name = value.trim();
-  if (!name) return "Customer name is required";
-  if (name.length > CUSTOMER_NAME_MAX_LENGTH) return "Customer name is too long";
+  if (!name) return "Nama pelanggan wajib diisi";
+  if (name.length > CUSTOMER_NAME_MAX_LENGTH) return "Nama pelanggan terlalu panjang";
   return undefined;
 }
 
@@ -324,8 +324,8 @@ export function validateCustomerName(value: string): string | undefined {
 export function validateOptionalEmail(value: string): string | undefined {
   const email = value.trim();
   if (!email) return undefined;
-  if (email.length > CUSTOMER_EMAIL_MAX_LENGTH) return "Email is too long";
-  if (!EMAIL_PATTERN.test(email)) return "Enter a valid email address";
+  if (email.length > CUSTOMER_EMAIL_MAX_LENGTH) return "Email terlalu panjang";
+  if (!EMAIL_PATTERN.test(email)) return "Alamat email tidak valid";
   return undefined;
 }
 
@@ -333,9 +333,9 @@ export function validateOptionalEmail(value: string): string | undefined {
 export function validateCustomerPhone(value: string): string | undefined {
   const phone = value.trim();
   if (!phone) return undefined;
-  if (phone.length > CUSTOMER_PHONE_MAX_LENGTH) return "Phone is too long";
+  if (phone.length > CUSTOMER_PHONE_MAX_LENGTH) return "Nomor HP terlalu panjang";
   if (!PHONE_PATTERN.test(phone))
-    return "Only digits, spaces and + ( ) - . are allowed";
+    return "Hanya angka, spasi, dan karakter + ( ) - .";
   return undefined;
 }
 
@@ -343,7 +343,7 @@ export function validateCustomerPhone(value: string): string | undefined {
 export function validateCustomerAddress(value: string): string | undefined {
   const address = value.trim();
   if (!address) return undefined;
-  if (address.length > CUSTOMER_ADDRESS_MAX_LENGTH) return "Address is too long";
+  if (address.length > CUSTOMER_ADDRESS_MAX_LENGTH) return "Alamat terlalu panjang";
   return undefined;
 }
 
@@ -433,7 +433,7 @@ export function validateSupplierWhatsapp(value: string): string | undefined {
 }
 
 export function validateSupplierFax(value: string): string | undefined {
-  return validateSupplierPhoneField(value, "Nomor faximili");
+  return validateSupplierPhoneField(value, "Nomor faksimile");
 }
 
 export function validateSupplierPicPhone(value: string): string | undefined {
@@ -483,7 +483,7 @@ export function validateSupplierCode(value: string): string | undefined {
 export function validateSupplierCodeRequired(
   value: string,
 ): string | undefined {
-  if (!value.trim()) return "ID Pemasok wajib diisi";
+  if (!value.trim()) return "ID supplier wajib diisi";
   return validateSupplierCode(value);
 }
 
@@ -624,9 +624,9 @@ export function validateRoleDescription(value: string): string | undefined {
 }
 
 export function validateResetToken(value: string): string | undefined {
-  if (!value) return "This reset link is missing its token";
+  if (!value) return "Link reset ini tidak lengkap. Minta link baru, ya.";
   if (value.length !== RESET_TOKEN_LENGTH || !HEX_PATTERN.test(value))
-    return "This reset link is invalid or malformed";
+    return "Link reset ini tidak valid. Minta link baru, ya.";
   return undefined;
 }
 
@@ -634,8 +634,8 @@ export function validateConfirmPassword(
   password: string,
   confirm: string,
 ): string | undefined {
-  if (!confirm) return "Please confirm your password";
-  if (password !== confirm) return "Passwords do not match";
+  if (!confirm) return "Ketik ulang password Anda";
+  if (password !== confirm) return "Password-nya belum sama. Coba cek lagi.";
   return undefined;
 }
 

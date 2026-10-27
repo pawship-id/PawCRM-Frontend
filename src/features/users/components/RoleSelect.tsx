@@ -15,7 +15,7 @@ import type { Role } from "@/types/api";
 
 /**
  * Role picker — a shadcn/ui Select over the tenant's roles. Role is optional on
- * a user (nullable roleId), so a "No role" item clears it. Radix Select forbids
+ * a user (nullable roleId), so a "Tanpa peran" item clears it. Radix Select forbids
  * an empty-string item value, so the cleared state uses a sentinel that is
  * translated back to "" at the boundary. Presentational: the parent form owns
  * the value and the roles list (from useLookups).
@@ -41,7 +41,7 @@ export function RoleSelect({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>Role</Label>
+      <Label htmlFor={id}>Peran</Label>
       <Select
         value={value || NONE}
         disabled={disabled}
@@ -53,10 +53,10 @@ export function RoleSelect({
           aria-describedby={error ? errorId : undefined}
           className={cn("w-full", error && "border-danger")}
         >
-          <SelectValue placeholder="No role" />
+          <SelectValue placeholder="Tanpa peran" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={NONE}>No role</SelectItem>
+          <SelectItem value={NONE}>Tanpa peran</SelectItem>
           {roles.map((role) => (
             <SelectItem key={role._id} value={role._id}>
               {role.name}

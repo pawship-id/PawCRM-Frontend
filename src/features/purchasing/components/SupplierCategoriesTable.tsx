@@ -217,7 +217,7 @@ export function SupplierCategoriesTable({
                                       href={`${SETTINGS_PATHS.kategoriSupplier}/${category._id}`}
                                     >
                                       <Pencil />
-                                      Edit
+                                      Ubah
                                     </Link>
                                   </DropdownMenuItem>
                                 </Can>
@@ -268,7 +268,7 @@ export function SupplierCategoriesTable({
             <>
               Hapus <strong>{pending.category.name}</strong>? Namanya jadi bebas
               dipakai lagi, dan kategorinya masih bisa dipulihkan. Kalau cuma
-              mau berhenti menawarkannya, nonaktifkan saja lewat Edit.
+              mau berhenti menawarkannya, nonaktifkan saja lewat Ubah.
               {/*
                 Said up front rather than left to the 409: somebody who has to
                 re-file a dozen vendors first would rather know before clicking

@@ -32,7 +32,7 @@ export default async function EditCategoryPage({
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Inventori", href: "/dashboard/inventory" },
               { label: "Kategori", href: "/dashboard/inventory/categories" },
               { label: "Ubah kategori" },
             ]}

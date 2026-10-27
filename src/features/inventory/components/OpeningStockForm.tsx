@@ -442,7 +442,7 @@ export function OpeningStockForm() {
         <div className="rounded-lg border border-secondary/40 bg-secondary/15 px-4 py-3 text-sm text-secondary-foreground">
           <b>Hanya untuk produk yang belum pernah punya stok sama sekali.</b>{" "}
           Barang yang sudah pernah masuk atau terjual — walau sekarang stoknya
-          nol — dikoreksi lewat <b>Penyesuaian Stok</b>, bukan di sini. Yang
+          nol — dikoreksi lewat <b>Koreksi Stok</b>, bukan di sini. Yang
           dicatat halaman ini adalah barang yang sudah Anda miliki sebelum
           memakai Buloo, dan nilainya masuk sebagai <b>modal pemilik</b>, bukan
           sebagai kerugian.
@@ -566,7 +566,7 @@ export function OpeningStockForm() {
           /* The lot columns lost the sentence that used to sit in their own
              row, so it says it once here instead of on every expiry-tracked
              line: the date is what is required, the code fills itself in. */
-          description="Harga beli per unit wajib diisi — angka itulah yang jadi dasar HPP dan nilai persediaan. Produk yang melacak kedaluwarsa wajib punya tanggal kadaluarsa; kode batch boleh kosong dan dibuat otomatis."
+          description="Harga beli per unit wajib diisi — angka itulah yang jadi dasar HPP dan nilai persediaan. Produk yang melacak kedaluwarsa wajib punya tanggal kedaluwarsa; kode batch boleh kosong dan dibuat otomatis."
         >
           {/**
            * THE BUTTON FOLLOWS THE LIST, above it while it is empty and below
@@ -634,7 +634,7 @@ export function OpeningStockForm() {
                       <TableHead>Kode batch internal</TableHead>
                       <TableHead>Kode batch supplier</TableHead>
                       <TableHead>
-                        Kadaluarsa
+                        Kedaluwarsa
                         {/* The column carries the mark, not the cell: a date
                             input holds no placeholder, so an empty one looks
                             finished and needs saying somewhere. Hidden from
@@ -863,8 +863,8 @@ export function OpeningStockForm() {
 
         <div className="flex flex-col gap-2">
           <p className="text-xs text-muted">
-            Kartu stok bersifat <b>append-only</b>. Baris yang tertulis di sini
-            tidak bisa dihapus atau diedit — salah angka dikoreksi dengan
+            Catatan di kartu stok <b>tidak bisa dihapus</b>. Baris yang tertulis
+            di sini juga tidak bisa diubah — salah angka dikoreksi dengan
             penyesuaian stok, dan keduanya tetap terlihat.
           </p>
         </div>

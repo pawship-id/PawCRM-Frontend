@@ -28,7 +28,7 @@ export default function LowStockPage() {
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
             Produk yang stoknya sudah di bawah batas restock. Batas dihitung per
-            produk across semua gudang, bukan per gudang.
+            produk dari semua gudang, bukan per gudang.
           </p>
         </div>
 

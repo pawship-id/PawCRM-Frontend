@@ -179,7 +179,7 @@ function DetailsSection({
       if (error instanceof ApiError && error.isValidationError) {
         setFieldErrors(error.fieldErrors);
       } else if (error instanceof ApiError) {
-        setFormError(error.message);
+        setFormError(error.fullMessage);
       } else {
         setFormError("Terjadi kesalahan. Coba lagi.");
       }
@@ -193,13 +193,13 @@ function DetailsSection({
       {formError && <Alert variant="error">{formError}</Alert>}
       {disabled && (
         <Alert variant="info">
-          This role is deleted. Restore it in the danger zone to edit.
+          Peran ini sudah dihapus. Pulihkan dulu supaya bisa diubah.
         </Alert>
       )}
       {role.isSuperAdmin && !disabled && (
         <Alert variant="info">
-          This is a super-admin role — its holders bypass every permission check,
-          so its permissions cannot be narrowed.
+          Ini peran super admin — pemegangnya selalu lolos semua cek hak akses,
+          jadi hak aksesnya tidak bisa dikurangi.
         </Alert>
       )}
 
@@ -307,7 +307,7 @@ function DangerSection({
     } catch (err) {
       setError(
         err instanceof ApiError
-          ? err.message
+          ? err.fullMessage
           : "Terjadi kesalahan. Coba lagi.",
       );
     } finally {

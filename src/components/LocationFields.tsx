@@ -160,19 +160,19 @@ export function LocationFields({
         // Not type="number": that rejects "-6." mid-typing, adds spinners no
         // one wants on a coordinate, and lets a stray scroll change the value.
         inputMode="decimal"
-        placeholder="Optional — e.g. -6.260712"
+        placeholder="Opsional — mis. -6.260712"
         value={value.lat}
         onChange={(e) => handleChange("lat", e.target.value)}
         onPaste={(e) => handlePaste("lat", e)}
         error={errors["location.lat"]}
         disabled={disabled}
-        hint="Paste a “lat, lng” pair from Google Maps to fill both."
+        hint="Tempel pasangan “lat, lng” dari Google Maps untuk mengisi keduanya."
       />
       <TextField
         label="Longitude"
         name="longitude"
         inputMode="decimal"
-        placeholder="Optional — e.g. 106.813377"
+        placeholder="Opsional — mis. 106.813377"
         value={value.lng}
         onChange={(e) => handleChange("lng", e.target.value)}
         onPaste={(e) => handlePaste("lng", e)}
@@ -192,10 +192,10 @@ export function LocationFields({
               rel="noopener noreferrer"
               className="underline underline-offset-2 hover:text-foreground"
             >
-              Verify this pin on Google Maps
+              Cek titik ini di Google Maps
             </a>
           ) : (
-            "Both coordinates are needed, or leave both blank."
+            "Isi keduanya, atau kosongkan keduanya."
           )
         }
       />

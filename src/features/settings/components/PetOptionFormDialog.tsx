@@ -301,7 +301,7 @@ export function PetOptionFormDialog({
                   }}
                   inputMode="decimal"
                   placeholder="mis. 0"
-                  hint="Nilai minimum termasuk (include)."
+                  hint="Nilai minimum ikut masuk rentang ini."
                   disabled={busy}
                   required
                 />

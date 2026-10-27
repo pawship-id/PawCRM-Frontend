@@ -47,7 +47,7 @@ describe("SupplierCreateForm", () => {
   /** Fills the two required fields the form cannot be submitted without. */
   async function fillRequired(code = "SUP-001") {
     await userEvent.type(screen.getByLabelText(/Nama supplier/), "PT Sumber");
-    await userEvent.type(screen.getByLabelText(/ID Pemasok/), code);
+    await userEvent.type(screen.getByLabelText(/ID supplier/), code);
   }
 
   it("validates before calling create", async () => {
@@ -69,7 +69,7 @@ describe("SupplierCreateForm", () => {
    * reading of "required" — the alternative leaves it true only of the
    * suppliers nobody has edited since.
    */
-  it("refuses to submit without an ID Pemasok", async () => {
+  it("refuses to submit without an ID supplier", async () => {
     const create = jest.spyOn(supplierService, "create");
     render(<SupplierCreateForm />);
 
@@ -80,7 +80,7 @@ describe("SupplierCreateForm", () => {
     );
 
     expect(create).not.toHaveBeenCalled();
-    expect(screen.getByText(/ID Pemasok wajib diisi/)).toBeInTheDocument();
+    expect(screen.getByText(/ID supplier wajib diisi/)).toBeInTheDocument();
   });
 
   it("flags a malformed NPWP before submitting", async () => {
@@ -145,7 +145,7 @@ describe("SupplierCreateForm", () => {
     render(<SupplierCreateForm />);
 
     await userEvent.type(screen.getByLabelText(/Nama supplier/), "PT Tunai");
-    await userEvent.type(screen.getByLabelText(/ID Pemasok/), "SUP-003");
+    await userEvent.type(screen.getByLabelText(/ID supplier/), "SUP-003");
     const term = screen.getByLabelText(/Termin pembayaran/);
     await userEvent.clear(term);
     await userEvent.type(term, "0");
@@ -220,7 +220,7 @@ describe("SupplierCreateForm", () => {
     render(<SupplierCreateForm />);
 
     await userEvent.type(screen.getByLabelText(/Nama supplier/), "CV Baru Jaya");
-    await userEvent.type(screen.getByLabelText(/ID Pemasok/), "SUP-002");
+    await userEvent.type(screen.getByLabelText(/ID supplier/), "SUP-002");
     await userEvent.click(
       screen.getByRole("button", { name: "Simpan supplier" }),
     );
@@ -322,7 +322,7 @@ describe("SupplierCreateForm", () => {
       screen.getByLabelText(/No WhatsApp bisnis/),
       "0812-3456-7890",
     );
-    await userEvent.type(screen.getByLabelText(/Faximili/), "031-8877-222");
+    await userEvent.type(screen.getByLabelText(/Faksimile/), "031-8877-222");
     await userEvent.type(screen.getByLabelText(/Website/), "sumberpangan.co.id");
     await userEvent.click(
       screen.getByRole("button", { name: "Simpan supplier" }),
@@ -381,7 +381,7 @@ describe("SupplierCreateForm", () => {
     render(<SupplierCreateForm />);
 
     await fillRequired();
-    await userEvent.type(screen.getByLabelText(/ID Pemasok/), "SUP 001");
+    await userEvent.type(screen.getByLabelText(/ID supplier/), "SUP 001");
     await userEvent.click(
       screen.getByRole("button", { name: "Simpan supplier" }),
     );

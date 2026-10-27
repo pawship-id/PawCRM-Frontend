@@ -116,7 +116,7 @@ export function SupplierTypesScreen() {
             href={SETTINGS_PATHS.kategoriSupplier}
             className="rounded font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
-            Kategori Supplier
+            Kategori supplier
           </Link>
           , dan tenant boleh menambah sendiri sebanyak yang perlu.
         </p>

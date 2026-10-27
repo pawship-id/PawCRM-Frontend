@@ -306,7 +306,7 @@ describe("BookingDetailScreen — the header", () => {
         screen.queryByRole("link", { name: /^ubah$/i }),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByRole("link", { name: /edit layanan/i }),
+        screen.queryByRole("link", { name: /ubah layanan/i }),
       ).not.toBeInTheDocument();
     },
   );
@@ -607,7 +607,7 @@ describe("BookingDetailScreen — the Kunjungan card", () => {
     const { unmount } = show();
 
     expect(
-      await screen.findByRole("link", { name: /edit layanan/i }),
+      await screen.findByRole("link", { name: /ubah layanan/i }),
     ).toHaveAttribute("href", "/dashboard/booking/bk-1/edit");
 
     unmount();
@@ -615,7 +615,7 @@ describe("BookingDetailScreen — the Kunjungan card", () => {
 
     await screen.findByText("BK-260903-001");
     expect(
-      screen.queryByRole("link", { name: /edit layanan/i }),
+      screen.queryByRole("link", { name: /ubah layanan/i }),
     ).not.toBeInTheDocument();
   });
 

@@ -252,7 +252,7 @@ function ReceiptBody({ receipt }: { receipt: Receipt }) {
             <TableHeader>
               <TableRow>
                 <TableHead>Produk</TableHead>
-                <TableHead>Lot</TableHead>
+                <TableHead>Batch</TableHead>
                 <TableHead>Kedaluwarsa</TableHead>
                 <TableHead className="text-right">Dipesan</TableHead>
                 <TableHead className="text-right">Diterima</TableHead>

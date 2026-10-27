@@ -154,7 +154,7 @@ export function PosHeldCartsDialog({
                     */}
                     {cart.syncOnline && (
                       <span className="shrink-0 rounded-full bg-tint-info px-2 py-0.5 text-xs font-medium text-info">
-                        Sync online
+                        Dibagikan
                       </span>
                     )}
                   </span>

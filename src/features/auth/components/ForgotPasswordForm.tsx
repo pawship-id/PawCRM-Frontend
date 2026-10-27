@@ -31,13 +31,13 @@ export function ForgotPasswordForm() {
       const result = await authService.forgotPassword(email.trim());
       setMessage(
         result.message ||
-          "If an account exists for that email, a reset link is on its way.",
+          "Kalau email ini terdaftar, link reset password sudah kami kirim. Cek kotak masuk email Anda.",
       );
     } catch (error) {
       if (error instanceof ApiError && error.isValidationError) {
         setFieldError(error.fieldErrors.email ?? error.message);
       } else {
-        setFormError("Something went wrong. Please try again.");
+        setFormError("Terjadi kesalahan. Coba lagi.");
       }
     } finally {
       setSubmitting(false);
@@ -52,7 +52,7 @@ export function ForgotPasswordForm() {
           href="/login"
           className="text-sm font-medium text-primary hover:text-primary-hover"
         >
-          ← Back to sign in
+          ← Kembali ke halaman masuk
         </Link>
       </div>
     );
@@ -67,24 +67,24 @@ export function ForgotPasswordForm() {
         type="email"
         name="email"
         autoComplete="email"
-        placeholder="you@clinic.com"
+        placeholder="nama@petshop.com"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         error={fieldError}
-        hint="We'll email you a link to reset your password."
+        hint="Link untuk reset password akan dikirim ke email ini."
         required
         autoFocus
       />
 
       <Button type="submit" loading={submitting} fullWidth>
-        Send reset link
+        Kirim link reset
       </Button>
 
       <Link
         href="/login"
         className="text-center text-sm font-medium text-primary hover:text-primary-hover"
       >
-        ← Back to sign in
+        ← Kembali ke halaman masuk
       </Link>
     </form>
   );

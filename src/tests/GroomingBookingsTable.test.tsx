@@ -124,8 +124,8 @@ describe("GroomingBookingsTable — Rincian", () => {
     );
 
     expect(detail.getAllByText("Diskon item")).toHaveLength(2);
-    expect(detail.getByText(`− ${formatMoney("5000.0000")}`)).toBeInTheDocument();
-    expect(detail.getByText(`− ${formatMoney("2000.0000")}`)).toBeInTheDocument();
+    expect(detail.getByText(`−${formatMoney("5000.0000")}`)).toBeInTheDocument();
+    expect(detail.getByText(`−${formatMoney("2000.0000")}`)).toBeInTheDocument();
 
     /* The lines after their own discounts: 140.000 − 7.000. */
     expect(detail.getByText("Subtotal").nextSibling).toHaveTextContent(

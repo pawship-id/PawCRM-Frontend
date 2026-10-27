@@ -134,11 +134,11 @@ export function PurchasingHub() {
       />
 
       <Worklist
-        title="Hutang lewat jatuh tempo"
+        title="Utang lewat jatuh tempo"
         data={overdue}
         tone="danger"
         totalLabel="Total tertunggak"
-        empty="Tidak ada hutang yang lewat jatuh tempo."
+        empty="Tidak ada utang yang lewat jatuh tempo."
         moreLabel="faktur lain juga sudah lewat tempo"
       />
 
@@ -146,7 +146,7 @@ export function PurchasingHub() {
           states the days the numbers beside it were computed with rather than
           naming one this screen keeps a constant for. */}
       <Worklist
-        title="Hutang jatuh tempo minggu ini"
+        title="Utang jatuh tempo minggu ini"
         caption={
           summary ? `${summary.dueSoon.horizonDays} hari ke depan` : undefined
         }
@@ -155,8 +155,8 @@ export function PurchasingHub() {
         totalLabel="Kas yang perlu disiapkan"
         empty={
           summary
-            ? `Tidak ada hutang yang jatuh tempo dalam ${summary.dueSoon.horizonDays} hari.`
-            : "Tidak ada hutang yang jatuh tempo dalam waktu dekat."
+            ? `Tidak ada utang yang jatuh tempo dalam ${summary.dueSoon.horizonDays} hari.`
+            : "Tidak ada utang yang jatuh tempo dalam waktu dekat."
         }
         moreLabel="faktur lain juga jatuh tempo minggu ini"
       />

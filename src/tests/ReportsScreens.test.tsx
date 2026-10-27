@@ -147,9 +147,9 @@ describe("ReportsHub", () => {
   it("opens on Penjualan, where every report opens as a dialog", () => {
     renderWithAuth(<ReportsHub />);
 
-    expect(screen.getByText("Penjualan per invoice")).toBeInTheDocument();
+    expect(screen.getByText("Penjualan per faktur")).toBeInTheDocument();
     expect(
-      screen.getByText("Penjualan per invoice (rincian barang)"),
+      screen.getByText("Penjualan per faktur (rincian barang)"),
     ).toBeInTheDocument();
     expect(screen.queryByText("Segera")).not.toBeInTheDocument();
     expect(
@@ -298,7 +298,7 @@ describe("LowStockScreen", () => {
     renderWithAuth(<LowStockScreen />);
 
     expect(
-      await screen.findByRole("button", { name: /export halaman ini/i }),
+      await screen.findByRole("button", { name: /unduh halaman ini/i }),
     ).toBeInTheDocument();
   });
 

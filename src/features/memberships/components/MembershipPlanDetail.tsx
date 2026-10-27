@@ -55,6 +55,8 @@ export function MembershipPlanDetail({ id }: { id: string }) {
   const catalog = useMembershipCatalog();
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  /* Nonaktifkan asks first (ui-rules §9); Aktifkan only gives sales back. */
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
 
   if (loading) {
     return (
@@ -74,6 +76,7 @@ export function MembershipPlanDetail({ id }: { id: string }) {
 
     try {
       await membershipService.updatePlan(plan.id, { isActive: !plan.isActive });
+      setConfirmDeactivate(false);
       swalToast(
         plan.isActive
           ? "Paket dinonaktifkan. Kartu yang sudah terbit tetap berlaku."
@@ -163,7 +166,11 @@ export function MembershipPlanDetail({ id }: { id: string }) {
             <Button asChild variant="secondary">
               <Link href={planEditHref(plan.id)}>Ubah</Link>
             </Button>
-            <Button variant="secondary" onClick={toggleActive} disabled={busy}>
+            <Button
+              variant="secondary"
+              onClick={() => (plan.isActive ? setConfirmDeactivate(true) : void toggleActive())}
+              disabled={busy}
+            >
               {plan.isActive ? "Nonaktifkan" : "Aktifkan"}
             </Button>
           </Can>
@@ -239,6 +246,21 @@ export function MembershipPlanDetail({ id }: { id: string }) {
           )}
         </Card>
       </div>
+
+      {confirmDeactivate && (
+        <ConfirmDialog
+          title="Nonaktifkan paket membership"
+          confirmLabel="Nonaktifkan paket"
+          busy={busy}
+          onConfirm={() => void toggleActive()}
+          onCancel={() => setConfirmDeactivate(false)}
+        >
+          Nonaktifkan <strong>{plan.name}</strong>? Paket ini berhenti dijual — tidak
+          bisa dipilih lagi di kasir atau faktur penjualan, dan kartu yang ada tidak bisa
+          diperpanjang dengan paket ini. Kartu yang sudah terbit tetap berlaku sampai
+          masa berlakunya habis, dan paket bisa diaktifkan lagi kapan saja.
+        </ConfirmDialog>
+      )}
 
       {confirmDelete && (
         <ConfirmDialog

@@ -31,7 +31,7 @@ describe("StockModuleHeader", () => {
       "/dashboard/inventory/stock-card",
     );
     expect(
-      screen.getByRole("link", { name: "Batch & Expired" }),
+      screen.getByRole("link", { name: "Batch & Kedaluwarsa" }),
     ).toHaveAttribute("href", "/dashboard/inventory/batches");
   });
 
@@ -44,7 +44,7 @@ describe("StockModuleHeader", () => {
       "page",
     );
     expect(
-      screen.getByRole("link", { name: "Batch & Expired" }),
+      screen.getByRole("link", { name: "Batch & Kedaluwarsa" }),
     ).not.toHaveAttribute("aria-current");
   });
 
@@ -53,7 +53,7 @@ describe("StockModuleHeader", () => {
     renderWithAuth(<StockModuleHeader />);
 
     expect(
-      screen.getByRole("link", { name: "Batch & Expired" }),
+      screen.getByRole("link", { name: "Batch & Kedaluwarsa" }),
     ).toHaveAttribute("aria-current", "page");
     expect(
       screen.getByRole("link", { name: "Kartu Stok" }),
@@ -70,7 +70,7 @@ describe("StockModuleHeader", () => {
       screen.getByRole("link", { name: "Kartu Stok" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: "Batch & Expired" }),
+      screen.queryByRole("link", { name: "Batch & Kedaluwarsa" }),
     ).not.toBeInTheDocument();
   });
 

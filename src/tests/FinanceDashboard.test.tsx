@@ -323,7 +323,7 @@ describe("financeSummary", () => {
  * has no text-entry behaviour to drive, and typing into one sets nothing.
  */
 async function pickCustomRange(from: string, to: string) {
-  await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+  await userEvent.click(screen.getByRole("button", { name: "Pilih tanggal" }));
 
   fireEvent.change(await screen.findByLabelText("Periode khusus dari"), {
     target: { value: from },
@@ -403,7 +403,7 @@ describe("FinanceDashboardScreen", () => {
 
     // Custom stays lit over it, with the range open in the card (the shared
     // scope row, 12 October 2026) — no chip needed, nothing is concealed.
-    expect(screen.getByRole("button", { name: "Custom" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Pilih tanggal" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -431,7 +431,7 @@ describe("FinanceDashboardScreen", () => {
 
     const before = (journalEntryService.profitLoss as jest.Mock).mock.calls.length;
 
-    await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+    await userEvent.click(screen.getByRole("button", { name: "Pilih tanggal" }));
     expect(
       await screen.findByLabelText("Periode khusus dari"),
     ).toBeInTheDocument();
@@ -481,7 +481,7 @@ describe("FinanceDashboardScreen", () => {
     renderWithAuth(<FinanceDashboardScreen now={NOW} />);
     await loaded();
 
-    await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+    await userEvent.click(screen.getByRole("button", { name: "Pilih tanggal" }));
     await screen.findByLabelText("Periode khusus dari");
 
     await userEvent.click(screen.getByRole("button", { name: "Bulan ini" }));
@@ -530,7 +530,7 @@ describe("FinanceDashboardScreen", () => {
     ).toBeInTheDocument();
     // Margin, on its own card and under the laba bersih.
     expect(screen.getByText("27,2%")).toBeInTheDocument();
-    expect(screen.getByText("Margin 27,2% dari net revenue")).toBeInTheDocument();
+    expect(screen.getByText("Margin 27,2% dari pendapatan")).toBeInTheDocument();
     // Piutang and utang, each from its module's outstanding aggregate.
     expect(screen.getByText("Rp 14.200.000")).toBeInTheDocument();
     expect(screen.getByText("Rp 8.600.000")).toBeInTheDocument();
@@ -1037,7 +1037,7 @@ describe("FinanceDashboardScreen", () => {
 
     expect(screen.queryByText(/Piutang belum tertagih/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Utang belum dibayar/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Total net cashflow/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Arus kas bersih/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/biaya tetap jatuh tempo/)).not.toBeInTheDocument();
     expect(customerInvoiceService.outstanding).not.toHaveBeenCalled();
     expect(purchaseInvoiceService.outstandingSummary).not.toHaveBeenCalled();

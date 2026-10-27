@@ -180,12 +180,12 @@ function lotColumns(
         batch.expiryDate ? (
           <ExpiryBadge date={batch.expiryDate} />
         ) : (
-          <span className="text-xs text-muted">tanpa expiry</span>
+          <span className="text-xs text-muted">tanpa kedaluwarsa</span>
         ),
     },
     {
       id: "qty",
-      header: "Sisa Stock",
+      header: "Sisa stok",
       align: "right",
       cellClassName: (batch) =>
         cn("text-sm", remainingOf(batch) < 0n && "font-semibold text-danger"),

@@ -295,7 +295,7 @@ describe("GroomingServicesScreen", () => {
     await screen.findByRole("link", { name: "Express Wash" });
 
     const panel = await openFilters();
-    await userEvent.click(within(panel).getByRole("button", { name: "Custom" }));
+    await userEvent.click(within(panel).getByRole("button", { name: "Pilih tanggal" }));
 
     // Seeded with the period in force, this month — and no preset chips.
     const month = periodRange("month");
@@ -319,7 +319,7 @@ describe("GroomingServicesScreen", () => {
         }),
       ),
     );
-    expect(screen.getByRole("button", { name: "Custom" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Pilih tanggal" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -337,9 +337,9 @@ describe("GroomingServicesScreen", () => {
 
     expect(screen.queryByLabelText("Tanggal booking dari")).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "Custom" }));
+    await userEvent.click(screen.getByRole("button", { name: "Pilih tanggal" }));
 
-    expect(screen.getByRole("button", { name: "Custom" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Pilih tanggal" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );

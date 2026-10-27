@@ -50,8 +50,8 @@ export default async function BatchLabelsPage({
       <div className="print:hidden">
         <Breadcrumb
           items={[
-            { label: "Inventory", href: "/dashboard/inventory" },
-            { label: "Batch & Expired", href: "/dashboard/inventory/batches" },
+            { label: "Inventori", href: "/dashboard/inventory" },
+            { label: "Batch & Kedaluwarsa", href: "/dashboard/inventory/batches" },
             { label: "Cetak label" },
           ]}
         />

@@ -1282,7 +1282,7 @@ describe("InvoiceDetail — the title line", () => {
     const titleLine = heading.parentElement as HTMLElement;
     const block = titleLine.parentElement as HTMLElement;
 
-    expect(within(titleLine).getByText("belum lunas")).toBeInTheDocument();
+    expect(within(titleLine).getByText("Belum lunas")).toBeInTheDocument();
     expect(within(block).getByText("Kasir")).toBeInTheDocument();
     expect(within(block).queryByText("dari kasir")).not.toBeInTheDocument();
   });

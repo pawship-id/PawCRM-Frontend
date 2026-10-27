@@ -309,7 +309,7 @@ export function ReceiptDialog({
               copied a block of text, and a cashier pasting a link where they
               expected a receipt would think it had failed.
             */}
-            {receipt?.receiptToken ? "Salin Link WA" : "Salin untuk WhatsApp"}
+            {receipt?.receiptToken ? "Salin tautan WhatsApp" : "Salin untuk WhatsApp"}
           </Button>
           {/*
             SAVE, not print. Same dialog underneath — the browser has no other

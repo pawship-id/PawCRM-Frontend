@@ -38,10 +38,10 @@ const TONE: Record<CustomerInvoiceStatus, string> = {
   that say it. `void` reads "batal": the word a shop uses for a cancelled bill.
 */
 const LABEL: Record<CustomerInvoiceStatus, string> = {
-  unpaid: "belum lunas",
-  partial: "lunas sebagian",
-  paid: "lunas",
-  void: "batal",
+  unpaid: "Belum lunas",
+  partial: "Lunas sebagian",
+  paid: "Lunas",
+  void: "Batal",
 };
 
 export function InvoiceStatusBadge({

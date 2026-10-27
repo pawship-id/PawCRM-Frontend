@@ -11,9 +11,9 @@ export default function NewUserPage() {
     <RequirePermission feature="users" action="create">
       <div className="flex flex-col gap-6">
         <div>
-          <h1 className="text-2xl font-extrabold text-foreground">Create User</h1>
+          <h1 className="text-2xl font-extrabold text-foreground">Tambah pengguna</h1>
           <p className="mt-1 text-sm text-muted">
-            Add a new staff account with its role and branch access.
+            Buat akun staf baru, lengkap dengan peran dan akses cabangnya.
           </p>
         </div>
 

@@ -18,8 +18,8 @@ export default async function OpnameSheetPage({
       <div>
         <Breadcrumb
           items={[
-            { label: "Inventory", href: "/dashboard/inventory" },
-            { label: "Stok Opname", href: "/dashboard/inventory/opname" },
+            { label: "Inventori", href: "/dashboard/inventory" },
+            { label: "Koreksi Stok", href: "/dashboard/inventory/opname" },
             { label: "Lembar penghitungan" },
           ]}
         />

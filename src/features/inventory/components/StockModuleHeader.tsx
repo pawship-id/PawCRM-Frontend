@@ -41,7 +41,7 @@ export function StockModuleHeader({
       ? [{ label: "Kartu Stok", href: "/dashboard/inventory/stock-card" }]
       : []),
     ...(mayReadBatches
-      ? [{ label: "Batch & Expired", href: "/dashboard/inventory/batches" }]
+      ? [{ label: "Batch & Kedaluwarsa", href: "/dashboard/inventory/batches" }]
       : []),
   ];
 

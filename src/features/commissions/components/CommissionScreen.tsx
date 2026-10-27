@@ -357,7 +357,7 @@ export function CommissionScreen({ now }: { now: string }) {
           error={Boolean(error) && !data}
         />
         <StatTile
-          label="Komisi pending"
+          label="Komisi belum dibayar"
           value={data ? formatMoney(data.cards.pending) : "—"}
           caption="Total dikurangi terbayar"
           loading={!data && !error}

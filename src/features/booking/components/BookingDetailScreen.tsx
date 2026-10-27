@@ -650,7 +650,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                   <Button asChild variant="ghost" size="sm">
                     <Link href={editHref}>
                       <Pencil className="size-4" aria-hidden />
-                      Edit layanan &amp; harga
+                      Ubah layanan &amp; harga
                     </Link>
                   </Button>
                 </Can>

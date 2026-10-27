@@ -363,6 +363,12 @@ const ACTION_META: Record<string, ActionMeta> = {
 /** Old rows written before a rename; labelled, but not offered as a filter. */
 const LEGACY_LABEL: Record<string, string> = {
   customer_invoice_payment: "Pembayaran faktur dicatat",
+  // The till's own events, written with a dotted slug — labelled so the list
+  // never shows "Pos device register" (27 October 2026).
+  "pos.device_register": "Perangkat kasir didaftarkan",
+  "pos.void": "Transaksi kasir dibatalkan",
+  "pos.return": "Retur kasir dicatat",
+  "pos.discountOverride": "Diskon kasir melewati batas",
 };
 
 /** The actions offered in the "Aksi" filter — one module's, or all of them. */

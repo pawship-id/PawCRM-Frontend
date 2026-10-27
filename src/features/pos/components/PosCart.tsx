@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import {
   formatMoney,
+  formatQty,
   isPositive,
   subtractDecimals,
   sumDecimals,
@@ -345,8 +346,9 @@ export function PosCart({
           {cart?.cartNumber ? `Keranjang ${cart.cartNumber}` : "Keranjang"}
         </span>
         {!empty && (
+          // The quantities, not the rows: one line of 2 shampoos is 2 item.
           <span className="text-sm tabular-nums text-muted">
-            · {items.length} item
+            · {formatQty(sumDecimals(items.map((item) => item.qty)))} item
           </span>
         )}
 
@@ -360,7 +362,7 @@ export function PosCart({
               htmlFor="pos-sync-online"
               className="text-xs font-medium text-muted"
             >
-              Sync online
+              Bagikan ke kasir lain
             </Label>
             <InfoTooltip hint="Kalau aktif, setelah disimpan keranjang ini muncul di daftar simpanan semua kasir di cabang ini, jadi kasir lain bisa melanjutkan dan menerima pembayarannya. Kalau mati, hanya kamu yang bisa melihatnya." />
             <Switch

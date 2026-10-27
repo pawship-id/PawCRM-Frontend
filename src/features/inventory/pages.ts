@@ -29,7 +29,7 @@ export const INVENTORY_TAB = {
     anyOf: [{ feature: "stockMovements" }],
   },
   batches: {
-    label: "Batch & Expired",
+    label: "Batch & Kedaluwarsa",
     href: "/dashboard/inventory/batches",
     anyOf: [{ feature: "productBatches" }],
   },

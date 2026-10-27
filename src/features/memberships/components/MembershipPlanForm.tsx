@@ -423,17 +423,17 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
           />
 
           {/* ───────────────────────────────────── Tampilan publik */}
-          <Card title="Tampilan publik" description="Halaman /membership di website.">
+          <Card title="Tampilan publik" description="Halaman membership di website toko.">
             <div className="flex flex-col gap-4">
               <CheckRowGroup>
                 <CheckRow
-                  label="Tampil di halaman /membership"
+                  label="Tampil di website"
                   description="Paket ini muncul di website dan bisa dibeli dari sana."
                   checked={draft.publicVisible}
                   onCheckedChange={(checked) => set("publicVisible", checked)}
                 />
                 <CheckRow
-                  label="Featured (kartu disorot)"
+                  label="Tonjolkan paket ini"
                   description="Kartunya ditonjolkan di antara paket lain."
                   checked={draft.publicFeatured}
                   onCheckedChange={(checked) => set("publicFeatured", checked)}
@@ -450,7 +450,7 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
                   error={fieldErrors["publicDisplay.order"]}
                 />
                 <TextField
-                  label="Label badge"
+                  label="Label sorotan"
                   value={draft.publicBadge}
                   placeholder="mis. Paling laris"
                   onChange={(event) => set("publicBadge", event.target.value)}

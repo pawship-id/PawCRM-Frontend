@@ -282,11 +282,11 @@ export function ProductsTable({
               variant="outline"
               className="border-transparent bg-secondary/25 text-secondary-foreground"
             >
-              expiry
+              Kedaluwarsa
             </Badge>
           )}
-          {!product.isActive && <Badge variant="outline">nonaktif</Badge>}
-          {product.deletedAt && <Badge variant="outline">terhapus</Badge>}
+          {!product.isActive && <Badge variant="outline">Nonaktif</Badge>}
+          {product.deletedAt && <Badge variant="outline">Terhapus</Badge>}
         </div>
       ),
     },
@@ -544,7 +544,7 @@ function RowMenu({
                   href={`/dashboard/inventory/products/${product._id}/edit`}
                 >
                   <Pencil />
-                  Edit
+                  Ubah
                 </Link>
               </DropdownMenuItem>
             </Can>

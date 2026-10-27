@@ -27,7 +27,7 @@ export default function NegativeStockPage() {
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Inventori", href: "/dashboard/inventory" },
               { label: "Stok minus" },
             ]}
           />

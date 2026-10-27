@@ -370,7 +370,7 @@ export function formatRupiah(value: string | null | undefined): string {
     ".",
   );
 
-  return `${negative ? "-" : ""}Rp ${digits}`;
+  return `${negative ? "−" : ""}Rp ${digits}`;
 }
 
 /**

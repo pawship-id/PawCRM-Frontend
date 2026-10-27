@@ -7,32 +7,32 @@ import {
   SignOutEverywhereForm,
 } from "@/features/profile";
 
-export const metadata: Metadata = { title: "My profile · Buloo" };
+export const metadata: Metadata = { title: "Profil saya · Buloo" };
 
 export default function ProfilePage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-extrabold text-foreground">My profile</h1>
+        <h1 className="text-2xl font-extrabold text-foreground">Profil saya</h1>
         <p className="mt-1 text-sm text-muted">
-          Manage your account details and password.
+          Atur data akun dan password Anda.
         </p>
       </div>
 
-      <Card title="Account">
+      <Card title="Akun">
         <ProfileSummary />
       </Card>
 
       <Card
-        title="Profile details"
-        description="Update your name, email and phone number."
+        title="Data diri"
+        description="Ubah nama, email, dan nomor HP Anda."
       >
         <ProfileForm />
       </Card>
 
       <Card
         title="Password"
-        description="Choose a new password for signing in."
+        description="Ganti password yang Anda pakai untuk masuk."
       >
         <ChangePasswordForm />
       </Card>
@@ -43,9 +43,7 @@ export default function ProfilePage() {
         one off every other device — and putting it above the forms would make
         the first thing on a profile page a way to sign yourself out of it.
 
-        Copy in Bahasa (ui-rules §12) although the cards above are still English:
-        those are on the migration list, and matching them would add one more
-        string to translate later.
+        Copy in Bahasa (ui-rules §12), like every card above it.
       */}
       <Card
         title="Sesi perangkat"

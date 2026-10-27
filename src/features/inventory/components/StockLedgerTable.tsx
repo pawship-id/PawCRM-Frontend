@@ -76,7 +76,7 @@ const REFERENCE_LABELS: Record<ReferenceType, string> = {
   pos_void: "Pembatalan transaksi",
   stock_opname: "Stok opname",
   purchase_return: "Retur pembelian",
-  customer_return: "Retur customer",
+  customer_return: "Retur pelanggan",
   // The goods leaving. The two below are the same transfer's later acts, and
   // each is a row of its own so a card shows "sent", "received" and "undone" as
   // three events rather than one document appearing three times.

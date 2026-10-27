@@ -338,7 +338,7 @@ describe("GeneralSettingsScreen", () => {
     renderWithAuth(<GeneralSettingsScreen />);
 
     const card = await screen.findByRole("link", {
-      name: /^Kategori Supplier/,
+      name: /^Kategori supplier/,
     });
     expect(card).toHaveAttribute(
       "href",
@@ -354,7 +354,7 @@ describe("GeneralSettingsScreen", () => {
 
     await screen.findByRole("heading", { name: "Klinik Hewan Sehat" });
     expect(
-      screen.queryByRole("link", { name: /^Kategori Supplier/ }),
+      screen.queryByRole("link", { name: /^Kategori supplier/ }),
     ).not.toBeInTheDocument();
     // Tipe supplier stays — it is ungated, and explains the types rather than
     // listing any vendor group.
@@ -412,7 +412,7 @@ describe("GeneralSettingsScreen", () => {
     expect(titles).toEqual([
       "Gudang",
       "Tipe pelanggan",
-      "Kategori Supplier",
+      "Kategori supplier",
       "Tipe supplier",
       "Nomor dokumen",
       "Notifikasi",

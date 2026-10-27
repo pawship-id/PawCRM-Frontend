@@ -73,15 +73,15 @@ export const ACCOUNT_CATEGORIES: AccountCategory[] = [
  * the screen and the specification disagree about the same row.
  */
 export const ACCOUNT_CATEGORY_LABEL: Record<AccountCategory, string> = {
-  cash_bank: "Cash & Bank",
+  cash_bank: "Kas & Bank",
   piutang_dagang: "Piutang Dagang",
   persediaan: "Persediaan",
   aset_lancar_lainnya: "Aset Lancar Lainnya",
   aset_tetap: "Aset Tetap",
   investasi_jangka_panjang: "Investasi Jangka Panjang",
-  hutang_dagang: "Hutang Dagang",
-  hutang_lainnya: "Hutang Lainnya",
-  hutang_jangka_panjang: "Hutang Jangka Panjang",
+  hutang_dagang: "Utang Dagang",
+  hutang_lainnya: "Utang Lainnya",
+  hutang_jangka_panjang: "Utang Jangka Panjang",
   modal: "Modal",
   pendapatan: "Pendapatan",
   hpp: "Harga Pokok Penjualan",

@@ -304,11 +304,11 @@ describe("AntarJemputBookingDetailScreen", () => {
     const harga = within(await hargaCard());
 
     expect(harga.getByText("Diskon item")).toBeInTheDocument();
-    expect(harga.getByText("− Rp 2.000")).toBeInTheDocument();
+    expect(harga.getByText("−Rp 2.000")).toBeInTheDocument();
     expect(harga.getByText("Subtotal")).toBeInTheDocument();
     expect(harga.getByText("Rp 43.000")).toBeInTheDocument();
     expect(harga.getByText("Diskon booking")).toBeInTheDocument();
-    expect(harga.getByText("− Rp 5.000")).toBeInTheDocument();
+    expect(harga.getByText("−Rp 5.000")).toBeInTheDocument();
     expect(harga.getByText("Rp 38.000")).toBeInTheDocument();
   });
 

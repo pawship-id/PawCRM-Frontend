@@ -13,7 +13,7 @@ export default function NewStockTransferPage() {
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Inventori", href: "/dashboard/inventory" },
               {
                 label: "Transfer stok",
                 href: "/dashboard/inventory/transfers",

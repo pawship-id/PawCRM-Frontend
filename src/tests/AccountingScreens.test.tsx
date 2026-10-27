@@ -513,7 +513,7 @@ describe("ChartOfAccountsScreen", () => {
     expect(offered.some((text) => text.includes("Biaya Lainnya"))).toBe(true);
     expect(offered.some((text) => text.includes("Harga Pokok"))).toBe(true);
     // Every asset category is gone — the class above cannot hold them.
-    expect(offered.some((text) => text.includes("Cash & Bank"))).toBe(false);
+    expect(offered.some((text) => text.includes("Kas & Bank"))).toBe(false);
     expect(offered.some((text) => text.includes("Persediaan"))).toBe(false);
   });
 
@@ -607,9 +607,44 @@ describe("ChartOfAccountsScreen", () => {
       await screen.findByRole("menuitem", { name: "Nonaktifkan akun" }),
     );
 
+    // It asks first, and says what happens before anything is sent.
+    const dialog = await screen.findByRole("dialog", { name: "Nonaktifkan akun" });
+    expect(dialog).toHaveTextContent("1101 Kas");
+    expect(dialog).toHaveTextContent("bisa diaktifkan lagi");
+    expect(update).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Nonaktifkan akun" }),
+    );
+
     await waitFor(() =>
       expect(update).toHaveBeenCalledWith("1101", { isActive: false }),
     );
+  });
+
+  it("sends nothing when the deactivate dialog is cancelled", async () => {
+    await renderChart();
+    const update = jest
+      .spyOn(chartOfAccountsService, "update")
+      .mockResolvedValue({} as never);
+
+    const row = screen
+      .getAllByRole("row")
+      .find((candidate) => candidate.textContent?.includes("1101"))!;
+    await userEvent.click(
+      within(row).getByRole("button", { name: "Aksi untuk 1101 Kas" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("menuitem", { name: "Nonaktifkan akun" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "Nonaktifkan akun" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Batal" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(update).not.toHaveBeenCalled();
   });
 
   /**
@@ -660,6 +695,11 @@ describe("ChartOfAccountsScreen", () => {
     await userEvent.click(
       await screen.findByRole("menuitem", { name: "Nonaktifkan akun" }),
     );
+    await userEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "Nonaktifkan akun",
+      }),
+    );
 
     // Still there, now reading Nonaktif.
     await waitFor(() =>
@@ -690,7 +730,7 @@ describe("ChartOfAccountsScreen", () => {
 
     // The count the tile row used to show, now on the option itself — two
     // Hutang Dagang accounts in the fixture, 2000 and the 2101 under it.
-    const option = screen.getByRole("option", { name: /Hutang Dagang/ });
+    const option = screen.getByRole("option", { name: /Utang Dagang/ });
     expect(option).toHaveTextContent("2");
 
     await userEvent.click(option);
@@ -743,7 +783,7 @@ describe("ChartOfAccountsScreen", () => {
     // and the status change.
     expect(
       within(screen.getByRole("menu")).getByRole("menuitem", {
-        name: "Edit akun",
+        name: "Ubah akun",
       }),
     ).toHaveAttribute(
       "href",
@@ -797,7 +837,7 @@ describe("ChartOfAccountForm", () => {
     );
 
     expect(
-      screen.getByRole("option", { name: "110 - Cash & Bank" }),
+      screen.getByRole("option", { name: "110 - Kas & Bank" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("option", { name: "550 - Harga Pokok Penjualan" }),
@@ -835,7 +875,7 @@ describe("ChartOfAccountForm", () => {
 
     expect(screen.queryByLabelText("Jenis")).not.toBeInTheDocument();
 
-    await pickCategory("Cash & Bank");
+    await pickCategory("Kas & Bank");
     expect(await screen.findByLabelText("Jenis")).toBeInTheDocument();
 
     await pickCategory("Biaya");
@@ -852,7 +892,7 @@ describe("ChartOfAccountForm", () => {
 
     await userEvent.type(screen.getByLabelText(/Kode akun/), "1102a");
     await userEvent.type(screen.getByLabelText(/Nama akun/), "Bank BCA");
-    await pickCategory("Cash & Bank");
+    await pickCategory("Kas & Bank");
     await userEvent.click(screen.getByRole("button", { name: "Buat akun" }));
 
     await waitFor(() =>
@@ -926,7 +966,7 @@ describe("ChartOfAccountForm", () => {
 
     await userEvent.type(screen.getByLabelText(/Kode akun/), "1101");
     await userEvent.type(screen.getByLabelText(/Nama akun/), "Kas Kecil");
-    await pickCategory("Cash & Bank");
+    await pickCategory("Kas & Bank");
     await userEvent.click(screen.getByRole("button", { name: "Buat akun" }));
 
     expect(
@@ -981,7 +1021,7 @@ describe("ChartOfAccountForm", () => {
 
     await userEvent.type(screen.getByLabelText(/Kode akun/), "1102");
     await userEvent.type(screen.getByLabelText(/Nama akun/), "Bank BCA");
-    await pickCategory("Cash & Bank");
+    await pickCategory("Kas & Bank");
 
     // Reset empties the draft and applies at once.
     await userEvent.click(screen.getByLabelText("Cabang"));
@@ -1002,7 +1042,7 @@ describe("ChartOfAccountForm", () => {
 
     await userEvent.type(screen.getByLabelText(/Kode akun/), "1102");
     await userEvent.type(screen.getByLabelText(/Nama akun/), "Bank BCA");
-    await pickCategory("Cash & Bank");
+    await pickCategory("Kas & Bank");
 
     await userEvent.click(screen.getByLabelText("Cabang"));
     await userEvent.click(screen.getByRole("option", { name: "Barat" }));
@@ -1456,7 +1496,7 @@ describe("JournalEntriesScreen", () => {
   it("marks a reversed entry before anyone reads its amount", async () => {
     await renderLedger([entry({ _id: "1", reversedByEntryId: "2" })]);
 
-    expect(await screen.findByText("dibalik")).toBeInTheDocument();
+    expect(await screen.findByText("Dibalik")).toBeInTheDocument();
   });
 });
 
@@ -2003,7 +2043,7 @@ describe("JournalEntryCreateForm", () => {
     );
 
     expect(screen.getByText(/Dua hal sebelum menyimpan/)).toBeInTheDocument();
-    expect(screen.getByText(/Stock adjustment/)).toBeInTheDocument();
+    expect(screen.getByText(/Penyesuaian stok/)).toBeInTheDocument();
     expect(screen.getByText(/samakan dengan penyesuaian/)).toBeInTheDocument();
   });
 

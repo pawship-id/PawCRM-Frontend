@@ -6,27 +6,27 @@ import { useState } from "react";
 import type { LocationFieldsValue } from "@/components";
 import { Button } from "@/components/ui/button";
 
-import { mapsConfigured } from "@/features/antar-jemput/googleMaps";
-import {
-  MapPointPicker,
-  type MapPoint,
-} from "@/features/antar-jemput/components/MapPointPicker";
+import { mapsConfigured } from "../googleMaps";
+import { MapPointPicker, type MapPoint } from "./MapPointPicker";
 
 /**
- * "Pilih dari peta" for a warehouse's address and pin.
+ * "Pilih dari peta" for an address and its pin — a warehouse's or a customer's.
  *
  * It writes the same three values typing writes — `address`, `lat`, `lng` — so
- * the two forms keep their own state and `LocationFields` stays the manual
+ * each form keeps its own state and `LocationFields` stays the manual
  * fallback beneath it. The picker is the one Antar-Jemput built; this is only
  * the button that opens it and the translation between its numbers and the
  * form's strings (see `LocationFields` for why those are strings).
  */
-export function WarehousePinButton({
+export function MapPinButton({
+  title,
   address,
   location,
   disabled,
   onPick,
 }: {
+  /** The picker dialog's heading, e.g. "Lokasi gudang". */
+  title: string;
   address: string;
   location: LocationFieldsValue;
   disabled?: boolean;
@@ -86,7 +86,7 @@ export function WarehousePinButton({
 
       <MapPointPicker
         open={open}
-        title="Lokasi gudang"
+        title={title}
         value={
           pinned
             ? { address: addressIsStale ? "" : address, lat, lng }

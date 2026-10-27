@@ -318,7 +318,7 @@ function StatusBadge({ entry }: { entry: JournalEntry }) {
         className="rounded-full bg-tint-danger px-2 py-0.5 text-xs font-medium text-danger"
         title="Sudah dikoreksi oleh jurnal pembalik. Angkanya tidak lagi berpengaruh ke laporan."
       >
-        dibalik
+        Dibalik
       </span>
     );
   }
@@ -329,14 +329,14 @@ function StatusBadge({ entry }: { entry: JournalEntry }) {
         className="rounded-full bg-tint-warning px-2 py-0.5 text-xs font-medium text-secondary-foreground"
         title="Entri pembalik — dibuat untuk membatalkan entri lain."
       >
-        pembalik
+        Pembalik
       </span>
     );
   }
 
   return (
     <span className="rounded-full bg-tint-success px-2 py-0.5 text-xs font-medium text-success">
-      diposting
+      Diposting
     </span>
   );
 }

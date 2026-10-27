@@ -61,8 +61,8 @@ describe("UsersTable", () => {
 
     expect(screen.getByText("Ana Diaz")).toBeInTheDocument();
     expect(screen.getByText("Manager")).toBeInTheDocument();
-    expect(screen.getByText("All branches")).toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getByText("Semua cabang")).toBeInTheDocument();
+    expect(screen.getByText("Aktif")).toBeInTheDocument();
   });
 
   it("shows the empty state when there are no users", () => {
@@ -75,7 +75,7 @@ describe("UsersTable", () => {
       />,
     );
     expect(
-      screen.getByText(/no users match the current filters/i),
+      screen.getByText(/tidak ada pengguna yang cocok/i),
     ).toBeInTheDocument();
   });
 
@@ -110,11 +110,11 @@ describe("UsersTable", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /delete/i }));
+    await userEvent.click(screen.getByRole("button", { name: /hapus/i }));
 
     const dialog = screen.getByRole("dialog");
     await userEvent.click(
-      within(dialog).getByRole("button", { name: /^delete$/i }),
+      within(dialog).getByRole("button", { name: /^hapus$/i }),
     );
 
     expect(remove).toHaveBeenCalledWith("u1");
@@ -132,11 +132,11 @@ describe("UsersTable", () => {
     );
 
     expect(
-      screen.getByRole("button", { name: /restore/i }),
+      screen.getByRole("button", { name: /pulihkan/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Deleted")).toBeInTheDocument();
+    expect(screen.getByText("Terhapus")).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /^delete$/i }),
+      screen.queryByRole("button", { name: /^hapus$/i }),
     ).not.toBeInTheDocument();
   });
 });

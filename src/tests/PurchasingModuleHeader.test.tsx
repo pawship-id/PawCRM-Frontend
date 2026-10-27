@@ -108,7 +108,7 @@ describe("PurchasingModuleHeader", () => {
       screen.getByRole("heading", { level: 1, name: "Pembelian" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("Faktur pemasok, penerimaan barang, dan utang."),
+      screen.getByText("Faktur supplier, penerimaan barang, dan utang."),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("navigation", { name: "Breadcrumb" }),

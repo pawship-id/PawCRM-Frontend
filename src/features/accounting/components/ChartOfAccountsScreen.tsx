@@ -16,7 +16,13 @@ import {
   RotateCcw,
 } from "lucide-react";
 
-import { Alert, HighlightText, Pagination, Spinner } from "@/components";
+import {
+  Alert,
+  ConfirmDialog,
+  HighlightText,
+  Pagination,
+  Spinner,
+} from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -171,7 +177,8 @@ export function ChartOfAccountsScreen() {
   const [openAccountId, setOpenAccountId] = useState<string | null>(null);
   /** The account whose status is mid-flight, so its badge can be disabled. */
   const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  /** The account waiting on "Nonaktifkan akun" in the confirm dialog. */
+  const [deactivating, setDeactivating] = useState<ChartOfAccount | null>(null);
   const { can } = usePermissions();
 
   /**
@@ -287,8 +294,10 @@ export function ChartOfAccountsScreen() {
    * menu row ("Nonaktifkan akun") says what will happen before it happens, and
    * costs a deliberate second click.
    *
-   * NO CONFIRM DIALOG, though. Nothing is destroyed — an inactive account still
-   * explains every journal line that names it — and the same menu row undoes it.
+   * DEACTIVATING ASKS FIRST (27 October 2026, ui-rules §9) — nothing is
+   * destroyed, but the account stops being offered on every form at once, so
+   * the dialog says that before it happens. Reactivating stays one click: it
+   * only gives back what was there.
    *
    * DEACTIVATING TURNS ON "Tampilkan akun nonaktif" WHEN IT WAS OFF, and that
    * is not a convenience — without it the control is a trap. The list hides
@@ -304,13 +313,13 @@ export function ChartOfAccountsScreen() {
    */
   async function toggleStatus(account: ChartOfAccount) {
     setTogglingId(account._id);
-    setActionError(null);
 
     try {
       await chartOfAccountsService.update(account._id, {
         isActive: !account.isActive,
       });
 
+      setDeactivating(null);
       const deactivated = account.isActive;
       const wouldVanish = deactivated && !query.showInactive;
 
@@ -329,10 +338,13 @@ export function ChartOfAccountsScreen() {
       );
       refetch();
     } catch (caught) {
-      setActionError(
+      // A failed act is a toast, not a bar above the list — ui-rules §9.
+      swalToast(
         caught instanceof ApiError
           ? caught.message
           : "Gagal mengubah status akun. Coba lagi.",
+        "error",
+        6000,
       );
     } finally {
       setTogglingId(null);
@@ -386,8 +398,6 @@ export function ChartOfAccountsScreen() {
           </span>
         </Alert>
       )}
-
-      {actionError && <Alert variant="error">{actionError}</Alert>}
 
       <ChartOfAccountsToolbar
         query={query}
@@ -634,7 +644,7 @@ export function ChartOfAccountsScreen() {
                                       href={`${ACCOUNTING_CRUMBS.accounts.href}/${account._id}/edit`}
                                     >
                                       <Pencil />
-                                      Edit akun
+                                      Ubah akun
                                     </Link>
                                   </DropdownMenuItem>
                                 </Can>
@@ -651,7 +661,11 @@ export function ChartOfAccountsScreen() {
                                   */}
                                   <DropdownMenuItem
                                     disabled={togglingId === account._id}
-                                    onSelect={() => toggleStatus(account)}
+                                    onSelect={() =>
+                                      account.isActive
+                                        ? setDeactivating(account)
+                                        : toggleStatus(account)
+                                    }
                                   >
                                     {account.isActive ? (
                                       <>
@@ -704,6 +718,24 @@ export function ChartOfAccountsScreen() {
           unit="akun"
           onPageChange={setPage}
         />
+      )}
+
+      {deactivating && (
+        <ConfirmDialog
+          title="Nonaktifkan akun"
+          confirmLabel="Nonaktifkan akun"
+          busy={togglingId === deactivating._id}
+          onConfirm={() => void toggleStatus(deactivating)}
+          onCancel={() => setDeactivating(null)}
+        >
+          Nonaktifkan{" "}
+          <strong>
+            {deactivating.code} {deactivating.name}
+          </strong>
+          ? Akun ini tidak akan muncul lagi sebagai pilihan saat mencatat jurnal
+          atau transaksi baru. Jurnal dan saldo yang sudah tercatat tidak
+          berubah, dan akun bisa diaktifkan lagi kapan saja dari menu ini.
+        </ConfirmDialog>
       )}
     </div>
   );

@@ -108,7 +108,7 @@ function lotLabel(lot: ProductBatch): string {
   return [
     lot.batchCode,
     lot.supplierBatchCode && `supplier ${lot.supplierBatchCode}`,
-    expiry && `exp ${expiry}`,
+    expiry && `kedaluwarsa ${expiry}`,
     `sisa ${formatQty(lot.qtyRemaining)}`,
   ]
     .filter(Boolean)

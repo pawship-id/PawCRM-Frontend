@@ -176,7 +176,7 @@ export function PurchasePaymentDetail({
                 : "bg-tint-success text-success",
             )}
           >
-            {voided ? "dibatalkan" : "aktif"}
+            {voided ? "Dibatalkan" : "Aktif"}
           </span>
           {!voided && (
             <Can feature="cashTransactions" action="update">

@@ -336,7 +336,7 @@ export function StockCardScreen({
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Inventori", href: "/dashboard/inventory" },
               { label: "Kartu stok", href: "/dashboard/inventory/stock-card" },
               { label: product?.name ?? "Detail" },
             ]}

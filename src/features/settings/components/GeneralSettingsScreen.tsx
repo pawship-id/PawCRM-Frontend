@@ -205,7 +205,7 @@ export function GeneralSettingsScreen() {
           */}
           {can("supplierCategories", "read") && (
             <HubLinkCard
-              title="Kategori Supplier"
+              title="Kategori supplier"
               description="Kelompok seperti Makanan, Perlengkapan, atau Obat — dipakai untuk memilah supplier."
               href={SETTINGS_PATHS.kategoriSupplier}
             />

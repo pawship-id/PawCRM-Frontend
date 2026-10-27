@@ -14,7 +14,7 @@ import { useAuth } from "../hooks/useAuth";
 
 /**
  * The top-bar account control: the signed-in user's name/avatar, which opens a
- * dropdown with "My profile", "Business information" and "Logout".
+ * dropdown with "Profil saya", "Profil usaha" and "Keluar".
  *
  * The two links are the pair this menu exists to answer — who I am, and what
  * business I am in — which is why the tenant screen lives here rather than in
@@ -95,7 +95,7 @@ export function UserMenu() {
       {open && (
         <div
           role="menu"
-          aria-label="Account"
+          aria-label="Akun"
           className="absolute right-0 z-30 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-lg"
         >
           <div className="border-b border-border px-4 py-3">
@@ -112,7 +112,7 @@ export function UserMenu() {
             className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-foreground transition-colors hover:bg-primary/5"
           >
             <UserRound className="size-4 text-muted" />
-            My profile
+            Profil saya
           </Link>
 
           {/* Hidden without `tenants:read`, the same grant GET /tenants/me
@@ -128,7 +128,7 @@ export function UserMenu() {
               className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-foreground transition-colors hover:bg-primary/5"
             >
               <Store className="size-4 text-muted" />
-              Business information
+              Profil usaha
             </Link>
           )}
 
@@ -139,7 +139,7 @@ export function UserMenu() {
             className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-danger transition-colors hover:bg-danger/10"
           >
             <LogOut className="size-4" />
-            Logout
+            Keluar
           </button>
         </div>
       )}

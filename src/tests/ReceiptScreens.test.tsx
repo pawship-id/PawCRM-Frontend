@@ -1650,7 +1650,7 @@ describe("filing a delivery, then receiving it", () => {
     renderWithAuth(<ReceiptDetail receiptId={RECEIPT_ID} />);
 
     // The heading still names a legacy document's status; the rows do not.
-    expect(await screen.findByText("diterima sebagian")).toBeInTheDocument();
+    expect(await screen.findByText("Diterima sebagian")).toBeInTheDocument();
     expect(screen.queryByRole("columnheader", { name: "Sisa" })).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Status" })).toBeNull();
     expect(screen.queryByText("belum")).toBeNull();
@@ -1687,7 +1687,7 @@ describe("filing a delivery, then receiving it", () => {
     renderWithAuth(<ReceiptDetail receiptId={RECEIPT_ID} />);
 
     expect(await screen.findByText(/oleh Budi/)).toBeInTheDocument();
-    expect(screen.getByText("ditutup")).toBeInTheDocument();
+    expect(screen.getByText("Ditutup")).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Tutup penerimaan" }),
     ).toBeNull();
@@ -2101,7 +2101,7 @@ describe("ReceiptForm — from a supplier invoice", () => {
     for (const [index, date] of ["2027-01-01", "2027-06-01"].entries()) {
       await user.click(batches[index]);
       await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
-      await user.type(screen.getAllByLabelText(/^Expired Vaksin Rabies/)[index], date);
+      await user.type(screen.getAllByLabelText(/^Kedaluwarsa Vaksin Rabies/)[index], date);
     }
 
     await user.click(screen.getByRole("button", { name: /Simpan penerimaan/ }));
@@ -2249,8 +2249,8 @@ describe("ReceiptsScreen — receiving status", () => {
 
     renderWithAuth(<ReceiptsScreen />);
 
-    expect(await screen.findByText("diterima sebagian")).toBeInTheDocument();
-    expect(screen.getByText("ditutup")).toBeInTheDocument();
+    expect(await screen.findByText("Diterima sebagian")).toBeInTheDocument();
+    expect(screen.getByText("Ditutup")).toBeInTheDocument();
   });
 
   it("badges each row of the list with its status", async () => {
@@ -2263,8 +2263,8 @@ describe("ReceiptsScreen — receiving status", () => {
 
     renderWithAuth(<ReceiptsScreen />);
 
-    expect(await screen.findByText("belum diterima")).toBeInTheDocument();
-    expect(screen.getByText("diterima")).toBeInTheDocument();
+    expect(await screen.findByText("Belum diterima")).toBeInTheDocument();
+    expect(screen.getByText("Diterima")).toBeInTheDocument();
   });
 });
 
@@ -2531,7 +2531,7 @@ describe("choosing which batch the goods land in", () => {
     expect(supplier).toHaveValue("VAK-A26");
     expect(supplier).toBeDisabled();
 
-    const expiry = screen.getByLabelText(/^Expired Vaksin Rabies/);
+    const expiry = screen.getByLabelText(/^Kedaluwarsa Vaksin Rabies/);
     expect(expiry).toHaveValue("2027-03-01");
     expect(expiry).toBeDisabled();
   });
@@ -2547,7 +2547,7 @@ describe("choosing which batch the goods land in", () => {
     await user.click(await screen.findByLabelText(/^Batch Vaksin Rabies/));
     await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
 
-    const expiry = await screen.findByLabelText(/^Expired Vaksin Rabies/);
+    const expiry = await screen.findByLabelText(/^Kedaluwarsa Vaksin Rabies/);
     expect(expiry).not.toBeDisabled();
     await user.type(expiry, "2028-01-01");
 
@@ -2584,7 +2584,7 @@ describe("choosing which batch the goods land in", () => {
     await user.click(await screen.findByRole("option", { name: /Batch baru/ }));
 
     await user.type(
-      await screen.findByLabelText(/^Expired Vaksin Rabies/),
+      await screen.findByLabelText(/^Kedaluwarsa Vaksin Rabies/),
       "2028-01-01",
     );
     await user.type(

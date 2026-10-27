@@ -301,7 +301,7 @@ export function FinanceDashboardScreen({ now }: { now: string }) {
                 </div>
               )}
 
-              <Card title="P&L ringkas & beban terbesar">
+              <Card title="Ringkasan laba rugi & beban terbesar">
                 <ProfitLossBrief headline={headline} loading={data.loading} />
                 <LargestExpenses expenses={expenses} />
                 <FixedCostsDue data={data} />
@@ -386,7 +386,7 @@ function HeadlineRow({
         hint={
           noRevenue
             ? "Belum ada pendapatan di periode ini"
-            : `Margin ${formatPercent(headline?.marginPct ?? null)} dari net revenue`
+            : `Margin ${formatPercent(headline?.marginPct ?? null)} dari pendapatan`
         }
         hintClassName={noRevenue ? "text-warning" : undefined}
         delta={deltaOf(netProfit, before.headline?.netProfit)}
@@ -395,7 +395,7 @@ function HeadlineRow({
 
       <SummaryCard
         icon={TrendingUp}
-        label="Total net revenue"
+        label="Total pendapatan"
         value={money(headline?.netRevenue)}
         hint={
           headline && !isZero(headline.deductions)
@@ -414,7 +414,7 @@ function HeadlineRow({
       {can("cashTransactions", "read") && (
         <SummaryCard
           icon={Banknote}
-          label="Total net cashflow"
+          label="Arus kas bersih"
           value={netCash === null ? null : money(netCash)}
           valueClassName={netCash?.startsWith("-") ? "text-danger" : undefined}
           hint={
@@ -503,14 +503,14 @@ function PositionRow({
 
       <SummaryCard
         icon={Percent}
-        label="Profit margin"
+        label="Margin laba"
         value={formatPercent(headline?.marginPct ?? null)}
         valueClassName={
           headline?.marginPct != null && headline.marginPct < 0
             ? "text-danger"
             : undefined
         }
-        hint="Laba bersih dibagi net revenue"
+        hint="Laba bersih dibagi total pendapatan"
         /*
           IN POIN, NOT PERCENT. A margin going from 20% to 22% is +2 poin; as a
           "percentage change" it would read +10%, which nobody means by "the
@@ -905,7 +905,7 @@ function ProfitLossBrief({
   if (!headline) return null;
 
   const rows: { label: string; value: string; strong?: boolean }[] = [
-    { label: "Pendapatan (net revenue)", value: headline.netRevenue },
+    { label: "Pendapatan", value: headline.netRevenue },
     { label: "HPP", value: headline.hpp },
     { label: "Laba kotor", value: headline.grossProfit, strong: true },
     { label: "Biaya operasional", value: headline.operatingExpense },

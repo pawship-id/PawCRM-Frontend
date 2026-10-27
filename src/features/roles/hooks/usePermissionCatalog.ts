@@ -54,7 +54,7 @@ export function usePermissionCatalog(): CatalogState {
         setError(
           err instanceof ApiError
             ? err.message
-            : "Could not load the permission catalog.",
+            : "Daftar hak akses tidak bisa dimuat. Coba lagi.",
         );
       })
       .finally(() => {

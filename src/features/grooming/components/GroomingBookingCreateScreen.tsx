@@ -1628,14 +1628,14 @@ export function GroomingBookingCreateScreen() {
                           <SummaryLine
                             tone="discount"
                             label={`Diskon ${row.service?.name ?? ""} · ${discountWords(row.draft.main.discountMode, row.draft.main.discountValue)}`}
-                            value={`− ${money(row.main.discount)}`}
+                            value={`−${money(row.main.discount)}`}
                           />
                         )}
                         {(memberOffs[index] ?? 0n) > 0n && (
                           <SummaryLine
                             tone="discount"
                             label={`Potongan member · ${benefitViews[index]?.appliedLabel ?? row.service?.name ?? ""}`}
-                            value={`− ${money(memberOffs[index])}`}
+                            value={`−${money(memberOffs[index])}`}
                           />
                         )}
                         {row.addons.map((addonRow) => {
@@ -1652,14 +1652,14 @@ export function GroomingBookingCreateScreen() {
                                 <SummaryLine
                                   tone="discount"
                                   label={`Diskon ${addonRow.addon?.name ?? ""} · ${discountWords(typed.discountMode, typed.discountValue)}`}
-                                  value={`− ${money(addonRow.line.discount)}`}
+                                  value={`−${money(addonRow.line.discount)}`}
                                 />
                               )}
                               {addonMember && addonMember.off > 0n && (
                                 <SummaryLine
                                   tone="discount"
                                   label={`Potongan member · ${addonMember.label}`}
-                                  value={`− ${money(addonMember.off)}`}
+                                  value={`−${money(addonMember.off)}`}
                                 />
                               )}
                             </div>
@@ -1711,7 +1711,7 @@ export function GroomingBookingCreateScreen() {
                   <SummaryLine
                     tone="discount"
                     label={`Diskon booking · ${discountWords(bookingDiscount.mode, bookingDiscount.value)}`}
-                    value={`− ${money(split.total)}`}
+                    value={`−${money(split.total)}`}
                   />
                 )}
 

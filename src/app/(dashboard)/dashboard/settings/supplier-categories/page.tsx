@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { SupplierCategoriesScreen } from "@/features/purchasing";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Kategori Supplier · Buloo" };
+export const metadata: Metadata = { title: "Kategori supplier · Buloo" };
 
 export default function SupplierCategoriesPage() {
   return (

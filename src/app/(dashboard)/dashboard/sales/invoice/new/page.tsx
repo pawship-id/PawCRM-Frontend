@@ -28,7 +28,8 @@ export default function NewSalesInvoicePage() {
           hydration error. The sales list passes plain text for the same reason. */}
       <PageHeading crumbs={INVOICES_CRUMBS} title="Faktur baru">
         Tagihan yang dibuat sendiri, bukan dari kasir. Menyimpannya memotong
-        stok dan mencatat jurnal — dan tidak bisa diubah setelahnya.
+        stok dan mencatat jurnal. Faktur masih bisa diubah sampai pembayaran
+        pertama tercatat.
       </PageHeading>
       <InvoiceCreateForm />
     </RequirePermission>

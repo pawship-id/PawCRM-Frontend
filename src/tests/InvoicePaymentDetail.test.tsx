@@ -223,7 +223,7 @@ describe("InvoicePaymentDetail — cancelling it", () => {
 
     // NOT a refetch: the response IS the new state of the document.
     expect(await screen.findByText("Alasan: Salah faktur")).toBeInTheDocument();
-    expect(screen.getByText("dibatalkan")).toBeInTheDocument();
+    expect(screen.getAllByText("Dibatalkan").length).toBeGreaterThan(0);
     expect(customerInvoiceService.getById).toHaveBeenCalledTimes(1);
   });
 
@@ -307,7 +307,7 @@ describe("InvoicePaymentDetail — cancelling it", () => {
     renderPage();
 
     expect(await screen.findByText("Alasan: Dobel input")).toBeInTheDocument();
-    expect(screen.getByText("dibatalkan")).toBeInTheDocument();
+    expect(screen.getAllByText("Dibatalkan").length).toBeGreaterThan(0);
     expect(
       screen.queryByRole("button", { name: /Batalkan pembayaran/ }),
     ).not.toBeInTheDocument();

@@ -61,7 +61,7 @@ export function useLookups(): LookupsState {
         setError(
           err instanceof ApiError
             ? err.message
-            : "Could not load roles, branches and warehouses.",
+            : "Data peran, cabang, dan gudang tidak bisa dimuat. Coba lagi.",
         );
       } finally {
         if (active) setLoading(false);

@@ -155,7 +155,7 @@ export function ImportResultPanel({
           ) && (
             <p className="mt-4 text-sm text-muted">
               Pesan di atas menyebut akun yang belum ada di Chart of Accounts.
-              Lengkapi dulu akunnya — mencatat lewat Penyesuaian Stok akan
+              Lengkapi dulu akunnya — mencatat lewat Koreksi Stok akan
               membukukan barang ini sebagai{" "}
               <strong>pendapatan lain-lain</strong>, padahal barang yang sudah
               Anda miliki sejak awal itu <strong>modal</strong>.

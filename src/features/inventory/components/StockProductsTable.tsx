@@ -190,7 +190,7 @@ export function StockProductsTable({
             {(deleted || !product.isActive) && (
               <p className="mt-0.5">
                 <Tag tone={deleted ? "danger" : "neutral"}>
-                  {deleted ? "terhapus" : "nonaktif"}
+                  {deleted ? "Terhapus" : "Nonaktif"}
                 </Tag>
               </p>
             )}

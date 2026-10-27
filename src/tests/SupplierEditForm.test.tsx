@@ -147,7 +147,7 @@ describe("SupplierEditForm", () => {
 
     render(<SupplierEditForm supplierId={SUPPLIER_ID} />);
 
-    await userEvent.type(await screen.findByLabelText(/ID Pemasok/), "SUP-009");
+    await userEvent.type(await screen.findByLabelText(/ID supplier/), "SUP-009");
     const term = screen.getByLabelText(/Termin pembayaran/);
     await userEvent.clear(term);
     await userEvent.type(term, "45");
@@ -188,7 +188,7 @@ describe("SupplierEditForm", () => {
     );
 
     expect(update).not.toHaveBeenCalled();
-    expect(await screen.findByText(/ID Pemasok wajib diisi/)).toBeInTheDocument();
+    expect(await screen.findByText(/ID supplier wajib diisi/)).toBeInTheDocument();
   });
 
   it("opens a legacy supplier without crashing on its missing fields", async () => {
@@ -197,7 +197,7 @@ describe("SupplierEditForm", () => {
 
     // Absent, not null — the inputs must still be controlled and empty rather
     // than rendering "undefined" or falling back to uncontrolled.
-    expect(await screen.findByLabelText(/ID Pemasok/)).toHaveValue("");
+    expect(await screen.findByLabelText(/ID supplier/)).toHaveValue("");
     expect(screen.getByLabelText(/No WhatsApp bisnis/)).toHaveValue("");
     expect(screen.getByLabelText(/Website/)).toHaveValue("");
     // The bank table has no rows, and says so rather than showing a blank row.
@@ -211,17 +211,17 @@ describe("SupplierEditForm", () => {
     mockLoad(FULL_SUPPLIER);
     render(<SupplierEditForm supplierId={SUPPLIER_ID} />);
 
-    expect(await screen.findByLabelText(/ID Pemasok/)).toHaveValue("SUP-001");
+    expect(await screen.findByLabelText(/ID supplier/)).toHaveValue("SUP-001");
     expect(screen.getByLabelText(/No telp bisnis/)).toHaveValue("+62318877221");
     expect(screen.getByLabelText(/No WhatsApp bisnis/)).toHaveValue(
       "+6281234567890",
     );
-    expect(screen.getByLabelText(/Faximili/)).toHaveValue("+62318877222");
+    expect(screen.getByLabelText(/Faksimile/)).toHaveValue("+62318877222");
     expect(screen.getByLabelText(/Website/)).toHaveValue(
       "https://sumberpangan.co.id",
     );
     expect(screen.getByLabelText("Kategori")).toHaveTextContent("Distributor");
-    expect(screen.getByLabelText("Tipe pemasok")).toHaveTextContent(
+    expect(screen.getByLabelText("Tipe supplier")).toHaveTextContent(
       "Perusahaan",
     );
   });
@@ -424,7 +424,7 @@ describe("SupplierEditForm", () => {
 
     render(<SupplierEditForm supplierId={SUPPLIER_ID} />);
 
-    await userEvent.clear(await screen.findByLabelText(/Faximili/));
+    await userEvent.clear(await screen.findByLabelText(/Faksimile/));
     await userEvent.click(
       screen.getByRole("button", { name: "Simpan perubahan" }),
     );
@@ -440,19 +440,19 @@ describe("SupplierEditForm", () => {
    * the way back — otherwise "required" would hold only for suppliers nobody has
    * edited since. The client refuses it before the server has to.
    */
-  it("refuses to save with the ID Pemasok cleared", async () => {
+  it("refuses to save with the ID supplier cleared", async () => {
     mockLoad(FULL_SUPPLIER);
     const update = jest.spyOn(supplierService, "update");
 
     render(<SupplierEditForm supplierId={SUPPLIER_ID} />);
 
-    await userEvent.clear(await screen.findByLabelText(/ID Pemasok/));
+    await userEvent.clear(await screen.findByLabelText(/ID supplier/));
     await userEvent.click(
       screen.getByRole("button", { name: "Simpan perubahan" }),
     );
 
     expect(update).not.toHaveBeenCalled();
-    expect(await screen.findByText(/ID Pemasok wajib diisi/)).toBeInTheDocument();
+    expect(await screen.findByText(/ID supplier wajib diisi/)).toBeInTheDocument();
   });
 
   it("ungroups a supplier when the category is set back to none", async () => {
@@ -529,7 +529,7 @@ describe("SupplierEditForm", () => {
 
     render(<SupplierEditForm supplierId={SUPPLIER_ID} />);
 
-    await userEvent.type(await screen.findByLabelText(/ID Pemasok/), "SUP-009");
+    await userEvent.type(await screen.findByLabelText(/ID supplier/), "SUP-009");
     await userEvent.click(screen.getByLabelText("Akun Utang"));
     await userEvent.click(
       await screen.findByRole("option", { name: /Utang Distributor/ }),
@@ -555,7 +555,7 @@ describe("SupplierEditForm", () => {
 
     render(<SupplierEditForm supplierId={SUPPLIER_ID} />);
 
-    const code = await screen.findByLabelText(/ID Pemasok/);
+    const code = await screen.findByLabelText(/ID supplier/);
     await userEvent.clear(code);
     await userEvent.type(code, "SUP-002");
     await userEvent.click(

@@ -26,7 +26,7 @@ import {
 
 import { useWarehouseBranches } from "../hooks/useWarehouseBranches";
 import { WarehouseBranchSelect } from "./WarehouseBranchSelect";
-import { WarehousePinButton } from "./WarehousePinButton";
+import { MapPinButton } from "@/features/antar-jemput/components/MapPinButton";
 
 /**
  * Create a warehouse via POST /warehouses, then return to the list.
@@ -142,7 +142,8 @@ export function WarehouseCreateForm() {
 
         {/* Row 3: the map pin — picked from the map, or typed below */}
         <div className="sm:col-span-2">
-          <WarehousePinButton
+          <MapPinButton
+            title="Lokasi gudang"
             address={address}
             location={location}
             onPick={(point) => {

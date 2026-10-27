@@ -4,7 +4,7 @@ import { BatchesScreen, StockModuleHeader } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = {
-  title: "Batch & Expired · Stok · Buloo",
+  title: "Batch & Kedaluwarsa · Stok · Buloo",
 };
 
 /**

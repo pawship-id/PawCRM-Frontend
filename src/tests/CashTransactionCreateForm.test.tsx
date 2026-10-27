@@ -518,7 +518,7 @@ describe("CashTransactionCreateForm", () => {
     expect(screen.queryByRole("button", { name: "Lini Usaha" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Lini bisnis baris/ })).not.toBeInTheDocument();
     expect(screen.queryByText("Lini bisnis")).not.toBeInTheDocument();
-    expect(screen.getByText(/Lini usaha mengikuti pemetaan akun dan sub akunnya/)).toBeInTheDocument();
+    expect(screen.getByText(/Lini bisnis mengikuti pemetaan akun dan sub akunnya/)).toBeInTheDocument();
   });
 
   it("sends a null line with the sub akun as picked, never the sub akun's own line", async () => {

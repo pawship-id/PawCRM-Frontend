@@ -593,7 +593,7 @@ export function CashTransactionCreateForm() {
               branchId={branchId}
             />
             <p className="mt-3 text-sm text-muted">
-              Lini usaha mengikuti pemetaan akun dan sub akunnya di Daftar Akun,
+              Lini bisnis mengikuti pemetaan akun dan sub akunnya di Daftar Akun,
               jadi tidak dipilih di sini. Sub akun hanya muncul untuk akun yang
               punya sub akun; tanpa sub akun, biayanya masuk Belum Dipetakan di
               laporan per lini. Total dihitung otomatis dari baris di atas.

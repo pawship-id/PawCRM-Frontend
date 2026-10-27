@@ -43,7 +43,7 @@ export type ReturnLineDrafts = Record<string, ReturnLineDraft>;
  */
 export const REASON_PRESETS = [
   "Rusak",
-  "Kadaluarsa",
+  "Kedaluwarsa",
   "Salah kirim",
   "Tidak sesuai pesanan",
 ] as const;

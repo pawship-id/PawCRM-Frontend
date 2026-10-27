@@ -412,7 +412,7 @@ export function PurchaseReturnDetail({ returnId }: { returnId: string }) {
                     setEditing(false);
                   }}
                 >
-                  Batal edit
+                  Batal
                 </Button>
               </>
             ) : (
@@ -566,7 +566,7 @@ function StoredLines({
         <thead>
           <tr className="border-b border-border text-[10px] tracking-widest text-muted uppercase">
             <th className="px-2 py-2 text-left font-medium">Produk</th>
-            <th className="px-2 py-2 text-left font-medium">Lot</th>
+            <th className="px-2 py-2 text-left font-medium">Batch</th>
             <th className="px-2 py-2 text-right font-medium">Qty</th>
             <th className="px-2 py-2 text-right font-medium">Harga beli asli</th>
             <th className="px-2 py-2 text-right font-medium">Subtotal</th>

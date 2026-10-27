@@ -39,6 +39,11 @@ export const SERIES_LABELS: Record<string, { label: string; hint: string }> = {
   posShift: { label: "Shift kasir", hint: "Satu shift dibuka sampai ditutup." },
   posReturn: { label: "Retur kasir", hint: "Barang yang dikembalikan pelanggan." },
   openingStock: { label: "Stok awal", hint: "Angka pembuka, diisi sekali." },
+  stockTransfer: { label: "Transfer stok", hint: "Pindah barang antar gudang." },
+  posCart: { label: "Keranjang kasir", hint: "Transaksi kasir yang belum dibayar." },
+  customer: { label: "Pelanggan", hint: "Kode pelanggan." },
+  petMembership: { label: "Kartu membership", hint: "Kartu anggota yang terjual." },
+  membershipPlan: { label: "Paket membership", hint: "Paket yang ditawarkan ke pelanggan." },
   customerPayment: {
     label: "Pembayaran (lama)",
     hint: "Seri lama. Tidak dipakai lagi; digantikan bukti kas & bank.",

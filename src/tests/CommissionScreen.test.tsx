@@ -272,7 +272,7 @@ describe("CommissionScreen — approving and paying", () => {
     expect(screen.queryByRole("button", { name: "Setujui terpilih" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Bayar terpilih" })).not.toBeInTheDocument();
     // A badge, not a control.
-    expect(within(rowOf("Sari")).getByText("Menunggu Persetujuan")).toBeInTheDocument();
+    expect(within(rowOf("Sari")).getByText("Menunggu persetujuan")).toBeInTheDocument();
   });
 });
 

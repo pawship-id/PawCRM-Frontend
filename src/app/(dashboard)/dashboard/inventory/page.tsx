@@ -4,7 +4,7 @@ import { InventoryHub } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 import { INVENTORY_PAGES } from "@/features/inventory/pages";
 
-export const metadata: Metadata = { title: "Inventory · Buloo" };
+export const metadata: Metadata = { title: "Inventori · Buloo" };
 
 export default function InventoryPage() {
   return (

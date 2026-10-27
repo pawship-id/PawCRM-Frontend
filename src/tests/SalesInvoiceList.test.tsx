@@ -278,7 +278,7 @@ describe("SalesInvoiceList — what it asks the server", () => {
     await screen.findByText("INV-2026-0042");
     const panel = await openFilters(user);
     /* The last pill — the two dates appear under it only once it is pressed. */
-    await user.click(within(panel).getByRole("button", { name: "Custom" }));
+    await user.click(within(panel).getByRole("button", { name: "Pilih tanggal" }));
     await user.type(within(panel).getByLabelText("Tanggal faktur dari"), "2026-09-01");
     await user.type(
       within(panel).getByLabelText("Tanggal faktur sampai"),
@@ -294,7 +294,7 @@ describe("SalesInvoiceList — what it asks the server", () => {
     );
     expect(lastList()?.period).toBeUndefined();
     // The card follows: Custom on, and the same two dates under it.
-    expect(scopePill("Custom")).toHaveAttribute("aria-pressed", "true");
+    expect(scopePill("Pilih tanggal")).toHaveAttribute("aria-pressed", "true");
     expect(
       within(scopeCard()).getByLabelText("Tanggal faktur dari"),
     ).toHaveValue("2026-09-01");
@@ -789,7 +789,7 @@ describe("SalesInvoiceList — the table", () => {
     renderWithAuth(<ReceivablesScreen />);
 
     const row = (await screen.findByText("INV-2026-0042")).closest("tr")!;
-    expect(within(row).getByText("batal")).toBeInTheDocument();
+    expect(within(row).getByText("Batal")).toBeInTheDocument();
     expect(within(row).getByText("—")).toBeInTheDocument();
   });
 

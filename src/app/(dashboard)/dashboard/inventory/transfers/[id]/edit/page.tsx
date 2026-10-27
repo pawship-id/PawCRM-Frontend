@@ -27,7 +27,7 @@ export default async function EditStockTransferPage({
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Inventori", href: "/dashboard/inventory" },
               {
                 label: "Transfer Stok",
                 href: "/dashboard/inventory/transfers",

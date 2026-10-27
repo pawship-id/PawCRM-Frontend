@@ -299,7 +299,7 @@ export function CashTransactionDetail({
             several. Summarised rather than invented — "Beberapa lini" is the
             honest answer where a single name would be a wrong one.
           */}
-          <Field label="Lini usaha">{businessLineSummary(transaction)}</Field>
+          <Field label="Lini bisnis">{businessLineSummary(transaction)}</Field>
           <Field label="Biaya tetap">
             <span className="flex flex-wrap items-center gap-2">
               <Badge variant="outline">Segera</Badge>

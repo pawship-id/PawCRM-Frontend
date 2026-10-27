@@ -177,6 +177,47 @@ describe("Anggota detail", () => {
     expect(screen.getByRole("dialog")).toBeVisible();
   });
 
+  it("asks before Perpanjang, naming the plan, the animal, the new cover and that no payment is recorded", async () => {
+    const user = userEvent.setup();
+    mocked.renew.mockResolvedValue({
+      ...card,
+      id: "card-2",
+      number: "MBR-2026-0050",
+      endDate: "2027-09-30T03:00:00.000Z",
+    });
+    renderWithAuth(<MembershipCardDetail id="card-1" />);
+
+    await user.click(await screen.findByRole("button", { name: "Perpanjang" }));
+    const dialog = await screen.findByRole("dialog", { name: "Perpanjang membership" });
+    expect(dialog).toHaveTextContent("Explorer");
+    expect(dialog).toHaveTextContent("Mochi (Rina Wijaya)");
+    // The day after this card ends, for the plan's 6 months.
+    expect(dialog).toHaveTextContent(/1 Apr 2027 – 30 Sep 2027/);
+    expect(dialog).toHaveTextContent("tidak mencatat pembayaran");
+    expect(mocked.renew).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole("button", { name: "Perpanjang membership" }));
+
+    await waitFor(() => expect(mocked.renew).toHaveBeenCalledWith("card-1"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(swalToast).toHaveBeenCalledWith(
+      expect.stringContaining("MBR-2026-0050"),
+      "success",
+    );
+  });
+
+  it("renews nothing when the Perpanjang dialog is cancelled", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<MembershipCardDetail id="card-1" />);
+
+    await user.click(await screen.findByRole("button", { name: "Perpanjang" }));
+    const dialog = await screen.findByRole("dialog", { name: "Perpanjang membership" });
+    await user.click(within(dialog).getByRole("button", { name: "Batal" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(mocked.renew).not.toHaveBeenCalled();
+  });
+
   it("switches Kelola off for a reader without the manage grant", async () => {
     renderWithAuth(<MembershipCardDetail id="card-1" />, {
       isSuperAdmin: false,

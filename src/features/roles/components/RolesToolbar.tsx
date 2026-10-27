@@ -27,7 +27,7 @@ export function RolesToolbar({
         <FilterSearch
           value={query.search}
           onChange={(search) => onChange({ search })}
-          placeholder="Cari nama atau deskripsi"
+          placeholder="Cari nama atau keterangan"
           ariaLabel="Cari peran"
         />
       }

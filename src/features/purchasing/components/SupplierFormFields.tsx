@@ -256,7 +256,7 @@ export function SupplierFormFields({
             />
 
             <TextField
-              label="ID Pemasok"
+              label="ID supplier"
               name="code"
               value={values.code}
               onChange={(event) => onChange({ code: event.target.value })}
@@ -338,7 +338,7 @@ export function SupplierFormFields({
               disabled={disabled}
             />
             <TextField
-              label="Faximili"
+              label="Faksimile"
               name="fax"
               type="tel"
               value={values.fax}
@@ -495,7 +495,7 @@ export function SupplierFormFields({
 
           <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="supplier-entity-type">Tipe pemasok</Label>
+              <Label htmlFor="supplier-entity-type">Tipe supplier</Label>
               <Select
                 value={values.entityType || NONE}
                 disabled={disabled}
@@ -505,7 +505,7 @@ export function SupplierFormFields({
               >
                 <SelectTrigger
                   id="supplier-entity-type"
-                  aria-label="Tipe pemasok"
+                  aria-label="Tipe supplier"
                   aria-invalid={errors.entityType ? true : undefined}
                   className="w-full"
                 >
@@ -662,7 +662,7 @@ export function SupplierFormFields({
       <Card title="Penanggung Jawab">
         <p className="mb-4 text-xs text-muted">
           Orang di pihak supplier yang dihubungi kalau kiriman kurang atau
-          terlambat. Bukan pengguna PawCRM.
+          terlambat. Bukan pengguna Buloo.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField

@@ -213,7 +213,7 @@ const SOON = "Segera";
 const ROWS: Record<TabKey, ReportRow[]> = {
   penjualan: [
     {
-      title: "Penjualan per invoice",
+      title: "Penjualan per faktur",
       description:
         "Daftar faktur dengan total, diskon, pajak, dan status bayar.",
       dialog: "salesInvoices",
@@ -223,7 +223,7 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       ],
     },
     {
-      title: "Penjualan per invoice (rincian barang)",
+      title: "Penjualan per faktur (rincian barang)",
       description:
         "Setiap faktur dengan barang dan layanannya, satu baris per barang.",
       dialog: "salesInvoiceLines",

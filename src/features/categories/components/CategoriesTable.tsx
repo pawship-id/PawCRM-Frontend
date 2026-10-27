@@ -283,7 +283,7 @@ export function CategoriesTable({
                                 href={`/dashboard/inventory/categories/${category._id}`}
                               >
                                 <Pencil />
-                                Edit
+                                Ubah
                               </Link>
                             </DropdownMenuItem>
                           </Can>

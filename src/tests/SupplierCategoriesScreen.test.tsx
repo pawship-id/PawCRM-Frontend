@@ -221,7 +221,7 @@ describe("SupplierCategoriesScreen", () => {
 
     const menu = await openRowMenu();
 
-    expect(within(menu).getByRole("menuitem", { name: /edit/i })).toHaveAttribute(
+    expect(within(menu).getByRole("menuitem", { name: /^ubah$/i })).toHaveAttribute(
       "href",
       "/dashboard/settings/supplier-categories/sc1",
     );
@@ -278,7 +278,7 @@ describe("SupplierCategoriesScreen", () => {
       within(menu).getByRole("menuitem", { name: /pulihkan/i }),
     ).toBeInTheDocument();
     expect(
-      within(menu).queryByRole("menuitem", { name: /edit/i }),
+      within(menu).queryByRole("menuitem", { name: /^ubah$/i }),
     ).not.toBeInTheDocument();
   });
 

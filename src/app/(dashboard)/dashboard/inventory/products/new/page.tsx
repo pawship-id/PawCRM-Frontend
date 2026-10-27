@@ -27,7 +27,7 @@ export default async function NewProductPage({
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Inventori", href: "/dashboard/inventory" },
               {
                 label: "Produk & Varian",
                 href: "/dashboard/inventory/products",

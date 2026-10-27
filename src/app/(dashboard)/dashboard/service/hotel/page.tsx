@@ -10,7 +10,7 @@ export default function HotelPage() {
     <RequirePermission feature="hotel">
       <SectionPlaceholder
         title="Hotel"
-        description="Pet boarding — room availability, check-in, and check-out."
+        description="Penitipan hewan — ketersediaan kamar, check-in, dan check-out."
         icon={HotelIcon}
       />
     </RequirePermission>

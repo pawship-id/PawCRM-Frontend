@@ -263,6 +263,16 @@ describe("GroomingServiceDetailScreen", () => {
       await screen.findByRole("button", { name: "Duplikat" }),
     );
 
+    // It asks first: the copy is a whole new (inactive) service.
+    const dialog = await screen.findByRole("dialog", { name: "Duplikat layanan" });
+    expect(dialog).toHaveTextContent("Express Wash (salinan)");
+    expect(dialog).toHaveTextContent("nonaktif");
+    expect(serviceService.create).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Duplikat layanan" }),
+    );
+
     await waitFor(() =>
       expect(mockPush).toHaveBeenCalledWith(
         "/dashboard/service/grooming/catalog/svc-9",
@@ -286,6 +296,22 @@ describe("GroomingServiceDetailScreen", () => {
     expect(payload.sessionWeights).toEqual([70, 30]);
     expect(payload).not.toHaveProperty("image");
     expect(payload).not.toHaveProperty("price");
+  });
+
+  it("creates no copy when the Duplikat dialog is cancelled", async () => {
+    renderDetail();
+
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Duplikat" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Duplikat layanan" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Batal" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(serviceService.create).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
   });
 
   /*

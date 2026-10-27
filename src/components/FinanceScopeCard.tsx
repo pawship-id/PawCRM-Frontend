@@ -32,7 +32,7 @@ const CHIPS: { value: FinancePeriod; label: string }[] = [
   { value: "today", label: "Hari ini" },
   { value: "week", label: "Minggu ini" },
   { value: "month", label: "Bulan ini" },
-  { value: "custom", label: "Custom" },
+  { value: "custom", label: "Pilih tanggal" },
 ];
 
 /** A business line as the card offers it. */

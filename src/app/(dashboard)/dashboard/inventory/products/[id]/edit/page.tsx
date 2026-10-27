@@ -4,7 +4,7 @@ import { Breadcrumb } from "@/components";
 import { ProductForm } from "@/features/inventory";
 import { RequirePermission } from "@/features/permissions";
 
-export const metadata: Metadata = { title: "Edit produk · Buloo" };
+export const metadata: Metadata = { title: "Ubah produk · Buloo" };
 
 /**
  * `params` is a Promise in this version of Next — awaited before use, matching
@@ -23,7 +23,7 @@ export default async function EditProductPage({
         <div>
           <Breadcrumb
             items={[
-              { label: "Inventory", href: "/dashboard/inventory" },
+              { label: "Inventori", href: "/dashboard/inventory" },
               {
                 label: "Produk & Varian",
                 href: "/dashboard/inventory/products",
@@ -32,11 +32,11 @@ export default async function EditProductPage({
                 label: "Detail produk",
                 href: `/dashboard/inventory/products/${id}`,
               },
-              { label: "Edit produk" },
+              { label: "Ubah produk" },
             ]}
           />
           <h1 className="mt-1 text-2xl font-extrabold text-foreground">
-            Edit produk
+            Ubah produk
           </h1>
         </div>
 

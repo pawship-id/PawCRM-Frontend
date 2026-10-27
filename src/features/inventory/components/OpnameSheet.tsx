@@ -152,7 +152,7 @@ function batchText(item: OpnameItem): string | null {
 function lotLabel(lot: ProductBatch): string {
   const expiry = formatExpiry(lot.expiryDate);
   return expiry
-    ? `${lotOptionLabel(lot)} · exp ${expiry}`
+    ? `${lotOptionLabel(lot)} · kedaluwarsa ${expiry}`
     : lotOptionLabel(lot);
 }
 

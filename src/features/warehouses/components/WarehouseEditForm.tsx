@@ -33,7 +33,7 @@ import type { Branch, Warehouse } from "@/types/api";
 import { useWarehouseBranches } from "../hooks/useWarehouseBranches";
 import { WarehouseStatusBadge } from "./WarehouseStatusBadge";
 import { WarehouseBranchSelect } from "./WarehouseBranchSelect";
-import { WarehousePinButton } from "./WarehousePinButton";
+import { MapPinButton } from "@/features/antar-jemput/components/MapPinButton";
 
 /**
  * Edit an existing warehouse. Mirrors BranchEditForm: the details (name, branch,
@@ -264,7 +264,8 @@ function DetailsSection({
 
         {/* Row 3: the map pin — picked from the map, or typed below */}
         <div className="sm:col-span-2">
-          <WarehousePinButton
+          <MapPinButton
+            title="Lokasi gudang"
             address={address}
             location={location}
             disabled={disabled}

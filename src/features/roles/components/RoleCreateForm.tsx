@@ -73,7 +73,7 @@ export function RoleCreateForm() {
       if (error instanceof ApiError && error.isValidationError) {
         setFieldErrors(error.fieldErrors);
       } else if (error instanceof ApiError) {
-        setFormError(error.message);
+        setFormError(error.fullMessage);
       } else {
         setFormError("Terjadi kesalahan. Coba lagi.");
       }

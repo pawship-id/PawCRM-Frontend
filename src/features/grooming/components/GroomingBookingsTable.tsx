@@ -400,7 +400,7 @@ function DiscountLine({ amount }: { amount?: string | null }) {
   return (
     <div className="flex justify-between gap-3 pl-3 text-xs text-success">
       <span>Diskon item</span>
-      <span className="font-semibold tabular-nums">− {formatMoney(amount)}</span>
+      <span className="font-semibold tabular-nums">−{formatMoney(amount)}</span>
     </div>
   );
 }
@@ -479,7 +479,7 @@ export function RowBreakdown({ row }: { row: GroomingRow }) {
             <div className="flex justify-between gap-3 pt-1 text-xs text-success">
               <span>Diskon booking</span>
               <span className="font-semibold tabular-nums">
-                − {formatMoney(bookingShare)}
+                −{formatMoney(bookingShare)}
               </span>
             </div>
           )}

@@ -12,7 +12,7 @@ export function commissionHref(row: {
 
 /** The mockup's words for each status, plus the two it had no row for. */
 export const COMMISSION_STATUS_LABEL: Record<CommissionStatus, string> = {
-  pending: "Menunggu Persetujuan",
+  pending: "Menunggu persetujuan",
   approved: "Disetujui",
   paid: "Dibayar",
   reversed: "Dibatalkan",

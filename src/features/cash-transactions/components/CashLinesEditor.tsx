@@ -245,7 +245,7 @@ export function CashLinesEditor({
                   and a tenant that has not set up any Detil Akun yet would see
                   nothing else. */}
               {anyAccountMapped && (
-                <TableHead className="min-w-44">Detil akun</TableHead>
+                <TableHead className="min-w-44">Detail akun</TableHead>
               )}
               <TableHead className="min-w-36 text-right">Jumlah</TableHead>
               <TableHead className="min-w-44">Memo</TableHead>

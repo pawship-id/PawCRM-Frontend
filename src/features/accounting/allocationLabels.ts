@@ -170,11 +170,11 @@ export function shapeNote(shape: TenantShape): string | null {
   if (multiLine && multiBranch) return null;
 
   if (needsNoAllocation(shape)) {
-    return "Tenant ini baru punya satu lini usaha dan satu cabang, jadi tidak ada yang perlu dibagi — semua pendapatan dan beban otomatis masuk ke satu-satunya segmen yang ada. Aturan alokasi muncul begitu lini atau cabang keduanya bertambah.";
+    return "Tenant ini baru punya satu lini bisnis dan satu cabang, jadi tidak ada yang perlu dibagi — semua pendapatan dan beban otomatis masuk ke satu-satunya segmen yang ada. Aturan alokasi muncul begitu lini atau cabang keduanya bertambah.";
   }
 
   if (!multiLine) {
-    return "Tenant ini baru punya satu lini usaha, jadi pilihan Direct disembunyikan — tidak ada lini lain yang bisa dituju. Shared-Lokasi dan Shared-Overall tetap dua pilihan berbeda karena cabangnya lebih dari satu.";
+    return "Tenant ini baru punya satu lini bisnis, jadi pilihan Direct disembunyikan — tidak ada lini lain yang bisa dituju. Shared-Lokasi dan Shared-Overall tetap dua pilihan berbeda karena cabangnya lebih dari satu.";
   }
 
   return 'Tenant ini baru punya satu cabang, jadi Shared-Lokasi dan Shared-Overall digabung jadi satu pilihan "Shared" — hasil pembagiannya persis sama.';
