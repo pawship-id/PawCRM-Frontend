@@ -173,7 +173,7 @@ function receivablesColumns({
           invoice.status === "unpaid" || invoice.status === "partial";
         // The detail page's own `editable`: raised here, nothing paid.
         const editable =
-          invoice.source !== "pos_bridge" &&
+          invoice.source === "manual" &&
           !invoice.posTransactionId &&
           invoice.status === "unpaid" &&
           !isPositive(invoice.paidAmount);

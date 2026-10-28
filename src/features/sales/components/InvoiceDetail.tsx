@@ -152,6 +152,8 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const lateBy = Math.abs(daysUntil(invoice.dueDate));
   const tillBorn =
     invoice.source === "pos_bridge" || !!invoice.posTransactionId;
+  // Penjualan › E-commerce: lines locked, paid only by a payout import.
+  const shopeeBorn = invoice.source === "shopee_import";
 
   /*
     EDITABLE EXACTLY WHEN THE SERVER WILL ACCEPT AN EDIT: raised here, nothing
@@ -160,12 +162,14 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
     rule on load, so a link opened after a payment lands on the reason.
   */
   const editable =
-    !tillBorn && invoice.status === "unpaid" && !hasActivePayment;
+    !tillBorn && !shopeeBorn && invoice.status === "unpaid" && !hasActivePayment;
   const mayEdit = editable && can("customerInvoices", "update");
 
   const lockNote = voided
     ? "Faktur ini sudah dibatalkan."
-    : tillBorn
+    : shopeeBorn
+      ? "Dari impor pesanan Shopee — baris dikunci. Lunas saat Laporan Penghasilan Shopee diimpor."
+      : tillBorn
       ? "Lahir dari penjualan kasir — barisnya milik transaksi kasir dan tidak diubah di sini."
       : editable
         ? "Belum ada pembayaran — faktur masih bisa diubah. Terkunci otomatis begitu pembayaran pertama tercatat."
@@ -206,6 +210,13 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {!voided && invoice.marketplace?.needsAction === "cancelled_after_invoice" ? (
+        <Alert variant="warning">
+          {settled
+            ? "Pesanan ini Batal di Shopee, padahal fakturnya sudah lunas. Koreksi lewat jurnal manual."
+            : "Pesanan ini Batal di Shopee. Batalkan faktur ini lewat menu ⋮ di samping Cetak."}
+        </Alert>
+      ) : null}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <PageHeading
           crumbs={[...SALES_CRUMBS, { label: invoice.invoiceNumber }]}
@@ -370,7 +381,23 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
                   {formatDate(invoice.dueDate)}
                 </span>
               </Field>
-              <Field label="Sumber">{tillBorn ? "Kasir" : "Manual"}</Field>
+              <Field label="Sumber">
+                {shopeeBorn
+                  ? `Shopee · ${invoice.marketplace?.storeName ?? "toko"}`
+                  : tillBorn
+                    ? "Kasir"
+                    : "Manual"}
+              </Field>
+              {invoice.externalRef?.orderNo ? (
+                <Field label="No. referensi">
+                  <span className="tabular-nums">{invoice.externalRef.orderNo}</span>
+                </Field>
+              ) : null}
+              {invoice.marketplace?.settlementNumber ? (
+                <Field label="Pencairan">
+                  <span className="tabular-nums">{invoice.marketplace.settlementNumber}</span>
+                </Field>
+              ) : null}
             </dl>
 
             <div className="mt-5 border-t border-border pt-4">
@@ -409,7 +436,12 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               </p>
             }
           >
-            {!voided && !settled && (
+            {!voided && !settled && shopeeBorn && (
+              <p className="text-sm text-muted">
+                Lunas otomatis saat Laporan Penghasilan Shopee diimpor di Penjualan › E-commerce.
+              </p>
+            )}
+            {!voided && !settled && !shopeeBorn && (
               <Can
                 feature="customerInvoices"
                 action="pay"

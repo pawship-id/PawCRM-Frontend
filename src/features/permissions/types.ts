@@ -350,7 +350,8 @@ export const PERMISSION_CATALOG = {
   openingStock: ["read", "create"],
   hotel: ["read"],
   customerHistory: ["read"],
-  ecommerce: ["read"],
+  /** Penjualan › E-commerce (Shopee, Tahap A) — mirrors the backend catalog. */
+  ecommerce: ["read", "manageStores", "bindSku", "export", "importOrders", "settle"],
   salesReturns: ["read"],
   salesReports: ["read"],
 } as const;
