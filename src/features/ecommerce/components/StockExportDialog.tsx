@@ -1,18 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, FileSpreadsheet } from "lucide-react";
+import { Check } from "lucide-react";
 
 import { DataTable, FilterSelect, Pagination, SkuText, Spinner, type DataTableColumn } from "@/components";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { swalToast } from "@/lib/swal";
 import { marketplaceService } from "@/services/marketplace.service";
@@ -26,13 +18,14 @@ import type {
 import { saveBlob } from "@/utils/xlsx";
 
 import { ecommerceFailure } from "../errors";
-import { MARKETPLACE_LABEL, formatCount, formatDateTime } from "../labels";
+import { MARKETPLACE_LABEL, formatCount, formatDateTime, formatTemplatePrice } from "../labels";
+import { CountChip, FileChip, WizardFrame, WizardRow } from "./WizardSteps";
 
-const STEPS = ["Pilih toko", "Tinjau", "Selesai"] as const;
+const STEPS = ["Upload", "Tinjau", "Selesai"] as const;
 const PAGE_SIZE = 25;
 
 /**
- * Ekspor stok — Pilih toko → Tinjau → Selesai.
+ * Ekspor stok — Upload → Tinjau → Selesai, laid out as the mockup's wizard.
  *
  * Tahap A's one wizard. The file is the store's saved template with only the
  * Stok cells of bound variations rewritten (stock − buffer, never below 0);
@@ -119,21 +112,18 @@ export function StockExportDialog({
   const columns: DataTableColumn<StockExportRow>[] = [
     {
       id: "variant",
-      header: "Varian Shopee",
+      header: "Varian",
       cell: (row) => (
-        <div className="min-w-0">
-          <div className="line-clamp-1 font-medium text-foreground">{row.productName}</div>
-          <div className="text-xs text-muted">
+        <div className="min-w-0 max-w-[28rem]">
+          <div className="line-clamp-1 font-semibold text-foreground">{row.productName}</div>
+          <div className="text-sm text-muted">
             {row.variationName ? `${row.variationName} · ` : ""}
-            <SkuText value={row.shopeeSku} />
+            <span className="text-primary">
+              <SkuText value={row.shopeeSku} />
+            </span>
           </div>
         </div>
       ),
-    },
-    {
-      id: "buloo",
-      header: "SKU Buloo",
-      cell: (row) => (row.product ? <SkuText value={row.product.sku} /> : "—"),
     },
     {
       id: "shopee",
@@ -142,255 +132,234 @@ export function StockExportDialog({
       cell: (row) => <span className="tabular-nums">{row.templateStock ?? "—"}</span>,
     },
     {
-      id: "onHand",
-      header: "Stok Buloo",
-      align: "right",
-      cell: (row) => <span className="tabular-nums">{row.onHand}</span>,
-    },
-    {
       id: "export",
       header: "Stok ditulis",
       align: "right",
+      cell: (row) => {
+        const up = row.templateStock !== null && row.exportStock > row.templateStock;
+        const down = row.templateStock !== null && row.exportStock < row.templateStock;
+        return (
+          <span
+            className={cn(
+              "tabular-nums",
+              up && "font-semibold text-success",
+              down && "font-semibold text-danger",
+            )}
+          >
+            {row.exportStock}
+          </span>
+        );
+      },
+    },
+    {
+      id: "price",
+      header: "Harga ditulis",
       cell: (row) => (
-        <span className={cn("tabular-nums", row.change === "changed" && "font-semibold text-foreground")}>
-          {row.exportStock}
+        <span className="text-sm text-muted">
+          <span className="tabular-nums">{formatTemplatePrice(row.templatePrice)}</span> · tetap
         </span>
       ),
     },
   ];
 
+  const bound = preview ? preview.counts.changed + preview.counts.same : 0;
+  const summary = result
+    ? [
+        ["File", <span key="file" className="break-all">{result.fileName}</span>],
+        ["Gudang sumber", store?.warehouseName ?? "—"],
+        ["Template", `Template tersimpan ${formatDateTime(store?.template?.uploadedAt)}`],
+        ["Stok diperbarui", `${formatCount(result.counts.changed)} varian`],
+        ["Stok sama", `${formatCount(result.counts.same)} varian`],
+        ["Belum terikat, tidak diubah", `${formatCount(result.counts.unbound)} varian`],
+      ]
+    : [];
+
   return (
-    <Dialog open onOpenChange={(next) => !next && !busy && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Ekspor stok</DialogTitle>
-          <DialogDescription>
-            File template Shopee dengan kolom Stok diisi dari Buloo. Harga dan kolom lain tidak
-            diubah.
-          </DialogDescription>
-        </DialogHeader>
-
-        <ol className="flex flex-wrap gap-4 text-sm" aria-label="Langkah ekspor stok">
-          {STEPS.map((label, index) => {
-            const number = index + 1;
-            const done = step > number;
-            return (
-              <li
-                key={label}
-                aria-current={step === number ? "step" : undefined}
-                className={cn(
-                  "flex items-center gap-2",
-                  step === number ? "font-semibold text-foreground" : "text-muted",
-                )}
-              >
-                <span
-                  className={cn(
-                    "flex size-6 items-center justify-center rounded-full text-xs",
-                    done || step === number ? "bg-primary text-primary-foreground" : "bg-tint-neutral",
-                  )}
-                >
-                  {done ? <Check className="size-3.5" aria-hidden /> : number}
-                </span>
-                {label}
-              </li>
-            );
-          })}
-        </ol>
-
-        {step === 1 ? (
-          ready.length === 0 ? (
-            <p className="text-sm text-muted">
-              Belum ada toko aktif dengan template Shopee. Upload template pertama di Pengikatan SKU.
-            </p>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <FilterSelect
-                label="Toko"
-                layout="form"
-                active={false}
-                value={storeId}
-                options={ready.map((candidate) => ({
-                  value: candidate._id,
-                  label: `${MARKETPLACE_LABEL[candidate.marketplace]} · ${candidate.name}`,
-                }))}
-                onChange={(id) => {
-                  setStoreId(id);
-                  setPage(1);
-                  setFilter("");
-                  setPreview(null);
-                }}
-              />
-              {store ? (
-                <dl className="grid gap-3 rounded-xl bg-surface-hover p-4 text-sm sm:grid-cols-2">
-                  <div>
-                    <dt className="text-muted">Gudang sumber</dt>
-                    <dd className="font-medium text-foreground">{store.warehouseName ?? "—"}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-muted">Buffer stok</dt>
-                    <dd className="font-medium tabular-nums text-foreground">{store.stockBuffer}</dd>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <dt className="text-muted">Template tersimpan</dt>
-                    <dd className="flex items-center gap-2 font-medium text-foreground">
-                      <FileSpreadsheet className="size-4 flex-none text-muted" aria-hidden />
-                      <span className="min-w-0 break-all">{store.template?.fileName}</span>
-                    </dd>
-                    <dd className="text-xs text-muted">
-                      {formatCount(store.template?.variantCount)} varian · diupload{" "}
-                      {formatDateTime(store.template?.uploadedAt)}
-                    </dd>
-                  </div>
-                </dl>
-              ) : null}
-              <p className="text-sm text-muted">
-                Gudang dan buffer diatur di Pengaturan. Template baru diupload di Pengikatan SKU.
-              </p>
-            </div>
-          )
-        ) : null}
-
-        {step === 2 ? (
+    <WizardFrame
+      title="Ekspor stok"
+      steps={STEPS}
+      current={step}
+      busy={busy}
+      onClose={onClose}
+      note={step === 2 ? "Belum ada yang tersimpan sampai tombol ini ditekan." : undefined}
+      footer={
+        step === 1 ? (
+          <>
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Batal
+            </Button>
+            <Button type="button" disabled={!store} onClick={() => setStep(2)}>
+              Lanjut
+            </Button>
+          </>
+        ) : step === 2 ? (
+          <>
+            <Button type="button" variant="secondary" onClick={() => setStep(1)} disabled={busy}>
+              Kembali
+            </Button>
+            <Button type="button" onClick={() => void generate()} disabled={busy || !preview}>
+              {busy ? "Membuat file…" : "Buat file"}
+            </Button>
+          </>
+        ) : result ? (
+          <>
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Tutup
+            </Button>
+            <Button
+              type="button"
+              onClick={() =>
+                void download(result.batchId, result.fileName).catch((error) =>
+                  swalToast(ecommerceFailure(error, "File belum bisa diunduh.").toast, "error", 6000),
+                )
+              }
+            >
+              Unduh file
+            </Button>
+          </>
+        ) : null
+      }
+    >
+      {step === 1 ? (
+        ready.length === 0 ? (
+          <p className="text-sm text-muted">
+            Belum ada toko aktif dengan template Shopee. Upload template pertama di Pengikatan SKU.
+          </p>
+        ) : (
           <div className="flex flex-col gap-4">
-            <div className="grid gap-3 sm:grid-cols-3">
-              {(
-                [
-                  { key: "changed", label: "Stok diperbarui", value: preview?.counts.changed },
-                  { key: "same", label: "Stok sama", value: preview?.counts.same },
-                  { key: null, label: "Belum terikat, tidak diubah", value: preview?.counts.unbound },
-                ] as const
-              ).map((chip) => {
-                const selected = chip.key !== null && filter === chip.key;
-                const body = (
-                  <>
-                    <span className="text-xs text-muted">{chip.label}</span>
-                    <span className="text-2xl font-semibold tabular-nums text-foreground">
-                      {preview ? formatCount(chip.value) : "…"}
-                    </span>
-                  </>
-                );
-                return chip.key === null ? (
-                  <div key={chip.label} className="flex flex-col gap-1 rounded-xl border border-border p-3">
-                    {body}
-                  </div>
-                ) : (
-                  <button
-                    key={chip.label}
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => {
-                      setFilter(selected ? "" : chip.key);
-                      setPage(1);
-                    }}
-                    className={cn(
-                      "flex min-h-11 flex-col gap-1 rounded-xl border p-3 text-left transition",
-                      "focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
-                      selected ? "border-primary bg-navy-100" : "border-border hover:bg-surface-hover",
-                    )}
-                  >
-                    {body}
-                  </button>
-                );
-              })}
-            </div>
-
-            {loading && !preview ? (
-              <div className="flex justify-center py-8">
-                <Spinner />
+            <WizardRow label="Toko">
+              <div className="max-w-sm">
+                <FilterSelect
+                  label="Toko"
+                  layout="bar"
+                  active={false}
+                  className="w-full max-w-none justify-between"
+                  value={storeId}
+                  options={ready.map((candidate) => ({
+                    value: candidate._id,
+                    label: `${MARKETPLACE_LABEL[candidate.marketplace]} · ${candidate.name}`,
+                  }))}
+                  onChange={(id) => {
+                    setStoreId(id);
+                    setPage(1);
+                    setFilter("");
+                    setPreview(null);
+                  }}
+                />
               </div>
-            ) : (
-              <DataTable
-                columns={columns}
-                rows={preview?.items ?? []}
-                rowKey={(row) => row.listingId}
-                loading={loading}
-                empty={
-                  filter === "changed"
-                    ? "Tidak ada stok yang berubah. File tetap bisa dibuat."
-                    : "Belum ada varian terikat. Ikat SKU dulu di Pengikatan SKU."
-                }
-              />
-            )}
-
-            {preview && preview.pagination.totalPages > 1 ? (
-              <Pagination
-                page={preview.pagination.page}
-                totalPages={preview.pagination.totalPages}
-                total={preview.pagination.total}
-                unit="varian"
-                onPageChange={setPage}
-              />
+            </WizardRow>
+            {store ? (
+              <>
+                <WizardRow label="Gudang sumber">
+                  <p className="font-semibold text-foreground">
+                    {store.warehouseName ?? "—"}
+                    <span className="font-normal text-muted"> · buffer {store.stockBuffer}</span>
+                  </p>
+                </WizardRow>
+                <WizardRow label="Template" align="start">
+                  <FileChip
+                    title="Template tersimpan"
+                    detail={`${store.template?.fileName} · ${formatCount(store.template?.variantCount)} varian · diupload ${formatDateTime(store.template?.uploadedAt)}`}
+                  />
+                </WizardRow>
+                <p className="text-sm text-muted">
+                  Gudang dan buffer diatur di Pengaturan. Template baru diupload di Pengikatan SKU.
+                </p>
+              </>
             ) : null}
-
-            <p className="text-sm text-muted">
-              Stok ditulis = stok {store?.warehouseName ?? "gudang"} − buffer {store?.stockBuffer ?? 0},
-              minimal 0. Varian yang ditambahkan di Shopee setelah template ini tidak ada di file.
-            </p>
           </div>
-        ) : null}
+        )
+      ) : null}
 
-        {step === 3 && result ? (
-          <div className="flex flex-col gap-3">
-            <div className="flex items-center gap-3 rounded-xl bg-tint-success p-4">
-              <Check className="size-5 flex-none text-success" aria-hidden />
-              <div className="min-w-0">
-                <p className="font-semibold text-foreground">File stok sudah dibuat</p>
-                <p className="break-all text-sm text-muted">{result.fileName}</p>
-              </div>
+      {step === 2 ? (
+        <div className="flex flex-col gap-4">
+          <div className="grid gap-2 sm:grid-cols-3">
+            <CountChip
+              label="Stok diperbarui"
+              value={preview ? formatCount(preview.counts.changed) : "…"}
+              selected={filter === "changed"}
+              onClick={() => {
+                setFilter(filter === "changed" ? "" : "changed");
+                setPage(1);
+              }}
+            />
+            <CountChip
+              label="Stok sama"
+              value={preview ? formatCount(preview.counts.same) : "…"}
+              selected={filter === "same"}
+              onClick={() => {
+                setFilter(filter === "same" ? "" : "same");
+                setPage(1);
+              }}
+            />
+            <CountChip
+              label="Belum terikat, tidak diubah"
+              value={preview ? formatCount(preview.counts.unbound) : "…"}
+            />
+          </div>
+
+          {loading && !preview ? (
+            <div className="flex justify-center py-8">
+              <Spinner />
             </div>
-            <p className="text-sm text-foreground">
-              {formatCount(result.counts.changed)} varian berubah stoknya,{" "}
-              {formatCount(result.counts.same)} sama, {formatCount(result.counts.unbound)} belum
-              terikat dibiarkan.
-            </p>
-            <p className="text-sm text-muted">
-              Upload file ini di Seller Center › Produk Saya › Ubah Massal › Info Penjualan. Stok di
-              Shopee baru berubah setelah Shopee selesai memprosesnya.
-            </p>
-          </div>
-        ) : null}
+          ) : (
+            <DataTable
+              columns={columns}
+              rows={preview?.items ?? []}
+              rowKey={(row) => row.listingId}
+              loading={loading}
+              empty={
+                filter === "changed"
+                  ? "Tidak ada stok yang berubah. File tetap bisa dibuat."
+                  : "Belum ada varian terikat. Ikat SKU dulu di Pengikatan SKU."
+              }
+            />
+          )}
 
-        <DialogFooter>
-          {step === 1 ? (
-            <>
-              <Button type="button" variant="secondary" onClick={onClose}>
-                Batal
-              </Button>
-              <Button type="button" disabled={!store} onClick={() => setStep(2)}>
-                Lanjut
-              </Button>
-            </>
+          {preview ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
+              <span>
+                {formatCount(preview.pagination.total)} dari {formatCount(bound)} varian terikat
+              </span>
+              {preview.pagination.totalPages > 1 ? (
+                <Pagination
+                  page={preview.pagination.page}
+                  totalPages={preview.pagination.totalPages}
+                  total={preview.pagination.total}
+                  unit="varian"
+                  onPageChange={setPage}
+                />
+              ) : null}
+            </div>
           ) : null}
-          {step === 2 ? (
-            <>
-              <Button type="button" variant="secondary" onClick={() => setStep(1)} disabled={busy}>
-                Kembali
-              </Button>
-              <Button type="button" onClick={() => void generate()} disabled={busy || !preview}>
-                {busy ? "Membuat file…" : "Buat file"}
-              </Button>
-            </>
-          ) : null}
-          {step === 3 && result ? (
-            <>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() =>
-                  void download(result.batchId, result.fileName).catch((error) =>
-                    swalToast(ecommerceFailure(error, "File belum bisa diunduh.").toast, "error", 6000),
-                  )
-                }
-              >
-                Unduh lagi
-              </Button>
-              <Button type="button" onClick={onClose}>
-                Selesai
-              </Button>
-            </>
-          ) : null}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+
+          <p className="text-sm text-muted">
+            Stok ditulis = stok {store?.warehouseName ?? "gudang"} − buffer {store?.stockBuffer ?? 0},
+            minimal 0. Hanya kolom Stok yang diisi ulang; harga dan kolom lain tetap seperti di
+            template. Varian yang ditambahkan di Shopee setelah template ini tidak ada di file.
+          </p>
+        </div>
+      ) : null}
+
+      {step === 3 && result ? (
+        <div className="flex flex-col items-center py-4 text-center">
+          <span className="flex size-12 items-center justify-center rounded-full bg-tint-success text-success">
+            <Check className="size-6" aria-hidden />
+          </span>
+          <h3 className="mt-3 text-lg font-bold">File siap diupload ke Shopee</h3>
+          <p className="mt-1 text-sm text-muted">
+            File sudah diunduh. Upload di Seller Center › Produk Saya › Ubah Massal.
+          </p>
+          <dl className="mt-4 w-full max-w-lg divide-y divide-border rounded-xl border border-border text-left text-sm">
+            {summary.map(([label, value]) => (
+              <div key={label as string} className="flex justify-between gap-3 px-4 py-2.5">
+                <dt className="text-muted">{label}</dt>
+                <dd className="text-right font-semibold text-foreground">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+    </WizardFrame>
   );
 }

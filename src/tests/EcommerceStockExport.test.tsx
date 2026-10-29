@@ -59,6 +59,7 @@ describe("StockExportDialog", () => {
           productName: "Head To Tail Dry Ear Powder",
           variationName: "",
           productId: "p1",
+          templatePrice: "45000",
           templateStock: 3,
           onHand: 10,
           exportStock: 8,
@@ -108,7 +109,7 @@ describe("StockExportDialog", () => {
     expect(marketplace.generateStockExport).toHaveBeenCalledWith("store-1");
     expect(marketplace.downloadHistoryFile).toHaveBeenCalledWith("batch-1", "stok_buloo.xlsx");
     expect(onExported).toHaveBeenCalled();
-    expect(screen.getByText("File stok sudah dibuat")).toBeInTheDocument();
+    expect(screen.getByText("File siap diupload ke Shopee")).toBeInTheDocument();
   });
 
   it("explains when no store is ready", () => {

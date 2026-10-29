@@ -6,14 +6,19 @@ import { useState } from "react";
 import { ChevronRight, Plus } from "lucide-react";
 
 import { Alert, Card, DataTable, Pagination, StatTile, type DataTableColumn } from "@/components";
+import { Button } from "@/components/ui/button";
 import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
+import { swalToast } from "@/lib/swal";
+import { marketplaceService } from "@/services/marketplace.service";
 import type {
   MarketplaceHistoryEntry,
+  MarketplaceListing,
   MarketplaceOrderRecord,
   MarketplaceStore,
 } from "@/types/marketplace";
 
+import { ecommerceFailure } from "../errors";
 import { useMarketplaceHistory } from "../hooks/useMarketplaceHistory";
 import { useMarketplaceOrders } from "../hooks/useMarketplaceOrders";
 import { useMarketplaceStores } from "../hooks/useMarketplaceStores";
@@ -23,28 +28,58 @@ import {
   MARKETPLACE_LABEL,
   PROCESS_LABEL,
   formatCount,
+  formatDate,
   formatDateTime,
   formatRupiah,
   withStore,
 } from "../labels";
+import { BindSkuDialog } from "./BindSkuDialog";
 import { ConnectStoreDialog } from "./ConnectStoreDialog";
 import { EcommerceHeader } from "./EcommerceHeader";
+import { HeldOrderDialog } from "./HeldOrderDialog";
 import { HistoryDetailDialog } from "./HistoryDetailDialog";
 
 const COMING_SOON = ["Tokopedia", "TikTok Shop"];
 
 function historySummary(entry: MarketplaceHistoryEntry): string {
   const r = entry.result;
+  const parts = (...items: Array<string | false>) => items.filter(Boolean).join(" · ");
   if (entry.process === "template") {
-    return `${formatCount(r.variants)} varian · ${formatCount(r.autoBound)} langsung terikat`;
+    return parts(`${formatCount(r.variants)} varian dibaca`, `${formatCount(r.autoBound)} langsung terikat`);
   }
   if (entry.process === "orders") {
-    return `${formatCount(r.created)} faktur · ${formatCount(r.held)} ditahan · ${formatCount(r.skipped)} dilewati`;
+    return parts(
+      `${formatCount(r.created)} faktur dibuat`,
+      Boolean(r.held) && `${formatCount(r.held)} pesanan tertahan`,
+      Boolean(r.flagged) && `${formatCount(r.flagged)} ditandai Batal`,
+    );
   }
   if (entry.process === "settlement") {
-    return `${r.number ?? "—"} · ${formatCount(r.settled)} faktur lunas`;
+    return parts(
+      `${formatCount(r.settled)} faktur lunas`,
+      Boolean(r.variance) && `${formatCount(r.variance)} selisih`,
+      r.number ?? false,
+    );
   }
-  return `${formatCount(r.changed)} stok berubah · ${formatCount(r.same)} sama`;
+  return `${formatCount((r.changed ?? 0) + (r.same ?? 0))} varian diisi`;
+}
+
+/** The dot before each process name, as the mockup colours them. */
+const PROCESS_DOT: Record<MarketplaceHistoryEntry["process"], string> = {
+  template: "bg-muted",
+  stock_export: "bg-secondary",
+  orders: "bg-primary",
+  settlement: "bg-success",
+};
+
+/** Selesai, unless something in the run still needs a person. */
+function historyStatus(entry: MarketplaceHistoryEntry): { label: string; tone: string } {
+  const r = entry.result;
+  if (r.failed) return { label: `${formatCount(r.failed)} gagal`, tone: "bg-tint-danger text-danger" };
+  if (entry.process === "orders" && r.held) {
+    return { label: `${formatCount(r.held)} tertahan`, tone: "bg-tint-warning text-warning" };
+  }
+  return { label: "Selesai", tone: "bg-tint-success text-success" };
 }
 
 /**
@@ -62,6 +97,8 @@ export function EcommerceSummaryScreen() {
   const router = useRouter();
   const [connecting, setConnecting] = useState(false);
   const [opened, setOpened] = useState<MarketplaceHistoryEntry | null>(null);
+  const [viewing, setViewing] = useState<MarketplaceOrderRecord | null>(null);
+  const [binding, setBinding] = useState<{ storeId: string; listing: MarketplaceListing } | null>(null);
 
   const storeName = (id: string) => stores.find((store) => store._id === id)?.name ?? "Toko";
 
@@ -80,45 +117,88 @@ export function EcommerceSummaryScreen() {
     orders.refetch();
   };
 
+  /** The first line still waiting — the one the row names and Ikat SKU opens. */
+  const firstUnbound = (row: MarketplaceOrderRecord) => {
+    const waiting = new Set(row.unboundSkus ?? []);
+    return (row.lines ?? []).find((line) => !line.sku || waiting.has(line.sku)) ?? null;
+  };
+
+  const openBind = async (row: MarketplaceOrderRecord, sku: string) => {
+    try {
+      const page = await marketplaceService.listListings(row.storeId, { search: sku, limit: 20 });
+      const listing = page.items.find((item) => item.shopeeSku === sku);
+      if (!listing) {
+        swalToast("SKU ini tidak ada di template tersimpan. Upload template terbaru di Pengikatan SKU.", "error", 6000);
+        return;
+      }
+      setViewing(null);
+      setBinding({ storeId: row.storeId, listing });
+    } catch (error) {
+      swalToast(ecommerceFailure(error, "Varian Shopee belum bisa dibuka.").toast, "error", 6000);
+    }
+  };
+
   const heldColumns: DataTableColumn<MarketplaceOrderRecord>[] = [
     {
       id: "order",
       header: "No. pesanan",
       cell: (row) => (
         <div>
-          <div className="tabular-nums font-medium text-foreground">{row.orderNo}</div>
-          <div className="text-xs text-muted">{storeName(row.storeId)}</div>
+          <div className="font-semibold tabular-nums text-foreground">{row.orderNo}</div>
+          <div className="text-sm text-muted">Shopee · {storeName(row.storeId)}</div>
         </div>
       ),
     },
     {
       id: "date",
-      header: "Dibayar",
-      cell: (row) => <span className="whitespace-nowrap tabular-nums">{formatDateTime(row.paidAt ?? row.orderedAt)}</span>,
+      header: "Tanggal",
+      cell: (row) => <span className="whitespace-nowrap tabular-nums">{formatDate(row.paidAt ?? row.orderedAt)}</span>,
     },
     {
       id: "skus",
-      header: "SKU belum terikat",
-      cell: (row) => <span className="text-sm">{(row.unboundSkus ?? []).join(", ")}</span>,
+      header: "Varian belum terikat",
+      cell: (row) => {
+        const line = firstUnbound(row);
+        const more = (row.unboundSkus?.length ?? 0) - 1;
+        return line ? (
+          <div className="min-w-0 max-w-[26rem]">
+            <div className="line-clamp-1 font-semibold text-foreground">{line.productName}</div>
+            <div className="text-sm text-muted">
+              {line.variationName ? `${line.variationName} · ` : ""}
+              <span className="tabular-nums text-primary">{line.sku ?? "Tanpa SKU"}</span> · {line.qty} pcs
+              {more > 0 ? ` · +${more} varian lain` : ""}
+            </div>
+          </div>
+        ) : (
+          <span className="text-sm">{(row.unboundSkus ?? []).join(", ")}</span>
+        );
+      },
     },
     {
       id: "total",
       header: "Nilai",
       align: "right",
-      cell: (row) => <span className="tabular-nums">{formatRupiah(row.total)}</span>,
+      cell: (row) => <span className="whitespace-nowrap tabular-nums">{formatRupiah(row.total)}</span>,
     },
     {
       id: "action",
       header: "",
       align: "right",
-      cell: (row) => (
-        <Link
-          href={`${withStore(ECOMMERCE_SKU_HREF, row.storeId)}`}
-          className="text-sm font-semibold text-primary underline"
-        >
-          Ikat SKU
-        </Link>
-      ),
+      cell: (row) => {
+        const sku = firstUnbound(row)?.sku;
+        return (
+          <div className="flex justify-end gap-2">
+            <Button type="button" size="sm" variant="secondary" className="whitespace-nowrap" onClick={() => setViewing(row)}>
+              Lihat pesanan
+            </Button>
+            {sku && can("ecommerce", "bindSku") ? (
+              <Button type="button" size="sm" className="whitespace-nowrap" onClick={() => void openBind(row, sku)}>
+                Ikat SKU
+              </Button>
+            ) : null}
+          </div>
+        );
+      },
     },
   ];
 
@@ -159,14 +239,47 @@ export function EcommerceSummaryScreen() {
     {
       id: "time",
       header: "Waktu",
-      cell: (row) => <span className="whitespace-nowrap tabular-nums">{formatDateTime(row.createdAt)}</span>,
+      cell: (row) => <span className="font-medium tabular-nums text-foreground">{formatDateTime(row.createdAt)}</span>,
     },
-    { id: "store", header: "Toko", cell: (row) => storeName(row.storeId) },
-    { id: "process", header: "Proses", cell: (row) => PROCESS_LABEL[row.process] },
+    {
+      id: "process",
+      header: "Proses",
+      cell: (row) => (
+        <div>
+          <div className="flex items-center gap-2 font-semibold whitespace-nowrap text-foreground">
+            <span className={cn("size-2.5 flex-none rounded-full", PROCESS_DOT[row.process])} aria-hidden />
+            {PROCESS_LABEL[row.process]}
+          </div>
+          <div className="text-sm text-muted">Shopee · {storeName(row.storeId)}</div>
+        </div>
+      ),
+    },
     {
       id: "result",
-      header: "Hasil",
-      cell: (row) => <span className="text-muted">{historySummary(row)}</span>,
+      header: "File & hasil",
+      cell: (row) => (
+        <div className="min-w-0">
+          <div className="text-foreground">{historySummary(row)}</div>
+          {row.fileName ? <div className="text-sm break-all tabular-nums text-muted">{row.fileName}</div> : null}
+        </div>
+      ),
+    },
+    {
+      id: "by",
+      header: "Oleh",
+      cell: (row) => <span className="whitespace-nowrap">{row.createdByName ?? "—"}</span>,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (row) => {
+        const status = historyStatus(row);
+        return (
+          <span className={cn("inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium", status.tone)}>
+            {status.label}
+          </span>
+        );
+      },
     },
   ];
 
@@ -258,11 +371,8 @@ export function EcommerceSummaryScreen() {
               rows={orders.held}
               rowKey={(row) => row._id}
               loading={orders.loading}
+              rowClassName={() => "bg-tint-hold"}
             />
-            <p className="text-sm text-muted">
-              Satu pesanan ditahan utuh walaupun hanya satu SKU-nya belum terikat. Begitu semua SKU-nya
-              diikat, fakturnya dibuat otomatis dengan tanggal pesanan asli.
-            </p>
           </div>
         </Card>
       ) : null}
@@ -309,6 +419,29 @@ export function EcommerceSummaryScreen() {
           ) : null}
         </div>
       </Card>
+
+      {viewing ? (
+        <HeldOrderDialog
+          order={viewing}
+          storeLabel={`Shopee · ${storeName(viewing.storeId)}`}
+          onBind={(sku) => void openBind(viewing, sku)}
+          onClose={() => setViewing(null)}
+        />
+      ) : null}
+
+      {binding ? (
+        <BindSkuDialog
+          storeId={binding.storeId}
+          warehouseId={stores.find((store) => store._id === binding.storeId)?.warehouseId ?? undefined}
+          warehouseName={stores.find((store) => store._id === binding.storeId)?.warehouseName ?? null}
+          listing={binding.listing}
+          onClose={() => setBinding(null)}
+          onChanged={() => {
+            setBinding(null);
+            afterChange();
+          }}
+        />
+      ) : null}
 
       {connecting ? (
         <ConnectStoreDialog

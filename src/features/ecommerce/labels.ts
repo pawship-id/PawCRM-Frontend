@@ -62,6 +62,18 @@ export function formatDateTime(value: string | null | undefined): string {
   return value ? DATE_TIME.format(new Date(value)) : "—";
 }
 
+const DATE_ONLY = new Intl.DateTimeFormat("id-ID", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  timeZone: "Asia/Jakarta",
+});
+
+/** "22 Okt 2026" — where the time adds nothing. */
+export function formatDate(value: string | null | undefined): string {
+  return value ? DATE_ONLY.format(new Date(value)) : "—";
+}
+
 export function formatCount(value: number | null | undefined): string {
   return (value ?? 0).toLocaleString("id-ID");
 }

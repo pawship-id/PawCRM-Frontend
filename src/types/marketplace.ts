@@ -155,6 +155,8 @@ export interface StockExportRow {
   productName: string;
   variationName: string;
   productId: string;
+  /** Harga in the saved template, as Shopee wrote it — never changed by the export. */
+  templatePrice: string;
   templateStock: number | null;
   onHand: number;
   exportStock: number;
@@ -203,6 +205,8 @@ export interface MarketplaceHistoryEntry {
     };
   documents?: Array<{ kind: string; id: string; number: string | null; ref: string | null }>;
   createdBy: string | null;
+  /** Who ran it — resolved by the server for the Oleh column. */
+  createdByName?: string | null;
   createdAt: string;
 }
 
@@ -228,6 +232,8 @@ export interface OrderPreviewItem {
   /** The invoice value: Σ subtotal − seller voucher. */
   total: number;
   lineCount: number;
+  /** What was bought, as the order file names it — for the Barang column. */
+  items: Array<{ productName: string; variationName: string; qty: number }>;
   unboundSkus: string[];
   invoiceNumber: string | null;
 }
@@ -269,7 +275,20 @@ export interface MarketplaceOrderRecord {
   orderedAt: string | null;
   paidAt: string | null;
   total: number;
-  lines?: Array<{ sku: string | null; productName: string; variationName: string; qty: number; subtotal: number }>;
+  sellerVoucher?: number;
+  /** Username (Pembeli) from the order file. */
+  buyerUsername?: string | null;
+  /** The order file this came in with. */
+  sourceFileName?: string | null;
+  lines?: Array<{
+    sku: string | null;
+    productName: string;
+    variationName: string;
+    qty: number;
+    originalPrice?: number;
+    sellerDiscount?: number;
+    subtotal: number;
+  }>;
   /** Held only: the SKUs of this order still unbound. */
   unboundSkus?: string[];
   /** Needs action only: the invoice's payment state. */

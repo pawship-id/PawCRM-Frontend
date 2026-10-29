@@ -51,9 +51,9 @@ describe("OrderImportDialog", () => {
       warning: null,
       counts: { new: 1, held: 1, needs_action: 0, existing: 0, skipped: 1 },
       items: [
-        { orderNo: "A1", category: "new", status: "Selesai", reason: null, paidAt: null, total: 56700, lineCount: 2, unboundSkus: [], invoiceNumber: null },
-        { orderNo: "A2", category: "held", status: "Selesai", reason: "SKU belum terikat", paidAt: null, total: 1000, lineCount: 1, unboundSkus: ["Foodie:AmericanBacon"], invoiceNumber: null },
-        { orderNo: "A3", category: "skipped", status: "Batal", reason: "Status Batal tidak diimpor", paidAt: null, total: 0, lineCount: 1, unboundSkus: [], invoiceNumber: null },
+        { orderNo: "A1", category: "new", status: "Selesai", reason: null, paidAt: null, total: 56700, lineCount: 2, items: [{ productName: "Prama Dog Snack", variationName: "Bacon", qty: 1 }, { productName: "Prama Dog Snack", variationName: "Beef", qty: 1 }], unboundSkus: [], invoiceNumber: null },
+        { orderNo: "A2", category: "held", status: "Selesai", reason: "SKU belum terikat", paidAt: null, total: 1000, lineCount: 1, items: [], unboundSkus: ["Foodie:AmericanBacon"], invoiceNumber: null },
+        { orderNo: "A3", category: "skipped", status: "Batal", reason: "Status Batal tidak diimpor", paidAt: null, total: 0, lineCount: 1, items: [], unboundSkus: [], invoiceNumber: null },
       ],
     });
     marketplace.commitOrders.mockResolvedValue({
@@ -74,6 +74,7 @@ describe("OrderImportDialog", () => {
     await user.click(screen.getByRole("button", { name: "Lanjut" }));
 
     expect(await screen.findByText("SKU belum terikat: Foodie:AmericanBacon")).toBeInTheDocument();
+    expect(screen.getByText("Prama Dog Snack · Bacon × 1, +1 barang lain")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Simpan 1 faktur" }));
 
     await waitFor(() => expect(marketplace.commitOrders).toHaveBeenCalledWith("store-1", "b1"));
