@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { CustomerInvoiceStatus } from "@/types/api";
+import type { CustomerInvoiceStatus, CustomerInvoiceSource } from "@/types/api";
 
 /**
  * Where a receivable stands, as a chip.
@@ -67,20 +67,24 @@ export function InvoiceStatusBadge({
  * Both tones are quiet. Neither origin is better or more urgent than the other;
  * colouring one would suggest otherwise.
  */
-export function InvoiceSourceBadge({ source }: { source: "manual" | "pos_bridge" }) {
+const SOURCE_LABEL: Record<CustomerInvoiceSource, string> = {
+  manual: "Manual",
+  pos_bridge: "Kasir",
+  shopee_import: "Shopee",
+};
+
+const SOURCE_TONE: Record<CustomerInvoiceSource, string> = {
+  manual: "bg-tint-neutral text-muted",
+  pos_bridge: "bg-tint-brand text-primary",
+  shopee_import: "bg-tint-info text-info",
+};
+
+export function InvoiceSourceBadge({ source }: { source: CustomerInvoiceSource }) {
   return (
-    <Badge
-      variant="outline"
-      className={cn(
-        "border-transparent",
-        source === "pos_bridge"
-          ? "bg-tint-brand text-primary"
-          : "bg-tint-neutral text-muted",
-      )}
-    >
+    <Badge variant="outline" className={cn("border-transparent", SOURCE_TONE[source])}>
       {/* The mockup's words: the origin named, not described — "Kasir", not
           "dari kasir". Same chip on the list and on the detail. */}
-      {source === "pos_bridge" ? "Kasir" : "Manual"}
+      {SOURCE_LABEL[source] ?? "Manual"}
     </Badge>
   );
 }

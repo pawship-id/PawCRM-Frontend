@@ -49,7 +49,9 @@ const SOURCE_LABEL = (r: SalesInvoiceReportRow) =>
     ? "Marketplace"
     : r.source === "pos_bridge"
       ? "Kasir"
-      : "Manual";
+      : r.source === "shopee_import"
+        ? "Shopee"
+        : "Manual";
 
 /** A list cell: the names joined, or empty when there are none. */
 const joined = (values: string[]) => (values.length ? values.join(", ") : null);

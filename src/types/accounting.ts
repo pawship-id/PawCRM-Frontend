@@ -459,6 +459,7 @@ export type JournalSourceType =
    * Its Referensi is the card (MBR-…).
    */
   | "membership_recognition"
+  | "marketplace_settlement"
   | "manual";
 
 /**

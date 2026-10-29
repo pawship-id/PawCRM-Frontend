@@ -7,6 +7,37 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — E-commerce Shopee: Tahap B & C
+
+28 Oktober 2026. Backend: `PawCRM-Backend/docs/changelog.md`. Rincian: `docs/features/ecommerce.md`.
+
+- **Impor pesanan** dan **Impor pencairan** — dua wizard baru di kepala Penjualan › E-commerce
+  (Upload → Tinjau → Selesai), di samping Ekspor stok.
+- **Ringkasan:** Belum cair, Pesanan tertahan, tabel pesanan tertahan, dan Perlu tindakan.
+- **Pengaturan:** status pesanan yang jadi faktur, dan akun per peran. Username Shopee dan buffer
+  dihapus dari dialog Hubungkan toko; username hanya dibaca.
+- **Faktur:** sumber "Shopee" (badge dan filter), No. referensi, nomor pencairan, peringatan "Batal
+  di Shopee"; Ubah dan Catat pembayaran disembunyikan untuk faktur Shopee.
+- Jurnal: sumber "Pencairan marketplace".
+
+## [Unreleased] — E-commerce Shopee: Tahap A
+
+28 Oktober 2026, keputusan BO. Backend: `PawCRM-Backend/docs/changelog.md`. Rincian: `docs/features/ecommerce.md`.
+
+- **Penjualan › E-commerce tidak lagi placeholder.** Tiga sub-tab (rute): Ringkasan
+  (`/dashboard/ecommerce-sync`), Pengikatan SKU (`…/sku`), Pengaturan (`…/settings`). Toko dipilih lewat
+  `?store=` atau diingat di sessionStorage antar sub-tab.
+- **Ringkasan:** angka varian terikat / belum terikat / ekspor terakhir, kartu toko, kartu "Hubungkan
+  toko", Tokopedia & TikTok Shop "Segera hadir", tabel Riwayat + dialog detail dengan Unduh ulang.
+- **Pengikatan SKU:** upload template pertama (dropzone), "Perbarui dari template Shopee", filter status
+  dengan hitungan, pencarian, dan dialog Ikat SKU / Lepas ikatan (dialog, bukan drawer).
+- **Ekspor stok:** wizard 3 langkah (Pilih toko → Tinjau → Selesai) dari tombol di kepala modul. Gudang
+  dan buffer dari Pengaturan; harga tidak diubah.
+- **Pengaturan:** nama, status, gudang sumber, buffer, username Shopee; cabang dan Shop ID hanya
+  dibaca.
+- `marketplaceService`, `types/marketplace.ts`, `features/ecommerce/`. Katalog permission `ecommerce`
+  kini `read`, `manageStores`, `bindSku`, `export`.
+
 ## [Unreleased] — Pelanggan: tag
 
 26 Oktober 2026, keputusan BO. Backend: `PawCRM-Backend/docs/changelog.md`.

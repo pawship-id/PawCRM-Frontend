@@ -7525,7 +7525,7 @@ export type CustomerPaymentMethod = "cash" | "transfer" | "qris" | "edc";
  * automatically when a cashier settles with the Piutang method, inside the sale's
  * own transaction. `manual` is what PCR-030's create form will write.
  */
-export type CustomerInvoiceSource = "manual" | "pos_bridge";
+export type CustomerInvoiceSource = "manual" | "pos_bridge" | "shopee_import";
 
 /** One payment against one receivable, as the detail read returns it. */
 export interface CustomerInvoicePayment {
@@ -7646,6 +7646,17 @@ export interface CustomerInvoiceListRow {
   /** The sale that created it, when one did. Null for a manual invoice. */
   posTransactionId: string | null;
   source: CustomerInvoiceSource;
+  /** The marketplace order behind a `shopee_import` invoice. */
+  externalRef?: { marketplace: "shopee"; storeId: string; orderNo: string } | null;
+  /**
+   * Detail read only, `shopee_import` only: the store's name, whether Shopee
+   * has since cancelled the order, and the payout that settled it.
+   */
+  marketplace?: {
+    storeName: string | null;
+    needsAction: "cancelled_after_invoice" | null;
+    settlementNumber: string | null;
+  } | null;
   invoiceDate: string;
   dueDate: string;
   total: string;
