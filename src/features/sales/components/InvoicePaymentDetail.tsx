@@ -10,6 +10,7 @@ import {
   CashTransactionEditDialog,
   cashTransactionHref,
 } from "@/features/cash-transactions";
+import { SETTLEMENT_HREF } from "@/features/ecommerce/labels";
 import { Can, usePermissions } from "@/features/permissions";
 import { PageHeading } from "@/features/purchasing";
 import { cn } from "@/lib/utils";
@@ -121,6 +122,8 @@ export function InvoicePaymentDetail({
     cancelled first, so there is nothing left to change there.
   */
   const changeable = !payment.isVoided && invoice.status !== "void";
+  // Its journal also carries what Shopee kept, which an edit could not rebuild.
+  const settlement = payment.marketplaceSettlement ?? null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -168,7 +171,7 @@ export function InvoicePaymentDetail({
             <Printer className="size-4" />
             Kwitansi
           </Button>
-          {changeable && (
+          {changeable && !settlement && (
             <Can feature="cashTransactions" action="update">
               <Button
                 type="button"
@@ -232,6 +235,16 @@ export function InvoicePaymentDetail({
           <Field label="No. referensi">
             <span className="tabular-nums">{payment.ref ?? "—"}</span>
           </Field>
+          {settlement && (
+            <Field label="Pencairan">
+              <Link
+                href={SETTLEMENT_HREF(settlement.id)}
+                className="font-semibold text-primary tabular-nums underline"
+              >
+                {settlement.number}
+              </Link>
+            </Field>
+          )}
           <Field label="Jurnal">
             <JournalLink
               id={payment.journalEntryId}

@@ -1,6 +1,7 @@
 import { apiClient } from "./api-client";
 import type { PageResult } from "@/types/api";
 import type {
+  MarketplaceSettlementDetail,
   BindResult,
   CreateMarketplaceStoreInput,
   ListingListQuery,
@@ -140,6 +141,9 @@ export const marketplaceService = {
         limit: query.limit,
       },
     }),
+
+  getSettlement: (id: string) =>
+    apiClient.get<MarketplaceSettlementDetail>(`/marketplace/settlements/${id}`),
 
   downloadHistoryFile: (batchId: string, fallbackFilename = "shopee.xlsx") =>
     apiClient.download(`/marketplace/history/${batchId}/file`, {

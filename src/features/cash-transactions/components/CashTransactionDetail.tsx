@@ -52,6 +52,8 @@ import {
   kindLabel,
   lockedReason,
 } from "../labels";
+import { SETTLEMENT_HREF } from "@/features/ecommerce/labels";
+
 import { CancelCashTransactionDialog } from "./CancelCashTransactionDialog";
 import { CashTransactionJournalDialog } from "./CashTransactionJournalDialog";
 import { CashTransactionStatusBadge } from "./CashTransactionStatusBadge";
@@ -118,6 +120,8 @@ export function CashTransactionDetail({
   const title = cashTransactionTitle(transaction);
   const voided = transaction.status === "void";
   const locked = lockedReason(transaction);
+  // Cancel only: its journal carries what Shopee kept, which an edit could not rebuild.
+  const settlement = transaction.marketplaceSettlement ?? null;
   const hasMdr = (toMinor(transaction.mdrAmount) ?? 0n) > 0n;
   /*
     CASH AT THE TILL: what the customer handed over and the change they got back.
@@ -182,14 +186,16 @@ export function CashTransactionDetail({
           <div className="flex flex-wrap items-center gap-2">
             {/* A PAGE, NOT A DIALOG (20 September 2026, on request) — see
                 CashTransactionEditScreen for why this form outgrew an overlay. */}
-            <Can feature="cashTransactions" action="update">
-              <Button variant="secondary" size="sm" asChild>
-                <Link href={`${cashTransactionHref(transaction._id)}/edit`}>
-                  <Pencil className="size-4" />
-                  Ubah
-                </Link>
-              </Button>
-            </Can>
+            {!settlement && (
+              <Can feature="cashTransactions" action="update">
+                <Button variant="secondary" size="sm" asChild>
+                  <Link href={`${cashTransactionHref(transaction._id)}/edit`}>
+                    <Pencil className="size-4" />
+                    Ubah
+                  </Link>
+                </Button>
+              </Can>
+            )}
 
             {/*
               THE MOCKUP'S ≡ MENU, with the words this system can honour.
@@ -384,6 +390,23 @@ export function CashTransactionDetail({
                 ({transaction.commission.recordCount} layanan)
               </span>
             </Field>
+          )}
+          {settlement && (
+            <>
+              <Field label="Pencairan">
+                <Link
+                  href={SETTLEMENT_HREF(settlement.id)}
+                  className="font-semibold text-primary tabular-nums underline"
+                >
+                  {settlement.number}
+                </Link>
+              </Field>
+              <Field label="Dana cair">
+                <span className="tabular-nums">
+                  {formatMoney(transaction.netAmount)}
+                </span>
+              </Field>
+            </>
           )}
           {hasMdr && (
             <>

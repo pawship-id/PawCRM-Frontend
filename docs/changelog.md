@@ -16,8 +16,10 @@ This project uses [Semantic Versioning](https://semver.org/).
 - **Ringkasan:** Belum cair, Pesanan tertahan, tabel pesanan tertahan, dan Perlu tindakan.
 - **Pengaturan:** status pesanan yang jadi faktur, dan akun per peran. Username Shopee dan buffer
   dihapus dari dialog Hubungkan toko; username hanya dibaca.
+- **Pencairan per faktur (1 Nov):** tiap faktur dapat pembayaran dan jurnal sendiri, tampil di Riwayat
+  pembayaran, bisa dibatalkan lalu fakturnya di-void seperti faktur manual. PMT tetap satu per file.
 - **Faktur:** sumber "Shopee" (badge dan filter), No. referensi, nomor pencairan, peringatan "Batal
-  di Shopee"; Ubah dan Catat pembayaran disembunyikan untuk faktur Shopee.
+  di Shopee"; Ubah disembunyikan untuk faktur Shopee. Catat pembayaran tersedia sejak 1 Nov.
 - Jurnal: sumber "Pencairan marketplace".
 
 ## [Unreleased] — E-commerce Shopee: Tahap A

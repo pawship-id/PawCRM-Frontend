@@ -25,6 +25,7 @@ import {
   salesInvoiceReport,
   salesItemReport,
   salesRevenueReport,
+  salesGrossMarginReport,
 } from "../salesReports";
 import {
   agingReport,
@@ -117,6 +118,7 @@ type ReportDialog =
   | "posSales"
   | "consignmentSales"
   | "salesRevenue"
+  | "salesGrossMargin"
   | "cashFlow"
   | "ledger"
   | "expenses"
@@ -196,6 +198,9 @@ const REPORT_DIALOGS: Record<
   salesRevenue: (props) => (
     <SalesReportDialog report={salesRevenueReport} {...props} />
   ),
+  salesGrossMargin: (props) => (
+    <SalesReportDialog report={salesGrossMarginReport} {...props} />
+  ),
   consignmentSales: (props) => (
     <SalesReportDialog report={consignmentSalesReport} {...props} />
   ),
@@ -274,6 +279,15 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Rincian pendapatan per produk",
       description: "Pendapatan, diskon, HPP, dan profit per produk.",
       dialog: "salesRevenue",
+      anyOf: [
+        { feature: "salesReports", action: "read" },
+        { feature: "journalEntries", action: "read" },
+      ],
+    },
+    {
+      title: "Gross margin per toko",
+      description: "Nett sales, HPP, dan gross margin per channel sampai toko.",
+      dialog: "salesGrossMargin",
       anyOf: [
         { feature: "salesReports", action: "read" },
         { feature: "journalEntries", action: "read" },

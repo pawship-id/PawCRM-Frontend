@@ -50,12 +50,17 @@ feature="ecommerce"`.
 - **Impor pesanan** — Upload (toko, file, status yang diimpor) → Tinjau (Baru / Perlu tindakan /
   Sudah ada / Dilewati, clickable) → Selesai (faktur dibuat, links). Nothing is saved before Simpan.
 - **Impor pencairan** — Upload (toko, file, "Dana masuk ke") → Tinjau (total check, Cocok / Selisih
-  / Faktur tidak ditemukan / Sudah lunas, the journal to be posted) → Selesai (PMT number).
+  / Faktur tidak ditemukan / Sudah lunas, the journal to be posted, summed) → Selesai (PMT number).
+  Each invoice gets its own payment and journal; the PMT groups them. A payment is cancelled like a
+  manual one, never edited, and the PMT marks that row Dibatalkan.
 - **Ringkasan** also shows Belum cair, Pesanan tertahan, the held-order table (Ikat SKU) and Perlu
   tindakan (orders Batal after invoicing, with what to do). **Pengaturan** adds Impor pesanan
   (statuses, `CheckRow`) and Akun (a picker per posting role).
 - **Faktur** — source chip and filter "Shopee"; the detail shows "Shopee · toko", No. referensi and
-  Pencairan, hides Ubah and Catat pembayaran, and warns when Shopee cancelled the order.
+  Pencairan, hides Ubah, and warns when Shopee cancelled the order. Catat pembayaran, Riwayat
+  pembayaran and void behave as on a manual invoice; the payment discharges Piutang Marketplace. A
+  later payout marks an invoice paid by hand Sudah lunas and books nothing for it; a part-paid one
+  settles its remainder as Selisih.
 
 ## Permissions
 

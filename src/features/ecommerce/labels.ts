@@ -44,7 +44,10 @@ export const ORDER_STATUSES = [
   "Selesai",
 ] as const;
 
+export const SETTLEMENT_HREF = (id: string) => `${ECOMMERCE_HREF}/settlements/${id}`;
 export const INVOICE_HREF = (id: string) => `/dashboard/sales/invoice/${id}`;
+export const INVOICE_PAYMENT_HREF = (invoiceId: string, paymentId: string) =>
+  `${INVOICE_HREF(invoiceId)}/payments/${paymentId}`;
 
 export const MARKETPLACE_LABEL = { shopee: "Shopee" } as const;
 

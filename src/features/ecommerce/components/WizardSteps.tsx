@@ -170,7 +170,7 @@ export function CountChip({
   label: string;
   value: string;
   selected?: boolean;
-  tone?: "plain" | "warning";
+  tone?: "plain" | "warning" | "danger";
   onClick?: () => void;
 }) {
   const body = (
@@ -179,7 +179,11 @@ export function CountChip({
       <span
         className={cn(
           "text-2xl font-semibold tabular-nums",
-          tone === "warning" && value !== "0" ? "text-warning" : "text-foreground",
+          tone === "warning" && value !== "0"
+            ? "text-warning"
+            : tone === "danger" && value !== "0"
+              ? "text-danger"
+              : "text-foreground",
         )}
       >
         {value}

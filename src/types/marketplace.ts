@@ -304,6 +304,48 @@ export interface ReleasedOrder {
 
 // ── Tahap C — impor pencairan ──────────────────────────────────────────────
 
+/** One posted PMT, for its own page. Amounts are rupiah numbers. */
+export interface MarketplaceSettlementDetail {
+  _id: string;
+  storeId: string;
+  storeName: string | null;
+  number: string;
+  date: string;
+  periodFrom: string | null;
+  periodTo: string | null;
+  shopUsername: string | null;
+  status: string;
+  journalEntryId: string | null;
+  journalEntryNumber: string | null;
+  totals: {
+    released: number;
+    invoices: number;
+    variance: number;
+    admin: number;
+    program: number;
+    shipping: number;
+    pph22: number;
+  };
+  lines: Array<{
+    orderNo: string;
+    releasedAt: string | null;
+    invoiceId: string;
+    invoiceNumber: string | null;
+    result: "match" | "variance";
+    invoiceValue: number;
+    variance: number;
+    /** Admin, program and shipping together. */
+    fees: number;
+    pph22: number;
+    netReleased: number;
+    /** The invoice's own payment; null on a PMT from before payments were per invoice. */
+    paymentId: string | null;
+    paymentNumber: string | null;
+    /** Its payment was cancelled: the order no longer counts in `totals`. */
+    cancelled: boolean;
+  }>;
+}
+
 export type SettlementCategory = "match" | "variance" | "not_found" | "already_paid";
 
 export interface SettlementPreviewItem {
@@ -315,6 +357,9 @@ export interface SettlementPreviewItem {
   invoiceValue: number | null;
   comparisonValue: number;
   variance: number;
+  /** Admin, program and shipping together, as the Potongan column shows them. */
+  deductions: number;
+  pph22: number;
   netReleased: number;
   notes: string[];
 }
