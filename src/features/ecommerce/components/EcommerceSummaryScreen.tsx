@@ -103,7 +103,11 @@ export function EcommerceSummaryScreen() {
   const storeName = (id: string) => stores.find((store) => store._id === id)?.name ?? "Toko";
 
   const bound = stores.reduce((sum, store) => sum + (store.listingCounts?.bound ?? 0), 0);
-  const unbound = stores.reduce((sum, store) => sum + (store.listingCounts?.unbound ?? 0), 0);
+  const unbound = stores.reduce(
+    (sum, store) =>
+      sum + (store.listingCounts?.unbound ?? 0) + (store.listingCounts?.suggested ?? 0),
+    0,
+  );
   const lastExport = stores
     .filter((store) => store.lastStockExportAt)
     .sort((a, b) => String(b.lastStockExportAt).localeCompare(String(a.lastStockExportAt)))[0];
@@ -531,8 +535,8 @@ function StoreCard({ store }: { store: MarketplaceStore }) {
             ? "Upload template pertama"
             : store.orderCounts?.held
               ? `${formatCount(store.orderCounts.held)} pesanan tertahan, SKU belum terikat`
-              : counts?.unbound
-                ? `${formatCount(counts.unbound)} varian belum terikat`
+              : counts?.unbound || counts?.suggested
+                ? `${formatCount(counts.unbound + counts.suggested)} varian belum terikat`
                 : "Buka Pengikatan SKU"}
           <ChevronRight className="size-4" aria-hidden />
         </Link>

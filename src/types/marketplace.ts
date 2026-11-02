@@ -17,6 +17,7 @@ export interface MarketplaceTemplate {
 
 export interface ListingCounts {
   bound: number;
+  suggested: number;
   unbound: number;
   no_sku: number;
   removed: number;
@@ -86,13 +87,24 @@ export interface TemplateUploadResult {
   variants: number;
   products: number;
   autoBound: number;
+  suggested?: number;
   bound: number;
   unbound: number;
   noSku: number;
   removed: number;
 }
 
-export type ListingStatus = "bound" | "unbound" | "no_sku" | "removed";
+export type ListingStatus = "bound" | "suggested" | "unbound" | "no_sku" | "removed";
+
+/** Saran pencocokan — binds nothing until somebody accepts it. */
+export interface ListingSuggestion {
+  _id: string;
+  name: string;
+  sku: string;
+  /** `sku`: same SKU apart from case and symbols. `name`: read off the name. */
+  reason: "sku" | "name";
+  stock: number;
+}
 
 export interface MarketplaceListing {
   _id: string;
@@ -112,6 +124,7 @@ export interface MarketplaceListing {
   productId: string | null;
   status: ListingStatus;
   product: { _id: string; name: string; sku: string; isActive: boolean } | null;
+  suggestion: ListingSuggestion | null;
   /** Whole units at the store's warehouse; null when unbound. */
   stock: number | null;
   /** What the next export writes: stock − buffer, never below 0. */
@@ -137,6 +150,13 @@ export interface BindResult {
   affectedListings: number;
   /** Held orders this bind turned into invoices. */
   released?: ReleasedOrder[];
+}
+
+export interface AcceptSuggestionsResult {
+  /** Shopee SKUs bound. */
+  bound: number;
+  affectedListings: number;
+  released: ReleasedOrder[];
 }
 
 export type StockChange = "changed" | "same";

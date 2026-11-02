@@ -12,6 +12,7 @@ export function withStore(href: string, storeId: string | null | undefined): str
 
 export const LISTING_STATUS_LABEL: Record<ListingStatus, string> = {
   bound: "Terikat",
+  suggested: "Saran",
   unbound: "Belum terikat",
   no_sku: "Tanpa SKU",
   removed: "Tidak ada di template",
@@ -19,6 +20,7 @@ export const LISTING_STATUS_LABEL: Record<ListingStatus, string> = {
 
 export const LISTING_STATUS_TONE: Record<ListingStatus, string> = {
   bound: "bg-tint-success text-success",
+  suggested: "bg-tint-info text-info",
   unbound: "bg-tint-neutral text-muted",
   no_sku: "bg-tint-warning text-warning",
   removed: "bg-tint-neutral text-muted",

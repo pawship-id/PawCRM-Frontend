@@ -1,3 +1,5 @@
+import { templateUploadSummary } from "@/features/ecommerce/hooks/useTemplateUpload";
+import { LISTING_STATUS_LABEL } from "@/features/ecommerce/labels";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
@@ -142,7 +144,8 @@ describe("BindSkuDialog", () => {
     rowNumber: 10,
     inCurrentTemplate: true,
     productId: "p1",
-    status: "bound",
+    suggestion: null,
+  status: "bound",
     product: { _id: "p1", name: "Bully Stick M", sku: "BULLYSTICK:M", isActive: true },
     stock: 1,
     exportStock: 0,
@@ -198,5 +201,23 @@ describe("BindSkuDialog", () => {
       "/dashboard/inventory/products",
     );
     expect(screen.getByRole("button", { name: "Ikat SKU" })).toBeDisabled();
+  });
+});
+
+describe("Pengikatan SKU — saran", () => {
+  it("labels a suggestion and counts it apart from unbound", () => {
+    expect(LISTING_STATUS_LABEL.suggested).toBe("Saran");
+    expect(
+      templateUploadSummary({
+        variants: 10,
+        products: 5,
+        autoBound: 2,
+        suggested: 3,
+        bound: 2,
+        unbound: 5,
+        noSku: 0,
+        removed: 0,
+      }),
+    ).toBe("Template tersimpan. 10 varian dibaca, 2 SKU langsung terikat, 3 saran menunggu, 5 belum terikat.");
   });
 });

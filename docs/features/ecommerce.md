@@ -37,7 +37,9 @@ feature="ecommerce"`.
 - **Pengikatan SKU** — a store with no template opens on `TemplateDropzone`. Otherwise: `FilterBar`
   with the store picker, Status (with counts) and search; "Perbarui dari template Shopee"; the table
   (Varian Shopee, SKU Buloo, Harga Shopee, Stok Buloo with "dikirim N", Status, Ikat/Ubah). Unbound
-  rows first.
+  rows first, those with a saran leading. A saran comes from the template upload (SKU that differs only
+  in case or symbols, or the name; rules in the backend doc) and binds nothing until **Terima**, **Pilih
+  lain** or **Terima semua saran**.
 - **Ikat SKU** — `BindSkuDialog`, a dialog rather than the mockup's drawer (no drawer exists, and the
   mockup itself says not to add one). Product search is server-side, `holdsStock: true`, opening on
   the Shopee SKU. A bind can move several listings (one SKU on two Shopee products); the screen
@@ -70,5 +72,4 @@ role cannot use are hidden with `Can`.
 
 ## Not in V1 (BO, 28 Oct 2026)
 
-Price management from Buloo, match suggestions and "Terima semua saran", per-export warehouse,
-bundles — see the plan's V2 list.
+Price management from Buloo, per-export warehouse, bundles — see the plan's V2 list.

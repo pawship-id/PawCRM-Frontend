@@ -23,6 +23,7 @@ function resultRows(entry: MarketplaceHistoryEntry): Array<[string, string]> {
       ["Produk", formatCount(r.products)],
       ["Langsung terikat (SKU sama)", formatCount(r.autoBound)],
       ["Terikat setelah upload", formatCount(r.bound)],
+      ["Saran", formatCount(r.suggested ?? 0)],
       ["Belum terikat", formatCount(r.unbound)],
       ["Tanpa SKU di Shopee", formatCount(r.noSku)],
       ["Hilang dari template", formatCount(r.removed)],

@@ -13,6 +13,7 @@ import { formatCount } from "../labels";
 export function templateUploadSummary(result: TemplateUploadResult): string {
   const parts = [`${formatCount(result.variants)} varian dibaca`];
   if (result.autoBound > 0) parts.push(`${formatCount(result.autoBound)} SKU langsung terikat`);
+  if (result.suggested) parts.push(`${formatCount(result.suggested)} saran menunggu`);
   parts.push(`${formatCount(result.unbound)} belum terikat`);
   return `Template tersimpan. ${parts.join(", ")}.`;
 }
