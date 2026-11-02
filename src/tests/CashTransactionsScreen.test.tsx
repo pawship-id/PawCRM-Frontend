@@ -442,16 +442,14 @@ describe("Kas & Bank — transaksi: filters", () => {
     TRANSFER IS DRAWN BY THE MOCKUP AND DOES NOT EXIST HERE. Asking for it must
     answer "none" — never "all", which is what an absent `kind` means to the API.
   */
-  it("answers Transfer with an empty list, without asking the server", async () => {
+  it("asks the server for transfers, by flag rather than by kind", async () => {
     renderWithAuth(<KasBankScreen now={NOW} initialQuery={{ source: "transfer" }} />);
 
-    expect(
-      await screen.findByText("Tidak ada transaksi di filter ini."),
-    ).toBeInTheDocument();
-    expect(cashTransactionService.list).not.toHaveBeenCalled();
-    // The cards state a fact rather than a leftover from the last filter.
-    const inTile = statTile("Uang masuk");
-    expect(within(inTile).getByText("Rp 0")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(cashTransactionService.list).toHaveBeenCalledWith(
+        expect.objectContaining({ transfer: true, kind: undefined }),
+      ),
+    );
   });
 
   it("starts from a deep link's kind, as a chip and a counted filter", async () => {

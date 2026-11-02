@@ -197,7 +197,11 @@ export function KasBankScreen({
             value={totals ? formatMoney(totals.out.amount) : "—"}
             caption={
               totals
-                ? `${totals.out.count} transaksi · tanpa yang dibatalkan`
+                ? `${totals.out.count} transaksi · tanpa yang dibatalkan${
+                    totals.transfer?.count
+                      ? ` · tanpa ${formatMoney(totals.transfer.amount)} transfer antar rekening`
+                      : ""
+                  }`
                 : undefined
             }
             loading={!totals && !state.error}

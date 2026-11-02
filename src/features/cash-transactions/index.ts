@@ -51,5 +51,7 @@ export {
   directionTitle,
   numberPrefixForClass,
   kindLabel,
+  transactionKindLabel,
+  TRANSFER_LABEL,
 } from "./labels";
 export type { CashTransactionSource } from "./labels";

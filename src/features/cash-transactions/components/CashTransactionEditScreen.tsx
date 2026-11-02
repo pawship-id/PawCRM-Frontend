@@ -14,7 +14,7 @@ import {
   CASH_TRANSACTIONS_HREF,
   cashTransactionHref,
   directionTitle,
-  kindLabel,
+  transactionKindLabel,
 } from "../labels";
 import { CashTransactionEditForm } from "./CashTransactionEditDialog";
 
@@ -143,7 +143,7 @@ export function CashTransactionEditScreen({
           Ubah {directionTitle(transaction).toLowerCase()}
         </h1>
         <p className="mt-1 text-sm text-muted">
-          {kindLabel(transaction.kind)}
+          {transactionKindLabel(transaction)}
         </p>
       </div>
 

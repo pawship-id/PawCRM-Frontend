@@ -272,12 +272,21 @@ describe("CashTransactionCreateForm", () => {
     expect(
       await screen.findByRole("option", { name: "4201 · Pendapatan Bunga" }),
     ).toBeInTheDocument();
+    // Still on the list, after the kind's own class.
     expect(
-      screen.queryByRole("option", { name: "5401 · Beban Listrik" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("option", { name: "5401 · Beban Listrik" }),
+    ).toBeInTheDocument();
   });
 
-  it("offers only active expense accounts for Uang keluar", async () => {
+  it("offers active accounts for Uang keluar, leaving out what the server blocks and the cash account", async () => {
+    jest
+      .mocked(cashTransactionService.blockedCounterAccounts)
+      .mockResolvedValue({
+        accounts: [
+          { accountId: "acc-bunga", code: "4201", name: "Pendapatan Bunga", reason: "—" },
+        ],
+      });
+
     const user = userEvent.setup();
     renderWithAuth(<CashTransactionCreateForm />);
 
@@ -485,8 +494,7 @@ describe("CashTransactionCreateForm", () => {
         // name, so the client never states one it could get wrong.
         partyType: "supplier",
         partyId: "sup-1",
-        // Not a field any more; sent so the entry still lands in Arus Kas.
-        cashflowType: "operating",
+        // Not sent: the server derives the Arus Kas section from the lines.
         note: "Listrik Agustus",
         // Today is not sent — the server stamps the time as well.
         lines: [

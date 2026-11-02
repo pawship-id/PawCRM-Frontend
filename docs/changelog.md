@@ -7,6 +7,18 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Kas & Bank: akun lawan dan transfer
+
+2 November 2026. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Akun lawan:** picker baris mengikuti aturan server, jadi akun apa pun yang aktif boleh dipilih
+  kecuali akun milik modul. Kelas yang sesuai jenis transaksi tampil lebih dulu. Judul kolom jadi
+  "Akun lawan" kalau barisnya bukan beban atau pendapatan.
+- **Transfer antar rekening:** label di daftar, detail, dan edit; tanpa tanda plus/minus di daftar.
+  Filter Sumber "Transfer" sekarang berfungsi, dan kartu Uang keluar tidak menghitungnya.
+- **Filter akun** daftar transaksi: `accountId` sebelumnya tidak ikut terkirim ke server.
+- Form tidak lagi mengirim `cashflowType`; server menurunkannya dari akun.
+
 ## [Unreleased] — E-commerce Shopee: Tahap B & C
 
 28 Oktober 2026. Backend: `PawCRM-Backend/docs/changelog.md`. Rincian: `docs/features/ecommerce.md`.

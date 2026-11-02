@@ -42,7 +42,7 @@ import {
   parseContactKey,
   useContactOptions,
 } from "../hooks/useContactOptions";
-import { accountsForKind, useLineLookups } from "../hooks/useLineLookups";
+import { accountsForLines, useLineLookups } from "../hooks/useLineLookups";
 import {
   CASH_TRANSACTIONS_HREF,
   cashTransactionHref,
@@ -109,18 +109,16 @@ const KIND_OPTIONS: PillOption<ManualKind>[] = [
  * to decide.
  *
  * WHAT THE PICKERS OFFER IS WHAT THE SERVER ACCEPTS. Active Kas & Bank accounts
- * for the cash side; line accounts that are active and of the right class (beban
- * for Keluar, pendapatan for Masuk). Flipping the toggle clears the chosen line
- * accounts, because none of them is valid on the other side. THE CASH ACCOUNT
- * SURVIVES THE FLIP — an account has no direction, and a bank account both
- * receives and pays.
+ * for the cash side; for the lines, `accountsForLines`: any active account a
+ * module does not own, with the kind's own class first. Flipping the toggle
+ * clears the chosen line accounts, because a line picked for one side is rarely
+ * meant for the other. THE CASH ACCOUNT SURVIVES THE FLIP — an account has no
+ * direction, and a bank account both receives and pays.
  *
  * NO ARUS KAS FIELD AND NO NO. REFERENSI — neither is in the mockup, dropped on
- * request. The cash flow statement still needs a section, so every transaction
- * typed here is filed under Operasi, which is what all but a handful of them
- * are; left unsent the entry would carry no section at all and drop out of Arus
- * Kas entirely. One that belongs under Investasi or Pendanaan is re-filed from
- * Jurnal Umum.
+ * request. The section is the SERVER'S to derive from the lines (`cashflowType`
+ * unsent), which is Operasional for everything this form could reach before any
+ * account was allowed here, and the right section for a machine or a loan since.
  */
 const INTERVAL_OPTIONS = (
   ["monthly", "weekly", "daily", "yearly"] as FixedCostInterval[]
@@ -250,8 +248,6 @@ export function CashTransactionCreateForm() {
       // Today is left to the server, which stamps the time as well as the day.
       ...(date !== todayValue() ? { at: date } : {}),
       ...partyInput(),
-      // Not asked, always sent — see the note at the head of the file.
-      cashflowType: "operating",
       ...(note.trim() ? { note: note.trim() } : {}),
       lines: toLineInputs(lines),
     };
@@ -557,8 +553,8 @@ export function CashTransactionCreateForm() {
         title="Rincian Akun"
         description={
           masuk
-            ? "Satu baris per akun pendapatan. Totalnya adalah jumlah yang masuk ke akun kas/bank di atas."
-            : "Satu baris per akun beban. Totalnya adalah jumlah yang keluar dari akun kas/bank di atas."
+            ? "Satu baris per akun. Totalnya adalah jumlah yang masuk ke akun kas/bank di atas."
+            : "Satu baris per akun. Totalnya adalah jumlah yang keluar dari akun kas/bank di atas."
         }
         action={
           canAddLine(lines) ? (
@@ -586,7 +582,11 @@ export function CashTransactionCreateForm() {
               kind={kind}
               lines={lines}
               onChange={setLines}
-              accounts={accountsForKind(lookups.accounts, kind)}
+              accounts={accountsForLines(lookups.accounts, {
+                kind,
+                blocked: lookups.blockedAccountIds,
+                cashAccountId,
+              })}
               businessLines={lookups.businessLines}
               disabled={saving}
               showAddButton={false}

@@ -1,5 +1,6 @@
 import { apiClient } from "./api-client";
 import type {
+  BlockedCounterAccount,
   CancelCashTransactionInput,
   CashTransaction,
   CashTransactionChannelSummary,
@@ -52,6 +53,8 @@ export const cashTransactionService = {
         branchId: query.branchId,
         branchIds: query.branchIds,
         channelId: query.channelId,
+        accountId: query.accountId,
+        transfer: query.transfer,
         status: query.status,
         partyId: query.partyId,
         documentType: query.documentType,
@@ -96,6 +99,8 @@ export const cashTransactionService = {
           : query.kind,
         branchId: query.branchId,
         channelId: query.channelId,
+        accountId: query.accountId,
+        transfer: query.transfer,
         status: query.status,
         partyId: query.partyId,
         documentType: query.documentType,
@@ -105,6 +110,16 @@ export const cashTransactionService = {
         search: query.search,
       },
     }),
+
+  /**
+   * GET /cash-transactions/blocked-counter-accounts — what a line may not name,
+   * from the rule the server enforces, including the accounts this tenant
+   * pointed a module at, which the chart alone cannot show.
+   */
+  blockedCounterAccounts: () =>
+    apiClient.get<{ accounts: BlockedCounterAccount[] }>(
+      "/cash-transactions/blocked-counter-accounts",
+    ),
 
   /** GET /cash-transactions/:id — one transaction with its revisions. */
   getById: (id: string) =>

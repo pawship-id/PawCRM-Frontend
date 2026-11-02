@@ -32,6 +32,7 @@ import {
   hasLines,
   lockedReason,
   sourceLabel,
+  TRANSFER_LABEL,
 } from "../labels";
 import { DEFAULT_CASH_TRANSACTION_STATUS } from "../query";
 import { CashTransactionStatusBadge } from "./CashTransactionStatusBadge";
@@ -284,7 +285,9 @@ function transactionColumns({
         const description =
           transaction.note ??
           transaction.document?.number ??
-          sourceLabel(transaction.kind);
+          (transaction.isTransfer
+            ? TRANSFER_LABEL
+            : sourceLabel(transaction.kind));
 
         return (
           <>
@@ -381,13 +384,20 @@ function transactionColumns({
         const voided = transaction.status === "void";
         return cn(
           "px-4 py-2.5 text-sm font-semibold whitespace-nowrap",
-          transaction.direction === "in" && !voided && "text-success",
+          transaction.direction === "in" &&
+            !transaction.isTransfer &&
+            !voided &&
+            "text-success",
           voided && "line-through",
         );
       },
       cell: (transaction) => (
         <>
-          {transaction.direction === "in" ? "+" : "−"}
+          {transaction.isTransfer
+            ? ""
+            : transaction.direction === "in"
+              ? "+"
+              : "−"}
           {formatMoney(transaction.amount)}
         </>
       ),
@@ -417,7 +427,9 @@ function transactionColumns({
 
         return (
           <span className="flex items-center gap-1.5">
-            {manual ? (
+            {transaction.isTransfer ? (
+              <Badge variant="outline">{TRANSFER_LABEL}</Badge>
+            ) : manual ? (
               <Badge variant="outline">Manual</Badge>
             ) : href ? (
               <Link
