@@ -17,6 +17,7 @@ export interface MarketplaceTemplate {
 
 export interface ListingCounts {
   bound: number;
+  suggested: number;
   unbound: number;
   no_sku: number;
   removed: number;
@@ -86,13 +87,24 @@ export interface TemplateUploadResult {
   variants: number;
   products: number;
   autoBound: number;
+  suggested?: number;
   bound: number;
   unbound: number;
   noSku: number;
   removed: number;
 }
 
-export type ListingStatus = "bound" | "unbound" | "no_sku" | "removed";
+export type ListingStatus = "bound" | "suggested" | "unbound" | "no_sku" | "removed";
+
+/** Saran pencocokan — binds nothing until somebody accepts it. */
+export interface ListingSuggestion {
+  _id: string;
+  name: string;
+  sku: string;
+  /** `sku`: same SKU apart from case and symbols. `name`: read off the name. */
+  reason: "sku" | "name";
+  stock: number;
+}
 
 export interface MarketplaceListing {
   _id: string;
@@ -112,6 +124,7 @@ export interface MarketplaceListing {
   productId: string | null;
   status: ListingStatus;
   product: { _id: string; name: string; sku: string; isActive: boolean } | null;
+  suggestion: ListingSuggestion | null;
   /** Whole units at the store's warehouse; null when unbound. */
   stock: number | null;
   /** What the next export writes: stock − buffer, never below 0. */
@@ -137,6 +150,13 @@ export interface BindResult {
   affectedListings: number;
   /** Held orders this bind turned into invoices. */
   released?: ReleasedOrder[];
+}
+
+export interface AcceptSuggestionsResult {
+  /** Shopee SKUs bound. */
+  bound: number;
+  affectedListings: number;
+  released: ReleasedOrder[];
 }
 
 export type StockChange = "changed" | "same";
@@ -304,6 +324,48 @@ export interface ReleasedOrder {
 
 // ── Tahap C — impor pencairan ──────────────────────────────────────────────
 
+/** One posted PMT, for its own page. Amounts are rupiah numbers. */
+export interface MarketplaceSettlementDetail {
+  _id: string;
+  storeId: string;
+  storeName: string | null;
+  number: string;
+  date: string;
+  periodFrom: string | null;
+  periodTo: string | null;
+  shopUsername: string | null;
+  status: string;
+  journalEntryId: string | null;
+  journalEntryNumber: string | null;
+  totals: {
+    released: number;
+    invoices: number;
+    variance: number;
+    admin: number;
+    program: number;
+    shipping: number;
+    pph22: number;
+  };
+  lines: Array<{
+    orderNo: string;
+    releasedAt: string | null;
+    invoiceId: string;
+    invoiceNumber: string | null;
+    result: "match" | "variance";
+    invoiceValue: number;
+    variance: number;
+    /** Admin, program and shipping together. */
+    fees: number;
+    pph22: number;
+    netReleased: number;
+    /** The invoice's own payment; null on a PMT from before payments were per invoice. */
+    paymentId: string | null;
+    paymentNumber: string | null;
+    /** Its payment was cancelled: the order no longer counts in `totals`. */
+    cancelled: boolean;
+  }>;
+}
+
 export type SettlementCategory = "match" | "variance" | "not_found" | "already_paid";
 
 export interface SettlementPreviewItem {
@@ -315,6 +377,9 @@ export interface SettlementPreviewItem {
   invoiceValue: number | null;
   comparisonValue: number;
   variance: number;
+  /** Admin, program and shipping together, as the Potongan column shows them. */
+  deductions: number;
+  pph22: number;
   netReleased: number;
   notes: string[];
 }

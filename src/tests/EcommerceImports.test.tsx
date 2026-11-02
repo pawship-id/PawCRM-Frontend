@@ -1,10 +1,11 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
+import { HistoryDetailDialog } from "@/features/ecommerce/components/HistoryDetailDialog";
 import { OrderImportDialog } from "@/features/ecommerce/components/OrderImportDialog";
 import { SettlementImportDialog } from "@/features/ecommerce/components/SettlementImportDialog";
 import { marketplaceService } from "@/services/marketplace.service";
-import type { MarketplaceStore } from "@/types/marketplace";
+import type { MarketplaceHistoryEntry, MarketplaceStore } from "@/types/marketplace";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
@@ -114,6 +115,8 @@ describe("SettlementImportDialog", () => {
           invoiceValue: 56700,
           comparisonValue: 56700,
           variance: 0,
+          deductions: 11173,
+          pph22: 284,
           netReleased: 45243,
           notes: [],
         },
@@ -142,12 +145,74 @@ describe("SettlementImportDialog", () => {
     await user.upload(input, xlsx("Income.sudah dilepas.xlsx"));
     await user.click(screen.getByRole("button", { name: "Lanjut" }));
 
-    expect(await screen.findByText(/Total cocok/)).toBeInTheDocument();
+    expect(await screen.findByText(/Total yang Dilepas di file/)).toBeInTheDocument();
+    expect(screen.getByText("Rp11.173")).toBeInTheDocument();
     expect(screen.getByText("Jurnal yang akan dibuat")).toBeInTheDocument();
     // Debit and credit totals agree.
     expect(screen.getAllByText("Rp56.700").length).toBeGreaterThanOrEqual(2);
 
-    await user.click(screen.getByRole("button", { name: "Simpan & lunasi 1 faktur" }));
-    expect(await screen.findByText(/PMT\/SHP\/2610\/0001 tersimpan/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Lunasi 1 faktur" }));
+    expect(await screen.findByText("1 faktur lunas")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "PMT/SHP/2610/0001" })).toHaveAttribute(
+      "href",
+      "/dashboard/ecommerce-sync/settlements/set1",
+    );
+    expect(screen.getByText("Potongan marketplace")).toBeInTheDocument();
+  });
+});
+
+describe("HistoryDetailDialog", () => {
+  const entry: MarketplaceHistoryEntry = {
+    _id: "h1",
+    storeId: "store-1",
+    process: "orders",
+    fileId: "f1",
+    fileName: "Order.all.xlsx",
+    result: { created: 1, existing: 2, held: 0, skipped: 3 },
+    documents: [{ kind: "customer_invoice", id: "inv1", number: "INV/SHP/2610/0038", ref: "A1" }],
+    createdBy: "u1",
+    createdByName: "Rani",
+    createdAt: "2026-10-24T16:40:00.000Z",
+  };
+
+  it("shows the run, its result and a way into each invoice", () => {
+    renderWithAuth(<HistoryDetailDialog entry={entry} storeName="pawship.id" onClose={jest.fn()} />);
+
+    expect(screen.getByText("Shopee · pawship.id")).toBeInTheDocument();
+    expect(screen.getByText("Rani")).toBeInTheDocument();
+    expect(screen.getByText("Sudah ada, dilewati")).toBeInTheDocument();
+    expect(screen.queryByText("Gagal")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Buka" })).toHaveAttribute("href", "/dashboard/sales/invoice/inv1");
+    expect(screen.queryByRole("button", { name: "Unduh ulang file" })).not.toBeInTheDocument();
+  });
+
+  it("offers the file again on a stock export, and opens a payout's page", () => {
+    const { rerender } = renderWithAuth(
+      <HistoryDetailDialog
+        entry={{ ...entry, process: "stock_export", documents: [], result: { changed: 1, same: 1, unbound: 2 } }}
+        storeName="pawship.id"
+        onClose={jest.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Unduh ulang file" })).toBeInTheDocument();
+
+    rerender(
+      <HistoryDetailDialog
+        entry={{
+          ...entry,
+          process: "settlement",
+          documents: [{ kind: "marketplace_settlement", id: "s1", number: "PMT/SHP/2610/0001", ref: null }],
+          result: { settled: 4 },
+        }}
+        storeName="pawship.id"
+        onClose={jest.fn()}
+      />,
+    );
+    expect(screen.getByText("Pembayaran dibuat")).toBeInTheDocument();
+    expect(screen.getByText("PMT/SHP/2610/0001")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Buka" })).toHaveAttribute(
+      "href",
+      "/dashboard/ecommerce-sync/settlements/s1",
+    );
   });
 });

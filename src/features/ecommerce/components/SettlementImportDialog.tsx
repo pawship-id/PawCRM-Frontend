@@ -2,17 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { Check } from "lucide-react";
 
-import { Alert, DataTable, FilterSelect, Pagination, type DataTableColumn } from "@/components";
+import { DataTable, FilterSelect, Pagination, type DataTableColumn } from "@/components";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -39,20 +32,21 @@ import {
   ECOMMERCE_SETTINGS_HREF,
   INVOICE_HREF,
   MARKETPLACE_LABEL,
+  SETTLEMENT_HREF,
   formatCount,
-  formatDateTime,
+  formatDate,
   formatRupiah,
 } from "../labels";
 import { FileDropzone } from "./FileDropzone";
-import { CountChip, WizardSteps } from "./WizardSteps";
+import { CountChip, WizardFrame, WizardRow } from "./WizardSteps";
 
 const STEPS = ["Upload", "Tinjau", "Selesai"] as const;
 const PAGE_SIZE = 25;
 
-const CATEGORIES: Array<{ key: SettlementCategory; label: string; tone?: "warning" }> = [
+const CATEGORIES: Array<{ key: SettlementCategory; label: string; tone?: "warning" | "danger" }> = [
   { key: "match", label: "Cocok" },
   { key: "variance", label: "Selisih", tone: "warning" },
-  { key: "not_found", label: "Faktur tidak ditemukan", tone: "warning" },
+  { key: "not_found", label: "Faktur tidak ditemukan", tone: "danger" },
   { key: "already_paid", label: "Sudah lunas" },
 ];
 
@@ -61,6 +55,13 @@ const CATEGORY_LABEL: Record<SettlementCategory, string> = {
   variance: "Selisih",
   not_found: "Faktur tidak ditemukan",
   already_paid: "Sudah lunas",
+};
+
+const CATEGORY_TONE: Record<SettlementCategory, string> = {
+  match: "bg-tint-success text-success",
+  variance: "bg-tint-warning text-warning",
+  not_found: "bg-tint-danger text-danger",
+  already_paid: "bg-tint-neutral text-muted",
 };
 
 /**
@@ -144,8 +145,16 @@ export function SettlementImportDialog({
   const settling = preview ? preview.counts.match + preview.counts.variance : 0;
   const rows = (preview?.items ?? []).filter((item) => !filter || item.category === filter);
   const shown = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const debit = (preview?.journal ?? []).reduce((sum, line) => sum + line.debit, 0);
-  const credit = (preview?.journal ?? []).reduce((sum, line) => sum + line.credit, 0);
+  const journal = preview?.journal ?? [];
+  const debit = journal.reduce((sum, line) => sum + line.debit, 0);
+  const credit = journal.reduce((sum, line) => sum + line.credit, 0);
+  const rowsTotal = (preview?.items ?? []).reduce((sum, item) => sum + item.netReleased, 0);
+  const signedLine = (role: string) => {
+    const line = journal.find((candidate) => candidate.role === role);
+    return line ? line.debit - line.credit : 0;
+  };
+  const varianceLine = journal.find((line) => line.role === "variance");
+  const saldoLabel = saldo ? `${saldo.account.code} ${saldo.account.name}` : "—";
 
   const columns: DataTableColumn<SettlementPreviewItem>[] = [
     {
@@ -153,12 +162,18 @@ export function SettlementImportDialog({
       header: "No. pesanan",
       cell: (row) => (
         <div>
-          <div className="tabular-nums font-medium text-foreground">{row.orderNo}</div>
-          {row.invoiceId ? (
-            <Link href={INVOICE_HREF(row.invoiceId)} className="text-xs tabular-nums text-primary underline">
-              {row.invoiceNumber}
-            </Link>
-          ) : null}
+          <div className="font-semibold tabular-nums text-foreground">{row.orderNo}</div>
+          <div className="text-sm whitespace-nowrap tabular-nums text-muted">
+            {row.invoiceId ? (
+              <>
+                <Link href={INVOICE_HREF(row.invoiceId)} className="text-primary underline">
+                  {row.invoiceNumber}
+                </Link>{" "}
+                ·{" "}
+              </>
+            ) : null}
+            dilepas {formatDate(row.releasedAt)}
+          </div>
         </div>
       ),
     },
@@ -171,128 +186,196 @@ export function SettlementImportDialog({
       ),
     },
     {
-      id: "report",
-      header: "Nilai laporan",
+      id: "deductions",
+      header: "Potongan",
       align: "right",
-      cell: (row) => <span className="tabular-nums">{formatRupiah(row.comparisonValue)}</span>,
+      cell: (row) => <span className="tabular-nums">{formatRupiah(row.deductions)}</span>,
+    },
+    {
+      id: "pph22",
+      header: "PPh 22",
+      align: "right",
+      cell: (row) => <span className="tabular-nums">{formatRupiah(row.pph22)}</span>,
     },
     {
       id: "released",
-      header: "Dana dilepas",
+      header: "Dana cair",
       align: "right",
-      cell: (row) => <span className="tabular-nums">{formatRupiah(row.netReleased)}</span>,
+      cell: (row) => <span className="font-semibold tabular-nums">{formatRupiah(row.netReleased)}</span>,
     },
     {
       id: "result",
       header: "Hasil",
       cell: (row) => (
-        <div className="min-w-0">
-          <div
+        <div className="min-w-0 max-w-[15rem]">
+          <span
             className={cn(
-              "font-medium",
-              row.category === "match" ? "text-success" : row.category === "already_paid" ? "text-muted" : "text-warning",
+              "inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium",
+              CATEGORY_TONE[row.category],
             )}
           >
             {CATEGORY_LABEL[row.category]}
-            {row.variance !== 0 ? ` ${formatRupiah(row.variance)}` : ""}
-          </div>
-          {row.notes.length > 0 ? <div className="text-xs text-muted">{row.notes.join(" · ")}</div> : null}
+          </span>
+          {row.notes.length > 0 || row.variance !== 0 ? (
+            <div className="mt-1 text-sm text-muted">
+              {[...row.notes, ...(row.variance !== 0 ? [`Selisih ${formatRupiah(row.variance)}`] : [])].join(" · ")}
+            </div>
+          ) : null}
         </div>
       ),
     },
   ];
 
+  const deductions = signedLine("admin") + signedLine("program") + signedLine("shipping");
+  const summary: Array<[string, string]> = preview
+    ? [
+        ["Faktur lunas", formatCount(result?.settled)],
+        [`Dana masuk ke ${saldoLabel}`, formatRupiah(preview.settlingReleased)],
+        ["Potongan marketplace", formatRupiah(deductions)],
+        ["PPh 22", formatRupiah(signedLine("pph22"))],
+        ...(varianceLine
+          ? ([
+              [
+                `Selisih ke ${varianceLine.accountCode} ${varianceLine.accountName}`,
+                formatRupiah(Math.abs(signedLine("variance"))),
+              ],
+            ] as Array<[string, string]>)
+          : []),
+        ...(preview.counts.not_found > 0
+          ? ([["Dilewati, faktur tidak ditemukan", formatCount(preview.counts.not_found)]] as Array<[string, string]>)
+          : []),
+      ]
+    : [];
+
   return (
-    <Dialog open onOpenChange={(next) => !next && !busy && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Impor pencairan</DialogTitle>
-          <DialogDescription>
-            Laporan Penghasilan Shopee (sudah dilepas) melunasi faktur Shopee sekaligus, dengan satu
-            nomor PMT dan satu jurnal.
-          </DialogDescription>
-        </DialogHeader>
-
-        <WizardSteps steps={STEPS} current={step} label="Langkah impor pencairan" />
-
-        {step === 1 ? (
-          ready.length === 0 ? (
-            <p className="text-sm text-muted">Belum ada toko aktif.</p>
-          ) : (
-            <div className="flex flex-col gap-4">
-              <FilterSelect
-                label="Toko"
-                layout="form"
-                active={false}
-                value={storeId}
-                options={ready.map((candidate) => ({
-                  value: candidate._id,
-                  label: `${MARKETPLACE_LABEL[candidate.marketplace]} · ${candidate.name}`,
-                }))}
-                onChange={setStoreId}
-              />
-              <div className="flex flex-col gap-1.5">
-                <span className="text-sm font-medium text-foreground">Laporan Penghasilan</span>
-                <FileDropzone
-                  file={file}
-                  disabled={busy}
-                  onPick={setFile}
-                  source="Seller Center › Keuangan › Penghasilan Saya › Sudah Dilepas › Unduh"
+    <WizardFrame
+      title="Impor pencairan"
+      steps={STEPS}
+      current={step}
+      busy={busy}
+      onClose={onClose}
+      note={step === 2 ? "Belum ada yang tersimpan sampai tombol ini ditekan." : undefined}
+      footer={
+        step === 1 ? (
+          <>
+            <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
+              Batal
+            </Button>
+            <Button type="button" disabled={!storeId || !file || busy} onClick={() => void review()}>
+              {busy ? "Membaca file…" : "Lanjut"}
+            </Button>
+          </>
+        ) : step === 2 ? (
+          <>
+            <Button type="button" variant="secondary" onClick={() => setStep(1)} disabled={busy}>
+              Kembali
+            </Button>
+            <Button type="button" onClick={() => void commit()} disabled={busy || settling === 0}>
+              {busy ? "Menyimpan…" : `Lunasi ${formatCount(settling)} faktur`}
+            </Button>
+          </>
+        ) : (
+          <Button type="button" onClick={onClose}>
+            Tutup
+          </Button>
+        )
+      }
+    >
+      {step === 1 ? (
+        ready.length === 0 ? (
+          <p className="text-sm text-muted">Belum ada toko aktif.</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <WizardRow label="Toko">
+              <div className="max-w-sm">
+                <FilterSelect
+                  label="Toko"
+                  layout="bar"
+                  active={false}
+                  className="w-full max-w-none justify-between"
+                  value={storeId}
+                  options={ready.map((candidate) => ({
+                    value: candidate._id,
+                    label: `${MARKETPLACE_LABEL[candidate.marketplace]} · ${candidate.name}`,
+                  }))}
+                  onChange={setStoreId}
                 />
               </div>
-              <p className="text-sm text-muted">
-                Dana masuk ke{" "}
-                <span className="font-medium text-foreground">
-                  {saldo ? `${saldo.account.code} ${saldo.account.name}` : "—"}
-                </span>{" "}
-                ·{" "}
-                <Link href={ECOMMERCE_SETTINGS_HREF} className="font-medium text-primary underline">
-                  Ubah
-                </Link>
-              </p>
-            </div>
-          )
-        ) : null}
-
-        {step === 2 && preview ? (
-          <div className="flex flex-col gap-4">
-            <Alert variant="success">
-              {`Total cocok: ${formatCount(preview.items.length)} pesanan = ${formatRupiah(preview.totalReleased)}, sama dengan Total yang Dilepas. Penjual ${preview.username ?? "—"}, periode ${formatDateTime(preview.periodFrom).split(",")[0]} – ${formatDateTime(preview.periodTo).split(",")[0]}.`}
-            </Alert>
-            <div className="grid gap-3 sm:grid-cols-4">
-              {CATEGORIES.map((category) => (
-                <CountChip
-                  key={category.key}
-                  label={category.label}
-                  value={formatCount(preview.counts[category.key])}
-                  tone={category.tone}
-                  selected={filter === category.key}
-                  onClick={() => {
-                    setFilter(filter === category.key ? "" : category.key);
-                    setPage(1);
-                  }}
-                />
-              ))}
-            </div>
-            <DataTable
-              columns={columns}
-              rows={shown}
-              rowKey={(row) => `${row.orderNo}-${row.releasedAt ?? ""}`}
-              empty="Tidak ada pesanan di kelompok ini."
-            />
-            {rows.length > PAGE_SIZE ? (
-              <Pagination
-                page={page}
-                totalPages={Math.ceil(rows.length / PAGE_SIZE)}
-                total={rows.length}
-                unit="pesanan"
-                onPageChange={setPage}
+            </WizardRow>
+            <WizardRow label="File" align="start">
+              <FileDropzone
+                file={file}
+                disabled={busy}
+                onPick={setFile}
+                source="Seller Center › Keuangan › Penghasilan Saya › Laporan Penghasilan"
               />
-            ) : null}
+            </WizardRow>
+            <WizardRow label="Dana masuk ke">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="text-sm font-medium text-foreground">{saldoLabel}</span>
+                <Button asChild type="button" variant="secondary" size="sm">
+                  <Link href={ECOMMERCE_SETTINGS_HREF} onClick={onClose}>
+                    Ubah
+                  </Link>
+                </Button>
+              </div>
+            </WizardRow>
+          </div>
+        )
+      ) : null}
 
-            {preview.journal.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                <h3 className="text-base font-bold text-foreground">Jurnal yang akan dibuat</h3>
+      {step === 2 && preview ? (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-tint-success px-4 py-2.5 text-sm text-foreground">
+            <span>
+              Total yang Dilepas di file{" "}
+              <b className="tabular-nums">{formatRupiah(preview.totalReleased)}</b>
+            </span>
+            <span className="text-muted">·</span>
+            <span>
+              Jumlah {formatCount(preview.items.length)} baris{" "}
+              <b className="tabular-nums">{formatRupiah(rowsTotal)}</b>
+            </span>
+            <span className="inline-flex items-center gap-1 font-semibold text-success">
+              <Check className="size-4" aria-hidden />
+              Cocok
+            </span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-4">
+            {CATEGORIES.map((category) => (
+              <CountChip
+                key={category.key}
+                label={category.label}
+                value={formatCount(preview.counts[category.key])}
+                tone={category.tone}
+                selected={filter === category.key}
+                onClick={() => {
+                  setFilter(filter === category.key ? "" : category.key);
+                  setPage(1);
+                }}
+              />
+            ))}
+          </div>
+          <DataTable
+            columns={columns}
+            rows={shown}
+            rowKey={(row) => `${row.orderNo}-${row.releasedAt ?? ""}`}
+            empty="Tidak ada pesanan di kelompok ini."
+          />
+          {rows.length > PAGE_SIZE ? (
+            <Pagination
+              page={page}
+              totalPages={Math.ceil(rows.length / PAGE_SIZE)}
+              total={rows.length}
+              unit="pesanan"
+              onPageChange={setPage}
+            />
+          ) : null}
+
+          {journal.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-base font-bold text-foreground">Jurnal yang akan dibuat</h3>
+              <div className="overflow-hidden rounded-xl border border-border">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -302,7 +385,7 @@ export function SettlementImportDialog({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {preview.journal.map((line) => (
+                    {journal.map((line) => (
                       <TableRow key={line.role}>
                         <TableCell>
                           <span className="tabular-nums">{line.accountCode}</span> {line.accountName}
@@ -325,49 +408,43 @@ export function SettlementImportDialog({
                   </TableFooter>
                 </Table>
               </div>
-            ) : null}
-            <p className="text-sm text-muted">
-              Faktur Cocok dan Selisih dilunasi penuh. Selisih masuk akun selisih toko. Faktur tidak
-              ditemukan dan Sudah lunas dilewati. Belum ada yang tersimpan sampai tombol Simpan
-              ditekan.
-            </p>
-          </div>
-        ) : null}
+            </div>
+          ) : null}
+          <p className="text-sm text-muted">
+            Penjual {preview.username ?? "—"}, periode {formatDate(preview.periodFrom)} –{" "}
+            {formatDate(preview.periodTo)}. Faktur tidak ditemukan dan Sudah lunas dilewati, dananya
+            tidak ikut dijurnal.
+          </p>
+        </div>
+      ) : null}
 
-        {step === 3 && result ? (
-          <Alert variant="success">
-            {`Pencairan ${result.number} tersimpan. ${formatCount(result.settled)} faktur Shopee lunas.`}
-          </Alert>
-        ) : null}
-
-        <DialogFooter>
-          {step === 1 ? (
-            <>
-              <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
-                Batal
-              </Button>
-              <Button type="button" disabled={!storeId || !file || busy} onClick={() => void review()}>
-                {busy ? "Membaca file…" : "Lanjut"}
-              </Button>
-            </>
-          ) : null}
-          {step === 2 ? (
-            <>
-              <Button type="button" variant="secondary" onClick={() => setStep(1)} disabled={busy}>
-                Kembali
-              </Button>
-              <Button type="button" onClick={() => void commit()} disabled={busy || settling === 0}>
-                {busy ? "Menyimpan…" : `Simpan & lunasi ${formatCount(settling)} faktur`}
-              </Button>
-            </>
-          ) : null}
-          {step === 3 ? (
-            <Button type="button" onClick={onClose}>
-              Selesai
-            </Button>
-          ) : null}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      {step === 3 && result ? (
+        <div className="flex flex-col items-center py-4 text-center">
+          <span className="flex size-12 items-center justify-center rounded-full bg-tint-success text-success">
+            <Check className="size-6" aria-hidden />
+          </span>
+          <h3 className="mt-3 text-lg font-bold">{formatCount(result.settled)} faktur lunas</h3>
+          <p className="mt-1 text-sm text-muted">
+            {formatRupiah(preview?.settlingReleased)} masuk ke {saldoLabel}
+          </p>
+          <dl className="mt-4 w-full max-w-lg divide-y divide-border rounded-xl border border-border text-left text-sm">
+            <div className="flex justify-between gap-3 px-4 py-2.5">
+              <dt className="text-muted">Pembayaran</dt>
+              <dd className="text-right font-semibold">
+                <Link href={SETTLEMENT_HREF(result.settlementId)} className="tabular-nums text-primary underline">
+                  {result.number}
+                </Link>
+              </dd>
+            </div>
+            {summary.map(([label, value]) => (
+              <div key={label} className="flex justify-between gap-3 px-4 py-2.5">
+                <dt className="text-muted">{label}</dt>
+                <dd className="text-right font-semibold tabular-nums text-foreground">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+    </WizardFrame>
   );
 }

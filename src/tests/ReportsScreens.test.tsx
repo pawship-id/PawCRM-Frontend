@@ -155,7 +155,7 @@ describe("ReportsHub", () => {
     expect(
       screen.queryByRole("link", { name: "Buka" }),
     ).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Unduh" })).toHaveLength(7);
+    expect(screen.getAllByRole("button", { name: "Unduh" })).toHaveLength(8);
   });
 
   it("lists the inventory reports a full grant can reach", () => {

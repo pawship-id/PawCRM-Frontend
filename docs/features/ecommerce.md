@@ -37,7 +37,9 @@ feature="ecommerce"`.
 - **Pengikatan SKU** — a store with no template opens on `TemplateDropzone`. Otherwise: `FilterBar`
   with the store picker, Status (with counts) and search; "Perbarui dari template Shopee"; the table
   (Varian Shopee, SKU Buloo, Harga Shopee, Stok Buloo with "dikirim N", Status, Ikat/Ubah). Unbound
-  rows first.
+  rows first, those with a saran leading. A saran comes from the template upload (SKU that differs only
+  in case or symbols, or the name; rules in the backend doc) and binds nothing until **Terima**, **Pilih
+  lain** or **Terima semua saran**.
 - **Ikat SKU** — `BindSkuDialog`, a dialog rather than the mockup's drawer (no drawer exists, and the
   mockup itself says not to add one). Product search is server-side, `holdsStock: true`, opening on
   the Shopee SKU. A bind can move several listings (one SKU on two Shopee products); the screen
@@ -50,12 +52,17 @@ feature="ecommerce"`.
 - **Impor pesanan** — Upload (toko, file, status yang diimpor) → Tinjau (Baru / Perlu tindakan /
   Sudah ada / Dilewati, clickable) → Selesai (faktur dibuat, links). Nothing is saved before Simpan.
 - **Impor pencairan** — Upload (toko, file, "Dana masuk ke") → Tinjau (total check, Cocok / Selisih
-  / Faktur tidak ditemukan / Sudah lunas, the journal to be posted) → Selesai (PMT number).
+  / Faktur tidak ditemukan / Sudah lunas, the journal to be posted, summed) → Selesai (PMT number).
+  Each invoice gets its own payment and journal; the PMT groups them. A payment is cancelled like a
+  manual one, never edited, and the PMT marks that row Dibatalkan.
 - **Ringkasan** also shows Belum cair, Pesanan tertahan, the held-order table (Ikat SKU) and Perlu
   tindakan (orders Batal after invoicing, with what to do). **Pengaturan** adds Impor pesanan
   (statuses, `CheckRow`) and Akun (a picker per posting role).
 - **Faktur** — source chip and filter "Shopee"; the detail shows "Shopee · toko", No. referensi and
-  Pencairan, hides Ubah and Catat pembayaran, and warns when Shopee cancelled the order.
+  Pencairan, hides Ubah, and warns when Shopee cancelled the order. Catat pembayaran, Riwayat
+  pembayaran and void behave as on a manual invoice; the payment discharges Piutang Marketplace. A
+  later payout marks an invoice paid by hand Sudah lunas and books nothing for it; a part-paid one
+  settles its remainder as Selisih.
 
 ## Permissions
 
@@ -65,5 +72,4 @@ role cannot use are hidden with `Can`.
 
 ## Not in V1 (BO, 28 Oct 2026)
 
-Price management from Buloo, match suggestions and "Terima semua saran", per-export warehouse,
-bundles — see the plan's V2 list.
+Price management from Buloo, per-export warehouse, bundles — see the plan's V2 list.

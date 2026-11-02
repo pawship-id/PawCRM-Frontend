@@ -12,6 +12,7 @@ export function withStore(href: string, storeId: string | null | undefined): str
 
 export const LISTING_STATUS_LABEL: Record<ListingStatus, string> = {
   bound: "Terikat",
+  suggested: "Saran",
   unbound: "Belum terikat",
   no_sku: "Tanpa SKU",
   removed: "Tidak ada di template",
@@ -19,6 +20,7 @@ export const LISTING_STATUS_LABEL: Record<ListingStatus, string> = {
 
 export const LISTING_STATUS_TONE: Record<ListingStatus, string> = {
   bound: "bg-tint-success text-success",
+  suggested: "bg-tint-info text-info",
   unbound: "bg-tint-neutral text-muted",
   no_sku: "bg-tint-warning text-warning",
   removed: "bg-tint-neutral text-muted",
@@ -44,7 +46,10 @@ export const ORDER_STATUSES = [
   "Selesai",
 ] as const;
 
+export const SETTLEMENT_HREF = (id: string) => `${ECOMMERCE_HREF}/settlements/${id}`;
 export const INVOICE_HREF = (id: string) => `/dashboard/sales/invoice/${id}`;
+export const INVOICE_PAYMENT_HREF = (invoiceId: string, paymentId: string) =>
+  `${INVOICE_HREF(invoiceId)}/payments/${paymentId}`;
 
 export const MARKETPLACE_LABEL = { shopee: "Shopee" } as const;
 

@@ -1,6 +1,8 @@
 import { apiClient } from "./api-client";
 import type { PageResult } from "@/types/api";
 import type {
+  MarketplaceSettlementDetail,
+  AcceptSuggestionsResult,
   BindResult,
   CreateMarketplaceStoreInput,
   ListingListQuery,
@@ -64,6 +66,11 @@ export const marketplaceService = {
     apiClient.post<BindResult>(
       `/marketplace/stores/${storeId}/listings/${listingId}/bind`,
       { productId },
+    ),
+
+  acceptSuggestions: (storeId: string) =>
+    apiClient.post<AcceptSuggestionsResult>(
+      `/marketplace/stores/${storeId}/listings/accept-suggestions`,
     ),
 
   unbindListing: (storeId: string, listingId: string) =>
@@ -140,6 +147,9 @@ export const marketplaceService = {
         limit: query.limit,
       },
     }),
+
+  getSettlement: (id: string) =>
+    apiClient.get<MarketplaceSettlementDetail>(`/marketplace/settlements/${id}`),
 
   downloadHistoryFile: (batchId: string, fallbackFilename = "shopee.xlsx") =>
     apiClient.download(`/marketplace/history/${batchId}/file`, {

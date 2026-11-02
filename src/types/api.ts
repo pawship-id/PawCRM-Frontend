@@ -7559,6 +7559,8 @@ export interface CustomerInvoicePayment {
   /** The Kas & Bank account the entry debited. */
   cashAccountId?: string | null;
   cashAccountName?: string | null;
+  /** The PMT behind a Shopee payment. Such a payment is cancelled, never edited. */
+  marketplaceSettlement?: { id: string; number: string } | null;
   ref: string | null;
   byUserId: string | null;
   byUserName: string | null;
@@ -7656,6 +7658,7 @@ export interface CustomerInvoiceListRow {
     storeName: string | null;
     needsAction: "cancelled_after_invoice" | null;
     settlementNumber: string | null;
+    settlementId: string | null;
   } | null;
   invoiceDate: string;
   dueDate: string;
@@ -8795,6 +8798,8 @@ export interface CashTransaction {
     periods: string[];
     recordCount: number;
   } | null;
+  /** The PMT behind a Shopee payment. Such a payment is cancelled, never edited. */
+  marketplaceSettlement?: { id: string; number: string } | null;
   /** Only `expense` / `other_income`. */
   lines: CashTransactionLine[] | null;
   posTransactionId: string | null;

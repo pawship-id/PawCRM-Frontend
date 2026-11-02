@@ -19,6 +19,7 @@ export {
   salesInvoiceReport,
   salesItemReport,
   salesRevenueReport,
+  salesGrossMarginReport,
 } from "./salesReports";
 export {
   agingReport,

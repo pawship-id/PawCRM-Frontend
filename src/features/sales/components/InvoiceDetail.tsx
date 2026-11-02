@@ -168,7 +168,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const lockNote = voided
     ? "Faktur ini sudah dibatalkan."
     : shopeeBorn
-      ? "Dari impor pesanan Shopee — baris dikunci. Lunas saat Laporan Penghasilan Shopee diimpor."
+      ? "Dari impor pesanan Shopee — baris dikunci. Lunas lewat Catat pembayaran atau impor Laporan Penghasilan Shopee."
       : tillBorn
       ? "Lahir dari penjualan kasir — barisnya milik transaksi kasir dan tidak diubah di sini."
       : editable
@@ -213,7 +213,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
       {!voided && invoice.marketplace?.needsAction === "cancelled_after_invoice" ? (
         <Alert variant="warning">
           {settled
-            ? "Pesanan ini Batal di Shopee, padahal fakturnya sudah lunas. Koreksi lewat jurnal manual."
+            ? "Pesanan ini Batal di Shopee, padahal fakturnya sudah lunas. Batalkan dulu pembayarannya di Riwayat pembayaran, lalu batalkan fakturnya."
             : "Pesanan ini Batal di Shopee. Batalkan faktur ini lewat menu ⋮ di samping Cetak."}
         </Alert>
       ) : null}
@@ -395,7 +395,16 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               ) : null}
               {invoice.marketplace?.settlementNumber ? (
                 <Field label="Pencairan">
-                  <span className="tabular-nums">{invoice.marketplace.settlementNumber}</span>
+                  {invoice.marketplace.settlementId ? (
+                    <Link
+                      href={`/dashboard/ecommerce-sync/settlements/${invoice.marketplace.settlementId}`}
+                      className="tabular-nums text-primary underline"
+                    >
+                      {invoice.marketplace.settlementNumber}
+                    </Link>
+                  ) : (
+                    <span className="tabular-nums">{invoice.marketplace.settlementNumber}</span>
+                  )}
                 </Field>
               ) : null}
             </dl>
@@ -436,12 +445,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               </p>
             }
           >
-            {!voided && !settled && shopeeBorn && (
-              <p className="text-sm text-muted">
-                Lunas otomatis saat Laporan Penghasilan Shopee diimpor di Penjualan › E-commerce.
-              </p>
-            )}
-            {!voided && !settled && !shopeeBorn && (
+            {!voided && !settled && (
               <Can
                 feature="customerInvoices"
                 action="pay"
