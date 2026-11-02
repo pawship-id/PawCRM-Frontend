@@ -225,6 +225,11 @@ const ACTION_META: Record<string, ActionMeta> = {
     tone: "neutral",
     category: "stok",
   },
+  product_bulk_update: {
+    label: "Update massal produk",
+    tone: "neutral",
+    category: "stok",
+  },
 
   membership_plan_created: {
     label: "Paket membership dibuat",

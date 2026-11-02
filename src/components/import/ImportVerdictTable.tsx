@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import { SkuText } from "@/components/SkuText";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -47,7 +49,7 @@ export function ImportVerdictTable<Row extends ImportRowVerdict>({
   extraColumns?: {
     header: string;
     align?: "right";
-    cell: (row: Row) => string;
+    cell: (row: Row) => ReactNode;
   }[];
 }) {
   return (

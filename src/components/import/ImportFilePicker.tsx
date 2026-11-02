@@ -42,6 +42,7 @@ export function ImportFilePicker({
   onDownloadTemplate,
   disabled,
   templateNote,
+  templateLabel = "Unduh template",
   xlsxHint = "Disarankan — kolom kode dikunci sebagai teks, jadi angka nol di depan tidak hilang.",
   csvHint = "Untuk Google Sheets, atau kalau Anda memang memakai CSV.",
   accept = DEFAULT_ACCEPT,
@@ -52,6 +53,8 @@ export function ImportFilePicker({
   disabled: boolean;
   /** One line under the template button, on what the template holds. */
   templateNote?: string;
+  /** For a download that is the user's own data rather than a blank sheet. */
+  templateLabel?: string;
   xlsxHint?: string;
   csvHint?: string;
   accept?: string;
@@ -76,7 +79,7 @@ export function ImportFilePicker({
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button type="button" variant="secondary" disabled={disabled}>
-              Unduh template
+              {templateLabel}
               <ChevronDownIcon className="size-4 opacity-50" />
             </Button>
           </DropdownMenuTrigger>

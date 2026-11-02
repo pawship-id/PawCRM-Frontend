@@ -95,6 +95,11 @@ export function describe(log: AuditLog): string | null {
     if (fields.length) parts.push(`Diubah: ${fields.join(", ")}`);
   }
 
+  if (log.action === "product_bulk_update") {
+    parts.push(`${meta.updatedCount ?? 0} produk diperbarui`);
+    if (meta.failedCount) parts.push(`${meta.failedCount} gagal`);
+  }
+
   const headline = parts.filter(Boolean).join(" · ");
   const reason = text(meta.reason) ?? text(meta.notes);
   const tail = reason ? `Alasan: ${reason}` : null;
