@@ -3,7 +3,7 @@
 import { SkuText } from "@/components/SkuText";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { Trash2, Upload } from "lucide-react";
 
 import {
   Alert,
@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { swalToast } from "@/lib/swal";
 import { stockTransferService } from "@/services/stockTransfer.service";
+import type { TransferImportVerdict } from "@/types/transferImport";
 import type {
   Product,
   ProductBatch,
@@ -48,6 +49,7 @@ import {
 } from "../utils/transferErrors";
 import { qtyAtWarehouse } from "../utils/ledger";
 import { TransferAddProductsDialog } from "./TransferAddProductsDialog";
+import { TransferImportDialog } from "./TransferImportDialog";
 import { prefetchProductCandidates } from "../hooks/useProductCandidates";
 
 /**
@@ -62,6 +64,16 @@ function newLineKey(): string {
   lineSeq += 1;
   return `line-${lineSeq}`;
 }
+
+/**
+ * What a row reads off its product — the fields the picker and an imported file
+ * can both supply. The file's come from the resolve endpoint, which is why this
+ * is narrower than a `Product`.
+ */
+type LineProduct = Pick<
+  Product,
+  "_id" | "name" | "sku" | "unit" | "hasExpiry" | "hppAvg" | "stockByWarehouse"
+>;
 
 /** One line of the transfer, as the form holds it. */
 interface LineDraft {
@@ -137,7 +149,7 @@ function sanitizeQty(value: string): string {
 interface LineRowProps {
   line: LineDraft;
   /** From the picker's own result — name, SKU, unit and what the source holds. */
-  product: Product | undefined;
+  product: LineProduct | undefined;
   /**
    * Whether the BATCH COLUMN exists at all, which is a property of the whole
    * table rather than of this row: a column appears the moment ANY line tracks
@@ -456,6 +468,7 @@ export function StockTransferForm({
   const [notes, setNotes] = useState(transfer?.notes ?? "");
 
   const [picking, setPicking] = useState(false);
+  const [importing, setImporting] = useState(false);
   // Fetched as the form opens, so "+ Tambah produk" opens on a list that is
   // already here instead of a spinner — see prefetchProductCandidates. Re-asked
   // for every source warehouse: the list is what THAT shelf holds.
@@ -651,7 +664,7 @@ export function StockTransferForm({
    * list: the picker searches the server, so it can return a product no
    * page-load lookup ever held.
    */
-  const [productById, setProductById] = useState<Map<string, Product>>(
+  const [productById, setProductById] = useState<Map<string, LineProduct>>(
     () => new Map(initialProducts.map((product) => [product._id, product])),
   );
 
@@ -1009,10 +1022,48 @@ export function StockTransferForm({
   }
 
   /**
+   * The rows of a file, on the form. Every one was resolved by the server and the
+   * dialog hands over only a file with nothing wrong, so these are real ids.
+   *
+   * REPLACES THE LINES rather than adding to them — the dialog says so first. A
+   * blank batch on goods that expire arrives as "Otomatis (FEFO)", visible and
+   * changeable on the row, like any choice somebody made by hand.
+   *
+   * The stock figure seeds "Tersedia" until `useLiveStock` answers for these
+   * products, so a row does not read short for the length of one request.
+   */
+  function applyImport(rows: TransferImportVerdict[]) {
+    setProductById((prev) => {
+      const next = new Map(prev);
+      for (const { product, onHand } of rows) {
+        if (!product) continue;
+        next.set(product._id, {
+          ...product,
+          unit: product.unit ?? "",
+          stockByWarehouse: [
+            { warehouseId: fromWarehouseId, qty: onHand ?? "0" },
+          ],
+        });
+      }
+      return next;
+    });
+    setLines(
+      rows.map((row) => ({
+        key: newLineKey(),
+        productId: row.productId ?? "",
+        qty: trimDecimal(row.qty ?? ""),
+        batchId: row.batchId ?? (row.autoFefo ? AUTO_FEFO : ""),
+        notes: row.notes ?? "",
+      })),
+    );
+    setFieldErrors({});
+  }
+
+  /**
    * THE SERVER'S CEILING, said while rows are still being added — not after
-   * Simpan as "body.items must contain less than or equal to 50 items". A
-   * transfer that big is a second document anyway: one posting carrying
-   * hundreds of lots is slow to save and slow to check at the far end.
+   * Simpan as an English validation error. A transfer past it is a second
+   * document: one posting carrying thousands of lots is slow to save and slow to
+   * check at the far end.
    */
   const atLimit = lines.length >= TRANSFER_MAX_ITEMS;
   const overLimitMessage =
@@ -1192,6 +1243,23 @@ export function StockTransferForm({
             ? "Masih ada baris yang melebihi stok"
             : null;
 
+  /**
+   * NEW TRANSFERS ONLY. The file is checked against what the shelf holds now, and
+   * a transfer being corrected has goods of its own that come back in the same
+   * save, so its quantities would be refused for stock it is about to return.
+   */
+  const importButton = editing ? null : (
+    <UIButton
+      type="button"
+      variant="secondary"
+      disabled={!fromWarehouseId}
+      onClick={() => setImporting(true)}
+    >
+      <Upload className="size-4" />
+      Impor file
+    </UIButton>
+  );
+
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-6">
       {/* The document's head — §16. Not pinned; it scrolls with the page.
@@ -1233,6 +1301,16 @@ export function StockTransferForm({
       </Alert>
 
       {formError && <Alert variant="error">{formError}</Alert>}
+
+      {importing && (
+        <TransferImportDialog
+          fromWarehouseId={fromWarehouseId}
+          fromWarehouseName={fromName}
+          hasLines={lines.length > 0}
+          onApply={applyImport}
+          onClose={() => setImporting(false)}
+        />
+      )}
 
       {picking && (
         <TransferAddProductsDialog
@@ -1354,13 +1432,16 @@ export function StockTransferForm({
            */}
           {lines.length === 0 ? (
             <div className="flex flex-col items-center gap-4 py-8 text-center">
-              <UIButton
-                type="button"
-                variant="secondary"
-                onClick={() => setPicking(true)}
-              >
-                + Tambah produk
-              </UIButton>
+              <div className="flex flex-wrap justify-center gap-2">
+                <UIButton
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setPicking(true)}
+                >
+                  + Tambah produk
+                </UIButton>
+                {importButton}
+              </div>
 
               <div>
                 <p className="font-medium text-foreground">Belum ada produk</p>
@@ -1433,14 +1514,17 @@ export function StockTransferForm({
                     under the opname sheet's table. Full width made one
                     control read as the section's own footer rather than as
                     the row-adder it is. */}
-                <UIButton
-                  type="button"
-                  variant="secondary"
-                  disabled={atLimit}
-                  onClick={() => setPicking(true)}
-                >
-                  + Tambah produk
-                </UIButton>
+                <div className="flex flex-wrap gap-2">
+                  <UIButton
+                    type="button"
+                    variant="secondary"
+                    disabled={atLimit}
+                    onClick={() => setPicking(true)}
+                  >
+                    + Tambah produk
+                  </UIButton>
+                  {importButton}
+                </div>
                 {atLimit && (
                   <p className="mt-2 text-sm text-muted">
                     {lines.length > TRANSFER_MAX_ITEMS

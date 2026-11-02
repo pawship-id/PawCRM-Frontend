@@ -5,6 +5,10 @@ import type {
   StockTransferListQuery,
   StockTransferPage,
 } from "@/types/inventory";
+import type {
+  TransferImportInput,
+  TransferImportPreview,
+} from "@/types/transferImport";
 
 /**
  * Stock transfers, against /api/stock-transfers.
@@ -47,6 +51,17 @@ export const stockTransferService = {
         sort: query.sort,
       },
     }),
+
+  /**
+   * POST /stock-transfers/import/resolve — a file's rows, as lines and verdicts.
+   * Writes nothing: the file fills the form, and `create` moves the goods.
+   */
+  resolveImport: (input: TransferImportInput) =>
+    apiClient.post<TransferImportPreview>(
+      "/stock-transfers/import/resolve",
+      input,
+      { timeoutMs: TRANSFER_WRITE_TIMEOUT_MS },
+    ),
 
   /** GET /stock-transfers/:id — the document, its lines and its arrivals. */
   getById: (id: string) =>

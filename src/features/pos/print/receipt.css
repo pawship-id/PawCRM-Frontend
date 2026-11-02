@@ -105,4 +105,28 @@
   @page {
     margin: 0;
   }
+
+  /*
+    THE ONE RECEIPT THAT RUNS TO SEVERAL SHEETS. `@page { margin: 0 }` above leans
+    on the sheet's own padding, and padding only exists at the top of the first
+    page and the foot of the last: a surat jalan of two hundred lines would print
+    every page in between against the paper's edge. A named page gives it a real
+    margin on all of them, and leaves every other receipt as it is.
+  */
+  [data-delivery-note] {
+    page: delivery-note;
+    padding-block: 0;
+  }
+
+  [data-delivery-note] thead {
+    display: table-header-group;
+  }
+
+  [data-delivery-note] tr {
+    break-inside: avoid;
+  }
+}
+
+@page delivery-note {
+  margin: 10mm 0;
 }
