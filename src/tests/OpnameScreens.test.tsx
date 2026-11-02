@@ -1785,6 +1785,49 @@ describe("OpnameSheet", () => {
     });
   });
 
+  /**
+   * A file fills a draft, so the two buttons exist where a draft can still be
+   * filled and for whoever may fill it.
+   */
+  describe("the spreadsheet route", () => {
+    const buttons = () => [
+      screen.queryByRole("button", { name: "Unduh Template" }),
+      screen.queryByRole("button", { name: "Impor File" }),
+    ];
+
+    it("is on an open draft", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(sheet());
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      await screen.findByText("Shampoo Anjing");
+      expect(buttons()).not.toContain(null);
+    });
+
+    it("is gone once the sheet is submitted", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({ status: "submitted" }),
+      );
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      await screen.findByText("Shampoo Anjing");
+      expect(buttons()).toEqual([null, null]);
+    });
+
+    it("is not offered to a role that may not edit the sheet", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(sheet());
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />, {
+        isSuperAdmin: false,
+        permissions: [{ feature: "stockOpnames", actions: ["read"] }],
+      });
+
+      await screen.findByText("Shampoo Anjing");
+      expect(buttons()).toEqual([null, null]);
+    });
+  });
+
   describe("exporting the sheet's lines", () => {
     /**
      * THE EXPORT AN ACCOUNTANT ACTUALLY USES. The history export answers "which

@@ -7,6 +7,11 @@ import type {
   OpnameSubmitPreview,
   UpdateOpnameInput,
 } from "@/types/inventory";
+import type {
+  OpnameImportInput,
+  OpnameImportPreview,
+  OpnameTemplate,
+} from "@/types/opnameImport";
 
 /**
  * Physical stock counts, against /api/stock-opnames.
@@ -136,6 +141,28 @@ export const stockOpnameService = {
    */
   addEveryProduct: (id: string) =>
     apiClient.post<Opname>(`/stock-opnames/${id}/items`, { all: true }),
+
+  /**
+   * GET /stock-opnames/:id/template — the sheet's warehouse and category, one
+   * row per lot, as rows. The browser builds the file. Drafts only.
+   */
+  template: (id: string) =>
+    apiClient.get<OpnameTemplate>(`/stock-opnames/${id}/template`),
+
+  /** POST /stock-opnames/:id/import/preview — a verdict per row. Writes nothing. */
+  previewImport: (id: string, input: OpnameImportInput) =>
+    apiClient.post<OpnameImportPreview>(
+      `/stock-opnames/${id}/import/preview`,
+      input,
+    ),
+
+  /**
+   * POST /stock-opnames/:id/import — fills the draft, and never submits it. The
+   * WHOLE sheet comes back, as from a save. 409 when another write reached the
+   * sheet first; nothing was written, so the file can simply go again.
+   */
+  importFile: (id: string, input: OpnameImportInput) =>
+    apiClient.post<Opname>(`/stock-opnames/${id}/import`, input),
 
   /**
    * POST /stock-opnames/:id/preview — what submitting would post, without

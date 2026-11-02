@@ -34,14 +34,21 @@ import type { ImportRowVerdict } from "@/types/bulkImport";
  * `statusLabels` is the feature's own wording; a status it does not list falls
  * back to "Perlu diperbaiki" rather than an API word.
  */
-export function ImportVerdictTable({
+export function ImportVerdictTable<Row extends ImportRowVerdict>({
   rows,
   statusLabels,
   identityHeader = "SKU",
+  extraColumns = [],
 }: {
-  rows: ImportRowVerdict[];
+  rows: Row[];
   statusLabels: Record<string, string>;
   identityHeader?: string;
+  /** What this upload shows per row, between the status and the problems. */
+  extraColumns?: {
+    header: string;
+    align?: "right";
+    cell: (row: Row) => string;
+  }[];
 }) {
   return (
     <div className="overflow-x-auto">
@@ -51,6 +58,14 @@ export function ImportVerdictTable({
             <TableHead className="w-20">Baris</TableHead>
             <TableHead className="w-48">{identityHeader}</TableHead>
             <TableHead className="w-44">Status</TableHead>
+            {extraColumns.map((column) => (
+              <TableHead
+                key={column.header}
+                className={cn(column.align === "right" && "text-right")}
+              >
+                {column.header}
+              </TableHead>
+            ))}
             <TableHead>Yang perlu diperbaiki</TableHead>
           </TableRow>
         </TableHeader>
@@ -76,6 +91,17 @@ export function ImportVerdictTable({
                   {statusLabels[row.status] ?? "Perlu diperbaiki"}
                 </Badge>
               </TableCell>
+              {extraColumns.map((column) => (
+                <TableCell
+                  key={column.header}
+                  className={cn(
+                    "tabular-nums text-xs",
+                    column.align === "right" && "text-right",
+                  )}
+                >
+                  {column.cell(row)}
+                </TableCell>
+              ))}
               <TableCell className="text-xs">
                 {row.problems.length === 0 ? (
                   <span className="text-muted">—</span>
