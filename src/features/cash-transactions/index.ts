@@ -16,6 +16,7 @@
 export { CashTransactionsPanel } from "./components/CashTransactionsScreen";
 export { CashTransactionDetail } from "./components/CashTransactionDetail";
 export { CashTransactionCreateForm } from "./components/CashTransactionCreateForm";
+export { CashImportScreen } from "./components/CashImportScreen";
 export {
   CashTransactionEditDialog,
   CashTransactionEditForm,

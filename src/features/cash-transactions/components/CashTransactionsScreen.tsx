@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, RotateCcw } from "lucide-react";
+import { Pencil, Plus, Upload, RotateCcw } from "lucide-react";
 
 import {
   Alert,
@@ -158,6 +158,12 @@ export function CashTransactionsPanel({
           onChange={setQuery}
           actions={
             <Can feature="cashTransactions" action="create">
+              <Button variant="secondary" asChild>
+                <Link href={`${CASH_TRANSACTION_DETAIL_HREF}/import`}>
+                  <Upload className="size-4" />
+                  Impor
+                </Link>
+              </Button>
               <Button asChild>
                 <Link href={`${CASH_TRANSACTION_DETAIL_HREF}/new`}>
                   <Plus className="size-4" />

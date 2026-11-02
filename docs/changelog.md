@@ -7,6 +7,18 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Upload massal: Kas & Bank
+
+2 November 2026. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Kas & Bank › Impor** (`/dashboard/finance/cash-bank/transactions/import`): unduh template, unggah,
+  periksa per transaksi, simpan, hasil. Butuh `cashTransactions:create`.
+- Template Excel dibuat per tenant, dengan sheet Contoh, Daftar Akun, Daftar Cabang, dan Daftar Sub
+  Akun. Contoh tidak ada di sheet yang dibaca. Format kolom Jubelio juga diterima, termasuk dua kolom
+  Keterangan dan sheet datanya yang bukan sheet pertama, selama ada kolom Cabang.
+- "Tetap impor" per file untuk transaksi yang sama dengan impor sebelumnya.
+- `readGrid` menerima `preferSheets`, `buildTemplateWorkbook` menerima `extraSheets`.
+
 ## [Unreleased] — Kas & Bank: akun lawan dan transfer
 
 2 November 2026. Backend: `PawCRM-Backend/docs/changelog.md`.

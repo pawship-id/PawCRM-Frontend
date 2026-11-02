@@ -100,6 +100,12 @@ export function describe(log: AuditLog): string | null {
     if (meta.failedCount) parts.push(`${meta.failedCount} gagal`);
   }
 
+  if (log.action === "cash_transaction_bulk_import") {
+    parts.push(`${meta.createdCount ?? 0} transaksi diimpor`);
+    if (meta.skippedCount) parts.push(`${meta.skippedCount} dilewati`);
+    if (meta.failedCount) parts.push(`${meta.failedCount} gagal`);
+  }
+
   const headline = parts.filter(Boolean).join(" · ");
   const reason = text(meta.reason) ?? text(meta.notes);
   const tail = reason ? `Alasan: ${reason}` : null;

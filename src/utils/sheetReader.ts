@@ -234,11 +234,15 @@ export function readInteger(
  * the message the user gets is about columns rather than about the file.
  *
  * `formats` refuses anything else by name. Left out, as the product import
- * leaves it, any file that is not a workbook is read as CSV text.
+ * leaves it, any file that is not a workbook is read as CSV text. `preferSheets`
+ * names the sheet of a workbook to read, when it may not be the first.
  */
 export async function readGrid(
   file: File,
-  { formats }: { formats?: readonly string[] } = {},
+  {
+    formats,
+    preferSheets,
+  }: { formats?: readonly string[]; preferSheets?: readonly string[] } = {},
 ): Promise<SheetGrid> {
   if (
     formats &&
@@ -250,7 +254,7 @@ export async function readGrid(
   }
 
   if (/\.(xlsx|xlsm|xls)$/i.test(file.name)) {
-    return readWorkbook(file);
+    return readWorkbook(file, preferSheets);
   }
 
   return { grid: gridFromCsv(await file.text()), sheetName: null };
@@ -326,7 +330,10 @@ function cellText(
  * client, a proxy that blocked the asset — the user is told to use CSV instead,
  * which is a path that needs nothing but the code already running.
  */
-async function readWorkbook(file: File): Promise<SheetGrid> {
+async function readWorkbook(
+  file: File,
+  preferSheets: readonly string[] = [],
+): Promise<SheetGrid> {
   let XLSX: typeof import("xlsx");
   try {
     XLSX = await import("xlsx");
@@ -368,7 +375,16 @@ async function readWorkbook(file: File): Promise<SheetGrid> {
     );
   }
 
-  const sheetName = workbook.SheetNames[0];
+  /*
+    A TEMPLATE WHOSE DATA IS NOT ON THE FIRST SHEET names it here: Jubelio's
+    workbook opens on two sheets of instructions. Matched by name and nothing
+    cleverer; a file without that sheet falls back to the first, as any other.
+  */
+  const wanted = preferSheets.map((name) => name.toLowerCase());
+  const sheetName =
+    workbook.SheetNames.find((name) =>
+      wanted.includes(name.trim().toLowerCase()),
+    ) ?? workbook.SheetNames[0];
   const sheet = sheetName ? workbook.Sheets[sheetName] : undefined;
 
   if (!sheet || !sheet["!ref"]) {

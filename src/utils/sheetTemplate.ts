@@ -15,6 +15,11 @@ export interface TemplateOptions {
   kindOf: (column: string) => TemplateColumnKind | null;
   sheetName: string;
   preformattedRows?: number;
+  /**
+   * Reference sheets after the main one, plain text. Nothing reads them back,
+   * which is what makes one a safe home for example rows.
+   */
+  extraSheets?: { name: string; rows: string[][] }[];
 }
 
 /**
@@ -68,6 +73,7 @@ export async function buildTemplateWorkbook(
     kindOf,
     sheetName,
     preformattedRows = PREFORMATTED_ROWS,
+    extraSheets = [],
   }: TemplateOptions,
 ): Promise<Blob> {
   const XLSX = await import("xlsx");
@@ -155,6 +161,9 @@ export async function buildTemplateWorkbook(
 
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
+  extraSheets.forEach(({ name, rows }) => {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), name);
+  });
 
   const buffer: ArrayBuffer = XLSX.write(workbook, {
     type: "array",
