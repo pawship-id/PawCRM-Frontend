@@ -434,7 +434,7 @@ function transactionColumns({
         return (
           <span className="flex items-center gap-1.5">
             {transaction.isTransfer ? (
-              <Badge variant="outline">{TRANSFER_LABEL}</Badge>
+              <Badge variant="outline">Transfer</Badge>
             ) : manual ? (
               <Badge variant="outline">Manual</Badge>
             ) : href ? (

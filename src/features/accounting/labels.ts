@@ -2,6 +2,7 @@ import type {
   AccountCategory,
   AccountType,
   CashflowType,
+  JournalEntry,
   JournalSourceType,
 } from "@/types/accounting";
 import { accountTypeOf, CATEGORY_CODE } from "@/types/accounting";
@@ -221,6 +222,18 @@ export const SOURCE_LABEL: Record<JournalSourceType, string> = {
  */
 export function sourceLabel(type: JournalSourceType): string {
   return SOURCE_LABEL[type] ?? type;
+}
+
+/**
+ * The label for one entry. A transfer is filed as an expense, and calling money
+ * that never left the shop Pengeluaran is the mistake this exists to avoid.
+ */
+export function entrySourceLabel(
+  entry: Pick<JournalEntry, "source" | "isCashTransfer">,
+): string {
+  return entry.isCashTransfer
+    ? "Transfer antar rekening"
+    : sourceLabel(entry.source.type);
 }
 
 export const SOURCE_TONE: Record<JournalSourceType, string> = {

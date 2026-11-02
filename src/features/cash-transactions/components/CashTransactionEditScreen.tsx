@@ -140,7 +140,7 @@ export function CashTransactionEditScreen({
           ]}
         />
         <h1 className="mt-1 text-2xl font-extrabold text-foreground tabular-nums">
-          Ubah {directionTitle(transaction).toLowerCase()}
+          Ubah {directionTitle(transaction).replace(/^./, (first) => first.toLowerCase())}
         </h1>
         <p className="mt-1 text-sm text-muted">
           {transactionKindLabel(transaction)}

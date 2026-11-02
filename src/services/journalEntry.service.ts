@@ -287,6 +287,12 @@ export interface AccountMovementResult {
    * still needs a row.
    */
   accounts: AccountMovement[];
+  /**
+   * What only moved between the shop's own cash accounts. It sits in both Masuk
+   * and Keluar of the rows, so a total across them takes it out once from each.
+   * Zero on any other category.
+   */
+  internalTransfer?: string;
 }
 
 /**

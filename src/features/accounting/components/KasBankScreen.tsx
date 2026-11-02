@@ -245,6 +245,7 @@ export function KasBankScreen({
           )}
           <CashBankAccountsTable
             rows={accounts.rows}
+            internalTransfer={accounts.internalTransfer}
             loading={accounts.loading}
           />
         </Card>

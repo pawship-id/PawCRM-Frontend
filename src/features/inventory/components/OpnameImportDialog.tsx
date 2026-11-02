@@ -122,7 +122,7 @@ export function OpnameImportDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-5xl">
+      <DialogContent className="max-h-[85vh] grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Impor file opname</DialogTitle>
           <DialogDescription>

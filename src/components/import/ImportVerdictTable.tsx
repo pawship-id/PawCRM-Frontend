@@ -104,7 +104,12 @@ export function ImportVerdictTable<Row extends ImportRowVerdict>({
                   {column.cell(row)}
                 </TableCell>
               ))}
-              <TableCell className="text-xs">
+              {/*
+                The cell default is nowrap, which is right for a number and wrong
+                for a sentence: a long message would push the table past the
+                dialog, with the end of the advice out of reach.
+              */}
+              <TableCell className="min-w-64 whitespace-normal text-xs">
                 {row.problems.length === 0 ? (
                   <span className="text-muted">—</span>
                 ) : (

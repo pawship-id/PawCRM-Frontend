@@ -12,7 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Can } from "@/features/permissions";
-import { formatMoney, toMinor } from "@/utils/decimal";
+import { formatMoney, toDecimalString, toMinor } from "@/utils/decimal";
 
 import {
   sumColumn,
@@ -192,9 +192,12 @@ const COLUMNS: DataTableColumn<CashBankAccountRow>[] = [
  */
 export function CashBankAccountsTable({
   rows,
+  internalTransfer = "0",
   loading,
 }: {
   rows: CashBankAccountRow[];
+  /** Moved between own accounts. Counted once in Masuk and once in Keluar. */
+  internalTransfer?: string;
   loading: boolean;
 }) {
   const [sort, setSort] = useState<CashBankAccountSort>("default");
@@ -217,8 +220,18 @@ export function CashBankAccountsTable({
     );
   }
 
-  const totalMasuk = sumColumn(rows, "masuk");
-  const totalKeluar = sumColumn(rows, "keluar");
+  /*
+    A ROW IS AN ACCOUNT, THE FOOTER IS THE SHOP. Each row rightly shows a transfer
+    between two own accounts, but across them it is money that came in and went
+    out of nowhere, so the footer takes it out of both sides.
+  */
+  const internal = toMinor(internalTransfer) ?? 0n;
+  const totalMasuk = toDecimalString(
+    (toMinor(sumColumn(rows, "masuk")) ?? 0n) - internal,
+  );
+  const totalKeluar = toDecimalString(
+    (toMinor(sumColumn(rows, "keluar")) ?? 0n) - internal,
+  );
   const totalSaldo = sumColumn(rows, "saldo");
 
   return (

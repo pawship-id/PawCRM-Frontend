@@ -26,7 +26,7 @@ import {
   JOURNAL_PAGE_SIZES,
   useJournalEntries,
 } from "../hooks/useJournalEntries";
-import { formatDate, sourceLabel, SOURCE_TONE } from "../labels";
+import { entrySourceLabel, formatDate, SOURCE_TONE } from "../labels";
 import { AccountingModuleHeader } from "./AccountingModuleHeader";
 import { JournalEntriesToolbar } from "./JournalEntriesToolbar";
 
@@ -94,7 +94,7 @@ const COLUMNS: DataTableColumn<JournalEntry>[] = [
           SOURCE_TONE[entry.source.type],
         )}
       >
-        {sourceLabel(entry.source.type)}
+        {entrySourceLabel(entry)}
       </span>
     ),
   },

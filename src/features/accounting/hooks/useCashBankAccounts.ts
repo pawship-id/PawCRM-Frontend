@@ -51,6 +51,8 @@ export interface CashBankAccountRow {
 }
 
 export interface UseCashBankAccountsResult {
+  /** Moved between own accounts in the period, Σ-ed out of the footer. */
+  internalTransfer: string;
   rows: CashBankAccountRow[];
   /** Σ saldo over every row — no account counted twice, because rows ARE accounts. */
   totalSaldo: string;
@@ -76,6 +78,7 @@ export function useCashBankAccounts(
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
   const [masuk, setMasuk] = useState<Map<string, string>>(new Map());
   const [keluar, setKeluar] = useState<Map<string, string>>(new Map());
+  const [internalTransfer, setInternalTransfer] = useState("0");
   const [balances, setBalances] = useState<Map<string, string>>(new Map());
 
   const [loading, setLoading] = useState(enabled);
@@ -150,6 +153,7 @@ export function useCashBankAccounts(
         if (!active) return;
         setMasuk(new Map(result.accounts.map((a) => [a.accountId, a.masuk])));
         setKeluar(new Map(result.accounts.map((a) => [a.accountId, a.keluar])));
+        setInternalTransfer(result.internalTransfer ?? "0");
       })
       .catch(() => {
         if (!active) return;
@@ -158,6 +162,7 @@ export function useCashBankAccounts(
         // which the caption under the table is there to qualify.
         setMasuk(new Map());
         setKeluar(new Map());
+        setInternalTransfer("0");
       });
 
     return () => {
@@ -220,7 +225,7 @@ export function useCashBankAccounts(
     [rows],
   );
 
-  return { rows, totalSaldo, loading, error, refetch };
+  return { rows, totalSaldo, internalTransfer, loading, error, refetch };
 }
 
 /** Σ of one column across the rows — the table's footer. */
