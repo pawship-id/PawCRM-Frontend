@@ -555,6 +555,8 @@ export interface JournalLine {
 
 /** One balanced transaction in the general ledger. Immutable once posted. */
 export interface JournalEntry {
+  /** Every line sits on a cash or bank account: money that stayed in the shop. */
+  isCashTransfer?: boolean;
   _id: string;
   /** Server-allocated, unique per tenant: "JE-2026-08-0007". */
   entryNumber: string;

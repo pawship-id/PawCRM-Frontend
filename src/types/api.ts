@@ -8802,6 +8802,13 @@ export interface CashTransaction {
   marketplaceSettlement?: { id: string; number: string } | null;
   /** Only `expense` / `other_income`. */
   lines: CashTransactionLine[] | null;
+  /**
+   * Every line sits on another of the shop's own kas/bank accounts: money moved
+   * inside the shop, whatever `kind` says.
+   */
+  isTransfer?: boolean;
+  /** Σ of such lines. Set on a transfer that also paid a fee, too. Null otherwise. */
+  transferAmount?: string | null;
   posTransactionId: string | null;
   shiftId: string | null;
   /**
@@ -8829,10 +8836,22 @@ export interface CashTransaction {
   updatedAt: string;
 }
 
-/** Σ of POSTED transactions over the whole filter, not the page. */
+/**
+ * Σ of POSTED transactions over the whole filter, not the page. `in` and `out`
+ * are what crossed the shop's edge, so neither holds a transfer: it has its own.
+ */
 export interface CashTransactionTotals {
   in: { amount: string; count: number };
   out: { amount: string; count: number };
+  transfer?: { amount: string; count: number };
+}
+
+/** An account a line may not name, and the sentence why. */
+export interface BlockedCounterAccount {
+  accountId: string;
+  code: string;
+  name: string;
+  reason: string;
 }
 
 export interface CashTransactionListResponse extends PageResult<CashTransaction> {
@@ -8881,6 +8900,8 @@ export interface CashTransactionListQuery {
   channelId?: string;
   /** The kas/bank account the money moved through — matches `cashAccountId`. */
   accountId?: string;
+  /** Transfers only. */
+  transfer?: boolean;
   status?: CashTransactionStatus;
   partyId?: string;
   documentType?: CashTransactionDocumentType;

@@ -58,6 +58,21 @@ export const KIND_LABEL: Record<CashTransactionKind, string> = {
   membership_refund: "Refund membership",
 };
 
+/** What a row is called when all it did was move money between own accounts. */
+export const TRANSFER_LABEL = "Transfer antar rekening";
+
+/**
+ * What to call one transaction. `kind` alone would say Pengeluaran for money that
+ * never left the shop, which is the word this exists to avoid.
+ */
+export function transactionKindLabel(
+  transaction: Pick<CashTransaction, "kind" | "isTransfer">,
+): string {
+  return transaction.isTransfer
+    ? TRANSFER_LABEL
+    : kindLabel(transaction.kind);
+}
+
 /** Falls back to the raw value, so a kind this build does not know still draws. */
 export function kindLabel(kind: CashTransactionKind): string {
   return KIND_LABEL[kind] ?? kind;
@@ -81,13 +96,9 @@ export function kindLabel(kind: CashTransactionKind): string {
  * the question is "did I type this, or did a document make it", and the answer
  * is the same for both.
  *
- * `transfer` HAS NO KINDS, and that is not an oversight. Money moved between two
- * of the shop's own accounts is drawn in the mockup and DOES NOT EXIST in this
- * system — nothing creates such a transaction. It is carried here on request
- * (20 September 2026) so the filter matches the mockup, and an empty `kinds` is
- * how the list knows to answer "none" rather than "all"; see the transfer
- * short-circuit in `useCashTransactions`. Give it its kinds when the feature is
- * built and everything below starts working on its own.
+ * `transfer` HAS NO KINDS, and that is not an oversight. A transfer is an
+ * `expense` or `other_income` whose lines sit on kas/bank accounts, so no kind
+ * picks it out; `useCashTransactions` asks the server for `transfer` instead.
  */
 const SOURCES = {
   manual: { label: "Manual", kinds: ["expense", "other_income"] },
@@ -112,7 +123,7 @@ export function sourceFilterLabel(source: CashTransactionSource): string {
   return SOURCES[source].label;
 }
 
-/** What `?source=` expands to on the wire. Empty means "nothing can match". */
+/** What `?source=` expands to on the wire. See `transfer` on `SOURCES`. */
 export function sourceKinds(
   source: CashTransactionSource,
 ): readonly CashTransactionKind[] {
@@ -151,9 +162,14 @@ export const DIRECTION_TITLE: Record<CashTransactionDirection, string> = {
 };
 
 export function directionTitle(
-  transaction: Pick<CashTransaction, "direction" | "number" | "kind" | "amount">,
+  transaction: Pick<
+    CashTransaction,
+    "direction" | "number" | "kind" | "amount" | "isTransfer"
+  >,
 ): string {
-  const name = DIRECTION_TITLE[transaction.direction];
+  const name = transaction.isTransfer
+    ? TRANSFER_LABEL
+    : DIRECTION_TITLE[transaction.direction];
   return transaction.number
     ? `${name} – ${transaction.number}`
     : `${name} – ${cashTransactionTitle(transaction)}`;

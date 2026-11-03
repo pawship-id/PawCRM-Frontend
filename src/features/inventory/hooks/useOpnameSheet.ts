@@ -5,6 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import { ApiError } from "@/services/api-error";
 import type { Opname, OpnameItem, OpnameItemInput } from "@/types/inventory";
+import type {
+  OpnameImportInput,
+  OpnameImportQueued,
+} from "@/types/opnameImport";
 import { trimQty } from "@/utils/decimal";
 
 import { useRefreshOnReturn } from "./useLiveStock";
@@ -15,6 +19,10 @@ import { useRefreshOnReturn } from "./useLiveStock";
  * request per burst of typing, not per keystroke.
  */
 const AUTOSAVE_DEBOUNCE_MS = 800;
+
+/** Why a file is not let in while the sheet holds something unsaved. */
+export const SHEET_NOT_SAVED =
+  "Perubahan terakhir di lembar belum tersimpan. Tunggu sampai tersimpan, lalu coba lagi.";
 
 /**
  * The lines as the sheet EDITS them: `physicalQty` shortened to what a person
@@ -98,6 +106,19 @@ interface UseOpnameSheetResult {
   /** Flushes any pending edit immediately — call before submitting. */
   flush: () => Promise<void>;
   /**
+   * Waits for the auto-save to go quiet, including a request already out.
+   * False when something is still unsaved, which is a reason to stop.
+   */
+  settle: () => Promise<boolean>;
+  /** Fills the draft from a file and takes the sheet the server answers with. */
+  /**
+   * Writes a file into the sheet. A file bigger than one sheet comes back as a
+   * queued job, and the sheet is re-read locked instead of adopted.
+   */
+  importFile: (
+    input: OpnameImportInput,
+  ) => Promise<Opname | OpnameImportQueued>;
+  /**
    * Puts more products on the sheet. Resolves to the API's refusal, or null
    * when it worked — the dialog keeps itself open to show the message.
    */
@@ -159,6 +180,10 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
   const dirtyRef = useRef(false);
   /** Guards setStates after unmount. */
   const activeRef = useRef(true);
+  /** The save on its way, which `settle` has to outlast. Never rejects. */
+  const inFlightRef = useRef<Promise<void> | null>(null);
+  /** Holds the timer's save while a file is written — see `importFile`. */
+  const importingRef = useRef(false);
 
   useEffect(() => {
     activeRef.current = true;
@@ -227,7 +252,7 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
     [],
   );
 
-  const save = useCallback(async () => {
+  const send = useCallback(async () => {
     const revision = revisionRef.current;
     const payload = buildPayload(itemsRef.current);
 
@@ -273,13 +298,19 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
     }
   }, [buildPayload, opnameId]);
 
+  const save = useCallback(() => {
+    const sending = send();
+    inFlightRef.current = sending;
+    return sending;
+  }, [send]);
+
   /** Replaces the pending save rather than queueing another one. */
   const schedule = useCallback(() => {
     dirtyRef.current = true;
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
-      void save();
+      if (!importingRef.current) void save();
     }, AUTOSAVE_DEBOUNCE_MS);
   }, [save]);
 
@@ -415,6 +446,89 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
   }, [save]);
 
   /**
+   * THE AUTO-SAVE, GONE QUIET. `flush` alone is not enough for an import: a save
+   * the timer already sent is not waited for, and it could reach the server after
+   * the file. Every save sends the whole array, so that one would put the sheet
+   * back as it was.
+   */
+  const settle = useCallback(async () => {
+    await inFlightRef.current;
+    await flush();
+    await inFlightRef.current;
+    return !dirtyRef.current;
+  }, [flush]);
+
+  /** Takes a sheet the server just answered with, over anything held here. */
+  const adopt = useCallback((updated: Opname) => {
+    revisionRef.current += 1;
+    setOpname(updated);
+    const lines = forEditing(updated.items);
+    setItems(lines);
+    itemsRef.current = lines;
+    dirtyRef.current = false;
+    setError(null);
+  }, []);
+
+  /**
+   * Writes a file into the draft.
+   *
+   * NEITHER SIDE MAY OVERWRITE THE OTHER. The sheet is settled first, so the file
+   * merges into everything typed. While the request is out the timer is held: the
+   * dialog stops typing, but the sheet's own one-lot effect can still schedule a
+   * save, and a save built from these lines would undo the file. The response IS
+   * the sheet reloaded, and replaces the lines outright.
+   *
+   * REFUSED WITH A 409, somebody else wrote first: nothing landed, so the sheet is
+   * re-read behind the dialog and the file can go again. Not through `reload`,
+   * whose spinner would unmount the dialog and the message with it.
+   */
+  const importFile = useCallback(
+    async (input: OpnameImportInput) => {
+      if (!(await settle())) {
+        throw new ApiError(SHEET_NOT_SAVED, 409);
+      }
+
+      importingRef.current = true;
+
+      try {
+        const updated = await stockOpnameService.importFile(opnameId, input);
+
+        if (activeRef.current) {
+          if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+          }
+          if ("background" in updated) {
+            // Nothing is on the sheet yet: the job holds it. Read it back
+            // locked, so the screen turns read-only and shows the job.
+            const locked = await stockOpnameService
+              .getById(opnameId)
+              .catch(() => null);
+            if (locked && activeRef.current) adopt(locked);
+          } else {
+            adopt(updated);
+            setSaveState("saved");
+            setLastSavedAt(new Date());
+          }
+        }
+
+        return updated;
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409 && activeRef.current) {
+          const current = await stockOpnameService
+            .getById(opnameId)
+            .catch(() => null);
+          if (current && activeRef.current) adopt(current);
+        }
+        throw err;
+      } finally {
+        importingRef.current = false;
+      }
+    },
+    [adopt, opnameId, settle],
+  );
+
+  /**
    * The shared half of both ways to put products on the sheet.
    *
    * FLUSHES FIRST, and skipping that would lose work: the auto-save sends the
@@ -438,13 +552,7 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
 
         if (!activeRef.current) return null;
 
-        revisionRef.current += 1;
-        setOpname(updated);
-        const lines = forEditing(updated.items);
-        setItems(lines);
-        itemsRef.current = lines;
-        dirtyRef.current = false;
-        setError(null);
+        adopt(updated);
 
         return null;
       } catch (err) {
@@ -458,7 +566,7 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
         if (activeRef.current) setAdding(false);
       }
     },
-    [flush],
+    [adopt, flush],
   );
 
   const addProducts = useCallback(
@@ -524,6 +632,8 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
     changeBatch,
     removeLine,
     flush,
+    settle,
+    importFile,
     addProducts,
     addEveryProduct,
     adding,

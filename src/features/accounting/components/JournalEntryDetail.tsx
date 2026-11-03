@@ -29,7 +29,7 @@ import {
   ACCOUNT_TYPE_LABEL,
   CASHFLOW_LABEL,
   formatDate,
-  sourceLabel,
+  entrySourceLabel,
   SOURCE_TONE,
 } from "../labels";
 
@@ -187,7 +187,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
         ) : (
           <>
             <b className="mb-0.5 block text-primary">Ada dokumen sumber</b>
-            {sourceLabel(entry.source.type)}
+            {entrySourceLabel(entry)}
             {entry.source.reference && (
               <>
                 {" · "}
@@ -224,7 +224,7 @@ export function JournalEntryDetail({ entryId }: { entryId: string }) {
                   SOURCE_TONE[entry.source.type],
                 )}
               >
-                {sourceLabel(entry.source.type)}
+                {entrySourceLabel(entry)}
               </span>
               {entry.recurring.enabled && (
                 <span

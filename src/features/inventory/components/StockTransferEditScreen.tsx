@@ -26,9 +26,29 @@ import { StockTransferForm } from "./StockTransferForm";
  * THE PRODUCTS ARE LOADED BEFORE THE FORM OPENS. A line holds an id, and the row
  * beside it has to print a name and be checked against what the source shelf
  * holds — which on a new transfer the picker supplies. Here the lines start
- * filled in, so the catalogue rows come from this screen, one read each (a
- * transfer carries at most fifty).
+ * filled in, so the catalogue rows come from this screen, a few reads at a time:
+ * a transfer may carry two hundred lines, and that many requests at once would
+ * crowd out everything else the page asks for.
  */
+const PRODUCT_READS_AT_ONCE = 10;
+
+async function loadProducts(ids: string[]): Promise<Product[]> {
+  const unique = [...new Set(ids)];
+  const products: Product[] = [];
+
+  for (let i = 0; i < unique.length; i += PRODUCT_READS_AT_ONCE) {
+    products.push(
+      ...(await Promise.all(
+        unique
+          .slice(i, i + PRODUCT_READS_AT_ONCE)
+          .map((id) => productService.getById(id)),
+      )),
+    );
+  }
+
+  return products;
+}
+
 export function StockTransferEditScreen({
   transferId,
 }: {
@@ -48,7 +68,7 @@ export function StockTransferEditScreen({
 
     let active = true;
 
-    Promise.all(key.split(",").map((id) => productService.getById(id)))
+    loadProducts(key.split(","))
       .then((rows) => {
         if (active) setProducts(rows);
       })

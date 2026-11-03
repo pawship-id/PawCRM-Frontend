@@ -91,6 +91,7 @@ it("exposes no delete — a transfer that should not have happened is cancelled"
     "getById",
     "list",
     "receive",
+    "resolveImport",
     "update",
   ]);
 });

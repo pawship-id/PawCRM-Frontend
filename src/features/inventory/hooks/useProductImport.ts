@@ -1,38 +1,28 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 
+import { useSheetImport, type ImportStep } from "@/hooks/useSheetImport";
 import { ApiError } from "@/services/api-error";
 import { productImportService } from "@/services/productImport.service";
 import type {
   ImportPreview,
   ImportResult,
+  ImportRow,
   ImportVerdict,
 } from "@/types/productImport";
+import { saveFile } from "@/utils/saveFile";
 
-import {
-  readSheet,
-  SheetError,
-  type ParsedSheet,
-} from "../utils/sheet";
+import { readSheet, type ParsedSheet } from "../utils/sheet";
 import { csvToTemplateWorkbook } from "../utils/templateWorkbook";
 
 /**
- * The import's state machine: pick a file, check it, commit it.
- *
- * THREE STEPS, AND THE STEP IS DERIVED rather than stored. A `step` in state
- * alongside `sheet`, `preview` and `result` is four variables that can disagree
- * — a screen showing step 3 with no result is a blank panel nobody can explain.
- * Here the step IS the data: no sheet means step 1, a sheet with no result means
- * step 2, a result means step 3.
- *
- * THE CLIENT NEVER DECIDES WHETHER A FILE MAY BE COMMITTED. `canCommit` comes
- * from the server's own preview and is passed through untouched, and the commit
- * is refused server-side regardless. The local problems below can only make the
- * button MORE disabled, never less.
+ * The product import, on the shared upload state machine in `useSheetImport`:
+ * pick a file, check it, commit it. What is left here is what only this import
+ * has: the warehouse its opening stock lands in, and a template the server serves.
  */
 
-export type ImportStep = "pick" | "check" | "done";
+export type { ImportStep };
 
 /**
  * `.xlsx` is the default because it is the one that cannot corrupt a barcode:
@@ -70,154 +60,47 @@ interface UseProductImportResult {
 }
 
 export function useProductImport(): UseProductImportResult {
-  const [sheet, setSheet] = useState<ParsedSheet | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
   const [warehouseId, setWarehouseId] = useState("");
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [result, setResult] = useState<ImportResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const step: ImportStep = result ? "done" : sheet ? "check" : "pick";
+  // Sent only when a row needs it — the API refuses the request otherwise, and
+  // a warehouse on a pure catalogue import is a value nobody chose.
+  const inputOf = (sheet: ParsedSheet) => ({
+    ...(sheet.needsWarehouse && warehouseId ? { warehouseId } : {}),
+    rows: sheet.rows.map(({ row }) => row),
+  });
 
-  /**
-   * Rows the screen renders: the server's verdicts, with the parser's own
-   * problems folded in.
-   *
-   * MERGED RATHER THAN SHOWN SEPARATELY, because they are the same thing to the
-   * person fixing them — "baris 12 salah, ini kenapa" — and two tables of
-   * problems is two places to look for a file that has both. A row carrying a
-   * local problem is `invalid` whatever the server said about it, since the
-   * server was never sent the cell that is wrong.
-   *
-   * Before a preview exists the local problems stand alone, so a file with a
-   * mistyped price shows what is wrong with it before any request is made.
-   */
-  const rows = useMemo<ImportVerdict[]>(() => {
-    if (!sheet) return [];
+  const upload = useSheetImport<
+    ImportRow,
+    ImportVerdict,
+    ImportPreview,
+    ImportResult,
+    ParsedSheet
+  >({
+    read: readSheet,
+    preview: (sheet) => productImportService.preview(inputOf(sheet)),
+    commit: (sheet) => productImportService.commit(inputOf(sheet)),
+    verdictsOf: (preview) => preview.rows,
+    canCommitOf: (preview) => preview.canCommit,
+    rowNumberOf: (row) => row.rowNumber,
+    localVerdict: (row, problems) => ({
+      rowNumber: row.rowNumber,
+      sku: row.sku ?? "",
+      status: problems.length === 0 ? "ok" : "invalid",
+      problems,
+    }),
+    messages: {
+      unreadable: "File tidak bisa dibaca. Pastikan formatnya CSV.",
+      checkFailed: "Gagal memeriksa file.",
+      commitFailed: "Gagal menyimpan. Tidak ada produk yang dibuat.",
+    },
+  });
 
-    const byRow = new Map(
-      (preview?.rows ?? []).map((verdict) => [verdict.rowNumber, verdict]),
-    );
+  const { setError } = upload;
 
-    return sheet.rows.map(({ row, problems }) => {
-      const verdict = byRow.get(row.rowNumber);
-
-      if (problems.length === 0) {
-        return (
-          verdict ?? {
-            rowNumber: row.rowNumber,
-            sku: row.sku ?? "",
-            status: "ok",
-            problems: [],
-          }
-        );
-      }
-
-      return {
-        rowNumber: row.rowNumber,
-        sku: row.sku ?? "",
-        status: "invalid",
-        problems: [...problems, ...(verdict?.problems ?? [])],
-      };
-    });
-  }, [sheet, preview]);
-
-  const hasLocalProblems = useMemo(
-    () => (sheet?.rows ?? []).some(({ problems }) => problems.length > 0),
-    [sheet],
-  );
-
-  const canCommit = Boolean(preview?.canCommit) && !hasLocalProblems;
-
-  const reset = useCallback(() => {
-    setSheet(null);
-    setFileName(null);
-    setPreview(null);
-    setResult(null);
-    setError(null);
+  const reset = () => {
+    upload.reset();
     setWarehouseId("");
-  }, []);
-
-  const pickFile = useCallback(async (file: File) => {
-    setLoading(true);
-    setError(null);
-    // A new file invalidates the old verdicts. Keeping them would show a preview
-    // of one file next to the row count of another.
-    setPreview(null);
-    setResult(null);
-
-    try {
-      const parsed = await readSheet(file);
-      setSheet(parsed);
-      setFileName(file.name);
-    } catch (err) {
-      setSheet(null);
-      setFileName(null);
-      setError(
-        err instanceof SheetError
-          ? err.message
-          : "File tidak bisa dibaca. Pastikan formatnya CSV.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const check = useCallback(async () => {
-    if (!sheet) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const next = await productImportService.preview({
-        // Sent only when a row needs it — the API refuses the request otherwise,
-        // and a warehouse on a pure catalogue import is a value nobody chose.
-        ...(sheet.needsWarehouse && warehouseId ? { warehouseId } : {}),
-        rows: sheet.rows.map(({ row }) => row),
-      });
-      setPreview(next);
-    } catch (err) {
-      setPreview(null);
-      setError(
-        err instanceof ApiError ? err.message : "Gagal memeriksa file.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [sheet, warehouseId]);
-
-  const commit = useCallback(async () => {
-    if (!sheet) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const next = await productImportService.commit({
-        ...(sheet.needsWarehouse && warehouseId ? { warehouseId } : {}),
-        rows: sheet.rows.map(({ row }) => row),
-      });
-      setResult(next);
-    } catch (err) {
-      /**
-       * A refused commit sends the user back to the check step rather than
-       * forward, and the preview is CLEARED — the catalogue moved between the
-       * two screens, so the verdicts on screen are the stale reading that let
-       * the commit be attempted. Leaving them up would show green rows beside a
-       * refusal.
-       */
-      setPreview(null);
-      setError(
-        err instanceof ApiError
-          ? err.message
-          : "Gagal menyimpan. Tidak ada produk yang dibuat.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [sheet, warehouseId]);
+  };
 
   /**
    * Saves the template, in whichever of the two formats was asked for.
@@ -227,10 +110,6 @@ export function useProductImport(): UseProductImportResult {
    * in both downloads with no change on this side. See `templateWorkbook.ts` for
    * what the `.xlsx` adds that a CSV cannot carry — column formats, without
    * which a barcode with a leading zero is corrupted the moment it is typed.
-   *
-   * The object URL is revoked immediately: the anchor click is synchronous into
-   * the browser's download manager, and one left behind pins the whole blob in
-   * memory. Same shape StockCardScreen's export uses.
    */
   const downloadTemplate = useCallback(
     async (format: TemplateFormat = "xlsx") => {
@@ -247,12 +126,7 @@ export function useProductImport(): UseProductImportResult {
                 filename.replace(/\.csv$/i, ".xlsx"),
               ];
 
-        const url = URL.createObjectURL(file);
-        const anchor = document.createElement("a");
-        anchor.href = url;
-        anchor.download = name;
-        anchor.click();
-        URL.revokeObjectURL(url);
+        saveFile(file, name);
       } catch (err) {
         setError(
           err instanceof ApiError
@@ -264,24 +138,24 @@ export function useProductImport(): UseProductImportResult {
         );
       }
     },
-    [],
+    [setError],
   );
 
   return {
-    step,
-    sheet,
-    fileName,
+    step: upload.step,
+    sheet: upload.sheet,
+    fileName: upload.fileName,
     warehouseId,
     setWarehouseId,
-    preview,
-    result,
-    rows,
-    canCommit,
-    loading,
-    error,
-    pickFile,
-    check,
-    commit,
+    preview: upload.preview,
+    result: upload.result,
+    rows: upload.rows,
+    canCommit: upload.canCommit,
+    loading: upload.loading,
+    error: upload.error,
+    pickFile: upload.pickFile,
+    check: upload.check,
+    commit: upload.commit,
     reset,
     downloadTemplate,
   };

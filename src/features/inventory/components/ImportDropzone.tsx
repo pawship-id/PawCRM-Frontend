@@ -1,20 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
-
-import { ChevronDownIcon } from "lucide-react";
-
-import { Card } from "@/components";
-// The shadcn button rather than the project wrapper: only this one takes
-// `asChild`, which is what lets it be the dropdown's trigger without nesting a
-// button inside a button.
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Card, ImportFilePicker } from "@/components";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -23,7 +9,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import type { StockWarehouse } from "@/types/inventory";
 
 import type { TemplateFormat } from "../hooks/useProductImport";
@@ -37,11 +22,6 @@ import type { TemplateFormat } from "../hooks/useProductImport";
  * five hundred chances to misspell it. The picker appears after the file is read
  * rather than before, because until then nobody knows whether the question
  * applies — a pure catalogue import never sees it.
- *
- * THE TEMPLATE BUTTON IS NOT DECORATION. The column names are the contract
- * between this screen and the server, and a user who invents their own headers
- * gets a refusal about a column they can plainly see. Downloading the template
- * is the supported path in and it is the first thing on the card.
  */
 export function ImportDropzone({
   fileName,
@@ -62,131 +42,29 @@ export function ImportDropzone({
   onDownloadTemplate: (format: TemplateFormat) => void;
   disabled: boolean;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [dragging, setDragging] = useState(false);
-
-  const handleFiles = (files: FileList | null) => {
-    const file = files?.[0];
-    if (file) onPick(file);
-  };
-
   return (
     <Card
       title="1. Pilih file"
       description="Unduh templatenya, isi di Excel, lalu unggah di sini — bisa .xlsx maupun .csv."
     >
       <div className="flex flex-col gap-4">
-        <div>
-          {/*
-            ONE BUTTON, TWO FORMATS BEHIND IT. Both are real choices, but only
-            one of them is the right default — so the menu states the difference
-            rather than leaving two equal-looking buttons for the user to pick
-            between on the strength of the file extension alone.
-
-            The .xlsx is not a convenience alongside the .csv: its barcode column
-            is formatted as Text, and without that a code like 0123456789012
-            loses its leading zero the moment it is typed, before any code of
-            ours sees it. The .csv stays for Google Sheets and for tooling that
-            prefers it.
-          */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" variant="secondary" disabled={disabled}>
-                Unduh template
-                <ChevronDownIcon className="size-4 opacity-50" />
-              </Button>
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent align="start" className="w-72">
-              <DropdownMenuItem
-                onSelect={() => onDownloadTemplate("xlsx")}
-                className="flex-col items-start gap-0.5"
-              >
-                <span className="font-medium">Excel (.xlsx)</span>
-                <span className="text-xs text-muted">
-                  Disarankan — kolom barcode dikunci sebagai teks, jadi angka nol
-                  di depan tidak hilang.
-                </span>
-              </DropdownMenuItem>
-
-              <DropdownMenuItem
-                onSelect={() => onDownloadTemplate("csv")}
-                className="flex-col items-start gap-0.5"
-              >
-                <span className="font-medium">CSV (.csv)</span>
-                <span className="text-xs text-muted">
-                  Untuk Google Sheets, atau kalau Anda memang memakai CSV.
-                </span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          <p className="mt-2 text-xs text-muted">
-            Template sudah berisi contoh: satu produk satuan dan satu produk
-            bervarian.
-          </p>
-        </div>
-
         {/*
-          A label wrapping a hidden input, plus drop handlers on the same box.
-          Clicking and dragging land on one element, so there is no state in
-          which the outline says "drop here" and the click does nothing.
+          The .xlsx is not a convenience alongside the .csv: its barcode column is
+          formatted as Text, and without that a code like 0123456789012 loses its
+          leading zero the moment it is typed, before any code of ours sees it.
+
+          .xlsm stays on this import's accept list, as it always was. Later
+          uploads take .xlsx and .csv only.
         */}
-        <div
-          onDragOver={(event) => {
-            event.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(event) => {
-            event.preventDefault();
-            setDragging(false);
-            if (!disabled) handleFiles(event.dataTransfer.files);
-          }}
-          className={cn(
-            "flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed p-8 text-center transition-colors",
-            dragging ? "border-primary bg-primary/5" : "border-border",
-            disabled && "opacity-60",
-          )}
-        >
-          <p className="text-sm text-foreground">
-            {fileName ? (
-              <>
-                Terpilih: <span className="font-medium">{fileName}</span>
-              </>
-            ) : (
-              "Tarik file ke sini, atau"
-            )}
-          </p>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => inputRef.current?.click()}
-            disabled={disabled}
-          >
-            {fileName ? "Ganti file" : "Pilih file"}
-          </Button>
-          <input
-            ref={inputRef}
-            type="file"
-            /*
-              Both formats, and the MIME types browsers actually report for them.
-              The extensions are listed alongside because a Windows machine with
-              no Office install reports `application/octet-stream` for an .xlsx,
-              and an accept list of MIME types alone would grey out the very file
-              the user came to upload.
-            */
-            accept=".csv,.xlsx,.xlsm,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            className="hidden"
-            aria-label="Pilih file CSV atau Excel"
-            onChange={(event) => {
-              handleFiles(event.target.files);
-              // Cleared so picking the SAME file twice fires `change` again —
-              // the natural thing to do after fixing it in Excel.
-              event.target.value = "";
-            }}
-          />
-        </div>
+        <ImportFilePicker
+          fileName={fileName}
+          onPick={onPick}
+          onDownloadTemplate={onDownloadTemplate}
+          disabled={disabled}
+          templateNote="Template sudah berisi contoh: satu produk satuan dan satu produk bervarian."
+          xlsxHint="Disarankan — kolom barcode dikunci sebagai teks, jadi angka nol di depan tidak hilang."
+          accept=".csv,.xlsx,.xlsm,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        />
 
         {needsWarehouse && (
           <div className="flex flex-col gap-1.5">

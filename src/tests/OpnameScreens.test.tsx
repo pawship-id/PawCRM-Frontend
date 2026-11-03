@@ -574,6 +574,48 @@ describe("OpnameScreen", () => {
     expect(stockOpnameService.remove).not.toHaveBeenCalled();
   });
 
+  it("marks a sheet split off a big import with its part", async () => {
+    asMock(stockOpnameService.list).mockResolvedValue({
+      items: [sheet({ groupId: OPNAME_ID, groupIndex: 2, groupSize: 3 })],
+      pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    });
+
+    renderWithAuth(<OpnameScreen />);
+
+    expect(await screen.findByText("(2/3)")).toBeInTheDocument();
+  });
+
+  it("shows a running background job above the list", async () => {
+    asMock(stockOpnameService.list).mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+    asMock(stockOpnameService.jobs).mockResolvedValue([
+      {
+        _id: "job1",
+        type: "opname_import",
+        status: "running",
+        subjectId: OPNAME_ID,
+        progress: { done: 2, total: 5 },
+        error: null,
+        result: null,
+        opnameNumber: "OPN-2026-0001",
+        createdAt: "",
+        finishedAt: null,
+      },
+    ]);
+
+    renderWithAuth(<OpnameScreen />);
+
+    expect(
+      await screen.findByText(/Impor file ke OPN-2026-0001 sedang berjalan/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Buka lembar" })).toHaveAttribute(
+      "href",
+      `/dashboard/inventory/opname/${OPNAME_ID}`,
+    );
+  });
+
   it("opens the sheet from its number too", async () => {
     asMock(stockOpnameService.list).mockResolvedValue(
       page([sheet({ _id: "a", items: undefined, itemCount: 1, countedCount: 0 })]),
@@ -1449,6 +1491,75 @@ describe("OpnameSheet", () => {
     expect(screen.getByText(/izin/)).toBeInTheDocument();
   });
 
+  describe("a sheet held by a background job", () => {
+    const runningJob = {
+      _id: "job1",
+      type: "opname_import" as const,
+      status: "running" as const,
+      subjectId: OPNAME_ID,
+      progress: { done: 1, total: 3 },
+      error: null,
+      result: null,
+      opnameNumber: "OPN-2026-0001",
+      createdAt: "",
+      finishedAt: null,
+    };
+
+    it("turns read-only and shows the job's progress", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({ lockedByJobId: "job1" }),
+      );
+      asMock(stockOpnameService.sheetJob).mockResolvedValue(runningJob);
+      asMock(stockOpnameService.job).mockResolvedValue(runningJob);
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      expect(await screen.findByRole("progressbar")).toBeInTheDocument();
+      expect(screen.getByText(/1 dari 3 lembar sudah dibuat/)).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Impor File" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Selesaikan opname/ }),
+      ).toBeDisabled();
+      expect(
+        screen.queryByRole("button", { name: "+ Tambah produk" }),
+      ).not.toBeInTheDocument();
+      // Read-only rows: the quantity is text, not a field to type into.
+      expect(screen.queryByLabelText(/Qty fisik/)).not.toBeInTheDocument();
+    });
+
+    it("names its part of a group, and submits the whole group on request", async () => {
+      const user = userEvent.setup();
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({ groupId: OPNAME_ID, groupIndex: 1, groupSize: 3 }),
+      );
+      asMock(stockOpnameService.sheetJob).mockResolvedValue(null);
+      asMock(stockOpnameService.submitGroup).mockResolvedValue({
+        ...runningJob,
+        type: "opname_submit_all",
+        status: "queued",
+        progress: { done: 0, total: 3 },
+      });
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      expect(await screen.findByText("1 dari 3 lembar")).toBeInTheDocument();
+      await user.click(
+        screen.getByRole("button", { name: "Submit semua lembar (3)" }),
+      );
+      const dialog = await screen.findByRole("dialog");
+      await user.click(
+        within(dialog).getByRole("button", { name: "Ya, submit semua" }),
+      );
+
+      await waitFor(() =>
+        expect(stockOpnameService.submitGroup).toHaveBeenCalledWith(OPNAME_ID),
+      );
+      expect(await screen.findByText(/Submit semua lembar sedang berjalan/)).toBeInTheDocument();
+    });
+  });
+
   it("renders a submitted sheet read-only, with its journal link", async () => {
     asMock(stockOpnameService.getById).mockResolvedValue(
       sheet({
@@ -1782,6 +1893,49 @@ describe("OpnameSheet", () => {
       expect(
         screen.queryByRole("button", { name: /Tambah produk/ }),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  /**
+   * A file fills a draft, so the two buttons exist where a draft can still be
+   * filled and for whoever may fill it.
+   */
+  describe("the spreadsheet route", () => {
+    const buttons = () => [
+      screen.queryByRole("button", { name: "Unduh Template" }),
+      screen.queryByRole("button", { name: "Impor File" }),
+    ];
+
+    it("is on an open draft", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(sheet());
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      await screen.findByText("Shampoo Anjing");
+      expect(buttons()).not.toContain(null);
+    });
+
+    it("is gone once the sheet is submitted", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(
+        sheet({ status: "submitted" }),
+      );
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      await screen.findByText("Shampoo Anjing");
+      expect(buttons()).toEqual([null, null]);
+    });
+
+    it("is not offered to a role that may not edit the sheet", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(sheet());
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />, {
+        isSuperAdmin: false,
+        permissions: [{ feature: "stockOpnames", actions: ["read"] }],
+      });
+
+      await screen.findByText("Shampoo Anjing");
+      expect(buttons()).toEqual([null, null]);
     });
   });
 

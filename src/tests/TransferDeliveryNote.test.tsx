@@ -193,3 +193,26 @@ describe("StockTransferPrintScreen", () => {
     ).toBeGreaterThan(0);
   });
 });
+
+test("prints every one of 200 lines, marked for the multi-page rules", () => {
+  const items = Array.from({ length: 200 }, (_, index) => ({
+    productId: `p${index}`,
+    qty: "1.0000",
+    batchId: null,
+    autoFefo: false,
+    notes: null,
+    productName: `Produk ${index}`,
+    productSku: `SKU-${index}`,
+    productUnit: "pcs",
+  }));
+
+  const { container } = renderWithAuth(
+    <TransferDeliveryNote transfer={transfer({ items })} />,
+  );
+
+  expect(container.querySelectorAll("tbody tr")).toHaveLength(200);
+  expect(screen.getByText("Produk 199")).toBeInTheDocument();
+  expect(
+    container.querySelector("[data-delivery-note]"),
+  ).toBeInTheDocument();
+});

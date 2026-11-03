@@ -49,7 +49,7 @@ import {
   formatDate,
   formatDateTime,
   hasLines,
-  kindLabel,
+  transactionKindLabel,
   lockedReason,
 } from "../labels";
 import { SETTLEMENT_HREF } from "@/features/ecommerce/labels";
@@ -372,7 +372,7 @@ export function CashTransactionDetail({
       */}
       <Card title="Informasi lain">
         <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
-          <Field label="Jenis">{kindLabel(transaction.kind)}</Field>
+          <Field label="Jenis">{transactionKindLabel(transaction)}</Field>
           <Field label="No. referensi">
             <span className="tabular-nums">{transaction.ref ?? "—"}</span>
           </Field>

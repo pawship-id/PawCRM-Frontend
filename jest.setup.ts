@@ -19,6 +19,17 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   } as unknown as typeof ResizeObserver;
 }
 
+/**
+ * jsdom has no TextEncoder/TextDecoder either; every browser does. The template
+ * builder edits a sheet's XML inside the .xlsx with them (utils/sheetTemplate.ts).
+ */
+if (typeof globalThis.TextDecoder === "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { TextDecoder, TextEncoder } = require("util");
+  globalThis.TextDecoder = TextDecoder;
+  globalThis.TextEncoder = TextEncoder;
+}
+
 if (typeof Element !== "undefined") {
   Element.prototype.scrollIntoView ??= () => {};
   Element.prototype.hasPointerCapture ??= () => false;

@@ -29,6 +29,10 @@ import { formatQty, sumDecimals } from "@/utils/decimal";
  *
  * A4 ONLY. Unlike an invoice nobody prints this at the counter on a thermal
  * roll: it is a table with six columns and a name that runs long.
+ *
+ * IT RUNS TO SEVERAL PAGES NOW: two hundred lines is about eight sheets.
+ * `data-delivery-note` is what `receipt.css` hangs that on — a margin on every
+ * sheet, the header row repeated, and no row cut across a page.
  */
 export function TransferDeliveryNote({
   transfer,
@@ -40,6 +44,7 @@ export function TransferDeliveryNote({
   return (
     <div
       data-receipt-sheet="a4"
+      data-delivery-note
       className="mx-auto w-full bg-white p-8 text-sm text-black"
     >
       <h1 className="text-center text-2xl font-bold text-black">Surat Jalan</h1>
