@@ -54,7 +54,11 @@ export interface OpnameImportPreview {
     added: number;
     /** Rows left blank, which change nothing. */
     skipped: number;
+    /** How many sheets the file fills. More than one: the commit runs in the background. */
+    sheets: number;
   };
+  /** True when the commit will queue a background job rather than fill the sheet. */
+  background: boolean;
   /** The gate, stated by the server. */
   canCommit: boolean;
   rows: OpnameImportVerdict[];
@@ -69,4 +73,38 @@ export interface OpnameTemplate {
   opnameNumber: string;
   columns: string[];
   rows: Record<string, string>[];
+}
+
+/**
+ * WORK THE SERVER DOES AFTER ANSWERING — a file split across sheets, or Submit
+ * semua. Polled for its progress; the page can be left while it runs.
+ */
+export type OpnameJobType = "opname_import" | "opname_submit_all";
+export type OpnameJobStatus = "queued" | "running" | "done" | "failed";
+
+export interface OpnameJobSheet {
+  _id: string;
+  opnameNumber: string;
+  groupIndex: number | null;
+  itemCount: number;
+}
+
+export interface OpnameJob {
+  _id: string;
+  type: OpnameJobType;
+  status: OpnameJobStatus;
+  subjectId: string | null;
+  progress: { done: number; total: number };
+  error: string | null;
+  result: { sheets?: OpnameJobSheet[]; submitted?: string[] } | null;
+  /** The sheet an import started from. */
+  opnameNumber: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
+/** What the import answers with when the file was bigger than one sheet (202). */
+export interface OpnameImportQueued {
+  background: true;
+  job: OpnameJob;
 }

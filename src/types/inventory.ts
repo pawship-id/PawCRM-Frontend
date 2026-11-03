@@ -1577,6 +1577,15 @@ export interface Opname {
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * A SHEET SPLIT OFF A BIG IMPORT: the group is the sheet the file went into
+   * (part 1), and the index says which part this is. Null on every other sheet.
+   */
+  groupId?: string | null;
+  groupIndex?: number | null;
+  groupSize?: number | null;
+  /** A background job holds the sheet: it is read-only until the job lets go. */
+  lockedByJobId?: string | null;
   /** Present on the DETAIL read; the list projects the array away. */
   items?: OpnameItem[];
   /* ----------------------- labels and counts the server resolves ----------- */

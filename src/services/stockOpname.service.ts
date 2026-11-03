@@ -10,6 +10,8 @@ import type {
 import type {
   OpnameImportInput,
   OpnameImportPreview,
+  OpnameImportQueued,
+  OpnameJob,
   OpnameTemplate,
 } from "@/types/opnameImport";
 
@@ -154,15 +156,42 @@ export const stockOpnameService = {
     apiClient.post<OpnameImportPreview>(
       `/stock-opnames/${id}/import/preview`,
       input,
+      { timeoutMs: 120_000 },
     ),
 
   /**
    * POST /stock-opnames/:id/import — fills the draft, and never submits it. The
    * WHOLE sheet comes back, as from a save. 409 when another write reached the
    * sheet first; nothing was written, so the file can simply go again.
+   *
+   * A FILE BIGGER THAN ONE SHEET comes back as a queued job instead (202): the
+   * sheet is locked, and the job splits the file into a group of sheets.
    */
   importFile: (id: string, input: OpnameImportInput) =>
-    apiClient.post<Opname>(`/stock-opnames/${id}/import`, input),
+    apiClient.post<Opname | OpnameImportQueued>(
+      `/stock-opnames/${id}/import`,
+      input,
+      // 20.000 rows take a moment to read through before the job is queued.
+      { timeoutMs: 120_000 },
+    ),
+
+  /** GET /stock-opnames/jobs — running, queued, and failed jobs of this tenant. */
+  jobs: () => apiClient.get<OpnameJob[]>("/stock-opnames/jobs"),
+
+  /** GET /stock-opnames/jobs/:jobId — one job's progress. */
+  job: (jobId: string) => apiClient.get<OpnameJob>(`/stock-opnames/jobs/${jobId}`),
+
+  /** GET /stock-opnames/:id/job — the newest job about this sheet, or null. */
+  sheetJob: (id: string) =>
+    apiClient.get<OpnameJob | null>(`/stock-opnames/${id}/job`),
+
+  /** POST /stock-opnames/jobs/:jobId/resume — Lanjutkan a failed job (202). */
+  resumeJob: (jobId: string) =>
+    apiClient.post<OpnameJob>(`/stock-opnames/jobs/${jobId}/resume`),
+
+  /** POST /stock-opnames/groups/:groupId/submit — Submit semua, queued (202). */
+  submitGroup: (groupId: string) =>
+    apiClient.post<OpnameJob>(`/stock-opnames/groups/${groupId}/submit`),
 
   /**
    * POST /stock-opnames/:id/preview — what submitting would post, without

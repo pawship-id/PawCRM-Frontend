@@ -5,7 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import { ApiError } from "@/services/api-error";
 import type { Opname, OpnameItem, OpnameItemInput } from "@/types/inventory";
-import type { OpnameImportInput } from "@/types/opnameImport";
+import type {
+  OpnameImportInput,
+  OpnameImportQueued,
+} from "@/types/opnameImport";
 import { trimQty } from "@/utils/decimal";
 
 import { useRefreshOnReturn } from "./useLiveStock";
@@ -108,7 +111,13 @@ interface UseOpnameSheetResult {
    */
   settle: () => Promise<boolean>;
   /** Fills the draft from a file and takes the sheet the server answers with. */
-  importFile: (input: OpnameImportInput) => Promise<Opname>;
+  /**
+   * Writes a file into the sheet. A file bigger than one sheet comes back as a
+   * queued job, and the sheet is re-read locked instead of adopted.
+   */
+  importFile: (
+    input: OpnameImportInput,
+  ) => Promise<Opname | OpnameImportQueued>;
   /**
    * Puts more products on the sheet. Resolves to the API's refusal, or null
    * when it worked — the dialog keeps itself open to show the message.
@@ -489,9 +498,18 @@ export function useOpnameSheet(opnameId: string): UseOpnameSheetResult {
             clearTimeout(timerRef.current);
             timerRef.current = null;
           }
-          adopt(updated);
-          setSaveState("saved");
-          setLastSavedAt(new Date());
+          if ("background" in updated) {
+            // Nothing is on the sheet yet: the job holds it. Read it back
+            // locked, so the screen turns read-only and shows the job.
+            const locked = await stockOpnameService
+              .getById(opnameId)
+              .catch(() => null);
+            if (locked && activeRef.current) adopt(locked);
+          } else {
+            adopt(updated);
+            setSaveState("saved");
+            setLastSavedAt(new Date());
+          }
         }
 
         return updated;

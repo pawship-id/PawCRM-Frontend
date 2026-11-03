@@ -15,6 +15,7 @@ import type { Opname } from "@/types/inventory";
 import type {
   OpnameImportPreview,
   OpnameImportVerdict,
+  OpnameJob,
 } from "@/types/opnameImport";
 import { saveFile } from "@/utils/saveFile";
 import { SheetError } from "@/utils/sheetReader";
@@ -71,7 +72,9 @@ const previewOf = (
     filled: rows.filter((row) => row.action !== "skip").length,
     added: 0,
     skipped: rows.filter((row) => row.action === "skip").length,
+    sheets: 1,
   },
+  background: false,
   canCommit: rows.every((row) => row.status === "ok"),
   rows,
   ...overrides,
@@ -143,14 +146,22 @@ describe("readOpnameSheet", () => {
     expect(rows[0].problems).toEqual([]);
   });
 
-  it("refuses more than 1000 rows, pointing at the Kategori filter", async () => {
+  it("reads more than one sheet holds — the server splits it", async () => {
     const lines = Array.from({ length: 1001 }, (_, at) => `S${at},,,,1,1,`);
+
+    await expect(readOpnameSheet(csvFile(csvOf(...lines)))).resolves.toMatchObject({
+      rows: expect.any(Array),
+    });
+  });
+
+  it("refuses a file past 20.000 rows, asking to split it", async () => {
+    const lines = Array.from({ length: 20001 }, (_, at) => `S${at},,,,1,1,`);
 
     await expect(readOpnameSheet(csvFile(csvOf(...lines)))).rejects.toThrow(
       SheetError,
     );
     await expect(readOpnameSheet(csvFile(csvOf(...lines)))).rejects.toThrow(
-      /filter Kategori/,
+      /Pecah filenya/,
     );
   });
 });
@@ -311,6 +322,118 @@ describe("OpnameImportDialog", () => {
 
     expect(await screen.findByText(/yang terisi di file ini/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Isi ke lembar" })).toBeDisabled();
+  });
+
+  describe("a file bigger than one sheet", () => {
+    const job = (overrides: Partial<OpnameJob> = {}): OpnameJob => ({
+      _id: "job1",
+      type: "opname_import",
+      status: "running",
+      subjectId: "op1",
+      progress: { done: 1, total: 3 },
+      error: null,
+      result: null,
+      opnameNumber: "OPN-1",
+      createdAt: "",
+      finishedAt: null,
+      ...overrides,
+    });
+    const bigPreview = () =>
+      previewOf([verdict()], {
+        background: true,
+        summary: {
+          rows: 2300,
+          ok: 2300,
+          problems: 0,
+          filled: 2300,
+          added: 2300,
+          skipped: 0,
+          sheets: 3,
+        },
+      });
+
+    it("says it will be split, and hands it to the background", async () => {
+      const user = await open(bigPreview());
+      importFile.mockResolvedValue({ background: true, job: job() });
+      jest.spyOn(stockOpnameService, "job").mockResolvedValue(
+        job({
+          status: "done",
+          progress: { done: 3, total: 3 },
+          result: {
+            sheets: [
+              { _id: "op1", opnameNumber: "OPN-1", groupIndex: 1, itemCount: 1000 },
+              { _id: "op2", opnameNumber: "OPN-2", groupIndex: 2, itemCount: 1000 },
+              { _id: "op3", opnameNumber: "OPN-3", groupIndex: 3, itemCount: 300 },
+            ],
+          },
+        }),
+      );
+
+      expect(await screen.findByText(/dipecah per kategori/)).toBeInTheDocument();
+      await user.click(
+        screen.getByRole("button", { name: "Proses di background (3 lembar)" }),
+      );
+
+      // Running: the bar, and the dialog may be closed.
+      expect(await screen.findByRole("progressbar")).toHaveAttribute(
+        "aria-valuenow",
+        "1",
+      );
+      expect(
+        screen.getByRole("button", { name: "Tutup, lanjut di background" }),
+      ).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+
+      // Done: every sheet it made, linked.
+      expect(
+        await screen.findByRole("link", { name: "OPN-3" }, { timeout: 4000 }),
+      ).toHaveAttribute("href", "/dashboard/inventory/opname/op3");
+      expect(screen.getByRole("button", { name: "Tutup" })).toBeInTheDocument();
+    });
+
+    it("offers Lanjutkan when the job failed", async () => {
+      const user = await open(bigPreview());
+      importFile.mockResolvedValue({
+        background: true,
+        job: job({ status: "failed", error: "koneksi database putus" }),
+      });
+      const resume = jest
+        .spyOn(stockOpnameService, "resumeJob")
+        .mockResolvedValue(job({ status: "queued" }));
+
+      await user.click(
+        await screen.findByRole("button", { name: "Proses di background (3 lembar)" }),
+      );
+      expect(await screen.findByText(/koneksi database putus/)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Lanjutkan" }));
+      expect(resume).toHaveBeenCalledWith("job1");
+      expect(await screen.findByText(/Menunggu giliran/)).toBeInTheDocument();
+    });
+
+    it("lists only the rows to fix in a file of thousands", async () => {
+      const rows = [
+        ...Array.from({ length: 1200 }, (_, at) =>
+          verdict({ rowNumber: at + 2, sku: `OK${at}` }),
+        ),
+        verdict({
+          rowNumber: 1202,
+          sku: "SALAH",
+          status: "not_found",
+          problems: [{ field: "sku", message: "SKU tidak ditemukan" }],
+        }),
+      ];
+      await open(
+        previewOf(rows),
+        csvOf(
+          ...Array.from({ length: 1200 }, (_, at) => `OK${at},,,,10,8,`),
+          "SALAH,,,,10,8,",
+        ),
+      );
+
+      expect(await screen.findByText("SALAH")).toBeInTheDocument();
+      expect(screen.queryByText("OK5")).not.toBeInTheDocument();
+    });
   });
 
   it("stays open with the server's words when the write is refused", async () => {

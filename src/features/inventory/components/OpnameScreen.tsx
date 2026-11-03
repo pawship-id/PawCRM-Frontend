@@ -29,6 +29,7 @@ import {
   useOpnames,
   type OpnameFilters,
 } from "../hooks/useOpnames";
+import { OpnameJobsPanel } from "./OpnameJobBanner";
 import { OpnameStartCard } from "./OpnameStartCard";
 import { OpnameStatusBadge } from "./OpnameStatusBadge";
 import { OpnameToolbar } from "./OpnameToolbar";
@@ -227,6 +228,12 @@ export function OpnameScreen() {
           className="font-medium text-primary-hover hover:underline"
         >
           <HighlightText text={opname.opnameNumber} query={filters.search} />
+          {/* One part of a file split across sheets. */}
+          {opname.groupSize ? (
+            <span className="ml-1 font-normal text-muted">
+              ({opname.groupIndex}/{opname.groupSize})
+            </span>
+          ) : null}
         </Link>
       ),
     },
@@ -352,6 +359,10 @@ export function OpnameScreen() {
           categories={lookups.categories}
         />
       )}
+
+      {/* Big imports and Submit semua run in the background; this is where
+          somebody who left the sheet comes back to see how far they got. */}
+      <OpnameJobsPanel onSettled={refresh} />
 
       <OpnameToolbar
         filters={filters}

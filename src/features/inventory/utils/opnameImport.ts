@@ -36,6 +36,12 @@ export const OPNAME_TEMPLATE_COLUMNS = [
 /** Mirrors `MAX_ITEMS` on the API's sheet. */
 export const OPNAME_MAX_ITEMS = 1000;
 
+/**
+ * Mirrors `IMPORT_MAX_ROWS` on the API. A file above one sheet is split into a
+ * group of sheets by a background job, so the file's bound is not the sheet's.
+ */
+export const OPNAME_IMPORT_MAX_ROWS = 20000;
+
 const SHEET_NAME = "Opname";
 
 const SPEC: SheetSpec<OpnameImportRow> = {
@@ -68,9 +74,9 @@ export async function readOpnameSheet(
   const { grid, sheetName } = await readGrid(file, { formats: SHEET_FORMATS });
   const parsed = parseGrid(grid, SPEC);
 
-  if (parsed.rows.length > OPNAME_MAX_ITEMS) {
+  if (parsed.rows.length > OPNAME_IMPORT_MAX_ROWS) {
     throw new SheetError(
-      `File ini berisi ${parsed.rows.length} baris, sedangkan satu lembar opname maksimal ${OPNAME_MAX_ITEMS} baris. Buka opname terpisah per kategori lewat filter Kategori.`,
+      `File ini berisi ${parsed.rows.length} baris, sedangkan satu file opname maksimal ${OPNAME_IMPORT_MAX_ROWS} baris. Pecah filenya per kategori.`,
     );
   }
 

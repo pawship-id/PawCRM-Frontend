@@ -9,6 +9,7 @@ import type { Opname } from "@/types/inventory";
 import type {
   OpnameImportInput,
   OpnameImportPreview,
+  OpnameImportQueued,
   OpnameImportRow,
   OpnameImportVerdict,
 } from "@/types/opnameImport";
@@ -32,7 +33,9 @@ export function useOpnameImport(
     importFile,
   }: {
     settle: () => Promise<boolean>;
-    importFile: (input: OpnameImportInput) => Promise<Opname>;
+    importFile: (
+      input: OpnameImportInput,
+    ) => Promise<Opname | OpnameImportQueued>;
   },
 ) {
   const fileNameRef = useRef<string | undefined>(undefined);
@@ -48,7 +51,7 @@ export function useOpnameImport(
     OpnameImportRow,
     OpnameImportVerdict,
     OpnameImportPreview,
-    Opname,
+    Opname | OpnameImportQueued,
     ParsedGrid<OpnameImportRow>
   >({
     read: (file) => {

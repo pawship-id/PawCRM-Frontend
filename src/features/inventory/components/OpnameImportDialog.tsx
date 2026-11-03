@@ -23,13 +23,16 @@ import type { Opname } from "@/types/inventory";
 import type {
   OpnameImportAction,
   OpnameImportInput,
+  OpnameImportQueued,
   OpnameImportStatus,
   OpnameImportVerdict,
 } from "@/types/opnameImport";
 import { formatQty, toMinor } from "@/utils/decimal";
 
+import { jobActive, useOpnameJob } from "../hooks/useOpnameJob";
 import { useOpnameImport } from "../hooks/useOpnameImport";
-import { saveOpnameTemplate } from "../utils/opnameImport";
+import { OPNAME_MAX_ITEMS, saveOpnameTemplate } from "../utils/opnameImport";
+import { OpnameJobBanner } from "./OpnameJobBanner";
 
 const LABELS: Record<OpnameImportStatus, string> = {
   ok: "Siap",
@@ -88,6 +91,10 @@ const COLUMNS = [
  *
  * ALL OR NOTHING: one bad row and nothing lands. A blank `stok_fisik` is not a
  * bad row. It is a shelf nobody reached, and the line stays as it is.
+ *
+ * A FILE BIGGER THAN ONE SHEET is handed to a background job, which splits it
+ * into a group of sheets. The dialog then shows its progress and may be closed:
+ * the job carries on, and the sheet shows the same bar.
  */
 export function OpnameImportDialog({
   opnameId,
@@ -98,20 +105,60 @@ export function OpnameImportDialog({
   opnameId: string;
   /** Lands anything still in the auto-save. False when it could not. */
   settle: () => Promise<boolean>;
-  importFile: (input: OpnameImportInput) => Promise<Opname>;
+  importFile: (
+    input: OpnameImportInput,
+  ) => Promise<Opname | OpnameImportQueued>;
   onClose: () => void;
 }) {
   const upload = useOpnameImport(opnameId, { settle, importFile });
   const [templateError, setTemplateError] = useState<string | null>(null);
 
   const { preview, sheet, rows, canCommit, loading, error, result } = upload;
+  const queued = result && "background" in result ? result.job : null;
+  /**
+   * EVERY ROW, UP TO ONE SHEET'S WORTH. A bigger file is thousands of rows that
+   * would only slow the dialog down; there, the rows still to fix are what is
+   * worth reading, and each carries its row number in the file.
+   */
+  const bigFile = rows.length > OPNAME_MAX_ITEMS;
+  const shownRows = bigFile ? rows.filter((row) => row.status !== "ok") : rows;
+  const watch = useOpnameJob(queued);
 
   useEffect(() => {
-    if (!result) return;
+    if (!result || "background" in result) return;
 
     swalToast("File masuk ke lembar. Cek dulu sebelum menyelesaikan opname.");
     onClose();
   }, [result, onClose]);
+
+  if (watch.job) {
+    return (
+      <Dialog open onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="grid-cols-[minmax(0,1fr)] sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Impor file opname</DialogTitle>
+            <DialogDescription>
+              File ini lebih besar dari satu lembar, jadi dipecah per kategori
+              jadi beberapa lembar di background.
+            </DialogDescription>
+          </DialogHeader>
+
+          <OpnameJobBanner
+            job={watch.job}
+            onResume={watch.resume}
+            resuming={watch.resuming}
+            resumeError={watch.error}
+          />
+
+          <DialogFooter>
+            <Button onClick={onClose}>
+              {jobActive(watch.job) ? "Tutup, lanjut di background" : "Tutup"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   const downloadTemplate = (format: TemplateFormat) => {
     setTemplateError(null);
@@ -165,7 +212,17 @@ export function OpnameImportDialog({
             </Alert>
           )}
 
-          {preview && canCommit && (
+          {preview && canCommit && preview.background && (
+            <Alert variant="info">
+              {preview.summary.filled} baris terisi — lebih banyak dari satu
+              lembar (maksimal 1.000 baris). File ini akan dipecah per kategori
+              jadi <b>{preview.summary.sheets} lembar</b> dan diproses di
+              background, jadi kamu tidak perlu menunggu. Lembar ini jadi bagian
+              pertama.
+            </Alert>
+          )}
+
+          {preview && canCommit && !preview.background && (
             <Alert variant="success">
               {preview.summary.filled} baris siap masuk ke lembar
               {preview.summary.added > 0 &&
@@ -191,9 +248,9 @@ export function OpnameImportDialog({
             </Alert>
           )}
 
-          {preview && (
+          {preview && shownRows.length > 0 && (
             <ImportVerdictTable
-              rows={rows}
+              rows={shownRows}
               statusLabels={LABELS}
               extraColumns={COLUMNS}
             />
@@ -206,7 +263,9 @@ export function OpnameImportDialog({
           </Button>
           <Button disabled={!canCommit || loading} onClick={upload.commit}>
             {canCommit && preview
-              ? `Isi ${preview.summary.filled} baris ke lembar`
+              ? preview.background
+                ? `Proses di background (${preview.summary.sheets} lembar)`
+                : `Isi ${preview.summary.filled} baris ke lembar`
               : "Isi ke lembar"}
           </Button>
         </DialogFooter>
