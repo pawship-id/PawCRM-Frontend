@@ -83,7 +83,6 @@ export function useCashImport() {
       note: null,
       lines: [],
       total: null,
-      isTransfer: false,
       duplicate: null,
     }),
     autoCheck: true,

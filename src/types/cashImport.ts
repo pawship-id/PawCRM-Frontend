@@ -44,7 +44,6 @@ export interface CashImportVerdict extends ImportRowVerdict<CashImportStatus> {
     memo: string | null;
   }[];
   total: string | null;
-  isTransfer: boolean;
   duplicate: CashImportDuplicate;
   existingNumber?: string | null;
 }
@@ -75,14 +74,19 @@ export interface CashImportResult {
 
 export interface CashImportTemplate {
   columns: string[];
+  limits: { maxLines: number; backdateMonths: number };
   accounts: {
     code: string;
     name: string;
+    /** `KODE - Nama`, what a dropdown offers and the server reads back. */
+    label: string;
     category: string;
     isCash: boolean;
     refusal: string | null;
+    /** The reachable branches it is limited to; null when it is not limited. */
+    branches: string[] | null;
   }[];
-  branches: { code: string; name: string }[];
+  branches: { code: string | null; name: string; label: string }[];
   subAccounts: { accountCode: string; code: string; name: string }[];
   examples: string[][];
 }

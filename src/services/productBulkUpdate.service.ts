@@ -1,7 +1,7 @@
 import { apiClient } from "./api-client";
 import type {
+  ProductUpdateJob,
   ProductUpdatePreview,
-  ProductUpdateResult,
   ProductUpdateRow,
   ProductUpdateTemplateQuery,
 } from "@/types/productBulkUpdate";
@@ -32,7 +32,19 @@ export const productBulkUpdateService = {
    * loses its report. Uploading the file again is safe, and finds only the rest.
    */
   commit: (input: { rows: ProductUpdateRow[]; fileName?: string }) =>
-    apiClient.post<ProductUpdateResult>("/products/bulk-update", input, {
-      timeoutMs: 300_000,
+    apiClient.post<ProductUpdateJob>("/products/bulk-update", input, {
+      // Checked before it is queued; the writing itself is the job's.
+      timeoutMs: 120_000,
     }),
+
+  /** The tenant's newest update, whatever its status, or null. */
+  latestJob: () =>
+    apiClient.get<ProductUpdateJob | null>("/products/bulk-update/jobs/latest"),
+
+  job: (jobId: string) =>
+    apiClient.get<ProductUpdateJob>(`/products/bulk-update/jobs/${jobId}`),
+
+  /** Lanjutkan a failed update (202). */
+  resumeJob: (jobId: string) =>
+    apiClient.post<ProductUpdateJob>(`/products/bulk-update/jobs/${jobId}/resume`),
 };

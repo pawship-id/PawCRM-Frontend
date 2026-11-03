@@ -37,8 +37,14 @@ export const PRODUCT_UPDATE_COLUMNS = [
   "status",
 ] as const;
 
-/** Mirrors `MAX_BULK_UPDATE_ROWS`: per request, and changed products per file. */
+/** Mirrors `MAX_BULK_UPDATE_ROWS`: what one preview request carries. */
 export const PRODUCT_UPDATE_MAX = 500;
+
+/**
+ * Mirrors `MAX_BULK_UPDATE_COMMIT_ROWS`: changed products one Simpan may carry.
+ * The writing runs in the background, so it is not bound by a request.
+ */
+export const PRODUCT_UPDATE_COMMIT_MAX = 20000;
 
 const SPEC: SheetSpec<ProductUpdateRow> = {
   requiredColumns: ["sku"],
@@ -132,7 +138,7 @@ export function mergePreviews(
       unchanged: ok - changed,
     },
     canCommit:
-      problems === 0 && changed > 0 && changed <= PRODUCT_UPDATE_MAX,
+      problems === 0 && changed > 0 && changed <= PRODUCT_UPDATE_COMMIT_MAX,
     rows: merged,
   };
 }

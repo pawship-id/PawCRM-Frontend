@@ -18,6 +18,7 @@ import { productBulkUpdateService } from "@/services/productBulkUpdate.service";
 import { warehouseService } from "@/services/warehouse.service";
 import type { AuditLog } from "@/types/api";
 import type {
+  ProductUpdateJob,
   ProductUpdatePreview,
   ProductUpdateRow,
   ProductUpdateVerdict,
@@ -39,6 +40,23 @@ jest.mock("@/services/productBulkUpdate.service");
 const preview = jest.mocked(productBulkUpdateService.preview);
 const commit = jest.mocked(productBulkUpdateService.commit);
 const template = jest.mocked(productBulkUpdateService.template);
+const job = jest.mocked(productBulkUpdateService.job);
+const latestJob = jest.mocked(productBulkUpdateService.latestJob);
+const resumeJob = jest.mocked(productBulkUpdateService.resumeJob);
+
+/** A queued, running, done or failed bulk update — what Simpan answers with. */
+const jobOf = (overrides: Partial<ProductUpdateJob> = {}): ProductUpdateJob => ({
+  _id: "job1",
+  type: "product_bulk_update",
+  status: "queued",
+  progress: { done: 0, total: 2 },
+  error: null,
+  result: null,
+  fileName: "data-produk.csv",
+  createdAt: "",
+  finishedAt: null,
+  ...overrides,
+});
 
 const HEADER = PRODUCT_UPDATE_COLUMNS.join(",");
 const FIELD = "Pilih file CSV atau Excel";
@@ -199,14 +217,13 @@ describe("mergePreviews", () => {
       changed({ rowNumber: index + 2, sku: `SKU-${index}` }),
     );
 
-  it("allows 500 changed products in a file and refuses 501", () => {
-    expect(mergePreviews([previewOf(changedRows(500))]).canCommit).toBe(true);
+  it("allows more than 500 changed products — the save runs in the background", () => {
     expect(
       mergePreviews([
         previewOf(changedRows(500)),
         previewOf([changed({ rowNumber: 1000, sku: "LAST" })]),
       ]).canCommit,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("has nothing to save when nothing changed", () => {
@@ -287,12 +304,7 @@ describe("useProductBulkUpdate", () => {
         ),
       ),
     );
-    commit.mockResolvedValue({
-      updatedCount: 1,
-      failedCount: 0,
-      updated: [],
-      failed: [],
-    });
+    commit.mockResolvedValue(jobOf({ progress: { done: 0, total: 1 } }));
 
     const { result } = renderHook(() => useProductBulkUpdate());
 
@@ -406,22 +418,74 @@ describe("ProductBulkUpdateScreen", () => {
     ).toBeDisabled();
   });
 
-  it("reports what failed after saving", async () => {
+  it("saves in the background, says the page may be closed, then reports", async () => {
     preview.mockResolvedValue(previewOf([changed()]));
-    commit.mockResolvedValue({
-      updatedCount: 1,
-      failedCount: 1,
-      updated: [{ rowNumber: 2, sku: "RC-1KG" }],
-      failed: [{ rowNumber: 3, sku: "RC-3KG", message: "Product not found" }],
-    });
+    commit.mockResolvedValue(jobOf({ status: "running", progress: { done: 1, total: 2 } }));
+    job.mockResolvedValue(
+      jobOf({
+        status: "done",
+        progress: { done: 2, total: 2 },
+        finishedAt: "2026-11-03T05:00:00.000Z",
+        result: {
+          updatedCount: 1,
+          failedCount: 1,
+          updated: [{ rowNumber: 2, sku: "RC-1KG" }],
+          failed: [{ rowNumber: 3, sku: "RC-3KG", message: "Product not found" }],
+        },
+      }),
+    );
 
     await pick(csvOf("RC-1KG,,1"));
+    expect(screen.getByText(/halaman ini boleh ditutup/)).toBeInTheDocument();
     await userEvent.click(
       await screen.findByRole("button", { name: "Simpan 1 produk" }),
     );
 
-    expect(await screen.findByText("1 produk diperbarui, 1 gagal.")).toBeInTheDocument();
+    expect(await screen.findByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
+    expect(screen.getByText(/Halaman ini boleh ditutup/)).toBeInTheDocument();
+
+    expect(
+      await screen.findByText("1 produk diperbarui, 1 gagal.", {}, { timeout: 4000 }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Product not found")).toBeInTheDocument();
+  });
+
+  it("shows where a save got to when somebody comes back", async () => {
+    latestJob.mockResolvedValue(
+      jobOf({ status: "running", progress: { done: 300, total: 900 } }),
+    );
+
+    render(<ProductBulkUpdateScreen initialFilters={FILTERS} />);
+
+    expect(await screen.findByText(/300 dari 900 produk sudah diproses/)).toBeInTheDocument();
+  });
+
+  it("offers Lanjutkan on a save that stopped", async () => {
+    latestJob.mockResolvedValue(
+      jobOf({ status: "failed", error: "Proses terhenti", progress: { done: 100, total: 900 } }),
+    );
+    resumeJob.mockResolvedValue(jobOf({ status: "queued" }));
+
+    render(<ProductBulkUpdateScreen initialFilters={FILTERS} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Lanjutkan" }));
+    expect(resumeJob).toHaveBeenCalledWith("job1");
+    expect(await screen.findByText(/Menunggu giliran/)).toBeInTheDocument();
+  });
+
+  it("leaves out a save that finished before the page was opened", async () => {
+    latestJob.mockResolvedValue(
+      jobOf({
+        status: "done",
+        finishedAt: "2026-01-01T00:00:00.000Z",
+        result: { updatedCount: 5, failedCount: 0, updated: [], failed: [] },
+      }),
+    );
+
+    render(<ProductBulkUpdateScreen initialFilters={FILTERS} />);
+
+    await waitFor(() => expect(latestJob).toHaveBeenCalled());
+    expect(screen.queryByText(/Update massal terakhir/)).not.toBeInTheDocument();
   });
 
   it("downloads with the filters it opened on", async () => {

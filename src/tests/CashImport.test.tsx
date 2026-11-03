@@ -8,6 +8,7 @@ import { CashImportScreen } from "@/features/cash-transactions";
 import {
   readCashImportSheet,
   referenceSheets,
+  templateLists,
 } from "@/features/cash-transactions/utils/cashImport";
 import { ApiError } from "@/services/api-error";
 import { cashTransactionImportService } from "@/services/cashTransactionImport.service";
@@ -129,44 +130,178 @@ describe("reading Jubelio's file", () => {
 
 describe("the template", () => {
   const template = {
-    columns: ["No", "Tanggal Transaksi", "Tipe", "Cabang", "Akun Kas/Bank", "Nilai Kas/Bank", "Detil Akun", "Nilai"],
-    accounts: [
-      { code: "1103", name: "Piutang", category: "piutang_dagang", isCash: false, refusal: "Lewat faktur" },
-      { code: "1101", name: "Kas", category: "cash_bank", isCash: true, refusal: null },
+    columns: [
+      "No",
+      "Tanggal Transaksi",
+      "Tipe",
+      "Cabang",
+      "Akun Kas/Bank",
+      "Nilai Kas/Bank",
+      "Detil Akun",
+      "Nilai",
     ],
-    branches: [{ code: "PST", name: "Pusat" }],
+    limits: { maxLines: 20, backdateMonths: 3 },
+    accounts: [
+      {
+        code: "1103",
+        name: "Piutang",
+        label: "1103 - Piutang",
+        category: "piutang_dagang",
+        isCash: false,
+        refusal: "Lewat faktur",
+        branches: null,
+      },
+      {
+        code: "1101",
+        name: "Kas",
+        label: "1101 - Kas",
+        category: "cash_bank",
+        isCash: true,
+        refusal: null,
+        branches: null,
+      },
+      {
+        code: "1109",
+        name: "Bank Lain",
+        label: "1109 - Bank Lain",
+        category: "cash_bank",
+        isCash: true,
+        refusal: null,
+        branches: [],
+      },
+      {
+        code: "6102",
+        name: "Beban Sewa",
+        label: "6102 - Beban Sewa",
+        category: "biaya",
+        isCash: false,
+        refusal: null,
+        branches: ["Pusat"],
+      },
+    ],
+    branches: [{ code: "PST", name: "Pusat", label: "PST - Pusat" }],
     subAccounts: [],
-    examples: [["CONTOH-1", "2026-11-02", "Pembayaran", "PST", "1101", "100", "6102", "100"]],
+    examples: [
+      [
+        "CONTOH-1",
+        "2026-11-02",
+        "Pembayaran",
+        "PST - Pusat",
+        "1101 - Kas",
+        "100",
+        "6102 - Beban Sewa",
+        "100",
+      ],
+    ],
   };
 
-  it("keeps the examples off the sheet that gets read", async () => {
-    const blob = await buildTemplateWorkbook([template.columns], {
-      sheetName: "Transaksi",
-      kindOf: () => null,
-      extraSheets: referenceSheets(template),
-    });
-    const bytes = await new Promise<ArrayBuffer>((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as ArrayBuffer);
-      reader.readAsArrayBuffer(blob);
-    });
-    const book = XLSX.read(bytes);
+  async function build() {
+    const blob = await buildTemplateWorkbook(
+      [template.columns, ...template.examples],
+      {
+        sheetName: "Transaksi",
+        kindOf: () => null,
+        extraSheets: referenceSheets(template),
+        lists: templateLists(template),
+      },
+    );
+
+    return new Uint8Array(
+      await new Promise<ArrayBuffer>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.readAsArrayBuffer(blob);
+      }),
+    );
+  }
+
+  it("puts the examples on Transaksi, a guide beside it, and the lists out of sight", async () => {
+    const book = XLSX.read(await build());
 
     expect(book.SheetNames).toEqual([
+      "Panduan Pengisian",
       "Transaksi",
-      "Contoh",
       "Daftar Akun",
       "Daftar Cabang",
+      "Pilihan",
+    ]);
+    expect(book.Workbook?.Sheets?.map((sheet) => sheet.Hidden)).toEqual([
+      0, 0, 0, 0, 1,
     ]);
     expect(
-      XLSX.utils
-        .sheet_to_json(book.Sheets.Transaksi, { header: 1 })
-        .flat(),
-    ).not.toContain("CONTOH-1");
+      XLSX.utils.sheet_to_json<string[]>(book.Sheets.Transaksi, {
+        header: 1,
+      })[1][0],
+    ).toBe("CONTOH-1");
     expect(
-      XLSX.utils
-        .sheet_to_json<string[]>(book.Sheets["Daftar Akun"], { header: 1 })[1],
+      XLSX.utils.sheet_to_json<string[]>(book.Sheets["Daftar Akun"], {
+        header: 1,
+      })[1],
     ).toContain("Tidak bisa dipakai");
+
+    // Piutang is refused, Bank Lain is in no branch of this user's, and a rekening
+    // is never a Detil Akun: transfers are not imported.
+    expect(
+      XLSX.utils.sheet_to_json<string[]>(book.Sheets.Pilihan, { header: 1 }),
+    ).toEqual([
+      ["Tipe", "Cabang", "Akun Kas/Bank", "Detil Akun"],
+      ["Pembayaran", "PST - Pusat", "1101 - Kas", "6102 - Beban Sewa"],
+      ["Penerimaan", "", "", ""],
+    ]);
+  });
+
+  it("writes the dropdowns into the sheet, where Excel expects them", async () => {
+    const zip = XLSX.CFB.read(await build(), { type: "array" });
+    const xml = new TextDecoder().decode(
+      // The guide comes first, so Transaksi is the second part.
+      XLSX.CFB.find(zip, "/xl/worksheets/sheet2.xml").content,
+    );
+
+    expect(xml).toContain(
+      "sqref=\"E2:E1001\"><formula1>'Pilihan'!$C$2:$C$2</formula1>",
+    );
+    expect(xml).toContain(
+      "sqref=\"G2:G1001\"><formula1>'Pilihan'!$D$2:$D$2</formula1>",
+    );
+    expect(xml.indexOf("<dataValidations")).toBeGreaterThan(
+      xml.indexOf("</sheetData>"),
+    );
+    const after = xml.search(/<ignoredErrors|<pageMargins/);
+    if (after >= 0) expect(xml.indexOf("<dataValidations")).toBeLessThan(after);
+  });
+
+  it("dresses the guide: styles in styles.xml, named on its cells, no gridlines", async () => {
+    const zip = XLSX.CFB.read(await build(), { type: "array" });
+    const read = (path: string) =>
+      new TextDecoder().decode(XLSX.CFB.find(zip, path).content);
+    const styles = read("/xl/styles.xml");
+    const guide = read("/xl/worksheets/sheet1.xml");
+
+    expect(styles).toContain('<fgColor rgb="FF1E3A6B"/>');
+    const xfCount = Number(/<cellXfs count="(\d+)">/.exec(styles)?.[1]);
+    expect(styles.match(/<xf [^>]*xfId=/g)).toHaveLength(xfCount);
+
+    expect(guide).toContain('<sheetView showGridLines="0"');
+    expect(guide).toMatch(/<c r="A1" s="\d+"/);
+    expect(guide).toContain('<mergeCell ref="A1:C1"/>');
+    expect(XLSX.read(await build()).Sheets["Panduan Pengisian"].A1.v).toMatch(/^Panduan Pengisian/);
+  });
+
+  it("is read from Transaksi on upload, though the guide is the first tab", async () => {
+    const bytes = await build();
+    const file = new File([bytes], "template-kas-bank.xlsx");
+    Object.defineProperty(file, "arrayBuffer", {
+      value: () => Promise.resolve(bytes.buffer),
+    });
+
+    const parsed = await readCashImportSheet(file);
+
+    expect(parsed.sheetName).toBe("Transaksi");
+    expect(parsed.rows[0].row).toMatchObject({
+      no: "CONTOH-1",
+      cabang: "PST - Pusat",
+      akun_kas: "1101 - Kas",
+    });
   });
 });
 
@@ -185,7 +320,6 @@ const verdict = (overrides: Partial<CashImportVerdict> = {}): CashImportVerdict 
   note: null,
   lines: [{ code: "6102", name: "Beban Sewa", amount: "150000.0000", memo: null }],
   total: "150000.0000",
-  isTransfer: false,
   duplicate: null,
   ...overrides,
 });

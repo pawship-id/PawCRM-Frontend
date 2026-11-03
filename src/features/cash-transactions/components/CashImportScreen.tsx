@@ -20,7 +20,7 @@ import type { CashImportResult, CashImportVerdict } from "@/types/cashImport";
 import { formatMoney } from "@/utils/decimal";
 
 import { useCashImport } from "../hooks/useCashImport";
-import { CASH_TRANSACTIONS_HREF, TRANSFER_LABEL } from "../labels";
+import { CASH_TRANSACTIONS_HREF } from "../labels";
 import { CASH_IMPORT_MAX_ROWS, saveCashImportTemplate } from "../utils/cashImport";
 
 const LABELS: Record<string, string> = {
@@ -45,7 +45,6 @@ function DetailCell({ row }: { row: CashImportVerdict }) {
 
 function NoteCell({ row }: { row: CashImportVerdict }) {
   const notes = [
-    ...(row.isTransfer ? [TRANSFER_LABEL] : []),
     ...(row.duplicate === "other_file"
       ? [`Sudah pernah diimpor${row.existingNumber ? `: ${row.existingNumber}` : ""}`]
       : []),
@@ -184,7 +183,7 @@ export function CashImportScreen() {
             onPick={upload.pickFile}
             onDownloadTemplate={download}
             disabled={loading || downloading}
-            templateNote="Template Excel berisi Daftar Akun, Daftar Cabang, dan Contoh. Format template Jubelio juga bisa dibaca, selama ada kolom Cabang."
+            templateNote="Template Excel berisi contoh transaksi (hapus sebelum upload), pilihan akun dan cabang, serta sheet Panduan Pengisian. Format template Jubelio juga bisa dibaca, selama ada kolom Cabang."
           />
 
           {(error || templateError) && (

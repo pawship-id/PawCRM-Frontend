@@ -66,3 +66,19 @@ export interface ProductUpdateTemplateQuery {
   productType?: "standalone" | "parent";
   isActive?: boolean;
 }
+
+/**
+ * SIMPAN RUNS IN THE BACKGROUND: the answer is a job to watch, and the page may
+ * be closed while it runs. `result` arrives once it is done.
+ */
+export interface ProductUpdateJob {
+  _id: string;
+  type: "product_bulk_update";
+  status: "queued" | "running" | "done" | "failed";
+  progress: { done: number; total: number };
+  error: string | null;
+  result: ProductUpdateResult | null;
+  fileName: string | null;
+  createdAt: string;
+  finishedAt: string | null;
+}

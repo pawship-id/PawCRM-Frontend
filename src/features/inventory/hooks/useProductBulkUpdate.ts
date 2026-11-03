@@ -5,8 +5,8 @@ import { useRef, useState } from "react";
 import { useSheetImport } from "@/hooks/useSheetImport";
 import { productBulkUpdateService } from "@/services/productBulkUpdate.service";
 import type {
+  ProductUpdateJob,
   ProductUpdatePreview,
-  ProductUpdateResult,
   ProductUpdateRow,
   ProductUpdateVerdict,
 } from "@/types/productBulkUpdate";
@@ -40,7 +40,7 @@ export function useProductBulkUpdate() {
     ProductUpdateRow,
     ProductUpdateVerdict,
     ProductUpdatePreview,
-    ProductUpdateResult,
+    ProductUpdateJob,
     ParsedGrid<ProductUpdateRow>
   >({
     read: (file) => {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-import { Alert, Spinner } from "@/components";
+import { Alert, JobProgressBar, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/services/api-error";
 import { stockOpnameService } from "@/services/stockOpname.service";
@@ -19,23 +19,6 @@ function jobTitle(job: OpnameJob): string {
   return job.opnameNumber ? `Impor file ke ${job.opnameNumber}` : "Impor file opname";
 }
 
-function ProgressBar({ job }: { job: OpnameJob }) {
-  const { done, total } = job.progress;
-  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-
-  return (
-    <div
-      role="progressbar"
-      aria-label={jobTitle(job)}
-      aria-valuemin={0}
-      aria-valuemax={total}
-      aria-valuenow={done}
-      className="mt-2 flex h-2 overflow-hidden rounded-full bg-navy-100"
-    >
-      <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
-    </div>
-  );
-}
 
 /**
  * WHERE A BACKGROUND JOB IS, said once in the same words wherever it shows:
@@ -77,7 +60,7 @@ export function OpnameJobBanner({
         <p className="flex flex-wrap items-center gap-2 font-semibold">
           <Spinner /> {jobTitle(job)} sedang berjalan di background
         </p>
-        <ProgressBar job={job} />
+        <JobProgressBar done={done} total={total} label={jobTitle(job)} />
         <p className="text-sm">
           {job.status === "queued"
             ? "Menunggu giliran…"

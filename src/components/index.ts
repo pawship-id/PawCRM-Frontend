@@ -110,3 +110,5 @@ export * from "./filters";
 export * from "./form";
 
 export * from "./import";
+
+export { JobProgressBar } from "./JobProgressBar";

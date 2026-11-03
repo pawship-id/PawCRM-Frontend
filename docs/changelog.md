@@ -7,6 +7,25 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Template Kas & Bank: dropdown dan panduan
+
+3 November 2026. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- Sheet **Contoh** dihapus; contoh (CONTOH-1 Pembayaran, CONTOH-2 Penerimaan) ada langsung di sheet
+  Transaksi untuk dihapus user. Server tetap menolak baris CONTOH, jadi lupa menghapus tidak menyimpan apa pun.
+- Sheet baru **Panduan Pengisian**: langkah, arti tiap kolom, transaksi beberapa akun, batasan.
+  Diberi warna Buloo (judul navy, pita bagian, label Wajib/Opsional, peringatan oranye), teks
+  turun baris, tanpa gridline. `ExtraSheet` menerima `styles` (daftar tetap `SheetStyle`), `merges`,
+  `heights`, `gridlines`, dan `first` (tab sebelum tab isian; Panduan jadi tab pertama); gaya disisipkan ke `styles.xml` karena SheetJS gratis tidak menulisnya.
+- Dropdown di Tipe, Cabang, Akun Kas/Bank, Detil Akun (`KODE - Nama`) dari sheet tersembunyi
+  `Pilihan`. Akun yang ditolak sebagai akun lawan atau tidak berlaku di cabang user tidak muncul.
+  Daftar Akun menambah kolom Cabang.
+- **Transfer tidak lewat impor**: Tipe hanya Pembayaran/Penerimaan, rekening kas/bank tidak ada di
+  pilihan Detil Akun, label "Transfer antar rekening" di preview impor dihapus.
+- `buildTemplateWorkbook` menerima `lists`, `widthOf`, dan sheet tambahan `hidden`/`widths`.
+  SheetJS gratis tidak menulis data validation, jadi blok `<dataValidations>` disisipkan ke XML
+  sheet setelah file dibuat.
+
 ## [Unreleased] — Upload massal: Kas & Bank
 
 2 November 2026. Backend: `PawCRM-Backend/docs/changelog.md`.

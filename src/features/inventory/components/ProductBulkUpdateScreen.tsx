@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import {
@@ -12,6 +12,7 @@ import {
   ImportFailedList,
   ImportFilePicker,
   ImportVerdictTable,
+  JobProgressBar,
   namedOptions,
   Spinner,
   withAll,
@@ -20,8 +21,11 @@ import {
 } from "@/components";
 // The shadcn button: only this one takes `asChild`, for the Link below.
 import { Button } from "@/components/ui/button";
+import { jobActive, useJobPoll } from "@/hooks/useJobPoll";
+import { productBulkUpdateService } from "@/services/productBulkUpdate.service";
 import type {
   ProductUpdateChange,
+  ProductUpdateJob,
   ProductUpdateResult,
   ProductUpdateStatus,
   ProductUpdateTemplateQuery,
@@ -33,7 +37,7 @@ import { useCatalogLookups } from "../hooks/useCatalogLookups";
 import { useProductBulkUpdate } from "../hooks/useProductBulkUpdate";
 import {
   PRODUCT_UPDATE_COLUMNS,
-  PRODUCT_UPDATE_MAX,
+  PRODUCT_UPDATE_COMMIT_MAX,
   saveProductUpdateTemplate,
 } from "../utils/productBulkUpdate";
 
@@ -153,6 +157,91 @@ function ResultPanel({
 }
 
 /**
+ * WHERE THE BACKGROUND SAVE IS. Running: a bar and the promise that the page
+ * may be closed. Failed: why, and Lanjutkan — a product already written is not
+ * written again. Done: the result, as the save used to answer it.
+ */
+function JobPanel({
+  job,
+  onResume,
+  resuming,
+  resumeError,
+  onReset,
+}: {
+  job: ProductUpdateJob;
+  onResume: () => void;
+  resuming: boolean;
+  resumeError: string | null;
+  /** Just pressed on this page: the result offers what to do next. */
+  onReset?: () => void;
+}) {
+  const { done, total } = job.progress;
+
+  if (jobActive(job)) {
+    return (
+      <Alert variant="info">
+        <p className="flex flex-wrap items-center gap-2 font-semibold">
+          <Spinner /> Menyimpan perubahan produk di background
+        </p>
+        <JobProgressBar done={done} total={total} label="Update massal produk" />
+        <p className="text-sm">
+          {job.status === "queued"
+            ? "Menunggu giliran…"
+            : `${done} dari ${total} produk sudah diproses.`}{" "}
+          Halaman ini boleh ditutup — prosesnya tetap jalan, dan hasilnya muncul
+          di sini saat kamu kembali.
+        </p>
+      </Alert>
+    );
+  }
+
+  if (job.status === "failed") {
+    return (
+      <Alert variant="error">
+        <p className="font-semibold">Update massal berhenti di tengah jalan</p>
+        <p className="text-sm">
+          {job.error ?? "Alasannya tidak tercatat."} {done} dari {total} produk
+          sudah diproses; yang sudah tersimpan tidak akan ditulis dua kali.
+        </p>
+        {resumeError && <p className="text-sm">{resumeError}</p>}
+        <div className="mt-2">
+          <Button type="button" size="sm" onClick={onResume} disabled={resuming}>
+            {resuming ? <Spinner /> : null}
+            Lanjutkan
+          </Button>
+        </div>
+      </Alert>
+    );
+  }
+
+  if (!job.result) return null;
+
+  return onReset ? (
+    <ResultPanel result={job.result} onReset={onReset} />
+  ) : (
+    <div className="flex flex-col gap-4">
+      <Alert variant={job.result.failedCount > 0 ? "warning" : "success"}>
+        Update massal terakhir
+        {job.fileName ? ` (${job.fileName})` : ""}: {job.result.updatedCount}{" "}
+        produk diperbarui
+        {job.result.failedCount > 0 && `, ${job.result.failedCount} gagal`}.
+      </Alert>
+      {job.result.failed.length > 0 && (
+        <ImportFailedList
+          title="Yang gagal disimpan"
+          description="Produk lain sudah tersimpan. Unggah file yang sama lagi: yang sudah masuk tidak akan ditulis dua kali."
+          entries={job.result.failed.map(({ sku, rowNumber, message }) => ({
+            label: sku,
+            rowNumbers: [rowNumber],
+            message,
+          }))}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
  * Inventori → Produk & Varian → Update Massal.
  *
  * The step is the data, as on the import: no file, then a file with its preview,
@@ -177,6 +266,37 @@ export function ProductBulkUpdateScreen({
   const { sheet, preview, rows, canCommit, loading, error, result, progress } =
     upload;
 
+  /**
+   * SIMPAN QUEUES A JOB, and the page may be left while it runs. The newest
+   * job is asked for on arrival, so somebody coming back sees where it got
+   * to — and a job finished long before they opened the page stays out of it.
+   */
+  const [openedAt] = useState(() => Date.now());
+  const [arrivalJob, setArrivalJob] = useState<ProductUpdateJob | null>(null);
+  useEffect(() => {
+    let active = true;
+    Promise.resolve(productBulkUpdateService.latestJob())
+      .then((job) => {
+        if (active) setArrivalJob(job ?? null);
+      })
+      // The screen works without it.
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  const watch = useJobPoll(result ?? arrivalJob, {
+    fetchJob: productBulkUpdateService.job,
+    resumeJob: productBulkUpdateService.resumeJob,
+  });
+  const recentArrival =
+    !result &&
+    watch.job !== null &&
+    (jobActive(watch.job) ||
+      watch.job.status === "failed" ||
+      (watch.job.finishedAt !== null &&
+        new Date(watch.job.finishedAt).getTime() > openedAt - 30 * 60_000));
+
   const patch = (change: Partial<ProductUpdateFilters>) =>
     setFilters((current) => ({ ...current, ...change }));
 
@@ -193,17 +313,34 @@ export function ProductBulkUpdateScreen({
     }
   };
 
-  if (result) {
-    return <ResultPanel result={result} onReset={upload.reset} />;
+  if (result && watch.job) {
+    return (
+      <JobPanel
+        job={watch.job}
+        onResume={watch.resume}
+        resuming={watch.resuming}
+        resumeError={watch.error}
+        onReset={upload.reset}
+      />
+    );
   }
 
-  const overLimit = (preview?.summary.changed ?? 0) > PRODUCT_UPDATE_MAX;
+  const overLimit = (preview?.summary.changed ?? 0) > PRODUCT_UPDATE_COMMIT_MAX;
   const listed = rows.filter(
     (row) => row.changes.length > 0 || row.problems.length > 0,
   );
 
   return (
     <div className="flex flex-col gap-6">
+      {recentArrival && watch.job && (
+        <JobPanel
+          job={watch.job}
+          onResume={watch.resume}
+          resuming={watch.resuming}
+          resumeError={watch.error}
+        />
+      )}
+
       <Card
         title="1. Unduh data, ubah, lalu unggah"
         description="Sel kosong dan nilai yang sama diabaikan, jadi file ini tidak bisa mengosongkan data. SKU tidak bisa diubah. Bundle tidak ikut."
@@ -312,7 +449,7 @@ export function ProductBulkUpdateScreen({
             {preview && overLimit && (
               <Alert variant="error">
                 Ada {preview.summary.changed} produk berubah, sedangkan satu file
-                maksimal {PRODUCT_UPDATE_MAX}. Pecah jadi beberapa file.
+                maksimal {PRODUCT_UPDATE_COMMIT_MAX}. Pecah jadi beberapa file.
               </Alert>
             )}
 
@@ -346,7 +483,7 @@ export function ProductBulkUpdateScreen({
       {sheet && (
         <Card
           title="3. Simpan"
-          description="Produk disimpan satu per satu. Jangan tutup halaman ini sampai selesai. Kalau terputus, yang sudah masuk tetap tersimpan."
+          description="Perubahan disimpan di background. Setelah menekan Simpan, halaman ini boleh ditutup — progres dan hasilnya tampil di sini saat kamu kembali."
         >
           <Button onClick={upload.commit} disabled={!canCommit || loading}>
             {canCommit && preview
