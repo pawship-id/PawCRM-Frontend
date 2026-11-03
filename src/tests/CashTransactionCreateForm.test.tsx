@@ -514,6 +514,48 @@ describe("CashTransactionCreateForm", () => {
     expect(mockPush).toHaveBeenCalledWith("/dashboard/finance/cash-bank/transactions/ct9");
   });
 
+  it("saves a transfer as a payment whose one line is the receiving account", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CashTransactionCreateForm />);
+    await screen.findByRole("button", { name: "Simpan transaksi" });
+
+    await user.click(
+      screen.getByRole("button", { name: "Transfer antar rekening" }),
+    );
+
+    expect(screen.queryByText("Rincian Akun")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Penerima" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Jadikan biaya tetap")).not.toBeInTheDocument();
+
+    await pick(user, "Dari rekening", "1101 · Kas Pusat");
+    await user.click(screen.getByRole("button", { name: "Ke rekening" }));
+    expect(
+      screen.queryByRole("option", { name: "1101 · Kas Pusat" }),
+    ).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("option", { name: "1102 · Bank BCA" }));
+    await user.type(screen.getByLabelText(/^Jumlah/), "2000000");
+
+    await user.click(screen.getByRole("button", { name: "Simpan transaksi" }));
+
+    await waitFor(() =>
+      expect(cashTransactionService.create).toHaveBeenCalledWith({
+        kind: "expense",
+        branchId: "b1",
+        accountId: "acc-kas",
+        lines: [
+          {
+            accountId: "acc-bca",
+            amount: "2000000",
+            businessLineId: null,
+            subAccountId: null,
+          },
+        ],
+      }),
+    );
+  });
+
   it("has no Lini Usaha field, in the header or on any row", async () => {
     const user = userEvent.setup();
     renderWithAuth(<CashTransactionCreateForm />);

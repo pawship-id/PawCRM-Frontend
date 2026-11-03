@@ -822,15 +822,12 @@ stay on the page's context bar.
   "did I type this, or did a document make it" has the same answer for both.
   The server still filters by `kind`; `SOURCES` in `features/cash-transactions/labels.ts`
   is the one table the column, the options and that expansion are all built from.
-- **`Transfer` IS IN THE LIST AND MATCHES NOTHING.** Money moved between two of
-  the shop's own accounts is drawn in the mockup and does not exist here —
-  nothing creates such a transaction. It is carried on request so the filter
-  matches the mockup, and `useCashTransactions` SHORT-CIRCUITS it: an empty
-  expansion answers "none" without a request, because sending no `kind` would
-  ask for every kind, which is the opposite answer. Give it its kinds when the
-  feature is built and the rest starts working on its own. **This is the one
-  sanctioned exception to "an option that can never match anything is a filter
-  people stop trusting" — do not copy it to another screen.**
+- **`Transfer` HAS NO KINDS OF ITS OWN.** A transfer between the shop's own
+  accounts is saved as an `expense` whose lines are all kas/bank accounts, so
+  `useCashTransactions` asks the server for `transfer` rather than expanding it.
+  Tambah transaksi offers it as a third choice (BO, 3 November 2026), with Dari
+  rekening, Ke rekening and Jumlah in place of the party, the switch and Rincian
+  Akun.
 
 **ONE CARD, "DAFTAR TRANSAKSI", HOLDS THE WHOLE LIST** — the caption, the
 search row with `Filter (n)` and Tambah transaksi, the table and the footer
