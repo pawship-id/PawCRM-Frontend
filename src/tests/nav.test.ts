@@ -441,12 +441,13 @@ describe("filterNavSections", () => {
   });
 
   it("drops a section once every item in it is filtered away", () => {
-    // Deny-all leaves Utama (Beranda is ungated) and Keuangan (Laporan is), and
-    // nothing else: the other three sections are groups whose survival needs a
-    // gated child.
+    // Deny-all leaves Utama (Beranda is ungated), Keuangan (Laporan is) and
+    // Sistem (Panduan is), and nothing else: the other two sections are groups
+    // whose survival needs a gated child.
     expect(filterNavSections(NAV_SECTIONS, denyAll).map((s) => s.label)).toEqual([
       "Utama",
       "Keuangan",
+      "Sistem",
     ]);
   });
 

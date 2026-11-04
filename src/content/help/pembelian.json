@@ -1,0 +1,288 @@
+{
+  "slug": "pembelian",
+  "order": 11,
+  "title": "Pembelian",
+  "subtitle": "Mencatat supplier, barang yang datang, faktur dan pembayaran ke supplier, sampai retur barang.",
+  "introHtml": "<p><strong>Modul ini untuk apa?</strong></p>\n<ul>\n<li>Menyimpan data <strong>supplier</strong> beserta termin pembayarannya.</li>\n<li>Mencatat <strong>penerimaan barang</strong>: stok, HPP, dan utang langsung tercatat saat disimpan.</li>\n<li>Mencatat <strong>faktur supplier</strong> dan <strong>pembayaran</strong> utangnya.</li>\n<li>Mengembalikan barang ke supplier lewat <strong>retur</strong>.</li>\n</ul>\n<p><strong>Siapa yang memakai?</strong> Pemilik usaha, admin pembelian, bagian gudang, dan bagian keuangan.</p>\n<p><strong>Siapkan dulu:</strong></p>\n<ul>\n<li><strong>Inventori › Produk &amp; Varian</strong>: produk yang dibeli harus sudah terdaftar.</li>\n<li><strong>Pengaturan › Cabang &amp; Gudang</strong>: gudang tujuan barang.</li>\n<li><strong>Keuangan</strong>: akun kas/bank untuk membayar supplier.</li>\n<li>Opsional: <strong>Pengaturan › Umum › Tipe supplier</strong> dan <strong>Kategori supplier</strong> untuk mengelompokkan supplier (lihat buku Pengaturan Umum).</li>\n</ul>\n<p><strong>Cara membuka:</strong> menu samping › <strong>Transaksi</strong> › <strong>Pembelian</strong>.</p>\n<p><strong>Isi modul:</strong></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Tab</th>\n<th>Dipakai untuk</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Ringkasan</td>\n<td>Angka pembelian, utang, dan yang perlu dibayar</td>\n</tr>\n<tr>\n<td>Faktur</td>\n<td>Faktur supplier, pembayaran, dan sisa utang</td>\n</tr>\n<tr>\n<td>Penerimaan</td>\n<td>Barang yang datang dari supplier</td>\n</tr>\n<tr>\n<td>Supplier</td>\n<td>Daftar supplier, tambah, ubah, nonaktifkan, hapus</td>\n</tr>\n<tr>\n<td>Retur</td>\n<td>Barang yang dikembalikan ke supplier</td>\n</tr>\n</tbody></table></div>\n<p><strong>Dua jenis pembelian:</strong></p>\n<ul>\n<li><strong>Beli putus</strong>: barang jadi milik toko saat diterima. Utang tercatat saat barang diterima.</li>\n<li><strong>Konsinyasi (titipan)</strong>: barang titipan supplier. Toko baru berutang <strong>saat barang terjual</strong>, sebesar <strong>harga setor</strong>.</li>\n</ul>\n<p><strong>Urutan kerja yang disarankan:</strong> daftarkan supplier › terima barang › catat faktur supplier › bayar faktur › retur bila ada barang yang dikembalikan › pantau lewat Ringkasan.</p>\n",
+  "articles": [
+    {
+      "slug": "daftar-supplier",
+      "number": 1,
+      "title": "Daftar Supplier",
+      "summary": "melihat dan mencari semua supplier.",
+      "html": "<p><strong>Fungsi:</strong> melihat dan mencari semua supplier.</p>\n<p><figure><img src=\"/help/pembelian/02-daftar-supplier.webp\" alt=\"Tab Supplier\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Supplier <a class=\"help-open\" href=\"/dashboard/purchasing/suppliers\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Kanan atas: <strong>Total sisa utang</strong> ke semua supplier.</li>\n<li>Kotak cari: nama, PIC, telepon, atau NPWP.</li>\n<li>Kolom: <strong>Supplier</strong>, <strong>Kontak</strong>, <strong>Tipe</strong> (Beli putus, Konsinyasi, Keduanya), <strong>Termin</strong>, <strong>Penerimaan</strong>, <strong>Sisa utang</strong>, <strong>Aksi</strong>.</li>\n<li>Klik nama supplier untuk membuka detailnya.</li>\n</ul>\n"
+    },
+    {
+      "slug": "menyaring-daftar-supplier-filter",
+      "number": 2,
+      "title": "Menyaring Daftar Supplier (Filter)",
+      "summary": "menampilkan supplier dengan kriteria tertentu.",
+      "html": "<p><strong>Fungsi:</strong> menampilkan supplier dengan kriteria tertentu.</p>\n<p><figure><img src=\"/help/pembelian/02-daftar-supplier--filter.webp\" alt=\"Dialog Filter supplier\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Filter supplier <a class=\"help-open\" href=\"/dashboard/purchasing/suppliers\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Pilihan</th>\n<th>Isinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Tipe</td>\n<td>Beli putus, Konsinyasi, Keduanya</td>\n</tr>\n<tr>\n<td>Status</td>\n<td>Aktif &amp; nonaktif, Hanya aktif, atau Hanya nonaktif</td>\n</tr>\n<tr>\n<td>Tampilkan supplier terhapus</td>\n<td>Centang untuk melihat supplier yang sudah dihapus</td>\n</tr>\n</tbody></table></div>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Filter</strong>, pilih kriteria.</li>\n<li>Klik <strong>Terapkan</strong>. Klik <strong>Reset</strong> untuk kembali ke tampilan awal.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menambah-supplier-baru",
+      "number": 3,
+      "title": "Menambah Supplier Baru",
+      "summary": "mendaftarkan supplier sebelum menerima barang darinya.",
+      "html": "<p><strong>Fungsi:</strong> mendaftarkan supplier sebelum menerima barang darinya.</p>\n<p><figure><img src=\"/help/pembelian/03-tambah-supplier.webp\" alt=\"Formulir supplier baru\" width=\"1440\" height=\"2513\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir supplier baru <a class=\"help-open\" href=\"/dashboard/purchasing/suppliers/new\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Yang perlu diperhatikan:</strong></p>\n<ul>\n<li>Wajib: <strong>Nama supplier</strong>, <strong>ID supplier</strong> (kode internal, harus unik), <strong>Termin pembayaran</strong>, dan <strong>Tipe kerja sama</strong>.</li>\n<li><strong>Termin pembayaran</strong> (hari) menentukan <strong>jatuh tempo</strong> setiap faktur. Isi <strong>0</strong> kalau dibayar saat barang diterima.</li>\n<li><strong>Tipe kerja sama</strong>: <strong>Beli putus</strong>, <strong>Konsinyasi</strong>, atau <strong>Keduanya</strong> (dipilih per penerimaan).</li>\n<li><strong>Tipe supplier</strong> = badan usaha atau perorangan, beda dengan tipe kerja sama.</li>\n<li><strong>Dipakai di cabang</strong>: hilangkan centang <strong>Semua cabang</strong> kalau supplier hanya melayani sebagian cabang.</li>\n<li><strong>Akun Pembelian</strong> (<strong>Akun Utang</strong> dan <strong>Akun Uang Muka</strong>): biarkan bawaan kalau ragu. Jurnal tetap memakai akun bawaan.</li>\n</ul>\n<p><figure><img src=\"/help/pembelian/03-tambah-supplier--tambah-rekening.webp\" alt=\"Menambah rekening bank supplier\" width=\"1440\" height=\"2509\" loading=\"lazy\" decoding=\"async\"><figcaption>Menambah rekening bank supplier <a class=\"help-open\" href=\"/dashboard/purchasing/suppliers/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Rekening Bank</strong>: klik <strong>Tambah rekening</strong>, isi <strong>No Rekening</strong>, <strong>Atas Nama</strong>, <strong>Nama Bank</strong>. Pastikan <strong>Atas Nama</strong> sama dengan di faktur supplier.</li>\n<li><strong>Penanggung Jawab</strong>: orang di pihak supplier yang dihubungi kalau kiriman kurang atau terlambat.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di tab <strong>Supplier</strong>, klik <strong>Supplier baru</strong>.</li>\n<li>Isi <strong>Nama supplier</strong>, <strong>ID supplier</strong>, dan <strong>Termin pembayaran</strong>.</li>\n<li>Pilih <strong>Tipe kerja sama</strong>.</li>\n<li>Lengkapi kontak, alamat, rekening, dan penanggung jawab bila perlu.</li>\n<li>Klik <strong>Simpan supplier</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "detail-supplier",
+      "number": 4,
+      "title": "Detail Supplier",
+      "summary": "melihat ringkasan pembelian dan data lengkap satu supplier.",
+      "html": "<p><strong>Fungsi:</strong> melihat ringkasan pembelian dan data lengkap satu supplier.</p>\n<p><figure><img src=\"/help/pembelian/04-detail-supplier.webp\" alt=\"Halaman detail supplier\" width=\"1440\" height=\"1887\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman detail supplier</figcaption></figure></p>\n<ul>\n<li>Kartu atas: <strong>Total pembelian</strong> (belum termasuk PPN), <strong>Sisa utang</strong>, <strong>Penerimaan</strong>, <strong>Termin</strong>.</li>\n<li>Kiri: identitas, kontak, alamat, akun pembelian, rekening, penanggung jawab.</li>\n<li>Kanan: <strong>Riwayat penerimaan</strong> 10 terakhir. Klik <strong>Lihat semua</strong> untuk daftar lengkap.</li>\n<li>Tombol <strong>Terima barang</strong> membuka formulir penerimaan dengan supplier ini sudah terpilih.</li>\n</ul>\n"
+    },
+    {
+      "slug": "mengubah-data-supplier",
+      "number": 5,
+      "title": "Mengubah Data Supplier",
+      "summary": "memperbarui data supplier, misalnya termin atau rekening baru.",
+      "html": "<p><strong>Fungsi:</strong> memperbarui data supplier, misalnya termin atau rekening baru.</p>\n<p><figure><img src=\"/help/pembelian/05-edit-supplier.webp\" alt=\"Formulir ubah supplier\" width=\"1440\" height=\"2703\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir ubah supplier</figcaption></figure></p>\n<ul>\n<li>Kolomnya sama dengan <strong>Supplier baru</strong>, ditambah <strong>Status kerja sama</strong>.</li>\n<li>Mengubah termin atau tipe kerja sama <strong>tidak berlaku surut</strong>. Penerimaan lama tetap memakai ketentuan saat itu.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di detail supplier, klik <strong>Ubah supplier</strong> (atau <strong>⋮</strong> › <strong>Ubah</strong> di daftar).</li>\n<li>Ubah data yang perlu, lalu klik <strong>Simpan perubahan</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menu-aksi-supplier",
+      "number": 6,
+      "title": "Menu Aksi Supplier (⋮)",
+      "summary": "jalan pintas untuk satu supplier dari daftar.",
+      "html": "<p><strong>Fungsi:</strong> jalan pintas untuk satu supplier dari daftar.</p>\n<p><figure><img src=\"/help/pembelian/02-daftar-supplier--menu-aksi.webp\" alt=\"Menu aksi supplier\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Menu aksi supplier <a class=\"help-open\" href=\"/dashboard/purchasing/suppliers\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Menu</th>\n<th>Gunanya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Lihat detail</td>\n<td>Membuka detail supplier</td>\n</tr>\n<tr>\n<td>Ubah</td>\n<td>Membuka formulir ubah</td>\n</tr>\n<tr>\n<td>Nonaktifkan</td>\n<td>Menghentikan kerja sama tanpa menghapus data</td>\n</tr>\n<tr>\n<td>Hapus</td>\n<td>Menyembunyikan supplier dari daftar</td>\n</tr>\n</tbody></table></div>\n"
+    },
+    {
+      "slug": "menonaktifkan-supplier",
+      "number": 7,
+      "title": "Menonaktifkan Supplier",
+      "summary": "menghentikan kerja sama dengan supplier.",
+      "html": "<p><strong>Fungsi:</strong> menghentikan kerja sama dengan supplier.</p>\n<p><figure><img src=\"/help/pembelian/02-daftar-supplier--nonaktifkan.webp\" alt=\"Dialog Nonaktifkan supplier\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Nonaktifkan supplier <a class=\"help-open\" href=\"/dashboard/purchasing/suppliers\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Supplier nonaktif <strong>tidak muncul</strong> saat membuat penerimaan barang, dan penerimaan baru atas namanya ditolak.</li>\n<li>Data tidak dihapus dan bisa diaktifkan lagi kapan saja.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>⋮</strong> pada baris supplier › <strong>Nonaktifkan</strong>.</li>\n<li>Klik <strong>Nonaktifkan</strong> untuk memastikan, atau <strong>Batal</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menghapus-supplier",
+      "number": 8,
+      "title": "Menghapus Supplier",
+      "summary": "menghapus supplier yang salah input atau dobel.",
+      "html": "<p><strong>Fungsi:</strong> menghapus supplier yang salah input atau dobel.</p>\n<p><figure><img src=\"/help/pembelian/02-daftar-supplier--hapus.webp\" alt=\"Dialog Hapus supplier\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Hapus supplier <a class=\"help-open\" href=\"/dashboard/purchasing/suppliers\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Riwayat penerimaan dan fakturnya <strong>tetap utuh</strong>. Supplier hanya disembunyikan dari daftar dan bisa dipulihkan.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> untuk supplier yang sekadar tidak dipakai lagi, pakai <strong>Nonaktifkan</strong>, bukan <strong>Hapus</strong>.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>⋮</strong> pada baris supplier › <strong>Hapus</strong>.</li>\n<li>Klik <strong>Hapus</strong> untuk memastikan, atau <strong>Batal</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "daftar-penerimaan-barang",
+      "number": 9,
+      "title": "Daftar Penerimaan Barang",
+      "summary": "melihat semua barang yang sudah dan akan datang dari supplier.",
+      "html": "<p><strong>Fungsi:</strong> melihat semua barang yang sudah dan akan datang dari supplier.</p>\n<p><figure><img src=\"/help/pembelian/06-daftar-penerimaan.webp\" alt=\"Tab Penerimaan\" width=\"1440\" height=\"1110\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Penerimaan <a class=\"help-open\" href=\"/dashboard/purchasing/receipts\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Kanan atas: <strong>Total nilai pembelian</strong> (sebelum PPN, seluruh periode).</li>\n<li>Kolom: <strong>Nomor</strong>, <strong>Tanggal</strong>, <strong>Supplier</strong>, <strong>Cabang</strong>, <strong>Gudang</strong>, <strong>Jenis</strong>, <strong>Status</strong>, <strong>Item</strong>, <strong>Nilai</strong>, <strong>Faktur</strong>.</li>\n<li><strong>Status</strong>: <strong>Belum diterima</strong>, <strong>Diterima sebagian</strong>, <strong>Diterima</strong>, atau <strong>Ditutup</strong>.</li>\n<li>Kolom <strong>Faktur</strong>: <strong>Lihat faktur</strong>, <strong>Belum difakturkan</strong>, atau <strong>Tanpa faktur</strong> (konsinyasi).</li>\n</ul>\n"
+    },
+    {
+      "slug": "filter-dan-menu-aksi-penerimaan",
+      "number": 10,
+      "title": "Filter dan Menu Aksi Penerimaan",
+      "summary": "menyaring daftar penerimaan dan membuka detailnya.",
+      "html": "<p><strong>Fungsi:</strong> menyaring daftar penerimaan dan membuka detailnya.</p>\n<p><figure><img src=\"/help/pembelian/06-daftar-penerimaan--filter.webp\" alt=\"Dialog Filter penerimaan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Filter penerimaan <a class=\"help-open\" href=\"/dashboard/purchasing/receipts\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Filter</strong>: <strong>Supplier</strong>, <strong>Cabang</strong>, <strong>Gudang</strong>, <strong>Jenis</strong>, <strong>Status</strong>, dan <strong>Tanggal terima</strong> (Hari ini, 7 hari, 30 hari, Bulan ini, atau <strong>Dari</strong>–<strong>Sampai</strong>).</li>\n</ul>\n<p><figure><img src=\"/help/pembelian/06-daftar-penerimaan--menu-aksi.webp\" alt=\"Menu aksi penerimaan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Menu aksi penerimaan <a class=\"help-open\" href=\"/dashboard/purchasing/receipts\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Menu <strong>⋮</strong>: <strong>Detail</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "menerima-barang-beli-putus",
+      "number": 11,
+      "title": "Menerima Barang (Beli Putus)",
+      "summary": "mencatat barang yang datang. Stok, HPP, dan utang langsung tercatat saat disimpan.",
+      "html": "<p><strong>Fungsi:</strong> mencatat barang yang datang. Stok, HPP, dan utang langsung tercatat saat disimpan.</p>\n<p><figure><img src=\"/help/pembelian/07-terima-barang.webp\" alt=\"Formulir Terima barang\" width=\"1440\" height=\"1543\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir Terima barang <a class=\"help-open\" href=\"/dashboard/purchasing/receipts/new\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/pembelian/07-terima-barang--terisi.webp\" alt=\"Formulir setelah supplier, cabang, dan gudang dipilih\" width=\"1440\" height=\"1543\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir setelah supplier, cabang, dan gudang dipilih <a class=\"help-open\" href=\"/dashboard/purchasing/receipts/new\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Yang perlu diperhatikan:</strong></p>\n<ul>\n<li>Pilih <strong>Supplier</strong>, <strong>Cabang</strong>, lalu <strong>Masuk ke gudang</strong>. Tombol <strong>+ Tambah produk</strong> baru aktif setelah itu.</li>\n<li><strong>Tanggal terima</strong> = tanggal barang tiba, bukan tanggal input.</li>\n<li>Setiap baris barang: <strong>Qty</strong>, <strong>Harga beli</strong> (wajib), dan untuk produk berkedaluwarsa: <strong>Batch</strong>, <strong>Kode batch internal</strong>, <strong>Kode batch supplier</strong>, <strong>Kedaluwarsa</strong>.</li>\n<li><strong>PPN masukan</strong>: isi kalau ada PPN di nota supplier. Tidak menambah nilai persediaan.</li>\n<li><strong>Sekalian catat faktur supplier</strong>: centang kalau fakturnya sudah ada. Faktur dibuat persis sama dengan penerimaan ini.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> penerimaan yang sudah disimpan tidak bisa diubah. Kalau ada barang yang salah, koreksi lewat <strong>Retur</strong>.</p>\n</blockquote>\n<p><figure><img src=\"/help/pembelian/07-terima-barang--tambah-produk.webp\" alt=\"Dialog Tambah barang yang diterima\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Tambah barang yang diterima <a class=\"help-open\" href=\"/dashboard/purchasing/receipts/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Cari nama atau SKU, lalu centang beberapa produk sekaligus. <strong>Pilih semua hasil</strong> mencentang semua hasil pencarian.</li>\n<li>Produk konsinyasi tidak muncul di tab <strong>Beli putus</strong>.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di tab <strong>Penerimaan</strong>, klik <strong>Terima barang</strong>.</li>\n<li>Pastikan tab <strong>Beli putus</strong> terpilih.</li>\n<li>Pilih <strong>Supplier</strong>, <strong>Cabang</strong>, dan <strong>Masuk ke gudang</strong>.</li>\n<li>Klik <strong>+ Tambah produk</strong>, centang produk, lalu klik <strong>Tambahkan</strong>.</li>\n<li>Isi <strong>Qty</strong> dan <strong>Harga beli</strong> setiap baris, serta batch dan tanggal kedaluwarsa bila diminta.</li>\n<li>Periksa <strong>Ringkasan</strong>, lalu klik <strong>Simpan penerimaan</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menerima-barang-konsinyasi-titipan",
+      "number": 12,
+      "title": "Menerima Barang Konsinyasi (Titipan)",
+      "summary": "mencatat barang titipan supplier.",
+      "html": "<p><strong>Fungsi:</strong> mencatat barang titipan supplier.</p>\n<p><figure><img src=\"/help/pembelian/07-terima-barang--konsinyasi.webp\" alt=\"Tab Konsinyasi (titipan)\" width=\"1440\" height=\"1290\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Konsinyasi (titipan) <a class=\"help-open\" href=\"/dashboard/purchasing/receipts/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Harga yang diisi adalah <strong>Harga setor</strong>: harga per unit yang dibayar ke supplier <strong>saat barang terjual</strong>, bukan saat diterima.</li>\n<li>Penerimaan konsinyasi tidak membuat faktur. Utangnya muncul di <strong>Ringkasan › Utang konsinyasi</strong> setelah barang terjual, lalu dibayar lewat <strong>Setor</strong> (bagian <a href=\"/dashboard/help/pembelian/menyetor-utang-konsinyasi\">35</a>).</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Terima barang</strong>, lalu pilih tab <strong>Konsinyasi (titipan)</strong>.</li>\n<li>Isi formulir seperti beli putus, dengan <strong>Harga setor</strong> di setiap baris.</li>\n<li>Klik <strong>Simpan penerimaan</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menerima-barang-dari-faktur",
+      "number": 13,
+      "title": "Menerima Barang dari Faktur",
+      "summary": "mencatat kedatangan barang untuk faktur yang sudah dicatat lebih dulu, termasuk sisa barang yang datang belakangan.",
+      "html": "<p><strong>Fungsi:</strong> mencatat kedatangan barang untuk faktur yang sudah dicatat lebih dulu, termasuk sisa barang yang datang belakangan.</p>\n<p><figure><img src=\"/help/pembelian/08-terima-dari-faktur.webp\" alt=\"Formulir Terima barang dari faktur\" width=\"1440\" height=\"1330\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir Terima barang dari faktur <a class=\"help-open\" href=\"/dashboard/purchasing/receipts/new?invoice=…\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/pembelian/08-terima-dari-faktur--tambah-barang.webp\" alt=\"Dialog Tambah barang dari faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Tambah barang dari faktur <a class=\"help-open\" href=\"/dashboard/purchasing/receipts/new?invoice=…\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Supplier, cabang, dan gudang mengikuti faktur dan tidak bisa diubah.</li>\n<li>Hanya barang di faktur itu yang bisa dipilih. Kolom <strong>Sisa</strong> = qty faktur yang belum diterima.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Buka detail faktur, klik <strong>Buat penerimaan barang</strong> (atau <strong>⋮</strong> › <strong>Buat penerimaan barang</strong> di daftar faktur).</li>\n<li>Klik <strong>+ Tambah barang</strong>, centang barang yang datang, lalu klik <strong>Tambahkan</strong>.</li>\n<li>Isi <strong>Qty diterima</strong> dan batch bila diminta.</li>\n<li>Klik <strong>Simpan penerimaan</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "detail-penerimaan",
+      "number": 14,
+      "title": "Detail Penerimaan",
+      "summary": "melihat isi satu penerimaan dan riwayatnya.",
+      "html": "<p><strong>Fungsi:</strong> melihat isi satu penerimaan dan riwayatnya.</p>\n<p><figure><img src=\"/help/pembelian/09-detail-penerimaan.webp\" alt=\"Halaman detail penerimaan\" width=\"1440\" height=\"1311\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman detail penerimaan</figcaption></figure></p>\n<ul>\n<li>Info: supplier, cabang, gudang, jenis, tanggal, pencatat, dan <strong>Faktur pembelian</strong> terkait.</li>\n<li>Tabel barang: <strong>Batch</strong>, <strong>Kedaluwarsa</strong>, <strong>Dipesan</strong>, <strong>Diterima</strong>, <strong>Diretur</strong>, <strong>Harga beli</strong>.</li>\n<li><strong>Riwayat aktivitas</strong>: siapa mencatat apa dan kapan.</li>\n<li>Tombol <strong>Buat retur dari penerimaan ini</strong> membuka formulir retur dengan penerimaan ini sudah terpilih.</li>\n</ul>\n"
+    },
+    {
+      "slug": "daftar-faktur-pembelian",
+      "number": 15,
+      "title": "Daftar Faktur Pembelian",
+      "summary": "memantau tagihan supplier dan sisa utangnya.",
+      "html": "<p><strong>Fungsi:</strong> memantau tagihan supplier dan sisa utangnya.</p>\n<p><figure><img src=\"/help/pembelian/10-daftar-faktur.webp\" alt=\"Tab Faktur\" width=\"1440\" height=\"1070\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Faktur <a class=\"help-open\" href=\"/dashboard/purchasing/payables\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Kartu atas: <strong>Pembelian periode</strong> (bulan ini), <strong>Utang belum lunas</strong>, <strong>Jatuh tempo ≤ 7 hari</strong>, <strong>Barang belum diterima</strong>. Klik kartu <strong>Barang belum diterima</strong> untuk melihat penerimaannya.</li>\n<li>Kolom: <strong>Faktur</strong> (dengan nomor faktur supplier), <strong>Supplier</strong>, <strong>Cabang</strong>, <strong>Gudang</strong>, <strong>Jatuh tempo</strong>, <strong>Total</strong>, <strong>Dibayar</strong>, <strong>Sisa</strong>, <strong>Status</strong>.</li>\n<li><strong>Status</strong>: <strong>Belum dibayar</strong>, <strong>Dibayar sebagian</strong>, <strong>Lunas</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "filter-dan-menu-aksi-faktur",
+      "number": 16,
+      "title": "Filter dan Menu Aksi Faktur",
+      "summary": "menyaring faktur dan membuka aksi per faktur.",
+      "html": "<p><strong>Fungsi:</strong> menyaring faktur dan membuka aksi per faktur.</p>\n<p><figure><img src=\"/help/pembelian/10-daftar-faktur--filter.webp\" alt=\"Dialog Filter faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Filter faktur <a class=\"help-open\" href=\"/dashboard/purchasing/payables\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Status</strong>: Jatuh tempo, Minggu ini, Belum lunas (bawaan), Sebagian, Lunas, Semua.</li>\n<li><strong>Supplier</strong>, <strong>Cabang</strong>, <strong>Gudang</strong>, dan <strong>Tanggal faktur</strong>.</li>\n</ul>\n<p><figure><img src=\"/help/pembelian/10-daftar-faktur--menu-aksi.webp\" alt=\"Menu aksi faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Menu aksi faktur <a class=\"help-open\" href=\"/dashboard/purchasing/payables\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Menu</th>\n<th>Muncul kalau</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Detail</td>\n<td>Selalu</td>\n</tr>\n<tr>\n<td>Ubah faktur</td>\n<td>Faktur manual yang belum punya penerimaan barang</td>\n</tr>\n<tr>\n<td>Buat penerimaan barang</td>\n<td>Masih ada barang faktur yang belum diterima</td>\n</tr>\n<tr>\n<td>Bayar</td>\n<td>Belum lunas dan ada barang yang sudah diterima</td>\n</tr>\n</tbody></table></div>\n"
+    },
+    {
+      "slug": "mencatat-faktur-supplier",
+      "number": 17,
+      "title": "Mencatat Faktur Supplier",
+      "summary": "mencatat tagihan dari supplier.",
+      "html": "<p><strong>Fungsi:</strong> mencatat tagihan dari supplier.</p>\n<p><figure><img src=\"/help/pembelian/11-catat-faktur.webp\" alt=\"Formulir Catat faktur supplier\" width=\"1440\" height=\"1250\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir Catat faktur supplier <a class=\"help-open\" href=\"/dashboard/purchasing/payables/new\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Ada dua cara, ditentukan setelah supplier dipilih:</strong></p>\n<ul>\n<li><strong>Dari penerimaan</strong>: barang sudah datang. Barang, qty, dan harga disalin dari penerimaannya.</li>\n<li><strong>Faktur manual</strong>: tagihan datang lebih dulu dari barangnya. Barang diketik sendiri.</li>\n</ul>\n<p><figure><img src=\"/help/pembelian/11-catat-faktur--pilih-supplier.webp\" alt=\"Dialog Penerimaan yang belum ada fakturnya\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Penerimaan yang belum ada fakturnya <a class=\"help-open\" href=\"/dashboard/purchasing/payables/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Muncul otomatis kalau supplier punya penerimaan yang belum difakturkan.</li>\n<li>Centang satu atau beberapa penerimaan (cabang dan gudang harus sama), lalu klik <strong>Buat dari penerimaan</strong>. Atau klik <strong>Buat faktur manual</strong>.</li>\n</ul>\n<p><strong>Yang perlu diperhatikan:</strong></p>\n<ul>\n<li><strong>Jatuh tempo</strong> dihitung dari <strong>Tanggal faktur</strong> + termin supplier.</li>\n<li>Nomor faktur dibuat otomatis. Isi <strong>No. faktur supplier</strong> dari dokumen supplier supaya mudah dicocokkan.</li>\n<li>Faktur manual <strong>belum bisa dibayar</strong> sampai barangnya diterima.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di tab <strong>Faktur</strong>, klik <strong>Catat faktur supplier</strong>.</li>\n<li>Pilih <strong>Supplier</strong>.</li>\n<li>Pilih penerimaan di dialog, atau klik <strong>Buat faktur manual</strong>.</li>\n<li>Untuk faktur manual: pilih <strong>Cabang</strong>, <strong>Gudang tujuan</strong>, lalu tambahkan barang (bagian <a href=\"/dashboard/help/pembelian/menambah-barang-di-faktur-manual\">18</a>).</li>\n<li>Isi <strong>No. faktur supplier</strong>, <strong>PPN masukan</strong>, diskon, dan biaya lain bila ada (bagian <a href=\"/dashboard/help/pembelian/diskon-faktur-dan-biaya-lain\">19</a>).</li>\n<li>Klik <strong>Simpan faktur</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menambah-barang-di-faktur-manual",
+      "number": 18,
+      "title": "Menambah Barang di Faktur Manual",
+      "summary": "memilih produk yang ditagih supplier.",
+      "html": "<p><strong>Fungsi:</strong> memilih produk yang ditagih supplier.</p>\n<p><figure><img src=\"/help/pembelian/11-catat-faktur--tambah-produk.webp\" alt=\"Dialog Tambah barang di faktur manual\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Tambah barang di faktur manual <a class=\"help-open\" href=\"/dashboard/purchasing/payables/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Cari nama atau SKU, centang produk, lalu klik <strong>Tambahkan</strong>.</li>\n<li>Setelah itu isi <strong>Qty</strong>, <strong>Harga beli</strong>, dan <strong>Diskon</strong> per baris.</li>\n<li>Satu produk satu baris. Setelah penerimaan dibuat dari faktur ini, daftar barang terkunci.</li>\n</ul>\n"
+    },
+    {
+      "slug": "diskon-faktur-dan-biaya-lain",
+      "number": 19,
+      "title": "Diskon Faktur dan Biaya Lain",
+      "summary": "mencatat potongan harga dan biaya tambahan (ongkir, kemasan) dari supplier.",
+      "html": "<p><strong>Fungsi:</strong> mencatat potongan harga dan biaya tambahan (ongkir, kemasan) dari supplier.</p>\n<p><figure><img src=\"/help/pembelian/11-catat-faktur--tambah-biaya.webp\" alt=\"Dialog Tambah biaya lain\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Tambah biaya lain <a class=\"help-open\" href=\"/dashboard/purchasing/payables/new\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/pembelian/11-catat-faktur--biaya-akun-beban.webp\" alt=\"Biaya lain dimasukkan ke akun beban\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Biaya lain dimasukkan ke akun beban <a class=\"help-open\" href=\"/dashboard/purchasing/payables/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Diskon faktur</strong>: pilih <strong>%</strong> atau nominal. Diskon <strong>dibagi proporsional</strong> ke semua barang, sehingga <strong>HPP</strong> setiap barang ikut turun.</li>\n<li><strong>Biaya lain</strong> punya dua pilihan:<ul>\n<li><strong>Masuk akun beban</strong> mati (bawaan): biaya <strong>dibagi ke barang dan masuk HPP</strong>.</li>\n<li><strong>Masuk akun beban</strong> nyala: biaya <strong>tidak masuk HPP</strong>, dicatat ke <strong>Akun beban</strong> yang dipilih.</li>\n</ul>\n</li>\n<li><strong>PPN masukan</strong> dicatat ke akun PPN masukan, tidak menambah HPP.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> pengaturan PKP (pengusaha kena pajak) <strong>belum tersedia</strong>. PPN cukup diisi sesuai nota supplier.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Di formulir faktur, isi <strong>Diskon faktur</strong> bila ada.</li>\n<li>Klik <strong>+ Tambah biaya lain</strong>, isi <strong>Nama biaya</strong> dan <strong>Nominal</strong>.</li>\n<li>Nyalakan <strong>Masuk akun beban</strong> dan pilih <strong>Akun beban</strong> kalau biaya tidak ingin masuk HPP.</li>\n<li>Klik <strong>Simpan biaya</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "faktur-dari-penerimaan",
+      "number": 20,
+      "title": "Faktur dari Penerimaan",
+      "summary": "contoh faktur yang dibuat dari penerimaan yang sudah tercatat.",
+      "html": "<p><strong>Fungsi:</strong> contoh faktur yang dibuat dari penerimaan yang sudah tercatat.</p>\n<p><figure><img src=\"/help/pembelian/12-faktur-dari-penerimaan.webp\" alt=\"Formulir faktur dari penerimaan\" width=\"1440\" height=\"1346\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir faktur dari penerimaan <a class=\"help-open\" href=\"/dashboard/purchasing/payables/new?receipt=…\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Cabang</strong> dan <strong>Gudang</strong> mengikuti penerimaan. Klik <strong>Pilih penerimaan</strong> untuk mengganti penerimaan.</li>\n<li>Daftar barang disalin dan <strong>tidak bisa diubah</strong> di sini. Utangnya sudah tercatat saat barang diterima.</li>\n<li>Kalau tagihan supplier berbeda, selesaikan lewat <strong>Retur</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "detail-faktur",
+      "number": 21,
+      "title": "Detail Faktur",
+      "summary": "melihat isi faktur, status barang, dan status pembayaran.",
+      "html": "<p><strong>Fungsi:</strong> melihat isi faktur, status barang, dan status pembayaran.</p>\n<p><figure><img src=\"/help/pembelian/13-detail-faktur.webp\" alt=\"Halaman detail faktur\" width=\"1440\" height=\"1422\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman detail faktur</figcaption></figure></p>\n<ul>\n<li><strong>Rincian faktur</strong>: supplier, cabang, gudang, nomor faktur supplier, tanggal, jatuh tempo, dan <strong>Status barang</strong>.</li>\n<li>Tabel barang: <strong>Diterima</strong> dan <strong>Sisa qty</strong> per produk.</li>\n<li><strong>Status pembayaran</strong>: total, terbayar, sisa, dan nilai yang <strong>bisa dibayar sekarang</strong> (hanya barang yang sudah diterima).</li>\n<li><strong>Riwayat pembayaran</strong>: klik untuk membuka detail pembayaran.</li>\n<li>Kalau ada barang belum datang, muncul tombol <strong>Buat penerimaan barang</strong>.</li>\n</ul>\n<p><figure><img src=\"/help/pembelian/14-detail-faktur-manual.webp\" alt=\"Detail faktur manual yang barangnya belum diterima\" width=\"1440\" height=\"1298\" loading=\"lazy\" decoding=\"async\"><figcaption>Detail faktur manual yang barangnya belum diterima</figcaption></figure></p>\n<ul>\n<li>Faktur manual yang barangnya belum datang menampilkan kotak kuning &quot;Barang dari faktur ini belum diterima&quot; dengan tombol <strong>Hapus</strong>, <strong>Ubah faktur</strong>, dan <strong>Buat penerimaan barang</strong>.</li>\n<li>Faktur seperti ini <strong>belum mencatat utang</strong> dan <strong>belum bisa dibayar</strong>. Status pembayarannya tertulis &quot;Belum ada yang bisa dibayar — barangnya belum diterima&quot;.</li>\n</ul>\n"
+    },
+    {
+      "slug": "membayar-faktur-supplier",
+      "number": 22,
+      "title": "Membayar Faktur Supplier",
+      "summary": "mencatat DP, cicilan, atau pelunasan ke supplier.",
+      "html": "<p><strong>Fungsi:</strong> mencatat DP, cicilan, atau pelunasan ke supplier.</p>\n<p><figure><img src=\"/help/pembelian/13-detail-faktur--catat-pembayaran.webp\" alt=\"Dialog Catat pembayaran dari detail faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Catat pembayaran dari detail faktur</figcaption></figure></p>\n<p><figure><img src=\"/help/pembelian/10-daftar-faktur--bayar.webp\" alt=\"Dialog Bayar dari daftar faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Bayar dari daftar faktur <a class=\"help-open\" href=\"/dashboard/purchasing/payables\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Bisa dibayar sekarang</strong> = nilai barang yang sudah diterima dan belum dibayar.</li>\n<li>Tombol cepat <strong>25%</strong>, <strong>50%</strong>, <strong>Lunasi</strong> mengisi <strong>Jumlah dibayar</strong>.</li>\n<li><strong>Keluar dari</strong>: akun kas atau bank. <strong>No. referensi</strong>: nomor transfer, giro, atau ID QRIS (opsional).</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Buka detail faktur, klik <strong>Catat pembayaran</strong> (atau <strong>⋮</strong> › <strong>Bayar</strong> di daftar faktur).</li>\n<li>Isi <strong>Jumlah dibayar</strong> dan <strong>Tanggal bayar</strong>.</li>\n<li>Pilih akun di <strong>Keluar dari</strong>.</li>\n<li>Klik <strong>Simpan pembayaran</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "mengubah-faktur",
+      "number": 23,
+      "title": "Mengubah Faktur",
+      "summary": "memperbaiki faktur manual sebelum barangnya diterima.",
+      "html": "<p><strong>Fungsi:</strong> memperbaiki faktur manual sebelum barangnya diterima.</p>\n<p><figure><img src=\"/help/pembelian/15-ubah-faktur.webp\" alt=\"Halaman Ubah faktur\" width=\"1440\" height=\"1289\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman Ubah faktur</figcaption></figure></p>\n<ul>\n<li>Hanya faktur <strong>manual yang belum punya penerimaan barang</strong> yang bisa diubah.</li>\n<li>Formulirnya sama dengan <strong>Catat faktur supplier</strong>: tanggal, supplier, cabang, <strong>Gudang tujuan</strong>, <strong>No. faktur supplier</strong>, <strong>Keterangan</strong>, barang, <strong>PPN masukan</strong>, <strong>Diskon faktur</strong>, dan biaya lain.</li>\n<li>Setelah penerimaan barang dibuat dari faktur ini, daftar barang tidak bisa diubah lagi.</li>\n</ul>\n<p><figure><img src=\"/help/pembelian/16-ubah-faktur-terkunci.webp\" alt=\"Faktur yang tidak bisa diubah\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Faktur yang tidak bisa diubah</figcaption></figure></p>\n<ul>\n<li>Faktur yang sudah punya penerimaan hanya menampilkan pesan alasannya. Klik <strong>Kembali ke faktur</strong>.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di detail faktur, klik <strong>Ubah faktur</strong> (atau <strong>⋮</strong> › <strong>Ubah faktur</strong> di daftar).</li>\n<li>Ubah data atau barang yang salah.</li>\n<li>Klik <strong>Simpan faktur</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menghapus-faktur-manual",
+      "number": 24,
+      "title": "Menghapus Faktur Manual",
+      "summary": "menghapus faktur manual yang salah catat, sebelum barangnya diterima.",
+      "html": "<p><strong>Fungsi:</strong> menghapus faktur manual yang salah catat, sebelum barangnya diterima.</p>\n<p><figure><img src=\"/help/pembelian/14-detail-faktur-manual--hapus.webp\" alt=\"Dialog Hapus faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Hapus faktur</figcaption></figure></p>\n<ul>\n<li>Hanya muncul untuk faktur yang <strong>belum punya penerimaan barang</strong> dan <strong>belum dibayar</strong>.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di detail faktur, klik <strong>Hapus</strong>.</li>\n<li>Klik <strong>Hapus faktur</strong> untuk memastikan, atau <strong>Batal</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "detail-pembayaran",
+      "number": 25,
+      "title": "Detail Pembayaran",
+      "summary": "melihat satu pembayaran ke supplier dan jurnalnya.",
+      "html": "<p><strong>Fungsi:</strong> melihat satu pembayaran ke supplier dan jurnalnya.</p>\n<p><figure><img src=\"/help/pembelian/17-detail-pembayaran.webp\" alt=\"Halaman detail pembayaran\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman detail pembayaran</figcaption></figure></p>\n<ul>\n<li>Info: nomor pembayaran, faktur, supplier, jumlah, akun <strong>Keluar dari</strong>, tanggal, dan <strong>Jurnal</strong>.</li>\n<li><strong>Faktur ini sekarang</strong>: total tagihan, terbayar, dan sisa terbaru.</li>\n<li><strong>Lihat di Transaksi Keuangan →</strong> membuka transaksi yang sama di modul Keuangan.</li>\n</ul>\n"
+    },
+    {
+      "slug": "mengubah-pembayaran",
+      "number": 26,
+      "title": "Mengubah Pembayaran",
+      "summary": "memperbaiki pembayaran yang salah tanggal, nominal, akun, atau nomor referensi.",
+      "html": "<p><strong>Fungsi:</strong> memperbaiki pembayaran yang salah tanggal, nominal, akun, atau nomor referensi.</p>\n<p><figure><img src=\"/help/pembelian/17-detail-pembayaran--ubah-pembayaran.webp\" alt=\"Dialog Ubah transaksi\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Ubah transaksi</figcaption></figure></p>\n<ul>\n<li>Nomor pembayaran tetap sama. Jurnal lama <strong>dibalik</strong> dan jurnal baru diposting ulang.</li>\n<li>Hanya akun bank yang bisa dipilih. Untuk pindah ke kas, batalkan lalu catat ulang.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di detail pembayaran, klik <strong>Ubah pembayaran</strong>.</li>\n<li>Ubah data, isi <strong>Alasan perubahan</strong> bila perlu.</li>\n<li>Klik <strong>Simpan transaksi</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "membatalkan-pembayaran",
+      "number": 27,
+      "title": "Membatalkan Pembayaran",
+      "summary": "membatalkan pembayaran yang salah atau dobel.",
+      "html": "<p><strong>Fungsi:</strong> membatalkan pembayaran yang salah atau dobel.</p>\n<p><figure><img src=\"/help/pembelian/17-detail-pembayaran--batalkan-pembayaran.webp\" alt=\"Dialog Batalkan transaksi\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Batalkan transaksi</figcaption></figure></p>\n<ul>\n<li>Pembayaran <strong>tidak dihapus</strong>. Sistem membuat jurnal pembalik dan barisnya tetap terlihat dengan tanda dibatalkan.</li>\n<li>Sisa tagihan faktur naik kembali sebesar jumlah ini.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Batalkan pembayaran</strong>.</li>\n<li>Isi <strong>Alasan pembatalan</strong> (wajib).</li>\n<li>Klik <strong>Batalkan transaksi</strong>, atau <strong>Kembali</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "daftar-retur-ke-supplier",
+      "number": 28,
+      "title": "Daftar Retur ke Supplier",
+      "summary": "melihat semua retur, baik draft maupun final.",
+      "html": "<p><strong>Fungsi:</strong> melihat semua retur, baik draft maupun final.</p>\n<p><figure><img src=\"/help/pembelian/18-daftar-retur.webp\" alt=\"Tab Retur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Retur <a class=\"help-open\" href=\"/dashboard/purchasing/returns\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Kolom: <strong>Nomor</strong>, <strong>Tanggal</strong>, <strong>Supplier</strong>, <strong>Penerimaan asal</strong>, <strong>Gudang</strong>, <strong>Item</strong>, <strong>Nilai retur</strong>, <strong>Status</strong> (<strong>Draft</strong> atau <strong>Final</strong>), <strong>Aksi</strong>.</li>\n<li><strong>Aksi</strong>: <strong>Lanjutkan</strong> (draft) atau <strong>Lihat</strong> (final). Draft juga punya tombol <strong>Buang</strong>.</li>\n<li>Retur selalu dibuat dari penerimaan yang sudah tercatat, supaya harga beli aslinya ikut terbawa.</li>\n</ul>\n<p><figure><img src=\"/help/pembelian/18-daftar-retur--filter.webp\" alt=\"Dialog Filter retur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Filter retur <a class=\"help-open\" href=\"/dashboard/purchasing/returns\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Filter</strong>: <strong>Urutkan</strong> (Terbaru, Terlama, Nomor Z–A, Nomor A–Z), <strong>Supplier</strong>, <strong>Gudang</strong>, <strong>Status</strong> (Draft, Final), dan <strong>Tanggal retur</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "membuat-retur",
+      "number": 29,
+      "title": "Membuat Retur",
+      "summary": "mengembalikan barang rusak, kedaluwarsa, atau salah kirim ke supplier.",
+      "html": "<p><strong>Fungsi:</strong> mengembalikan barang rusak, kedaluwarsa, atau salah kirim ke supplier.</p>\n<p><figure><img src=\"/help/pembelian/19-buat-retur.webp\" alt=\"Formulir Buat retur\" width=\"1440\" height=\"1019\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir Buat retur <a class=\"help-open\" href=\"/dashboard/purchasing/returns/new\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/pembelian/20-buat-retur-terisi.webp\" alt=\"Formulir retur setelah penerimaan dipilih\" width=\"1440\" height=\"1201\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir retur setelah penerimaan dipilih <a class=\"help-open\" href=\"/dashboard/purchasing/returns/new?receipt=…\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/pembelian/20-buat-retur-terisi--alasan.webp\" alt=\"Pilihan alasan retur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pilihan alasan retur <a class=\"help-open\" href=\"/dashboard/purchasing/returns/new?receipt=…\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Yang perlu diperhatikan:</strong></p>\n<ul>\n<li><strong>Pilih penerimaan</strong> asal barang. Harga beli asli diambil dari penerimaan itu, bukan HPP hari ini.</li>\n<li><strong>Tanggal retur</strong> = tanggal barang benar-benar dikembalikan.</li>\n<li>Kolom <strong>Maks</strong> = qty yang masih bisa diretur.</li>\n<li><strong>Alasan</strong>: Rusak, Kedaluwarsa, Salah kirim, Tidak sesuai pesanan, atau <strong>Tulis sendiri…</strong>.</li>\n<li><strong>Simpan draft retur</strong> belum mengubah stok dan utang.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di tab <strong>Retur</strong>, klik <strong>Buat retur</strong> (atau <strong>Buat retur dari penerimaan ini</strong> di detail penerimaan).</li>\n<li>Pilih penerimaan dan isi <strong>Tanggal retur</strong>.</li>\n<li>Isi <strong>Qty retur</strong> dan <strong>Alasan</strong> setiap barang yang dikembalikan.</li>\n<li>Klik <strong>Simpan draft retur</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "memeriksa-dan-mengubah-draft-retur",
+      "number": 30,
+      "title": "Memeriksa dan Mengubah Draft Retur",
+      "summary": "mengecek draft sebelum retur benar-benar dijalankan.",
+      "html": "<p><strong>Fungsi:</strong> mengecek draft sebelum retur benar-benar dijalankan.</p>\n<p><figure><img src=\"/help/pembelian/21-detail-retur-draft.webp\" alt=\"Detail draft retur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Detail draft retur</figcaption></figure></p>\n<ul>\n<li>Buka draft dari tab <strong>Retur</strong> › <strong>Lanjutkan</strong>.</li>\n<li>Kartu <strong>Retur</strong>: nomor, status <strong>Draft</strong>, supplier, gudang, <strong>Penerimaan asal</strong>, tanggal, pembuat, dan <strong>Nilai retur</strong>.</li>\n<li><strong>Barang yang dikembalikan</strong>: produk, batch, qty, <strong>Harga beli asli</strong>, subtotal, dan alasan.</li>\n</ul>\n<p><figure><img src=\"/help/pembelian/21-detail-retur-draft--ubah-baris.webp\" alt=\"Mengubah baris draft retur\" width=\"1440\" height=\"928\" loading=\"lazy\" decoding=\"async\"><figcaption>Mengubah baris draft retur</figcaption></figure></p>\n<ul>\n<li><strong>Ubah baris</strong> membuka kolom <strong>Qty retur</strong>, <strong>Alasan</strong>, dan <strong>Tanggal retur</strong>. Kolom <strong>Maks</strong> menunjukkan sisa qty yang masih bisa diretur.</li>\n<li>Klik <strong>Simpan perubahan</strong>, atau <strong>Batal</strong> untuk membuang perubahan.</li>\n</ul>\n"
+    },
+    {
+      "slug": "submit-retur",
+      "number": 31,
+      "title": "Submit Retur",
+      "summary": "menjalankan retur: stok keluar dan utang supplier berkurang.",
+      "html": "<p><strong>Fungsi:</strong> menjalankan retur: stok keluar dan utang supplier berkurang.</p>\n<p><figure><img src=\"/help/pembelian/21-detail-retur-draft--submit-retur.webp\" alt=\"Dialog Submit retur ke supplier\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Submit retur ke supplier</figcaption></figure></p>\n<ul>\n<li>Dialog <strong>Submit retur ke supplier?</strong> menyebut jumlah baris yang masuk kartu stok, totalnya, dan berapa utang supplier berkurang (konsinyasi: utang <strong>tidak berubah</strong>).</li>\n<li>Di bawah draft tampil perhitungan HPP baru dan <strong>Jurnal otomatis</strong> yang akan diposting.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> retur yang sudah disubmit <strong>tidak bisa diubah atau dibatalkan</strong>. Kalau keliru, catat penerimaan barang baru.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Buka draft retur, periksa barang dan perkiraannya.</li>\n<li>Klik <strong>Submit retur</strong>.</li>\n<li>Klik <strong>Submit retur</strong> di dialog untuk memastikan, atau <strong>Batal</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "membuang-draft-retur",
+      "number": 32,
+      "title": "Membuang Draft Retur",
+      "summary": "membuang draft yang tidak jadi dikirim.",
+      "html": "<p><strong>Fungsi:</strong> membuang draft yang tidak jadi dikirim.</p>\n<p><figure><img src=\"/help/pembelian/21-detail-retur-draft--buang-draft.webp\" alt=\"Dialog Buang draft retur dari detail\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Buang draft retur dari detail</figcaption></figure></p>\n<p><figure><img src=\"/help/pembelian/18-daftar-retur--buang.webp\" alt=\"Dialog Buang draft retur dari daftar\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Buang draft retur dari daftar <a class=\"help-open\" href=\"/dashboard/purchasing/returns\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Draft dan semua barisnya dibuang. Stok dan utang tidak berubah, karena draft belum pernah mencatat apa pun.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Buang draft</strong> di detail retur, atau <strong>Buang</strong> di daftar retur.</li>\n<li>Klik <strong>Buang draft</strong> untuk memastikan, atau <strong>Batal</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "retur-final",
+      "number": 33,
+      "title": "Retur Final",
+      "summary": "melihat retur yang sudah disubmit.",
+      "html": "<p><strong>Fungsi:</strong> melihat retur yang sudah disubmit.</p>\n<p><figure><img src=\"/help/pembelian/22-detail-retur-final.webp\" alt=\"Detail retur final\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Detail retur final</figcaption></figure></p>\n<ul>\n<li>Status <strong>Final</strong>, dengan tautan <strong>lihat entri jurnal</strong> untuk membuka jurnalnya.</li>\n<li>Tidak ada tombol ubah atau hapus. Stok sudah keluar, HPP sudah dihitung ulang dengan harga beli asli, dan utang supplier sudah berkurang.</li>\n</ul>\n"
+    },
+    {
+      "slug": "ringkasan-pembelian",
+      "number": 34,
+      "title": "Ringkasan Pembelian",
+      "summary": "memantau pembelian dan utang supplier dalam satu layar.",
+      "html": "<p><strong>Fungsi:</strong> memantau pembelian dan utang supplier dalam satu layar.</p>\n<p><figure><img src=\"/help/pembelian/01-ringkasan.webp\" alt=\"Tab Ringkasan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Ringkasan <a class=\"help-open\" href=\"/dashboard/purchasing/summary\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Kartu</th>\n<th>Artinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Pembelian periode</td>\n<td>Total faktur pada periode terpilih</td>\n</tr>\n<tr>\n<td>Utang belum lunas</td>\n<td>Sisa utang semua faktur</td>\n</tr>\n<tr>\n<td>Jatuh tempo ≤ 7 hari</td>\n<td>Faktur yang harus dibayar minggu ini</td>\n</tr>\n<tr>\n<td>Barang belum diterima</td>\n<td>Penerimaan yang belum masuk stok dan utang</td>\n</tr>\n</tbody></table></div>\n<ul>\n<li><strong>Utang lewat jatuh tempo</strong> dan <strong>Utang jatuh tempo minggu ini</strong>: daftar faktur yang perlu segera dibayar.</li>\n<li><strong>Utang konsinyasi</strong>: barang titipan yang sudah terjual, per supplier. Kolom <strong>Supplier</strong>, <strong>Terjual</strong>, <strong>Sudah disetor</strong>, dan <strong>Sisa utang</strong>. Tombol <strong>Setor</strong> muncul selama masih ada sisa utang (bagian <a href=\"/dashboard/help/pembelian/menyetor-utang-konsinyasi\">35</a>).</li>\n<li>Kalau belum ada barang titipan yang terjual, bagian ini berisi &quot;Belum ada barang konsinyasi yang terjual.&quot;</li>\n</ul>\n<p><figure><img src=\"/help/pembelian/01-ringkasan--periode-pilih-tanggal.webp\" alt=\"Periode Pilih tanggal\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Periode Pilih tanggal <a class=\"help-open\" href=\"/dashboard/purchasing/summary\">Buka halaman ini</a></figcaption></figure></p>\n<h2>Langkah</h2>\n<ol>\n<li>Pilih <strong>Cabang</strong>, atau biarkan <strong>Semua cabang</strong>.</li>\n<li>Pilih <strong>Periode</strong>: Semua, Hari ini, Minggu ini, Bulan ini, atau <strong>Pilih tanggal</strong>.</li>\n<li>Untuk <strong>Pilih tanggal</strong>, isi <strong>Dari</strong> dan <strong>Sampai</strong>, lalu klik <strong>Terapkan</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menyetor-utang-konsinyasi",
+      "number": 35,
+      "title": "Menyetor Utang Konsinyasi",
+      "summary": "membayar supplier konsinyasi untuk barang titipan yang sudah terjual.",
+      "html": "<p><strong>Fungsi:</strong> membayar supplier konsinyasi untuk barang titipan yang sudah terjual.</p>\n<p><figure><img src=\"/help/pembelian/01-ringkasan--setor-konsinyasi.webp\" alt=\"Dialog Setor ke supplier\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Setor ke supplier <a class=\"help-open\" href=\"/dashboard/purchasing/summary\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Utang konsinyasi muncul otomatis saat barang titipan terjual, sebesar <strong>harga setor</strong> × jumlah terjual.</li>\n<li><strong>Nominal setor</strong> terisi sisa utang (tanpa angka desimal, misalnya 20000). Boleh diisi lebih kecil untuk setor sebagian, tetapi tidak boleh melebihi sisa utang.</li>\n<li><strong>Metode</strong> dan <strong>Keluar dari</strong>: jenis pembayaran dan rekening/kas yang dipakai.</li>\n<li><strong>Tanggal setor</strong>: tanggal uang benar-benar keluar. Tanggal ini yang dipakai jurnalnya.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> setoran langsung memposting jurnal dan <strong>tidak bisa dibatalkan</strong> dari dialog ini. Periksa nominal dan rekeningnya sebelum menyimpan.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Di tab <strong>Ringkasan</strong>, cari supplier di bagian <strong>Utang konsinyasi</strong>.</li>\n<li>Klik <strong>Setor</strong> di barisnya.</li>\n<li>Periksa <strong>Nominal setor</strong>, pilih <strong>Metode</strong> dan <strong>Keluar dari</strong>, lalu isi <strong>Tanggal setor</strong>. <strong>Nomor referensi</strong> dan <strong>Catatan</strong> boleh kosong.</li>\n<li>Klik <strong>Simpan setoran</strong> (atau <strong>Batal</strong>). <strong>Sudah disetor</strong> bertambah dan <strong>Sisa utang</strong> berkurang.</li>\n</ol>\n"
+    }
+  ],
+  "faq": [
+    {
+      "question": "Supplier tidak muncul saat terima barang?",
+      "answer": "Cek statusnya. Supplier <strong>nonaktif</strong> tidak bisa dipilih."
+    },
+    {
+      "question": "Tombol Tambah produk tidak aktif?",
+      "answer": "Pilih <strong>Supplier</strong>, <strong>Cabang</strong>, dan <strong>Masuk ke gudang</strong> dulu."
+    },
+    {
+      "question": "Faktur tidak bisa dibayar?",
+      "answer": "Yang bisa dibayar hanya barang yang sudah diterima. Catat penerimaannya dulu."
+    },
+    {
+      "question": "Faktur tidak bisa diubah?",
+      "answer": "Faktur yang sudah punya penerimaan barang terkunci."
+    },
+    {
+      "question": "Salah input penerimaan?",
+      "answer": "Penerimaan tidak bisa diubah. Koreksi dengan <strong>Retur</strong>."
+    },
+    {
+      "question": "Ongkir mau masuk HPP atau tidak?",
+      "answer": "Biarkan <strong>Masuk akun beban</strong> mati supaya masuk HPP. Nyalakan kalau ingin dicatat sebagai beban."
+    },
+    {
+      "question": "Kapan harus setor ke supplier konsinyasi?",
+      "answer": "Lihat <strong>Ringkasan › Utang konsinyasi</strong>. Angkanya hanya berisi barang titipan yang sudah terjual."
+    }
+  ],
+  "tips": [
+    "isi <strong>No. faktur supplier</strong> di setiap faktur, supaya mudah dicocokkan saat membayar."
+  ],
+  "updatedAt": "2026-11-04"
+}

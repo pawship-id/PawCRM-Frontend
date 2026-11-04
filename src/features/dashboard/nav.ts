@@ -13,6 +13,7 @@ import type { ComponentType, SVGProps } from "react";
 import {
   ArrowRightLeft,
   Bed,
+  BookOpen,
   Boxes,
   Calculator,
   CalendarDays,
@@ -692,6 +693,18 @@ export const NAV_SECTIONS: NavSection[] = [
           { feature: "roles", action: "read" },
           { feature: "auditLogs", action: "read" },
         ],
+      },
+      {
+        /**
+         * The in-app guide (3 November 2026). UNGATED: it is written for
+         * everybody who can sign in, a cashier as much as the owner, and it
+         * reads no tenant data. The top bar's ? opens the same pages at the
+         * article for the screen in view; this row is the way in for reading
+         * around rather than for one screen.
+         */
+        label: "Panduan",
+        href: "/dashboard/help",
+        icon: BookOpen,
       },
     ],
   },

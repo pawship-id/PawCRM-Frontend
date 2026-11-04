@@ -406,3 +406,73 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
+
+/**
+ * The guide's article text (features/help) — HTML generated from the user
+ * manuals, so it arrives as bare elements and is styled here rather than with a
+ * class on every tag. The product type scale (§5): 15 px reading copy, h2 as a
+ * section heading, h3 as a card heading. A "Penting" callout is a blockquote —
+ * a warning TINT with navy text, never orange text (§1.2).
+ */
+@layer components {
+  .help-prose {
+    @apply text-[15px] leading-relaxed text-foreground;
+  }
+  .help-prose > * + * {
+    @apply mt-3;
+  }
+  .help-prose h2 {
+    @apply mt-8 text-lg font-bold;
+  }
+  .help-prose h3 {
+    @apply mt-6 text-base font-bold;
+  }
+  .help-prose strong {
+    @apply font-semibold text-foreground;
+  }
+  .help-prose a {
+    @apply rounded-sm font-medium text-primary underline underline-offset-4 hover:text-primary-hover focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50;
+  }
+  .help-prose ul {
+    @apply list-disc pl-6;
+  }
+  .help-prose ol {
+    @apply list-decimal pl-6;
+  }
+  .help-prose li + li {
+    @apply mt-1.5;
+  }
+  .help-prose li::marker {
+    @apply text-muted;
+  }
+  .help-prose blockquote {
+    @apply rounded-r-xl border-l-4 border-secondary bg-tint-warning px-4 py-3;
+  }
+  .help-prose .help-table {
+    @apply overflow-x-auto rounded-xl border border-border;
+  }
+  .help-prose table {
+    @apply w-full text-sm;
+  }
+  .help-prose thead {
+    @apply bg-navy-100;
+  }
+  .help-prose th {
+    @apply px-3 py-2 text-left text-xs font-semibold whitespace-nowrap;
+  }
+  .help-prose td {
+    @apply border-t border-border px-3 py-2 align-top;
+  }
+  .help-prose figure {
+    @apply my-5;
+  }
+  .help-prose figure img {
+    @apply h-auto w-full cursor-zoom-in rounded-xl border border-border shadow-sm;
+  }
+  .help-prose figcaption {
+    @apply mt-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-sm text-muted;
+  }
+  .help-prose a.help-open {
+    @apply text-sm font-semibold no-underline hover:underline;
+  }
+}

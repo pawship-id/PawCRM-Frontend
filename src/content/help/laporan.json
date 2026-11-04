@@ -1,0 +1,227 @@
+{
+  "slug": "laporan",
+  "order": 14,
+  "title": "Laporan",
+  "subtitle": "Mengunduh laporan penjualan, keuangan, stok, dan operasional ke Excel, serta membuka Laba rugi, Neraca, Komisi saya, dan Stok minim di layar.",
+  "introHtml": "<p><strong>Modul ini untuk apa?</strong></p>\n<ul>\n<li>Satu tempat untuk <strong>semua laporan</strong> Buloo, dikelompokkan dalam empat tab.</li>\n<li>Sebagian besar laporan <strong>diunduh sebagai Excel</strong> (tombol <strong>Unduh</strong>).</li>\n<li>Laba rugi, Neraca, Kartu stok, dan Komisi saya <strong>dibuka di layar</strong> (tombol <strong>Buka</strong>).</li>\n</ul>\n<p><strong>Siapa yang memakai?</strong> Pemilik usaha, admin, dan bagian gudang. Groomer dan staf memakai <strong>Komisi saya</strong>.</p>\n<p><strong>Siapkan dulu:</strong> tidak ada. Laporan diambil dari transaksi yang sudah tercatat di Kasir, Penjualan, Pembelian, Inventori, Layanan, dan Keuangan.</p>\n<p><strong>Cara membuka:</strong> menu samping › <strong>Keuangan</strong> › <strong>Laporan</strong>.</p>\n<p><strong>Isi modul:</strong></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Tab</th>\n<th>Isinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Penjualan</td>\n<td>Faktur, barang terjual, batch, shift kasir, konsinyasi, pendapatan per produk</td>\n</tr>\n<tr>\n<td>Keuangan</td>\n<td>Laba rugi, Neraca, Arus kas, Saldo per akun, Biaya per kategori, Umur piutang &amp; utang</td>\n</tr>\n<tr>\n<td>Inventori</td>\n<td>Posisi stok, Kartu stok, Stok minim, Nilai persediaan, Batch, Opname, Transfer, Konsinyasi, Pembelian</td>\n</tr>\n<tr>\n<td>Operasional</td>\n<td>Performa staf, Booking, Layanan terlaris, Membership, Rekap komisi, Komisi saya</td>\n</tr>\n</tbody></table></div>\n<p><strong>Urutan kerja yang disarankan:</strong> pilih tab › klik <strong>Unduh</strong> pada laporan › atur periode dan cabang › klik <strong>Unduh Excel</strong>.</p>\n<blockquote>\n<p><strong>Penting:</strong> tab dan laporan yang muncul mengikuti hak akses peran Anda. Kalau sebuah laporan tidak terlihat, minta pemilik usaha menambahkan izinnya di <strong>Pengaturan › Peran</strong>.</p>\n</blockquote>\n",
+  "articles": [
+    {
+      "slug": "halaman-laporan",
+      "number": 1,
+      "title": "Halaman Laporan",
+      "summary": "memilih laporan yang ingin dibuka atau diunduh.",
+      "html": "<p><strong>Fungsi:</strong> memilih laporan yang ingin dibuka atau diunduh.</p>\n<p><figure><img src=\"/help/laporan/01-laporan-penjualan.webp\" alt=\"Halaman Laporan, tab Penjualan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman Laporan, tab Penjualan <a class=\"help-open\" href=\"/dashboard/reports?tab=penjualan\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Setiap baris: nama <strong>Laporan</strong>, <strong>Tujuan</strong> (isi laporannya), dan tombol aksi.</li>\n<li><strong>Unduh</strong>: membuka jendela pengaturan, lalu mengunduh file Excel.</li>\n<li><strong>Buka</strong>: membuka laporan di layar.</li>\n<li><strong>Segera</strong>: laporan belum tersedia.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Buka menu <strong>Laporan</strong>.</li>\n<li>Klik tab <strong>Penjualan</strong>, <strong>Keuangan</strong>, <strong>Inventori</strong>, atau <strong>Operasional</strong>.</li>\n<li>Klik <strong>Unduh</strong> atau <strong>Buka</strong> pada laporan yang diinginkan.</li>\n</ol>\n"
+    },
+    {
+      "slug": "cara-mengunduh-laporan-excel",
+      "number": 2,
+      "title": "Cara Mengunduh Laporan Excel",
+      "summary": "mengatur periode dan lokasi, lalu mengunduh file.",
+      "html": "<p><strong>Fungsi:</strong> mengatur periode dan lokasi, lalu mengunduh file.</p>\n<p><figure><img src=\"/help/laporan/01-laporan-penjualan--per-invoice.webp\" alt=\"Jendela unduh laporan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Jendela unduh laporan <a class=\"help-open\" href=\"/dashboard/reports?tab=penjualan\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Isi jendela unduh:</strong></p>\n<ul>\n<li><strong>Periode</strong>: pilih cepat <strong>Hari ini</strong>, <strong>Minggu ini</strong>, <strong>Bulan ini</strong> (bawaan), <strong>Bulan lalu</strong>, atau isi <strong>Dari</strong>–<strong>Sampai</strong>. Maksimal satu tahun.</li>\n<li><strong>Cabang</strong> dan <strong>Gudang</strong>: kosongkan untuk semua.</li>\n<li>Pilihan tambahan khusus laporan itu, misalnya <strong>Status</strong> atau <strong>Tipe</strong>.</li>\n<li>Catatan bertanda <strong>(i)</strong>: hal yang belum dihitung di laporan itu. Baca sebelum memakai angkanya.</li>\n</ul>\n<p><figure><img src=\"/help/laporan/01-laporan-penjualan--pilih-cabang.webp\" alt=\"Memilih cabang\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Memilih cabang <a class=\"help-open\" href=\"/dashboard/reports?tab=penjualan\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/laporan/01-laporan-penjualan--pilih-status.webp\" alt=\"Memilih status\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Memilih status <a class=\"help-open\" href=\"/dashboard/reports?tab=penjualan\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/laporan/01-laporan-penjualan--lihat-isi-kolom.webp\" alt=\"Daftar isi kolom\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Daftar isi kolom <a class=\"help-open\" href=\"/dashboard/reports?tab=penjualan\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Lihat isi kolom</strong> menampilkan semua kolom di file Excel beserta penjelasannya.</li>\n<li>Kalau tidak ada data di periode itu, file tetap terunduh tetapi hanya berisi judul kolom.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Unduh</strong> pada laporan.</li>\n<li>Pilih periode, <strong>Cabang</strong>, <strong>Gudang</strong>, dan pilihan lain. Klik <strong>Terapkan</strong> setelah mencentang.</li>\n<li>Klik <strong>Lihat isi kolom</strong> bila ingin tahu isi file.</li>\n<li>Klik <strong>Unduh Excel</strong>. Klik <strong>Batal</strong> untuk menutup.</li>\n</ol>\n"
+    },
+    {
+      "slug": "laporan-penjualan-per-faktur",
+      "number": 3,
+      "title": "Laporan Penjualan per Faktur",
+      "summary": "daftar faktur penjualan, satu baris per faktur atau satu baris per barang.",
+      "html": "<p><strong>Fungsi:</strong> daftar faktur penjualan, satu baris per faktur atau satu baris per barang.</p>\n<p><figure><img src=\"/help/laporan/01-laporan-penjualan--per-invoice-rincian.webp\" alt=\"Penjualan per faktur (rincian barang)\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Penjualan per faktur (rincian barang) <a class=\"help-open\" href=\"/dashboard/reports?tab=penjualan\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Laporan</th>\n<th>Isinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Penjualan per faktur</td>\n<td>Satu baris per faktur: total, diskon, biaya lain, pajak, status bayar</td>\n</tr>\n<tr>\n<td>Penjualan per faktur (rincian barang)</td>\n<td>Satu baris per barang atau layanan dalam faktur</td>\n</tr>\n</tbody></table></div>\n<ul>\n<li>Pilihan <strong>Status</strong>: Belum lunas, Lunas sebagian, Lunas, Batal. Bawaannya semua kecuali batal.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-penjualan-per-produk-dan-layanan",
+      "number": 4,
+      "title": "Laporan Penjualan per Produk & Layanan",
+      "summary": "kuantitas dan nilai penjualan setiap produk dan layanan.",
+      "html": "<p><strong>Fungsi:</strong> kuantitas dan nilai penjualan setiap produk dan layanan.</p>\n<p><figure><img src=\"/help/laporan/01-laporan-penjualan--per-produk.webp\" alt=\"Penjualan per produk &amp; layanan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Penjualan per produk &amp; layanan <a class=\"help-open\" href=\"/dashboard/reports?tab=penjualan\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Cocok untuk melihat produk dan layanan yang paling laku.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-batch-terjual",
+      "number": 5,
+      "title": "Laporan Batch Terjual",
+      "summary": "menelusuri batch dan tanggal kedaluwarsa yang keluar lewat penjualan.",
+      "html": "<p><strong>Fungsi:</strong> menelusuri batch dan tanggal kedaluwarsa yang keluar lewat penjualan.</p>\n<p><figure><img src=\"/help/laporan/01-laporan-penjualan--batch-terjual.webp\" alt=\"Batch terjual\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Batch terjual <a class=\"help-open\" href=\"/dashboard/reports?tab=penjualan\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Hanya produk yang dicatat per batch.</li>\n<li>Retur penjualan <strong>belum</strong> mengurangi angka di laporan ini.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-penjualan-pos-shift-kasir",
+      "number": 6,
+      "title": "Laporan Penjualan POS (Shift Kasir)",
+      "summary": "rekap penutupan shift kasir dan uang per metode pembayaran.",
+      "html": "<p><strong>Fungsi:</strong> rekap penutupan shift kasir dan uang per metode pembayaran.</p>\n<p><figure><img src=\"/help/laporan/01-laporan-penjualan--penjualan-pos.webp\" alt=\"Penjualan POS\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Penjualan POS <a class=\"help-open\" href=\"/dashboard/reports?tab=penjualan\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Periode dihitung dari <strong>tanggal shift dibuka</strong>.</li>\n<li>Pilihan <strong>Status shift</strong> untuk menyaring shift.</li>\n<li>Pembayaran yang dibatalkan setelah shift ditutup ikut terkoreksi saat diunduh.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-penjualan-konsinyasi",
+      "number": 7,
+      "title": "Laporan Penjualan Konsinyasi",
+      "summary": "penjualan barang titipan per supplier, dasar menghitung setoran.",
+      "html": "<p><strong>Fungsi:</strong> penjualan barang titipan per supplier, dasar menghitung setoran.</p>\n<p><figure><img src=\"/help/laporan/01-laporan-penjualan--konsinyasi.webp\" alt=\"Penjualan konsinyasi\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Penjualan konsinyasi <a class=\"help-open\" href=\"/dashboard/reports?tab=penjualan\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Periode dihitung dari tanggal barang keluar atau kembali.</li>\n<li>Setoran yang sudah dibayar <strong>tidak</strong> dikurangkan di sini. Sisanya dilihat di layar <strong>Konsinyasi</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "rincian-pendapatan-per-produk",
+      "number": 8,
+      "title": "Rincian Pendapatan per Produk",
+      "summary": "pendapatan, diskon, HPP (modal), dan profit setiap produk.",
+      "html": "<p><strong>Fungsi:</strong> pendapatan, diskon, HPP (modal), dan profit setiap produk.</p>\n<p><figure><img src=\"/help/laporan/01-laporan-penjualan--pendapatan-per-produk.webp\" alt=\"Rincian pendapatan per produk\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Rincian pendapatan per produk <a class=\"help-open\" href=\"/dashboard/reports?tab=penjualan\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Pilihan <strong>Tipe</strong>: Produk, Layanan, Membership.</li>\n<li>Faktur batal tidak dihitung. Retur penjualan <strong>belum</strong> mengurangi angka.</li>\n<li>Profit layanan <strong>belum</strong> dikurangi komisi groomer atau biaya kerja.</li>\n</ul>\n"
+    },
+    {
+      "slug": "tab-keuangan",
+      "number": 9,
+      "title": "Tab Keuangan",
+      "summary": "laporan uang dan pembukuan.",
+      "html": "<p><strong>Fungsi:</strong> laporan uang dan pembukuan.</p>\n<p><figure><img src=\"/help/laporan/02-laporan-keuangan.webp\" alt=\"Tab Keuangan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Keuangan <a class=\"help-open\" href=\"/dashboard/reports?tab=keuangan\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Laporan</th>\n<th>Isinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Laba rugi</td>\n<td>Untung-rugi per bulan. Dibuka di layar (lihat panduan modul Keuangan)</td>\n</tr>\n<tr>\n<td>Neraca</td>\n<td>Aset, utang, dan modal pada satu tanggal. Dibuka di layar</td>\n</tr>\n<tr>\n<td>Arus kas</td>\n<td>Uang awal sampai uang akhir, dari kegiatan operasional, investasi, dan pendanaan</td>\n</tr>\n<tr>\n<td>Saldo per akun</td>\n<td>Saldo tiap akun dengan rincian setiap pergerakannya</td>\n</tr>\n<tr>\n<td>Biaya per kategori</td>\n<td>Biaya dikelompokkan per kategori</td>\n</tr>\n<tr>\n<td>Umur piutang &amp; utang</td>\n<td>Piutang dan utang menurut lamanya belum dibayar</td>\n</tr>\n</tbody></table></div>\n"
+    },
+    {
+      "slug": "laporan-arus-kas",
+      "number": 10,
+      "title": "Laporan Arus Kas",
+      "summary": "melihat dari mana uang masuk dan ke mana uang keluar dalam satu periode.",
+      "html": "<p><strong>Fungsi:</strong> melihat dari mana uang masuk dan ke mana uang keluar dalam satu periode.</p>\n<p><figure><img src=\"/help/laporan/02-laporan-keuangan--arus-kas.webp\" alt=\"Arus kas\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Arus kas <a class=\"help-open\" href=\"/dashboard/reports?tab=keuangan\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Dihitung dari semua akun Kas &amp; Bank, per <strong>Cabang</strong>.</li>\n<li>Pindah dana antar akun kas Anda sendiri <strong>tidak</strong> dihitung sebagai masuk atau keluar.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-saldo-per-akun",
+      "number": 11,
+      "title": "Laporan Saldo per Akun",
+      "summary": "saldo setiap akun beserta rincian pergerakannya.",
+      "html": "<p><strong>Fungsi:</strong> saldo setiap akun beserta rincian pergerakannya.</p>\n<p><figure><img src=\"/help/laporan/02-laporan-keuangan--saldo-per-akun.webp\" alt=\"Saldo per akun\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Saldo per akun <a class=\"help-open\" href=\"/dashboard/reports?tab=keuangan\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Pilihan <strong>Tipe akun</strong>: Aset, Kewajiban, Ekuitas (modal), Pendapatan, Beban.</li>\n<li>Akun yang tidak punya saldo dan tidak bergerak di periode itu tidak dicantumkan.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-biaya-per-kategori",
+      "number": 12,
+      "title": "Laporan Biaya per Kategori",
+      "summary": "melihat ke mana saja biaya usaha mengalir.",
+      "html": "<p><strong>Fungsi:</strong> melihat ke mana saja biaya usaha mengalir.</p>\n<p><figure><img src=\"/help/laporan/02-laporan-keuangan--biaya-per-kategori.webp\" alt=\"Biaya per kategori\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Biaya per kategori <a class=\"help-open\" href=\"/dashboard/reports?tab=keuangan\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Pilihan <strong>Kategori</strong> biaya.</li>\n<li>Biaya bersama dibagi mengikuti aturan sub akun di <strong>Daftar akun</strong>, sama dengan Laba rugi.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-umur-piutang-dan-utang",
+      "number": 13,
+      "title": "Laporan Umur Piutang & Utang",
+      "summary": "melihat tagihan yang paling lama belum dibayar.",
+      "html": "<p><strong>Fungsi:</strong> melihat tagihan yang paling lama belum dibayar.</p>\n<p><figure><img src=\"/help/laporan/02-laporan-keuangan--umur-piutang-utang.webp\" alt=\"Umur piutang &amp; utang\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Umur piutang &amp; utang <a class=\"help-open\" href=\"/dashboard/reports?tab=keuangan\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Dikelompokkan: 0–30, 31–60, 61–90, dan lebih dari 90 hari dari jatuh tempo.</li>\n<li>Posisi <strong>per hari ini</strong>, jadi tidak ada pilihan periode.</li>\n<li>Pilihan <strong>Jenis</strong>: Piutang dan/atau Utang.</li>\n<li>Utang di sini adalah faktur pembelian. Utang konsinyasi ada di layar <strong>Konsinyasi</strong>.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> piutang di atas 60 hari sebaiknya segera ditagih. Semakin lama, semakin sulit tertagih.</p>\n</blockquote>\n"
+    },
+    {
+      "slug": "tab-inventori",
+      "number": 14,
+      "title": "Tab Inventori",
+      "summary": "laporan stok dan pembelian.",
+      "html": "<p><strong>Fungsi:</strong> laporan stok dan pembelian.</p>\n<p><figure><img src=\"/help/laporan/03-laporan-inventori.webp\" alt=\"Tab Inventori\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Inventori <a class=\"help-open\" href=\"/dashboard/reports?tab=inventori\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Kartu stok</strong> dibuka di layar Inventori (tombol <strong>Buka</strong>). Laporan lain diunduh.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-posisi-stok",
+      "number": 15,
+      "title": "Laporan Posisi Stok",
+      "summary": "stok setiap produk per gudang, termasuk nilai persediaannya.",
+      "html": "<p><strong>Fungsi:</strong> stok setiap produk per gudang, termasuk nilai persediaannya.</p>\n<p><figure><img src=\"/help/laporan/03-laporan-inventori--posisi-stok.webp\" alt=\"Posisi stok\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Posisi stok <a class=\"help-open\" href=\"/dashboard/reports?tab=inventori\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Posisi saat diunduh, satu baris per produk per gudang.</li>\n<li>Pilihan <strong>Stok</strong>: <strong>Stok tidak nol</strong> dan/atau <strong>Stok 0</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-stok-minim-excel",
+      "number": 16,
+      "title": "Laporan Stok Minim (Excel)",
+      "summary": "daftar produk yang sudah di bawah batas restock.",
+      "html": "<p><strong>Fungsi:</strong> daftar produk yang sudah di bawah batas restock.</p>\n<p><figure><img src=\"/help/laporan/03-laporan-inventori--stok-minim.webp\" alt=\"Stok minim (unduh)\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Stok minim (unduh) <a class=\"help-open\" href=\"/dashboard/reports?tab=inventori\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Produk dengan batas minimum <strong>0</strong> tidak dipantau, jadi tidak muncul.</li>\n<li>Untuk dilihat di layar, pakai halaman <strong>Stok Minim</strong> (bagian <a href=\"/dashboard/help/laporan/stok-minim-di-layar\">28</a>).</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-nilai-persediaan",
+      "number": 17,
+      "title": "Laporan Nilai Persediaan",
+      "summary": "nilai stok pada satu tanggal, untuk dicocokkan dengan akun persediaan di Neraca.",
+      "html": "<p><strong>Fungsi:</strong> nilai stok pada satu tanggal, untuk dicocokkan dengan akun persediaan di Neraca.</p>\n<p><figure><img src=\"/help/laporan/03-laporan-inventori--nilai-persediaan.webp\" alt=\"Nilai persediaan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Nilai persediaan <a class=\"help-open\" href=\"/dashboard/reports?tab=inventori\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Isi <strong>Per tanggal</strong>: posisi di akhir hari itu.</li>\n<li>Barang konsinyasi tidak dihitung karena bukan milik toko.</li>\n<li>Pencocokan dengan Neraca hanya muncul kalau <strong>Cabang</strong> dan <strong>Gudang</strong> dikosongkan.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-batch-dan-kedaluwarsa",
+      "number": 18,
+      "title": "Laporan Batch & Kedaluwarsa",
+      "summary": "sisa umur simpan setiap batch dan risiko kerugiannya.",
+      "html": "<p><strong>Fungsi:</strong> sisa umur simpan setiap batch dan risiko kerugiannya.</p>\n<p><figure><img src=\"/help/laporan/03-laporan-inventori--batch-kedaluwarsa.webp\" alt=\"Batch &amp; kedaluwarsa\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Batch &amp; kedaluwarsa <a class=\"help-open\" href=\"/dashboard/reports?tab=inventori\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Posisi per hari ini, hanya batch yang masih ada stoknya.</li>\n<li><strong>Risiko kerugian</strong> = nilai batch milik toko yang sudah atau akan kedaluwarsa dalam 90 hari.</li>\n<li>Pilihan <strong>Status umur</strong>: Sudah kedaluwarsa, ≤ 30 hari, 31–90 hari, 91–180 hari, &gt; 180 hari, Tanpa tanggal kedaluwarsa.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-selisih-opname",
+      "number": 19,
+      "title": "Laporan Selisih Opname",
+      "summary": "riwayat selisih hasil hitung stok dan jurnal yang terbentuk.",
+      "html": "<p><strong>Fungsi:</strong> riwayat selisih hasil hitung stok dan jurnal yang terbentuk.</p>\n<p><figure><img src=\"/help/laporan/03-laporan-inventori--selisih-opname.webp\" alt=\"Selisih opname\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Selisih opname <a class=\"help-open\" href=\"/dashboard/reports?tab=inventori\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Hanya opname yang sudah diajukan.</li>\n<li>Pilihan <strong>Baris</strong>: <strong>Ada selisih</strong> dan/atau <strong>Tanpa selisih</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-transfer-antar-gudang",
+      "number": 20,
+      "title": "Laporan Transfer antar Gudang",
+      "summary": "perpindahan stok antar gudang dan cabang.",
+      "html": "<p><strong>Fungsi:</strong> perpindahan stok antar gudang dan cabang.</p>\n<p><figure><img src=\"/help/laporan/03-laporan-inventori--transfer.webp\" alt=\"Transfer antar gudang\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Transfer antar gudang <a class=\"help-open\" href=\"/dashboard/reports?tab=inventori\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Filter <strong>Gudang</strong> mencocokkan gudang asal maupun tujuan.</li>\n<li>Pilihan <strong>Status</strong> transfer.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-konsinyasi-outstanding",
+      "number": 21,
+      "title": "Laporan Konsinyasi Outstanding",
+      "summary": "barang titipan yang masih ada di gudang, per supplier.",
+      "html": "<p><strong>Fungsi:</strong> barang titipan yang masih ada di gudang, per supplier.</p>\n<p><figure><img src=\"/help/laporan/03-laporan-inventori--konsinyasi-outstanding.webp\" alt=\"Konsinyasi outstanding\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Konsinyasi outstanding <a class=\"help-open\" href=\"/dashboard/reports?tab=inventori\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Posisi per hari ini.</li>\n<li>Nilai titipan <strong>bukan utang</strong>. Utang baru muncul saat barangnya laku.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-pembelian-per-supplier",
+      "number": 22,
+      "title": "Laporan Pembelian per Supplier",
+      "summary": "nilai dan kuantitas pembelian per supplier dan produk.",
+      "html": "<p><strong>Fungsi:</strong> nilai dan kuantitas pembelian per supplier dan produk.</p>\n<p><figure><img src=\"/help/laporan/03-laporan-inventori--pembelian-per-supplier.webp\" alt=\"Pembelian per supplier\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pembelian per supplier <a class=\"help-open\" href=\"/dashboard/reports?tab=inventori\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Hanya penerimaan yang sudah diterima dan retur yang sudah diajukan.</li>\n<li>Nilai <strong>tanpa PPN</strong>. Pilihan <strong>Jenis pembelian</strong> tersedia.</li>\n</ul>\n"
+    },
+    {
+      "slug": "tab-operasional",
+      "number": 23,
+      "title": "Tab Operasional",
+      "summary": "laporan layanan, staf, membership, dan komisi.",
+      "html": "<p><strong>Fungsi:</strong> laporan layanan, staf, membership, dan komisi.</p>\n<p><figure><img src=\"/help/laporan/04-laporan-operasional.webp\" alt=\"Tab Operasional\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Operasional <a class=\"help-open\" href=\"/dashboard/reports?tab=operasional\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Okupansi hotel</strong> masih bertanda <strong>Segera</strong> (belum tersedia).</li>\n<li><strong>Komisi saya</strong> dibuka di layar (bagian <a href=\"/dashboard/help/laporan/komisi-saya\">27</a>).</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-performa-staf-dan-rekap-booking",
+      "number": 24,
+      "title": "Laporan Performa Staf dan Rekap Booking",
+      "summary": "kinerja setiap staf, dan rekap booking menurut status.",
+      "html": "<p><strong>Fungsi:</strong> kinerja setiap staf, dan rekap booking menurut status.</p>\n<p><figure><img src=\"/help/laporan/04-laporan-operasional--performa-staf.webp\" alt=\"Performa staf\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Performa staf <a class=\"help-open\" href=\"/dashboard/reports?tab=operasional\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Performa staf</strong>: order, nilai, dan ketepatan waktu per staf, dari booking yang sudah selesai. Booking tanpa jam mulai/selesai tidak ikut diukur.</li>\n</ul>\n<p><figure><img src=\"/help/laporan/04-laporan-operasional--rekap-booking.webp\" alt=\"Rekap booking\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Rekap booking <a class=\"help-open\" href=\"/dashboard/reports?tab=operasional\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Rekap booking</strong>: booking menurut status, pembatalan, dan jadwal ulang. Pilihan <strong>Status</strong> tersedia.</li>\n<li>Periode mengikuti tanggal jadwal saat ini. Tanggal jadwal lama tidak tersimpan.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-layanan-terlaris-dan-membership",
+      "number": 25,
+      "title": "Laporan Layanan Terlaris dan Membership",
+      "summary": "layanan paling laku, dan pemakaian paket membership.",
+      "html": "<p><strong>Fungsi:</strong> layanan paling laku, dan pemakaian paket membership.</p>\n<p><figure><img src=\"/help/laporan/04-laporan-operasional--layanan-terlaris.webp\" alt=\"Layanan terlaris\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Layanan terlaris <a class=\"help-open\" href=\"/dashboard/reports?tab=operasional\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Layanan terlaris</strong>: peringkat layanan dan add-on menurut jumlah dan nilai, dari booking selesai (termasuk yang belum ditagih). Pilihan <strong>Jenis</strong> tersedia.</li>\n</ul>\n<p><figure><img src=\"/help/laporan/04-laporan-operasional--membership.webp\" alt=\"Membership\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Membership <a class=\"help-open\" href=\"/dashboard/reports?tab=operasional\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Membership</strong>: paket terlaris dan nilai benefit yang sudah dipakai. Tidak ada pilihan cabang.</li>\n<li>Benefit yang belum pernah dipakai tidak muncul. Bisa jadi tanda benefit itu belum dikenal pelanggan atau kasir.</li>\n</ul>\n"
+    },
+    {
+      "slug": "laporan-rekap-komisi",
+      "number": 26,
+      "title": "Laporan Rekap Komisi",
+      "summary": "komisi groomer per bulan, siap untuk penggajian.",
+      "html": "<p><strong>Fungsi:</strong> komisi groomer per bulan, siap untuk penggajian.</p>\n<p><figure><img src=\"/help/laporan/04-laporan-operasional--rekap-komisi.webp\" alt=\"Rekap komisi\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Rekap komisi <a class=\"help-open\" href=\"/dashboard/reports?tab=operasional\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Dihitung per bulan booking selesai, jadi periode dibulatkan ke bulan penuh.</li>\n<li>Menyetujui dan membayar komisi tetap dilakukan di <strong>Keuangan › Komisi</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "komisi-saya",
+      "number": 27,
+      "title": "Komisi Saya",
+      "summary": "setiap staf melihat komisinya sendiri, tanpa bisa melihat milik orang lain.",
+      "html": "<p><strong>Fungsi:</strong> setiap staf melihat komisinya sendiri, tanpa bisa melihat milik orang lain.</p>\n<p><figure><img src=\"/help/laporan/05-komisi-saya.webp\" alt=\"Halaman Komisi saya\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman Komisi saya <a class=\"help-open\" href=\"/dashboard/reports/commissions/mine\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Halaman ini berjudul <strong>Komisi saya</strong>, dengan jejak <strong>Laporan / Komisi saya</strong> di atasnya. Klik <strong>Laporan</strong> untuk kembali.</li>\n<li>Bisa dibuka oleh siapa saja, termasuk groomer. Contoh di atas dibuka dengan akun groomer: menu sampingnya hanya <strong>Laporan</strong>.</li>\n<li><strong>Bulan ini (Oktober 2026)</strong>: semua komisi yang dihasilkan di bulan yang dipilih, baik yang sudah dibayar maupun belum. Kalau yang dipilih bulan lain, judulnya hanya nama bulannya, misalnya <strong>September 2026</strong>.</li>\n<li><strong>dari N sesi</strong> = jumlah sesi (tahap) yang menghasilkan komisi. Satu booking dengan dua tahap dihitung dua sesi.</li>\n<li><strong>Belum dibayar</strong>: komisi yang sudah disetujui tetapi belum dibayar, dari bulan mana pun. Bulan asalnya tertulis di belakang jumlah sesi. Kalau nol, tertulis <strong>Tidak ada yang menunggu dibayar.</strong></li>\n<li>Komisi yang <strong>sudah dibayar</strong> tidak lagi masuk <strong>Belum dibayar</strong>, tetapi tetap terhitung di <strong>Bulan ini</strong>. Komisi yang masih <strong>menunggu persetujuan</strong> juga belum masuk <strong>Belum dibayar</strong>.</li>\n<li>Contoh di atas: Rp 36.000 dari 6 sesi di Oktober 2026. Rp 12.000 dari 2 sesi sudah disetujui tetapi belum dibayar.</li>\n</ul>\n<p><figure><img src=\"/help/laporan/05-komisi-saya--pilih-bulan.webp\" alt=\"Pilihan bulan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pilihan bulan <a class=\"help-open\" href=\"/dashboard/reports/commissions/mine\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Bulan</strong> berisi bulan ini dan 23 bulan sebelumnya, terbaru di atas. Ketik di kotak <strong>Cari...</strong> untuk mencari bulan tertentu.</li>\n<li>Rincian per booking dan status bayarnya hanya bisa dilihat admin di <strong>Keuangan › Komisi</strong>.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Buka <strong>Laporan</strong> › tab <strong>Operasional</strong> › <strong>Komisi saya</strong> › <strong>Buka</strong>. Groomer yang memakai aplikasi groomer: ketik alamat <strong>buloo.id/dashboard/reports/commissions/mine</strong> di browser, lalu simpan sebagai bookmark.</li>\n<li>Klik kotak <strong>Bulan</strong> di kartu <strong>Periode</strong>, lalu pilih bulannya. Angka di bawahnya langsung berganti.</li>\n</ol>\n"
+    },
+    {
+      "slug": "stok-minim-di-layar",
+      "number": 28,
+      "title": "Stok Minim (di Layar)",
+      "summary": "daftar produk yang perlu segera dipesan ulang.",
+      "html": "<p><strong>Fungsi:</strong> daftar produk yang perlu segera dipesan ulang.</p>\n<p><figure><img src=\"/help/laporan/06-stok-minim.webp\" alt=\"Halaman Stok Minim\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman Stok Minim <a class=\"help-open\" href=\"/dashboard/reports/low-stock\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Judul daftar menyebut jumlahnya, misalnya <strong>1 produk perlu restock</strong>.</li>\n<li>Kolom: <strong>SKU</strong>, <strong>Produk</strong>, <strong>Stok</strong>, <strong>Batas</strong>, <strong>Kurang</strong>. Diurutkan dari stok paling sedikit.</li>\n<li><strong>Kurang</strong> (merah) = batas dikurangi stok, yaitu jumlah minimal yang perlu dipesan. Contoh: Pasir Kucing Wangi 10L stok 2 pcs, batas 5, kurang 3.</li>\n<li>Batas dihitung per produk untuk <strong>semua gudang</strong>, bukan per gudang.</li>\n<li>Produk yang batas minimumnya masih <strong>0</strong> tidak dipantau. Atur batasnya di detail produk.</li>\n<li><strong>Unduh halaman ini (.xlsx)</strong> mengunduh daftar yang sedang tampil.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Buka dari peringatan stok di <strong>Beranda</strong>, atau langsung dari alamat halamannya.</li>\n<li>Klik judul kolom untuk mengubah urutan.</li>\n<li>Klik <strong>Unduh halaman ini (.xlsx)</strong> untuk mengunduh.</li>\n</ol>\n"
+    }
+  ],
+  "faq": [
+    {
+      "question": "Laporan tidak muncul di daftar?",
+      "answer": "Peran Anda belum punya izinnya. Minta pemilik usaha mengatur di <strong>Pengaturan › Peran</strong>."
+    },
+    {
+      "question": "File Excel kosong?",
+      "answer": "Tidak ada data di periode itu. Coba perlebar periode atau kosongkan Cabang/Gudang."
+    },
+    {
+      "question": "Periode tidak bisa lebih dari setahun?",
+      "answer": "Benar, unduh per tahun."
+    },
+    {
+      "question": "Angka beda dengan Laba rugi?",
+      "answer": "Baca catatan <strong>(i)</strong> di jendela unduh. Beberapa laporan belum mengurangi retur atau komisi."
+    }
+  ],
+  "tips": [
+    "klik <strong>Lihat isi kolom</strong> sebelum mengunduh supaya tahu kolom mana yang Anda butuhkan."
+  ],
+  "updatedAt": "2026-11-04"
+}
