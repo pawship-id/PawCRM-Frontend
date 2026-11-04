@@ -1,0 +1,822 @@
+[
+  {
+    "pattern": "/dashboard",
+    "module": "mulai",
+    "article": "beranda-tab-hari-ini"
+  },
+  {
+    "pattern": "/dashboard/booking",
+    "module": "booking",
+    "article": "kalender-harian"
+  },
+  {
+    "pattern": "/dashboard/booking/[id]",
+    "module": "booking",
+    "article": "halaman-detail-booking"
+  },
+  {
+    "pattern": "/dashboard/booking/[id]/edit",
+    "module": "booking",
+    "article": "mengubah-booking"
+  },
+  {
+    "pattern": "/dashboard/booking/calendar",
+    "module": "booking",
+    "article": "kalender-groomer"
+  },
+  {
+    "pattern": "/dashboard/booking/new",
+    "module": "booking",
+    "article": "booking-baru-jadwal-dan-lokasi"
+  },
+  {
+    "pattern": "/dashboard/booking/rides/[id]",
+    "module": "booking",
+    "article": "perjalanan-jemput-dan-antar"
+  },
+  {
+    "pattern": "/dashboard/branches",
+    "module": "mulai",
+    "article": "beranda-tab-cabang"
+  },
+  {
+    "pattern": "/dashboard/customers",
+    "module": "pelanggan",
+    "article": "daftar-pelanggan"
+  },
+  {
+    "pattern": "/dashboard/customers/[id]",
+    "module": "pelanggan",
+    "article": "profil-pelanggan"
+  },
+  {
+    "pattern": "/dashboard/customers/[id]/edit",
+    "module": "pelanggan",
+    "article": "mengubah-data-pelanggan"
+  },
+  {
+    "pattern": "/dashboard/customers/dormant",
+    "module": "pelanggan",
+    "article": "pelanggan-tidak-aktif"
+  },
+  {
+    "pattern": "/dashboard/customers/history",
+    "module": "pelanggan",
+    "article": "riwayat-semua-pelanggan"
+  },
+  {
+    "pattern": "/dashboard/customers/new",
+    "module": "pelanggan",
+    "article": "menambah-pelanggan-baru"
+  },
+  {
+    "pattern": "/dashboard/customers/summary",
+    "module": "pelanggan",
+    "article": "ringkasan-pelanggan"
+  },
+  {
+    "pattern": "/dashboard/ecommerce-sync",
+    "module": "penjualan",
+    "article": "e-commerce"
+  },
+  {
+    "pattern": "/dashboard/finance",
+    "module": "keuangan",
+    "article": "ringkasan-keuangan"
+  },
+  {
+    "pattern": "/dashboard/finance/balance-sheet",
+    "module": "keuangan",
+    "article": "laporan-neraca"
+  },
+  {
+    "pattern": "/dashboard/finance/cash-bank",
+    "module": "keuangan",
+    "article": "kas-dan-bank-saldo-setiap-akun"
+  },
+  {
+    "pattern": "/dashboard/finance/cash-bank/fixed-costs",
+    "module": "keuangan",
+    "article": "daftar-biaya-tetap"
+  },
+  {
+    "pattern": "/dashboard/finance/cash-bank/fixed-costs/[id]",
+    "module": "keuangan",
+    "article": "detail-biaya-tetap"
+  },
+  {
+    "pattern": "/dashboard/finance/cash-bank/transactions/[id]",
+    "module": "keuangan",
+    "article": "detail-transaksi"
+  },
+  {
+    "pattern": "/dashboard/finance/cash-bank/transactions/[id]/edit",
+    "module": "keuangan",
+    "article": "mengubah-transaksi"
+  },
+  {
+    "pattern": "/dashboard/finance/cash-bank/transactions/new",
+    "module": "keuangan",
+    "article": "mencatat-uang-keluar-sewa-listrik-gaji"
+  },
+  {
+    "pattern": "/dashboard/finance/commissions",
+    "module": "keuangan",
+    "article": "komisi-groomer"
+  },
+  {
+    "pattern": "/dashboard/finance/commissions/[bookingId]/[groomerUserId]",
+    "module": "keuangan",
+    "article": "detail-komisi"
+  },
+  {
+    "pattern": "/dashboard/finance/journal-entries",
+    "module": "keuangan",
+    "article": "jurnal-umum"
+  },
+  {
+    "pattern": "/dashboard/finance/journal-entries/[id]",
+    "module": "keuangan",
+    "article": "jurnal-umum"
+  },
+  {
+    "pattern": "/dashboard/finance/journal-entries/new",
+    "module": "keuangan",
+    "article": "membuat-jurnal-manual-koreksi"
+  },
+  {
+    "pattern": "/dashboard/finance/profit-loss",
+    "module": "keuangan",
+    "article": "laporan-laba-rugi"
+  },
+  {
+    "pattern": "/dashboard/inventory",
+    "module": "inventori",
+    "article": "ringkasan-inventori"
+  },
+  {
+    "pattern": "/dashboard/inventory/adjustments",
+    "module": "inventori",
+    "article": "penyesuaian-stok"
+  },
+  {
+    "pattern": "/dashboard/inventory/adjustments/[id]",
+    "module": "inventori",
+    "article": "dokumen-penyesuaian"
+  },
+  {
+    "pattern": "/dashboard/inventory/adjustments/new",
+    "module": "inventori",
+    "article": "membuat-penyesuaian-baru"
+  },
+  {
+    "pattern": "/dashboard/inventory/batches",
+    "module": "inventori",
+    "article": "batch-dan-kedaluwarsa"
+  },
+  {
+    "pattern": "/dashboard/inventory/batches/labels",
+    "module": "inventori",
+    "article": "mencetak-label-batch"
+  },
+  {
+    "pattern": "/dashboard/inventory/categories",
+    "module": "inventori",
+    "article": "daftar-kategori"
+  },
+  {
+    "pattern": "/dashboard/inventory/categories/[id]",
+    "module": "inventori",
+    "article": "mengubah-dan-menghapus-kategori"
+  },
+  {
+    "pattern": "/dashboard/inventory/categories/new",
+    "module": "inventori",
+    "article": "membuat-kategori-baru"
+  },
+  {
+    "pattern": "/dashboard/inventory/negative-stock",
+    "module": "inventori",
+    "article": "stok-minus"
+  },
+  {
+    "pattern": "/dashboard/inventory/opening-stock",
+    "module": "inventori",
+    "article": "daftar-stok-awal"
+  },
+  {
+    "pattern": "/dashboard/inventory/opening-stock/[id]",
+    "module": "inventori",
+    "article": "dokumen-stok-awal"
+  },
+  {
+    "pattern": "/dashboard/inventory/opening-stock/new",
+    "module": "inventori",
+    "article": "mencatat-stok-awal-baru"
+  },
+  {
+    "pattern": "/dashboard/inventory/opname",
+    "module": "inventori",
+    "article": "opname-hitung-fisik"
+  },
+  {
+    "pattern": "/dashboard/inventory/opname/[id]",
+    "module": "inventori",
+    "article": "lembar-penghitungan"
+  },
+  {
+    "pattern": "/dashboard/inventory/products",
+    "module": "inventori",
+    "article": "daftar-produk"
+  },
+  {
+    "pattern": "/dashboard/inventory/products/[id]",
+    "module": "inventori",
+    "article": "detail-produk"
+  },
+  {
+    "pattern": "/dashboard/inventory/products/[id]/edit",
+    "module": "inventori",
+    "article": "mengubah-produk-dan-menambah-varian"
+  },
+  {
+    "pattern": "/dashboard/inventory/products/import",
+    "module": "inventori",
+    "article": "import-produk-dari-excel"
+  },
+  {
+    "pattern": "/dashboard/inventory/products/new",
+    "module": "inventori",
+    "article": "produk-satuan"
+  },
+  {
+    "pattern": "/dashboard/inventory/stock-card",
+    "module": "inventori",
+    "article": "daftar-stok-kartu-stok"
+  },
+  {
+    "pattern": "/dashboard/inventory/stock-card/[productId]",
+    "module": "inventori",
+    "article": "kartu-stok-satu-produk"
+  },
+  {
+    "pattern": "/dashboard/inventory/transfers",
+    "module": "inventori",
+    "article": "transfer-stok"
+  },
+  {
+    "pattern": "/dashboard/inventory/transfers/[id]",
+    "module": "inventori",
+    "article": "detail-transfer-terima-atau-batalkan"
+  },
+  {
+    "pattern": "/dashboard/inventory/transfers/[id]/edit",
+    "module": "inventori",
+    "article": "mengubah-transfer"
+  },
+  {
+    "pattern": "/dashboard/inventory/transfers/[id]/print",
+    "module": "inventori",
+    "article": "mencetak-surat-jalan"
+  },
+  {
+    "pattern": "/dashboard/inventory/transfers/new",
+    "module": "inventori",
+    "article": "membuat-transfer-baru"
+  },
+  {
+    "pattern": "/dashboard/money",
+    "module": "mulai",
+    "article": "beranda-tab-uang"
+  },
+  {
+    "pattern": "/dashboard/operations",
+    "module": "mulai",
+    "article": "beranda-tab-operasional"
+  },
+  {
+    "pattern": "/dashboard/pets",
+    "module": "pelanggan",
+    "article": "daftar-hewan"
+  },
+  {
+    "pattern": "/dashboard/pets/[id]",
+    "module": "pelanggan",
+    "article": "profil-hewan-tab-info"
+  },
+  {
+    "pattern": "/dashboard/pets/[id]/edit",
+    "module": "pelanggan",
+    "article": "mengubah-data-hewan"
+  },
+  {
+    "pattern": "/dashboard/pets/[id]/print",
+    "module": "pelanggan",
+    "article": "mencetak-kartu-hewan"
+  },
+  {
+    "pattern": "/dashboard/pets/new",
+    "module": "pelanggan",
+    "article": "menambah-hewan-baru-formulir-lengkap"
+  },
+  {
+    "pattern": "/dashboard/pos",
+    "module": "kasir",
+    "article": "layar-kasir"
+  },
+  {
+    "pattern": "/dashboard/pos/needs-review",
+    "module": "kasir",
+    "article": "transaksi-offline-yang-perlu-dicek"
+  },
+  {
+    "pattern": "/dashboard/profile",
+    "module": "mulai",
+    "article": "profil-saya"
+  },
+  {
+    "pattern": "/dashboard/promotion/membership",
+    "module": "promosi",
+    "article": "daftar-paket-membership"
+  },
+  {
+    "pattern": "/dashboard/promotion/membership/member",
+    "module": "promosi",
+    "article": "daftar-anggota"
+  },
+  {
+    "pattern": "/dashboard/promotion/membership/member/[id]",
+    "module": "promosi",
+    "article": "detail-anggota"
+  },
+  {
+    "pattern": "/dashboard/promotion/membership/plans/[id]",
+    "module": "promosi",
+    "article": "detail-paket"
+  },
+  {
+    "pattern": "/dashboard/promotion/membership/plans/[id]/edit",
+    "module": "promosi",
+    "article": "mengubah-paket"
+  },
+  {
+    "pattern": "/dashboard/promotion/membership/plans/new",
+    "module": "promosi",
+    "article": "membuat-paket-baru"
+  },
+  {
+    "pattern": "/dashboard/promotion/summary",
+    "module": "promosi",
+    "article": "ringkasan-promosi"
+  },
+  {
+    "pattern": "/dashboard/purchasing/payables",
+    "module": "pembelian",
+    "article": "daftar-faktur-pembelian"
+  },
+  {
+    "pattern": "/dashboard/purchasing/payables/[id]",
+    "module": "pembelian",
+    "article": "detail-faktur"
+  },
+  {
+    "pattern": "/dashboard/purchasing/payables/[id]/edit",
+    "module": "pembelian",
+    "article": "mengubah-faktur"
+  },
+  {
+    "pattern": "/dashboard/purchasing/payables/[id]/payments/[paymentId]",
+    "module": "pembelian",
+    "article": "detail-pembayaran"
+  },
+  {
+    "pattern": "/dashboard/purchasing/payables/new",
+    "module": "pembelian",
+    "article": "mencatat-faktur-supplier"
+  },
+  {
+    "pattern": "/dashboard/purchasing/receipts",
+    "module": "pembelian",
+    "article": "daftar-penerimaan-barang"
+  },
+  {
+    "pattern": "/dashboard/purchasing/receipts/[id]",
+    "module": "pembelian",
+    "article": "detail-penerimaan"
+  },
+  {
+    "pattern": "/dashboard/purchasing/receipts/new",
+    "module": "pembelian",
+    "article": "menerima-barang-beli-putus"
+  },
+  {
+    "pattern": "/dashboard/purchasing/returns",
+    "module": "pembelian",
+    "article": "daftar-retur-ke-supplier"
+  },
+  {
+    "pattern": "/dashboard/purchasing/returns/[id]",
+    "module": "pembelian",
+    "article": "memeriksa-dan-mengubah-draft-retur"
+  },
+  {
+    "pattern": "/dashboard/purchasing/returns/new",
+    "module": "pembelian",
+    "article": "membuat-retur"
+  },
+  {
+    "pattern": "/dashboard/purchasing/summary",
+    "module": "pembelian",
+    "article": "ringkasan-pembelian"
+  },
+  {
+    "pattern": "/dashboard/purchasing/suppliers",
+    "module": "pembelian",
+    "article": "daftar-supplier"
+  },
+  {
+    "pattern": "/dashboard/purchasing/suppliers/[id]",
+    "module": "pembelian",
+    "article": "detail-supplier"
+  },
+  {
+    "pattern": "/dashboard/purchasing/suppliers/[id]/edit",
+    "module": "pembelian",
+    "article": "mengubah-data-supplier"
+  },
+  {
+    "pattern": "/dashboard/purchasing/suppliers/new",
+    "module": "pembelian",
+    "article": "menambah-supplier-baru"
+  },
+  {
+    "pattern": "/dashboard/reports",
+    "module": "laporan",
+    "article": "halaman-laporan"
+  },
+  {
+    "pattern": "/dashboard/reports/commissions/mine",
+    "module": "laporan",
+    "article": "komisi-saya"
+  },
+  {
+    "pattern": "/dashboard/reports/low-stock",
+    "module": "laporan",
+    "article": "stok-minim-di-layar"
+  },
+  {
+    "pattern": "/dashboard/sales/invoice",
+    "module": "penjualan",
+    "article": "daftar-faktur"
+  },
+  {
+    "pattern": "/dashboard/sales/invoice/[id]",
+    "module": "penjualan",
+    "article": "halaman-detail-faktur"
+  },
+  {
+    "pattern": "/dashboard/sales/invoice/[id]/edit",
+    "module": "penjualan",
+    "article": "mengubah-faktur"
+  },
+  {
+    "pattern": "/dashboard/sales/invoice/[id]/payments/[paymentId]",
+    "module": "penjualan",
+    "article": "detail-pembayaran-dan-kwitansi"
+  },
+  {
+    "pattern": "/dashboard/sales/invoice/[id]/print",
+    "module": "penjualan",
+    "article": "mencetak-faktur"
+  },
+  {
+    "pattern": "/dashboard/sales/invoice/new",
+    "module": "penjualan",
+    "article": "membuat-faktur-baru"
+  },
+  {
+    "pattern": "/dashboard/sales/returns",
+    "module": "penjualan",
+    "article": "retur-penjualan"
+  },
+  {
+    "pattern": "/dashboard/sales/summary",
+    "module": "penjualan",
+    "article": "ringkasan-penjualan"
+  },
+  {
+    "pattern": "/dashboard/service/grooming",
+    "module": "layanan",
+    "article": "ringkasan-grooming"
+  },
+  {
+    "pattern": "/dashboard/service/grooming/booking",
+    "module": "layanan",
+    "article": "daftar-booking-grooming"
+  },
+  {
+    "pattern": "/dashboard/service/grooming/catalog",
+    "module": "layanan",
+    "article": "grooming-layanan-dan-harga"
+  },
+  {
+    "pattern": "/dashboard/service/grooming/catalog/[id]",
+    "module": "layanan",
+    "article": "detail-layanan-ringkasan"
+  },
+  {
+    "pattern": "/dashboard/service/grooming/new",
+    "module": "layanan",
+    "article": "membuat-booking-grooming"
+  },
+  {
+    "pattern": "/dashboard/service/grooming/settings",
+    "module": "layanan",
+    "article": "pengaturan-grooming-komisi"
+  },
+  {
+    "pattern": "/dashboard/service/hotel",
+    "module": "layanan",
+    "article": "hotel"
+  },
+  {
+    "pattern": "/dashboard/service/pickup-delivery",
+    "module": "layanan",
+    "article": "daftar-booking-antar-jemput"
+  },
+  {
+    "pattern": "/dashboard/service/pickup-delivery/[id]",
+    "module": "layanan",
+    "article": "detail-perjalanan-antar-jemput"
+  },
+  {
+    "pattern": "/dashboard/service/pickup-delivery/[id]/edit",
+    "module": "layanan",
+    "article": "mengubah-perjalanan"
+  },
+  {
+    "pattern": "/dashboard/service/pickup-delivery/catalog",
+    "module": "layanan",
+    "article": "antar-jemput-layanan-dan-harga"
+  },
+  {
+    "pattern": "/dashboard/service/pickup-delivery/catalog/[id]",
+    "module": "layanan",
+    "article": "antar-jemput-layanan-dan-harga"
+  },
+  {
+    "pattern": "/dashboard/service/pickup-delivery/new",
+    "module": "layanan",
+    "article": "membuat-booking-antar-jemput"
+  },
+  {
+    "pattern": "/dashboard/service/pickup-delivery/settings",
+    "module": "layanan",
+    "article": "pengaturan-antar-jemput"
+  },
+  {
+    "pattern": "/dashboard/settings/activity-log",
+    "module": "pengaturan-sistem",
+    "article": "riwayat-perubahan"
+  },
+  {
+    "pattern": "/dashboard/settings/branch-access",
+    "module": "pengaturan-sistem",
+    "article": "akses-cabang"
+  },
+  {
+    "pattern": "/dashboard/settings/branches",
+    "module": "pengaturan-umum",
+    "article": "daftar-cabang"
+  },
+  {
+    "pattern": "/dashboard/settings/branches/[id]",
+    "module": "pengaturan-umum",
+    "article": "detail-cabang"
+  },
+  {
+    "pattern": "/dashboard/settings/branches/[id]/edit",
+    "module": "pengaturan-umum",
+    "article": "mengubah-data-cabang"
+  },
+  {
+    "pattern": "/dashboard/settings/business-lines",
+    "module": "pengaturan-keuangan",
+    "article": "lini-bisnis"
+  },
+  {
+    "pattern": "/dashboard/settings/business-profile",
+    "module": "pengaturan-umum",
+    "article": "identitas-usaha"
+  },
+  {
+    "pattern": "/dashboard/settings/chart-of-accounts",
+    "module": "pengaturan-keuangan",
+    "article": "daftar-akun"
+  },
+  {
+    "pattern": "/dashboard/settings/chart-of-accounts/[id]/edit",
+    "module": "pengaturan-keuangan",
+    "article": "mengubah-akun"
+  },
+  {
+    "pattern": "/dashboard/settings/chart-of-accounts/new",
+    "module": "pengaturan-keuangan",
+    "article": "menambah-akun-baru"
+  },
+  {
+    "pattern": "/dashboard/settings/customer-types",
+    "module": "pengaturan-umum",
+    "article": "tipe-pelanggan"
+  },
+  {
+    "pattern": "/dashboard/settings/document-numbering",
+    "module": "pengaturan-umum",
+    "article": "nomor-dokumen"
+  },
+  {
+    "pattern": "/dashboard/settings/finance",
+    "module": "pengaturan-keuangan",
+    "article": "halaman-pengaturan-keuangan"
+  },
+  {
+    "pattern": "/dashboard/settings/general",
+    "module": "pengaturan-umum",
+    "article": "halaman-pengaturan-umum"
+  },
+  {
+    "pattern": "/dashboard/settings/membership",
+    "module": "promosi",
+    "article": "pengaturan-membership"
+  },
+  {
+    "pattern": "/dashboard/settings/notifications",
+    "module": "pengaturan-umum",
+    "article": "notifikasi"
+  },
+  {
+    "pattern": "/dashboard/settings/opening-balances",
+    "module": "data-awal",
+    "article": "daftar-periksa-data-awal"
+  },
+  {
+    "pattern": "/dashboard/settings/opening-balances/cash-bank",
+    "module": "data-awal",
+    "article": "saldo-awal-kas-dan-bank"
+  },
+  {
+    "pattern": "/dashboard/settings/payment-channels",
+    "module": "pengaturan-keuangan",
+    "article": "channel-pembayaran"
+  },
+  {
+    "pattern": "/dashboard/settings/payment-channels/[id]",
+    "module": "pengaturan-keuangan",
+    "article": "mengubah-channel-pembayaran"
+  },
+  {
+    "pattern": "/dashboard/settings/payment-channels/new",
+    "module": "pengaturan-keuangan",
+    "article": "menambah-channel-pembayaran"
+  },
+  {
+    "pattern": "/dashboard/settings/pos-devices",
+    "module": "kasir",
+    "article": "daftar-perangkat-kasir"
+  },
+  {
+    "pattern": "/dashboard/settings/pos-shifts",
+    "module": "kasir",
+    "article": "memantau-shift-kasir"
+  },
+  {
+    "pattern": "/dashboard/settings/pos-stock",
+    "module": "kasir",
+    "article": "aturan-stok-saat-berjualan"
+  },
+  {
+    "pattern": "/dashboard/settings/roles",
+    "module": "pengaturan-sistem",
+    "article": "daftar-peran"
+  },
+  {
+    "pattern": "/dashboard/settings/roles/[id]",
+    "module": "pengaturan-sistem",
+    "article": "mengubah-peran"
+  },
+  {
+    "pattern": "/dashboard/settings/roles/new",
+    "module": "pengaturan-sistem",
+    "article": "membuat-peran-baru"
+  },
+  {
+    "pattern": "/dashboard/settings/services",
+    "module": "layanan",
+    "article": "opsi-varian"
+  },
+  {
+    "pattern": "/dashboard/settings/services/[id]",
+    "module": "layanan",
+    "article": "mengubah-layanan"
+  },
+  {
+    "pattern": "/dashboard/settings/services/new",
+    "module": "layanan",
+    "article": "membuat-layanan-baru-identitas"
+  },
+  {
+    "pattern": "/dashboard/settings/supplier-categories",
+    "module": "pengaturan-umum",
+    "article": "daftar-kategori-supplier"
+  },
+  {
+    "pattern": "/dashboard/settings/supplier-categories/[id]",
+    "module": "pengaturan-umum",
+    "article": "mengubah-kategori-supplier"
+  },
+  {
+    "pattern": "/dashboard/settings/supplier-categories/new",
+    "module": "pengaturan-umum",
+    "article": "menambah-kategori-supplier"
+  },
+  {
+    "pattern": "/dashboard/settings/supplier-types",
+    "module": "pengaturan-umum",
+    "article": "tipe-supplier"
+  },
+  {
+    "pattern": "/dashboard/settings/system",
+    "module": "pengaturan-sistem",
+    "article": "halaman-pengguna-dan-sistem"
+  },
+  {
+    "pattern": "/dashboard/settings/tax",
+    "module": "pengaturan-keuangan",
+    "article": "pajak"
+  },
+  {
+    "pattern": "/dashboard/settings/users",
+    "module": "pengaturan-sistem",
+    "article": "daftar-pengguna"
+  },
+  {
+    "pattern": "/dashboard/settings/users/[id]",
+    "module": "pengaturan-sistem",
+    "article": "mengubah-data-pengguna"
+  },
+  {
+    "pattern": "/dashboard/settings/users/new",
+    "module": "pengaturan-sistem",
+    "article": "menambah-pengguna-baru"
+  },
+  {
+    "pattern": "/dashboard/settings/warehouses",
+    "module": "pengaturan-umum",
+    "article": "daftar-gudang"
+  },
+  {
+    "pattern": "/dashboard/settings/warehouses/[id]",
+    "module": "pengaturan-umum",
+    "article": "mengubah-data-gudang"
+  },
+  {
+    "pattern": "/dashboard/settings/warehouses/new",
+    "module": "pengaturan-umum",
+    "article": "menambah-gudang-baru"
+  },
+  {
+    "pattern": "/forgot-password",
+    "module": "mulai",
+    "article": "lupa-password"
+  },
+  {
+    "pattern": "/groomer",
+    "module": "groomer",
+    "article": "tugas-saya-tugas-hari-ini"
+  },
+  {
+    "pattern": "/groomer/booking/[id]",
+    "module": "groomer",
+    "article": "detail-booking"
+  },
+  {
+    "pattern": "/invoice/[token]",
+    "module": "penjualan",
+    "article": "mengirim-faktur-ke-pelanggan"
+  },
+  {
+    "pattern": "/login",
+    "module": "mulai",
+    "article": "masuk-ke-buloo"
+  },
+  {
+    "pattern": "/reset-password",
+    "module": "mulai",
+    "article": "membuat-password-baru"
+  },
+  {
+    "pattern": "/struk/[token]",
+    "module": "kasir",
+    "article": "struk-online-untuk-pelanggan"
+  }
+]

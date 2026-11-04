@@ -1,0 +1,185 @@
+{
+  "slug": "pelanggan",
+  "order": 6,
+  "title": "Pelanggan & Hewan",
+  "subtitle": "Mendaftarkan pemilik dan hewannya, mencatat preferensi dan kesehatan hewan, lalu memantau pelanggan yang perlu dihubungi.",
+  "introHtml": "<p><strong>Modul ini untuk apa?</strong></p>\n<ul>\n<li>Menyimpan data <strong>pemilik hewan</strong> (pelanggan) dan <strong>hewan peliharaannya</strong>.</li>\n<li>Satu pelanggan bisa punya banyak hewan. Datanya berlaku di <strong>semua cabang</strong>.</li>\n<li>Riwayat kunjungan, grooming, kasir, dan faktur tercatat otomatis per pelanggan dan per hewan.</li>\n</ul>\n<p><strong>Siapa yang memakai?</strong> Pemilik usaha, admin, kasir, dan front desk.</p>\n<p><strong>Siapkan dulu (opsional):</strong></p>\n<ul>\n<li><strong>Pengaturan › Tipe pelanggan</strong> kalau Anda ingin mengelompokkan pelanggan (misalnya Member, Reseller). Tanpa ini, kolom <strong>Kategori pelanggan</strong> tidak bisa dipilih.</li>\n</ul>\n<p><strong>Cara membuka:</strong> menu samping › <strong>Operasional</strong> › <strong>Pelanggan</strong>.</p>\n<p><strong>Isi modul:</strong></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Tab / Halaman</th>\n<th>Dipakai untuk</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Pelanggan</td>\n<td>Daftar pelanggan, tambah, ubah, nonaktifkan, hapus</td>\n</tr>\n<tr>\n<td>Hewan</td>\n<td>Daftar hewan, tambah hewan, profil hewan</td>\n</tr>\n<tr>\n<td>Riwayat</td>\n<td>Semua transaksi pelanggan di semua cabang</td>\n</tr>\n<tr>\n<td>Ringkasan</td>\n<td>Angka utama dan daftar pelanggan yang perlu dihubungi</td>\n</tr>\n<tr>\n<td>Pelanggan tidak aktif</td>\n<td>Pelanggan yang sudah lama tidak datang</td>\n</tr>\n</tbody></table></div>\n<p><strong>Urutan kerja yang disarankan:</strong> daftarkan pelanggan › tambahkan hewannya › lengkapi preferensi &amp; medis hewan › pantau lewat Ringkasan.</p>\n",
+  "articles": [
+    {
+      "slug": "daftar-pelanggan",
+      "number": 1,
+      "title": "Daftar Pelanggan",
+      "summary": "melihat, mencari, dan membuka semua pelanggan.",
+      "html": "<p><strong>Fungsi:</strong> melihat, mencari, dan membuka semua pelanggan.</p>\n<p><figure><img src=\"/help/pelanggan/02-daftar-pelanggan.webp\" alt=\"Tab Pelanggan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Pelanggan <a class=\"help-open\" href=\"/dashboard/customers\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Yang ada di layar:</strong></p>\n<ul>\n<li><strong>4 kartu angka</strong>: Jumlah hewan, Jumlah pelanggan, Pelanggan baru bulan ini, Transaksi 90 hari terakhir. Arahkan kursor ke ikon (i) untuk melihat cara hitungnya.</li>\n<li><strong>Kotak cari</strong>: cari berdasarkan kode, nama, telepon, atau email.</li>\n<li><strong>Tabel</strong>: Kode, Pelanggan, Kontak, Kategori, Status, Bergabung, Aksi.</li>\n<li>Klik judul kolom yang bertanda panah (<strong>Kode</strong>, <strong>Pelanggan</strong>, <strong>Bergabung</strong>) untuk mengurutkan.</li>\n</ul>\n<h2>Langkah: mencari pelanggan</h2>\n<ol>\n<li>Ketik nama, nomor telepon, kode, atau email di kotak <strong>Cari kode, nama, telepon, atau email…</strong>.</li>\n<li>Hasil langsung tersaring saat Anda mengetik.</li>\n<li>Klik nama pelanggan untuk membuka profilnya.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menyaring-daftar-pelanggan-filter",
+      "number": 2,
+      "title": "Menyaring Daftar Pelanggan (Filter)",
+      "summary": "menampilkan pelanggan dengan kriteria tertentu saja.",
+      "html": "<p><strong>Fungsi:</strong> menampilkan pelanggan dengan kriteria tertentu saja.</p>\n<p><figure><img src=\"/help/pelanggan/02-daftar-pelanggan--filter.webp\" alt=\"Dialog Filter pada daftar pelanggan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Filter pada daftar pelanggan <a class=\"help-open\" href=\"/dashboard/customers\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Pilihan</th>\n<th>Isinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Kategori</td>\n<td>Kategori dari Pengaturan › Tipe pelanggan</td>\n</tr>\n<tr>\n<td>Jenis</td>\n<td>Perorangan atau Perusahaan</td>\n</tr>\n<tr>\n<td>Status</td>\n<td>Aktif, Nonaktif, atau semua</td>\n</tr>\n<tr>\n<td>Tampilkan pelanggan terhapus</td>\n<td>Centang untuk melihat pelanggan yang sudah dihapus</td>\n</tr>\n</tbody></table></div>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Filter</strong> di kanan kotak cari.</li>\n<li>Pilih kriteria yang diinginkan.</li>\n<li>Klik <strong>Terapkan</strong>. Klik <strong>Reset</strong> untuk kembali ke tampilan awal.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menambah-pelanggan-baru",
+      "number": 3,
+      "title": "Menambah Pelanggan Baru",
+      "summary": "mendaftarkan pemilik hewan yang baru pertama kali datang.",
+      "html": "<p><strong>Fungsi:</strong> mendaftarkan pemilik hewan yang baru pertama kali datang.</p>\n<p><figure><img src=\"/help/pelanggan/03-tambah-pelanggan.webp\" alt=\"Formulir pelanggan baru\" width=\"1440\" height=\"1487\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir pelanggan baru <a class=\"help-open\" href=\"/dashboard/customers/new\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Yang perlu diperhatikan:</strong></p>\n<ul>\n<li>Hanya <strong>Nama pelanggan</strong> yang wajib (bertanda *). Kolom lain boleh dilengkapi nanti.</li>\n<li><strong>Jenis pelanggan</strong>: <strong>Perorangan</strong> atau <strong>Perusahaan</strong>. Perusahaan menambah kolom NPWP dan PIC.</li>\n<li><strong>WhatsApp / telepon</strong>: isi supaya tombol <strong>Sapa</strong> dan <strong>Chat WhatsApp</strong> bisa dipakai.</li>\n<li><strong>Titik alamat</strong>: klik <strong>Pilih dari peta</strong> untuk menandai lokasi rumah pelanggan, atau tempel pasangan &quot;lat, lng&quot; dari Google Maps ke kolom <strong>Latitude</strong>. Titik ini dipakai untuk menghitung zona antar-jemput.</li>\n<li><strong>Tag</strong>: label bebas, maksimal 10. Huruf kecil, spasi otomatis jadi tanda hubung.</li>\n<li><strong>Catatan</strong>: muncul di layar kasir dan kartu booking.</li>\n<li><strong>Pengingat</strong>: izin dari pelanggan untuk dikirimi pengingat booking, tawaran perpanjangan membership, dan promo.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> pengiriman WhatsApp otomatis <strong>belum tersedia</strong>. Pilihan Pengingat saat ini hanya disimpan sebagai izin dari pelanggan.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Di tab <strong>Pelanggan</strong>, klik <strong>Pelanggan baru</strong> (kanan atas).</li>\n<li>Isi <strong>Nama pelanggan</strong>.</li>\n<li>Pilih <strong>Jenis pelanggan</strong>, lalu isi <strong>WhatsApp / telepon</strong>.</li>\n<li>Isi <strong>Alamat</strong>, lalu klik <strong>Pilih dari peta</strong> untuk menandai titiknya (lihat di bawah).</li>\n<li>Lengkapi kolom lain bila perlu.</li>\n<li>Klik <strong>Simpan pelanggan</strong>.</li>\n<li>Lanjutkan dengan menambahkan hewannya (lihat bagian <a href=\"/dashboard/help/pelanggan/menambah-hewan-dari-profil-pelanggan\">5</a>).</li>\n</ol>\n<h2>Menandai lokasi di peta</h2>\n<p><figure><img src=\"/help/pelanggan/03-tambah-pelanggan--pilih-dari-peta.webp\" alt=\"Dialog Lokasi pelanggan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Lokasi pelanggan <a class=\"help-open\" href=\"/dashboard/customers/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Cari alamat atau nama tempat di kotak atas, lalu klik <strong>Cari</strong>. Atau geser peta sampai pin tepat di rumah pelanggan.</li>\n<li>Ikon target di kanan bawah peta memindahkan pin ke lokasi Anda sekarang.</li>\n<li><strong>Titik</strong> menunjukkan koordinat yang akan disimpan.</li>\n<li><strong>Alamat</strong> terisi otomatis dari peta. Boleh ditambah patokan. Yang dipakai menghitung tarif adalah <strong>titiknya</strong>, bukan tulisannya.</li>\n<li>Klik <strong>Gunakan titik ini</strong>. Kolom <strong>Alamat</strong>, <strong>Latitude</strong>, dan <strong>Longitude</strong> di formulir ikut terisi.</li>\n</ul>\n"
+    },
+    {
+      "slug": "profil-pelanggan",
+      "number": 4,
+      "title": "Profil Pelanggan",
+      "summary": "melihat semua informasi satu pelanggan di satu halaman.",
+      "html": "<p><strong>Fungsi:</strong> melihat semua informasi satu pelanggan di satu halaman.</p>\n<p><figure><img src=\"/help/pelanggan/04-detail-pelanggan.webp\" alt=\"Halaman profil pelanggan\" width=\"1440\" height=\"2179\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman profil pelanggan</figcaption></figure></p>\n<p><strong>Isi halaman, dari atas ke bawah:</strong></p>\n<ul>\n<li><strong>Kepala halaman</strong>: nama, telepon, kode, status, tanggal bergabung, serta tombol <strong>Chat WhatsApp</strong> dan <strong>Ubah</strong>.</li>\n<li><strong>Identitas</strong>: data pemilik.</li>\n<li><strong>Hewan</strong>: hewan milik pelanggan ini, dengan tombol <strong>Ubah</strong> per hewan dan <strong>Tambah hewan</strong>.</li>\n<li><strong>Membership</strong>: kartu membership per hewan dan riwayatnya. Tombol <strong>Jual paket di kasir</strong> membuka layar Kasir.</li>\n<li><strong>Nilai pelanggan</strong>: Nilai faktur, Sudah dibayar, Piutang berjalan, Lewat jatuh tempo.</li>\n<li><strong>Riwayat</strong>: transaksi kasir yang sudah lunas, terbaru di atas.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> <strong>Nilai pelanggan</strong> hanya menghitung penjualan yang dibuat sebagai <strong>faktur</strong>. Transaksi kasir yang langsung lunas tidak ikut dihitung di bagian ini.</p>\n</blockquote>\n<p><strong>Belum tersedia</strong> (bertanda <strong>Segera</strong>): Lifetime value, Rata-rata per kunjungan, Produk paling sering dibeli, dan riwayat booking di urutan waktu ini.</p>\n<h2>Langkah</h2>\n<ol>\n<li>Di tab <strong>Pelanggan</strong>, klik nama pelanggan.</li>\n<li>Gulir ke bawah untuk melihat hewan, membership, nilai, dan riwayatnya.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menambah-hewan-dari-profil-pelanggan",
+      "number": 5,
+      "title": "Menambah Hewan dari Profil Pelanggan",
+      "summary": "cara tercepat mendaftarkan hewan langsung atas nama pelanggan yang sedang dibuka.",
+      "html": "<p><strong>Fungsi:</strong> cara tercepat mendaftarkan hewan langsung atas nama pelanggan yang sedang dibuka.</p>\n<p><figure><img src=\"/help/pelanggan/04-detail-pelanggan--tambah-hewan.webp\" alt=\"Dialog Tambah hewan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Tambah hewan</figcaption></figure></p>\n<p><strong>Yang perlu diperhatikan:</strong></p>\n<ul>\n<li>Wajib diisi: <strong>Nama hewan</strong>, <strong>Jenis</strong>, dan <strong>Berat (kg)</strong>.</li>\n<li><strong>Ukuran</strong> terisi otomatis dari jenis hewan dan berat.</li>\n<li><strong>Jenis bulu</strong> dan ukuran menentukan <strong>harga grooming</strong>, jadi usahakan diisi.</li>\n<li>Ciri-ciri lain (ras, foto, tanggal lahir) bisa dilengkapi nanti di profil hewan.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di profil pelanggan, bagian <strong>Hewan</strong>, klik <strong>Tambah hewan</strong>.</li>\n<li>Isi <strong>Nama hewan</strong>, pilih <strong>Jenis</strong>, isi <strong>Berat (kg)</strong>.</li>\n<li>Pilih <strong>Jenis bulu</strong>.</li>\n<li>Klik <strong>Tambah hewan</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "mengubah-data-pelanggan",
+      "number": 6,
+      "title": "Mengubah Data Pelanggan",
+      "summary": "memperbarui data pelanggan, misalnya nomor telepon atau alamat yang berubah.",
+      "html": "<p><strong>Fungsi:</strong> memperbarui data pelanggan, misalnya nomor telepon atau alamat yang berubah.</p>\n<p><figure><img src=\"/help/pelanggan/05-edit-pelanggan.webp\" alt=\"Formulir ubah pelanggan\" width=\"1440\" height=\"2004\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir ubah pelanggan</figcaption></figure></p>\n<ul>\n<li>Kolomnya sama dengan formulir <strong>Pelanggan baru</strong>.</li>\n<li>Kalau titik alamat sudah terisi, tombolnya berbunyi <strong>Ubah titik di peta</strong>. Kalau belum, <strong>Pilih dari peta</strong>.</li>\n</ul>\n<p><figure><img src=\"/help/pelanggan/05-edit-pelanggan--ubah-titik-peta.webp\" alt=\"Mengubah titik alamat di peta\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Mengubah titik alamat di peta</figcaption></figure></p>\n<ul>\n<li>Pelanggan pindah rumah? Geser pin ke alamat baru, lalu klik <strong>Gunakan titik ini</strong>. Klik <strong>Batal</strong> untuk menutup tanpa mengubah titik.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Buka profil pelanggan, lalu klik <strong>Ubah</strong> (kanan atas). Bisa juga dari menu <strong>⋮</strong> › <strong>Ubah</strong> di daftar pelanggan.</li>\n<li>Ubah data yang perlu. Untuk alamat baru, perbarui juga titiknya di peta.</li>\n<li>Klik <strong>Simpan pelanggan</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menu-aksi-pelanggan",
+      "number": 7,
+      "title": "Menu Aksi Pelanggan (⋮)",
+      "summary": "jalan pintas untuk satu pelanggan langsung dari daftar.",
+      "html": "<p><strong>Fungsi:</strong> jalan pintas untuk satu pelanggan langsung dari daftar.</p>\n<p><figure><img src=\"/help/pelanggan/02-daftar-pelanggan--menu-aksi.webp\" alt=\"Menu aksi di daftar pelanggan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Menu aksi di daftar pelanggan <a class=\"help-open\" href=\"/dashboard/customers\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Menu</th>\n<th>Gunanya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Detail</td>\n<td>Membuka profil pelanggan</td>\n</tr>\n<tr>\n<td>Ubah</td>\n<td>Membuka formulir ubah</td>\n</tr>\n<tr>\n<td>Nonaktifkan</td>\n<td>Menyembunyikan pelanggan dari pilihan transaksi</td>\n</tr>\n<tr>\n<td>Hapus</td>\n<td>Menghapus pelanggan dari daftar</td>\n</tr>\n</tbody></table></div>\n"
+    },
+    {
+      "slug": "menonaktifkan-pelanggan",
+      "number": 8,
+      "title": "Menonaktifkan Pelanggan",
+      "summary": "menyembunyikan pelanggan yang sudah tidak dilayani, tanpa menghapus datanya.",
+      "html": "<p><strong>Fungsi:</strong> menyembunyikan pelanggan yang sudah tidak dilayani, tanpa menghapus datanya.</p>\n<p><figure><img src=\"/help/pelanggan/02-daftar-pelanggan--nonaktifkan.webp\" alt=\"Dialog Nonaktifkan pelanggan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Nonaktifkan pelanggan <a class=\"help-open\" href=\"/dashboard/customers\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Pelanggan nonaktif <strong>tidak muncul</strong> sebagai pilihan di kasir, booking, dan faktur penjualan.</li>\n<li>Data dan riwayatnya <strong>tetap ada</strong>, dan bisa diaktifkan lagi kapan saja.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di daftar pelanggan, klik <strong>⋮</strong> pada baris pelanggan.</li>\n<li>Pilih <strong>Nonaktifkan</strong>.</li>\n<li>Klik <strong>Nonaktifkan</strong> di dialog untuk memastikan, atau <strong>Batal</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menghapus-pelanggan",
+      "number": 9,
+      "title": "Menghapus Pelanggan",
+      "summary": "menghapus pelanggan yang salah input atau dobel.",
+      "html": "<p><strong>Fungsi:</strong> menghapus pelanggan yang salah input atau dobel.</p>\n<p><figure><img src=\"/help/pelanggan/02-daftar-pelanggan--hapus.webp\" alt=\"Dialog Hapus pelanggan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Hapus pelanggan <a class=\"help-open\" href=\"/dashboard/customers\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Pelanggan yang dihapus disembunyikan dari daftar, dan <strong>emailnya bisa dipakai lagi</strong> untuk pelanggan lain.</li>\n<li>Data bisa <strong>dipulihkan</strong>. Untuk melihatnya, buka <strong>Filter</strong> › centang <strong>Tampilkan pelanggan terhapus</strong>.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> untuk pelanggan yang sekadar tidak aktif lagi, pakai <strong>Nonaktifkan</strong>, bukan <strong>Hapus</strong>.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>⋮</strong> pada baris pelanggan, lalu pilih <strong>Hapus</strong>.</li>\n<li>Klik <strong>Hapus</strong> di dialog untuk memastikan, atau <strong>Batal</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "daftar-hewan",
+      "number": 10,
+      "title": "Daftar Hewan",
+      "summary": "melihat semua hewan yang terdaftar dari semua pelanggan.",
+      "html": "<p><strong>Fungsi:</strong> melihat semua hewan yang terdaftar dari semua pelanggan.</p>\n<p><figure><img src=\"/help/pelanggan/08-daftar-hewan.webp\" alt=\"Tab Hewan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Hewan <a class=\"help-open\" href=\"/dashboard/pets\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Kolom: <strong>Nama</strong>, <strong>Jenis</strong>, <strong>Ras</strong>, <strong>Umur</strong>, <strong>Berat</strong>, <strong>Status</strong>, <strong>Aksi</strong>.</li>\n<li>Cari berdasarkan <strong>nama atau ras</strong> di kotak cari.</li>\n<li>Untuk membuka profil hewan, klik <strong>⋮</strong> › <strong>Detail</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "filter-dan-menu-aksi-hewan",
+      "number": 11,
+      "title": "Filter dan Menu Aksi Hewan",
+      "summary": "menyaring daftar hewan dan membuka aksi per hewan.",
+      "html": "<p><strong>Fungsi:</strong> menyaring daftar hewan dan membuka aksi per hewan.</p>\n<p><figure><img src=\"/help/pelanggan/08-daftar-hewan--filter.webp\" alt=\"Dialog Filter pada daftar hewan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Filter pada daftar hewan <a class=\"help-open\" href=\"/dashboard/pets\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Filter</strong>: <strong>Jenis</strong> hewan, <strong>Status</strong>, dan <strong>Tampilkan hewan terhapus</strong>.</li>\n</ul>\n<p><figure><img src=\"/help/pelanggan/08-daftar-hewan--menu-aksi.webp\" alt=\"Menu aksi hewan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Menu aksi hewan <a class=\"help-open\" href=\"/dashboard/pets\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Menu <strong>⋮</strong>: <strong>Detail</strong>, <strong>Ubah</strong>, <strong>Hapus</strong>.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Filter</strong>, pilih kriteria, lalu klik <strong>Terapkan</strong>.</li>\n<li>Untuk satu hewan, klik <strong>⋮</strong> di ujung baris lalu pilih menunya.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menambah-hewan-baru-formulir-lengkap",
+      "number": 12,
+      "title": "Menambah Hewan Baru (Formulir Lengkap)",
+      "summary": "mendaftarkan hewan lengkap dengan ciri-cirinya dalam satu formulir.",
+      "html": "<p><strong>Fungsi:</strong> mendaftarkan hewan lengkap dengan ciri-cirinya dalam satu formulir.</p>\n<p><figure><img src=\"/help/pelanggan/09-tambah-hewan.webp\" alt=\"Formulir hewan baru\" width=\"1440\" height=\"1585\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir hewan baru <a class=\"help-open\" href=\"/dashboard/pets/new\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Bagian Identitas:</strong></p>\n<ul>\n<li><strong>Nama hewan</strong>, <strong>Pemilik</strong>, dan <strong>Jenis</strong> wajib diisi.</li>\n<li><strong>Pemilik</strong> dipilih dari pelanggan yang sudah terdaftar. Jadi daftarkan pelanggannya dulu.</li>\n</ul>\n<p><strong>Bagian Ciri-ciri:</strong></p>\n<ul>\n<li><strong>Berat (kg)</strong> dan <strong>Jenis bulu</strong> wajib diisi.</li>\n<li><strong>Ukuran</strong> dihitung otomatis dari berat. Harga grooming mengikuti ukuran dan jenis bulu.</li>\n<li><strong>Ras</strong>: pilih jenis hewan dulu supaya daftar rasnya tersaring.</li>\n<li><strong>Tanggal lahir</strong>: umur dihitung otomatis.</li>\n<li><strong>Foto</strong>: PNG, JPG, atau WebP, akan dipotong jadi kotak.</li>\n<li><strong>Catatan internal</strong>: hal yang perlu diketahui groomer, misalnya takut air atau alergi sampo.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di tab <strong>Hewan</strong>, klik <strong>Hewan baru</strong>.</li>\n<li>Isi <strong>Nama hewan</strong>, pilih <strong>Pemilik</strong> dan <strong>Jenis</strong>.</li>\n<li>Isi <strong>Berat (kg)</strong> dan pilih <strong>Jenis bulu</strong>.</li>\n<li>Lengkapi ciri-ciri lain bila tahu.</li>\n<li>Klik <strong>Daftarkan hewan</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "profil-hewan-tab-info",
+      "number": 13,
+      "title": "Profil Hewan: Tab Info",
+      "summary": "melihat identitas lengkap satu hewan.",
+      "html": "<p><strong>Fungsi:</strong> melihat identitas lengkap satu hewan.</p>\n<p><figure><img src=\"/help/pelanggan/10-detail-hewan.webp\" alt=\"Profil hewan, tab Info\" width=\"1440\" height=\"1071\" loading=\"lazy\" decoding=\"async\"><figcaption>Profil hewan, tab Info</figcaption></figure></p>\n<ul>\n<li>Kepala halaman: nama, pemilik (bisa diklik), jenis, status, serta tombol <strong>Cetak kartu</strong> dan <strong>Ubah</strong>.</li>\n<li>Lima tab: <strong>Info</strong>, <strong>Riwayat</strong>, <strong>Preferensi</strong>, <strong>Medis</strong>, <strong>Membership</strong>.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Buka dari tab <strong>Hewan</strong> (<strong>⋮</strong> › <strong>Detail</strong>) atau dari profil pelanggan (<strong>Detail hewan ›</strong>).</li>\n<li>Klik tab sesuai informasi yang dicari.</li>\n</ol>\n"
+    },
+    {
+      "slug": "profil-hewan-tab-riwayat",
+      "number": 14,
+      "title": "Profil Hewan: Tab Riwayat",
+      "summary": "melihat semua layanan dan pembelian untuk hewan ini.",
+      "html": "<p><strong>Fungsi:</strong> melihat semua layanan dan pembelian untuk hewan ini.</p>\n<p><figure><img src=\"/help/pelanggan/10-detail-hewan--tab-riwayat.webp\" alt=\"Tab Riwayat hewan\" width=\"1440\" height=\"1728\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Riwayat hewan</figcaption></figure></p>\n<ul>\n<li>Kartu atas: <strong>Terakhir dilayani</strong>, <strong>Jumlah kunjungan</strong> (satu kedatangan dihitung sekali), <strong>Groomer paling sering</strong>.</li>\n<li>Saring dengan tombol <strong>Semua</strong>, <strong>Grooming</strong>, <strong>Kasir</strong>, <strong>Faktur</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "profil-hewan-tab-preferensi",
+      "number": 15,
+      "title": "Profil Hewan: Tab Preferensi",
+      "summary": "mencatat cara menangani hewan sesuai keinginan pemilik.",
+      "html": "<p><strong>Fungsi:</strong> mencatat cara menangani hewan sesuai keinginan pemilik.</p>\n<p><figure><img src=\"/help/pelanggan/10-detail-hewan--tab-preferensi.webp\" alt=\"Tab Preferensi hewan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Preferensi hewan</figcaption></figure></p>\n<ul>\n<li><strong>Catatan preferensi</strong> muncul otomatis di form booking dan layar kasir, dan dibaca groomer sebelum mulai.</li>\n<li><strong>Tag</strong>: label singkat, misalnya &quot;galak&quot;, maksimal 10.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik tab <strong>Preferensi</strong>.</li>\n<li>Tulis catatan dan tambahkan tag (klik <strong>Tambah</strong> setelah mengetik tag).</li>\n<li>Klik <strong>Simpan preferensi</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "profil-hewan-tab-medis",
+      "number": 16,
+      "title": "Profil Hewan: Tab Medis",
+      "summary": "mencatat alergi, kondisi, obat rutin, vaksinasi, dan dokter hewan.",
+      "html": "<p><strong>Fungsi:</strong> mencatat alergi, kondisi, obat rutin, vaksinasi, dan dokter hewan.</p>\n<p><figure><img src=\"/help/pelanggan/10-detail-hewan--tab-medis.webp\" alt=\"Tab Medis hewan\" width=\"1440\" height=\"1121\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Medis hewan</figcaption></figure></p>\n<p><figure><img src=\"/help/pelanggan/10-detail-hewan--tambah-alergi.webp\" alt=\"Menambah baris alergi\" width=\"1440\" height=\"1231\" loading=\"lazy\" decoding=\"async\"><figcaption>Menambah baris alergi</figcaption></figure></p>\n<ul>\n<li><strong>Alergi</strong> tingkat berat muncul sebagai <strong>peringatan merah</strong> saat hewan dipilih di booking.</li>\n<li><strong>Vaksinasi</strong>: tanggal jatuh tempo diisi manual karena jaraknya beda per vaksin dan per dokter.</li>\n<li><strong>Dokter hewan</strong>: nama klinik dan telepon.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> isi alergi sebelum hewan pertama kali digroom, supaya groomer mendapat peringatan.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Klik tab <strong>Medis</strong>.</li>\n<li>Klik <strong>Tambah alergi</strong>, <strong>Tambah kondisi</strong>, <strong>Tambah obat rutin</strong>, atau <strong>Tambah vaksinasi</strong>, lalu isi barisnya.</li>\n<li>Klik <strong>Simpan catatan medis</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "profil-hewan-tab-membership",
+      "number": 17,
+      "title": "Profil Hewan: Tab Membership",
+      "summary": "melihat membership hewan, atau menerbitkannya secara manual.",
+      "html": "<p><strong>Fungsi:</strong> melihat membership hewan, atau menerbitkannya secara manual.</p>\n<p><figure><img src=\"/help/pelanggan/10-detail-hewan--tab-membership.webp\" alt=\"Tab Membership hewan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Membership hewan</figcaption></figure></p>\n<p><figure><img src=\"/help/pelanggan/10-detail-hewan--terbitkan-manual.webp\" alt=\"Dialog Terbitkan manual\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Terbitkan manual</figcaption></figure></p>\n<ul>\n<li>Cara biasa: jual paket membership di <strong>Kasir</strong> (tautan <strong>Jual paket di kasir →</strong>).</li>\n<li><strong>Terbitkan manual</strong>: untuk membership yang sudah dibayar di luar Buloo. Cara ini <strong>tidak mencatat pembayaran</strong>.</li>\n<li>Isi dialog: <strong>Paket</strong>, <strong>Tanggal beli</strong>, <strong>Mulai berlaku</strong> (boleh dimundurkan), dan <strong>Keterangan</strong>. Tanggal berakhir dihitung otomatis.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> kalau pelanggan membayar sekarang, jual lewat <strong>Kasir</strong>, jangan <strong>Terbitkan manual</strong>, supaya uangnya tercatat.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Klik tab <strong>Membership</strong>, lalu klik <strong>Terbitkan manual</strong>.</li>\n<li>Pilih <strong>Paket</strong>, lalu periksa tanggalnya.</li>\n<li>Klik <strong>Terbitkan membership</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "mengubah-data-hewan",
+      "number": 18,
+      "title": "Mengubah Data Hewan",
+      "summary": "memperbarui data hewan, misalnya berat baru setelah ditimbang.",
+      "html": "<p><strong>Fungsi:</strong> memperbarui data hewan, misalnya berat baru setelah ditimbang.</p>\n<p><figure><img src=\"/help/pelanggan/11-edit-hewan.webp\" alt=\"Formulir ubah hewan\" width=\"1440\" height=\"1822\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir ubah hewan</figcaption></figure></p>\n<ul>\n<li>Kolomnya sama dengan formulir <strong>Hewan baru</strong>.</li>\n<li>Mengubah <strong>Berat</strong> bisa mengubah <strong>Ukuran</strong>, dan ukuran memengaruhi harga grooming berikutnya.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di profil hewan, klik <strong>Ubah</strong>.</li>\n<li>Ubah data yang perlu, lalu klik <strong>Simpan hewan</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "mencetak-kartu-hewan",
+      "number": 19,
+      "title": "Mencetak Kartu Hewan",
+      "summary": "mencetak lembar ringkas untuk groomer: pemilik, dokter hewan, alergi, kondisi, dan grooming terakhir.",
+      "html": "<p><strong>Fungsi:</strong> mencetak lembar ringkas untuk groomer: pemilik, dokter hewan, alergi, kondisi, dan grooming terakhir.</p>\n<p><figure><img src=\"/help/pelanggan/12-cetak-kartu-hewan.webp\" alt=\"Halaman cetak kartu hewan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman cetak kartu hewan</figcaption></figure></p>\n<ul>\n<li>Ada baris kosong <strong>Catatan groomer hari ini</strong> untuk ditulis tangan.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di profil hewan, klik <strong>Cetak kartu</strong>.</li>\n<li>Klik <strong>Cetak kartu</strong> sekali lagi untuk membuka dialog cetak printer.</li>\n<li>Klik <strong>Kembali</strong> untuk kembali ke profil.</li>\n</ol>\n"
+    },
+    {
+      "slug": "riwayat-semua-pelanggan",
+      "number": 20,
+      "title": "Riwayat Semua Pelanggan",
+      "summary": "melihat semua kegiatan pelanggan (grooming, layanan, produk, membership, faktur) dari semua cabang.",
+      "html": "<p><strong>Fungsi:</strong> melihat semua kegiatan pelanggan (grooming, layanan, produk, membership, faktur) dari semua cabang.</p>\n<p><figure><img src=\"/help/pelanggan/06-riwayat.webp\" alt=\"Tab Riwayat\" width=\"1440\" height=\"1635\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Riwayat <a class=\"help-open\" href=\"/dashboard/customers/history\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Kolom: <strong>Tanggal</strong>, <strong>Pelanggan</strong>, <strong>Hewan</strong>, <strong>Kegiatan</strong>, <strong>Jenis</strong>, <strong>Cabang / Gudang</strong>, <strong>Nilai</strong>, <strong>Sumber</strong> (Kasir atau Faktur).</li>\n<li>Klik nama pelanggan, nama hewan, atau nomor faktur untuk membukanya.</li>\n<li>Satu halaman berisi 20 kegiatan. Pindah halaman dengan tombol di bawah tabel.</li>\n</ul>\n<p><figure><img src=\"/help/pelanggan/06-riwayat--filter.webp\" alt=\"Filter riwayat\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Filter riwayat <a class=\"help-open\" href=\"/dashboard/customers/history\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Filter</strong>: <strong>Periode</strong> cepat (Hari ini, 7 hari, 30 hari, Bulan ini), rentang <strong>Dari</strong>–<strong>Sampai</strong>, <strong>Jenis</strong>, dan <strong>Sumber</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "ringkasan-pelanggan",
+      "number": 21,
+      "title": "Ringkasan Pelanggan",
+      "summary": "melihat kondisi pelanggan dan siapa yang perlu dihubungi hari ini.",
+      "html": "<p><strong>Fungsi:</strong> melihat kondisi pelanggan dan siapa yang perlu dihubungi hari ini.</p>\n<p><figure><img src=\"/help/pelanggan/01-ringkasan.webp\" alt=\"Tab Ringkasan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Ringkasan <a class=\"help-open\" href=\"/dashboard/customers/summary\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Kartu</th>\n<th>Artinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Pelanggan baru periode ini</td>\n<td>Pelanggan yang didaftarkan 30 hari terakhir</td>\n</tr>\n<tr>\n<td>Rata-rata belanja / pelanggan</td>\n<td>Omzet periode dibagi pelanggan yang bertransaksi</td>\n</tr>\n<tr>\n<td>Repeat rate (90 hari terakhir)</td>\n<td>Persen pelanggan dengan 2 transaksi atau lebih dalam 90 hari</td>\n</tr>\n</tbody></table></div>\n<p><strong>Daftar tindak lanjut:</strong></p>\n<ul>\n<li><strong>Pelanggan tidak aktif ≥ …</strong>: pelanggan yang sudah lama tidak datang. Atur batas harinya di kotak pilihan.</li>\n<li><strong>Pelanggan baru dalam … terakhir</strong>: pelanggan baru untuk disapa.</li>\n<li><strong>Membership mendekati habis</strong>: membership yang berakhir dalam 14 hari.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik tab <strong>Ringkasan</strong>.</li>\n<li>Klik <strong>Sapa</strong> di samping nama pelanggan untuk membuka chat WhatsApp.</li>\n<li>Klik <strong>Lihat semua →</strong> untuk melihat daftar lengkapnya.</li>\n</ol>\n"
+    },
+    {
+      "slug": "pelanggan-tidak-aktif",
+      "number": 22,
+      "title": "Pelanggan Tidak Aktif",
+      "summary": "daftar pelanggan yang sudah lama tidak bertransaksi, diurutkan dari yang paling lama.",
+      "html": "<p><strong>Fungsi:</strong> daftar pelanggan yang sudah lama tidak bertransaksi, diurutkan dari yang paling lama.</p>\n<p><figure><img src=\"/help/pelanggan/07-dormant.webp\" alt=\"Halaman pelanggan tidak aktif\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman pelanggan tidak aktif <a class=\"help-open\" href=\"/dashboard/customers/dormant\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/pelanggan/07-dormant--batas-tidak-aktif.webp\" alt=\"Pilihan batas tidak aktif\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pilihan batas tidak aktif <a class=\"help-open\" href=\"/dashboard/customers/dormant\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Batas tidak aktif</strong>: 30, 60, 90, 120, atau 150 hari.</li>\n<li>Kolom: pelanggan, <strong>Terakhir datang</strong>, <strong>Bergabung</strong>, <strong>Aksi</strong>.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Buka dari <strong>Ringkasan</strong> › <strong>Lihat semua →</strong> pada kartu <strong>Pelanggan tidak aktif</strong>.</li>\n<li>Klik <strong>Batas tidak aktif</strong>, lalu pilih jumlah hari.</li>\n<li>Hubungi pelanggan di daftar untuk menawarkan layanan.</li>\n</ol>\n"
+    }
+  ],
+  "faq": [
+    {
+      "question": "Kategori pelanggan tidak bisa dipilih?",
+      "answer": "Buat dulu di <strong>Pengaturan › Tipe pelanggan</strong>."
+    },
+    {
+      "question": "Pelanggan tidak muncul di kasir?",
+      "answer": "Cek statusnya. Pelanggan <strong>Nonaktif</strong> tidak muncul sebagai pilihan."
+    },
+    {
+      "question": "Salah hapus pelanggan?",
+      "answer": "Buka <strong>Filter</strong> › centang <strong>Tampilkan pelanggan terhapus</strong>."
+    },
+    {
+      "question": "Harga grooming tidak sesuai?",
+      "answer": "Periksa <strong>Berat</strong> dan <strong>Jenis bulu</strong> hewannya, karena keduanya menentukan ukuran dan harga."
+    }
+  ],
+  "tips": [
+    "selalu isi nomor WhatsApp, supaya tombol <strong>Sapa</strong> di Ringkasan bisa dipakai."
+  ],
+  "updatedAt": "2026-11-04"
+}

@@ -62,6 +62,15 @@ describe("DashboardShell", () => {
     expect(screen.queryByText("Anabul Group")).not.toBeInTheDocument();
   });
 
+  it("opens the guide for the screen in view, in a new tab", () => {
+    renderWithAuth(<DashboardShell>halaman</DashboardShell>);
+
+    // usePathname is mocked to "/dashboard" — Beranda.
+    const help = screen.getByRole("link", { name: "Panduan untuk halaman ini (tab baru)" });
+    expect(help.getAttribute("href")).toMatch(/^\/dashboard\/help\/[^/]+\/[^/]+$/);
+    expect(help).toHaveAttribute("target", "_blank");
+  });
+
   it("remembers a collapsed rail across a reload", async () => {
     const { unmount } = renderWithAuth(
       <DashboardShell>halaman</DashboardShell>,

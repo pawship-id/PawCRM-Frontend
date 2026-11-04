@@ -1,0 +1,152 @@
+{
+  "slug": "mulai",
+  "order": 0,
+  "title": "Mulai Pakai Buloo",
+  "subtitle": "Masuk ke Buloo, mengenal Beranda dan menu, mengatur akun sendiri, lalu tahu buku panduan mana yang dibaca berikutnya.",
+  "introHtml": "<p><strong>Buku ini untuk apa?</strong></p>\n<ul>\n<li>Panduan <strong>pertama</strong> untuk semua pengguna Buloo: cara masuk, lupa password, dan berkeliling aplikasi.</li>\n<li>Menjelaskan <strong>Beranda</strong>, layar pertama setelah masuk, beserta empat tabnya.</li>\n<li>Menjelaskan konsep dasar yang berlaku di semua modul: <strong>cabang</strong> dan <strong>hak akses</strong>.</li>\n</ul>\n<p><strong>Siapa yang memakai?</strong> Semua pengguna: pemilik usaha, manajer, admin, kasir, dan front desk.</p>\n<p><strong>Siapkan dulu:</strong></p>\n<ul>\n<li><strong>Email dan password</strong> dari pemilik usaha atau admin. Akun dibuat di <strong>Pengaturan › Pengguna &amp; Sistem › Pengguna</strong> (lihat buku <a href=\"/dashboard/help/pengaturan-sistem\">03</a>).</li>\n</ul>\n<p><strong>Isi buku ini:</strong></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Bagian</th>\n<th>Dipakai untuk</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Masuk, lupa &amp; atur ulang password</td>\n<td>Membuka Buloo</td>\n</tr>\n<tr>\n<td>Beranda (Hari Ini, Uang, Operasional, Cabang)</td>\n<td>Melihat kondisi usaha hari ini dan periode berjalan</td>\n</tr>\n<tr>\n<td>Menu samping &amp; menu akun</td>\n<td>Berpindah modul, membuka profil, keluar</td>\n</tr>\n<tr>\n<td>Profil saya</td>\n<td>Mengubah nama, email, password, keluar dari semua perangkat</td>\n</tr>\n<tr>\n<td>Daftar buku panduan &amp; checklist</td>\n<td>Urutan belajar dan persiapan hari pertama</td>\n</tr>\n</tbody></table></div>\n",
+  "articles": [
+    {
+      "slug": "konsep-dasar-cabang-dan-hak-akses",
+      "number": 1,
+      "title": "Konsep Dasar: Cabang dan Hak Akses",
+      "summary": "memahami kenapa layar tiap pengguna bisa berbeda.",
+      "html": "<p><strong>Fungsi:</strong> memahami kenapa layar tiap pengguna bisa berbeda.</p>\n<p><strong>Cabang aktif</strong></p>\n<ul>\n<li>Satu usaha bisa punya beberapa <strong>cabang</strong>. Setiap cabang punya gudang, kasir, dan laporannya sendiri.</li>\n<li>Setiap pengguna hanya melihat cabang yang <strong>diberikan aksesnya</strong>. Diatur di <strong>Pengaturan › Pengguna &amp; Sistem › Akses cabang</strong>.</li>\n<li>Pilihan <strong>Semua cabang</strong> di filter artinya semua cabang yang Anda pegang, bukan semua cabang usaha.</li>\n<li>Label <strong>Cabang aktif</strong> di kartu berarti angkanya mengikuti cabang yang sedang dipilih di filter.</li>\n</ul>\n<p><strong>Hak akses (peran)</strong></p>\n<ul>\n<li>Setiap pengguna punya <strong>peran</strong>, misalnya Owner, Manager, atau Staff. Peran menentukan menu, tab, dan tombol yang muncul.</li>\n<li>Menu yang tidak boleh Anda buka <strong>tidak ditampilkan sama sekali</strong>. Jadi kalau rekan kerja melihat menu yang tidak ada di layar Anda, itu wajar.</li>\n<li>Modul yang dimatikan untuk usaha Anda juga disembunyikan dari menu.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> kalau ada menu atau tombol yang Anda butuhkan tetapi tidak muncul, minta pemilik usaha menambahkan izinnya di <strong>Pengaturan › Pengguna &amp; Sistem › Peran</strong>. Jangan meminjam akun orang lain, karena semua catatan keuangan tercatat atas nama akun yang dipakai.</p>\n</blockquote>\n"
+    },
+    {
+      "slug": "masuk-ke-buloo",
+      "number": 2,
+      "title": "Masuk ke Buloo",
+      "summary": "membuka Buloo dengan akun Anda.",
+      "html": "<p><strong>Fungsi:</strong> membuka Buloo dengan akun Anda.</p>\n<p><figure><img src=\"/help/mulai/01-login.webp\" alt=\"Halaman masuk\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman masuk <a class=\"help-open\" href=\"/login\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Email</strong> dan <strong>Password</strong> wajib diisi.</li>\n<li>Klik ikon mata di kolom password untuk melihat isi yang diketik.</li>\n<li>Setelah berhasil masuk, Anda langsung dibawa ke <strong>Beranda</strong>.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Ketik <strong>Email</strong> akun Anda.</li>\n<li>Ketik <strong>Password</strong>.</li>\n<li>Klik <strong>Masuk</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "lupa-password",
+      "number": 3,
+      "title": "Lupa Password",
+      "summary": "meminta tautan untuk membuat password baru lewat email.",
+      "html": "<p><strong>Fungsi:</strong> meminta tautan untuk membuat password baru lewat email.</p>\n<p><figure><img src=\"/help/mulai/02-lupa-password.webp\" alt=\"Halaman lupa password\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman lupa password <a class=\"help-open\" href=\"/forgot-password\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Tautan dikirim ke email yang terdaftar. Periksa juga folder spam.</li>\n<li>Demi keamanan, pesan yang muncul selalu sama, baik email terdaftar maupun tidak.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di halaman masuk, klik <strong>Lupa password?</strong>.</li>\n<li>Ketik <strong>Email</strong> akun Anda.</li>\n<li>Klik <strong>Kirim link reset</strong>.</li>\n<li>Buka email dari Buloo, lalu klik tautan di dalamnya.</li>\n<li>Klik <strong>Kembali ke halaman masuk</strong> kalau batal.</li>\n</ol>\n"
+    },
+    {
+      "slug": "membuat-password-baru",
+      "number": 4,
+      "title": "Membuat Password Baru",
+      "summary": "mengganti password setelah membuka tautan dari email.",
+      "html": "<p><strong>Fungsi:</strong> mengganti password setelah membuka tautan dari email.</p>\n<p><figure><img src=\"/help/mulai/03-reset-password.webp\" alt=\"Halaman membuat password baru\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman membuat password baru <a class=\"help-open\" href=\"/reset-password?token=…\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Password minimal <strong>8 karakter</strong>.</li>\n<li><strong>Ulangi password baru</strong> harus sama persis dengan <strong>Password baru</strong>.</li>\n<li>Tautan hanya bisa dipakai sekali dan ada batas waktunya. Kalau sudah kedaluwarsa, minta tautan baru lewat <strong>Lupa password</strong>.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik tautan di email.</li>\n<li>Isi <strong>Password baru</strong> dan <strong>Ulangi password baru</strong>.</li>\n<li>Klik <strong>Simpan password baru</strong>, lalu masuk dengan password baru.</li>\n</ol>\n"
+    },
+    {
+      "slug": "beranda-tab-hari-ini",
+      "number": 5,
+      "title": "Beranda: Tab Hari Ini",
+      "summary": "melihat yang perlu dikerjakan hari ini, dalam satu layar.",
+      "html": "<p><strong>Fungsi:</strong> melihat yang perlu dikerjakan hari ini, dalam satu layar.</p>\n<p><figure><img src=\"/help/mulai/04-beranda.webp\" alt=\"Beranda, tab Hari Ini\" width=\"1440\" height=\"1996\" loading=\"lazy\" decoding=\"async\"><figcaption>Beranda, tab Hari Ini <a class=\"help-open\" href=\"/dashboard\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Kartu</th>\n<th>Artinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Booking hari ini</td>\n<td>Jumlah booking hari ini, berapa yang dikerjakan dan selesai</td>\n</tr>\n<tr>\n<td>Omzet hari ini</td>\n<td>Nilai faktur yang terbit hari ini (kasir maupun manual), setelah diskon, sebelum PPN, tanpa ongkir</td>\n</tr>\n<tr>\n<td>Shift kasir</td>\n<td>Shift yang dibuka hari ini dan yang sudah ditutup</td>\n</tr>\n<tr>\n<td>Stok kritis</td>\n<td>Barang di bawah stok minimum, dan jumlah yang mendekati kedaluwarsa</td>\n</tr>\n</tbody></table></div>\n<p><strong>Perlu tindakan</strong> (daftar kerja hari ini):</p>\n<ul>\n<li><strong>Booking hari ini belum ada PIC</strong>: klik <strong>Tugaskan</strong> untuk memilih groomer.</li>\n<li><strong>Membership habis bulan ini</strong>: klik <strong>Tawarkan perpanjang</strong>.</li>\n<li><strong>Faktur lewat jatuh tempo</strong>: klik <strong>Tagih</strong>.</li>\n<li><strong>Belum datang 30+ hari</strong>: klik <strong>Hubungi</strong>.</li>\n<li><strong>Shift kasir belum ditutup dari hari sebelumnya</strong>: shift lama yang masih terbuka dan harus segera ditutup.</li>\n<li>Kalau isi satu kelompok lebih panjang dari yang tampil, klik <strong>Lihat semua</strong>.</li>\n</ul>\n<p><strong>Jadwal hari ini</strong>: semua booking hari ini dari semua jenis layanan, lengkap dengan jam, hewan, kegiatan, PIC, dan status.</p>\n<ul>\n<li>Tab <strong>Hari Ini</strong> tidak punya pilihan periode, karena semua angkanya selalu untuk hari ini.</li>\n<li>Arahkan kursor ke ikon (i) di kartu untuk membaca cara hitungnya.</li>\n</ul>\n"
+    },
+    {
+      "slug": "memilih-cabang-di-beranda",
+      "number": 6,
+      "title": "Memilih Cabang di Beranda",
+      "summary": "melihat angka satu atau beberapa cabang saja.",
+      "html": "<p><strong>Fungsi:</strong> melihat angka satu atau beberapa cabang saja.</p>\n<p><figure><img src=\"/help/mulai/04-beranda--pilih-cabang.webp\" alt=\"Pilihan cabang di Beranda\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pilihan cabang di Beranda <a class=\"help-open\" href=\"/dashboard\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Pilihan cabang <strong>tetap terbawa</strong> saat Anda pindah antar-tab Beranda.</li>\n<li>Kalau filter sudah diubah, muncul tautan <strong>Reset filter</strong> untuk kembali ke tampilan awal.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik kotak <strong>Cabang</strong> (tertulis <strong>Semua cabang</strong>).</li>\n<li>Centang cabang yang ingin dilihat.</li>\n<li>Klik <strong>Terapkan</strong>. Klik <strong>Reset</strong> untuk kembali ke semua cabang.</li>\n</ol>\n"
+    },
+    {
+      "slug": "beranda-tab-uang",
+      "number": 7,
+      "title": "Beranda: Tab Uang",
+      "summary": "melihat pendapatan, laba, diskon, dan posisi kas untuk periode yang dipilih.",
+      "html": "<p><strong>Fungsi:</strong> melihat pendapatan, laba, diskon, dan posisi kas untuk periode yang dipilih.</p>\n<p><figure><img src=\"/help/mulai/05-beranda-uang.webp\" alt=\"Beranda, tab Uang\" width=\"1440\" height=\"2011\" loading=\"lazy\" decoding=\"async\"><figcaption>Beranda, tab Uang <a class=\"help-open\" href=\"/dashboard/money\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Periode</strong>: <strong>Semua</strong>, <strong>Hari ini</strong>, <strong>Minggu ini</strong>, <strong>Bulan ini</strong> (bawaan), atau <strong>Pilih tanggal</strong>.</li>\n<li><strong>Pendapatan</strong>: <strong>Omzet</strong>, <strong>Laba bersih</strong> (setelah HPP dan biaya), <strong>Order selesai</strong>, <strong>Rata-rata per transaksi</strong>, <strong>Margin kotor</strong>, dan pembagian <strong>Per lini bisnis</strong>.</li>\n<li><strong>Diskon &amp; kebocoran</strong>: <strong>Benefit membership</strong> yang dipakai, dan <strong>Diskon terhadap omzet</strong>. <strong>Diskon promo</strong> dan <strong>Diskon manual kasir</strong> masih bertanda <strong>Segera</strong> (belum tersedia).</li>\n<li><strong>Tren 7 hari</strong>: pendapatan tujuh hari terakhir per lini bisnis. Ikut filter cabang, <strong>tidak</strong> ikut filter periode.</li>\n<li><strong>Posisi kas</strong> (per hari ini): <strong>Saldo kas &amp; bank</strong>, <strong>Piutang belum lunas</strong>, <strong>Utang belum lunas</strong>, <strong>Komisi belum dibayar</strong>.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> <strong>Utang belum lunas</strong> selalu untuk semua cabang, karena utang supplier belum bisa dipisah per cabang.</p>\n</blockquote>\n"
+    },
+    {
+      "slug": "memilih-tanggal-sendiri-dan-tabel-tren",
+      "number": 8,
+      "title": "Memilih Tanggal Sendiri dan Tabel Tren",
+      "summary": "melihat angka untuk rentang tanggal tertentu, dan membaca tren harian dalam bentuk tabel.",
+      "html": "<p><strong>Fungsi:</strong> melihat angka untuk rentang tanggal tertentu, dan membaca tren harian dalam bentuk tabel.</p>\n<p><figure><img src=\"/help/mulai/05-beranda-uang--pilih-tanggal.webp\" alt=\"Rentang tanggal khusus\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Rentang tanggal khusus <a class=\"help-open\" href=\"/dashboard/money\">Buka halaman ini</a></figcaption></figure></p>\n<h2>Langkah: memilih periode sendiri</h2>\n<ol>\n<li>Klik <strong>Pilih tanggal</strong> di baris <strong>Periode</strong>.</li>\n<li>Di bagian <strong>Rentang khusus</strong>, isi tanggal <strong>Dari</strong> dan <strong>Sampai</strong>.</li>\n<li>Klik <strong>Terapkan</strong>. Klik <strong>Reset</strong> untuk kembali ke <strong>Bulan ini</strong>.</li>\n</ol>\n<p><figure><img src=\"/help/mulai/05-beranda-uang--tampilkan-tabel.webp\" alt=\"Tren 7 hari dalam bentuk tabel\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tren 7 hari dalam bentuk tabel <a class=\"help-open\" href=\"/dashboard/money\">Buka halaman ini</a></figcaption></figure></p>\n<h2>Langkah: melihat tren sebagai tabel</h2>\n<ol>\n<li>Di bagian <strong>Tren 7 hari</strong>, klik <strong>Tampilkan tabel</strong>.</li>\n<li>Klik <strong>Tampilkan grafik</strong> untuk kembali ke grafik.</li>\n</ol>\n"
+    },
+    {
+      "slug": "beranda-tab-operasional",
+      "number": 9,
+      "title": "Beranda: Tab Operasional",
+      "summary": "melihat kinerja layanan dan staf pada periode yang dipilih.",
+      "html": "<p><strong>Fungsi:</strong> melihat kinerja layanan dan staf pada periode yang dipilih.</p>\n<p><figure><img src=\"/help/mulai/06-beranda-operasional.webp\" alt=\"Beranda, tab Operasional\" width=\"1440\" height=\"1472\" loading=\"lazy\" decoding=\"async\"><figcaption>Beranda, tab Operasional <a class=\"help-open\" href=\"/dashboard/operations\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Pelanggan kembali</strong>: persen pelanggan yang booking dua kali atau lebih di periode ini.</li>\n<li><strong>Batal &amp; reschedule</strong>: persen booking yang dibatalkan atau dijadwal ulang.</li>\n<li><strong>Okupansi hotel</strong> dan <strong>Selesai tepat waktu</strong> masih bertanda <strong>Segera</strong> (belum tersedia).</li>\n<li><strong>Performa staf</strong>: jumlah order, nilai layanan (sebelum diskon), dan komisi per staf. Booking yang dikerjakan berdua dihitung penuh di masing-masing groomer.</li>\n<li><strong>Jam tersibuk</strong>: jumlah booking per jam mulai. Batang oranye menandai jam paling ramai.</li>\n<li><strong>Distribusi status booking</strong> dan <strong>Layanan terlaris</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "beranda-tab-cabang",
+      "number": 10,
+      "title": "Beranda: Tab Cabang",
+      "summary": "membandingkan laba rugi antar-cabang.",
+      "html": "<p><strong>Fungsi:</strong> membandingkan laba rugi antar-cabang.</p>\n<p><figure><img src=\"/help/mulai/07-beranda-cabang.webp\" alt=\"Beranda, tab Cabang\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Beranda, tab Cabang <a class=\"help-open\" href=\"/dashboard/branches\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Tab ini hanya muncul kalau Anda memegang <strong>lebih dari satu cabang</strong>.</li>\n<li>Kotak kuning di atas menandai cabang dengan <strong>margin bersih paling rendah</strong>.</li>\n<li>Tabel <strong>Laba rugi per cabang</strong>: Omzet, HPP, Laba kotor, Biaya, Laba bersih, Margin, Tumbuh.</li>\n<li>Omzet di sini sudah dikurangi diskon dan retur, sama dengan pendapatan di laporan Laba Rugi.</li>\n</ul>\n"
+    },
+    {
+      "slug": "menu-samping",
+      "number": 11,
+      "title": "Menu Samping",
+      "summary": "berpindah antar-modul.",
+      "html": "<p><strong>Fungsi:</strong> berpindah antar-modul.</p>\n<p><figure><img src=\"/help/mulai/04-beranda--grup-layanan.webp\" alt=\"Grup Layanan dibuka\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Grup Layanan dibuka <a class=\"help-open\" href=\"/dashboard\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Kelompok</th>\n<th>Menu</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Utama</td>\n<td>Beranda, Kasir</td>\n</tr>\n<tr>\n<td>Operasional</td>\n<td>Layanan (Kalender, Grooming, Hotel, Antar-Jemput), Pelanggan</td>\n</tr>\n<tr>\n<td>Transaksi</td>\n<td>Penjualan, Promosi, Pembelian, Inventori</td>\n</tr>\n<tr>\n<td>Keuangan</td>\n<td>Keuangan, Laporan</td>\n</tr>\n<tr>\n<td>Sistem</td>\n<td>Pengaturan</td>\n</tr>\n</tbody></table></div>\n<p><figure><img src=\"/help/mulai/04-beranda--grup-inventori.webp\" alt=\"Grup Inventori dibuka\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Grup Inventori dibuka <a class=\"help-open\" href=\"/dashboard\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Menu bertanda panah (<strong>Layanan</strong>, <strong>Inventori</strong>) adalah grup. Klik untuk membuka atau menutup submenunya.</li>\n<li>Isi grup <strong>Inventori</strong>: Ringkasan, Produk &amp; Varian, Stok, Koreksi Stok, Transfer Stok, Stok Awal.</li>\n<li>Menu yang sedang dibuka ditandai dengan latar biru muda.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik nama menu untuk membuka modulnya.</li>\n<li>Untuk grup, klik <strong>Layanan</strong> atau <strong>Inventori</strong>, lalu pilih submenunya.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menciutkan-menu-samping",
+      "number": 12,
+      "title": "Menciutkan Menu Samping",
+      "summary": "memberi ruang lebih lebar untuk tabel dan laporan.",
+      "html": "<p><strong>Fungsi:</strong> memberi ruang lebih lebar untuk tabel dan laporan.</p>\n<p><figure><img src=\"/help/mulai/08-profil--ciutkan-menu.webp\" alt=\"Menu samping diciutkan menjadi ikon\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Menu samping diciutkan menjadi ikon <a class=\"help-open\" href=\"/dashboard/profile\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Saat diciutkan, menu hanya menampilkan ikon. Arahkan kursor ke ikon untuk melihat namanya.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik ikon panel di kiri atas, sebelah logo Buloo (<strong>Ciutkan menu</strong>).</li>\n<li>Klik ikon yang sama sekali lagi untuk melebarkan menu.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menu-akun",
+      "number": 13,
+      "title": "Menu Akun",
+      "summary": "membuka profil, informasi usaha, dan keluar dari Buloo.",
+      "html": "<p><strong>Fungsi:</strong> membuka profil, informasi usaha, dan keluar dari Buloo.</p>\n<p><figure><img src=\"/help/mulai/04-beranda--menu-akun.webp\" alt=\"Menu akun di kanan atas\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Menu akun di kanan atas <a class=\"help-open\" href=\"/dashboard\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Menu</th>\n<th>Gunanya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Profil saya</td>\n<td>Membuka halaman profil Anda (bagian <a href=\"/dashboard/help/mulai/profil-saya\">14</a>)</td>\n</tr>\n<tr>\n<td>Profil usaha</td>\n<td>Membuka <strong>Pengaturan › Umum</strong> (hanya untuk yang berhak)</td>\n</tr>\n<tr>\n<td>Keluar</td>\n<td>Keluar dari Buloo di perangkat ini</td>\n</tr>\n</tbody></table></div>\n<ul>\n<li>Nama usaha Anda tampil di sebelah logo Buloo, di kiri atas.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> di kasir yang masih menyimpan <strong>transaksi offline yang belum terkirim</strong>, Anda tidak bisa keluar. Tunggu sampai semua transaksi terkirim, baru klik <strong>Keluar</strong>.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Klik nama Anda di kanan atas.</li>\n<li>Pilih menu yang diperlukan.</li>\n</ol>\n"
+    },
+    {
+      "slug": "profil-saya",
+      "number": 14,
+      "title": "Profil Saya",
+      "summary": "memperbarui data akun dan mengganti password sendiri.",
+      "html": "<p><strong>Fungsi:</strong> memperbarui data akun dan mengganti password sendiri.</p>\n<p><figure><img src=\"/help/mulai/08-profil.webp\" alt=\"Halaman profil\" width=\"1440\" height=\"1566\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman profil <a class=\"help-open\" href=\"/dashboard/profile\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Akun</strong>: <strong>Email</strong>, <strong>Status</strong>, <strong>Akses cabang</strong>, <strong>Terakhir masuk</strong>, dan <strong>Terdaftar sejak</strong>. Hanya untuk dilihat.</li>\n<li><strong>Data diri</strong>: <strong>Nama lengkap</strong> dan <strong>Email</strong> wajib diisi. <strong>Telepon</strong> boleh dikosongkan.</li>\n<li><strong>Password</strong>: <strong>Password baru</strong> minimal <strong>8 karakter</strong>, lalu ulangi di <strong>Ulangi password baru</strong>.</li>\n</ul>\n<h2>Langkah: mengubah data diri</h2>\n<ol>\n<li>Buka menu akun › <strong>Profil saya</strong>.</li>\n<li>Di kartu <strong>Data diri</strong>, ubah <strong>Nama lengkap</strong>, <strong>Email</strong>, atau <strong>Telepon</strong>.</li>\n<li>Klik <strong>Simpan profil</strong>.</li>\n</ol>\n<h2>Langkah: mengganti password</h2>\n<ol>\n<li>Di kartu <strong>Password</strong>, isi <strong>Password baru</strong> dan <strong>Ulangi password baru</strong>.</li>\n<li>Klik <strong>Simpan password</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "keluar-dari-semua-perangkat",
+      "number": 15,
+      "title": "Keluar dari Semua Perangkat",
+      "summary": "memutus semua sesi akun Anda, misalnya setelah ganti password atau kehilangan HP.",
+      "html": "<p><strong>Fungsi:</strong> memutus semua sesi akun Anda, misalnya setelah ganti password atau kehilangan HP.</p>\n<p><figure><img src=\"/help/mulai/08-profil--keluar-semua-perangkat.webp\" alt=\"Dialog Keluar dari semua perangkat\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Keluar dari semua perangkat <a class=\"help-open\" href=\"/dashboard/profile\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Semua perangkat yang masuk dengan akun Anda akan keluar, <strong>termasuk browser ini</strong>.</li>\n<li>Kasir yang shift-nya masih terbuka juga ikut keluar. Shift-nya <strong>tidak tertutup</strong>, tetapi kasir harus masuk lagi untuk melanjutkan.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di bagian <strong>Sesi perangkat</strong>, klik <strong>Keluar dari semua perangkat</strong>.</li>\n<li>Klik <strong>Ya, keluarkan semua</strong> untuk memastikan, atau <strong>Batal</strong>.</li>\n<li>Masuk lagi dengan email dan password Anda.</li>\n</ol>\n"
+    },
+    {
+      "slug": "daftar-buku-panduan-buloo",
+      "number": 16,
+      "title": "Daftar Buku Panduan Buloo",
+      "summary": "urutan belajar yang disarankan, sesuai urutan kerja nyata.",
+      "html": "<p><strong>Fungsi:</strong> urutan belajar yang disarankan, sesuai urutan kerja nyata.</p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>No.</th>\n<th>Buku</th>\n<th>Isinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>00</td>\n<td><a href=\"/dashboard/help/mulai\">Mulai Pakai Buloo</a></td>\n<td>Buku ini</td>\n</tr>\n<tr>\n<td>01</td>\n<td><a href=\"/dashboard/help/pengaturan-umum\">Pengaturan Umum</a></td>\n<td>Identitas usaha, cabang, gudang, nomor dokumen, tipe pelanggan &amp; supplier</td>\n</tr>\n<tr>\n<td>02</td>\n<td><a href=\"/dashboard/help/pengaturan-keuangan\">Pengaturan Keuangan</a></td>\n<td>Daftar akun, channel pembayaran, lini bisnis, pajak</td>\n</tr>\n<tr>\n<td>03</td>\n<td><a href=\"/dashboard/help/pengaturan-sistem\">Pengaturan Pengguna &amp; Sistem</a></td>\n<td>Pengguna, peran, akses cabang, log aktivitas</td>\n</tr>\n<tr>\n<td>04</td>\n<td><a href=\"/dashboard/help/data-awal\">Data Awal</a></td>\n<td>Saldo awal kas &amp; bank dan data pembuka lainnya</td>\n</tr>\n<tr>\n<td>05</td>\n<td><a href=\"/dashboard/help/inventori\">Inventori</a></td>\n<td>Produk, stok, koreksi, transfer, stok awal</td>\n</tr>\n<tr>\n<td>06</td>\n<td><a href=\"/dashboard/help/pelanggan\">Pelanggan &amp; Hewan</a></td>\n<td>Data pemilik dan hewannya</td>\n</tr>\n<tr>\n<td>07</td>\n<td><a href=\"/dashboard/help/layanan\">Layanan</a></td>\n<td>Grooming, hotel, antar-jemput, dan pengaturannya</td>\n</tr>\n<tr>\n<td>08</td>\n<td><a href=\"/dashboard/help/booking\">Booking</a></td>\n<td>Kalender dan jadwal layanan</td>\n</tr>\n<tr>\n<td>09</td>\n<td><a href=\"/dashboard/help/kasir\">Kasir</a></td>\n<td>Buka shift, transaksi, tutup shift, perangkat kasir</td>\n</tr>\n<tr>\n<td>10</td>\n<td><a href=\"/dashboard/help/penjualan\">Penjualan</a></td>\n<td>Faktur penjualan, pembayaran, retur</td>\n</tr>\n<tr>\n<td>11</td>\n<td><a href=\"/dashboard/help/pembelian\">Pembelian</a></td>\n<td>Supplier, penerimaan barang, faktur pembelian</td>\n</tr>\n<tr>\n<td>12</td>\n<td><a href=\"/dashboard/help/promosi\">Promosi &amp; Membership</a></td>\n<td>Paket membership dan pemakaiannya</td>\n</tr>\n<tr>\n<td>13</td>\n<td><a href=\"/dashboard/help/keuangan\">Keuangan</a></td>\n<td>Kas &amp; bank, jurnal, biaya</td>\n</tr>\n<tr>\n<td>14</td>\n<td><a href=\"/dashboard/help/laporan\">Laporan</a></td>\n<td>Laporan penjualan, stok, dan keuangan</td>\n</tr>\n<tr>\n<td>15</td>\n<td><a href=\"/dashboard/help/groomer\">Aplikasi Groomer</a></td>\n<td>Layar kerja groomer</td>\n</tr>\n</tbody></table></div>\n<ul>\n<li>Buku <strong>01–04</strong> dikerjakan sekali di awal oleh pemilik atau admin.</li>\n<li>Buku <strong>05–15</strong> dipakai untuk pekerjaan sehari-hari.</li>\n</ul>\n"
+    },
+    {
+      "slug": "checklist-hari-pertama-pakai-buloo",
+      "number": 17,
+      "title": "Checklist Hari Pertama Pakai Buloo",
+      "summary": "",
+      "html": "<p><strong>Untuk pemilik atau admin, kerjakan berurutan:</strong></p>\n<ol>\n<li>Masuk ke Buloo, lalu ganti password di <strong>Profil saya</strong> (bagian <a href=\"/dashboard/help/mulai/profil-saya\">14</a>).</li>\n<li>Lengkapi <strong>Identitas usaha</strong> dan periksa <strong>Zona waktu</strong> (buku <a href=\"/dashboard/help/pengaturan-umum\">01</a>).</li>\n<li>Periksa data <strong>Cabang</strong>: alamat, telepon, jam buka, template struk dan faktur (buku <a href=\"/dashboard/help/pengaturan-umum\">01</a>).</li>\n<li>Periksa <strong>Gudang</strong> tiap cabang dan tandai gudang yang punya kasir (buku <a href=\"/dashboard/help/pengaturan-umum\">01</a>).</li>\n<li>Atur <strong>Nomor dokumen</strong> sebelum transaksi pertama (buku <a href=\"/dashboard/help/pengaturan-umum\">01</a>).</li>\n<li>Siapkan <strong>Daftar akun</strong> dan <strong>Channel pembayaran</strong> (buku <a href=\"/dashboard/help/pengaturan-keuangan\">02</a>).</li>\n<li>Buat akun <strong>Pengguna</strong>, beri <strong>Peran</strong> dan <strong>Akses cabang</strong> (buku <a href=\"/dashboard/help/pengaturan-sistem\">03</a>).</li>\n<li>Isi <strong>Data awal</strong>: saldo kas &amp; bank dan stok awal (buku <a href=\"/dashboard/help/data-awal\">04</a> dan <a href=\"/dashboard/help/inventori\">05</a>).</li>\n<li>Masukkan <strong>Produk</strong> dan <strong>Layanan</strong> beserta harganya (buku <a href=\"/dashboard/help/inventori\">05</a> dan <a href=\"/dashboard/help/layanan\">07</a>).</li>\n<li>Coba satu transaksi di <strong>Kasir</strong> lalu periksa angkanya di <strong>Beranda</strong> (buku <a href=\"/dashboard/help/kasir\">09</a>).</li>\n</ol>\n<p><strong>Untuk kasir dan front desk:</strong></p>\n<ol>\n<li>Masuk dengan akun sendiri, jangan memakai akun orang lain.</li>\n<li>Ganti password di <strong>Profil saya</strong>.</li>\n<li>Buka <strong>Beranda › Hari Ini</strong> dan baca daftar <strong>Perlu tindakan</strong>.</li>\n<li>Pelajari buku <strong>06 Pelanggan &amp; Hewan</strong>, <strong>08 Booking</strong>, dan <strong>09 Kasir</strong>.</li>\n</ol>\n"
+    }
+  ],
+  "faq": [
+    {
+      "question": "Menu yang dijelaskan di buku tidak ada di layar saya?",
+      "answer": "Peran Anda belum punya izinnya. Hubungi pemilik usaha (bagian <a href=\"/dashboard/help/mulai/konsep-dasar-cabang-dan-hak-akses\">1</a>)."
+    },
+    {
+      "question": "Angka Beranda berbeda dengan rekan kerja?",
+      "answer": "Periksa filter <strong>Cabang</strong> dan <strong>Periode</strong>, serta cabang yang Anda pegang."
+    },
+    {
+      "question": "Tab Cabang tidak muncul?",
+      "answer": "Tab itu hanya tampil kalau Anda memegang lebih dari satu cabang."
+    },
+    {
+      "question": "Tidak bisa Keluar di kasir?",
+      "answer": "Masih ada transaksi offline yang belum terkirim. Tunggu koneksi kembali."
+    },
+    {
+      "question": "Email reset password tidak datang?",
+      "answer": "Periksa folder spam, pastikan emailnya benar, lalu minta ulang."
+    }
+  ],
+  "tips": [],
+  "updatedAt": "2026-11-04"
+}

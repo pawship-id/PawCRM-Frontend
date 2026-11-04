@@ -1,0 +1,185 @@
+{
+  "slug": "penjualan",
+  "order": 10,
+  "title": "Penjualan",
+  "subtitle": "Membuat faktur penjualan, mencatat pembayaran dan cicilan, serta memantau omzet dan piutang pelanggan.",
+  "introHtml": "<p><strong>Modul ini untuk apa?</strong></p>\n<ul>\n<li>Menagih pelanggan lewat <strong>faktur</strong>: penjualan di luar kasir, pesanan marketplace, atau booking yang belum ditagih.</li>\n<li>Mencatat pembayaran DP, cicilan, dan pelunasan. Faktur itu sendiri adalah piutangnya.</li>\n<li>Melihat semua faktur, termasuk faktur yang dibuat otomatis dari penjualan <strong>Kasir</strong>.</li>\n<li>Memantau omzet per kategori produk, layanan, dan kategori pelanggan.</li>\n</ul>\n<p><strong>Siapa yang memakai?</strong> Pemilik usaha, admin, dan bagian keuangan.</p>\n<p><strong>Siapkan dulu:</strong></p>\n<ul>\n<li><strong>Pelanggan</strong> sudah terdaftar (modul Pelanggan).</li>\n<li><strong>Produk</strong> dan <strong>layanan</strong> beserta harganya.</li>\n<li><strong>Akun kas/bank</strong> dan <strong>Pengaturan › Channel pembayaran</strong>, supaya pembayaran bisa dicatat ke akun yang benar.</li>\n</ul>\n<p><strong>Cara membuka:</strong> menu samping › <strong>Transaksi</strong> › <strong>Penjualan</strong>.</p>\n<p><strong>Isi modul:</strong></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Tab / Halaman</th>\n<th>Dipakai untuk</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Ringkasan</td>\n<td>Angka omzet, piutang, dan omzet per kategori</td>\n</tr>\n<tr>\n<td>Faktur</td>\n<td>Daftar faktur, buat faktur, bayar, batalkan</td>\n</tr>\n<tr>\n<td>E-commerce</td>\n<td>Belum tersedia</td>\n</tr>\n<tr>\n<td>Retur</td>\n<td>Belum tersedia</td>\n</tr>\n<tr>\n<td>Faktur online</td>\n<td>Faktur yang dibuka pelanggan dari tautan WhatsApp</td>\n</tr>\n</tbody></table></div>\n<p><strong>Urutan kerja yang disarankan:</strong> buat faktur › kirim ke pelanggan lewat WhatsApp atau cetak › catat pembayaran saat uang masuk › pantau yang belum lunas di tab Faktur dan Ringkasan.</p>\n",
+  "articles": [
+    {
+      "slug": "daftar-faktur",
+      "number": 1,
+      "title": "Daftar Faktur",
+      "summary": "melihat semua faktur dan status pembayarannya.",
+      "html": "<p><strong>Fungsi:</strong> melihat semua faktur dan status pembayarannya.</p>\n<p><figure><img src=\"/help/penjualan/02-daftar-faktur.webp\" alt=\"Tab Faktur\" width=\"1440\" height=\"1925\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Faktur <a class=\"help-open\" href=\"/dashboard/sales/invoice\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Kartu angka:</strong></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Kartu</th>\n<th>Artinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Omzet periode</td>\n<td>Penjualan dari faktur di tabel: setelah diskon, sebelum PPN, tanpa ongkir dan biaya lain</td>\n</tr>\n<tr>\n<td>Belum lunas</td>\n<td>Total sisa tagihan dan jumlah fakturnya</td>\n</tr>\n<tr>\n<td>Lewat jatuh tempo</td>\n<td>Faktur yang melewati jatuh tempo dan belum lunas</td>\n</tr>\n<tr>\n<td>Tertagih</td>\n<td>Uang yang sudah dibayar untuk faktur-faktur ini, termasuk PPN dan ongkir</td>\n</tr>\n</tbody></table></div>\n<p><strong>Tabel:</strong> <strong>Faktur</strong>, <strong>Pelanggan</strong>, <strong>Cabang</strong>, <strong>Tanggal</strong>, <strong>Jatuh tempo</strong>, <strong>Nilai</strong>, <strong>Sisa</strong>, <strong>Sumber</strong>, <strong>Status</strong>, <strong>Aksi</strong>.</p>\n<ul>\n<li><strong>Sumber</strong>: <strong>Kasir</strong> (dibuat otomatis dari penjualan kasir) atau <strong>Manual</strong> (dibuat di halaman ini).</li>\n<li><strong>Status</strong>: <strong>Lunas</strong>, <strong>Lunas sebagian</strong>, <strong>Belum lunas</strong>, atau <strong>Batal</strong>.</li>\n<li>Cari berdasarkan nomor faktur, nama pelanggan, atau catatan. Klik judul kolom bertanda panah untuk mengurutkan.</li>\n<li>Atur jumlah baris di <strong>Tampilkan … / halaman</strong> di bawah tabel.</li>\n</ul>\n"
+    },
+    {
+      "slug": "menyaring-per-cabang-gudang-dan-periode",
+      "number": 2,
+      "title": "Menyaring per Cabang, Gudang, dan Periode",
+      "summary": "membatasi faktur dan angka yang tampil.",
+      "html": "<p><strong>Fungsi:</strong> membatasi faktur dan angka yang tampil.</p>\n<p><figure><img src=\"/help/penjualan/02-daftar-faktur--pilih-cabang.webp\" alt=\"Pilihan cabang\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pilihan cabang <a class=\"help-open\" href=\"/dashboard/sales/invoice\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/penjualan/02-daftar-faktur--pilih-gudang.webp\" alt=\"Pilihan gudang\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pilihan gudang <a class=\"help-open\" href=\"/dashboard/sales/invoice\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/penjualan/02-daftar-faktur--periode-pilih-tanggal.webp\" alt=\"Periode Pilih tanggal\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Periode Pilih tanggal <a class=\"help-open\" href=\"/dashboard/sales/invoice\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Cabang</strong> dan <strong>Gudang</strong>: pilih satu atau semua.</li>\n<li><strong>Periode</strong>: <strong>Semua</strong>, <strong>Hari ini</strong>, <strong>Minggu ini</strong>, <strong>Bulan ini</strong>, atau <strong>Pilih tanggal</strong>.</li>\n<li><strong>Pilih tanggal</strong> memunculkan tanggal <strong>dari</strong> dan <strong>sampai</strong>. Klik <strong>Terapkan</strong> setelah memilih tanggal.</li>\n</ul>\n"
+    },
+    {
+      "slug": "filter-lengkap",
+      "number": 3,
+      "title": "Filter Lengkap",
+      "summary": "menyaring dengan beberapa kriteria sekaligus.",
+      "html": "<p><strong>Fungsi:</strong> menyaring dengan beberapa kriteria sekaligus.</p>\n<p><figure><img src=\"/help/penjualan/02-daftar-faktur--filter.webp\" alt=\"Dialog Filter faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Filter faktur <a class=\"help-open\" href=\"/dashboard/sales/invoice\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Pilihan</th>\n<th>Isinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Cabang / Gudang</td>\n<td>Cabang dan gudang faktur</td>\n</tr>\n<tr>\n<td>Kasir / Admin</td>\n<td>Siapa yang membuat faktur</td>\n</tr>\n<tr>\n<td>Sumber</td>\n<td>Kasir atau Manual</td>\n</tr>\n<tr>\n<td>Status</td>\n<td>Status pembayaran faktur</td>\n</tr>\n<tr>\n<td>Periode</td>\n<td>Rentang tanggal faktur</td>\n</tr>\n</tbody></table></div>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Filter</strong> di kanan kotak cari.</li>\n<li>Pilih kriteria yang diinginkan.</li>\n<li>Klik <strong>Terapkan</strong>. Klik <strong>Reset</strong> untuk kembali ke tampilan awal.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menu-aksi-faktur",
+      "number": 4,
+      "title": "Menu Aksi Faktur (⋮)",
+      "summary": "jalan pintas untuk satu faktur langsung dari daftar.",
+      "html": "<p><strong>Fungsi:</strong> jalan pintas untuk satu faktur langsung dari daftar.</p>\n<p><figure><img src=\"/help/penjualan/02-daftar-faktur--menu-aksi.webp\" alt=\"Menu aksi faktur belum lunas\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Menu aksi faktur belum lunas <a class=\"help-open\" href=\"/dashboard/sales/invoice\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/penjualan/02-daftar-faktur--menu-aksi-lunas.webp\" alt=\"Menu aksi faktur lunas\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Menu aksi faktur lunas <a class=\"help-open\" href=\"/dashboard/sales/invoice\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Menu</th>\n<th>Gunanya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Detail</td>\n<td>Membuka halaman faktur</td>\n</tr>\n<tr>\n<td>Ubah faktur</td>\n<td>Membuka formulir ubah (hanya faktur manual yang belum dibayar)</td>\n</tr>\n<tr>\n<td>Cetak faktur</td>\n<td>Membuka halaman cetak</td>\n</tr>\n<tr>\n<td>Bayar</td>\n<td>Mencatat pembayaran (hanya untuk faktur yang masih ada sisa)</td>\n</tr>\n<tr>\n<td>Batalkan faktur</td>\n<td>Membatalkan faktur (hanya untuk faktur yang belum dibayar)</td>\n</tr>\n</tbody></table></div>\n<ul>\n<li>Faktur yang sudah <strong>Lunas</strong> hanya punya menu <strong>Detail</strong> dan <strong>Cetak faktur</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "membuat-faktur-baru",
+      "number": 5,
+      "title": "Membuat Faktur Baru",
+      "summary": "menagih pelanggan di luar kasir, misalnya pesanan marketplace atau penjualan grosir.",
+      "html": "<p><strong>Fungsi:</strong> menagih pelanggan di luar kasir, misalnya pesanan marketplace atau penjualan grosir.</p>\n<p><figure><img src=\"/help/penjualan/03-faktur-baru.webp\" alt=\"Formulir Faktur baru\" width=\"1440\" height=\"1610\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir Faktur baru <a class=\"help-open\" href=\"/dashboard/sales/invoice/new\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Keterangan faktur:</strong></p>\n<ul>\n<li><strong>Pelanggan</strong> (wajib): cari lalu pilih. Nomor HP ikut tampil supaya tidak salah pilih nama yang sama.</li>\n<li><strong>Cabang</strong> (wajib) dan <strong>Gudang</strong>. Gudang baru perlu diisi kalau ada baris barang.</li>\n<li><strong>Tanggal faktur</strong> (wajib) dan <strong>Jatuh tempo</strong> dalam hari sejak tanggal faktur. <strong>0</strong> berarti jatuh tempo hari ini.</li>\n<li><strong>Sumber</strong>: <strong>Diinput manual</strong> atau <strong>Marketplace</strong>.</li>\n<li><strong>Catatan</strong>: opsional.</li>\n</ul>\n<p><figure><img src=\"/help/penjualan/03-faktur-baru--pilih-pelanggan.webp\" alt=\"Memilih pelanggan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Memilih pelanggan <a class=\"help-open\" href=\"/dashboard/sales/invoice/new\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/penjualan/03-faktur-baru--sumber.webp\" alt=\"Pilihan Sumber\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pilihan Sumber <a class=\"help-open\" href=\"/dashboard/sales/invoice/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Di samping tombol <strong>Simpan faktur</strong> tertulis alasan kalau faktur belum bisa disimpan, misalnya &quot;Pilih pelanggan dulu&quot;.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> menyimpan faktur langsung <strong>memotong stok</strong> dan <strong>mencatat jurnal</strong>. Faktur tersimpan berstatus <strong>Belum lunas</strong>, dan masih bisa diubah sampai pembayaran pertama tercatat.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Di tab <strong>Faktur</strong>, klik <strong>Buat faktur</strong>.</li>\n<li>Pilih <strong>Pelanggan</strong> dan <strong>Cabang</strong>, lalu periksa tanggal dan jatuh tempo.</li>\n<li>Tambahkan baris (bagian <a href=\"/dashboard/help/penjualan/menagih-booking-pelanggan\">6</a> dan <a href=\"/dashboard/help/penjualan/menambah-barang-atau-jasa\">7</a>).</li>\n<li>Periksa <strong>Total tagihan</strong>, lalu klik <strong>Simpan faktur</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menagih-booking-pelanggan",
+      "number": 6,
+      "title": "Menagih Booking Pelanggan",
+      "summary": "memasukkan booking yang sudah dikonfirmasi dan belum ditagih ke faktur.",
+      "html": "<p><strong>Fungsi:</strong> memasukkan booking yang sudah dikonfirmasi dan belum ditagih ke faktur.</p>\n<p><figure><img src=\"/help/penjualan/03-faktur-baru--tarik-booking.webp\" alt=\"Booking ditarik ke faktur\" width=\"1440\" height=\"2080\" loading=\"lazy\" decoding=\"async\"><figcaption>Booking ditarik ke faktur <a class=\"help-open\" href=\"/dashboard/sales/invoice/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Setelah pelanggan dan cabang dipilih, muncul bagian <strong>Hewan &amp; booking pelanggan ini</strong>.</li>\n<li>Centang booking yang mau ditagih. Layanannya masuk ke <strong>Baris faktur</strong> dengan harga yang dikutip saat booking dibuat.</li>\n<li>Untuk layanan, kolom <strong>Hewan</strong> wajib diisi.</li>\n</ul>\n"
+    },
+    {
+      "slug": "menambah-barang-atau-jasa",
+      "number": 7,
+      "title": "Menambah Barang atau Jasa",
+      "summary": "mengisi baris faktur dari katalog.",
+      "html": "<p><strong>Fungsi:</strong> mengisi baris faktur dari katalog.</p>\n<p><figure><img src=\"/help/penjualan/03-faktur-baru--tambah-barang.webp\" alt=\"Dialog tambah barang\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog tambah barang <a class=\"help-open\" href=\"/dashboard/sales/invoice/new\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/penjualan/03-faktur-baru--tambah-jasa.webp\" alt=\"Tab Jasa\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Jasa <a class=\"help-open\" href=\"/dashboard/sales/invoice/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Klik <strong>+ Tambah barang atau jasa</strong>. Ada dua tab: <strong>Barang</strong> dan <strong>Jasa</strong>.</li>\n<li>Cari lalu centang, boleh beberapa sekaligus dari kedua tab. <strong>Pilih semua hasil</strong> mencentang semua hasil pencarian.</li>\n<li>Harga diambil dari katalog. Jasa bertanda <strong>Harga menurut hewan</strong> dihitung setelah hewannya dipilih di baris faktur.</li>\n<li>Klik <strong>Tambahkan</strong> untuk memasukkannya ke faktur. Klik harga di baris untuk mengubahnya.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>+ Tambah barang atau jasa</strong>.</li>\n<li>Cari dan centang barang di tab <strong>Barang</strong>, lalu jasa di tab <strong>Jasa</strong>.</li>\n<li>Klik <strong>Tambahkan</strong>.</li>\n<li>Di baris jasa, pilih <strong>Hewan</strong>. Ubah jumlah atau diskon baris bila perlu.</li>\n</ol>\n"
+    },
+    {
+      "slug": "biaya-lain-diskon-faktur-dan-scan-barcode",
+      "number": 8,
+      "title": "Biaya Lain, Diskon Faktur, dan Scan Barcode",
+      "summary": "melengkapi faktur dengan ongkos kirim, potongan, atau barang yang di-scan.",
+      "html": "<p><strong>Fungsi:</strong> melengkapi faktur dengan ongkos kirim, potongan, atau barang yang di-scan.</p>\n<p><figure><img src=\"/help/penjualan/03-faktur-baru--biaya-lain.webp\" alt=\"Biaya lain pada faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Biaya lain pada faktur <a class=\"help-open\" href=\"/dashboard/sales/invoice/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>+ Tambah biaya lain</strong>: isi nama biaya (misalnya Ongkos kirim) dan nominalnya. Ikon hapus untuk membuangnya.</li>\n<li><strong>Diskon faktur</strong>: pilih <strong>%</strong> atau nominal, lalu isi nilainya. Diskon per baris tampil di <strong>Diskon baris</strong>.</li>\n</ul>\n<p><figure><img src=\"/help/penjualan/03-faktur-baru--scan-kamera.webp\" alt=\"Scan barcode pakai kamera\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Scan barcode pakai kamera <a class=\"help-open\" href=\"/dashboard/sales/invoice/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Scan barcode atau batch</strong>: scan barcode produk atau label batch di kotak scan, lalu tekan Enter. Barangnya masuk ke baris faktur.</li>\n<li><strong>Scan pakai kamera</strong>: memakai kamera perangkat sebagai pemindai.</li>\n</ul>\n"
+    },
+    {
+      "slug": "halaman-detail-faktur",
+      "number": 9,
+      "title": "Halaman Detail Faktur",
+      "summary": "melihat isi faktur, status pembayaran, dan piutang pelanggan di satu halaman.",
+      "html": "<p><strong>Fungsi:</strong> melihat isi faktur, status pembayaran, dan piutang pelanggan di satu halaman.</p>\n<p><figure><img src=\"/help/penjualan/04-detail-faktur.webp\" alt=\"Detail faktur\" width=\"1440\" height=\"1110\" loading=\"lazy\" decoding=\"async\"><figcaption>Detail faktur</figcaption></figure></p>\n<ul>\n<li><strong>Kepala halaman</strong>: nomor faktur, status, pelanggan, cabang, sumber, serta tombol <strong>Cetak</strong>, <strong>WhatsApp</strong>, dan <strong>⋮</strong>.</li>\n<li><strong>Rincian faktur</strong>: pelanggan, cabang, pembuat, tanggal, jatuh tempo, sumber, dan baris barang/jasa yang dikelompokkan per hewan. Booking terkait bisa diklik.</li>\n<li><strong>Status pembayaran</strong>: <strong>Total tagihan</strong>, <strong>Terbayar</strong>, <strong>Sisa</strong>, persentase terbayar, dan tombol <strong>Catat pembayaran</strong>.</li>\n<li><strong>Riwayat pembayaran</strong> dan <strong>Piutang pelanggan</strong> (piutang berjalan dan plafon kredit).</li>\n<li>Faktur dari <strong>Kasir</strong> tidak bisa diubah di sini, karena barisnya milik transaksi kasir.</li>\n</ul>\n<p><figure><img src=\"/help/penjualan/04-detail-faktur--riwayat-aktivitas.webp\" alt=\"Riwayat aktivitas faktur\" width=\"1440\" height=\"1195\" loading=\"lazy\" decoding=\"async\"><figcaption>Riwayat aktivitas faktur</figcaption></figure></p>\n<ul>\n<li>Klik <strong>Riwayat aktivitas</strong> untuk melihat siapa membuat, membayar, atau mengubah faktur, beserta waktunya.</li>\n</ul>\n"
+    },
+    {
+      "slug": "mencatat-pembayaran-dp-cicilan-pelunasan",
+      "number": 10,
+      "title": "Mencatat Pembayaran (DP, Cicilan, Pelunasan)",
+      "summary": "mencatat uang yang diterima untuk sebuah faktur.",
+      "html": "<p><strong>Fungsi:</strong> mencatat uang yang diterima untuk sebuah faktur.</p>\n<p><figure><img src=\"/help/penjualan/04-detail-faktur--catat-pembayaran.webp\" alt=\"Dialog Catat pembayaran\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Catat pembayaran</figcaption></figure></p>\n<ul>\n<li><strong>Sisa tagihan saat ini</strong> tampil di atas. Tombol <strong>25%</strong>, <strong>50%</strong>, dan <strong>Lunasi</strong> mengisi jumlah dengan cepat.</li>\n<li><strong>Jumlah diterima</strong>: tidak boleh melebihi sisa tagihan.</li>\n<li><strong>Tanggal terima</strong>: tanggal uang benar-benar masuk. Tanggal ini yang dipakai jurnal.</li>\n<li><strong>No. referensi</strong>: opsional, misalnya nomor mutasi bank atau trace QRIS/EDC.</li>\n</ul>\n<p><figure><img src=\"/help/penjualan/04-detail-faktur--masuk-ke.webp\" alt=\"Pilihan akun Masuk ke\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pilihan akun Masuk ke</figcaption></figure></p>\n<ul>\n<li><strong>Masuk ke</strong>: akun kas atau bank yang menerima uang.</li>\n</ul>\n<p><figure><img src=\"/help/penjualan/02-daftar-faktur--bayar.webp\" alt=\"Catat pembayaran dari daftar faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Catat pembayaran dari daftar faktur <a class=\"help-open\" href=\"/dashboard/sales/invoice\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Dialog yang sama bisa dibuka dari daftar faktur lewat <strong>⋮</strong> › <strong>Bayar</strong>.</li>\n<li>Status faktur naik sendiri ke <strong>Lunas sebagian</strong> atau <strong>Lunas</strong>. Tidak perlu mengubah status secara manual.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di detail faktur, klik <strong>Catat pembayaran</strong>.</li>\n<li>Isi <strong>Jumlah diterima</strong> dan <strong>Tanggal terima</strong>.</li>\n<li>Pilih akun <strong>Masuk ke</strong>, lalu isi <strong>No. referensi</strong> bila ada.</li>\n<li>Klik <strong>Simpan pembayaran</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "riwayat-pembayaran-faktur",
+      "number": 11,
+      "title": "Riwayat Pembayaran Faktur",
+      "summary": "melihat pembayaran yang sudah masuk untuk satu faktur.",
+      "html": "<p><strong>Fungsi:</strong> melihat pembayaran yang sudah masuk untuk satu faktur.</p>\n<p><figure><img src=\"/help/penjualan/06-faktur-sebagian.webp\" alt=\"Faktur yang sudah dibayar sebagian\" width=\"1440\" height=\"1038\" loading=\"lazy\" decoding=\"async\"><figcaption>Faktur yang sudah dibayar sebagian</figcaption></figure></p>\n<ul>\n<li>Tiap pembayaran tampil dengan nomornya (BBM/…), jumlah, tanggal, dan akun. Klik untuk membuka detailnya.</li>\n<li>Faktur yang sudah punya pembayaran <strong>terkunci</strong>: batalkan pembayarannya dulu kalau isi faktur perlu diubah.</li>\n</ul>\n"
+    },
+    {
+      "slug": "detail-pembayaran-dan-kwitansi",
+      "number": 12,
+      "title": "Detail Pembayaran dan Kwitansi",
+      "summary": "melihat satu pembayaran dan mencetak kwitansinya.",
+      "html": "<p><strong>Fungsi:</strong> melihat satu pembayaran dan mencetak kwitansinya.</p>\n<p><figure><img src=\"/help/penjualan/10-detail-pembayaran.webp\" alt=\"Detail pembayaran\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Detail pembayaran</figcaption></figure></p>\n<ul>\n<li><strong>Rincian pembayaran</strong>: nomor, channel, tanggal, jurnal, faktur terkait, jumlah, dan nomor referensi.</li>\n<li><strong>Lihat di Transaksi Keuangan →</strong> membuka transaksi ini di modul Keuangan.</li>\n<li><strong>Faktur ini sekarang</strong>: total tagihan, terbayar, dan sisa saat ini.</li>\n</ul>\n<p><figure><img src=\"/help/penjualan/10-detail-pembayaran--kwitansi.webp\" alt=\"Kwitansi pembayaran\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Kwitansi pembayaran</figcaption></figure></p>\n<ul>\n<li><strong>Kwitansi</strong> adalah bukti penerimaan untuk <strong>satu pembayaran</strong>, bukan untuk seluruh faktur. Klik <strong>Cetak</strong> untuk mencetaknya.</li>\n</ul>\n"
+    },
+    {
+      "slug": "mengubah-pembayaran",
+      "number": 13,
+      "title": "Mengubah Pembayaran",
+      "summary": "membetulkan pembayaran yang salah catat, misalnya salah nominal atau tanggal.",
+      "html": "<p><strong>Fungsi:</strong> membetulkan pembayaran yang salah catat, misalnya salah nominal atau tanggal.</p>\n<p><figure><img src=\"/help/penjualan/10-detail-pembayaran--ubah-pembayaran.webp\" alt=\"Dialog Ubah transaksi\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Ubah transaksi</figcaption></figure></p>\n<ul>\n<li>Yang bisa diubah: <strong>Tanggal</strong>, <strong>Jumlah</strong>, <strong>Akun Kas/Bank</strong> (hanya akun bank), <strong>No. referensi</strong>, dan <strong>Catatan</strong>.</li>\n<li>Nomor pembayaran tetap sama. Mengubah akun, nominal, tanggal, atau no. referensi membalik jurnal lama lalu memposting jurnal baru. Keduanya tetap terlihat di Jurnal Umum.</li>\n<li><strong>Alasan perubahan</strong> opsional dan tersimpan di riwayat perubahan.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di detail pembayaran, klik <strong>Ubah pembayaran</strong>.</li>\n<li>Ubah data yang salah.</li>\n<li>Klik <strong>Simpan transaksi</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "membatalkan-pembayaran",
+      "number": 14,
+      "title": "Membatalkan Pembayaran",
+      "summary": "membatalkan pembayaran yang tidak jadi, misalnya dobel input atau transfer ditarik kembali.",
+      "html": "<p><strong>Fungsi:</strong> membatalkan pembayaran yang tidak jadi, misalnya dobel input atau transfer ditarik kembali.</p>\n<p><figure><img src=\"/help/penjualan/10-detail-pembayaran--batalkan-pembayaran.webp\" alt=\"Dialog Batalkan pembayaran\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Batalkan pembayaran</figcaption></figure></p>\n<ul>\n<li>Pembayaran <strong>tidak dihapus</strong>. Sistem memposting jurnal pembalik, dan barisnya tetap terlihat dengan tanda dibatalkan.</li>\n<li>Sisa tagihan faktur naik kembali sebesar jumlah ini, dan status faktur ikut menyesuaikan.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Batalkan pembayaran</strong>.</li>\n<li>Isi <strong>Alasan</strong>, misalnya &quot;Dobel input&quot;.</li>\n<li>Klik <strong>Batalkan pembayaran</strong> di dialog.</li>\n</ol>\n"
+    },
+    {
+      "slug": "mengubah-faktur",
+      "number": 15,
+      "title": "Mengubah Faktur",
+      "summary": "membetulkan faktur manual yang belum dibayar.",
+      "html": "<p><strong>Fungsi:</strong> membetulkan faktur manual yang belum dibayar.</p>\n<p><figure><img src=\"/help/penjualan/05-faktur-belum-dibayar.webp\" alt=\"Detail faktur yang belum dibayar\" width=\"1440\" height=\"981\" loading=\"lazy\" decoding=\"async\"><figcaption>Detail faktur yang belum dibayar</figcaption></figure></p>\n<ul>\n<li>Faktur hanya bisa diubah kalau: dibuat <strong>manual</strong> (bukan dari kasir), berstatus <strong>Belum lunas</strong>, dan <strong>belum ada pembayaran</strong>.</li>\n<li>Faktur seperti ini menampilkan tombol <strong>Ubah</strong> di samping <strong>Cetak</strong>, dan tulisan &quot;Belum ada pembayaran — faktur masih bisa diubah&quot; di <strong>Rincian faktur</strong>.</li>\n</ul>\n<p><figure><img src=\"/help/penjualan/07-ubah-faktur.webp\" alt=\"Halaman Ubah faktur\" width=\"1440\" height=\"1082\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman Ubah faktur</figcaption></figure></p>\n<ul>\n<li><strong>Pelanggan</strong>, <strong>Cabang</strong>, dan <strong>Tanggal faktur</strong> <strong>dikunci</strong> (bertanda gembok).</li>\n<li>Yang bisa diubah: <strong>Jatuh tempo</strong>, <strong>baris</strong> (jumlah, diskon, hapus baris), <strong>Diskon faktur</strong>, dan <strong>biaya lain</strong>.</li>\n<li>Menyimpan membalik jurnal dan stok versi sebelumnya, lalu menerbitkan ulang baris ini. Nomor dan tanggal faktur tetap.</li>\n<li><strong>Buang perubahan</strong> membatalkan semua perubahan yang belum disimpan.</li>\n</ul>\n<p><figure><img src=\"/help/penjualan/07-ubah-faktur--tambah-barang.webp\" alt=\"Menambah barang saat mengubah faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Menambah barang saat mengubah faktur</figcaption></figure></p>\n<ul>\n<li><strong>+ Tambah barang atau jasa</strong> dan <strong>Scan barcode atau batch</strong> bekerja sama seperti di <strong>Faktur baru</strong> (bagian <a href=\"/dashboard/help/penjualan/menambah-barang-atau-jasa\">7</a> dan <a href=\"/dashboard/help/penjualan/biaya-lain-diskon-faktur-dan-scan-barcode\">8</a>).</li>\n</ul>\n<p><figure><img src=\"/help/penjualan/08-ubah-faktur-terkunci.webp\" alt=\"Faktur yang tidak bisa diubah\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Faktur yang tidak bisa diubah</figcaption></figure></p>\n<ul>\n<li>Kalau syarat tidak terpenuhi, halaman hanya menampilkan alasannya, misalnya &quot;sudah ada pembayaran tercatat — batalkan pembayarannya dulu&quot;. Klik <strong>Kembali ke faktur</strong>.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> kalau pelanggan, cabang, atau tanggal faktur salah, batalkan fakturnya lalu buat faktur baru.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Di detail faktur, klik <strong>Ubah</strong>, atau dari daftar faktur <strong>⋮</strong> › <strong>Ubah faktur</strong>.</li>\n<li>Ubah jatuh tempo, baris, diskon, atau biaya lain.</li>\n<li>Klik <strong>Simpan faktur</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "melihat-jurnal-faktur",
+      "number": 16,
+      "title": "Melihat Jurnal Faktur",
+      "summary": "memeriksa jurnal akuntansi yang dibuat oleh faktur.",
+      "html": "<p><strong>Fungsi:</strong> memeriksa jurnal akuntansi yang dibuat oleh faktur.</p>\n<p><figure><img src=\"/help/penjualan/04-detail-faktur--lihat-jurnal.webp\" alt=\"Dialog Jurnal faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Jurnal faktur</figcaption></figure></p>\n<ul>\n<li>Buka dari <strong>⋮</strong> di kartu <strong>Rincian faktur</strong> › <strong>Lihat jurnal</strong>.</li>\n<li>Biasanya ada dua jurnal: penerbitan faktur dan HPP-nya. Klik nomor jurnal (JE-…) untuk membukanya di modul Keuangan.</li>\n</ul>\n"
+    },
+    {
+      "slug": "membatalkan-faktur",
+      "number": 17,
+      "title": "Membatalkan Faktur",
+      "summary": "membatalkan faktur yang salah, misalnya salah pelanggan.",
+      "html": "<p><strong>Fungsi:</strong> membatalkan faktur yang salah, misalnya salah pelanggan.</p>\n<p><figure><img src=\"/help/penjualan/04-detail-faktur--menu-lain.webp\" alt=\"Menu aksi lain faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Menu aksi lain faktur</figcaption></figure></p>\n<p><figure><img src=\"/help/penjualan/04-detail-faktur--batalkan-faktur.webp\" alt=\"Dialog Batalkan faktur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Batalkan faktur</figcaption></figure></p>\n<ul>\n<li>Barangnya kembali ke stok gudang.</li>\n<li>Dua jurnal pembalik diposting: penerbitan dan HPP-nya.</li>\n<li>Faktur <strong>tidak dihapus</strong>: tetap ada di daftar bertanda batal, dan nomornya tidak dipakai ulang.</li>\n<li><strong>Alasan pembatalan</strong> wajib diisi.</li>\n</ul>\n<p><figure><img src=\"/help/penjualan/02-daftar-faktur--batalkan.webp\" alt=\"Batalkan faktur dari daftar\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Batalkan faktur dari daftar <a class=\"help-open\" href=\"/dashboard/sales/invoice\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Bisa juga dari daftar faktur: <strong>⋮</strong> › <strong>Batalkan faktur</strong>.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> faktur yang sudah ada pembayarannya tidak bisa dibatalkan. Batalkan pembayarannya dulu (bagian <a href=\"/dashboard/help/penjualan/membatalkan-pembayaran\">14</a>).</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Di detail faktur, klik <strong>⋮</strong> di kanan atas, lalu <strong>Batalkan faktur</strong>.</li>\n<li>Isi <strong>Alasan pembatalan</strong>.</li>\n<li>Klik <strong>Batalkan faktur</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "mencetak-faktur",
+      "number": 18,
+      "title": "Mencetak Faktur",
+      "summary": "mencetak faktur atau menyimpannya sebagai PDF.",
+      "html": "<p><strong>Fungsi:</strong> mencetak faktur atau menyimpannya sebagai PDF.</p>\n<p><figure><img src=\"/help/penjualan/09-cetak-faktur.webp\" alt=\"Halaman Cetak Faktur\" width=\"1440\" height=\"1171\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman Cetak Faktur</figcaption></figure></p>\n<p><figure><img src=\"/help/penjualan/09-cetak-faktur--format.webp\" alt=\"Pilihan format cetak\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pilihan format cetak</figcaption></figure></p>\n<ul>\n<li><strong>Format</strong>: <strong>Thermal 58 mm</strong>, <strong>Thermal 80 mm</strong>, atau <strong>A4 — faktur penagihan</strong> (lembar penuh untuk dikirim ke pelanggan).</li>\n<li><strong>Riwayat pembayaran</strong>: menampilkan setiap pembayaran yang sudah masuk.</li>\n<li><strong>Kolom tanda tangan</strong>: ruang tanda tangan dan stempel.</li>\n<li>Sisa tagihan dicetak dari nilai <strong>terkini</strong>, bukan angka saat faktur terbit.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di detail faktur, klik <strong>Cetak</strong>.</li>\n<li>Pilih <strong>Format</strong> dan centang opsi yang diperlukan.</li>\n<li>Klik <strong>Cetak</strong>. Untuk PDF, pilih <strong>Save as PDF</strong> di dialog cetak browser.</li>\n</ol>\n"
+    },
+    {
+      "slug": "mengirim-faktur-ke-pelanggan",
+      "number": 19,
+      "title": "Mengirim Faktur ke Pelanggan",
+      "summary": "mengirim tautan faktur lewat WhatsApp supaya pelanggan bisa melihatnya sendiri.",
+      "html": "<p><strong>Fungsi:</strong> mengirim tautan faktur lewat WhatsApp supaya pelanggan bisa melihatnya sendiri.</p>\n<p><figure><img src=\"/help/penjualan/13-faktur-publik.webp\" alt=\"Faktur online\" width=\"1440\" height=\"984\" loading=\"lazy\" decoding=\"async\"><figcaption>Faktur online</figcaption></figure></p>\n<ul>\n<li>Tombol <strong>WhatsApp</strong> di detail faktur membuka chat WhatsApp berisi nomor faktur, nilai, sisa tagihan, jatuh tempo, dan tautan faktur.</li>\n<li>Pelanggan membuka tautan tanpa login dan melihat faktur seperti gambar di atas.</li>\n<li>Tombol <strong>WhatsApp</strong> tidak aktif kalau pelanggan belum punya nomor WhatsApp.</li>\n</ul>\n"
+    },
+    {
+      "slug": "ringkasan-penjualan",
+      "number": 20,
+      "title": "Ringkasan Penjualan",
+      "summary": "melihat kondisi penjualan dan piutang dalam satu layar.",
+      "html": "<p><strong>Fungsi:</strong> melihat kondisi penjualan dan piutang dalam satu layar.</p>\n<p><figure><img src=\"/help/penjualan/01-ringkasan.webp\" alt=\"Tab Ringkasan\" width=\"1440\" height=\"1433\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Ringkasan <a class=\"help-open\" href=\"/dashboard/sales/summary\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Kartu <strong>Omzet periode</strong>, <strong>Belum lunas</strong>, <strong>Lewat jatuh tempo</strong>, dan <strong>Tertagih</strong>. Arahkan kursor ke ikon (i) untuk cara hitungnya.</li>\n<li><strong>Omzet periode</strong> = penjualan barang dan jasa setelah diskon dan retur, sebelum PPN. Sama dengan <strong>Total pendapatan</strong> di laporan laba rugi.</li>\n<li><strong>Omzet per kategori produk</strong>, <strong>Omzet per layanan</strong>, dan <strong>Omzet per kategori pelanggan</strong>, dengan nilai dan persentasenya.</li>\n</ul>\n<p><figure><img src=\"/help/penjualan/01-ringkasan--pilih-cabang.webp\" alt=\"Pilihan cabang ringkasan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pilihan cabang ringkasan <a class=\"help-open\" href=\"/dashboard/sales/summary\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/penjualan/01-ringkasan--periode-pilih-tanggal.webp\" alt=\"Periode Pilih tanggal di ringkasan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Periode Pilih tanggal di ringkasan <a class=\"help-open\" href=\"/dashboard/sales/summary\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Saring dengan <strong>Cabang</strong> dan <strong>Periode</strong> (<strong>Semua</strong>, <strong>Hari ini</strong>, <strong>Minggu ini</strong>, <strong>Bulan ini</strong>, <strong>Pilih tanggal</strong>).</li>\n</ul>\n"
+    },
+    {
+      "slug": "retur-penjualan",
+      "number": 21,
+      "title": "Retur Penjualan",
+      "summary": "mencatat barang yang dikembalikan pelanggan.",
+      "html": "<p><strong>Fungsi:</strong> mencatat barang yang dikembalikan pelanggan.</p>\n<p><figure><img src=\"/help/penjualan/11-retur.webp\" alt=\"Tab Retur\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Retur <a class=\"help-open\" href=\"/dashboard/sales/returns\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Fitur ini <strong>belum tersedia</strong>.</li>\n<li>Untuk sekarang, penjualan yang salah dibatalkan lewat <strong>Batalkan faktur</strong> di detail fakturnya (bagian <a href=\"/dashboard/help/penjualan/membatalkan-faktur\">17</a>).</li>\n<li>Retur untuk penjualan kasir hari ini bisa dilakukan dari layar <strong>Kasir</strong> › <strong>Transaksi hari ini</strong> › <strong>Retur</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "e-commerce",
+      "number": 22,
+      "title": "E-commerce",
+      "summary": "sinkronisasi produk, stok, dan pesanan dengan marketplace.",
+      "html": "<p><strong>Fungsi:</strong> sinkronisasi produk, stok, dan pesanan dengan marketplace.</p>\n<p><figure><img src=\"/help/penjualan/12-e-commerce.webp\" alt=\"Tab E-commerce\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab E-commerce <a class=\"help-open\" href=\"/dashboard/ecommerce-sync\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Fitur ini <strong>belum tersedia</strong>.</li>\n<li>Untuk sekarang, pesanan dari marketplace dicatat manual sebagai faktur di tab <strong>Faktur</strong>, dengan <strong>Sumber</strong> <strong>Marketplace</strong>.</li>\n</ul>\n"
+    }
+  ],
+  "faq": [
+    {
+      "question": "Faktur tidak bisa diubah?",
+      "answer": "Faktur dari kasir tidak bisa diubah. Faktur manual terkunci setelah ada pembayaran. Batalkan pembayarannya dulu."
+    },
+    {
+      "question": "Salah pelanggan, cabang, atau tanggal?",
+      "answer": "Ketiganya dikunci. Batalkan faktur, lalu buat faktur baru."
+    },
+    {
+      "question": "Pelanggan bayar sebagian?",
+      "answer": "Catat jumlah yang diterima. Status berubah sendiri dan sisa tagihan berkurang."
+    },
+    {
+      "question": "Tidak bisa membatalkan faktur?",
+      "answer": "Pastikan tidak ada pembayaran aktif di fakturnya."
+    }
+  ],
+  "tips": [
+    "isi <strong>No. referensi</strong> setiap pembayaran transfer supaya mudah dicocokkan dengan mutasi bank."
+  ],
+  "updatedAt": "2026-11-04"
+}

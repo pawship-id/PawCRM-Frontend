@@ -7,6 +7,9 @@ import { Menu, PanelLeft } from "lucide-react";
 
 import { Logo, Spinner } from "@/components";
 import { Sidebar } from "@/features/dashboard/components/Sidebar";
+// The file, not "@/features/help": that index also re-exports the guide's
+// content loaders, and every screen of the app renders this bar.
+import { HelpButton } from "@/features/help/components/HelpButton";
 import { usePermissions } from "@/features/permissions";
 import { useTenant } from "@/features/tenant";
 import { UserMenu } from "./UserMenu";
@@ -170,6 +173,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         )}
 
         <div className="ml-auto flex items-center gap-3">
+          <HelpButton />
           <UserMenu />
         </div>
       </header>

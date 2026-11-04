@@ -7,6 +7,22 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Pusat Panduan
+
+3 November 2026. Branch `feature/help-center`. Rincian: `docs/features/help-center.md`.
+
+- Halaman **Panduan** baru di `/dashboard/help`: pencarian, kartu per topik, artikel langkah demi
+  langkah dengan screenshot, dan **Tanya jawab** per topik serta gabungan di `/dashboard/help/faq`.
+- Isinya dibuat dari manual PDF (`automation/manuals/*.md`) oleh `npm run guide-web` di
+  `automation/`. Satu naskah untuk PDF dan web: 16 topik, 346 artikel, 81 tanya jawab, 616 gambar WebP.
+- Tombol **?** di top bar membuka panduan layar yang sedang dibuka di tab baru. Baris
+  **Panduan** ditambahkan di bagian Sistem tanpa syarat izin. Aplikasi Groomer juga punya tombol **?**.
+- Pencarian berjalan di browser tanpa library, dengan sinonim (faktur/invoice, …) dan pemotong
+  imbuhan ringan ("tutup" menemukan "Menutup Kasir").
+- Setiap halaman panduan menampilkan **versi panduan** dan tanggal **diperbarui** (per topik). Versi
+  hanya naik lewat `npm run guide-web -- --bump <modul>`, bukan saat fitur aplikasi berubah.
+- Halaman artikel memakai tata letak halaman topik: isi di kiri, **Daftar panduan** di kanan.
+
 ## [Unreleased] — Template Kas & Bank: dropdown dan panduan
 
 3 November 2026. Backend: `PawCRM-Backend/docs/changelog.md`.
