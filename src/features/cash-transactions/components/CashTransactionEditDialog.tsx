@@ -33,12 +33,12 @@ import type {
 import { isDecimal, toMinor, trimDecimal } from "@/utils/decimal";
 
 import { cashBankAccounts } from "../hooks/useCashBankAccountOptions";
-import { accountsForKind, useLineLookups } from "../hooks/useLineLookups";
+import { accountsForLines, useLineLookups } from "../hooks/useLineLookups";
 import {
   cashTransactionTitle,
   channelClassOf,
   hasLines,
-  kindLabel,
+  transactionKindLabel,
   lockedReason,
   toDateInputValue,
   todayValue,
@@ -445,7 +445,8 @@ export function CashTransactionEditForm({
         <DialogHeader>
           <DialogTitle>Ubah transaksi</DialogTitle>
           <DialogDescription>
-            {cashTransactionTitle(transaction)} · {kindLabel(transaction.kind)}
+            {cashTransactionTitle(transaction)} ·{" "}
+            {transactionKindLabel(transaction)}
           </DialogDescription>
         </DialogHeader>
       )}
@@ -579,10 +580,12 @@ export function CashTransactionEditForm({
             kind={transaction.kind as "expense" | "other_income"}
             lines={lines}
             onChange={setLines}
-            accounts={accountsForKind(
-              lookups.accounts,
-              transaction.kind as "expense" | "other_income",
-            )}
+            accounts={accountsForLines(lookups.accounts, {
+              kind: transaction.kind as "expense" | "other_income",
+              blocked: lookups.blockedAccountIds,
+              cashAccountId: accountId,
+              keep: (transaction.lines ?? []).map((line) => line.accountId),
+            })}
             businessLines={lookups.businessLines}
             disabled={saving}
             branchId={transaction.branchId}

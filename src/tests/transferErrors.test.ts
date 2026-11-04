@@ -41,5 +41,5 @@ it("passes the server's own refusal through unchanged", () => {
 
 it("matches the server's ceiling on products per transfer", () => {
   // MAX_ITEMS in PawCRM-Backend/src/models/stockTransfer.model.js.
-  expect(TRANSFER_MAX_ITEMS).toBe(50);
+  expect(TRANSFER_MAX_ITEMS).toBe(200);
 });

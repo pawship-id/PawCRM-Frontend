@@ -49,7 +49,9 @@ const SOURCE_LABEL = (r: SalesInvoiceReportRow) =>
     ? "Marketplace"
     : r.source === "pos_bridge"
       ? "Kasir"
-      : "Manual";
+      : r.source === "shopee_import"
+        ? "Shopee"
+        : "Manual";
 
 /** A list cell: the names joined, or empty when there are none. */
 const joined = (values: string[]) => (values.length ? values.join(", ") : null);
@@ -1107,4 +1109,98 @@ export const salesRevenueReport: SalesReportDefinition<RevenueLineRow, Kind> = {
     (await reportService.salesRevenue({ ...scope, kinds })).rows.flatMap(
       (invoice) => invoice.lines.map((line) => ({ invoice, line })),
     ),
+};
+
+export interface GrossMarginRow {
+  channel: string;
+  revenue: number;
+  cost: number;
+  profit: number;
+  /** Null when no line has an HPP to measure against. */
+  margin: number | null;
+  /** Lines with no HPP: in Nett sales, but outside HPP, profit and margin. */
+  missingCost: number;
+}
+
+/** "Shopee – Pawship A", "Kasir – Surabaya": the channel down to its toko. */
+const channelOf = (invoice: SalesInvoiceReportRow) =>
+  [SOURCE_LABEL(invoice) === "Marketplace" ? "Shopee" : SOURCE_LABEL(invoice), invoice.storeName]
+    .filter(Boolean)
+    .join(" – ");
+
+/** One row per channel, biggest Nett sales first, then the total. */
+export function grossMarginRows(
+  invoices: (SalesInvoiceReportRow & { lines: SalesInvoiceReportLine[] })[],
+): GrossMarginRow[] {
+  const blank = (channel: string) => ({
+    channel,
+    revenue: 0,
+    cost: 0,
+    profit: 0,
+    measured: 0,
+    missingCost: 0,
+  });
+  type Sum = ReturnType<typeof blank>;
+  const add = (sum: Sum, line: SalesInvoiceReportLine) => {
+    const revenue = num(line.revenue) ?? 0;
+    sum.revenue += revenue;
+    if (line.cost === null || line.profit === null) {
+      sum.missingCost += 1;
+      return;
+    }
+    sum.cost += Number(line.cost);
+    sum.profit += Number(line.profit);
+    sum.measured += revenue;
+  };
+  const row = ({ measured, ...sum }: Sum): GrossMarginRow => ({
+    ...sum,
+    margin: measured ? Math.round((sum.profit / measured) * 1000) / 10 : null,
+  });
+
+  const channels = new Map<string, Sum>();
+  const total = blank("Semua channel");
+  invoices.forEach((invoice) => {
+    const channel = channelOf(invoice);
+    const sum = channels.get(channel) ?? blank(channel);
+    channels.set(channel, sum);
+    invoice.lines.forEach((line) => {
+      add(sum, line);
+      add(total, line);
+    });
+  });
+
+  const rows = [...channels.values()].sort((a, b) => b.revenue - a.revenue);
+  return rows.length ? [...rows, total].map(row) : [];
+}
+
+/**
+ * Gross margin per toko: after HPP, before marketplace fees. BO, 1 November
+ * 2026: the fees are read in Laba rugi once the payout lands, not per toko.
+ */
+export const salesGrossMarginReport: SalesReportDefinition<GrossMarginRow, Kind> = {
+  title: "Gross margin per toko",
+  description:
+    "Nett sales, HPP, gross profit, dan gross margin per channel sampai level toko. Diunduh sebagai Excel.",
+  fileName: "gross-margin-per-toko",
+  rowNoun: "channel",
+  note: "Setelah HPP, sebelum biaya marketplace. Biaya marketplace ada di Laba rugi. Faktur batal tidak termasuk. Retur penjualan belum mengurangi angka di laporan ini.",
+  columns: [
+    { header: "Channel", value: (r) => r.channel, width: 32, about: "Sumber penjualan dan tokonya, misalnya Shopee – Pawship A" },
+    { header: "Nett sales", value: (r) => r.revenue, type: "number", width: 16, about: "Penjualan setelah diskon dan tanpa PPN" },
+    { header: "HPP", value: (r) => r.cost, type: "number", width: 16, about: "Harga pokok barang yang keluar" },
+    { header: "Gross profit", value: (r) => r.profit, type: "number", width: 16, about: "Nett sales − HPP, dari baris yang HPP-nya tercatat" },
+    { header: "Gross margin (%)", value: (r) => r.margin, type: "number", width: 16, about: "Gross profit ÷ Nett sales, dari baris yang HPP-nya tercatat" },
+    { header: "Baris tanpa HPP", value: (r) => r.missingCost, type: "number", width: 16, about: "Baris yang tidak ikut dihitung di HPP, gross profit, dan gross margin" },
+  ],
+  choice: {
+    label: "Tipe",
+    options: ALL_KINDS.map((value) => ({ value, label: KIND_LABEL[value] })),
+    defaults: ALL_KINDS,
+    summary: (values) =>
+      values.length === ALL_KINDS.length
+        ? "Semua tipe"
+        : values.map((v) => KIND_LABEL[v]).join(", "),
+  },
+  fetch: async (scope, kinds) =>
+    grossMarginRows((await reportService.salesRevenue({ ...scope, kinds })).rows),
 };

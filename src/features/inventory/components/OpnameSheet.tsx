@@ -1,7 +1,7 @@
 "use client";
 
 import { SkuText } from "@/components/SkuText";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -24,9 +24,11 @@ import { batchCodeHint, lotOptionLabel } from "@/lib/batchCode";
 import { ApiError } from "@/services/api-error";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import type { OpnameItem, ProductBatch } from "@/types/inventory";
+import type { OpnameJob } from "@/types/opnameImport";
 import { exportToXlsx, type XlsxColumn } from "@/utils/xlsx";
 import { formatMoney, formatQty, toMinor } from "@/utils/decimal";
 
+import { jobActive, useOpnameJob } from "../hooks/useOpnameJob";
 import { useOpnamePreview } from "../hooks/useOpnamePreview";
 import {
   useOpnameSheet,
@@ -34,8 +36,11 @@ import {
   type SheetLine,
 } from "../hooks/useOpnameSheet";
 import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
+import { saveOpnameTemplate } from "../utils/opnameImport";
 import { JournalPreview } from "./JournalPreview";
 import { OpnameAddProductsDialog } from "./OpnameAddProductsDialog";
+import { OpnameImportDialog } from "./OpnameImportDialog";
+import { OpnameJobBanner } from "./OpnameJobBanner";
 import { OpnameStatusBadge } from "./OpnameStatusBadge";
 import { prefetchProductCandidates } from "../hooks/useProductCandidates";
 
@@ -173,6 +178,8 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
     changeBatch,
     removeLine,
     flush,
+    settle,
+    importFile,
     addProducts,
     addEveryProduct,
     adding,
@@ -180,6 +187,35 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
   } = useOpnameSheet(opnameId);
 
   const preview = useOpnamePreview(opnameId);
+
+  /**
+   * THE BACKGROUND JOB ABOUT THIS SHEET, if any — a big import splitting into
+   * it, or Submit semua on its group. Asked again whenever the lock changes, so
+   * the bar appears the moment a job takes the sheet and the result once it
+   * lets go; the sheet is re-read when the job finishes.
+   */
+  const lockedBy = opname?.lockedByJobId ?? null;
+  const loaded = Boolean(opname);
+  const [sheetJob, setSheetJob] = useState<OpnameJob | null>(null);
+  useEffect(() => {
+    if (!loaded) return;
+    let active = true;
+    Promise.resolve(stockOpnameService.sheetJob(opnameId))
+      .then((job) => {
+        if (active) setSheetJob(job ?? null);
+      })
+      // The sheet works without the banner; it is asked again on the next lock.
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [opnameId, lockedBy, loaded]);
+  const watch = useOpnameJob(sheetJob, { onFinished: () => reload() });
+  /** When the page opened — "recently finished" is measured from here. */
+  const [openedAt] = useState(() => Date.now());
+  const [confirmingGroup, setConfirmingGroup] = useState(false);
+  const [groupSubmitting, setGroupSubmitting] = useState(false);
+  const [groupError, setGroupError] = useState<string | null>(null);
 
   /**
    * The lots the warehouse holds, for the per-line batch dropdown. Only asked
@@ -194,7 +230,9 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
   );
 
   const editable =
-    opname?.status === "draft" && can("stockOpnames", "update");
+    opname?.status === "draft" &&
+    !opname.lockedByJobId &&
+    can("stockOpnames", "update");
 
   /**
    * ONE LOT, NO QUESTION. A line of a product that expires which names no batch
@@ -251,6 +289,9 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [fetchingTemplate, setFetchingTemplate] = useState(false);
+  const closeImport = useCallback(() => setImporting(false), []);
 
   if (loading) {
     return (
@@ -265,8 +306,20 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
   }
 
   const done = opname.status === "submitted";
+  /** Held by a background job: read-only until it lets go. */
+  const locked = Boolean(opname.lockedByJobId);
   /** Drafts, and only for a role that may change one. */
-  const canEdit = !done && can("stockOpnames", "update");
+  const canEdit = !done && !locked && can("stockOpnames", "update");
+  /**
+   * A job's banner: while it runs, when it failed and waits for Lanjutkan,
+   * and for a while after it finished — long enough to follow its links.
+   */
+  const showJob =
+    watch.job !== null &&
+    (jobActive(watch.job) ||
+      watch.job.status === "failed" ||
+      (watch.job.finishedAt !== null &&
+        new Date(watch.job.finishedAt).getTime() > openedAt - 10 * 60_000));
   const differing = items.filter(
     (item) => (toMinor(item.diffQty) ?? 0n) !== 0n,
   );
@@ -392,6 +445,28 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
     if (result) setConfirming(true);
   }
 
+  /** Submit semua: every draft of the group, in the background, one by one. */
+  async function handleSubmitGroup() {
+    if (!opname?.groupId) return;
+    setGroupSubmitting(true);
+    setGroupError(null);
+    try {
+      await flush();
+      const job = await stockOpnameService.submitGroup(opname.groupId);
+      watch.setJob(job);
+      setConfirmingGroup(false);
+      reload();
+    } catch (caught) {
+      setGroupError(
+        caught instanceof ApiError
+          ? caught.fullMessage
+          : "Submit semua gagal dimulai. Coba lagi.",
+      );
+    } finally {
+      setGroupSubmitting(false);
+    }
+  }
+
   async function handleSubmit() {
     setSubmitting(true);
     setSubmitError(null);
@@ -427,6 +502,24 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
    * nothing, but "we did not get to it" is a finding in its own right, and the
    * `Dihitung` column is what tells it from "counted, and it matched".
    */
+  /** The xlsx straight from the sheet; the dialog also offers the CSV. */
+  const downloadTemplate = async () => {
+    setFetchingTemplate(true);
+    try {
+      await saveOpnameTemplate(opnameId, "xlsx");
+    } catch (caught) {
+      swalToast(
+        caught instanceof ApiError
+          ? caught.message
+          : "Gagal menyiapkan template. Coba lagi.",
+        "error",
+        6000,
+      );
+    } finally {
+      setFetchingTemplate(false);
+    }
+  };
+
   const exportSheet = async () => {
     setExporting(true);
     try {
@@ -443,6 +536,15 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {showJob && watch.job && (
+        <OpnameJobBanner
+          job={watch.job}
+          onResume={can("stockOpnames", "update") ? watch.resume : undefined}
+          resuming={watch.resuming}
+          resumeError={watch.error}
+        />
+      )}
+
       {error && (
         <Alert variant="error">
           {error}{" "}
@@ -467,17 +569,42 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
        * "which counts happened"; this answers "which products were off, and by
        * how much" — the question a variance is actually investigated with.
        */}
-      {items.length > 0 && (
-        <div className="flex justify-end">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={exportSheet}
-            disabled={exporting}
-          >
-            {exporting ? <Spinner /> : null}
-            Export selisih (.xlsx)
-          </Button>
+      {(items.length > 0 || canEdit) && (
+        <div className="flex flex-wrap justify-end gap-2">
+          {/* The draft's own route for counting on paper or in Excel. A file
+              fills a sheet, so the buttons leave with the sheet's last chance
+              to change, and with the grant to change it. */}
+          {canEdit && (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={downloadTemplate}
+                disabled={fetchingTemplate}
+              >
+                {fetchingTemplate ? <Spinner /> : null}
+                Unduh Template
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setImporting(true)}
+              >
+                Impor File
+              </Button>
+            </>
+          )}
+          {items.length > 0 && (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={exportSheet}
+              disabled={exporting}
+            >
+              {exporting ? <Spinner /> : null}
+              Export selisih (.xlsx)
+            </Button>
+          )}
         </div>
       )}
 
@@ -492,6 +619,13 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
             answer for every shop it serves. */}
         <Field label="Cabang" value={opname.branchName ?? "—"} />
         <Field label="Gudang" value={opname.warehouseName ?? "—"} />
+        {/* One part of a file split across sheets — see Submit semua below. */}
+        {opname.groupSize ? (
+          <Field
+            label="Bagian"
+            value={`${opname.groupIndex} dari ${opname.groupSize} lembar`}
+          />
+        ) : null}
         <Field
           label="Terhitung"
           value={`${countedCount} / ${items.length} baris`}
@@ -548,7 +682,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
             mulai.
           </p>
 
-          {can("stockOpnames", "update") && (
+          {canEdit && (
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               <Button onClick={handleLoadEverything} disabled={adding}>
                 {adding ? "Memuat…" : "Muat semua produk gudang ini"}
@@ -645,10 +779,10 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
                 key={`${item.productId}-${item.batchId ?? (item.newBatch ? "new" : "whole")}-${index}`}
                 item={item}
                 index={index}
-                readOnly={done}
+                readOnly={done || locked}
                 showBatch={showBatch}
                 batchOptions={
-                  showBatch && item.productHasExpiry && !done
+                  showBatch && item.productHasExpiry && !done && !locked
                     ? batchOptions(index)
                     : null
                 }
@@ -672,7 +806,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
             centimetres apart. That was invisible for as long as one of them was
             labelled differently, which is the argument for naming a control
             after what it does rather than after where it sits. */}
-        {items.length > 0 && !done && can("stockOpnames", "update") && (
+        {items.length > 0 && canEdit && (
           <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-2.5">
             <Button
               variant="secondary"
@@ -763,6 +897,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
               // An empty sheet has nothing to submit and the API says so; the
               // button is disabled rather than left to produce that 400.
               disabled={
+                locked ||
                 preview.loading ||
                 saveState === "saving" ||
                 items.length === 0 ||
@@ -771,7 +906,24 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
             >
               {preview.loading ? "Menghitung…" : "Selesaikan opname"}
             </Button>
-          ) : (
+          ) : null}
+
+          {/* Every draft of the group, in the background. Each sheet still
+              submits on its own, atomically, exactly as the button beside it. */}
+          {can("stockOpnames", "submit") && opname.groupId ? (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setGroupError(null);
+                setConfirmingGroup(true);
+              }}
+              disabled={locked || saveState === "saving"}
+            >
+              Submit semua lembar ({opname.groupSize})
+            </Button>
+          ) : null}
+
+          {can("stockOpnames", "submit") ? null : (
             <Alert variant="info">
               Anda bisa mengisi hitungan, tapi penyelesaian opname dilakukan
               oleh rekan dengan izin <b>submit</b>. Itu disengaja: yang
@@ -812,6 +964,15 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
         />
       )}
 
+      {importing && (
+        <OpnameImportDialog
+          opnameId={opnameId}
+          settle={settle}
+          importFile={importFile}
+          onClose={closeImport}
+        />
+      )}
+
       {pendingRemove && (
         <ConfirmDialog
           title="Hapus produk dari lembar ini?"
@@ -837,6 +998,28 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
               Tidak ada stok yang berubah: lembar ini masih draft dan belum
               menulis apa pun. Tapi hasil hitungnya tidak bisa dikembalikan
               tanpa kembali ke rak.
+            </span>
+          </>
+        </ConfirmDialog>
+      )}
+
+      {confirmingGroup && opname.groupId && (
+        <ConfirmDialog
+          title="Submit semua lembar?"
+          confirmLabel="Ya, submit semua"
+          busy={groupSubmitting}
+          error={groupError}
+          onConfirm={handleSubmitGroup}
+          onCancel={() => setConfirmingGroup(false)}
+        >
+          {/* Inline fragments, not <p>: DialogDescription is itself a <p>. */}
+          <>
+            Semua lembar draft di grup ini ({opname.groupSize} lembar) akan
+            diselesaikan satu per satu di background, dan selisihnya dibukukan ke
+            kartu stok dan jurnal. Ini tidak bisa dibatalkan.
+            <span className="mt-2 block">
+              Lembar yang sudah disubmit dilewati. Kalau satu lembar gagal,
+              prosesnya berhenti di lembar itu dan bisa dilanjutkan.
             </span>
           </>
         </ConfirmDialog>

@@ -3,7 +3,7 @@
 import { SkuText } from "@/components/SkuText";
 import Link from "next/link";
 
-import { Alert, Card } from "@/components";
+import { Alert, Card, ImportFailedList } from "@/components";
 import { Badge } from "@/components/ui/badge";
 // The shadcn button rather than the project wrapper: only this one takes
 // `asChild`, which is what lets a Link be styled as a button without nesting an
@@ -101,24 +101,15 @@ export function ImportResultPanel({
       </Alert>
 
       {result.failed.length > 0 && (
-        <Card
+        <ImportFailedList
           title="Gagal dibuat"
           description="Baris ini ditolak saat penyimpanan — kemungkinan besar ada orang lain yang memakai SKU-nya barusan. Perbaiki di file, lalu unggah ulang baris ini saja."
-        >
-          <ul className="flex flex-col gap-2 text-sm">
-            {result.failed.map((entry) => (
-              <li key={entry.sku} className="flex flex-col gap-0.5">
-                <span className="tabular-nums text-xs">
-                  <SkuText value={entry.sku} />{" "}
-                  <span className="text-muted">
-                    (baris {entry.rowNumbers.join(", ")})
-                  </span>
-                </span>
-                <span className="text-destructive">{entry.message}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
+          entries={result.failed.map((entry) => ({
+            label: entry.sku,
+            rowNumbers: entry.rowNumbers,
+            message: entry.message,
+          }))}
+        />
       )}
 
       {unposted.length > 0 && (

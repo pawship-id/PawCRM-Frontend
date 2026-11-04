@@ -7,6 +7,82 @@ This project uses [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [Unreleased] — Template Kas & Bank: dropdown dan panduan
+
+3 November 2026. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- Sheet **Contoh** dihapus; contoh (CONTOH-1 Pembayaran, CONTOH-2 Penerimaan) ada langsung di sheet
+  Transaksi untuk dihapus user. Server tetap menolak baris CONTOH, jadi lupa menghapus tidak menyimpan apa pun.
+- Sheet baru **Panduan Pengisian**: langkah, arti tiap kolom, transaksi beberapa akun, batasan.
+  Diberi warna Buloo (judul navy, pita bagian, label Wajib/Opsional, peringatan oranye), teks
+  turun baris, tanpa gridline. `ExtraSheet` menerima `styles` (daftar tetap `SheetStyle`), `merges`,
+  `heights`, `gridlines`, dan `first` (tab sebelum tab isian; Panduan jadi tab pertama); gaya disisipkan ke `styles.xml` karena SheetJS gratis tidak menulisnya.
+- Dropdown di Tipe, Cabang, Akun Kas/Bank, Detil Akun (`KODE - Nama`) dari sheet tersembunyi
+  `Pilihan`. Akun yang ditolak sebagai akun lawan atau tidak berlaku di cabang user tidak muncul.
+  Daftar Akun menambah kolom Cabang.
+- **Transfer tidak lewat impor**: Tipe hanya Pembayaran/Penerimaan, rekening kas/bank tidak ada di
+  pilihan Detil Akun, label "Transfer antar rekening" di preview impor dihapus.
+- `buildTemplateWorkbook` menerima `lists`, `widthOf`, dan sheet tambahan `hidden`/`widths`.
+  SheetJS gratis tidak menulis data validation, jadi blok `<dataValidations>` disisipkan ke XML
+  sheet setelah file dibuat.
+
+## [Unreleased] — Upload massal: Kas & Bank
+
+2 November 2026. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Kas & Bank › Impor** (`/dashboard/finance/cash-bank/transactions/import`): unduh template, unggah,
+  periksa per transaksi, simpan, hasil. Butuh `cashTransactions:create`.
+- Template Excel dibuat per tenant, dengan sheet Contoh, Daftar Akun, Daftar Cabang, dan Daftar Sub
+  Akun. Contoh tidak ada di sheet yang dibaca. Format kolom Jubelio juga diterima, termasuk dua kolom
+  Keterangan dan sheet datanya yang bukan sheet pertama, selama ada kolom Cabang.
+- "Tetap impor" per file untuk transaksi yang sama dengan impor sebelumnya.
+- `readGrid` menerima `preferSheets`, `buildTemplateWorkbook` menerima `extraSheets`.
+
+## [Unreleased] — Kas & Bank: akun lawan dan transfer
+
+2 November 2026. Backend: `PawCRM-Backend/docs/changelog.md`.
+
+- **Akun lawan:** picker baris mengikuti aturan server, jadi akun apa pun yang aktif boleh dipilih
+  kecuali akun milik modul. Kelas yang sesuai jenis transaksi tampil lebih dulu. Judul kolom jadi
+  "Akun lawan" kalau barisnya bukan beban atau pendapatan.
+- **Transfer antar rekening:** label di daftar, detail, dan edit; tanpa tanda plus/minus di daftar.
+  Filter Sumber "Transfer" sekarang berfungsi, dan kartu Uang keluar tidak menghitungnya.
+- **Filter akun** daftar transaksi: `accountId` sebelumnya tidak ikut terkirim ke server.
+- Form tidak lagi mengirim `cashflowType`; server menurunkannya dari akun.
+
+## [Unreleased] — E-commerce Shopee: Tahap B & C
+
+28 Oktober 2026. Backend: `PawCRM-Backend/docs/changelog.md`. Rincian: `docs/features/ecommerce.md`.
+
+- **Impor pesanan** dan **Impor pencairan** — dua wizard baru di kepala Penjualan › E-commerce
+  (Upload → Tinjau → Selesai), di samping Ekspor stok.
+- **Ringkasan:** Belum cair, Pesanan tertahan, tabel pesanan tertahan, dan Perlu tindakan.
+- **Pengaturan:** status pesanan yang jadi faktur, dan akun per peran. Username Shopee dan buffer
+  dihapus dari dialog Hubungkan toko; username hanya dibaca.
+- **Pencairan per faktur (1 Nov):** tiap faktur dapat pembayaran dan jurnal sendiri, tampil di Riwayat
+  pembayaran, bisa dibatalkan lalu fakturnya di-void seperti faktur manual. PMT tetap satu per file.
+- **Faktur:** sumber "Shopee" (badge dan filter), No. referensi, nomor pencairan, peringatan "Batal
+  di Shopee"; Ubah disembunyikan untuk faktur Shopee. Catat pembayaran tersedia sejak 1 Nov.
+- Jurnal: sumber "Pencairan marketplace".
+
+## [Unreleased] — E-commerce Shopee: Tahap A
+
+28 Oktober 2026, keputusan BO. Backend: `PawCRM-Backend/docs/changelog.md`. Rincian: `docs/features/ecommerce.md`.
+
+- **Penjualan › E-commerce tidak lagi placeholder.** Tiga sub-tab (rute): Ringkasan
+  (`/dashboard/ecommerce-sync`), Pengikatan SKU (`…/sku`), Pengaturan (`…/settings`). Toko dipilih lewat
+  `?store=` atau diingat di sessionStorage antar sub-tab.
+- **Ringkasan:** angka varian terikat / belum terikat / ekspor terakhir, kartu toko, kartu "Hubungkan
+  toko", Tokopedia & TikTok Shop "Segera hadir", tabel Riwayat + dialog detail dengan Unduh ulang.
+- **Pengikatan SKU:** upload template pertama (dropzone), "Perbarui dari template Shopee", filter status
+  dengan hitungan, pencarian, dan dialog Ikat SKU / Lepas ikatan (dialog, bukan drawer).
+- **Ekspor stok:** wizard 3 langkah (Pilih toko → Tinjau → Selesai) dari tombol di kepala modul. Gudang
+  dan buffer dari Pengaturan; harga tidak diubah.
+- **Pengaturan:** nama, status, gudang sumber, buffer, username Shopee; cabang dan Shop ID hanya
+  dibaca.
+- `marketplaceService`, `types/marketplace.ts`, `features/ecommerce/`. Katalog permission `ecommerce`
+  kini `read`, `manageStores`, `bindSku`, `export`.
+
 ## [Unreleased] — Pelanggan: tag
 
 26 Oktober 2026, keputusan BO. Backend: `PawCRM-Backend/docs/changelog.md`.

@@ -272,12 +272,21 @@ describe("CashTransactionCreateForm", () => {
     expect(
       await screen.findByRole("option", { name: "4201 · Pendapatan Bunga" }),
     ).toBeInTheDocument();
+    // Still on the list, after the kind's own class.
     expect(
-      screen.queryByRole("option", { name: "5401 · Beban Listrik" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("option", { name: "5401 · Beban Listrik" }),
+    ).toBeInTheDocument();
   });
 
-  it("offers only active expense accounts for Uang keluar", async () => {
+  it("offers active accounts for Uang keluar, leaving out what the server blocks and the cash account", async () => {
+    jest
+      .mocked(cashTransactionService.blockedCounterAccounts)
+      .mockResolvedValue({
+        accounts: [
+          { accountId: "acc-bunga", code: "4201", name: "Pendapatan Bunga", reason: "—" },
+        ],
+      });
+
     const user = userEvent.setup();
     renderWithAuth(<CashTransactionCreateForm />);
 
@@ -485,8 +494,7 @@ describe("CashTransactionCreateForm", () => {
         // name, so the client never states one it could get wrong.
         partyType: "supplier",
         partyId: "sup-1",
-        // Not a field any more; sent so the entry still lands in Arus Kas.
-        cashflowType: "operating",
+        // Not sent: the server derives the Arus Kas section from the lines.
         note: "Listrik Agustus",
         // Today is not sent — the server stamps the time as well.
         lines: [
@@ -504,6 +512,48 @@ describe("CashTransactionCreateForm", () => {
     );
     expect(swalToast).toHaveBeenCalledWith("Transaksi BKK/CBS/2609/0004 tersimpan.");
     expect(mockPush).toHaveBeenCalledWith("/dashboard/finance/cash-bank/transactions/ct9");
+  });
+
+  it("saves a transfer as a payment whose one line is the receiving account", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<CashTransactionCreateForm />);
+    await screen.findByRole("button", { name: "Simpan transaksi" });
+
+    await user.click(
+      screen.getByRole("button", { name: "Transfer antar rekening" }),
+    );
+
+    expect(screen.queryByText("Rincian Akun")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Penerima" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Jadikan biaya tetap")).not.toBeInTheDocument();
+
+    await pick(user, "Dari rekening", "1101 · Kas Pusat");
+    await user.click(screen.getByRole("button", { name: "Ke rekening" }));
+    expect(
+      screen.queryByRole("option", { name: "1101 · Kas Pusat" }),
+    ).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("option", { name: "1102 · Bank BCA" }));
+    await user.type(screen.getByLabelText(/^Jumlah/), "2000000");
+
+    await user.click(screen.getByRole("button", { name: "Simpan transaksi" }));
+
+    await waitFor(() =>
+      expect(cashTransactionService.create).toHaveBeenCalledWith({
+        kind: "expense",
+        branchId: "b1",
+        accountId: "acc-kas",
+        lines: [
+          {
+            accountId: "acc-bca",
+            amount: "2000000",
+            businessLineId: null,
+            subAccountId: null,
+          },
+        ],
+      }),
+    );
   });
 
   it("has no Lini Usaha field, in the header or on any row", async () => {

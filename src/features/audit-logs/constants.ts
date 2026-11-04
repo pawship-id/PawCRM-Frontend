@@ -143,6 +143,11 @@ const ACTION_META: Record<string, ActionMeta> = {
     tone: "danger",
     category: "kas",
   },
+  cash_transaction_bulk_import: {
+    label: "Impor transaksi kas",
+    tone: "success",
+    category: "kas",
+  },
   consignment_settlement_record: {
     label: "Setor ke konsinyor",
     tone: "success",
@@ -215,8 +220,18 @@ const ACTION_META: Record<string, ActionMeta> = {
     tone: "danger",
     category: "stok",
   },
+  stock_opname_import: {
+    label: "Stok opname diisi dari file",
+    tone: "neutral",
+    category: "stok",
+  },
   product_bulk_import: {
     label: "Impor produk",
+    tone: "neutral",
+    category: "stok",
+  },
+  product_bulk_update: {
+    label: "Update massal produk",
     tone: "neutral",
     category: "stok",
   },

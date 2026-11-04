@@ -1,12 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 import { Alert, Pagination } from "@/components";
+// The shadcn button: only this one takes `asChild`, for the Link below.
+import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 
 import { useCatalogLookups } from "../hooks/useCatalogLookups";
-import { useProducts } from "../hooks/useProducts";
+import { useProducts, type ProductsQuery } from "../hooks/useProducts";
 import { CatalogModuleHeader } from "./CatalogModuleHeader";
 import { NewProductMenu } from "./NewProductMenu";
 import { ProductsTable } from "./ProductsTable";
@@ -54,6 +57,22 @@ import { ProductsToolbar } from "./ProductsToolbar";
  * adds up what it is given and re-deciding it here would be a second copy of the
  * rule over the same number.
  */
+/** Update Massal opens on what the list is showing. See its page. */
+function bulkUpdateHref({
+  search,
+  categoryId,
+  productType,
+  status,
+}: ProductsQuery) {
+  const params = new URLSearchParams(
+    Object.entries({ search, categoryId, productType, status }).filter(
+      ([, value]) => value !== "",
+    ),
+  ).toString();
+
+  return `/dashboard/inventory/products/bulk-update${params ? `?${params}` : ""}`;
+}
+
 export function ProductsScreen() {
   const [warehouseIds, setWarehouseIds] = useState<string[]>([]);
   // The picked warehouses go along only so a Stok sort ranks by the figure the
@@ -66,9 +85,16 @@ export function ProductsScreen() {
     <div className="flex flex-col gap-6">
       <CatalogModuleHeader
         action={
-          <Can feature="products" action="create">
-            <NewProductMenu />
-          </Can>
+          <div className="flex flex-wrap gap-2">
+            <Can feature="products" action="update">
+              <Button asChild variant="secondary">
+                <Link href={bulkUpdateHref(query)}>Update Massal</Link>
+              </Button>
+            </Can>
+            <Can feature="products" action="create">
+              <NewProductMenu />
+            </Can>
+          </div>
         }
       />
 

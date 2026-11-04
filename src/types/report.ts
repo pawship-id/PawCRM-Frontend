@@ -148,7 +148,7 @@ export interface SalesInvoiceReportRow {
   customerPhone: string | null;
   /** The tenant's own label (Pengaturan › Tipe pelanggan); null when unset. */
   customerTypeName: string | null;
-  source: "manual" | "pos_bridge";
+  source: "manual" | "pos_bridge" | "shopee_import";
   channel: "manual" | "marketplace";
   /** "Umum" for a counter or hand-raised sale; the expedition's name later. */
   courierName: string | null;
@@ -289,7 +289,7 @@ export interface SalesBatchReportRow {
   warehouseName: string | null;
   customerName: string | null;
   customerPhone: string | null;
-  source: "manual" | "pos_bridge";
+  source: "manual" | "pos_bridge" | "shopee_import";
   sku: string | null;
   productName: string | null;
   unit: string | null;

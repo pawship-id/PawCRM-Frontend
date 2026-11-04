@@ -26,10 +26,7 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { cashTransactionService } from "@/services/cashTransaction.service";
 import { fixedCostService } from "@/services/fixedCost.service";
-import {
-  fixedCostHref,
-  INTERVAL_LABEL,
-} from "@/features/fixed-costs/labels";
+import { fixedCostHref, INTERVAL_LABEL } from "@/features/fixed-costs/labels";
 import { cashTypeOf, type FixedCostInterval } from "@/types/accounting";
 import type { CreateCashTransactionInput } from "@/types/api";
 
@@ -42,9 +39,10 @@ import {
   parseContactKey,
   useContactOptions,
 } from "../hooks/useContactOptions";
-import { accountsForKind, useLineLookups } from "../hooks/useLineLookups";
+import { accountsForLines, useLineLookups } from "../hooks/useLineLookups";
 import {
   CASH_TRANSACTIONS_HREF,
+  TRANSFER_LABEL,
   cashTransactionHref,
   cashTransactionTitle,
   numberPrefixForClass,
@@ -61,15 +59,23 @@ import {
 } from "./CashLinesEditor";
 
 type ManualKind = "expense" | "other_income";
+type FormKind = ManualKind | "transfer";
 
 /**
  * MASUK FIRST, and the words are the mockup's — the same two the Kas & Bank
  * cards above the list are labelled with, so the toggle on the form and the
  * figures it lands in are named the same thing.
+ *
+ * TRANSFER IS A CHOICE HERE AND NOT A KIND ON THE SERVER (BO, 3 November 2026).
+ * It saves as an `expense` whose one line is the receiving account, which is
+ * what the server reads as a transfer, so its row stays `lines[0]` and only the
+ * way it is asked for changes. A manual journal cannot do this: it may not
+ * touch a kas/bank account, so that every movement keeps a bukti.
  */
-const KIND_OPTIONS: PillOption<ManualKind>[] = [
+const KIND_OPTIONS: PillOption<FormKind>[] = [
   { value: "other_income", label: "Uang masuk" },
   { value: "expense", label: "Uang keluar" },
+  { value: "transfer", label: TRANSFER_LABEL },
 ];
 
 /**
@@ -109,18 +115,16 @@ const KIND_OPTIONS: PillOption<ManualKind>[] = [
  * to decide.
  *
  * WHAT THE PICKERS OFFER IS WHAT THE SERVER ACCEPTS. Active Kas & Bank accounts
- * for the cash side; line accounts that are active and of the right class (beban
- * for Keluar, pendapatan for Masuk). Flipping the toggle clears the chosen line
- * accounts, because none of them is valid on the other side. THE CASH ACCOUNT
- * SURVIVES THE FLIP — an account has no direction, and a bank account both
- * receives and pays.
+ * for the cash side; for the lines, `accountsForLines`: any active account a
+ * module does not own, with the kind's own class first. Flipping the toggle
+ * clears the chosen line accounts, because a line picked for one side is rarely
+ * meant for the other. THE CASH ACCOUNT SURVIVES THE FLIP — an account has no
+ * direction, and a bank account both receives and pays.
  *
  * NO ARUS KAS FIELD AND NO NO. REFERENSI — neither is in the mockup, dropped on
- * request. The cash flow statement still needs a section, so every transaction
- * typed here is filed under Operasi, which is what all but a handful of them
- * are; left unsent the entry would carry no section at all and drop out of Arus
- * Kas entirely. One that belongs under Investasi or Pendanaan is re-filed from
- * Jurnal Umum.
+ * request. The section is the SERVER'S to derive from the lines (`cashflowType`
+ * unsent), which is Operasional for everything this form could reach before any
+ * account was allowed here, and the right section for a machine or a loan since.
  */
 const INTERVAL_OPTIONS = (
   ["monthly", "weekly", "daily", "yearly"] as FixedCostInterval[]
@@ -133,7 +137,7 @@ export function CashTransactionCreateForm() {
   const lookups = useLineLookups();
   const contacts = useContactOptions();
 
-  const [kind, setKind] = useState<ManualKind>("expense");
+  const [kind, setKind] = useState<FormKind>("expense");
   const [date, setDate] = useState(todayValue);
   const [pickedBranch, setPickedBranch] = useState("");
   const [cashAccountId, setCashAccountId] = useState("");
@@ -171,7 +175,9 @@ export function CashTransactionCreateForm() {
 
   // One branch is not a choice (useBranchScope).
   const branchId = pickedBranch || scope.soleBranch;
-  const direction = kind === "expense" ? "out" : "in";
+  const transfer = kind === "transfer";
+  const savedKind: ManualKind = transfer ? "expense" : kind;
+  const direction = savedKind === "expense" ? "out" : "in";
 
   const cashAccountOptions: FilterOption<string>[] = cashBankAccountOptions(
     lookups.accounts,
@@ -185,10 +191,22 @@ export function CashTransactionCreateForm() {
       (account) => account._id === cashAccountId,
     ) ?? null;
 
-  function switchKind(next: ManualKind) {
+  function switchKind(next: FormKind) {
     if (next === kind) return;
     setKind(next);
+    if (next === "transfer" || transfer) {
+      // A transfer has no party, no schedule and exactly one row.
+      setLines([blankLine()]);
+      setPartyKey("");
+      setPartyName("");
+      setRecur(false);
+      return;
+    }
     setLines((prev) => prev.map((line) => ({ ...line, accountId: "" })));
+  }
+
+  function setTransferLine(patch: Partial<DraftLine>) {
+    setLines(([line]) => [{ ...line, ...patch }]);
   }
 
   function addLine() {
@@ -231,6 +249,15 @@ export function CashTransactionCreateForm() {
     if (!branchId) return "Cabang belum dipilih";
     if (!cashAccount) return "Akun kas/bank belum dipilih";
     if (recur && recurName.trim() === "") return "Nama biaya tetap belum diisi";
+    if (transfer) {
+      const [line] = lines;
+      if (!line.accountId) return "Rekening tujuan belum dipilih";
+      if (line.accountId === cashAccount._id) {
+        return "Rekening tujuan harus berbeda dari rekening asal";
+      }
+      if (line.amount.trim() === "") return "Jumlah belum diisi";
+      if (linesProblem(lines)) return "Jumlah harus angka lebih dari nol";
+    }
     return linesProblem(lines);
   }
 
@@ -244,14 +271,12 @@ export function CashTransactionCreateForm() {
     setFormError(null);
 
     const input: CreateCashTransactionInput = {
-      kind,
+      kind: savedKind,
       branchId,
       accountId: cashAccount._id,
       // Today is left to the server, which stamps the time as well as the day.
       ...(date !== todayValue() ? { at: date } : {}),
       ...partyInput(),
-      // Not asked, always sent — see the note at the head of the file.
-      cashflowType: "operating",
       ...(note.trim() ? { note: note.trim() } : {}),
       lines: toLineInputs(lines),
     };
@@ -279,7 +304,7 @@ export function CashTransactionCreateForm() {
       try {
         const schedule = await fixedCostService.create({
           name: recurName.trim(),
-          kind,
+          kind: savedKind,
           branchId,
           accountId: cashAccount._id,
           interval: recurInterval,
@@ -343,6 +368,11 @@ export function CashTransactionCreateForm() {
   }
 
   const masuk = kind === "other_income";
+  const transferTargets = cashBankAccountOptions(lookups.accounts).filter(
+    (option) =>
+      option.value !== cashAccountId &&
+      !lookups.blockedAccountIds.has(option.value),
+  );
 
   /*
     "Nama lain…" LAST, under its own heading, so it reads as an escape from the
@@ -387,7 +417,11 @@ export function CashTransactionCreateForm() {
               max={todayValue()}
               required
               disabled={saving}
-              error={date > todayValue() ? "Tanggal tidak boleh di masa depan." : undefined}
+              error={
+                date > todayValue()
+                  ? "Tanggal tidak boleh di masa depan."
+                  : undefined
+              }
               onChange={(event) => setDate(event.target.value)}
             />
 
@@ -404,12 +438,18 @@ export function CashTransactionCreateForm() {
               onChange={(next) => {
                 setPickedBranch(next);
                 setLines((previous) =>
-                  withoutMismatchedSubAccounts(previous, lookups.accounts, next),
+                  withoutMismatchedSubAccounts(
+                    previous,
+                    lookups.accounts,
+                    next,
+                  ),
                 );
               }}
             />
 
-            {/*
+            {!transfer && (
+              <>
+                {/*
               THE THREE REGISTERS A SHOP ALREADY KEEPS, plus a way out of them.
 
               `partyType` on the transaction is exactly customer | supplier |
@@ -423,42 +463,44 @@ export function CashTransactionCreateForm() {
               — and forcing those into the supplier register to record a
               transaction would fill it with rows nobody ever buys from.
             */}
-            <FilterSelect
-              layout="form"
-              label={masuk ? "Pengirim" : "Penerima"}
-              ariaLabel={masuk ? "Pengirim" : "Penerima"}
-              value={partyKey}
-              options={partyOptions}
-              active={false}
-              searchable
-              placeholder={
-                contacts.loading ? "Memuat kontak…" : "Pilih kontak…"
-              }
-              disabled={saving}
-              hint={typedParty ? undefined : "Opsional."}
-              onChange={(next) => {
-                setPartyKey(next);
-                if (next !== OTHER_PARTY) setPartyName("");
-              }}
-            />
+                <FilterSelect
+                  layout="form"
+                  label={masuk ? "Pengirim" : "Penerima"}
+                  ariaLabel={masuk ? "Pengirim" : "Penerima"}
+                  value={partyKey}
+                  options={partyOptions}
+                  active={false}
+                  searchable
+                  placeholder={
+                    contacts.loading ? "Memuat kontak…" : "Pilih kontak…"
+                  }
+                  disabled={saving}
+                  hint={typedParty ? undefined : "Opsional."}
+                  onChange={(next) => {
+                    setPartyKey(next);
+                    if (next !== OTHER_PARTY) setPartyName("");
+                  }}
+                />
 
-            {typedParty && (
-              <TextField
-                label={masuk ? "Nama pengirim" : "Nama penerima"}
-                name="cash-party-name"
-                value={partyName}
-                maxLength={120}
-                required
-                disabled={saving}
-                hint="Yang tidak terdaftar — mis. PLN, pemilik ruko."
-                onChange={(event) => setPartyName(event.target.value)}
-              />
+                {typedParty && (
+                  <TextField
+                    label={masuk ? "Nama pengirim" : "Nama penerima"}
+                    name="cash-party-name"
+                    value={partyName}
+                    maxLength={120}
+                    required
+                    disabled={saving}
+                    hint="Yang tidak terdaftar — mis. PLN, pemilik ruko."
+                    onChange={(event) => setPartyName(event.target.value)}
+                  />
+                )}
+              </>
             )}
 
             <FilterSelect
               layout="form"
-              label="Akun Kas/Bank"
-              ariaLabel="Akun Kas/Bank"
+              label={transfer ? "Dari rekening" : "Akun Kas/Bank"}
+              ariaLabel={transfer ? "Dari rekening" : "Akun Kas/Bank"}
               value={cashAccountId}
               options={cashAccountOptions}
               active={false}
@@ -468,7 +510,9 @@ export function CashTransactionCreateForm() {
                   ? "Memuat akun…"
                   : masuk
                     ? "Diterima di"
-                    : "Dibayar dari"
+                    : transfer
+                      ? "Pilih rekening asal"
+                      : "Dibayar dari"
               }
               required
               disabled={saving || lookups.loading}
@@ -480,6 +524,37 @@ export function CashTransactionCreateForm() {
               onChange={setCashAccountId}
             />
 
+            {transfer && (
+              <>
+                <FilterSelect
+                  layout="form"
+                  label="Ke rekening"
+                  ariaLabel="Ke rekening"
+                  value={lines[0].accountId}
+                  options={transferTargets}
+                  active={false}
+                  searchable
+                  placeholder={
+                    lookups.loading ? "Memuat akun…" : "Pilih rekening tujuan"
+                  }
+                  required
+                  disabled={saving || lookups.loading}
+                  onChange={(next) => setTransferLine({ accountId: next })}
+                />
+                <TextField
+                  label="Jumlah"
+                  name="cash-transfer-amount"
+                  inputMode="decimal"
+                  value={lines[0].amount}
+                  required
+                  disabled={saving}
+                  onChange={(event) =>
+                    setTransferLine({ amount: event.target.value })
+                  }
+                />
+              </>
+            )}
+
             <div className="sm:col-span-2">
               <TextareaField
                 label="Deskripsi"
@@ -488,13 +563,19 @@ export function CashTransactionCreateForm() {
                 rows={3}
                 maxLength={500}
                 disabled={saving}
-                placeholder="cth: Gaji staff Oktober"
+                placeholder={
+                  transfer
+                    ? "cth: Pindah saldo ke BCA"
+                    : "cth: Gaji staff Oktober"
+                }
                 onChange={(event) => setNote(event.target.value)}
               />
             </div>
           </div>
 
-          {/*
+          {!transfer && (
+            <>
+              {/*
             THE MOCKUP'S SWITCH, LIVE SINCE 21 SEPTEMBER 2026. It was shown,
             disabled and badged "Segera" while nothing stored a schedule.
 
@@ -504,103 +585,112 @@ export function CashTransactionCreateForm() {
             the Biaya Tetap tab. A switch that said "otomatis" would be a promise
             the system cannot keep.
           */}
-          <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-hover px-4 py-3">
-            <div className="flex items-start gap-3">
-              <Switch
-                checked={recur}
-                onCheckedChange={setRecur}
-                disabled={saving}
-                aria-label="Jadikan biaya tetap"
-                className="mt-1"
-              />
-              <div className="min-w-0">
-                <p className="font-semibold text-foreground">
-                  Jadikan biaya tetap
-                </p>
-                <p className="mt-0.5 text-sm text-muted">
-                  Transaksinya tetap dicatat sekarang, dan jadwalnya diingat —
-                  jatuh tempo berikutnya muncul di tab Biaya Tetap untuk dicatat
-                  di sana.
-                </p>
-              </div>
-            </div>
+              <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-hover px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <Switch
+                    checked={recur}
+                    onCheckedChange={setRecur}
+                    disabled={saving}
+                    aria-label="Jadikan biaya tetap"
+                    className="mt-1"
+                  />
+                  <div className="min-w-0">
+                    <p className="font-semibold text-foreground">
+                      Jadikan biaya tetap
+                    </p>
+                    <p className="mt-0.5 text-sm text-muted">
+                      Transaksinya tetap dicatat sekarang, dan jadwalnya diingat
+                      — jatuh tempo berikutnya muncul di tab Biaya Tetap untuk
+                      dicatat di sana.
+                    </p>
+                  </div>
+                </div>
 
-            {recur && (
-              <div className="grid gap-4 border-t border-border pt-3 sm:grid-cols-2">
-                <TextField
-                  label="Nama biaya tetap"
-                  value={recurName}
-                  onChange={(event) => setRecurName(event.target.value)}
-                  placeholder="cth: Sewa toko Pusat"
-                  disabled={saving}
-                  required
-                  hint="Nama ini yang dipakai daftar Biaya Tetap, dan harus unik."
-                />
-                <SelectField
-                  label="Pengulangan"
-                  value={recurInterval}
-                  options={INTERVAL_OPTIONS}
-                  onChange={(value) =>
-                    setRecurInterval(value as FixedCostInterval)
-                  }
-                  disabled={saving}
-                  required
-                  hint={`Dihitung dari tanggal transaksi ini, ${date || "hari ini"}.`}
-                />
+                {recur && (
+                  <div className="grid gap-4 border-t border-border pt-3 sm:grid-cols-2">
+                    <TextField
+                      label="Nama biaya tetap"
+                      value={recurName}
+                      onChange={(event) => setRecurName(event.target.value)}
+                      placeholder="cth: Sewa toko Pusat"
+                      disabled={saving}
+                      required
+                      hint="Nama ini yang dipakai daftar Biaya Tetap, dan harus unik."
+                    />
+                    <SelectField
+                      label="Pengulangan"
+                      value={recurInterval}
+                      options={INTERVAL_OPTIONS}
+                      onChange={(value) =>
+                        setRecurInterval(value as FixedCostInterval)
+                      }
+                      disabled={saving}
+                      required
+                      hint={`Dihitung dari tanggal transaksi ini, ${date || "hari ini"}.`}
+                    />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
       </Card>
 
-      <Card
-        title="Rincian Akun"
-        description={
-          masuk
-            ? "Satu baris per akun pendapatan. Totalnya adalah jumlah yang masuk ke akun kas/bank di atas."
-            : "Satu baris per akun beban. Totalnya adalah jumlah yang keluar dari akun kas/bank di atas."
-        }
-        action={
-          canAddLine(lines) ? (
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={saving || lookups.loading}
-              onClick={addLine}
-            >
-              <Plus className="size-4" />
-              Tambah baris
-            </Button>
-          ) : null
-        }
-      >
-        {lookups.loading ? (
-          <div className="flex items-center gap-2 py-6 text-sm text-muted">
-            <Spinner /> Memuat daftar akun…
-          </div>
-        ) : lookups.error ? (
-          <Alert variant="error">{lookups.error}</Alert>
-        ) : (
-          <>
-            <CashLinesEditor
-              kind={kind}
-              lines={lines}
-              onChange={setLines}
-              accounts={accountsForKind(lookups.accounts, kind)}
-              businessLines={lookups.businessLines}
-              disabled={saving}
-              showAddButton={false}
-              branchId={branchId}
-            />
-            <p className="mt-3 text-sm text-muted">
-              Lini bisnis mengikuti pemetaan akun dan sub akunnya di Daftar Akun,
-              jadi tidak dipilih di sini. Sub akun hanya muncul untuk akun yang
-              punya sub akun; tanpa sub akun, biayanya masuk Belum Dipetakan di
-              laporan per lini. Total dihitung otomatis dari baris di atas.
-            </p>
-          </>
-        )}
-      </Card>
+      {!transfer && (
+        <Card
+          title="Rincian Akun"
+          description={
+            masuk
+              ? "Satu baris per akun. Totalnya adalah jumlah yang masuk ke akun kas/bank di atas."
+              : "Satu baris per akun. Totalnya adalah jumlah yang keluar dari akun kas/bank di atas."
+          }
+          action={
+            canAddLine(lines) ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={saving || lookups.loading}
+                onClick={addLine}
+              >
+                <Plus className="size-4" />
+                Tambah baris
+              </Button>
+            ) : null
+          }
+        >
+          {lookups.loading ? (
+            <div className="flex items-center gap-2 py-6 text-sm text-muted">
+              <Spinner /> Memuat daftar akun…
+            </div>
+          ) : lookups.error ? (
+            <Alert variant="error">{lookups.error}</Alert>
+          ) : (
+            <>
+              <CashLinesEditor
+                kind={savedKind}
+                lines={lines}
+                onChange={setLines}
+                accounts={accountsForLines(lookups.accounts, {
+                  kind: savedKind,
+                  blocked: lookups.blockedAccountIds,
+                  cashAccountId,
+                })}
+                businessLines={lookups.businessLines}
+                disabled={saving}
+                showAddButton={false}
+                branchId={branchId}
+              />
+              <p className="mt-3 text-sm text-muted">
+                Lini bisnis mengikuti pemetaan akun dan sub akunnya di Daftar
+                Akun, jadi tidak dipilih di sini. Sub akun hanya muncul untuk
+                akun yang punya sub akun; tanpa sub akun, biayanya masuk Belum
+                Dipetakan di laporan per lini. Total dihitung otomatis dari
+                baris di atas.
+              </p>
+            </>
+          )}
+        </Card>
+      )}
     </form>
   );
 }

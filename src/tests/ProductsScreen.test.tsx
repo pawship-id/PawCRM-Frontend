@@ -727,6 +727,35 @@ describe("ProductsScreen", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("offers Update Massal to a role that may update", async () => {
+    mockList([makeProduct()]);
+
+    renderWithAuth(<ProductsScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "products", actions: ["read", "update"] }],
+    });
+    await screen.findByText("Shampoo Anjing");
+
+    expect(screen.getByRole("link", { name: "Update Massal" })).toHaveAttribute(
+      "href",
+      "/dashboard/inventory/products/bulk-update",
+    );
+  });
+
+  it("hides Update Massal from a read-only role", async () => {
+    mockList([makeProduct()]);
+
+    renderWithAuth(<ProductsScreen />, {
+      isSuperAdmin: false,
+      permissions: [{ feature: "products", actions: ["read"] }],
+    });
+    await screen.findByText("Shampoo Anjing");
+
+    expect(
+      screen.queryByRole("link", { name: "Update Massal" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("leaves a read-only role the detail entry and nothing that writes", async () => {
     const user = userEvent.setup();
     mockList([makeProduct()]);

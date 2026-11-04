@@ -1,3 +1,5 @@
+import type { ImportProblem } from "./bulkImport";
+
 /**
  * The bulk product import contract — `/api/products/import`.
  *
@@ -98,11 +100,7 @@ export type ImportVerdictStatus =
   | "family_conflict"
   | "invalid";
 
-/** One problem, addressed to the COLUMN a user can see. */
-export interface ImportProblem {
-  field: string;
-  message: string;
-}
+export type { ImportProblem };
 
 export interface ImportVerdict {
   rowNumber: number;

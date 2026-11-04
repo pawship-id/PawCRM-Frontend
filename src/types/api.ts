@@ -7525,7 +7525,7 @@ export type CustomerPaymentMethod = "cash" | "transfer" | "qris" | "edc";
  * automatically when a cashier settles with the Piutang method, inside the sale's
  * own transaction. `manual` is what PCR-030's create form will write.
  */
-export type CustomerInvoiceSource = "manual" | "pos_bridge";
+export type CustomerInvoiceSource = "manual" | "pos_bridge" | "shopee_import";
 
 /** One payment against one receivable, as the detail read returns it. */
 export interface CustomerInvoicePayment {
@@ -7559,6 +7559,8 @@ export interface CustomerInvoicePayment {
   /** The Kas & Bank account the entry debited. */
   cashAccountId?: string | null;
   cashAccountName?: string | null;
+  /** The PMT behind a Shopee payment. Such a payment is cancelled, never edited. */
+  marketplaceSettlement?: { id: string; number: string } | null;
   ref: string | null;
   byUserId: string | null;
   byUserName: string | null;
@@ -7646,6 +7648,18 @@ export interface CustomerInvoiceListRow {
   /** The sale that created it, when one did. Null for a manual invoice. */
   posTransactionId: string | null;
   source: CustomerInvoiceSource;
+  /** The marketplace order behind a `shopee_import` invoice. */
+  externalRef?: { marketplace: "shopee"; storeId: string; orderNo: string } | null;
+  /**
+   * Detail read only, `shopee_import` only: the store's name, whether Shopee
+   * has since cancelled the order, and the payout that settled it.
+   */
+  marketplace?: {
+    storeName: string | null;
+    needsAction: "cancelled_after_invoice" | null;
+    settlementNumber: string | null;
+    settlementId: string | null;
+  } | null;
   invoiceDate: string;
   dueDate: string;
   total: string;
@@ -8784,8 +8798,17 @@ export interface CashTransaction {
     periods: string[];
     recordCount: number;
   } | null;
+  /** The PMT behind a Shopee payment. Such a payment is cancelled, never edited. */
+  marketplaceSettlement?: { id: string; number: string } | null;
   /** Only `expense` / `other_income`. */
   lines: CashTransactionLine[] | null;
+  /**
+   * Every line sits on another of the shop's own kas/bank accounts: money moved
+   * inside the shop, whatever `kind` says.
+   */
+  isTransfer?: boolean;
+  /** Σ of such lines. Set on a transfer that also paid a fee, too. Null otherwise. */
+  transferAmount?: string | null;
   posTransactionId: string | null;
   shiftId: string | null;
   /**
@@ -8813,10 +8836,22 @@ export interface CashTransaction {
   updatedAt: string;
 }
 
-/** Σ of POSTED transactions over the whole filter, not the page. */
+/**
+ * Σ of POSTED transactions over the whole filter, not the page. `in` and `out`
+ * are what crossed the shop's edge, so neither holds a transfer: it has its own.
+ */
 export interface CashTransactionTotals {
   in: { amount: string; count: number };
   out: { amount: string; count: number };
+  transfer?: { amount: string; count: number };
+}
+
+/** An account a line may not name, and the sentence why. */
+export interface BlockedCounterAccount {
+  accountId: string;
+  code: string;
+  name: string;
+  reason: string;
 }
 
 export interface CashTransactionListResponse extends PageResult<CashTransaction> {
@@ -8865,6 +8900,8 @@ export interface CashTransactionListQuery {
   channelId?: string;
   /** The kas/bank account the money moved through — matches `cashAccountId`. */
   accountId?: string;
+  /** Transfers only. */
+  transfer?: boolean;
   status?: CashTransactionStatus;
   partyId?: string;
   documentType?: CashTransactionDocumentType;

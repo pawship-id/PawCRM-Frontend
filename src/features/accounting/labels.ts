@@ -2,6 +2,7 @@ import type {
   AccountCategory,
   AccountType,
   CashflowType,
+  JournalEntry,
   JournalSourceType,
 } from "@/types/accounting";
 import { accountTypeOf, CATEGORY_CODE } from "@/types/accounting";
@@ -194,6 +195,7 @@ export const SOURCE_LABEL: Record<JournalSourceType, string> = {
   other_income: "Pemasukan lain",
   opening_balance: "Saldo awal",
   membership_recognition: "Pengakuan membership",
+  marketplace_settlement: "Pencairan marketplace",
   // "Jurnal manual", the mockup's word — and not bare "Manual", which the
   // Kas & Bank list already uses for a hand-typed TRANSACTION. A journal list
   // that said "Manual" too would put one word on two different things.
@@ -220,6 +222,18 @@ export const SOURCE_LABEL: Record<JournalSourceType, string> = {
  */
 export function sourceLabel(type: JournalSourceType): string {
   return SOURCE_LABEL[type] ?? type;
+}
+
+/**
+ * The label for one entry. A transfer is filed as an expense, and calling money
+ * that never left the shop Pengeluaran is the mistake this exists to avoid.
+ */
+export function entrySourceLabel(
+  entry: Pick<JournalEntry, "source" | "isCashTransfer">,
+): string {
+  return entry.isCashTransfer
+    ? "Transfer antar rekening"
+    : sourceLabel(entry.source.type);
 }
 
 export const SOURCE_TONE: Record<JournalSourceType, string> = {
@@ -251,6 +265,7 @@ export const SOURCE_TONE: Record<JournalSourceType, string> = {
   opening_balance: "bg-tint-neutral text-muted",
   // Revenue, like the sale that raised it.
   membership_recognition: "bg-tint-brand text-primary",
+  marketplace_settlement: "bg-tint-info text-info",
   // Manual entries are the ones an auditor looks at first — a human chose both
   // sides — so they are the only source that carries an outline instead of a
   // fill, which is what makes them findable while scrolling.

@@ -159,5 +159,6 @@ export {
 export {
   ACCOUNT_CATEGORY_LABEL,
   ACCOUNT_TYPE_LABEL,
+  entrySourceLabel,
   sourceLabel,
 } from "./labels";

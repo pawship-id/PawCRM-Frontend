@@ -177,6 +177,28 @@ export function withoutMismatchedSubAccounts(
 }
 
 /**
+ * THE ACCOUNT COLUMN'S HEADING. "Akun beban" over a row naming a rekening or a
+ * fixed asset would be wrong, so the kind's word holds only while every chosen
+ * account is of that class.
+ */
+export function linesAccountHeading(
+  kind: "expense" | "other_income",
+  lines: DraftLine[],
+  accounts: ChartOfAccount[],
+): string {
+  const accountType = kind === "expense" ? "expense" : "income";
+  const byId = new Map(accounts.map((account) => [account._id, account]));
+  const allOfKind = lines.every(
+    (line) =>
+      !line.accountId || byId.get(line.accountId)?.accountType === accountType,
+  );
+
+  if (!allOfKind) return "Akun lawan";
+
+  return kind === "expense" ? "Akun beban" : "Akun pendapatan";
+}
+
+/**
  * The ROW TABLE of an expense or other income (§16 Form Transaksi): Akun · Sub
  * akun · Jumlah · Memo, Tambah baris, and the running total — which IS the
  * transaction's amount, so there is no separate Jumlah field to disagree with it.
@@ -184,7 +206,7 @@ export function withoutMismatchedSubAccounts(
  * Controls in a table cell stay at field height (`layout="field"`, `h-10`
  * inputs), per §16's "three things that look like form fields and are not".
  *
- * `accounts` arrive already narrowed to the kind — see `accountsForKind`.
+ * `accounts` arrive already narrowed — see `accountsForLines`.
  */
 export function CashLinesEditor({
   kind,
@@ -238,7 +260,7 @@ export function CashLinesEditor({
           <TableHeader>
             <TableRow>
               <TableHead className="min-w-60">
-                {kind === "expense" ? "Akun beban" : "Akun pendapatan"}
+                {linesAccountHeading(kind, lines, accounts)}
               </TableHead>
               {/* Only when SOMETHING on this screen can be mapped. A column of
                   em dashes over every row teaches people to ignore the column,

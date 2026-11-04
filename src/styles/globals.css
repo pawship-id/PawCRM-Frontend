@@ -100,6 +100,9 @@
   --tint-success: #e4f3ec;
   --tint-warning: var(--orange-100);
   --tint-danger: #fbeaea;
+  /* A whole ROW waiting on someone (E-commerce's held orders) — far paler
+     than --tint-warning, which is a badge fill and too loud across a row. */
+  --tint-hold: #fffcf7;
 
   /*
    * shadcn/ui semantic tokens, mapped onto the palette above so the imported
@@ -217,6 +220,7 @@
   --tint-neutral: #22345a;
   --tint-success: #10362a;
   --tint-danger: #3d1f22;
+  --tint-hold: #2a2a24;
 
   --input-hover: #35528a;
 }
@@ -291,6 +295,7 @@
   --color-tint-success: var(--tint-success);
   --color-tint-warning: var(--tint-warning);
   --color-tint-danger: var(--tint-danger);
+  --color-tint-hold: var(--tint-hold);
 
   --color-navy-900: var(--navy-900);
   --color-brand-deep: var(--brand-deep);

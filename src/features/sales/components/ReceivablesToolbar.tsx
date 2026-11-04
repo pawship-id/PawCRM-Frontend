@@ -51,6 +51,7 @@ export const STATUS_FILTERS: FilterOption<CustomerInvoiceStatusFilter>[] = [
 const SOURCES: FilterOption<CustomerInvoiceSource>[] = [
   { value: "pos_bridge", label: "Kasir" },
   { value: "manual", label: "Manual" },
+  { value: "shopee_import", label: "Shopee" },
 ];
 
 /**

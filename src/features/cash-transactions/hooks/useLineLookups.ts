@@ -7,12 +7,15 @@ import {
   businessLineService,
   type BusinessLine,
 } from "@/services/businessLine.service";
+import { cashTransactionService } from "@/services/cashTransaction.service";
 import { chartOfAccountsService } from "@/services/chartOfAccounts.service";
 import type { ChartOfAccount, ChartOfAccountNode } from "@/types/accounting";
 
 export interface UseLineLookupsResult {
-  /** Every account in the chart, flat. Narrow with `accountsForKind`. */
+  /** Every account in the chart, flat. Narrow with `accountsForLines`. */
   accounts: ChartOfAccount[];
+  /** Ids the server refuses opposite the cash. See `accountsForLines`. */
+  blockedAccountIds: ReadonlySet<string>;
   /** Empty when the user cannot read them — every line then goes to Bersama. */
   businessLines: BusinessLine[];
   loading: boolean;
@@ -29,8 +32,13 @@ export interface UseLineLookupsResult {
  * `enabled: false` skips both requests, for a dialog editing a kind without
  * lines.
  */
+const NOTHING_BLOCKED: ReadonlySet<string> = new Set();
+
 export function useLineLookups(enabled = true): UseLineLookupsResult {
   const [accounts, setAccounts] = useState<ChartOfAccount[]>([]);
+  const [blockedAccountIds, setBlockedAccountIds] = useState<
+    ReadonlySet<string>
+  >(NOTHING_BLOCKED);
   const [businessLines, setBusinessLines] = useState<BusinessLine[]>([]);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +64,19 @@ export function useLineLookups(enabled = true): UseLineLookupsResult {
         );
       });
 
+    // Quietly too: the server still refuses such a line, in a sentence naming
+    // the right path, so a failed read only makes the picker offer more.
+    const blocked = Promise.resolve()
+      .then(() => cashTransactionService.blockedCounterAccounts())
+      .then((result) => {
+        if (active) {
+          setBlockedAccountIds(
+            new Set((result?.accounts ?? []).map((row) => row.accountId)),
+          );
+        }
+      })
+      .catch(() => undefined);
+
     // Quietly: a line with no business line is still a valid line (Bersama).
     const lines = businessLineService
       .list({ limit: 100 })
@@ -64,7 +85,7 @@ export function useLineLookups(enabled = true): UseLineLookupsResult {
       })
       .catch(() => undefined);
 
-    void Promise.all([chart, lines]).finally(() => {
+    void Promise.all([chart, blocked, lines]).finally(() => {
       if (active) setLoading(false);
     });
 
@@ -73,22 +94,47 @@ export function useLineLookups(enabled = true): UseLineLookupsResult {
     };
   }, [enabled]);
 
-  return { accounts, businessLines, loading, error };
+  return { accounts, blockedAccountIds, businessLines, loading, error };
 }
 
 /**
- * The accounts a line may name: ACTIVE, and of the class the server requires —
- * `expense` for Pengeluaran, `income` for Pemasukan lain. Offering anything else
- * would only produce a 400 after the whole form was filled in.
+ * The accounts a line may name: ACTIVE, not refused by the server's rule, and not
+ * the cash account of this very transaction. Offering anything else would only
+ * produce a 400 after the whole form was filled in.
+ *
+ * THE KIND'S OWN CLASS COMES FIRST, because that is what nearly every line wants:
+ * beban for Pengeluaran, pendapatan for Pemasukan. The rest follow in chart order.
+ *
+ * `keep` holds the accounts a stored line already names. One that has since been
+ * retired stays on the list, or the picker would show the line as empty.
  */
-export function accountsForKind(
+export function accountsForLines(
   accounts: ChartOfAccount[],
-  kind: "expense" | "other_income",
+  {
+    kind,
+    blocked,
+    cashAccountId,
+    keep = [],
+  }: {
+    kind: "expense" | "other_income";
+    blocked: ReadonlySet<string>;
+    cashAccountId?: string | null;
+    keep?: readonly string[];
+  },
 ): ChartOfAccount[] {
   const accountType = kind === "expense" ? "expense" : "income";
-  return accounts.filter(
-    (account) => account.isActive && account.accountType === accountType,
+  const usable = accounts.filter(
+    (account) =>
+      keep.includes(account._id) ||
+      (account.isActive &&
+        !blocked.has(account._id) &&
+        account._id !== cashAccountId),
   );
+
+  return [
+    ...usable.filter((account) => account.accountType === accountType),
+    ...usable.filter((account) => account.accountType !== accountType),
+  ];
 }
 
 function flatten(nodes: ChartOfAccountNode[]): ChartOfAccount[] {

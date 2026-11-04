@@ -6,7 +6,7 @@ import { keyedSaveFailureMessage } from "./idempotency";
  * (stockTransfer.model.js), checked here so the form says so while somebody is
  * still adding rows, rather than after Simpan as an English validation error.
  */
-export const TRANSFER_MAX_ITEMS = 50;
+export const TRANSFER_MAX_ITEMS = 200;
 
 export type TransferAct = "buat" | "ubah" | "terima" | "batal";
 
