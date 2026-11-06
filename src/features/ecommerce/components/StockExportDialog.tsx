@@ -18,7 +18,7 @@ import type {
 import { saveBlob } from "@/utils/xlsx";
 
 import { ecommerceFailure } from "../errors";
-import { MARKETPLACE_LABEL, formatCount, formatDateTime, formatTemplatePrice } from "../labels";
+import { MARKETPLACE_LABEL, formatCount, formatDateTime, formatTemplatePrice, marketplaceProfile } from "../labels";
 import { CountChip, FileChip, WizardFrame, WizardRow } from "./WizardSteps";
 
 const STEPS = ["Upload", "Tinjau", "Selesai"] as const;
@@ -109,6 +109,7 @@ export function StockExportDialog({
     }
   };
 
+  const profile = marketplaceProfile(store?.marketplace);
   const columns: DataTableColumn<StockExportRow>[] = [
     {
       id: "variant",
@@ -127,7 +128,7 @@ export function StockExportDialog({
     },
     {
       id: "shopee",
-      header: "Stok di Shopee",
+      header: `Stok di ${profile.short}`,
       align: "right",
       cell: (row) => <span className="tabular-nums">{row.templateStock ?? "—"}</span>,
     },
@@ -223,7 +224,7 @@ export function StockExportDialog({
       {step === 1 ? (
         ready.length === 0 ? (
           <p className="text-sm text-muted">
-            Belum ada toko aktif dengan template Shopee. Upload template pertama di Pengikatan SKU.
+            Belum ada toko aktif dengan template marketplace. Upload template pertama di Pengikatan SKU.
           </p>
         ) : (
           <div className="flex flex-col gap-4">
@@ -335,8 +336,10 @@ export function StockExportDialog({
 
           <p className="text-sm text-muted">
             Stok ditulis = stok {store?.warehouseName ?? "gudang"} − buffer {store?.stockBuffer ?? 0},
-            minimal 0. Hanya kolom Stok yang diisi ulang; harga dan kolom lain tetap seperti di
-            template. Varian yang ditambahkan di Shopee setelah template ini tidak ada di file.
+            minimal 0{store?.marketplace === "tiktok" ? ", maksimal 999.999" : ""}. Hanya kolom{" "}
+            {store?.marketplace === "tiktok" ? "Kuantitas" : "Stok"} yang diisi ulang; harga dan kolom lain tetap
+            seperti di template. Varian yang ditambahkan di {profile.short} setelah template ini tidak ada di
+            file.
           </p>
         </div>
       ) : null}
@@ -346,10 +349,8 @@ export function StockExportDialog({
           <span className="flex size-12 items-center justify-center rounded-full bg-tint-success text-success">
             <Check className="size-6" aria-hidden />
           </span>
-          <h3 className="mt-3 text-lg font-bold">File siap diupload ke Shopee</h3>
-          <p className="mt-1 text-sm text-muted">
-            File sudah diunduh. Upload di Seller Center › Produk Saya › Ubah Massal.
-          </p>
+          <h3 className="mt-3 text-lg font-bold">File siap diupload ke {profile.short}</h3>
+          <p className="mt-1 text-sm text-muted">File sudah diunduh. Upload di {profile.templateUpload}.</p>
           <dl className="mt-4 w-full max-w-lg divide-y divide-border rounded-xl border border-border text-left text-sm">
             {summary.map(([label, value]) => (
               <div key={label as string} className="flex justify-between gap-3 px-4 py-2.5">

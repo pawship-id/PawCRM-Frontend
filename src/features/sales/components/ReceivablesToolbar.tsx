@@ -52,6 +52,7 @@ const SOURCES: FilterOption<CustomerInvoiceSource>[] = [
   { value: "pos_bridge", label: "Kasir" },
   { value: "manual", label: "Manual" },
   { value: "shopee_import", label: "Shopee" },
+  { value: "tiktok_import", label: "TikTok" },
 ];
 
 /**

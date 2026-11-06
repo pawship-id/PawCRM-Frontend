@@ -35,6 +35,7 @@ import {
   formatCount,
   formatDateTime,
   formatTemplatePrice,
+  marketplaceProfile,
 } from "../labels";
 import { BindSkuDialog } from "./BindSkuDialog";
 import { EcommerceHeader } from "./EcommerceHeader";
@@ -56,10 +57,11 @@ const SUGGESTION_REASON = { sku: "SKU mirip", name: "Nama mirip" } as const;
 /**
  * Penjualan › E-commerce › Pengikatan SKU.
  *
- * One store's Shopee variations, as its latest template listed them, and the
- * Buloo product each one draws stock from. A store with no template yet opens
- * on the upload box instead of an empty table: nothing can be bound or exported
- * until Shopee's list of variations is here.
+ * One store's marketplace variations (Shopee, or TikTok Shop / Tokopedia), as
+ * its latest template listed them, and the Buloo product each one draws stock
+ * from. A store with no template yet opens on the upload box instead of an
+ * empty table: nothing can be bound or exported until the list is here.
+ * TikTok binds by SKU Penjual; its SKU ID is shown under it.
  *
  * Unbound rows come first — they are the work left — those with a saran
  * leading. A saran binds nothing until it is accepted, here or through Pilih
@@ -77,6 +79,8 @@ export function SkuBindingScreen({
     refetch: refetchStores,
   } = useMarketplaceStores();
   const { storeId, store, select } = useSelectedStore(stores, initialStoreId);
+  const profile = marketplaceProfile(store?.marketplace);
+  const isTikTok = store?.marketplace === "tiktok";
   const listings = useListings(store?.template ? storeId : null);
   const { can } = usePermissions();
   const [editing, setEditing] = useState<MarketplaceListing | null>(null);
@@ -135,7 +139,7 @@ export function SkuBindingScreen({
   const columns: DataTableColumn<MarketplaceListing>[] = [
     {
       id: "variant",
-      header: "Varian Shopee",
+      header: `Varian ${profile.short}`,
       cellClassName: "max-w-sm",
       cell: (row) => (
         <div className="min-w-0">
@@ -152,6 +156,9 @@ export function SkuBindingScreen({
               />
             </span>
           </div>
+          {isTikTok ? (
+            <div className="text-xs tabular-nums text-muted">ID SKU {row.variationCode}</div>
+          ) : null}
         </div>
       ),
     },
@@ -186,7 +193,7 @@ export function SkuBindingScreen({
     },
     {
       id: "price",
-      header: "Harga Shopee",
+      header: `Harga ${profile.short}`,
       align: "right",
       cell: (row) => (
         <span className="tabular-nums">
@@ -296,7 +303,7 @@ export function SkuBindingScreen({
                     value={listings.query.search}
                     onChange={(search) => listings.setQuery({ search })}
                     placeholder="Cari nama produk, variasi, atau SKU"
-                    ariaLabel="Cari varian Shopee"
+                    ariaLabel={`Cari varian ${profile.short}`}
                   />
                 ) : undefined
               }
@@ -325,14 +332,14 @@ export function SkuBindingScreen({
                         <Upload className="size-4" aria-hidden />
                         {uploading
                           ? "Membaca template…"
-                          : "Perbarui dari template Shopee"}
+                          : `Perbarui dari ${profile.templateName}`}
                       </Button>
                       <input
                         ref={refreshInput}
                         type="file"
                         accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         className="hidden"
-                        aria-label="Pilih template Shopee terbaru (.xlsx)"
+                        aria-label={`Pilih ${profile.templateName} terbaru (.xlsx)`}
                         onChange={(event) => {
                           const file = event.target.files?.[0];
                           if (file) void upload(store._id, file);
@@ -372,6 +379,7 @@ export function SkuBindingScreen({
                   · {formatCount(store.template.variantCount)} varian · diupload{" "}
                   {formatDateTime(store.template.uploadedAt)}
                   {store.shopId ? ` · Shop ID ${store.shopId}` : ""}
+                  {isTikTok ? " · berlaku untuk TikTok Shop dan Tokopedia" : ""}
                 </p>
 
                 {listings.error ? (
@@ -401,22 +409,24 @@ export function SkuBindingScreen({
                 ) : null}
 
                 <p className="text-sm text-muted">
-                  SKU Shopee yang sama persis dengan SKU Buloo langsung terikat
+                  {isTikTok ? "SKU Penjual" : "SKU Shopee"} yang sama persis dengan SKU Buloo langsung terikat
                   saat template diupload. Yang mirip jadi Saran dan baru terikat
-                  setelah diterima. Satu SKU yang dipakai di beberapa varian
-                  Shopee terikat sekaligus. Varian yang belum terikat tidak
+                  setelah diterima. Satu SKU yang dipakai di beberapa varian{" "}
+                  {profile.short} terikat sekaligus. Varian yang belum terikat tidak
                   disentuh saat ekspor stok.
+                  {isTikTok ? " Varian tanpa SKU Penjual harus diisi dulu di TikTok Seller Center." : ""}
                 </p>
               </>
             ) : can("ecommerce", "manageStores") ? (
               <TemplateDropzone
                 title={`Upload template pertama ${store.name}`}
+                marketplace={store.marketplace}
                 busy={uploading}
                 onPick={(file) => void upload(store._id, file)}
               />
             ) : (
               <p className="text-sm text-muted">
-                Toko ini belum punya template Shopee. Minta admin mengupload
+                Toko ini belum punya {profile.templateName}. Minta admin mengupload
                 template pertamanya.
               </p>
             )}
@@ -450,6 +460,7 @@ export function SkuBindingScreen({
           warehouseId={store?.warehouseId}
           warehouseName={store?.warehouseName}
           listing={editing}
+          marketplace={store?.marketplace}
           onClose={() => setEditing(null)}
           onChanged={onChanged}
         />

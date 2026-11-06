@@ -44,14 +44,19 @@ const METHOD_LABEL: Record<string, string> = {
   giro: "Giro",
 };
 
+// A marketplace invoice names its marketplace, not just "Marketplace": a toko
+// name is unique per marketplace only, so "Paw Testing" can be a Shopee and a
+// TikTok store at once and the Nama toko column alone cannot tell them apart.
 const SOURCE_LABEL = (r: SalesInvoiceReportRow) =>
-  r.channel === "marketplace"
-    ? "Marketplace"
-    : r.source === "pos_bridge"
-      ? "Kasir"
-      : r.source === "shopee_import"
-        ? "Shopee"
-        : "Manual";
+  r.source === "shopee_import"
+    ? "Shopee"
+    : r.source === "tiktok_import"
+      ? "TikTok"
+      : r.channel === "marketplace"
+        ? "Marketplace"
+        : r.source === "pos_bridge"
+          ? "Kasir"
+          : "Manual";
 
 /** A list cell: the names joined, or empty when there are none. */
 const joined = (values: string[]) => (values.length ? values.join(", ") : null);
@@ -84,7 +89,7 @@ const INVOICE_COLUMNS: SalesReportColumn<SalesInvoiceReportRow>[] = [
   {
     header: "Sumber",
     value: SOURCE_LABEL,
-    about: "Kasir, Manual (faktur back office), atau marketplace",
+    about: "Kasir, Manual (faktur back office), Shopee, atau TikTok",
   },
   {
     header: "Nama toko",
@@ -1122,9 +1127,9 @@ export interface GrossMarginRow {
   missingCost: number;
 }
 
-/** "Shopee – Pawship A", "Kasir – Surabaya": the channel down to its toko. */
+/** "Shopee – Pawship A", "TikTok – Pawship", "Kasir – Surabaya": the channel down to its toko. */
 const channelOf = (invoice: SalesInvoiceReportRow) =>
-  [SOURCE_LABEL(invoice) === "Marketplace" ? "Shopee" : SOURCE_LABEL(invoice), invoice.storeName]
+  [SOURCE_LABEL(invoice), invoice.storeName]
     .filter(Boolean)
     .join(" – ");
 

@@ -68,7 +68,7 @@ export function useListings(storeId: string | null) {
         setError(null);
       })
       .catch(() => {
-        if (active) setError("Daftar varian Shopee tidak bisa dimuat.");
+        if (active) setError("Daftar varian tidak bisa dimuat.");
       })
       .finally(() => {
         if (active) setLoading(false);

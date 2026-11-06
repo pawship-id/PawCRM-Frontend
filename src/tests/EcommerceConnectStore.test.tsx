@@ -52,4 +52,33 @@ describe("ConnectStoreDialog", () => {
     );
     expect(onCreated).toHaveBeenCalled();
   });
+
+  it("connects one Tokopedia & TikTok Shop store with a Saldo TikTok account", async () => {
+    const user = userEvent.setup();
+    (warehouseService.list as jest.Mock).mockResolvedValue(page([{ _id: "wh-1", name: "Gudang Pusat" }]));
+    (chartOfAccountsService.list as jest.Mock).mockResolvedValue(page([]));
+    (marketplaceService.createStore as jest.Mock).mockResolvedValue({ _id: "s2", name: "Pawship" });
+
+    renderWithAuth(<ConnectStoreDialog onClose={jest.fn()} onCreated={jest.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: /Marketplace/ }));
+    await user.click(await screen.findByRole("option", { name: /Tokopedia & TikTok Shop/ }));
+    expect(screen.getByText(/aplikasi TikTok dan Tokopedia sekaligus/)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/Nama toko/), "Pawship");
+    expect(screen.getByText("Akun baru: Saldo TikTok – Pawship")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Gudang sumber stok/ }));
+    await user.click(await screen.findByRole("option", { name: /Gudang Pusat/ }));
+    await user.click(screen.getByRole("button", { name: "Hubungkan toko" }));
+
+    await waitFor(() =>
+      expect(marketplaceService.createStore).toHaveBeenCalledWith({
+        marketplace: "tiktok",
+        name: "Pawship",
+        warehouseId: "wh-1",
+        saldoAccount: "new",
+      }),
+    );
+  });
 });

@@ -19,8 +19,8 @@ export function templateUploadSummary(result: TemplateUploadResult): string {
 }
 
 /**
- * Uploads a Shopee template for a store — the first one or a refresh. The
- * server reads it, locks the shop id on the first upload, and binds identical
+ * Uploads a marketplace template for a store — the first one or a refresh. The
+ * server reads it, locks Shopee's shop id on the first upload, and binds identical
  * SKUs; the caller reloads its store and listings on success.
  */
 export function useTemplateUpload(onDone: () => void) {
