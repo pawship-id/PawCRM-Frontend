@@ -100,6 +100,9 @@ export function TransferImportDialog({
             onPick={upload.pickFile}
             onDownloadTemplate={downloadTemplate}
             disabled={loading}
+            // No sub text under the two formats here (6 Nov 2026, on request).
+            xlsxHint=""
+            csvHint=""
           />
 
           {(error || templateError) && (
