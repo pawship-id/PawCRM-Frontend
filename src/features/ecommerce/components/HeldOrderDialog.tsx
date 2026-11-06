@@ -9,13 +9,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import type { MarketplaceOrderRecord } from "@/types/marketplace";
+import type { Marketplace, MarketplaceOrderRecord } from "@/types/marketplace";
 
-import { formatDateTime, formatRupiah } from "../labels";
+import { channelLabel, formatDateTime, formatRupiah, marketplaceProfile } from "../labels";
 
 type HeldLine = NonNullable<MarketplaceOrderRecord["lines"]>[number];
 
-/** Shopee's Harga Awal — older held rows may lack it, so fall back to the paid price. */
+/** The original price (Shopee Harga Awal, TikTok Unit Original Price) — older held rows may lack it. */
 const unitPrice = (line: HeldLine) => line.originalPrice ?? line.subtotal / line.qty;
 
 /**
@@ -26,14 +26,18 @@ const unitPrice = (line: HeldLine) => line.originalPrice ?? line.subtotal / line
 export function HeldOrderDialog({
   order,
   storeLabel,
+  marketplace,
   onBind,
   onClose,
 }: {
   order: MarketplaceOrderRecord;
   storeLabel: string;
+  marketplace?: Marketplace;
   onBind: (sku: string) => void;
   onClose: () => void;
 }) {
+  const profile = marketplaceProfile(marketplace);
+  const isTikTok = marketplace === "tiktok";
   const unbound = new Set(order.unboundSkus ?? []);
   const lines = order.lines ?? [];
   const gross = lines.reduce((sum, line) => sum + unitPrice(line) * line.qty, 0);
@@ -53,10 +57,19 @@ export function HeldOrderDialog({
           <dd className="text-foreground">{storeLabel}</dd>
           <dt className="text-muted">Tanggal</dt>
           <dd className="tabular-nums text-foreground">{formatDateTime(order.paidAt ?? order.orderedAt)}</dd>
-          <dt className="text-muted">Status Shopee</dt>
+          <dt className="text-muted">Status {profile.short}</dt>
           <dd className="text-foreground">{order.shopeeStatus ?? "—"}</dd>
-          <dt className="text-muted">Pembeli</dt>
-          <dd className="text-foreground">{order.buyerUsername ?? "—"}</dd>
+          {isTikTok ? (
+            <>
+              <dt className="text-muted">Dipesan lewat</dt>
+              <dd className="text-foreground">{channelLabel(order.channel) ?? "—"}</dd>
+            </>
+          ) : (
+            <>
+              <dt className="text-muted">Pembeli</dt>
+              <dd className="text-foreground">{order.buyerUsername ?? "—"}</dd>
+            </>
+          )}
           <dt className="text-muted">Diimpor dari</dt>
           <dd className="break-all text-foreground">{order.sourceFileName ?? "—"}</dd>
         </dl>
@@ -114,8 +127,8 @@ export function HeldOrderDialog({
           <dl className="divide-y divide-border rounded-xl border border-border text-sm">
             {[
               ["Harga awal", formatRupiah(gross)],
-              ["Harga coret (diskon penjual)", formatRupiah(-discount)],
-              ["Voucher penjual", formatRupiah(-(order.sellerVoucher ?? 0))],
+              [isTikTok ? "Diskon penjual" : "Harga coret (diskon penjual)", formatRupiah(-discount)],
+              ...(isTikTok ? [] : [["Voucher penjual", formatRupiah(-(order.sellerVoucher ?? 0))]]),
               ["Nilai faktur nanti", formatRupiah(order.total)],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between gap-3 px-4 py-2.5">

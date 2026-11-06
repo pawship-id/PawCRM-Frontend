@@ -123,7 +123,7 @@ describe("StockExportDialog", () => {
       />,
     );
 
-    expect(screen.getByText(/Belum ada toko aktif dengan template Shopee/)).toBeInTheDocument();
+    expect(screen.getByText(/Belum ada toko aktif dengan template marketplace/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Lanjut" })).toBeDisabled();
   });
 });

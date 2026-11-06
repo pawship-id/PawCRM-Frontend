@@ -7525,7 +7525,7 @@ export type CustomerPaymentMethod = "cash" | "transfer" | "qris" | "edc";
  * automatically when a cashier settles with the Piutang method, inside the sale's
  * own transaction. `manual` is what PCR-030's create form will write.
  */
-export type CustomerInvoiceSource = "manual" | "pos_bridge" | "shopee_import";
+export type CustomerInvoiceSource = "manual" | "pos_bridge" | "shopee_import" | "tiktok_import";
 
 /** One payment against one receivable, as the detail read returns it. */
 export interface CustomerInvoicePayment {
@@ -7649,12 +7649,21 @@ export interface CustomerInvoiceListRow {
   posTransactionId: string | null;
   source: CustomerInvoiceSource;
   /** The marketplace order behind a `shopee_import` invoice. */
-  externalRef?: { marketplace: "shopee"; storeId: string; orderNo: string } | null;
+  externalRef?: {
+    marketplace: "shopee" | "tiktok";
+    storeId: string;
+    orderNo: string;
+    /** TikTok: `tokopedia` or `tiktok_shop`. */
+    channel?: string | null;
+  } | null;
   /**
    * Detail read only, `shopee_import` only: the store's name, whether Shopee
    * has since cancelled the order, and the payout that settled it.
    */
   marketplace?: {
+    /** Which marketplace, and (TikTok) which app the order came from. */
+    marketplace?: "shopee" | "tiktok";
+    channel?: string | null;
     storeName: string | null;
     needsAction: "cancelled_after_invoice" | null;
     settlementNumber: string | null;

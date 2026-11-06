@@ -19,11 +19,11 @@ import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { marketplaceService } from "@/services/marketplace.service";
 import { productService } from "@/services/product.service";
-import type { BindResult, MarketplaceListing } from "@/types/marketplace";
+import type { BindResult, Marketplace, MarketplaceListing } from "@/types/marketplace";
 import { formatQty } from "@/utils/decimal";
 
 import { ecommerceFailure } from "../errors";
-import { formatTemplatePrice } from "../labels";
+import { formatTemplatePrice, marketplaceProfile } from "../labels";
 import { ListingStatusBadge } from "./ListingStatusBadge";
 
 /** One Buloo product the dialog can bind to. */
@@ -53,10 +53,13 @@ export function BindSkuDialog({
   warehouseId,
   warehouseName,
   listing,
+  marketplace,
   onClose,
   onChanged,
 }: {
   storeId: string;
+  /** Whose words to use — Shopee's or TikTok's. */
+  marketplace?: Marketplace;
   /** The store's source warehouse — whose stock each candidate shows. */
   warehouseId?: string;
   warehouseName?: string | null;
@@ -64,6 +67,8 @@ export function BindSkuDialog({
   onClose: () => void;
   onChanged: (result: BindResult, action: "bound" | "unbound") => void;
 }) {
+  const { short } = marketplaceProfile(marketplace);
+  const isTikTok = marketplace === "tiktok";
   const current: Candidate | null = listing.product
     ? { _id: listing.product._id, name: listing.product.name, sku: listing.product.sku }
     : null;
@@ -140,7 +145,7 @@ export function BindSkuDialog({
       swalToast(
         [
           result.affectedListings > 1
-            ? `Terikat. ${result.affectedListings} varian Shopee dengan SKU ini ikut terikat.`
+            ? `Terikat. ${result.affectedListings} varian ${short} dengan SKU ini ikut terikat.`
             : "Terikat.",
           released.length > 0
             ? `${released.length} pesanan tertahan masuk sebagai faktur (${released
@@ -193,7 +198,7 @@ export function BindSkuDialog({
           <DialogHeader>
             <DialogTitle>{listing.product ? "Ubah ikatan SKU" : "Ikat SKU"}</DialogTitle>
             <DialogDescription>
-              Hubungkan varian Shopee ini ke produk Buloo supaya stoknya ikut diekspor dan pesanannya bisa jadi faktur.
+              Hubungkan varian {short} ini ke produk Buloo supaya stoknya ikut diekspor dan pesanannya bisa jadi faktur.
             </DialogDescription>
           </DialogHeader>
 
@@ -202,11 +207,17 @@ export function BindSkuDialog({
             <dd className="font-medium text-foreground">{listing.productName}</dd>
             <dt className="text-muted">Variasi</dt>
             <dd className="font-medium text-foreground">{listing.variationName || "—"}</dd>
-            <dt className="text-muted">SKU Shopee</dt>
+            <dt className="text-muted">{isTikTok ? "SKU Penjual" : "SKU Shopee"}</dt>
             <dd className="font-medium tabular-nums text-foreground">
               <SkuText value={listing.shopeeSku} fallback="—" />
             </dd>
-            <dt className="text-muted">Harga Shopee</dt>
+            {isTikTok ? (
+              <>
+                <dt className="text-muted">ID SKU</dt>
+                <dd className="font-medium tabular-nums break-all text-foreground">{listing.variationCode}</dd>
+              </>
+            ) : null}
+            <dt className="text-muted">Harga {short}</dt>
             <dd className="font-medium tabular-nums text-foreground">{formatTemplatePrice(listing.templatePrice)}</dd>
           </dl>
 
@@ -317,9 +328,9 @@ export function BindSkuDialog({
           onConfirm={() => void unbind()}
           onCancel={() => setConfirmUnbind(false)}
         >
-          Varian Shopee dengan SKU <strong>{listing.shopeeSku}</strong> tidak lagi terhubung ke{" "}
-          {listing.product?.name}. Saat ekspor stok berikutnya, stoknya di file dibiarkan seperti di
-          Shopee.
+          Varian {short} dengan SKU <strong>{listing.shopeeSku}</strong> tidak lagi terhubung ke{" "}
+          {listing.product?.name}. Saat ekspor stok berikutnya, stoknya di file dibiarkan seperti di{" "}
+          {short}.
         </ConfirmDialog>
       ) : null}
     </>

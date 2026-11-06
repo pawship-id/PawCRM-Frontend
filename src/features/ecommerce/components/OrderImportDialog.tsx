@@ -24,9 +24,11 @@ import {
   ECOMMERCE_SETTINGS_HREF,
   INVOICE_HREF,
   MARKETPLACE_LABEL,
+  channelLabel,
   formatCount,
   formatDateTime,
   formatRupiah,
+  marketplaceProfile,
 } from "../labels";
 import { FileDropzone } from "./FileDropzone";
 import { CountChip, WizardFrame, WizardRow } from "./WizardSteps";
@@ -45,7 +47,7 @@ const GROUPS: Array<{ key: string; label: string; categories: OrderImportCategor
 const CATEGORY_LABEL: Record<OrderImportCategory, string> = {
   new: "Baru",
   held: "Perlu tindakan",
-  needs_action: "Batal di Shopee",
+  needs_action: "Batal setelah faktur",
   existing: "Sudah ada",
   skipped: "Dilewati",
 };
@@ -78,8 +80,9 @@ function itemsText(row: OrderPreviewItem): string {
  * Impor pesanan — Upload → Tinjau → Selesai (Tahap B).
  *
  * Tinjau writes nothing; "Simpan" turns every Baru into an invoice, holds the
- * orders with an unbound SKU, and flags invoiced orders Shopee has since
- * cancelled. Importing the same file again creates nothing.
+ * orders with an unbound SKU, and flags invoiced orders the marketplace has
+ * since cancelled. Importing the same file again creates nothing. Shopee's
+ * export or TikTok's (`Semua pesanan`), by the store chosen.
  */
 export function OrderImportDialog({
   stores,
@@ -98,6 +101,8 @@ export function OrderImportDialog({
     ready.find((store) => store._id === initialStoreId)?._id ?? ready[0]?._id ?? "",
   );
   const store = ready.find((candidate) => candidate._id === storeId) ?? null;
+  const profile = marketplaceProfile(store?.marketplace);
+  const isTikTok = store?.marketplace === "tiktok";
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<OrderImportPreview | null>(null);
@@ -151,10 +156,17 @@ export function OrderImportDialog({
         <div>
           <div className="font-semibold tabular-nums text-foreground">{row.orderNo}</div>
           <div className="text-sm whitespace-nowrap tabular-nums text-muted">{formatDateTime(row.paidAt)}</div>
+          {isTikTok && row.channel ? (
+            <div className="text-sm whitespace-nowrap text-muted">{channelLabel(row.channel)}</div>
+          ) : null}
         </div>
       ),
     },
-    { id: "status", header: "Status Shopee", cell: (row) => <span className="whitespace-nowrap">{row.status}</span> },
+    {
+      id: "status",
+      header: `Status ${profile.short}`,
+      cell: (row) => <span className="whitespace-nowrap">{row.status}</span>,
+    },
     {
       id: "items",
       header: "Barang",
@@ -189,7 +201,7 @@ export function OrderImportDialog({
     ? [
         ["Faktur dibuat", formatCount(result.created.length)],
         ["Pesanan tertahan", formatCount(result.held)],
-        ["Ditandai Batal di Shopee", formatCount(result.flagged)],
+        [`Ditandai Batal di ${profile.short}`, formatCount(result.flagged)],
         ["Sudah ada, dilewati", formatCount(counts?.existing ?? 0)],
         ["Status tidak diimpor", formatCount(counts?.skipped ?? 0)],
       ]
@@ -243,7 +255,7 @@ export function OrderImportDialog({
       {step === 1 ? (
         ready.length === 0 ? (
           <p className="text-sm text-muted">
-            Belum ada toko aktif dengan template Shopee. Upload template pertama di Pengikatan SKU.
+            Belum ada toko aktif dengan template marketplace. Upload template pertama di Pengikatan SKU.
           </p>
         ) : (
           <div className="flex flex-col gap-4">
@@ -259,7 +271,10 @@ export function OrderImportDialog({
                     value: candidate._id,
                     label: `${MARKETPLACE_LABEL[candidate.marketplace]} · ${candidate.name}`,
                   }))}
-                  onChange={setStoreId}
+                  onChange={(id) => {
+                    setStoreId(id);
+                    setFile(null);
+                  }}
                 />
               </div>
             </WizardRow>
@@ -268,7 +283,7 @@ export function OrderImportDialog({
                 file={file}
                 disabled={busy}
                 onPick={setFile}
-                source="Seller Center › Pesanan Saya › Ekspor"
+                source={profile.orderDownload}
               />
             </WizardRow>
             <WizardRow label="Status diimpor">
@@ -321,9 +336,12 @@ export function OrderImportDialog({
             />
           ) : null}
           <p className="text-sm text-muted">
-            Satu pesanan = satu faktur ke pelanggan &quot;Shopee – {store?.name}&quot;. Pesanan dengan
-            SKU belum terikat ditahan utuh dan otomatis jadi faktur setelah SKU-nya diikat. Pesanan
-            Batal tidak pernah jadi faktur.
+            Satu pesanan = satu faktur ke pelanggan &quot;{profile.customerPrefix} – {store?.name}&quot;.
+            Pesanan dengan SKU belum terikat ditahan utuh dan otomatis jadi faktur setelah SKU-nya
+            diikat. Pesanan {profile.neverInvoiced} tidak pernah jadi faktur.
+            {isTikTok
+              ? " Diskon penjual masuk Potongan Promo. Pesanan COD yang belum diterima memakai tanggal pesanan dibuat."
+              : ""}
           </p>
         </div>
       ) : null}

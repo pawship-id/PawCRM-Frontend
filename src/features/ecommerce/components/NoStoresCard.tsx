@@ -17,10 +17,10 @@ export function NoStoresCard({ onCreated }: { onCreated: (store: MarketplaceStor
   return (
     <Card>
       <div className="flex flex-col items-start gap-3">
-        <p className="text-base font-semibold text-foreground">Belum ada toko Shopee yang terhubung.</p>
+        <p className="text-base font-semibold text-foreground">Belum ada toko marketplace yang terhubung.</p>
         <p className="max-w-prose text-sm text-muted">
-          Hubungkan toko, upload template Info Penjualan dari Seller Center, lalu ikat SKU-nya.
-          Setelah itu stok Buloo bisa diekspor ke Shopee.
+          Hubungkan toko Shopee atau Tokopedia &amp; TikTok Shop, upload template stok dari Seller Center,
+          lalu ikat SKU-nya. Setelah itu stok Buloo bisa diekspor ke marketplace.
         </p>
         <Can feature="ecommerce" action="manageStores">
           <Button type="button" onClick={() => setConnecting(true)}>

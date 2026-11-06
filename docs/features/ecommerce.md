@@ -1,11 +1,16 @@
-# E-commerce (Shopee) — V1
+# E-commerce (Shopee, TikTok Shop / Tokopedia) — V1
 
-Penjualan › E-commerce: connect a Shopee shop, upload its mass-update template, bind Shopee SKUs to
+Penjualan › E-commerce: connect a Shopee shop or a TikTok Shop store (one store for the TikTok app
+and Tokopedia — one Seller Center), upload its mass-update template, bind Shopee SKUs to
 Buloo products, export stock back as the same template with the Stok column filled, import orders
 as invoices, and import payouts to settle them.
 
-Plan and BO decisions: `PLAN-Ecommerce-Shopee-V1.md` (workspace root). Backend contract:
-`PawCRM-Backend/docs/ecommerce-shopee-v1.md`.
+Plan and BO decisions: `PLAN-Ecommerce-Shopee-V1.md` and `PLAN-Ecommerce-TikTok-V1.md` (workspace
+root). Backend contract: `PawCRM-Backend/docs/ecommerce-shopee-v1.md` and `ecommerce-tiktok-v1.md`.
+
+**Per marketplace.** `MARKETPLACE_PROFILES` / `marketplaceProfile()` in `labels.ts` holds the words
+(Shopee / TikTok), the statuses an import may invoice, where each file is downloaded, the customer
+and Saldo names. Screens read the store's `marketplace` and never hard-code "Shopee".
 
 ---
 
@@ -31,8 +36,8 @@ feature="ecommerce"`.
 ## Screens
 
 - **Ringkasan** — three `StatTile`s (Varian terikat, Belum terikat, Ekspor stok terakhir), a card per
-  store linking to its Pengikatan SKU, a "Hubungkan toko" card, Tokopedia and TikTok Shop as "Segera
-  hadir", and Riwayat (`DataTable`; a row opens `HistoryDetailDialog` with Unduh ulang). The mockup's
+  store linking to its Pengikatan SKU, a "Hubungkan toko" card (Shopee · Tokopedia & TikTok Shop), and
+  Riwayat (`DataTable`; a row opens `HistoryDetailDialog` with Unduh ulang). The mockup's
   sales, payout and held-order panels come with Tahap B/C.
 - **Pengikatan SKU** — a store with no template opens on `TemplateDropzone`. Otherwise: `FilterBar`
   with the store picker, Status (with counts) and search; "Perbarui dari template Shopee"; the table
@@ -73,3 +78,20 @@ role cannot use are hidden with `Can`.
 ## Not in V1 (BO, 28 Oct 2026)
 
 Price management from Buloo, per-export warehouse, bundles — see the plan's V2 list.
+
+## TikTok Shop / Tokopedia (5 Nov 2026)
+
+- **Hubungkan toko** — Marketplace picker (Shopee / Tokopedia & TikTok Shop); Saldo account named
+  "Saldo TikTok – <toko>".
+- **Pengikatan SKU** — "Varian TikTok", the SKU Penjual with the ID SKU under it; Ikat SKU shows
+  both. Binding is by SKU Penjual.
+- **Ekspor stok** — the `Kuantitas` column, capped at 999.999; upload path in TikTok Seller Center.
+- **Impor pesanan** — status column "Status TikTok", the app (Tokopedia / TikTok Shop) under the
+  order number; customer "Tokopedia & TikTok Shop – <toko>".
+- **Impor pencairan** — total named "Jumlah penyelesaian pembayaran", Riwayat penarikan shown as
+  information, two more chips: **Batal, tanpa faktur** and **Penyesuaian**; commit reads "Lunasi N
+  faktur + M penyesuaian". A warning when the report looks like another shop's.
+- **Pencairan detail** — adjustment rows (no invoice, payment opens the Kas & Bank transaction).
+- **Pengaturan** — TikTok statuses; Akun without Voucher, with Komisi afiliasi and Biaya iklan (both
+  on Biaya program by default).
+- **Faktur** — source "TikTok" (chip and filter), "TikTok · toko · Tokopedia" on the detail.

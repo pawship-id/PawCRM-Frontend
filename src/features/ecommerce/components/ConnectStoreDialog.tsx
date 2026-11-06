@@ -14,16 +14,23 @@ import {
 } from "@/components/ui/dialog";
 import { swalToast } from "@/lib/swal";
 import { marketplaceService } from "@/services/marketplace.service";
-import type { MarketplaceStore } from "@/types/marketplace";
+import type { Marketplace, MarketplaceStore } from "@/types/marketplace";
 
 import { ecommerceFailure } from "../errors";
 import { useAccountOptions } from "../hooks/useAccountOptions";
 import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
+import { MARKETPLACE_LABEL, marketplaceProfile } from "../labels";
+
+const MARKETPLACE_OPTIONS = (Object.keys(MARKETPLACE_LABEL) as Marketplace[]).map((value) => ({
+  value,
+  label: MARKETPLACE_LABEL[value],
+}));
 
 /**
- * Hubungkan toko — a Shopee shop as a store of this tenant. The Shop ID is not
- * asked for: the first template uploaded supplies it and locks it, so the next
- * step after saving is that upload (the caller takes the new store there).
+ * Hubungkan toko — a Shopee shop, or a TikTok Shop / Tokopedia store (one
+ * Seller Center, so one store), as a store of this tenant. The Shop ID is not
+ * asked for: Shopee's first template supplies it and locks it; TikTok's files
+ * name no shop. Either way the next step after saving is that upload.
  *
  * "Dana cair masuk ke" as the mockup draws it: a new "Saldo Shopee – <toko>"
  * account by default (the server opens it, numbered under 1106), or an
@@ -37,6 +44,8 @@ export function ConnectStoreDialog({
   onCreated: (store: MarketplaceStore) => void;
 }) {
   const warehouses = useWarehouseOptions();
+  const [marketplace, setMarketplace] = useState<Marketplace>("shopee");
+  const profile = marketplaceProfile(marketplace);
   const [name, setName] = useState("");
   const [warehouseId, setWarehouseId] = useState("");
   const [saldoAccount, setSaldoAccount] = useState("new");
@@ -55,7 +64,7 @@ export function ConnectStoreDialog({
     setSaving(true);
     try {
       const store = await marketplaceService.createStore({
-        marketplace: "shopee",
+        marketplace,
         name: name.trim(),
         warehouseId,
         saldoAccount,
@@ -77,8 +86,9 @@ export function ConnectStoreDialog({
         <DialogHeader>
           <DialogTitle>Hubungkan toko</DialogTitle>
           <DialogDescription>
-            Satu toko Shopee punya gudang, template, dan pengikatan SKU sendiri. Shop ID
-            diambil dari template pertama yang diupload. Buffer stok diatur di Pengaturan.
+            {marketplace === "tiktok"
+              ? "Satu toko untuk pesanan dari aplikasi TikTok dan Tokopedia sekaligus, karena keduanya dikelola dari satu Seller Center. Toko punya gudang, template, dan pengikatan SKU sendiri. Buffer stok diatur di Pengaturan."
+              : "Satu toko Shopee punya gudang, template, dan pengikatan SKU sendiri. Shop ID diambil dari template pertama yang diupload. Buffer stok diatur di Pengaturan."}
           </DialogDescription>
         </DialogHeader>
 
@@ -93,17 +103,16 @@ export function ConnectStoreDialog({
             label="Marketplace"
             layout="form"
             active={false}
-            value="shopee"
-            options={[{ value: "shopee", label: "Shopee" }]}
-            onChange={() => undefined}
-            hint="Tokopedia dan TikTok Shop menyusul."
+            value={marketplace}
+            options={MARKETPLACE_OPTIONS}
+            onChange={(value) => setMarketplace(value as Marketplace)}
           />
           <TextField
             label="Nama toko"
             required
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="Nama toko di Shopee"
+            placeholder={`Nama toko di ${profile.short}`}
             error={errors.name}
             maxLength={80}
           />
@@ -127,11 +136,11 @@ export function ConnectStoreDialog({
             searchable={cashAccounts.length > 6}
             value={saldoAccount}
             options={[
-              { value: "new", label: `Akun baru: Saldo Shopee – ${name.trim() || "nama toko"}` },
+              { value: "new", label: `Akun baru: ${profile.saldoPrefix} – ${name.trim() || "nama toko"}` },
               ...cashAccounts,
             ]}
             onChange={setSaldoAccount}
-            hint="Akun Kas & Bank tempat Laporan Penghasilan Shopee dicatat. Bisa diganti di Pengaturan › Akun."
+            hint={`Akun Kas & Bank tempat ${profile.incomeFileName} dicatat. Penarikan ke rekening dicatat sebagai transfer di Kas & Bank. Bisa diganti di Pengaturan › Akun.`}
             error={errors.saldoAccount}
           />
 

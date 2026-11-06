@@ -161,6 +161,127 @@ describe("SettlementImportDialog", () => {
   });
 });
 
+describe("SettlementImportDialog — TikTok", () => {
+  const tiktok: MarketplaceStore = {
+    ...store,
+    _id: "store-2",
+    marketplace: "tiktok",
+    name: "Pawship",
+    shopId: null,
+    importStatuses: ["Perlu dikirim", "Menunggu diambil", "Dikirim", "Selesai"],
+  };
+
+  it("names TikTok's total, sets cancellations and adjustments apart, and books both", async () => {
+    const user = userEvent.setup();
+    marketplace.getAccounts.mockResolvedValue([
+      {
+        role: "saldo",
+        label: "Dana cair masuk ke",
+        defaultCode: "1106",
+        account: { _id: "a", code: "1106-01", name: "Saldo TikTok – Pawship" },
+        isDefault: false,
+      },
+    ]);
+    marketplace.previewSettlement.mockResolvedValue({
+      batchId: "s2",
+      fileName: "income.xlsx",
+      username: null,
+      periodFrom: "2026-09-30T17:00:00.000Z",
+      periodTo: "2026-10-30T17:00:00.000Z",
+      totalReleased: 199336,
+      settlingReleased: 199336,
+      withdrawnTotal: 2851589,
+      withdrawalCount: 15,
+      warning: null,
+      counts: { match: 1, variance: 0, not_found: 0, already_paid: 0, cancelled: 1, adjustment: 1 },
+      items: [
+        {
+          orderNo: "586695372648908184",
+          releasedAt: "2026-10-25T17:00:00.000Z",
+          category: "match",
+          channel: "tokopedia",
+          invoiceId: "inv1",
+          invoiceNumber: "INV/TTS/2610/0001",
+          invoiceValue: 240350,
+          comparisonValue: 240350,
+          variance: 0,
+          deductions: 43311,
+          pph22: 1203,
+          netReleased: 195836,
+          notes: [],
+        },
+        {
+          orderNo: "586799600086451275",
+          releasedAt: "2026-10-27T17:00:00.000Z",
+          category: "cancelled",
+          channel: "tokopedia",
+          invoiceId: null,
+          invoiceNumber: null,
+          invoiceValue: null,
+          comparisonValue: 143000,
+          variance: 0,
+          deductions: 0,
+          pph22: 0,
+          netReleased: 0,
+          notes: ["Pesanan batal, dana dikembalikan penuh ke pembeli"],
+        },
+        {
+          orderNo: "7300000000000000001",
+          releasedAt: "2026-10-29T17:00:00.000Z",
+          category: "adjustment",
+          kindLabel: "Kompensasi",
+          invoiceId: null,
+          invoiceNumber: null,
+          invoiceValue: null,
+          comparisonValue: 0,
+          variance: 0,
+          deductions: 0,
+          pph22: 0,
+          netReleased: 3500,
+          notes: ["Kompensasi · pesanan 586695372648908184"],
+        },
+      ],
+      journal: [
+        { role: "saldo", accountCode: "1106-01", accountName: "Saldo TikTok – Pawship", debit: 199336, credit: 0 },
+        { role: "admin", accountCode: "6109", accountName: "Biaya Admin Marketplace", debit: 43311, credit: 0 },
+        { role: "pph22", accountCode: "1302", accountName: "PPh 22 Dibayar di Muka", debit: 1203, credit: 0 },
+        { role: "variance", accountCode: "6111", accountName: "Selisih Pencairan", debit: 0, credit: 3500 },
+        { role: "receivable", accountCode: "1105", accountName: "Piutang Marketplace", debit: 0, credit: 240350 },
+      ],
+    });
+    marketplace.commitSettlement.mockResolvedValue({
+      batchId: "s2",
+      settlementId: "set2",
+      number: "PMT/TTS/2610/0001",
+      settled: 1,
+      adjusted: 1,
+      flagged: 0,
+    });
+
+    renderWithAuth(
+      <SettlementImportDialog stores={[tiktok]} initialStoreId="store-2" onClose={jest.fn()} />,
+    );
+
+    expect(await screen.findByText("1106-01 Saldo TikTok – Pawship")).toBeInTheDocument();
+    expect(screen.getByText(/TikTok Seller Center › Keuangan › Penghasilan/)).toBeInTheDocument();
+    const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+    await user.upload(input, xlsx("income_20261103223029(UTC+7).xlsx"));
+    await user.click(screen.getByRole("button", { name: "Lanjut" }));
+
+    expect(await screen.findByText(/Jumlah penyelesaian pembayaran di file/)).toBeInTheDocument();
+    expect(screen.getByText(/Riwayat penarikan 15 transfer/)).toBeInTheDocument();
+    expect(screen.getByText("Batal, tanpa faktur")).toBeInTheDocument();
+    expect(screen.getAllByText("Penyesuaian").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Pesanan batal, dana dikembalikan penuh ke pembeli")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Lunasi 1 faktur + 1 penyesuaian" }));
+    await waitFor(() => expect(marketplace.commitSettlement).toHaveBeenCalledWith("store-2", "s2"));
+    expect(await screen.findByText("1 faktur lunas · 1 penyesuaian")).toBeInTheDocument();
+    expect(screen.getByText("Penyesuaian dicatat")).toBeInTheDocument();
+    expect(screen.getByText("Dilewati, batal tanpa faktur")).toBeInTheDocument();
+  });
+});
+
 describe("HistoryDetailDialog", () => {
   const entry: MarketplaceHistoryEntry = {
     _id: "h1",

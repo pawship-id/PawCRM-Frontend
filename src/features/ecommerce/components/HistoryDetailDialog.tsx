@@ -8,14 +8,21 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { swalToast } from "@/lib/swal";
 import { marketplaceService } from "@/services/marketplace.service";
-import type { MarketplaceHistoryEntry } from "@/types/marketplace";
+import type { Marketplace, MarketplaceHistoryEntry } from "@/types/marketplace";
 import { saveBlob } from "@/utils/xlsx";
 
 import { ecommerceFailure } from "../errors";
-import { INVOICE_HREF, PROCESS_LABEL, SETTLEMENT_HREF, formatCount, formatDateTime } from "../labels";
+import {
+  INVOICE_HREF,
+  PROCESS_LABEL,
+  SETTLEMENT_HREF,
+  formatCount,
+  formatDateTime,
+  marketplaceProfile,
+} from "../labels";
 
 /** The figures a history row reported, in reading order, by process. */
-function resultRows(entry: MarketplaceHistoryEntry): Array<[string, string]> {
+function resultRows(entry: MarketplaceHistoryEntry, short: string): Array<[string, string]> {
   const r = entry.result;
   if (entry.process === "template") {
     return [
@@ -25,7 +32,7 @@ function resultRows(entry: MarketplaceHistoryEntry): Array<[string, string]> {
       ["Terikat setelah upload", formatCount(r.bound)],
       ["Saran", formatCount(r.suggested ?? 0)],
       ["Belum terikat", formatCount(r.unbound)],
-      ["Tanpa SKU di Shopee", formatCount(r.noSku)],
+      [`Tanpa SKU di ${short}`, formatCount(r.noSku)],
       ["Hilang dari template", formatCount(r.removed)],
     ];
   }
@@ -35,7 +42,7 @@ function resultRows(entry: MarketplaceHistoryEntry): Array<[string, string]> {
       ["Sudah ada, dilewati", formatCount(r.existing)],
       ["Pesanan tertahan", formatCount(r.held)],
       ["Status tidak diimpor", formatCount(r.skipped)],
-      ...whenAny("Ditandai Batal di Shopee", r.flagged),
+      ...whenAny(`Ditandai Batal di ${short}`, r.flagged),
       ...whenAny("Gagal", r.failed),
     ];
   }
@@ -46,6 +53,9 @@ function resultRows(entry: MarketplaceHistoryEntry): Array<[string, string]> {
       ["Selisih", formatCount(r.variance)],
       ["Faktur tidak ditemukan", formatCount(r.not_found)],
       ["Sudah lunas", formatCount(r.already_paid)],
+      ...whenAny("Batal, tanpa faktur", r.cancelled),
+      ...whenAny("Penyesuaian dicatat", r.adjusted),
+      ...whenAny(`Ditandai Batal di ${short}`, r.flagged),
     ];
   }
   return [
@@ -67,12 +77,15 @@ const SECTION_HEADING = "text-xs font-semibold tracking-wide text-muted";
 export function HistoryDetailDialog({
   entry,
   storeName,
+  marketplace,
   onClose,
 }: {
   entry: MarketplaceHistoryEntry;
   storeName: string;
+  marketplace?: Marketplace;
   onClose: () => void;
 }) {
+  const profile = marketplaceProfile(marketplace);
   const [downloading, setDownloading] = useState(false);
 
   const download = async () => {
@@ -80,7 +93,7 @@ export function HistoryDetailDialog({
     try {
       const { blob, filename } = await marketplaceService.downloadHistoryFile(
         entry._id,
-        entry.fileName ?? "shopee.xlsx",
+        entry.fileName ?? "ekspor-stok.xlsx",
       );
       saveBlob(blob, filename);
     } catch (error) {
@@ -103,7 +116,9 @@ export function HistoryDetailDialog({
           <dt className="text-muted">Proses</dt>
           <dd className="font-semibold text-foreground">{PROCESS_LABEL[entry.process]}</dd>
           <dt className="text-muted">Toko</dt>
-          <dd className="font-semibold text-foreground">Shopee · {storeName}</dd>
+          <dd className="font-semibold text-foreground">
+            {profile.short} · {storeName}
+          </dd>
           <dt className="text-muted">Waktu</dt>
           <dd className="font-semibold tabular-nums text-foreground">{formatDateTime(entry.createdAt)}</dd>
           <dt className="text-muted">Oleh</dt>
@@ -115,7 +130,7 @@ export function HistoryDetailDialog({
         <section className="space-y-3 border-t border-border pt-4">
           <h3 className={SECTION_HEADING}>Hasil</h3>
           <dl className="divide-y divide-border rounded-xl border border-border text-sm">
-            {resultRows(entry).map(([label, value]) => (
+            {resultRows(entry, profile.short).map(([label, value]) => (
               <div key={label} className="flex justify-between gap-3 px-4 py-2.5">
                 <dt className="text-foreground">{label}</dt>
                 <dd className="text-right font-semibold break-all tabular-nums text-foreground">{value}</dd>
