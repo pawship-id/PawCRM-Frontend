@@ -153,7 +153,12 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const tillBorn =
     invoice.source === "pos_bridge" || !!invoice.posTransactionId;
   // Penjualan › E-commerce: lines locked, paid only by a payout import.
-  const shopeeBorn = invoice.source === "shopee_import";
+  const shopeeBorn = invoice.source === "shopee_import" || invoice.source === "tiktok_import";
+  const marketplaceName = invoice.source === "tiktok_import" ? "TikTok" : "Shopee";
+  const orderChannel =
+    invoice.marketplace?.channel ?? invoice.externalRef?.channel ?? null;
+  const channelName =
+    orderChannel === "tokopedia" ? "Tokopedia" : orderChannel === "tiktok_shop" ? "TikTok Shop" : orderChannel;
 
   /*
     EDITABLE EXACTLY WHEN THE SERVER WILL ACCEPT AN EDIT: raised here, nothing
@@ -168,7 +173,9 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const lockNote = voided
     ? "Faktur ini sudah dibatalkan."
     : shopeeBorn
-      ? "Dari impor pesanan Shopee — baris dikunci. Lunas lewat Catat pembayaran atau impor Laporan Penghasilan Shopee."
+      ? invoice.source === "tiktok_import"
+        ? "Dari impor pesanan TikTok — baris dikunci. Lunas lewat Catat pembayaran atau impor laporan pencairan TikTok."
+        : "Dari impor pesanan Shopee — baris dikunci. Lunas lewat Catat pembayaran atau impor Laporan Penghasilan Shopee."
       : tillBorn
       ? "Lahir dari penjualan kasir — barisnya milik transaksi kasir dan tidak diubah di sini."
       : editable
@@ -213,8 +220,8 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
       {!voided && invoice.marketplace?.needsAction === "cancelled_after_invoice" ? (
         <Alert variant="warning">
           {settled
-            ? "Pesanan ini Batal di Shopee, padahal fakturnya sudah lunas. Batalkan dulu pembayarannya di Riwayat pembayaran, lalu batalkan fakturnya."
-            : "Pesanan ini Batal di Shopee. Batalkan faktur ini lewat menu ⋮ di samping Cetak."}
+            ? `Pesanan ini Batal di ${marketplaceName}, padahal fakturnya sudah lunas. Batalkan dulu pembayarannya di Riwayat pembayaran, lalu batalkan fakturnya.`
+            : `Pesanan ini Batal di ${marketplaceName}. Batalkan faktur ini lewat menu ⋮ di samping Cetak.`}
         </Alert>
       ) : null}
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -383,7 +390,9 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
               </Field>
               <Field label="Sumber">
                 {shopeeBorn
-                  ? `Shopee · ${invoice.marketplace?.storeName ?? "toko"}`
+                  ? [marketplaceName, invoice.marketplace?.storeName ?? "toko", channelName]
+                      .filter(Boolean)
+                      .join(" · ")
                   : tillBorn
                     ? "Kasir"
                     : "Manual"}

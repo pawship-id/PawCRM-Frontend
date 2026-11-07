@@ -1,0 +1,45 @@
+{
+  "slug": "data-awal",
+  "order": 4,
+  "title": "Input Data Awal",
+  "subtitle": "Memasukkan angka pembuka (cabang, produk, pelanggan, stok, dan saldo kas & bank) sebelum Buloo mulai mencatat transaksi.",
+  "introHtml": "<p><strong>Modul ini untuk apa?</strong></p>\n<ul>\n<li>Mencatat kondisi usaha <strong>pada hari pertama</strong> memakai Buloo, supaya laporan sejak hari itu langsung benar.</li>\n<li>Halaman <strong>Data awal</strong> berisi daftar periksa 7 langkah. Setiap langkah menunjukkan statusnya dan tombol <strong>Buka</strong> ke halaman pengisiannya.</li>\n</ul>\n<p><strong>Siapa yang memakai?</strong> Pemilik usaha atau admin, sekali saja di awal.</p>\n<p><strong>Siapkan dulu:</strong></p>\n<ul>\n<li><strong>Tanggal mulai</strong>: hari pertama Buloo dipakai.</li>\n<li>Daftar saldo setiap kas dan rekening bank pada awal hari itu.</li>\n<li>Akun kas dan bank sudah ada di <strong>Pengaturan › Keuangan › Daftar akun</strong> (lihat buku <strong>Pengaturan Keuangan</strong>).</li>\n</ul>\n<p><strong>Cara membuka:</strong> menu samping › <strong>Pengaturan</strong> › tab <strong>Pengguna &amp; Sistem</strong> › <strong>Data awal</strong>.</p>\n<p><strong>Isi modul:</strong></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Langkah</th>\n<th>Dikerjakan di</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>1. Cabang &amp; gudang</td>\n<td>Pengaturan › Umum › Cabang</td>\n</tr>\n<tr>\n<td>2. Produk &amp; kategori</td>\n<td>Inventori › Produk (dijelaskan di buku <strong>Inventori</strong>)</td>\n</tr>\n<tr>\n<td>3. Pelanggan &amp; supplier</td>\n<td>Pelanggan (buku <strong>Pelanggan &amp; Hewan</strong>) dan Pembelian › Supplier</td>\n</tr>\n<tr>\n<td>4. Stok awal</td>\n<td>Inventori › Stok Awal (dijelaskan di buku <strong>Inventori</strong>)</td>\n</tr>\n<tr>\n<td>5. Saldo awal kas &amp; bank</td>\n<td>Halaman Saldo awal kas &amp; bank (bagian <a href=\"/dashboard/help/data-awal/saldo-awal-kas-dan-bank\">2</a>)</td>\n</tr>\n<tr>\n<td>6. Piutang &amp; utang awal</td>\n<td>Belum tersedia</td>\n</tr>\n<tr>\n<td>7. Ekuitas awal</td>\n<td>Dihitung otomatis, belum tersedia</td>\n</tr>\n</tbody></table></div>\n<p><strong>Urutan kerja yang disarankan:</strong> ikuti urutan nomor 1 sampai 5. Urutannya mengikat: stok awal butuh produk lebih dulu, dan piutang awal butuh pelanggan.</p>\n",
+  "articles": [
+    {
+      "slug": "daftar-periksa-data-awal",
+      "number": 1,
+      "title": "Daftar Periksa Data Awal",
+      "summary": "melihat langkah mana yang sudah dan belum diisi.",
+      "html": "<p><strong>Fungsi:</strong> melihat langkah mana yang sudah dan belum diisi.</p>\n<p><figure><img src=\"/help/data-awal/01-data-awal.webp\" alt=\"Halaman Data awal\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman Data awal <a class=\"help-open\" href=\"/dashboard/settings/opening-balances\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Arti status di kanan setiap langkah:</strong></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Status</th>\n<th>Artinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Tanda centang hijau + <strong>selesai</strong></td>\n<td>Sudah ada isinya, misalnya &quot;selesai · 2 cabang · 18 gudang&quot;</td>\n</tr>\n<tr>\n<td><strong>belum ada</strong> / <strong>belum diisi</strong></td>\n<td>Langkah ini perlu dikerjakan</td>\n</tr>\n<tr>\n<td><strong>belum tersedia</strong> / <strong>menunggu langkah di atas</strong> + <strong>Segera</strong></td>\n<td>Fiturnya belum jadi</td>\n</tr>\n<tr>\n<td><strong>tidak bisa dilihat</strong></td>\n<td>Peran Anda tidak punya akses ke halaman itu</td>\n</tr>\n</tbody></table></div>\n<ul>\n<li><strong>Produk &amp; kategori</strong>: produk bisa diimpor lewat Excel atau diisi satu per satu. Caranya dijelaskan di buku <strong>Inventori</strong>.</li>\n<li><strong>Stok awal</strong>: jumlah, nilai, batch, dan kedaluwarsa per gudang pada tanggal mulai. Dijelaskan di buku <strong>Inventori</strong>.</li>\n<li><strong>Piutang &amp; utang awal</strong> (faktur lama yang belum lunas) dan <strong>Ekuitas awal</strong> <strong>belum tersedia</strong>.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> stok awal dicatat sebagai <strong>Stok awal</strong>, bukan penyesuaian stok. Kalau dicatat sebagai penyesuaian, angkanya ikut masuk laba rugi.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Buka halaman <strong>Data awal</strong>.</li>\n<li>Kerjakan langkah dari atas ke bawah. Klik <strong>Buka</strong> di langkah yang ingin diisi.</li>\n<li>Kembali ke halaman ini untuk memeriksa statusnya.</li>\n</ol>\n"
+    },
+    {
+      "slug": "saldo-awal-kas-dan-bank",
+      "number": 2,
+      "title": "Saldo Awal Kas & Bank",
+      "summary": "mencatat isi setiap kas dan rekening bank pada hari pertama Buloo dipakai.",
+      "html": "<p><strong>Fungsi:</strong> mencatat isi setiap kas dan rekening bank pada hari pertama Buloo dipakai.</p>\n<p><figure><img src=\"/help/data-awal/02-saldo-awal-kas-bank.webp\" alt=\"Halaman Saldo awal kas &amp; bank\" width=\"1440\" height=\"975\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman Saldo awal kas &amp; bank <a class=\"help-open\" href=\"/dashboard/settings/opening-balances/cash-bank\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Yang perlu diperhatikan:</strong></p>\n<ul>\n<li><strong>Tanggal mulai</strong> wajib diisi. Tanggal ini tidak boleh setelah hari ini, dan tidak boleh setelah transaksi pertama di Buloo (tertulis di bawah kolom).</li>\n<li><strong>Saldo per akun</strong>: semua akun <strong>Kas &amp; Bank</strong> yang aktif muncul di sini. Kosongkan akun yang saldonya nol.</li>\n<li><strong>Total</strong> dihitung otomatis.</li>\n<li>Dicatat <strong>satu kali untuk seluruh usaha</strong>, bukan per cabang.</li>\n</ul>\n<p><strong>Dampaknya ke pembukuan:</strong></p>\n<ul>\n<li>Saldo kas dan bank bertambah sesuai angka yang diisi.</li>\n<li>Lawannya dicatat sebagai <strong>Modal Disetor (3101)</strong>, jadi <strong>tidak masuk Laba Rugi</strong>.</li>\n<li>Seluruh saldo awal dicatat di satu cabang. Di tampilan <strong>Kas &amp; Bank</strong> per cabang, angkanya muncul di cabang itu.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> kalau saldo awal sudah pernah disimpan, tombolnya berubah menjadi <strong>Ubah saldo awal</strong>. Menyimpan ulang akan <strong>membatalkan catatan lama dan mencatat ulang</strong> dengan angka baru, sehingga saldo kas, bank, Arus Kas, dan Neraca ikut berubah.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Di halaman <strong>Data awal</strong>, klik <strong>Buka</strong> pada <strong>Saldo awal kas &amp; bank</strong>.</li>\n<li>Isi <strong>Tanggal mulai</strong>.</li>\n<li>Isi saldo setiap akun kas dan bank dalam rupiah.</li>\n<li>Periksa <strong>Total</strong>.</li>\n<li>Klik <strong>Simpan saldo awal</strong>.</li>\n</ol>\n"
+    }
+  ],
+  "faq": [
+    {
+      "question": "Akun kas atau bank tidak muncul?",
+      "answer": "Tambahkan dulu di <strong>Daftar akun</strong> dengan kategori <strong>Cash &amp; Bank</strong>, dan pastikan aktif."
+    },
+    {
+      "question": "Tanggal mulai ditolak?",
+      "answer": "Tanggal harus sama atau sebelum transaksi pertama di Buloo."
+    },
+    {
+      "question": "Salah isi saldo?",
+      "answer": "Ubah angkanya, lalu simpan lagi. Buloo mencatat ulang otomatis."
+    },
+    {
+      "question": "Faktur lama yang belum lunas?",
+      "answer": "Fitur piutang dan utang awal <strong>belum tersedia</strong>."
+    }
+  ],
+  "tips": [
+    "isi data awal sebelum kasir mulai bertransaksi, supaya saldo kas di laporan sama dengan uang di laci dan rekening."
+  ],
+  "updatedAt": "2026-11-04"
+}

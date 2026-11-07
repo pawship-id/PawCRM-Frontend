@@ -133,6 +133,10 @@ const OPTIONS: CustomerInvoiceFilterOptions = {
     { _id: "w3", name: "Etalase Barat", branchId: null, branchIds: ["b1"] },
   ],
   creators: [{ _id: "u1", name: "Jess" }],
+  stores: [
+    { _id: "s1", name: "Paw Shop", marketplace: "shopee" },
+    { _id: "s2", name: "Paw TikTok", marketplace: "tiktok" },
+  ],
 };
 
 const page = (items: CustomerInvoiceListRow[], total = items.length) => ({
@@ -1046,6 +1050,27 @@ describe("SalesInvoiceList — the filter panel", () => {
       expect(lastList()).toMatchObject({ sources: ["pos_bridge", "manual"] }),
     );
     expect(lastSummary()).toMatchObject({ sources: ["pos_bridge", "manual"] });
+    expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
+      "Filter (1)",
+    );
+  });
+
+  it("lists e-commerce by store under Sumber, sent as storeIds", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<ReceivablesScreen />);
+
+    await screen.findByText("INV-2026-0042");
+    const panel = await openFilters(user);
+    await tick(user, panel, "Sumber", ["Kasir", "Shopee – Paw Shop"]);
+    await user.click(within(panel).getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(lastList()).toMatchObject({
+        sources: ["pos_bridge"],
+        storeIds: ["s1"],
+      }),
+    );
+    expect(lastSummary()).toMatchObject({ storeIds: ["s1"] });
     expect(screen.getByRole("button", { name: "Filter" })).toHaveTextContent(
       "Filter (1)",
     );

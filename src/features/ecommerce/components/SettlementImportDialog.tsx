@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
 
-import { DataTable, FilterSelect, Pagination, type DataTableColumn } from "@/components";
+import { Alert, DataTable, FilterSelect, Pagination, type DataTableColumn } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -36,6 +36,7 @@ import {
   formatCount,
   formatDate,
   formatRupiah,
+  marketplaceProfile,
 } from "../labels";
 import { FileDropzone } from "./FileDropzone";
 import { CountChip, WizardFrame, WizardRow } from "./WizardSteps";
@@ -43,11 +44,20 @@ import { CountChip, WizardFrame, WizardRow } from "./WizardSteps";
 const STEPS = ["Upload", "Tinjau", "Selesai"] as const;
 const PAGE_SIZE = 25;
 
-const CATEGORIES: Array<{ key: SettlementCategory; label: string; tone?: "warning" | "danger" }> = [
+type CategoryChip = { key: SettlementCategory; label: string; tone?: "warning" | "danger" };
+
+const CATEGORIES: CategoryChip[] = [
   { key: "match", label: "Cocok" },
   { key: "variance", label: "Selisih", tone: "warning" },
   { key: "not_found", label: "Faktur tidak ditemukan", tone: "danger" },
   { key: "already_paid", label: "Sudah lunas" },
+];
+
+/** TikTok's report also has orders cancelled and refunded in full, and adjustment rows. */
+const TIKTOK_CATEGORIES: CategoryChip[] = [
+  ...CATEGORIES,
+  { key: "cancelled", label: "Batal, tanpa faktur" },
+  { key: "adjustment", label: "Penyesuaian", tone: "warning" },
 ];
 
 const CATEGORY_LABEL: Record<SettlementCategory, string> = {
@@ -55,6 +65,8 @@ const CATEGORY_LABEL: Record<SettlementCategory, string> = {
   variance: "Selisih",
   not_found: "Faktur tidak ditemukan",
   already_paid: "Sudah lunas",
+  cancelled: "Batal",
+  adjustment: "Penyesuaian",
 };
 
 const CATEGORY_TONE: Record<SettlementCategory, string> = {
@@ -62,6 +74,8 @@ const CATEGORY_TONE: Record<SettlementCategory, string> = {
   variance: "bg-tint-warning text-warning",
   not_found: "bg-tint-danger text-danger",
   already_paid: "bg-tint-neutral text-muted",
+  cancelled: "bg-tint-neutral text-muted",
+  adjustment: "bg-tint-warning text-warning",
 };
 
 /**
@@ -72,6 +86,11 @@ const CATEGORY_TONE: Record<SettlementCategory, string> = {
  * rows do not add up to Total yang Dilepas, or from another seller, is refused
  * before the review. Selisih goes to the store's variance account (V1 has no
  * per-row choice).
+ *
+ * TikTok: the payout report (`income_….xlsx`) checked against its Laporan
+ * sheet. Orders cancelled and refunded in full are set aside (an invoice raised
+ * before the cancel goes to Perlu tindakan), and adjustment rows are booked to
+ * the variance account. Riwayat penarikan is shown for information only.
  */
 export function SettlementImportDialog({
   stores,
@@ -89,6 +108,10 @@ export function SettlementImportDialog({
   const [storeId, setStoreId] = useState(
     ready.find((store) => store._id === initialStoreId)?._id ?? ready[0]?._id ?? "",
   );
+  const store = ready.find((candidate) => candidate._id === storeId) ?? null;
+  const profile = marketplaceProfile(store?.marketplace);
+  const isTikTok = store?.marketplace === "tiktok";
+  const categories = isTikTok ? TIKTOK_CATEGORIES : CATEGORIES;
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [saldo, setSaldo] = useState<StoreAccountRow | null>(null);
@@ -122,7 +145,7 @@ export function SettlementImportDialog({
       setPage(1);
       setStep(2);
     } catch (error) {
-      swalToast(ecommerceFailure(error, "Laporan Penghasilan belum bisa dibaca.").toast, "error", 6000);
+      swalToast(ecommerceFailure(error, "Laporan pencairan belum bisa dibaca.").toast, "error", 6000);
     } finally {
       setBusy(false);
     }
@@ -143,6 +166,7 @@ export function SettlementImportDialog({
   };
 
   const settling = preview ? preview.counts.match + preview.counts.variance : 0;
+  const adjusting = preview?.counts.adjustment ?? 0;
   const rows = (preview?.items ?? []).filter((item) => !filter || item.category === filter);
   const shown = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const journal = preview?.journal ?? [];
@@ -172,7 +196,8 @@ export function SettlementImportDialog({
                 ·{" "}
               </>
             ) : null}
-            dilepas {formatDate(row.releasedAt)}
+            {row.category === "adjustment" ? "dicatat" : "dilepas"} {formatDate(row.releasedAt)}
+            {row.channel ? ` · ${row.channel === "tokopedia" ? "Tokopedia" : row.channel === "tiktok_shop" ? "TikTok Shop" : row.channel}` : ""}
           </div>
         </div>
       ),
@@ -226,7 +251,12 @@ export function SettlementImportDialog({
     },
   ];
 
-  const deductions = signedLine("admin") + signedLine("program") + signedLine("shipping");
+  const deductions =
+    signedLine("admin") +
+    signedLine("program") +
+    signedLine("affiliate") +
+    signedLine("ads") +
+    signedLine("shipping");
   const summary: Array<[string, string]> = preview
     ? [
         ["Faktur lunas", formatCount(result?.settled)],
@@ -243,6 +273,17 @@ export function SettlementImportDialog({
           : []),
         ...(preview.counts.not_found > 0
           ? ([["Dilewati, faktur tidak ditemukan", formatCount(preview.counts.not_found)]] as Array<[string, string]>)
+          : []),
+        ...((preview.counts.cancelled ?? 0) > 0
+          ? ([["Dilewati, batal tanpa faktur", formatCount(preview.counts.cancelled ?? 0)]] as Array<[string, string]>)
+          : []),
+        ...(result?.adjusted
+          ? ([["Penyesuaian dicatat", formatCount(result.adjusted)]] as Array<[string, string]>)
+          : []),
+        ...(result?.flagged
+          ? ([[`Ditandai Batal di ${profile.short} (Perlu tindakan)`, formatCount(result.flagged)]] as Array<
+              [string, string]
+            >)
           : []),
       ]
     : [];
@@ -270,8 +311,12 @@ export function SettlementImportDialog({
             <Button type="button" variant="secondary" onClick={() => setStep(1)} disabled={busy}>
               Kembali
             </Button>
-            <Button type="button" onClick={() => void commit()} disabled={busy || settling === 0}>
-              {busy ? "Menyimpan…" : `Lunasi ${formatCount(settling)} faktur`}
+            <Button type="button" onClick={() => void commit()} disabled={busy || settling + adjusting === 0}>
+              {busy
+                ? "Menyimpan…"
+                : adjusting > 0
+                  ? `Lunasi ${formatCount(settling)} faktur + ${formatCount(adjusting)} penyesuaian`
+                  : `Lunasi ${formatCount(settling)} faktur`}
             </Button>
           </>
         ) : (
@@ -298,7 +343,10 @@ export function SettlementImportDialog({
                     value: candidate._id,
                     label: `${MARKETPLACE_LABEL[candidate.marketplace]} · ${candidate.name}`,
                   }))}
-                  onChange={setStoreId}
+                  onChange={(id) => {
+                    setStoreId(id);
+                    setFile(null);
+                  }}
                 />
               </div>
             </WizardRow>
@@ -307,7 +355,7 @@ export function SettlementImportDialog({
                 file={file}
                 disabled={busy}
                 onPick={setFile}
-                source="Seller Center › Keuangan › Penghasilan Saya › Laporan Penghasilan"
+                source={profile.incomeDownload}
               />
             </WizardRow>
             <WizardRow label="Dana masuk ke">
@@ -326,9 +374,10 @@ export function SettlementImportDialog({
 
       {step === 2 && preview ? (
         <div className="flex flex-col gap-4">
+          {preview.warning ? <Alert variant="warning">{preview.warning}</Alert> : null}
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-tint-success px-4 py-2.5 text-sm text-foreground">
             <span>
-              Total yang Dilepas di file{" "}
+              {profile.incomeTotalLabel} di file{" "}
               <b className="tabular-nums">{formatRupiah(preview.totalReleased)}</b>
             </span>
             <span className="text-muted">·</span>
@@ -340,13 +389,22 @@ export function SettlementImportDialog({
               <Check className="size-4" aria-hidden />
               Cocok
             </span>
+            {isTikTok && preview.withdrawalCount ? (
+              <>
+                <span className="text-muted">·</span>
+                <span>
+                  Riwayat penarikan {formatCount(preview.withdrawalCount)} transfer{" "}
+                  <b className="tabular-nums">{formatRupiah(preview.withdrawnTotal)}</b>
+                </span>
+              </>
+            ) : null}
           </div>
-          <div className="grid gap-2 sm:grid-cols-4">
-            {CATEGORIES.map((category) => (
+          <div className={cn("grid gap-2", isTikTok ? "sm:grid-cols-3" : "sm:grid-cols-4")}>
+            {categories.map((category) => (
               <CountChip
                 key={category.key}
                 label={category.label}
-                value={formatCount(preview.counts[category.key])}
+                value={formatCount(preview.counts[category.key] ?? 0)}
                 tone={category.tone}
                 selected={filter === category.key}
                 onClick={() => {
@@ -411,9 +469,12 @@ export function SettlementImportDialog({
             </div>
           ) : null}
           <p className="text-sm text-muted">
-            Penjual {preview.username ?? "—"}, periode {formatDate(preview.periodFrom)} –{" "}
+            {isTikTok ? "Periode" : `Penjual ${preview.username ?? "—"}, periode`} {formatDate(preview.periodFrom)} –{" "}
             {formatDate(preview.periodTo)}. Faktur tidak ditemukan dan Sudah lunas dilewati, dananya
             tidak ikut dijurnal.
+            {isTikTok
+              ? " Pesanan batal dengan dana dikembalikan penuh tidak dijurnal; kalau sudah jadi faktur, fakturnya masuk Perlu tindakan untuk dibatalkan. Penyesuaian dicatat ke akun Selisih pencairan. Transfer ke rekening dicatat terpisah sebagai transfer di Kas & Bank."
+              : ""}
           </p>
         </div>
       ) : null}
@@ -423,7 +484,10 @@ export function SettlementImportDialog({
           <span className="flex size-12 items-center justify-center rounded-full bg-tint-success text-success">
             <Check className="size-6" aria-hidden />
           </span>
-          <h3 className="mt-3 text-lg font-bold">{formatCount(result.settled)} faktur lunas</h3>
+          <h3 className="mt-3 text-lg font-bold">
+            {formatCount(result.settled)} faktur lunas
+            {result.adjusted ? ` · ${formatCount(result.adjusted)} penyesuaian` : ""}
+          </h3>
           <p className="mt-1 text-sm text-muted">
             {formatRupiah(preview?.settlingReleased)} masuk ke {saldoLabel}
           </p>

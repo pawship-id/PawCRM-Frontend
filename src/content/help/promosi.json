@@ -1,0 +1,178 @@
+{
+  "slug": "promosi",
+  "order": 12,
+  "title": "Promosi & Membership",
+  "subtitle": "Membuat paket membership hewan, menjualnya lewat Kasir, lalu mengelola anggota beserta jatah benefitnya.",
+  "introHtml": "<p><strong>Modul ini untuk apa?</strong></p>\n<ul>\n<li>Membuat <strong>paket membership</strong>: harga, masa berlaku, dan benefit (jatah layanan gratis, diskon, harga khusus, fasilitas).</li>\n<li>Mengelola <strong>anggota</strong>: sisa jatah, riwayat pemakaian, tunda, pindah hewan, refund.</li>\n<li>Jatah dan potongan member otomatis dipakai di <strong>Kasir</strong>, <strong>faktur</strong>, dan <strong>booking</strong>.</li>\n</ul>\n<p><strong>Saat ini (versi 1) Promosi baru berisi Membership.</strong> Kartu stempel, promo, dan voucher <strong>belum tersedia</strong> (bertanda <strong>Segera</strong>).</p>\n<p><strong>Siapa yang memakai?</strong> Pemilik usaha dan manajer (membuat paket, mengelola anggota), kasir (menjual paket).</p>\n<p><strong>Siapkan dulu:</strong></p>\n<ul>\n<li><strong>Layanan</strong> dan <strong>Produk</strong> yang akan dijadikan benefit sudah terdaftar.</li>\n<li><strong>Pengaturan › Keuangan › Membership</strong>: cara pengakuan pendapatan dan akunnya (bagian <a href=\"/dashboard/help/promosi/pengaturan-membership\">1</a>).</li>\n</ul>\n<p><strong>Cara membuka:</strong> menu samping › <strong>Transaksi</strong> › <strong>Promosi</strong>.</p>\n<p><strong>Isi modul:</strong></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Tab</th>\n<th>Dipakai untuk</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Ringkasan</td>\n<td>Penjualan paket, anggota aktif, dan yang perlu ditindaklanjuti</td>\n</tr>\n<tr>\n<td>Membership › Paket</td>\n<td>Daftar paket, buat, ubah, hapus</td>\n</tr>\n<tr>\n<td>Membership › Anggota</td>\n<td>Semua kartu membership dan pengelolaannya</td>\n</tr>\n</tbody></table></div>\n<p><strong>Urutan kerja yang disarankan:</strong> atur pengakuan pendapatan › buat paket › jual paket di Kasir › kelola anggota › pantau lewat Ringkasan.</p>\n",
+  "articles": [
+    {
+      "slug": "pengaturan-membership",
+      "number": 1,
+      "title": "Pengaturan Membership",
+      "summary": "menentukan kapan uang paket membership dicatat sebagai pendapatan, dan ke akun mana.",
+      "html": "<p><strong>Fungsi:</strong> menentukan kapan uang paket membership dicatat sebagai pendapatan, dan ke akun mana.</p>\n<p><figure><img src=\"/help/promosi/01-pengaturan-membership.webp\" alt=\"Pengaturan Membership\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pengaturan Membership <a class=\"help-open\" href=\"/dashboard/settings/membership\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Cara pengakuan</th>\n<th>Artinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Langsung saat terjual</td>\n<td>Harga paket langsung jadi pendapatan di hari terjual</td>\n</tr>\n<tr>\n<td>Diterima di muka</td>\n<td>Uang masuk dulu ke <strong>Pendapatan Diterima di Muka</strong>, lalu diakui sedikit demi sedikit selama kartu aktif</td>\n</tr>\n</tbody></table></div>\n<p><figure><img src=\"/help/promosi/01-pengaturan-membership--diterima-di-muka.webp\" alt=\"Memilih Diterima di muka\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Memilih Diterima di muka <a class=\"help-open\" href=\"/dashboard/settings/membership\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/promosi/01-pengaturan-membership--akun-pendapatan.webp\" alt=\"Pilihan akun pendapatan\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pilihan akun pendapatan <a class=\"help-open\" href=\"/dashboard/settings/membership\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Akun Pendapatan Membership</strong>: hanya akun berkategori Pendapatan.</li>\n<li><strong>Akun Pendapatan Diterima di Muka</strong>: hanya akun berkategori Utang Lainnya.</li>\n<li>Ini <strong>pilihan bawaan untuk paket baru</strong>. Setiap paket bisa diubah sendiri, dan kartu yang sudah terjual tetap memakai cara saat dijual.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Buka <strong>Pengaturan</strong> › tab <strong>Keuangan</strong> › <strong>Membership</strong>.</li>\n<li>Pilih <strong>Cara pengakuan bawaan</strong>.</li>\n<li>Pilih akun bila tidak memakai akun bawaan.</li>\n<li>Klik <strong>Simpan pengaturan membership</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "daftar-paket-membership",
+      "number": 2,
+      "title": "Daftar Paket Membership",
+      "summary": "melihat semua paket yang dijual.",
+      "html": "<p><strong>Fungsi:</strong> melihat semua paket yang dijual.</p>\n<p><figure><img src=\"/help/promosi/02-daftar-paket.webp\" alt=\"Tab Membership › Paket\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Membership › Paket <a class=\"help-open\" href=\"/dashboard/promotion/membership\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Kolom: <strong>Kode</strong>, <strong>Paket</strong> (dengan ringkasan benefit), <strong>Melekat ke</strong>, <strong>Syarat pembeli</strong>, <strong>Durasi</strong>, <strong>Harga</strong>, <strong>Anggota aktif</strong>, <strong>Status</strong>.</li>\n<li>Label <strong>Website</strong> di kolom Status = paket tampil di halaman membership website.</li>\n<li>Cari berdasarkan kode atau nama paket.</li>\n</ul>\n"
+    },
+    {
+      "slug": "filter-dan-menu-aksi-paket",
+      "number": 3,
+      "title": "Filter dan Menu Aksi Paket",
+      "summary": "menyaring daftar paket dan membuka aksi per paket.",
+      "html": "<p><strong>Fungsi:</strong> menyaring daftar paket dan membuka aksi per paket.</p>\n<p><figure><img src=\"/help/promosi/02-daftar-paket--filter.webp\" alt=\"Dialog Filter paket\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Filter paket <a class=\"help-open\" href=\"/dashboard/promotion/membership\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Pilihan</th>\n<th>Isinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Urutkan</td>\n<td>Terbaru, Nama A–Z, Harga tertinggi, Harga terendah</td>\n</tr>\n<tr>\n<td>Status</td>\n<td>Semua, Aktif, Nonaktif</td>\n</tr>\n<tr>\n<td>Melekat ke</td>\n<td>Hewan atau Pelanggan</td>\n</tr>\n<tr>\n<td>Syarat pembeli</td>\n<td>Semua pelanggan, Pelanggan baru, Perpanjangan, Lewat referral</td>\n</tr>\n<tr>\n<td>Tampilkan paket terhapus</td>\n<td>Centang untuk melihat paket yang dihapus</td>\n</tr>\n</tbody></table></div>\n<p><figure><img src=\"/help/promosi/02-daftar-paket--menu-aksi.webp\" alt=\"Menu aksi paket\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Menu aksi paket <a class=\"help-open\" href=\"/dashboard/promotion/membership\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Menu <strong>⋮</strong>: <strong>Detail</strong>, <strong>Ubah</strong>, <strong>Hapus</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "membuat-paket-baru",
+      "number": 4,
+      "title": "Membuat Paket Baru",
+      "summary": "membuat paket membership yang bisa dijual di Kasir.",
+      "html": "<p><strong>Fungsi:</strong> membuat paket membership yang bisa dijual di Kasir.</p>\n<p><figure><img src=\"/help/promosi/03-paket-baru.webp\" alt=\"Formulir Paket membership baru\" width=\"1440\" height=\"2669\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir Paket membership baru <a class=\"help-open\" href=\"/dashboard/promotion/membership/plans/new\">Buka halaman ini</a></figcaption></figure></p>\n<p><strong>Info paket:</strong></p>\n<ul>\n<li>Wajib: <strong>Nama paket</strong>, <strong>Durasi</strong> (bulan), <strong>Jenis harga</strong>, dan harga.</li>\n<li><strong>Kode</strong> kosong = nomor otomatis (MSP-0001).</li>\n<li><strong>Durasi</strong> dihitung dari tanggal aktivasi, bukan bulan kalender.</li>\n<li><strong>Tawarkan perpanjangan</strong>: berapa hari sebelum berakhir anggota masuk daftar perpanjangan di Ringkasan.</li>\n<li><strong>Status</strong> aktif = bisa dijual di kasir.</li>\n</ul>\n<p><strong>Siapa yang bisa beli dan pakai:</strong></p>\n<ul>\n<li><strong>Melekat ke</strong>: <strong>Hewan</strong> (jatah milik satu hewan) atau <strong>Pelanggan</strong> (satu kuota dipakai bergantian oleh semua hewannya).</li>\n<li><strong>Syarat pembeli</strong>: Semua pelanggan, Pelanggan baru, Perpanjangan, atau Lewat referral. Dicek otomatis saat dijual.</li>\n<li><strong>Jenis hewan</strong> dan <strong>Berlaku di cabang</strong>.</li>\n</ul>\n<p><strong>Kanan:</strong> <strong>Pratinjau</strong> tampilan paket di kasir dan website, ikut berubah saat Anda mengisi.</p>\n<h2>Langkah</h2>\n<ol>\n<li>Di <strong>Membership › Paket</strong>, klik <strong>Paket baru</strong>.</li>\n<li>Isi <strong>Info paket</strong> dan <strong>Siapa yang bisa beli dan pakai</strong>.</li>\n<li>Isi <strong>Benefit</strong> (bagian <a href=\"/dashboard/help/promosi/mengatur-harga-dan-benefit-paket\">5</a>).</li>\n<li>Periksa <strong>Pengakuan pendapatan</strong> dan <strong>Tampilan publik</strong> (bagian <a href=\"/dashboard/help/promosi/pengakuan-pendapatan-dan-tampilan-publik-paket\">6</a>).</li>\n<li>Klik <strong>Simpan paket</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "mengatur-harga-dan-benefit-paket",
+      "number": 5,
+      "title": "Mengatur Harga dan Benefit Paket",
+      "summary": "menentukan harga paket dan apa saja yang didapat member.",
+      "html": "<p><strong>Fungsi:</strong> menentukan harga paket dan apa saja yang didapat member.</p>\n<p><figure><img src=\"/help/promosi/03-paket-baru--harga-per-varian.webp\" alt=\"Jenis harga Per varian hewan\" width=\"1440\" height=\"2825\" loading=\"lazy\" decoding=\"async\"><figcaption>Jenis harga Per varian hewan <a class=\"help-open\" href=\"/dashboard/promotion/membership/plans/new\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Jenis harga</strong>: <strong>Satu harga</strong>, atau <strong>Per varian hewan</strong> (harga beda per jenis, ukuran, bulu). Per varian hanya untuk paket yang melekat ke hewan.</li>\n<li><strong>Salin harga dari layanan (opsional)</strong> mengisi harga varian dari harga layanan, misalnya untuk paket &quot;bayar 5 dapat 6&quot;.</li>\n</ul>\n<p><strong>Benefit:</strong> satu benefit = satu jatah.</p>\n<ul>\n<li><strong>Jenis benefit</strong>: <strong>Jatah &amp; potongan</strong> (dipakai di kasir dan booking) atau <strong>Fasilitas</strong> (misalnya prioritas booking).</li>\n<li><strong>Kuota</strong> dan <strong>Periode kuota</strong>: × per minggu, × per bulan, × selama masa berlaku, atau Tidak terbatas. Jatah per minggu/bulan <strong>hangus</strong> di akhir periode.</li>\n<li><strong>Opsi</strong>: pilih <strong>Jenis</strong>, <strong>Kelompok</strong>, dan <strong>Layanan</strong>/produk. Klik <strong>Opsi lain (atau)</strong> kalau jatah bisa dipakai untuk beberapa layanan.</li>\n</ul>\n<p><figure><img src=\"/help/promosi/03-paket-baru--perlakuan-harga.webp\" alt=\"Pilihan Perlakuan harga\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Pilihan Perlakuan harga <a class=\"help-open\" href=\"/dashboard/promotion/membership/plans/new\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Perlakuan harga</th>\n<th>Artinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Gratis</td>\n<td>Harga jadi Rp 0</td>\n</tr>\n<tr>\n<td>Diskon %</td>\n<td>Potongan persen</td>\n</tr>\n<tr>\n<td>Harga khusus</td>\n<td>Harga member tertentu (aktif setelah layanan dipilih)</td>\n</tr>\n<tr>\n<td>Potongan Rp</td>\n<td>Potongan nominal</td>\n</tr>\n</tbody></table></div>\n<p><figure><img src=\"/help/promosi/03-paket-baru--tambah-benefit.webp\" alt=\"Menambah benefit kedua\" width=\"1440\" height=\"3257\" loading=\"lazy\" decoding=\"async\"><figcaption>Menambah benefit kedua <a class=\"help-open\" href=\"/dashboard/promotion/membership/plans/new\">Buka halaman ini</a></figcaption></figure></p>\n<h2>Langkah</h2>\n<ol>\n<li>Pilih <strong>Jenis harga</strong>, lalu isi harga paket.</li>\n<li>Di <strong>Benefit 1</strong>, isi <strong>Nama benefit</strong>, <strong>Kuota</strong>, dan <strong>Periode kuota</strong>.</li>\n<li>Pilih layanan dan <strong>Perlakuan harga</strong>.</li>\n<li>Klik <strong>Tambah benefit</strong> untuk benefit berikutnya.</li>\n</ol>\n"
+    },
+    {
+      "slug": "pengakuan-pendapatan-dan-tampilan-publik-paket",
+      "number": 6,
+      "title": "Pengakuan Pendapatan dan Tampilan Publik Paket",
+      "summary": "mengatur pencatatan pendapatan per paket dan tampilannya di website.",
+      "html": "<p><strong>Fungsi:</strong> mengatur pencatatan pendapatan per paket dan tampilannya di website.</p>\n<ul>\n<li><strong>Pengakuan pendapatan</strong>: terisi dari <strong>Pengaturan › Keuangan › Membership</strong> dan bisa diubah khusus paket ini (lihat gambar di bagian <a href=\"/dashboard/help/promosi/membuat-paket-baru\">4</a>).</li>\n<li><strong>Tampil di website</strong>: paket muncul di website dan bisa dibeli dari sana.</li>\n<li><strong>Tonjolkan paket ini</strong>: kartunya ditonjolkan di antara paket lain.</li>\n<li><strong>Urutan tampil</strong> dan <strong>Label sorotan</strong> (misalnya &quot;Paling laris&quot;).</li>\n<li>Harga coret tidak diisi di sini. Fitur promo harga coret <strong>belum tersedia</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "detail-paket",
+      "number": 7,
+      "title": "Detail Paket",
+      "summary": "melihat isi satu paket.",
+      "html": "<p><strong>Fungsi:</strong> melihat isi satu paket.</p>\n<p><figure><img src=\"/help/promosi/04-detail-paket.webp\" alt=\"Halaman detail paket\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman detail paket</figcaption></figure></p>\n<ul>\n<li><strong>Paket</strong>: harga, mode harga, durasi, melekat ke, jenis hewan, syarat pembeli, cabang, tawarkan perpanjangan, website.</li>\n<li><strong>Benefit</strong>: yang didapat selama membership berlaku.</li>\n<li>Tombol: <strong>Ubah</strong>, <strong>Nonaktifkan</strong>/<strong>Aktifkan</strong>, <strong>Hapus</strong>.</li>\n</ul>\n<p><figure><img src=\"/help/promosi/04-detail-paket--nonaktifkan.webp\" alt=\"Dialog Nonaktifkan paket membership\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Nonaktifkan paket membership</figcaption></figure></p>\n<ul>\n<li><strong>Nonaktifkan</strong> meminta konfirmasi dulu. Setelah itu paket berhenti dijual: tidak bisa dipilih di kasir atau faktur penjualan, dan kartu yang ada tidak bisa diperpanjang dengan paket ini.</li>\n<li>Kartu yang sudah terbit tetap berlaku sampai masa berlakunya habis. Paket bisa diaktifkan lagi kapan saja.</li>\n</ul>\n<h2>Langkah menonaktifkan paket</h2>\n<ol>\n<li>Di detail paket, klik <strong>Nonaktifkan</strong>.</li>\n<li>Klik <strong>Nonaktifkan paket</strong> untuk memastikan, atau <strong>Batal</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "mengubah-paket",
+      "number": 8,
+      "title": "Mengubah Paket",
+      "summary": "memperbarui harga, benefit, atau syarat paket.",
+      "html": "<p><strong>Fungsi:</strong> memperbarui harga, benefit, atau syarat paket.</p>\n<p><figure><img src=\"/help/promosi/05-ubah-paket.webp\" alt=\"Formulir ubah paket\" width=\"1440\" height=\"3132\" loading=\"lazy\" decoding=\"async\"><figcaption>Formulir ubah paket</figcaption></figure></p>\n<ul>\n<li>Formulirnya sama dengan <strong>Paket baru</strong>.</li>\n<li>Riwayat pemakaian setiap benefit tetap tersambung setelah paket diubah.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Di detail paket, klik <strong>Ubah</strong> (atau <strong>⋮</strong> › <strong>Ubah</strong> di daftar).</li>\n<li>Ubah data, lalu klik <strong>Simpan paket</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menghapus-paket",
+      "number": 9,
+      "title": "Menghapus Paket",
+      "summary": "menghapus paket yang salah dibuat.",
+      "html": "<p><strong>Fungsi:</strong> menghapus paket yang salah dibuat.</p>\n<p><figure><img src=\"/help/promosi/02-daftar-paket--hapus.webp\" alt=\"Dialog Hapus paket dari daftar\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Hapus paket dari daftar <a class=\"help-open\" href=\"/dashboard/promotion/membership\">Buka halaman ini</a></figcaption></figure></p>\n<p><figure><img src=\"/help/promosi/04-detail-paket--hapus.webp\" alt=\"Dialog Hapus paket dari detail\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Hapus paket dari detail</figcaption></figure></p>\n<blockquote>\n<p><strong>Penting:</strong> kalau hanya ingin berhenti menjual paket, pakai <strong>Nonaktifkan</strong>, bukan <strong>Hapus</strong>.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>⋮</strong> › <strong>Hapus</strong> di daftar, atau <strong>Hapus</strong> di detail paket.</li>\n<li>Klik <strong>Hapus</strong> untuk memastikan, atau <strong>Batal</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "menjual-dan-menerbitkan-membership",
+      "number": 10,
+      "title": "Menjual dan Menerbitkan Membership",
+      "summary": "cara membership sampai ke pelanggan.",
+      "html": "<p><strong>Fungsi:</strong> cara membership sampai ke pelanggan.</p>\n<ul>\n<li><strong>Jual lewat Kasir</strong>: pilih pelanggan dan hewannya, lalu tambahkan paket membership seperti item biasa. Pembayaran dan pendapatan tercatat. Bisa dibuka dari tombol <strong>Jual paket di kasir</strong> di profil pelanggan.</li>\n<li><strong>Terbitkan manual</strong> (profil hewan › tab <strong>Membership</strong>): hanya untuk membership yang sudah dibayar di luar Buloo. <strong>Tidak mencatat pembayaran.</strong> Lihat buku Pelanggan &amp; Hewan.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> kalau pelanggan membayar sekarang, selalu jual lewat <strong>Kasir</strong>, supaya uangnya tercatat.</p>\n</blockquote>\n"
+    },
+    {
+      "slug": "daftar-anggota",
+      "number": 11,
+      "title": "Daftar Anggota",
+      "summary": "melihat semua kartu membership dan mencari anggota.",
+      "html": "<p><strong>Fungsi:</strong> melihat semua kartu membership dan mencari anggota.</p>\n<p><figure><img src=\"/help/promosi/06-daftar-anggota.webp\" alt=\"Tab Membership › Anggota\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Membership › Anggota <a class=\"help-open\" href=\"/dashboard/promotion/membership/member\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li>Kartu atas sebagai saringan cepat: <strong>Aktif</strong>, <strong>Segera berakhir</strong>, <strong>Jatah belum terpakai</strong>, <strong>Berakhir</strong>, <strong>Ditunda</strong>.</li>\n<li>Kolom: <strong>No.</strong>, <strong>Pemilik</strong> (hewan · pelanggan), <strong>Paket</strong>, <strong>Masa berlaku</strong>, <strong>Jatah periode ini</strong>, <strong>Status</strong>.</li>\n<li><strong>Status</strong>: Terjadwal, Aktif, Ditunda, Belum lunas, Berakhir, Dibatalkan.</li>\n<li>Cari berdasarkan pelanggan, hewan, atau nomor kartu. Klik nomor kartu untuk membuka detail.</li>\n</ul>\n<p><figure><img src=\"/help/promosi/06-daftar-anggota--filter.webp\" alt=\"Dialog Filter anggota\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Filter anggota <a class=\"help-open\" href=\"/dashboard/promotion/membership/member\">Buka halaman ini</a></figcaption></figure></p>\n<ul>\n<li><strong>Filter</strong>: <strong>Paket</strong> dan <strong>Melekat ke</strong>.</li>\n</ul>\n"
+    },
+    {
+      "slug": "detail-anggota",
+      "number": 12,
+      "title": "Detail Anggota",
+      "summary": "melihat satu kartu membership: sisa jatah, pemakaian, pendapatan, dan riwayat perubahan.",
+      "html": "<p><strong>Fungsi:</strong> melihat satu kartu membership: sisa jatah, pemakaian, pendapatan, dan riwayat perubahan.</p>\n<p><figure><img src=\"/help/promosi/07-detail-anggota.webp\" alt=\"Halaman detail anggota\" width=\"1440\" height=\"2094\" loading=\"lazy\" decoding=\"async\"><figcaption>Halaman detail anggota</figcaption></figure></p>\n<ul>\n<li><strong>Kepala halaman</strong>: hewan · pemilik, paket, nomor, status, masa berlaku, periode jatah berjalan. Tombol <strong>Profil pelanggan</strong>, <strong>Hubungi</strong> (WhatsApp), <strong>Perpanjang</strong>.</li>\n<li><strong>Sisa jatah</strong>: per benefit, termasuk jatah yang <strong>ditahan</strong> booking.</li>\n<li><strong>Riwayat pemakaian</strong>: dari kasir, faktur, dan booking. Untuk membatalkan pemakaian, void atau retur transaksinya; jatah kembali otomatis.</li>\n<li><strong>Pengakuan pendapatan</strong>: jadwal pengakuan kartu ini.</li>\n<li><strong>Riwayat perubahan</strong>: semua perubahan, siapa, dan alasannya.</li>\n<li><strong>Kelola keanggotaan</strong>: hanya <strong>Owner</strong> dan <strong>Manager</strong>. Semua perubahan wajib pakai alasan.</li>\n</ul>\n"
+    },
+    {
+      "slug": "perpanjang-membership",
+      "number": 13,
+      "title": "Perpanjang Membership",
+      "summary": "menerbitkan kartu baru untuk periode berikutnya, tanpa mencatat pembayaran.",
+      "html": "<p><strong>Fungsi:</strong> menerbitkan kartu baru untuk periode berikutnya, tanpa mencatat pembayaran.</p>\n<p><figure><img src=\"/help/promosi/07-detail-anggota--perpanjang.webp\" alt=\"Dialog Perpanjang membership\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Perpanjang membership</figcaption></figure></p>\n<ul>\n<li>Dialog menyebut paket, hewan dan pemiliknya, serta masa berlaku kartu baru (mulai sehari setelah kartu lama berakhir).</li>\n<li>Kartu lama tetap tercatat seperti sekarang. Kartu baru punya nomor sendiri.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> perpanjangan dari sini <strong>tidak mencatat pembayaran</strong>: tidak ada faktur, struk, atau jurnal. Kalau pelanggan membayar, jual paketnya lewat <strong>Kasir</strong> atau faktur penjualan saja, supaya kartunya tidak dobel.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Di detail anggota, klik <strong>Perpanjang</strong>.</li>\n<li>Periksa masa berlaku kartu baru.</li>\n<li>Klik <strong>Perpanjang membership</strong>, atau <strong>Batal</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "ubah-masa-berlaku",
+      "number": 14,
+      "title": "Ubah Masa Berlaku",
+      "summary": "menggeser tanggal mulai (kalau jatah belum dipakai) atau mengubah tanggal berakhir.",
+      "html": "<p><strong>Fungsi:</strong> menggeser tanggal mulai (kalau jatah belum dipakai) atau mengubah tanggal berakhir.</p>\n<p><figure><img src=\"/help/promosi/07-detail-anggota--ubah-masa-berlaku.webp\" alt=\"Dialog Ubah masa berlaku\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Ubah masa berlaku</figcaption></figure></p>\n<h2>Langkah</h2>\n<ol>\n<li>Di <strong>Kelola keanggotaan</strong>, klik <strong>Ubah masa berlaku</strong>.</li>\n<li>Pilih <strong>Geser tanggal mulai</strong> atau <strong>Ubah tanggal berakhir</strong>, lalu isi tanggal baru.</li>\n<li>Pilih <strong>Alasan</strong>, periksa ringkasannya, lalu klik <strong>Simpan masa berlaku</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "tunda-sementara",
+      "number": 15,
+      "title": "Tunda Sementara",
+      "summary": "membekukan jatah beberapa hari, misalnya hewan sakit. Tanggal berakhir ikut mundur.",
+      "html": "<p><strong>Fungsi:</strong> membekukan jatah beberapa hari, misalnya hewan sakit. Tanggal berakhir ikut mundur.</p>\n<p><figure><img src=\"/help/promosi/07-detail-anggota--tunda-sementara.webp\" alt=\"Dialog Tunda sementara\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Tunda sementara</figcaption></figure></p>\n<ul>\n<li>Maksimal <strong>30 hari</strong> per keanggotaan. Selama ditunda, jatah tidak bisa dipakai.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Tunda sementara</strong>.</li>\n<li>Isi <strong>Mulai ditunda</strong>, <strong>Lama (hari)</strong>, dan <strong>Alasan</strong>.</li>\n<li>Klik <strong>Simpan penundaan</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "koreksi-jatah-periode-ini",
+      "number": 16,
+      "title": "Koreksi Jatah Periode Ini",
+      "summary": "menambah atau mengurangi kuota periode berjalan, misalnya sebagai kompensasi.",
+      "html": "<p><strong>Fungsi:</strong> menambah atau mengurangi kuota periode berjalan, misalnya sebagai kompensasi.</p>\n<p><figure><img src=\"/help/promosi/07-detail-anggota--koreksi-jatah.webp\" alt=\"Dialog Koreksi jatah\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Koreksi jatah</figcaption></figure></p>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Koreksi jatah periode ini</strong>.</li>\n<li>Klik <strong>+</strong> atau <strong>−</strong> di kolom <strong>Penyesuaian</strong>.</li>\n<li>Pilih <strong>Alasan</strong>, lalu klik <strong>Simpan koreksi jatah</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "pindah-ke-hewan-lain",
+      "number": 17,
+      "title": "Pindah ke Hewan Lain",
+      "summary": "memindahkan sisa masa dan jatah ke hewan lain milik pelanggan yang sama.",
+      "html": "<p><strong>Fungsi:</strong> memindahkan sisa masa dan jatah ke hewan lain milik pelanggan yang sama.</p>\n<p><figure><img src=\"/help/promosi/07-detail-anggota--pindah-hewan.webp\" alt=\"Dialog Pindah ke hewan lain\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Pindah ke hewan lain</figcaption></figure></p>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Pindah ke hewan lain</strong>.</li>\n<li>Pilih hewan tujuan dan <strong>Alasan</strong>.</li>\n<li>Klik <strong>Pindahkan membership</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "mengubah-tanggal-pemakaian",
+      "number": 18,
+      "title": "Mengubah Tanggal Pemakaian",
+      "summary": "memindahkan satu pemakaian jatah ke periode yang benar. Transaksinya tidak berubah.",
+      "html": "<p><strong>Fungsi:</strong> memindahkan satu pemakaian jatah ke periode yang benar. Transaksinya tidak berubah.</p>\n<p><figure><img src=\"/help/promosi/07-detail-anggota--ubah-tanggal-pakai.webp\" alt=\"Dialog Ubah tanggal pakai\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Ubah tanggal pakai</figcaption></figure></p>\n<h2>Langkah</h2>\n<ol>\n<li>Di <strong>Riwayat pemakaian</strong>, klik <strong>Ubah tanggal</strong> pada baris pemakaian.</li>\n<li>Isi <strong>Tanggal pakai yang benar</strong> dan <strong>Alasan</strong>.</li>\n<li>Klik <strong>Simpan tanggal pakai</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "membatalkan-membership",
+      "number": 19,
+      "title": "Membatalkan Membership",
+      "summary": "membatalkan kartu yang belum dipakai sama sekali. Kartu tetap tercatat.",
+      "html": "<p><strong>Fungsi:</strong> membatalkan kartu yang belum dipakai sama sekali. Kartu tetap tercatat.</p>\n<p><figure><img src=\"/help/promosi/07-detail-anggota--batalkan-membership.webp\" alt=\"Dialog Batalkan membership\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Batalkan membership</figcaption></figure></p>\n<ul>\n<li>Kalau jatah sudah pernah dipakai, pembatalan <strong>ditolak</strong>. Batalkan dulu transaksinya, atau pakai <strong>Refund kartu</strong>.</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Klik <strong>Batalkan membership</strong>.</li>\n<li>Pilih <strong>Alasan</strong>, lalu klik <strong>Batalkan membership</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "refund-kartu",
+      "number": 20,
+      "title": "Refund Kartu",
+      "summary": "mengembalikan uang pelanggan yang batal. Kartu ditutup dan uang dicatat keluar dari akun kas atau bank.",
+      "html": "<p><strong>Fungsi:</strong> mengembalikan uang pelanggan yang batal. Kartu ditutup dan uang dicatat keluar dari akun kas atau bank.</p>\n<p><figure><img src=\"/help/promosi/07-detail-anggota--refund.webp\" alt=\"Dialog Refund kartu\" width=\"1440\" height=\"900\" loading=\"lazy\" decoding=\"async\"><figcaption>Dialog Refund kartu</figcaption></figure></p>\n<ul>\n<li><strong>Nominal refund</strong> disarankan dari sisa masa aktif atau sisa jatah, dan boleh diturunkan.</li>\n<li>Refund mengurangi <strong>Pendapatan Membership</strong> bulan ini.</li>\n</ul>\n<blockquote>\n<p><strong>Penting:</strong> refund mencatat uang keluar dan menutup kartu. Pastikan uangnya memang dikembalikan.</p>\n</blockquote>\n<h2>Langkah</h2>\n<ol>\n<li>Di bagian <strong>Pengakuan pendapatan</strong>, klik <strong>Refund kartu</strong>.</li>\n<li>Pilih <strong>Akun kas / bank</strong>, periksa <strong>Nominal refund</strong>, pilih <strong>Alasan</strong>.</li>\n<li>Klik <strong>Refund dan tutup kartu</strong>.</li>\n</ol>\n"
+    },
+    {
+      "slug": "ringkasan-promosi",
+      "number": 21,
+      "title": "Ringkasan Promosi",
+      "summary": "memantau penjualan paket dan anggota yang perlu ditindaklanjuti.",
+      "html": "<p><strong>Fungsi:</strong> memantau penjualan paket dan anggota yang perlu ditindaklanjuti.</p>\n<p><figure><img src=\"/help/promosi/08-ringkasan.webp\" alt=\"Tab Ringkasan Promosi\" width=\"1440\" height=\"1468\" loading=\"lazy\" decoding=\"async\"><figcaption>Tab Ringkasan Promosi <a class=\"help-open\" href=\"/dashboard/promotion/summary\">Buka halaman ini</a></figcaption></figure></p>\n<div class=\"help-table\"><table>\n<thead>\n<tr>\n<th>Kartu</th>\n<th>Artinya</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>Penjualan paket</td>\n<td>Nilai paket terjual pada periode</td>\n</tr>\n<tr>\n<td>Nilai benefit terpakai</td>\n<td>Harga normal layanan yang dipakai lewat jatah</td>\n</tr>\n<tr>\n<td>Anggota aktif</td>\n<td>Membership berlaku saat ini (termasuk yang ditunda)</td>\n</tr>\n<tr>\n<td>Perpanjangan</td>\n<td>Paket terjual yang merupakan perpanjangan</td>\n</tr>\n</tbody></table></div>\n<ul>\n<li><strong>Perlu tindakan</strong>: <strong>Membership berakhir ≤14 hari</strong> (tawarkan perpanjangan) dan <strong>Jatah belum terpakai, periode hampir habis</strong> (ingatkan pelanggan).</li>\n<li><strong>Kinerja paket</strong>: terjual, penjualan, jatah dipakai, dan nilai benefit per paket.</li>\n<li>Kartu stempel dan promo <strong>belum tersedia</strong> (bertanda <strong>Segera</strong>).</li>\n</ul>\n<h2>Langkah</h2>\n<ol>\n<li>Pilih <strong>Cabang</strong> dan <strong>Periode</strong> (Bulan ini, Bulan lalu, 30 hari terakhir).</li>\n<li>Arahkan kursor ke ikon (i) untuk melihat cara hitung setiap angka.</li>\n</ol>\n"
+    }
+  ],
+  "faq": [
+    {
+      "question": "Paket tidak muncul di kasir?",
+      "answer": "Cek <strong>Status</strong> paket aktif, <strong>Berlaku di cabang</strong>, <strong>Jenis hewan</strong>, dan <strong>Syarat pembeli</strong>."
+    },
+    {
+      "question": "Pelanggan sudah bayar di luar Buloo?",
+      "answer": "Pakai <strong>Terbitkan manual</strong> di profil hewan. Kalau bayar sekarang, jual lewat <strong>Kasir</strong>."
+    },
+    {
+      "question": "Pemakaian jatah salah?",
+      "answer": "Void atau retur transaksinya, jatah kembali otomatis. Kalau hanya salah periode, pakai <strong>Ubah tanggal</strong>."
+    },
+    {
+      "question": "Tidak bisa mengelola keanggotaan?",
+      "answer": "Hanya <strong>Owner</strong> dan <strong>Manager</strong> yang punya izin."
+    }
+  ],
+  "tips": [
+    "cek <strong>Perlu tindakan</strong> di Ringkasan setiap minggu untuk menawarkan perpanjangan."
+  ],
+  "updatedAt": "2026-11-04"
+}

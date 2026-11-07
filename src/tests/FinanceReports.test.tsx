@@ -739,6 +739,28 @@ describe("ProfitLossScreen", () => {
     );
   });
 
+  it("filters by sumber — Kasir and one store — and says beban umum is left out", async () => {
+    asMock(journalEntryService.profitLossSources).mockResolvedValue({
+      stores: [{ _id: "s1", name: "Paw Shop", marketplace: "shopee" }],
+    });
+    renderWithAuth(<ProfitLossScreen now={NOW} />);
+    await screen.findByText("Total pendapatan");
+
+    await userEvent.click(screen.getByRole("button", { name: "Sumber" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Kasir" }));
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Shopee – Paw Shop" }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+
+    await waitFor(() =>
+      expect(journalEntryService.profitLoss).toHaveBeenLastCalledWith(
+        expect.objectContaining({ channels: ["kasir"], storeIds: ["s1"] }),
+      ),
+    );
+    expect(screen.getByText(/Beban umum seperti sewa/)).toBeInTheDocument();
+  });
+
   it("exports the statement to Excel", async () => {
     renderWithAuth(<ProfitLossScreen now={NOW} />);
     await screen.findByText("Total pendapatan");

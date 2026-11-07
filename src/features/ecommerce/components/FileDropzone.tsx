@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
- * Where a wizard's Shopee file goes — click or drop, .xlsx only. Once a file
+ * Where a wizard's marketplace file goes — click or drop, .xlsx only. Once a file
  * is picked it shows as a chip with Ganti. Same anatomy as TemplateDropzone.
  */
 export function FileDropzone({
@@ -36,7 +36,7 @@ export function FileDropzone({
       type="file"
       accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
       className="hidden"
-      aria-label="Pilih file Shopee (.xlsx)"
+      aria-label="Pilih file marketplace (.xlsx)"
       onChange={(event) => {
         take(event.target.files);
         event.target.value = "";

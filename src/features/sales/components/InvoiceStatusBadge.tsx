@@ -71,12 +71,14 @@ const SOURCE_LABEL: Record<CustomerInvoiceSource, string> = {
   manual: "Manual",
   pos_bridge: "Kasir",
   shopee_import: "Shopee",
+  tiktok_import: "TikTok",
 };
 
 const SOURCE_TONE: Record<CustomerInvoiceSource, string> = {
   manual: "bg-tint-neutral text-muted",
   pos_bridge: "bg-tint-brand text-primary",
   shopee_import: "bg-tint-info text-info",
+  tiktok_import: "bg-tint-info text-info",
 };
 
 export function InvoiceSourceBadge({ source }: { source: CustomerInvoiceSource }) {

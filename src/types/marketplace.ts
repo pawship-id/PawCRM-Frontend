@@ -1,9 +1,13 @@
 /**
- * Penjualan › E-commerce — the /api/marketplace contract (Shopee, Tahap A).
+ * Penjualan › E-commerce — the /api/marketplace contract (Shopee, and TikTok
+ * Shop / Tokopedia — one TikTok store covers both apps).
  * Mirrors the backend models in PawCRM-Backend/src/models/marketplace*.model.js.
  */
 
-export type Marketplace = "shopee";
+export type Marketplace = "shopee" | "tiktok";
+
+/** TikTok: which app the buyer ordered in. */
+export type MarketplaceChannel = "tokopedia" | "tiktok_shop";
 
 /** The template every stock export patches — set by the first upload. */
 export interface MarketplaceTemplate {
@@ -43,7 +47,7 @@ export interface MarketplaceStore {
   lastStockExportAt: string | null;
   lastOrderImportAt?: string | null;
   lastSettlementAt?: string | null;
-  /** Shopee statuses an order import turns into invoices. */
+  /** Marketplace statuses an order import turns into invoices. */
   importStatuses?: string[];
   /** The store's "Shopee – <toko>" customer, once the first import made it. */
   customerId?: string | null;
@@ -220,7 +224,10 @@ export interface MarketplaceHistoryEntry {
       variance?: number;
       not_found?: number;
       already_paid?: number;
+      cancelled?: number;
+      adjustment?: number;
       settled?: number;
+      adjusted?: number;
       number?: string;
     };
   documents?: Array<{ kind: string; id: string; number: string | null; ref: string | null }>;
@@ -249,6 +256,8 @@ export interface OrderPreviewItem {
   status: string;
   reason: string | null;
   paidAt: string | null;
+  /** TikTok only. */
+  channel?: MarketplaceChannel | string | null;
   /** The invoice value: Σ subtotal − seller voucher. */
   total: number;
   lineCount: number;
@@ -296,6 +305,8 @@ export interface MarketplaceOrderRecord {
   paidAt: string | null;
   total: number;
   sellerVoucher?: number;
+  /** TikTok only: Tokopedia or TikTok Shop. */
+  channel?: MarketplaceChannel | string | null;
   /** Username (Pembeli) from the order file. */
   buyerUsername?: string | null;
   /** The order file this came in with. */
@@ -337,24 +348,34 @@ export interface MarketplaceSettlementDetail {
   status: string;
   journalEntryId: string | null;
   journalEntryNumber: string | null;
+  marketplace?: Marketplace;
   totals: {
     released: number;
     invoices: number;
     variance: number;
     admin: number;
     program: number;
+    affiliate?: number;
+    ads?: number;
     shipping: number;
     pph22: number;
+    /** TikTok: adjustment rows booked to Selisih pencairan. */
+    adjustment?: number;
   };
   lines: Array<{
     orderNo: string;
     releasedAt: string | null;
-    invoiceId: string;
+    /** Null on an adjustment line. */
+    invoiceId: string | null;
     invoiceNumber: string | null;
-    result: "match" | "variance";
+    result: "match" | "variance" | "adjustment";
+    /** TikTok: the report's Jenis transaksi, the order an adjustment is about, the app. */
+    kindLabel?: string | null;
+    relatedOrderNo?: string | null;
+    channel?: MarketplaceChannel | string | null;
     invoiceValue: number;
     variance: number;
-    /** Admin, program and shipping together. */
+    /** Every fee but PPh 22, together. */
     fees: number;
     pph22: number;
     netReleased: number;
@@ -366,7 +387,18 @@ export interface MarketplaceSettlementDetail {
   }>;
 }
 
-export type SettlementCategory = "match" | "variance" | "not_found" | "already_paid";
+/**
+ * `cancelled` and `adjustment` come from TikTok's report only: an order
+ * cancelled and refunded in full (Batal, tanpa faktur), and a row that is not
+ * an order (Penyesuaian).
+ */
+export type SettlementCategory =
+  | "match"
+  | "variance"
+  | "not_found"
+  | "already_paid"
+  | "cancelled"
+  | "adjustment";
 
 export interface SettlementPreviewItem {
   orderNo: string;
@@ -377,7 +409,10 @@ export interface SettlementPreviewItem {
   invoiceValue: number | null;
   comparisonValue: number;
   variance: number;
-  /** Admin, program and shipping together, as the Potongan column shows them. */
+  /** TikTok only. */
+  channel?: MarketplaceChannel | string | null;
+  kindLabel?: string | null;
+  /** Every fee but PPh 22 together, as the Potongan column shows them. */
   deductions: number;
   pph22: number;
   netReleased: number;
@@ -399,11 +434,18 @@ export interface SettlementPreview {
   periodFrom: string | null;
   periodTo: string | null;
   totalReleased: number;
-  counts: Record<SettlementCategory, number>;
+  /** `cancelled` and `adjustment` only ever count TikTok rows. */
+  counts: Record<Exclude<SettlementCategory, "cancelled" | "adjustment">, number> &
+    Partial<Record<"cancelled" | "adjustment", number>>;
   items: SettlementPreviewItem[];
   journal: SettlementJournalLine[];
-  /** Amount released for orders that will be settled now. */
+  /** Amount released for orders (and TikTok adjustments) that will be booked now. */
   settlingReleased: number;
+  /** TikTok: Σ Riwayat penarikan — the transfers to the bank, for information. */
+  withdrawnTotal?: number | null;
+  withdrawalCount?: number | null;
+  /** TikTok: most orders unknown to this store — maybe another shop's report. */
+  warning?: string | null;
 }
 
 export interface SettlementResult {
@@ -411,6 +453,9 @@ export interface SettlementResult {
   settlementId: string;
   number: string;
   settled: number;
+  /** TikTok: adjustment rows booked, invoices flagged as cancelled. */
+  adjusted?: number;
+  flagged?: number;
 }
 
 export type AccountRole =
@@ -420,6 +465,8 @@ export type AccountRole =
   | "voucher"
   | "admin"
   | "program"
+  | "affiliate"
+  | "ads"
   | "shipping"
   | "pph22"
   | "variance";

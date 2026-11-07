@@ -53,6 +53,8 @@ export interface CustomerInvoicesQuery {
   /** The rest of the filter panel. Each empty array means "not filtering". */
   createdBy: string[];
   sources: CustomerInvoiceSource[];
+  /** E-commerce stores ticked under Sumber — OR'd with `sources`. */
+  storeIds: string[];
   statuses: CustomerInvoiceStatusFilter[];
   /**
    * Always set — a list with no ordering is not a thing. Driven by the column
@@ -78,6 +80,7 @@ export const DEFAULT_QUERY: CustomerInvoicesQuery = {
   dateTo: "",
   createdBy: [],
   sources: [],
+  storeIds: [],
   statuses: [],
   /*
     SOONEST DUE FIRST — who has waited longest. The endpoint's own default, and
@@ -116,6 +119,7 @@ export function toFilterQuery(
     warehouseIds: nonEmpty(query.warehouseIds),
     createdBy: nonEmpty(query.createdBy),
     sources: nonEmpty(query.sources),
+    storeIds: nonEmpty(query.storeIds),
     statuses: nonEmpty(query.statuses),
     ...(query.period === "all"
       ? {}

@@ -26,7 +26,7 @@ import { useMarketplaceStores } from "../hooks/useMarketplaceStores";
 import { useSelectedStore } from "../hooks/useSelectedStore";
 import { useAccountOptions } from "../hooks/useAccountOptions";
 import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
-import { ECOMMERCE_SKU_HREF, ORDER_STATUSES, formatCount, formatDateTime, withStore } from "../labels";
+import { ECOMMERCE_SKU_HREF, formatCount, formatDateTime, marketplaceProfile, withStore } from "../labels";
 import { ConnectStoreDialog } from "./ConnectStoreDialog";
 import { EcommerceHeader } from "./EcommerceHeader";
 import { NoStoresCard } from "./NoStoresCard";
@@ -96,12 +96,15 @@ function StoreForm({ store, onSaved }: { store: MarketplaceStore; onSaved: () =>
   const { can } = usePermissions();
   const editable = can("ecommerce", "manageStores");
   const warehouses = useWarehouseOptions();
+  const profile = marketplaceProfile(store.marketplace);
+  const isTikTok = store.marketplace === "tiktok";
+  const defaultStatuses = profile.orderStatuses;
 
   const [name, setName] = useState(store.name);
   const [isActive, setIsActive] = useState(store.isActive ? "active" : "inactive");
   const [warehouseId, setWarehouseId] = useState(store.warehouseId);
   const [stockBuffer, setStockBuffer] = useState(String(store.stockBuffer));
-  const [importStatuses, setImportStatuses] = useState<string[]>(store.importStatuses ?? [...ORDER_STATUSES]);
+  const [importStatuses, setImportStatuses] = useState<string[]>(store.importStatuses ?? [...defaultStatuses]);
   // Role → chosen account id; a role left out stays on what the server has.
   const [accountRows, setAccountRows] = useState<StoreAccountRow[]>([]);
   const [accountChoice, setAccountChoice] = useState<Partial<Record<AccountRole, string>>>({});
@@ -143,7 +146,7 @@ function StoreForm({ store, onSaved }: { store: MarketplaceStore; onSaved: () =>
       ? "buffer stok harus bilangan bulat 0 atau lebih"
       : null;
   const statusesChanged =
-    [...importStatuses].sort().join("|") !== [...(store.importStatuses ?? [...ORDER_STATUSES])].sort().join("|");
+    [...importStatuses].sort().join("|") !== [...(store.importStatuses ?? [...defaultStatuses])].sort().join("|");
   const changedAccounts = Object.fromEntries(
     Object.entries(accountChoice).filter(
       ([role, id]) => id !== accountRows.find((row) => row.role === role)?.account._id,
@@ -249,25 +252,35 @@ function StoreForm({ store, onSaved }: { store: MarketplaceStore; onSaved: () =>
             hint="Stok di file = stok gudang − buffer, minimal 0. Kalau dua toko memakai gudang yang sama, keduanya menerima stok yang sama."
             error={errors.stockBuffer}
           />
-          <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium text-foreground">Username Shopee</span>
-            <p className="flex min-h-11 items-center text-sm text-foreground">
-              {store.shopUsername ?? "—"}
-            </p>
-            <p className="text-xs text-muted">
-              Diambil dari Laporan Penghasilan pertama yang diimpor, lalu dikunci.
-            </p>
-          </div>
+          {isTikTok ? (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-foreground">Marketplace</span>
+              <p className="flex min-h-11 items-center text-sm text-foreground">{profile.label}</p>
+              <p className="text-xs text-muted">
+                Satu toko untuk pesanan dari aplikasi TikTok dan Tokopedia. Asal pesanan tercatat di faktur.
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-foreground">Username Shopee</span>
+              <p className="flex min-h-11 items-center text-sm text-foreground">
+                {store.shopUsername ?? "—"}
+              </p>
+              <p className="text-xs text-muted">
+                Diambil dari Laporan Penghasilan pertama yang diimpor, lalu dikunci.
+              </p>
+            </div>
+          )}
         </fieldset>
       </Card>
 
       <Card title="Impor pesanan">
         <div className="flex flex-col gap-3">
           <p className="text-sm text-muted">
-            Status pesanan Shopee yang jadi faktur. Belum Bayar dan Batal tidak pernah jadi faktur.
+            Status pesanan {profile.short} yang jadi faktur. {profile.neverInvoiced} tidak pernah jadi faktur.
           </p>
           <CheckRowGroup>
-            {ORDER_STATUSES.map((status) => (
+            {defaultStatuses.map((status) => (
               <CheckRow
                 key={status}
                 label={status}
@@ -282,10 +295,14 @@ function StoreForm({ store, onSaved }: { store: MarketplaceStore; onSaved: () =>
             ))}
           </CheckRowGroup>
           <p className="text-sm text-muted">
-            Pelanggan di faktur: <span className="font-medium text-foreground">Shopee – {store.name}</span>{" "}
-            (dibuat otomatis saat impor pertama, tidak bisa diubah). Tanggal faktur = waktu
-            pembayaran. Harga = Harga Awal, diskon baris = Diskon Dari Penjual, diskon faktur =
-            Voucher Ditanggung Penjual.
+            Pelanggan di faktur:{" "}
+            <span className="font-medium text-foreground">
+              {profile.customerPrefix} – {store.name}
+            </span>{" "}
+            (dibuat otomatis saat impor pertama, tidak bisa diubah).{" "}
+            {isTikTok
+              ? "Tanggal faktur = Paid Time (COD yang belum diterima: waktu pesanan dibuat). Harga = SKU Unit Original Price, diskon baris = SKU Seller Discount (Potongan Promo). Diskon platform TikTok tidak masuk faktur."
+              : "Tanggal faktur = waktu pembayaran. Harga = Harga Awal, diskon baris = Diskon Dari Penjual, diskon faktur = Voucher Ditanggung Penjual."}
           </p>
         </div>
       </Card>
@@ -295,6 +312,9 @@ function StoreForm({ store, onSaved }: { store: MarketplaceStore; onSaved: () =>
           <p className="text-sm text-muted">
             Akun untuk faktur dan pencairan toko ini. Bawaan sudah disiapkan; ganti hanya kalau
             pembukuan toko berbeda.
+            {isTikTok
+              ? " Komisi afiliasi dan biaya iklan bawaannya digabung ke Biaya program & promosi. Kalau mau dipisah, buat akun sendiri di Bagan Akun lalu pilih di sini."
+              : ""}
           </p>
           <div className="grid gap-4 md:grid-cols-2">
             {accountRows.map((row) => {
@@ -322,7 +342,7 @@ function StoreForm({ store, onSaved }: { store: MarketplaceStore; onSaved: () =>
         </div>
       </Card>
 
-      <Card title="Template Shopee">
+      <Card title={isTikTok ? "Template TikTok" : "Template Shopee"}>
         <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             {store.template ? (
@@ -330,11 +350,16 @@ function StoreForm({ store, onSaved }: { store: MarketplaceStore; onSaved: () =>
                 <p className="break-all font-medium text-foreground">{store.template.fileName}</p>
                 <p className="text-muted">
                   {formatCount(store.template.variantCount)} varian · diupload{" "}
-                  {formatDateTime(store.template.uploadedAt)} · Shop ID {store.shopId}
+                  {formatDateTime(store.template.uploadedAt)}
+                  {store.shopId ? ` · Shop ID ${store.shopId}` : ""}
                 </p>
               </>
             ) : (
-              <p className="text-muted">Belum diupload. Shop ID diambil dari template pertama.</p>
+              <p className="text-muted">
+                {isTikTok
+                  ? "Belum diupload. Template berikutnya dicek dari ID Produk: file dari toko lain ditolak."
+                  : "Belum diupload. Shop ID diambil dari template pertama."}
+              </p>
             )}
           </div>
           <Button asChild variant="secondary">

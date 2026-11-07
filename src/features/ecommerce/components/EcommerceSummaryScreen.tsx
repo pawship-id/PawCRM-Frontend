@@ -31,6 +31,7 @@ import {
   formatDate,
   formatDateTime,
   formatRupiah,
+  marketplaceProfile,
   withStore,
 } from "../labels";
 import { BindSkuDialog } from "./BindSkuDialog";
@@ -38,8 +39,6 @@ import { ConnectStoreDialog } from "./ConnectStoreDialog";
 import { EcommerceHeader } from "./EcommerceHeader";
 import { HeldOrderDialog } from "./HeldOrderDialog";
 import { HistoryDetailDialog } from "./HistoryDetailDialog";
-
-const COMING_SOON = ["Tokopedia", "TikTok Shop"];
 
 function historySummary(entry: MarketplaceHistoryEntry): string {
   const r = entry.result;
@@ -58,6 +57,8 @@ function historySummary(entry: MarketplaceHistoryEntry): string {
     return parts(
       `${formatCount(r.settled)} faktur lunas`,
       Boolean(r.variance) && `${formatCount(r.variance)} selisih`,
+      Boolean(r.adjusted) && `${formatCount(r.adjusted)} penyesuaian`,
+      Boolean(r.flagged) && `${formatCount(r.flagged)} ditandai Batal`,
       r.number ?? false,
     );
   }
@@ -85,9 +86,10 @@ function historyStatus(entry: MarketplaceHistoryEntry): { label: string; tone: s
 /**
  * Penjualan › E-commerce › Ringkasan.
  *
- * The figures (what Shopee still owes, held orders, bound variations, the last
- * export), the connected stores as cards, the held-order queue, Perlu tindakan
- * (orders Shopee cancelled after they became invoices), and Riwayat.
+ * The figures (what the marketplaces still owe, held orders, bound variations,
+ * the last export), the connected stores as cards — Shopee and TikTok Shop /
+ * Tokopedia — the held-order queue, Perlu tindakan (orders cancelled after they
+ * became invoices), and Riwayat.
  */
 export function EcommerceSummaryScreen() {
   const { stores, loading, error, refetch } = useMarketplaceStores();
@@ -101,6 +103,9 @@ export function EcommerceSummaryScreen() {
   const [binding, setBinding] = useState<{ storeId: string; listing: MarketplaceListing } | null>(null);
 
   const storeName = (id: string) => stores.find((store) => store._id === id)?.name ?? "Toko";
+  const marketplaceOf = (id: string) => stores.find((store) => store._id === id)?.marketplace;
+  /** "Shopee · pawship.id", "TikTok · Pawship" — a row's store, with its marketplace. */
+  const storeTag = (id: string) => `${marketplaceProfile(marketplaceOf(id)).short} · ${storeName(id)}`;
 
   const bound = stores.reduce((sum, store) => sum + (store.listingCounts?.bound ?? 0), 0);
   const unbound = stores.reduce(
@@ -138,7 +143,7 @@ export function EcommerceSummaryScreen() {
       setViewing(null);
       setBinding({ storeId: row.storeId, listing });
     } catch (error) {
-      swalToast(ecommerceFailure(error, "Varian Shopee belum bisa dibuka.").toast, "error", 6000);
+      swalToast(ecommerceFailure(error, "Varian belum bisa dibuka.").toast, "error", 6000);
     }
   };
 
@@ -149,7 +154,7 @@ export function EcommerceSummaryScreen() {
       cell: (row) => (
         <div>
           <div className="font-semibold tabular-nums text-foreground">{row.orderNo}</div>
-          <div className="text-sm text-muted">Shopee · {storeName(row.storeId)}</div>
+          <div className="text-sm text-muted">{storeTag(row.storeId)}</div>
         </div>
       ),
     },
@@ -213,7 +218,7 @@ export function EcommerceSummaryScreen() {
       cell: (row) => (
         <div>
           <div className="tabular-nums font-medium text-foreground">{row.orderNo}</div>
-          <div className="text-xs text-muted">{storeName(row.storeId)}</div>
+          <div className="text-xs text-muted">{storeTag(row.storeId)}</div>
         </div>
       ),
     },
@@ -254,7 +259,7 @@ export function EcommerceSummaryScreen() {
             <span className={cn("size-2.5 flex-none rounded-full", PROCESS_DOT[row.process])} aria-hidden />
             {PROCESS_LABEL[row.process]}
           </div>
-          <div className="text-sm text-muted">Shopee · {storeName(row.storeId)}</div>
+          <div className="text-sm text-muted">{storeTag(row.storeId)}</div>
         </div>
       ),
     },
@@ -297,22 +302,22 @@ export function EcommerceSummaryScreen() {
         <StatTile
           label="Belum cair"
           value={formatRupiah(unpaidAmount)}
-          caption={`${formatCount(unpaidCount)} faktur Shopee`}
-          hint="Faktur Shopee yang dananya belum dilepas. Lunas saat Laporan Penghasilan diimpor."
+          caption={`${formatCount(unpaidCount)} faktur marketplace`}
+          hint="Faktur marketplace yang dananya belum cair. Lunas saat laporan pencairan diimpor."
           loading={loading}
         />
         <StatTile
           label="Pesanan tertahan"
           value={formatCount(orders.held.length)}
           caption="SKU belum terikat"
-          hint="Pesanan yang belum jadi faktur karena ada SKU Shopee yang belum diikat. Otomatis jadi faktur setelah diikat."
+          hint="Pesanan yang belum jadi faktur karena ada SKU marketplace yang belum diikat. Otomatis jadi faktur setelah diikat."
           loading={orders.loading}
         />
         <StatTile
           label="Varian terikat"
           value={formatCount(bound)}
           caption={`dari ${formatCount(bound + unbound)} varian ber-SKU`}
-          hint="Varian Shopee yang sudah terhubung ke produk Buloo. Hanya varian terikat yang stoknya ikut diekspor."
+          hint="Varian marketplace yang sudah terhubung ke produk Buloo. Hanya varian terikat yang stoknya ikut diekspor."
           loading={loading}
         />
         <StatTile
@@ -344,25 +349,11 @@ export function EcommerceSummaryScreen() {
               </span>
               <span>
                 <span className="block font-semibold text-foreground">Hubungkan toko</span>
-                <span className="block text-sm text-muted">Shopee</span>
+                <span className="block text-sm text-muted">Shopee · Tokopedia &amp; TikTok Shop</span>
               </span>
             </button>
           </Can>
 
-          {COMING_SOON.map((name) => (
-            <div
-              key={name}
-              className="flex min-h-32 items-start justify-between gap-3 rounded-xl border border-border p-6 opacity-70"
-            >
-              <div>
-                <p className="font-semibold text-foreground">{name}</p>
-                <p className="text-sm text-muted">Belum dihubungkan</p>
-              </div>
-              <span className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted">
-                Segera hadir
-              </span>
-            </div>
-          ))}
         </div>
       </section>
 
@@ -385,7 +376,7 @@ export function EcommerceSummaryScreen() {
         <Card>
           <div className="flex flex-col gap-4">
             <h2 className="text-lg font-bold text-foreground">Perlu tindakan</h2>
-            <p className="text-sm text-muted">Pesanan ini Batal di Shopee setelah jadi faktur.</p>
+            <p className="text-sm text-muted">Pesanan ini dibatalkan di marketplace setelah jadi faktur.</p>
             <DataTable
               columns={actionColumns}
               rows={orders.needsAction}
@@ -427,7 +418,8 @@ export function EcommerceSummaryScreen() {
       {viewing ? (
         <HeldOrderDialog
           order={viewing}
-          storeLabel={`Shopee · ${storeName(viewing.storeId)}`}
+          storeLabel={storeTag(viewing.storeId)}
+          marketplace={marketplaceOf(viewing.storeId)}
           onBind={(sku) => void openBind(viewing, sku)}
           onClose={() => setViewing(null)}
         />
@@ -439,6 +431,7 @@ export function EcommerceSummaryScreen() {
           warehouseId={stores.find((store) => store._id === binding.storeId)?.warehouseId ?? undefined}
           warehouseName={stores.find((store) => store._id === binding.storeId)?.warehouseName ?? null}
           listing={binding.listing}
+          marketplace={marketplaceOf(binding.storeId)}
           onClose={() => setBinding(null)}
           onChanged={() => {
             setBinding(null);
@@ -462,6 +455,7 @@ export function EcommerceSummaryScreen() {
         <HistoryDetailDialog
           entry={opened}
           storeName={storeName(opened.storeId)}
+          marketplace={marketplaceOf(opened.storeId)}
           onClose={() => setOpened(null)}
         />
       ) : null}

@@ -12,6 +12,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
@@ -61,6 +62,7 @@ export function ImportFilePicker({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  const compact = !xlsxHint && !csvHint;
 
   const handleFiles = (files: FileList | null) => {
     const file = files?.[0];
@@ -84,21 +86,35 @@ export function ImportFilePicker({
             </Button>
           </DropdownMenuTrigger>
 
-          <DropdownMenuContent align="start" className="w-72">
+          {/*
+            WITHOUT HINTS THE MENU IS TWO SHORT WORDS — it takes the trigger's
+            width and a rule between the rows rather than a 288 px box
+            (Transfer Stok, 6 Nov 2026).
+          */}
+          <DropdownMenuContent
+            align="start"
+            className={
+              compact
+                ? "min-w-[var(--radix-dropdown-menu-trigger-width)]"
+                : "w-72"
+            }
+          >
             <DropdownMenuItem
               onSelect={() => onDownloadTemplate("xlsx")}
               className="flex-col items-start gap-0.5"
             >
               <span className="font-medium">Excel (.xlsx)</span>
-              <span className="text-xs text-muted">{xlsxHint}</span>
+              {xlsxHint && <span className="text-xs text-muted">{xlsxHint}</span>}
             </DropdownMenuItem>
+
+            {compact && <DropdownMenuSeparator />}
 
             <DropdownMenuItem
               onSelect={() => onDownloadTemplate("csv")}
               className="flex-col items-start gap-0.5"
             >
               <span className="font-medium">CSV (.csv)</span>
-              <span className="text-xs text-muted">{csvHint}</span>
+              {csvHint && <span className="text-xs text-muted">{csvHint}</span>}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

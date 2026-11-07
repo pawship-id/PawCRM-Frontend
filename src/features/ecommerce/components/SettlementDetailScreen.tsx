@@ -9,13 +9,23 @@ import { marketplaceService } from "@/services/marketplace.service";
 import type { MarketplaceSettlementDetail } from "@/types/marketplace";
 
 import { ecommerceFailure } from "../errors";
-import { ECOMMERCE_HREF, INVOICE_HREF, INVOICE_PAYMENT_HREF, formatCount, formatDate, formatRupiah } from "../labels";
+import {
+  ECOMMERCE_HREF,
+  INVOICE_HREF,
+  INVOICE_PAYMENT_HREF,
+  channelLabel,
+  formatCount,
+  formatDate,
+  formatRupiah,
+  marketplaceProfile,
+} from "../labels";
 
 type Line = MarketplaceSettlementDetail["lines"][number];
 
 /**
- * One PMT — what a Shopee payout paid. Read only: the invoices it settled and
- * what Shopee kept. Each invoice has its own payment and journal, opened from its
+ * One PMT — what a marketplace payout paid. Read only: the invoices it settled
+ * and what the marketplace kept. TikTok adds adjustment rows: no invoice, a
+ * payment of their own against Selisih pencairan. Each invoice has its own payment and journal, opened from its
  * row; cancelling one there marks the row here (BO, 1 Nov 2026).
  */
 export function SettlementDetailScreen({ id }: { id: string }) {
@@ -48,7 +58,10 @@ export function SettlementDetailScreen({ id }: { id: string }) {
   }
 
   const { totals } = settlement;
-  const settledCount = settlement.lines.filter((line) => !line.cancelled).length;
+  const profile = marketplaceProfile(settlement.marketplace);
+  const isTikTok = settlement.marketplace === "tiktok";
+  const settledCount = settlement.lines.filter((line) => !line.cancelled && line.invoiceId).length;
+  const adjustmentCount = settlement.lines.filter((line) => !line.cancelled && line.result === "adjustment").length;
   const columns: DataTableColumn<Line>[] = [
     {
       id: "order",
@@ -56,18 +69,28 @@ export function SettlementDetailScreen({ id }: { id: string }) {
       cell: (row) => (
         <div>
           <div className="font-semibold tabular-nums text-foreground">{row.orderNo}</div>
-          <div className="text-sm tabular-nums text-muted">Dilepas {formatDate(row.releasedAt)}</div>
+          <div className="text-sm tabular-nums text-muted">
+            Dilepas {formatDate(row.releasedAt)}
+            {channelLabel(row.channel) ? ` · ${channelLabel(row.channel)}` : ""}
+          </div>
         </div>
       ),
     },
     {
       id: "invoice",
       header: "Faktur",
-      cell: (row) => (
-        <Link href={INVOICE_HREF(row.invoiceId)} className="whitespace-nowrap tabular-nums text-primary underline">
-          {row.invoiceNumber ?? "Buka faktur"}
-        </Link>
-      ),
+      cell: (row) =>
+        row.invoiceId ? (
+          <Link href={INVOICE_HREF(row.invoiceId)} className="whitespace-nowrap tabular-nums text-primary underline">
+            {row.invoiceNumber ?? "Buka faktur"}
+          </Link>
+        ) : (
+          <span className="text-sm text-muted">
+            {[row.kindLabel ?? "Penyesuaian", row.relatedOrderNo ? `pesanan ${row.relatedOrderNo}` : null]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        ),
     },
     {
       id: "payment",
@@ -75,7 +98,11 @@ export function SettlementDetailScreen({ id }: { id: string }) {
       cell: (row) =>
         row.paymentId ? (
           <Link
-            href={INVOICE_PAYMENT_HREF(row.invoiceId, row.paymentId)}
+            href={
+              row.invoiceId
+                ? INVOICE_PAYMENT_HREF(row.invoiceId, row.paymentId)
+                : `/dashboard/finance/cash-bank/transactions/${row.paymentId}`
+            }
             className="whitespace-nowrap tabular-nums text-primary underline"
           >
             {row.paymentNumber ?? "Buka pembayaran"}
@@ -116,6 +143,10 @@ export function SettlementDetailScreen({ id }: { id: string }) {
           <span className="inline-flex whitespace-nowrap rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted">
             Dibatalkan
           </span>
+        ) : row.result === "adjustment" ? (
+          <span className="inline-flex whitespace-nowrap rounded-full bg-tint-warning px-2 py-0.5 text-xs font-medium text-warning">
+            Penyesuaian
+          </span>
         ) : row.result === "variance" ? (
           <div>
             <span className="inline-flex whitespace-nowrap rounded-full bg-tint-warning px-2 py-0.5 text-xs font-medium text-warning">
@@ -144,12 +175,16 @@ export function SettlementDetailScreen({ id }: { id: string }) {
         <StatTile
           label="Dana cair"
           value={formatRupiah(totals.released)}
-          caption={`${formatCount(settledCount)} faktur lunas`}
+          caption={`${formatCount(settledCount)} faktur lunas${
+            adjustmentCount ? ` · ${formatCount(adjustmentCount)} penyesuaian` : ""
+          }`}
         />
         <StatTile label="Nilai faktur" value={formatRupiah(totals.invoices)} />
         <StatTile
           label="Potongan marketplace"
-          value={formatRupiah(totals.admin + totals.program + totals.shipping)}
+          value={formatRupiah(
+            totals.admin + totals.program + (totals.affiliate ?? 0) + (totals.ads ?? 0) + totals.shipping,
+          )}
         />
         <StatTile label="PPh 22" value={formatRupiah(totals.pph22)} />
       </div>
@@ -157,10 +192,11 @@ export function SettlementDetailScreen({ id }: { id: string }) {
       <Card>
         <dl className="grid gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
           {[
-            ["Toko", `Shopee · ${settlement.storeName ?? "—"}`],
+            ["Toko", `${profile.short} · ${settlement.storeName ?? "—"}`],
             ["Tanggal", formatDate(settlement.date)],
             ["Periode laporan", `${formatDate(settlement.periodFrom)} – ${formatDate(settlement.periodTo)}`],
-            ["Penjual", settlement.shopUsername ?? "—"],
+            ...(isTikTok ? [] : [["Penjual", settlement.shopUsername ?? "—"]]),
+            ...(totals.adjustment ? [["Penyesuaian", formatRupiah(totals.adjustment)]] : []),
           ].map(([label, value]) => (
             <div key={label}>
               <dt className="text-muted">{label}</dt>
@@ -189,7 +225,9 @@ export function SettlementDetailScreen({ id }: { id: string }) {
       </Card>
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-lg font-bold text-foreground">Faktur dilunasi</h2>
+        <h2 className="text-lg font-bold text-foreground">
+          {adjustmentCount ? "Faktur dilunasi & penyesuaian" : "Faktur dilunasi"}
+        </h2>
         <DataTable columns={columns} rows={settlement.lines} rowKey={(row) => `${row.orderNo}-${row.releasedAt}`} />
       </section>
     </div>

@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { Fragment, useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Store } from "lucide-react";
 
 import {
   Alert,
   Breadcrumb,
+  FilterMultiSelect,
   FilterPills,
   FinanceScopeCard,
   ScopeField,
   Spinner,
+  scopeSummary,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,7 +33,10 @@ import {
   formatPercent,
   monthRange,
 } from "../financeSummary";
-import { useProfitLossMonths } from "../hooks/useProfitLossMonths";
+import {
+  STORE_SOURCE_PREFIX,
+  useProfitLossMonths,
+} from "../hooks/useProfitLossMonths";
 import {
   CHANGE_BIG,
   CHANGE_THRESHOLD,
@@ -64,6 +69,11 @@ import {
  * `now` COMES FROM THE SERVER so the month the screen opens on matches the HTML.
  */
 
+const MARKETPLACE_SHORT: Record<string, string> = {
+  shopee: "Shopee",
+  tiktok: "TikTok",
+};
+
 const MONTHS = [
   "Januari",
   "Februari",
@@ -88,6 +98,8 @@ export function ProfitLossScreen({ now }: { now: string }) {
   // Empty = semua. The multi-selects apply on Terapkan and reset to "all".
   const [branchIds, setBranchIds] = useState<string[]>([]);
   const [lineIds, setLineIds] = useState<string[]>([]);
+  // Sumber: `kasir`, `manual`, `store:<id>`. Empty = semua.
+  const [sources, setSources] = useState<string[]>([]);
   const [view, setView] = useState<View>("gabungan");
   const [open, setOpen] = useState<Set<string>>(() => new Set(["np"]));
 
@@ -102,8 +114,24 @@ export function ProfitLossScreen({ now }: { now: string }) {
     });
   }, [today, back]);
 
-  const { branches, businessLines, results, loading, error } =
-    useProfitLossMonths(months, branchIds);
+  const { branches, businessLines, stores, results, loading, error } =
+    useProfitLossMonths(months, branchIds, sources);
+
+  /*
+    SUMBER (6 November 2026, BO) — the sales channel, the same choices as the
+    Faktur list: Kasir, Manual, and each e-commerce store by name.
+  */
+  const sourceRows = useMemo(
+    () => [
+      { _id: "kasir", name: "Kasir" },
+      { _id: "manual", name: "Manual" },
+      ...stores.map((store) => ({
+        _id: `${STORE_SOURCE_PREFIX}${store._id}`,
+        name: `${MARKETPLACE_SHORT[store.marketplace] ?? store.marketplace} – ${store.name}`,
+      })),
+    ],
+    [stores],
+  );
 
   const statement = useMemo(
     () =>
@@ -116,7 +144,9 @@ export function ProfitLossScreen({ now }: { now: string }) {
   const allOpen = rows.length > 0 && rows.every((r) => open.has(r.key));
 
   const scopeCount =
-    (branchIds.length > 0 ? 1 : 0) + (lineIds.length > 0 ? 1 : 0);
+    (branchIds.length > 0 ? 1 : 0) +
+    (lineIds.length > 0 ? 1 : 0) +
+    (sources.length > 0 ? 1 : 0);
 
   async function exportXlsx() {
     if (!statement) return;
@@ -224,31 +254,53 @@ export function ProfitLossScreen({ now }: { now: string }) {
         onBusinessLineIdsChange={setLineIds}
         sharedLine={{ value: SHARED_LINE_NONE, label: SHARED_LINE_LABEL }}
         extraFields={
-          <ScopeField icon={<CalendarDays className="size-4" />} label="Bulan">
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label="Bulan sebelumnya"
-              onClick={() => setBack((n) => n + 1)}
+          <>
+            <ScopeField icon={<Store className="size-4" />} label="Sumber">
+              <FilterMultiSelect
+                label="Sumber"
+                layout="bar"
+                ariaLabel="Sumber"
+                values={sources}
+                options={sourceRows.map((row) => ({
+                  value: row._id,
+                  label: row.name,
+                }))}
+                formatValue={(ids) =>
+                  scopeSummary(ids, sourceRows, "Semua sumber", "sumber")
+                }
+                onApply={setSources}
+                onReset={() => setSources([])}
+              />
+            </ScopeField>
+            <ScopeField
+              icon={<CalendarDays className="size-4" />}
+              label="Bulan"
             >
-              <ChevronLeft className="size-4" />
-            </Button>
-            <b className="min-w-32 text-center text-sm">
-              {current.label} {current.year}
-            </b>
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label="Bulan berikutnya"
-              disabled={back === 0}
-              onClick={() => setBack((n) => Math.max(0, n - 1))}
-            >
-              <ChevronRight className="size-4" />
-            </Button>
-          </ScopeField>
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label="Bulan sebelumnya"
+                onClick={() => setBack((n) => n + 1)}
+              >
+                <ChevronLeft className="size-4" />
+              </Button>
+              <b className="min-w-32 text-center text-sm">
+                {current.label} {current.year}
+              </b>
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label="Bulan berikutnya"
+                disabled={back === 0}
+                onClick={() => setBack((n) => Math.max(0, n - 1))}
+              >
+                <ChevronRight className="size-4" />
+              </Button>
+            </ScopeField>
+          </>
         }
         trailing={
-          /* "Reset filter (n)", as on every other scope row — the two
+          /* "Reset filter (n)", as on every other scope row — the three
              dropdowns; the month is where somebody is reading, not a filter. */
           scopeCount > 0 ? (
             <Button
@@ -258,6 +310,7 @@ export function ProfitLossScreen({ now }: { now: string }) {
               onClick={() => {
                 setBranchIds([]);
                 setLineIds([]);
+                setSources([]);
               }}
             >
               Reset filter ({scopeCount})
@@ -265,6 +318,17 @@ export function ProfitLossScreen({ now }: { now: string }) {
           ) : undefined
         }
       />
+
+      {/* What Sumber leaves out has to be said — a laba bersih that silently
+          lost its rent reads as a far better month than it was. */}
+      {sources.length > 0 && (
+        <Alert variant="info">
+          Difilter per sumber: hanya penjualan, diskon, retur, HPP, dan biaya
+          marketplace dari sumber itu. Beban umum seperti sewa, gaji, dan
+          listrik tidak ikut, jadi angka labanya adalah laba kotor sumber
+          tersebut.
+        </Alert>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         <div className="flex items-center gap-2">
@@ -421,8 +485,7 @@ function StatementLine({
       {row.v.map((perMonth, m) => {
         const value = perMonth[column];
         const previous = m > 0 ? row.v[m - 1][column] : undefined;
-        const change =
-          !row.pct && m > 0 ? changeOf(value, previous) : null;
+        const change = !row.pct && m > 0 ? changeOf(value, previous) : null;
         const shown =
           change !== null && Math.abs(change.pct) >= CHANGE_THRESHOLD;
         const big = shown && Math.abs(change.pct) >= CHANGE_BIG;

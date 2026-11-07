@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { CircleHelp, LogOut } from "lucide-react";
 
 import { Logo, Spinner } from "@/components";
 import { useAuth } from "@/features/auth";
@@ -12,8 +13,8 @@ import { useAuth } from "@/features/auth";
  * The groomer's frame: one navy bar, one column, no sidebar.
  *
  * A sidebar is a desktop idea. This app is opened on a phone in a grooming room,
- * so the chrome is the name, the sign-out and nothing else; everything the
- * groomer does is in the page.
+ * so the chrome is the name, the guide, the sign-out and nothing else;
+ * everything the groomer does is in the page.
  *
  * Like DashboardShell it is the client half of the route guard: proxy.ts blocks
  * a hint-less request, and the /me verdict here is the authority.
@@ -47,6 +48,15 @@ export function GroomerShell({ children }: { children: ReactNode }) {
           <span className="max-w-[14ch] truncate text-sm font-medium text-primary-foreground/85">
             {user.fullName}
           </span>
+          {/* The groomer's own book of the guide. Same tab: this app is a
+              phone screen with nothing half-done to lose, and Back returns. */}
+          <Link
+            href="/dashboard/help/groomer"
+            aria-label="Panduan"
+            className="inline-flex size-11 items-center justify-center rounded-lg text-primary-foreground/85 transition-colors hover:bg-white/15 hover:text-primary-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/60"
+          >
+            <CircleHelp className="size-5" aria-hidden="true" />
+          </Link>
           <button
             type="button"
             onClick={() => void handleSignOut()}
