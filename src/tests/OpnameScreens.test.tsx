@@ -1897,14 +1897,25 @@ describe("OpnameSheet", () => {
   });
 
   /**
-   * A file fills a draft, so the two buttons exist where a draft can still be
-   * filled and for whoever may fill it.
+   * A file fills a draft, so the button exists where a draft can still be
+   * filled and for whoever may fill it. The template lives inside its dialog;
+   * the page has no "Unduh Template" of its own (6 Nov 2026).
    */
   describe("the spreadsheet route", () => {
     const buttons = () => [
-      screen.queryByRole("button", { name: "Unduh Template" }),
       screen.queryByRole("button", { name: "Impor File" }),
     ];
+
+    it("has no separate Unduh Template on the page", async () => {
+      asMock(stockOpnameService.getById).mockResolvedValue(sheet());
+
+      renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
+
+      await screen.findByText("Shampoo Anjing");
+      expect(
+        screen.queryByRole("button", { name: "Unduh Template" }),
+      ).not.toBeInTheDocument();
+    });
 
     it("is on an open draft", async () => {
       asMock(stockOpnameService.getById).mockResolvedValue(sheet());
@@ -1923,7 +1934,7 @@ describe("OpnameSheet", () => {
       renderWithAuth(<OpnameSheet opnameId={OPNAME_ID} />);
 
       await screen.findByText("Shampoo Anjing");
-      expect(buttons()).toEqual([null, null]);
+      expect(buttons()).toEqual([null]);
     });
 
     it("is not offered to a role that may not edit the sheet", async () => {
@@ -1935,7 +1946,7 @@ describe("OpnameSheet", () => {
       });
 
       await screen.findByText("Shampoo Anjing");
-      expect(buttons()).toEqual([null, null]);
+      expect(buttons()).toEqual([null]);
     });
   });
 

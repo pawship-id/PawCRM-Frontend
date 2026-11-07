@@ -36,7 +36,6 @@ import {
   type SheetLine,
 } from "../hooks/useOpnameSheet";
 import { useWarehouseBatches } from "../hooks/useWarehouseBatches";
-import { saveOpnameTemplate } from "../utils/opnameImport";
 import { JournalPreview } from "./JournalPreview";
 import { OpnameAddProductsDialog } from "./OpnameAddProductsDialog";
 import { OpnameImportDialog } from "./OpnameImportDialog";
@@ -290,7 +289,6 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [fetchingTemplate, setFetchingTemplate] = useState(false);
   const closeImport = useCallback(() => setImporting(false), []);
 
   if (loading) {
@@ -502,23 +500,6 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
    * nothing, but "we did not get to it" is a finding in its own right, and the
    * `Dihitung` column is what tells it from "counted, and it matched".
    */
-  /** The xlsx straight from the sheet; the dialog also offers the CSV. */
-  const downloadTemplate = async () => {
-    setFetchingTemplate(true);
-    try {
-      await saveOpnameTemplate(opnameId, "xlsx");
-    } catch (caught) {
-      swalToast(
-        caught instanceof ApiError
-          ? caught.message
-          : "Gagal menyiapkan template. Coba lagi.",
-        "error",
-        6000,
-      );
-    } finally {
-      setFetchingTemplate(false);
-    }
-  };
 
   const exportSheet = async () => {
     setExporting(true);
@@ -572,27 +553,18 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
       {(items.length > 0 || canEdit) && (
         <div className="flex flex-wrap justify-end gap-2">
           {/* The draft's own route for counting on paper or in Excel. A file
-              fills a sheet, so the buttons leave with the sheet's last chance
-              to change, and with the grant to change it. */}
+              fills a sheet, so the button leaves with the sheet's last chance
+              to change, and with the grant to change it. NO SEPARATE "Unduh
+              Template" (6 Nov 2026, on request) — the import dialog carries
+              the template download already. */}
           {canEdit && (
-            <>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={downloadTemplate}
-                disabled={fetchingTemplate}
-              >
-                {fetchingTemplate ? <Spinner /> : null}
-                Unduh Template
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setImporting(true)}
-              >
-                Impor File
-              </Button>
-            </>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setImporting(true)}
+            >
+              Impor File
+            </Button>
           )}
           {items.length > 0 && (
             <Button

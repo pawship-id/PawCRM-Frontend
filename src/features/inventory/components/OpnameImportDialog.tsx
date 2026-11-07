@@ -186,6 +186,9 @@ export function OpnameImportDialog({
             onPick={upload.pickFile}
             onDownloadTemplate={downloadTemplate}
             disabled={loading}
+            // No sub text under the two formats, as on Transfer Stok (6 Nov 2026).
+            xlsxHint=""
+            csvHint=""
           />
 
           {(error || templateError) && (

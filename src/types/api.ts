@@ -8380,6 +8380,11 @@ export interface CustomerInvoiceListQuery {
   source?: CustomerInvoiceSource;
   /** The filter panel's Sumber, any of them, OR'd. ANDed with `source`. */
   sources?: CustomerInvoiceSource[];
+  /**
+   * The Sumber filter narrowed to e-commerce STORES (6 Nov 2026) — matches
+   * `externalRef.storeId`, OR'd with `sources`.
+   */
+  storeIds?: string[];
   /** `status ∈ {unpaid, partial}` — excludes `void`, which owes nothing. */
   outstanding?: boolean;
   overdue?: boolean;
@@ -8529,6 +8534,8 @@ export interface CustomerInvoiceFilterOptions {
     branchIds: string[];
   }>;
   creators: Array<{ _id: string; name: string }>;
+  /** E-commerce stores that have billed — the Sumber filter's "Shopee – <toko>". */
+  stores?: Array<{ _id: string; name: string; marketplace: string }>;
 }
 
 /** One customer's debt, from GET /api/customer-invoices/outstanding. */

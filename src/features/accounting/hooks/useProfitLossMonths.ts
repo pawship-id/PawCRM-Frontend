@@ -8,7 +8,9 @@ import { businessLineService } from "@/services/businessLine.service";
 import type { BusinessLine } from "@/services/businessLine.service";
 import {
   journalEntryService,
+  type ProfitLossChannel,
   type ProfitLossResult,
+  type ProfitLossSources,
 } from "@/services/journalEntry.service";
 import type { Branch } from "@/types/api";
 
@@ -26,8 +28,32 @@ import type { Period } from "../financeSummary";
  * `businessLines:read` are their own grants and a short filter beats an error
  * page.
  */
-export function useProfitLossMonths(months: Period[], branchIds: string[]) {
+/**
+ * SUMBER rides as one list: `kasir`, `manual`, and `store:<id>` per e-commerce
+ * store — split here into what the endpoint takes.
+ */
+export const STORE_SOURCE_PREFIX = "store:";
+
+function splitSources(sources: string[]) {
+  const channels = sources.filter(
+    (value) => !value.startsWith(STORE_SOURCE_PREFIX),
+  ) as ProfitLossChannel[];
+  const storeIds = sources
+    .filter((value) => value.startsWith(STORE_SOURCE_PREFIX))
+    .map((value) => value.slice(STORE_SOURCE_PREFIX.length));
+  return {
+    channels: channels.length ? channels : undefined,
+    storeIds: storeIds.length ? storeIds : undefined,
+  };
+}
+
+export function useProfitLossMonths(
+  months: Period[],
+  branchIds: string[],
+  sources: string[] = [],
+) {
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [stores, setStores] = useState<ProfitLossSources["stores"]>([]);
   const [businessLines, setBusinessLines] = useState<BusinessLine[]>([]);
   const [results, setResults] = useState<ProfitLossResult[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -38,10 +64,12 @@ export function useProfitLossMonths(months: Period[], branchIds: string[]) {
     Promise.allSettled([
       branchService.list({ limit: 100 }),
       businessLineService.list({ limit: 100 }),
-    ]).then(([b, l]) => {
+      journalEntryService.profitLossSources(),
+    ]).then(([b, l, s]) => {
       if (!active) return;
       if (b.status === "fulfilled") setBranches(b.value.items);
       if (l.status === "fulfilled") setBusinessLines(l.value.items);
+      if (s.status === "fulfilled") setStores(s.value?.stores ?? []);
     });
     return () => {
       active = false;
@@ -51,6 +79,7 @@ export function useProfitLossMonths(months: Period[], branchIds: string[]) {
   const key = [
     ...months.map((m) => `${m.dateFrom}:${m.dateTo}`),
     branchIds.join(","),
+    sources.join(","),
   ].join("|");
 
   useEffect(() => {
@@ -65,6 +94,7 @@ export function useProfitLossMonths(months: Period[], branchIds: string[]) {
           dateFrom: m.dateFrom,
           dateTo: m.dateTo,
           branchIds: branchIds.length ? branchIds : undefined,
+          ...splitSources(sources),
         }),
       ),
     )
@@ -90,5 +120,5 @@ export function useProfitLossMonths(months: Period[], branchIds: string[]) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  return { branches, businessLines, results, loading, error };
+  return { branches, businessLines, stores, results, loading, error };
 }

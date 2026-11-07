@@ -47,13 +47,56 @@ export const STATUS_FILTERS: FilterOption<CustomerInvoiceStatusFilter>[] = [
   { value: "overdue", label: "Lewat jatuh tempo" },
 ];
 
-/** Where the invoice came from — a filter, never an input. Nothing ticked is every source. */
-const SOURCES: FilterOption<CustomerInvoiceSource>[] = [
+/**
+ * Where the invoice came from — a filter, never an input. Nothing ticked is
+ * every source.
+ *
+ * E-COMMERCE IS LISTED PER STORE (6 November 2026, on request): "Shopee – Paw
+ * Shop", not one "Shopee" for every store. The stores come from the server's
+ * filter options — only those that have billed — and travel as `storeIds`;
+ * in this one menu they ride as `store:<id>` beside the plain sources.
+ */
+const BASE_SOURCES: FilterOption<string>[] = [
   { value: "pos_bridge", label: "Kasir" },
   { value: "manual", label: "Manual" },
-  { value: "shopee_import", label: "Shopee" },
-  { value: "tiktok_import", label: "TikTok" },
 ];
+
+const MARKETPLACE_SHORT: Record<string, string> = {
+  shopee: "Shopee",
+  tiktok: "TikTok",
+};
+
+const STORE_PREFIX = "store:";
+
+function sourceOptions(
+  stores: CustomerInvoiceFilterOptions["stores"] = [],
+): FilterOption<string>[] {
+  return [
+    ...BASE_SOURCES,
+    ...stores.map((store) => ({
+      value: `${STORE_PREFIX}${store._id}`,
+      label: `${MARKETPLACE_SHORT[store.marketplace] ?? store.marketplace} – ${store.name}`,
+    })),
+  ];
+}
+
+/** The menu's ticks, from the two fields they are stored in. */
+const sourceTicks = (sources: string[], storeIds: string[]) => [
+  ...sources,
+  ...storeIds.map((id) => `${STORE_PREFIX}${id}`),
+];
+
+/** …and back. */
+function splitSourceTicks(values: string[]) {
+  return {
+    sources: values.filter(
+      (value) => !value.startsWith(STORE_PREFIX),
+    ) as CustomerInvoiceSource[],
+    storeIds: values
+      .filter((value) => value.startsWith(STORE_PREFIX))
+      .map((value) => value.slice(STORE_PREFIX.length)),
+  };
+}
 
 /**
  * The periods. "Semua" sends nothing; the three named ones go over the wire as
@@ -104,6 +147,7 @@ interface PanelDraft {
   warehouseIds: string[];
   createdBy: string[];
   sources: CustomerInvoiceSource[];
+  storeIds: string[];
   statuses: CustomerInvoiceStatusFilter[];
   period: InvoicePeriodChoice;
   dateFrom: string;
@@ -123,6 +167,7 @@ export const CLEARED_INVOICE_FILTERS: Partial<CustomerInvoicesQuery> = {
   warehouseIds: [],
   createdBy: [],
   sources: [],
+  storeIds: [],
   statuses: [],
   period: DEFAULT_QUERY.period,
   dateFrom: "",
@@ -150,7 +195,7 @@ export function countInvoiceFilters(query: CustomerInvoicesQuery): number {
       query.branchIds,
       query.warehouseIds,
       query.createdBy,
-      query.sources,
+      sourceTicks(query.sources, query.storeIds),
       query.statuses,
     ].filter((values) => values.length > 0).length +
     (query.period === DEFAULT_QUERY.period ? 0 : 1)
@@ -237,6 +282,7 @@ function ReceivablesFilterPanel({
     warehouseIds: query.warehouseIds,
     createdBy: query.createdBy,
     sources: query.sources,
+    storeIds: query.storeIds,
     statuses: query.statuses,
     period: query.period,
     dateFrom: query.dateFrom,
@@ -312,6 +358,7 @@ function ReceivablesFilterPanel({
     if (!sameSet(draft.statuses, query.statuses))
       change.statuses = draft.statuses;
     if (!sameSet(draft.sources, query.sources)) change.sources = draft.sources;
+    if (!sameSet(draft.storeIds, query.storeIds)) change.storeIds = draft.storeIds;
     if (draft.period !== query.period) change.period = draft.period;
     if (dateFrom !== query.dateFrom) change.dateFrom = dateFrom;
     if (dateTo !== query.dateTo) change.dateTo = dateTo;
@@ -369,9 +416,9 @@ function ReceivablesFilterPanel({
           label="Sumber"
           allLabel="Semua sumber"
           unit="sumber"
-          options={SOURCES}
-          selected={draft.sources}
-          onChange={(sources) => patch({ sources })}
+          options={sourceOptions(options.stores)}
+          selected={sourceTicks(draft.sources, draft.storeIds)}
+          onChange={(values) => patch(splitSourceTicks(values))}
         />
         <FilterCheckMenu
           label="Status"

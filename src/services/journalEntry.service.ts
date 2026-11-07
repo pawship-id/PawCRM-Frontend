@@ -421,6 +421,20 @@ export interface ProfitLossQuery {
   businessLineId?: string;
   /** Several lini (12 Oct 2026); `__none__` is the shared bucket. */
   businessLineIds?: string[];
+  /**
+   * SUMBER (6 Nov 2026) — `kasir` / `manual`, OR'd with `storeIds`. When either
+   * is set the server keeps only entries with a sales channel, so beban umum
+   * drops out and the statement reads as laba kotor per sumber.
+   */
+  channels?: ProfitLossChannel[];
+  storeIds?: string[];
+}
+
+export type ProfitLossChannel = "kasir" | "manual";
+
+/** GET /journal-entries/profit-loss/sources — the Sumber filter's stores. */
+export interface ProfitLossSources {
+  stores: Array<{ _id: string; name: string; marketplace: string }>;
 }
 
 /** The writable half of a manual entry — the only kind the HTTP API creates. */
@@ -622,10 +636,15 @@ export const journalEntryService = {
         branchIds: query.branchIds?.length ? query.branchIds : undefined,
         businessLineId: query.businessLineId,
         businessLineIds: query.businessLineIds,
+        channels: query.channels?.length ? query.channels : undefined,
+        storeIds: query.storeIds?.length ? query.storeIds : undefined,
         // Sent only when explicitly OFF: the server defaults it to true.
         allocation: query.allocation === false ? false : undefined,
       },
     }),
+
+  profitLossSources: () =>
+    apiClient.get<ProfitLossSources>("/journal-entries/profit-loss/sources"),
 
   /** GET /journal-entries/:id — one entry, with its labels resolved. */
   getById: (id: string) =>
