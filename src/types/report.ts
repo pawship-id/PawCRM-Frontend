@@ -911,6 +911,58 @@ export interface CommissionPayrollRow {
   reversedCount: number;
 }
 
+/**
+ * GET /reports/commission-detail — Laporan › Rekap komisi detail. One row per
+ * booking × session × groomer; the booking's own figures repeat on each of its
+ * rows. Money is a decimal string, dates `YYYY-MM-DD`, times `YYYY-MM-DD HH:mm`.
+ */
+export interface CommissionDetailRow {
+  bookingNumber: string | null;
+  bookingDate: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  timeSlot: string | null;
+  location: string | null;
+  bookingStatus: string | null;
+  sessionName: string | null;
+  groomerName: string | null;
+  sessionStatus: string | null;
+  actualStart: string | null;
+  actualEnd: string | null;
+  actualDurationMin: number | null;
+  paymentMethod: string | null;
+  referralCode: string | null;
+  branchCode: string | null;
+  branchName: string | null;
+  customerCode: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  customerCategory: string | null;
+  petCode: string | null;
+  petName: string | null;
+  memberType: string | null;
+  serviceCode: string | null;
+  serviceName: string | null;
+  serviceCategory: string | null;
+  estDurationMin: number | null;
+  addonNames: string | null;
+  servicePrice: string;
+  addonPrice: string;
+  subtotal: string;
+  travelFee: string;
+  grossTotal: string;
+  promoCode: string | null;
+  promoDiscount: string;
+  membershipBenefit: string;
+  totalDiscount: string;
+  netTotal: string;
+  commission: string;
+}
+
+export interface CommissionDetailReport {
+  rows: CommissionDetailRow[];
+}
+
 export interface CommissionPayrollReport {
   rows: CommissionPayrollRow[];
 }
