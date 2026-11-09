@@ -977,6 +977,7 @@ export function PosScreen() {
       <PosVariantDialog
         parent={variantParent}
         busy={cart.busy}
+        showPromo={!offline}
         /*
           Built from the basket on every render, so the counts in the picker and
           the lines in the cart can never disagree — they are one source read

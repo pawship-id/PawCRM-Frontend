@@ -15,6 +15,9 @@ import {
 } from "@/components/ui/dialog";
 import { tillCatalog } from "../offline/tillApi";
 import { formatMoney } from "@/utils/decimal";
+import { cn } from "@/lib/utils";
+import { BADGE_CLASS, TONE_CLASS } from "@/features/memberships/labels";
+import { catalogTagLabel } from "../promoCart";
 import type { PosCatalogItem } from "@/types/api";
 
 /**
@@ -72,6 +75,7 @@ export function PosVariantDialog({
   parent,
   inCart,
   busy = false,
+  showPromo = true,
   onPick,
   onOpenChange,
 }: {
@@ -87,6 +91,8 @@ export function PosVariantDialog({
   inCart: Map<string, number>;
   /** True while a cart write is in flight — see the Tambah button. */
   busy?: boolean;
+  /** False offline — no promo applies there, so no tag or struck price. */
+  showPromo?: boolean;
   onPick: (variant: PosCatalogItem) => void;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -146,13 +152,22 @@ export function PosVariantDialog({
           </p>
         ) : (
           <ul className="max-h-80 divide-y divide-border overflow-y-auto">
-            {variants.map((variant) => (
-              <li
-                key={variant._id}
-                className="flex items-center justify-between gap-3 py-2"
-              >
-                <div className="min-w-0">
-                  {/*
+            {variants.map((variant) => {
+              /*
+                PROMO V1 — the same "harga coret" the grid tile shows. A variant
+                is a sellable product with one price, so it gets both the tag
+                and the struck price; the parent tile shows neither.
+              */
+              const promo = showPromo ? (variant.promo ?? null) : null;
+              const struck = promo?.price && promo.normalPrice ? promo : null;
+
+              return (
+                <li
+                  key={variant._id}
+                  className="flex items-center justify-between gap-3 py-2"
+                >
+                  <div className="min-w-0">
+                    {/*
                     THE PARENT'S NAME IS STRIPPED. Every variant here begins with
                     it — "Cat Choise Adult — 1kg / Chicken" — and the modal's own
                     subtitle already says it. Repeating it on every row pushed the
@@ -160,60 +175,84 @@ export function PosVariantDialog({
                     line, so the cashier read four truncated copies of a name they
                     already knew.
                   */}
-                  <span className="block truncate text-sm font-medium text-foreground">
-                    {variantLabel(variant.name, parent?.name)}
-                  </span>
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {variantLabel(variant.name, parent?.name)}
+                    </span>
 
-                  <span className="block truncate text-xs tabular-nums text-muted">
-                    {variant.code}
-                    {/*
+                    <span className="block truncate text-xs tabular-nums text-muted">
+                      {variant.code}
+                      {/*
                       The running count, MUTED and on the second line rather than
                       a badge of its own. As a green pill it sat beside the green
                       stock badge and the two competed — same colour, different
                       questions, and neither read cleanly. The toast is the
                       immediate feedback now; this is the standing answer.
                     */}
-                    {(inCart.get(variant._id) ?? 0) > 0 && (
-                      <>
-                        {/*
+                      {(inCart.get(variant._id) ?? 0) > 0 && (
+                        <>
+                          {/*
                           The separator sits OUTSIDE the coloured span: it joins
                           the SKU to the count, it is not part of either. Inside,
                           the span's own text would read "· 2 di keranjang",
                           which is a different string to anything reading it —
                           a screen reader included.
                         */}
-                        {variant.code ? " · " : ""}
-                        <span className="text-success">
-                          {`${inCart.get(variant._id)} di keranjang`}
-                        </span>
-                      </>
-                    )}
-                  </span>
-                </div>
+                          {variant.code ? " · " : ""}
+                          <span className="text-success">
+                            {`${inCart.get(variant._id)} di keranjang`}
+                          </span>
+                        </>
+                      )}
+                    </span>
 
-                <div className="flex shrink-0 items-center gap-2">
-                  {/*
+                    {/* A word on the tint (ui-rules §9): "Promo −12%", never the colour alone. */}
+                    {promo && (
+                      <span
+                        className={cn(
+                          BADGE_CLASS,
+                          TONE_CLASS.info,
+                          "mt-1 max-w-full tabular-nums",
+                        )}
+                      >
+                        <span className="truncate">{`Promo ${catalogTagLabel(promo)}`}</span>
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    {/*
                     THE ONE QUESTION THIS MODAL IS OPEN TO ANSWER, and now the
                     only badge on the row. Same component the grid tile uses, so
                     the two cannot come to different conclusions about what green
                     means.
                   */}
-                  <PosStockBadge stock={variant.stock} />
+                    <PosStockBadge stock={variant.stock} />
 
-                  <span className="text-sm tabular-nums text-foreground">
-                    {formatMoney(variant.price)}
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    /*
+                    {struck ? (
+                      <span className="text-right">
+                        <span className="block text-xs tabular-nums text-muted line-through">
+                          {formatMoney(struck.normalPrice)}
+                        </span>
+                        <span className="block text-sm font-semibold tabular-nums text-foreground">
+                          {formatMoney(struck.price)}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-sm tabular-nums text-foreground">
+                        {formatMoney(variant.price)}
+                      </span>
+                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      /*
                       Disabled while a cart write is in flight. The modal stays
                       open now, so a cashier CAN press twice before the first
                       response lands — and every mutation sends the whole basket,
                       so the second would be built from a basket the first has
                       not yet updated, and would silently undo it.
                     */
-                    /*
+                      /*
                       AN EMPTY SHELF IS STILL LISTED, for the same reason it is on
                       a tile: a cashier looking for a size needs to see that the
                       shop stocks it and has run out, not that it does not exist.
@@ -223,29 +262,30 @@ export function PosVariantDialog({
                       balance to go negative, which is the default; absent means
                       sellable, for an older server.
                     */
-                    disabled={busy || variant.sellable === false}
-                    /*
+                      disabled={busy || variant.sellable === false}
+                      /*
                       NAMED BY ITS ROW. Every button here reads "Tambah", so
                       without this a screen reader announces the same word once
                       per size with nothing to tell them apart — and the modal
                       now stays open, so there are more of them on screen at once
                       than there ever used to be.
                     */
-                    aria-label={`Tambah ${variant.name}`}
-                    onClick={() =>
-                      /*
+                      aria-label={`Tambah ${variant.name}`}
+                      onClick={() =>
+                        /*
                         HANDED ON WHOLE. It is already a catalogue tile — the
                         same shape the grid passes — so rebuilding it field by
                         field would be a second chance to get one wrong.
                       */
-                      onPick(variant)
-                    }
-                  >
-                    Tambah
-                  </Button>
-                </div>
-              </li>
-            ))}
+                        onPick(variant)
+                      }
+                    >
+                      Tambah
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
 
