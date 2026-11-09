@@ -45,6 +45,7 @@ export {
 export { stockLocations } from "./components/SalesReportDialog";
 export {
   bookingRecapReport,
+  commissionDetailReport,
   commissionPayrollReport,
   membershipReport,
   membershipRows,

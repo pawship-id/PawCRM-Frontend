@@ -40,6 +40,7 @@ import type {
   TopServicesReport,
   TopServicesQuery,
   CommissionPayrollReport,
+  CommissionDetailReport,
   CommissionPayrollQuery,
   StockOnHandQuery,
   StockOnHandResult,
@@ -359,6 +360,20 @@ export const reportService = {
         branchIds: query.branchIds,
       },
       timeoutMs: 60_000,
+    }),
+
+  /**
+   * GET /reports/commission-detail — Rekap komisi detail: one row per
+   * booking × session × groomer. Same scope as the payroll recap.
+   */
+  commissionDetailRecap: (query: CommissionPayrollQuery) =>
+    apiClient.get<CommissionDetailReport>("/reports/commission-detail", {
+      query: {
+        dateFrom: query.dateFrom,
+        dateTo: query.dateTo,
+        branchIds: query.branchIds,
+      },
+      timeoutMs: 120_000,
     }),
 
   /**
