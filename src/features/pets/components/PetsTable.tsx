@@ -155,6 +155,19 @@ export function PetsTable({
 
   const columns: DataTableColumn<Pet>[] = [
     {
+      id: "code",
+      header: "Kode",
+      cell: (pet) =>
+        pet.code ? (
+          // tabular-nums, never font-mono — ui-rules §5. Mirrors CustomersTable.
+          <span className="tabular-nums text-muted">
+            <HighlightText text={pet.code} query={search} />
+          </span>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+    },
+    {
       id: "name",
       header: "Nama",
       cell: (pet) => (
