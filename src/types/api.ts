@@ -14,6 +14,7 @@
  */
 import type { CashflowType } from "./accounting";
 import type { MediaAsset, PreviewHpp, PreviewMovementRow } from "./inventory";
+import type { CatalogPromoTag, LinePromo } from "./promo";
 
 /**
  * Something that happened alongside a SUCCESSFUL request and that the person who
@@ -2059,8 +2060,12 @@ export interface PosDiscount {
    * the customer already bought. To change it, remove it and re-apply.
    *
    * Optional only because older fixtures lack it; absent means `manual`.
+   *
+   * `promo` (Promo V1, 8 November 2026): a "harga coret" promo contributed and
+   * no card did — the promo's part is `PosItem.promoDiscount`. `voucher` is
+   * reserved for a later promo type.
    */
-  source?: "manual" | "membership";
+  source?: "manual" | "membership" | "promo" | "voucher";
   membershipId?: string | null;
   benefitId?: string | null;
   /** Frozen onto the line so a reprinted receipt can name it without a lookup. */
@@ -2135,6 +2140,18 @@ export interface PosItem {
    * write sends back. Null when none, and on a visit-fee waiver line.
    */
   benefit?: PosBenefitPick | null;
+  /**
+   * PROMO V1 — HOW MUCH OF `discount` A PROMO PAID FOR, a PART of it like
+   * `membershipDiscount`. Null when no promo applies.
+   */
+  promoDiscount?: string | null;
+  /** The promo(s) behind `promoDiscount`, as the server froze them. */
+  promos?: LinePromo[];
+  /**
+   * THE CASHIER'S EXPLICIT PROMO CHOICE — null = automatic (the server applies
+   * the best promo itself), `[]` = "Tanpa potongan". Re-sent as `promoIds`.
+   */
+  promoPick?: string[] | null;
   /** The line bills a booking. */
   fromBooking?: boolean;
   /** The booking's agreed pick — main line only. "Sesuai booking" when it equals `benefit`. */
@@ -2309,6 +2326,8 @@ export interface PosRunningTotals {
    * membership" (contract §6.4). A part of `itemDiscount`, never beside it.
    */
   membershipDiscount?: string;
+  /** Promo V1 — Σ the lines' `promoDiscount`, when the server sends it. */
+  promoDiscount?: string;
   cartDiscount: string;
   otherCharges: string;
   /** What is owed BEFORE tax is separated out. Not what a payment must cover. */
@@ -2472,6 +2491,11 @@ export interface PosCatalogAddon {
 
 export interface PosCatalogItem {
   kind: PosItemKind;
+  /**
+   * PROMO V1 — the "harga coret" tag on the tile, null when none. Online grid
+   * only: the offline snapshot carries no promos, and the till hides it there.
+   */
+  promo?: CatalogPromoTag | null;
   /**
    * ON A MEMBERSHIP TILE ONLY (29 September 2026) — how long the package runs,
    * and how many benefits come with it.
@@ -2753,6 +2777,11 @@ export interface PosReceiptItem {
    * the way the till's own basket does.
    */
   membershipDiscount?: string | null;
+  /** Promo V1 — the promo's share of `discount`, when the server sends it. */
+  promoDiscount?: string | null;
+  /** The promo names, joined with " + " — frozen for a reprint. */
+  promoLabel?: string | null;
+  promos?: LinePromo[];
   /** FR-8's sub-line, denormalised at sale time so a reprint survives a rename. */
   petName: string | null;
   groomerName: string | null;
@@ -3044,6 +3073,12 @@ export interface PosItemInput {
    * left out of the next write silently drops off that line.
    */
   benefit?: PosBenefitPick | null;
+  /**
+   * PROMO V1 — WHICH promos, never their value. Absent/null = automatic (the
+   * server applies the best one), `[]` = "Tanpa potongan", ids = those promos
+   * (several only when every one is "bisa digabung").
+   */
+  promoIds?: string[] | null;
   /** On a `membership` line: when cover starts. Default is the day it is paid. */
   membershipStartDate?: string;
   /** On a `membership` line: the card this one renews. */
@@ -8054,9 +8089,10 @@ export interface InvoiceDiscount {
   /**
    * WHERE IT CAME FROM (29 September 2026). `membership` means a benefit on the
    * animal's card paid for part or all of it — priced by the server from the
-   * card's frozen plan, not typed by anybody.
+   * card's frozen plan, not typed by anybody. `promo` (Promo V1): a promo
+   * contributed and no card did.
    */
-  source?: "manual" | "membership";
+  source?: "manual" | "membership" | "promo" | "voucher";
   membershipId?: string | null;
   benefitId?: string | null;
   /** Frozen onto the line so a reprinted bill can name it without a lookup. */
@@ -8088,6 +8124,11 @@ export interface CustomerInvoiceItem {
    * the programme's cost every time both are present.
    */
   membershipDiscount?: string | null;
+  /** Promo V1 — the promo's part of `discount` (channel "Faktur" only). */
+  promoDiscount?: string | null;
+  promos?: LinePromo[];
+  /** The explicit promo choice — null = automatic, `[]` = none. */
+  promoPick?: string[] | null;
   /** The card this line minted, once the bill was paid. Membership lines only. */
   membershipId?: string | null;
   /** `qty × unitPrice`, BEFORE this line's own discount. */
@@ -8270,6 +8311,11 @@ export interface CreateInvoiceItemInput {
    * shape; what the form quoted only ever drove its own preview.
    */
   benefit?: { membershipId: string; benefitId: string } | null;
+  /**
+   * PROMO V1 — WHICH promos, never their value. Absent = automatic (only
+   * promos with "Faktur" ticked), `[]` = no promo.
+   */
+  promoIds?: string[] | null;
   /**
    * A PRICE TYPED OVER THE CATALOGUE'S (13 October 2026). Omitted bills the
    * catalogue's; a different figure is refused (403) without

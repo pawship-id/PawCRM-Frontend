@@ -86,6 +86,8 @@ import {
   type OwedTrip,
 } from "@/features/booking/visitTrip";
 import { previewInvoice } from "../invoicePreview";
+import { invoicePromoInput, promoLineOfRow, rowPromoOf } from "../invoicePromo";
+import { usePromoQuote } from "@/hooks/usePromoQuote";
 import { hasChoice, lineRefusalOf, type LineRefusal } from "../variantLine";
 import { InvoiceAddItemsDialog } from "./InvoiceAddItemsDialog";
 import { InvoiceAddonPicker } from "./InvoiceAddonPicker";
@@ -300,6 +302,12 @@ interface DraftLine {
      */
     benefitLabel: string | null;
   } | null;
+  /**
+   * PROMO V1 — "Tanpa promo" chosen on this row: sent as `promoIds: []`.
+   * Absent/false leaves it to the server, which applies the best promo with
+   * the "Faktur" channel ticked by itself.
+   */
+  promoOff?: boolean;
   /**
    * WHOSE ANIMAL, on a service line — PCR-035. REQUIRED on one.
    *
@@ -1188,13 +1196,44 @@ export function InvoiceCreateForm() {
     lines: benefitQuoteLines,
   });
 
+  /*
+    ─── PROMO V1 (8 November 2026) — see `invoicePromo.ts` ───────────────────
+
+    Asked so the preview bills what the server will: a promo comes off after
+    the card's benefit and before the typed discount. Rebuilt every render —
+    the hook compares requests by content.
+  */
+  const promoRows = lines.map((line) => ({
+    key: line.key,
+    kind: line.kind,
+    refId: line.refId,
+    petId: line.petId,
+    qty: line.qty,
+    unitPrice: chargedPrice(line),
+    benefit: line.benefit,
+    promoOff: line.promoOff,
+  }));
+  const promoQuote = usePromoQuote(
+    invoicePromoInput({
+      rows: promoRows,
+      customerId: customerId || null,
+      branchId: branchId || null,
+      invoiceDate,
+      memberQuote: benefitQuote ?? null,
+    }),
+  );
+  const rowPromos = promoRows.map((row) =>
+    rowPromoOf(row, promoLineOfRow(promoQuote.quote, row.key), benefitQuote ?? null),
+  );
+  const rowPromosKey = JSON.stringify(rowPromos.map((promo) => promo.discount));
+
   const preview = useMemo(
     () =>
       previewInvoice(
         [
           // Bookings first, matching the order the server assembles them in.
           ...bookingLines,
-          ...lines.map((line) => ({
+          ...lines.map((line, index) => ({
             qty: line.qty,
             unitPrice: chargedPrice(line),
             discount: line.discountValue
@@ -1207,6 +1246,8 @@ export function InvoiceCreateForm() {
               bill then disagrees with, in front of the customer.
             */
             benefit: line.benefit?.amount ?? null,
+            /* Promo V1 — after the benefit, before the typed discount. */
+            promo: rowPromos[index]?.discount ?? null,
           })),
         ],
         invoiceDiscountValue
@@ -1214,6 +1255,8 @@ export function InvoiceCreateForm() {
           : null,
         { ...lookups.tax, otherCharges: charges },
       ),
+    // `rowPromos` is rebuilt every render; `rowPromosKey` is its content.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       lines,
       bookingLines,
@@ -1221,6 +1264,7 @@ export function InvoiceCreateForm() {
       invoiceDiscountValue,
       lookups.tax,
       charges,
+      rowPromosKey,
     ],
   );
 
@@ -1761,6 +1805,8 @@ export function InvoiceCreateForm() {
               },
             }
           : {}),
+        /* Promo V1 — "Tanpa promo" on this row; absent lets the server apply one. */
+        ...(line.promoOff ? { promoIds: [] } : {}),
         /*
           OMITTED rather than sent as an empty string, which the server's
           objectId check would refuse with a validation error instead of the
@@ -2958,6 +3004,44 @@ export function InvoiceCreateForm() {
                                 Benefit membership
                               </span>
                             )}
+                            {/*
+                              PROMO V1 — the promo the server will apply on
+                              save (channel "Faktur"), named with its amount,
+                              and a way to drop it ("Tanpa promo" →
+                              `promoIds: []`) or bring it back.
+                            */}
+                            {isPositive(rowPromos[index]?.discount ?? "0") && (
+                              <span className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
+                                <span className="inline-flex w-fit items-center whitespace-nowrap rounded-full bg-tint-info px-2 py-0.5 font-medium text-info tabular-nums">
+                                  {`Promo · ${rowPromos[index].parts.map((part) => part.name).join(", ")} −${formatMoney(rowPromos[index].discount)}`}
+                                </span>
+                                <UIButton
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  disabled={saving}
+                                  onClick={() => patchLine(index, { promoOff: true })}
+                                >
+                                  Tanpa promo
+                                </UIButton>
+                              </span>
+                            )}
+                            {line.promoOff && rowPromos[index]?.available && (
+                              <span className="mt-1 flex flex-wrap items-center gap-x-2 text-xs">
+                                <span className="text-muted">Tanpa promo</span>
+                                <UIButton
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 px-2 text-xs"
+                                  disabled={saving}
+                                  onClick={() => patchLine(index, { promoOff: false })}
+                                >
+                                  Pakai promo
+                                </UIButton>
+                              </span>
+                            )}
                           </TableCell>
 
                           <TableCell className="tabular-nums">
@@ -3035,9 +3119,16 @@ export function InvoiceCreateForm() {
                 const membershipShare = sumDecimals(
                   lines.map((line) => line.benefit?.amount ?? "0"),
                 );
+                /* Promo V1 — the rows' promos, their own recap row. */
+                const promoShare = sumDecimals(
+                  rowPromos.map((promo) => promo.discount),
+                );
                 const ownDiscount = subtractDecimals(
-                  subtractDecimals(preview.itemDiscount, bookingShares),
-                  membershipShare,
+                  subtractDecimals(
+                    subtractDecimals(preview.itemDiscount, bookingShares),
+                    membershipShare,
+                  ),
+                  promoShare,
                 );
 
                 return (
@@ -3062,6 +3153,14 @@ export function InvoiceCreateForm() {
                         <dt className="text-muted">Diskon membership</dt>
                         <dd className="tabular-nums text-success">
                           −{formatMoney(membershipShare)}
+                        </dd>
+                      </div>
+                    )}
+                    {isPositive(promoShare) && (
+                      <div className="flex justify-between gap-4">
+                        <dt className="text-muted">Potongan promo</dt>
+                        <dd className="tabular-nums text-success">
+                          −{formatMoney(promoShare)}
                         </dd>
                       </div>
                     )}

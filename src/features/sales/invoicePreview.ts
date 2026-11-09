@@ -42,6 +42,12 @@ export interface PreviewLine {
    * would show the customer a different number from the one they are charged.
    */
   benefit?: string | null;
+  /**
+   * PROMO V1 — what a promo takes off this line, as the server quoted it.
+   * AFTER the benefit and BEFORE the typed discount — `utils/invoicePricing.js`'s
+   * order — capped at what the benefit left.
+   */
+  promo?: string | null;
 }
 
 export interface InvoicePreview {
@@ -145,6 +151,11 @@ function allocate(total: bigint, weights: bigint[]): bigint[] {
   return parts;
 }
 
+/** `qty × unitPrice` for one line, as the server rounds it — before any discount. */
+export function lineTotalOf(qty: string, unitPrice: string): string {
+  return toDecimalString(divideRound(parse(qty) * parse(unitPrice), ONE));
+}
+
 export function previewInvoice(
   lines: PreviewLine[],
   invoiceDiscount: TypedDiscountInput | null = null,
@@ -178,8 +189,13 @@ export function previewInvoice(
     const quoted = line.benefit ? parse(line.benefit) : ZERO;
     const benefit = quoted > total ? total : quoted < ZERO ? ZERO : quoted;
 
-    // The typed discount is measured against what is LEFT after it.
-    lineDiscounts.push(benefit + resolveDiscount(total - benefit, line.discount));
+    /* The promo next, capped at what the benefit left. */
+    const room = total - benefit;
+    const quotedPromo = line.promo ? parse(line.promo) : ZERO;
+    const promo = quotedPromo > room ? room : quotedPromo < ZERO ? ZERO : quotedPromo;
+
+    // The typed discount is measured against what is LEFT after both.
+    lineDiscounts.push(benefit + promo + resolveDiscount(total - benefit - promo, line.discount));
   });
 
   const subtotal = lineTotals.reduce((sum, value) => sum + value, ZERO);

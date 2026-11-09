@@ -50,6 +50,7 @@ export function PosCatalog({
   onScan,
   onExpand,
   busy = false,
+  offline = false,
 }: {
   onAdd: (item: PosCatalogItem) => void;
   /** A product a scan named exactly — resolves once it is in the basket. */
@@ -57,6 +58,8 @@ export function PosCatalog({
   onExpand: (item: PosCatalogItem) => void;
   /** True while a cart write is in flight — tiles stop accepting taps. */
   busy?: boolean;
+  /** Selling offline — promo tags are hidden (no promo applies offline). */
+  offline?: boolean;
 }) {
   const { items, pagination, state, matchedSearch, loading, error, setState } =
     usePosCatalog();
@@ -291,6 +294,7 @@ export function PosCatalog({
                 onAdd={onAdd}
                 onExpand={onExpand}
                 disabled={busy}
+                showPromo={!offline}
               />
             ))}
           </div>

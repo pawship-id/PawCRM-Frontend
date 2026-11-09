@@ -37,8 +37,10 @@ import {
 import { useBranchOptions } from "@/features/inventory/hooks/useBranchOptions";
 import { cardHref, formatDate, formatRupiah } from "@/features/memberships/labels";
 import { usePermissions } from "@/features/permissions";
+import { promoEditHref } from "@/features/promos/labels";
 import { swalToast } from "@/lib/swal";
 import type { AttentionCard } from "@/types/membership";
+import type { PromoAttentionItem, PromoReportRow } from "@/types/promo";
 import { whatsAppLink } from "@/utils/phone";
 
 import {
@@ -63,6 +65,11 @@ import { UnrecognizedBalanceCard } from "./UnrecognizedBalanceCard";
  *      list (formerly the Perpanjangan tab) and allowances about to lapse.
  *   4. "Kinerja paket" from GET /reports/membership — which has no cabang.
  *
+ * PROMO (Promo V1, 8 November 2026), for a role with `promos:read`: a
+ * "Potongan promo" tile and a "Promo berjalan" table from GET /promos/report
+ * (cabang + periode), and "Promo berakhir ≤14 hari" from GET /promos/attention
+ * in Perlu tindakan, each with an Ubah link to push the end date out.
+ *
  * NOTHING HERE SENDS ANYTHING. "Tawarkan perpanjang" and "Ingatkan" open a
  * WhatsApp chat with a drafted line, or copy the number — the shop's own phone
  * is where the conversation happens.
@@ -75,17 +82,21 @@ export function PromosiSummaryScreen() {
   const { can } = usePermissions();
   const canCards = can("petMemberships", "read");
   const canReport = can("membershipReports", "read");
+  const canPromos = can("promos", "read");
 
   const { branches } = useBranchOptions();
   const [branchId, setBranchId] = useState("");
   const [period, setPeriod] = useState<SummaryPeriod>("thisMonth");
 
-  const { summary, attention, report } = usePromosiSummary({
+  const { summary, attention, report, promoReport, promoAttention } = usePromosiSummary({
     branchId,
     period,
     canCards,
     canReport,
+    canPromos,
   });
+  const promoTotals = promoReport.data?.totals;
+  const runningPromos = (promoReport.data?.promos ?? []).filter((row) => row.status === "running");
 
   const data = summary.data;
   const periodLabel = SUMMARY_PERIODS.find((option) => option.value === period)?.label ?? "";
@@ -118,122 +129,222 @@ export function PromosiSummaryScreen() {
         </ScopeField>
       </ScopeCard>
 
-      {canCards && (
+      {(canCards || canPromos) && (
         <>
-          {summary.error && <Alert variant="error">{summary.error}</Alert>}
+          {canCards && summary.error && <Alert variant="error">{summary.error}</Alert>}
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatTile
-              label="Penjualan paket"
-              value={data ? formatRupiah(data.packagesSold.revenue) : "—"}
-              caption={data ? `${data.packagesSold.count} paket terjual` : undefined}
-              hint={`Nilai paket membership yang terjual ${periodLabel.toLowerCase()}. Paket yang diterima di muka baru jadi pendapatan bertahap, lihat Saldo membership belum diakui. Paket yang dibatalkan tidak dihitung.`}
-              loading={summary.loading && !data}
-              error={Boolean(summary.error)}
-            />
-            <StatTile
-              label="Nilai benefit terpakai"
-              value={data ? formatRupiah(data.benefitValue.amount) : "—"}
-              caption={
-                data
-                  ? `dari ${data.benefitValue.customers} pelanggan · ${data.benefitValue.pets} hewan`
-                  : undefined
-              }
-              hint={
-                data
-                  ? `Harga normal layanan yang dipakai lewat jatah membership (${data.benefitValue.uses} pemakaian), dicatat sebagai potongan. Pemakaian yang dibatalkan dikurangkan. Ini biaya membership yang sebenarnya.`
-                  : "Harga normal layanan yang dipakai lewat jatah membership, dicatat sebagai potongan. Ini biaya membership yang sebenarnya."
-              }
-              loading={summary.loading && !data}
-              error={Boolean(summary.error)}
-            />
-            <StatTile
-              label="Anggota aktif"
-              value={data ? String(data.activeMembers.count) : "—"}
-              caption={
-                data
-                  ? `dari ${data.activeMembers.customers} pelanggan · ${data.activeMembers.pets} hewan`
-                  : undefined
-              }
-              hint="Membership yang berlaku saat ini (termasuk yang sedang ditunda), lintas paket. Tidak mengikuti periode. Membership yang melekat ke pelanggan dihitung sekali per pelanggan."
-              loading={summary.loading && !data}
-              error={Boolean(summary.error)}
-            />
-            <StatTile
-              label="Perpanjangan"
-              value={data ? String(data.packagesSold.renewals) : "—"}
-              caption={
-                data
-                  ? data.packagesSold.count
-                    ? `${Math.round((data.packagesSold.renewals / data.packagesSold.count) * 100)}% dari paket terjual`
-                    : "belum ada paket terjual"
-                  : undefined
-              }
-              hint={`Paket terjual ${periodLabel.toLowerCase()} yang merupakan perpanjangan membership sebelumnya. Makin tinggi, makin banyak anggota yang merasa paketnya bernilai.`}
-              loading={summary.loading && !data}
-              error={Boolean(summary.error)}
-            />
+          <div
+            className={
+              canCards && canPromos
+                ? "grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
+                : "grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
+            }
+          >
+            {canCards && (
+              <>
+                <StatTile
+                  label="Penjualan paket"
+                  value={data ? formatRupiah(data.packagesSold.revenue) : "—"}
+                  caption={data ? `${data.packagesSold.count} paket terjual` : undefined}
+                  hint={`Nilai paket membership yang terjual ${periodLabel.toLowerCase()}. Paket yang diterima di muka baru jadi pendapatan bertahap, lihat Saldo membership belum diakui. Paket yang dibatalkan tidak dihitung.`}
+                  loading={summary.loading && !data}
+                  error={Boolean(summary.error)}
+                />
+                <StatTile
+                  label="Nilai benefit terpakai"
+                  value={data ? formatRupiah(data.benefitValue.amount) : "—"}
+                  caption={
+                    data
+                      ? `dari ${data.benefitValue.customers} pelanggan · ${data.benefitValue.pets} hewan`
+                      : undefined
+                  }
+                  hint={
+                    data
+                      ? `Harga normal layanan yang dipakai lewat jatah membership (${data.benefitValue.uses} pemakaian), dicatat sebagai potongan. Pemakaian yang dibatalkan dikurangkan. Ini biaya membership yang sebenarnya.`
+                      : "Harga normal layanan yang dipakai lewat jatah membership, dicatat sebagai potongan. Ini biaya membership yang sebenarnya."
+                  }
+                  loading={summary.loading && !data}
+                  error={Boolean(summary.error)}
+                />
+                <StatTile
+                  label="Anggota aktif"
+                  value={data ? String(data.activeMembers.count) : "—"}
+                  caption={
+                    data
+                      ? `dari ${data.activeMembers.customers} pelanggan · ${data.activeMembers.pets} hewan`
+                      : undefined
+                  }
+                  hint="Membership yang berlaku saat ini (termasuk yang sedang ditunda), lintas paket. Tidak mengikuti periode. Membership yang melekat ke pelanggan dihitung sekali per pelanggan."
+                  loading={summary.loading && !data}
+                  error={Boolean(summary.error)}
+                />
+                <StatTile
+                  label="Perpanjangan"
+                  value={data ? String(data.packagesSold.renewals) : "—"}
+                  caption={
+                    data
+                      ? data.packagesSold.count
+                        ? `${Math.round((data.packagesSold.renewals / data.packagesSold.count) * 100)}% dari paket terjual`
+                        : "belum ada paket terjual"
+                      : undefined
+                  }
+                  hint={`Paket terjual ${periodLabel.toLowerCase()} yang merupakan perpanjangan membership sebelumnya. Makin tinggi, makin banyak anggota yang merasa paketnya bernilai.`}
+                  loading={summary.loading && !data}
+                  error={Boolean(summary.error)}
+                />
+              </>
+            )}
+            {canPromos && (
+              <StatTile
+                label="Potongan promo"
+                value={promoTotals ? formatRupiah(promoTotals.discount) : "—"}
+                caption={promoTotals ? `${promoTotals.transactions} transaksi` : undefined}
+                hint={`Total potongan harga coret yang dipakai di kasir dan faktur ${periodLabel.toLowerCase()}. Void dan retur dikurangkan. Di jurnal, potongan ini ikut Diskon Penjualan.`}
+                loading={promoReport.loading && !promoReport.data}
+                error={Boolean(promoReport.error)}
+              />
+            )}
           </div>
 
-          <UnrecognizedBalanceCard branchId={branchId} />
+          {canCards && <UnrecognizedBalanceCard branchId={branchId} />}
 
           <AttentionPanel
+            membership={canCards}
             loading={attention.loading && !attention.data}
             error={attention.error}
             expiring={attention.data?.expiring ?? []}
             unused={attention.data?.unusedQuota ?? []}
+            promo={
+              canPromos
+                ? {
+                    loading: promoAttention.loading && !promoAttention.data,
+                    error: promoAttention.error,
+                    rows: promoAttention.data ?? [],
+                  }
+                : null
+            }
           />
         </>
       )}
 
-      {canReport && (
+      {(canReport || canPromos) && (
         <Card
-          title="Kinerja paket"
-          description={`${periodLabel}${branchId ? " · semua cabang (laporan ini belum bisa dipilah per cabang)" : ""}`}
+          title={
+            canReport && canPromos
+              ? "Kinerja paket & promo"
+              : canReport
+                ? "Kinerja paket"
+                : "Kinerja promo"
+          }
+          description={`${periodLabel}${canReport && branchId ? " · paket: semua cabang (laporan paket belum bisa dipilah per cabang)" : ""}`}
         >
-          {report.error ? (
-            <Alert variant="error">{report.error}</Alert>
-          ) : report.loading && !report.data ? (
-            <div className="flex justify-center py-8">
-              <Spinner size={24} />
-            </div>
-          ) : !report.data?.plans.length ? (
-            <p className="py-6 text-center text-sm text-muted">
-              Belum ada paket terjual di periode ini.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Paket</TableHead>
-                    <TableHead className="text-right">Terjual</TableHead>
-                    <TableHead className="text-right">Penjualan</TableHead>
-                    <TableHead className="text-right">Jatah dipakai</TableHead>
-                    <TableHead className="text-right">Nilai benefit</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {report.data.plans.map((row) => (
-                    <TableRow key={row.planId}>
-                      <TableCell className="font-medium">{row.name}</TableCell>
-                      <TableCell className="text-right tabular-nums">{row.cards}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatRupiah(row.revenue)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{row.benefitsUsed}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {formatRupiah(row.benefitValue)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
+          <div className="flex flex-col gap-6">
+            {canReport &&
+              (report.error ? (
+                <Alert variant="error">{report.error}</Alert>
+              ) : report.loading && !report.data ? (
+                <div className="flex justify-center py-8">
+                  <Spinner size={24} />
+                </div>
+              ) : !report.data?.plans.length ? (
+                <p className="py-6 text-center text-sm text-muted">
+                  Belum ada paket terjual di periode ini.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Paket</TableHead>
+                        <TableHead className="text-right">Terjual</TableHead>
+                        <TableHead className="text-right">Penjualan</TableHead>
+                        <TableHead className="text-right">Jatah dipakai</TableHead>
+                        <TableHead className="text-right">Nilai benefit</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {report.data.plans.map((row) => (
+                        <TableRow key={row.planId}>
+                          <TableCell className="font-medium">{row.name}</TableCell>
+                          <TableCell className="text-right tabular-nums">{row.cards}</TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatRupiah(row.revenue)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {row.benefitsUsed}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {formatRupiah(row.benefitValue)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ))}
+            {canPromos && (
+              <RunningPromosTable
+                loading={promoReport.loading && !promoReport.data}
+                error={promoReport.error}
+                rows={runningPromos}
+              />
+            )}
+          </div>
         </Card>
       )}
     </div>
+  );
+}
+
+/** Promo berjalan — transaksi and potongan per running promo, in the Kinerja card. */
+function RunningPromosTable({
+  loading,
+  error,
+  rows,
+}: {
+  loading: boolean;
+  error: string | null;
+  rows: PromoReportRow[];
+}) {
+  return (
+    <section aria-label="Promo berjalan" className="flex flex-col gap-2">
+      <h3 className="text-base font-bold">Promo berjalan</h3>
+      {error ? (
+        <Alert variant="error">{error}</Alert>
+      ) : loading ? (
+        <div className="flex justify-center py-6">
+          <Spinner size={24} />
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="py-4 text-center text-sm text-muted">Tidak ada promo yang sedang berjalan.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Promo</TableHead>
+                <TableHead className="text-right">Transaksi</TableHead>
+                <TableHead className="text-right">Potongan</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell>
+                    <span className="block font-medium">{row.name}</span>
+                    <span className="block text-sm text-muted tabular-nums">{row.code}</span>
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{row.transactions}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {formatRupiah(row.discount)}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -261,11 +372,21 @@ async function copyPhone(phone: string) {
 }
 
 function AttentionPanel({
+  membership,
   loading,
   error,
   expiring,
   unused,
+  promo,
 }: {
+  /** The membership lists — only for a role that may read cards. */
+  membership: boolean;
+  /** "Promo berakhir ≤14 hari" — null for a role without `promos:read`. */
+  promo: {
+    loading: boolean;
+    error: string | null;
+    rows: PromoAttentionItem[];
+  } | null;
   loading: boolean;
   error: string | null;
   expiring: AttentionCard[];
@@ -293,68 +414,137 @@ function AttentionPanel({
       }
       action={<span className="text-sm text-muted">Ikut cabang di atas</span>}
     >
-      {error ? (
-        <Alert variant="error">{error}</Alert>
-      ) : loading ? (
-        <div className="flex justify-center py-8">
-          <Spinner size={24} />
-        </div>
-      ) : (
-        <div className="flex flex-col gap-4">
-          <AttentionList
-            tone="warning"
-            icon={<Clock className="size-4" aria-hidden />}
-            title="Membership berakhir ≤14 hari"
-            hint="Waktu paling tepat menawarkan perpanjangan (paket dengan syarat pembeli Perpanjangan)."
-            empty="Tidak ada membership yang segera berakhir."
-            rows={expiring.map((card) => ({
-              key: card.id,
-              href: cardHref(card.id),
-              name: holderName(card),
-              detail: `${card.planName ?? "Membership"} · berakhir ${formatDate(card.endDate)} · ${card.daysLeft} hari lagi`,
-              phone: card.customerPhone,
-              actionLabel: "Tawarkan perpanjang",
-              message: `Halo Kak ${card.customerName ?? ""}, membership ${card.planName ?? ""}${card.petName ? ` untuk ${card.petName}` : ""} berakhir ${formatDate(card.endDate)}. Mau sekalian diperpanjang?`,
-            }))}
-          />
-          <AttentionList
-            icon={<CreditCard className="size-4" aria-hidden />}
-            title="Jatah belum terpakai, periode hampir habis"
-            hint="Jatah per bulan atau per minggu hangus di akhir periode. Mengingatkan pelanggan membuat mereka datang dan merasa paketnya bernilai."
-            empty="Tidak ada jatah yang hampir hangus."
-            rows={unused.map((row) => ({
-              key: `${row.card.id}-${row.benefit.id}`,
-              href: cardHref(row.card.id),
-              name: holderName(row.card),
-              detail: `${row.benefit.label} sisa ${row.remaining} dari ${row.cap}${row.reserved ? ` · ${row.reserved} dipesan` : ""} · hangus ${formatDate(row.periodEnd)} (${row.daysLeft} hari lagi)`,
-              phone: row.card.customerPhone,
-              actionLabel: "Ingatkan",
-              message: `Halo Kak ${row.card.customerName ?? ""}, jatah ${row.benefit.label}${row.card.petName ? ` untuk ${row.card.petName}` : ""} masih ${row.remaining}× dan berlaku sampai ${formatDate(row.periodEnd)}. Mau dijadwalkan?`,
-            }))}
-          />
-          {/*
+      <div className="flex flex-col gap-4">
+        {membership &&
+          (error ? (
+            <Alert variant="error">{error}</Alert>
+          ) : loading ? (
+            <div className="flex justify-center py-8">
+              <Spinner size={24} />
+            </div>
+          ) : (
+            <>
+              <AttentionList
+                tone="warning"
+                icon={<Clock className="size-4" aria-hidden />}
+                title="Membership berakhir ≤14 hari"
+                hint="Waktu paling tepat menawarkan perpanjangan (paket dengan syarat pembeli Perpanjangan)."
+                empty="Tidak ada membership yang segera berakhir."
+                rows={expiring.map((card) => ({
+                  key: card.id,
+                  href: cardHref(card.id),
+                  name: holderName(card),
+                  detail: `${card.planName ?? "Membership"} · berakhir ${formatDate(card.endDate)} · ${card.daysLeft} hari lagi`,
+                  phone: card.customerPhone,
+                  actionLabel: "Tawarkan perpanjang",
+                  message: `Halo Kak ${card.customerName ?? ""}, membership ${card.planName ?? ""}${card.petName ? ` untuk ${card.petName}` : ""} berakhir ${formatDate(card.endDate)}. Mau sekalian diperpanjang?`,
+                }))}
+              />
+              <AttentionList
+                icon={<CreditCard className="size-4" aria-hidden />}
+                title="Jatah belum terpakai, periode hampir habis"
+                hint="Jatah per bulan atau per minggu hangus di akhir periode. Mengingatkan pelanggan membuat mereka datang dan merasa paketnya bernilai."
+                empty="Tidak ada jatah yang hampir hangus."
+                rows={unused.map((row) => ({
+                  key: `${row.card.id}-${row.benefit.id}`,
+                  href: cardHref(row.card.id),
+                  name: holderName(row.card),
+                  detail: `${row.benefit.label} sisa ${row.remaining} dari ${row.cap}${row.reserved ? ` · ${row.reserved} dipesan` : ""} · hangus ${formatDate(row.periodEnd)} (${row.daysLeft} hari lagi)`,
+                  phone: row.card.customerPhone,
+                  actionLabel: "Ingatkan",
+                  message: `Halo Kak ${row.card.customerName ?? ""}, jatah ${row.benefit.label}${row.card.petName ? ` untuk ${row.card.petName}` : ""} masih ${row.remaining}× dan berlaku sampai ${formatDate(row.periodEnd)}. Mau dijadwalkan?`,
+                }))}
+              />
+              {/*
             Not in V1 (BO, 15 October 2026: membership first). Drawn now so the
             panel already has the shape the prototype shows, and says plainly
             that these lists arrive with kartu stempel and promo.
           */}
-          <ComingSoonList
-            icon={<CircleCheck className="size-4" aria-hidden />}
-            title="Kartu stempel kurang 1 lagi"
-            note="Muncul setelah fitur kartu stempel tersedia."
-          />
-          <ComingSoonList
-            icon={<Gift className="size-4" aria-hidden />}
-            title="Reward stempel belum dipakai"
-            note="Muncul setelah fitur kartu stempel tersedia."
-          />
-          <ComingSoonList
-            icon={<Tag className="size-4" aria-hidden />}
-            title="Promo berakhir ≤14 hari"
-            note="Muncul setelah fitur promo tersedia."
-          />
-        </div>
-      )}
+              <ComingSoonList
+                icon={<CircleCheck className="size-4" aria-hidden />}
+                title="Kartu stempel kurang 1 lagi"
+                note="Muncul setelah fitur kartu stempel tersedia."
+              />
+              <ComingSoonList
+                icon={<Gift className="size-4" aria-hidden />}
+                title="Reward stempel belum dipakai"
+                note="Muncul setelah fitur kartu stempel tersedia."
+              />
+            </>
+          ))}
+        {promo && <PromoEndingList {...promo} />}
+      </div>
     </Card>
+  );
+}
+
+/**
+ * Promo berakhir ≤14 hari — running promos about to end. "Ubah" opens the
+ * promo's form, where the end date can be pushed out (Perpanjang).
+ */
+function PromoEndingList({
+  loading,
+  error,
+  rows,
+}: {
+  loading: boolean;
+  error: string | null;
+  rows: PromoAttentionItem[];
+}) {
+  const [all, setAll] = useState(false);
+  const shown = all ? rows : rows.slice(0, PREVIEW_ROWS);
+  const title = "Promo berakhir ≤14 hari";
+
+  return (
+    <AttentionBox
+      label={title}
+      header={
+        <>
+          <Tag className="size-4" aria-hidden />
+          {title}
+          <InfoTooltip hint="Promo yang sedang berjalan dan tanggal selesainya tinggal 14 hari atau kurang. Perpanjang lewat Ubah kalau promonya masih ingin dijalankan." />
+          <CountBadge>{rows.length}</CountBadge>
+        </>
+      }
+    >
+      {error ? (
+        <div className="py-3">
+          <Alert variant="error">{error}</Alert>
+        </div>
+      ) : loading ? (
+        <div className="flex justify-center py-6">
+          <Spinner size={24} />
+        </div>
+      ) : rows.length === 0 ? (
+        <p className="py-3 text-sm text-muted">Tidak ada promo yang segera berakhir.</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-border">
+          {shown.map((promo) => (
+            <li key={promo.id} className="flex items-start justify-between gap-3 py-3">
+              <div className="min-w-0">
+                <p className="text-[15px] font-semibold">{promo.name}</p>
+                <p className="text-sm text-muted tabular-nums">
+                  {promo.code} · berakhir {formatDate(promo.restrictions.endDate)} ·{" "}
+                  {promo.daysLeft <= 0 ? "hari ini" : `${promo.daysLeft} hari lagi`}
+                </p>
+              </div>
+              <Link
+                href={promoEditHref(promo.id)}
+                className="shrink-0 text-sm font-semibold text-primary underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              >
+                Ubah
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {rows.length > PREVIEW_ROWS && (
+        <Button type="button" variant="ghost" size="sm" className="mt-1" onClick={() => setAll(!all)}>
+          {all ? "Tampilkan lebih sedikit" : `Tampilkan semua (${rows.length})`}
+        </Button>
+      )}
+    </AttentionBox>
   );
 }
 

@@ -121,6 +121,13 @@ interface EditLine {
    */
   bookingShare: string;
   /**
+   * PROMO V1 — the promo frozen on a KEPT line (its part of the stored
+   * discount). The server keeps it on a revision unless the line re-picks, so
+   * the fields hold the own part only and the preview adds this back. Absent
+   * on a new row: the server applies a promo itself on save.
+   */
+  promoShare?: string;
+  /**
    * THE "DIPILIH STAF" VALUES CHOSEN on a line added here (17 September 2026),
    * sent as its `variantChoices`. Empty on a kept line — the server keeps what
    * that line was priced on, and never re-quotes it.
@@ -225,9 +232,15 @@ export function InvoiceEditor({
         */
         const share =
           invoiceBookingShareOf(item, invoice.bookings ?? []) ?? "0";
+        /* Promo V1 — the promo's part is not the line's own discount either. */
+        const promoShare =
+          item.promoDiscount && isPositive(item.promoDiscount) ? item.promoDiscount : "0";
         const own =
-          item.discount && isPositive(share)
-            ? subtractDecimals(item.discount.resolvedAmount, share)
+          item.discount && (isPositive(share) || isPositive(promoShare))
+            ? subtractDecimals(
+                subtractDecimals(item.discount.resolvedAmount, share),
+                promoShare,
+              )
             : null;
 
         return {
@@ -267,6 +280,7 @@ export function InvoiceEditor({
           booked: Boolean(item.bookingId || item.homeTripId),
           tripId: item.homeTripId ?? null,
           bookingShare: share,
+          promoShare,
           choices: [],
           storedVariant: variantSummary(item),
         };
@@ -592,6 +606,8 @@ export function InvoiceEditor({
 
   /* The bookings' shares across the edit — shown once, under "Diskon item". */
   const bookingShares = sumDecimals(lines.map((line) => line.bookingShare));
+  /* Promo V1 — the kept lines' frozen promos, shown on their own recap row. */
+  const promoShares = sumDecimals(lines.map((line) => line.promoShare ?? "0"));
 
   /**
    * Whether the PPN is charged ON TOP of the prices — see `previewInvoice`.
@@ -604,8 +620,8 @@ export function InvoiceEditor({
   /** A row's OWN discount: what the preview takes off it, less the booking's share. */
   function ownOffAt(index: number, line: EditLine): string {
     const own = subtractDecimals(
-      preview.lineDiscounts[index],
-      line.bookingShare,
+      subtractDecimals(preview.lineDiscounts[index], line.bookingShare),
+      line.promoShare ?? "0",
     );
     return isPositive(own) ? own : "0";
   }
@@ -639,6 +655,8 @@ export function InvoiceEditor({
           qty: line.qty,
           unitPrice: chargedPrice(line),
           discount: previewDiscountOf(line),
+          /* A kept line's frozen promo, before its own discount (server order). */
+          promo: line.promoShare ?? null,
         })),
         invoiceDiscountValue
           ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
@@ -1750,7 +1768,10 @@ export function InvoiceEditor({
             <dd className="tabular-nums">
               −
               {formatMoney(
-                subtractDecimals(preview.itemDiscount, bookingShares),
+                subtractDecimals(
+                  subtractDecimals(preview.itemDiscount, bookingShares),
+                  promoShares,
+                ),
               )}
             </dd>
           </div>
@@ -1758,6 +1779,12 @@ export function InvoiceEditor({
             <div className="flex justify-between gap-4">
               <dt className="text-muted">Diskon booking</dt>
               <dd className="tabular-nums">−{formatMoney(bookingShares)}</dd>
+            </div>
+          )}
+          {isPositive(promoShares) && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted">Potongan promo</dt>
+              <dd className="tabular-nums">−{formatMoney(promoShares)}</dd>
             </div>
           )}
           <div className="flex justify-between gap-4">

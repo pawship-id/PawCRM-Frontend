@@ -918,6 +918,23 @@ describe("ReceiptPreview — Potongan membership", () => {
       ...overrides,
     });
 
+  it("keeps a promo out of Diskon item too, named on its own line (Promo V1)", async () => {
+    const base = receiptWithBenefit();
+    const items = base.items.map((item, index) =>
+      index === 1
+        ? { ...item, promoDiscount: "3000.0000", promoLabel: "Flash Sale" }
+        : item,
+    );
+    renderWithAuth(<ReceiptPreview receipt={{ ...base, items }} size="80" />);
+
+    expect(
+      (await screen.findByText("Diskon item")).parentElement?.textContent,
+    ).toContain("Rp 2.000");
+    expect(
+      screen.getByText("Potongan promo · Flash Sale").parentElement?.textContent,
+    ).toContain("Rp 3.000");
+  });
+
   it("keeps a card's giveaway out of Diskon item, in its own line", async () => {
     renderWithAuth(<ReceiptPreview receipt={receiptWithBenefit()} size="80" />);
 

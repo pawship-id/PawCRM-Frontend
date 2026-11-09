@@ -8,7 +8,7 @@ import { formatMoney } from "@/utils/decimal";
 import { formatDate } from "@/features/memberships/labels";
 import type { PosItem } from "@/types/api";
 
-import { membershipShareOf, ownDiscountOf } from "../bookingDiscount";
+import { membershipShareOf, ownDiscountOf, promoShareOf } from "../bookingDiscount";
 import { variantDetailOf } from "../variantDetail";
 import { PosLinePrice } from "./PosLinePrice";
 import { netOf, PosLineTotal } from "./PosLineTotal";
@@ -329,8 +329,8 @@ export function PosCartLine({
                 grooming). The discount still belongs to the SERVICE.
               */}
               <span className="shrink-0 text-right text-xs tabular-nums text-muted">
-                {/* A card's pick on the add-on strikes its price, like a line's. */}
-                {membershipShareOf(addon) ? (
+                {/* A card's pick — or a promo — on the add-on strikes its price, like a line's. */}
+                {membershipShareOf(addon) || promoShareOf(addon) ? (
                   <>
                     <span className="block line-through">{formatMoney(addon.lineTotal)}</span>
                     <span className="block font-medium text-warning">{formatMoney(netOf(addon))}</span>
