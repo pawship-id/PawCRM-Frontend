@@ -33,6 +33,7 @@ import {
   canCancel,
   forwardStatuses,
   impliedStatuses,
+  waitsForSessions,
 } from "../statusFlow";
 import {
   BookingStatusBadge,
@@ -247,6 +248,8 @@ export function BookingStatusActions({
             <Button
               size={dense ? "sm" : "lg"}
               onClick={() => setNext(primaryMove)}
+              // Every session must be done first — see `waitsForSessions`.
+              disabled={waitsForSessions(booking, primaryMove)}
             >
               {bookingStatusAction(primaryMove, booking)} →
             </Button>
@@ -301,6 +304,7 @@ export function BookingStatusActions({
                     <DropdownMenuItem
                       key={status}
                       onSelect={() => setNext(status)}
+                      disabled={waitsForSessions(booking, status)}
                     >
                       {bookingStatusAction(status, booking)}
                     </DropdownMenuItem>
