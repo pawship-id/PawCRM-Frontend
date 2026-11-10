@@ -199,6 +199,83 @@ describe("the potongan select", () => {
     });
   });
 
+  it("does not print the promo's name twice when the server's label carries it", () => {
+    const named = { ...flash, label: "Flash Sale −15%" };
+    const options = potonganOptions(line(), null, {
+      ref: "0",
+      candidates: [named],
+      recommended: { promoIds: [], useMember: false, discount: "0.0000", parts: [] },
+    });
+    expect(options.map((option) => option.label)).toContain("Promo · Flash Sale −15%");
+  });
+
+  describe("two 'bisa digabung' promos", () => {
+    const big = {
+      promoId: "promo-big",
+      code: "PRM-2",
+      name: "Shampoo 20%",
+      label: "Shampoo 20% −20%",
+      stackable: true,
+      discount: "20000.0000",
+    };
+    const small = {
+      promoId: "promo-small",
+      code: "PRM-1",
+      name: "Flash Sale",
+      label: "Flash Sale −12%",
+      stackable: true,
+      discount: "12000.0000",
+    };
+    const quoteLine = {
+      ref: "0",
+      candidates: [big, small],
+      recommended: {
+        promoIds: [big.promoId, small.promoId],
+        useMember: false,
+        discount: "29600.0000",
+        parts: [big, small],
+      },
+    };
+
+    it("offers them together, ahead of each alone", () => {
+      const options = potonganOptions(line(), null, quoteLine);
+      expect(options.map((option) => option.label)).toEqual([
+        "Promo · Shampoo 20% −20% + Flash Sale −12%",
+        "Promo · Shampoo 20% −20%",
+        "Promo · Flash Sale −12%",
+        "Tanpa potongan",
+      ]);
+    });
+
+    it("reads a line carrying both as the combined option, in any order", () => {
+      const both = line({
+        promos: [
+          { ...small, type: "coret", groupRef: null },
+          { ...big, type: "coret", groupRef: null },
+        ],
+      });
+      const combined = potonganOptions(line(), null, quoteLine)[0].value;
+      expect(potonganValue(both)).toBe(combined);
+    });
+
+    it("sends both, largest first, when the combined option is chosen", () => {
+      const combined = potonganOptions(line(), null, quoteLine)[0].value;
+      expect(potonganChange(combined, null, quoteLine)).toEqual({
+        benefit: null,
+        promoIds: ["promo-big", "promo-small"],
+        noBenefit: true,
+      });
+    });
+
+    it("offers no combined option when only one of them stacks", () => {
+      const options = potonganOptions(line(), null, {
+        ...quoteLine,
+        candidates: [big, { ...small, stackable: false }],
+      });
+      expect(options.some((option) => option.label.includes(" + "))).toBe(false);
+    });
+  });
+
   it("knows a decided promo line", () => {
     expect(promoDecided(line({ promoPick: [] }))).toBe(true);
     expect(promoDecided(line({ promoPick: null }))).toBe(false);

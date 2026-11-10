@@ -185,17 +185,49 @@ export const POTONGAN_NONE = "none";
 const memberValue = (key: string) => `m:${key}`;
 const promoValue = (promoId: string) => `p:${promoId}`;
 
+/**
+ * "Flash Sale −12%" — the promo's name and its cut, once.
+ *
+ * THE SERVER'S `label` ALREADY STARTS WITH THE NAME ("Flash Sale −12%"), so
+ * joining the two printed it twice — "Flash Sale Flash Sale −12%". A label
+ * that does not repeat the name (an older document) still gets it in front.
+ */
+function promoText(part: { name: string | null; label: string | null }): string {
+  const name = part.name?.trim() ?? "";
+  const label = part.label?.trim() ?? "";
+  if (!label) return name;
+  if (!name || label.startsWith(name)) return label;
+  return `${name} ${label}`;
+}
+
 /** "Promo · Flash Sale −12%". */
 export function promoOptionLabel(part: { name: string | null; label: string | null }): string {
-  return `Promo · ${[part.name, part.label].filter(Boolean).join(" ")}`;
+  return `Promo · ${promoText(part)}`;
 }
+
+/**
+ * "Promo · Shampoo 20% −20% + Flash Sale −12%" — several "bisa digabung"
+ * promos applied one after another on one line.
+ */
+export function combinedPromoLabel(parts: Array<{ name: string | null; label: string | null }>): string {
+  return `Promo · ${parts.map(promoText).join(" + ")}`;
+}
+
+/**
+ * ONE VALUE FOR A SET OF PROMOS, whatever order they are listed in — the line
+ * the server priced and the option the quote offered must read as the same
+ * choice. The ORDER they are applied in travels separately (see
+ * `potonganChange`).
+ */
+const promosValue = (promoIds: string[]) =>
+  promoIds.length === 1 ? promoValue(promoIds[0]) : promoValue([...promoIds].sort().join(","));
 
 /** What the select shows as chosen right now. */
 export function potonganValue(item: PosItem): string {
   const pick = pickOf(item);
   if (pick) return memberValue(pickKey(pick));
-  const first = item.promos?.[0];
-  if (first) return promoValue(String(first.promoId));
+  const promos = item.promos ?? [];
+  if (promos.length) return promosValue(promos.map((promo) => String(promo.promoId)));
   return POTONGAN_NONE;
 }
 
@@ -232,6 +264,21 @@ export function potonganOptions(
     });
   }
 
+  /*
+    THE PROMOS STACKED, as one option, ahead of each promo alone. Without it a
+    line could only ever be pinned to ONE promo, so two "bisa digabung" promos
+    were combined only while nobody had touched the select — and once a cashier
+    picked either, there was no way back to both.
+  */
+  const stackable = (promoLine?.candidates ?? []).filter((part) => part.stackable);
+  if (promosAllowed && stackable.length > 1) {
+    push({
+      value: promosValue(stackable.map((part) => part.promoId)),
+      label: combinedPromoLabel(stackable),
+      tone: "promo",
+    });
+  }
+
   if (promosAllowed) {
     for (const part of promoLine?.candidates ?? []) {
       push({ value: promoValue(part.promoId), label: promoOptionLabel(part), tone: "promo" });
@@ -240,7 +287,15 @@ export function potonganOptions(
 
   /* The promo on the line — riding on a card or not — is always offered. */
   if (!pick) {
-    for (const promo of item.promos ?? []) {
+    const onLine = item.promos ?? [];
+    if (onLine.length > 1) {
+      push({
+        value: promosValue(onLine.map((promo) => String(promo.promoId))),
+        label: combinedPromoLabel(onLine),
+        tone: "promo",
+      });
+    }
+    for (const promo of onLine) {
       push({ value: promoValue(String(promo.promoId)), label: promoOptionLabel(promo), tone: "promo" });
     }
   }
@@ -263,6 +318,8 @@ export interface PotonganChange {
  * Turns a chosen option into the write.
  *
  *   Promo           → `promoIds: [id]`, no card.
+ *   Promo gabungan  → `promoIds: [a, b]`, no card — in the order the quote
+ *                     lists them (largest cut first, as the server would).
  *   Jatah           → the card, `promoIds: []` (a jatah line takes no promo).
  *   Member          → the card, promo AUTOMATIC: the server lets only a
  *                     "bisa digabung" promo ride on an unlimited benefit.
@@ -273,11 +330,20 @@ export interface PotonganChange {
 export function potonganChange(
   value: string,
   memberLine: BenefitQuoteLineResult | null,
+  promoLine: PromoQuoteLine | null = null,
 ): PotonganChange | null {
   if (value === POTONGAN_NONE) return { benefit: null, promoIds: [], noBenefit: true };
 
   if (value.startsWith("p:")) {
-    return { benefit: null, promoIds: [value.slice(2)], noBenefit: true };
+    const ids = value.slice(2).split(",").filter(Boolean);
+    /*
+      The value is sorted to be stable; the server applies promos in the
+      order it is sent, so put them back in the quote's (largest first).
+    */
+    const order = (promoLine?.candidates ?? []).map((part) => part.promoId);
+    const rank = (id: string) => (order.includes(id) ? order.indexOf(id) : order.length);
+    ids.sort((a, b) => rank(a) - rank(b));
+    return { benefit: null, promoIds: ids, noBenefit: true };
   }
 
   if (value.startsWith("m:")) {

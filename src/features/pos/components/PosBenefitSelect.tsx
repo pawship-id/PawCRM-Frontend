@@ -79,7 +79,7 @@ export function PosBenefitSelect({
           disabled={disabled}
           onValueChange={(next) => {
             if (next === value) return;
-            const change = potonganChange(next, line);
+            const change = potonganChange(next, line, promoLine ?? null);
             if (change) onChange(change);
           }}
         >
