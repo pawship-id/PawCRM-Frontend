@@ -1,6 +1,6 @@
 "use client";
 
-import { Info, Pencil, Square, Trash2 } from "lucide-react";
+import { Pencil, Square, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -261,17 +261,6 @@ export function PromoListPanel() {
           onPageSizeChange={(limit) => patchQuery({ limit })}
         />
       )}
-
-      <div className="flex gap-3 rounded-xl bg-tint-info p-4 text-sm">
-        <Info className="mt-0.5 size-4 flex-none text-info" aria-hidden />
-        <div>
-          <p className="font-semibold text-foreground">Satu item, satu promo otomatis</p>
-          <p className="mt-1 text-muted">
-            Kalau satu item kena lebih dari satu promo, kasir memakai yang paling menguntungkan
-            pelanggan, kecuali promo ditandai bisa digabung.
-          </p>
-        </div>
-      </div>
 
       {pending && (
         <ConfirmDialog

@@ -2,7 +2,7 @@
 
 import { Lock, Trash2 } from "lucide-react";
 
-import { Card, FIELD_HEIGHT } from "@/components";
+import { Card, FIELD_HEIGHT, SelectField } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -245,15 +245,19 @@ function CoretItemCard({
         )
       ) : (
         <div className="flex flex-col gap-2">
-          <div className="grid items-end gap-3 sm:grid-cols-[auto_minmax(0,12rem)]">
-            <FieldBlock label="Potongan">
-              <Segmented
-                ariaLabel={`Jenis potongan ${item.name}`}
-                value={item.kind}
-                options={KIND_OPTIONS.map((option) => ({ ...option, disabled: frozen }))}
-                onChange={(kind) => onPatch({ kind })}
-              />
-            </FieldBlock>
+          <div className="grid items-start gap-3 sm:grid-cols-2">
+            {/*
+              A DROPDOWN, not three segment buttons (BO, 10 November 2026): the
+              segments wrapped onto two lines on a narrow card, and a short
+              closed list that needs no searching is SelectField's job (§16).
+            */}
+            <SelectField
+              label="Potongan"
+              value={item.kind}
+              options={KIND_OPTIONS}
+              disabled={frozen}
+              onChange={(kind) => onPatch({ kind: kind as CoretKind })}
+            />
             <FieldBlock
               label={
                 item.kind === "discount_percent"
