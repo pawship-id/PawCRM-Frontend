@@ -64,7 +64,7 @@ describe("what it asks the server for", () => {
     open();
 
     await waitFor(() => expect(bookingService.bridge).toHaveBeenCalled());
-    expect(bookingService.bridge).toHaveBeenCalledWith("c1", 30, undefined);
+    expect(bookingService.bridge).toHaveBeenCalledWith("c1", undefined, undefined, true);
   });
 
   /* THE BRANCH THAT WILL BILL IT (11 October 2026). */
@@ -72,7 +72,7 @@ describe("what it asks the server for", () => {
     open({ branchId: "b-timur" });
 
     await waitFor(() => expect(bookingService.bridge).toHaveBeenCalled());
-    expect(bookingService.bridge).toHaveBeenCalledWith("c1", 30, "b-timur");
+    expect(bookingService.bridge).toHaveBeenCalledWith("c1", undefined, "b-timur", true);
   });
 
   it("asks again when the invoice's branch changes", async () => {
@@ -89,7 +89,7 @@ describe("what it asks the server for", () => {
     );
 
     await waitFor(() => expect(bookingService.bridge).toHaveBeenCalledTimes(2));
-    expect(bookingService.bridge).toHaveBeenLastCalledWith("c1", 30, "b-timur");
+    expect(bookingService.bridge).toHaveBeenLastCalledWith("c1", undefined, "b-timur", true);
   });
 });
 
