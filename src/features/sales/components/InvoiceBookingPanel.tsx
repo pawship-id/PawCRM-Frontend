@@ -20,7 +20,11 @@ import { billedTripNote } from "@/features/booking/visitTrip";
 /**
  * THE CUSTOMER'S BOOKINGS, ready to be billed on this invoice — PCR-034.
  *
- * WHY THE WINDOW IS 30 DAYS AND NOT TODAY. The till's bridge answers "what is
+ * NO LOWER BOUND (10 November 2026, on request). It was 30 days; an unbilled
+ * grooming from two months ago is still owed, and hiding it here meant it was
+ * never billed. Now every unbilled booking up to today, oldest first.
+ *
+ * WHY NOT TODAY (the original reasoning, still true). The till's bridge answers "what is
  * happening in front of me"; an invoice bills what has ALREADY happened — a
  * month of boarding, last week's grooming. A one-day window would leave this
  * panel empty for exactly the cases it exists to serve. Backwards only: an
@@ -48,8 +52,6 @@ import { billedTripNote } from "@/features/booking/visitTrip";
  * bookings" has no meaning until "whose" is answered, and an empty panel above
  * an unanswered question reads as "this customer has none".
  */
-const WINDOW_DAYS = 30;
-
 export function InvoiceBookingPanel({
   customerId,
   branchId,
@@ -123,7 +125,7 @@ export function InvoiceBookingPanel({
       });
 
     bookingService
-      .bridge(customerId, WINDOW_DAYS, branchId || undefined)
+      .bridge(customerId, undefined, branchId || undefined, true)
       .then((rows) => {
         if (active) setBookings(rows);
       })
@@ -184,8 +186,7 @@ export function InvoiceBookingPanel({
 
       {!loading && !error && bookings.length === 0 && (
         <p className="text-sm text-muted">
-          Tidak ada booking pelanggan ini dalam {WINDOW_DAYS} hari terakhir yang
-          belum ditagih.
+          Tidak ada booking pelanggan ini yang belum ditagih.
         </p>
       )}
 
