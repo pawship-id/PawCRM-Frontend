@@ -9,10 +9,17 @@ import { serviceService } from "@/services/service.service";
 
 /** What the picker hands back — a promo target and the name to show. */
 export interface PickedItem {
-  targetType: "product" | "service";
+  /** `variant` only when the picker is asked for variants (Diskon bertingkat). */
+  targetType: "product" | "variant" | "service";
   refId: string;
   name: string;
 }
+
+const GROUP_LABEL: Record<PickedItem["targetType"], string> = {
+  product: "Produk",
+  variant: "Varian",
+  service: "Layanan",
+};
 
 const SEARCH_DELAY_MS = 300;
 const LIMIT = 20;
@@ -27,6 +34,11 @@ const LIMIT = 20;
  * the shop price variants one by one) and services by name. The two are
  * grouped under "Produk" and "Layanan" headings.
  *
+ * `withVariants` (Diskon bertingkat, mockup "Bisa pilih produk (semua varian
+ * ikut) atau varian tertentu saja") adds a third list, "Varian": one variant
+ * on its own. A variant's name already carries its parent's, so it reads
+ * whole in the list.
+ *
  * Items already on the promo are listed but disabled, so a second click does
  * not silently add a duplicate the server would refuse.
  */
@@ -34,11 +46,13 @@ export function PromoItemPicker({
   taken,
   onPick,
   disabled,
+  withVariants = false,
 }: {
-  /** `product:<id>` / `service:<id>` already on the promo. */
+  /** `product:<id>` / `variant:<id>` / `service:<id>` already on the promo. */
   taken: Set<string>;
   onPick: (item: PickedItem) => void;
   disabled?: boolean;
+  withVariants?: boolean;
 }) {
   const [term, setTerm] = useState("");
   const [settled, setSettled] = useState("");
@@ -66,7 +80,15 @@ export function PromoItemPicker({
         excludeVariants: true,
       }),
       serviceService.list({ search: settled || undefined, limit: LIMIT, isActive: true }),
-    ]).then(([products, services]) => {
+      withVariants
+        ? productService.list({
+            search: settled || undefined,
+            limit: LIMIT,
+            isActive: true,
+            productType: "variant",
+          })
+        : Promise.resolve(null),
+    ]).then(([products, services, variants]) => {
       if (!live) return;
       const next: (PickedItem & { meta?: string })[] = [];
       if (products.status === "fulfilled") {
@@ -81,6 +103,16 @@ export function PromoItemPicker({
                 : product.sellPrice
                   ? formatRupiah(product.sellPrice)
                   : undefined,
+          });
+        }
+      }
+      if (variants.status === "fulfilled" && variants.value) {
+        for (const variant of variants.value.items) {
+          next.push({
+            targetType: "variant",
+            refId: variant._id,
+            name: variant.name,
+            meta: variant.sellPrice ? formatRupiah(variant.sellPrice) : undefined,
           });
         }
       }
@@ -102,7 +134,7 @@ export function PromoItemPicker({
     return () => {
       live = false;
     };
-  }, [settled, disabled]);
+  }, [settled, disabled, withVariants]);
 
   const options = useMemo<FilterOption<string>[]>(
     () =>
@@ -112,7 +144,7 @@ export function PromoItemPicker({
           value,
           label: row.name,
           meta: taken.has(value) ? "sudah dipilih" : row.meta,
-          group: row.targetType === "product" ? "Produk" : "Layanan",
+          group: GROUP_LABEL[row.targetType],
           disabled: taken.has(value),
         };
       }),

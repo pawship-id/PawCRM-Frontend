@@ -20,18 +20,29 @@ import {
   emptyPromoDraft,
   promoBlockedReason,
   promoToDraft,
+  type FormPromoType,
   type PromoDraft,
 } from "../promoDraft";
 import { CoretItemsEditor } from "./CoretItemsEditor";
 import { PromoInfoPanel } from "./PromoInfoPanel";
 import { PromoPreview } from "./PromoPreview";
 import { PromoRestrictionsPanel } from "./PromoRestrictionsPanel";
+import { TieredPreview } from "./TieredPreview";
+import { TieredRuleEditor } from "./TieredRuleEditor";
+
+/** The line under the page title, per type (mockup `formShell` desc). */
+const TYPE_DESCRIPTION: Record<FormPromoType, string> = {
+  coret:
+    "Harga promo per item atau per varian. Harga normal tampil dicoret di kasir dan website selama periode promo.",
+  tiered: "Makin banyak item dari kelompok yang sama, makin besar diskonnya.",
+};
 
 /**
- * Buat / ubah promo Harga coret — a full page with a sticky preview on the
+ * Buat / ubah promo — Harga coret or Diskon bertingkat — a full page with a sticky preview on the
  * right (BO mockup `coretForm`, the layout of MembershipPlanForm).
  *
- * Info promo · Item dan harga promo · Batasan on the left; the preview says
+ * Info promo · Item dan harga promo (coret) or Syarat + Tingkatan diskon
+ * (bertingkat) · Batasan on the left; the preview says
  * back, as the till will show it, what the fields add up to.
  *
  * `promo.locked` (used at least once): items and prices are read-only and left
@@ -39,7 +50,7 @@ import { PromoRestrictionsPanel } from "./PromoRestrictionsPanel";
  * (period over, or stopped) is read-only throughout: there is nothing left
  * for it to do, and a stopped one cannot be edited at all.
  */
-export function PromoForm({ promo }: { promo?: Promo }) {
+export function PromoForm({ promo, type = "coret" }: { promo?: Promo; type?: FormPromoType }) {
   const router = useRouter();
   const editing = Boolean(promo);
   const readOnly = promo?.status === "ended";
@@ -47,12 +58,14 @@ export function PromoForm({ promo }: { promo?: Promo }) {
 
   const [draft, setDraft] = useState<PromoDraft>(() => {
     const today = isoDate(new Date());
-    return promo ? promoToDraft(promo, today) : emptyPromoDraft(today);
+    return promo ? promoToDraft(promo, today) : emptyPromoDraft(today, type);
   });
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  const tiered = draft.type === "tiered";
   const factsOf = useItemFacts(draft.items);
+  const groupFactsOf = useItemFacts(tiered ? draft.group.slice(0, 2) : []);
   const set = (patch: Partial<PromoDraft>) => setDraft((current) => ({ ...current, ...patch }));
 
   const blockedReason = readOnly ? "Promo yang sudah berakhir tidak bisa diubah" : promoBlockedReason(draft);
@@ -94,12 +107,9 @@ export function PromoForm({ promo }: { promo?: Promo }) {
             ]}
           />
           <h1 className="mt-1 text-2xl font-extrabold">
-            {editing ? promo!.name : `${PROMO_TYPE_LABEL.coret} baru`}
+            {editing ? promo!.name : `${PROMO_TYPE_LABEL[draft.type]} baru`}
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-muted">
-            Harga promo per item atau per varian. Harga normal tampil dicoret di kasir dan website
-            selama periode promo.
-          </p>
+          <p className="mt-1 max-w-2xl text-sm text-muted">{TYPE_DESCRIPTION[draft.type]}</p>
         </div>
 
         <FormActionBar
@@ -131,13 +141,23 @@ export function PromoForm({ promo }: { promo?: Promo }) {
             readOnly={readOnly}
             draftLocked={locked}
           />
-          <CoretItemsEditor
-            items={draft.items}
-            onChange={(items) => set({ items })}
-            factsOf={factsOf}
-            locked={locked}
-            readOnly={readOnly}
-          />
+          {tiered ? (
+            <TieredRuleEditor
+              group={draft.group}
+              tiers={draft.tiers}
+              onChange={set}
+              locked={locked}
+              readOnly={readOnly}
+            />
+          ) : (
+            <CoretItemsEditor
+              items={draft.items}
+              onChange={(items) => set({ items })}
+              factsOf={factsOf}
+              locked={locked}
+              readOnly={readOnly}
+            />
+          )}
           <PromoRestrictionsPanel
             draft={draft}
             onChange={set}
@@ -147,7 +167,11 @@ export function PromoForm({ promo }: { promo?: Promo }) {
         </div>
 
         <div className="lg:sticky lg:top-20">
-          <PromoPreview draft={draft} factsOf={factsOf} />
+          {tiered ? (
+            <TieredPreview draft={draft} factsOf={groupFactsOf} />
+          ) : (
+            <PromoPreview draft={draft} factsOf={factsOf} />
+          )}
         </div>
       </div>
     </form>

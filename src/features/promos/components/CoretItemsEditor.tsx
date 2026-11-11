@@ -123,7 +123,11 @@ export function CoretItemsEditor({
         {!frozen && (
           <PromoItemPicker
             taken={taken}
-            onPick={(picked) => onChange([...items, newCoretItem(picked)])}
+            onPick={(picked) => {
+              // No `withVariants` here: a coret item prices its variants itself.
+              if (picked.targetType === "variant") return;
+              onChange([...items, newCoretItem({ ...picked, targetType: picked.targetType })]);
+            }}
           />
         )}
       </div>

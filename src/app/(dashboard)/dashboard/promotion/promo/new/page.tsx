@@ -8,9 +8,9 @@ import { PromoForm } from "@/features/promos";
 import { AVAILABLE_PROMO_TYPES, type PromoType } from "@/types/promo";
 
 /**
- * Buat promo — `?type=coret`. V1 builds Harga coret only; any other type the
- * dialog marks "Menyusul" is refused here too rather than opening a coret form
- * under its name.
+ * Buat promo — `?type=coret` or `?type=tiered`. Any other type the dialog
+ * marks "Menyusul" is refused here too rather than opening a form under its
+ * name.
  */
 export default function NewPromoPage({
   searchParams,
@@ -23,9 +23,9 @@ export default function NewPromoPage({
   return (
     <RequirePermission feature="promos" action="create">
       {available ? (
-        <PromoForm />
+        <PromoForm type={type === "tiered" ? "tiered" : "coret"} />
       ) : (
-        <Alert variant="error">Jenis promo ini belum tersedia. Saat ini baru Harga coret.</Alert>
+        <Alert variant="error">Jenis promo ini belum tersedia. Saat ini baru Harga coret dan Diskon bertingkat.</Alert>
       )}
     </RequirePermission>
   );

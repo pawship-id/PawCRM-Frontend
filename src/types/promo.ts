@@ -17,7 +17,8 @@ export type PromoKind = "discount_percent" | "discount_amount" | "special_price"
 export type PromoPriceMode = "same" | "variant";
 export type PromoResultTarget = "per_item" | "same_group" | "cheapest" | "other_group";
 
-export const AVAILABLE_PROMO_TYPES: readonly PromoType[] = ["coret"];
+/** Diskon bertingkat opened 10 November 2026 (PLAN-Promo-Bertingkat.md). */
+export const AVAILABLE_PROMO_TYPES: readonly PromoType[] = ["coret", "tiered"];
 
 export interface PromoTarget {
   targetType: PromoTargetType;
@@ -108,12 +109,22 @@ export interface PromoItemInput {
   variantPrices: PromoVariantPrice[];
 }
 
+/** SYARAT of a Diskon bertingkat promo, as sent. */
+export interface PromoRuleInput {
+  group: { targetType: "product" | "variant" | "service"; refId: string }[];
+  countBy: "qty";
+  tiers: { min: number; value: number }[];
+}
+
 export interface CreatePromoInput {
   name: string;
   type: PromoType;
   draft: boolean;
   restrictions: PromoRestrictions;
-  result: { target?: "per_item"; items: PromoItemInput[] };
+  /** Harga coret. */
+  result?: { target?: "per_item"; items: PromoItemInput[] };
+  /** Diskon bertingkat. */
+  rule?: PromoRuleInput;
 }
 
 export type UpdatePromoInput = Partial<Omit<CreatePromoInput, "type">>;

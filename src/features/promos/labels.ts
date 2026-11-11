@@ -104,9 +104,18 @@ export function weekdaysText(days: number[] | null | undefined): string {
     .join(", ");
 }
 
-/** "Royal Canin +2 item" — the first item's name and how many more. */
-export function promoItemsText(promo: Pick<Promo, "result">): string {
-  const names = promo.result.items.map((item) => item.target.name ?? "Item terhapus");
+/**
+ * "Royal Canin +2 item" — the first item's name and how many more. A Diskon
+ * bertingkat names its group and adds the tiers, as the mockup's list does:
+ * "Treats 100g +1 item · 2+ 10%, 3+ 15%".
+ */
+export function promoItemsText(promo: Pick<Promo, "result"> & Partial<Pick<Promo, "type" | "rule">>): string {
+  const tiered = promo.type === "tiered";
+  const targets = tiered ? (promo.rule?.group ?? []) : promo.result.items.map((item) => item.target);
+  const names = targets.map((target) => target.name ?? "Item terhapus");
   if (!names.length) return "—";
-  return names.length === 1 ? names[0] : `${names[0]} +${names.length - 1} item`;
+  const items = names.length === 1 ? names[0] : `${names[0]} +${names.length - 1} item`;
+  if (!tiered) return items;
+  const tiers = (promo.rule?.tiers ?? []).map((tier) => `${Number(tier.min)}+ ${Number(tier.value)}%`).join(", ");
+  return tiers ? `${items} · ${tiers}` : items;
 }

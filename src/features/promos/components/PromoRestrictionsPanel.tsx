@@ -108,7 +108,11 @@ export function PromoRestrictionsPanel({
         <FieldBlock
           label="Kanal"
           required
-          hint="Website belum aktif — dicentang sekarang, berlaku setelah website toko tersedia."
+          hint={
+            draft.type === "tiered"
+              ? "Website belum aktif. Diskon bertingkat tidak dihitung di form booking — dihitung saat booking ditarik ke kasir."
+              : "Website belum aktif — dicentang sekarang, berlaku setelah website toko tersedia."
+          }
           error={errors["restrictions.channels"] ?? (draft.channels.length ? undefined : "Pilih minimal satu kanal")}
         >
           <div className="flex flex-wrap gap-x-6 gap-y-2">

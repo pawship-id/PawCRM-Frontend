@@ -7,8 +7,10 @@ import {
   emptyPromoDraft,
   itemToInput,
   newCoretItem,
+  nextTier,
   promoBlockedReason,
   promoToDraft,
+  tierFor,
   type CoretItemDraft,
   type PromoDraft,
 } from "@/features/promos/promoDraft";
@@ -238,5 +240,130 @@ describe("labels", () => {
   it("calls a stopped promo Dihentikan", () => {
     expect(promoStatusLabel({ status: "ended", stoppedAt: "2026-11-08T00:00:00Z" })).toBe("Dihentikan");
     expect(promoStatusLabel({ status: "running", stoppedAt: null })).toBe("Berjalan");
+  });
+});
+
+describe("diskon bertingkat", () => {
+  const TREATS = "e".repeat(24);
+  const tiered = (over: Partial<PromoDraft> = {}): PromoDraft => ({
+    ...emptyPromoDraft(TODAY, "tiered"),
+    name: "Treats hemat",
+    group: [
+      { key: "g1", targetType: "product", refId: TREATS, name: "Treats 100g" },
+      { key: "g2", targetType: "variant", refId: VARIANT_S, name: "Goat Milk — 200 g" },
+    ],
+    ...over,
+  });
+
+  it("starts with the mockup's tiers: 2 item 10%, 3 item 15%", () => {
+    const fresh = emptyPromoDraft(TODAY, "tiered");
+    expect(fresh.type).toBe("tiered");
+    expect(fresh.tiers.map((tier) => [tier.min, tier.value])).toEqual([
+      ["2", "10"],
+      ["3", "15"],
+    ]);
+    expect(emptyPromoDraft(TODAY).tiers).toEqual([]);
+  });
+
+  it("adds a tier one item and five percent above the last", () => {
+    const next = nextTier(tiered().tiers);
+    expect([next.min, next.value]).toEqual(["4", "20"]);
+  });
+
+  it("sends the group and tiers as `rule`, no `result`", () => {
+    const body = draftToCreate(tiered());
+    expect(body.type).toBe("tiered");
+    expect(body.result).toBeUndefined();
+    expect(body.rule).toEqual({
+      group: [
+        { targetType: "product", refId: TREATS },
+        { targetType: "variant", refId: VARIANT_S },
+      ],
+      countBy: "qty",
+      tiers: [
+        { min: 2, value: 10 },
+        { min: 3, value: 15 },
+      ],
+    });
+    expect(draftToUpdate(tiered(), { locked: false }).rule).toBeDefined();
+    expect(draftToUpdate(tiered(), { locked: true }).rule).toBeUndefined();
+  });
+
+  it("reads a saved tiered promo back", () => {
+    const saved = promoToDraft(
+      promo({
+        type: "tiered",
+        rule: {
+          group: [{ targetType: "variant", refId: VARIANT_S, variantKey: null, name: "Goat Milk — 200 g" }],
+          countBy: "qty",
+          tiers: [
+            { min: "2.0000", value: "10.0000" },
+            { min: "4.0000", value: "20.0000" },
+          ],
+        },
+        result: { target: "same_group", items: [] },
+      }),
+      TODAY,
+    );
+    expect(saved.type).toBe("tiered");
+    expect(saved.group[0]).toMatchObject({ targetType: "variant", name: "Goat Milk — 200 g" });
+    expect(saved.tiers.map((tier) => [tier.min, tier.value])).toEqual([
+      ["2", "10"],
+      ["4", "20"],
+    ]);
+  });
+
+  it("blocks an empty group and tiers that do not climb", () => {
+    expect(promoBlockedReason(tiered())).toBeNull();
+    expect(promoBlockedReason(tiered({ group: [] }))).toMatch(/kelompok/);
+    expect(promoBlockedReason(tiered({ tiers: [{ key: "t", min: "1", value: "10" }] }))).toMatch(/paling sedikit 2/);
+    expect(
+      promoBlockedReason(
+        tiered({
+          tiers: [
+            { key: "a", min: "3", value: "10" },
+            { key: "b", min: "2", value: "15" },
+          ],
+        }),
+      ),
+    ).toMatch(/lebih dari 3/);
+    expect(
+      promoBlockedReason(
+        tiered({
+          tiers: [
+            { key: "a", min: "2", value: "15" },
+            { key: "b", min: "3", value: "10" },
+          ],
+        }),
+      ),
+    ).toMatch(/lebih dari 15%/);
+  });
+
+  it("finds the tier a basket reaches", () => {
+    const { tiers } = tiered();
+    expect(tierFor(tiers, 1)).toBeNull();
+    expect(tierFor(tiers, 2)).toEqual({ min: 2, value: 10 });
+    expect(tierFor(tiers, 7)).toEqual({ min: 3, value: 15 });
+  });
+
+  it("lists the group and its tiers in the table", () => {
+    expect(
+      promoItemsText(
+        promo({
+          type: "tiered",
+          rule: {
+            group: [
+              { targetType: "product", refId: TREATS, variantKey: null, name: "Treats 100g" },
+              { targetType: "product", refId: PRODUCT, variantKey: null, name: "Goat Milk" },
+            ],
+            countBy: "qty",
+            tiers: [
+              { min: "2.0000", value: "10.0000" },
+              { min: "3.0000", value: "15.0000" },
+            ],
+          },
+        }),
+      ),
+    ).toBe("Treats 100g +1 item · 2+ 10%, 3+ 15%");
   });
 });

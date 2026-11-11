@@ -29,8 +29,9 @@ const TYPE_ICON: Record<PromoType, ReactNode> = {
 /**
  * "Buat promo" — the button and the dialog it opens (BO mockup `openPicker`).
  *
- * ALL FIVE TYPES ARE DRAWN, only Harga coret opens (Promo V1, BO 8 November
- * 2026). The other four say "Menyusul" and are disabled rather than hidden, so
+ * ALL FIVE TYPES ARE DRAWN; Harga coret (Promo V1, 8 November 2026) and
+ * Diskon bertingkat (10 November 2026) open. The other three say "Menyusul"
+ * and are disabled rather than hidden, so
  * the shop sees where the module is going and the dialog will not change shape
  * when they arrive.
  */

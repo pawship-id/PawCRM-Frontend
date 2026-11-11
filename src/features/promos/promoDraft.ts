@@ -5,13 +5,15 @@ import type {
   PromoChannel,
   PromoItemInput,
   PromoPriceMode,
+  PromoRuleInput,
   UpdatePromoInput,
 } from "@/types/promo";
 
 import { WEEKDAYS, type CoretKind } from "./labels";
 
 /**
- * The Harga coret form's state and every rule that turns it into the API
+ * The promo form's state — Harga coret and Diskon bertingkat — and every rule
+ * that turns it into the API
  * payload (PawCRM-Backend/docs/promo-v1.md) — pure, tested on its own like
  * memberships/planDraft.ts.
  *
@@ -58,7 +60,29 @@ export interface CoretItemDraft {
   variantPrices: Record<string, string>;
 }
 
+/** One member of a Diskon bertingkat group. */
+export interface GroupMemberDraft {
+  key: string;
+  /** product = every variant; variant = that one only; service. */
+  targetType: "product" | "variant" | "service";
+  refId: string;
+  name: string;
+}
+
+/** One tier, as typed. */
+export interface TierDraft {
+  key: string;
+  /** Beli minimal — whole items. */
+  min: string;
+  /** Diskon %. */
+  value: string;
+}
+
+/** The two types the form builds. */
+export type FormPromoType = "coret" | "tiered";
+
 export interface PromoDraft {
+  type: FormPromoType;
   name: string;
   startDate: string;
   endDate: string;
@@ -71,7 +95,11 @@ export interface PromoDraft {
   quotaTotal: string;
   perCustomer: string;
   stackable: boolean;
+  /** Harga coret. */
   items: CoretItemDraft[];
+  /** Diskon bertingkat. */
+  group: GroupMemberDraft[];
+  tiers: TierDraft[];
 }
 
 const ALL_DAYS = WEEKDAYS.map((entry) => entry.day);
@@ -79,8 +107,23 @@ const ALL_DAYS = WEEKDAYS.map((entry) => entry.day);
 let seq = 0;
 export const itemKey = () => `coret-${Date.now().toString(36)}-${(seq += 1)}`;
 
-export function emptyPromoDraft(today: string): PromoDraft {
+/** A new tier — the mockup's step: one more item, five more percent. */
+export function nextTier(tiers: TierDraft[]): TierDraft {
+  const last = tiers[tiers.length - 1];
+  const min = last ? (Number(last.min) || 1) + 1 : 2;
+  const value = last ? Math.min(100, (Number(normalizeMoney(last.value)) || 0) + 5) : 10;
+  return { key: itemKey(), min: String(min), value: String(value) };
+}
+
+/** The mockup's starting tiers: 2 item 10%, 3 item 15%. */
+const defaultTiers = (): TierDraft[] => [
+  { key: itemKey(), min: "2", value: "10" },
+  { key: itemKey(), min: "3", value: "15" },
+];
+
+export function emptyPromoDraft(today: string, type: FormPromoType = "coret"): PromoDraft {
   return {
+    type,
     name: "",
     startDate: today,
     endDate: "",
@@ -93,6 +136,8 @@ export function emptyPromoDraft(today: string): PromoDraft {
     perCustomer: "",
     stackable: false,
     items: [],
+    group: [],
+    tiers: type === "tiered" ? defaultTiers() : [],
   };
 }
 
@@ -117,6 +162,7 @@ const countText = (value: number | null | undefined) => (value ? String(value) :
 export function promoToDraft(promo: Promo, today: string): PromoDraft {
   const r = promo.restrictions;
   return {
+    type: promo.type === "tiered" ? "tiered" : "coret",
     name: promo.name,
     startDate: r.startDate ?? today,
     endDate: r.endDate ?? "",
@@ -145,6 +191,19 @@ export function promoToDraft(promo: Promo, today: string): PromoDraft {
             .filter(([id, price]) => id !== "" && price !== ""),
         ),
       })),
+    group: (promo.rule?.group ?? [])
+      .filter((target) => target.targetType !== "category")
+      .map((target) => ({
+        key: itemKey(),
+        targetType: target.targetType as GroupMemberDraft["targetType"],
+        refId: target.refId,
+        name: target.name ?? "Item terhapus",
+      })),
+    tiers: (promo.rule?.tiers ?? []).map((tier) => ({
+      key: itemKey(),
+      min: String(Number(tier.min)),
+      value: String(Number(tier.value)),
+    })),
   };
 }
 
@@ -190,14 +249,27 @@ export function draftToRestrictions(draft: PromoDraft): CreatePromoInput["restri
   };
 }
 
-export function draftToCreate(draft: PromoDraft): CreatePromoInput {
+export function draftToRule(draft: PromoDraft): PromoRuleInput {
   return {
+    group: draft.group.map((member) => ({ targetType: member.targetType, refId: member.refId })),
+    countBy: "qty",
+    tiers: draft.tiers.map((tier) => ({
+      min: Number(tier.min),
+      value: Number(normalizeMoney(tier.value)),
+    })),
+  };
+}
+
+export function draftToCreate(draft: PromoDraft): CreatePromoInput {
+  const base = {
     name: draft.name.trim(),
-    type: "coret",
+    type: draft.type,
     draft: draft.draft,
     restrictions: draftToRestrictions(draft),
-    result: { target: "per_item", items: draft.items.map(itemToInput) },
   };
+  return draft.type === "tiered"
+    ? { ...base, rule: draftToRule(draft) }
+    : { ...base, result: { target: "per_item", items: draft.items.map(itemToInput) } };
 }
 
 /**
@@ -213,7 +285,8 @@ export function draftToUpdate(draft: PromoDraft, { locked }: { locked: boolean }
   };
   if (!locked) {
     body.draft = draft.draft;
-    body.result = { target: "per_item", items: draft.items.map(itemToInput) };
+    if (draft.type === "tiered") body.rule = draftToRule(draft);
+    else body.result = { target: "per_item", items: draft.items.map(itemToInput) };
   }
   return body;
 }
@@ -248,6 +321,34 @@ export function itemProblem(item: CoretItemDraft): string | null {
 }
 
 /**
+ * Why the Diskon bertingkat SYARAT cannot be saved yet, or null. Same rules as
+ * the server (PLAN-Promo-Bertingkat.md §5): a group of at least one item, 1–5
+ * tiers, each "beli minimal" a whole number ≥ 2 and each tier above the last —
+ * both in items and in percent.
+ */
+export function tieredProblem(draft: Pick<PromoDraft, "group" | "tiers">): string | null {
+  if (!draft.group.length) return "Tambahkan minimal satu item ke kelompok";
+  if (!draft.tiers.length) return "Isi minimal satu tingkat diskon";
+  let prev: { min: number; value: number } | null = null;
+  for (const [index, tier] of draft.tiers.entries()) {
+    const label = `Tingkat ${index + 1}`;
+    const min = Number(tier.min.trim());
+    const rawValue = normalizeMoney(tier.value);
+    const value = Number(rawValue);
+    if (!tier.min.trim() || !Number.isInteger(min) || min < 2) {
+      return `${label}: beli minimal harus angka bulat, paling sedikit 2`;
+    }
+    if (rawValue === "" || !(value > 0 && value <= 100)) {
+      return `${label}: diskon harus lebih dari 0 dan maksimal 100%`;
+    }
+    if (prev && min <= prev.min) return `${label}: beli minimal harus lebih dari ${prev.min}`;
+    if (prev && value <= prev.value) return `${label}: diskon harus lebih dari ${prev.value}%`;
+    prev = { min, value };
+  }
+  return null;
+}
+
+/**
  * The first reason the form cannot be saved — FormActionBar's `blockedReason`.
  * Top to bottom in the order the panels are read.
  */
@@ -258,10 +359,15 @@ export function promoBlockedReason(draft: PromoDraft): string | null {
     return "Tanggal selesai tidak boleh sebelum tanggal mulai";
   }
   if (!draft.weekdays.length) return "Pilih minimal satu hari berlaku";
-  if (!draft.items.length) return "Tambahkan minimal satu item";
-  for (const item of draft.items) {
-    const problem = itemProblem(item);
+  if (draft.type === "tiered") {
+    const problem = tieredProblem(draft);
     if (problem) return problem;
+  } else {
+    if (!draft.items.length) return "Tambahkan minimal satu item";
+    for (const item of draft.items) {
+      const problem = itemProblem(item);
+      if (problem) return problem;
+    }
   }
   if (!draft.channels.length) return "Pilih minimal satu kanal";
   if (!isWholeCount(draft.quotaTotal)) return "Kuota promo harus angka bulat";
@@ -327,4 +433,26 @@ export function discountPercent(normal: string | null, price: number | null): nu
   const base = apiNumber(normal);
   if (base === null || base <= 0 || price === null) return 0;
   return Math.round(((base - price) / base) * 100);
+}
+
+/* ────────────────────────────────────────────────────────── tiers */
+
+/**
+ * The tier a basket of `qty` group items reaches — the highest whose "beli
+ * minimal" it meets — or null. Same rule as the server's tiered provider; for
+ * the PREVIEW only.
+ */
+export function tierFor(tiers: TierDraft[], qty: number): { min: number; value: number } | null {
+  let hit: { min: number; value: number } | null = null;
+  for (const tier of [...tiers].sort((a, b) => Number(a.min) - Number(b.min))) {
+    const min = Number(tier.min);
+    const value = Number(normalizeMoney(tier.value));
+    if (Number.isFinite(min) && min > 0 && value > 0 && min <= qty) hit = { min, value };
+  }
+  return hit;
+}
+
+/** "2+ 10%, 3+ 15%" — the tiers as one short line, for the list. */
+export function tiersText(tiers: { min: string | number; value: string | number }[]): string {
+  return tiers.map((tier) => `${Number(tier.min)}+ ${Number(tier.value)}%`).join(", ");
 }
