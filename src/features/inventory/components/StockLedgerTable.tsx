@@ -89,6 +89,7 @@ const REFERENCE_LABELS: Record<ReferenceType, string> = {
   // apart, because "what did this tenant start with" is a question the stock
   // card could not answer while the two shared one label.
   opening_balance: "Saldo awal persediaan",
+  batch_settle: "Penyesuaian batch",
 };
 
 /**

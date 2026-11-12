@@ -72,6 +72,7 @@ const MOVEMENT_FILTERS: FilterOption<MovementType | "">[] = [
   { value: "purchase_return", label: "Retur supplier" },
   { value: "receipt_correction", label: "Koreksi penerimaan" },
   { value: "bundle_consume", label: "Bundle consume" },
+  { value: "batch_settle", label: "Penyesuaian batch" },
 ];
 
 const TYPES = withAll(MOVEMENT_FILTERS, "Semua tipe");

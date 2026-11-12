@@ -93,6 +93,7 @@ const REFERENCE_NAMES: Record<ReferenceType, string> = {
   bundle_consume: "Penjualan bundle",
   manual_adjustment: "Penyesuaian manual",
   opening_balance: "Saldo awal persediaan",
+  batch_settle: "Penyesuaian batch",
 };
 
 const DATE_TIME = {

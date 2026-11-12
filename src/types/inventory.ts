@@ -76,7 +76,13 @@ export type MovementType =
    * Awal) rather than the inventory-loss account an `adjustment` uses — day-one
    * goods are capital the owner brought in, not a miscount.
    */
-  | "opening_balance";
+  | "opening_balance"
+  /**
+   * Units moved between lots of one shelf, as a pair that nets to zero: a new
+   * lot paying back goods that left before it arrived (sold while every lot was
+   * empty, or a lot driven below zero). Not counted as masuk/keluar.
+   */
+  | "batch_settle";
 
 /** Which document caused a movement. Mirrors REFERENCE_TYPES. */
 export type ReferenceType =
@@ -104,7 +110,9 @@ export type ReferenceType =
   | "bundle_consume"
   | "manual_adjustment"
   /** Carries `reference.id: null`. A client cannot create one — see above. */
-  | "opening_balance";
+  | "opening_balance"
+  /** A `batch_settle` pair; `id` is the lot that paid the shortfall back. */
+  | "batch_settle";
 
 /**
  * The two operations a CLIENT may create over HTTP. Everything else is posted
@@ -235,6 +243,12 @@ export interface StockMovementSummary {
   /** Decimal strings. */
   totalIn: string;
   totalOut: string;
+  /**
+   * The `batch_settle` rows, which are neither masuk nor keluar — so
+   * `totalIn + totalOut + settled === net`. Zero on a product's card (each pair
+   * nets out); non-zero only when the card is narrowed to one lot.
+   */
+  settled?: string;
   net: string;
   movementCount: number;
 }
