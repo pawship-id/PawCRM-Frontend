@@ -491,7 +491,17 @@ function Row({
             style={{ height: SLOT_HEIGHT }}
           >
             {here.map((entry) => (
-              <Block key={entry._id} entry={entry} onOpen={onOpen} />
+              <Block
+                key={entry._id}
+                entry={entry}
+                onOpen={onOpen}
+                /* Where in the half hour it starts — a 10.15 turn sits a
+                   half-slot down, not at 10.00 (12 November 2026). */
+                offset={
+                  ((minutesOf(entry.startAt) - minutes) / SLOT_MINUTES) *
+                  SLOT_HEIGHT
+                }
+              />
             ))}
           </div>
         );
@@ -503,9 +513,12 @@ function Row({
 function Block({
   entry,
   onOpen,
+  offset = 0,
 }: {
   entry: BookingCalendarEntry;
   onOpen: (entry: BookingCalendarEntry) => void;
+  /** Pixels down from the top of its slot, on the day grid only. */
+  offset?: number;
 }) {
   const minutes = entry.durationMin ?? DEFAULT_SLOT_MINUTES;
   const height = Math.max(
@@ -517,7 +530,7 @@ function Block({
     <button
       type="button"
       onClick={() => onOpen(entry)}
-      style={{ height }}
+      style={{ height, marginTop: offset }}
       className={`relative z-10 w-full overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-xs ${STATUS_TONE[entry.status]} ${
         /*
           THE GROOMER WENT ON LEAVE SINCE THIS WAS BOOKED — a ring around the
@@ -574,6 +587,10 @@ function WeekView({
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       {days.map((day) => {
         const here = entries.filter((entry) => dayKey(entry.startAt) === day);
+        /* A block is one person on one turn now (12 November 2026), so a
+           booking worked in two turns is two blocks: the count is of bookings,
+           the hours are every groomer's working time added up. */
+        const bookings = new Set(here.map((entry) => entry.bookingId)).size;
         const minutes = here.reduce(
           (sum, entry) => sum + (entry.durationMin ?? DEFAULT_SLOT_MINUTES),
           0,
@@ -589,7 +606,7 @@ function WeekView({
               })}
             </p>
             <p className="mt-0.5 text-xs text-muted">
-              {here.length} layanan · {Math.round((minutes / 60) * 10) / 10} jam
+              {bookings} booking · {Math.round((minutes / 60) * 10) / 10} jam kerja
             </p>
 
             <ul className="mt-2 flex flex-col gap-1">

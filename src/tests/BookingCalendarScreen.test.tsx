@@ -183,7 +183,7 @@ describe("BookingCalendarScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: "Mingguan" }));
 
     await waitFor(() =>
-      expect(screen.getAllByText(/layanan ·/).length).toBeGreaterThan(0),
+      expect(screen.getAllByText(/booking · .* jam kerja/).length).toBeGreaterThan(0),
     );
   });
 
