@@ -147,9 +147,15 @@ export const stockOpnameService = {
   /**
    * GET /stock-opnames/:id/template — the sheet's warehouse and category, one
    * row per lot, as rows. The browser builds the file. Drafts only.
+   *
+   * `categoryIds` narrows it to those categories (each with its
+   * sub-categories), never wider than the sheet's own scope. Empty or absent
+   * means everything the sheet covers.
    */
-  template: (id: string) =>
-    apiClient.get<OpnameTemplate>(`/stock-opnames/${id}/template`),
+  template: (id: string, categoryIds: string[] = []) =>
+    apiClient.get<OpnameTemplate>(`/stock-opnames/${id}/template`, {
+      query: { categoryIds },
+    }),
 
   /** POST /stock-opnames/:id/import/preview — a verdict per row. Writes nothing. */
   previewImport: (id: string, input: OpnameImportInput) =>

@@ -222,6 +222,7 @@ describe("OpnameImportDialog", () => {
     render(
       <OpnameImportDialog
         opnameId="op1"
+        sheetCategoryId={null}
         settle={settle}
         importFile={importFile}
         onClose={onClose}
@@ -252,6 +253,7 @@ describe("OpnameImportDialog", () => {
     render(
       <OpnameImportDialog
         opnameId="op1"
+        sheetCategoryId={null}
         settle={settle}
         importFile={importFile}
         onClose={onClose}
