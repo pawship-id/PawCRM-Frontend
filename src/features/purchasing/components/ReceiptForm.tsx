@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  EXPIRY_MAX_DATE,
+  EXPIRY_MIN_DATE,
+  expiryYearError,
+} from "@/utils/date";
 import { SkuText } from "@/components/SkuText";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -1093,6 +1098,14 @@ function ReceiptFormBody({
           next.lines = `${label}: tanggal kedaluwarsa wajib diisi.`;
           break;
         }
+        if (
+          product?.hasExpiry &&
+          line.batchChoice === NEW_BATCH &&
+          expiryYearError(line.expiryDate)
+        ) {
+          next.lines = `${label}: ${expiryYearError(line.expiryDate)}`;
+          break;
+        }
       }
     }
 
@@ -1150,6 +1163,14 @@ function ReceiptFormBody({
           line.expiryDate === ""
         ) {
           next.lines = `${label}: tanggal kedaluwarsa wajib diisi.`;
+          break;
+        }
+        if (
+          product?.hasExpiry &&
+          line.batchChoice === NEW_BATCH &&
+          expiryYearError(line.expiryDate)
+        ) {
+          next.lines = `${label}: ${expiryYearError(line.expiryDate)}`;
           break;
         }
       }
@@ -1857,6 +1878,8 @@ function ReceiptFormBody({
                                 type="date"
                                 required
                                 aria-required
+                                min={EXPIRY_MIN_DATE}
+                                max={EXPIRY_MAX_DATE}
                                 value={line.expiryDate}
                                 onChange={(event) =>
                                   updateLine(index, {

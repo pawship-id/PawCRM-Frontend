@@ -228,6 +228,25 @@ export function forwardStatuses(booking: BookingLike): BookingStatus[] {
   return transitionsFor(booking).filter((next) => next !== "cancelled");
 }
 
+/**
+ * WHETHER A MOVE TO `target` MUST WAIT FOR THE TURNS (10 November 2026, on
+ * request): `completed`, or any rung past it, while a session is not yet done.
+ * The server refuses that move with a 409; the button is disabled first so the
+ * refusal is never the way somebody finds out. A booking with no sessions (a
+ * ride) is never held back here.
+ */
+export function waitsForSessions(
+  booking: BookingLike & Partial<Pick<Booking, "service">>,
+  target: BookingStatus,
+): boolean {
+  const ladder = ladderFor(booking);
+  const at = ladder.indexOf(target);
+  if (at === -1 || at < ladder.indexOf("completed")) return false;
+  return (booking.service?.sessions ?? []).some(
+    (session) => session.status !== "done",
+  );
+}
+
 /** Whether a booking may still be called off. */
 export function canCancel(booking: BookingLike): boolean {
   return transitionsFor(booking).includes("cancelled");

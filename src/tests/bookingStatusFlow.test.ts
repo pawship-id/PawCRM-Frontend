@@ -9,6 +9,7 @@ import {
   impliedStatuses,
   ladderFor,
   transitionsFor,
+  waitsForSessions,
 } from "@/features/booking/statusFlow";
 import { bookingStatusLabel } from "@/features/booking/components/BookingStatusBadge";
 import type { BookingLike } from "@/features/booking/statusFlow";
@@ -257,5 +258,35 @@ describe("the antar-jemput ladder", () => {
     expect(bookingStatusAction("in_progress", { tripLeg: "pickup" })).toBe("Start the trip");
     expect(bookingStatusAction("completed", { tripLeg: "pickup" })).toBe("Mark arrived");
     expect(bookingStatusAction("in_progress")).toBe("Start work");
+  });
+});
+
+describe("waitsForSessions", () => {
+  const withSessions = (...statuses: string[]) =>
+    ({
+      status: "in_progress",
+      pickupRequested: false,
+      deliveryRequested: true,
+      service: { sessions: statuses.map((status) => ({ status })) },
+    }) as unknown as Parameters<typeof waitsForSessions>[0];
+
+  it("holds back Completed while a session is not done", () => {
+    expect(waitsForSessions(withSessions("done", "pending"), "completed")).toBe(true);
+  });
+
+  it("holds back a rung past Completed too", () => {
+    expect(waitsForSessions(withSessions("in_progress"), "delivery")).toBe(true);
+  });
+
+  it("lets Completed through once every session is done", () => {
+    expect(waitsForSessions(withSessions("done", "done"), "completed")).toBe(false);
+  });
+
+  it("never holds back a rung before Completed", () => {
+    expect(waitsForSessions(withSessions("pending"), "in_progress")).toBe(false);
+  });
+
+  it("does not hold back a booking with no sessions", () => {
+    expect(waitsForSessions(withSessions(), "completed")).toBe(false);
   });
 });

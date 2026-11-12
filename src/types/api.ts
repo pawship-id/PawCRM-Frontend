@@ -5410,6 +5410,8 @@ export interface Pet {
   _id: string;
   tenantId: string;
   customerId: string;
+  /** `PET-0001` — server-issued; null for pets registered before the series. */
+  code?: string | null;
   name: string;
   /** An option's `_id`, not its code — see `PetOptionId`. */
   species: PetOptionId;

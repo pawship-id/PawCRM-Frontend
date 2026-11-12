@@ -6,6 +6,7 @@ import type { BookingStatus } from "@/types/api";
 import type {
   BookingRecapRow,
   CommissionPayrollRow,
+  CommissionDetailRow,
   ServiceKind,
   StaffPerformanceRow,
   TopServiceRow,
@@ -700,5 +701,148 @@ export const commissionPayrollReport: SalesReportDefinition<
   columns: PAYROLL_COLUMNS,
   fetch: async ({ dateFrom, dateTo, branchIds }) =>
     (await reportService.commissionPayroll({ dateFrom, dateTo, branchIds }))
+      .rows,
+};
+
+/* --------------------------------------------------- Rekap komisi detail */
+
+const SESSION_STATUS_LABEL: Record<string, string> = {
+  pending: "Belum mulai",
+  in_progress: "Sedang dikerjakan",
+  done: "Selesai",
+};
+
+const LOCATION_TYPE_LABEL: Record<string, string> = {
+  in_store: "In Store",
+  in_home: "In Home",
+};
+
+const text = (
+  header: string,
+  value: (r: CommissionDetailRow) => string | null,
+  about: string,
+  width = 16,
+): SalesReportColumn<CommissionDetailRow> => ({ header, value, width, about });
+
+const rupiah = (
+  header: string,
+  value: (r: CommissionDetailRow) => string,
+  about: string,
+): SalesReportColumn<CommissionDetailRow> => ({
+  header,
+  value: (r) => money(value(r)),
+  type: "number",
+  width: 16,
+  about,
+});
+
+const count = (
+  header: string,
+  value: (r: CommissionDetailRow) => number | null,
+  about: string,
+): SalesReportColumn<CommissionDetailRow> => ({
+  header,
+  value,
+  type: "number",
+  width: 14,
+  about,
+});
+
+/** The order and the headers the shop's own commission sheet uses. */
+const COMMISSION_DETAIL_COLUMNS: SalesReportColumn<CommissionDetailRow>[] = [
+  text("Kode Booking", (r) => r.bookingNumber, "Nomor booking"),
+  text("Tanggal Booking", (r) => r.bookingDate, "Tanggal booking dibuat"),
+  text("Tanggal Mulai", (r) => r.startDate, "Tanggal jadwal booking"),
+  text("Tanggal Selesai", (r) => r.endDate, "Tanggal booking selesai dikerjakan (aktual)"),
+  text("Time Slot", (r) => r.timeSlot, "Jam mulai – jam selesai menurut estimasi durasi"),
+  text(
+    "Tipe (In Store/In Home)",
+    (r) => (r.location ? (LOCATION_TYPE_LABEL[r.location] ?? r.location) : null),
+    "Di toko atau di rumah pelanggan",
+  ),
+  text(
+    "Status Booking",
+    (r) => (r.bookingStatus ? bookingStatusLabel(r.bookingStatus as BookingStatus) : null),
+    "Status booking saat diunduh",
+  ),
+  text("Nama Sesi", (r) => r.sessionName, "Sesi pengerjaan, mis. Bathing"),
+  text("Groomer Sesi", (r) => r.groomerName, "Groomer penerima komisi sesi ini", 22),
+  text(
+    "Status Sesi",
+    (r) => (r.sessionStatus ? (SESSION_STATUS_LABEL[r.sessionStatus] ?? r.sessionStatus) : null),
+    "Status pengerjaan sesi",
+  ),
+  text("Waktu Mulai Aktual", (r) => r.actualStart, "Waktu sesi mulai dikerjakan", 18),
+  text("Waktu Selesai Aktual", (r) => r.actualEnd, "Waktu sesi selesai dikerjakan", 18),
+  count("Durasi Aktual", (r) => r.actualDurationMin, "Menit, dari mulai sampai selesai sesi"),
+  text("Metode Pembayaran", (r) => r.paymentMethod, "Dari transaksi kasir atau pembayaran faktur", 20),
+  text("Kode Referral", (r) => r.referralCode, "Belum tersedia untuk booking — kosong"),
+  text("Kode Cabang", (r) => r.branchCode, "Kode cabang booking"),
+  text("Nama Cabang", (r) => r.branchName, "Nama cabang booking"),
+  text("Kode Customer", (r) => r.customerCode, "Kode pelanggan"),
+  text("Nama Customer", (r) => r.customerName, "Nama pelanggan", 22),
+  text("No. HP Customer", (r) => r.customerPhone, "Nomor HP pelanggan"),
+  text("Kategori Customer", (r) => r.customerCategory, "Tipe pelanggan di profil pelanggan"),
+  text("Kode Pet", (r) => r.petCode, "Kode hewan (PET-0001)"),
+  text("Nama Pet", (r) => r.petName, "Nama hewan"),
+  text(
+    "Tipe Member",
+    (r) => r.memberType,
+    "Paket membership yang dipakai, atau yang aktif di hewan pada tanggal booking",
+    20,
+  ),
+  text("Kode Layanan", (r) => r.serviceCode, "Kode layanan"),
+  text("Layanan", (r) => r.serviceName, "Layanan utama", 22),
+  text("Kategori Layanan", (r) => r.serviceCategory, "Kategori layanan"),
+  count("Est. Durasi (menit)", (r) => r.estDurationMin, "Estimasi durasi layanan + add-on"),
+  text("Add-on", (r) => r.addonNames, "Add-on booking, dipisah koma", 22),
+  rupiah("Harga Layanan", (r) => r.servicePrice, "Harga layanan utama"),
+  rupiah("Harga Add-on", (r) => r.addonPrice, "Jumlah harga add-on"),
+  rupiah(
+    "Sub Total Layanan (Harga Layanan + Add-on)",
+    (r) => r.subtotal,
+    "Harga layanan + harga add-on",
+  ),
+  rupiah(
+    "Biaya Perjalanan",
+    (r) => r.travelFee,
+    "Biaya kunjungan home grooming; biaya per kunjungan dibagi rata ke booking dalam satu perjalanan",
+  ),
+  rupiah("Gross Total", (r) => r.grossTotal, "Sub total + biaya perjalanan"),
+  text("Kode Promo", (r) => r.promoCode, "Promo yang dipakai saat ditagih"),
+  rupiah("Diskon Promo", (r) => r.promoDiscount, "Potongan dari promo"),
+  rupiah("Benefit Membership", (r) => r.membershipBenefit, "Potongan dari benefit membership"),
+  rupiah(
+    "Total Diskon",
+    (r) => r.totalDiscount,
+    "Semua diskon saat ditagih (promo, membership, diskon manual); diskon booking kalau belum ditagih",
+  ),
+  rupiah("Net Total (Dibayar)", (r) => r.netTotal, "Gross total − total diskon"),
+  rupiah(
+    "Komisi Base Groomer",
+    (r) => r.commission,
+    "Komisi groomer untuk sesi ini — nilai yang diubah manual dipakai kalau ada",
+  ),
+];
+
+/**
+ * The payroll sheet's working rows — one per booking × session × groomer,
+ * with the booking, customer, pet, service and bill beside each.
+ */
+export const commissionDetailReport: SalesReportDefinition<
+  CommissionDetailRow,
+  never
+> = {
+  title: "Rekap komisi detail",
+  description:
+    "Satu baris per sesi per groomer, lengkap dengan data booking, pelanggan, hewan, layanan, dan pembayaran. Diunduh sebagai Excel.",
+  fileName: "rekap-komisi-detail",
+  rowNoun: "baris",
+  periodLabel: "tanggal booking",
+  locations: "branches",
+  note: "Data booking (harga, diskon, net) diulang di setiap baris sesi/groomer booking itu — jangan dijumlah langsung per kolom. Komisi yang dibatalkan tidak ikut.",
+  columns: COMMISSION_DETAIL_COLUMNS,
+  fetch: async ({ dateFrom, dateTo, branchIds }) =>
+    (await reportService.commissionDetailRecap({ dateFrom, dateTo, branchIds }))
       .rows,
 };

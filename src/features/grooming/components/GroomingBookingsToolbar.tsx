@@ -5,7 +5,7 @@ import { ListFilter } from "lucide-react";
 
 import {
   FilterBar,
-  FilterCheckList,
+  FilterCheckMenu,
   FilterPanel,
   FilterSearch,
   FilterTrigger,
@@ -81,6 +81,10 @@ export type BookingsToolbarKind = "grooming" | "antar-jemput";
  * A PANEL OF FOUR MULTI-SELECTS. Every field waits for Terapkan, so composing
  * "Sinta, di rumah, In Progress" does not redraw the table three times on the
  * way.
+ *
+ * DROPDOWNS, NOT CHECKBOX LISTS (12 November 2026, on request): ten statuses
+ * and every grooming service laid out as ticks made the panel taller than the
+ * screen. Each field is a `FilterCheckMenu` — nothing ticked reads "Semua …".
  *
  * NO URUTKAN HERE (BO, 20 October 2026): the table sorts from its Booking and
  * Nilai headers, as the mockup draws it (`BOOKING_SORT_OPTIONS` in `board.ts`).
@@ -179,50 +183,58 @@ export function GroomingBookingsToolbar({
           setOpen(false);
         }}
       >
-        <FilterCheckList
+        <FilterCheckMenu
           label="Status"
+          allLabel="Semua status"
+          unit="status"
           options={(rides ? RIDE_STATUSES : STATUSES).map((status) => ({
             value: status,
             /* "On the Way", not "In Progress", on a van — see the label map. */
             label: bookingStatusLabel(status, rides ? { tripLeg: "pickup" } : undefined),
           }))}
-          values={draft.statuses}
+          selected={draft.statuses}
           onChange={(statuses) => patch({ statuses })}
         />
-        <FilterCheckList
+        <FilterCheckMenu
           label={rides ? "Driver" : "Groomer"}
+          allLabel={rides ? "Semua driver" : "Semua groomer"}
+          unit="orang"
           options={groomers.map((groomer) => ({
             value: groomer._id,
             label: groomer.fullName,
           }))}
-          values={draft.groomerIds}
+          selected={draft.groomerIds}
           onChange={(groomerIds) => patch({ groomerIds })}
-          empty={`Belum ada staf yang ditandai ${rides ? "Driver" : "Groomer"} di Pengaturan › Pengguna.`}
         />
-        <FilterCheckList
+        <FilterCheckMenu
           label="Layanan"
+          allLabel="Semua layanan"
+          unit="layanan"
           options={services
             .filter(
               (service) =>
                 service.serviceType !== "addon" && service.deletedAt === null,
             )
             .map((service) => ({ value: service._id, label: service.name }))}
-          values={draft.serviceIds}
+          selected={draft.serviceIds}
           onChange={(serviceIds) => patch({ serviceIds })}
-          empty={rides ? "Belum ada layanan antar-jemput." : "Belum ada layanan grooming."}
         />
         {rides ? (
-          <FilterCheckList
+          <FilterCheckMenu
             label="Arah"
+            allLabel="Semua arah"
+            unit="arah"
             options={LEGS}
-            values={draft.legs}
+            selected={draft.legs}
             onChange={(legs) => patch({ legs })}
           />
         ) : (
-          <FilterCheckList
+          <FilterCheckMenu
             label="Tempat"
+            allLabel="Semua tempat"
+            unit="tempat"
             options={LOCATIONS}
-            values={draft.locations}
+            selected={draft.locations}
             onChange={(locations) => patch({ locations })}
           />
         )}

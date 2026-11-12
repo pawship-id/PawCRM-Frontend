@@ -98,9 +98,15 @@ export const bookingService = {
    * uses the till's own branch — what the POS wants. An invoice names the
    * branch it is being raised for, since that is the one that books the revenue.
    */
-  bridge: (customerId: string, days?: number, branchId?: string) =>
+  bridge: (
+    customerId: string,
+    days?: number,
+    branchId?: string,
+    /** No lower bound: every unbilled booking up to today (10 November 2026). */
+    allPast?: boolean,
+  ) =>
     apiClient.get<Booking[]>("/bookings/bridge", {
-      query: { customerId, days, branchId },
+      query: { customerId, days, branchId, allPast: allPast || undefined },
     }),
 
   /**

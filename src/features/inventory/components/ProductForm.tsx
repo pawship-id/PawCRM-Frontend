@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  EXPIRY_MAX_DATE,
+  EXPIRY_MIN_DATE,
+  expiryYearError,
+} from "@/utils/date";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -1559,6 +1564,9 @@ function ProductFormFields({
         if (openingExpiryDate.trim() === "") {
           next.openingExpiryDate =
             "Produk kedaluwarsa: tanggal kedaluwarsa wajib diisi untuk stok awal.";
+        } else {
+          const yearError = expiryYearError(openingExpiryDate);
+          if (yearError) next.openingExpiryDate = yearError;
         }
       }
     }
@@ -3361,6 +3369,8 @@ function ProductFormFields({
                     label="Tanggal kedaluwarsa"
                     name="openingExpiryDate"
                     type="date"
+                    min={EXPIRY_MIN_DATE}
+                    max={EXPIRY_MAX_DATE}
                     value={openingExpiryDate}
                     onChange={(event) =>
                       setOpeningExpiryDate(event.target.value)
