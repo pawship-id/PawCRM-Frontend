@@ -412,17 +412,71 @@ describe("BookingStatusActions — prominent variant", () => {
     expect(screen.queryByRole("button", { name: /→/ })).not.toBeInTheDocument();
 
     /*
-      ⚠️ AND NOR IS "Other statuses" — this used to assert the opposite.
-
-      The trigger stayed because the menu behind it was never empty: the ungated
-      "Status history" row was always in it. That row is gone, and an animal at
-      the end of its ladder has no moves, no reschedule and no cancel left — so
-      the button opened onto a blank panel, which reads as broken and invites the
-      press twice.
+      "Other statuses" STAYS, with one row: since 12 November 2026 a finished
+      booking can still be cancelled.
     */
+    await userEvent.click(
+      screen.getByRole("button", { name: /other statuses/i }),
+    );
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getAllByRole("menuitem")).toHaveLength(1);
+    expect(
+      within(menu).getByRole("menuitem", { name: /cancel booking/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no trigger at the end of the ladder to a role that may not cancel", async () => {
+    renderProminent(booking({ status: "return_to_pawrents" }), {
+      isSuperAdmin: false,
+      permissions: [{ feature: "bookings", actions: ["read", "update"] }],
+    });
+
     expect(
       screen.queryByRole("button", { name: /other statuses/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("refuses to cancel a finished booking the till has billed", async () => {
+    renderProminent(
+      booking({ status: "completed", pulledToCartAt: "2026-11-12T03:00:00.000Z" }),
+    );
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /other statuses/i }),
+    );
+    await userEvent.click(
+      within(await screen.findByRole("menu")).getByRole("menuitem", {
+        name: /cancel booking/i,
+      }),
+    );
+
+    expect(await screen.findByText(/sudah ditagih di kasir/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/alasan/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /cancel booking/i }),
+    ).toBeDisabled();
+  });
+
+  it("cancels a finished booking nobody has billed", async () => {
+    renderProminent(booking({ status: "completed" }));
+
+    await userEvent.click(
+      screen.getByRole("button", { name: /other statuses/i }),
+    );
+    await userEvent.click(
+      within(await screen.findByRole("menu")).getByRole("menuitem", {
+        name: /cancel booking/i,
+      }),
+    );
+
+    expect(screen.getByText(/komisi yang belum dibayar/i)).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: /cancel booking/i }),
+    );
+
+    await waitFor(() =>
+      expect(mocked.changeStatus).toHaveBeenCalledWith(BOOKING_ID, "cancelled", null),
+    );
   });
 
   it("keeps Other statuses while there is still one thing behind it", async () => {

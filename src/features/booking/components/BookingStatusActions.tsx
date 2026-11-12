@@ -31,7 +31,9 @@ import {
   bookingStatusAction,
   canReschedule,
   canCancel,
+  cancelBlockedReason,
   forwardStatuses,
+  hasCompletedWork,
   impliedStatuses,
   waitsForSessions,
 } from "../statusFlow";
@@ -202,6 +204,9 @@ export function BookingStatusActions({
   }
 
   const implied = next ? impliedStatuses(booking, next) : [];
+  /* A finished booking that is billed is cancelled through its sale or invoice. */
+  const cancelBlocked =
+    next === "cancelled" ? cancelBlockedReason(booking) : null;
 
   /*
     THE VERY NEXT RUNG, for the prominent variant's primary button.
@@ -404,7 +409,15 @@ export function BookingStatusActions({
               </p>
             )}
 
-            {next === "cancelled" && (
+            {cancelBlocked && <Alert variant="error">{cancelBlocked}</Alert>}
+
+            {next === "cancelled" && !cancelBlocked && hasCompletedWork(booking) && (
+              <p className="text-sm text-muted">
+                Booking ini sudah selesai. Komisi yang belum dibayar ikut dibatalkan.
+              </p>
+            )}
+
+            {next === "cancelled" && !cancelBlocked && (
               <TextareaField
                 label="Alasan"
                 name="cancel-reason"
@@ -431,7 +444,7 @@ export function BookingStatusActions({
                 type="button"
                 variant={next === "cancelled" ? "destructive" : "default"}
                 onClick={submit}
-                disabled={busy}
+                disabled={busy || Boolean(cancelBlocked)}
               >
                 {busy ? "Menyimpan…" : bookingStatusAction(next, booking)}
               </Button>
