@@ -940,6 +940,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
       {importing && (
         <OpnameImportDialog
           opnameId={opnameId}
+          sheetCategoryId={opname.categoryFilter ?? null}
           settle={settle}
           importFile={importFile}
           onClose={closeImport}

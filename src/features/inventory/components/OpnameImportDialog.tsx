@@ -31,8 +31,9 @@ import { formatQty, toMinor } from "@/utils/decimal";
 
 import { jobActive, useOpnameJob } from "../hooks/useOpnameJob";
 import { useOpnameImport } from "../hooks/useOpnameImport";
-import { OPNAME_MAX_ITEMS, saveOpnameTemplate } from "../utils/opnameImport";
+import { OPNAME_MAX_ITEMS } from "../utils/opnameImport";
 import { OpnameJobBanner } from "./OpnameJobBanner";
+import { OpnameTemplateDialog } from "./OpnameTemplateDialog";
 
 const LABELS: Record<OpnameImportStatus, string> = {
   ok: "Siap",
@@ -98,11 +99,14 @@ const COLUMNS = [
  */
 export function OpnameImportDialog({
   opnameId,
+  sheetCategoryId,
   settle,
   importFile,
   onClose,
 }: {
   opnameId: string;
+  /** The sheet's own `categoryFilter` — bounds what the template may hold. */
+  sheetCategoryId: string | null;
   /** Lands anything still in the auto-save. False when it could not. */
   settle: () => Promise<boolean>;
   importFile: (
@@ -111,7 +115,10 @@ export function OpnameImportDialog({
   onClose: () => void;
 }) {
   const upload = useOpnameImport(opnameId, { settle, importFile });
-  const [templateError, setTemplateError] = useState<string | null>(null);
+  /** The format whose template dialog is open — it asks which categories. */
+  const [templateFormat, setTemplateFormat] = useState<TemplateFormat | null>(
+    null,
+  );
 
   const { preview, sheet, rows, canCommit, loading, error, result } = upload;
   const queued = result && "background" in result ? result.job : null;
@@ -160,119 +167,120 @@ export function OpnameImportDialog({
     );
   }
 
-  const downloadTemplate = (format: TemplateFormat) => {
-    setTemplateError(null);
-    saveOpnameTemplate(opnameId, format).catch(() =>
-      setTemplateError("Gagal menyiapkan template. Coba lagi."),
-    );
-  };
-
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[85vh] grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-5xl">
-        <DialogHeader>
-          <DialogTitle>Impor file opname</DialogTitle>
-          <DialogDescription>
-            Isi kolom <code>stok_fisik</code>. Baris yang kosong dianggap belum
-            dihitung, bukan nol. Kolom <code>stok_sistem</code> tidak dibaca:
-            selisih selalu dihitung dari stok terbaru. Batch yang belum tercatat
-            wajib punya <code>tgl_expired</code>.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      {templateFormat && (
+        <OpnameTemplateDialog
+          opnameId={opnameId}
+          format={templateFormat}
+          sheetCategoryId={sheetCategoryId}
+          onClose={() => setTemplateFormat(null)}
+        />
+      )}
+      <Dialog open onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="max-h-[85vh] grid-cols-[minmax(0,1fr)] overflow-y-auto sm:max-w-5xl">
+          <DialogHeader>
+            <DialogTitle>Impor file opname</DialogTitle>
+            <DialogDescription>
+              Isi kolom <code>stok_fisik</code>. Baris yang kosong dianggap
+              belum dihitung, bukan nol. Kolom <code>stok_sistem</code> tidak
+              dibaca: selisih selalu dihitung dari stok terbaru. Batch yang
+              belum tercatat wajib punya <code>tgl_expired</code>.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="flex flex-col gap-4">
-          <ImportFilePicker
-            fileName={upload.fileName}
-            onPick={upload.pickFile}
-            onDownloadTemplate={downloadTemplate}
-            disabled={loading}
-            // No sub text under the two formats, as on Transfer Stok (6 Nov 2026).
-            xlsxHint=""
-            csvHint=""
-          />
-
-          {(error || templateError) && (
-            <Alert variant="error">{error ?? templateError}</Alert>
-          )}
-
-          {loading && (
-            <p className="flex items-center gap-2 text-sm text-muted">
-              <Spinner /> Memeriksa file…
-            </p>
-          )}
-
-          {sheet?.sheetName && (
-            <Alert variant="info">
-              File ini punya lebih dari satu sheet. Yang dibaca:{" "}
-              <strong>{sheet.sheetName}</strong>, sheet pertama.
-            </Alert>
-          )}
-
-          {sheet && sheet.unknownColumns.length > 0 && (
-            <Alert variant="info">
-              Kolom ini tidak dikenali dan diabaikan:{" "}
-              <strong>{sheet.unknownColumns.join(", ")}</strong>.
-            </Alert>
-          )}
-
-          {preview && canCommit && preview.background && (
-            <Alert variant="info">
-              {preview.summary.filled} baris terisi — lebih banyak dari satu
-              lembar (maksimal 1.000 baris). File ini akan dipecah per kategori
-              jadi <b>{preview.summary.sheets} lembar</b> dan diproses di
-              background, jadi kamu tidak perlu menunggu. Lembar ini jadi bagian
-              pertama.
-            </Alert>
-          )}
-
-          {preview && canCommit && !preview.background && (
-            <Alert variant="success">
-              {preview.summary.filled} baris siap masuk ke lembar
-              {preview.summary.added > 0 &&
-                `, termasuk ${preview.summary.added} baris baru`}
-              .
-              {preview.summary.skipped > 0 &&
-                ` ${preview.summary.skipped} baris kosong dilewati.`}{" "}
-              Opname belum selesai sampai diselesaikan di lembar.
-            </Alert>
-          )}
-
-          {preview && !canCommit && preview.summary.problems > 0 && (
-            <Alert variant="error">
-              {preview.summary.problems} dari {preview.summary.rows} baris perlu
-              diperbaiki. Perbaiki di file, lalu unggah ulang. Lembar baru terisi
-              kalau semua barisnya beres.
-            </Alert>
-          )}
-
-          {preview && !canCommit && preview.summary.problems === 0 && (
-            <Alert variant="info">
-              Belum ada <code>stok_fisik</code> yang terisi di file ini.
-            </Alert>
-          )}
-
-          {preview && shownRows.length > 0 && (
-            <ImportVerdictTable
-              rows={shownRows}
-              statusLabels={LABELS}
-              extraColumns={COLUMNS}
+          <div className="flex flex-col gap-4">
+            <ImportFilePicker
+              fileName={upload.fileName}
+              onPick={upload.pickFile}
+              onDownloadTemplate={setTemplateFormat}
+              disabled={loading}
+              // No sub text under the two formats, as on Transfer Stok (6 Nov 2026).
+              xlsxHint=""
+              csvHint=""
             />
-          )}
-        </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={loading}>
-            Batal
-          </Button>
-          <Button disabled={!canCommit || loading} onClick={upload.commit}>
-            {canCommit && preview
-              ? preview.background
-                ? `Proses di background (${preview.summary.sheets} lembar)`
-                : `Isi ${preview.summary.filled} baris ke lembar`
-              : "Isi ke lembar"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            {error && <Alert variant="error">{error}</Alert>}
+
+            {loading && (
+              <p className="flex items-center gap-2 text-sm text-muted">
+                <Spinner /> Memeriksa file…
+              </p>
+            )}
+
+            {sheet?.sheetName && (
+              <Alert variant="info">
+                File ini punya lebih dari satu sheet. Yang dibaca:{" "}
+                <strong>{sheet.sheetName}</strong>, sheet pertama.
+              </Alert>
+            )}
+
+            {sheet && sheet.unknownColumns.length > 0 && (
+              <Alert variant="info">
+                Kolom ini tidak dikenali dan diabaikan:{" "}
+                <strong>{sheet.unknownColumns.join(", ")}</strong>.
+              </Alert>
+            )}
+
+            {preview && canCommit && preview.background && (
+              <Alert variant="info">
+                {preview.summary.filled} baris terisi — lebih banyak dari satu
+                lembar (maksimal 1.000 baris). File ini akan dipecah per
+                kategori jadi <b>{preview.summary.sheets} lembar</b> dan
+                diproses di background, jadi kamu tidak perlu menunggu. Lembar
+                ini jadi bagian pertama.
+              </Alert>
+            )}
+
+            {preview && canCommit && !preview.background && (
+              <Alert variant="success">
+                {preview.summary.filled} baris siap masuk ke lembar
+                {preview.summary.added > 0 &&
+                  `, termasuk ${preview.summary.added} baris baru`}
+                .
+                {preview.summary.skipped > 0 &&
+                  ` ${preview.summary.skipped} baris kosong dilewati.`}{" "}
+                Opname belum selesai sampai diselesaikan di lembar.
+              </Alert>
+            )}
+
+            {preview && !canCommit && preview.summary.problems > 0 && (
+              <Alert variant="error">
+                {preview.summary.problems} dari {preview.summary.rows} baris
+                perlu diperbaiki. Perbaiki di file, lalu unggah ulang. Lembar
+                baru terisi kalau semua barisnya beres.
+              </Alert>
+            )}
+
+            {preview && !canCommit && preview.summary.problems === 0 && (
+              <Alert variant="info">
+                Belum ada <code>stok_fisik</code> yang terisi di file ini.
+              </Alert>
+            )}
+
+            {preview && shownRows.length > 0 && (
+              <ImportVerdictTable
+                rows={shownRows}
+                statusLabels={LABELS}
+                extraColumns={COLUMNS}
+              />
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose} disabled={loading}>
+              Batal
+            </Button>
+            <Button disabled={!canCommit || loading} onClick={upload.commit}>
+              {canCommit && preview
+                ? preview.background
+                  ? `Proses di background (${preview.summary.sheets} lembar)`
+                  : `Isi ${preview.summary.filled} baris ke lembar`
+                : "Isi ke lembar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
