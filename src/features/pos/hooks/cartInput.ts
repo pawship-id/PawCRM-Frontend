@@ -68,6 +68,12 @@ export function cartItemsAsInput(cart: PosTransaction | null): PosItemInput[] {
       return pick ? { benefit: pick } : {};
     })(),
     /*
+      PROMO V1: the cashier's explicit promo choice, sent back so a resumed
+      basket keeps it — `[]` is "Tanpa potongan". Absent = automatic (the
+      server applies the best promo itself). Never an amount.
+    */
+    ...(Array.isArray(item.promoPick) ? { promoIds: item.promoPick } : {}),
+    /*
       A PACKAGE LINE'S OWN FACTS, SENT BACK (Promosi V1). The server
       rebuilds every line from this payload: a start date or a referral
       code left out of the next write would silently fall off — and a

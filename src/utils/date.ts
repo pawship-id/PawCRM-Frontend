@@ -109,3 +109,25 @@ export function formatDateRange(from: string | null, to: string | null): string 
   }
   return `${fullDate(from!)} – ${fullDate(to!)}`;
 }
+
+/**
+ * THE YEARS AN EXPIRY DATE MAY FALL IN — the API's bound too (backend
+ * `common.validation.js`, `expiryDate`).
+ *
+ * `<input type="date">` takes whatever year is typed: `31/12/27` becomes
+ * `0027-12-31`, and a lot then shows "lewat 730070 hari" (Pawship, 12 November
+ * 2026). `min`/`max` on the input mark it invalid but do not stop a JS submit,
+ * so forms also check with `expiryYearError` before sending.
+ */
+export const EXPIRY_MIN_DATE = "2000-01-01";
+export const EXPIRY_MAX_DATE = "2100-12-31";
+
+/** Why an expiry `YYYY-MM-DD` is refused, or undefined when it is fine (or empty). */
+export function expiryYearError(value: string | null | undefined): string | undefined {
+  const day = value?.trim().slice(0, 10) ?? "";
+  if (day === "") return undefined;
+  if (day < EXPIRY_MIN_DATE || day > EXPIRY_MAX_DATE) {
+    return "Tahun kedaluwarsa harus antara 2000 dan 2100 — tulis tahunnya 4 angka (contoh 2027).";
+  }
+  return undefined;
+}

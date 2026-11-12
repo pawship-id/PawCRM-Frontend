@@ -106,7 +106,13 @@ export function transitionsFor(booking: BookingLike): BookingStatus[] {
 
   const forward = ladder.slice(at + 1, ceiling + 1);
 
-  return hasCompletedWork(booking) ? forward : [...forward, "cancelled"];
+  /*
+    CANCELLING IS OFFERED FROM EVERY RUNG (12 November 2026, on request) — it
+    used to stop at `completed`. The money guards are the server's: a finished
+    booking that is billed, or whose commission is paid, is refused there. See
+    `cancelBlockedReason` for the one this file can see coming.
+  */
+  return [...forward, "cancelled"];
 }
 
 /**
@@ -250,6 +256,28 @@ export function waitsForSessions(
 /** Whether a booking may still be called off. */
 export function canCancel(booking: BookingLike): boolean {
   return transitionsFor(booking).includes("cancelled");
+}
+
+/**
+ * Why a cancel will be refused, or null — a mirror of the BILLED guard in
+ * `BookingService#changeStatus` (12 November 2026). A finished booking that a
+ * sale or an invoice holds is cancelled through that document: a void at the
+ * till releases it, cancelling the invoice cancels it along with it.
+ *
+ * Paid commission is the server's to say — nothing on a booking shows it.
+ */
+export function cancelBlockedReason(
+  booking: BookingLike &
+    Partial<Pick<Booking, "pulledToCartAt" | "pulledToInvoiceAt">>,
+): string | null {
+  if (!hasCompletedWork(booking)) return null;
+  if (booking.pulledToInvoiceAt) {
+    return "Booking ini sudah ditagih lewat faktur. Batalkan dulu fakturnya — booking-nya ikut dibatalkan.";
+  }
+  if (booking.pulledToCartAt) {
+    return "Booking ini sudah ditagih di kasir. Batalkan dulu transaksinya di kasir (atau keluarkan dari keranjang), lalu batalkan booking-nya.";
+  }
+  return null;
 }
 
 /**

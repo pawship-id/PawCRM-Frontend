@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Eye, ListFilter, Plus, RotateCcw } from "lucide-react";
+import { Ban, Eye, ListFilter, Plus, RotateCcw } from "lucide-react";
 
 import {
   Alert,
@@ -19,10 +19,15 @@ import {
   type DataTableColumn,
   type FilterOption,
   type SortOptions,
+  ConfirmDialog,
   RowLinkMenu,
+  type RowAction,
 } from "@/components";
 import { Button } from "@/components/ui/button";
-import { Can } from "@/features/permissions";
+import { Can, usePermissions } from "@/features/permissions";
+import { swalToast } from "@/lib/swal";
+import { ApiError } from "@/services/api-error";
+import { stockTransferService } from "@/services/stockTransfer.service";
 import type {
   StockTransferSummary,
   StockTransferSort,
@@ -32,6 +37,7 @@ import type { Warehouse } from "@/types/api";
 
 import { useStockTransfers } from "../hooks/useStockTransfers";
 import { excerptAround } from "../utils/excerpt";
+import { transferFailureMessage } from "../utils/transferErrors";
 import { StockTransferStatusBadge } from "./StockTransferStatusBadge";
 
 /**
@@ -100,6 +106,7 @@ const CLEARED: PanelFilters = { warehouseId: "", status: "" };
 /** No. transfer, Tanggal, Dari, Ke, Produk, Status, Catatan, Aksi. */
 function transferColumns(
   search: string,
+  onCancel: ((transfer: StockTransferSummary) => void) | null,
 ): DataTableColumn<StockTransferSummary>[] {
   return [
     {
@@ -169,18 +176,35 @@ function transferColumns(
       align: "right",
       // Behind the row's kebab, like every other Inventori list (BO, 19
       // October 2026).
-      cell: (transfer) => (
-        <RowLinkMenu
-          name={transfer.transferNumber}
-          links={[
-            {
-              href: `/dashboard/inventory/transfers/${transfer._id}`,
-              label: "Detail",
-              icon: <Eye />,
-            },
-          ]}
-        />
-      ),
+      cell: (transfer) => {
+        // Only while the goods are on the road — the detail page's own rule.
+        // Received and cancelled transfers have nothing left to undo.
+        const actions: RowAction[] =
+          onCancel && transfer.status === "in_transit"
+            ? [
+                {
+                  label: "Batalkan transfer",
+                  icon: <Ban />,
+                  destructive: true,
+                  onSelect: () => onCancel(transfer),
+                },
+              ]
+            : [];
+
+        return (
+          <RowLinkMenu
+            name={transfer.transferNumber}
+            links={[
+              {
+                href: `/dashboard/inventory/transfers/${transfer._id}`,
+                label: "Detail",
+                icon: <Eye />,
+              },
+            ]}
+            actions={actions}
+          />
+        );
+      },
     },
   ];
 }
@@ -197,6 +221,40 @@ export function StockTransfersScreen() {
     refetch,
   } = useStockTransfers();
 
+  const { can } = usePermissions();
+  // The same grant the detail page puts its Batalkan button behind.
+  const mayCancel = can("stockTransfers", "create");
+
+  /** The row whose cancellation is being confirmed — at most one. */
+  const [cancelling, setCancelling] = useState<StockTransferSummary | null>(
+    null,
+  );
+  const [busy, setBusy] = useState(false);
+
+  async function confirmCancel(transfer: StockTransferSummary) {
+    setBusy(true);
+    try {
+      const updated = await stockTransferService.cancel(transfer._id);
+      swalToast(
+        `${updated.transferNumber} dibatalkan — barang kembali ke ${updated.fromWarehouseName ?? "gudang asal"}.`,
+      );
+      setCancelling(null);
+      refetch();
+    } catch (err) {
+      // A failed act is a toast (ui-rules §9); the list behind it is intact.
+      // A 409 usually means somebody else got there first, so the list is
+      // reloaded to show what they did — and so is a timeout, which the
+      // server may have finished anyway.
+      setCancelling(null);
+      swalToast(transferFailureMessage(err, "batal"), "error", 6000);
+      if (err instanceof ApiError && (err.isTimeout || err.status === 409)) {
+        refetch();
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const filtered =
     query.search.trim() !== "" ||
     query.warehouseId !== "" ||
@@ -204,6 +262,21 @@ export function StockTransfersScreen() {
 
   return (
     <div className="flex flex-col gap-4">
+      {cancelling && (
+        <ConfirmDialog
+          title={`Batalkan ${cancelling.transferNumber}?`}
+          confirmLabel="Batalkan transfer"
+          destructive
+          busy={busy}
+          onConfirm={() => confirmCancel(cancelling)}
+          onCancel={() => setCancelling(null)}
+        >
+          Semua barang dikembalikan ke{" "}
+          {cancelling.fromWarehouseName ?? "gudang asal"} dan transfer ini tidak
+          bisa dilanjutkan. Dokumennya tetap tersimpan sebagai riwayat.
+        </ConfirmDialog>
+      )}
+
       {error && (
         <Alert variant="error">
           <span className="flex flex-wrap items-center gap-3">
@@ -274,7 +347,10 @@ export function StockTransfersScreen() {
       </FilterBar>
 
       <DataTable
-        columns={transferColumns(query.search)}
+        columns={transferColumns(
+          query.search,
+          mayCancel ? setCancelling : null,
+        )}
         rows={transfers}
         rowKey={(transfer) => transfer._id}
         sort={{

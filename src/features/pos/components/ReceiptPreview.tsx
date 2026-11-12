@@ -28,6 +28,26 @@ function membershipDiscountOf(items: PosReceiptItem[]): string {
   );
 }
 
+/** Promo V1 — what promos paid for, the same flattening as above. */
+function promoDiscountOf(items: PosReceiptItem[]): string {
+  return sumDecimals(
+    items.flatMap((item) => [
+      item.promoDiscount ?? "0.0000",
+      ...item.addons.map((addon) => addon.promoDiscount ?? "0.0000"),
+    ]),
+  );
+}
+
+/** The promo names on the receipt, each once — "Flash Sale, Senin Hemat". */
+function promoNamesOf(items: PosReceiptItem[]): string {
+  const names = new Set<string>();
+  for (const item of items.flatMap((line) => [line, ...line.addons])) {
+    if (!item.promoLabel || !item.promoDiscount) continue;
+    for (const name of item.promoLabel.split(" + ")) if (name.trim()) names.add(name.trim());
+  }
+  return [...names].join(", ");
+}
+
 function paidAtLabel(paidAt: string | null): string {
   if (!paidAt) return "";
 
@@ -269,7 +289,11 @@ export function ReceiptPreview({
           */}
           {(() => {
             const membershipShare = membershipDiscountOf(receipt.items);
-            const own = subtractDecimals(totals.itemDiscount, membershipShare);
+            const promoShare = promoDiscountOf(receipt.items);
+            const own = subtractDecimals(
+              subtractDecimals(totals.itemDiscount, membershipShare),
+              promoShare,
+            );
 
             return (
               <>
@@ -285,6 +309,16 @@ export function ReceiptPreview({
                     <dd className="tabular-nums">
                       −{formatMoney(membershipShare)}
                     </dd>
+                  </div>
+                )}
+                {isPositive(promoShare) && (
+                  <div className="flex justify-between">
+                    <dt>
+                      {promoNamesOf(receipt.items)
+                        ? `Potongan promo · ${promoNamesOf(receipt.items)}`
+                        : "Potongan promo"}
+                    </dt>
+                    <dd className="tabular-nums">−{formatMoney(promoShare)}</dd>
                   </div>
                 )}
               </>

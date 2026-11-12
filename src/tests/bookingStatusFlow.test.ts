@@ -2,6 +2,7 @@ import {
   BOOKING_STATUS_ACTIONS,
   bookingStatusAction,
   canCancel,
+  cancelBlockedReason,
   canReschedule,
   forwardStatuses,
   hasCompletedWork,
@@ -109,13 +110,33 @@ describe("the booking ladder", () => {
       the part a customer notices.
     */
     expect(forwardStatuses(...at("completed"))).toEqual(["return_to_pawrents"]);
-    expect(transitionsFor(...at("return_to_pawrents"))).toEqual([]);
+    // Nothing ahead — only cancelling is left (12 November 2026).
+    expect(transitionsFor(...at("return_to_pawrents"))).toEqual(["cancelled"]);
   });
 
-  it("stops offering cancellation once the work is done", () => {
-    // Undoing that is correcting money rather than a schedule.
+  it("still offers cancellation once the work is done", () => {
+    /* 12 November 2026, on request — it used to stop at `completed`. The money
+       guards (billed, commission paid) are the server's; see below. */
     expect(canCancel(...at("in_progress"))).toBe(true);
-    expect(canCancel(...at("completed"))).toBe(false);
+    expect(canCancel(...at("completed"))).toBe(true);
+    expect(canCancel(...at("return_to_pawrents"))).toBe(true);
+  });
+
+  it("says why a finished, billed booking cannot be cancelled here", () => {
+    const [completed] = at("completed");
+
+    expect(cancelBlockedReason(completed)).toBeNull();
+    expect(
+      cancelBlockedReason({ ...completed, pulledToCartAt: "2026-11-12T03:00:00.000Z" }),
+    ).toMatch(/kasir/);
+    expect(
+      cancelBlockedReason({ ...completed, pulledToInvoiceAt: "2026-11-12T03:00:00.000Z" }),
+    ).toMatch(/faktur/);
+    // Before the work is done a billed booking still cancels as it always did.
+    const [arrived] = at("arrived");
+    expect(
+      cancelBlockedReason({ ...arrived, pulledToCartAt: "2026-11-12T03:00:00.000Z" }),
+    ).toBeNull();
   });
 
   it("closes the money guard at completed, not at the end of the visit", () => {
@@ -209,8 +230,8 @@ describe("the antar-jemput ladder", () => {
     ]);
   });
 
-  it("is final once the van has arrived", () => {
-    expect(transitionsFor(...ride("completed"))).toEqual([]);
+  it("can only be cancelled once the van has arrived", () => {
+    expect(transitionsFor(...ride("completed"))).toEqual(["cancelled"]);
   });
 
   /*

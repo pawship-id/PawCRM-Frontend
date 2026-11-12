@@ -103,9 +103,13 @@ function csvCell(value: string): string {
 export async function saveOpnameTemplate(
   opnameId: string,
   format: "xlsx" | "csv",
+  /** Empty for the whole sheet; otherwise only these categories. */
+  categoryIds: string[] = [],
 ): Promise<void> {
-  const { opnameNumber, columns, rows } =
-    await stockOpnameService.template(opnameId);
+  const { opnameNumber, columns, rows } = await stockOpnameService.template(
+    opnameId,
+    categoryIds,
+  );
 
   const grid = [
     columns,

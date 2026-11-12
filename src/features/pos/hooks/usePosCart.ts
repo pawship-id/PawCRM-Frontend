@@ -24,6 +24,14 @@ import { tillLots } from "../offline/tillApi";
 
 export { cartItemsAsInput };
 
+/** One line's potongan change — see `setItemBenefits`. */
+export interface BenefitChange {
+  index: number;
+  benefit: PosBenefitPick | null;
+  /** Absent keeps the line's promo choice; null = automatic; [] = none. */
+  promoIds?: string[] | null;
+}
+
 /** A package line as the sell dialog hands it over (contract §6.2). */
 export interface MembershipLineInput {
   planId: string;
@@ -95,10 +103,12 @@ interface UsePosCartResult {
   removeItem: (index: number | number[]) => Promise<void>;
   /** Apply or remove a membership benefit on one line — see the implementation. */
   setItemBenefit: (index: number, benefit: PosBenefitPick | null) => Promise<void>;
-  /** Several lines' picks in ONE write — the auto-apply after a quote. */
-  setItemBenefits: (
-    changes: Array<{ index: number; benefit: PosBenefitPick | null }>,
-  ) => Promise<boolean>;
+  /**
+   * Several lines' picks in ONE write — the auto-apply after a quote. Promo V1:
+   * `promoIds` too — left out keeps the line's promo choice, `null` makes it
+   * automatic again, an array names the promos (`[]` = none).
+   */
+  setItemBenefits: (changes: BenefitChange[]) => Promise<boolean>;
   setItemDiscount: (
     index: number,
     discount: UpdateCartInput["cartDiscount"],
@@ -869,11 +879,11 @@ export function usePosCart(
    * ABSENT, not present and null-ish.
    */
   const setItemBenefits = useCallback(
-    async (changes: Array<{ index: number; benefit: PosBenefitPick | null }>) => {
+    async (changes: BenefitChange[]) => {
       const items = itemsAsInput();
       let touched = false;
 
-      for (const { index, benefit } of changes) {
+      for (const { index, benefit, promoIds } of changes) {
         if (!items[index]) continue;
         const next = { ...items[index] };
         delete next.benefit;
@@ -881,6 +891,11 @@ export function usePosCart(
           next.benefit = benefit;
           // A benefit takes the line: no typed discount beside it (Promosi V1).
           next.discount = null;
+        }
+        /* Promo V1 — same discipline: automatic is the key ABSENT. */
+        if (promoIds !== undefined) {
+          delete next.promoIds;
+          if (promoIds !== null) next.promoIds = promoIds;
         }
         items[index] = next;
         touched = true;

@@ -16,14 +16,15 @@ import {
 } from "@/utils/decimal";
 import { usePermissions } from "@/features/permissions";
 import type {
-  PosBenefitPick,
   PosDiscountMode,
   PosItem,
   PosTransaction,
 } from "@/types/api";
 import type { BenefitQuoteResponse } from "@/types/membership";
+import type { PromoQuoteResponse } from "@/types/promo";
 
-import { bookingShareOf, membershipShareOf } from "../bookingDiscount";
+import { bookingShareOf, membershipShareOf, promoShareOf } from "../bookingDiscount";
+import { promoLineFor, type PotonganChange } from "../promoCart";
 import {
   groupByPet,
   plannedExtrasOf,
@@ -205,6 +206,8 @@ export function PosCart({
   onItemDetails,
   onItemBenefit,
   memberQuote,
+  promoQuote,
+  offline = false,
   petPlans,
   customerPerks,
   onCartDiscount,
@@ -228,12 +231,16 @@ export function PosCart({
    * The cashier's member pick on one line — a candidate, or `null` for "Tanpa
    * member" (Promosi V1). OPTIONAL: without it no select is drawn.
    */
-  onItemBenefit?: (index: number, benefit: PosBenefitPick | null) => void;
+  onItemBenefit?: (index: number, change: PotonganChange) => void;
   /**
    * The member quote for THIS basket (refs are line indexes) — null while none
    * is current. Each line reads its own answer from it.
    */
   memberQuote?: BenefitQuoteResponse | null;
+  /** Promo V1 — the promo quote for THIS basket (refs are line indexes). */
+  promoQuote?: PromoQuoteResponse | null;
+  /** Selling offline — no promo applies; the summary says so. */
+  offline?: boolean;
   /** The plan each animal's header names — see `petPlans` in membershipCart. */
   petPlans?: ReadonlyMap<string, PetPlan>;
   /** The customer's membership chips, under their name. */
@@ -420,8 +427,10 @@ export function PosCart({
                 <PosBenefitSelect
                   item={item}
                   line={quoteLineFor(memberQuote ?? null, index)}
+                  promoLine={promoLineFor(promoQuote ?? null, index)}
+                  promosAllowed={!offline}
                   disabled={busy}
-                  onChange={(pick) => onItemBenefit(index, pick)}
+                  onChange={(change) => onItemBenefit(index, change)}
                 />
               );
             };
@@ -635,9 +644,16 @@ export function PosCart({
                 sumDecimals(
                   (cart?.items ?? []).map((item) => membershipShareOf(item) ?? "0"),
                 );
+              /* Promo V1 — Σ the lines' `promoDiscount`, the third share. */
+              const promoShares =
+                totals.promoDiscount ??
+                sumDecimals((cart?.items ?? []).map((item) => promoShareOf(item) ?? "0"));
               const own = subtractDecimals(
-                subtractDecimals(totals.itemDiscount, shares),
-                membershipShares,
+                subtractDecimals(
+                  subtractDecimals(totals.itemDiscount, shares),
+                  membershipShares,
+                ),
+                promoShares,
               );
 
               return (
@@ -665,6 +681,18 @@ export function PosCart({
                         −{formatMoney(membershipShares)}
                       </dd>
                     </div>
+                  )}
+                  {isPositive(promoShares) && (
+                    <div className="flex justify-between">
+                      <dt className="text-muted">Potongan promo</dt>
+                      <dd className="tabular-nums text-success">
+                        −{formatMoney(promoShares)}
+                      </dd>
+                    </div>
+                  )}
+                  {/* BO decision 3: offline sales never take a promo. */}
+                  {offline && !empty && (
+                    <p className="text-xs text-muted">Promo tidak berlaku saat offline</p>
                   )}
                 </>
               );

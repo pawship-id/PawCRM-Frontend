@@ -7,6 +7,7 @@ import {
   MEMBERSHIP_HREF,
   PROMOSI_SUMMARY_HREF,
 } from "@/features/memberships/labels";
+import { PROMO_HREF } from "@/features/promos/labels";
 import {
   usePermissions,
   visibleTabs,
@@ -14,8 +15,9 @@ import {
 } from "@/features/permissions";
 
 /**
- * Promosi's tabs (16 October 2026). V1 carries Ringkasan and Membership only;
- * Loyalti, Promo and Voucher join this list when their screens exist.
+ * Promosi's tabs (16 October 2026). Ringkasan, Membership and — since Promo
+ * V1 (8 November 2026) — Promo; Loyalti and Voucher join this list when their
+ * screens exist.
  *
  * Ringkasan opens with the membership report grant or the card grant (the
  * renewal list lives there); Membership with either of its sub-tabs' grants,
@@ -27,12 +29,21 @@ export const PROMOSI_TABS: GatedTab[] = [
     label: "Ringkasan",
     href: PROMOSI_SUMMARY_HREF,
     exact: true,
-    anyOf: [{ feature: "membershipReports" }, { feature: "petMemberships" }],
+    anyOf: [
+      { feature: "membershipReports" },
+      { feature: "petMemberships" },
+      { feature: "promos" },
+    ],
   },
   {
     label: "Membership",
     href: MEMBERSHIP_HREF,
     anyOf: [{ feature: "membershipPlans" }, { feature: "petMemberships" }],
+  },
+  {
+    label: "Promo",
+    href: PROMO_HREF,
+    anyOf: [{ feature: "promos" }],
   },
 ];
 
@@ -57,8 +68,9 @@ export function PromosiModuleHeader({
         <div>
           <h1 className="text-2xl font-extrabold text-foreground">Promosi</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Paket membership hewan dan anggotanya. Semua jatah dan potongan
-            member di kasir dan booking diatur dari sini.
+            Paket membership, anggotanya, dan promo harga. Semua jatah,
+            potongan member, dan harga coret di kasir dan booking diatur dari
+            sini.
           </p>
         </div>
         {action && <div className="ml-auto flex flex-none gap-2">{action}</div>}

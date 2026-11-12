@@ -129,7 +129,7 @@ export function DashboardShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-full">
-      <header className="fixed inset-x-0 top-0 z-50 flex h-14 items-center gap-3 bg-primary px-3 text-primary-foreground sm:px-4">
+      <header className="fixed inset-x-0 top-0 z-50 flex h-14 items-center gap-3 bg-primary px-3 text-primary-foreground sm:px-4 print:hidden">
         {/*
           Two controls, one visible at a time, because they are two different
           acts: on a phone the rail is a drawer that opens over the page, on a
@@ -178,23 +178,28 @@ export function DashboardShell({ children }: { children: ReactNode }) {
         </div>
       </header>
 
-      <Sidebar
-        open={menuOpen}
-        collapsed={collapsed}
-        onClose={() => setMenuOpen(false)}
-        onExpand={() => setRailCollapsed(false)}
-      />
+      {/* THE CHROME IS NOT INK (12 November 2026). A page printed from the
+          browser — the batch label sheet, say — printed the header and the
+          whole menu down its left side, pushing the labels across the paper. */}
+      <div className="print:hidden">
+        <Sidebar
+          open={menuOpen}
+          collapsed={collapsed}
+          onClose={() => setMenuOpen(false)}
+          onExpand={() => setRailCollapsed(false)}
+        />
+      </div>
 
       {/* The rail is fixed, so the content is held clear of it by a margin that
           follows its width. Below `md` the rail is a drawer over the page and
           the margin goes away entirely. */}
       <main
         className={[
-          "pt-14 transition-[margin-left]",
+          "pt-14 transition-[margin-left] print:!ml-0 print:pt-0",
           collapsed ? "md:ml-[68px]" : "md:ml-[250px]",
         ].join(" ")}
       >
-        <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8">{children}</div>
+        <div className="px-4 py-6 sm:px-6 sm:py-8 lg:px-8 print:p-0">{children}</div>
       </main>
     </div>
   );

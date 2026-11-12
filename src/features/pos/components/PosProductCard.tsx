@@ -20,6 +20,10 @@ import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/utils/decimal";
 import { priceRange } from "@/utils/serviceVariant";
 import type { PosCatalogItem } from "@/types/api";
+import { BADGE_CLASS, TONE_CLASS } from "@/features/memberships/labels";
+import { cn } from "@/lib/utils";
+
+import { catalogTagLabel } from "../promoCart";
 
 /**
  * Whether the barcode is what brought this tile back.
@@ -132,6 +136,7 @@ export function PosProductCard({
   onAdd,
   onExpand,
   disabled = false,
+  showPromo = true,
 }: {
   item: PosCatalogItem;
   /**
@@ -145,10 +150,19 @@ export function PosProductCard({
   /** Called for a parent — the variant picker opens instead of adding. */
   onExpand: (item: PosCatalogItem) => void;
   disabled?: boolean;
+  /** False offline — no promo applies there, so no tag or struck price. */
+  showPromo?: boolean;
 }) {
   const isParent = item.variantCount !== null;
   const unsellable = item.sellable === false;
   const isPackage = item.kind === "membership";
+  /*
+    PROMO V1 — the "harga coret" tag. A service is priced per variant, so its
+    tag carries only the label; a product with one price shows it struck with
+    the promo price beside it.
+  */
+  const promo = showPromo && !isParent && !isPackage ? (item.promo ?? null) : null;
+  const struck = promo?.price && promo.normalPrice ? promo : null;
 
   return (
     <div className="flex flex-col justify-between gap-3 rounded-xl border border-border bg-surface p-3">
@@ -165,6 +179,15 @@ export function PosProductCard({
         {item.code && (
           <span className="mt-0.5 block truncate text-xs tabular-nums text-muted">
             <HighlightText text={item.code} query={search} />
+          </span>
+        )}
+
+        {/* A word on the tint (ui-rules §9): "Promo −12%", never the colour alone. */}
+        {promo && (
+          <span
+            className={cn(BADGE_CLASS, TONE_CLASS.info, "mt-1 max-w-full tabular-nums")}
+          >
+            <span className="truncate">{`Promo ${catalogTagLabel(promo)}`}</span>
           </span>
         )}
 
@@ -236,14 +259,25 @@ export function PosProductCard({
           that depends on the animal, and has nothing to quote over the counter.
           The RANGE says both: that it varies, and between what and what.
         */}
-        <span className="truncate text-sm font-semibold tabular-nums text-foreground">
-          {isParent
-            ? `${item.variantCount} varian`
-            : isPackage
-              ? /* A per-variant package's `price` is its lowest variant. */
-                `${item.priceFrom ? "mulai " : ""}${formatMoney(item.price)}`
-              : (priceRange(item, formatMoney) ?? formatMoney(item.price))}
-        </span>
+        {struck ? (
+          <span className="min-w-0">
+            <span className="block truncate text-xs tabular-nums text-muted line-through">
+              {formatMoney(struck.normalPrice)}
+            </span>
+            <span className="block truncate text-sm font-semibold tabular-nums text-foreground">
+              {formatMoney(struck.price)}
+            </span>
+          </span>
+        ) : (
+          <span className="truncate text-sm font-semibold tabular-nums text-foreground">
+            {isParent
+              ? `${item.variantCount} varian`
+              : isPackage
+                ? /* A per-variant package's `price` is its lowest variant. */
+                  `${item.priceFrom ? "mulai " : ""}${formatMoney(item.price)}`
+                : (priceRange(item, formatMoney) ?? formatMoney(item.price))}
+          </span>
+        )}
 
         {isParent ? (
           <Button

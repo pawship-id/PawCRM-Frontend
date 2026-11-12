@@ -21,6 +21,7 @@ import { renderWithAuth } from "./helpers/renderWithAuth";
 import { primeVariantOptions } from "./helpers/variantOptions";
 
 jest.mock("@/services/pos.service");
+jest.mock("@/services/promo.service");
 jest.mock("@/services/booking.service");
 jest.mock("@/services/warehouse.service");
 jest.mock("@/services/category.service");
@@ -513,7 +514,7 @@ describe("a member pick in the basket", () => {
     );
   });
 
-  it("draws the pick as a select, and Tanpa member takes it off", async () => {
+  it("draws the pick as a select, and Tanpa potongan takes it off", async () => {
     const paid = {
       ...grooming,
       membershipDiscount: "150000.0000",
@@ -550,7 +551,7 @@ describe("a member pick in the basket", () => {
     const user = userEvent.setup();
     renderWithAuth(<PosScreen />);
 
-    const select = await screen.findByRole("combobox", { name: /member untuk grooming lengkap/i });
+    const select = await screen.findByRole("combobox", { name: /potongan untuk grooming lengkap/i });
     await waitFor(() => expect(select).toHaveTextContent("Jatah Grooming 0/1"));
     expect(screen.getByText("Member ditunda")).toBeInTheDocument();
     /* The animal's header. */
@@ -558,10 +559,12 @@ describe("a member pick in the basket", () => {
 
     mockedPos.updateCart.mockClear();
     await user.click(select);
-    await user.click(await screen.findByRole("option", { name: "Tanpa member" }));
+    await user.click(await screen.findByRole("option", { name: "Tanpa potongan" }));
 
     await waitFor(() => expect(mockedPos.updateCart).toHaveBeenCalled());
     const sent = mockedPos.updateCart.mock.calls[0][1].items ?? [];
     expect(sent[0].benefit).toBeUndefined();
+    /* Promo V1: "Tanpa potongan" also says no promo. */
+    expect(sent[0].promoIds).toEqual([]);
   });
 });

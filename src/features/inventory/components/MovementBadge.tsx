@@ -53,6 +53,9 @@ const LABELS: Record<MovementType, { label: string; tone: string }> = {
   // owned on its first day, and the distinction is the whole reason it stopped
   // being an "adjustment": its journal credits capital, not an inventory loss.
   opening_balance: { label: "Saldo awal", tone: "bg-success/12 text-success" },
+  // Neutral: nothing came in or went out — units moved between lots of one
+  // shelf so the Batch tab adds up to the stock again.
+  batch_settle: { label: "Penyesuaian batch", tone: "bg-tint-neutral text-muted" },
 };
 
 /**

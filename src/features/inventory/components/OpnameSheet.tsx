@@ -1,5 +1,6 @@
 "use client";
 
+import { EXPIRY_MAX_DATE, EXPIRY_MIN_DATE } from "@/utils/date";
 import { SkuText } from "@/components/SkuText";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -939,6 +940,7 @@ export function OpnameSheet({ opnameId }: { opnameId: string }) {
       {importing && (
         <OpnameImportDialog
           opnameId={opnameId}
+          sheetCategoryId={opname.categoryFilter ?? null}
           settle={settle}
           importFile={importFile}
           onClose={closeImport}
@@ -1197,6 +1199,8 @@ function SheetRow({
                   aria-label={`Tanggal kedaluwarsa ${item.productName ?? ""}`}
                   aria-invalid={lotMissing}
                   type="date"
+                  min={EXPIRY_MIN_DATE}
+                  max={EXPIRY_MAX_DATE}
                   value={item.expiryDate ? item.expiryDate.slice(0, 10) : ""}
                   onChange={(event) =>
                     onEdit(index, { expiryDate: event.target.value })

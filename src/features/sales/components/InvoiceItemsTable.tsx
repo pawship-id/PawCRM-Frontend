@@ -433,6 +433,11 @@ export function InvoiceItemsTable({
                                 {item.discount.benefitLabel ?? "Benefit membership"}
                               </span>
                             )}
+                            {(item.promos ?? []).length > 0 && (
+                              <span className="block text-xs text-muted">
+                                Promo · {(item.promos ?? []).map((promo) => promo.name).join(" + ")}
+                              </span>
+                            )}
                           </>
                         ) : (
                           "—"
@@ -525,9 +530,16 @@ export function InvoiceItemsTable({
             const membershipShare = sumDecimals(
               (invoice.items ?? []).map((item) => item.membershipDiscount ?? "0"),
             );
+            /* Promo V1 — the promo's part gets its own line too. */
+            const promoShare = sumDecimals(
+              (invoice.items ?? []).map((item) => item.promoDiscount ?? "0"),
+            );
             const own = subtractDecimals(
-              subtractDecimals(totals.itemDiscount, shares),
-              membershipShare,
+              subtractDecimals(
+                subtractDecimals(totals.itemDiscount, shares),
+                membershipShare,
+              ),
+              promoShare,
             );
 
             return (
@@ -553,6 +565,14 @@ export function InvoiceItemsTable({
                     <dt className="text-muted">Diskon membership</dt>
                     <dd className="tabular-nums font-semibold text-danger">
                       −{formatMoney(membershipShare)}
+                    </dd>
+                  </div>
+                )}
+                {isPositive(promoShare) && (
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted">Potongan promo</dt>
+                    <dd className="tabular-nums font-semibold text-danger">
+                      −{formatMoney(promoShare)}
                     </dd>
                   </div>
                 )}

@@ -127,7 +127,9 @@ function BatchLabel({
         </p>
         {/* SKU, PRICE AND EXPIRY are what somebody reads off the carton at the
             shelf, so they sit together at the top and in figures that line up. */}
-        <p className="text-sm font-semibold tabular-nums">
+        {/* `break-all`: a variant SKU runs to thirty characters with no
+            space to wrap at, and would otherwise run under the QR. */}
+        <p className="text-sm font-semibold break-all tabular-nums">
           SKU {batch.productSku ?? "—"}
         </p>
         <p className="text-sm font-semibold tabular-nums">
@@ -314,7 +316,14 @@ export function BatchLabelSheet({ ids }: { ids: string[] }) {
           </p>
         </Card>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 print:grid-cols-2">
+        /*
+          ITS OWN MARGIN ON PAPER (12 November 2026). `pos/print/receipt.css`
+          sets `@page { margin: 0 }` for a thermal roll, and an `@page` rule is
+          everybody's once loaded — a named page cannot opt out either, since
+          Chrome does not carry `page:` through the flex layout around this.
+          So the margin is padding, cloned onto every page the sheet runs to.
+        */
+        <div className="grid gap-3 sm:grid-cols-2 print:grid-cols-2 print:p-[10mm] print:[box-decoration-break:clone] print:[-webkit-box-decoration-break:clone]">
           {sheet.map(({ batch, key }) => (
             <BatchLabel key={key} batch={batch} symbol={symbol} />
           ))}

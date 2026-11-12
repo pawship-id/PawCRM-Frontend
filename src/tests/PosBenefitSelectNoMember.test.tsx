@@ -43,11 +43,11 @@ const quoteLine = {
 } as unknown as BenefitQuoteLineResult;
 
 describe("PosBenefitSelect — booking add-on agreed Tanpa member", () => {
-  it("starts on Tanpa member and says it is as booked", () => {
+  it("starts on Tanpa potongan and says it is as booked", () => {
     render(<PosBenefitSelect item={addon()} line={quoteLine} onChange={() => {}} />);
 
-    expect(screen.getByRole("combobox", { name: "Member untuk Parfum" })).toHaveTextContent(
-      "Tanpa member",
+    expect(screen.getByRole("combobox", { name: "Potongan untuk Parfum" })).toHaveTextContent(
+      "Tanpa potongan",
     );
     expect(screen.getByText("sesuai booking")).toBeInTheDocument();
   });
@@ -61,7 +61,7 @@ describe("PosBenefitSelect — booking add-on agreed Tanpa member", () => {
       />,
     );
 
-    expect(screen.getByRole("combobox", { name: "Member untuk Parfum" })).toHaveTextContent(
+    expect(screen.getByRole("combobox", { name: "Potongan untuk Parfum" })).toHaveTextContent(
       "Member · Diskon 10%",
     );
     expect(screen.queryByText("sesuai booking")).not.toBeInTheDocument();

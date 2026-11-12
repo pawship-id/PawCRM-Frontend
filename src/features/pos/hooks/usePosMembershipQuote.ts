@@ -67,5 +67,10 @@ export function usePosMembershipQuote(
     quote: current ? answer.quote : null,
     /** The digest the answer belongs to — "" when there is nothing to ask. */
     digest: current ? digest : "",
+    /**
+     * Nothing to ask, or the answer for THIS basket is in (even a failed one).
+     * The promo quote waits on it: it needs to know what the card offers.
+     */
+    settled: digest === "" || current,
   };
 }
