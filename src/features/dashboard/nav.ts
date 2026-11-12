@@ -86,8 +86,12 @@ export interface NavChild {
    * The module this row belongs to (permissionModules.js keys). A row whose
    * module the business switched off is hidden whatever its permission says —
    * the only gate on a row that has no permission of its own.
+   *
+   * A LIST means "any one of these is on" — Promosi (8 November 2026) holds
+   * two separately switched tabs, Membership and Promo, and the row stays while
+   * either is on.
    */
-  module?: string;
+  module?: string | readonly string[];
   /**
    * Any ONE of these opens the row — for a page whose tabs each have their own
    * "Lihat" (14 October 2026): the row shows when at least one tab would.
@@ -135,8 +139,12 @@ export interface NavItem {
    * The module this row belongs to (permissionModules.js keys). A row whose
    * module the business switched off is hidden whatever its permission says —
    * the only gate on a row that has no permission of its own.
+   *
+   * A LIST means "any one of these is on" — Promosi (8 November 2026) holds
+   * two separately switched tabs, Membership and Promo, and the row stays while
+   * either is on.
    */
-  module?: string;
+  module?: string | readonly string[];
   /**
    * ANY ONE of these grants shows the row — for a leaf whose TABS are gated
    * separately, where no single permission describes the module.
@@ -380,11 +388,13 @@ export const NAV_SECTIONS: NavSection[] = [
         href: "/dashboard/promotion/summary",
         icon: Tag,
         match: ["/dashboard/promotion"],
-        module: "membership",
+        // Membership OR Promo — each tab has its own switch (8 November 2026).
+        module: ["membership", "promo"],
         permissionAny: [
           { feature: "membershipPlans", action: "read" },
           { feature: "petMemberships", action: "read" },
           { feature: "membershipReports", action: "read" },
+          { feature: "promos", action: "read" },
         ],
       },
       /**
@@ -738,8 +748,11 @@ export function filterNavItems(
 ): NavItem[] {
   const allowed = (req?: PermissionRequirement) =>
     !req || can(req.feature, req.action);
-  const moduleOn = (row: { module?: string }) =>
-    !row.module || isModuleOn(row.module);
+  const moduleOn = (row: { module?: string | readonly string[] }) =>
+    !row.module ||
+    (typeof row.module === "string"
+      ? isModuleOn(row.module)
+      : row.module.some((key) => isModuleOn(key)));
 
   /**
    * A leaf survives when its own `permission` passes AND, if it names a set,

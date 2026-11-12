@@ -11,7 +11,11 @@ export const metadata: Metadata = {
 export default function PromosiSummaryPage() {
   return (
     <RequirePermission
-      anyOf={[{ feature: "membershipReports" }, { feature: "petMemberships" }]}
+      anyOf={[
+        { feature: "membershipReports" },
+        { feature: "petMemberships" },
+        { feature: "promos" },
+      ]}
       redirectTo={PROMOSI_TABS}
     >
       <PromosiSummaryScreen />

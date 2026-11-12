@@ -365,6 +365,21 @@
     "article": "membuat-paket-baru"
   },
   {
+    "pattern": "/dashboard/promotion/promo",
+    "module": "promosi",
+    "article": "daftar-promo"
+  },
+  {
+    "pattern": "/dashboard/promotion/promo/[id]/edit",
+    "module": "promosi",
+    "article": "mengubah-menghentikan-dan-menghapus-promo"
+  },
+  {
+    "pattern": "/dashboard/promotion/promo/new",
+    "module": "promosi",
+    "article": "membuat-promo-harga-coret"
+  },
+  {
     "pattern": "/dashboard/promotion/summary",
     "module": "promosi",
     "article": "ringkasan-promosi"

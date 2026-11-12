@@ -176,6 +176,13 @@ export const PERMISSION_CATALOG = {
    *            hewan, ubah tanggal pakai. Owner and Manager by default.
    */
   petMemberships: ["create", "read", "update", "cancel", "redeem", "manage", "refund"],
+  /**
+   * Promo (Promo V1, 8 November 2026) — tab Promo di modul Promosi. `update`
+   * also covers "Hentikan"; `delete` only ever removes a draft or a promo
+   * nobody has used. The till needs none of these: a promo applies itself, and
+   * `/promos/quote` is opened by the sales grants. Mirrors the server's catalog.
+   */
+  promos: ["create", "read", "update", "delete"],
   // `remapHistory`: re-point OLD lines at a new lini/cabang (Terapkan ke data lama, 6 Okt). Owner only by default.
   chartOfAccounts: ["create", "read", "update", "delete", "restore", "remapHistory"],
   // A posted journal entry is immutable: no delete, no restore. `reverse` is

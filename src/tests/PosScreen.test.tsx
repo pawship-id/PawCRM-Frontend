@@ -1599,6 +1599,46 @@ describe("PosVariantDialog — reading a row", () => {
     // A tenant may name a variant anything. Better a long row than an empty one.
     expect(await screen.findByText("Kemasan Ekonomis 5kg")).toBeInTheDocument();
   });
+
+  it("shows a variant's promo tag and struck price, like a product tile", async () => {
+    mockedPos.catalog.mockImplementation(async (query) =>
+      query?.parentId
+        ? {
+            items: [
+              {
+                ...variantTile(
+                  VARIANT_1KG,
+                  "Cat Choise Adult — 1kg / Chicken",
+                  "CC-ADULT-1KG-CHICKEN",
+                  { qty: "15.0000", state: "ok" },
+                ),
+                promo: {
+                  promoId: "p1",
+                  name: "Promo Cat Choise",
+                  label: "−10%",
+                  weekdays: [],
+                  normalPrice: "45000.0000",
+                  price: "40500.0000",
+                },
+              },
+            ],
+            pagination: { page: 1, limit: 48, total: 1, totalPages: 1 },
+          }
+        : {
+            ...catalogPage,
+            items: [{ ...catalogPage.items[1], name: "Cat Choise Adult" }],
+          },
+    );
+    const user = userEvent.setup();
+    renderWithAuth(<PosScreen />);
+
+    await openPicker(user);
+
+    const dialog = await screen.findByRole("dialog");
+    expect(await within(dialog).findByText("Promo −10%")).toBeInTheDocument();
+    expect(within(dialog).getByText(/40\.500/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/45\.000/)).toHaveClass("line-through");
+  });
 });
 
 /**

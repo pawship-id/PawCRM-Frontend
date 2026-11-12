@@ -5,18 +5,22 @@ import { PromosiSummaryScreen } from "@/features/promosi";
 import { periodRange } from "@/features/promosi/hooks/usePromosiSummary";
 import { branchService } from "@/services/branch.service";
 import { membershipService } from "@/services/membership.service";
+import { promoService } from "@/services/promo.service";
 import type { AttentionCard, MembershipAttention } from "@/types/membership";
+import type { PromoAttentionItem } from "@/types/promo";
 
 import { renderWithAuth } from "./helpers/renderWithAuth";
 
 jest.mock("@/services/membership.service");
 jest.mock("@/services/branch.service");
+jest.mock("@/services/promo.service");
 jest.mock("@/lib/swal", () => ({ swalToast: jest.fn() }));
 jest.mock("next/navigation", () => ({
   usePathname: () => "/dashboard/promotion/summary",
 }));
 
 const mocked = membershipService as jest.Mocked<typeof membershipService>;
+const promos = promoService as jest.Mocked<typeof promoService>;
 
 const card = (over: Partial<AttentionCard> = {}): AttentionCard => ({
   id: "card-1",
@@ -37,6 +41,24 @@ const card = (over: Partial<AttentionCard> = {}): AttentionCard => ({
 });
 
 function primeAll(attention: MembershipAttention) {
+  promos.report.mockResolvedValue({
+    totals: { discount: "45000.0000", transactions: 3, running: 1 },
+    promos: [
+      {
+        id: "pr1",
+        code: "PRM-0001",
+        name: "Flash Sale Royal Canin",
+        type: "coret",
+        status: "running",
+        startDate: "2026-11-01",
+        endDate: "2026-11-12",
+        quotaTotal: null,
+        transactions: 3,
+        discount: "45000.0000",
+      },
+    ],
+  });
+  promos.attention.mockResolvedValue({ items: [] });
   (branchService.list as jest.Mock).mockResolvedValue({
     items: [{ _id: "b1", name: "Pusat" }],
     pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
@@ -132,14 +154,41 @@ describe("PromosiSummaryScreen", () => {
     primeAll({ withinDays: 14, expiring: [], unusedQuota: [] });
     renderWithAuth(<PromosiSummaryScreen />);
 
-    for (const title of [
-      "Kartu stempel kurang 1 lagi",
-      "Reward stempel belum dipakai",
-      "Promo berakhir ≤14 hari",
-    ]) {
+    for (const title of ["Kartu stempel kurang 1 lagi", "Reward stempel belum dipakai"]) {
       const region = await screen.findByRole("region", { name: title });
       expect(within(region).getByText("Segera")).toBeInTheDocument();
     }
+  });
+
+  it("shows the promo tile, the promos about to end and the running promos", async () => {
+    primeAll({ withinDays: 14, expiring: [], unusedQuota: [] });
+    promos.attention.mockResolvedValue({
+      items: [
+        {
+          id: "pr1",
+          code: "PRM-0001",
+          name: "Flash Sale Royal Canin",
+          restrictions: { endDate: "2026-11-12" },
+          daysLeft: 4,
+        } as unknown as PromoAttentionItem,
+      ],
+    });
+    renderWithAuth(<PromosiSummaryScreen />);
+
+    expect(await screen.findByText("Potongan promo")).toBeInTheDocument();
+    expect(await screen.findByText("3 transaksi")).toBeInTheDocument();
+
+    const ending = await screen.findByRole("region", { name: "Promo berakhir ≤14 hari" });
+    expect(await within(ending).findByText("Flash Sale Royal Canin")).toBeInTheDocument();
+    expect(within(ending).getByText(/4 hari lagi/)).toBeInTheDocument();
+    expect(within(ending).getByRole("link", { name: "Ubah" })).toHaveAttribute(
+      "href",
+      "/dashboard/promotion/promo/pr1/edit",
+    );
+
+    const running = screen.getByRole("region", { name: "Promo berjalan" });
+    expect(within(running).getByText("Flash Sale Royal Canin")).toBeInTheDocument();
+    expect(within(running).getByText("Rp 45.000")).toBeInTheDocument();
   });
 
   it("re-asks the summary for the chosen cabang and periode", async () => {

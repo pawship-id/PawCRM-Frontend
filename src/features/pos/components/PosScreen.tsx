@@ -8,7 +8,6 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import type {
   Pet,
-  PosBenefitPick,
   PosCatalogItem,
   PosTransaction,
   VariantChoice,
@@ -21,6 +20,13 @@ import { autoApplyChanges, lineKey, petPlans } from "../membershipCart";
 import { useCustomerMemberships } from "@/features/memberships/hooks/useCustomerMemberships";
 import { usePosCart } from "../hooks/usePosCart";
 import { usePosMembershipQuote } from "../hooks/usePosMembershipQuote";
+import { usePromoQuote } from "@/hooks/usePromoQuote";
+import {
+  buildPromoQuoteInput,
+  promoDecided,
+  promoSwitches,
+  type PotonganChange,
+} from "../promoCart";
 import { usePosShift } from "../hooks/usePosShift";
 import { useShiftTotals } from "../hooks/useShiftTotals";
 import { PosApprovalDialog } from "./PosApprovalDialog";
@@ -693,7 +699,7 @@ export function PosScreen() {
   // Membership benefits are priced by the server; offline none are offered.
   const memberQuote = usePosMembershipQuote(offline ? null : cart.cart, noBenefitKeys);
   const autoTried = useRef("");
-  const { setItemBenefits, setItemBenefit } = cart;
+  const { setItemBenefits } = cart;
   const cartItems = cart.cart?.items;
 
   useEffect(() => {
@@ -703,19 +709,77 @@ export function PosScreen() {
     if (autoTried.current === memberQuote.digest) return;
     autoTried.current = memberQuote.digest;
 
-    const changes = autoApplyChanges(cartItems ?? [], memberQuote.quote, noBenefitKeys);
+    const items = cartItems ?? [];
+    /* Promo V1: a line whose promo the cashier chose takes no card unasked. */
+    const changes = autoApplyChanges(items, memberQuote.quote, noBenefitKeys).filter(
+      (change) => !promoDecided(items[change.index]),
+    );
     if (changes.length > 0) void setItemBenefits(changes);
   }, [memberQuote.quote, memberQuote.digest, cart.busy, cartItems, noBenefitKeys, setItemBenefits]);
 
-  function chooseBenefit(index: number, pick: PosBenefitPick | null) {
+  /*
+    ─── PROMO IN THE BASKET (Promo V1, 8 November 2026) ─────────────────────
+
+    Asked once the member quote has answered (it needs to know what the card
+    offers each line), online only — BO decision 3: no promo offline. The
+    server applies the best promo by itself on every write; the quote is for
+    the select's options and for ONE decision the server leaves to the till:
+    when a promo beats the card's unlimited benefit (`useMember: false`), the
+    member pick is dropped and the winning promo named on the line.
+
+    `chosenKeys` — lines whose potongan the cashier picked by hand — are never
+    switched behind their back.
+  */
+  const [chosen, setChosen] = useState<{
+    cartId: string | null;
+    keys: ReadonlySet<string>;
+  }>({ cartId: null, keys: NO_KEYS });
+  const chosenKeys = chosen.cartId === cartId ? chosen.keys : NO_KEYS;
+
+  const promoInput = useMemo(
+    () =>
+      offline || !memberQuote.settled
+        ? null
+        : buildPromoQuoteInput(cart.cart, memberQuote.quote),
+    [offline, memberQuote.settled, memberQuote.quote, cart.cart],
+  );
+  const promoQuote = usePromoQuote(promoInput);
+  const promoTried = useRef("");
+
+  useEffect(() => {
+    if (!promoQuote.quote || !promoQuote.digest || cart.busy) return;
+    if (promoTried.current === promoQuote.digest) return;
+    promoTried.current = promoQuote.digest;
+
+    const items = cartItems ?? [];
+    const switches = promoSwitches(items, memberQuote.quote, promoQuote.quote, chosenKeys);
+    if (switches.length === 0) return;
+
+    /* The promo by name: `promoPick` then keeps the card's auto-apply off the
+       line (`promoDecided`), on this till and on a resumed basket alike. */
+    void setItemBenefits(
+      switches.map(({ index, promoIds }) => ({ index, benefit: null, promoIds })),
+    );
+  }, [
+    promoQuote.quote,
+    promoQuote.digest,
+    cart.busy,
+    cartItems,
+    memberQuote.quote,
+    chosenKeys,
+    setItemBenefits,
+  ]);
+
+  function chooseBenefit(index: number, change: PotonganChange) {
     const items = cart.cart?.items ?? [];
     if (!items[index]) return;
     const key = lineKey(items, index);
     const next = new Set(noBenefitKeys);
-    if (pick) next.delete(key);
-    else next.add(key);
+    if (change.noBenefit) next.add(key);
+    else next.delete(key);
     setNoBenefit({ cartId, keys: next });
-    void setItemBenefit(index, pick);
+    setChosen({ cartId, keys: new Set(chosenKeys).add(key) });
+    void setItemBenefits([{ index, benefit: change.benefit, promoIds: change.promoIds }]);
   }
 
   /* The customer's cards — chips under their name, plans on the pet headers. */
@@ -843,6 +907,7 @@ export function PosScreen() {
           onScan={addScanned}
           onExpand={setVariantParent}
           busy={cart.busy}
+          offline={offline}
         />
 
         <PosCart
@@ -860,6 +925,8 @@ export function PosScreen() {
           }
           onItemBenefit={offline ? undefined : chooseBenefit}
           memberQuote={offline ? null : memberQuote.quote}
+          promoQuote={offline ? null : promoQuote.quote}
+          offline={offline}
           petPlans={plansByPet}
           customerPerks={<PosCustomerPerks cards={customerCards} />}
           onCartDiscount={(discount) => void cart.setCartDiscount(discount)}
@@ -910,6 +977,7 @@ export function PosScreen() {
       <PosVariantDialog
         parent={variantParent}
         busy={cart.busy}
+        showPromo={!offline}
         /*
           Built from the basket on every render, so the counts in the picker and
           the lines in the cart can never disagree — they are one source read

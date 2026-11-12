@@ -36,6 +36,12 @@ import {
 } from "@/features/booking/benefitQuote";
 import { useBookingBenefitQuote } from "@/features/booking/hooks/useBookingBenefitQuote";
 import {
+  bookingPromoInput,
+  bookingPromoView,
+  promoRowLabel,
+} from "@/features/booking/bookingPromo";
+import { usePromoQuote } from "@/hooks/usePromoQuote";
+import {
   DEFAULT_VISIT_DRAFT,
   visitFeeOf,
   visitInputOf,
@@ -543,22 +549,24 @@ export function GroomingBookingCreateScreen() {
     noMemberAddonIds: draft.noMemberAddonIds ?? [],
   }));
   const feeShown = home && feeMinor > 0n ? toDecimalString(feeMinor) : null;
+  const scheduledAtNow = date !== "" && time !== "" ? toScheduledAt(date, time) : null;
+  const pricesOf = (card: BenefitCardState) => {
+    const row = priced.find((entry) => entry.pet._id === card.key);
+    if (!row || row.quote.inactive || row.main.price === null) return null;
+    return {
+      amount: toDecimalString(row.main.net),
+      addons: row.addons
+        .filter((addon) => !addon.quote.inactive && addon.line.price !== null)
+        .map((addon) => ({ serviceId: addon.addonId, amount: toDecimalString(addon.line.net) })),
+    };
+  };
   const benefitQuoteState = useBookingBenefitQuote(
     bookingQuoteInput({
       cards: benefitCards,
       customerId: customer?._id ?? null,
-      date: date !== "" && time !== "" ? toScheduledAt(date, time) : null,
+      date: scheduledAtNow,
       visitFee: feeShown,
-      pricesOf: (card) => {
-        const row = priced.find((entry) => entry.pet._id === card.key);
-        if (!row || row.quote.inactive || row.main.price === null) return null;
-        return {
-          amount: toDecimalString(row.main.net),
-          addons: row.addons
-            .filter((addon) => !addon.quote.inactive && addon.line.price !== null)
-            .map((addon) => ({ serviceId: addon.addonId, amount: toDecimalString(addon.line.net) })),
-        };
-      },
+      pricesOf,
     }),
   );
   const benefitQuote = benefitQuoteState.quote;
@@ -606,7 +614,26 @@ export function GroomingBookingCreateScreen() {
     up; the booking discount is still the one the server resolves on the nets
     before any membership — it is fixed at create, the benefit at the till.
   */
-  const memberSubtotal = subtotal - memberDiscount - feeWaived;
+  /*
+    PROMO V1 — DISPLAY-ONLY (see `bookingPromo.ts`): what a promo running on
+    the service date would take off. The booking stores none; the till
+    re-evaluates it when the booking is paid.
+  */
+  /* Rebuilt every render — the hook compares requests by content, not identity. */
+  const promoInput = bookingPromoInput({
+    cards: benefitCards,
+    customerId: customer?._id ?? null,
+    branchId: branchId || null,
+    at: scheduledAtNow,
+    pricesOf,
+    memberQuote: benefitQuote,
+    memberAsked: benefitQuoteState.asked,
+  });
+  const promoQuote = usePromoQuote(promoInput);
+  const promo = bookingPromoView(promoInput, promoQuote.quote);
+  const promoOff = toMinor(promo.discount) ?? 0n;
+
+  const memberSubtotal = subtotal - memberDiscount - feeWaived - promoOff;
   const total = memberSubtotal - split.total;
   const totalBeforeMember = subtotal - split.total;
 
@@ -1689,6 +1716,15 @@ export function GroomingBookingCreateScreen() {
                   />
                 )}
 
+                {/* Promo V1 — an estimate; the booking stores no promo. */}
+                {promoOff > 0n && (
+                  <SummaryLine
+                    tone="discount"
+                    label={promoRowLabel(promo)}
+                    value={`−${money(promoOff)}`}
+                  />
+                )}
+
                 <div className="mt-2 flex justify-between gap-3 border-t border-border pt-2">
                   <span className="text-muted">Subtotal</span>
                   <span className="font-semibold tabular-nums">{money(memberSubtotal)}</span>
@@ -1735,6 +1771,17 @@ export function GroomingBookingCreateScreen() {
                 {split.total > 0n && (
                   <p className="mt-2 text-xs text-muted">
                     Diskon booking dibagi rata ke tiap booking.
+                  </p>
+                )}
+
+                {promoOff > 0n && (
+                  <p data-promo-hint className="mt-2 text-xs text-muted">
+                    Promo dihitung ulang saat dibayar di kasir.
+                  </p>
+                )}
+                {promo.beatenBy.length > 0 && (
+                  <p data-promo-beaten className="mt-2 text-xs text-muted">
+                    {`Promo ${promo.beatenBy.join(", ")} lebih hemat dari member — pilih Tanpa member untuk memakainya.`}
                   </p>
                 )}
 

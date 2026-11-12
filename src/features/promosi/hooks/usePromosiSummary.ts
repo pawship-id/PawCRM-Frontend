@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 
 import { ApiError } from "@/services/api-error";
 import { membershipService } from "@/services/membership.service";
+import { promoService } from "@/services/promo.service";
 import type {
   MembershipAttention,
   MembershipReport,
   MembershipSummary,
 } from "@/types/membership";
+import type { PromoAttentionItem, PromoReport } from "@/types/promo";
 import { isoDate } from "@/utils/date";
 
 /** Ringkasan's three windows (BO prototype `tabRingkasan`). */
@@ -58,21 +60,30 @@ const failed = (err: unknown, fallback: string) =>
  *   summary   — GET /pet-memberships/summary    (cabang + periode)
  *   attention — GET /pet-memberships/attention  (cabang; always the next 14 days)
  *   report    — GET /reports/membership         (periode only — it has no cabang)
+ *
+ * and, with `promos:read` (Promo V1, 8 November 2026), two more:
+ *
+ *   promoReport    — GET /promos/report     (cabang + periode)
+ *   promoAttention — GET /promos/attention  (always the next 14 days)
  */
 export function usePromosiSummary({
   branchId,
   period,
   canCards,
   canReport,
+  canPromos = false,
 }: {
   branchId: string;
   period: SummaryPeriod;
   canCards: boolean;
   canReport: boolean;
+  canPromos?: boolean;
 }) {
   const [summary, setSummary] = useState<Part<MembershipSummary>>(idle);
   const [attention, setAttention] = useState<Part<MembershipAttention>>(idle);
   const [report, setReport] = useState<Part<MembershipReport>>(idle);
+  const [promoReport, setPromoReport] = useState<Part<PromoReport>>(idle);
+  const [promoAttention, setPromoAttention] = useState<Part<PromoAttentionItem[]>>(idle);
 
   useEffect(() => {
     if (!canCards) return;
@@ -140,5 +151,50 @@ export function usePromosiSummary({
     };
   }, [period, canReport]);
 
-  return { summary, attention, report };
+  useEffect(() => {
+    if (!canPromos) return;
+    let live = true;
+    const range = periodRange(period);
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPromoReport((current) => ({ ...current, loading: true, error: null }));
+    promoService
+      .report({ ...range, branchId: branchId || undefined })
+      .then((data) => live && setPromoReport({ data, loading: false, error: null }))
+      .catch(
+        (err) =>
+          live &&
+          setPromoReport({ data: null, loading: false, error: failed(err, "Gagal memuat laporan promo.") }),
+      );
+
+    return () => {
+      live = false;
+    };
+  }, [branchId, period, canPromos]);
+
+  useEffect(() => {
+    if (!canPromos) return;
+    let live = true;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPromoAttention((current) => ({ ...current, loading: true, error: null }));
+    promoService
+      .attention(14)
+      .then((data) => live && setPromoAttention({ data: data.items, loading: false, error: null }))
+      .catch(
+        (err) =>
+          live &&
+          setPromoAttention({
+            data: null,
+            loading: false,
+            error: failed(err, "Gagal memuat promo yang segera berakhir."),
+          }),
+      );
+
+    return () => {
+      live = false;
+    };
+  }, [canPromos]);
+
+  return { summary, attention, report, promoReport, promoAttention };
 }

@@ -42,6 +42,8 @@ import { useCustomerMemberships } from "@/features/memberships/hooks/useCustomer
 import { BookingCard } from "./BookingCard";
 import { useHomeVisitFees } from "../hooks/useHomeVisitFees";
 import { useBookingBenefitQuote } from "../hooks/useBookingBenefitQuote";
+import { bookingPromoInput, bookingPromoView, promoRowLabel } from "../bookingPromo";
+import { usePromoQuote } from "@/hooks/usePromoQuote";
 import {
   benefitRefusalOf,
   addonBenefitsOf,
@@ -1125,6 +1127,20 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
     The cards compete for the same jatah, which only the server can settle.
   */
   const scheduledAtNow = toScheduledAt(date, time);
+  const pricesOf = (card: (typeof cards)[number]) => {
+    if (refusedInactive(card, card.serviceId)) return null;
+    const amount = quoteOn(card, card.serviceId).price;
+    if (!amount) return null;
+    return {
+      amount,
+      addons: card.addonServiceIds
+        .filter((id) => !refusedInactive(card, id))
+        .map((id) => ({ serviceId: id, amount: quoteOn(card, id).price }))
+        .filter((addon): addon is { serviceId: string; amount: string } =>
+          Boolean(addon.amount),
+        ),
+    };
+  };
   const benefitQuoteState = useBookingBenefitQuote(
     bookingQuoteInput({
       cards,
@@ -1132,20 +1148,7 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
       date: scheduledAtNow,
       bookingId: editing ? bookingId : null,
       visitFee: feeShown,
-      pricesOf: (card) => {
-        if (refusedInactive(card, card.serviceId)) return null;
-        const amount = quoteOn(card, card.serviceId).price;
-        if (!amount) return null;
-        return {
-          amount,
-          addons: card.addonServiceIds
-            .filter((id) => !refusedInactive(card, id))
-            .map((id) => ({ serviceId: id, amount: quoteOn(card, id).price }))
-            .filter((addon): addon is { serviceId: string; amount: string } =>
-              Boolean(addon.amount),
-            ),
-        };
-      },
+      pricesOf,
     }),
   );
   const benefitQuote = benefitQuoteState.quote;
@@ -1160,10 +1163,28 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
   const feeWaivedAmount =
     feeShown && isPositive(visitFeeDiscountOf(benefitQuote)) ? feeShown : "0";
 
-  /* WHAT THE CUSTOMER PAYS — the services less their membership discount, plus the fee less its waiver. */
+  /*
+    PROMO V1 — DISPLAY-ONLY (see `bookingPromo.ts`): what a promo running on
+    the service date would take off. The booking stores none; the till
+    re-evaluates it when the booking is paid. Rebuilt every render — the hook
+    compares requests by content.
+  */
+  const promoInput = bookingPromoInput({
+    cards,
+    customerId: customer?._id ?? null,
+    branchId: branchId || null,
+    at: scheduledAtNow,
+    pricesOf,
+    memberQuote: benefitQuote,
+    memberAsked: benefitQuoteState.asked,
+  });
+  const promoQuote = usePromoQuote(promoInput);
+  const promo = bookingPromoView(promoInput, promoQuote.quote);
+
+  /* WHAT THE CUSTOMER PAYS — the services less their membership discount and promo, plus the fee less its waiver. */
   const total = subtractDecimals(
     sumDecimals(feeShown ? [servicesTotal, feeShown] : [servicesTotal]),
-    sumDecimals([memberDiscount, feeWaivedAmount]),
+    sumDecimals([memberDiscount, feeWaivedAmount, promo.discount]),
   );
 
   const blockedReason = !branchId
@@ -1210,6 +1231,16 @@ export function BookingForm({ bookingId }: { bookingId?: string } = {}) {
               <span>Total {formatMoney(total)}</span>
               {isPositive(memberDiscount) && (
                 <span data-member-discount>Potongan member {formatMoney(memberDiscount)}</span>
+              )}
+              {isPositive(promo.discount) && (
+                <span data-promo-discount>
+                  {`${promoRowLabel(promo)} ${formatMoney(promo.discount)} (dihitung ulang saat dibayar di kasir)`}
+                </span>
+              )}
+              {promo.beatenBy.length > 0 && (
+                <span data-promo-beaten>
+                  {`Promo ${promo.beatenBy.join(", ")} lebih hemat dari member — pilih Tanpa member untuk memakainya`}
+                </span>
               )}
               {feeShown && (
                 <span data-visit-fee>

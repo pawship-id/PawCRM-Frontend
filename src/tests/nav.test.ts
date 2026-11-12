@@ -309,13 +309,25 @@ describe("filterNavItems", () => {
     expect(itemsOf(denyAll).find((i) => i.label === "Promosi")).toBeUndefined();
   });
 
-  it("hides Promosi when the business switched Membership off", () => {
-    const items = filterNavSections(
+  it("hides Promosi only when the business switched both Membership and Promo off", () => {
+    const bothOff = filterNavSections(
+      NAV_SECTIONS,
+      allowAll,
+      (moduleKey) => moduleKey !== "membership" && moduleKey !== "promo",
+    ).flatMap((section) => section.items);
+    expect(bothOff.find((i) => i.label === "Promosi")).toBeUndefined();
+
+    const promoOnly = filterNavSections(
       NAV_SECTIONS,
       allowAll,
       (moduleKey) => moduleKey !== "membership",
     ).flatMap((section) => section.items);
-    expect(items.find((i) => i.label === "Promosi")).toBeUndefined();
+    expect(promoOnly.find((i) => i.label === "Promosi")).toBeDefined();
+  });
+
+  it("shows Promosi to a role holding only promos:read", () => {
+    const can: CanFn = (feature, action) => feature === "promos" && action === "read";
+    expect(itemsOf(can).find((i) => i.label === "Promosi")).toBeDefined();
   });
 
   it("no longer opens Pelanggan on a membership grant alone", () => {
