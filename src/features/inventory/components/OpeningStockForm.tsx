@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  EXPIRY_MAX_DATE,
+  EXPIRY_MIN_DATE,
+  expiryYearError,
+} from "@/utils/date";
 import { SkuText } from "@/components/SkuText";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -297,6 +302,10 @@ export function OpeningStockForm() {
         // number, and demanding one is how lots end up named "1".
         if (line.expiryDate === "")
           next[`${at}.expiryDate`] = "Produk ini melacak kedaluwarsa.";
+        else {
+          const yearError = expiryYearError(line.expiryDate);
+          if (yearError) next[`${at}.expiryDate`] = yearError;
+        }
       }
 
       /*
@@ -767,6 +776,8 @@ export function OpeningStockForm() {
                                 <Input
                                   aria-label={`Tanggal kedaluwarsa ${product.name}`}
                                   type="date"
+                                  min={EXPIRY_MIN_DATE}
+                                  max={EXPIRY_MAX_DATE}
                                   value={line.expiryDate}
                                   onChange={(event) =>
                                     patchLine(index, {

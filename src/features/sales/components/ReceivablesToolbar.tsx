@@ -232,7 +232,7 @@ export function ReceivablesToolbar({
         <FilterSearch
           value={query.search}
           onChange={(search) => onChange({ search })}
-          placeholder="Cari nomor faktur, nama pelanggan, atau catatan…"
+          placeholder="Cari nomor faktur, pelanggan, SKU, atau catatan…"
           ariaLabel="Cari faktur"
           fill
         />

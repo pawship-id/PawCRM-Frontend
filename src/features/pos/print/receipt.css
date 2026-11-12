@@ -32,7 +32,14 @@
     Hidden boxes still occupy the page, which is what pushed the receipt onto
     page three; removed ones do not.
   */
-  body > *:not([data-print-root]) {
+  /*
+    ⚠️ ONLY WHILE A RECEIPT IS ON THE PAGE — `:has([data-print-root])`
+    (12 November 2026). This stylesheet is imported by four screens, but CSS in
+    this app is not scoped to the screen that imports it: once any of them has
+    loaded, it stays for the session. Unscoped, this rule blanked every OTHER
+    page's printout — the batch label sheet printed as an empty PDF.
+  */
+  body:has([data-print-root]) > *:not([data-print-root]) {
     display: none !important;
   }
 
@@ -49,8 +56,8 @@
     off at the fold by it, and a printout that silently loses its last three
     items is worse than one that is obviously wrong.
   */
-  html,
-  body {
+  html:has([data-print-root]),
+  body:has([data-print-root]) {
     overflow: visible !important;
     height: auto !important;
     margin: 0 !important;
