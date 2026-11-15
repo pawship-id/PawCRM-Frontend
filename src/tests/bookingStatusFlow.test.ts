@@ -276,9 +276,9 @@ describe("the antar-jemput ladder", () => {
   });
 
   it("says what pressing the row does, in a driver's words", () => {
-    expect(bookingStatusAction("in_progress", { tripLeg: "pickup" })).toBe("Start the trip");
-    expect(bookingStatusAction("completed", { tripLeg: "pickup" })).toBe("Mark arrived");
-    expect(bookingStatusAction("in_progress")).toBe("Start work");
+    expect(bookingStatusAction("in_progress", { tripLeg: "pickup" })).toBe("Mulai perjalanan");
+    expect(bookingStatusAction("completed", { tripLeg: "pickup" })).toBe("Tandai sudah sampai");
+    expect(bookingStatusAction("in_progress")).toBe("Mulai kerjakan");
   });
 });
 

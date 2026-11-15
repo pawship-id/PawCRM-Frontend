@@ -270,7 +270,7 @@ export function BookingStatusActions({
             <DropdownMenuTrigger asChild>
               {variant === "prominent" ? (
                 <Button variant="secondary" size={dense ? "sm" : "lg"}>
-                  Other statuses ▾
+                  Status lain ▾
                 </Button>
               ) : variant === "status" ? (
                 <button
@@ -327,7 +327,7 @@ export function BookingStatusActions({
                 <Can feature="bookings" action="update">
                   <DropdownMenuItem onSelect={() => setRescheduleOpen(true)}>
                     <CalendarClock />
-                    Reschedule
+                    Jadwalkan ulang
                   </DropdownMenuItem>
                 </Can>
               )}

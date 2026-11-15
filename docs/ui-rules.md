@@ -519,6 +519,12 @@ loud, so the badge and the conversation used different words for one fact. They 
 stored values word for word, so a reader looking at `in_progress` in an export and "In Progress"
 on a badge holds no translation table in their head.
 
+**THE STATUS CONTROL IS BAHASA AGAIN (15 November 2026, on request).** The menu rows and
+the primary button (`BOOKING_STATUS_ACTIONS` / `RIDE_STATUS_ACTIONS` — "Tandai sudah tiba",
+"Mulai kerjakan", "Konfirmasi booking"), the "Status lain" trigger and "Jadwalkan ulang" are
+Indonesian now. **The rung NAMES on the badges stay English** — that part of the exception is
+unchanged. The paragraph below is the history of the decision this reverses; do not follow it.
+
 **The status CONTROL speaks English too**, widened on the shop's second look: the menu rows
 (`BOOKING_STATUS_ACTIONS` — "Confirm booking", "Mark arrived", "Start work"), its "Other
 statuses" trigger, "Status history" and "Reschedule". The first pass kept these in Bahasa on the
