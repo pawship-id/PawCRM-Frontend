@@ -108,6 +108,11 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
+        // Buloo: pinned to the bottom of a dialog that scrolls, so Simpan
+        // stays on screen at browser zoom (15 November 2026). The shadow
+        // paints the dialog's own bottom padding, so the form scrolling
+        // underneath does not peek out below the buttons.
+        "sticky bottom-0 z-10 bg-background pt-3 shadow-[0_1.5rem_0_0_var(--background)]",
         "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
         className
       )}
