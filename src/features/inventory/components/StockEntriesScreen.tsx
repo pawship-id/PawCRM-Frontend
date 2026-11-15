@@ -196,13 +196,19 @@ function entryColumns(
     {
       id: "notes",
       header: NOTES_LABEL,
-      cellClassName: "max-w-xs text-muted",
+      cellClassName: "text-muted",
+      /* ONE LINE, CUT WITH "…" WHERE THE COLUMN ENDS. `max-w-*` on a `<td>`
+         is ignored by the table layout, so a long note ran under Aksi; the
+         width has to sit on a block inside the cell. The whole note is on
+         the document's own page. */
       cell: (entry) =>
         entry.notes ? (
-          <HighlightText
-            text={excerptAround(entry.notes, search)}
-            query={search}
-          />
+          <div className="max-w-xs truncate">
+            <HighlightText
+              text={excerptAround(entry.notes, search)}
+              query={search}
+            />
+          </div>
         ) : (
           "—"
         ),
