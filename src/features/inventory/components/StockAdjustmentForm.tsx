@@ -878,13 +878,13 @@ export function StockAdjustmentForm() {
                                           : undefined
                                       }
                                       productName={product?.name}
-                                      className="max-w-44 text-xs"
+                                      className="max-w-44 truncate text-xs"
                                     />
                                   ) : namedLot ? (
                                     <InternalBatchCodeDisplay
                                       code={namedLot.batchCode}
                                       productName={product?.name}
-                                      className="max-w-44 text-xs"
+                                      className="max-w-44 truncate text-xs"
                                     />
                                   ) : (
                                     <span className="text-muted">—</span>
