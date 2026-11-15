@@ -77,7 +77,7 @@ const PAID = row({
 const page = (rows: CommissionRow[]): CommissionRowsResult => ({
   rows,
   page: 1,
-  limit: 10,
+  limit: 25,
   total: rows.length,
   cards: { total: "331800.0000", paid: "131600.0000", pending: "200200.0000" },
 });

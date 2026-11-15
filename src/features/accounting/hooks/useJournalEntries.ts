@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { ApiError } from "@/services/api-error";
 import { branchService } from "@/services/branch.service";
@@ -16,7 +17,7 @@ import type { Branch, PageResult } from "@/types/api";
 /** The query knobs the ledger screen drives — page, plus the visible filters. */
 export interface JournalEntriesQuery {
   page: number;
-  /** Rows a page — the footer's size control. One of JOURNAL_PAGE_SIZES. */
+  /** Rows a page — the footer's size control. One of PAGE_SIZE_OPTIONS. */
   limit: number;
   /**
    * Matched server-side over the entry number, the keterangan, the source
@@ -37,16 +38,9 @@ export interface JournalEntriesQuery {
   sort: JournalEntrySort;
 }
 
-/**
- * The footer's page sizes — Kas & Bank's, so the two lists of one module offer
- * the same choice (the mockup's 10 was dropped there for the same reason: a
- * page of ten on a ledger is a page of paging).
- */
-export const JOURNAL_PAGE_SIZES = [25, 50, 100];
-
 export const DEFAULT_JOURNAL_QUERY: JournalEntriesQuery = {
   page: 1,
-  limit: JOURNAL_PAGE_SIZES[0],
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   sourceType: "",
   dateFrom: "",

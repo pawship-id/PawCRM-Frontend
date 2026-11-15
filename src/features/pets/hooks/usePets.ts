@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { petService } from "@/services/pet.service";
 import { ApiError } from "@/services/api-error";
 import type {
@@ -16,6 +17,7 @@ import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 /** The query knobs the list screen drives (page, the ordering, the visible filters). */
 export interface PetsQuery {
   page: number;
+  limit: number;
   search: string;
   /**
    * "" = any species, otherwise the `_id` of one of the tenant's species
@@ -35,10 +37,9 @@ export interface PetsQuery {
   customerId?: string;
 }
 
-const PAGE_SIZE = 20;
-
 const DEFAULT_QUERY: PetsQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   species: "",
   isActive: "",
@@ -49,7 +50,7 @@ const DEFAULT_QUERY: PetsQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<Pet>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -120,7 +121,7 @@ export function usePets(customerId?: string): UsePetsResult {
 
     const apiQuery: PetListQuery = {
       page: settled.page,
-      limit: PAGE_SIZE,
+      limit: settled.limit,
       customerId: settled.customerId,
       search: settled.search.trim() || undefined,
       species: settled.species === "" ? undefined : settled.species,

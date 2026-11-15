@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { marketplaceService } from "@/services/marketplace.service";
 import type { ListingPage, ListingStatus, MarketplaceListing } from "@/types/marketplace";
@@ -13,7 +14,7 @@ export interface ListingsQuery {
   status: ListingStatus | "";
 }
 
-const DEFAULT_QUERY: ListingsQuery = { page: 1, limit: 50, search: "", status: "" };
+const DEFAULT_QUERY: ListingsQuery = { page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "" };
 
 /**
  * One store's Shopee variations — Pengikatan SKU's table. Search is debounced;

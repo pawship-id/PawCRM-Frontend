@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Spinner, Pagination } from "@/components";
+import { Alert, Spinner, ListFooter } from "@/components";
 import { SettingsPageHeader } from "@/features/settings/components/SettingsHeader";
 
 import { useBranches } from "../hooks/useBranches";
@@ -40,13 +40,14 @@ export function BranchesScreen() {
             onChanged={refetch}
             search={query.search}
           />
-          <Pagination
+          <ListFooter
             page={pagination.page}
+            pageSize={query.limit}
             totalPages={pagination.totalPages}
             total={pagination.total}
             unit="cabang"
-            unitPlural="cabang"
             onPageChange={(page) => setQuery({ page })}
+            onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
           />
         </>
       )}

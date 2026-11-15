@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { stockMovementService } from "@/services/stockMovement.service";
 import { ApiError } from "@/services/api-error";
 import type {
@@ -40,11 +41,9 @@ export const EMPTY_FILTERS: StockCardFilters = {
   sort: "newest",
 };
 
-const PAGE_SIZE = 50;
-
 const EMPTY_PAGINATION: StockMovementPage["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -87,6 +86,7 @@ export function useStockCard(
   page: number,
   /** Bumped by the screen to re-read the ledger, the tiles and the lots together. */
   refreshKey: number,
+  limit: number = DEFAULT_PAGE_SIZE,
 ): UseStockCardResult {
   const [movements, setMovements] = useState<StockMovement[]>([]);
   const [pagination, setPagination] =
@@ -112,7 +112,7 @@ export function useStockCard(
     stockMovementService
       .list({
         page,
-        limit: PAGE_SIZE,
+        limit,
         productId,
         warehouseId,
         movementType: movementType || undefined,
@@ -158,6 +158,7 @@ export function useStockCard(
     search,
     sort,
     page,
+    limit,
     refreshKey,
   ]);
 

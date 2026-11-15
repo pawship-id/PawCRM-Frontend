@@ -13,7 +13,7 @@ import {
   FilterSearch,
   FilterSelect,
   FilterTrigger,
-  Pagination,
+  ListFooter,
   namedOptions,
   withAll,
   type DataTableColumn,
@@ -350,14 +350,15 @@ export function StockEntriesScreen({ kind }: { kind: StockEntryKind }) {
         }
       />
 
-      {pagination.totalPages > 1 && (
-        <Pagination
+      {pagination.total > 0 && (
+        <ListFooter
           page={pagination.page}
+          pageSize={query.limit}
           totalPages={pagination.totalPages}
           total={pagination.total}
           unit="dokumen"
-          unitPlural="dokumen"
           onPageChange={(page) => setQuery({ page })}
+          onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
         />
       )}
     </div>

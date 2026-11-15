@@ -28,7 +28,7 @@ import { promoService } from "@/services/promo.service";
 import type { Promo, PromoStatus, PromoType } from "@/types/promo";
 
 import { promoFailure } from "../errors";
-import { PROMO_PAGE_SIZE, usePromos } from "../hooks/usePromos";
+import { usePromos } from "../hooks/usePromos";
 import {
   PROMO_STATUSES,
   PROMO_STATUS_LABEL,
@@ -253,7 +253,6 @@ export function PromoListPanel() {
         <ListFooter
           page={pagination.page}
           pageSize={pagination.limit}
-          pageSizes={[PROMO_PAGE_SIZE, 50, 100]}
           total={pagination.total}
           totalPages={pagination.totalPages}
           unit="promo"

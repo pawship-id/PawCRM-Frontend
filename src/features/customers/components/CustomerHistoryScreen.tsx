@@ -14,7 +14,7 @@ import {
   FilterSelect,
   FilterTrigger,
   HighlightText,
-  Pagination,
+  ListFooter,
   withAll,
   type DataTableColumn,
   type SortOptions,
@@ -226,13 +226,14 @@ export function CustomerHistoryScreen() {
         }
       />
 
-      <Pagination
+      <ListFooter
         page={pagination.page}
+        pageSize={query.limit}
         totalPages={pagination.totalPages}
         total={pagination.total}
         unit="kegiatan"
-        unitPlural="kegiatan"
         onPageChange={(page) => setQuery({ page })}
+        onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
       />
     </div>
   );

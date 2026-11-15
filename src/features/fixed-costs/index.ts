@@ -13,7 +13,6 @@ export { PostOccurrenceDialog } from "./components/PostOccurrenceDialog";
 export { useFixedCost } from "./hooks/useFixedCost";
 export {
   useFixedCosts,
-  FIXED_COST_PAGE_SIZES,
   DEFAULT_FIXED_COSTS_QUERY,
   type FixedCostsQuery,
   type UseFixedCostsResult,

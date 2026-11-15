@@ -27,10 +27,7 @@ import { cn } from "@/lib/utils";
 import type { FixedCost, FixedCostSort } from "@/types/accounting";
 import { formatMoney } from "@/utils/decimal";
 
-import {
-  FIXED_COST_PAGE_SIZES,
-  type UseFixedCostsResult,
-} from "../hooks/useFixedCosts";
+import type { UseFixedCostsResult } from "../hooks/useFixedCosts";
 import {
   categoryLabel,
   dueLabel,
@@ -229,7 +226,6 @@ export function FixedCostsPanel({ state }: { state: UseFixedCostsResult }) {
           <ListFooter
             page={pagination.page}
             pageSize={query.limit}
-            pageSizes={FIXED_COST_PAGE_SIZES}
             total={pagination.total}
             totalPages={pagination.totalPages}
             unit="biaya tetap"

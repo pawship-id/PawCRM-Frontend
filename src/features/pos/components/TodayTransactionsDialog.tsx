@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Receipt, RotateCcw, Ban } from "lucide-react";
 
-import { Alert, FilterPills, Pagination, Spinner } from "@/components";
+import { Alert, DEFAULT_PAGE_SIZE, FilterPills, ListFooter, Spinner } from "@/components";
 import { useAuth } from "@/features/auth";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,8 +28,6 @@ const UNSENT_LABEL: Partial<Record<QueuedSale["status"], string>> = {
   needs_review: "Perlu dicek admin",
   failed: "Ditolak server",
 };
-
-const PAGE_SIZE = 10;
 
 /** Midnight today, as the API wants it. */
 function startOfToday(): string {
@@ -92,6 +90,7 @@ export function TodayTransactionsDialog({
   const mine = whose === "mine" && user ? user._id : null;
   const [sales, setSales] = useState<PosTransaction[]>([]);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -149,7 +148,7 @@ export function TodayTransactionsDialog({
     posService
       .listTransactions({
         page,
-        limit: PAGE_SIZE,
+        limit: pageSize,
         // Voided sales are listed too: a cashier looking for one needs to see
         // that it is already cancelled rather than wonder where it went.
         status: ["paid", "void"],
@@ -172,7 +171,7 @@ export function TodayTransactionsDialog({
     return () => {
       active = false;
     };
-  }, [open, page, reloadKey, offline, mine]);
+  }, [open, page, pageSize, reloadKey, offline, mine]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -350,13 +349,17 @@ export function TodayTransactionsDialog({
         </div>
 
         {!offline && sales.length > 0 && (
-          <Pagination
+          <ListFooter
             page={page}
-            totalPages={totalPages}
+            pageSize={pageSize}
             total={total}
+            totalPages={totalPages}
             unit="transaksi"
-            unitPlural="transaksi"
             onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
           />
         )}
       </DialogContent>

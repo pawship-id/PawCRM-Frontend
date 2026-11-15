@@ -39,10 +39,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import {
-  PLAN_PAGE_SIZE,
-  useMembershipPlans,
-} from "../hooks/useMembershipPlans";
+import { useMembershipPlans } from "../hooks/useMembershipPlans";
 import { membershipFailure } from "../errors";
 import {
   ATTACH_TO_LABEL,
@@ -401,7 +398,6 @@ export function MembershipPlansPanel() {
         <ListFooter
           page={pagination.page}
           pageSize={pagination.limit}
-          pageSizes={[PLAN_PAGE_SIZE, 50, 100]}
           total={pagination.total}
           totalPages={pagination.totalPages}
           unit="paket"

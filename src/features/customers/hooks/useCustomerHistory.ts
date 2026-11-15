@@ -11,6 +11,7 @@ import type {
   CustomerHistorySource,
   PageResult,
 } from "@/types/api";
+import { DEFAULT_PAGE_SIZE } from "@/components";
 
 /** `""` means "not filtering", the repo's convention for a cleared control. */
 export interface CustomerHistoryQuery {
@@ -21,9 +22,8 @@ export interface CustomerHistoryQuery {
   source: CustomerHistorySource | "";
   sort: CustomerHistorySort;
   page: number;
+  limit: number;
 }
-
-const LIMIT = 20;
 
 export const DEFAULT_HISTORY_QUERY: CustomerHistoryQuery = {
   search: "",
@@ -33,11 +33,12 @@ export const DEFAULT_HISTORY_QUERY: CustomerHistoryQuery = {
   source: "",
   sort: "dateDesc",
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
 };
 
 const EMPTY_PAGE: PageResult<never>["pagination"] = {
   page: 1,
-  limit: LIMIT,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -89,7 +90,7 @@ export function useCustomerHistory(): UseCustomerHistoryResult {
         source: query.source || undefined,
         sort: query.sort,
         page: query.page,
-        limit: LIMIT,
+        limit: query.limit,
       })
       .then((result) => {
         if (!active) return;
@@ -118,6 +119,7 @@ export function useCustomerHistory(): UseCustomerHistoryResult {
     query.source,
     query.sort,
     query.page,
+    query.limit,
     nonce,
   ]);
 

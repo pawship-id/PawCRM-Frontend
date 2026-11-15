@@ -90,7 +90,12 @@ export {
   type RowAction,
   type RowLink,
 } from "./RowLinkMenu";
-export { ListFooter } from "./ListFooter";
+export {
+  ListFooter,
+  PAGE_SIZE_OPTIONS,
+  DEFAULT_PAGE_SIZE,
+  getPageItems,
+} from "./ListFooter";
 export { JournalLink } from "./JournalLink";
 export { ConfirmDialog } from "./ConfirmDialog";
 export {

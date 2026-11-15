@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
 
-import { DataTable, FilterSelect, Pagination, SkuText, Spinner, type DataTableColumn } from "@/components";
+import { DataTable, DEFAULT_PAGE_SIZE, FilterSelect, ListFooter, SkuText, Spinner, type DataTableColumn } from "@/components";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { swalToast } from "@/lib/swal";
@@ -22,7 +22,6 @@ import { MARKETPLACE_LABEL, formatCount, formatDateTime, formatTemplatePrice, ma
 import { CountChip, FileChip, WizardFrame, WizardRow } from "./WizardSteps";
 
 const STEPS = ["Upload", "Tinjau", "Selesai"] as const;
-const PAGE_SIZE = 25;
 
 /**
  * Ekspor stok — Upload → Tinjau → Selesai, laid out as the mockup's wizard.
@@ -56,6 +55,7 @@ export function StockExportDialog({
 
   const [filter, setFilter] = useState<StockChange | "">("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [preview, setPreview] = useState<StockExportPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -69,7 +69,7 @@ export function StockExportDialog({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     marketplaceService
-      .previewStockExport(storeId, { page, limit: PAGE_SIZE, status: filter })
+      .previewStockExport(storeId, { page, limit: pageSize, status: filter })
       .then((next) => {
         if (active) setPreview(next);
       })
@@ -82,7 +82,7 @@ export function StockExportDialog({
     return () => {
       active = false;
     };
-  }, [step, storeId, page, filter]);
+  }, [step, storeId, page, pageSize, filter]);
 
   const download = async (batchId: string, fileName: string) => {
     const { blob, filename } = await marketplaceService.downloadHistoryFile(batchId, fileName);
@@ -318,19 +318,22 @@ export function StockExportDialog({
           )}
 
           {preview ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-muted">
-              <span>
+            <div className="flex flex-col gap-2">
+              <span className="text-sm text-muted">
                 {formatCount(preview.pagination.total)} dari {formatCount(bound)} varian terikat
               </span>
-              {preview.pagination.totalPages > 1 ? (
-                <Pagination
-                  page={preview.pagination.page}
-                  totalPages={preview.pagination.totalPages}
-                  total={preview.pagination.total}
-                  unit="varian"
-                  onPageChange={setPage}
-                />
-              ) : null}
+              <ListFooter
+                page={preview.pagination.page}
+                pageSize={pageSize}
+                total={preview.pagination.total}
+                totalPages={preview.pagination.totalPages}
+                unit="varian"
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPage(1);
+                }}
+              />
             </div>
           ) : null}
 

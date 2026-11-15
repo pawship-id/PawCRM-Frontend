@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { ApiError } from "@/services/api-error";
 import type {
@@ -46,6 +47,8 @@ export type PayablesView =
 /** The query knobs the payables screen drives (page + the visible filters). */
 export interface PurchaseInvoicesQuery {
   page: number;
+  /** Rows per page — the footer's Tampilkan control (25/50/100). */
+  limit: number;
   search: string;
   /** "" = any supplier, otherwise a specific one. */
   supplierId: string;
@@ -77,10 +80,9 @@ export interface PurchaseInvoicesQuery {
   sort: PurchaseInvoiceSort;
 }
 
-const PAGE_SIZE = 20;
-
 const DEFAULT_QUERY: PurchaseInvoicesQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   supplierId: "",
   branchId: "",
@@ -101,7 +103,7 @@ const DEFAULT_QUERY: PurchaseInvoicesQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<PurchaseInvoiceListRow>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -209,7 +211,7 @@ export function usePurchaseInvoices(
 
     const apiQuery: PurchaseInvoiceListQuery = {
       page: settled.page,
-      limit: PAGE_SIZE,
+      limit: settled.limit,
       search: settled.search.trim() || undefined,
       supplierId: settled.supplierId || undefined,
       branchId: settled.branchId || undefined,

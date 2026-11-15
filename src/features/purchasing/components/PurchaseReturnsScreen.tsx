@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { Alert, ConfirmDialog, Pagination, Spinner } from "@/components";
+import { Alert, ConfirmDialog, ListFooter, Spinner } from "@/components";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { purchaseReturnService } from "@/services/purchaseReturn.service";
@@ -90,13 +90,14 @@ export function PurchaseReturnsScreen() {
               setPendingDiscard(row);
             }}
           />
-          <Pagination
+          <ListFooter
             page={pagination.page}
+            pageSize={query.limit}
             totalPages={pagination.totalPages}
             total={pagination.total}
             unit="retur"
-            unitPlural="retur"
             onPageChange={(page) => setQuery({ page })}
+            onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
           />
         </>
       )}

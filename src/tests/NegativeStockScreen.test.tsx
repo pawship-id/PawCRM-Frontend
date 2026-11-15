@@ -235,7 +235,7 @@ describe("the warehouse filter", () => {
     await waitFor(() =>
       expect(mockedProducts.negativeStock).toHaveBeenLastCalledWith({
         page: 1,
-        limit: 20,
+        limit: 25,
         warehouseId: OTHER_WAREHOUSE_ID,
         sort: "valueAsc",
       }),
@@ -252,7 +252,7 @@ describe("the warehouse filter", () => {
     await waitFor(() =>
       expect(mockedProducts.negativeStock).toHaveBeenCalledWith({
         page: 1,
-        limit: 20,
+        limit: 25,
         warehouseId: undefined,
         sort: "valueAsc",
       }),
@@ -366,7 +366,7 @@ describe("paging", () => {
     await waitFor(() =>
       expect(mockedProducts.negativeStock).toHaveBeenLastCalledWith({
         page: 2,
-        limit: 20,
+        limit: 25,
         warehouseId: undefined,
         sort: "valueAsc",
       }),

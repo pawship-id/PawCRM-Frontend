@@ -677,7 +677,7 @@ describe("OpnameScreen", () => {
      * the filter does nothing at all. `limit` is what tells them apart.
      */
     const listRequest = (fields: Record<string, unknown>) =>
-      expect.objectContaining({ limit: 20, ...fields });
+      expect.objectContaining({ limit: 25, ...fields });
 
     beforeEach(() => {
       asMock(stockOpnameService.list).mockResolvedValue(page([sheet()]));
@@ -847,7 +847,7 @@ describe("OpnameScreen", () => {
 
       await waitFor(() => {
         const listCalls = asMock(stockOpnameService.list).mock.calls.filter(
-          ([query]) => query?.limit === 20,
+          ([query]) => query?.limit === 25,
         );
         expect(listCalls[listCalls.length - 1][0]).toEqual(
           expect.objectContaining({ status: undefined, sort: "diffValueDesc" }),
@@ -889,7 +889,7 @@ describe("OpnameScreen", () => {
    */
   describe("header sorting", () => {
     const listRequest = (fields: Record<string, unknown>) =>
-      expect.objectContaining({ limit: 20, ...fields });
+      expect.objectContaining({ limit: 25, ...fields });
 
     const headerButton = (name: string) =>
       within(screen.getByRole("columnheader", { name })).getByRole("button");

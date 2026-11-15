@@ -3,9 +3,61 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { FilterSelect, type FilterOption } from "./filters";
-import { getPageItems } from "./Pagination";
 import { Button } from "./ui/button";
 import { cn } from "@/lib/utils";
+
+/**
+ * THE PAGE SIZES EVERY LIST OFFERS — 25, 50 and 100 rows (15 November 2026, on
+ * request: "semua pakai komponen yang sama"). Every list in the app starts at
+ * 25 and offers the same three. 100 is the ceiling because it is the server's:
+ * `common.validation.js` caps `limit` at 100 for every list endpoint.
+ */
+export const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
+export const DEFAULT_PAGE_SIZE: number = PAGE_SIZE_OPTIONS[0];
+
+/** Marks a gap in the numbered range where pages are collapsed. */
+const ELLIPSIS = "ellipsis";
+type PageItem = number | typeof ELLIPSIS;
+
+/**
+ * The pages to render: always the first and last, plus the current page and one
+ * neighbour on each side, with an ellipsis bridging any gap wider than one. When
+ * the gap is exactly one page, that single page is shown instead of an ellipsis
+ * — hiding one number behind "…" saves nothing and just costs a click.
+ */
+export function getPageItems(current: number, total: number): PageItem[] {
+  const SIBLINGS = 1;
+
+  // With two boundaries, the current page + one sibling each side, and two
+  // ellipses, the collapsed form is at most 7 slots. At or below that, every
+  // page fits without collapsing — an ellipsis would hide nothing, so show all.
+  const MAX_UNCOLLAPSED = 2 + (2 * SIBLINGS + 1) + 2;
+  if (total <= MAX_UNCOLLAPSED) {
+    return Array.from({ length: total }, (_, index) => index + 1);
+  }
+
+  const kept: number[] = [];
+
+  for (let page = 1; page <= total; page += 1) {
+    const isEdge = page === 1 || page === total;
+    const isNearCurrent =
+      page >= current - SIBLINGS && page <= current + SIBLINGS;
+    if (isEdge || isNearCurrent) kept.push(page);
+  }
+
+  const items: PageItem[] = [];
+  let previous: number | undefined;
+  for (const page of kept) {
+    if (previous !== undefined) {
+      if (page - previous === 2) items.push(previous + 1);
+      else if (page - previous > 2) items.push(ELLIPSIS);
+    }
+    items.push(page);
+    previous = page;
+  }
+
+  return items;
+}
 
 /**
  * THE FOOT OF A LIST THAT LETS SOMEBODY CHOOSE HOW MANY ROWS A PAGE HOLDS —
@@ -20,11 +72,11 @@ import { cn } from "@/lib/utils";
  * different defaults. They are read by the same person in the same sitting, so
  * they get one component (§14: promoted the moment a second feature needs it).
  *
- * NOT THE SHARED `Pagination`, which has no page size and states the position as
- * "Halaman 2 dari 5". A list somebody sets to 100 rows a page is a list being
- * read as one long page, and "1–87 dari 87" is the sentence that answers whether
- * everything is on screen. The numbered-window logic IS shared (`getPageItems`),
- * so every pager in the app collapses its page list the same way.
+ * THE ONLY PAGER IN THE APP (15 November 2026). The old `Pagination` — no page
+ * size, "Halaman 2 dari 5" — is deleted; every list now uses this footer with
+ * 25/50/100. A list somebody sets to 100 rows a page is a list being read as
+ * one long page, and "1–87 dari 87" is the sentence that answers whether
+ * everything is on screen.
  *
  * THE PAGER HIDES AT ONE PAGE and the left-hand side never does: buttons that
  * can only be pressed to no effect are noise, but "Menampilkan 1–14 dari 14" and
@@ -33,7 +85,7 @@ import { cn } from "@/lib/utils";
 export function ListFooter({
   page,
   pageSize,
-  pageSizes,
+  pageSizes = PAGE_SIZE_OPTIONS,
   total,
   totalPages,
   unit = "entri",
@@ -43,8 +95,11 @@ export function ListFooter({
 }: {
   page: number;
   pageSize: number;
-  /** The sizes offered. `pageSize` is folded in when missing — see below. */
-  pageSizes: readonly number[];
+  /**
+   * The sizes offered — leave it out; every list offers `PAGE_SIZE_OPTIONS`.
+   * `pageSize` is folded in when missing — see below.
+   */
+  pageSizes?: readonly number[];
   total: number;
   totalPages: number;
   /**
@@ -132,7 +187,7 @@ export function ListFooter({
           </Button>
 
           {getPageItems(page, totalPages).map((item, index) =>
-            item === "ellipsis" ? (
+            item === ELLIPSIS ? (
               <span
                 key={`ellipsis-${index}`}
                 aria-hidden

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { ApiError } from "@/services/api-error";
 import type {
@@ -27,9 +28,6 @@ export type InvoicePeriodChoice = InvoicePeriod | "all" | "custom";
 
 /** The orderings the API accepts — CUSTOMER_INVOICE_SORTS in the model. */
 export type CustomerInvoiceSort = NonNullable<CustomerInvoiceListQuery["sort"]>;
-
-/** What the footer's "per halaman" offers. 200 is this list's server ceiling. */
-export const PAGE_SIZES = [25, 50, 100, 200] as const;
 
 /** Everything the Penjualan list screen can set. */
 export interface CustomerInvoicesQuery {
@@ -65,7 +63,7 @@ export interface CustomerInvoicesQuery {
 
 export const DEFAULT_QUERY: CustomerInvoicesQuery = {
   page: 1,
-  pageSize: PAGE_SIZES[0],
+  pageSize: DEFAULT_PAGE_SIZE,
   search: "",
   branchIds: [],
   warehouseIds: [],
@@ -92,7 +90,7 @@ export const DEFAULT_QUERY: CustomerInvoicesQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<CustomerInvoiceListRow>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZES[0],
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };

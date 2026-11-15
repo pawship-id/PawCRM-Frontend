@@ -11,6 +11,7 @@ import type {
   ProductSort,
   ProductType,
 } from "@/types/inventory";
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 import { isStockSort } from "./useStockProducts";
@@ -18,6 +19,8 @@ import { isStockSort } from "./useStockProducts";
 /** The query knobs the catalogue screen drives (page + the visible filters). */
 export interface ProductsQuery {
   page: number;
+  /** Rows a page holds, from the list footer. */
+  limit: number;
   search: string;
   /** "" = every top-level type, otherwise one specific type. */
   productType: ProductType | "";
@@ -30,10 +33,9 @@ export interface ProductsQuery {
   sort: ProductSort;
 }
 
-const PAGE_SIZE = 20;
-
 const DEFAULT_QUERY: ProductsQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   productType: "",
   categoryId: "",
@@ -48,7 +50,7 @@ const DEFAULT_QUERY: ProductsQuery = {
 /** Empty page so the table shell renders before the first load returns. */
 const EMPTY_PAGE: PageResult<Product>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -126,7 +128,7 @@ export function useProducts(warehouseIds: string[] = []): UseProductsResult {
 
     const apiQuery: ProductListQuery = {
       page: settled.page,
-      limit: PAGE_SIZE,
+      limit: settled.limit,
       search: settled.search.trim() || undefined,
       categoryId: settled.categoryId || undefined,
       includeDeleted: settled.includeDeleted || undefined,

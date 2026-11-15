@@ -358,7 +358,7 @@ const OTHER_WAREHOUSE = {
 function page<T>(items: T[]) {
   return {
     items,
-    pagination: { page: 1, limit: 20, total: items.length, totalPages: 1 },
+    pagination: { page: 1, limit: 25, total: items.length, totalPages: 1 },
   };
 }
 

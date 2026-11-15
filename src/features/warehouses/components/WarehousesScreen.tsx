@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Spinner, Pagination } from "@/components";
+import { Alert, Spinner, ListFooter } from "@/components";
 import { SettingsPageHeader } from "@/features/settings/components/SettingsHeader";
 
 import { useWarehouses } from "../hooks/useWarehouses";
@@ -54,13 +54,14 @@ export function WarehousesScreen() {
             search={query.search}
             branchName={branchName}
           />
-          <Pagination
+          <ListFooter
             page={pagination.page}
+            pageSize={query.limit}
             totalPages={pagination.totalPages}
             total={pagination.total}
             unit="gudang"
-            unitPlural="gudang"
             onPageChange={(page) => setQuery({ page })}
+            onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
           />
         </>
       )}

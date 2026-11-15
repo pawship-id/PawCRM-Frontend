@@ -16,7 +16,7 @@ import type {
   CustomerInvoiceStatusFilter,
 } from "@/types/api";
 
-import { PAGE_SIZES, useCustomerInvoices } from "../hooks/useCustomerInvoices";
+import { useCustomerInvoices } from "../hooks/useCustomerInvoices";
 import { useReceivableFilterOptions } from "../hooks/useReceivableFilterOptions";
 import { InvoiceScopeCard } from "./InvoiceScopeCard";
 import { InvoiceStatCards } from "./InvoiceStatCards";
@@ -182,7 +182,6 @@ export function ReceivablesScreen() {
               <ListFooter
                 page={pagination.page}
                 pageSize={query.pageSize}
-                pageSizes={PAGE_SIZES}
                 total={pagination.total}
                 totalPages={pagination.totalPages}
                 unit="faktur"

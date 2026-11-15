@@ -19,8 +19,9 @@ import {
 import {
   Alert,
   ConfirmDialog,
+  DEFAULT_PAGE_SIZE,
   HighlightText,
-  Pagination,
+  ListFooter,
   Spinner,
 } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -110,8 +111,6 @@ const DEFAULT_QUERY: ChartOfAccountsQuery = {
   sort: DEFAULT_ACCOUNT_SORT,
 };
 
-const PAGE_SIZE = 25;
-
 /**
  * The tenant's chart of accounts, and the screen where Pendapatan and Beban are
  * mapped to the lines that will carry them in the laba rugi.
@@ -173,6 +172,7 @@ export function ChartOfAccountsScreen() {
 
   const [query, setQuery] = useState<ChartOfAccountsQuery>(DEFAULT_QUERY);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   /** Which row is open. ONE AT A TIME — see `toggleRow`. */
   const [openAccountId, setOpenAccountId] = useState<string | null>(null);
   /** The account whose status is mid-flight, so its badge can be disabled. */
@@ -265,11 +265,11 @@ export function ChartOfAccountsScreen() {
 
   const inactiveCount = accounts.filter((account) => !account.isActive).length;
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const visible = filtered.slice(
-    (safePage - 1) * PAGE_SIZE,
-    safePage * PAGE_SIZE,
+    (safePage - 1) * pageSize,
+    safePage * pageSize,
   );
 
   /**
@@ -711,12 +711,17 @@ export function ChartOfAccountsScreen() {
       )}
 
       {accounts.length > 0 && (
-        <Pagination
+        <ListFooter
           page={safePage}
+          pageSize={pageSize}
           totalPages={totalPages}
           total={filtered.length}
           unit="akun"
           onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
         />
       )}
 

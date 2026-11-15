@@ -6,12 +6,14 @@ import { auditLogService } from "@/services/auditLog.service";
 import { ApiError } from "@/services/api-error";
 import type { AuditLog, AuditLogListQuery, PageResult } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { DEFAULT_PAGE_SIZE } from "@/components";
 
 import { categoryActions, type AuditCategory } from "../constants";
 
 /** The query knobs the audit-log screen drives (page + the visible filters). */
 export interface AuditLogsQuery {
   page: number;
+  limit: number;
   search: string;
   /** "" means "all modules". */
   category: AuditCategory | "";
@@ -21,6 +23,7 @@ export interface AuditLogsQuery {
 
 const DEFAULT_QUERY: AuditLogsQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   category: "",
   action: "",
@@ -29,7 +32,7 @@ const DEFAULT_QUERY: AuditLogsQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<AuditLog>["pagination"] = {
   page: 1,
-  limit: 20,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -92,7 +95,7 @@ export function useAuditLogs(): UseAuditLogsResult {
 
     const apiQuery: AuditLogListQuery = {
       page: settled.page,
-      limit: 20,
+      limit: settled.limit,
       // One action, or — with only a module picked — every action of it.
       action:
         settled.action ||

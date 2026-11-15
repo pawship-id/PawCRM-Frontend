@@ -1,8 +1,17 @@
 "use client";
 
 import { Button } from "./Button";
+import { getPageItems } from "./ListFooter";
+
+export { getPageItems };
 
 /**
+ * POS CATALOGUE ONLY (15 November 2026). Every list screen uses `ListFooter`
+ * with 25/50/100 rows a page. This pager survives for the kasir's product grid
+ * alone: it pages cards, 8 at a time, and the server caps that endpoint at 48
+ * (`posCatalog.service.js` MAX_PAGE_SIZE), so a 25/50/100 menu cannot apply.
+ * Do not use it for a new list — use `ListFooter`.
+ *
  * Numbered pager for master-data list screens. Shows the page numbers
  * (1 2 3 …) with a windowed range and ellipses so it stays compact even with
  * many pages, flanked by Sebelumnya / Berikutnya. Renders nothing when there is
@@ -21,49 +30,7 @@ import { Button } from "./Button";
  * an Indonesian noun for anyone who omitted it.
  */
 
-/** Marks a gap in the numbered range where pages are collapsed. */
 const ELLIPSIS = "ellipsis";
-type PageItem = number | typeof ELLIPSIS;
-
-/**
- * The pages to render: always the first and last, plus the current page and one
- * neighbour on each side, with an ellipsis bridging any gap wider than one. When
- * the gap is exactly one page, that single page is shown instead of an ellipsis
- * — hiding one number behind "…" saves nothing and just costs a click.
- */
-export function getPageItems(current: number, total: number): PageItem[] {
-  const SIBLINGS = 1;
-
-  // With two boundaries, the current page + one sibling each side, and two
-  // ellipses, the collapsed form is at most 7 slots. At or below that, every
-  // page fits without collapsing — an ellipsis would hide nothing, so show all.
-  const MAX_UNCOLLAPSED = 2 + (2 * SIBLINGS + 1) + 2;
-  if (total <= MAX_UNCOLLAPSED) {
-    return Array.from({ length: total }, (_, index) => index + 1);
-  }
-
-  const kept: number[] = [];
-
-  for (let page = 1; page <= total; page += 1) {
-    const isEdge = page === 1 || page === total;
-    const isNearCurrent =
-      page >= current - SIBLINGS && page <= current + SIBLINGS;
-    if (isEdge || isNearCurrent) kept.push(page);
-  }
-
-  const items: PageItem[] = [];
-  let previous: number | undefined;
-  for (const page of kept) {
-    if (previous !== undefined) {
-      if (page - previous === 2) items.push(previous + 1);
-      else if (page - previous > 2) items.push(ELLIPSIS);
-    }
-    items.push(page);
-    previous = page;
-  }
-
-  return items;
-}
 
 export function Pagination({
   page,

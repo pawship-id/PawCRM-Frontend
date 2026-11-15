@@ -6,10 +6,12 @@ import { warehouseService } from "@/services/warehouse.service";
 import { ApiError } from "@/services/api-error";
 import type { Warehouse, WarehouseListQuery, PageResult } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { DEFAULT_PAGE_SIZE } from "@/components";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface WarehousesQuery {
   page: number;
+  limit: number;
   search: string;
   /** "" = any, true = active only, false = inactive only. */
   active: boolean | "";
@@ -18,10 +20,9 @@ export interface WarehousesQuery {
   includeDeleted: boolean;
 }
 
-const PAGE_SIZE = 20;
-
 const DEFAULT_QUERY: WarehousesQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   active: "",
   branchId: "",
@@ -31,7 +32,7 @@ const DEFAULT_QUERY: WarehousesQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<Warehouse>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -96,7 +97,7 @@ export function useWarehouses(): UseWarehousesResult {
 
     const apiQuery: WarehouseListQuery = {
       page: settled.page,
-      limit: PAGE_SIZE,
+      limit: settled.limit,
       search: settled.search.trim() || undefined,
       isActive: settled.active === "" ? undefined : settled.active,
       defaultBranchId: settled.branchId || undefined,

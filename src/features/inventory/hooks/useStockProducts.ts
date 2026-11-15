@@ -6,11 +6,14 @@ import { productService } from "@/services/product.service";
 import { ApiError } from "@/services/api-error";
 import type { PageResult } from "@/types/api";
 import type { Product, ProductListQuery, ProductSort } from "@/types/inventory";
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 /** The query knobs the stock-card index drives (page + the visible filters). */
 export interface StockProductsQuery {
   page: number;
+  /** Rows a page holds, from the list footer. */
+  limit: number;
   search: string;
   /** "" = every category. */
   categoryId: string;
@@ -34,10 +37,9 @@ export function isStockSort(sort: ProductSort): boolean {
   );
 }
 
-const PAGE_SIZE = 20;
-
 const DEFAULT_QUERY: StockProductsQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   categoryId: "",
   status: "",
@@ -50,7 +52,7 @@ const DEFAULT_QUERY: StockProductsQuery = {
 /** Empty page so the table shell renders before the first load returns. */
 const EMPTY_PAGE: PageResult<Product>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -151,7 +153,7 @@ export function useStockProducts(
 
     const apiQuery: ProductListQuery = {
       page: settled.page,
-      limit: PAGE_SIZE,
+      limit: settled.limit,
       search: settled.search.trim() || undefined,
       categoryId: settled.categoryId || undefined,
       includeDeleted: settled.includeDeleted || undefined,

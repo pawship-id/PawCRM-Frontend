@@ -328,7 +328,7 @@ describe("LowStockScreen", () => {
     await screen.findByText("Shampoo Anjing");
     expect(productService.lowStock).toHaveBeenLastCalledWith({
       page: 1,
-      limit: 50,
+      limit: 25,
       sort: "stockAsc",
     });
     expect(
@@ -357,7 +357,7 @@ describe("LowStockScreen", () => {
       await waitFor(() =>
         expect(productService.lowStock).toHaveBeenLastCalledWith({
           page: 1,
-          limit: 50,
+          limit: 25,
           sort,
         }),
       );

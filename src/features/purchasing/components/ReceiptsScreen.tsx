@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { Alert, Pagination, Spinner } from "@/components";
+import { Alert, ListFooter, Spinner } from "@/components";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { formatMoney } from "@/utils/decimal";
 import type { GoodsReceiptStatusFilter } from "@/types/api";
@@ -91,13 +91,14 @@ export function ReceiptsScreen({
             sort={query.sort}
             onSortChange={(sort) => setQuery({ sort })}
           />
-          <Pagination
+          <ListFooter
             page={pagination.page}
+            pageSize={query.limit}
             totalPages={pagination.totalPages}
             total={pagination.total}
             unit="penerimaan"
-            unitPlural="penerimaan"
             onPageChange={(page) => setQuery({ page })}
+            onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
           />
         </>
       )}

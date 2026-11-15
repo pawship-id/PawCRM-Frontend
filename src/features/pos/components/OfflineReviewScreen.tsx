@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { Alert, Breadcrumb, ConfirmDialog, FilterPills, Pagination, Spinner, TextareaField } from "@/components";
+import { Alert, Breadcrumb, ConfirmDialog, DEFAULT_PAGE_SIZE, FilterPills, ListFooter, Spinner, TextareaField } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -65,6 +65,7 @@ function queryOf(lens: Lens) {
 export function OfflineReviewScreen() {
   const [lens, setLens] = useState<Lens>("needs_review");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [rows, setRows] = useState<OfflineSubmission[] | null>(null);
   const [totalPages, setTotalPages] = useState(1);
   const [total, setTotal] = useState(0);
@@ -85,14 +86,14 @@ export function OfflineReviewScreen() {
     setError(null);
     setRows(null);
     try {
-      const result = await posOfflineService.listSubmissions({ ...queryOf(lens), page, limit: 20 });
+      const result = await posOfflineService.listSubmissions({ ...queryOf(lens), page, limit: pageSize });
       setRows(result.items);
       setTotalPages(result.pagination.totalPages || 1);
       setTotal(result.pagination.total);
     } catch {
       setError("Daftar tidak bisa dimuat. Coba lagi.");
     }
-  }, [lens, page]);
+  }, [lens, page, pageSize]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -241,14 +242,20 @@ export function OfflineReviewScreen() {
         </div>
       ) : null}
 
-      {totalPages > 1 && <Pagination
+      {rows && rows.length > 0 ? (
+        <ListFooter
           page={page}
-          totalPages={totalPages}
+          pageSize={pageSize}
           total={total}
+          totalPages={totalPages}
           unit="transaksi"
-          unitPlural="transaksi"
           onPageChange={setPage}
-        />}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
+      ) : null}
 
       {accepting && (
         <ConfirmDialog

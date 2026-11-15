@@ -6,7 +6,7 @@ import { Printer } from "lucide-react";
 import {
   DataTable,
   HighlightText,
-  Pagination,
+  ListFooter,
   type DataTableColumn,
   type SortOptions,
   RowLinkMenu,
@@ -193,10 +193,12 @@ export function BatchesTable({
   onSortChange,
   loading = false,
   page,
+  pageSize,
   totalPages,
   total,
   search,
   onPageChange,
+  onPageSizeChange,
   onSelect,
 }: {
   batches: ProductBatch[];
@@ -212,6 +214,7 @@ export function BatchesTable({
   /** A page is on its way: rows on screen dim, an empty table shows a spinner. */
   loading?: boolean;
   page: number;
+  pageSize: number;
   totalPages: number;
   total: number;
   /**
@@ -223,6 +226,8 @@ export function BatchesTable({
    */
   search: string;
   onPageChange: (page: number) => void;
+  /** The footer asked for another page size; the caller resets to page 1. */
+  onPageSizeChange: (pageSize: number) => void;
   /** A row was opened — the screen shows the lot's detail. Rows are plain when absent. */
   onSelect?: (batch: ProductBatch) => void;
 }) {
@@ -257,14 +262,17 @@ export function BatchesTable({
         }
       />
 
-      <Pagination
-        page={page}
-        totalPages={totalPages}
-        total={total}
-        unit="batch"
-        unitPlural="batch"
-        onPageChange={onPageChange}
-      />
+      {total > 0 && (
+        <ListFooter
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          total={total}
+          unit="batch"
+          onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
+        />
+      )}
     </div>
   );
 }

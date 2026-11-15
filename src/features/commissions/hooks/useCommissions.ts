@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { ApiError } from "@/services/api-error";
 import { branchService } from "@/services/branch.service";
@@ -13,8 +14,6 @@ import type {
   CommissionRowsQuery,
   CommissionRowsResult,
 } from "@/types/api";
-
-export const COMMISSION_PAGE_SIZES = [10, 25, 50, 100];
 
 /**
  * Every field present, so the screen never has to ask "is it set". `search` is
@@ -51,7 +50,7 @@ export const DEFAULT_COMMISSIONS_QUERY: CommissionsQuery = {
   sort: "bookingDate",
   dir: "desc",
   page: 1,
-  limit: 10,
+  limit: DEFAULT_PAGE_SIZE,
 };
 
 export interface UseCommissionsResult {

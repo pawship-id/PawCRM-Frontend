@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import { Alert, Pagination } from "@/components";
+import { Alert, ListFooter } from "@/components";
 import { Button } from "@/components/ui/button";
 import { CustomerModuleHeader } from "@/features/customers";
 import { Can } from "@/features/permissions";
@@ -68,14 +68,17 @@ export function PetsScreen() {
         sort={query.sort}
         onSortChange={(sort) => setQuery({ sort })}
       />
-      <Pagination
-        page={pagination.page}
-        totalPages={pagination.totalPages}
-        total={pagination.total}
-        unit="hewan"
-        unitPlural="hewan"
-        onPageChange={(page) => setQuery({ page })}
-      />
+      {pets.length > 0 && (
+        <ListFooter
+          page={pagination.page}
+          pageSize={query.limit}
+          total={pagination.total}
+          totalPages={pagination.totalPages}
+          unit="hewan"
+          onPageChange={(page) => setQuery({ page })}
+          onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
+        />
+      )}
     </div>
   );
 }

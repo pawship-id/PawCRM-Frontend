@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { ApiError } from "@/services/api-error";
 import { fixedCostService } from "@/services/fixedCost.service";
@@ -11,9 +12,6 @@ import type {
   FixedCostSort,
   FixedCostTotals,
 } from "@/types/accounting";
-
-/** What the rows-per-page control offers. Starts at 25, like every other list. */
-export const FIXED_COST_PAGE_SIZES = [25, 50, 100];
 
 export interface FixedCostsQuery {
   page: number;
@@ -29,7 +27,7 @@ export interface FixedCostsQuery {
 
 export const DEFAULT_FIXED_COSTS_QUERY: FixedCostsQuery = {
   page: 1,
-  limit: 25,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   kind: "",
   /*
@@ -59,7 +57,7 @@ export interface UseFixedCostsResult {
   refetch: () => void;
 }
 
-const EMPTY_PAGE = { page: 1, limit: 25, total: 0, totalPages: 0 };
+const EMPTY_PAGE = { page: 1, limit: DEFAULT_PAGE_SIZE, total: 0, totalPages: 0 };
 
 /**
  * The Biaya Tetap list, from GET /fixed-costs.

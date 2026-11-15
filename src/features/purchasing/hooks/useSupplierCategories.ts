@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { supplierCategoryService } from "@/services/supplierCategory.service";
 import { ApiError } from "@/services/api-error";
 import type {
@@ -15,6 +16,8 @@ import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface SupplierCategoriesQuery {
   page: number;
+  /** Rows per page — the footer's Tampilkan control (25/50/100). */
+  limit: number;
   search: string;
   /** "" = retired and live both. */
   status: "" | "active" | "inactive";
@@ -22,8 +25,6 @@ export interface SupplierCategoriesQuery {
   /** Which ordering to page through. */
   sort: CategorySort;
 }
-
-const PAGE_SIZE = 20;
 
 /**
  * OPENS ON EVERY CATEGORY, retired ones included. This screen exists to manage
@@ -34,6 +35,7 @@ const PAGE_SIZE = 20;
  */
 const DEFAULT_QUERY: SupplierCategoriesQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   status: "",
   includeDeleted: false,
@@ -45,7 +47,7 @@ const DEFAULT_QUERY: SupplierCategoriesQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<SupplierCategory>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -114,7 +116,7 @@ export function useSupplierCategories(): UseSupplierCategoriesResult {
 
     const apiQuery: SupplierCategoryListQuery = {
       page: settled.page,
-      limit: PAGE_SIZE,
+      limit: settled.limit,
       search: settled.search.trim() || undefined,
       // Sent only when narrowed: the API applies no default, so omitting it is
       // how "both" is asked for.

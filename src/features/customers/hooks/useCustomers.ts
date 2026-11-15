@@ -12,10 +12,12 @@ import type {
   PageResult,
 } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { DEFAULT_PAGE_SIZE } from "@/components";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface CustomersQuery {
   page: number;
+  limit: number;
   search: string;
   /** "" = any category, otherwise one of the tenant's Tipe pelanggan. */
   customerTypeId: string;
@@ -50,10 +52,9 @@ export interface CustomersQuery {
   sort: CustomerSort;
 }
 
-const PAGE_SIZE = 20;
-
 const DEFAULT_QUERY: CustomersQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   customerTypeId: "",
   kind: "",
@@ -66,7 +67,7 @@ const DEFAULT_QUERY: CustomersQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<Customer>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -139,7 +140,7 @@ export function useCustomers(
 
     const apiQuery: CustomerListQuery = {
       page: settled.page,
-      limit: PAGE_SIZE,
+      limit: settled.limit,
       search: settled.search.trim() || undefined,
       // "" means "not filtering", which is an ABSENT parameter rather than an
       // empty one: sent as "" the server would look for a customer filed under

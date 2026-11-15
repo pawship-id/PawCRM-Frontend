@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { supplierService } from "@/services/supplier.service";
 import { ApiError } from "@/services/api-error";
 import type {
@@ -25,6 +26,8 @@ export type SupplierActivityFilter = "all" | "active" | "inactive";
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface SuppliersQuery {
   page: number;
+  /** Rows per page — the footer's Tampilkan control (25/50/100). */
+  limit: number;
   search: string;
   /** "" = any cooperation model, otherwise a specific one. */
   type: SupplierType | "";
@@ -38,10 +41,9 @@ export interface SuppliersQuery {
   sort: SupplierSort;
 }
 
-const PAGE_SIZE = 20;
-
 const DEFAULT_QUERY: SuppliersQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   type: "",
   activity: "all",
@@ -52,7 +54,7 @@ const DEFAULT_QUERY: SuppliersQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<Supplier>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -121,7 +123,7 @@ export function useSuppliers(): UseSuppliersResult {
 
     const apiQuery: SupplierListQuery = {
       page: settled.page,
-      limit: PAGE_SIZE,
+      limit: settled.limit,
       search: settled.search.trim() || undefined,
       type: settled.type === "" ? undefined : settled.type,
       isActive: activityToFlag(settled.activity),
