@@ -6725,8 +6725,13 @@ export interface PurchaseInvoiceListRow {
   locked: boolean;
   /** Received goods value + PPN posted so far — the payment ceiling. */
   receivedAmount: string;
-  /** What may be paid now: received less paid. */
+  /** What may be paid now: received less returned less paid. */
   payableAmount: string;
+  /**
+   * What submitted returns to the supplier took off the bill (15 November
+   * 2026). "0" when none; optional only so an older response parses.
+   */
+  returnedAmount?: string;
   itemCount?: number;
   /**
    * WHERE THE GOODS LANDED — copied from the delivery when the bill was filed,
@@ -6759,7 +6764,7 @@ export interface PurchaseInvoiceListRow {
   /** `subtotal + taxAmount + expenseCharges` — what the supplier is owed in full. */
   total: string;
   paidAmount: string;
-  /** `total - paidAmount`. Derived, never stored. */
+  /** `total - returnedAmount - paidAmount`. Derived, never stored. */
   outstandingAmount: string;
   /** `status !== "paid"` AND past due, as of the server's clock. */
   isOverdue: boolean;
@@ -6823,6 +6828,14 @@ export interface PurchaseInvoicePayment {
  * payable was posted by the goods receipt, so an entry here would double it. A
  * screen must not read the null as "nothing was posted".
  */
+/** One return to the supplier, as listed under a purchase invoice's total. */
+export interface PurchaseInvoiceReturnRef {
+  _id: string;
+  returnNumber: string;
+  returnDate: string | null;
+  totalAmount: string;
+}
+
 export interface PurchaseInvoiceDetail extends Omit<
   PurchaseInvoiceListRow,
   "paymentCount"
@@ -6835,6 +6848,11 @@ export interface PurchaseInvoiceDetail extends Omit<
    * arrive over several days, one receipt each (16 October 2026).
    */
   goodsReceipts?: PurchaseInvoiceReceiptRef[];
+  /**
+   * The submitted returns to the supplier on this bill's receipts, oldest
+   * first — what `returnedAmount` adds up (15 November 2026).
+   */
+  returns?: PurchaseInvoiceReturnRef[];
   /**
    * The bill's own discount (folded into HPP) and its "biaya lain" — each charge
    * either folded into HPP too (`goods`) or posted to an expense account.

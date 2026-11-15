@@ -140,6 +140,10 @@ function InvoiceBody({
     (charge) => charge.allocation === "expense",
   );
   const totalMinor = toMinor(invoice.total) ?? 0n;
+  // Returns to the supplier take their value off the bill (15 November 2026).
+  const returns = invoice.returns ?? [];
+  const returnedMinor = toMinor(invoice.returnedAmount ?? "0") ?? 0n;
+  const hasReturns = returnedMinor > 0n;
   const payableMinor = toMinor(invoice.payableAmount) ?? 0n;
   const receivedMinor = toMinor(invoice.receivedAmount) ?? 0n;
   // Integer arithmetic on minor units, then a single narrowing to Number for
@@ -508,9 +512,41 @@ function InvoiceBody({
                     </dd>
                   </div>
                 ))}
+                {hasReturns && (
+                  <>
+                    <div className="flex justify-between gap-4 border-t border-dashed border-border pt-2">
+                      <dt className="text-muted">Total faktur</dt>
+                      <dd className="tabular-nums">
+                        {formatMoney(invoice.total)}
+                      </dd>
+                    </div>
+                    {returns.map((row) => (
+                      <div key={row._id} className="flex justify-between gap-4">
+                        <dt className="text-muted">
+                          Retur{" "}
+                          <Link
+                            href={`/dashboard/purchasing/returns/${row._id}`}
+                            className="text-primary hover:underline"
+                          >
+                            {row.returnNumber}
+                          </Link>
+                        </dt>
+                        <dd className="tabular-nums text-success">
+                          −{formatMoney(row.totalAmount)}
+                        </dd>
+                      </div>
+                    ))}
+                  </>
+                )}
                 <div className="flex justify-between gap-4 border-t-[1.5px] border-primary pt-2.5 text-base font-bold">
                   <dt>Total tagihan</dt>
-                  <dd className="tabular-nums">{formatMoney(invoice.total)}</dd>
+                  <dd className="tabular-nums">
+                    {formatMoney(
+                      hasReturns
+                        ? subtractDecimals(invoice.total, invoice.returnedAmount ?? "0")
+                        : invoice.total,
+                    )}
+                  </dd>
                 </div>
               </dl>
             </div>
@@ -528,7 +564,11 @@ function InvoiceBody({
               plus one line only a supplier bill needs: it can be paid only as
               far as its goods have arrived. */}
           <PaymentStatusCard
-            total={invoice.total}
+            total={
+              hasReturns
+                ? subtractDecimals(invoice.total, invoice.returnedAmount ?? "0")
+                : invoice.total
+            }
             paid={invoice.paidAmount}
             outstanding={invoice.outstandingAmount}
             dueDate={invoice.dueDate}
