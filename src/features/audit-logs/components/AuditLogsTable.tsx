@@ -141,7 +141,7 @@ export function AuditLogsTable({
       cell: (log) => (
         <>
           <div className="font-medium">
-            {log.userId?.fullName ?? "Pengguna terhapus"}
+            {log.userId ? log.userId.fullName : "Sistem"}
           </div>
           {log.branchId?.name && (
             <div className="text-xs text-muted">{log.branchId.name}</div>

@@ -53,6 +53,7 @@ import {
 import { SessionAlbum } from "./SessionAlbum";
 import { crewWord } from "./BookingSessionSteps";
 import { SessionRecord } from "./SessionRecord";
+import { SessionTimes } from "./SessionTimes";
 
 const BILLING_LABELS: Record<Booking["billingState"], string> = {
   unbilled: "Belum ditagih",
@@ -1111,28 +1112,15 @@ export function BookingDetailScreen({ id }: { id: string }) {
                           </div>
 
                           {/*
-                            THE CLOCK IS READ, NOT TYPED. Starting a turn stamps
-                            `startedAt`, finishing it stamps `finishedAt`, both
-                            server-side. Correcting a stamp is `PATCH .../times`,
-                            audited, and not reachable from this screen yet.
+                            THE CLOCK IS STAMPED BY THE ACT and corrected by
+                            hand — "Ubah jam", `PATCH .../times`, audited.
                           */}
-                          <dl className="flex flex-wrap gap-x-6 gap-y-2">
-                            <Field
-                              label="Mulai"
-                              value={
-                                <span className="tabular-nums">
-                                  {clock(session.startedAt) || "—"}
-                                </span>
-                              }
-                            />
-                            <Field
-                              label="Selesai"
-                              value={
-                                <span className="tabular-nums">
-                                  {clock(session.finishedAt) || "—"}
-                                </span>
-                              }
-                            />
+                          <SessionTimes
+                            bookingId={booking._id}
+                            session={session}
+                            locked={booking.status === "cancelled"}
+                            onChanged={replaceBooking}
+                          >
                             <Field
                               label="Aktual"
                               value={
@@ -1146,7 +1134,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
                                 </span>
                               }
                             />
-                          </dl>
+                          </SessionTimes>
 
                           {/* What HAPPENED, above what happens NEXT. */}
                           <div className="mt-3">

@@ -239,7 +239,7 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     const base = cashPage([receipt, expense]);
     asMock(cashTransactionService.list).mockResolvedValue({
       ...base,
-      pagination: { page: 2, limit: 10, total: 44, totalPages: 5 },
+      pagination: { page: 2, limit: 25, total: 110, totalPages: 5 },
     });
 
     renderWithAuth(<KasBankScreen now={NOW} />);
@@ -248,7 +248,7 @@ describe("Kas & Bank — transaksi: rows and totals", () => {
     expect(within(pager).getByText("Sebelumnya")).toBeInTheDocument();
     expect(within(pager).getByText("Berikutnya")).toBeInTheDocument();
     // Five pages fit inside `getPageItems`' uncollapsed window, so all five are
-    // there — the windowing itself is `Pagination`'s to guard, not this footer's.
+    // there — the windowing itself is `getPageItems`' to guard, not this footer's.
     for (const page of [1, 2, 3, 4, 5]) {
       expect(
         within(pager).getByRole("button", { name: `Halaman ${page}` }),

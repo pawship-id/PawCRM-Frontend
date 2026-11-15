@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { ApiError } from "@/services/api-error";
 import type {
@@ -17,6 +18,8 @@ import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface GoodsReceiptsQuery {
   page: number;
+  /** Rows per page — the footer's Tampilkan control (25/50/100). */
+  limit: number;
   search: string;
   /** "" = any supplier, otherwise a specific one. */
   supplierId: string;
@@ -46,10 +49,9 @@ export interface GoodsReceiptsQuery {
   sort: GoodsReceiptSort;
 }
 
-const PAGE_SIZE = 20;
-
 const DEFAULT_QUERY: GoodsReceiptsQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   supplierId: "",
   warehouseId: "",
@@ -64,7 +66,7 @@ const DEFAULT_QUERY: GoodsReceiptsQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<GoodsReceiptListRow>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -141,7 +143,7 @@ export function useGoodsReceipts(
 
     const apiQuery: GoodsReceiptListQuery = {
       page: settled.page,
-      limit: PAGE_SIZE,
+      limit: settled.limit,
       search: settled.search.trim() || undefined,
       supplierId: settled.supplierId || undefined,
       warehouseId: settled.warehouseId || undefined,

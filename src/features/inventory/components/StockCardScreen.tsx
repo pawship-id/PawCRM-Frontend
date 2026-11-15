@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Breadcrumb,
+  DEFAULT_PAGE_SIZE,
   FilterSelect,
   Spinner,
   namedOptions,
@@ -164,6 +165,7 @@ export function StockCardScreen({
   const [ledgerFilters, setLedgerFilters] =
     useState<LedgerFilters>(EMPTY_LEDGER_FILTERS);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [tab, setTab] = useState<Tab>("ledger");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -229,7 +231,7 @@ export function StockCardScreen({
     [ledgerFilters, productId, warehouseId],
   );
 
-  const ledger = useStockCard(filters, page, NO_REFRESH);
+  const ledger = useStockCard(filters, page, NO_REFRESH, pageSize);
   const period = useStockCardSummary(filters, NO_REFRESH);
 
   const batches = useProductBatches(
@@ -533,10 +535,15 @@ export function StockCardScreen({
                     onSortChange={(sort) => patchFilters({ sort })}
                     loading={ledger.loading}
                     page={ledger.pagination.page}
+                    pageSize={pageSize}
                     totalPages={ledger.pagination.totalPages}
                     total={ledger.pagination.total}
                     filtered={filtered}
                     onPageChange={setPage}
+                    onPageSizeChange={(size) => {
+                      setPageSize(size);
+                      setPage(1);
+                    }}
                     onSelect={setOpenMovement}
                   />
                 </>

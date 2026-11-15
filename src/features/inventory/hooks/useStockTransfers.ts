@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { ApiError } from "@/services/api-error";
 import { stockTransferService } from "@/services/stockTransfer.service";
 import { warehouseService } from "@/services/warehouse.service";
@@ -39,6 +40,7 @@ export interface StockTransfersQuery {
    */
   sort: StockTransferSort;
   page: number;
+  limit: number;
 }
 
 const DEFAULT_QUERY: StockTransfersQuery = {
@@ -47,9 +49,8 @@ const DEFAULT_QUERY: StockTransfersQuery = {
   status: "",
   sort: "newest",
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
 };
-
-const LIMIT = 20;
 
 export interface UseStockTransfersResult {
   transfers: StockTransferSummary[];
@@ -88,7 +89,7 @@ export function useStockTransfers(): UseStockTransfersResult {
   const [transfers, setTransfers] = useState<StockTransferSummary[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: LIMIT,
+    limit: DEFAULT_PAGE_SIZE,
     total: 0,
     totalPages: 0,
   });
@@ -143,7 +144,7 @@ export function useStockTransfers(): UseStockTransfersResult {
     stockTransferService
       .list({
         page: debounced.page,
-        limit: LIMIT,
+        limit: debounced.limit,
         search: debounced.search.trim() || undefined,
         warehouseId: debounced.warehouseId || undefined,
         status: debounced.status || undefined,
@@ -170,6 +171,7 @@ export function useStockTransfers(): UseStockTransfersResult {
     };
   }, [
     debounced.page,
+    debounced.limit,
     debounced.search,
     debounced.warehouseId,
     debounced.status,

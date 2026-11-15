@@ -20,10 +20,7 @@ import { cn } from "@/lib/utils";
 import type { CashTransaction, CashTransactionSort } from "@/types/api";
 import { formatMoney } from "@/utils/decimal";
 
-import {
-  CASH_TRANSACTION_PAGE_SIZES,
-  type UseCashTransactionsResult,
-} from "../hooks/useCashTransactions";
+import type { UseCashTransactionsResult } from "../hooks/useCashTransactions";
 import {
   CASH_TRANSACTION_DETAIL_HREF,
   cashTransactionHref,
@@ -235,7 +232,6 @@ export function CashTransactionsPanel({
             <ListFooter
               page={pagination.page}
               pageSize={query.limit}
-              pageSizes={CASH_TRANSACTION_PAGE_SIZES}
               total={pagination.total}
               totalPages={pagination.totalPages}
               unit="transaksi"

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { ApiError } from "@/services/api-error";
 import { useAuth } from "@/features/auth";
 import { accessibleBranches, accessibleWarehouses } from "@/utils/accessScope";
@@ -33,6 +34,7 @@ export interface StockEntriesQuery {
   branchId: string;
   warehouseId: string;
   page: number;
+  limit: number;
 }
 
 const DEFAULT_QUERY: StockEntriesQuery = {
@@ -41,9 +43,8 @@ const DEFAULT_QUERY: StockEntriesQuery = {
   branchId: "",
   warehouseId: "",
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
 };
-
-const LIMIT = 20;
 
 export interface UseStockEntriesResult {
   entries: StockEntry[];
@@ -87,7 +88,7 @@ export function useStockEntries(kind: StockEntryKind): UseStockEntriesResult {
   const [entries, setEntries] = useState<StockEntry[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: LIMIT,
+    limit: DEFAULT_PAGE_SIZE,
     total: 0,
     totalPages: 0,
   });
@@ -153,7 +154,7 @@ export function useStockEntries(kind: StockEntryKind): UseStockEntriesResult {
       .list({
         kind,
         page: debounced.page,
-        limit: LIMIT,
+        limit: debounced.limit,
         search: debounced.search.trim() || undefined,
         branchId: debounced.branchId || undefined,
         warehouseId: debounced.warehouseId || undefined,
@@ -181,6 +182,7 @@ export function useStockEntries(kind: StockEntryKind): UseStockEntriesResult {
   }, [
     kind,
     debounced.page,
+    debounced.limit,
     debounced.search,
     debounced.branchId,
     debounced.warehouseId,

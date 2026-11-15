@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Check } from "lucide-react";
 
-import { Alert, DataTable, FilterSelect, Pagination, type DataTableColumn } from "@/components";
+import { Alert, DataTable, DEFAULT_PAGE_SIZE, FilterSelect, ListFooter, type DataTableColumn } from "@/components";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -42,8 +42,6 @@ import { FileDropzone } from "./FileDropzone";
 import { CountChip, WizardFrame, WizardRow } from "./WizardSteps";
 
 const STEPS = ["Upload", "Tinjau", "Selesai"] as const;
-const PAGE_SIZE = 25;
-
 type CategoryChip = { key: SettlementCategory; label: string; tone?: "warning" | "danger" };
 
 const CATEGORIES: CategoryChip[] = [
@@ -118,6 +116,7 @@ export function SettlementImportDialog({
   const [preview, setPreview] = useState<SettlementPreview | null>(null);
   const [filter, setFilter] = useState<SettlementCategory | "">("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [result, setResult] = useState<SettlementResult | null>(null);
 
   useEffect(() => {
@@ -168,7 +167,7 @@ export function SettlementImportDialog({
   const settling = preview ? preview.counts.match + preview.counts.variance : 0;
   const adjusting = preview?.counts.adjustment ?? 0;
   const rows = (preview?.items ?? []).filter((item) => !filter || item.category === filter);
-  const shown = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const shown = rows.slice((page - 1) * pageSize, page * pageSize);
   const journal = preview?.journal ?? [];
   const debit = journal.reduce((sum, line) => sum + line.debit, 0);
   const credit = journal.reduce((sum, line) => sum + line.credit, 0);
@@ -420,13 +419,18 @@ export function SettlementImportDialog({
             rowKey={(row) => `${row.orderNo}-${row.releasedAt ?? ""}`}
             empty="Tidak ada pesanan di kelompok ini."
           />
-          {rows.length > PAGE_SIZE ? (
-            <Pagination
+          {rows.length > 0 ? (
+            <ListFooter
               page={page}
-              totalPages={Math.ceil(rows.length / PAGE_SIZE)}
+              pageSize={pageSize}
               total={rows.length}
+              totalPages={Math.ceil(rows.length / pageSize)}
               unit="pesanan"
               onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
             />
           ) : null}
 

@@ -9,7 +9,7 @@ import {
   Alert,
   FilterBar,
   FilterSelect,
-  Pagination,
+  ListFooter,
   Spinner,
 } from "@/components";
 import { Button } from "@/components/ui/button";
@@ -221,14 +221,15 @@ export function DormantCustomersScreen({
         </Table>
       </div>
 
-      {pagination.totalPages > 1 && (
-        <Pagination
+      {pagination.total > 0 && (
+        <ListFooter
           page={pagination.page}
+          pageSize={query.limit}
           totalPages={pagination.totalPages}
           total={pagination.total}
           unit="pelanggan"
-          unitPlural="pelanggan"
           onPageChange={(page) => setQuery({ page })}
+          onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
         />
       )}
     </div>

@@ -4,7 +4,13 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import { Alert, Pagination, Spinner, formatRangeShort } from "@/components";
+import {
+  Alert,
+  DEFAULT_PAGE_SIZE,
+  ListFooter,
+  Spinner,
+  formatRangeShort,
+} from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 import {
@@ -39,8 +45,6 @@ import { summariseRides } from "../board";
 import { ANTAR_JEMPUT_LINE } from "../line";
 import { ANTAR_JEMPUT_NEW_PATH } from "../paths";
 import { AntarJemputBookingsTable } from "./AntarJemputBookingsTable";
-
-const PAGE_SIZE = 20;
 
 const PERIOD_WORDS: Record<Exclude<GroomingPeriod, "custom">, string> = {
   all: "di semua tanggal",
@@ -103,6 +107,7 @@ export function AntarJemputBookingsScreen() {
   const [search, setSearch] = useState("");
   const [lens, setLens] = useState<GroomingLens>("all");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const range = useMemo(
     () => (period === "custom" ? custom : periodRange(period)),
@@ -142,11 +147,11 @@ export function AntarJemputBookingsScreen() {
     [filtered, lens, search, sort],
   );
 
-  const totalPages = Math.ceil(visible.length / PAGE_SIZE);
+  const totalPages = Math.ceil(visible.length / pageSize);
   const currentPage = Math.min(page, Math.max(1, totalPages));
   const pageRows = visible.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
   );
 
   const periodWords =
@@ -351,12 +356,17 @@ export function AntarJemputBookingsScreen() {
               )
             }
           />
-          <Pagination
+          <ListFooter
             page={currentPage}
+            pageSize={pageSize}
             totalPages={totalPages}
             total={visible.length}
             unit="booking"
             onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
           />
         </>
       )}

@@ -2,16 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { ApiError } from "@/services/api-error";
 import { promoService } from "@/services/promo.service";
 import type { Promo, PromoListQuery, PromoListResponse } from "@/types/promo";
 
-export const PROMO_PAGE_SIZE = 20;
-
 type Query = PromoListQuery & { search: string };
 
-const DEFAULT_QUERY: Query = { page: 1, limit: PROMO_PAGE_SIZE, search: "", sort: "newest" };
+const DEFAULT_QUERY: Query = { page: 1, limit: DEFAULT_PAGE_SIZE, search: "", sort: "newest" };
 
 const EMPTY_COUNTS: PromoListResponse["counts"] = { running: 0, scheduled: 0, draft: 0, ended: 0 };
 

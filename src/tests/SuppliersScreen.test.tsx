@@ -48,7 +48,7 @@ const SUPPLIER = {
 function page(items: Supplier[]): PageResult<Supplier> {
   return {
     items,
-    pagination: { page: 1, limit: 20, total: items.length, totalPages: 1 },
+    pagination: { page: 1, limit: 25, total: items.length, totalPages: 1 },
   };
 }
 
@@ -172,4 +172,41 @@ it("keeps the header ordering through the panel's Reset", async () => {
       expect.objectContaining({ type: undefined, sort: "receiptCountDesc" }),
     ),
   );
+});
+
+/*
+  THE SHARED FOOT OF A LIST (15 November 2026): the supplier list opens at 25
+  rows and offers 25/50/100 like every other list; picking a size goes back to
+  page 1 and is sent as `limit`.
+*/
+describe("page size", () => {
+  function lastCall() {
+    const calls = (supplierService.list as jest.Mock).mock.calls;
+    return calls[calls.length - 1][0];
+  }
+
+  it("opens at 25 and offers 25/50/100", async () => {
+    const user = await renderList();
+
+    expect(lastCall().limit).toBe(25);
+    expect(
+      screen.getByText("Menampilkan 1–1 dari 1 supplier"),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Baris per halaman"));
+    for (const size of ["25", "50", "100"]) {
+      expect(
+        await screen.findByRole("option", { name: size }),
+      ).toBeInTheDocument();
+    }
+  });
+
+  it("asks for the new size from page 1", async () => {
+    const user = await renderList();
+
+    await user.click(screen.getByLabelText("Baris per halaman"));
+    await user.click(await screen.findByRole("option", { name: "50" }));
+
+    await waitFor(() => expect(lastCall()).toMatchObject({ limit: 50, page: 1 }));
+  });
 });

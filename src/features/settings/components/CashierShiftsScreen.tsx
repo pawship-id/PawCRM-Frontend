@@ -7,7 +7,7 @@ import {
   DataTable,
   FilterBar,
   FilterSelect,
-  Pagination,
+  ListFooter,
   withAll,
   type DataTableColumn,
   type FilterOption,
@@ -174,12 +174,14 @@ export function CashierShiftsScreen() {
           </p>
         }
       />
-      <Pagination
+      <ListFooter
         page={pagination.page}
+        pageSize={query.limit}
         totalPages={pagination.totalPages}
         total={pagination.total}
         unit="shift"
         onPageChange={(page) => setQuery({ page })}
+        onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
       />
     </div>
   );

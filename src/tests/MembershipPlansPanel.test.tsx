@@ -52,7 +52,7 @@ function plan(over: Partial<MembershipPlan> = {}): MembershipPlan {
 function respond(items: MembershipPlan[]) {
   mocked.listPlans.mockResolvedValue({
     items,
-    pagination: { page: 1, limit: 20, total: items.length, totalPages: 1 },
+    pagination: { page: 1, limit: 25, total: items.length, totalPages: 1 },
   });
 }
 

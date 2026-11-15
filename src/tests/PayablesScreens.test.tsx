@@ -346,7 +346,7 @@ function receiptRow(): GoodsReceiptListRow {
 
 const page = (items: PurchaseInvoiceListRow[], total = items.length) => ({
   items,
-  pagination: { page: 1, limit: 20, total, totalPages: Math.ceil(total / 20) },
+  pagination: { page: 1, limit: 25, total, totalPages: Math.ceil(total / 25) },
 });
 
 /**

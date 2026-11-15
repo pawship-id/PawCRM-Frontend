@@ -6,10 +6,12 @@ import { userService } from "@/services/user.service";
 import { ApiError } from "@/services/api-error";
 import type { User, UserListQuery, PageResult } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { DEFAULT_PAGE_SIZE } from "@/components";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface UsersQuery {
   page: number;
+  limit: number;
   search: string;
   status: User["status"] | "";
   includeDeleted: boolean;
@@ -17,6 +19,7 @@ export interface UsersQuery {
 
 const DEFAULT_QUERY: UsersQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   status: "",
   includeDeleted: false,
@@ -25,7 +28,7 @@ const DEFAULT_QUERY: UsersQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<User>["pagination"] = {
   page: 1,
-  limit: 20,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -89,6 +92,7 @@ export function useUsers(): UseUsersResult {
 
     const apiQuery: UserListQuery = {
       page: settled.page,
+      limit: settled.limit,
       search: settled.search.trim() || undefined,
       status: settled.status || undefined,
       includeDeleted: settled.includeDeleted || undefined,

@@ -12,10 +12,12 @@ import type {
   PageResult,
 } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { DEFAULT_PAGE_SIZE } from "@/components";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface CategoriesQuery {
   page: number;
+  limit: number;
   search: string;
   /** "" = retired and live both. */
   status: "" | "active" | "inactive";
@@ -29,8 +31,6 @@ export interface CategoriesQuery {
   sort: CategorySort;
 }
 
-const PAGE_SIZE = 20;
-
 /**
  * OPENS ON EVERY CATEGORY, retired ones included. This screen exists to manage
  * the label set, and the retired labels are the half of it most likely to need
@@ -40,6 +40,7 @@ const PAGE_SIZE = 20;
  */
 const DEFAULT_QUERY: CategoriesQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   status: "",
   level: "",
@@ -52,7 +53,7 @@ const DEFAULT_QUERY: CategoriesQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<Category>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -117,7 +118,7 @@ export function useCategories(): UseCategoriesResult {
 
     const apiQuery: CategoryListQuery = {
       page: settled.page,
-      limit: PAGE_SIZE,
+      limit: settled.limit,
       search: settled.search.trim() || undefined,
       // Sent only when narrowed: the API applies no default, so omitting it is
       // how "both" is asked for.

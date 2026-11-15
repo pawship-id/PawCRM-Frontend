@@ -184,19 +184,24 @@ export function hasCompletedWork(booking: BookingLike): boolean {
  * the cancel-reason field and every toast stay in Bahasa — those are sentences,
  * and §12 is about sentences.
  */
+/*
+  ⚠️ THE ROWS ARE BAHASA AGAIN (15 November 2026, on request) — "Tandai sudah
+  tiba", "Status lain". The rung NAMES on the badges stay English (ui-rules
+  §12); only what somebody presses to reach them is translated.
+*/
 export const BOOKING_STATUS_ACTIONS: Record<BookingStatus, string> = {
-  draft: "Move back to draft",
-  requested: "Mark as requested",
-  confirmed: "Confirm booking",
-  pickup: "Start pickup",
-  arrived: "Mark arrived",
-  in_progress: "Start work",
-  completed: "Mark completed",
-  delivery: "Start delivery",
-  return_to_pawrents: "Return to pawrents",
-  cancelled: "Cancel booking",
+  draft: "Kembalikan ke draft",
+  requested: "Tandai sebagai permintaan",
+  confirmed: "Konfirmasi booking",
+  pickup: "Mulai jemput",
+  arrived: "Tandai sudah tiba",
+  in_progress: "Mulai kerjakan",
+  completed: "Tandai selesai",
+  delivery: "Mulai antar",
+  return_to_pawrents: "Serahkan ke pemilik",
+  cancelled: "Batalkan booking",
   /* Never offered as a move — rescheduling has its own dialog and its own date. */
-  rescheduled: "Reschedule",
+  rescheduled: "Jadwalkan ulang",
 };
 
 /**
@@ -207,8 +212,8 @@ export const BOOKING_STATUS_ACTIONS: Record<BookingStatus, string> = {
  * Everything not named here keeps its ordinary row.
  */
 const RIDE_STATUS_ACTIONS: Partial<Record<BookingStatus, string>> = {
-  in_progress: "Start the trip",
-  completed: "Mark arrived",
+  in_progress: "Mulai perjalanan",
+  completed: "Tandai sudah sampai",
 };
 
 /** The row for this move, worded for the booking it is offered on. */

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import { Alert, Pagination, Spinner } from "@/components";
+import { Alert, ListFooter, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
 import { CatalogModuleHeader } from "@/features/inventory";
 import { Can } from "@/features/permissions";
@@ -74,13 +74,14 @@ export function CategoriesScreen() {
             onSortChange={(sort) => setQuery({ sort })}
             onChanged={refetch}
           />
-          <Pagination
+          <ListFooter
             page={pagination.page}
+            pageSize={query.limit}
             totalPages={pagination.totalPages}
             total={pagination.total}
             unit="kategori"
-            unitPlural="kategori"
             onPageChange={(page) => setQuery({ page })}
+            onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
           />
         </>
       )}

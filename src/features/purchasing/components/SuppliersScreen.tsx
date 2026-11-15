@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Pagination } from "@/components";
+import { Alert, ListFooter } from "@/components";
 import { cn } from "@/lib/utils";
 import { formatMoney, toMinor } from "@/utils/decimal";
 
@@ -74,13 +74,14 @@ export function SuppliersScreen() {
         sort={query.sort}
         onSortChange={(sort) => setQuery({ sort })}
       />
-      <Pagination
+      <ListFooter
         page={pagination.page}
+        pageSize={query.limit}
         totalPages={pagination.totalPages}
         total={pagination.total}
         unit="supplier"
-        unitPlural="supplier"
         onPageChange={(page) => setQuery({ page })}
+        onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
       />
     </div>
   );

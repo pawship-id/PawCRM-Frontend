@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
-import { Alert } from "@/components";
+import { Alert, DEFAULT_PAGE_SIZE } from "@/components";
 import { cn } from "@/lib/utils";
 import type { ProductBatch } from "@/types/inventory";
 import { formatMoney } from "@/utils/decimal";
@@ -52,6 +52,7 @@ import { BatchDetailDialog } from "./StockDetailDialogs";
 export function BatchesScreen() {
   const [query, setQueryState] = useState<BatchesQuery>(DEFAULT_BATCHES_QUERY);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [refreshKey] = useState(0);
 
   const warehouses = useWarehouseOptions();
@@ -61,7 +62,7 @@ export function BatchesScreen() {
     query.warehouseId,
     refreshKey,
   );
-  const list = useBatches(query, page, refreshKey);
+  const list = useBatches(query, page, refreshKey, pageSize);
 
   /** The lot on show, and where its history is read. */
   const [openBatch, setOpenBatch] = useState<ProductBatch | null>(null);
@@ -187,10 +188,15 @@ export function BatchesScreen() {
         onSortChange={(sort) => setQuery({ sort })}
         loading={list.loading}
         page={list.pagination.page}
+        pageSize={pageSize}
         totalPages={list.pagination.totalPages}
         total={list.pagination.total}
         search={query.search}
         onPageChange={setPage}
+        onPageSizeChange={(size) => {
+          setPageSize(size);
+          setPage(1);
+        }}
         onSelect={setOpenBatch}
       />
 

@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 
-import { Alert, Spinner, Pagination } from "@/components";
+import { Alert, Spinner, ListFooter } from "@/components";
 import { SettingsPageHeader } from "@/features/settings/components/SettingsHeader";
 
 import { useUsers } from "../hooks/useUsers";
@@ -50,12 +50,14 @@ export function UsersScreen() {
             onChanged={refetch}
             search={query.search}
           />
-          <Pagination
+          <ListFooter
             page={pagination.page}
+            pageSize={query.limit}
             totalPages={pagination.totalPages}
             total={pagination.total}
             unit="pengguna"
             onPageChange={(page) => setQuery({ page })}
+            onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
           />
         </>
       )}

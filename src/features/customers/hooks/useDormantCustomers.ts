@@ -5,24 +5,26 @@ import { useCallback, useEffect, useState } from "react";
 import { customerService } from "@/services/customer.service";
 import { ApiError } from "@/services/api-error";
 import type { DormantCustomer, PageResult } from "@/types/api";
+import { DEFAULT_PAGE_SIZE } from "@/components";
 
 export interface DormantCustomersQuery {
   days: number;
   page: number;
+  limit: number;
 }
 
 const DEFAULT_DAYS = 60;
-const LIMIT = 20;
 
 const DEFAULT_QUERY: DormantCustomersQuery = {
   days: DEFAULT_DAYS,
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
 };
 
 /** Empty page so the screen can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<never>["pagination"] = {
   page: 1,
-  limit: LIMIT,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -79,7 +81,7 @@ export function useDormantCustomers(
     setError(null);
 
     customerService
-      .dormant({ days: query.days, page: query.page, limit: LIMIT })
+      .dormant({ days: query.days, page: query.page, limit: query.limit })
       .then((result) => {
         if (!active) return;
         setItems(result.items);
@@ -101,7 +103,7 @@ export function useDormantCustomers(
     return () => {
       active = false;
     };
-  }, [query.days, query.page, nonce]);
+  }, [query.days, query.page, query.limit, nonce]);
 
   return { items, pagination, query, loading, error, setQuery, refetch };
 }

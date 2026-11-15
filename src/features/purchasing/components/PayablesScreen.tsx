@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Alert, Pagination, Spinner } from "@/components";
+import { Alert, ListFooter, Spinner } from "@/components";
 import { usePermissions } from "@/features/permissions";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
@@ -242,13 +242,14 @@ export function PayablesScreen() {
             canReceive={can("goodsReceipts", "create")}
             onPay={openPay}
           />
-          <Pagination
+          <ListFooter
             page={pagination.page}
+            pageSize={query.limit}
             totalPages={pagination.totalPages}
             total={pagination.total}
             unit="faktur"
-            unitPlural="faktur"
             onPageChange={(page) => setQuery({ page })}
+            onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
           />
         </>
       )}

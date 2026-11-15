@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { ApiError } from "@/services/api-error";
 import { membershipService } from "@/services/membership.service";
 import type {
@@ -10,11 +11,9 @@ import type {
   PetMembershipListQuery,
 } from "@/types/membership";
 
-export const CARD_PAGE_SIZE = 20;
-
 export const DEFAULT_CARDS_QUERY: PetMembershipListQuery = {
   page: 1,
-  limit: CARD_PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   sort: "newest",
 };
 

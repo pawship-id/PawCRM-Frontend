@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { stockOpnameService } from "@/services/stockOpname.service";
 import { ApiError } from "@/services/api-error";
 import type {
@@ -44,11 +45,9 @@ export const EMPTY_OPNAME_FILTERS: OpnameFilters = {
   sort: "newest",
 };
 
-const PAGE_SIZE = 20;
-
 const EMPTY_PAGINATION: OpnamePage["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -77,6 +76,7 @@ export function useOpnames(
   page: number,
   /** Bumped by the screen after a create or a delete, to re-read the page. */
   refreshKey: number,
+  limit: number = DEFAULT_PAGE_SIZE,
 ): UseOpnamesResult {
   const [opnames, setOpnames] = useState<Opname[]>([]);
   const [pagination, setPagination] =
@@ -96,7 +96,7 @@ export function useOpnames(
     stockOpnameService
       .list({
         page,
-        limit: PAGE_SIZE,
+        limit,
         search: search || undefined,
         branchId: branchId || undefined,
         warehouseId: warehouseId || undefined,
@@ -139,6 +139,7 @@ export function useOpnames(
     dateTo,
     sort,
     page,
+    limit,
     refreshKey,
   ]);
 

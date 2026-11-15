@@ -6,16 +6,19 @@ import { roleService } from "@/services/role.service";
 import { ApiError } from "@/services/api-error";
 import type { Role, RoleListQuery, PageResult } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { DEFAULT_PAGE_SIZE } from "@/components";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface RolesQuery {
   page: number;
+  limit: number;
   search: string;
   includeDeleted: boolean;
 }
 
 const DEFAULT_QUERY: RolesQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   includeDeleted: false,
 };
@@ -23,7 +26,7 @@ const DEFAULT_QUERY: RolesQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<Role>["pagination"] = {
   page: 1,
-  limit: 20,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -47,7 +50,7 @@ interface UseRolesResult {
  * state, a fetch effect keyed on the query, and an explicit `refetch` the row
  * actions call after they mutate a role. Any filter change (search/deleted)
  * resets to page 1 so the user is never stranded on an out-of-range page. An
- * explicit `limit: 20` overrides the service's lookup-oriented default of 100.
+ * explicit `limit` overrides the service's lookup-oriented default of 100.
  */
 export function useRoles(): UseRolesResult {
   const [query, setQueryState] = useState<RolesQuery>(DEFAULT_QUERY);
@@ -85,7 +88,7 @@ export function useRoles(): UseRolesResult {
 
     const apiQuery: RoleListQuery = {
       page: settled.page,
-      limit: 20,
+      limit: settled.limit,
       search: settled.search.trim() || undefined,
       includeDeleted: settled.includeDeleted || undefined,
     };

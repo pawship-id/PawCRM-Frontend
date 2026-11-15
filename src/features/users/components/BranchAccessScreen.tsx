@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 
-import { Alert, Pagination, Spinner } from "@/components";
+import { Alert, ListFooter, Spinner } from "@/components";
 import {
   Table,
   TableBody,
@@ -34,7 +34,7 @@ import { useUsers } from "../hooks/useUsers";
  * scope says.
  */
 export function BranchAccessScreen() {
-  const { users, pagination, loading, error, setQuery } = useUsers();
+  const { users, pagination, query, loading, error, setQuery } = useUsers();
   const { roles, branches } = useLookups();
 
   const roleName = useMemo(
@@ -110,13 +110,14 @@ export function BranchAccessScreen() {
               </TableBody>
             </Table>
           </div>
-          <Pagination
+          <ListFooter
             page={pagination.page}
+            pageSize={query.limit}
             totalPages={pagination.totalPages}
             total={pagination.total}
             unit="pengguna"
-            unitPlural="pengguna"
             onPageChange={(page) => setQuery({ page })}
+            onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
           />
         </>
       )}

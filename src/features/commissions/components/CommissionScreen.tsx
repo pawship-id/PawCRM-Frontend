@@ -42,7 +42,7 @@ import type {
 } from "@/types/api";
 import { formatMoney, sumDecimals } from "@/utils/decimal";
 
-import { COMMISSION_PAGE_SIZES, useCommissions } from "../hooks/useCommissions";
+import { useCommissions } from "../hooks/useCommissions";
 import {
   COMMISSION_STATUS_FILTERS,
   COMMISSION_STATUS_LABEL,
@@ -506,7 +506,6 @@ export function CommissionScreen({ now }: { now: string }) {
             <ListFooter
               page={data?.page ?? query.page}
               pageSize={query.limit}
-              pageSizes={COMMISSION_PAGE_SIZES}
               total={data?.total ?? 0}
               totalPages={Math.max(
                 1,

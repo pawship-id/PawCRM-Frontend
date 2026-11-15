@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { serviceService } from "@/services/service.service";
 import type {
@@ -15,6 +16,7 @@ import type {
 
 export interface GroomingServicesQuery {
   page: number;
+  limit: number;
   search: string;
   /** Empty = every branch. Several since 12 October 2026. */
   branchIds: string[];
@@ -37,10 +39,9 @@ export interface GroomingServicesQuery {
   sort: ServiceSort;
 }
 
-const PAGE_SIZE = 20;
-
 const DEFAULT_QUERY: GroomingServicesQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   branchIds: [],
   isActive: "",
@@ -52,7 +53,7 @@ const DEFAULT_QUERY: GroomingServicesQuery = {
 
 const EMPTY_PAGE: PageResult<Service>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -119,7 +120,7 @@ export function useGroomingServices(serviceKind: ServiceKind) {
         serviceKind,
         serviceType: "main",
         page: settled.page,
-        limit: PAGE_SIZE,
+        limit: settled.limit,
         search: settled.search.trim() || undefined,
         branchIds: settled.branchIds.length > 0 ? settled.branchIds : undefined,
         isActive:

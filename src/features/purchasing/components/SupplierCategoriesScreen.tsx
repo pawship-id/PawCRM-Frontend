@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Pagination, Spinner } from "@/components";
+import { Alert, ListFooter, Spinner } from "@/components";
 import { SettingsPageHeader } from "@/features/settings";
 
 import { useSupplierCategories } from "../hooks/useSupplierCategories";
@@ -54,13 +54,14 @@ export function SupplierCategoriesScreen() {
             search={query.search}
             onChanged={refetch}
           />
-          <Pagination
+          <ListFooter
             page={pagination.page}
+            pageSize={query.limit}
             totalPages={pagination.totalPages}
             total={pagination.total}
             unit="kategori"
-            unitPlural="kategori"
             onPageChange={(page) => setQuery({ page })}
+            onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
           />
         </>
       )}

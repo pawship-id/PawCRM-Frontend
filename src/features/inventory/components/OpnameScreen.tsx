@@ -9,7 +9,8 @@ import {
   ConfirmDialog,
   DataTable,
   HighlightText,
-  Pagination,
+  ListFooter,
+  DEFAULT_PAGE_SIZE,
   type DataTableColumn,
   type SortOptions,
   RowLinkMenu,
@@ -125,6 +126,7 @@ export function OpnameScreen() {
 
   const [filters, setFilters] = useState<OpnameFilters>(EMPTY_OPNAME_FILTERS);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [refreshKey, setRefreshKey] = useState(0);
   const [pendingDelete, setPendingDelete] = useState<Opname | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -135,6 +137,7 @@ export function OpnameScreen() {
     filters,
     page,
     refreshKey,
+    pageSize,
   );
 
   const refresh = () => setRefreshKey((key) => key + 1);
@@ -407,14 +410,20 @@ export function OpnameScreen() {
         }
       />
 
-      <Pagination
-        page={pagination.page}
-        totalPages={pagination.totalPages}
-        total={pagination.total}
-        unit="opname"
-        unitPlural="opname"
-        onPageChange={setPage}
-      />
+      {pagination.total > 0 && (
+        <ListFooter
+          page={pagination.page}
+          pageSize={pageSize}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
+          unit="opname"
+          onPageChange={setPage}
+          onPageSizeChange={(size) => {
+            setPageSize(size);
+            setPage(1);
+          }}
+        />
+      )}
 
       {pendingDelete && (
         <ConfirmDialog

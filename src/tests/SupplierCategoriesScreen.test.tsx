@@ -35,7 +35,7 @@ function makeCategory(
 function page(items: SupplierCategory[]): PageResult<SupplierCategory> {
   return {
     items,
-    pagination: { page: 1, limit: 20, total: items.length, totalPages: 1 },
+    pagination: { page: 1, limit: 25, total: items.length, totalPages: 1 },
   };
 }
 

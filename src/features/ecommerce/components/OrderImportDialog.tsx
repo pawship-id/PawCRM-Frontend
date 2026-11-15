@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 
 import { Check } from "lucide-react";
 
-import { Alert, DataTable, FilterSelect, Pagination, type DataTableColumn } from "@/components";
+import { Alert, DataTable, DEFAULT_PAGE_SIZE, FilterSelect, ListFooter, type DataTableColumn } from "@/components";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { swalToast } from "@/lib/swal";
@@ -34,8 +34,6 @@ import { FileDropzone } from "./FileDropzone";
 import { CountChip, WizardFrame, WizardRow } from "./WizardSteps";
 
 const STEPS = ["Upload", "Tinjau", "Selesai"] as const;
-const PAGE_SIZE = 25;
-
 /** The four groups of the review, as the mockup names them. */
 const GROUPS: Array<{ key: string; label: string; categories: OrderImportCategory[]; tone?: "warning" }> = [
   { key: "new", label: "Baru, jadi faktur", categories: ["new"] },
@@ -108,6 +106,7 @@ export function OrderImportDialog({
   const [preview, setPreview] = useState<OrderImportPreview | null>(null);
   const [group, setGroup] = useState<string>("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [result, setResult] = useState<OrderImportResult | null>(null);
 
   const review = async () => {
@@ -145,7 +144,7 @@ export function OrderImportDialog({
     categories.reduce((sum, category) => sum + (counts?.[category] ?? 0), 0);
   const active = GROUPS.find((candidate) => candidate.key === group);
   const rows = (preview?.items ?? []).filter((item) => !active || active.categories.includes(item.category));
-  const shown = rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const shown = rows.slice((page - 1) * pageSize, page * pageSize);
   const actionable = counts ? counts.new + counts.held + counts.needs_action : 0;
 
   const columns: DataTableColumn<OrderPreviewItem>[] = [
@@ -326,13 +325,18 @@ export function OrderImportDialog({
             rowKey={(row) => row.orderNo}
             empty="Tidak ada pesanan di kelompok ini."
           />
-          {rows.length > PAGE_SIZE ? (
-            <Pagination
+          {rows.length > 0 ? (
+            <ListFooter
               page={page}
-              totalPages={Math.ceil(rows.length / PAGE_SIZE)}
+              pageSize={pageSize}
               total={rows.length}
+              totalPages={Math.ceil(rows.length / pageSize)}
               unit="pesanan"
               onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
             />
           ) : null}
           <p className="text-sm text-muted">

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import { Alert, Pagination, Spinner, formatRangeShort } from "@/components";
+import { Alert, DEFAULT_PAGE_SIZE, ListFooter, Spinner, formatRangeShort } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 
@@ -39,8 +39,6 @@ import { GroomingModuleHeader } from "./GroomingModuleHeader";
 import { GroomingPeriodBar } from "./GroomingPeriodBar";
 import { GroomingStatCard } from "./GroomingStatCard";
 import { GROOMING_NEW_BOOKING_PATH } from "../paths";
-
-const PAGE_SIZE = 20;
 
 const LENS_WORDS: Record<Exclude<GroomingLens, "all">, string> = {
   unbilled: "belum ditagih",
@@ -90,6 +88,7 @@ export function GroomingBookingsScreen() {
   const [search, setSearch] = useState("");
   const [lens, setLens] = useState<GroomingLens>("all");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const range = useMemo(
     () => (period === "custom" ? custom : periodRange(period)),
@@ -137,11 +136,11 @@ export function GroomingBookingsScreen() {
     [filtered, lens, search, sort],
   );
 
-  const totalPages = Math.ceil(visible.length / PAGE_SIZE);
+  const totalPages = Math.ceil(visible.length / pageSize);
   const currentPage = Math.min(page, Math.max(1, totalPages));
   const pageRows = visible.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
   );
 
   const periodWords =
@@ -364,13 +363,20 @@ export function GroomingBookingsScreen() {
               )
             }
           />
-          <Pagination
-            page={currentPage}
-            totalPages={totalPages}
-            total={visible.length}
-            unit="booking"
-            onPageChange={setPage}
-          />
+          {visible.length > 0 ? (
+            <ListFooter
+              page={currentPage}
+              pageSize={pageSize}
+              total={visible.length}
+              totalPages={totalPages}
+              unit="booking"
+              onPageChange={setPage}
+              onPageSizeChange={(size) => {
+                setPageSize(size);
+                setPage(1);
+              }}
+            />
+          ) : null}
         </>
       )}
     </div>

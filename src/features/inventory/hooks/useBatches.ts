@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { productBatchService } from "@/services/productBatch.service";
 import { ApiError } from "@/services/api-error";
 import type { PageResult } from "@/types/api";
@@ -76,11 +77,9 @@ export const DEFAULT_BATCHES_QUERY: BatchesQuery = {
   sort: "expirySoonest",
 };
 
-const PAGE_SIZE = 20;
-
 const EMPTY_PAGINATION: PageResult<ProductBatch>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -127,6 +126,7 @@ export function useBatches(
   query: BatchesQuery,
   page: number,
   refreshKey: number,
+  limit: number = DEFAULT_PAGE_SIZE,
 ): UseBatchesResult {
   const [batches, setBatches] = useState<ProductBatch[]>([]);
   const [pagination, setPagination] =
@@ -147,7 +147,7 @@ export function useBatches(
     if (alertMode) {
       return productBatchService.expiring({
         page,
-        limit: PAGE_SIZE,
+        limit,
         branchId: branchId || undefined,
         warehouseId: warehouseId || undefined,
         withinDays: Number(horizon),
@@ -157,7 +157,7 @@ export function useBatches(
 
     return productBatchService.list({
       page,
-      limit: PAGE_SIZE,
+      limit,
       // BOTH ENDPOINTS TAKE IT, so the filter survives the swap the horizon
       // makes — one that applied to the alert list and not the audit list would
       // silently widen the rows the moment somebody searched.
@@ -176,6 +176,7 @@ export function useBatches(
   }, [
     alertMode,
     page,
+    limit,
     branchId,
     warehouseId,
     horizon,

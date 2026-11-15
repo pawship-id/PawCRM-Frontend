@@ -5,10 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
 import type { PageResult, PosShiftListItem, PosShiftStatus } from "@/types/api";
+import { DEFAULT_PAGE_SIZE } from "@/components";
 
 /** The query knobs Pengaturan › Shift kasir drives. */
 export interface CashierShiftsQuery {
   page: number;
+  limit: number;
   /** "" means every status. */
   status: PosShiftStatus | "";
   /** "" means every branch the server lets this user read. */
@@ -20,11 +22,16 @@ export interface CashierShiftsQuery {
  * still hanging", and Beranda's card only counts shifts opened today, so a
  * shift left open yesterday is invisible everywhere else.
  */
-const DEFAULT_QUERY: CashierShiftsQuery = { page: 1, status: "open", branchId: "" };
+const DEFAULT_QUERY: CashierShiftsQuery = {
+  page: 1,
+  limit: DEFAULT_PAGE_SIZE,
+  status: "open",
+  branchId: "",
+};
 
 const EMPTY_PAGE: PageResult<PosShiftListItem>["pagination"] = {
   page: 1,
-  limit: 20,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -62,7 +69,7 @@ export function useCashierShifts() {
     posService
       .listShifts({
         page: query.page,
-        limit: 20,
+        limit: query.limit,
         status: query.status || undefined,
         branchId: query.branchId || undefined,
       })

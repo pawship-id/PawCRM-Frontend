@@ -1,6 +1,6 @@
 "use client";
 
-import { Alert, Pagination } from "@/components";
+import { Alert, ListFooter } from "@/components";
 import { SettingsPageHeader } from "@/features/settings/components/SettingsHeader";
 
 import { useAuditLogs } from "../hooks/useAuditLogs";
@@ -30,12 +30,14 @@ export function AuditLogsScreen() {
       {error && <Alert variant="error">{error}</Alert>}
 
       <AuditLogsTable logs={logs} loading={loading} search={query.search} />
-      <Pagination
+      <ListFooter
         page={pagination.page}
+        pageSize={query.limit}
         totalPages={pagination.totalPages}
         total={pagination.total}
         unit="aktivitas"
         onPageChange={(page) => setQuery({ page })}
+        onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
       />
     </div>
   );

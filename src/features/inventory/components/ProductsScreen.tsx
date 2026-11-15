@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 
-import { Alert, Pagination } from "@/components";
+import { Alert, ListFooter } from "@/components";
 // The shadcn button: only this one takes `asChild`, for the Link below.
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
@@ -126,14 +126,17 @@ export function ProductsScreen() {
         onChanged={refetch}
         search={query.search}
       />
-      <Pagination
-        page={pagination.page}
-        totalPages={pagination.totalPages}
-        total={pagination.total}
-        unit="produk"
-        unitPlural="produk"
-        onPageChange={(page) => setQuery({ page })}
-      />
+      {pagination.total > 0 && (
+        <ListFooter
+          page={pagination.page}
+          pageSize={query.limit}
+          totalPages={pagination.totalPages}
+          total={pagination.total}
+          unit="produk"
+          onPageChange={(page) => setQuery({ page })}
+          onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
+        />
+      )}
     </div>
   );
 }

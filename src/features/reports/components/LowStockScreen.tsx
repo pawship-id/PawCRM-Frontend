@@ -8,7 +8,8 @@ import {
   Button,
   Card,
   DataTable,
-  Pagination,
+  DEFAULT_PAGE_SIZE,
+  ListFooter,
   Spinner,
   type DataTableColumn,
   type SortOptions,
@@ -46,8 +47,6 @@ type LowStockRow = Product & { qtyOnHand: string };
  * shelf first. Kurang is computed there too (batas − stok), so ordering by it
  * walks every page, not this one.
  */
-
-const PAGE_SIZE = 50;
 
 const DEFAULT_SORT: LowStockSort = "stockAsc";
 
@@ -123,6 +122,7 @@ const EXPORT_COLUMNS: XlsxColumn<LowStockRow>[] = [
 
 export function LowStockScreen() {
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [sort, setSort] = useState<LowStockSort>(DEFAULT_SORT);
   const [rows, setRows] = useState<LowStockRow[]>([]);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
@@ -138,7 +138,7 @@ export function LowStockScreen() {
     setError(null);
 
     productService
-      .lowStock({ page, limit: PAGE_SIZE, sort })
+      .lowStock({ page, limit: pageSize, sort })
       .then((result) => {
         if (!active) return;
         setRows(result.items);
@@ -160,7 +160,7 @@ export function LowStockScreen() {
     return () => {
       active = false;
     };
-  }, [page, sort]);
+  }, [page, pageSize, sort]);
 
   /**
    * Exports THIS PAGE, and says so on the button.
@@ -224,16 +224,21 @@ export function LowStockScreen() {
           }
         />
 
-        <div className="mt-4">
-          <Pagination
+        {pagination.total > 0 && (
+          <ListFooter
+            className="mt-4"
             page={page}
+            pageSize={pageSize}
             totalPages={pagination.totalPages}
             total={pagination.total}
             unit="produk"
-            unitPlural="produk"
             onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
           />
-        </div>
+        )}
       </Card>
     </div>
   );

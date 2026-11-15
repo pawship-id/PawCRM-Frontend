@@ -154,7 +154,7 @@ describe("the dormancy window", () => {
       expect(mockedCustomerService.dormant).toHaveBeenCalledWith({
         days: 60,
         page: 1,
-        limit: 20,
+        limit: 25,
       }),
     );
   });
@@ -167,7 +167,7 @@ describe("the dormancy window", () => {
       expect(mockedCustomerService.dormant).toHaveBeenCalledWith({
         days: 120,
         page: 1,
-        limit: 20,
+        limit: 25,
       }),
     );
   });
@@ -228,7 +228,24 @@ describe("paging", () => {
       expect(mockedCustomerService.dormant).toHaveBeenLastCalledWith({
         days: 60,
         page: 2,
-        limit: 20,
+        limit: 25,
+      }),
+    );
+  });
+
+  it("asks for a bigger page from page one when the size changes", async () => {
+    mockedCustomerService.dormant.mockResolvedValue(page([dormant()], 43));
+
+    renderWithAuth(<DormantCustomersScreen />);
+
+    await userEvent.click(await screen.findByLabelText("Baris per halaman"));
+    await userEvent.click(await screen.findByRole("option", { name: "50" }));
+
+    await waitFor(() =>
+      expect(mockedCustomerService.dormant).toHaveBeenLastCalledWith({
+        days: 60,
+        page: 1,
+        limit: 50,
       }),
     );
   });

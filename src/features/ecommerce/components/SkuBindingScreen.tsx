@@ -11,7 +11,7 @@ import {
   FilterBar,
   FilterSearch,
   FilterSelect,
-  Pagination,
+  ListFooter,
   SkuText,
   type DataTableColumn,
 } from "@/components";
@@ -398,13 +398,15 @@ export function SkuBindingScreen({
                   }
                 />
 
-                {listings.pagination.totalPages > 1 ? (
-                  <Pagination
+                {listings.listings.length > 0 ? (
+                  <ListFooter
                     page={listings.pagination.page}
-                    totalPages={listings.pagination.totalPages}
+                    pageSize={listings.query.limit}
                     total={listings.pagination.total}
+                    totalPages={listings.pagination.totalPages}
                     unit="varian"
                     onPageChange={(page) => listings.setQuery({ page })}
+                    onPageSizeChange={(limit) => listings.setQuery({ limit, page: 1 })}
                   />
                 ) : null}
 

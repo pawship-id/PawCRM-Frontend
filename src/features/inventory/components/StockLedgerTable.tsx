@@ -4,7 +4,7 @@ import { ChevronRight } from "lucide-react";
 
 import {
   DataTable,
-  Pagination,
+  ListFooter,
   type DataTableColumn,
   type SortOptions,
 } from "@/components";
@@ -252,10 +252,12 @@ export function StockLedgerTable({
   onSortChange,
   loading = false,
   page,
+  pageSize,
   totalPages,
   total,
   filtered,
   onPageChange,
+  onPageSizeChange,
   onSelect,
 }: {
   movements: StockMovement[];
@@ -268,11 +270,14 @@ export function StockLedgerTable({
   /** A page is on its way: rows on screen dim, an empty table shows a spinner. */
   loading?: boolean;
   page: number;
+  pageSize: number;
   totalPages: number;
   total: number;
   /** True when a type or date filter is narrowing the list — changes the empty copy. */
   filtered: boolean;
   onPageChange: (page: number) => void;
+  /** The footer asked for another page size; the caller resets to page 1. */
+  onPageSizeChange: (pageSize: number) => void;
   /** A row was opened — the card shows its detail. Rows are plain when absent. */
   onSelect?: (movement: StockMovement) => void;
 }) {
@@ -332,14 +337,17 @@ export function StockLedgerTable({
         }
       />
 
-      <Pagination
-        page={page}
-        totalPages={totalPages}
-        total={total}
-        unit="pergerakan"
-        unitPlural="pergerakan"
-        onPageChange={onPageChange}
-      />
+      {total > 0 && (
+        <ListFooter
+          page={page}
+          pageSize={pageSize}
+          totalPages={totalPages}
+          total={total}
+          unit="pergerakan"
+          onPageChange={onPageChange}
+          onPageSizeChange={onPageSizeChange}
+        />
+      )}
     </div>
   );
 }

@@ -9,7 +9,7 @@ import {
   Alert,
   DataTable,
   HighlightText,
-  Pagination,
+  ListFooter,
   type DataTableColumn,
   type SortOptions,
 } from "@/components";
@@ -469,12 +469,14 @@ export function GroomingServicesScreen({
       />
 
       {services.length > 0 && (
-        <Pagination
+        <ListFooter
           page={pagination.page}
-          totalPages={pagination.totalPages}
+          pageSize={query.limit}
           total={pagination.total}
+          totalPages={pagination.totalPages}
           unit="layanan"
           onPageChange={(page) => setQuery({ page })}
+          onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
         />
       )}
 

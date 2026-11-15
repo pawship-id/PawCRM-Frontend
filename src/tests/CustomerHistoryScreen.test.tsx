@@ -154,7 +154,7 @@ describe("asking the server", () => {
       source: undefined,
       sort: "dateDesc",
       page: 1,
-      limit: 20,
+      limit: 25,
     });
   });
 

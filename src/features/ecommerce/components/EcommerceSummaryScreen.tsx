@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ChevronRight, Plus } from "lucide-react";
 
-import { Alert, Card, DataTable, Pagination, StatTile, type DataTableColumn } from "@/components";
+import { Alert, Card, DataTable, ListFooter, StatTile, type DataTableColumn } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can, usePermissions } from "@/features/permissions";
 import { cn } from "@/lib/utils";
@@ -403,13 +403,15 @@ export function EcommerceSummaryScreen() {
                 : "Belum ada riwayat."
             }
           />
-          {history.pagination.totalPages > 1 ? (
-            <Pagination
+          {history.entries.length > 0 ? (
+            <ListFooter
               page={history.pagination.page}
-              totalPages={history.pagination.totalPages}
+              pageSize={history.limit}
               total={history.pagination.total}
+              totalPages={history.pagination.totalPages}
               unit="riwayat"
               onPageChange={history.setPage}
+              onPageSizeChange={history.setLimit}
             />
           ) : null}
         </div>

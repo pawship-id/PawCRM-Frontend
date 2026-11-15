@@ -36,7 +36,7 @@ import {
   type MemberLens,
   useMembershipCounts,
 } from "../hooks/useMembershipCounts";
-import { CARD_PAGE_SIZE, usePetMemberships } from "../hooks/usePetMemberships";
+import { usePetMemberships } from "../hooks/usePetMemberships";
 import { dayKey, formatDay } from "../kelola";
 import { ATTACH_TO_LABEL, EXPIRING_SOON_LABEL, STATUS_LABEL, cardHref, formatDate } from "../labels";
 import { JatahChips } from "./JatahRows";
@@ -298,7 +298,6 @@ export function MembershipCardsPanel() {
         <ListFooter
           page={pagination.page}
           pageSize={pagination.limit}
-          pageSizes={[CARD_PAGE_SIZE, 50, 100]}
           total={pagination.total}
           totalPages={pagination.totalPages}
           unit="anggota"

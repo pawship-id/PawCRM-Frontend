@@ -6,20 +6,21 @@ import { branchService } from "@/services/branch.service";
 import { ApiError } from "@/services/api-error";
 import type { Branch, BranchListQuery, PageResult } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { DEFAULT_PAGE_SIZE } from "@/components";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface BranchesQuery {
   page: number;
+  limit: number;
   search: string;
   /** "" = any, true = active only, false = inactive only. */
   active: boolean | "";
   includeDeleted: boolean;
 }
 
-const PAGE_SIZE = 20;
-
 const DEFAULT_QUERY: BranchesQuery = {
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
   search: "",
   active: "",
   includeDeleted: false,
@@ -28,7 +29,7 @@ const DEFAULT_QUERY: BranchesQuery = {
 /** Empty page so consumers can render a table shell before the first load. */
 const EMPTY_PAGE: PageResult<Branch>["pagination"] = {
   page: 1,
-  limit: PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   total: 0,
   totalPages: 0,
 };
@@ -91,7 +92,7 @@ export function useBranches(): UseBranchesResult {
 
     const apiQuery: BranchListQuery = {
       page: settled.page,
-      limit: PAGE_SIZE,
+      limit: settled.limit,
       search: settled.search.trim() || undefined,
       isActive: settled.active === "" ? undefined : settled.active,
       includeDeleted: settled.includeDeleted || undefined,

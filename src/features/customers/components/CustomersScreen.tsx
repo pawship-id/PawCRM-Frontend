@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 
-import { Alert, Pagination } from "@/components";
+import { Alert, ListFooter } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
 
@@ -112,13 +112,14 @@ export function CustomersScreen({
         sort={query.sort}
         onSortChange={(sort) => setQuery({ sort })}
       />
-      <Pagination
+      <ListFooter
         page={pagination.page}
+        pageSize={query.limit}
         totalPages={pagination.totalPages}
         total={pagination.total}
         unit="pelanggan"
-        unitPlural="pelanggan"
         onPageChange={(page) => setQuery({ page })}
+        onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
       />
     </div>
   );

@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import {
   Alert,
   FilterSelect,
-  Pagination,
+  ListFooter,
   namedOptions,
   withAll,
 } from "@/components";
@@ -185,14 +185,17 @@ export function StockProductsScreen() {
             sort={query.sort}
             onSortChange={(sort) => setQuery({ sort })}
           />
-          <Pagination
-            page={pagination.page}
-            totalPages={pagination.totalPages}
-            total={pagination.total}
-            unit="produk"
-            unitPlural="produk"
-            onPageChange={(page) => setQuery({ page })}
-          />
+          {pagination.total > 0 && (
+            <ListFooter
+              page={pagination.page}
+              pageSize={query.limit}
+              totalPages={pagination.totalPages}
+              total={pagination.total}
+              unit="produk"
+              onPageChange={(page) => setQuery({ page })}
+              onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
+            />
+          )}
         </>
       )}
     </div>

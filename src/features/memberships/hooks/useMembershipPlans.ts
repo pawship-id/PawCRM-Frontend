@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { ApiError } from "@/services/api-error";
 import { membershipService } from "@/services/membership.service";
 import type {
@@ -10,11 +11,9 @@ import type {
   Pagination,
 } from "@/types/membership";
 
-export const PLAN_PAGE_SIZE = 20;
-
 export const DEFAULT_PLANS_QUERY: MembershipPlanListQuery = {
   page: 1,
-  limit: PLAN_PAGE_SIZE,
+  limit: DEFAULT_PAGE_SIZE,
   sort: "newest",
 };
 

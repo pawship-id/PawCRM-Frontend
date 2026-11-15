@@ -22,10 +22,7 @@ import { formatMoney, sumDecimals } from "@/utils/decimal";
 
 import { ACCOUNTING_CRUMBS } from "../crumbs";
 import { reportPresets } from "../financeSummary";
-import {
-  JOURNAL_PAGE_SIZES,
-  useJournalEntries,
-} from "../hooks/useJournalEntries";
+import { useJournalEntries } from "../hooks/useJournalEntries";
 import { entrySourceLabel, formatDate, SOURCE_TONE } from "../labels";
 import { AccountingModuleHeader } from "./AccountingModuleHeader";
 import { JournalEntriesToolbar } from "./JournalEntriesToolbar";
@@ -281,7 +278,6 @@ export function JournalEntriesScreen({ now }: { now: string }) {
             <ListFooter
               page={pagination.page}
               pageSize={query.limit}
-              pageSizes={JOURNAL_PAGE_SIZES}
               total={pagination.total}
               totalPages={pagination.totalPages}
               unit="entri"

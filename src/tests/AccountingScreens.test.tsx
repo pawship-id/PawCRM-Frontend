@@ -1170,7 +1170,7 @@ function ledgerPage(items: JournalEntry[]): PageResult<JournalEntry> {
     items,
     pagination: {
       page: 1,
-      limit: 20,
+      limit: 25,
       total: items.length,
       totalPages: items.length === 0 ? 0 : 1,
     },

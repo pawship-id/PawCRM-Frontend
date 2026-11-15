@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DEFAULT_PAGE_SIZE } from "@/components";
 import { ApiError } from "@/services/api-error";
 import { productService } from "@/services/product.service";
 import { warehouseService } from "@/services/warehouse.service";
@@ -17,6 +18,7 @@ export interface NegativeStockQuery {
   /** Set from the table's headers. */
   sort: NegativeStockSort;
   page: number;
+  limit: number;
 }
 
 const DEFAULT_QUERY: NegativeStockQuery = {
@@ -24,9 +26,8 @@ const DEFAULT_QUERY: NegativeStockQuery = {
   // The API's default, stated so the Nilai header shows it as active.
   sort: "valueAsc",
   page: 1,
+  limit: DEFAULT_PAGE_SIZE,
 };
-
-const LIMIT = 20;
 
 export interface UseNegativeStockResult {
   items: NegativeStockRow[];
@@ -75,7 +76,7 @@ export function useNegativeStock(): UseNegativeStockResult {
   const [items, setItems] = useState<NegativeStockRow[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,
-    limit: LIMIT,
+    limit: DEFAULT_PAGE_SIZE,
     total: 0,
     totalPages: 0,
   });
@@ -125,7 +126,7 @@ export function useNegativeStock(): UseNegativeStockResult {
     productService
       .negativeStock({
         page: query.page,
-        limit: LIMIT,
+        limit: query.limit,
         // `|| undefined` so "every warehouse" drops out of the query string
         // rather than reaching the API as an empty string it refuses as a 400.
         warehouseId: query.warehouseId || undefined,
@@ -154,7 +155,7 @@ export function useNegativeStock(): UseNegativeStockResult {
     return () => {
       active = false;
     };
-  }, [query.page, query.warehouseId, query.sort, nonce]);
+  }, [query.page, query.limit, query.warehouseId, query.sort, nonce]);
 
   return {
     items,

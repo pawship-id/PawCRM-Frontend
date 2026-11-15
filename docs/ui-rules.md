@@ -346,23 +346,24 @@ Applied filters render as removable chips below the bar or panel. Anatomy and pr
 
 ### The foot of a list
 
-**Four lists in the app let somebody choose how many rows a page holds — Transaksi
-(Kas & Bank), Faktur Penjualan, Komisi and Jurnal — and they share one `ListFooter`.**
-Decided 20 September 2026 on request, from a mockup; Komisi joined on
-21 September and opens at 10 with 10/25/50/100, the mockup's own numbers (the
-server caps it at 100). Jurnal joined the same day with Transaksi's 25/50/100,
-not its mockup's 10 — the two lists of one module offer one choice. Everywhere else, `Pagination` is still correct and has
-no page size.
+**Every list in the app ends in one `ListFooter`, offering 25/50/100 rows a page
+and starting at 25.** Decided 15 November 2026 on request ("semua pakai komponen
+yang sama"). `PAGE_SIZE_OPTIONS` and `DEFAULT_PAGE_SIZE` live in
+`ListFooter.tsx` and are exported from `@/components`: a list hook starts its
+`limit` at `DEFAULT_PAGE_SIZE`, keeps it in query state, and the screen passes
+`pageSize={query.limit}` and `onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}`.
+Never pass `pageSizes` and never keep a per-feature size list — 100 is the
+ceiling because `common.validation.js` caps `limit` at 100 for every list
+endpoint (Faktur Penjualan's old 200 went with it).
 
 ```
-Menampilkan 1–10 dari 14 transaksi · Tampilkan [10 ⌄] / halaman    ‹ Sebelumnya · 1 · 2 · 3 · Berikutnya ›
+Menampilkan 1–25 dari 87 faktur · Tampilkan [25 ⌄] / halaman    ‹ Sebelumnya · 1 · 2 · 3 · 4 · Berikutnya ›
 ```
 
 - **The left-hand side never hides.** "Menampilkan 1–14 dari 14" and the size
-  control are exactly what is still worth saying when everything fits — and the
-  old Transaksi footer put a bare `Pagination` beside its size control, which
-  draws nothing at one page, so both vanished precisely when somebody wanted to
-  ask for MORE rows.
+  control are exactly what is still worth saying when everything fits — a bare
+  pager draws nothing at one page, so both would vanish precisely when somebody
+  wanted to ask for MORE rows. Don't wrap the footer in `totalPages > 1 &&`.
 - **The pager hides at one page**, and it is NUMBERED. Sebelumnya and Berikutnya
   alone make somebody press a button five times to reach page six.
 - **"Tampilkan" and "/ halaman" are the FOOTER's words**, not the control's:
@@ -370,23 +371,16 @@ Menampilkan 1–10 dari 14 transaksi · Tampilkan [10 ⌄] / halaman    ‹ Sebe
   side of it, which is what makes the row read as a sentence. `active={false}` —
   a page size is a choice, not a filter, and a navy trigger would announce an
   applied filter nobody set.
-- **The current size is folded into the options** even when the caller's list
-  omits it. Without it the trigger can read a number the popover cannot offer
-  back, and picking anything is a one-way door out of the size the list started
-  in — which is how Transaksi shipped for months, opening on 20 rows with
-  10/25/50/100 on the menu.
+- **The current size is folded into the options** when it is not one of the
+  three (a stored query, a deep link). Without it the trigger can read a number
+  the popover cannot offer back, and picking anything is a one-way door out of
+  the size the list started in.
+- **`unit` is one noun** — "faktur", "supplier". Indonesian does not inflect for
+  number, so there is no plural to pass.
 
-**BOTH LISTS START AT 25** (20 September 2026, on request): Transaksi was on 20
-by default and offered 10, and a cash book at 10 rows is half a screen. Its menu
-is **25/50/100 and stops there** where Faktur goes to 200 — that is the server's
-rule, not a taste. `LIST_MAX_LIMIT` is 100 on `cashTransaction.model.js` and 200
-on `customerInvoice.model.js`, and Joi rejects anything above it before the query
-runs, so raise it there first if the two ever need to match.
-
-It replaced `InvoiceListFooter`, which is deleted. The two footers had agreed on
-nothing — "Tampilkan" vs "Per halaman", options reading "25 / halaman" vs "25",
-the control on opposite sides, different page sizes — and they are read by the
-same person in the same sitting.
+**The old `Pagination` survives only for the POS catalogue** (`PosCatalog`): it
+pages a card grid, not rows, and the server caps that endpoint at 48, so a
+25/50/100 menu cannot apply. Do not use it for a list.
 
 ---
 
@@ -519,6 +513,12 @@ loud, so the badge and the conversation used different words for one fact. They 
 stored values word for word, so a reader looking at `in_progress` in an export and "In Progress"
 on a badge holds no translation table in their head.
 
+**THE STATUS CONTROL IS BAHASA AGAIN (15 November 2026, on request).** The menu rows and
+the primary button (`BOOKING_STATUS_ACTIONS` / `RIDE_STATUS_ACTIONS` — "Tandai sudah tiba",
+"Mulai kerjakan", "Konfirmasi booking"), the "Status lain" trigger and "Jadwalkan ulang" are
+Indonesian now. **The rung NAMES on the badges stay English** — that part of the exception is
+unchanged. The paragraph below is the history of the decision this reverses; do not follow it.
+
 **The status CONTROL speaks English too**, widened on the shop's second look: the menu rows
 (`BOOKING_STATUS_ACTIONS` — "Confirm booking", "Mark arrived", "Start work"), its "Other
 statuses" trigger, "Status history" and "Reschedule". The first pass kept these in Bahasa on the
@@ -609,7 +609,7 @@ From [`docs/architecture.md`](./architecture.md), unchanged: a component lives i
 - 9 files importing `@/components/icons` → lucide, then delete `icons.tsx`
 - 49 files reaching sweetalert through `lib/swal.ts` → a tokened toast, then drop the dependency
 - every module but `memberships` still puts a FAILED ACT in an `<Alert>` (§9) → `swalToast(…, "error", 6000)`, keeping the load-failure Alerts exactly as they are. `features/memberships/errors.ts` is the shape to copy. Opportunistic; the API messages behind a module have to be Indonesian first, or the swap only moves English into a toast
-- English UI strings in customers / users / roles / branches / warehouses → Bahasa. (`Pagination` is done — 25 Aug: "Halaman 2 dari 5", "Sebelumnya"/"Berikutnya", and its `unitPlural` default changed from `${unit}s`, which appended an English plural to an Indonesian noun for every caller that omitted it.)
+- English UI strings in customers / users / roles / branches / warehouses → Bahasa. (The pager is done — every list is on `ListFooter` since 15 November 2026, see "The foot of a list"; `Pagination` remains only on the POS catalogue.)
 
 **Open questions — record an answer here, don't guess in code:**
 
