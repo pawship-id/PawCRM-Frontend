@@ -7432,8 +7432,9 @@ export interface PurchaseReturnPreview {
  * The backend returns `userId`/`branchId` as populated subdocuments — a small
  * display projection, never the whole user/branch — so the screen can show WHO
  * acted and WHERE without a second lookup. `fullName` is the user model's name
- * field (there is no separate `name`). Either can be null: a user deleted since
- * the event, or an action with no branch context (see auditLog.model.js).
+ * field (there is no separate `name`). Either can be null: an action done by the
+ * system (an import script — shown as "Sistem"), or an action with no branch
+ * context (see auditLog.model.js).
  */
 export interface AuditLogActor {
   _id: string;
@@ -7460,7 +7461,7 @@ export interface AuditLogBranchRef {
 export interface AuditLog {
   _id: string;
   tenantId: string;
-  /** The actor; populated to a display projection, or null if the user is gone. */
+  /** The actor; populated to a display projection, or null for a system action ("Sistem"). */
   userId: AuditLogActor | null;
   /** The branch context, populated; null for tenant-level actions. */
   branchId: AuditLogBranchRef | null;

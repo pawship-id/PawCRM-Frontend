@@ -83,7 +83,7 @@ describe("AuditLogsTable", () => {
       />,
     );
 
-    expect(screen.getByText("Pengguna terhapus")).toBeInTheDocument();
+    expect(screen.getByText("Sistem")).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.getAllByText("—").length).toBe(2);
   });
