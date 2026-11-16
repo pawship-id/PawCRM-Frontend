@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 
 import { Alert, Card, Spinner } from "@/components";
@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Table,
   TableBody,
@@ -175,6 +177,38 @@ export function GroomingServiceVariantsEditor({
     alone and save that as the service's whole price list.
   */
   const disabled = !mayUpdate || saving || optionsError !== null;
+  /*
+    ─── AN ANTAR-JEMPUT SERVICE AND "PERJALANAN" (16 November 2026) ──────────
+
+    The system trip card is never a chip. A ride service has a "Harga beda per
+    varian" switch instead: on, the trip axis is always in the draft, so the
+    Antar / Jemput and Antar + Jemput rows are simply in the list and the other
+    chips (Zona…) are optional; off, one price for every ride. A service still
+    priced by other axes but not by the trip card (before `seed:trip-card`)
+    gets it added — the save bar then asks for the new rows' prices.
+  */
+  const tripAxis = allAxisDefs.find((def) => def.systemKey === "trip")?.key ?? null;
+  const isRide = (service.serviceKind ?? serviceKind) === "pickup-delivery" && tripAxis !== null;
+  const rideVaried = isRide && draft.axes.length > 0;
+  const chipDefs = axisDefs.filter((def) => !def.systemKey);
+
+  useEffect(() => {
+    if (optionsLoading || !isRide || !tripAxis) return;
+    if (draft.axes.length > 0 && !draft.axes.includes(tripAxis)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- the trip axis follows the other axes
+      setDraft((current) => toggleAxis(current, tripAxis, true, axisValues));
+    }
+  }, [optionsLoading, isRide, tripAxis, draft.axes, axisValues]);
+
+  function setRideVaried(on: boolean) {
+    if (!tripAxis) return;
+    if (on) {
+      pickAxis(tripAxis, true);
+    } else {
+      pickAxes(draft.axes.map((axis) => [axis, false] as const));
+    }
+  }
+
   const combos = buildVariantCombos(draft.axes, axisValues);
   const dirty =
     draftSignature(draft, axisValues) !==
@@ -203,7 +237,13 @@ export function GroomingServiceVariantsEditor({
   }
 
   function pickAxis(axis: VariantAxisKey, on: boolean) {
-    change(toggleAxis(draft, axis, on, axisValues));
+    pickAxes([[axis, on]]);
+  }
+
+  function pickAxes(changes: readonly (readonly [VariantAxisKey, boolean])[]) {
+    change(
+      changes.reduce((next, [axis, on]) => toggleAxis(next, axis, on, axisValues), draft),
+    );
     // The rows' keys change with the axes, so a selection would point at nothing.
     setSelected([]);
     closeBulk();
@@ -358,6 +398,25 @@ export function GroomingServiceVariantsEditor({
       </Card>
 
       <Card title="Opsi yang membedakan harga">
+        {isRide && (
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <Label htmlFor="ride-has-variants">Harga beda per varian</Label>
+              <p className="mt-1 max-w-prose text-xs text-muted">
+                Nyalakan untuk harga Antar / Jemput (sekali jalan) dan Antar + Jemput
+                (paket pulang-pergi, dibagi rata ke booking jemput dan antar) — bisa juga
+                dibedakan per zona. Kalau mati, satu harga berlaku untuk tiap perjalanan.
+              </p>
+            </div>
+            <Switch
+              id="ride-has-variants"
+              checked={rideVaried}
+              onCheckedChange={setRideVaried}
+              disabled={disabled}
+            />
+          </div>
+        )}
+        {(!isRide || rideVaried) && (
         <div className="flex flex-wrap gap-2">
           {/*
             EVERY OPSI VARIAN CARD (17 September 2026) — the mockup's three pet
@@ -365,10 +424,10 @@ export function GroomingServiceVariantsEditor({
             order. A card is named as the tenant named it.
           */}
           {[
-            ...AXIS_ORDER.map((key) => axisDefs.find((def) => def.key === key)).filter(
-              (def): def is (typeof axisDefs)[number] => Boolean(def),
+            ...AXIS_ORDER.map((key) => chipDefs.find((def) => def.key === key)).filter(
+              (def): def is (typeof chipDefs)[number] => Boolean(def),
             ),
-            ...axisDefs.filter((def) => !AXIS_ORDER.includes(def.key)),
+            ...chipDefs.filter((def) => !AXIS_ORDER.includes(def.key)),
           ].map((def) => {
             const axis = def.key;
             const on = draft.axes.includes(axis);
@@ -397,7 +456,8 @@ export function GroomingServiceVariantsEditor({
             );
           })}
         </div>
-        {draft.axes.length === 0 && (
+        )}
+        {draft.axes.length === 0 && !isRide && (
           <p className="mt-3 text-sm text-muted">
             Tidak ada yang dicentang — satu harga dan satu durasi untuk semua
             hewan.
