@@ -4879,7 +4879,7 @@ export interface Service {
    * Whether selling it earns commission. Copied onto a booking when booked.
    */
   commissionable: boolean;
-  /** Whether it may be chosen without a main service. Pickers do not read it yet. */
+  /** Whether it may be chosen without a main service — read by the booking card (16 November 2026). */
   soldSeparately: boolean;
   /** What the price covers, for a storefront to list — not the description. */
   included: string[];
