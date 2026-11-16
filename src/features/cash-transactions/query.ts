@@ -81,7 +81,8 @@ export const DEFAULT_CASH_TRANSACTIONS_QUERY: CashTransactionsQuery = {
   accountId: "",
   status: "posted",
   documentId: "",
-  sort: "newest",
+  // Last input first (15 Nov 2026, on request); Tanggal is one header click away.
+  sort: "createdNewest",
 };
 
 /**

@@ -47,7 +47,9 @@ const DEFAULT_QUERY: StockTransfersQuery = {
   search: "",
   warehouseId: "",
   status: "",
-  sort: "newest",
+  // LAST INPUT FIRST (15 Nov 2026, on request): a back-dated document typed
+  // today still lands on top. The date header remains one click away.
+  sort: "createdNewest",
   page: 1,
   limit: DEFAULT_PAGE_SIZE,
 };

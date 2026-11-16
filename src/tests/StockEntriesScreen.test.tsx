@@ -174,13 +174,14 @@ describe("header sorting", () => {
     return calls[calls.length - 1][0].sort;
   }
 
-  it("opens on the newest first, marked on the Tanggal header", async () => {
+  // Last input first (15 Nov 2026) is no column's ordering, so no header claims it.
+  it("opens on the last input first, with no header marked", async () => {
     await renderList();
 
-    expect(lastSort()).toBe("newest");
+    expect(lastSort()).toBe("createdNewest");
     expect(
       screen.getByRole("columnheader", { name: "Tanggal" }),
-    ).toHaveAttribute("aria-sort", "descending");
+    ).toHaveAttribute("aria-sort", "none");
   });
 
   it.each([
@@ -194,9 +195,11 @@ describe("header sorting", () => {
     await waitFor(() => expect(lastSort()).toBe(sort));
   });
 
-  it("flips Tanggal to the oldest first on a click", async () => {
+  it("orders by Tanggal, newest first, then flips", async () => {
     const user = await renderList();
 
+    await user.click(screen.getByRole("button", { name: "Tanggal" }));
+    await waitFor(() => expect(lastSort()).toBe("newest"));
     await user.click(screen.getByRole("button", { name: "Tanggal" }));
 
     await waitFor(() => expect(lastSort()).toBe("oldest"));

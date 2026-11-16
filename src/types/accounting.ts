@@ -478,6 +478,8 @@ export type JournalSourceType =
  */
 export type JournalEntrySort =
   | "newest"
+  /** Last input first — the list default (15 Nov 2026). */
+  | "createdNewest"
   | "oldest"
   | "numberDesc"
   | "numberAsc"

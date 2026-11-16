@@ -303,18 +303,19 @@ describe("header sorting", () => {
     return calls[calls.length - 1][0].sort;
   }
 
-  it("opens on the newest first, marked on the Tanggal header", async () => {
+  // Last input first (15 Nov 2026) is no column's ordering, so no header claims it.
+  it("opens on the last input first, with no header marked", async () => {
     await renderList();
 
-    expect(lastSort()).toBe("newest");
+    expect(lastSort()).toBe("createdNewest");
     expect(
       screen.getByRole("columnheader", { name: "Tanggal" }),
-    ).toHaveAttribute("aria-sort", "descending");
+    ).toHaveAttribute("aria-sort", "none");
   });
 
   it.each([
     ["No. transfer", "numberAsc"],
-    ["Tanggal", "oldest"],
+    ["Tanggal", "newest"],
     ["Produk", "productCountDesc"],
   ])("asks the server to sort by %s", async (header, sort) => {
     const user = await renderList();
@@ -386,7 +387,7 @@ it("re-queries unnarrowed on Reset", async () => {
 
   await waitFor(() =>
     expect(stockTransferService.list).toHaveBeenLastCalledWith(
-      expect.objectContaining({ warehouseId: undefined, sort: "newest" }),
+      expect.objectContaining({ warehouseId: undefined, sort: "createdNewest" }),
     ),
   );
 });

@@ -93,11 +93,9 @@ const DEFAULT_QUERY: PurchaseInvoicesQuery = {
   view: "outstanding",
   dateFrom: "",
   dateTo: "",
-  // NEWEST BILL FIRST, matching the endpoint's own default rather than
-  // second-guessing it. Urgency is what the `overdue` / `dueSoon` views are
-  // for; somebody who wants the book ordered by deadline clicks the Jatuh
-  // tempo header, and that is one click away.
-  sort: "newest",
+  // LAST INPUT FIRST (15 Nov 2026, on request): a back-dated document typed
+  // today still lands on top. The date and Jatuh tempo headers remain one click away.
+  sort: "createdNewest",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */

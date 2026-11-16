@@ -6294,6 +6294,8 @@ export interface GoodsReceiptListRow {
  */
 export type GoodsReceiptSort =
   | "newest"
+  /** Last input first — the list default (15 Nov 2026). */
+  | "createdNewest"
   | "oldest"
   | "numberDesc"
   | "numberAsc"
@@ -7098,6 +7100,8 @@ export interface PurchaseInvoiceListQuery {
  */
 export type PurchaseInvoiceSort =
   | "newest"
+  /** Last input first — the list default (15 Nov 2026). */
+  | "createdNewest"
   | "oldest"
   | "dueSoonest"
   | "dueLatest"
@@ -7353,7 +7357,7 @@ export interface PurchaseReturnListQuery {
  * credit note. There is no ordering by value or by status; see the model.
  */
 export type PurchaseReturnSort =
-  "newest" | "oldest" | "numberDesc" | "numberAsc";
+  "createdNewest" | "newest" | "oldest" | "numberDesc" | "numberAsc";
 
 /** One line going back, as a client sends it. Three fields, and that is the design. */
 export interface PurchaseReturnItemInput {
@@ -8467,6 +8471,7 @@ export interface CustomerInvoiceListQuery {
    * derived in the pipeline with a void invoice counted as owing nothing.
    */
   sort?:
+    | "createdNewest"
     | "dueSoonest"
     | "dueLatest"
     | "newest"
@@ -8738,6 +8743,8 @@ export type CashTransactionRecordedVia = "backoffice" | "pos";
 
 export type CashTransactionSort =
   | "newest"
+  /** Last input first — the list default (15 Nov 2026). */
+  | "createdNewest"
   | "oldest"
   | "amountHighest"
   | "amountLowest";

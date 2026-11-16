@@ -39,7 +39,9 @@ export interface StockEntriesQuery {
 
 const DEFAULT_QUERY: StockEntriesQuery = {
   search: "",
-  sort: "newest",
+  // LAST INPUT FIRST (15 Nov 2026, on request): a back-dated document typed
+  // today still lands on top. The date header remains one click away.
+  sort: "createdNewest",
   branchId: "",
   warehouseId: "",
   page: 1,

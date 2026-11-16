@@ -344,6 +344,20 @@ missing either kept at the bottom.
 
 Applied filters render as removable chips below the bar or panel. Anatomy and props: [`docs/ui-component-specs.md`](./ui-component-specs.md).
 
+**EVERY LIST OPENS ON THE LAST INPUT FIRST** (15 November 2026, on request).
+Master data (Pelanggan, Hewan, Produk, Supplier, Kategori, Promo, Membership,
+Pengguna, Role, Cabang, Gudang) already did — their `newest` is `createdAt`.
+Documents now open on **`createdNewest`** (`createdAt` desc, its own index on
+each collection) rather than their document date: Faktur Penjualan, Utang
+Supplier, Penerimaan, Retur, Transfer, Opname, Stok Awal / Penyesuaian, Jurnal
+and Transaksi — so a back-dated document typed today lands on top. Biaya tetap
+opens on `newest` (its `createdAt`). No header claims that ordering, so every
+arrow opens grey; a first click on Tanggal gives the document date, newest first.
+**Deliberately left on their own ordering:** Batch & Expired (FEFO), Stok Minus
+and Stok Minim (worst first — per product-warehouse rows, no `createdAt`), Daftar
+Stok and the grooming catalogue (A–Z), Komisi (booking date), the booking boards
+(schedule), Daftar Akun (code).
+
 ### The foot of a list
 
 **Every list in the app ends in one `ListFooter`, offering 25/50/100 rows a page

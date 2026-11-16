@@ -37,8 +37,8 @@ export const DEFAULT_FIXED_COSTS_QUERY: FixedCostsQuery = {
   */
   status: "active",
   accountId: "",
-  // The schedule is read forwards, unlike a cash book: soonest due first.
-  sort: "dueSoonest",
+  // Last input first (15 Nov 2026, on request) — `newest` is `createdAt` here.
+  sort: "newest",
 };
 
 export interface UseFixedCostsResult {

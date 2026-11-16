@@ -1322,7 +1322,7 @@ describe("JournalEntriesScreen", () => {
 
     // Every list starts ordered — the default is sent, not left implicit.
     expect(list).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sort: "newest" }),
+      expect.objectContaining({ sort: "createdNewest" }),
     );
 
     await userEvent.click(screen.getByRole("button", { name: /^Nilai/ }));

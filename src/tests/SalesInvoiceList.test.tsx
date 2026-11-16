@@ -214,12 +214,12 @@ describe("SalesInvoiceList — what it asks the server", () => {
     EVERY STATUS, THIS MONTH (12 October 2026, on request) — the same period
     Ringkasan opens on, sent as its name.
   */
-  it("opens on this month's invoices — every status — soonest due first, 25 a page", async () => {
+  it("opens on this month's invoices — every status — last input first, 25 a page", async () => {
     renderWithAuth(<ReceivablesScreen />);
 
     await waitFor(() => expect(customerInvoiceService.list).toHaveBeenCalled());
 
-    expect(lastList()).toMatchObject({ sort: "dueSoonest", limit: 25, page: 1 });
+    expect(lastList()).toMatchObject({ sort: "createdNewest", limit: 25, page: 1 });
     expect(lastList()?.statuses).toBeUndefined();
     expect(lastList()?.status).toBeUndefined();
     expect(lastList()?.period).toBe("month");
@@ -682,12 +682,13 @@ describe("SalesInvoiceList — the four cards", () => {
 });
 
 describe("SalesInvoiceList — the table", () => {
-  it("shows the Jatuh tempo column as sorted when the screen opens", async () => {
+  // Last input first (15 Nov 2026) is no column's ordering, so no header claims it.
+  it("opens with no header marked as sorted", async () => {
     renderWithAuth(<ReceivablesScreen />);
 
     expect(
       await screen.findByRole("columnheader", { name: /Jatuh tempo/ }),
-    ).toHaveAttribute("aria-sort", "ascending");
+    ).toHaveAttribute("aria-sort", "none");
   });
 
   // Money takes the largest first (ui-rules §8), then flips.

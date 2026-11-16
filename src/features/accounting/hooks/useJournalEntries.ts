@@ -46,7 +46,9 @@ export const DEFAULT_JOURNAL_QUERY: JournalEntriesQuery = {
   dateFrom: "",
   dateTo: "",
   branchIds: [],
-  sort: "newest",
+  // LAST INPUT FIRST (15 Nov 2026, on request): a back-dated document typed
+  // today still lands on top. The date header remains one click away.
+  sort: "createdNewest",
 };
 
 /** Empty page, so the screen can render its table shell before the first load. */

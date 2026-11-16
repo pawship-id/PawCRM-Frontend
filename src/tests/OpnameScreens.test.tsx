@@ -898,22 +898,22 @@ describe("OpnameScreen", () => {
       asMock(stockOpnameService.list).mockResolvedValue(page([sheet()]));
     });
 
-    it("opens on the newest sheet date, marked on Tanggal", async () => {
+    it("opens on the last input first, with no header marked", async () => {
       renderWithAuth(<OpnameScreen />);
       await screen.findByText("OPN-2026-0001");
 
       // Stated rather than omitted: every page of a walk has to agree.
       expect(stockOpnameService.list).toHaveBeenCalledWith(
-        listRequest({ sort: "newest" }),
+        listRequest({ sort: "createdNewest" }),
       );
       expect(
         screen.getByRole("columnheader", { name: "Tanggal" }),
-      ).toHaveAttribute("aria-sort", "descending");
+      ).toHaveAttribute("aria-sort", "none");
     });
 
     it.each([
       ["Nomor", "numberAsc"],
-      ["Tanggal", "oldest"],
+      ["Tanggal", "newest"],
       ["Selisih nilai", "diffValueDesc"],
     ])("asks the server to sort by %s", async (header, sort) => {
       const user = userEvent.setup();

@@ -90,7 +90,8 @@ const STATUSES = withAll<PurchaseReturnStatus | "">(
  * being read.
  */
 const SORTS: FilterOption<PurchaseReturnSort>[] = [
-  { value: "newest", label: "Terbaru" },
+  { value: "createdNewest", label: "Terakhir diinput" },
+  { value: "newest", label: "Tanggal terbaru" },
   { value: "oldest", label: "Terlama" },
   { value: "numberDesc", label: "Nomor Z–A" },
   { value: "numberAsc", label: "Nomor A–Z" },
@@ -118,7 +119,9 @@ const CLEARED: ReturnFilters = {
   status: "",
   dateFrom: "",
   dateTo: "",
-  sort: "newest",
+  // LAST INPUT FIRST (15 Nov 2026, on request): a back-dated document typed
+  // today still lands on top. The date header remains one click away.
+  sort: "createdNewest",
 };
 
 export function PurchaseReturnsToolbar({
@@ -277,7 +280,7 @@ function ReturnFilterPanel({
           ariaLabel="Urutkan"
           value={draft.sort}
           options={SORTS}
-          unsetValue="newest"
+          unsetValue="createdNewest"
           onChange={(sort) => patch({ sort })}
         />
         <FilterSelect

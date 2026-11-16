@@ -504,18 +504,19 @@ describe("ReceiptsScreen", () => {
     const lastSort = () =>
       asMock(goodsReceiptService.list).mock.calls.at(-1)?.[0]?.sort;
 
-    it("opens on the newest first, marked on the Tanggal header", async () => {
+    // Last input first (15 Nov 2026) is no column's ordering, so no header claims it.
+    it("opens on the last input first, with no header marked", async () => {
       await renderList();
 
-      expect(lastSort()).toBe("newest");
+      expect(lastSort()).toBe("createdNewest");
       expect(
         screen.getByRole("columnheader", { name: "Tanggal" }),
-      ).toHaveAttribute("aria-sort", "descending");
+      ).toHaveAttribute("aria-sort", "none");
     });
 
     it.each([
       ["Nomor", "numberAsc"],
-      ["Tanggal", "oldest"],
+      ["Tanggal", "newest"],
       ["Item", "itemCountDesc"],
       ["Nilai", "valueDesc"],
     ])("asks the server to sort by %s", async (header, sort) => {
