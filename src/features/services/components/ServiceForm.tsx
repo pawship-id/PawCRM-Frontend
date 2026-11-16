@@ -320,6 +320,36 @@ export function ServiceForm({
   );
 
   /*
+    ─── AN ANTAR-JEMPUT SERVICE IS PRICED BY "PERJALANAN" (16 Nov 2026) ───────
+
+    Antar / Jemput and Antar + Jemput are the two prices of a ride service, so
+    they are NOT a checkbox on this form and there is no "Arah" option to make
+    first. While the kind is pickup-delivery and "Harga beda per varian" is on,
+    the system trip card is always one of the axes (first, so each row reads
+    "Antar / Jemput · …"); other cards (Zona…) are ticked as before. The switch
+    stays — off is one price for every ride — and a NEW ride service opens with
+    it on. Leaving the kind takes the trip axis off again.
+  */
+  const tripAxis = axisDefs.find((def) => def.systemKey === "trip")?.key ?? null;
+  const isRide = serviceType === "main" && serviceKind === "pickup-delivery";
+  const ridePriced = isRide && tripAxis !== null;
+  const tripDefaulted = useRef(false);
+  /* eslint-disable react-hooks/set-state-in-effect -- the trip axis follows the kind and the switch */
+  useEffect(() => {
+    if (!tripAxis) return;
+    if (ridePriced && !editing && !tripDefaulted.current) {
+      tripDefaulted.current = true;
+      setHasVariants(true);
+    }
+    if (ridePriced && hasVariants) {
+      if (!variantAxes.includes(tripAxis)) setVariantAxes((prev) => [tripAxis, ...prev]);
+    } else if (variantAxes.includes(tripAxis)) {
+      setVariantAxes((prev) => prev.filter((axis) => axis !== tripAxis));
+    }
+  }, [tripAxis, ridePriced, editing, hasVariants, variantAxes]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  /*
     WHY SIMPAN IS OFF BEFORE ANYBODY PRESSES IT — the two variant-grid reasons
     no amount of typing fixes. Rows generated from a list still loading would be
     missing the values yet to arrive, and more than MAX_VARIANTS rows is a save
@@ -1061,9 +1091,9 @@ export function ServiceForm({
                 Harga beda per varian
               </Label>
               <p className="mt-1 max-w-prose text-xs text-muted">
-                Nyalakan kalau harga dan durasinya tergantung hewannya — tipe,
-                ukuran, atau jenis bulu. Kalau mati, satu harga dan satu durasi
-                berlaku untuk semua.
+                {ridePriced
+                  ? "Nyalakan untuk harga Antar / Jemput (sekali jalan) dan Antar + Jemput (paket pulang-pergi, dibagi rata ke booking jemput dan antar) — bisa juga dibedakan per zona. Kalau mati, satu harga berlaku untuk tiap perjalanan."
+                  : "Nyalakan kalau harga dan durasinya tergantung hewannya — tipe, ukuran, atau jenis bulu. Kalau mati, satu harga dan satu durasi berlaku untuk semua."}
               </p>
             </div>
             <Switch
@@ -1082,6 +1112,7 @@ export function ServiceForm({
           {hasVariants ? (
             <ServiceVariantEditor
               axes={variantAxes}
+              fixedAxes={ridePriced && tripAxis ? [tripAxis] : []}
               /*
                 ONLY THIS KIND'S OPTIONS (22 September 2026): Ukuran for a
                 grooming, Zona and Arah for a ride — plus whatever is ticked.

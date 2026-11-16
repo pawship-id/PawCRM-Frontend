@@ -6,6 +6,7 @@ import {
   otherLeg,
   customerEndOf,
   rideOf,
+  rideShare,
   slotAtOrAfter,
   slotAtOrBefore,
   TIME_SLOTS,
@@ -89,7 +90,7 @@ describe("the Arah option (BO's note 7)", () => {
     const found = arahCardOf(ride, [LOKASI, ARAH]);
 
     expect(found?.card._id).toBe("vo-arah");
-    expect(found?.codes).toEqual({ pickup: "jemput", delivery: "antar" });
+    expect(found?.kind === "legacy" && found.codes).toEqual({ pickup: "jemput", delivery: "antar" });
   });
 
   it("finds nothing on a service that is not priced by one", () => {
@@ -121,6 +122,48 @@ describe("the Arah option (BO's note 7)", () => {
       { optionId: "vo-lokasi", code: "rumah" },
       { optionId: "vo-arah", code: "antar" },
     ]);
+  });
+});
+
+const TRIP: VariantOption = makeVariantOption({
+  _id: "vo-trip",
+  name: "Perjalanan",
+  source: "staff",
+  builtIn: true,
+  systemKey: "trip",
+  axisKey: "vo-trip",
+  values: [
+    { code: "one_way", label: "Antar / Jemput", sortOrder: 0, isActive: true },
+    { code: "round_trip", label: "Antar + Jemput", sortOrder: 1, isActive: true },
+  ],
+});
+
+describe("the trip card — Antar / Jemput vs Antar + Jemput (16 November 2026)", () => {
+  const service = { hasVariants: true, variantAxes: ["zone", "vo-trip"] };
+
+  it("prefers the system card over an old Arah card", () => {
+    const both = { hasVariants: true, variantAxes: ["vo-arah", "vo-trip"] };
+    expect(arahCardOf(both, [ARAH, TRIP])?.kind).toBe("trip");
+  });
+
+  it("answers one_way for either direction, round_trip for a round trip's rides", () => {
+    expect(choicesForLeg(service, [TRIP], "pickup", [])).toEqual([
+      { optionId: "vo-trip", code: "one_way" },
+    ]);
+    expect(choicesForLeg(service, [TRIP], "delivery", [])).toEqual([
+      { optionId: "vo-trip", code: "one_way" },
+    ]);
+    expect(choicesForLeg(service, [TRIP], "delivery", [], true)).toEqual([
+      { optionId: "vo-trip", code: "round_trip" },
+    ]);
+  });
+
+  it("splits a package in whole rupiah, the pickup taking the odd one", () => {
+    const opts = { roundTrip: true, priced: true };
+    expect(rideShare("100001", "pickup", opts)).toBe("50001.0000");
+    expect(rideShare("100001", "delivery", opts)).toBe("50000.0000");
+    expect(rideShare("100001", "pickup", { roundTrip: false, priced: true })).toBe("100001");
+    expect(rideShare("100001", "pickup", { roundTrip: true, priced: false })).toBe("100001");
   });
 });
 
