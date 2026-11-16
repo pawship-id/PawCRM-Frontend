@@ -4726,8 +4726,14 @@ export interface VariantOption {
   nameKey: string;
   description: string | null;
   source: VariantOptionSource;
-  /** The pet's three — seeded, never deleted. */
+  /** The pet's three and the trip card — seeded, never deleted. */
   builtIn: boolean;
+  /**
+   * "trip" on the system card "Perjalanan" (16 November 2026): values
+   * `one_way` ("Antar / Jemput") and `round_trip` ("Antar + Jemput"), fixed,
+   * answered by the trip somebody picks. Null on every other card.
+   */
+  systemKey?: "trip" | null;
   values: VariantOptionValue[];
   sortOrder: number;
   /** What a service's `variantAxes` uses for this card. */

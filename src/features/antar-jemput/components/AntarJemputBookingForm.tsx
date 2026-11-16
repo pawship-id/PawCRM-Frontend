@@ -91,9 +91,14 @@ import {
   LEG_LABEL,
   legsOf,
   otherLeg,
+  rideShare,
   slotAtOrAfter,
   slotAtOrBefore,
+  TRIP_CHOICES,
+  TRIP_CODES,
+  tripChoiceOf,
   type LegChoice,
+  type TripChoice,
 } from "../ride";
 import { TimeSlotField } from "./TimeSlotField";
 import {
@@ -334,6 +339,8 @@ export function AntarJemputBookingForm({
   const [drivers, setDrivers] = useState<GroomerAvailability[]>([]);
 
   const [legChoice, setLegChoice] = useState<LegChoice>("pickup");
+  /** The direction "Antar / Jemput" goes back to after an "Antar + Jemput". */
+  const [lastLeg, setLastLeg] = useState<TripLeg>("pickup");
   const [schedules, setSchedules] = useState<Record<TripLeg, Schedule>>(() => ({
     pickup: { date: todayValue(), time: slotAtOrAfter(new Date()) },
     delivery: { date: todayValue(), time: slotAtOrAfter(new Date(Date.now() + 3 * 3_600_000)) },
@@ -654,8 +661,23 @@ export function AntarJemputBookingForm({
     .filter((one): one is Service => one !== null);
   const cards = variant.cardsFor([service, ...addons]);
   const arah = arahCardOf(service, cards);
-  /* Arah is answered by the direction — it is not asked as a select. */
+  /* The trip card is answered by the trip chosen — it is not asked as a select. */
   const askedCards = cards.filter((card) => card.axisKey !== arah?.card.axisKey);
+  /*
+    "ANTAR + JEMPUT" (16 November 2026) — one package price, half on each ride.
+    An EDIT is one ride, so it keeps what its booking was sold as: a pickup
+    that was half of a round trip stays priced as half, not as a one-way trip.
+  */
+  const roundTrip = editing
+    ? Boolean(
+        arah?.kind === "trip" &&
+          (original?.service?.variantChoices ?? []).some(
+            (choice) =>
+              choice.optionId === arah.card.axisKey && choice.code === TRIP_CODES.roundTrip,
+          ),
+      )
+    : legChoice === "both";
+  const tripPriced = arah?.kind === "trip";
   const perAnimal = service?.billingUnit === "per_pet";
   /*
     WHAT A per_pet FARE IS MULTIPLIED BY — the bookings this ride serves, since
@@ -709,19 +731,24 @@ export function AntarJemputBookingForm({
   /* EACH DIRECTION IS QUOTED IN ITS OWN ZONE — it has its own two addresses. */
   const priced = legs.map((leg) => {
     const legVariant = variantFor[leg];
-    const choices = choicesForLeg(service, cards, leg, variantChoices);
+    const choices = choicesForLeg(service, cards, leg, variantChoices, roundTrip);
     const quote = legVariant.quote(service, null, choices);
-    const unit = quote.price === null ? null : toMinor(quote.price);
+    const share = rideShare(quote.price, leg, { roundTrip, priced: tripPriced });
+    const unit = share === null ? null : toMinor(share);
     const quoted =
       unit === null ? null : toDecimalString(perAnimal ? unit * BigInt(chargedPets) : unit);
     const main = priceLine(quoted, mayPrice ? mainDrafts[leg] : BLANK_PRICE);
     const addonLines = addons.map((addon) => {
       const addonQuote = legVariant.quote(addon, null, choices);
+      const addonPriced = arahCardOf(addon, variant.cardsFor([addon]))?.kind === "trip";
       return {
         addon,
         quote: addonQuote,
         problem: legVariant.problemOf(addon, addonQuote),
-        line: priceLine(addonQuote.price, mayPrice ? (addonDrafts[addon._id] ?? BLANK_PRICE) : BLANK_PRICE),
+        line: priceLine(
+          rideShare(addonQuote.price, leg, { roundTrip, priced: addonPriced }),
+          mayPrice ? (addonDrafts[addon._id] ?? BLANK_PRICE) : BLANK_PRICE,
+        ),
       };
     });
     const lines: PricedLine[] = [main, ...addonLines.map((row) => row.line)];
@@ -869,6 +896,21 @@ export function AntarJemputBookingForm({
     setClash(null);
   }
 
+  /**
+   * "Antar / Jemput" or "Antar + Jemput" (16 November 2026). One way opens on
+   * the direction it was last on — Jemput the first time; which way is the
+   * small toggle under it, and never changes the price.
+   */
+  function chooseTrip(next: TripChoice) {
+    if (next === tripChoiceOf(legChoice)) return;
+    if (next === "round_trip") {
+      if (legChoice !== "both") setLastLeg(legChoice);
+      chooseLeg("both");
+    } else {
+      chooseLeg(lastLeg);
+    }
+  }
+
   /* ─── Saving ─────────────────────────────────────────────────────────── */
 
   function entryFor(leg: TripLeg) {
@@ -881,7 +923,7 @@ export function AntarJemputBookingForm({
       internalNotes,
       main: mayPrice ? mainDrafts[leg] : BLANK_PRICE,
       addons: mayPrice ? addonDrafts : {},
-      variantChoices: choicesForLeg(service, cards, leg, variantChoices),
+      variantChoices: choicesForLeg(service, cards, leg, variantChoices, roundTrip),
     };
 
     /*
@@ -1043,7 +1085,7 @@ export function AntarJemputBookingForm({
       return;
     }
 
-    const choices = choicesForLeg(service, cards, leg, variantChoices);
+    const choices = choicesForLeg(service, cards, leg, variantChoices, roundTrip);
     const patch: UpdateBookingInput = {};
     const ends = endsFor(leg);
 
@@ -1542,20 +1584,55 @@ export function AntarJemputBookingForm({
                     )
                   }
                 >
-                  <ChoiceCards
-                    legend="Arah"
-                    value={legChoice}
-                    onChange={chooseLeg}
-                    options={(editing
-                      ? LEG_CHOICES.filter((choice) => choice.value !== "both")
-                      : LEG_CHOICES
-                    ).map((choice) => ({
-                      value: choice.value,
-                      label: choice.label,
-                      description: choice.hint,
-                    }))}
-                    disabled={saving}
-                  />
+                  <div className="flex flex-col gap-4">
+                    {/* An edit is one ride — it cannot become a round trip. */}
+                    {!editing && (
+                      <ChoiceCards
+                        legend="Jenis perjalanan"
+                        value={tripChoiceOf(legChoice)}
+                        onChange={chooseTrip}
+                        options={TRIP_CHOICES.map((choice) => ({
+                          value: choice.value,
+                          label: choice.label,
+                          description: choice.hint,
+                        }))}
+                        disabled={saving}
+                      />
+                    )}
+                    {legChoice !== "both" && (
+                      /*
+                        WHICH WAY, FOR THE ADDRESSES AND THE DRIVER — not the
+                        price: "Antar / Jemput" costs the same either way.
+                      */
+                      <fieldset className="flex flex-col gap-2">
+                        <legend className="mb-1 text-xs font-medium text-muted">Arah</legend>
+                        <div className="flex flex-wrap gap-2">
+                          {LEG_CHOICES.filter((choice) => choice.value !== "both").map((choice) => (
+                            <Button
+                              key={choice.value}
+                              type="button"
+                              size="sm"
+                              className="h-11"
+                              variant={legChoice === choice.value ? "default" : "secondary"}
+                              aria-pressed={legChoice === choice.value}
+                              disabled={saving}
+                              onClick={() => chooseLeg(choice.value)}
+                            >
+                              {choice.label}
+                            </Button>
+                          ))}
+                        </div>
+                        <p className="text-xs text-muted">
+                          {LEG_CHOICES.find((choice) => choice.value === legChoice)?.hint}
+                        </p>
+                      </fieldset>
+                    )}
+                    {editing && roundTrip && (
+                      <p className="text-xs text-muted">
+                        Booking ini bagian dari Antar + Jemput — harganya setengah dari harga paket.
+                      </p>
+                    )}
+                  </div>
                 </Section>
               )}
 
@@ -1626,7 +1703,17 @@ export function AntarJemputBookingForm({
                       onChange={setVariantChoices}
                       disabled={saving}
                     />
-                    {arah && (
+                    {arah?.kind === "trip" && (
+                      <p className="text-xs text-muted">
+                        Harga dari varian{" "}
+                        {arah.card.values.find(
+                          (value) =>
+                            value.code === (roundTrip ? TRIP_CODES.roundTrip : TRIP_CODES.oneWay),
+                        )?.label ?? (roundTrip ? "Antar + Jemput" : "Antar / Jemput")}
+                        {roundTrip && !editing && " — harga paket dibagi rata ke jemput dan antar"}.
+                      </p>
+                    )}
+                    {arah?.kind === "legacy" && (
                       <p className="text-xs text-muted">
                         {arah.card.name} mengikuti arah di atas —{" "}
                         {legs

@@ -20,6 +20,7 @@ import { ANTAR_JEMPUT_LINE } from "../line";
 import {
   arahCardOf,
   choicesForLeg,
+  rideShare,
   LEG_LABEL,
   slotAtOrAfter,
   slotAtOrBefore,
@@ -78,11 +79,15 @@ export function quoteRides(
   variant: VariantQuote,
 ) {
   const cards = variant.cardsFor([service]);
+  /* Both ticked IS "Antar + Jemput" — one package price, half on each ride. */
+  const roundTrip = draft.legs.length === 2;
+  const priced = arahCardOf(service, cards)?.kind === "trip";
 
   return draft.legs.map((leg) => {
-    const choices = choicesForLeg(service, cards, leg, draft.choices);
+    const choices = choicesForLeg(service, cards, leg, draft.choices, roundTrip);
     const quote = variant.quote(service, pet, choices);
-    const unit = quote.price === null ? null : toMinor(quote.price);
+    const share = rideShare(quote.price, leg, { roundTrip, priced });
+    const unit = share === null ? null : toMinor(share);
     const perAnimal = service?.billingUnit === "per_pet";
 
     return {

@@ -579,6 +579,39 @@ describe("ServiceForm — variant pricing", () => {
     expect(screen.queryByRole("combobox", { name: /kelompok layanan/i })).not.toBeInTheDocument();
   });
 
+  it("prices an antar-jemput service by Antar / Jemput and Antar + Jemput, switch kept, no checkbox (16 November 2026)", async () => {
+    const trip = makeVariantOption({
+      _id: "vo-trip",
+      name: "Perjalanan",
+      source: "staff",
+      axisKey: "vo-trip",
+      builtIn: true,
+      systemKey: "trip",
+      sortOrder: 3,
+      serviceKinds: ["pickup-delivery"],
+      values: [
+        { code: "one_way", label: "Antar / Jemput", sortOrder: 0, isActive: true },
+        { code: "round_trip", label: "Antar + Jemput", sortOrder: 1, isActive: true },
+      ],
+    });
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: [...BUILT_IN_VARIANT_OPTIONS, trip],
+    });
+    openedFrom("pickup-delivery");
+    renderWithAuth(<ServiceForm />);
+
+    /* A new ride service opens with the switch on and both rows in the list. */
+    expect(await screen.findByLabelText("Harga Antar / Jemput")).toBeInTheDocument();
+    expect(screen.getByLabelText("Harga Antar + Jemput")).toBeInTheDocument();
+    expect(screen.getByLabelText(/harga beda per varian/i)).toBeChecked();
+    /* The trip card is never a checkbox. */
+    expect(screen.queryByRole("checkbox", { name: /perjalanan/i })).not.toBeInTheDocument();
+
+    /* Off is one price for every ride. */
+    await userEvent.click(screen.getByLabelText(/harga beda per varian/i));
+    expect(screen.queryByLabelText("Harga Antar / Jemput")).not.toBeInTheDocument();
+  });
+
   it("returns to the module it was opened from, with the address left plain", async () => {
     mockedServiceService.create.mockResolvedValue(serviceFixture);
     openedFrom("pickup-delivery");

@@ -167,12 +167,12 @@ describe("AntarJemputBookingForm", () => {
     await userEvent.click(screen.getByRole("button", { name: /coco/i }));
 
     /* The service comes first — Perjalanan is not on screen until it is picked. */
-    expect(screen.queryByRole("radio", { name: /antar jemput/i })).toBeNull();
+    expect(screen.queryByRole("radio", { name: /antar \+ jemput/i })).toBeNull();
 
     await userEvent.click(screen.getByRole("button", { name: "Layanan" }));
     await userEvent.click(await screen.findByRole("option", { name: "Antar-Jemput" }));
 
-    await userEvent.click(await screen.findByRole("radio", { name: /antar jemput/i }));
+    await userEvent.click(await screen.findByRole("radio", { name: /antar \+ jemput/i }));
 
     fireEvent.change(screen.getByLabelText(/tanggal jemput/i), { target: { value: "2026-09-22" } });
     fireEvent.change(screen.getByLabelText(/tanggal antar/i), { target: { value: "2026-09-22" } });
@@ -485,7 +485,7 @@ describe("AntarJemputBookingForm", () => {
     await userEvent.click(await screen.findByRole("option", { name: "Antar-Jemput" }));
 
     /* Both ways by default: the van leaves before, and brings it home after. */
-    expect(await screen.findByRole("radio", { name: /antar jemput/i })).toBeChecked();
+    expect(await screen.findByRole("radio", { name: /antar \+ jemput/i })).toBeChecked();
 
     await userEvent.click(screen.getByRole("button", { name: /simpan 2 booking/i }));
 
@@ -672,9 +672,8 @@ describe("AntarJemputBookingForm", () => {
        Arah is only on screen once a service is chosen. */
     await userEvent.click(screen.getByRole("button", { name: "Layanan" }));
     await userEvent.click(await screen.findByRole("option", { name: "Antar-Jemput" }));
-    await userEvent.click(
-      await screen.findByRole("radio", { name: /dari cabang ke alamat pelanggan/i }),
-    );
+    /* "Antar / Jemput" is one way; which way is the small Arah toggle. */
+    await userEvent.click(await screen.findByRole("button", { name: "Antar", pressed: false }));
 
     expect(
       await screen.findByRole("checkbox", { name: /BK-260922-001/ }),

@@ -107,6 +107,8 @@ export interface VariantAxisDef {
   description: string | null;
   /** The kinds of service the card is for — empty is every kind. */
   serviceKinds: ServiceKind[];
+  /** "trip" on the system card "Perjalanan" (16 November 2026). */
+  systemKey?: "trip" | null;
 }
 
 const RETIRED_SUFFIX = " (nonaktif)";
@@ -147,6 +149,7 @@ export function variantAxisDefs(
       source: card.source,
       description: card.description,
       serviceKinds: card.serviceKinds ?? [],
+      systemKey: card.systemKey ?? null,
     }));
 }
 
