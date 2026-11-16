@@ -226,18 +226,28 @@ export function BookingCard({
   const catalogueDuration = quote.durationMin;
 
   /*
-    THE MAIN SERVICES ON OFFER, narrowed by the chosen type.
+    THE SERVICES ON OFFER, narrowed by the chosen type.
 
-    ADD-ONS ARE NOT IN THIS LIST. An add-on is chosen underneath the service it
-    belongs to — that is what makes it an add-on — and offering it here would let
-    somebody book "Parfum" on its own, which the server then refuses. The filter
-    is a convenience; the exclusion is a rule.
+    AN ADD-ON IS HERE ONLY WHEN IT IS "DIJUAL TERPISAH" (16 November 2026) —
+    `soldSeparately` on Pengaturan › Layanan › Add-on, the same flag the server
+    checks. Any other add-on is chosen underneath its main service, and the
+    server refuses it on its own. A lone add-on follows the type filter by its
+    `serviceKinds` (empty = every type). The one already on this booking stays
+    listed, so an edit of a booking raised at the till still shows its name.
   */
-  const mainServices = services.filter(
-    (entry) =>
-      entry.serviceType !== "addon" &&
-      (card.serviceKind === "" || entry.serviceKind === card.serviceKind),
-  );
+  const mainServices = services.filter((entry) => {
+    if (entry.serviceType === "addon") {
+      if (!entry.soldSeparately && entry._id !== card.serviceId) return false;
+      const kinds = entry.serviceKinds ?? [];
+      return (
+        card.serviceKind === "" ||
+        kinds.length === 0 ||
+        kinds.includes(card.serviceKind)
+      );
+    }
+
+    return card.serviceKind === "" || entry.serviceKind === card.serviceKind;
+  });
 
   /*
     EACH NOTE COUNTS AS ONE. The badge is what tells a reader the fold holds
@@ -404,7 +414,8 @@ export function BookingCard({
                 }
                 options={mainServices.map((item) => ({
                   value: item._id,
-                  label: item.name,
+                  label:
+                    item.serviceType === "addon" ? `${item.name} (add-on)` : item.name,
                 }))}
                 placeholder="Pilih layanan…"
                 disabled={disabled || locked}

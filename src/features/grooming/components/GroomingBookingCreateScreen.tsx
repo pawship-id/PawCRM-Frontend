@@ -360,14 +360,28 @@ export function GroomingBookingCreateScreen() {
     label, and a tenant that reports everything under one line was being offered
     every main service it sells, van rides and hotel stays among them.
   */
+  /*
+    PLUS AN ADD-ON MARKED "DIJUAL TERPISAH" (16 November 2026) — booked on its
+    own, as the till and the invoice already allow. Only one offered with
+    Grooming: an empty `serviceKinds` means every kind. The server checks the
+    same flag (`bookingService.#prepareEntries`).
+  */
   const mainServices = useMemo(
     () =>
-      services.filter(
-        (service) =>
+      services.filter((service) => {
+        if (!offeredAt(service, location)) return false;
+        if (service.serviceType === "addon") {
+          const kinds = service.serviceKinds ?? [];
+          return (
+            service.soldSeparately === true &&
+            (kinds.length === 0 || kinds.includes(GROOMING_LINE.serviceKind))
+          );
+        }
+        return (
           service.serviceType === "main" &&
-          service.serviceKind === GROOMING_LINE.serviceKind &&
-          offeredAt(service, location),
-      ),
+          service.serviceKind === GROOMING_LINE.serviceKind
+        );
+      }),
     [services, location],
   );
 
@@ -1315,7 +1329,10 @@ export function GroomingBookingCreateScreen() {
                               }
                               options={mainServices.map((item) => ({
                                 value: item._id,
-                                label: item.name,
+                                label:
+                                  item.serviceType === "addon"
+                                    ? `${item.name} (add-on)`
+                                    : item.name,
                               }))}
                               active={false}
                               placeholder="Pilih layanan…"
