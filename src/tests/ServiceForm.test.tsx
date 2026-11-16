@@ -612,6 +612,53 @@ describe("ServiceForm — variant pricing", () => {
     expect(screen.queryByLabelText("Harga Antar / Jemput")).not.toBeInTheDocument();
   });
 
+  it("never offers the trip card as a checkbox on an antar-jemput service's edit form", async () => {
+    const trip = makeVariantOption({
+      _id: "vo-trip",
+      name: "Perjalanan",
+      source: "staff",
+      axisKey: "vo-trip",
+      builtIn: true,
+      systemKey: "trip",
+      sortOrder: 3,
+      serviceKinds: ["pickup-delivery"],
+      values: [
+        { code: "one_way", label: "Antar / Jemput", sortOrder: 0, isActive: true },
+        { code: "round_trip", label: "Antar + Jemput", sortOrder: 1, isActive: true },
+      ],
+    });
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: [...BUILT_IN_VARIANT_OPTIONS, trip],
+    });
+    const row = (code: string, price: string) => ({
+      petType: null,
+      sizeCategory: null,
+      furType: null,
+      zoneId: null,
+      choices: [{ optionId: "vo-trip", code }],
+      price,
+      durationMin: 30,
+      isActive: true,
+    });
+    mockedServiceService.getById.mockResolvedValue({
+      ...serviceFixture,
+      name: "Antar Jemput",
+      serviceKind: "pickup-delivery",
+      billingUnit: "per_visit",
+      price: null,
+      durationMin: null,
+      hasVariants: true,
+      variantAxes: ["vo-trip"],
+      variants: [row("one_way", "50000.0000"), row("round_trip", "90000.0000")],
+    } as unknown as Service);
+    renderWithAuth(<ServiceForm serviceId={SERVICE_ID} />);
+
+    expect(await screen.findByLabelText("Harga Antar / Jemput")).toHaveValue("50000");
+    expect(screen.getByLabelText("Harga Antar + Jemput")).toHaveValue("90000");
+    expect(screen.queryByRole("checkbox", { name: /perjalanan/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Perjalanan")).not.toBeInTheDocument();
+  });
+
   it("returns to the module it was opened from, with the address left plain", async () => {
     mockedServiceService.create.mockResolvedValue(serviceFixture);
     openedFrom("pickup-delivery");

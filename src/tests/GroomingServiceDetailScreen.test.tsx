@@ -365,6 +365,51 @@ describe("GroomingServiceDetailScreen", () => {
     });
   });
 
+  it("prices an antar-jemput service by Antar / Jemput and Antar + Jemput, behind a switch, never a Perjalanan chip (16 November 2026)", async () => {
+    const trip = makeVariantOption({
+      _id: "vo-trip",
+      name: "Perjalanan",
+      source: "staff",
+      axisKey: "5a7f1f77bcf86cd7994391ff",
+      builtIn: true,
+      systemKey: "trip",
+      sortOrder: 4,
+      serviceKinds: ["pickup-delivery"],
+      values: [
+        { code: "one_way", label: "Antar / Jemput", sortOrder: 0, isActive: true },
+        { code: "round_trip", label: "Antar + Jemput", sortOrder: 1, isActive: true },
+      ],
+    });
+    primeVariantOptions(variantOptionService.list, zoneService.list, {
+      cards: [...BUILT_IN_VARIANT_OPTIONS, trip],
+    });
+    jest.mocked(serviceService.getById).mockResolvedValue({
+      ...SERVICE,
+      name: "Antar Jemput",
+      serviceKind: "pickup-delivery",
+      hasVariants: false,
+      variantAxes: [],
+      variants: [],
+      price: "40000.0000",
+      durationMin: 30,
+    } as Service);
+
+    renderDetail();
+    await openVariants();
+
+    /* No chip for the trip card, and no other chip until the switch is on. */
+    expect(screen.queryByLabelText(/^Perjalanan/)).not.toBeInTheDocument();
+    const toggle = screen.getByLabelText("Harga beda per varian");
+    expect(toggle).not.toBeChecked();
+
+    await userEvent.click(toggle);
+
+    /* Both rows appear, each starting from the one price. */
+    expect(screen.getByLabelText("Harga Antar / Jemput")).toHaveValue("40.000");
+    expect(screen.getByLabelText("Harga Antar + Jemput")).toHaveValue("40.000");
+    expect(screen.queryByLabelText(/^Perjalanan/)).not.toBeInTheDocument();
+  });
+
   it("changes every selected variant at once from the bulk bar", async () => {
     renderDetail();
     await openVariants();
