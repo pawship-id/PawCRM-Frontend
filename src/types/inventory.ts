@@ -1658,6 +1658,8 @@ export interface OpnameListQuery {
 /** The orderings `GET /api/stock-opnames` accepts — OPNAME_SORTS in the model. */
 export type OpnameSort =
   | "newest"
+  /** Last input first — the list default (15 Nov 2026). */
+  | "createdNewest"
   | "oldest"
   | "numberDesc"
   | "numberAsc"
@@ -1976,6 +1978,8 @@ export interface StockTransferInput {
 /** The orderings the transfer list names. Chronological and by number. */
 export type StockTransferSort =
   | "newest"
+  /** Last input first — the list default (15 Nov 2026). */
+  | "createdNewest"
   | "oldest"
   | "numberDesc"
   | "numberAsc"
@@ -2181,6 +2185,8 @@ export interface StockEntry {
  */
 export type StockEntrySort =
   | "newest"
+  /** Last input first — the list default (15 Nov 2026). */
+  | "createdNewest"
   | "oldest"
   | "numberDesc"
   | "numberAsc"

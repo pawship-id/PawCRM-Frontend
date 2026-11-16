@@ -81,10 +81,10 @@ export const DEFAULT_QUERY: CustomerInvoicesQuery = {
   storeIds: [],
   statuses: [],
   /*
-    SOONEST DUE FIRST — who has waited longest. The endpoint's own default, and
-    what the Jatuh tempo header shows as sorted when the screen opens.
+    LAST INPUT FIRST (15 Nov 2026, on request) — it was soonest-due. Jatuh tempo
+    is one header click away.
   */
-  sort: "dueSoonest",
+  sort: "createdNewest",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */

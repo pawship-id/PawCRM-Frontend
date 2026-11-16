@@ -3192,7 +3192,7 @@ describe("PayablesTable — header sorting", () => {
   it("opens newest first, with no sortable header claiming it", async () => {
     await renderList();
 
-    expect(lastSort()).toBe("newest");
+    expect(lastSort()).toBe("createdNewest");
     for (const name of ["Faktur", "Jatuh tempo", "Total", "Dibayar", "Sisa"]) {
       expect(screen.getByRole("columnheader", { name })).toHaveAttribute(
         "aria-sort",

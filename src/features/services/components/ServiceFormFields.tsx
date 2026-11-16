@@ -107,7 +107,8 @@ function axisHint(def: VariantAxisDef): string {
 
 export function ServiceVariantEditor({
   axes,
-  axisDefs,
+  fixedAxes = [],
+  axisDefs: offeredDefs,
   prices,
   durations,
   active,
@@ -131,6 +132,12 @@ export function ServiceVariantEditor({
   /** Re-reads the Opsi Varian cards, after one was made in another tab. */
   onReloadOptions?: () => void;
   axes: VariantAxisKey[];
+  /**
+   * Axes the service always has and nobody ticks — the trip card on an
+   * antar-jemput service (16 November 2026). Not drawn as checkboxes; their
+   * rows are simply in the grid.
+   */
+  fixedAxes?: VariantAxisKey[];
   /** The axes offered — one per Opsi Varian card, in card order. */
   axisDefs: VariantAxisDef[];
   prices: Record<string, string>;
@@ -148,11 +155,26 @@ export function ServiceVariantEditor({
   onDurationChange: (key: string, value: string) => void;
   onActiveChange: (key: string, active: boolean) => void;
 }) {
+  /* A system card (the trip card) is never a checkbox — see `fixedAxes`. */
+  const axisDefs = offeredDefs.filter(
+    (def) => !def.systemKey && !fixedAxes.includes(def.key),
+  );
+  const hasFixed = fixedAxes.length > 0;
+
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <p className="text-sm font-medium">Harga dibedakan berdasarkan</p>
-        {axisDefs.length === 0 ? (
+        <p className="text-sm font-medium">
+          {hasFixed ? "Harga juga dibedakan berdasarkan (opsional)" : "Harga dibedakan berdasarkan"}
+        </p>
+        {hasFixed ? (
+          axisDefs.length === 0 && (
+            <p className="mt-1 text-xs text-muted">
+              Belum ada opsi lain untuk layanan ini — cukup isi harga Antar / Jemput dan
+              Antar + Jemput di bawah.
+            </p>
+          )
+        ) : axisDefs.length === 0 ? (
           /*
             THIS KIND HAS NO OPTIONS YET — every card is for other kinds. Say
             where they are made rather than drawing an empty checklist, and

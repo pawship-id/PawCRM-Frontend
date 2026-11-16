@@ -40,9 +40,9 @@ export const EMPTY_OPNAME_FILTERS: OpnameFilters = {
   status: "",
   dateFrom: "",
   dateTo: "",
-  // The API's own default, restated rather than left out: the headers mark the
-  // active column from it, and `undefined` would mark none.
-  sort: "newest",
+  // LAST INPUT FIRST (15 Nov 2026, on request): a back-dated document typed
+  // today still lands on top. The date header remains one click away.
+  sort: "createdNewest",
 };
 
 const EMPTY_PAGINATION: OpnamePage["pagination"] = {

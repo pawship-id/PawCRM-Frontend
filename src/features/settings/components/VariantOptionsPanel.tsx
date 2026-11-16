@@ -219,12 +219,15 @@ export function VariantOptionsPanel({
 
   /** Who may rename or retire a card's values — the list's own grant. */
   function mayUpdateValues(card: VariantOption) {
+    /* The trip card's two values are the system's words (16 November 2026). */
+    if (card.systemKey) return false;
     if (PET_TYPE_OF[card.source]) return can("petOptions", "update");
     return can("services", "update");
   }
 
   /** Who may add or remove a card's values — the list's own grant. */
   function mayEditValues(card: VariantOption) {
+    if (card.systemKey) return false;
     if (PET_TYPE_OF[card.source]) return can("petOptions", "create") || can("petOptions", "delete");
     if (card.source === "zone") return can("services", "create") || can("services", "delete");
     return can("services", "update");
@@ -278,9 +281,12 @@ export function VariantOptionsPanel({
         </div>
       ) : (
         <ul className="flex flex-col gap-3">
-          {live.map((card) => {
+          {/* The trip card ("Perjalanan") is the system's, built into every
+              antar-jemput service — never shown or set up here (16 Nov 2026). */}
+          {live.filter((card) => !card.systemKey).map((card) => {
             const chips = chipsOf(card);
-            const staff = card.source === "staff";
+            /* The trip card is answered by the trip chosen at booking — not by staff. */
+            const staff = card.source === "staff" && !card.systemKey;
 
             return (
               <li

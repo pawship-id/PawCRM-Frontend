@@ -46,7 +46,9 @@ const DEFAULT_QUERY: PurchaseReturnsQuery = {
   status: "",
   dateFrom: "",
   dateTo: "",
-  sort: "newest",
+  // LAST INPUT FIRST (15 Nov 2026, on request): a back-dated document typed
+  // today still lands on top. The date header remains one click away.
+  sort: "createdNewest",
 };
 
 /** Empty page so consumers can render a table shell before the first load. */
