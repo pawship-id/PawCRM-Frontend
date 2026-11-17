@@ -81,6 +81,21 @@ function dueDateLabel(dueDate: string): string {
   });
 }
 
+/*
+  NOTHING ON THE SLIP MAY BE WIDER THAN THE ROLL (17 November 2026 — a shop
+  reported struk cut off at the right edge). Two rules do it:
+
+  - Every AMOUNT is one unbreakable piece that never shrinks. "Rp" alone on one
+    line and "1.250.000" on the next, or an amount squeezed to nothing beside a
+    long name, is what a 48 mm column did to them before.
+  - Every LABEL takes what is left and may break ANYWHERE (`wrap-anywhere` on the
+    sheet), so a product name, payment reference or link with no space in it
+    wraps instead of running off the paper — on 58 mm that was where the
+    amounts went.
+*/
+const AMOUNT = "shrink-0 whitespace-nowrap text-right tabular-nums";
+const LABEL = "min-w-0 flex-1";
+
 /**
  * The receipt itself (FR-8).
  *
@@ -115,7 +130,7 @@ export function ReceiptPreview({
   return (
     <div
       data-receipt-sheet={size}
-      className="mx-auto w-full bg-surface p-4 text-sm text-foreground"
+      className="mx-auto w-full max-w-full overflow-hidden bg-surface p-4 text-sm wrap-anywhere text-foreground"
     >
       <div className="text-center">
         {/*
@@ -147,9 +162,11 @@ export function ReceiptPreview({
       </div>
 
       <div className="mt-3 border-t border-dashed border-border pt-2 text-xs tabular-nums">
-        <div className="flex justify-between">
-          <span>{receipt.transactionNumber}</span>
-          <span>{paidAtLabel(receipt.paidAt)}</span>
+        <div className="flex flex-wrap justify-between gap-x-2">
+          <span className="min-w-0">{receipt.transactionNumber}</span>
+          <span className="whitespace-nowrap">
+            {paidAtLabel(receipt.paidAt)}
+          </span>
         </div>
         {/*
           WHO SERVED THEM (FR-8). "Siapa yang melayani" is the first question
@@ -197,7 +214,7 @@ export function ReceiptPreview({
               <span className="min-w-0 flex-1">
                 {item.petName ? `${item.petName} - ${item.name}` : item.name}
               </span>
-              <span className="tabular-nums">
+              <span className={AMOUNT}>
                 {/*
                   ITS OWN PRICE, NOT THE PAIR'S. The add-on prints on a row of
                   its own directly beneath with its own figure, so adding it in
@@ -215,12 +232,17 @@ export function ReceiptPreview({
             {variantDetailOf(item) && (
               <p className="text-xs text-muted">{variantDetailOf(item)}</p>
             )}
-            <div className="flex justify-between gap-2 text-xs text-muted">
-              <span className="tabular-nums">
+            {/*
+              WRAPS RATHER THAN SQUEEZES: on 58 mm "12 × Rp 1.875.000" and
+              "−Rp 2.250.000" do not fit side by side, so the discount drops to
+              its own line, still right-aligned.
+            */}
+            <div className="flex flex-wrap justify-between gap-x-2 text-xs text-muted">
+              <span className="whitespace-nowrap tabular-nums">
                 {formatQty(item.qty)} × {formatMoney(item.unitPrice)}
               </span>
               {item.discount && (
-                <span className="tabular-nums">
+                <span className={`ml-auto ${AMOUNT}`}>
                   −{formatMoney(item.discount.resolvedAmount)}
                 </span>
               )}
@@ -244,14 +266,18 @@ export function ReceiptPreview({
                 key={`${addon.name}-${addonIndex}`}
                 className="flex justify-between gap-2 pl-3 text-xs text-muted"
               >
-                <span className="min-w-0 flex-1">{`+ ${addon.name}`}</span>
-                {addon.discount && (
-                  <span className="tabular-nums">
-                    −{formatMoney(addon.discount.resolvedAmount)}
-                  </span>
-                )}
-                <span className="tabular-nums">
-                  {formatMoney(addon.lineTotal)}
+                <span className={LABEL}>{`+ ${addon.name}`}</span>
+                {/*
+                  PRICE OVER ITS DISCOUNT, stacked — two amounts side by side
+                  next to the name left the name no room at all on 58 mm.
+                */}
+                <span className="flex shrink-0 flex-col items-end">
+                  <span className={AMOUNT}>{formatMoney(addon.lineTotal)}</span>
+                  {addon.discount && (
+                    <span className={AMOUNT}>
+                      −{formatMoney(addon.discount.resolvedAmount)}
+                    </span>
+                  )}
                 </span>
               </div>
             ))}
@@ -264,10 +290,10 @@ export function ReceiptPreview({
           {receipt.otherCharges.map((charge, index) => (
             <li
               key={`${charge.label}-${index}`}
-              className="flex justify-between"
+              className="flex justify-between gap-2"
             >
-              <span>{charge.label}</span>
-              <span className="tabular-nums">{formatMoney(charge.amount)}</span>
+              <span className={LABEL}>{charge.label}</span>
+              <span className={AMOUNT}>{formatMoney(charge.amount)}</span>
             </li>
           ))}
         </ul>
@@ -275,9 +301,9 @@ export function ReceiptPreview({
 
       {totals && (
         <dl className="mt-2 space-y-0.5 border-t border-dashed border-border pt-2 text-xs">
-          <div className="flex justify-between">
-            <dt>Subtotal</dt>
-            <dd className="tabular-nums">{formatMoney(totals.subtotal)}</dd>
+          <div className="flex justify-between gap-2">
+            <dt className={LABEL}>Subtotal</dt>
+            <dd className={AMOUNT}>{formatMoney(totals.subtotal)}</dd>
           </div>
           {/*
             SPLIT FROM "DISKON ITEM" (1 October 2026, on request) — a card's
@@ -298,51 +324,51 @@ export function ReceiptPreview({
             return (
               <>
                 {isPositive(own) && (
-                  <div className="flex justify-between">
-                    <dt>Diskon item</dt>
-                    <dd className="tabular-nums">−{formatMoney(own)}</dd>
+                  <div className="flex justify-between gap-2">
+                    <dt className={LABEL}>Diskon item</dt>
+                    <dd className={AMOUNT}>−{formatMoney(own)}</dd>
                   </div>
                 )}
                 {isPositive(membershipShare) && (
-                  <div className="flex justify-between">
-                    <dt>Potongan membership</dt>
-                    <dd className="tabular-nums">
+                  <div className="flex justify-between gap-2">
+                    <dt className={LABEL}>Potongan membership</dt>
+                    <dd className={AMOUNT}>
                       −{formatMoney(membershipShare)}
                     </dd>
                   </div>
                 )}
                 {isPositive(promoShare) && (
-                  <div className="flex justify-between">
-                    <dt>
+                  <div className="flex justify-between gap-2">
+                    <dt className={LABEL}>
                       {promoNamesOf(receipt.items)
                         ? `Potongan promo · ${promoNamesOf(receipt.items)}`
                         : "Potongan promo"}
                     </dt>
-                    <dd className="tabular-nums">−{formatMoney(promoShare)}</dd>
+                    <dd className={AMOUNT}>−{formatMoney(promoShare)}</dd>
                   </div>
                 )}
               </>
             );
           })()}
           {totals.cartDiscount !== "0.0000" && (
-            <div className="flex justify-between">
-              <dt>Diskon</dt>
-              <dd className="tabular-nums">
+            <div className="flex justify-between gap-2">
+              <dt className={LABEL}>Diskon</dt>
+              <dd className={AMOUNT}>
                 −{formatMoney(totals.cartDiscount)}
               </dd>
             </div>
           )}
-          <div className="flex justify-between">
-            <dt>DPP</dt>
-            <dd className="tabular-nums">{formatMoney(totals.dpp)}</dd>
+          <div className="flex justify-between gap-2">
+            <dt className={LABEL}>DPP</dt>
+            <dd className={AMOUNT}>{formatMoney(totals.dpp)}</dd>
           </div>
-          <div className="flex justify-between">
-            <dt>PPN</dt>
-            <dd className="tabular-nums">{formatMoney(totals.tax)}</dd>
+          <div className="flex justify-between gap-2">
+            <dt className={LABEL}>PPN</dt>
+            <dd className={AMOUNT}>{formatMoney(totals.tax)}</dd>
           </div>
-          <div className="mt-1 flex justify-between border-t border-border pt-1 text-sm font-semibold">
-            <dt>Total</dt>
-            <dd className="tabular-nums">{formatMoney(totals.grandTotal)}</dd>
+          <div className="mt-1 flex justify-between gap-2 border-t border-border pt-1 text-sm font-semibold">
+            <dt className={LABEL}>Total</dt>
+            <dd className={AMOUNT}>{formatMoney(totals.grandTotal)}</dd>
           </div>
         </dl>
       )}
@@ -350,16 +376,16 @@ export function ReceiptPreview({
       <ul className="mt-2 space-y-0.5 border-t border-dashed border-border pt-2 text-xs">
         {receipt.payments.map((payment, index) => (
           <li key={`${payment.channelName}-${index}`}>
-            <div className="flex justify-between">
-              <span>{payment.channelName}</span>
-              <span className="tabular-nums">
+            <div className="flex justify-between gap-2">
+              <span className={LABEL}>{payment.channelName}</span>
+              <span className={AMOUNT}>
                 {formatMoney(payment.amount)}
               </span>
             </div>
             {payment.change && payment.change !== "0.0000" && (
-              <div className="flex justify-between text-muted">
-                <span>Kembalian</span>
-                <span className="tabular-nums">
+              <div className="flex justify-between gap-2 text-muted">
+                <span className={LABEL}>Kembalian</span>
+                <span className={AMOUNT}>
                   {formatMoney(payment.change)}
                 </span>
               </div>
@@ -388,21 +414,23 @@ export function ReceiptPreview({
       */}
       {receipt.credit && (
         <dl className="mt-2 space-y-0.5 border-t border-dashed border-border pt-2 text-xs">
-          <div className="flex justify-between font-semibold">
-            <dt>Sisa piutang</dt>
-            <dd className="tabular-nums">
+          <div className="flex justify-between gap-2 font-semibold">
+            <dt className={LABEL}>Sisa piutang</dt>
+            <dd className={AMOUNT}>
               {formatMoney(receipt.credit.outstandingAmount)}
             </dd>
           </div>
-          <div className="flex justify-between text-muted">
-            <dt>Jatuh tempo</dt>
-            <dd className="tabular-nums">
+          <div className="flex justify-between gap-2 text-muted">
+            <dt className={LABEL}>Jatuh tempo</dt>
+            <dd className={AMOUNT}>
               {dueDateLabel(receipt.credit.dueDate)}
             </dd>
           </div>
-          <div className="flex justify-between text-muted">
-            <dt>No. faktur</dt>
-            <dd className="tabular-nums">{receipt.credit.invoiceNumber}</dd>
+          <div className="flex justify-between gap-2 text-muted">
+            <dt className="shrink-0 whitespace-nowrap">No. faktur</dt>
+            <dd className="min-w-0 text-right tabular-nums">
+              {receipt.credit.invoiceNumber}
+            </dd>
           </div>
         </dl>
       )}

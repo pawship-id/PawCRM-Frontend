@@ -552,7 +552,7 @@ function ThermalSheet({
   return (
     <div
       data-receipt-sheet={size}
-      className="mx-auto w-full bg-surface p-4 text-sm text-foreground"
+      className="mx-auto w-full max-w-full overflow-hidden bg-surface p-4 text-sm wrap-anywhere text-foreground"
     >
       <div className="text-center">
         {header.logoUrl && (
@@ -589,12 +589,12 @@ function ThermalSheet({
       )}
 
       <div className="mt-2 text-xs tabular-nums">
-        <TRow label="No.">
+        <TRow label="No." text>
           <span className="font-semibold">{invoice.invoiceNumber}</span>
         </TRow>
         <TRow label="Tanggal">{formatDateShort(invoice.invoiceDate)}</TRow>
         <TRow label="Jatuh tempo">{formatDateShort(invoice.dueDate)}</TRow>
-        <TRow label="Pelanggan">
+        <TRow label="Pelanggan" text>
           {invoice.customerName ?? "Pelanggan terhapus"}
         </TRow>
       </div>
@@ -614,11 +614,20 @@ function ThermalSheet({
                 {variantSummary(item) && (
                   <p className="text-muted">{variantSummary(item)}</p>
                 )}
-                <TRow
-                  label={`  ${formatQty(item.qty)} × ${formatMoney(item.unitPrice)}`}
-                >
-                  {formatMoney(item.lineTotal)}
-                </TRow>
+                {/*
+                  WRAPS RATHER THAN SQUEEZES: on 58 mm "120 × Rp 1.875.000"
+                  and its line total do not fit side by side, so the total
+                  drops to its own line, still right-aligned, and neither
+                  figure is broken mid-number.
+                */}
+                <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                  <span className="whitespace-nowrap">
+                    {`${formatQty(item.qty)} × ${formatMoney(item.unitPrice)}`}
+                  </span>
+                  <span className="ml-auto whitespace-nowrap">
+                    {formatMoney(item.lineTotal)}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
@@ -689,18 +698,36 @@ function Rule() {
   return <div className="my-2 border-t border-dashed border-border" />;
 }
 
-/** One `label … value` line, the only row shape a thermal sheet has. */
+/**
+ * One `label … value` line, the only row shape a thermal sheet has.
+ *
+ * AN AMOUNT NEVER BREAKS; TEXT DOES (17 November 2026, struk reported cut off).
+ * By default the value is an amount and stays whole while the label wraps. With
+ * `text` it is the other way round — a customer name or invoice number can be
+ * longer than 48 mm, and kept on one line it ran straight off the roll.
+ */
 function TRow({
   label,
   children,
+  text = false,
 }: {
   label: string;
   children: React.ReactNode;
+  text?: boolean;
 }) {
   return (
     <div className="flex items-baseline justify-between gap-2">
-      <span className="min-w-0 break-words">{label}</span>
-      <span className="shrink-0 whitespace-nowrap">{children}</span>
+      {text ? (
+        <>
+          <span className="shrink-0 whitespace-nowrap">{label}</span>
+          <span className="min-w-0 text-right">{children}</span>
+        </>
+      ) : (
+        <>
+          <span className="min-w-0">{label}</span>
+          <span className="shrink-0 whitespace-nowrap">{children}</span>
+        </>
+      )}
     </div>
   );
 }
