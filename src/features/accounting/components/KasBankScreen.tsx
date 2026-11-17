@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import Link from "next/link";
 import { CreditCard, RotateCcw } from "lucide-react";
 
@@ -92,7 +93,10 @@ export function KasBankScreen({
     Putting it on the shared query would re-request the transaction list every
     time somebody went looking for a retired account.
   */
-  const [includeInactive, setIncludeInactive] = useState(false);
+  const [includeInactive, setIncludeInactive] = usePersistentState(
+    "finance.cashBank.includeInactive",
+    false,
+  );
   const state = useCashTransactions(initialQuery);
   /*
     BOTH SUB-TABS ARE FETCHED BY THIS SCREEN, as the transactions are: a panel

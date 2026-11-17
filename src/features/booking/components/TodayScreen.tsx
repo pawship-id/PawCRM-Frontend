@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 
@@ -89,13 +90,36 @@ export function TodayScreen({
   initialDate?: string;
 } = {}) {
   const scope = useBranchScope();
-  const [pickedBranch, setPickedBranch] = useState("");
+  /*
+    Remembered across a trip to a booking's detail; a `?tanggal=` deep link
+    starts the whole board fresh on that day — see `usePersistentState`.
+  */
+  const persist = { fresh: initialDate !== "" };
+  const [pickedBranch, setPickedBranch] = usePersistentState(
+    "booking.today.branch",
+    "",
+    persist,
+  );
   const branchId = pickedBranch || scope.soleBranch;
 
   const [today] = useState(todayIso);
-  const [view, setView] = useState<TodayView>("harian");
-  const [anchor, setAnchor] = useState(() => initialDate || today);
-  const [filters, setFilters] = useState<TodayFilters>(DEFAULT_TODAY_FILTERS);
+  const [view, setView] = usePersistentState<TodayView>(
+    "booking.today.view",
+    "harian",
+    persist,
+  );
+  // Keyed on today, so a tab left open overnight opens on the new day rather
+  // than on the date somebody was looking at yesterday.
+  const [anchor, setAnchor] = usePersistentState(
+    `booking.today.anchor.${today}`,
+    () => initialDate || today,
+    persist,
+  );
+  const [filters, setFilters] = usePersistentState<TodayFilters>(
+    "booking.today.filters",
+    DEFAULT_TODAY_FILTERS,
+    persist,
+  );
   const [selected, setSelected] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
 

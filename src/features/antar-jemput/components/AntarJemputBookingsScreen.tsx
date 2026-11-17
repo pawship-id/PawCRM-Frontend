@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
@@ -98,16 +99,16 @@ export function AntarJemputBookingsScreen() {
   }, [catalog.loading, catalog.services]);
 
   /** Empty = every cabang. Several since 12 October 2026. */
-  const [branchIds, setBranchIds] = useState<string[]>([]);
-  const [period, setPeriod] = useState<GroomingPeriod>("month");
-  const [custom, setCustom] = useState<DateRange>({ from: "", to: "" });
-  const [filters, setFilters] = useState<GroomingFilters>(DEFAULT_FILTERS);
+  const [branchIds, setBranchIds] = usePersistentState<string[]>("antarJemput.bookings.branchIds", []);
+  const [period, setPeriod] = usePersistentState<GroomingPeriod>("antarJemput.bookings.period", "month");
+  const [custom, setCustom] = usePersistentState<DateRange>("antarJemput.bookings.custom", { from: "", to: "" });
+  const [filters, setFilters] = usePersistentState<GroomingFilters>("antarJemput.bookings.filters", DEFAULT_FILTERS);
   /* From the table's headers; outside `filters`, so the panel's Reset keeps it. */
-  const [sort, setSort] = useState<GroomingSort>(DEFAULT_SORT);
-  const [search, setSearch] = useState("");
-  const [lens, setLens] = useState<GroomingLens>("all");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [sort, setSort] = usePersistentState<GroomingSort>("antarJemput.bookings.sort", DEFAULT_SORT);
+  const [search, setSearch] = usePersistentState("antarJemput.bookings.search", "");
+  const [lens, setLens] = usePersistentState<GroomingLens>("antarJemput.bookings.lens", "all");
+  const [page, setPage] = usePersistentState("antarJemput.bookings.page", 1);
+  const [pageSize, setPageSize] = usePersistentState("antarJemput.bookings.pageSize", DEFAULT_PAGE_SIZE);
 
   const range = useMemo(
     () => (period === "custom" ? custom : periodRange(period)),

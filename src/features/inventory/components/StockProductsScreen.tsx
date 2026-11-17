@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import {
   Alert,
@@ -17,6 +17,7 @@ import { isStockSort, useStockProducts } from "../hooks/useStockProducts";
 import { StockModuleHeader } from "./StockModuleHeader";
 import { StockProductsTable } from "./StockProductsTable";
 import { StockProductsToolbar } from "./StockProductsToolbar";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /**
  * The stock card's front door: which product's ledger do you want to read.
@@ -79,7 +80,10 @@ export function StockProductsScreen() {
   const lookups = useCatalogLookups({ includeInactive: true });
 
   /** Empty = every gudang, the repo's unset convention for a scope. */
-  const [warehouseId, setWarehouseId] = useState("");
+  const [warehouseId, setWarehouseId] = usePersistentState(
+    "inventory.stockProducts.warehouseId",
+    "",
+  );
 
   const { products, pagination, query, loading, error, setQuery } =
     useStockProducts(mayReadProducts, warehouseId);

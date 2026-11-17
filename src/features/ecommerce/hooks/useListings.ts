@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { usePersistentState } from "@/hooks/usePersistentState";
+
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { marketplaceService } from "@/services/marketplace.service";
@@ -23,7 +25,7 @@ const DEFAULT_QUERY: ListingsQuery = { page: 1, limit: DEFAULT_PAGE_SIZE, search
  * change reached rows other than the one clicked (a SKU on several listings).
  */
 export function useListings(storeId: string | null) {
-  const [query, setQueryState] = useState<ListingsQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<ListingsQuery>("ecommerce.skus", DEFAULT_QUERY);
   const [page, setPageData] = useState<ListingPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +39,7 @@ export function useListings(storeId: string | null) {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

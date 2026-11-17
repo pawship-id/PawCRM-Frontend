@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 
 import { Alert, ListFooter } from "@/components";
@@ -14,6 +13,7 @@ import { CatalogModuleHeader } from "./CatalogModuleHeader";
 import { NewProductMenu } from "./NewProductMenu";
 import { ProductsTable } from "./ProductsTable";
 import { ProductsToolbar } from "./ProductsToolbar";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /**
  * The catalogue list: standalone products, variant families, and bundles.
@@ -74,7 +74,10 @@ function bulkUpdateHref({
 }
 
 export function ProductsScreen() {
-  const [warehouseIds, setWarehouseIds] = useState<string[]>([]);
+  const [warehouseIds, setWarehouseIds] = usePersistentState<string[]>(
+    "inventory.products.warehouseIds",
+    [],
+  );
   // The picked warehouses go along only so a Stok sort ranks by the figure the
   // column shows; every other ordering ignores them.
   const { products, pagination, query, loading, error, setQuery, refetch } =

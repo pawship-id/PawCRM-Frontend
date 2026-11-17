@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { usePersistentState } from "@/hooks/usePersistentState";
+
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { ApiError } from "@/services/api-error";
@@ -20,7 +22,7 @@ const EMPTY_COUNTS: PromoListResponse["counts"] = { running: 0, scheduled: 0, dr
  * one request answers both. Search settles after typing stops.
  */
 export function usePromos() {
-  const [query, setQuery] = useState<Query>(DEFAULT_QUERY);
+  const [query, setQuery] = usePersistentState<Query>("promos.list", DEFAULT_QUERY);
   const settled = useDebouncedQuery(query);
   const [promos, setPromos] = useState<Promo[]>([]);
   const [counts, setCounts] = useState<PromoListResponse["counts"] | null>(null);
@@ -64,7 +66,7 @@ export function usePromos() {
   /** Any filter change returns to page 1 (see useMembershipPlans). */
   const patchQuery = useCallback((patch: Partial<Query>) => {
     setQuery((current) => ({ ...current, ...patch, page: patch.page ?? 1 }));
-  }, []);
+  }, [setQuery]);
 
   return { promos, counts, pagination, loading, error, query, patchQuery, reload };
 }

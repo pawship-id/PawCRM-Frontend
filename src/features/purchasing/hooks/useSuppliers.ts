@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { supplierService } from "@/services/supplier.service";
@@ -87,7 +88,10 @@ interface UseSuppliersResult {
  * longer exists.
  */
 export function useSuppliers(): UseSuppliersResult {
-  const [query, setQueryState] = useState<SuppliersQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<SuppliersQuery>(
+    "purchasing.suppliers",
+    DEFAULT_QUERY,
+  );
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<Supplier>["pagination"]>(EMPTY_PAGE);
@@ -107,7 +111,7 @@ export function useSuppliers(): UseSuppliersResult {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

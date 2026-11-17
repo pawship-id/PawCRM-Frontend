@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { usePersistentState } from "@/hooks/usePersistentState";
+
 import { customerService } from "@/services/customer.service";
 import { ApiError } from "@/services/api-error";
 import type {
@@ -61,7 +63,10 @@ interface UseCustomerHistoryResult {
  * a narrower list is whatever happens to land there.
  */
 export function useCustomerHistory(): UseCustomerHistoryResult {
-  const [query, setQueryState] = useState<CustomerHistoryQuery>(DEFAULT_HISTORY_QUERY);
+  const [query, setQueryState] = usePersistentState<CustomerHistoryQuery>(
+    "customers.history",
+    DEFAULT_HISTORY_QUERY,
+  );
   const [items, setItems] = useState<CustomerHistoryRow[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<never>["pagination"]>(EMPTY_PAGE);
@@ -71,7 +76,7 @@ export function useCustomerHistory(): UseCustomerHistoryResult {
 
   const setQuery = useCallback((patch: Partial<CustomerHistoryQuery>) => {
     setQueryState((prev) => ({ ...prev, ...patch, page: patch.page ?? 1 }));
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

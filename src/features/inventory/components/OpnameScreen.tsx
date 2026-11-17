@@ -34,6 +34,7 @@ import { OpnameJobsPanel } from "./OpnameJobBanner";
 import { OpnameStartCard } from "./OpnameStartCard";
 import { OpnameStatusBadge } from "./OpnameStatusBadge";
 import { OpnameToolbar } from "./OpnameToolbar";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /**
  * The stock-count list: sheets in progress, and sheets already final.
@@ -124,9 +125,15 @@ export function OpnameScreen() {
     withBranches: true,
   });
 
-  const [filters, setFilters] = useState<OpnameFilters>(EMPTY_OPNAME_FILTERS);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [filters, setFilters] = usePersistentState<OpnameFilters>(
+    "inventory.opname",
+    EMPTY_OPNAME_FILTERS,
+  );
+  const [page, setPage] = usePersistentState("inventory.opname.page", 1);
+  const [pageSize, setPageSize] = usePersistentState(
+    "inventory.opname.pageSize",
+    DEFAULT_PAGE_SIZE,
+  );
   const [refreshKey, setRefreshKey] = useState(0);
   const [pendingDelete, setPendingDelete] = useState<Opname | null>(null);
   const [deleting, setDeleting] = useState(false);

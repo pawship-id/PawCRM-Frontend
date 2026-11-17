@@ -34,7 +34,8 @@ import { useUsers } from "../hooks/useUsers";
  * scope says.
  */
 export function BranchAccessScreen() {
-  const { users, pagination, query, loading, error, setQuery } = useUsers();
+  const { users, pagination, query, loading, error, setQuery } =
+    useUsers("settings.branchAccess");
   const { roles, branches } = useLookups();
 
   const roleName = useMemo(

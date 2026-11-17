@@ -16,6 +16,7 @@ import type {
 } from "@/types/inventory";
 import type { Branch, Warehouse } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** The knobs the list offers. `kind` is fixed by the screen, never by the user. */
 export interface StockEntriesQuery {
@@ -100,7 +101,11 @@ export function useStockEntries(kind: StockEntryKind): UseStockEntriesResult {
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
 
-  const [query, setQueryState] = useState<StockEntriesQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<StockEntriesQuery>(
+    // One key per kind: adjustments and opening stock share this hook.
+    `inventory.stockEntries.${kind}`,
+    DEFAULT_QUERY,
+  );
   // Only the text field earns a wait; a changed dropdown is a finished decision.
   const debounced = useDebouncedQuery(query);
 
@@ -117,7 +122,7 @@ export function useStockEntries(kind: StockEntryKind): UseStockEntriesResult {
       ...patch,
       page: patch.page ?? 1,
     }));
-  }, []);
+  }, [setQueryState]);
 
   useEffect(() => {
     let active = true;

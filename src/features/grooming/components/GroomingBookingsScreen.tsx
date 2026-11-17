@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
 import { Alert, DEFAULT_PAGE_SIZE, ListFooter, Spinner, formatRangeShort } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Can } from "@/features/permissions";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 import {
   countFilters,
@@ -79,16 +80,16 @@ export function GroomingBookingsScreen() {
   }, [catalog.loading, catalog.services]);
 
   /** Empty = every cabang. Several since 12 October 2026. */
-  const [branchIds, setBranchIds] = useState<string[]>([]);
-  const [period, setPeriod] = useState<GroomingPeriod>("month");
-  const [custom, setCustom] = useState<DateRange>({ from: "", to: "" });
-  const [filters, setFilters] = useState<GroomingFilters>(DEFAULT_FILTERS);
+  const [branchIds, setBranchIds] = usePersistentState<string[]>("grooming.bookings.branchIds", []);
+  const [period, setPeriod] = usePersistentState<GroomingPeriod>("grooming.bookings.period", "month");
+  const [custom, setCustom] = usePersistentState<DateRange>("grooming.bookings.custom", { from: "", to: "" });
+  const [filters, setFilters] = usePersistentState<GroomingFilters>("grooming.bookings.filters", DEFAULT_FILTERS);
   /* From the table's headers; outside `filters`, so the panel's Reset keeps it. */
-  const [sort, setSort] = useState<GroomingSort>(DEFAULT_SORT);
-  const [search, setSearch] = useState("");
-  const [lens, setLens] = useState<GroomingLens>("all");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [sort, setSort] = usePersistentState<GroomingSort>("grooming.bookings.sort", DEFAULT_SORT);
+  const [search, setSearch] = usePersistentState("grooming.bookings.search", "");
+  const [lens, setLens] = usePersistentState<GroomingLens>("grooming.bookings.lens", "all");
+  const [page, setPage] = usePersistentState("grooming.bookings.page", 1);
+  const [pageSize, setPageSize] = usePersistentState("grooming.bookings.pageSize", DEFAULT_PAGE_SIZE);
 
   const range = useMemo(
     () => (period === "custom" ? custom : periodRange(period)),

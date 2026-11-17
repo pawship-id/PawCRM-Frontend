@@ -7,6 +7,7 @@ import { ApiError } from "@/services/api-error";
 import type { Role, RoleListQuery, PageResult } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { DEFAULT_PAGE_SIZE } from "@/components";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface RolesQuery {
@@ -53,7 +54,10 @@ interface UseRolesResult {
  * explicit `limit` overrides the service's lookup-oriented default of 100.
  */
 export function useRoles(): UseRolesResult {
-  const [query, setQueryState] = useState<RolesQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<RolesQuery>(
+    "settings.roles",
+    DEFAULT_QUERY,
+  );
   const [roles, setRoles] = useState<Role[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<Role>["pagination"]>(EMPTY_PAGE);
@@ -73,7 +77,7 @@ export function useRoles(): UseRolesResult {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

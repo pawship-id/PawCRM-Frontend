@@ -8,6 +8,7 @@ import type { PageResult } from "@/types/api";
 import type { Product, ProductListQuery, ProductSort } from "@/types/inventory";
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** The query knobs the stock-card index drives (page + the visible filters). */
 export interface StockProductsQuery {
@@ -114,7 +115,10 @@ export function useStockProducts(
   /** The screen's chosen warehouse; "" is every one in reach. */
   warehouseId = "",
 ): UseStockProductsResult {
-  const [query, setQueryState] = useState<StockProductsQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<StockProductsQuery>(
+    "inventory.stockProducts",
+    DEFAULT_QUERY,
+  );
   const [products, setProducts] = useState<Product[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<Product>["pagination"]>(EMPTY_PAGE);
@@ -136,7 +140,7 @@ export function useStockProducts(
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   useEffect(() => {
     // Nothing to synchronize, and nothing to unset: `loading` is reported as

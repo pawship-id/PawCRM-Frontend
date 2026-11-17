@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
@@ -73,7 +74,8 @@ export interface UseCommissionsResult {
  * whole query, which is what keeps a typed name from firing one request per key.
  */
 export function useCommissions(): UseCommissionsResult {
-  const [query, setQueryState] = useState<CommissionsQuery>(
+  const [query, setQueryState] = usePersistentState<CommissionsQuery>(
+    "finance.commissions",
     DEFAULT_COMMISSIONS_QUERY,
   );
   const [data, setData] = useState<CommissionRowsResult | null>(null);
@@ -91,7 +93,7 @@ export function useCommissions(): UseCommissionsResult {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

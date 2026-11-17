@@ -7,6 +7,7 @@ import { ApiError } from "@/services/api-error";
 import type { User, UserListQuery, PageResult } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { DEFAULT_PAGE_SIZE } from "@/components";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface UsersQuery {
@@ -54,8 +55,12 @@ interface UseUsersResult {
  * call after they mutate a user. Any filter change (search/status/deleted)
  * resets to page 1 so the user is never stranded on an out-of-range page.
  */
-export function useUsers(): UseUsersResult {
-  const [query, setQueryState] = useState<UsersQuery>(DEFAULT_QUERY);
+/** `storageKey` keeps filters per screen: the user list and Akses cabang share this hook. */
+export function useUsers(storageKey: string): UseUsersResult {
+  const [query, setQueryState] = usePersistentState<UsersQuery>(
+    storageKey,
+    DEFAULT_QUERY,
+  );
   const [users, setUsers] = useState<User[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<User>["pagination"]>(EMPTY_PAGE);
@@ -75,7 +80,7 @@ export function useUsers(): UseUsersResult {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

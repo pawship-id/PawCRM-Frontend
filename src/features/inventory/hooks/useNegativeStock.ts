@@ -10,6 +10,7 @@ import type { NegativeStockRow, NegativeStockSort } from "@/types/inventory";
 import type { Warehouse } from "@/types/api";
 import { useAuth } from "@/features/auth";
 import { accessibleWarehouses } from "@/utils/accessScope";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** The one filter this list offers, its ordering, and the page. */
 export interface NegativeStockQuery {
@@ -86,7 +87,10 @@ export function useNegativeStock(): UseNegativeStockResult {
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
 
-  const [query, setQueryState] = useState<NegativeStockQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<NegativeStockQuery>(
+    "inventory.negativeStock",
+    DEFAULT_QUERY,
+  );
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 
@@ -97,7 +101,7 @@ export function useNegativeStock(): UseNegativeStockResult {
    */
   const setQuery = useCallback((patch: Partial<NegativeStockQuery>) => {
     setQueryState((prev) => ({ ...prev, ...patch, page: patch.page ?? 1 }));
-  }, []);
+  }, [setQueryState]);
 
   useEffect(() => {
     let active = true;

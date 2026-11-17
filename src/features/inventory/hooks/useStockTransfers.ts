@@ -15,6 +15,7 @@ import type { Warehouse } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { useAuth } from "@/features/auth";
 import { accessibleWarehouses } from "@/utils/accessScope";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** The knobs the transfer list offers. */
 export interface StockTransfersQuery {
@@ -100,7 +101,10 @@ export function useStockTransfers(): UseStockTransfersResult {
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
 
-  const [query, setQueryState] = useState<StockTransfersQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<StockTransfersQuery>(
+    "inventory.transfers",
+    DEFAULT_QUERY,
+  );
   // Only the text field earns a wait; a changed dropdown is a finished decision.
   const debounced = useDebouncedQuery(query);
 
@@ -117,7 +121,7 @@ export function useStockTransfers(): UseStockTransfersResult {
       ...patch,
       page: patch.page ?? 1,
     }));
-  }, []);
+  }, [setQueryState]);
 
   useEffect(() => {
     let active = true;

@@ -7,6 +7,7 @@ import { ApiError } from "@/services/api-error";
 import type { Warehouse, WarehouseListQuery, PageResult } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { DEFAULT_PAGE_SIZE } from "@/components";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface WarehousesQuery {
@@ -61,7 +62,10 @@ interface UseWarehousesResult {
  * default of 100.
  */
 export function useWarehouses(): UseWarehousesResult {
-  const [query, setQueryState] = useState<WarehousesQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<WarehousesQuery>(
+    "settings.warehouses",
+    DEFAULT_QUERY,
+  );
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<Warehouse>["pagination"]>(EMPTY_PAGE);
@@ -81,7 +85,7 @@ export function useWarehouses(): UseWarehousesResult {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

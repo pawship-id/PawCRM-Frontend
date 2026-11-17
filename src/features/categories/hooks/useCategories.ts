@@ -13,6 +13,7 @@ import type {
 } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { DEFAULT_PAGE_SIZE } from "@/components";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface CategoriesQuery {
@@ -82,7 +83,10 @@ interface UseCategoriesResult {
  * setting — see CategoryKind.
  */
 export function useCategories(): UseCategoriesResult {
-  const [query, setQueryState] = useState<CategoriesQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<CategoriesQuery>(
+    "inventory.categories",
+    DEFAULT_QUERY,
+  );
   const [categories, setCategories] = useState<Category[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<Category>["pagination"]>(EMPTY_PAGE);
@@ -102,7 +106,7 @@ export function useCategories(): UseCategoriesResult {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

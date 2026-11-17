@@ -19,6 +19,7 @@ import { productService } from "@/services/product.service";
 import { formatQty } from "@/utils/decimal";
 import { exportToXlsx, type XlsxColumn } from "@/utils/xlsx";
 import type { LowStockSort, Product } from "@/types/inventory";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** A catalogue row plus the quantity that put it below its threshold. */
 type LowStockRow = Product & { qtyOnHand: string };
@@ -121,9 +122,15 @@ const EXPORT_COLUMNS: XlsxColumn<LowStockRow>[] = [
 ];
 
 export function LowStockScreen() {
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [sort, setSort] = useState<LowStockSort>(DEFAULT_SORT);
+  const [page, setPage] = usePersistentState("reports.lowStock.page", 1);
+  const [pageSize, setPageSize] = usePersistentState(
+    "reports.lowStock.pageSize",
+    DEFAULT_PAGE_SIZE,
+  );
+  const [sort, setSort] = usePersistentState<LowStockSort>(
+    "reports.lowStock.sort",
+    DEFAULT_SORT,
+  );
   const [rows, setRows] = useState<LowStockRow[]>([]);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);

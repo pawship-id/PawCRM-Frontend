@@ -73,3 +73,12 @@ beforeEach(async () => {
   const idb = await import("@/features/pos/offline/idb");
   idb.__resetMemoryStore();
 });
+
+/*
+  Lists remember their filters in sessionStorage (`usePersistentState`), which
+  jsdom keeps for the whole file — one test's filter would open the next test's
+  screen already narrowed. Every test starts from the defaults.
+*/
+afterEach(() => {
+  window.sessionStorage.clear();
+});

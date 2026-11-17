@@ -6,6 +6,7 @@ import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
 import type { PageResult, PosShiftListItem, PosShiftStatus } from "@/types/api";
 import { DEFAULT_PAGE_SIZE } from "@/components";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** The query knobs Pengaturan › Shift kasir drives. */
 export interface CashierShiftsQuery {
@@ -42,7 +43,10 @@ const EMPTY_PAGE: PageResult<PosShiftListItem>["pagination"] = {
  * reload. Mirrors useAuditLogs.
  */
 export function useCashierShifts() {
-  const [query, setQueryState] = useState<CashierShiftsQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<CashierShiftsQuery>(
+    "settings.cashierShifts",
+    DEFAULT_QUERY,
+  );
   const [shifts, setShifts] = useState<PosShiftListItem[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<PosShiftListItem>["pagination"]>(EMPTY_PAGE);
@@ -56,7 +60,7 @@ export function useCashierShifts() {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 
