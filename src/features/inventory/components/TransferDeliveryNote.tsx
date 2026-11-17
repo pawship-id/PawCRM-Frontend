@@ -45,40 +45,48 @@ export function TransferDeliveryNote({
     <div
       data-receipt-sheet="a4"
       data-delivery-note
-      className="mx-auto w-full bg-white p-8 text-sm text-black"
+      className="mx-auto w-full bg-white p-4 text-sm wrap-anywhere text-black sm:p-8"
     >
       <h1 className="text-center text-2xl font-bold text-black">Surat Jalan</h1>
 
       <div className="mt-8 flex flex-wrap items-start justify-between gap-6 text-xs">
-        <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-1.5">
+        <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
           <Meta label="DARI">{transfer.fromWarehouseName ?? "—"}</Meta>
           <Meta label="TUJUAN">{transfer.toWarehouseName ?? "—"}</Meta>
         </dl>
 
-        <dl className="grid grid-cols-[auto_auto] gap-x-4 gap-y-1.5">
+        <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">
           <Meta label="No. Transfer">{transfer.transferNumber}</Meta>
           <Meta label="Tanggal">{formatNoteDate(transfer.transferDate)}</Meta>
         </dl>
       </div>
 
-      <table className="mt-5 w-full border-collapse border border-black text-xs">
+      {/*
+        FIXED COLUMNS, IN PROPORTION (17 November 2026). With content-sized
+        columns a long SKU or a note with no space in it widened the table past
+        the paper and the right-hand columns printed off the edge. `table-fixed`
+        holds the table to the page width; the cells wrap (`wrap-anywhere` on the
+        sheet) instead of pushing.
+      */}
+      <table className="mt-5 w-full border-collapse border border-black text-xs sm:table-fixed">
+        <DeliveryNoteColumns />
         <thead>
           <tr>
-            <Th className="w-10">NO</Th>
-            <Th className="w-40">SKU</Th>
+            <Th className="whitespace-nowrap">NO</Th>
+            <Th>SKU</Th>
             <Th>NAMA BARANG</Th>
-            <Th className="w-16 text-center">QTY</Th>
-            <Th className="w-20">UNIT</Th>
-            <Th className="w-40">KETERANGAN</Th>
+            <Th className="text-center whitespace-nowrap">QTY</Th>
+            <Th>UNIT</Th>
+            <Th>KETERANGAN</Th>
           </tr>
         </thead>
         <tbody>
           {transfer.items.map((item, index) => (
             <tr key={`${item.productId}-${item.batchId ?? index}`}>
-              <Td className="text-center tabular-nums">{index + 1}</Td>
+              <Td className="text-center whitespace-nowrap tabular-nums">{index + 1}</Td>
               <Td>{item.productSku ?? ""}</Td>
               <Td>{item.productName ?? ""}</Td>
-              <Td className="text-center tabular-nums">{formatQty(item.qty)}</Td>
+              <Td className="text-center whitespace-nowrap tabular-nums">{formatQty(item.qty)}</Td>
               <Td>{item.productUnit ?? ""}</Td>
               <Td>{item.notes ?? ""}</Td>
             </tr>
@@ -86,9 +94,16 @@ export function TransferDeliveryNote({
         </tbody>
       </table>
 
-      <p className="mt-6 pr-[11.5rem] text-right text-xs font-bold tabular-nums">
+      {/*
+        UNDER THE QTY COLUMN: the grid's first track is the three columns
+        before QTY (7% + 20% + the name's 30%, less the gap) and its second is
+        QTY's own 10% — the same proportions as `DeliveryNoteColumns`.
+      */}
+      <p className="mt-6 grid grid-cols-[auto_auto] justify-end gap-x-4 text-right text-xs font-bold tabular-nums sm:grid-cols-[calc(57%-1rem)_10%] sm:justify-start sm:gap-x-4">
         Total Qty
-        <span className="ml-4 font-normal">{formatQty(total)}</span>
+        <span className="text-center font-normal whitespace-nowrap">
+          {formatQty(total)}
+        </span>
       </p>
 
       <div className="mt-8 text-xs">
@@ -96,6 +111,25 @@ export function TransferDeliveryNote({
         <p className="mt-2 whitespace-pre-line">{transfer.notes ?? ""}</p>
       </div>
     </div>
+  );
+}
+
+/**
+ * The table's column widths, shared by the item table and its total row.
+ *
+ * FROM `sm` UP ONLY — paper is always that wide. On a phone the columns size
+ * to their content instead, or "NO" and "QTY" break one letter per line.
+ */
+function DeliveryNoteColumns() {
+  return (
+    <colgroup>
+      <col className="sm:w-[7%]" />
+      <col className="sm:w-[20%]" />
+      <col className="sm:w-[30%]" />
+      <col className="sm:w-[10%]" />
+      <col className="sm:w-[11%]" />
+      <col className="sm:w-[20%]" />
+    </colgroup>
   );
 }
 
@@ -108,7 +142,7 @@ function Meta({
 }) {
   return (
     <>
-      <dt className="font-bold">{label}</dt>
+      <dt className="font-bold whitespace-nowrap">{label}</dt>
       <dd>
         <span className="mr-2">:</span>
         {children}

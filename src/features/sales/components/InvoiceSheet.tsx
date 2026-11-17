@@ -248,20 +248,25 @@ export function InvoiceSheet({
   return (
     <div
       data-receipt-sheet="a4"
-      className="mx-auto w-full bg-surface p-8 text-sm text-foreground"
+      className="mx-auto w-full bg-surface p-4 text-sm wrap-anywhere text-foreground sm:p-8"
     >
-      <header className="flex flex-wrap items-start justify-between gap-6 border-b-2 border-primary pb-4">
-        <div className="flex items-start gap-4">
+      {/*
+        NOTHING WIDER THAN THE PAPER (17 November 2026). Text may break anywhere
+        (`wrap-anywhere` on the sheet), amounts never do, and the header stacks
+        on a phone rather than pushing the FAKTUR block off the side.
+      */}
+      <header className="flex flex-col gap-4 border-b-2 border-primary pb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+        <div className="flex min-w-0 items-start gap-4">
           {header.logoUrl && (
             // A plain img — the storage host is chosen per deployment.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={header.logoUrl}
               alt={header.issuer ? `Logo ${header.issuer}` : "Logo toko"}
-              className="max-h-16 w-auto object-contain"
+              className="max-h-16 w-auto shrink-0 object-contain"
             />
           )}
-          <div>
+          <div className="min-w-0">
             {header.issuer && (
               <p className="text-lg font-bold text-primary">{header.issuer}</p>
             )}
@@ -281,9 +286,9 @@ export function InvoiceSheet({
             )}
           </div>
         </div>
-        <div className="text-right">
+        <div className="sm:max-w-[50%] sm:shrink-0 sm:text-right">
           <p className="text-2xl font-extrabold text-primary">FAKTUR</p>
-          <dl className="mt-2 grid grid-cols-[auto_auto] justify-end gap-x-4 gap-y-1 text-xs">
+          <dl className="mt-2 grid grid-cols-[auto_minmax(0,auto)] gap-x-4 gap-y-1 text-xs sm:justify-end">
             <Meta label="No. Faktur">{invoice.invoiceNumber}</Meta>
             <Meta label="Tanggal">{formatDate(invoice.invoiceDate)}</Meta>
             <Meta label="Jatuh Tempo">{formatDate(invoice.dueDate)}</Meta>
@@ -315,18 +320,24 @@ export function InvoiceSheet({
         <table className="mt-6 w-full border-collapse">
           <thead>
             <tr className="bg-navy-100 text-xs font-semibold text-primary">
-              <th className="w-8 p-2.5 text-left">#</th>
-              <th className="p-2.5 text-left">Deskripsi</th>
-              <th className="p-2.5 text-right">Qty</th>
-              <th className="p-2.5 text-right">Harga</th>
-              <th className="p-2.5 text-right">Jumlah</th>
+              <th className="w-8 px-1.5 py-2 text-left sm:p-2.5">#</th>
+              <th className="px-1.5 py-2 text-left sm:p-2.5">Deskripsi</th>
+              {/*
+                QTY AND HARGA FOLD INTO THE DESCRIPTION ON A PHONE. Five columns
+                in 340px left "Deskripsi" a few letters wide; below `sm` the two
+                become one sub-line under the name instead. Paper is always
+                wider than `sm`, so the printed faktur keeps every column.
+              */}
+              <th className="hidden px-1.5 py-2 text-right sm:table-cell sm:p-2.5">Qty</th>
+              <th className="hidden px-1.5 py-2 text-right sm:table-cell sm:p-2.5">Harga</th>
+              <th className="px-1.5 py-2 text-right sm:p-2.5">Jumlah</th>
             </tr>
           </thead>
           <tbody>
             {items.map((item, index) => (
               <tr key={`${item.name}-${index}`} className="border-b border-border">
-                <td className="p-2.5 tabular-nums">{index + 1}</td>
-                <td className="p-2.5">
+                <td className="px-1.5 py-2 tabular-nums sm:p-2.5">{index + 1}</td>
+                <td className="px-1.5 py-2 sm:p-2.5">
                   <span className="font-medium">{item.name}</span>
                   {/*
                     THE ANIMAL ON A SERVICE LINE, the same rule the on-screen
@@ -343,14 +354,18 @@ export function InvoiceSheet({
                       {variantSummary(item)}
                     </span>
                   )}
+                  <span className="block text-xs whitespace-nowrap text-muted tabular-nums sm:hidden">
+                    {formatQty(item.qty)} × {formatMoney(item.unitPrice)}
+                  </span>
                 </td>
-                <td className="p-2.5 text-right tabular-nums">
+                {/* Figures never break mid-number; the description gives way. */}
+                <td className="hidden px-1.5 py-2 text-right whitespace-nowrap tabular-nums sm:table-cell sm:p-2.5">
                   {formatQty(item.qty)}
                 </td>
-                <td className="p-2.5 text-right tabular-nums">
+                <td className="hidden px-1.5 py-2 text-right whitespace-nowrap tabular-nums sm:table-cell sm:p-2.5">
                   {formatMoney(item.unitPrice)}
                 </td>
-                <td className="p-2.5 text-right tabular-nums">
+                <td className="px-1.5 py-2 text-right whitespace-nowrap tabular-nums sm:p-2.5">
                   {formatMoney(item.lineTotal)}
                 </td>
               </tr>
@@ -494,7 +509,7 @@ export function InvoiceSheet({
 function Meta({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <>
-      <dt className="text-muted">{label}</dt>
+      <dt className="whitespace-nowrap text-muted">{label}</dt>
       <dd className="text-right font-semibold tabular-nums">{children}</dd>
     </>
   );

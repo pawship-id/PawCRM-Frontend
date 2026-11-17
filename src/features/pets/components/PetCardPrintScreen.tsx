@@ -212,7 +212,7 @@ export function PetCardPrintScreen({ petId }: { petId: string }) {
       */}
       <div
         data-print-root
-        className="mx-auto w-full max-w-[210mm] bg-white p-8 text-black"
+        className="mx-auto w-full max-w-[210mm] bg-white p-4 text-black wrap-anywhere sm:p-8"
       >
         <header className="flex items-start justify-between gap-4 border-b-2 border-black pb-3">
           {/*
@@ -232,11 +232,11 @@ export function PetCardPrintScreen({ petId }: { petId: string }) {
               alt={`Foto ${pet.name}`}
               /* Black, not `border-border`: this sheet is printed, and the token
                  is a light grey that a mono printer renders as nothing. */
-              className="border-2 border-black"
+              className="shrink-0 border-2 border-black"
             />
           )}
 
-          <div className="mr-auto">
+          <div className="mr-auto min-w-0">
             <h1 className="text-3xl font-extrabold leading-tight">{pet.name}</h1>
             <p className="text-sm">
               {pet.speciesLabel ?? label("species", pet.species)}
@@ -247,7 +247,7 @@ export function PetCardPrintScreen({ petId }: { petId: string }) {
               {pet.weightKg ? ` · ${pet.weightKg} kg` : ""}
             </p>
           </div>
-          <div className="text-right text-xs">
+          <div className="max-w-[40%] shrink-0 text-right text-xs">
             <p className="font-semibold">{tenant?.name ?? "—"}</p>
             <p>Dicetak {day(new Date().toISOString())}</p>
           </div>

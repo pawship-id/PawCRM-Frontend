@@ -86,20 +86,26 @@ export function PaymentReceipt({
   return (
     <div
       data-receipt-sheet="a4"
-      className="mx-auto w-full bg-surface p-8 text-sm text-foreground"
+      className="mx-auto w-full bg-surface p-4 text-sm wrap-anywhere text-foreground sm:p-8"
     >
-      <div className="flex items-start justify-between gap-6 border-b border-border pb-4">
-        <div className="flex items-start gap-4">
+      {/*
+        NOTHING WIDER THAN THE PAPER (17 November 2026). Every text block may
+        break anywhere (`wrap-anywhere` on the sheet) so a reference number or
+        channel name with no space in it wraps instead of leaving the page, and
+        the header stacks on a phone instead of pushing "KWITANSI" off the side.
+      */}
+      <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+        <div className="flex min-w-0 items-start gap-4">
           {header?.logoUrl && (
             // A plain img — the storage host is chosen per deployment.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={header.logoUrl}
               alt={issuer ? `Logo ${issuer}` : "Logo toko"}
-              className="max-h-16 w-auto object-contain"
+              className="max-h-16 w-auto shrink-0 object-contain"
             />
           )}
-          <div>
+          <div className="min-w-0">
             {issuer && <p className="text-base font-semibold">{issuer}</p>}
             {branchLine && <p className="text-sm text-muted">{branchLine}</p>}
             {header?.headerText && (
@@ -109,7 +115,7 @@ export function PaymentReceipt({
             )}
           </div>
         </div>
-        <div className="text-right">
+        <div className="sm:max-w-[45%] sm:shrink-0 sm:text-right">
           <p className="text-lg font-bold">KWITANSI</p>
           {/* Its own number where it has one — null on a payment recorded
               before the series existed, and the sheet says nothing there
@@ -123,7 +129,7 @@ export function PaymentReceipt({
         </div>
       </div>
 
-      <dl className="mt-6 grid grid-cols-2 gap-x-8 gap-y-3">
+      <dl className="mt-6 grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
         <Row label="Diterima dari">
           {invoice.customerName ?? "Pelanggan terhapus"}
         </Row>
@@ -151,9 +157,9 @@ export function PaymentReceipt({
         <Row label="Diterima oleh">{payment.byUserName ?? "—"}</Row>
       </dl>
 
-      <div className="mt-6 flex items-baseline justify-between gap-6 rounded-md border border-border bg-surface-hover px-5 py-4">
-        <span className="font-medium">Jumlah diterima</span>
-        <span className="text-xl font-bold tabular-nums">
+      <div className="mt-6 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1 rounded-md border border-border bg-surface-hover px-5 py-4">
+        <span className="min-w-0 font-medium">Jumlah diterima</span>
+        <span className="ml-auto text-xl font-bold whitespace-nowrap tabular-nums">
           {formatMoney(payment.amount)}
         </span>
       </div>
@@ -167,7 +173,7 @@ export function PaymentReceipt({
         receipt is printed from the current document, so a later instalment moves
         them. That is the honest reading: the sheet says what is owed today.
       */}
-      <dl className="mt-4 grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
+      <dl className="mt-4 grid grid-cols-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2">
         <Row label="Total tagihan faktur">
           <span className="tabular-nums">{formatMoney(invoice.total)}</span>
         </Row>
