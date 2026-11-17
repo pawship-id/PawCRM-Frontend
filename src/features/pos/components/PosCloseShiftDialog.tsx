@@ -1,6 +1,13 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Minus,
+  Plus,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Alert, Spinner } from "@/components";
@@ -16,10 +23,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/features/auth";
 import { posService } from "@/services/pos.service";
 import { ApiError } from "@/services/api-error";
 import { formatMoney } from "@/utils/decimal";
 import type { PosShift, PosTransaction, PosXReport } from "@/types/api";
+
+import { useShiftReportDownload } from "../hooks/useShiftReportDownload";
 
 /** Digits only — "500.000" is five hundred thousand in Indonesian, not 500. */
 const WHOLE_RUPIAH = /^\d+$/;
@@ -83,6 +93,24 @@ export function PosCloseShiftDialog({
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * The shift as the server closed it. Set, the dialog shows "Kasir sudah
+   * ditutup" with the payment report to download (17 November 2026) instead
+   * of handing straight back to the till — the report is wanted exactly now,
+   * while the cashier is still standing at the drawer.
+   */
+  const [closed, setClosed] = useState<PosShift | null>(null);
+  const { user } = useAuth();
+  const shiftReport = useShiftReportDownload();
+
+  /* Leaving the done view, however it is left, is what ends the shift on screen. */
+  function handleOpenChange(next: boolean) {
+    if (!next && closed) {
+      onClosed();
+      return;
+    }
+    onOpenChange(next);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -95,6 +123,7 @@ export function PosCloseShiftDialog({
     setCounted({});
     setViewing(null);
     setError(null);
+    setClosed(null);
     /* eslint-enable react-hooks/set-state-in-effect */
 
     posService
@@ -162,7 +191,7 @@ export function PosCloseShiftDialog({
     setError(null);
 
     try {
-      await posService.closeShift(shift._id, {
+      const result = await posService.closeShift(shift._id, {
         countedCash: counted[CASH],
         counts: methods
           .filter((method) => method.key !== CASH)
@@ -172,7 +201,7 @@ export function PosCloseShiftDialog({
           })),
         closingNotes: notes.trim() || undefined,
       });
-      onClosed();
+      setClosed(result);
     } catch (err) {
       setError(
         err instanceof ApiError
@@ -185,9 +214,21 @@ export function PosCloseShiftDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[90dvh] grid-cols-[minmax(0,1fr)] gap-4 overflow-x-hidden overflow-y-auto p-4 sm:max-w-md sm:p-6">
-        {viewed ? (
+        {closed ? (
+          <ClosedView
+            shift={closed}
+            downloading={shiftReport.loadingId !== null}
+            downloadError={shiftReport.error}
+            onDownload={() =>
+              void shiftReport.download(closed._id, {
+                cashierName: user?.fullName ?? null,
+              })
+            }
+            onDone={onClosed}
+          />
+        ) : viewed ? (
           <MethodDetail
             key={viewed.key}
             shift={shift}
@@ -311,9 +352,86 @@ export function PosCloseShiftDialog({
           </>
         )}
       </DialogContent>
+      {shiftReport.portal}
     </Dialog>
   );
 }
+
+/**
+ * After Tutup Kasir — the shift's result and its payment report.
+ *
+ * THE DOWNLOAD IS OFFERED, NOT FORCED: Selesai goes back to the till either
+ * way, and the same report stays in Pengaturan › Shift kasir for later.
+ */
+function ClosedView({
+  shift,
+  downloading,
+  downloadError,
+  onDownload,
+  onDone,
+}: {
+  shift: PosShift;
+  downloading: boolean;
+  downloadError: string | null;
+  onDownload: () => void;
+  onDone: () => void;
+}) {
+  const gaps = [
+    { name: "Kas", difference: shift.difference },
+    ...(shift.channelCounts ?? []).map((count) => ({
+      name: count.channelName ?? "Metode lain",
+      difference: count.difference,
+    })),
+  ].filter((row) => row.difference !== null && Number(row.difference) !== 0);
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2">
+          <CheckCircle2 className="size-5 text-success" />
+          Kasir sudah ditutup
+        </DialogTitle>
+        <DialogDescription>
+          Shift {shift.shiftNumber}. Unduh laporan pembayarannya untuk arsip
+          atau diserahkan ke atasan.
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="rounded-lg border border-border p-3 text-sm">
+        {gaps.length === 0 ? (
+          <p className="text-success">Semua metode pembayaran cocok, tidak ada selisih.</p>
+        ) : (
+          <dl className="space-y-1">
+            <p className="text-xs text-muted">Ada selisih</p>
+            {gaps.map((row) => (
+              <div key={row.name} className="flex justify-between gap-2">
+                <dt className="min-w-0">{row.name}</dt>
+                <dd className="shrink-0 whitespace-nowrap text-danger tabular-nums">
+                  {isPositiveGap(row.difference) ? "+" : ""}
+                  {formatMoney(row.difference)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        )}
+      </div>
+
+      {downloadError && <Alert variant="error">{downloadError}</Alert>}
+
+      <DialogFooter>
+        <Button type="button" variant="secondary" onClick={onDone}>
+          Selesai
+        </Button>
+        <Button type="button" onClick={onDownload} disabled={downloading}>
+          {downloading ? <Spinner /> : <Download className="size-4" />}
+          Unduh laporan (PDF)
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+const isPositiveGap = (value: string | null) => Number(value ?? 0) > 0;
 
 /**
  * One method's detail: what the shift sold through it, and the box for the count.
