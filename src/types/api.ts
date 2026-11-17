@@ -2875,6 +2875,17 @@ export interface PosReceipt {
     status: "unpaid" | "partial" | "paid" | "void";
   } | null;
   note: string | null;
+  /**
+   * Corrected from its faktur (17 November 2026): the lines and totals are the
+   * corrected ones, the payments what was taken that day. Optional — older
+   * servers and offline snapshots do not send it.
+   */
+  correction?: {
+    at: string | null;
+    invoiceNumber: string | null;
+    /** Σ money handed back by the corrections — "0.0000" when none. */
+    refunded: string;
+  } | null;
 }
 
 /**
@@ -7854,6 +7865,8 @@ export interface CustomerInvoiceDetail extends Omit<
    */
   voidedAt: string | null;
   voidReason: string | null;
+  /** Refunds of a corrected till-born faktur (17 November 2026); absent elsewhere. */
+  refunds?: CustomerInvoiceRefund[];
   /**
    * EVERY ledger entry this invoice raised — its issuance, its cost half, and a
    * reversal of each if it was voided.
@@ -8126,6 +8139,8 @@ export interface InvoiceDiscount {
   source?: "manual" | "membership" | "promo" | "voucher";
   membershipId?: string | null;
   benefitId?: string | null;
+  /** Which option of the benefit (Promosi V1). */
+  optionId?: string | null;
   /** Frozen onto the line so a reprinted bill can name it without a lookup. */
   benefitLabel?: string | null;
 }
@@ -8281,6 +8296,48 @@ export interface UpdateCustomerInvoiceInput {
   /** Only read when the invoice shipped nothing before and now does. */
   warehouseId?: string;
   notes?: string | null;
+  /**
+   * A TILL-BORN faktur (17 November 2026): the Kas & Bank account the
+   * difference moves through — refunded when the new total is below what was
+   * paid, collected when above — and the day it moved (default today).
+   */
+  settleAccountId?: string;
+  settleAt?: string;
+}
+
+/**
+ * GET /customer-invoices/:id/till-correction — whether a till-born faktur can
+ * be edited or cancelled, and how a cancellation would run (17 November 2026).
+ */
+export type TillCorrectionStatus =
+  | { tillBorn: false }
+  | {
+      tillBorn: true;
+      /**
+       * `till_void` — every drawer is still open: the till's own Void, the
+       * money goes back out of the drawer. `late` — the books are reversed on
+       * the sale's day and the money goes back as a refund dated today.
+       */
+      mode: "till_void" | "late";
+      revised: boolean;
+      shiftOpen: boolean;
+      paidAmount: string;
+      transactionNumber: string | null;
+      canVoid: boolean;
+      voidBlockedReason: string | null;
+      canEdit: boolean;
+      editBlockedReason: string | null;
+    };
+
+/** Money handed back by a correction of a till-born faktur. */
+export interface CustomerInvoiceRefund {
+  cashTransactionId: string;
+  number: string | null;
+  amount: string;
+  at: string;
+  accountName: string | null;
+  /** `edit` — the bill was lowered; `void` — it was cancelled. */
+  reason: "edit" | "void";
 }
 
 /** The actions an invoice's own activity log can hold. */
@@ -8341,7 +8398,7 @@ export interface CreateInvoiceItemInput {
    * could write a free invoice, so the amount is deliberately absent from this
    * shape; what the form quoted only ever drove its own preview.
    */
-  benefit?: { membershipId: string; benefitId: string } | null;
+  benefit?: { membershipId: string; benefitId: string; optionId?: string | null } | null;
   /**
    * PROMO V1 — WHICH promos, never their value. Absent = automatic (only
    * promos with "Faktur" ticked), `[]` = no promo.

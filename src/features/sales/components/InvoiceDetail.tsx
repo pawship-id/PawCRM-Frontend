@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 
 import { SALES_CRUMBS } from "../crumbs";
 import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
+import { useTillCorrection } from "../hooks/useTillCorrection";
 import { InvoiceActivityCard } from "./InvoiceActivityCard";
 import { InvoiceItemsTable } from "./InvoiceItemsTable";
 import { InvoiceJournalDialog } from "./InvoiceJournalDialog";
@@ -95,6 +96,20 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const [activityVersion, setActivityVersion] = useState(0);
 
   const { can } = usePermissions();
+
+  /*
+    A TILL-BORN FAKTUR ASKS THE SERVER whether it can be edited or cancelled
+    (17 November 2026) — returns, packages and older sales say no, and only the
+    server knows. Re-read after every write.
+  */
+  const isTillInvoice = Boolean(
+    invoice && (invoice.source === "pos_bridge" || invoice.posTransactionId),
+  );
+  const { status: tillStatus } = useTillCorrection(
+    invoiceId,
+    isTillInvoice,
+    activityVersion,
+  );
 
   if (loading) {
     return (
@@ -166,8 +181,14 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
     should not have been drawn. The edit page (`/edit`) re-checks the same
     rule on load, so a link opened after a payment lands on the reason.
   */
-  const editable =
-    !tillBorn && !shopeeBorn && invoice.status === "unpaid" && !hasActivePayment;
+  const till = tillStatus && tillStatus.tillBorn ? tillStatus : null;
+  /*
+    A TILL-BORN FAKTUR (17 November 2026) is editable paid or not, whenever the
+    server says so — the difference in money is settled on the edit page.
+  */
+  const editable = tillBorn
+    ? !voided && Boolean(till?.canEdit)
+    : !shopeeBorn && invoice.status === "unpaid" && !hasActivePayment;
   const mayEdit = editable && can("customerInvoices", "update");
 
   const lockNote = voided
@@ -177,7 +198,11 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         ? "Dari impor pesanan TikTok — baris dikunci. Lunas lewat Catat pembayaran atau impor laporan pencairan TikTok."
         : "Dari impor pesanan Shopee — baris dikunci. Lunas lewat Catat pembayaran atau impor Laporan Penghasilan Shopee."
       : tillBorn
-      ? "Lahir dari penjualan kasir — barisnya milik transaksi kasir dan tidak diubah di sini."
+      ? till?.canEdit
+        ? `Dari transaksi kasir ${till.transactionNumber ?? ""}. Bisa diubah atau dibatalkan kapan saja — transaksi kasirnya ikut diperbarui. Selisih uang dikembalikan atau ditagih hari ini.`
+        : till?.editBlockedReason
+          ? `Dari transaksi kasir — tidak bisa diubah: ${till.editBlockedReason}`
+          : "Dari transaksi kasir."
       : editable
         ? "Belum ada pembayaran — faktur masih bisa diubah. Terkunci otomatis begitu pembayaran pertama tercatat."
         : "Terkunci sejak ada pembayaran tercatat — batalkan pembayarannya dulu untuk mengubah.";
@@ -486,6 +511,43 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           )}
 
           {/*
+            MONEY HANDED BACK by a correction of a till-born faktur (17 November
+            2026) — each its own BKK/BBK, dated the day it left. `paidAmount`
+            above is already net of these.
+          */}
+          {(invoice.refunds ?? []).length > 0 && (
+            <Card
+              title="Uang dikembalikan"
+              description="Refund dari koreksi faktur kasir — sudah dikurangkan dari jumlah terbayar."
+            >
+              <ul className="flex flex-col divide-y divide-border text-sm">
+                {(invoice.refunds ?? []).map((refund) => (
+                  <li
+                    key={refund.cashTransactionId}
+                    className="flex items-baseline justify-between gap-3 py-2"
+                  >
+                    <span className="min-w-0">
+                      <span className="block font-semibold tabular-nums">
+                        {refund.number ?? "Refund"}
+                      </span>
+                      <span className="block text-xs text-muted">
+                        <span className="tabular-nums">{formatDate(refund.at)}</span>
+                        {" · "}
+                        {refund.accountName ?? "—"}
+                        {" · "}
+                        {refund.reason === "void" ? "Pembatalan" : "Ubah faktur"}
+                      </span>
+                    </span>
+                    <span className="shrink-0 font-semibold tabular-nums">
+                      −{formatMoney(refund.amount)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          {/*
             WHAT THIS CUSTOMER OWES ALTOGETHER — the number a decision about the
             next sale is made against. NO CEILING IS NOT ZERO LEFT.
           */}
@@ -533,6 +595,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
 
       <VoidInvoiceDialog
         invoice={invoice}
+        till={till}
         open={voidOpen}
         onOpenChange={setVoidOpen}
         onVoided={applyWrite}

@@ -3,6 +3,7 @@ import type {
   RevenueBreakdown,
   RevenueBreakdownAxis,
   CustomerInvoiceDetail,
+  TillCorrectionStatus,
   CustomerInvoiceFilterOptions,
   CustomerInvoiceListQuery,
   CustomerInvoiceListRow,
@@ -208,10 +209,25 @@ export const customerInvoiceService = {
    * Requires `customerInvoices:void`, its own grant: raising a bill, taking money
    * against it and cancelling it outright are three different authorities.
    */
-  voidInvoice: (id: string, reason: string) =>
+  voidInvoice: (
+    id: string,
+    reason: string,
+    refund?: { refundAccountId?: string; refundAt?: string },
+  ) =>
     apiClient.post<CustomerInvoiceDetail>(`/customer-invoices/${id}/void`, {
       reason,
+      ...(refund?.refundAccountId ? { refundAccountId: refund.refundAccountId } : {}),
+      ...(refund?.refundAt ? { refundAt: refund.refundAt } : {}),
     }),
+
+  /**
+   * GET /customer-invoices/:id/till-correction — can this TILL-BORN faktur be
+   * edited or cancelled, and would a cancellation be the till's own Void or a
+   * late one with a refund (17 November 2026). The screen reads it before it
+   * draws Ubah or Batalkan.
+   */
+  tillCorrection: (id: string) =>
+    apiClient.get<TillCorrectionStatus>(`/customer-invoices/${id}/till-correction`),
 
   /**
    * PATCH /customer-invoices/:id — revise an invoice nobody has paid yet.

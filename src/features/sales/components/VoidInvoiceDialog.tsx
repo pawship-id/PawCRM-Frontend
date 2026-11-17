@@ -18,9 +18,11 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { formatMoney } from "@/utils/decimal";
-import type { CustomerInvoiceDetail } from "@/types/api";
+import type { CustomerInvoiceDetail, TillCorrectionStatus } from "@/types/api";
+import { toMinor } from "@/utils/decimal";
 
 import { paymentChannelLabel } from "../paymentLabels";
+import { SettlementAccountFields, todayIso } from "./SettlementAccountFields";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("id-ID", {
@@ -62,26 +64,46 @@ function formatDate(iso: string): string {
  */
 export function VoidInvoiceDialog({
   invoice,
+  till = null,
   open,
   onOpenChange,
   onVoided,
 }: {
   invoice: CustomerInvoiceDetail;
+  /** The server's reading of a TILL-BORN faktur (17 November 2026); null otherwise. */
+  till?: Extract<TillCorrectionStatus, { tillBorn: true }> | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onVoided: (updated: CustomerInvoiceDetail) => void;
 }) {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  const [refundAccountId, setRefundAccountId] = useState("");
+  const [refundAt, setRefundAt] = useState(todayIso());
+
+  const tillBorn =
+    invoice.source === "pos_bridge" || Boolean(invoice.posTransactionId);
 
   /*
     ACTIVE ONLY. A cancelled payment has already posted its own reversal and taken
     its money back out, so it must not block a void — the server's own definition.
+
+    A TILL-BORN FAKTUR IS NOT BLOCKED BY ITS PAYMENTS (17 November 2026): the
+    sale is cancelled with it and the money goes back as a refund — see below.
   */
   const activePayments = (invoice.payments ?? []).filter(
     (payment) => !payment.isVoided,
   );
-  const blocked = activePayments.length > 0;
+  const blocked = !tillBorn && activePayments.length > 0;
+  const tillRefusal = tillBorn
+    ? till
+      ? till.canVoid
+        ? null
+        : till.voidBlockedReason
+      : "Memeriksa transaksi kasirnya…"
+    : null;
+  const refundNeeded =
+    tillBorn && till?.mode === "late" && (toMinor(till.paidAmount) ?? 0n) > 0n;
 
   async function handleVoid() {
     const trimmed = reason.trim();
@@ -91,12 +113,23 @@ export function VoidInvoiceDialog({
       return;
     }
 
+    if (refundNeeded && !refundAccountId) {
+      swalToast("Pilih akun asal uang dikembalikan ke pelanggan.", "error");
+      return;
+    }
+
     setSaving(true);
 
     try {
       const updated = await customerInvoiceService.voidInvoice(
         invoice._id,
         trimmed,
+        refundNeeded
+          ? {
+              refundAccountId,
+              refundAt: new Date(`${refundAt}T12:00:00`).toISOString(),
+            }
+          : undefined,
       );
 
       // Released before the parent re-renders: a button locked forever is worse
@@ -121,7 +154,21 @@ export function VoidInvoiceDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        {blocked ? (
+        {tillRefusal ? (
+          <>
+            <DialogHeader>
+              <DialogTitle>
+                {invoice.invoiceNumber} belum bisa dibatalkan
+              </DialogTitle>
+              <DialogDescription>{tillRefusal}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="secondary" onClick={() => onOpenChange(false)}>
+                Kembali
+              </Button>
+            </DialogFooter>
+          </>
+        ) : blocked ? (
           <>
             <DialogHeader>
               <DialogTitle>
@@ -189,16 +236,55 @@ export function VoidInvoiceDialog({
                     dibatalkan.
                   </p>
                   {/* Said plainly, because none of it is guessable from the button */}
-                  <ul className="list-disc space-y-1 pl-5 text-muted">
-                    <li>Barangnya kembali ke stok gudang.</li>
-                    <li>
-                      Dua jurnal pembalik diposting — penerbitan dan HPP-nya.
-                    </li>
-                    <li>
-                      Fakturnya <strong>tidak dihapus</strong>: tetap ada di
-                      daftar bertanda batal, dan nomornya tidak dipakai ulang.
-                    </li>
-                  </ul>
+                  {tillBorn && till ? (
+                    <ul className="list-disc space-y-1 pl-5 text-muted">
+                      <li>
+                        Transaksi kasir{" "}
+                        <strong className="tabular-nums">
+                          {till.transactionNumber ?? ""}
+                        </strong>{" "}
+                        ikut dibatalkan.
+                      </li>
+                      <li>
+                        Barangnya kembali ke stok, dan jurnal penjualan serta
+                        HPP-nya dibalik di tanggal transaksi.
+                      </li>
+                      {till.mode === "till_void" ? (
+                        <li>
+                          Shift kasirnya masih buka: pembayaran kasirnya ikut
+                          dibatalkan dan uangnya dikembalikan dari laci shift itu.
+                        </li>
+                      ) : refundNeeded ? (
+                        <li>
+                          Uang <strong>{formatMoney(till.paidAmount)}</strong>{" "}
+                          dicatat keluar di tanggal yang Anda pilih (bukti kas
+                          keluar baru). Laporan shift yang sudah ditutup tidak
+                          berubah.
+                        </li>
+                      ) : (
+                        <li>Belum ada uang yang diterima — tidak ada refund.</li>
+                      )}
+                      <li>
+                        Booking dan antar-jemputnya bisa ditarik lagi ke faktur
+                        lain.
+                      </li>
+                      <li>
+                        Fakturnya <strong>tidak dihapus</strong>: tetap ada di
+                        daftar bertanda batal.
+                      </li>
+                    </ul>
+                  ) : (
+                    <ul className="list-disc space-y-1 pl-5 text-muted">
+                      <li>Barangnya kembali ke stok gudang.</li>
+                      <li>
+                        Dua jurnal pembalik diposting — penerbitan dan HPP-nya.
+                      </li>
+                      <li>
+                        Fakturnya <strong>tidak dihapus</strong>: tetap ada di
+                        daftar bertanda batal, dan nomornya tidak dipakai ulang.
+                      </li>
+                    </ul>
+                  )}
                 </div>
               </DialogDescription>
             </DialogHeader>
@@ -213,6 +299,17 @@ export function VoidInvoiceDialog({
               disabled={saving}
               required
             />
+
+            {refundNeeded && (
+              <SettlementAccountFields
+                label="Uang dikembalikan dari"
+                accountId={refundAccountId}
+                onAccountChange={setRefundAccountId}
+                date={refundAt}
+                onDateChange={setRefundAt}
+                disabled={saving}
+              />
+            )}
 
             <DialogFooter>
               {/*
@@ -231,7 +328,9 @@ export function VoidInvoiceDialog({
               <Button
                 variant="destructive"
                 onClick={handleVoid}
-                disabled={saving || reason.trim() === ""}
+                disabled={
+                  saving || reason.trim() === "" || (refundNeeded && !refundAccountId)
+                }
               >
                 {saving ? "Memproses…" : "Batalkan faktur"}
               </Button>
