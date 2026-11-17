@@ -238,7 +238,17 @@ export function ReceiptDialog({
 
   return (
     <Dialog open={saleId !== null} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      {/*
+        THE MODAL FOLLOWS THE RECEIPT (17 November 2026). The preview used to
+        sit in its own 320px scroll box, so even a one-item struk needed
+        scrolling, and the three buttons were wider than `max-w-md` — the grid
+        column grew to fit them and clipped the receipt's right edge.
+
+        `grid-cols-1` holds the column to the dialog's width whatever is in it;
+        the dialog itself (capped at the viewport) is the only scroll, and only
+        for a receipt longer than the screen, with the buttons pinned below.
+      */}
+      <DialogContent className="grid-cols-1 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Struk</DialogTitle>
           <DialogDescription>
@@ -256,8 +266,25 @@ export function ReceiptDialog({
           </div>
         ) : (
           <>
-            <div className="max-h-80 overflow-y-auto rounded-lg border border-border">
-              <ReceiptPreview receipt={receipt} size={size} />
+            {/*
+              THE PREVIEW IS THE SHAPE OF THE PAPER (17 November 2026), the same
+              way the invoice print screen shows it: a 58 mm slip at full
+              dialog width looked identical to an 80 mm one, so nobody could
+              see from here that a line would wrap on the narrow roll. The
+              widths are InvoicePrintScreen's, on the same tinted frame so the
+              edge of the paper is visible.
+            */}
+            <div className="rounded-lg border border-border bg-surface-hover p-3">
+              <div
+                className="mx-auto max-w-full overflow-hidden rounded-md bg-surface shadow-sm"
+                style={
+                  size === "a4"
+                    ? undefined
+                    : { width: size === "58" ? 260 : 340 }
+                }
+              >
+                <ReceiptPreview receipt={receipt} size={size} />
+              </div>
             </div>
 
             {/*
@@ -296,7 +323,7 @@ export function ReceiptDialog({
           </>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="sm:flex-wrap">
           <Button
             type="button"
             variant="secondary"

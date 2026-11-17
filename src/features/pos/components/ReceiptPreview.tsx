@@ -412,7 +412,14 @@ export function ReceiptPreview({
         reading "Sisa piutang Rp 0" on an ordinary receipt would invite the
         question of what debt it is talking about.
       */}
-      {receipt.credit && (
+      {/*
+        ONLY WHILE SOMETHING IS STILL OWED (17 November 2026, BO's rule). No
+        credit, or one already paid down to zero, prints no "Sisa piutang" and
+        no due date. The server stopped sending the block for those; this guard
+        covers a server not yet deployed — every till sale has an invoice since
+        Transaksi Keuangan, so the block's presence alone proves nothing.
+      */}
+      {receipt.credit && isPositive(receipt.credit.outstandingAmount) && (
         <dl className="mt-2 space-y-0.5 border-t border-dashed border-border pt-2 text-xs">
           <div className="flex justify-between gap-2 font-semibold">
             <dt className={LABEL}>Sisa piutang</dt>

@@ -318,6 +318,29 @@ describe("ReceiptPreview — sold on account", () => {
     expect(screen.queryByText(/24\/09\/2026 \d/)).not.toBeInTheDocument();
   });
 
+  /*
+    BO'S RULE (17 November 2026): a debt of zero is no debt. A server not yet
+    updated still sends the block for every till sale, with nothing owed.
+  */
+  it("prints nothing about piutang once nothing is owed", async () => {
+    mockedPos.receipt.mockResolvedValue(
+      receipt({
+        credit: {
+          ...CREDIT,
+          paidAmount: "300000.0000",
+          outstandingAmount: "0.0000",
+          status: "paid" as never,
+        },
+      }),
+    );
+
+    renderWithAuth(<ReceiptDialog saleId={SALE_ID} onOpenChange={jest.fn()} />);
+
+    await screen.findByText(/buloo petshop/i);
+    expect(screen.queryByText("Sisa piutang")).not.toBeInTheDocument();
+    expect(screen.queryByText(/jatuh tempo/i)).not.toBeInTheDocument();
+  });
+
   it("prints nothing about piutang on an ordinary cash sale", async () => {
     mockedPos.receipt.mockResolvedValue(receipt({ credit: null }));
 
