@@ -2883,8 +2883,6 @@ export interface PosReceipt {
   correction?: {
     at: string | null;
     invoiceNumber: string | null;
-    /** Σ money handed back by the corrections — "0.0000" when none. */
-    refunded: string;
   } | null;
 }
 
@@ -7636,6 +7634,15 @@ export interface CustomerInvoicePayment {
   /** The Kas & Bank account the entry debited. */
   cashAccountId?: string | null;
   cashAccountName?: string | null;
+  /**
+   * A till payment whose shift is already CLOSED (18 November 2026):
+   * cancelling it sends the money back as its own BKK on the day chosen, from
+   * the account chosen, and the closed shift's report does not change.
+   */
+  drawerClosed?: boolean;
+  /** Cancelled after its shift closed — the money went back as `cancelRefundId`. */
+  cancelledAfterClose?: boolean;
+  cancelRefundId?: string | null;
   /** The PMT behind a Shopee payment. Such a payment is cancelled, never edited. */
   marketplaceSettlement?: { id: string; number: string } | null;
   ref: string | null;
@@ -7865,8 +7872,6 @@ export interface CustomerInvoiceDetail extends Omit<
    */
   voidedAt: string | null;
   voidReason: string | null;
-  /** Refunds of a corrected till-born faktur (17 November 2026); absent elsewhere. */
-  refunds?: CustomerInvoiceRefund[];
   /**
    * EVERY ledger entry this invoice raised — its issuance, its cost half, and a
    * reversal of each if it was voided.
@@ -8296,13 +8301,6 @@ export interface UpdateCustomerInvoiceInput {
   /** Only read when the invoice shipped nothing before and now does. */
   warehouseId?: string;
   notes?: string | null;
-  /**
-   * A TILL-BORN faktur (17 November 2026): the Kas & Bank account the
-   * difference moves through — refunded when the new total is below what was
-   * paid, collected when above — and the day it moved (default today).
-   */
-  settleAccountId?: string;
-  settleAt?: string;
 }
 
 /**
@@ -8313,12 +8311,6 @@ export type TillCorrectionStatus =
   | { tillBorn: false }
   | {
       tillBorn: true;
-      /**
-       * `till_void` — every drawer is still open: the till's own Void, the
-       * money goes back out of the drawer. `late` — the books are reversed on
-       * the sale's day and the money goes back as a refund dated today.
-       */
-      mode: "till_void" | "late";
       revised: boolean;
       shiftOpen: boolean;
       paidAmount: string;
@@ -8328,17 +8320,6 @@ export type TillCorrectionStatus =
       canEdit: boolean;
       editBlockedReason: string | null;
     };
-
-/** Money handed back by a correction of a till-born faktur. */
-export interface CustomerInvoiceRefund {
-  cashTransactionId: string;
-  number: string | null;
-  amount: string;
-  at: string;
-  accountName: string | null;
-  /** `edit` — the bill was lowered; `void` — it was cancelled. */
-  reason: "edit" | "void";
-}
 
 /** The actions an invoice's own activity log can hold. */
 export type InvoiceActivityAction =
@@ -8751,6 +8732,9 @@ export interface CustomerOutstandingSummary {
  */
 export interface VoidCustomerPaymentInput {
   reason: string;
+  /** A till payment whose shift is closed: where the money goes back from, and when. */
+  refundAccountId?: string;
+  refundAt?: string;
 }
 
 export interface RecordCustomerPaymentInput {

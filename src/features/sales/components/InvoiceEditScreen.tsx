@@ -109,8 +109,8 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
     (payment) => !payment.isVoided,
   );
   /*
-    A TILL-BORN FAKTUR (17 November 2026) is editable paid or not, when the
-    server says so; the difference in money is settled below the lines.
+    A TILL-BORN FAKTUR (BO, 18 November 2026) follows the hand-raised rule —
+    nothing paid on it — and whatever else the server says (#tillState).
   */
   const editable = tillBorn
     ? invoice.status !== "void" && Boolean(till?.canEdit)
@@ -183,11 +183,7 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
         <div className="mt-5 border-t border-border pt-4">
           <InvoiceEditor
             invoice={invoice}
-            till={
-              till
-                ? { paidAmount: till.paidAmount, transactionNumber: till.transactionNumber }
-                : null
-            }
+            tillTransactionNumber={till ? (till.transactionNumber ?? "") : null}
             onCancel={() => router.push(detailHref)}
             onSaved={() => router.push(detailHref)}
           />

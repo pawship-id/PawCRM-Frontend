@@ -209,15 +209,9 @@ export const customerInvoiceService = {
    * Requires `customerInvoices:void`, its own grant: raising a bill, taking money
    * against it and cancelling it outright are three different authorities.
    */
-  voidInvoice: (
-    id: string,
-    reason: string,
-    refund?: { refundAccountId?: string; refundAt?: string },
-  ) =>
+  voidInvoice: (id: string, reason: string) =>
     apiClient.post<CustomerInvoiceDetail>(`/customer-invoices/${id}/void`, {
       reason,
-      ...(refund?.refundAccountId ? { refundAccountId: refund.refundAccountId } : {}),
-      ...(refund?.refundAt ? { refundAt: refund.refundAt } : {}),
     }),
 
   /**

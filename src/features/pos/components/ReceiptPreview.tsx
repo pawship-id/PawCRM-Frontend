@@ -445,7 +445,7 @@ export function ReceiptPreview({
       {/*
         CORRECTED FROM ITS FAKTUR (17 November 2026) — the total above is the
         corrected one and the payments are what was paid that day, so the slip
-        says so, and how much went back.
+        says so.
       */}
       {receipt.correction && (
         <dl className="mt-2 space-y-0.5 border-t border-dashed border-border pt-2 text-xs">
@@ -461,12 +461,6 @@ export function ReceiptPreview({
                 : ""}
             </dd>
           </div>
-          {isPositive(receipt.correction.refunded) && (
-            <div className="flex justify-between gap-2">
-              <dt className={LABEL}>Dikembalikan</dt>
-              <dd className={AMOUNT}>{formatMoney(receipt.correction.refunded)}</dd>
-            </div>
-          )}
           {receipt.correction.invoiceNumber && (
             <div className="flex justify-between gap-2 text-muted">
               <dt className="shrink-0 whitespace-nowrap">No. faktur</dt>

@@ -183,8 +183,8 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   */
   const till = tillStatus && tillStatus.tillBorn ? tillStatus : null;
   /*
-    A TILL-BORN FAKTUR (17 November 2026) is editable paid or not, whenever the
-    server says so — the difference in money is settled on the edit page.
+    A TILL-BORN FAKTUR (BO, 18 November 2026) follows the same rule — nothing
+    paid on it — plus whatever else the server says (a return, a package…).
   */
   const editable = tillBorn
     ? !voided && Boolean(till?.canEdit)
@@ -199,7 +199,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         : "Dari impor pesanan Shopee — baris dikunci. Lunas lewat Catat pembayaran atau impor Laporan Penghasilan Shopee."
       : tillBorn
       ? till?.canEdit
-        ? `Dari transaksi kasir ${till.transactionNumber ?? ""}. Bisa diubah atau dibatalkan kapan saja — transaksi kasirnya ikut diperbarui. Selisih uang dikembalikan atau ditagih hari ini.`
+        ? `Dari transaksi kasir ${till.transactionNumber ?? ""}. Belum ada pembayaran — bisa diubah atau dibatalkan, dan transaksi kasirnya ikut diperbarui.`
         : till?.editBlockedReason
           ? `Dari transaksi kasir — tidak bisa diubah: ${till.editBlockedReason}`
           : "Dari transaksi kasir."
@@ -508,43 +508,6 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
           */}
           {!(invoice.posSettlement && payments.length === 0 && settled) && (
             <InvoicePaymentTimeline invoiceId={invoiceId} payments={payments} />
-          )}
-
-          {/*
-            MONEY HANDED BACK by a correction of a till-born faktur (17 November
-            2026) — each its own BKK/BBK, dated the day it left. `paidAmount`
-            above is already net of these.
-          */}
-          {(invoice.refunds ?? []).length > 0 && (
-            <Card
-              title="Uang dikembalikan"
-              description="Refund dari koreksi faktur kasir — sudah dikurangkan dari jumlah terbayar."
-            >
-              <ul className="flex flex-col divide-y divide-border text-sm">
-                {(invoice.refunds ?? []).map((refund) => (
-                  <li
-                    key={refund.cashTransactionId}
-                    className="flex items-baseline justify-between gap-3 py-2"
-                  >
-                    <span className="min-w-0">
-                      <span className="block font-semibold tabular-nums">
-                        {refund.number ?? "Refund"}
-                      </span>
-                      <span className="block text-xs text-muted">
-                        <span className="tabular-nums">{formatDate(refund.at)}</span>
-                        {" · "}
-                        {refund.accountName ?? "—"}
-                        {" · "}
-                        {refund.reason === "void" ? "Pembatalan" : "Ubah faktur"}
-                      </span>
-                    </span>
-                    <span className="shrink-0 font-semibold tabular-nums">
-                      −{formatMoney(refund.amount)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
           )}
 
           {/*

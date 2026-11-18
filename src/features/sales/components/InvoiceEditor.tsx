@@ -68,7 +68,6 @@ import { invoiceBookingShareOf, ownDiscountMinor } from "../bookingDiscount";
 import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { useProductSearch } from "../hooks/useServerSearch";
 import { previewInvoice } from "../invoicePreview";
-import { SettlementAccountFields, todayIso } from "./SettlementAccountFields";
 import {
   hasChoice,
   lineRefusalOf,
@@ -221,23 +220,20 @@ const nextKey = () => `baru-${(lineSeq += 1)}`;
  */
 export function InvoiceEditor({
   invoice,
-  till = null,
+  tillTransactionNumber = null,
   onCancel,
   onSaved,
 }: {
   invoice: CustomerInvoiceDetail;
   /**
-   * A TILL-BORN faktur (17 November 2026): what was already paid. The edit
-   * settles the difference — a refund when the new total is lower, a payment
-   * (or, for a named customer, a balance owed) when it is higher.
+   * A TILL-BORN faktur (18 November 2026): the sale it bridges, named on the
+   * save bar — the sale is rewritten with the faktur. Nothing is paid on it
+   * by the time it is edited (its payments are cancelled first).
    */
-  till?: { paidAmount: string; transactionNumber: string | null } | null;
+  tillTransactionNumber?: string | null;
   onCancel: () => void;
   onSaved: (updated: CustomerInvoiceDetail) => void;
 }) {
-  const [settleAccountId, setSettleAccountId] = useState("");
-  const [settleAt, setSettleAt] = useState(todayIso());
-  const [collectNow, setCollectNow] = useState(!invoice.customerId);
   const lookups = useInvoiceLookups();
   const productSearch = useProductSearch(lookups.products);
 
@@ -716,19 +712,7 @@ export function InvoiceEditor({
     [lines, invoiceDiscountMode, invoiceDiscountValue, lookups.tax, charges],
   );
 
-  /*
-    THE MONEY A TILL-BORN FAKTUR'S EDIT MOVES (17 November 2026) — from the
-    preview, as an estimate; the server prices again and settles the exact
-    difference, dated the day chosen below.
-  */
-  const settlement = (() => {
-    if (!till) return { kind: "none" as const, amount: "0" };
-    const paid = toMinor(till.paidAmount) ?? 0n;
-    const total = toMinor(preview.grandTotal) ?? 0n;
-    if (total < paid) return { kind: "refund" as const, amount: toDecimalString(paid - total) };
-    if (total > paid) return { kind: "collect" as const, amount: toDecimalString(total - paid) };
-    return { kind: "none" as const, amount: "0" };
-  })();
+
 
   /** A ride row's two ends, flat as the payload carries them. */
   function tripInputOf(line: EditLine) {
@@ -990,12 +974,6 @@ export function InvoiceEditor({
 
   const blocking = (() => {
     if (lookups.loading) return "Sedang memuat katalog.";
-    if (till && settlement.kind === "refund" && !settleAccountId)
-      return "Pilih akun asal kelebihan bayar dikembalikan ke pelanggan.";
-    if (till && settlement.kind === "collect" && collectNow && !settleAccountId)
-      return invoice.customerId
-        ? "Pilih akun yang menerima kekurangan bayar, atau jadikan sisa tagihan."
-        : "Pelanggan umum — pilih akun yang menerima kekurangan bayarnya.";
     if (lines.length === 0) return "Faktur butuh minimal satu baris.";
     if (lines.some((line) => !line.qty || Number(line.qty) <= 0))
       return "Ada baris yang jumlahnya belum diisi.";
@@ -1292,18 +1270,7 @@ export function InvoiceEditor({
   async function save() {
     if (blocking) return;
 
-    const body = {
-      ...payload(),
-      /* The account and day the difference moves on — a till-born faktur only. */
-      ...(till &&
-      settleAccountId &&
-      (settlement.kind === "refund" || (settlement.kind === "collect" && collectNow))
-        ? {
-            settleAccountId,
-            settleAt: new Date(`${settleAt}T12:00:00`).toISOString(),
-          }
-        : {}),
-    };
+    const body = payload();
 
     if (
       JSON.stringify({
@@ -1990,78 +1957,11 @@ export function InvoiceEditor({
         </dl>
       </div>
 
-      {till && (
-        <div className="flex flex-col gap-3 rounded-lg border border-border px-4 py-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-            <span className="text-muted">
-              Sudah dibayar di kasir
-              {till.transactionNumber ? ` (${till.transactionNumber})` : ""}
-            </span>
-            <span className="font-semibold tabular-nums">
-              {formatMoney(till.paidAmount)}
-            </span>
-          </div>
-          {settlement.kind === "none" ? (
-            <p className="text-sm text-muted">
-              Total sama dengan yang sudah dibayar — tidak ada uang yang berpindah.
-            </p>
-          ) : settlement.kind === "refund" ? (
-            <>
-              <p className="text-sm">
-                Kelebihan bayar{" "}
-                <strong className="tabular-nums">{formatMoney(settlement.amount)}</strong>{" "}
-                dikembalikan ke pelanggan — dicatat sebagai bukti kas keluar di
-                tanggal yang dipilih.
-              </p>
-              <SettlementAccountFields
-                label="Uang dikembalikan dari"
-                accountId={settleAccountId}
-                onAccountChange={setSettleAccountId}
-                date={settleAt}
-                onDateChange={setSettleAt}
-                disabled={saving}
-              />
-            </>
-          ) : (
-            <>
-              <p className="text-sm">
-                Kurang bayar{" "}
-                <strong className="tabular-nums">{formatMoney(settlement.amount)}</strong>.
-              </p>
-              {invoice.customerId && (
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={collectNow}
-                    onChange={(event) => setCollectNow(event.target.checked)}
-                    disabled={saving}
-                  />
-                  Terima pembayarannya sekarang (kalau tidak, jadi sisa tagihan)
-                </label>
-              )}
-              {collectNow && (
-                <SettlementAccountFields
-                  label="Uang diterima di"
-                  accountId={settleAccountId}
-                  onAccountChange={setSettleAccountId}
-                  date={settleAt}
-                  onDateChange={setSettleAt}
-                  disabled={saving}
-                />
-              )}
-            </>
-          )}
-          <p className="text-xs text-muted">
-            Angka di atas perkiraan; server menghitung ulang selisihnya saat disimpan.
-          </p>
-        </div>
-      )}
-
       <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-hover px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted">
           {blocking ??
-            (till
-              ? "Menyimpan membalik jurnal & stok penjualan sebelumnya lalu menerbitkan ulang baris ini di tanggal transaksi. Transaksi kasirnya ikut diperbarui."
+            (tillTransactionNumber !== null
+              ? `Menyimpan membalik jurnal & stok penjualan sebelumnya lalu menerbitkan ulang baris ini di tanggal transaksi. Transaksi kasir ${tillTransactionNumber} ikut diperbarui.`
               : "Menyimpan membalik jurnal & stok versi sebelumnya lalu menerbitkan ulang baris ini. Nomor dan tanggal faktur tetap.")}
         </p>
         <div className="flex shrink-0 gap-2">
