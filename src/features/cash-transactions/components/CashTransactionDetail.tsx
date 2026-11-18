@@ -51,6 +51,7 @@ import {
   hasLines,
   transactionKindLabel,
   lockedReason,
+  DRAWER_CLOSED_NOTE,
 } from "../labels";
 import { SETTLEMENT_HREF } from "@/features/ecommerce/labels";
 
@@ -186,7 +187,7 @@ export function CashTransactionDetail({
           <div className="flex flex-wrap items-center gap-2">
             {/* A PAGE, NOT A DIALOG (20 September 2026, on request) — see
                 CashTransactionEditScreen for why this form outgrew an overlay. */}
-            {!settlement && (
+            {!settlement && !transaction.drawerClosed && (
               <Can feature="cashTransactions" action="update">
                 <Button variant="secondary" size="sm" asChild>
                   <Link href={`${cashTransactionHref(transaction._id)}/edit`}>
@@ -247,6 +248,9 @@ export function CashTransactionDetail({
       </div>
 
       {locked && !voided && <Alert variant="info">{locked}</Alert>}
+      {!locked && transaction.drawerClosed && (
+        <Alert variant="info">{DRAWER_CLOSED_NOTE}</Alert>
+      )}
 
       {/*
         THE MOCKUP'S CARD, in its order and with its eight fields. Everything

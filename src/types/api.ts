@@ -8964,6 +8964,11 @@ export interface CashTransaction {
   voidReason: string | null;
   reversalJournalEntryId: string | null;
   reversalJournalEntryNumber: string | null;
+  /**
+   * Single read only: a till payment whose shift is already closed. It cannot
+   * be edited — cancel it and record it again (BO, 18 November 2026).
+   */
+  drawerClosed?: boolean;
   revisions: CashTransactionRevision[];
   /** Migrated history whose journal was not rebuilt — read-only. */
   legacy: boolean;

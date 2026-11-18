@@ -489,6 +489,17 @@ describe("CashTransactionEditDialog — saving", () => {
     );
   });
 
+  it("refuses a till payment whose shift is closed, saying cancel and record again", async () => {
+    renderDialog(cashTx({ recordedVia: "pos", drawerClosed: true }));
+
+    expect(
+      await screen.findByText(/supaya laporan shift tetap sama/),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Simpan transaksi" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("says plainly when a transaction cannot be changed", async () => {
     renderDialog(cashTx({ legacy: true }));
 

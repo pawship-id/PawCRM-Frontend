@@ -124,6 +124,12 @@ export function InvoicePaymentDetail({
   const changeable = !payment.isVoided && invoice.status !== "void";
   // Its journal also carries what Shopee kept, which an edit could not rebuild.
   const settlement = payment.marketplaceSettlement ?? null;
+  /*
+    A TILL PAYMENT WHOSE SHIFT IS CLOSED (BO, 18 November 2026 — opsi A): it is
+    never edited, only cancelled and recorded again, so the closing report
+    stays as it was counted. No Ubah button to lead into a refusal.
+  */
+  const drawerClosed = Boolean(payment.drawerClosed);
 
   return (
     <div className="flex flex-col gap-6">
@@ -171,7 +177,7 @@ export function InvoicePaymentDetail({
             <Printer className="size-4" />
             Kwitansi
           </Button>
-          {changeable && !settlement && (
+          {changeable && !settlement && !drawerClosed && (
             <Can feature="cashTransactions" action="update">
               <Button
                 type="button"
@@ -202,7 +208,11 @@ export function InvoicePaymentDetail({
 
       <Card
         title="Rincian pembayaran"
-        description="Yang salah bisa diubah — nomornya tetap, jurnalnya dibalik lalu diposting ulang — atau dibatalkan, dan sisa tagihan fakturnya ikut menyesuaikan."
+        description={
+          changeable && drawerClosed
+            ? "Shift kasir pembayaran ini sudah ditutup, jadi tidak bisa diubah. Kalau ada yang salah: Batalkan pembayaran (laporan shift tetap, uang keluar dicatat di tanggal yang dipilih), lalu catat pembayaran yang benar dari halaman faktur."
+            : "Yang salah bisa diubah — nomornya tetap, jurnalnya dibalik lalu diposting ulang — atau dibatalkan, dan sisa tagihan fakturnya ikut menyesuaikan."
+        }
       >
         <dl className="grid grid-cols-1 gap-x-6 gap-y-4 text-sm sm:grid-cols-2">
           <Field label="No. pembayaran">
