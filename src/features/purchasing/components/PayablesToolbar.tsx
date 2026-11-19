@@ -87,11 +87,12 @@ interface PayablesFilters {
  *
  * THE VIEW IS IN HERE (2 October 2026): it moved from a pill row outside the
  * panel to a field inside it, and Reset clears what the panel holds — "Belum
- * lunas" is `usePurchaseInvoices`'s own default. The ordering is not: Reset
+ * lunas" was `usePurchaseInvoices`'s own default; "Semua" is since 19 November
+ * 2026. The ordering is not: Reset
  * leaves the headers' choice alone.
  */
 const CLEARED: PayablesFilters = {
-  view: "outstanding",
+  view: "all",
   supplierId: "",
   branchId: "",
   warehouseId: "",
@@ -113,7 +114,7 @@ const CLEARED: PayablesFilters = {
  * the bar, applying on click, and that is still what `ReceivablesToolbar`
  * (Penjualan's AR equivalent) does. Two things follow from the move, same as
  * Transaksi's Tipe before it: the view is now **counted** in `Filter (n)` —
- * see the panel below — and Reset clears it back to "Belum lunas" along with
+ * see the panel below — and Reset clears it back to "Semua" along with
  * everything else, where it used to be the one control Reset left alone.
  *
  * WHAT WENT IN IS EVERYTHING ELSE TOO, at every width — the arrangement Produk
@@ -261,11 +262,11 @@ function PayablesFilterPanel({
    * THE VIEW IS COUNTED NOW (2 October 2026), unlike when it stood outside the
    * panel as a pill row: the badge exists to pay back what a panel CONCEALS, and
    * a lens sitting behind the Filter button conceals exactly as much as any
-   * other field in here does. "Belum lunas" — `usePurchaseInvoices`'s own
+   * other field in here does. "Semua" — `usePurchaseInvoices`'s own
    * default — is what does not count, the same test every other field uses.
    */
   const count = [
-    applied.view !== "outstanding",
+    applied.view !== "all",
     applied.supplierId !== "",
     // COUNTED SEPARATELY, unlike the date range's two bounds. Cabang and Gudang
     // are two questions that happen to be related, not one question with two
@@ -363,7 +364,7 @@ function PayablesFilterPanel({
           ariaLabel="Filter status"
           value={draft.view}
           options={VIEWS}
-          unsetValue="outstanding"
+          unsetValue="all"
           onChange={(view) => patch({ view })}
         />
         <FilterSelect

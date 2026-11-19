@@ -481,16 +481,15 @@ describe("PayablesScreen", () => {
     );
   });
 
-  it("opens on the outstanding view, asked of the server", async () => {
-    // NOT "all". A payables screen is opened to answer "what do we owe" —
-    // settled bills are history, and leading with them buries the rows that
-    // need money.
+  it("opens on every status, asking the server for no lens", async () => {
+    // "Semua" since 19 November 2026 (on request) — it used to open on "Belum
+    // lunas", hiding every settled bill from somebody looking one up.
     renderWithAuth(<PayablesScreen />);
 
     await waitFor(() => expect(purchaseInvoiceService.list).toHaveBeenCalled());
 
     const [query] = asMock(purchaseInvoiceService.list).mock.calls[0];
-    expect(query).toMatchObject({ outstanding: true });
+    expect(query).not.toHaveProperty("outstanding");
     expect(query).not.toHaveProperty("status");
   });
 
@@ -640,7 +639,9 @@ describe("PayablesScreen", () => {
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
-      expect(calls[calls.length - 1][0]).toMatchObject({ outstanding: true });
+      const last = calls[calls.length - 1][0];
+      expect(last).not.toHaveProperty("status");
+      expect(last).not.toHaveProperty("outstanding");
     });
   });
 
@@ -757,6 +758,63 @@ describe("PayablesScreen", () => {
     expect(
       screen.queryByRole("button", { name: /Jatuh tempo ≤/ }),
     ).not.toBeInTheDocument();
+  });
+
+  /*
+    EVERY CARD FILTERS (19 November 2026, on request), and to exactly what it
+    counts: the figures are the whole book, so the click clears the search and
+    every other narrowing along with setting the lens.
+  */
+  it("narrows to the outstanding bills from the Utang belum lunas card", async () => {
+    const user = userEvent.setup();
+    asMock(purchaseInvoiceService.outstandingSummary).mockResolvedValue(
+      summary({ totalInvoices: 5, totalOutstanding: "900000.0000" }),
+    );
+
+    renderWithAuth(<PayablesScreen />);
+
+    await user.type(
+      await screen.findByRole("searchbox", { name: "Cari faktur" }),
+      "RC",
+    );
+    await user.click(
+      await screen.findByRole("button", { name: /Utang belum lunas/ }),
+    );
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      const last = calls[calls.length - 1][0];
+      expect(last).toMatchObject({ outstanding: true });
+      expect(last?.search).toBeUndefined();
+    });
+    expect(
+      screen.queryByRole("button", { name: /Utang belum lunas/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("narrows to this month's bills from the Pembelian periode card", async () => {
+    const user = userEvent.setup();
+    renderWithAuth(<PayablesScreen />);
+
+    await user.click(
+      await screen.findByRole("button", { name: /Pembelian periode/ }),
+    );
+
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const month = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      const last = calls[calls.length - 1][0];
+      expect(last).toMatchObject({
+        dateFrom: `${month}-01`,
+        dateTo: `${month}-${pad(lastDay)}`,
+      });
+      expect(last).not.toHaveProperty("status");
+      expect(last).not.toHaveProperty("outstanding");
+    });
   });
 
   it("shows a plain due-soon card when nothing falls due", async () => {
@@ -968,7 +1026,7 @@ describe("PayablesScreen", () => {
           expect.objectContaining({
             branchId: undefined,
             warehouseId: undefined,
-            outstanding: true,
+            supplierId: undefined,
           }),
         ),
       );
@@ -3271,10 +3329,9 @@ describe("PayablesTable — header sorting", () => {
 
     await waitFor(() => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
-      expect(calls[calls.length - 1][0]).toMatchObject({
-        outstanding: true,
-        sort: "paidDesc",
-      });
+      const last = calls[calls.length - 1][0];
+      expect(last).toMatchObject({ sort: "paidDesc" });
+      expect(last).not.toHaveProperty("status");
     });
   });
 });

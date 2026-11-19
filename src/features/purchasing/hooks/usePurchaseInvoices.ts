@@ -88,10 +88,10 @@ const DEFAULT_QUERY: PurchaseInvoicesQuery = {
   supplierId: "",
   branchId: "",
   warehouseId: "",
-  // OUTSTANDING, not "all". A payables screen is opened to answer "what do we
-  // owe" — settled bills are history, and leading with them buries the ten rows
-  // that need money under a hundred that do not. "Semua" is one click away.
-  view: "outstanding",
+  // EVERY STATUS (19 November 2026, on request) — it used to open on "Belum
+  // lunas", which hid every settled bill from somebody looking one up. What is
+  // still owed is one click away: the "Utang belum lunas" card above the list.
+  view: "all",
   dateFrom: "",
   dateTo: "",
   // LAST INPUT FIRST (15 Nov 2026, on request): a back-dated document typed
@@ -172,7 +172,9 @@ export function usePurchaseInvoices(
   initial: Partial<PurchaseInvoicesQuery> = {},
 ): UsePurchaseInvoicesResult {
   const [query, setQueryState] = usePersistentState<PurchaseInvoicesQuery>(
-    "purchasing.payables",
+    // `.v2` since the default view became "all" (19 November 2026): a stored
+    // filter would otherwise keep every returning user on "Belum lunas".
+    "purchasing.payables.v2",
     () => ({ ...DEFAULT_QUERY, ...initial }),
     // A caller's fixed filter (`initial`) starts fresh — see `usePersistentState`.
     { fresh: Object.keys(initial).length > 0 },

@@ -77,6 +77,8 @@ export function PayablesStatCards({
   failed,
   onDueSoonClick,
   onPendingReceiptsClick,
+  onInvoicedClick,
+  onOutstandingClick,
   periodScoped = false,
   periodLabel,
   invoicedLoading,
@@ -88,6 +90,12 @@ export function PayablesStatCards({
   failed: boolean;
   /** Faktur drills into its own list; Ringkasan has none to offer. */
   onDueSoonClick?: () => void;
+  /**
+   * Faktur only (19 November 2026, on request): every card narrows the list
+   * below to the bills it counts. Withheld while the card counts nothing.
+   */
+  onInvoicedClick?: () => void;
+  onOutstandingClick?: () => void;
   /**
    * Opens the receipts list narrowed to `pending`. Withheld while the count is
    * zero or unknown — there is nothing to look at behind it.
@@ -129,6 +137,11 @@ export function PayablesStatCards({
           }
           loading={invoicedLoading ?? loading}
           error={invoicedFailed ?? failed}
+          onClick={
+            (figures?.invoiced?.invoiceCount ?? 0) > 0
+              ? onInvoicedClick
+              : undefined
+          }
         />
       ) : (
         <PendingStatTile
@@ -144,6 +157,11 @@ export function PayablesStatCards({
         }
         loading={loading}
         error={failed}
+        onClick={
+          (figures?.outstanding.invoiceCount ?? 0) > 0
+            ? onOutstandingClick
+            : undefined
+        }
       />
       <StatTile
         label={`Jatuh tempo ≤ ${horizonDays} hari`}

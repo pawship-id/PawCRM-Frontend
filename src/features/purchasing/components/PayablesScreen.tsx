@@ -10,6 +10,7 @@ import { ApiError } from "@/services/api-error";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
 import { formatMoney } from "@/utils/decimal";
+import { isoDate } from "@/utils/date";
 import type {
   PayablesSummary,
   PurchaseInvoiceDetail,
@@ -17,7 +18,11 @@ import type {
   SupplierOutstandingSummary,
 } from "@/types/api";
 
-import { usePurchaseInvoices } from "../hooks/usePurchaseInvoices";
+import {
+  usePurchaseInvoices,
+  type PayablesView,
+  type PurchaseInvoicesQuery,
+} from "../hooks/usePurchaseInvoices";
 import { PurchasingModuleHeader } from "./PurchasingModuleHeader";
 import {
   PayablesStatCards,
@@ -155,6 +160,41 @@ export function PayablesScreen() {
 
   const overdueCount = summary?.totalOverdueInvoices ?? 0;
 
+  /*
+    A CARD CLICK SHOWS EXACTLY WHAT THE CARD COUNTS (19 November 2026, on
+    request). The figures are the whole book, so a click clears every other
+    narrowing — supplier, cabang, gudang, dates, search — and sets only the
+    card's own lens; otherwise "12 faktur" on the card could sit above a list
+    of three. The ordering is the headers' and is left alone. Withheld while
+    the list already shows that set: a control that leads nowhere new is noise.
+  */
+  const focus = (view: PayablesView, dateFrom = "", dateTo = "") => {
+    const target: Partial<PurchaseInvoicesQuery> = {
+      view,
+      dateFrom,
+      dateTo,
+      search: "",
+      supplierId: "",
+      branchId: "",
+      warehouseId: "",
+    };
+    const already = (
+      Object.keys(target) as (keyof typeof target)[]
+    ).every((key) => query[key] === target[key]);
+
+    return already ? undefined : () => setQuery(target);
+  };
+
+  // "Pembelian periode" is this month by invoice date, every status — the same
+  // cut `/summary?period=month` makes (the browser's calendar, as the date
+  // inputs read it; the server cuts in the tenant's timezone, which for a shop
+  // in Indonesia is the same day).
+  const today = new Date();
+  const monthFrom = isoDate(new Date(today.getFullYear(), today.getMonth(), 1));
+  const monthTo = isoDate(
+    new Date(today.getFullYear(), today.getMonth() + 1, 0),
+  );
+
   const figures: PayablesStatFigures | null = summary
     ? {
         outstanding: {
@@ -190,13 +230,9 @@ export function PayablesScreen() {
           !summaryFailed && (!summary || (invoiced === null && !invoicedFailed))
         }
         invoicedFailed={invoicedFailed || summaryFailed}
-        // Withheld once the list already shows the bucket — a control that
-        // leads nowhere new is noise.
-        onDueSoonClick={
-          query.view !== "dueSoon"
-            ? () => setQuery({ view: "dueSoon" })
-            : undefined
-        }
+        onInvoicedClick={focus("all", monthFrom, monthTo)}
+        onOutstandingClick={focus("outstanding")}
+        onDueSoonClick={focus("dueSoon")}
       />
 
       {overdueCount > 0 && summary && (
@@ -206,12 +242,12 @@ export function PayablesScreen() {
           </b>{" "}
           — total {formatMoney(summary.totalOverdueOutstanding)}. Prioritaskan
           pembayaran supaya pasokan tidak terganggu.
-          {query.view !== "overdue" && (
+          {focus("overdue") && (
             <>
               {" "}
               <button
                 type="button"
-                onClick={() => setQuery({ view: "overdue" })}
+                onClick={focus("overdue")}
                 className="font-medium text-primary hover:text-primary-hover"
               >
                 Lihat daftarnya →
