@@ -51,6 +51,55 @@ const homeVisit = {
   serviceLocations: ["in_home"],
 } as unknown as Service;
 
+/** A saved plan with one benefit, as the edit screen receives it. */
+function editablePlan(): MembershipPlan {
+  return {
+    id: "p1",
+    code: "MSP-0001",
+    name: "Explorer",
+    description: null,
+    serviceKinds: [],
+    price: "450000.0000",
+    durationDays: 183,
+    durationMonths: 6,
+    attachTo: "pet",
+    petSpecies: [],
+    priceMode: "fixed",
+    variantPrices: [],
+    eligibility: "all",
+    branchIds: [],
+    publicDisplay: { visible: false, featured: false, order: 0, badge: null },
+    renewalOfferDays: 30,
+    isActive: true,
+    benefits: [
+      {
+        id: "ben-1",
+        label: "Add-on",
+        kind: "discount_percent",
+        scope: { target: "addon", serviceIds: [], productIds: [], categoryIds: [], serviceKinds: [] },
+        value: 10,
+        quota: { total: null, perPeriod: null, period: null },
+        options: [
+          {
+            id: "opt-1",
+            kind: "discount_percent",
+            scope: { target: "addon", serviceIds: [], productIds: [], categoryIds: [], serviceKinds: [] },
+            value: 10,
+            priceMode: "same",
+            variantPrices: [],
+            visitFee: "zone",
+            summary: "Diskon 10%",
+          },
+        ],
+        summary: "Diskon 10% · tanpa batas",
+      },
+    ],
+    createdAt: null,
+    updatedAt: null,
+    deletedAt: null,
+  } as MembershipPlan;
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   primePetOptions(petOptionService.list);
@@ -166,51 +215,7 @@ describe("MembershipPlanForm", () => {
       }),
     );
     const user = userEvent.setup();
-    const plan = {
-      id: "p1",
-      code: "MSP-0001",
-      name: "Explorer",
-      description: null,
-      serviceKinds: [],
-      price: "450000.0000",
-      durationDays: 183,
-      durationMonths: 6,
-      attachTo: "pet",
-      petSpecies: [],
-      priceMode: "fixed",
-      variantPrices: [],
-      eligibility: "all",
-      branchIds: [],
-      publicDisplay: { visible: false, featured: false, order: 0, badge: null },
-      renewalOfferDays: 30,
-      isActive: true,
-      benefits: [
-        {
-          id: "ben-1",
-          label: "Add-on",
-          kind: "discount_percent",
-          scope: { target: "addon", serviceIds: [], productIds: [], categoryIds: [], serviceKinds: [] },
-          value: 10,
-          quota: { total: null, perPeriod: null, period: null },
-          options: [
-            {
-              id: "opt-1",
-              kind: "discount_percent",
-              scope: { target: "addon", serviceIds: [], productIds: [], categoryIds: [], serviceKinds: [] },
-              value: 10,
-              priceMode: "same",
-              variantPrices: [],
-              visitFee: "zone",
-              summary: "Diskon 10%",
-            },
-          ],
-          summary: "Diskon 10% · tanpa batas",
-        },
-      ],
-      createdAt: null,
-      updatedAt: null,
-      deletedAt: null,
-    } as MembershipPlan;
+    const plan = editablePlan();
 
     renderWithAuth(<MembershipPlanForm plan={plan} />);
     expect(screen.getByRole("heading", { level: 1, name: "Explorer" })).toBeInTheDocument();
@@ -228,5 +233,56 @@ describe("MembershipPlanForm", () => {
     });
     expect(payload.benefits?.[0]).not.toHaveProperty("maxPerTransaction");
     expect(await screen.findByText("Persen wajib diisi")).toBeInTheDocument();
+  });
+  /*
+    "PERUBAHAN BENEFIT BERLAKU UNTUK" (20 November 2026) — asked in a dialog
+    on save, nothing preselected, only when the benefits were edited.
+  */
+  it("asks who gets edited benefits before saving, with nothing preselected", async () => {
+    mocked.updatePlan.mockResolvedValue({ ...editablePlan(), syncedCards: 2 });
+    const user = userEvent.setup();
+    renderWithAuth(<MembershipPlanForm plan={editablePlan()} />);
+
+    const label = screen.getAllByDisplayValue("Add-on")[0];
+    await user.clear(label);
+    await user.type(label, "Add-on baru");
+    await user.click(screen.getByRole("button", { name: "Simpan paket" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(mocked.updatePlan).not.toHaveBeenCalled();
+    const confirm = within(dialog).getByRole("button", { name: "Simpan paket" });
+    expect(confirm).toBeDisabled();
+
+    await user.click(within(dialog).getByLabelText(/Pembeli baru dan kartu yang sudah berjalan/));
+    await user.click(confirm);
+
+    await waitFor(() => expect(mocked.updatePlan).toHaveBeenCalled());
+    expect(mocked.updatePlan.mock.calls[0][1]).toMatchObject({ applyBenefitsToCards: true });
+  });
+
+  it("sends no sync flag when only new buyers are picked", async () => {
+    mocked.updatePlan.mockResolvedValue(editablePlan());
+    const user = userEvent.setup();
+    renderWithAuth(<MembershipPlanForm plan={editablePlan()} />);
+
+    await user.type(screen.getAllByDisplayValue("Add-on")[0], " plus");
+    await user.click(screen.getByRole("button", { name: "Simpan paket" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByLabelText(/Hanya pembeli baru/));
+    await user.click(within(dialog).getByRole("button", { name: "Simpan paket" }));
+
+    await waitFor(() => expect(mocked.updatePlan).toHaveBeenCalled());
+    expect(mocked.updatePlan.mock.calls[0][1]).not.toHaveProperty("applyBenefitsToCards");
+  });
+
+  it("saves straight away when the benefits were not touched", async () => {
+    mocked.updatePlan.mockResolvedValue(editablePlan());
+    const user = userEvent.setup();
+    renderWithAuth(<MembershipPlanForm plan={editablePlan()} />);
+
+    await user.click(screen.getByRole("button", { name: "Simpan paket" }));
+
+    await waitFor(() => expect(mocked.updatePlan).toHaveBeenCalled());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });
