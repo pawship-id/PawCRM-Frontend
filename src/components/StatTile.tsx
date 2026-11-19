@@ -48,6 +48,7 @@ export function StatTile({
   dense = false,
   tone = "plain",
   onClick,
+  active = false,
 }: {
   label: string;
   /** Already formatted for reading — "412", "Rp 4,2 jt". */
@@ -68,12 +69,21 @@ export function StatTile({
   /** Plain is the default; danger/success colour the value for a figure that is good or bad news. */
   tone?: "plain" | "danger" | "success";
   onClick?: () => void;
+  /**
+   * THE LIST BELOW IS SHOWING WHAT THIS TILE COUNTS (19 November 2026, on
+   * request) — a primary border, so a filter set by clicking a card is visible
+   * on the card itself. The same 1px border in the primary colour — a ring
+   * on top read as too thick (on request) — so the tile never shifts.
+   */
+  active?: boolean;
 }) {
   const interactive = Boolean(onClick);
   const Tag = interactive ? "button" : "div";
   const interactiveProps = interactive
     ? ({ type: "button", onClick } as const)
     : {};
+  // Said to assistive tech too, not only drawn.
+  const activeProps = active ? { "aria-current": true as const } : {};
   const toneClass =
     tone === "danger"
       ? "text-danger-ink"
@@ -85,8 +95,10 @@ export function StatTile({
     return (
       <Tag
         {...interactiveProps}
+        {...activeProps}
         className={cn(
           "rounded-xl border border-border bg-surface p-4 text-left",
+          active && "border-primary",
           interactive &&
             "outline-none transition hover:border-primary/50 hover:shadow-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
         )}
@@ -119,9 +131,11 @@ export function StatTile({
   return (
     <Tag
       {...interactiveProps}
+      {...activeProps}
       className={cn(
         // A size container, so the figure below can shrink to the tile.
         "@container rounded-2xl border border-border bg-surface p-5 text-left",
+        active && "border-primary",
         interactive &&
           "outline-none transition hover:border-primary/50 hover:shadow-sm focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50",
       )}

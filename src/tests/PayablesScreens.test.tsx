@@ -753,11 +753,13 @@ describe("PayablesScreen", () => {
       const calls = asMock(purchaseInvoiceService.list).mock.calls;
       expect(calls[calls.length - 1][0]).toMatchObject({ dueSoon: true });
     });
-    // No longer a button once the list already shows it — a control that leads
-    // nowhere new is noise.
-    expect(
-      screen.queryByRole("button", { name: /Jatuh tempo ≤/ }),
-    ).not.toBeInTheDocument();
+    // A second click takes the filter off (19 November 2026, on request).
+    await user.click(screen.getByRole("button", { name: /Jatuh tempo ≤/ }));
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      expect(calls[calls.length - 1][0]).not.toHaveProperty("dueSoon");
+    });
   });
 
   /*
@@ -787,9 +789,23 @@ describe("PayablesScreen", () => {
       expect(last).toMatchObject({ outstanding: true });
       expect(last?.search).toBeUndefined();
     });
-    expect(
-      screen.queryByRole("button", { name: /Utang belum lunas/ }),
-    ).not.toBeInTheDocument();
+    // Bordered while its filter is on (19 November 2026).
+    const tile = screen.getByRole("button", { name: /Utang belum lunas/ });
+    expect(tile).toHaveAttribute("aria-current");
+    expect(tile).toHaveClass("border-primary");
+    // No other card claims it.
+    expect(document.querySelectorAll("[aria-current]")).toHaveLength(1);
+
+    // A second click takes it off: back to every status, border gone.
+    await user.click(tile);
+
+    await waitFor(() => {
+      const calls = asMock(purchaseInvoiceService.list).mock.calls;
+      const last = calls[calls.length - 1][0];
+      expect(last).not.toHaveProperty("outstanding");
+      expect(last).not.toHaveProperty("status");
+    });
+    expect(document.querySelectorAll("[aria-current]")).toHaveLength(0);
   });
 
   it("narrows to this month's bills from the Pembelian periode card", async () => {

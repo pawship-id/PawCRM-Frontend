@@ -79,6 +79,7 @@ export function PayablesStatCards({
   onPendingReceiptsClick,
   onInvoicedClick,
   onOutstandingClick,
+  activeCard,
   periodScoped = false,
   periodLabel,
   invoicedLoading,
@@ -92,10 +93,13 @@ export function PayablesStatCards({
   onDueSoonClick?: () => void;
   /**
    * Faktur only (19 November 2026, on request): every card narrows the list
-   * below to the bills it counts. Withheld while the card counts nothing.
+   * below to the bills it counts, and a second click takes it off. Withheld
+   * while the card counts nothing, unless its filter is the one on.
    */
   onInvoicedClick?: () => void;
   onOutstandingClick?: () => void;
+  /** The card whose set the list below is showing — drawn with a border. */
+  activeCard?: "invoiced" | "outstanding" | "dueSoon";
   /**
    * Opens the receipts list narrowed to `pending`. Withheld while the count is
    * zero or unknown — there is nothing to look at behind it.
@@ -137,7 +141,11 @@ export function PayablesStatCards({
           }
           loading={invoicedLoading ?? loading}
           error={invoicedFailed ?? failed}
+          active={activeCard === "invoiced"}
+          // An active card stays clickable even at zero — it is how the
+          // filter comes off.
           onClick={
+            activeCard === "invoiced" ||
             (figures?.invoiced?.invoiceCount ?? 0) > 0
               ? onInvoicedClick
               : undefined
@@ -157,7 +165,9 @@ export function PayablesStatCards({
         }
         loading={loading}
         error={failed}
+        active={activeCard === "outstanding"}
         onClick={
+          activeCard === "outstanding" ||
           (figures?.outstanding.invoiceCount ?? 0) > 0
             ? onOutstandingClick
             : undefined
@@ -172,7 +182,12 @@ export function PayablesStatCards({
         // Drills into the same bucket, when there is one to drill into and a
         // caller offered a way — see this component's own doc and
         // `StatTile`'s, on the mockup's `.mcard.click`.
-        onClick={dueSoonCount > 0 ? onDueSoonClick : undefined}
+        active={activeCard === "dueSoon"}
+        onClick={
+          activeCard === "dueSoon" || dueSoonCount > 0
+            ? onDueSoonClick
+            : undefined
+        }
       />
       <StatTile
         label="Barang belum diterima"

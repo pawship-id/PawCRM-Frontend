@@ -165,10 +165,13 @@ export function PayablesScreen() {
     request). The figures are the whole book, so a click clears every other
     narrowing — supplier, cabang, gudang, dates, search — and sets only the
     card's own lens; otherwise "12 faktur" on the card could sit above a list
-    of three. The ordering is the headers' and is left alone. Withheld while
-    the list already shows that set: a control that leads nowhere new is noise.
+    of three. The ordering is the headers' and is left alone.
+
+    A SECOND CLICK TAKES IT OFF (19 November 2026, on request): once the list
+    already shows the card's set, the card is a toggle back to the screen's
+    default — every status, no dates. `isFocused` is what draws its border.
   */
-  const focus = (view: PayablesView, dateFrom = "", dateTo = "") => {
+  const isFocused = (view: PayablesView, dateFrom = "", dateTo = "") => {
     const target: Partial<PurchaseInvoicesQuery> = {
       view,
       dateFrom,
@@ -182,7 +185,15 @@ export function PayablesScreen() {
       Object.keys(target) as (keyof typeof target)[]
     ).every((key) => query[key] === target[key]);
 
-    return already ? undefined : () => setQuery(target);
+    return { target, already };
+  };
+
+  const focus = (view: PayablesView, dateFrom = "", dateTo = "") => {
+    const { target, already } = isFocused(view, dateFrom, dateTo);
+
+    return already
+      ? () => setQuery({ view: "all", dateFrom: "", dateTo: "" })
+      : () => setQuery(target);
   };
 
   // "Pembelian periode" is this month by invoice date, every status — the same
@@ -194,6 +205,14 @@ export function PayablesScreen() {
   const monthTo = isoDate(
     new Date(today.getFullYear(), today.getMonth() + 1, 0),
   );
+
+  const activeCard = isFocused("all", monthFrom, monthTo).already
+    ? "invoiced"
+    : isFocused("outstanding").already
+      ? "outstanding"
+      : isFocused("dueSoon").already
+        ? "dueSoon"
+        : undefined;
 
   const figures: PayablesStatFigures | null = summary
     ? {
@@ -233,6 +252,7 @@ export function PayablesScreen() {
         onInvoicedClick={focus("all", monthFrom, monthTo)}
         onOutstandingClick={focus("outstanding")}
         onDueSoonClick={focus("dueSoon")}
+        activeCard={activeCard}
       />
 
       {overdueCount > 0 && summary && (
@@ -242,7 +262,7 @@ export function PayablesScreen() {
           </b>{" "}
           — total {formatMoney(summary.totalOverdueOutstanding)}. Prioritaskan
           pembayaran supaya pasokan tidak terganggu.
-          {focus("overdue") && (
+          {!isFocused("overdue").already && (
             <>
               {" "}
               <button
