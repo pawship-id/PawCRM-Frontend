@@ -10,6 +10,7 @@ import { PageHeading } from "@/features/purchasing";
 
 import { SALES_CRUMBS } from "../crumbs";
 import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
+import { useTillCorrection } from "../hooks/useTillCorrection";
 import { InvoiceEditor } from "./InvoiceEditor";
 
 function formatDate(iso: string): string {
@@ -37,6 +38,14 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
   const router = useRouter();
   const { invoice, loading, error, notFound } = useCustomerInvoice(invoiceId);
   const { can } = usePermissions();
+  /* A till-born faktur: the server says whether it can be edited (17 November 2026). */
+  const isTillInvoice = Boolean(
+    invoice && (invoice.source === "pos_bridge" || invoice.posTransactionId),
+  );
+  const { status: tillStatus, loading: tillLoading } = useTillCorrection(
+    invoiceId,
+    isTillInvoice,
+  );
 
   const detailHref = `/dashboard/sales/invoice/${invoiceId}`;
   const crumbs = [
@@ -83,15 +92,35 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
 
   const tillBorn =
     invoice.source === "pos_bridge" || !!invoice.posTransactionId;
+  const till = tillStatus && tillStatus.tillBorn ? tillStatus : null;
+
+  if (tillBorn && !till && (tillLoading || tillStatus === null)) {
+    return (
+      <div className="flex flex-col gap-6">
+        {heading}
+        <div className="flex items-center gap-2 text-sm text-muted">
+          <Spinner /> Memeriksa transaksi kasirnya…
+        </div>
+      </div>
+    );
+  }
+
   const hasActivePayment = (invoice.payments ?? []).some(
     (payment) => !payment.isVoided,
   );
-  const editable =
-    !tillBorn && invoice.status === "unpaid" && !hasActivePayment;
+  /*
+    A TILL-BORN FAKTUR (BO, 18 November 2026) follows the hand-raised rule —
+    nothing paid on it — and whatever else the server says (#tillState).
+  */
+  const editable = tillBorn
+    ? invoice.status !== "void" && Boolean(till?.canEdit)
+    : invoice.status === "unpaid" && !hasActivePayment;
 
   if (!editable || !can("customerInvoices", "update")) {
     const reason = tillBorn
-      ? "lahir dari penjualan kasir — barisnya milik transaksi kasir"
+      ? invoice.status === "void"
+        ? "sudah dibatalkan"
+        : (till?.editBlockedReason ?? "transaksi kasirnya tidak bisa diperiksa")
       : invoice.status === "void"
         ? "sudah dibatalkan"
         : !editable
@@ -116,7 +145,11 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
       {heading}
       <Card
         title="Rincian faktur"
-        description="Pelanggan, cabang dan tanggal faktur dikunci — yang bisa diubah: baris, diskon, biaya lain dan jatuh tempo."
+        description={
+          tillBorn
+            ? `Dari transaksi kasir ${till?.transactionNumber ?? ""} — transaksi kasirnya ikut diperbarui. Pelanggan, cabang dan tanggal dikunci; yang bisa diubah: baris, diskon dan biaya lain.`
+            : "Pelanggan, cabang dan tanggal faktur dikunci — yang bisa diubah: baris, diskon, biaya lain dan jatuh tempo."
+        }
       >
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
           <div>
@@ -150,6 +183,7 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
         <div className="mt-5 border-t border-border pt-4">
           <InvoiceEditor
             invoice={invoice}
+            tillTransactionNumber={till ? (till.transactionNumber ?? "") : null}
             onCancel={() => router.push(detailHref)}
             onSaved={() => router.push(detailHref)}
           />

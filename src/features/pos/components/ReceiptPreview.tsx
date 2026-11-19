@@ -443,6 +443,36 @@ export function ReceiptPreview({
       )}
 
       {/*
+        CORRECTED FROM ITS FAKTUR (17 November 2026) — the total above is the
+        corrected one and the payments are what was paid that day, so the slip
+        says so.
+      */}
+      {receipt.correction && (
+        <dl className="mt-2 space-y-0.5 border-t border-dashed border-border pt-2 text-xs">
+          <div className="flex justify-between gap-2 font-semibold">
+            <dt className={LABEL}>Dikoreksi</dt>
+            <dd className={AMOUNT}>
+              {receipt.correction.at
+                ? new Date(receipt.correction.at).toLocaleDateString("id-ID", {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })
+                : ""}
+            </dd>
+          </div>
+          {receipt.correction.invoiceNumber && (
+            <div className="flex justify-between gap-2 text-muted">
+              <dt className="shrink-0 whitespace-nowrap">No. faktur</dt>
+              <dd className="min-w-0 text-right tabular-nums">
+                {receipt.correction.invoiceNumber}
+              </dd>
+            </div>
+          )}
+        </dl>
+      )}
+
+      {/*
         LABELLED "Catatan:", which FR-5 asks for by name.
         
         Without it the note is one unmarked paragraph between the payment lines

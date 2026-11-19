@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 
 import { SALES_CRUMBS } from "../crumbs";
 import { useCustomerInvoice } from "../hooks/useCustomerInvoice";
+import { useTillCorrection } from "../hooks/useTillCorrection";
 import { InvoiceActivityCard } from "./InvoiceActivityCard";
 import { InvoiceItemsTable } from "./InvoiceItemsTable";
 import { InvoiceJournalDialog } from "./InvoiceJournalDialog";
@@ -95,6 +96,20 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const [activityVersion, setActivityVersion] = useState(0);
 
   const { can } = usePermissions();
+
+  /*
+    A TILL-BORN FAKTUR ASKS THE SERVER whether it can be edited or cancelled
+    (17 November 2026) — returns, packages and older sales say no, and only the
+    server knows. Re-read after every write.
+  */
+  const isTillInvoice = Boolean(
+    invoice && (invoice.source === "pos_bridge" || invoice.posTransactionId),
+  );
+  const { status: tillStatus } = useTillCorrection(
+    invoiceId,
+    isTillInvoice,
+    activityVersion,
+  );
 
   if (loading) {
     return (
@@ -166,8 +181,14 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
     should not have been drawn. The edit page (`/edit`) re-checks the same
     rule on load, so a link opened after a payment lands on the reason.
   */
-  const editable =
-    !tillBorn && !shopeeBorn && invoice.status === "unpaid" && !hasActivePayment;
+  const till = tillStatus && tillStatus.tillBorn ? tillStatus : null;
+  /*
+    A TILL-BORN FAKTUR (BO, 18 November 2026) follows the same rule — nothing
+    paid on it — plus whatever else the server says (a return, a package…).
+  */
+  const editable = tillBorn
+    ? !voided && Boolean(till?.canEdit)
+    : !shopeeBorn && invoice.status === "unpaid" && !hasActivePayment;
   const mayEdit = editable && can("customerInvoices", "update");
 
   const lockNote = voided
@@ -177,7 +198,11 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         ? "Dari impor pesanan TikTok — baris dikunci. Lunas lewat Catat pembayaran atau impor laporan pencairan TikTok."
         : "Dari impor pesanan Shopee — baris dikunci. Lunas lewat Catat pembayaran atau impor Laporan Penghasilan Shopee."
       : tillBorn
-      ? "Lahir dari penjualan kasir — barisnya milik transaksi kasir dan tidak diubah di sini."
+      ? till?.canEdit
+        ? `Dari transaksi kasir ${till.transactionNumber ?? ""}. Belum ada pembayaran — bisa diubah atau dibatalkan, dan transaksi kasirnya ikut diperbarui.`
+        : till?.editBlockedReason
+          ? `Dari transaksi kasir — tidak bisa diubah: ${till.editBlockedReason}`
+          : "Dari transaksi kasir."
       : editable
         ? "Belum ada pembayaran — faktur masih bisa diubah. Terkunci otomatis begitu pembayaran pertama tercatat."
         : "Terkunci sejak ada pembayaran tercatat — batalkan pembayarannya dulu untuk mengubah.";
@@ -533,6 +558,7 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
 
       <VoidInvoiceDialog
         invoice={invoice}
+        till={till}
         open={voidOpen}
         onOpenChange={setVoidOpen}
         onVoided={applyWrite}

@@ -128,6 +128,15 @@ interface EditLine {
    */
   promoShare?: string;
   /**
+   * THE MEMBERSHIP BENEFIT ON A KEPT LINE (17 November 2026) — its part of the
+   * stored discount, and which card and benefit paid it. Sent back as the
+   * line's `benefit` so the revision keeps it (an omitted one is dropped, and
+   * its jatah handed back); the fields hold the own part only. Absent on a new
+   * row.
+   */
+  membershipShare?: string;
+  benefit?: { membershipId: string; benefitId: string; optionId?: string | null } | null;
+  /**
    * THE "DIPILIH STAF" VALUES CHOSEN on a line added here (17 September 2026),
    * sent as its `variantChoices`. Empty on a kept line — the server keeps what
    * that line was priced on, and never re-quotes it.
@@ -211,10 +220,17 @@ const nextKey = () => `baru-${(lineSeq += 1)}`;
  */
 export function InvoiceEditor({
   invoice,
+  tillTransactionNumber = null,
   onCancel,
   onSaved,
 }: {
   invoice: CustomerInvoiceDetail;
+  /**
+   * A TILL-BORN faktur (18 November 2026): the sale it bridges, named on the
+   * save bar — the sale is rewritten with the faktur. Nothing is paid on it
+   * by the time it is edited (its payments are cancelled first).
+   */
+  tillTransactionNumber?: string | null;
   onCancel: () => void;
   onSaved: (updated: CustomerInvoiceDetail) => void;
 }) {
@@ -235,11 +251,30 @@ export function InvoiceEditor({
         /* Promo V1 — the promo's part is not the line's own discount either. */
         const promoShare =
           item.promoDiscount && isPositive(item.promoDiscount) ? item.promoDiscount : "0";
+        /* The card's part — kept on the line as its benefit (17 November 2026). */
+        const benefit =
+          item.discount?.source === "membership" &&
+          item.discount.membershipId &&
+          item.discount.benefitId
+            ? {
+                membershipId: item.discount.membershipId,
+                benefitId: item.discount.benefitId,
+                optionId: item.discount.optionId ?? null,
+              }
+            : null;
+        const membershipShare =
+          benefit && item.membershipDiscount && isPositive(item.membershipDiscount)
+            ? item.membershipDiscount
+            : "0";
         const own =
-          item.discount && (isPositive(share) || isPositive(promoShare))
+          item.discount &&
+          (isPositive(share) || isPositive(promoShare) || isPositive(membershipShare))
             ? subtractDecimals(
-                subtractDecimals(item.discount.resolvedAmount, share),
-                promoShare,
+                subtractDecimals(
+                  subtractDecimals(item.discount.resolvedAmount, share),
+                  promoShare,
+                ),
+                membershipShare,
               )
             : null;
 
@@ -281,6 +316,8 @@ export function InvoiceEditor({
           tripId: item.homeTripId ?? null,
           bookingShare: share,
           promoShare,
+          membershipShare,
+          benefit,
           choices: [],
           storedVariant: variantSummary(item),
         };
@@ -608,6 +645,8 @@ export function InvoiceEditor({
   const bookingShares = sumDecimals(lines.map((line) => line.bookingShare));
   /* Promo V1 — the kept lines' frozen promos, shown on their own recap row. */
   const promoShares = sumDecimals(lines.map((line) => line.promoShare ?? "0"));
+  /* The kept lines' card benefits — their own recap row (17 November 2026). */
+  const membershipShares = sumDecimals(lines.map((line) => line.membershipShare ?? "0"));
 
   /**
    * Whether the PPN is charged ON TOP of the prices — see `previewInvoice`.
@@ -620,8 +659,11 @@ export function InvoiceEditor({
   /** A row's OWN discount: what the preview takes off it, less the booking's share. */
   function ownOffAt(index: number, line: EditLine): string {
     const own = subtractDecimals(
-      subtractDecimals(preview.lineDiscounts[index], line.bookingShare),
-      line.promoShare ?? "0",
+      subtractDecimals(
+        subtractDecimals(preview.lineDiscounts[index], line.bookingShare),
+        line.promoShare ?? "0",
+      ),
+      line.membershipShare ?? "0",
     );
     return isPositive(own) ? own : "0";
   }
@@ -655,8 +697,10 @@ export function InvoiceEditor({
           qty: line.qty,
           unitPrice: chargedPrice(line),
           discount: previewDiscountOf(line),
-          /* A kept line's frozen promo, before its own discount (server order). */
-          promo: line.promoShare ?? null,
+          /* A kept line's frozen promo and card benefit, before its own discount (server order). */
+          promo: isPositive(line.membershipShare ?? "0")
+            ? sumDecimals([line.promoShare ?? "0", line.membershipShare ?? "0"])
+            : (line.promoShare ?? null),
         })),
         invoiceDiscountValue
           ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
@@ -667,6 +711,8 @@ export function InvoiceEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `filledCharges` is derived from `charges` every render
     [lines, invoiceDiscountMode, invoiceDiscountValue, lookups.tax, charges],
   );
+
+
 
   /** A ride row's two ends, flat as the payload carries them. */
   function tripInputOf(line: EditLine) {
@@ -816,6 +862,8 @@ export function InvoiceEditor({
             ? { mode: line.discountMode, value: line.discountValue }
             : null,
           ...(line.fromIndex !== null ? { fromIndex: line.fromIndex } : {}),
+          /* A kept card benefit stays — omitted, the server drops it (17 November 2026). */
+          ...(line.fromIndex !== null && line.benefit ? { benefit: line.benefit } : {}),
           /*
           A TYPED PRICE (13 October 2026). A new row sends its override; a kept
           row sends one only when it moved — null puts it back to the
@@ -1769,12 +1817,21 @@ export function InvoiceEditor({
               −
               {formatMoney(
                 subtractDecimals(
-                  subtractDecimals(preview.itemDiscount, bookingShares),
-                  promoShares,
+                  subtractDecimals(
+                    subtractDecimals(preview.itemDiscount, bookingShares),
+                    promoShares,
+                  ),
+                  membershipShares,
                 ),
               )}
             </dd>
           </div>
+          {isPositive(membershipShares) && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted">Benefit membership</dt>
+              <dd className="tabular-nums">−{formatMoney(membershipShares)}</dd>
+            </div>
+          )}
           {isPositive(bookingShares) && (
             <div className="flex justify-between gap-4">
               <dt className="text-muted">Diskon booking</dt>
@@ -1903,7 +1960,9 @@ export function InvoiceEditor({
       <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-hover px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted">
           {blocking ??
-            "Menyimpan membalik jurnal & stok versi sebelumnya lalu menerbitkan ulang baris ini. Nomor dan tanggal faktur tetap."}
+            (tillTransactionNumber !== null
+              ? `Menyimpan membalik jurnal & stok penjualan sebelumnya lalu menerbitkan ulang baris ini di tanggal transaksi. Transaksi kasir ${tillTransactionNumber} ikut diperbarui.`
+              : "Menyimpan membalik jurnal & stok versi sebelumnya lalu menerbitkan ulang baris ini. Nomor dan tanggal faktur tetap.")}
         </p>
         <div className="flex shrink-0 gap-2">
           <Button

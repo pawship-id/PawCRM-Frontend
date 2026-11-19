@@ -163,6 +163,11 @@ const optionPage = <T,>(items: T[]) =>
 beforeEach(() => {
   jest.clearAllMocks();
 
+  // A till-born faktur asks the server whether it may be edited or cancelled.
+  asMock(customerInvoiceService.tillCorrection).mockResolvedValue({
+    tillBorn: false,
+  });
+
   /*
     The payment form reads the tenant's INCOMING channels — where the money
     lands. One BCA account, which the form pre-selects.
@@ -1488,32 +1493,37 @@ describe("InvoiceDetail — the Rincian card's ⋮", () => {
    * row that should not have been drawn. The editor itself has its own suite
    * (InvoiceEditor.test.tsx).
    */
-  it("offers Ubah rincian on a hand-raised invoice nobody has paid, and opens the editor", async () => {
-    const user = userEvent.setup();
+  it("offers Ubah on a hand-raised invoice nobody has paid, linking to the editor", async () => {
     asMock(customerInvoiceService.getById).mockResolvedValue(manualUnpaid());
 
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
     expect(await screen.findByText(/masih bisa diubah/)).toBeInTheDocument();
-
-    await openRincianMenu(user);
-    await user.click(screen.getByRole("menuitem", { name: /Ubah rincian/ }));
-
-    expect(
-      await screen.findByText(/Sedang diubah — belum tersimpan/),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^Ubah$/ })).toHaveAttribute(
+      "href",
+      `/dashboard/sales/invoice/${INVOICE_ID}/edit`,
+    );
   });
 
-  it("does not offer Ubah rincian on an invoice raised at the till, and says why", async () => {
-    const user = userEvent.setup();
+  it("does not offer Ubah on a till faktur the server says is locked, and says why", async () => {
+    asMock(customerInvoiceService.tillCorrection).mockResolvedValue({
+      tillBorn: true,
+      revised: false,
+      shiftOpen: false,
+      paidAmount: "300000.0000",
+      transactionNumber: "TRX-1",
+      canVoid: false,
+      voidBlockedReason: "Masih ada 1 pembayaran aktif",
+      canEdit: false,
+      editBlockedReason: "Masih ada 1 pembayaran aktif",
+    });
     renderWithAuth(<InvoiceDetail invoiceId={INVOICE_ID} />);
 
     expect(
-      await screen.findByText(/barisnya milik transaksi kasir/),
+      await screen.findByText(/Dari transaksi kasir — tidak bisa diubah/),
     ).toBeInTheDocument();
-    await openRincianMenu(user);
     expect(
-      screen.queryByRole("menuitem", { name: /Ubah rincian/ }),
+      screen.queryByRole("link", { name: /^Ubah$/ }),
     ).not.toBeInTheDocument();
   });
 

@@ -39,7 +39,7 @@ import {
   channelClassOf,
   hasLines,
   transactionKindLabel,
-  lockedReason,
+  editLockedReason,
   toDateInputValue,
   todayValue,
 } from "../labels";
@@ -195,7 +195,7 @@ export function CashTransactionEditForm({
   // The server pays exactly what its books say is owed — see CommissionRecapScreen.
   const amountLocked = transaction.kind === "commission_payment";
   const originalDate = toDateInputValue(transaction.at);
-  const locked = lockedReason(transaction);
+  const locked = editLockedReason(transaction);
   /*
     THE ONE ROW THAT STILL MOVES BY ITS CHANNEL — see the header. Judged on how
     it was RECORDED, not on whether it happens to carry a channel: an invoice
