@@ -56,7 +56,8 @@ async function namesOf(
 }
 
 /**
- * Unduh laporan pembayaran kasir — one shift as an A4 PDF (17 November 2026).
+ * Unduh laporan shift kasir — one shift as an A4 PDF (17 November 2026): the
+ * X-Report figures, then the items sold (19 November 2026).
  *
  * Loads the shift's figures, puts the sheet straight under `body` for one
  * print, and opens the browser's print dialog, where "Simpan sebagai PDF" is
@@ -121,7 +122,7 @@ export function useShiftReportDownload(): {
     const previousTitle = document.title;
     flushSync(() => setData(next));
     // The browser names the saved PDF after the page title.
-    document.title = `Laporan Pembayaran ${next.shift.shiftNumber}`;
+    document.title = `Laporan Shift ${next.shift.shiftNumber}`;
 
     window.addEventListener(
       "afterprint",

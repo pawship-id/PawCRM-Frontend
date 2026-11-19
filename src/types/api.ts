@@ -2457,6 +2457,24 @@ export interface PosTransaction {
   deviceId?: string | null;
   /** Who rang it up — on the transaction list only (19 Oct 2026). */
   cashierName?: string | null;
+  /**
+   * Set once the sale was corrected from its faktur (17 November 2026).
+   * `originalItems` are the lines as the till took them — what the shift
+   * report counts, since the shift keeps its original figures. Stored as
+   * Mixed, so its money may arrive as `{ $numberDecimal }` rather than a string.
+   */
+  correction?: {
+    count?: number;
+    originalItems?: Array<{
+      kind: PosItemKind;
+      refId: string;
+      name: string;
+      sku: string | null;
+      qty: unknown;
+      lineTotal: unknown;
+      discount: { resolvedAmount: unknown } | null;
+    }>;
+  } | null;
   bookingIds: string[];
   paidAt: string | null;
   createdAt: string;
