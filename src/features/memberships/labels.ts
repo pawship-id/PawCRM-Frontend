@@ -332,6 +332,7 @@ export const HISTORY_ACTION_LABEL: Record<MembershipHistoryAction, string> = {
   quota_adjusted: "Koreksi jatah",
   transferred: "Pindah hewan",
   redemption_moved: "Ubah tanggal pakai",
+  benefits_synced: "Benefit diperbarui",
   payment_received: "Lunas",
   cancelled: "Dibatalkan",
   refunded: "Direfund",

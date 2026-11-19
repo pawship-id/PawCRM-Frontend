@@ -18,6 +18,8 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { useBranchOptions } from "@/features/inventory/hooks/useBranchOptions";
 import { usePetOptions } from "@/hooks/usePetOptions";
@@ -75,6 +77,12 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
   const [draft, setDraft] = useState<PlanDraft>(() => planToDraft(plan));
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  /*
+    WHO GETS AN EDITED BENEFIT LIST (20 November 2026). By default only cards
+    sold from now on; "running" also gives it to every card still going.
+  */
+  const [benefitScope, setBenefitScope] = useState<"new" | "running">("new");
+  const [initialBenefits] = useState(() => JSON.stringify(planToDraft(plan).benefits));
 
   const { choices } = usePetOptions();
   const { branches } = useBranchOptions();
@@ -86,6 +94,7 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
 
   const blockedReason = planBlockedReason(draft);
   const variantPlan = draft.attachTo === "pet" && draft.priceMode === "variant";
+  const benefitsChanged = editing && JSON.stringify(draft.benefits) !== initialBenefits;
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -95,11 +104,23 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
 
     try {
       const payload = draftToPayload(draft, { editing, tenantRecognition });
+      const applyBenefitsToCards = benefitsChanged && benefitScope === "running";
       const saved = editing
-        ? await membershipService.updatePlan(plan!.id, payload)
+        ? await membershipService.updatePlan(plan!.id, {
+            ...payload,
+            ...(applyBenefitsToCards ? { applyBenefitsToCards: true } : {}),
+          })
         : await membershipService.createPlan(payload);
+      const synced = (saved as { syncedCards?: number }).syncedCards ?? 0;
 
-      swalToast(editing ? "Paket membership tersimpan." : "Paket membership dibuat.", "success");
+      swalToast(
+        !editing
+          ? "Paket membership dibuat."
+          : synced > 0
+            ? `Paket membership tersimpan. Benefit baru sudah masuk ke ${synced} kartu yang berjalan.`
+            : "Paket membership tersimpan.",
+        "success",
+      );
       router.push(planHref(saved.id));
       router.refresh();
     } catch (err) {
@@ -414,6 +435,45 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
             petSpecies={draft.attachTo === "pet" ? draft.petSpecies : []}
             errors={fieldErrors}
           />
+
+          {benefitsChanged ? (
+            <Card
+              title="Perubahan benefit berlaku untuk"
+              description="Benefit paket ini kamu ubah. Pilih siapa yang ikut mendapatkannya."
+            >
+              <RadioGroup
+                value={benefitScope}
+                onValueChange={(value) => setBenefitScope(value as "new" | "running")}
+                disabled={submitting}
+                aria-label="Perubahan benefit berlaku untuk"
+              >
+                <div className="flex items-start gap-2">
+                  <RadioGroupItem value="new" id="benefit-scope-new" className="mt-0.5" />
+                  <Label htmlFor="benefit-scope-new" className="flex flex-col items-start gap-0.5">
+                    <span>Hanya pembeli baru</span>
+                    <span className="text-xs font-normal text-muted">
+                      Kartu yang sudah terjual tetap memakai benefit saat dibeli.
+                    </span>
+                  </Label>
+                </div>
+                <div className="flex items-start gap-2">
+                  <RadioGroupItem value="running" id="benefit-scope-running" className="mt-0.5" />
+                  <Label
+                    htmlFor="benefit-scope-running"
+                    className="flex flex-col items-start gap-0.5"
+                  >
+                    <span>Pembeli baru dan kartu yang sudah berjalan</span>
+                    <span className="text-xs font-normal text-muted">
+                      Benefit baru dan benefit yang diubah ikut masuk ke kartu yang masih aktif,
+                      terjadwal, ditunda, atau belum lunas. Jatah yang sudah dipakai tetap dihitung.
+                      Benefit yang kamu hapus tetap ada di kartu lama, karena sudah dibayar
+                      pelanggan.
+                    </span>
+                  </Label>
+                </div>
+              </RadioGroup>
+            </Card>
+          ) : null}
 
           {/* ───────────────────────────────────── Pengakuan pendapatan */}
           <PlanAccountingCard
