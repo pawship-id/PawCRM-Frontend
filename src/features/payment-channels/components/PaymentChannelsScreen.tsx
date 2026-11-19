@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { Plus, RotateCcw } from "lucide-react";
 
@@ -19,6 +18,7 @@ import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 import { usePaymentChannelList } from "../hooks/usePaymentChannelList";
 import { PaymentChannelsTable } from "./PaymentChannelsTable";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 const NEW_HREF = "/dashboard/settings/payment-channels/new";
 
@@ -45,7 +45,10 @@ const NEW_HREF = "/dashboard/settings/payment-channels/new";
  * readable; without this toggle there would be no way back.
  */
 export function PaymentChannelsScreen() {
-  const [query, setQuery] = useState({ search: "", includeDeleted: false });
+  const [query, setQuery] = usePersistentState("settings.paymentChannels", {
+    search: "",
+    includeDeleted: false,
+  });
   /*
     Only the text field waits. The toggle is a finished decision and goes
     straight through — see the hook's own header for why debouncing the whole

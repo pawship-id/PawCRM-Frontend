@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { purchaseInvoiceService } from "@/services/purchaseInvoice.service";
@@ -170,10 +171,12 @@ export function usePurchaseInvoices(
   /** Fixes filters the screen does not expose — e.g. one supplier's ledger. */
   initial: Partial<PurchaseInvoicesQuery> = {},
 ): UsePurchaseInvoicesResult {
-  const [query, setQueryState] = useState<PurchaseInvoicesQuery>({
-    ...DEFAULT_QUERY,
-    ...initial,
-  });
+  const [query, setQueryState] = usePersistentState<PurchaseInvoicesQuery>(
+    "purchasing.payables",
+    () => ({ ...DEFAULT_QUERY, ...initial }),
+    // A caller's fixed filter (`initial`) starts fresh — see `usePersistentState`.
+    { fresh: Object.keys(initial).length > 0 },
+  );
   const [invoices, setInvoices] = useState<PurchaseInvoiceListRow[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<PurchaseInvoiceListRow>["pagination"]>(EMPTY_PAGE);
@@ -193,7 +196,7 @@ export function usePurchaseInvoices(
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

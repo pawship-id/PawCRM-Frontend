@@ -15,6 +15,7 @@ import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 
 import { isStockSort } from "./useStockProducts";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** The query knobs the catalogue screen drives (page + the visible filters). */
 export interface ProductsQuery {
@@ -87,7 +88,10 @@ interface UseProductsResult {
  * already excludes variants, so exactly one of the two is ever sent.
  */
 export function useProducts(warehouseIds: string[] = []): UseProductsResult {
-  const [query, setQueryState] = useState<ProductsQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<ProductsQuery>(
+    "inventory.products",
+    DEFAULT_QUERY,
+  );
   const [products, setProducts] = useState<Product[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<Product>["pagination"]>(EMPTY_PAGE);
@@ -114,7 +118,7 @@ export function useProducts(warehouseIds: string[] = []): UseProductsResult {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

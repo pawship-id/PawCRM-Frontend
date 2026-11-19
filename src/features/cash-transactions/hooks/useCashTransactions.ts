@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { ApiError } from "@/services/api-error";
@@ -68,10 +69,12 @@ export interface UseCashTransactionsResult {
 export function useCashTransactions(
   initial: Partial<CashTransactionsQuery> = {},
 ): UseCashTransactionsResult {
-  const [query, setQueryState] = useState<CashTransactionsQuery>(() => ({
-    ...DEFAULT_CASH_TRANSACTIONS_QUERY,
-    ...initial,
-  }));
+  const [query, setQueryState] = usePersistentState<CashTransactionsQuery>(
+    "finance.cashTransactions",
+    () => ({ ...DEFAULT_CASH_TRANSACTIONS_QUERY, ...initial }),
+    // A caller's fixed filter (`initial`) starts fresh — see `usePersistentState`.
+    { fresh: Object.keys(initial).length > 0 },
+  );
   const [transactions, setTransactions] = useState<CashTransaction[]>([]);
   const [pagination, setPagination] = useState(EMPTY_PAGE);
   const [totals, setTotals] = useState<CashTransactionTotals | null>(null);
@@ -90,7 +93,7 @@ export function useCashTransactions(
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

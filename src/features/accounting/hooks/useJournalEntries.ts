@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
@@ -84,7 +85,8 @@ export interface UseJournalEntriesResult {
  * request per keystroke; every other change applies at once.
  */
 export function useJournalEntries(): UseJournalEntriesResult {
-  const [query, setQueryState] = useState<JournalEntriesQuery>(
+  const [query, setQueryState] = usePersistentState<JournalEntriesQuery>(
+    "finance.journalEntries",
     DEFAULT_JOURNAL_QUERY,
   );
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -104,7 +106,7 @@ export function useJournalEntries(): UseJournalEntriesResult {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

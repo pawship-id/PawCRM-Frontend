@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useMemo, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import Link from "next/link";
 import {
   ArrowDown,
@@ -170,9 +171,15 @@ export function ChartOfAccountsScreen() {
     [branches],
   );
 
-  const [query, setQuery] = useState<ChartOfAccountsQuery>(DEFAULT_QUERY);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [query, setQuery] = usePersistentState<ChartOfAccountsQuery>(
+    "settings.chartOfAccounts.query",
+    DEFAULT_QUERY,
+  );
+  const [page, setPage] = usePersistentState("settings.chartOfAccounts.page", 1);
+  const [pageSize, setPageSize] = usePersistentState(
+    "settings.chartOfAccounts.pageSize",
+    DEFAULT_PAGE_SIZE,
+  );
   /** Which row is open. ONE AT A TIME — see `toggleRow`. */
   const [openAccountId, setOpenAccountId] = useState<string | null>(null);
   /** The account whose status is mid-flight, so its badge can be disabled. */
@@ -202,14 +209,14 @@ export function ChartOfAccountsScreen() {
       };
     });
     setPage(1);
-  }, []);
+  }, [setPage, setQuery]);
 
   const patchQuery = useCallback((patch: Partial<ChartOfAccountsQuery>) => {
     setQuery((previous) => ({ ...previous, ...patch }));
     // Any narrowing returns to page 1 — otherwise a filter that shrinks the list
     // strands somebody on a page that no longer exists.
     setPage(1);
-  }, []);
+  }, [setPage, setQuery]);
 
   const term = query.search.trim().toLowerCase();
 

@@ -515,6 +515,41 @@ describe("CashTransactionDetail — cancelling", () => {
     expect(cashTransactionService.getById).toHaveBeenCalledTimes(1);
   });
 
+  it("a till payment of a closed shift: no Ubah, and Batalkan asks where the money goes back from", async () => {
+    const user = userEvent.setup();
+    asMock(cashTransactionService.getById).mockResolvedValue(
+      cashTx({ recordedVia: "pos", drawerClosed: true, cashAccountId: "acc-cash" }),
+    );
+    asMock(chartOfAccountsService.list).mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 100, total: 0, totalPages: 0 },
+    } as never);
+    asMock(cashTransactionService.cancel).mockResolvedValue(
+      cashTx({ status: "void", isVoided: true, voidReason: "Salah" }),
+    );
+
+    renderPage();
+    expect(
+      await screen.findByText(/supaya laporan shift tetap sama/),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Ubah/ })).not.toBeInTheDocument();
+
+    const dialog = await openCancel(user);
+    expect(dialog.getByText(/shift yang sudah ditutup/)).toBeInTheDocument();
+    expect(dialog.getByText("Uang dikembalikan dari")).toBeInTheDocument();
+
+    await user.type(dialog.getByLabelText(/Alasan pembatalan/), "Salah");
+    await user.click(dialog.getByRole("button", { name: "Batalkan transaksi" }));
+
+    await waitFor(() =>
+      expect(cashTransactionService.cancel).toHaveBeenCalledWith("ct1", {
+        reason: "Salah",
+        refundAccountId: "acc-cash",
+        refundAt: expect.any(String),
+      }),
+    );
+  });
+
   it("keeps the server's refusal on screen in the dialog", async () => {
     const user = userEvent.setup();
     asMock(cashTransactionService.cancel).mockRejectedValue(

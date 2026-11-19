@@ -1,6 +1,6 @@
 "use client";
 
-import { RotateCcw } from "lucide-react";
+import { Download, RotateCcw } from "lucide-react";
 
 import {
   Alert,
@@ -11,12 +11,14 @@ import {
   withAll,
   type DataTableColumn,
   type FilterOption,
+  Spinner,
 } from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { dayKeyOf, todayIso } from "@/features/booking/day";
 import { useBranchOptions } from "@/features/inventory/hooks/useBranchOptions";
 import { usePermissions } from "@/features/permissions";
+import { useShiftReportDownload } from "@/features/pos/hooks/useShiftReportDownload";
 import type { PosShiftListItem, PosShiftStatus } from "@/types/api";
 import { formatMoney } from "@/utils/decimal";
 
@@ -111,13 +113,49 @@ const COLUMNS: DataTableColumn<PosShiftListItem>[] = [
 /**
  * Pengaturan › Shift kasir — every cashier shift, opening on the ones still
  * open. READ-ONLY by decision (20 October 2026): a shift is closed only from
- * the till, by the cashier who opened it, so there are no row actions here.
+ * the till, by the cashier who opened it.
+ *
+ * THE ONE ROW ACTION IS A DOWNLOAD (17 November 2026): a closed shift's payment
+ * report, the same A4 the till offers right after Tutup Kasir — for an owner
+ * checking an older shift, or a cashier who skipped it at the time. It changes
+ * nothing, so it does not touch the read-only decision.
  */
 export function CashierShiftsScreen() {
   const { can } = usePermissions();
   const { branches } = useBranchOptions(can("branches", "read"));
   const { shifts, pagination, query, loading, error, setQuery, refetch } =
     useCashierShifts();
+  const shiftReport = useShiftReportDownload();
+
+  const columns: DataTableColumn<PosShiftListItem>[] = [
+    ...COLUMNS,
+    {
+      id: "report",
+      header: "",
+      align: "right",
+      cell: (shift) =>
+        shift.status === "closed" ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={shiftReport.loadingId !== null}
+            onClick={() =>
+              void shiftReport.download(shift._id, {
+                branchName: shift.branchName,
+                cashierName: shift.cashierName,
+              })
+            }
+          >
+            {shiftReport.loadingId === shift._id ? (
+              <Spinner />
+            ) : (
+              <Download className="size-4" />
+            )}
+            Laporan
+          </Button>
+        ) : null,
+    },
+  ];
 
   const branchOptions = withAll<string>(
     branches.map((b): FilterOption<string> => ({ value: b._id, label: b.name })),
@@ -159,9 +197,10 @@ export function CashierShiftsScreen() {
       </FilterBar>
 
       {error && <Alert variant="error">{error}</Alert>}
+      {shiftReport.error && <Alert variant="error">{shiftReport.error}</Alert>}
 
       <DataTable
-        columns={COLUMNS}
+        columns={columns}
         rows={shifts}
         rowKey={(shift) => shift._id}
         loading={loading}
@@ -183,6 +222,7 @@ export function CashierShiftsScreen() {
         onPageChange={(page) => setQuery({ page })}
         onPageSizeChange={(limit) => setQuery({ limit, page: 1 })}
       />
+      {shiftReport.portal}
     </div>
   );
 }

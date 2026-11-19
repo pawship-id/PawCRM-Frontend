@@ -120,16 +120,25 @@
     every page in between against the paper's edge. A named page gives it a real
     margin on all of them, and leaves every other receipt as it is.
   */
-  [data-delivery-note] {
+  /*
+    `data-multi-page` — the same rules for any other A4 sheet that can run to
+    several pages (the shift payment report, 17 November 2026). Kept on the
+    delivery note's named page rather than a second one: they want the same
+    margin, and two names would drift.
+  */
+  [data-delivery-note],
+  [data-multi-page] {
     page: delivery-note;
     padding-block: 0;
   }
 
-  [data-delivery-note] thead {
+  [data-delivery-note] thead,
+  [data-multi-page] thead {
     display: table-header-group;
   }
 
-  [data-delivery-note] tr {
+  [data-delivery-note] tr,
+  [data-multi-page] tr {
     break-inside: avoid;
   }
 }

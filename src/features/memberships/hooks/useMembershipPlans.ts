@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { usePersistentState } from "@/hooks/usePersistentState";
+
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { ApiError } from "@/services/api-error";
 import { membershipService } from "@/services/membership.service";
@@ -26,7 +28,10 @@ export const DEFAULT_PLANS_QUERY: MembershipPlanListQuery = {
  * showing what was true before the click.
  */
 export function useMembershipPlans(initial: MembershipPlanListQuery = DEFAULT_PLANS_QUERY) {
-  const [query, setQuery] = useState<MembershipPlanListQuery>(initial);
+  const [query, setQuery] = usePersistentState<MembershipPlanListQuery>(
+    "memberships.plans",
+    initial,
+  );
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,7 +88,7 @@ export function useMembershipPlans(initial: MembershipPlanListQuery = DEFAULT_PL
       ...patch,
       page: patch.page ?? 1,
     }));
-  }, []);
+  }, [setQuery]);
 
   return { plans, pagination, loading, error, query, patchQuery, reload };
 }

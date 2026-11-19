@@ -5,7 +5,7 @@ import { ChevronLeft } from "lucide-react";
 import { Breadcrumb } from "@/components";
 import { Button } from "@/components/ui/button";
 import { BookingDetailScreen } from "@/features/booking";
-import { GROOMING_PATH } from "@/features/grooming";
+import { GROOMING_BOOKINGS_PATH, GROOMING_PATH } from "@/features/grooming";
 import { RequirePermission } from "@/features/permissions";
 
 export const metadata: Metadata = { title: "Detail Booking · Buloo" };
@@ -52,17 +52,20 @@ export default async function BookingDetailPage({
       {/* The same `gap-6` every other detail page puts between its crumb and
           its content — without it the heading card sat flush under the crumb. */}
       <div className="flex flex-col gap-6">
-        {/* The crumb on the left, the way back to the list on the right. */}
+        {/* The crumb on the left, the way back to the list on the right —
+            the Booking tab, not the module's Ringkasan (17 November 2026, on
+            request). Its filters are still on: see `usePersistentState`. */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Breadcrumb
             items={[
               { label: "Layanan" },
               { label: "Grooming", href: GROOMING_PATH },
+              { label: "Booking", href: GROOMING_BOOKINGS_PATH },
               { label: "Detail" },
             ]}
           />
           <Button asChild variant="secondary" size="sm">
-            <Link href={GROOMING_PATH}>
+            <Link href={GROOMING_BOOKINGS_PATH}>
               <ChevronLeft className="size-4" aria-hidden />
               Kembali ke daftar booking
             </Link>

@@ -2875,6 +2875,15 @@ export interface PosReceipt {
     status: "unpaid" | "partial" | "paid" | "void";
   } | null;
   note: string | null;
+  /**
+   * Corrected from its faktur (17 November 2026): the lines and totals are the
+   * corrected ones, the payments what was taken that day. Optional — older
+   * servers and offline snapshots do not send it.
+   */
+  correction?: {
+    at: string | null;
+    invoiceNumber: string | null;
+  } | null;
 }
 
 /**
@@ -4879,7 +4888,7 @@ export interface Service {
    * Whether selling it earns commission. Copied onto a booking when booked.
    */
   commissionable: boolean;
-  /** Whether it may be chosen without a main service. Pickers do not read it yet. */
+  /** Whether it may be chosen without a main service — read by the booking card (16 November 2026). */
   soldSeparately: boolean;
   /** What the price covers, for a storefront to list — not the description. */
   included: string[];
@@ -7625,6 +7634,15 @@ export interface CustomerInvoicePayment {
   /** The Kas & Bank account the entry debited. */
   cashAccountId?: string | null;
   cashAccountName?: string | null;
+  /**
+   * A till payment whose shift is already CLOSED (18 November 2026):
+   * cancelling it sends the money back as its own BKK on the day chosen, from
+   * the account chosen, and the closed shift's report does not change.
+   */
+  drawerClosed?: boolean;
+  /** Cancelled after its shift closed — the money went back as `cancelRefundId`. */
+  cancelledAfterClose?: boolean;
+  cancelRefundId?: string | null;
   /** The PMT behind a Shopee payment. Such a payment is cancelled, never edited. */
   marketplaceSettlement?: { id: string; number: string } | null;
   ref: string | null;
@@ -8126,6 +8144,8 @@ export interface InvoiceDiscount {
   source?: "manual" | "membership" | "promo" | "voucher";
   membershipId?: string | null;
   benefitId?: string | null;
+  /** Which option of the benefit (Promosi V1). */
+  optionId?: string | null;
   /** Frozen onto the line so a reprinted bill can name it without a lookup. */
   benefitLabel?: string | null;
 }
@@ -8283,6 +8303,24 @@ export interface UpdateCustomerInvoiceInput {
   notes?: string | null;
 }
 
+/**
+ * GET /customer-invoices/:id/till-correction — whether a till-born faktur can
+ * be edited or cancelled, and how a cancellation would run (17 November 2026).
+ */
+export type TillCorrectionStatus =
+  | { tillBorn: false }
+  | {
+      tillBorn: true;
+      revised: boolean;
+      shiftOpen: boolean;
+      paidAmount: string;
+      transactionNumber: string | null;
+      canVoid: boolean;
+      voidBlockedReason: string | null;
+      canEdit: boolean;
+      editBlockedReason: string | null;
+    };
+
 /** The actions an invoice's own activity log can hold. */
 export type InvoiceActivityAction =
   | "invoice_create"
@@ -8341,7 +8379,7 @@ export interface CreateInvoiceItemInput {
    * could write a free invoice, so the amount is deliberately absent from this
    * shape; what the form quoted only ever drove its own preview.
    */
-  benefit?: { membershipId: string; benefitId: string } | null;
+  benefit?: { membershipId: string; benefitId: string; optionId?: string | null } | null;
   /**
    * PROMO V1 — WHICH promos, never their value. Absent = automatic (only
    * promos with "Faktur" ticked), `[]` = no promo.
@@ -8694,6 +8732,9 @@ export interface CustomerOutstandingSummary {
  */
 export interface VoidCustomerPaymentInput {
   reason: string;
+  /** A till payment whose shift is closed: where the money goes back from, and when. */
+  refundAccountId?: string;
+  refundAt?: string;
 }
 
 export interface RecordCustomerPaymentInput {
@@ -8923,6 +8964,11 @@ export interface CashTransaction {
   voidReason: string | null;
   reversalJournalEntryId: string | null;
   reversalJournalEntryNumber: string | null;
+  /**
+   * Single read only: a till payment whose shift is already closed. It cannot
+   * be edited — cancel it and record it again (BO, 18 November 2026).
+   */
+  drawerClosed?: boolean;
   revisions: CashTransactionRevision[];
   /** Migrated history whose journal was not rebuilt — read-only. */
   legacy: boolean;
@@ -9069,6 +9115,13 @@ export interface UpdateCashTransactionInput {
 /** POST /api/cash-transactions/:id/void — 1–200 chars. */
 export interface CancelCashTransactionInput {
   reason: string;
+  /**
+   * A till payment whose shift is closed (18 November 2026): the Kas & Bank
+   * account the money goes back from (default the one it came in to) and the
+   * day it left (default today). Ignored for anything else.
+   */
+  refundAccountId?: string;
+  refundAt?: string;
 }
 
 

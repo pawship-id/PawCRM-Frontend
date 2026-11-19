@@ -7,6 +7,7 @@ import { ApiError } from "@/services/api-error";
 import type { Branch, BranchListQuery, PageResult } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { DEFAULT_PAGE_SIZE } from "@/components";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface BranchesQuery {
@@ -56,7 +57,10 @@ interface UseBranchesResult {
  * a real page size rather than the service's lookup-oriented default.
  */
 export function useBranches(): UseBranchesResult {
-  const [query, setQueryState] = useState<BranchesQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<BranchesQuery>(
+    "settings.branches",
+    DEFAULT_QUERY,
+  );
   const [branches, setBranches] = useState<Branch[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<Branch>["pagination"]>(EMPTY_PAGE);
@@ -76,7 +80,7 @@ export function useBranches(): UseBranchesResult {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

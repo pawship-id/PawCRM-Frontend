@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { usePersistentState } from "@/hooks/usePersistentState";
+
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { petService } from "@/services/pet.service";
 import { ApiError } from "@/services/api-error";
@@ -82,10 +84,13 @@ interface UsePetsResult {
  * looking at every animal in the shop.
  */
 export function usePets(customerId?: string): UsePetsResult {
-  const [query, setQueryState] = useState<PetsQuery>({
-    ...DEFAULT_QUERY,
-    customerId,
-  });
+  // The Hewan list remembers its filters across a trip to a pet's detail; a
+  // customer's own pets section always starts fresh — see `usePersistentState`.
+  const [query, setQueryState] = usePersistentState<PetsQuery>(
+    customerId ? "pets.customer" : "pets.list",
+    () => ({ ...DEFAULT_QUERY, customerId }),
+    { fresh: customerId !== undefined },
+  );
   const [pets, setPets] = useState<Pet[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<Pet>["pagination"]>(EMPTY_PAGE);
@@ -105,7 +110,7 @@ export function usePets(customerId?: string): UsePetsResult {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

@@ -182,7 +182,7 @@ export function InvoicePrintScreen({ invoiceId }: { invoiceId: string }) {
             area, at roughly 3.8px per mm on screen.
           */}
           <div
-            className="mx-auto rounded-md bg-surface shadow-md"
+            className="mx-auto max-w-full rounded-md bg-surface shadow-md"
             style={
               size === "a4"
                 ? undefined

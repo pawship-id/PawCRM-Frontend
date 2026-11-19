@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 import { auditLogService } from "@/services/auditLog.service";
 import { ApiError } from "@/services/api-error";
@@ -60,7 +61,10 @@ interface UseAuditLogsResult {
  * out-of-range page.
  */
 export function useAuditLogs(): UseAuditLogsResult {
-  const [query, setQueryState] = useState<AuditLogsQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<AuditLogsQuery>(
+    "settings.auditLogs",
+    DEFAULT_QUERY,
+  );
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<AuditLog>["pagination"]>(EMPTY_PAGE);
@@ -80,7 +84,7 @@ export function useAuditLogs(): UseAuditLogsResult {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

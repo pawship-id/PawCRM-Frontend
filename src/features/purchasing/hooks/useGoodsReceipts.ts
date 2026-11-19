@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { goodsReceiptService } from "@/services/goodsReceipt.service";
@@ -106,10 +107,12 @@ export function useGoodsReceipts(
   /** Fixes the supplier filter — the supplier detail screen's delivery history. */
   initial: Partial<GoodsReceiptsQuery> = {},
 ): UseGoodsReceiptsResult {
-  const [query, setQueryState] = useState<GoodsReceiptsQuery>({
-    ...DEFAULT_QUERY,
-    ...initial,
-  });
+  const [query, setQueryState] = usePersistentState<GoodsReceiptsQuery>(
+    "purchasing.receipts",
+    () => ({ ...DEFAULT_QUERY, ...initial }),
+    // A caller's fixed filter (`initial`) starts fresh — see `usePersistentState`.
+    { fresh: Object.keys(initial).length > 0 },
+  );
   const [receipts, setReceipts] = useState<GoodsReceiptListRow[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<GoodsReceiptListRow>["pagination"]>(EMPTY_PAGE);
@@ -129,7 +132,7 @@ export function useGoodsReceipts(
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

@@ -762,6 +762,13 @@ describe("PosScreen — closing the till (FR-9)", () => {
     await count(user, /QRIS/, "100000");
     await user.click(screen.getByRole("button", { name: /^tutup kasir$/i }));
 
+    /*
+      "Kasir sudah ditutup" first, with the payment report to download
+      (17 November 2026); Selesai is what hands back to the till.
+    */
+    expect(await screen.findByText("Kasir sudah ditutup")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Selesai" }));
+
     expect(
       await screen.findByRole("heading", { name: /pilih cabang/i }),
     ).toBeInTheDocument();

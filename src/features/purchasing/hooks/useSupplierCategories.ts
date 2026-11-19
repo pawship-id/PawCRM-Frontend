@@ -12,6 +12,7 @@ import type {
   SupplierCategoryListQuery,
 } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /** The query knobs the list screen drives (page + the visible filters). */
 export interface SupplierCategoriesQuery {
@@ -79,8 +80,10 @@ interface UseSupplierCategoriesResult {
  * abstracted over their filters, which is precisely the part that differs.
  */
 export function useSupplierCategories(): UseSupplierCategoriesResult {
-  const [query, setQueryState] =
-    useState<SupplierCategoriesQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<SupplierCategoriesQuery>(
+    "settings.supplierCategories",
+    DEFAULT_QUERY,
+  );
   const [categories, setCategories] = useState<SupplierCategory[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<SupplierCategory>["pagination"]>(EMPTY_PAGE);
@@ -100,7 +103,7 @@ export function useSupplierCategories(): UseSupplierCategoriesResult {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

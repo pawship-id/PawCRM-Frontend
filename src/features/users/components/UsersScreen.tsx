@@ -17,7 +17,7 @@ import { UsersTable } from "./UsersTable";
  */
 export function UsersScreen() {
   const { users, pagination, query, loading, error, setQuery, refetch } =
-    useUsers();
+    useUsers("settings.users");
   const { roles } = useLookups();
 
   const roleNames = useMemo(

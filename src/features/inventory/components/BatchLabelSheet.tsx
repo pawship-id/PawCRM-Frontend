@@ -109,7 +109,7 @@ function QrCode({ value }: { value: string }) {
     });
   }, [value]);
 
-  return <canvas ref={ref} className="size-28" />;
+  return <canvas ref={ref} className="size-28 shrink-0" />;
 }
 
 function BatchLabel({
@@ -121,7 +121,9 @@ function BatchLabel({
 }) {
   return (
     <div className="flex break-inside-avoid gap-3 rounded-md border border-border bg-surface p-3">
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
+      {/* `wrap-anywhere`: a lot code or supplier code has no space to wrap at
+          and ran out of the label's border (17 November 2026). */}
+      <div className="flex min-w-0 flex-1 flex-col gap-1 wrap-anywhere">
         <p className="truncate text-sm font-bold">
           {batch.productName ?? "—"}
         </p>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { purchaseReturnService } from "@/services/purchaseReturn.service";
@@ -91,10 +92,12 @@ export function usePurchaseReturns(
   /** Fixes a filter — e.g. one delivery's returns, or one supplier's. */
   initial: Partial<PurchaseReturnsQuery> = {},
 ): UsePurchaseReturnsResult {
-  const [query, setQueryState] = useState<PurchaseReturnsQuery>({
-    ...DEFAULT_QUERY,
-    ...initial,
-  });
+  const [query, setQueryState] = usePersistentState<PurchaseReturnsQuery>(
+    "purchasing.returns",
+    () => ({ ...DEFAULT_QUERY, ...initial }),
+    // A caller's fixed filter (`initial`) starts fresh — see `usePersistentState`.
+    { fresh: Object.keys(initial).length > 0 },
+  );
   const [returns, setReturns] = useState<PurchaseReturnListRow[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<PurchaseReturnListRow>["pagination"]>(EMPTY_PAGE);
@@ -114,7 +117,7 @@ export function usePurchaseReturns(
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

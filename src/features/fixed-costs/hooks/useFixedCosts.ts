@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
@@ -83,10 +84,12 @@ export function useFixedCosts(
    */
   { enabled = true }: { enabled?: boolean } = {},
 ): UseFixedCostsResult {
-  const [query, setQueryState] = useState<FixedCostsQuery>(() => ({
-    ...DEFAULT_FIXED_COSTS_QUERY,
-    ...initial,
-  }));
+  const [query, setQueryState] = usePersistentState<FixedCostsQuery>(
+    "finance.fixedCosts",
+    () => ({ ...DEFAULT_FIXED_COSTS_QUERY, ...initial }),
+    // A caller's fixed filter (`initial`) starts fresh — see `usePersistentState`.
+    { fresh: Object.keys(initial).length > 0 },
+  );
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>([]);
   const [pagination, setPagination] = useState(EMPTY_PAGE);
   const [totals, setTotals] = useState<FixedCostTotals | null>(null);
@@ -103,7 +106,7 @@ export function useFixedCosts(
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

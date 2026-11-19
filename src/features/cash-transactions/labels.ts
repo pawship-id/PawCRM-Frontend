@@ -290,6 +290,21 @@ export function lockedReason(transaction: CashTransaction): string | null {
   return null;
 }
 
+/** What a closed till shift's payment says instead of offering Ubah. */
+export const DRAWER_CLOSED_NOTE =
+  "Pembayaran kasir dari shift yang sudah ditutup tidak bisa diubah, supaya laporan shift tetap sama. Kalau ada yang salah: batalkan pembayarannya (uang keluar dicatat di tanggal yang dipilih), lalu catat pembayaran yang benar dari halaman faktur.";
+
+/**
+ * Why Ubah is not offered — `lockedReason`, plus a till payment whose shift
+ * is closed (which may still be CANCELLED, so it is not "locked").
+ */
+export function editLockedReason(transaction: CashTransaction): string | null {
+  return (
+    lockedReason(transaction) ??
+    (transaction.drawerClosed ? DRAWER_CLOSED_NOTE : null)
+  );
+}
+
 /** "11 Sep 2026" — the local calendar day of an instant. */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";

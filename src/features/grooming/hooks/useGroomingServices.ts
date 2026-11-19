@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { usePersistentState } from "@/hooks/usePersistentState";
+
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
 import { serviceService } from "@/services/service.service";
@@ -89,7 +91,10 @@ interface Loaded {
  * misorder every page after the first.
  */
 export function useGroomingServices(serviceKind: ServiceKind) {
-  const [query, setQueryState] = useState<GroomingServicesQuery>(DEFAULT_QUERY);
+  const [query, setQueryState] = usePersistentState<GroomingServicesQuery>(
+    `services.${serviceKind}.catalog`,
+    DEFAULT_QUERY,
+  );
   const settled = useDebouncedQuery(query);
   // Bumped by refetch() so the effect re-runs without the query changing.
   const [nonce, setNonce] = useState(0);
@@ -106,7 +111,7 @@ export function useGroomingServices(serviceKind: ServiceKind) {
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

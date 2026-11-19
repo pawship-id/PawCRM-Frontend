@@ -16,6 +16,8 @@ import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { formatMoney } from "@/utils/decimal";
+
+import { SettlementAccountFields, todayIso } from "./SettlementAccountFields";
 import type {
   CustomerInvoiceDetail,
   CustomerInvoicePayment,
@@ -58,9 +60,21 @@ export function VoidPaymentDialog({
 }) {
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
+  /*
+    A TILL PAYMENT WHOSE SHIFT IS CLOSED (BO, 18 November 2026): the money goes
+    back on the day it actually leaves, from the account chosen — the closed
+    shift's report stays what was counted. Defaults: the account it came in
+    to, today.
+  */
+  const drawerClosed = Boolean(payment?.drawerClosed);
+  const [refundAccountId, setRefundAccountId] = useState("");
+  const [refundAt, setRefundAt] = useState(todayIso());
+  const accountId = refundAccountId || payment?.cashAccountId || "";
 
   function close() {
     setReason("");
+    setRefundAccountId("");
+    setRefundAt(todayIso());
     onClose();
   }
 
@@ -75,16 +89,31 @@ export function VoidPaymentDialog({
       return;
     }
 
+    if (drawerClosed && !accountId) {
+      swalToast("Pilih akun asal uang dikembalikan.", "error");
+      return;
+    }
+
     setSaving(true);
 
     try {
       const updated = await customerInvoiceService.voidPayment(
         invoice._id,
         payment.paymentId,
-        { reason: reason.trim() },
+        drawerClosed
+          ? {
+              reason: reason.trim(),
+              refundAccountId: accountId,
+              refundAt: new Date(`${refundAt}T12:00:00`).toISOString(),
+            }
+          : { reason: reason.trim() },
       );
 
-      swalToast("Pembayaran dibatalkan — jurnal pembaliknya sudah diposting.");
+      swalToast(
+        drawerClosed
+          ? "Pembayaran dibatalkan — uang keluar dicatat sebagai bukti kas baru."
+          : "Pembayaran dibatalkan — jurnal pembaliknya sudah diposting.",
+      );
       setReason("");
       setSaving(false);
       onVoided(updated);
@@ -121,11 +150,21 @@ export function VoidPaymentDialog({
         </DialogHeader>
 
         <div className="rounded-lg border border-border bg-surface-hover px-4 py-3 text-sm">
-          <p>
-            Pembayaran ini <b>tidak dihapus</b>. Sistem memposting{" "}
-            <b>jurnal pembalik</b> dan barisnya tetap terlihat di riwayat dengan
-            tanda dibatalkan — jadi kesalahan dan koreksinya sama-sama tercatat.
-          </p>
+          {drawerClosed ? (
+            <p>
+              Ini pembayaran kasir dari <b>shift yang sudah ditutup</b>. Laporan
+              penutupan shift itu <b>tidak berubah</b> — uang yang dikembalikan
+              dicatat sebagai <b>bukti kas keluar baru</b> di tanggal dan dari
+              akun yang Anda pilih di bawah.
+            </p>
+          ) : (
+            <p>
+              Pembayaran ini <b>tidak dihapus</b>. Sistem memposting{" "}
+              <b>jurnal pembalik</b> dan barisnya tetap terlihat di riwayat
+              dengan tanda dibatalkan — jadi kesalahan dan koreksinya sama-sama
+              tercatat.
+            </p>
+          )}
           <p className="mt-2 text-muted">
             Sisa tagihan akan naik kembali sebesar jumlah ini, dan status faktur
             ikut menyesuaikan.
@@ -140,6 +179,17 @@ export function VoidPaymentDialog({
           onChange={(event) => setReason(event.target.value)}
           hint="mis. Salah faktur · Dobel input · Transfer ditarik kembali"
         />
+
+        {drawerClosed && (
+          <SettlementAccountFields
+            label="Uang dikembalikan dari"
+            accountId={accountId}
+            onAccountChange={setRefundAccountId}
+            date={refundAt}
+            onDateChange={setRefundAt}
+            disabled={saving}
+          />
+        )}
 
         <DialogFooter>
           {/* "KEMBALI", NOT "BATAL" — beside "Batalkan pembayaran" the two would

@@ -15,6 +15,7 @@ import { authService } from "@/services/auth.service";
 import { ApiError } from "@/services/api-error";
 import { setAuthHint, clearAuthHint } from "@/utils/authHint";
 import { clearAuthCache, readAuthCache, writeAuthCache } from "@/lib/authCache";
+import { clearPersistentState } from "@/hooks/usePersistentState";
 import type { PermissionGrant, SessionContext, User } from "@/types/api";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
@@ -264,6 +265,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const clearSession = useCallback(() => {
     clearAuthHint();
     clearAuthCache();
+    // A list's remembered filters belong to the user who set them.
+    clearPersistentState();
     setUserState(null);
     setSession(null);
     setPermissions([]);

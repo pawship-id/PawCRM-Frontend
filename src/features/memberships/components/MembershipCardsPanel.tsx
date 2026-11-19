@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ListFilter } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 import {
   Alert,
@@ -152,7 +153,7 @@ export function MembershipCardsPanel() {
   const { memberships, pagination, loading, error, query, patchQuery } = usePetMemberships();
   const counts = useMembershipCounts();
   const planOptions = usePlanOptions();
-  const [lens, setLens] = useState<MemberLens | "">("");
+  const [lens, setLens] = usePersistentState<MemberLens | "">("memberships.cards.lens", "");
 
   const pills: PillOption<MemberLens | "">[] = [
     ...BASE_LENSES,

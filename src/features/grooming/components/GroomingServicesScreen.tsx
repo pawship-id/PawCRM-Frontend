@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, RotateCcw } from "lucide-react";
@@ -156,8 +157,14 @@ export function GroomingServicesScreen({
     booking a service has ever had, where the booking boards open on Bulan ini.
     A price list is read for what sells at all, not this month's run.
   */
-  const [period, setPeriod] = useState<GroomingPeriod>(DEFAULT_PERIOD);
-  const [custom, setCustom] = useState<DateRange>({ from: "", to: "" });
+  const [period, setPeriod] = usePersistentState<GroomingPeriod>(
+    `services.${serviceLine.serviceKind}.catalog.period`,
+    DEFAULT_PERIOD,
+  );
+  const [custom, setCustom] = usePersistentState<DateRange>(
+    `services.${serviceLine.serviceKind}.catalog.custom`,
+    { from: "", to: "" },
+  );
   const range = useMemo(
     () => (period === "custom" ? custom : periodRange(period)),
     [period, custom],

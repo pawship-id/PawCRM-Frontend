@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { usePersistentState } from "@/hooks/usePersistentState";
+
 import { customerService } from "@/services/customer.service";
 import { ApiError } from "@/services/api-error";
 import type { DormantCustomer, PageResult } from "@/types/api";
@@ -57,10 +59,13 @@ interface UseDormantCustomersResult {
 export function useDormantCustomers(
   initial: Partial<DormantCustomersQuery> = {},
 ): UseDormantCustomersResult {
-  const [query, setQueryState] = useState<DormantCustomersQuery>(() => ({
-    ...DEFAULT_QUERY,
-    ...initial,
-  }));
+  // Remembered across a trip to a customer's detail; a `?days=` deep link
+  // (`initial`) starts fresh instead — see `usePersistentState`.
+  const [query, setQueryState] = usePersistentState<DormantCustomersQuery>(
+    "customers.dormant",
+    () => ({ ...DEFAULT_QUERY, ...initial }),
+    { fresh: Object.keys(initial).length > 0 },
+  );
   const [items, setItems] = useState<DormantCustomer[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<never>["pagination"]>(EMPTY_PAGE);
@@ -70,7 +75,7 @@ export function useDormantCustomers(
 
   const setQuery = useCallback((patch: Partial<DormantCustomersQuery>) => {
     setQueryState((prev) => ({ ...prev, ...patch, page: patch.page ?? 1 }));
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

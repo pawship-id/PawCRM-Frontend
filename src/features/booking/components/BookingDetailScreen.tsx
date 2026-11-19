@@ -54,6 +54,7 @@ import { SessionAlbum } from "./SessionAlbum";
 import { crewWord } from "./BookingSessionSteps";
 import { SessionRecord } from "./SessionRecord";
 import { SessionTimes } from "./SessionTimes";
+import { GROOMING_BOOKINGS_PATH } from "@/features/grooming/paths";
 
 const BILLING_LABELS: Record<Booking["billingState"], string> = {
   unbilled: "Belum ditagih",
@@ -365,7 +366,7 @@ export function BookingDetailScreen({ id }: { id: string }) {
       <div className="flex flex-col gap-4">
         <Alert variant="error">{error}</Alert>
         <Button variant="secondary" asChild className="self-start">
-          <Link href="/dashboard/booking">Kembali ke daftar booking</Link>
+          <Link href={GROOMING_BOOKINGS_PATH}>Kembali ke daftar booking</Link>
         </Button>
       </div>
     );

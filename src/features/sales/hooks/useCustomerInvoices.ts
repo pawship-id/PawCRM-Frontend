@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
@@ -166,10 +167,12 @@ interface UseCustomerInvoicesResult {
 export function useCustomerInvoices(
   initial: Partial<CustomerInvoicesQuery> = {},
 ): UseCustomerInvoicesResult {
-  const [query, setQueryState] = useState<CustomerInvoicesQuery>({
-    ...DEFAULT_QUERY,
-    ...initial,
-  });
+  const [query, setQueryState] = usePersistentState<CustomerInvoicesQuery>(
+    "sales.invoices",
+    () => ({ ...DEFAULT_QUERY, ...initial }),
+    // A caller's fixed filter (`initial`) starts fresh — see `usePersistentState`.
+    { fresh: Object.keys(initial).length > 0 },
+  );
   const [invoices, setInvoices] = useState<CustomerInvoiceListRow[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<CustomerInvoiceListRow>["pagination"]>(EMPTY_PAGE);
@@ -205,7 +208,7 @@ export function useCustomerInvoices(
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

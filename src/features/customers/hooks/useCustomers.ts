@@ -12,6 +12,7 @@ import type {
   PageResult,
 } from "@/types/api";
 import { useDebouncedQuery } from "@/hooks/useDebouncedQuery";
+import { usePersistentState } from "@/hooks/usePersistentState";
 import { DEFAULT_PAGE_SIZE } from "@/components";
 
 /** The query knobs the list screen drives (page + the visible filters). */
@@ -101,10 +102,13 @@ interface UseCustomersResult {
 export function useCustomers(
   initial: Partial<CustomersQuery> = {},
 ): UseCustomersResult {
-  const [query, setQueryState] = useState<CustomersQuery>(() => ({
-    ...DEFAULT_QUERY,
-    ...initial,
-  }));
+  // Remembered across a trip to a customer's detail; a deep link's own filter
+  // (`initial`) starts fresh instead — see `usePersistentState`.
+  const [query, setQueryState] = usePersistentState<CustomersQuery>(
+    "customers.list",
+    () => ({ ...DEFAULT_QUERY, ...initial }),
+    { fresh: Object.keys(initial).length > 0 },
+  );
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [pagination, setPagination] =
     useState<PageResult<Customer>["pagination"]>(EMPTY_PAGE);
@@ -124,7 +128,7 @@ export function useCustomers(
       if (patch.page === undefined) next.page = 1;
       return next;
     });
-  }, []);
+  }, [setQueryState]);
 
   const refetch = useCallback(() => setNonce((n) => n + 1), []);
 

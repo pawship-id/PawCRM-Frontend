@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { usePersistentState } from "@/hooks/usePersistentState";
+
 import { DEFAULT_PAGE_SIZE } from "@/components";
 import { ApiError } from "@/services/api-error";
 import { membershipService } from "@/services/membership.service";
@@ -32,7 +34,10 @@ export function usePetMemberships(
   initial: PetMembershipListQuery = DEFAULT_CARDS_QUERY,
   mode: "list" | "expiring" = "list",
 ) {
-  const [query, setQuery] = useState<PetMembershipListQuery>(initial);
+  const [query, setQuery] = usePersistentState<PetMembershipListQuery>(
+    `memberships.cards.${mode}`,
+    initial,
+  );
   const [memberships, setMemberships] = useState<PetMembership[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
   const [loading, setLoading] = useState(true);
@@ -84,7 +89,7 @@ export function usePetMemberships(
 
   const patchQuery = useCallback((patch: PetMembershipListQuery) => {
     setQuery((current) => ({ ...current, ...patch, page: patch.page ?? 1 }));
-  }, []);
+  }, [setQuery]);
 
   return { memberships, pagination, loading, error, query, patchQuery, reload };
 }

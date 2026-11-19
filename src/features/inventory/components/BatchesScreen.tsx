@@ -19,6 +19,7 @@ import { useWarehouseOptions } from "../hooks/useWarehouseOptions";
 import { BatchesTable } from "./BatchesTable";
 import { BatchesToolbar } from "./BatchesToolbar";
 import { BatchDetailDialog } from "./StockDetailDialogs";
+import { usePersistentState } from "@/hooks/usePersistentState";
 
 /**
  * Every lot across the catalogue — by default ordered by how soon it expires;
@@ -50,9 +51,15 @@ import { BatchDetailDialog } from "./StockDetailDialogs";
  * wait a month is how it stays on the shelf.
  */
 export function BatchesScreen() {
-  const [query, setQueryState] = useState<BatchesQuery>(DEFAULT_BATCHES_QUERY);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [query, setQueryState] = usePersistentState<BatchesQuery>(
+    "inventory.batches",
+    DEFAULT_BATCHES_QUERY,
+  );
+  const [page, setPage] = usePersistentState("inventory.batches.page", 1);
+  const [pageSize, setPageSize] = usePersistentState(
+    "inventory.batches.pageSize",
+    DEFAULT_PAGE_SIZE,
+  );
   const [refreshKey] = useState(0);
 
   const warehouses = useWarehouseOptions();
@@ -120,7 +127,7 @@ export function BatchesScreen() {
   const setQuery = useCallback((patch: Partial<BatchesQuery>) => {
     setQueryState((prev) => ({ ...prev, ...patch }));
     setPage(1);
-  }, []);
+  }, [setPage, setQueryState]);
 
   return (
     <div className="flex flex-col gap-6">
