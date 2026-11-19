@@ -47,7 +47,13 @@ export interface InvoiceBenefitRow {
 export interface BenefitLineLike {
   key: string;
   petId: string;
-  benefit: { membershipId: string; benefitId: string; amount: string } | null;
+  benefit: {
+    membershipId: string;
+    /** A package bought on this same faktur (19 November 2026). */
+    packageRef?: string | null;
+    benefitId: string;
+    amount: string;
+  } | null;
 }
 
 /**
@@ -68,9 +74,13 @@ export function invoiceBenefitRows(
 
   return cards.flatMap((card) =>
     card.benefits.map((benefit) => {
+      /* A virtual card (a package on this bill) gets a new id on every quote —
+         it is matched by its `packageRef` instead. */
       const appliedLine = lines.find(
         (line) =>
-          line.benefit?.membershipId === card.id &&
+          (card.virtual
+            ? Boolean(card.packageRef) && line.benefit?.packageRef === card.packageRef
+            : line.benefit?.membershipId === card.id) &&
           line.benefit?.benefitId === benefit.id,
       );
 
@@ -111,7 +121,7 @@ export function invoiceBenefitRows(
         key: `${card.id}:${benefit.id}`,
         label: benefit.label,
         planName: card.planName,
-        membershipNumber: card.number,
+        membershipNumber: card.virtual ? "Paket baru di faktur ini" : card.number,
         petName: petNameOf(relevantPetId),
         appliedTo: appliedLine?.key ?? null,
         target,
@@ -137,6 +147,7 @@ export function InvoiceBenefitSection({
     key: string,
     benefit: {
       membershipId: string;
+      packageRef: string | null;
       benefitId: string;
       amount: string;
       benefitLabel: string | null;
@@ -209,6 +220,9 @@ export function InvoiceBenefitSection({
                     row.target &&
                     onApply(row.target.key, {
                       membershipId: row.target.candidate.membershipId,
+                      packageRef: row.target.candidate.virtual
+                        ? row.target.candidate.packageRef
+                        : null,
                       benefitId: row.target.candidate.benefitId,
                       amount: row.target.candidate.discount,
                       benefitLabel: row.target.candidate.benefitLabel,
