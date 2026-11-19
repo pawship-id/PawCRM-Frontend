@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
+  ArrowLeft,
   BookOpen,
   EllipsisVertical,
   MessageCircle,
@@ -89,6 +91,7 @@ function customerLabel(invoice: {
 export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const { invoice, loading, error, notFound, applyInvoice, refetch } =
     useCustomerInvoice(invoiceId);
+  const router = useRouter();
 
   const [payOpen, setPayOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
@@ -265,6 +268,23 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         </PageHeading>
 
         <div className="flex items-center gap-2">
+          {/*
+            KEMBALI (19 November 2026) — to wherever the faktur was opened from
+            (the list keeps its filters, a customer's page, a payment), and to
+            the list when the page was opened straight from a link.
+          */}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              if (window.history.length > 1) router.back();
+              else router.push("/dashboard/sales/invoice");
+            }}
+          >
+            <ArrowLeft className="size-4" />
+            Kembali
+          </Button>
+
           {/*
             A LINK, NOT A DIALOG — printing is a task people come back to, and a
             dialog cannot be linked to or opened in a second tab. A cancelled
