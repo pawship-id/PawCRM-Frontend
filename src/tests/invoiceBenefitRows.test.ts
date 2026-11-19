@@ -142,3 +142,59 @@ describe("invoiceBenefitRows", () => {
     expect(invoiceBenefitRows(null, [line()], [PET])).toEqual([]);
   });
 });
+
+/*
+  A PACKAGE BOUGHT ON THIS SAME FAKTUR (19 November 2026, "2A") — quoted as a
+  virtual card whose id changes on every quote, so it is matched by packageRef.
+*/
+describe("invoiceBenefitRows — a package on the same faktur", () => {
+  const virtualQuote = (cardId: string, lines: unknown[] = []): BenefitQuoteResponse =>
+    ({
+      cards: [
+        {
+          id: cardId,
+          number: "",
+          virtual: true,
+          packageRef: "pkg-1",
+          petId: "pet-1",
+          planName: "Paket Grooming",
+          status: "active",
+          benefits: [benefit()],
+        },
+      ],
+      lines,
+    }) as BenefitQuoteResponse;
+
+  it("offers the package's benefit and names it as a new package", () => {
+    const [row] = invoiceBenefitRows(
+      virtualQuote("virtual-a", [
+        { ref: "row-1", candidates: [{ ...candidate("150000"), membershipId: "virtual-a" }] },
+      ]),
+      [line()],
+      [PET],
+    );
+
+    expect(row.target?.key).toBe("row-1");
+    expect(row.membershipNumber).toBe("Paket baru di faktur ini");
+    expect(row.blocked).toBeNull();
+  });
+
+  it("still sees the benefit as applied after the virtual card's id changes", () => {
+    const [row] = invoiceBenefitRows(
+      virtualQuote("virtual-b"),
+      [
+        line({
+          benefit: {
+            membershipId: "virtual-a",
+            packageRef: "pkg-1",
+            benefitId: "ben-1",
+            amount: "150000",
+          },
+        }),
+      ],
+      [PET],
+    );
+
+    expect(row.appliedTo).toBe("row-1");
+  });
+});

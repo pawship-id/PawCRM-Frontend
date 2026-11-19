@@ -31,13 +31,20 @@ import { lineTotalOf } from "./invoicePreview";
 /** The slice of a form row this reads. */
 export interface PromoRow {
   key: string;
-  kind: "product" | "service";
+  /** A package line (`membership`) takes no promo — the server skips it too. */
+  kind: "product" | "service" | "membership";
   refId: string;
   petId?: string | null;
   qty: string;
   /** The price billed — a typed override wins over the catalogue's. */
   unitPrice: string;
-  benefit: { membershipId: string; benefitId: string; amount: string } | null;
+  benefit: {
+    membershipId: string;
+    /** A package on this same bill — its virtual card's id changes every quote. */
+    packageRef?: string | null;
+    benefitId: string;
+    amount: string;
+  } | null;
   /** "Tanpa promo" chosen on this row. */
   promoOff?: boolean;
 }
@@ -51,7 +58,9 @@ export function benefitKindOf(
   const line = memberQuote?.lines?.find((entry) => entry.ref === row.key);
   const candidate = (line?.candidates ?? []).find(
     (entry) =>
-      entry.membershipId === row.benefit?.membershipId &&
+      (row.benefit?.packageRef
+        ? entry.packageRef === row.benefit.packageRef
+        : entry.membershipId === row.benefit?.membershipId) &&
       entry.benefitId === row.benefit?.benefitId,
   );
   /* Unknown reads as unlimited: the engine then only lets a stackable ride. */
@@ -77,7 +86,7 @@ export function invoicePromoInput({
   if (Number.isNaN(at.getTime())) return null;
 
   const lines = rows.flatMap((row) => {
-    if (!row.refId) return [];
+    if (!row.refId || row.kind === "membership") return [];
     const amount = lineTotalOf(row.qty, row.unitPrice);
     if (!isPositive(amount)) return [];
     const kind = benefitKindOf(row, memberQuote);

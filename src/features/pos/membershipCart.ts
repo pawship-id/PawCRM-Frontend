@@ -415,7 +415,7 @@ export function petPlans(
 }
 
 /** A fresh `packageRef` — unique per cart, ≤ 60 chars (contract §6.2). */
-export function newPackageRef(items: PosItem[]): string {
+export function newPackageRef(items: Pick<PosItem, "kind" | "packageRef">[]): string {
   const taken = new Set(items.map((item) => item.packageRef).filter(Boolean));
   let n = items.filter((item) => item.kind === "membership").length + 1;
   while (taken.has(`pkg-${n}`)) n += 1;

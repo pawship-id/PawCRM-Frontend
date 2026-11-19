@@ -6,6 +6,7 @@ import { membershipService } from "@/services/membership.service";
 import type {
   BenefitCandidate,
   BenefitQuoteLine,
+  BenefitQuotePackage,
   BenefitQuoteResponse,
 } from "@/types/membership";
 
@@ -38,10 +39,19 @@ import type {
 export function useBenefitQuote({
   customerId,
   lines,
+  packages = [],
+  at = null,
   enabled = true,
 }: {
   customerId: string | null;
   lines: BenefitQuoteLine[];
+  /**
+   * PACKAGES ON THE SAME BILL, not paid yet (19 November 2026) — quoted as
+   * virtual cards, so their benefits can be offered before the card exists.
+   */
+  packages?: BenefitQuotePackage[];
+  /** The instant quotas are judged at — the invoice date; null = now. */
+  at?: string | null;
   enabled?: boolean;
 }) {
   const [quote, setQuote] = useState<BenefitQuoteResponse | null>(null);
@@ -49,10 +59,12 @@ export function useBenefitQuote({
 
   const digest = useMemo(
     () =>
-      JSON.stringify(
+      JSON.stringify([
         lines.map((line) => [line.ref, line.refId, line.petId, line.amount]),
-      ),
-    [lines],
+        packages.map((pkg) => [pkg.ref, pkg.planId, pkg.petId, pkg.startDate]),
+        at,
+      ]),
+    [lines, packages, at],
   );
 
   const active = enabled && Boolean(customerId) && lines.length > 0;
@@ -77,7 +89,12 @@ export function useBenefitQuote({
     }
 
     membershipService
-      .quote({ customerId: customerId ?? undefined, lines })
+      .quote({
+        customerId: customerId ?? undefined,
+        lines,
+        ...(packages.length > 0 ? { packages } : {}),
+        ...(at ? { at } : {}),
+      })
       .then((result) => {
         if (live) setQuote(result);
       })

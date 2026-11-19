@@ -28,7 +28,17 @@ import {
 import { PetFixLink } from "@/features/pets";
 import { usePermissions } from "@/features/permissions";
 import { PosLinePrice } from "@/features/pos/components/PosLinePrice";
+import {
+  PosMembershipSaleDialog,
+  type SalePlan,
+} from "@/features/pos/components/PosMembershipSaleDialog";
+import type {
+  MembershipAddResult,
+  MembershipLineInput,
+} from "@/features/pos/hooks/usePosCart";
 import { useBenefitQuote } from "@/features/memberships";
+import { formatDate as formatDateId } from "@/features/memberships/labels";
+import { membershipService } from "@/services/membership.service";
 
 import { InvoiceBenefitSection } from "./InvoiceBenefitSection";
 import { useVariantQuote } from "@/features/services";
@@ -95,6 +105,7 @@ import { InvoiceBarcodeScan } from "./InvoiceBarcodeScan";
 import { InvoiceBookingPanel } from "./InvoiceBookingPanel";
 import { InvoiceLineVariant } from "./InvoiceLineVariant";
 import { InvoiceLotDialog, type InvoiceLotShare } from "./InvoiceLotDialog";
+import { InvoicePackagePicker } from "./InvoicePackagePicker";
 import { formatRate } from "./InvoiceItemsTable";
 import { prefetchProductCandidates } from "@/features/inventory/hooks/useProductCandidates";
 
@@ -122,7 +133,7 @@ function MissingFactNote({
   pet,
   missing,
 }: {
-  line: { kind: "product" | "service"; petId: string };
+  line: { kind: "product" | "service" | "membership"; petId: string };
   pet: Pet | null;
   /** The line's quote's `missingAxis` — see `quoteOf`. */
   missing: ServiceVariantAxis | null;
@@ -274,7 +285,8 @@ const CHANNEL_OPTIONS = (Object.keys(CHANNEL_LABEL) as InvoiceChannel[]).map(
 
 /** A row as the form holds it — the catalogue's price kept beside the ids. */
 interface DraftLine {
-  kind: "product" | "service";
+  /** `membership` = a package sold on this bill (19 November 2026). */
+  kind: "product" | "service" | "membership";
   refId: string;
   name: string;
   sku: string | null;
@@ -292,6 +304,11 @@ interface DraftLine {
    */
   benefit: {
     membershipId: string;
+    /**
+     * A package bought on THIS bill, by its `packageRef` — sent instead of
+     * `membershipId`, which on a virtual card changes with every quote.
+     */
+    packageRef?: string | null;
     benefitId: string;
     amount: string;
     /**
@@ -363,6 +380,23 @@ interface DraftLine {
   priceOverride?: string | null;
   /** The product expires, so its lots can be named. Never set on a service. */
   hasExpiry?: boolean;
+  /**
+   * ─── A PACKAGE LINE (19 November 2026) ──────────────────────────────────
+   *
+   * Sold through the till's own dialog, so it asks the same questions: whose
+   * (`petId`, or the customer for a customer plan), from when, and the
+   * referral code. The price is the server's eligibility answer for that
+   * holder. The card is issued WITH the bill, awaiting payment (BO "2A").
+   */
+  membership?: {
+    attachTo: "pet" | "customer";
+    holderName: string;
+    /** Sent as `membershipStartDate`; null = cover from the invoice date. */
+    startDate: string | null;
+    referralCode: string | null;
+    /** The bill's name for the line — what a benefit picks it by. */
+    packageRef: string;
+  };
   /**
    * THE LOTS THIS ROW IS TAKEN FROM (13 October 2026), or empty/absent for
    * automatic (FEFO), the default. Shares add up to `qty`; sent as `lots`.
@@ -482,6 +516,10 @@ export function InvoiceCreateForm() {
   );
   /** Whether the "+ Tambah barang atau jasa" dialog is open. */
   const [picking, setPicking] = useState(false);
+  /** Whether the package list is open (19 November 2026). */
+  const [pickingPackage, setPickingPackage] = useState(false);
+  /** The package being sold — open in the till's sell dialog — or null. */
+  const [salePlan, setSalePlan] = useState<SalePlan | null>(null);
   // Fetched as the form opens, so "+ Tambah produk" opens on a list that is
   // already here instead of a spinner — see prefetchProductCandidates.
   useEffect(() => {
@@ -1142,10 +1180,11 @@ export function InvoiceCreateForm() {
       </span>
     );
   }
+  /* A package names its animal too — the Hewan column says whose card it is. */
   const hasServiceLine =
     pulledBookings.length > 0 ||
     pulledTrips.length > 0 ||
-    lines.some((line) => line.kind === "service");
+    lines.some((line) => line.kind === "service" || line.kind === "membership");
 
   /*
     ─── WHAT A MEMBERSHIP CARD COULD PAY FOR ON THIS BILL (30 September 2026) ──
@@ -1191,9 +1230,37 @@ export function InvoiceCreateForm() {
     `InvoiceBenefitSection`, which lists every benefit the quote names, not only
     the ones that happen to match a row already on the faktur.
   */
+  /*
+    THE PACKAGES ON THIS BILL, as virtual cards (19 November 2026, "2A") — the
+    till's rule: a package bought here can pay for a grooming on the same
+    bill. Quoted at the invoice date, the day its cover starts.
+  */
+  const benefitPackages = useMemo(
+    () =>
+      lines.flatMap((line) =>
+        line.kind === "membership" && line.membership
+          ? [
+              {
+                ref: line.membership.packageRef,
+                planId: line.refId,
+                petId: line.petId || null,
+                customerId: customerId || null,
+                startDate: line.membership.startDate,
+              },
+            ]
+          : [],
+      ),
+    [lines, customerId],
+  );
+
   const { quote: benefitQuote } = useBenefitQuote({
     customerId: customerId || null,
     lines: benefitQuoteLines,
+    packages: benefitPackages,
+    at:
+      benefitPackages.length > 0 && invoiceDate
+        ? new Date(invoiceDate).toISOString()
+        : null,
   });
 
   /*
@@ -1336,6 +1403,21 @@ export function InvoiceCreateForm() {
    * somebody filling in a form top to bottom wants to know what to do next, not
    * an inventory of everything they have not reached yet.
    */
+  /*
+    "+ Tambah paket membership" (19 November 2026). A package belongs to one of
+    the customer's animals (or the customer), so it waits for the customer.
+  */
+  const packageButton = (
+    <UIButton
+      type="button"
+      variant="secondary"
+      onClick={() => setPickingPackage(true)}
+      disabled={saving || !customerId || !branchId}
+    >
+      + Tambah paket membership
+    </UIButton>
+  );
+
   const blocking = (() => {
     if (lookups.loading) return "Sedang memuat data.";
     if (!customerId) return "Pilih pelanggan dulu.";
@@ -1668,16 +1750,112 @@ export function InvoiceCreateForm() {
     });
   }
 
-  /** Takes a row off, and every add-on ticked under it with it. */
+  /**
+   * Takes a row off, and every add-on ticked under it with it. A PACKAGE row
+   * takes with it every benefit picked from it — its card will not exist.
+   */
   function removeLine(index: number) {
     setLines((current) => {
       const target = current[index];
+      const packageRef = target?.membership?.packageRef ?? null;
 
-      return current.filter(
-        (line, at) =>
-          at !== index && (!target || line.parentKey !== target.key),
-      );
+      return current
+        .filter(
+          (line, at) =>
+            at !== index && (!target || line.parentKey !== target.key),
+        )
+        .map((line) =>
+          packageRef && line.benefit?.packageRef === packageRef
+            ? { ...line, benefit: null }
+            : line,
+        );
     });
+  }
+
+  /**
+   * A PACKAGE FROM THE TILL'S SELL DIALOG, as a row (19 November 2026).
+   *
+   * THE PRICE IS THE SERVER'S — asked again here through the same
+   * eligibility rule the dialog showed, judged on the start the bill will
+   * give the card (the typed day, else the invoice date), so a refusal comes
+   * back to the dialog beside the animal it is about. The server checks once
+   * more when the faktur is saved.
+   */
+  async function addPackage(
+    input: MembershipLineInput,
+    summary: { holderName: string },
+  ): Promise<MembershipAddResult> {
+    const plan = salePlan;
+    if (!plan) return { ok: false, message: "Paketnya sudah tidak dipilih.", reasons: [] };
+
+    const startDate =
+      input.membershipStartDate ??
+      (invoiceDate ? new Date(invoiceDate).toISOString() : undefined);
+
+    try {
+      const check = await membershipService.eligibility({
+        planId: input.planId,
+        customerId,
+        ...(input.petId ? { petId: input.petId } : {}),
+        ...(branchId ? { branchId } : {}),
+        ...(startDate ? { startDate } : {}),
+        ...(input.referralCode ? { referralCode: input.referralCode } : {}),
+      });
+      const reasons = (check?.reasons ?? []).filter(
+        (reason) => !(reason.code === "referral_required" && input.referralCode),
+      );
+
+      if (reasons.length > 0) {
+        return { ok: false, message: "Tidak memenuhi syarat paket", reasons };
+      }
+      if (!check?.price) {
+        return {
+          ok: false,
+          message: "Paket ini belum punya harga untuk hewan ini.",
+          reasons: [],
+        };
+      }
+
+      const price = check.price;
+      setLines((current) => [
+        ...current,
+        {
+          kind: "membership",
+          refId: plan._id,
+          name: plan.name,
+          sku: null,
+          unitPrice: price,
+          qty: "1",
+          discountMode: "percent",
+          discountValue: "",
+          benefit: null,
+          petId: input.petId ?? "",
+          key: nextLineKey(),
+          parentKey: null,
+          choices: [],
+          ride: null,
+          passengers: [],
+          membership: {
+            attachTo: plan.attachTo ?? "pet",
+            holderName: summary.holderName,
+            startDate: input.membershipStartDate ?? null,
+            referralCode: input.referralCode ?? null,
+            packageRef: input.packageRef,
+          },
+        },
+      ]);
+      setSalePlan(null);
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        message:
+          error instanceof ApiError
+            ? error.message
+            : "Syarat paket tidak bisa diperiksa. Coba lagi.",
+        reasons: [],
+      };
+    }
   }
 
   /**
@@ -1799,10 +1977,25 @@ export function InvoiceCreateForm() {
         */
         ...(line.benefit
           ? {
-              benefit: {
-                membershipId: line.benefit.membershipId,
-                benefitId: line.benefit.benefitId,
-              },
+              benefit: line.benefit.packageRef
+                ? /* A package on this bill — its card is issued with it. */
+                  { packageRef: line.benefit.packageRef, benefitId: line.benefit.benefitId }
+                : {
+                    membershipId: line.benefit.membershipId,
+                    benefitId: line.benefit.benefitId,
+                  },
+            }
+          : {}),
+        /* A PACKAGE LINE — from when, the referral code, and its name on this bill. */
+        ...(line.kind === "membership" && line.membership
+          ? {
+              ...(line.membership.startDate
+                ? { membershipStartDate: line.membership.startDate }
+                : {}),
+              ...(line.membership.referralCode
+                ? { referralCode: line.membership.referralCode }
+                : {}),
+              packageRef: line.membership.packageRef,
             }
           : {}),
         /* Promo V1 — "Tanpa promo" on this row; absent lets the server apply one. */
@@ -2019,8 +2212,18 @@ export function InvoiceCreateForm() {
                 — it is the check `booking.service.js` calls the one that matters
                 most — but only after the whole form has been filled in.
               */
+                /*
+                  A PACKAGE LINE WAS SOLD TO THE PREVIOUS CUSTOMER'S ANIMAL —
+                  it goes, and every benefit picked from it with it.
+                */
                 setLines((current) =>
-                  current.map((line) => ({ ...line, petId: "" })),
+                  current
+                    .filter((line) => line.kind !== "membership")
+                    .map((line) => ({
+                      ...line,
+                      petId: "",
+                      benefit: line.benefit?.packageRef ? null : line.benefit,
+                    })),
                 );
               }}
             />
@@ -2183,6 +2386,45 @@ export function InvoiceCreateForm() {
         )}
 
         {/*
+          A PACKAGE (19 November 2026): pick it, then the till's own sell
+          dialog asks whose and from when — the same questions, the same rules.
+        */}
+        <InvoicePackagePicker
+          open={pickingPackage}
+          branchId={branchId}
+          onOpenChange={setPickingPackage}
+          onPick={(plan) => {
+            setPickingPackage(false);
+            setSalePlan({
+              _id: plan.id,
+              name: plan.name,
+              attachTo: plan.attachTo,
+              eligibility: plan.eligibility,
+              durationMonths: plan.durationMonths,
+              durationDays: plan.durationDays,
+            });
+          }}
+        />
+        {customerId && (
+          <PosMembershipSaleDialog
+            plan={salePlan}
+            customerId={customerId}
+            customerName={customerRecord?.name}
+            branchId={branchId || null}
+            cartItems={lines.map((line) => ({
+              kind: line.kind,
+              petId: line.petId || null,
+              packageRef: line.membership?.packageRef ?? null,
+            }))}
+            busy={saving}
+            onAdd={addPackage}
+            onOpenChange={(open) => {
+              if (!open) setSalePlan(null);
+            }}
+          />
+        )}
+
+        {/*
           THE JOURNEY OF ONE ROW — direction, two doors, the van and the
           bookings it serves. Mounted only while a row is being filled in: it
           asks the customer's diary the moment its switch is turned on, and a
@@ -2253,14 +2495,17 @@ export function InvoiceCreateForm() {
 
           {lines.length === 0 && pulledBookings.length === 0 && pulledTrips.length === 0 ? (
             <div className="flex flex-col items-center gap-4 py-8 text-center">
-              <UIButton
-                type="button"
-                variant="secondary"
-                onClick={() => setPicking(true)}
-                disabled={saving}
-              >
-                + Tambah barang atau jasa
-              </UIButton>
+              <div className="flex flex-wrap justify-center gap-2">
+                <UIButton
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setPicking(true)}
+                  disabled={saving}
+                >
+                  + Tambah barang atau jasa
+                </UIButton>
+                {packageButton}
+              </div>
 
               <div>
                 <p className="font-medium text-foreground">Belum ada baris</p>
@@ -2689,9 +2934,21 @@ export function InvoiceCreateForm() {
                             ) : (
                               <>
                                 <span className="font-medium">{line.name}</span>
-                                <span className="block text-xs text-muted">
-                                  <SkuText value={line.sku} fallback="Jasa" />
-                                </span>
+                                {line.kind === "membership" ? (
+                                  /* A PACKAGE says what it is and when its
+                                     cover starts — "2A": with the bill. */
+                                  <span className="block text-xs text-muted">
+                                    {`Paket membership · mulai ${
+                                      line.membership?.startDate
+                                        ? formatDateId(line.membership.startDate)
+                                        : "tanggal faktur"
+                                    }`}
+                                  </span>
+                                ) : (
+                                  <span className="block text-xs text-muted">
+                                    <SkuText value={line.sku} fallback="Jasa" />
+                                  </span>
+                                )}
                                 {stockNote(line)}
                                 {batchControl(line)}
                                 {variantControls}
@@ -2757,6 +3014,13 @@ export function InvoiceCreateForm() {
                                     missing={lineQuote?.missingAxis ?? null}
                                   />
                                 </>
+                              ) : line.kind === "membership" ? (
+                                /* WHOSE CARD — chosen in the sell dialog, not
+                                   changed here: a different animal is a
+                                   different price and a different check. */
+                                <span className="text-sm">
+                                  {line.membership?.holderName ?? linePet?.name ?? "—"}
+                                </span>
                               ) : line.kind === "service" &&
                                 line.ride !== null ? (
                                 /*
@@ -2876,7 +3140,11 @@ export function InvoiceCreateForm() {
                           answered yet, and the Hewan cell beside it is the
                           question.
                         */}
-                            {line.kind === "service" &&
+                            {line.kind === "membership" ? (
+                              /* THE HOLDER'S PRICE, as the server answered it —
+                                 not typed over: the card is frozen with it. */
+                              <span>{formatMoney(line.unitPrice)}</span>
+                            ) : line.kind === "service" &&
                             line.unitPrice === "0" &&
                             line.priceOverride == null ? (
                               <span className="text-muted">—</span>
@@ -2916,15 +3184,21 @@ export function InvoiceCreateForm() {
                           </TableCell>
 
                           <TableCell>
-                            <Input
-                              aria-label={`Jumlah ${line.name}`}
-                              value={line.qty}
-                              inputMode="decimal"
-                              onChange={(event) =>
-                                patchLine(index, { qty: event.target.value })
-                              }
-                              disabled={saving}
-                            />
+                            {line.kind === "membership" ? (
+                              /* ONE PACKAGE PER LINE — two years of cover is
+                                 two cards, not a quantity. */
+                              <span className="block px-3 text-sm tabular-nums">1</span>
+                            ) : (
+                              <Input
+                                aria-label={`Jumlah ${line.name}`}
+                                value={line.qty}
+                                inputMode="decimal"
+                                onChange={(event) =>
+                                  patchLine(index, { qty: event.target.value })
+                                }
+                                disabled={saving}
+                              />
+                            )}
                           </TableCell>
 
                           <TableCell>
@@ -3073,7 +3347,7 @@ export function InvoiceCreateForm() {
                 </Table>
               </div>
 
-              <div className="border-t border-border/60 pt-3">
+              <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3">
                 <UIButton
                   type="button"
                   variant="secondary"
@@ -3082,6 +3356,7 @@ export function InvoiceCreateForm() {
                 >
                   + Tambah barang atau jasa
                 </UIButton>
+                {packageButton}
               </div>
             </>
           )}

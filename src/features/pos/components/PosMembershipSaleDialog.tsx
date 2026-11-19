@@ -35,6 +35,18 @@ import { newPackageRef } from "../membershipCart";
 /** The API's page cap. */
 const FETCH_LIMIT = 100;
 
+/**
+ * What the dialog reads of the package — a till tile, or a plan picked on a
+ * faktur (19 November 2026: the faktur sells packages through this dialog too).
+ */
+export type SalePlan = Pick<
+  PosCatalogItem,
+  "_id" | "name" | "attachTo" | "eligibility" | "durationMonths" | "durationDays"
+>;
+
+/** What it reads of the lines already on the basket or bill. */
+export type SaleLine = Pick<PosItem, "kind" | "petId" | "packageRef">;
+
 /** The holder key for a plan the customer holds (no animal). */
 const CUSTOMER = "customer";
 
@@ -101,12 +113,12 @@ export function PosMembershipSaleDialog({
   onOpenChange,
 }: {
   /** The package tile tapped, or null when nothing is pending. */
-  plan: PosCatalogItem | null;
+  plan: SalePlan | null;
   customerId: string;
   customerName?: string;
   branchId?: string | null;
   /** The basket's lines — for "already in the basket" and a fresh packageRef. */
-  cartItems: PosItem[];
+  cartItems: SaleLine[];
   busy?: boolean;
   onAdd: (
     input: MembershipLineInput,

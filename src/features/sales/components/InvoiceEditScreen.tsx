@@ -112,9 +112,11 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
     A TILL-BORN FAKTUR (BO, 18 November 2026) follows the hand-raised rule —
     nothing paid on it — and whatever else the server says (#tillState).
   */
+  /* A faktur selling a package is not edited (19 November 2026) — the server refuses. */
+  const sellsPackage = (invoice.items ?? []).some((item) => item.kind === "membership");
   const editable = tillBorn
     ? invoice.status !== "void" && Boolean(till?.canEdit)
-    : invoice.status === "unpaid" && !hasActivePayment;
+    : !sellsPackage && invoice.status === "unpaid" && !hasActivePayment;
 
   if (!editable || !can("customerInvoices", "update")) {
     const reason = tillBorn
@@ -123,6 +125,8 @@ export function InvoiceEditScreen({ invoiceId }: { invoiceId: string }) {
         : (till?.editBlockedReason ?? "transaksi kasirnya tidak bisa diperiksa")
       : invoice.status === "void"
         ? "sudah dibatalkan"
+        : sellsPackage
+          ? "berisi paket membership — batalkan fakturnya lalu buat faktur baru"
         : !editable
           ? "sudah ada pembayaran tercatat — batalkan pembayarannya dulu"
           : "Anda tidak punya izin mengubah faktur";

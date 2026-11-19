@@ -8397,7 +8397,26 @@ export interface CreateInvoiceItemInput {
    * could write a free invoice, so the amount is deliberately absent from this
    * shape; what the form quoted only ever drove its own preview.
    */
-  benefit?: { membershipId: string; benefitId: string; optionId?: string | null } | null;
+  benefit?:
+    | {
+        /** A card the animal holds — or `packageRef`, a package on this same bill. */
+        membershipId?: string;
+        packageRef?: string;
+        benefitId: string;
+        optionId?: string | null;
+      }
+    | null;
+  /**
+   * A PACKAGE LINE (`kind: "membership"`, 19 November 2026). `refId` names the
+   * plan; the card is issued with the bill, awaiting payment.
+   *
+   * `membershipStartDate` — absent = cover from the invoice date.
+   * `packageRef` — the bill's own name for the line, so a benefit on another
+   * line can spend it before the card exists.
+   */
+  membershipStartDate?: string;
+  referralCode?: string;
+  packageRef?: string;
   /**
    * PROMO V1 — WHICH promos, never their value. Absent = automatic (only
    * promos with "Faktur" ticked), `[]` = no promo.
