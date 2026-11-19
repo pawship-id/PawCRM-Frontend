@@ -190,10 +190,11 @@ export function PayablesToolbar({
         <FilterSearch
           value={query.search}
           onChange={(search) => onChange({ search })}
-          // Names exactly the two fields the API searches — a placeholder
-          // promising a field the server does not match is a bug report
-          // waiting to be filed.
-          placeholder="Cari nomor faktur atau catatan…"
+          // Names what the API searches — a placeholder promising a field the
+          // server does not match is a bug report waiting to be filed. Supplier
+          // name and line SKU since 19 November 2026 (on request); the vendor's
+          // own number and the note still match too.
+          placeholder="Cari nomor faktur, SKU barang, nama supplier atau catatan…"
           ariaLabel="Cari faktur"
           fill
         />

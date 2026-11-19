@@ -261,6 +261,11 @@ describe("InventoryHub", () => {
     });
     expect(screen.getByText("RC-B26-0455")).toBeInTheDocument();
 
+    // The restock card leads to the full Stok Minim report.
+    expect(
+      screen.getByRole("link", { name: /Lihat semua perlu restock/ }),
+    ).toHaveAttribute("href", "/dashboard/reports/low-stock");
+
     // The valuation and the catalogue size, both the server's own totals.
     expect(await screen.findByText("Rp 94.200.000")).toBeInTheDocument();
     expect(screen.getByText("248")).toBeInTheDocument();
