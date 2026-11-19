@@ -9115,6 +9115,13 @@ export interface UpdateCashTransactionInput {
 /** POST /api/cash-transactions/:id/void — 1–200 chars. */
 export interface CancelCashTransactionInput {
   reason: string;
+  /**
+   * A till payment whose shift is closed (18 November 2026): the Kas & Bank
+   * account the money goes back from (default the one it came in to) and the
+   * day it left (default today). Ignored for anything else.
+   */
+  refundAccountId?: string;
+  refundAt?: string;
 }
 
 

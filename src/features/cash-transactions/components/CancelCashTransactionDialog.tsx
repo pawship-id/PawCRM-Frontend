@@ -12,6 +12,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  SettlementAccountFields,
+  todayIso,
+} from "@/features/sales/components/SettlementAccountFields";
 import { swalToast } from "@/lib/swal";
 import { ApiError } from "@/services/api-error";
 import { cashTransactionService } from "@/services/cashTransaction.service";
@@ -52,11 +56,22 @@ export function CancelCashTransactionDialog({
   const [reasonError, setReasonError] = useState<string | undefined>();
   const [serverError, setServerError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  /*
+    A TILL PAYMENT WHOSE SHIFT IS CLOSED (BO, 18 November 2026) — the same
+    question Batalkan pembayaran asks on the faktur: which account the money
+    goes back from and on which day. The closed shift's report does not move.
+  */
+  const drawerClosed = Boolean(transaction?.drawerClosed);
+  const [refundAccountId, setRefundAccountId] = useState("");
+  const [refundAt, setRefundAt] = useState(todayIso());
+  const accountId = refundAccountId || transaction?.cashAccountId || "";
 
   function close() {
     setReason("");
     setReasonError(undefined);
     setServerError(null);
+    setRefundAccountId("");
+    setRefundAt(todayIso());
     onClose();
   }
 
@@ -69,13 +84,25 @@ export function CancelCashTransactionDialog({
       return;
     }
 
+    if (drawerClosed && !accountId) {
+      setServerError("Pilih akun Kas & Bank tempat uangnya dikembalikan.");
+      return;
+    }
+
     setSaving(true);
     setServerError(null);
 
     try {
-      const updated = await cashTransactionService.cancel(transaction._id, {
-        reason: trimmed,
-      });
+      const updated = await cashTransactionService.cancel(
+        transaction._id,
+        drawerClosed
+          ? {
+              reason: trimmed,
+              refundAccountId: accountId,
+              refundAt: new Date(`${refundAt}T12:00:00`).toISOString(),
+            }
+          : { reason: trimmed },
+      );
       swalToast(`Transaksi ${cashTransactionTitle(updated)} dibatalkan.`);
       setSaving(false);
       onCancelled(updated);
@@ -108,11 +135,20 @@ export function CancelCashTransactionDialog({
         </DialogHeader>
 
         <div className="rounded-lg border border-border bg-surface-hover px-4 py-3 text-sm">
-          <p>
-            Transaksi ini <b>tidak dihapus</b>. Sistem memposting{" "}
-            <b>jurnal pembalik</b>, dan barisnya tetap terlihat dengan tanda
-            dibatalkan — kesalahan dan koreksinya sama-sama tercatat.
-          </p>
+          {drawerClosed ? (
+            <p>
+              Ini pembayaran kasir dari <b>shift yang sudah ditutup</b>. Laporan
+              penutupan shift itu <b>tidak berubah</b> — uang yang dikembalikan
+              dicatat sebagai <b>bukti kas keluar baru</b> di tanggal dan dari
+              akun yang Anda pilih di bawah.
+            </p>
+          ) : (
+            <p>
+              Transaksi ini <b>tidak dihapus</b>. Sistem memposting{" "}
+              <b>jurnal pembalik</b>, dan barisnya tetap terlihat dengan tanda
+              dibatalkan — kesalahan dan koreksinya sama-sama tercatat.
+            </p>
+          )}
           {transaction?.document && (
             <p className="mt-2 text-muted">
               Sisa tagihan fakturnya naik kembali sebesar jumlah ini.
@@ -141,6 +177,17 @@ export function CancelCashTransactionDialog({
           }}
           hint="mis. Salah channel · Dobel input · Transfer ditarik kembali"
         />
+
+        {drawerClosed && (
+          <SettlementAccountFields
+            label="Uang dikembalikan dari"
+            accountId={accountId}
+            onAccountChange={setRefundAccountId}
+            date={refundAt}
+            onDateChange={setRefundAt}
+            disabled={saving}
+          />
+        )}
 
         <DialogFooter>
           <Button
