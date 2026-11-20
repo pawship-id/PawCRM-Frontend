@@ -3561,6 +3561,36 @@ export interface Booking {
    * one till basket) that are not in its group (21 September 2026).
    */
   related?: BookingRelated[];
+  /**
+   * ONLY ON `GET /bookings/:id` — what the bill (faktur, or the till's sale)
+   * took off this booking's lines by membership and promo (20 November 2026).
+   * Null until something bills it. See `BookingBilledDiscounts`.
+   */
+  billedDiscounts?: BookingBilledDiscounts | null;
+}
+
+/**
+ * THE BILL'S DISCOUNTS ON ONE BOOKING. A booking stores only what was typed on
+ * it; a card benefit and a promo are priced when it is billed, so they are read
+ * off the document — never stored on the booking.
+ */
+export interface BookingBilledDiscounts {
+  via: "invoice" | "pos";
+  documentNumber: string | null;
+  lines: BookingBilledLine[];
+}
+
+/** One booking line as the bill priced it — matched by `refId` + `parentServiceId`. */
+export interface BookingBilledLine {
+  refId: string | null;
+  /** Null on the main service; the service's id on an add-on. */
+  parentServiceId: string | null;
+  /** Everything the bill took off the line — typed, card and promo together. */
+  discountAmount: string | null;
+  membershipDiscount: string | null;
+  benefitLabel: string | null;
+  promoDiscount: string | null;
+  promos: { name: string | null; label: string | null }[];
 }
 
 /** An antar-jemput booking's direction: the door to the branch, or back. */

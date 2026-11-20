@@ -11,6 +11,7 @@ import { formatMoney, isPositive, subtractDecimals, sumDecimals } from "@/utils/
 import type {
   Booking,
   BookingAddon,
+  BookingBilledLine,
   BookingMainService,
   VariantChoiceSnapshot,
 } from "@/types/api";
@@ -95,10 +96,21 @@ export function BookingPriceBreakdown({
   );
   const priced = [pricedOn(service), tail].filter(Boolean).join(" · ") || null;
   const stored = booking.netAmount ?? booking.totalAmount;
-  const total = stored
+  const planned = stored
     ? subtractDecimals(stored, feeNet)
     : sumDecimals([service.price, ...addons.map((addon) => addon.price)]);
   const tripId = booking.homeTrip?._id ?? null;
+
+  /*
+    WHAT THE BILL TOOK OFF (20 November 2026, on request) — the membership and
+    promo parts the faktur or the till priced when this booking was billed. The
+    booking itself never stores them, so they are read off the document. Once
+    billed, the Total is what the bill charged for these lines.
+  */
+  const billed = billedSummary(booking, addons);
+  const total = billed ? billed.total : planned;
+  const share = bookingShareOf(shown);
+  const showRecap = isPositive(share) || Boolean(billed?.hasAny);
 
   return (
     <div>
@@ -168,7 +180,7 @@ export function BookingPriceBreakdown({
         </ul>
       )}
 
-      {isPositive(bookingShareOf(shown)) && (
+      {showRecap && (
         <div className="mt-2 border-t border-border pt-2">
           <div className="flex justify-between gap-3 py-1 text-sm">
             <span className="text-muted">Subtotal</span>
@@ -176,12 +188,59 @@ export function BookingPriceBreakdown({
               {formatMoney(afterOwnDiscounts(shown))}
             </span>
           </div>
-          <div className="flex justify-between gap-3 py-1 text-sm">
-            <span className="text-success">Diskon booking</span>
-            <span className="font-semibold tabular-nums text-success">
-              −{formatMoney(bookingShareOf(shown))}
-            </span>
-          </div>
+          {isPositive(share) && (
+            <div className="flex justify-between gap-3 py-1 text-sm">
+              <span className="text-success">Diskon booking</span>
+              <span className="font-semibold tabular-nums text-success">−{formatMoney(share)}</span>
+            </div>
+          )}
+          {billed && isPositive(billed.membership) && (
+            <div data-billed-membership className="flex justify-between gap-3 py-1 text-sm">
+              <span className="text-success">
+                Diskon membership
+                {billed.benefitLabels.length > 0 && (
+                  <span className="block text-xs text-muted">
+                    {billed.benefitLabels.join(" · ")}
+                  </span>
+                )}
+              </span>
+              <span className="font-semibold tabular-nums text-success">
+                −{formatMoney(billed.membership)}
+              </span>
+            </div>
+          )}
+          {billed && isPositive(billed.promo) && (
+            <div data-billed-promo className="flex justify-between gap-3 py-1 text-sm">
+              <span className="text-success">
+                Potongan promo
+                {billed.promoNames.length > 0 && (
+                  <span className="block text-xs text-muted">{billed.promoNames.join(" + ")}</span>
+                )}
+              </span>
+              <span className="font-semibold tabular-nums text-success">
+                −{formatMoney(billed.promo)}
+              </span>
+            </div>
+          )}
+          {/*
+            WHATEVER ELSE THE BILL CHANGED on these lines — a discount typed on
+            the faktur or at the till, or a booking discount the bill dropped
+            (a jatah takes none). Named so the lines still add up to the Total.
+          */}
+          {billed && isPositive(billed.other) && (
+            <div className="flex justify-between gap-3 py-1 text-sm">
+              <span className="text-success">Diskon lain di {billed.where}</span>
+              <span className="font-semibold tabular-nums text-success">
+                −{formatMoney(billed.other)}
+              </span>
+            </div>
+          )}
+          {billed && isPositive(absNeg(billed.other)) && (
+            <div className="flex justify-between gap-3 py-1 text-sm">
+              <span className="text-muted">Diskon tidak dipakai di {billed.where}</span>
+              <span className="tabular-nums text-muted">+{formatMoney(absNeg(billed.other))}</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -189,6 +248,15 @@ export function BookingPriceBreakdown({
         <span className="font-extrabold">Total</span>
         <span className="text-lg font-extrabold tabular-nums">{formatMoney(total)}</span>
       </div>
+
+      {billed?.hasAny && (
+        <p data-billed-note className="mt-1.5 text-xs text-muted">
+          Potongan sesuai {billed.where}
+          {booking.billedDiscounts?.documentNumber
+            ? ` ${booking.billedDiscounts.documentNumber}`
+            : ""}
+        </p>
+      )}
 
       {(feeRows.length > 0 || booking.homeTrip?.hasFee) && (
         <p data-visit-fee-note className="mt-1.5 text-xs text-muted">
@@ -244,4 +312,92 @@ function ownChoicesOf(
       (choice) => !inherited.has(`${choice.optionId}|${choice.code}`),
     ),
   );
+}
+
+/** The bill's line for one booking line — main service or add-on. */
+function billedLineOf(
+  lines: readonly BookingBilledLine[],
+  refId: string,
+  parentServiceId: string | null,
+): BookingBilledLine | undefined {
+  return lines.find(
+    (line) =>
+      line.refId === refId &&
+      (parentServiceId ? Boolean(line.parentServiceId) : !line.parentServiceId),
+  );
+}
+
+/** A negative figure's size, or "0" — the other half of a signed adjustment. */
+function absNeg(value: string): string {
+  return isPositive(value) ? "0" : subtractDecimals("0", value);
+}
+
+/**
+ * THE BILL'S DISCOUNTS ON THE LINES THIS CARD DRAWS (the visit fee left out, as
+ * everywhere above), or null before anything billed the booking.
+ *
+ * `other` is what the bill took off beyond the booking's own discounts and the
+ * card and promo parts — negative when the bill dropped a booking discount.
+ * With it, Subtotal − Diskon booking − membership − promo − other is exactly
+ * Σ(price − the bill's discount), the Total.
+ */
+function billedSummary(booking: Booking, addons: readonly BookingAddon[]) {
+  const billed = booking.billedDiscounts;
+  const service = booking.service;
+  if (!billed || !service) return null;
+
+  const pairs: {
+    line: Pick<BookingAddon, "price" | "discountAmount">;
+    bill?: BookingBilledLine;
+  }[] = [
+    {
+      line: service,
+      bill: billedLineOf(billed.lines, service.serviceId, null),
+    },
+    ...addons.map((addon) => ({
+      line: addon,
+      bill: billedLineOf(billed.lines, addon.serviceId, service.serviceId),
+    })),
+  ];
+
+  const membership = sumDecimals(pairs.map(({ bill }) => bill?.membershipDiscount ?? "0"));
+  const promo = sumDecimals(pairs.map(({ bill }) => bill?.promoDiscount ?? "0"));
+  const other = sumDecimals(
+    pairs.map(({ line, bill }) =>
+      bill
+        ? subtractDecimals(
+            subtractDecimals(
+              subtractDecimals(bill.discountAmount ?? "0", bill.membershipDiscount ?? "0"),
+              bill.promoDiscount ?? "0",
+            ),
+            line.discountAmount ?? "0",
+          )
+        : "0",
+    ),
+  );
+  const total = sumDecimals(
+    pairs.map(({ line, bill }) =>
+      subtractDecimals(
+        line.price,
+        bill ? (bill.discountAmount ?? "0") : (line.discountAmount ?? "0"),
+      ),
+    ),
+  );
+
+  const bills = pairs.map(({ bill }) => bill).filter(Boolean) as BookingBilledLine[];
+  const unique = (words: (string | null)[]) => [...new Set(words.filter(Boolean) as string[])];
+
+  return {
+    where: billed.via === "pos" ? "kasir" : "faktur",
+    membership,
+    promo,
+    other,
+    total,
+    hasAny:
+      isPositive(membership) || isPositive(promo) || isPositive(other) || isPositive(absNeg(other)),
+    benefitLabels: unique(
+      bills.filter((bill) => bill.membershipDiscount).map((bill) => bill.benefitLabel),
+    ),
+    promoNames: unique(bills.flatMap((bill) => bill.promos.map((one) => one.name))),
+  };
 }
