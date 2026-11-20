@@ -204,6 +204,13 @@ export function BookingCalendarScreen() {
   const to = view === "harian" ? anchor : addDays(startOfWeek(anchor), 6);
 
   useEffect(() => {
+    /*
+      WAIT FOR THE BRANCHES FIRST (20 November 2026). Asking before they load
+      fetched every branch, then `soleBranch` arrived and fetched again — two
+      requests and a grid that flashed out and back between them.
+    */
+    if (scope.loading) return;
+
     let active = true;
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -231,7 +238,7 @@ export function BookingCalendarScreen() {
     return () => {
       active = false;
     };
-  }, [from, to, branchId]);
+  }, [from, to, branchId, scope.loading]);
 
   const columns = [
     ...(data?.groomers ?? []).map((groomer) => ({
