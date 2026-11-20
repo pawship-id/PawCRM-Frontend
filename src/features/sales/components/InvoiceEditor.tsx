@@ -69,6 +69,21 @@ import { useInvoiceLookups } from "../hooks/useInvoiceLookups";
 import { useProductSearch } from "../hooks/useServerSearch";
 import { previewInvoice } from "../invoicePreview";
 import {
+  invoiceAutoApply,
+  invoiceBenefitQuoteLines,
+  invoicePromoInput,
+  invoicePromoSwitches,
+  memberLineOfRow,
+  potonganItemOf,
+  promoLineOfRow,
+  rowPotonganPatch,
+  rowPromoOf,
+  type InvoiceBenefitPick,
+} from "../invoicePromo";
+import { usePromoQuote } from "@/hooks/usePromoQuote";
+import { useBenefitQuote } from "@/features/memberships";
+import { InvoicePotonganSelect } from "./InvoicePotonganSelect";
+import {
   hasChoice,
   lineRefusalOf,
   variantSummary,
@@ -136,6 +151,20 @@ interface EditLine {
    */
   membershipShare?: string;
   benefit?: { membershipId: string; benefitId: string; optionId?: string | null } | null;
+  /**
+   * ─── POTONGAN ON A ROW ADDED HERE (20 November 2026) ─────────────────────
+   *
+   * Faktur baru's (and the till's) treatment: the best benefit goes on by
+   * itself (`pick`, quoted with its amount), a promo that beats an unlimited
+   * benefit takes its place, and the row's "Potongan" select can change
+   * either. `promoPick`: absent = automatic, `[]` = none, `[ids]` = those.
+   * A KEPT row never gets these — its benefit and promo stay as stored.
+   */
+  pick?: InvoiceBenefitPick | null;
+  promoPick?: string[] | null;
+  noBenefit?: boolean;
+  /** Somebody chose in the select — no automatic swap from then on. */
+  potonganChosen?: boolean;
   /**
    * THE "DIPILIH STAF" VALUES CHOSEN on a line added here (17 September 2026),
    * sent as its `variantChoices`. Empty on a kept line — the server keeps what
@@ -643,10 +672,136 @@ export function InvoiceEditor({
 
   /* The bookings' shares across the edit — shown once, under "Diskon item". */
   const bookingShares = sumDecimals(lines.map((line) => line.bookingShare));
-  /* Promo V1 — the kept lines' frozen promos, shown on their own recap row. */
-  const promoShares = sumDecimals(lines.map((line) => line.promoShare ?? "0"));
-  /* The kept lines' card benefits — their own recap row (17 November 2026). */
-  const membershipShares = sumDecimals(lines.map((line) => line.membershipShare ?? "0"));
+  /*
+    ─── BENEFIT & PROMO ON THE ROWS ADDED HERE (20 November 2026) ────────────
+
+    Faktur baru's treatment, which is the till's — see `invoicePromo.ts`.
+    ONLY NEW ROWS ARE QUOTED FOR A BENEFIT: a kept row's jatah is already
+    spent in the ledger by this invoice, so quoting it again would count it
+    twice (and the quote has no "minus this invoice"). The server re-prices
+    the kept pick on save anyway. A trip's fee row takes neither.
+  */
+  const isNewPriced = (line: EditLine) =>
+    line.fromIndex === null &&
+    !line.tripId &&
+    (line.kind === "product" || line.kind === "service");
+
+  const benefitRows = useMemo(
+    () =>
+      lines.filter(isNewPriced).map((line) => ({
+        key: line.key,
+        kind: line.kind as "product" | "service",
+        refId: line.refId,
+        petId: line.petId,
+        qty: line.qty,
+        unitPrice: chargedPrice(line),
+        addonOf: null,
+        ride: Boolean(line.ride),
+        benefit: line.pick ?? null,
+        noBenefit: line.noBenefit,
+        discountValue: line.discountValue,
+      })),
+    [lines],
+  );
+  const benefitQuoteLines = useMemo(
+    () => invoiceBenefitQuoteLines(benefitRows),
+    [benefitRows],
+  );
+
+  /* Judged at the invoice date — the day the server checks on save. */
+  const { quote: benefitQuote, settled: benefitSettled } = useBenefitQuote({
+    customerId: invoice.customerId || null,
+    lines: benefitQuoteLines,
+    at: invoice.invoiceDate ? new Date(invoice.invoiceDate).toISOString() : null,
+  });
+
+  /*
+    THE BEST BENEFIT GOES ON BY ITSELF — once per answer, adjusted during
+    render like Faktur baru (no setState in an effect).
+  */
+  const [autoAppliedQuote, setAutoAppliedQuote] = useState<typeof benefitQuote>(null);
+  if (benefitSettled && benefitQuote && benefitQuote !== autoAppliedQuote) {
+    setAutoAppliedQuote(benefitQuote);
+    const syncs = invoiceAutoApply(benefitRows, benefitQuote);
+    if (syncs.length > 0) {
+      setLines((current) =>
+        current.map((line) => {
+          const sync = syncs.find((entry) => entry.key === line.key);
+          if (!sync) return line;
+          return sync.benefit
+            ? /* A card takes the line: no typed discount beside it (Promosi V1). */
+              { ...line, pick: sync.benefit, discountValue: "" }
+            : { ...line, pick: null };
+        }),
+      );
+    }
+  }
+
+  /*
+    PROMO — every product/service row is asked, kept ones too, so a tiered
+    promo counts the whole bill as the server does; only a NEW row's answer
+    is used (a kept row keeps its frozen promo).
+  */
+  const promoRows = lines.map((line) => ({
+    key: line.key,
+    kind: line.kind,
+    refId: line.tripId ? "" : line.refId,
+    petId: line.petId,
+    qty: line.qty,
+    unitPrice: chargedPrice(line),
+    benefit: isNewPriced(line) ? (line.pick ?? null) : null,
+    promoPick: isNewPriced(line) ? (line.promoPick ?? null) : null,
+    chosen: line.potonganChosen,
+    benefitLabel: line.pick?.benefitLabel ?? null,
+  }));
+  const promoQuote = usePromoQuote(
+    invoicePromoInput({
+      rows: promoRows,
+      customerId: invoice.customerId || null,
+      branchId: invoice.branchId || null,
+      invoiceDate: invoice.invoiceDate ? toDateInput(invoice.invoiceDate) : "",
+      memberQuote: benefitQuote ?? null,
+    }),
+  );
+  const rowPromos = promoRows.map((row, index) =>
+    isNewPriced(lines[index])
+      ? rowPromoOf(row, promoLineOfRow(promoQuote.quote, row.key), benefitQuote ?? null)
+      : { discount: "0", parts: [], available: false },
+  );
+  const rowPromosKey = JSON.stringify(rowPromos.map((promo) => promo.discount));
+
+  /* A promo that beats an unlimited benefit takes its place — the till's `promoSwitches`. */
+  const [switchedQuote, setSwitchedQuote] = useState<typeof promoQuote.quote>(null);
+  if (benefitSettled && promoQuote.quote && promoQuote.quote !== switchedQuote) {
+    setSwitchedQuote(promoQuote.quote);
+    const switches = invoicePromoSwitches(
+      promoRows.filter((_, index) => isNewPriced(lines[index])),
+      benefitQuote ?? null,
+      promoQuote.quote,
+    );
+    if (switches.length > 0) {
+      setLines((current) =>
+        current.map((line) => {
+          const change = switches.find((entry) => entry.key === line.key);
+          return change
+            ? { ...line, pick: null, noBenefit: true, promoPick: change.promoIds }
+            : line;
+        }),
+      );
+    }
+  }
+
+  /** The card's part of a row — stored on a kept one, quoted on a new one. */
+  const memberOffOf = (line: EditLine) =>
+    line.fromIndex !== null ? (line.membershipShare ?? "0") : (line.pick?.amount ?? "0");
+  /** The promo's part of a row — frozen on a kept one, quoted on a new one. */
+  const promoOffOf = (line: EditLine, index: number) =>
+    line.fromIndex !== null ? (line.promoShare ?? "0") : (rowPromos[index]?.discount ?? "0");
+
+  /* Promo V1 — the rows' promos, shown on their own recap row. */
+  const promoShares = sumDecimals(lines.map((line, index) => promoOffOf(line, index)));
+  /* The rows' card benefits — their own recap row (17 November 2026). */
+  const membershipShares = sumDecimals(lines.map((line) => memberOffOf(line)));
 
   /**
    * Whether the PPN is charged ON TOP of the prices — see `previewInvoice`.
@@ -661,9 +816,9 @@ export function InvoiceEditor({
     const own = subtractDecimals(
       subtractDecimals(
         subtractDecimals(preview.lineDiscounts[index], line.bookingShare),
-        line.promoShare ?? "0",
+        promoOffOf(line, index),
       ),
-      line.membershipShare ?? "0",
+      memberOffOf(line),
     );
     return isPositive(own) ? own : "0";
   }
@@ -693,23 +848,34 @@ export function InvoiceEditor({
   const preview = useMemo(
     () =>
       previewInvoice(
-        lines.map((line) => ({
-          qty: line.qty,
-          unitPrice: chargedPrice(line),
-          discount: previewDiscountOf(line),
-          /* A kept line's frozen promo and card benefit, before its own discount (server order). */
-          promo: isPositive(line.membershipShare ?? "0")
-            ? sumDecimals([line.promoShare ?? "0", line.membershipShare ?? "0"])
-            : (line.promoShare ?? null),
-        })),
+        lines.map((line, index) =>
+          line.fromIndex === null
+            ? {
+                qty: line.qty,
+                unitPrice: chargedPrice(line),
+                discount: previewDiscountOf(line),
+                /* A new row's quoted benefit, then its promo, before its own discount (server order). */
+                benefit: line.pick?.amount ?? null,
+                promo: rowPromos[index]?.discount ?? null,
+              }
+            : {
+                qty: line.qty,
+                unitPrice: chargedPrice(line),
+                discount: previewDiscountOf(line),
+                /* A kept line's frozen promo and card benefit, before its own discount (server order). */
+                promo: isPositive(line.membershipShare ?? "0")
+                  ? sumDecimals([line.promoShare ?? "0", line.membershipShare ?? "0"])
+                  : (line.promoShare ?? null),
+              },
+        ),
         invoiceDiscountValue
           ? { mode: invoiceDiscountMode, value: invoiceDiscountValue }
           : null,
         /* The charges as typed count toward the total straight away. */
         { ...lookups.tax, otherCharges: filledCharges },
       ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `filledCharges` is derived from `charges` every render
-    [lines, invoiceDiscountMode, invoiceDiscountValue, lookups.tax, charges],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `filledCharges` is derived from `charges` every render; `rowPromosKey` is `rowPromos`' content
+    [lines, invoiceDiscountMode, invoiceDiscountValue, lookups.tax, charges, rowPromosKey],
   );
 
 
@@ -864,6 +1030,22 @@ export function InvoiceEditor({
           ...(line.fromIndex !== null ? { fromIndex: line.fromIndex } : {}),
           /* A kept card benefit stays — omitted, the server drops it (17 November 2026). */
           ...(line.fromIndex !== null && line.benefit ? { benefit: line.benefit } : {}),
+          /*
+            A NEW ROW'S POTONGAN (20 November 2026) — which card and benefit,
+            never the amount; promos only when chosen (absent = automatic).
+          */
+          ...(line.fromIndex === null && line.pick
+            ? {
+                benefit: {
+                  membershipId: line.pick.membershipId,
+                  benefitId: line.pick.benefitId,
+                  ...(line.pick.optionId ? { optionId: line.pick.optionId } : {}),
+                },
+              }
+            : {}),
+          ...(line.fromIndex === null && Array.isArray(line.promoPick)
+            ? { promoIds: line.promoPick }
+            : {}),
           /*
           A TYPED PRICE (13 October 2026). A new row sends its override; a kept
           row sends one only when it moved — null puts it back to the
@@ -1259,10 +1441,18 @@ export function InvoiceEditor({
         const next = { ...line, ...patch };
         // Re-priced when a NEW service's animal changes — for a variant
         // service that IS the price.
-        /* A price typed for the old animal is not a price for the new one. */
+        /* A price typed for the old animal is not a price for the new one —
+           nor is a card that was the old animal's: its potongan starts over. */
         return patch.petId === undefined || line.fromIndex !== null
           ? next
-          : { ...next, unitPrice: priceOf(next), priceOverride: null };
+          : {
+              ...next,
+              unitPrice: priceOf(next),
+              priceOverride: null,
+              ...(patch.petId !== line.petId
+                ? { pick: null, noBenefit: false, promoPick: null, potonganChosen: false }
+                : {}),
+            };
       }),
     );
   }
@@ -1641,8 +1831,9 @@ export function InvoiceEditor({
                       disabled={saving}
                     />
                   </div>
-                  {/* The line's own part only — the share is in the recap. */}
-                  {isPositive(
+                  {/* The line's own part only — the share is in the recap.
+                      A new row shows it on the Potongan pill's line instead. */}
+                  {!isNewPriced(line) && isPositive(
                     subtractDecimals(
                       preview.lineDiscounts[index],
                       line.bookingShare,
@@ -1657,6 +1848,38 @@ export function InvoiceEditor({
                         ),
                       )}
                     </span>
+                  )}
+                  {/*
+                    THE TILL'S "POTONGAN" SELECT on a row added here (20
+                    November 2026) — Faktur baru's control. A kept row keeps
+                    the benefit and promo it was billed with.
+                  */}
+                  {isNewPriced(line) && (
+                    <InvoicePotonganSelect
+                      name={line.name}
+                      item={potonganItemOf(
+                        { benefit: line.pick ?? null, benefitLabel: line.pick?.benefitLabel ?? null },
+                        rowPromos[index],
+                      )}
+                      memberLine={memberLineOfRow(benefitQuote ?? null, line.key)}
+                      promoLine={promoLineOfRow(promoQuote.quote, line.key)}
+                      disabled={saving}
+                      off={subtractDecimals(preview.lineDiscounts[index], line.bookingShare)}
+                      onChange={(change) => {
+                        const patch = rowPotonganPatch(
+                          change,
+                          memberLineOfRow(benefitQuote ?? null, line.key),
+                        );
+                        patchLine(line.key, {
+                          pick: patch.benefit,
+                          promoPick: patch.promoPick,
+                          noBenefit: patch.noBenefit,
+                          potonganChosen: true,
+                          /* A card takes the line: no typed discount beside it. */
+                          ...(patch.benefit ? { discountValue: "" } : {}),
+                        });
+                      }}
+                    />
                   )}
                 </TableCell>
 

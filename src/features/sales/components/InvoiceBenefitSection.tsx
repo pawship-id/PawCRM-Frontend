@@ -11,9 +11,10 @@ import type { BenefitCandidate, BenefitQuoteResponse } from "@/types/membership"
  * under Diskon faktur (1 October 2026, on request).
  *
  * WHY A SECTION, NOT A CHIP PER ROW: a benefit offered as a chip on the row it
- * could pay for showed only what happened to MATCH. (The till once made the
- * same move with a section of its own; it has since gone to a benefit select
- * on each cart line — `PosBenefitSelect` — which the faktur has not followed.) A customer holding four benefits saw one button on
+ * could pay for showed only what happened to MATCH. (Since 20 November 2026
+ * each row ALSO carries the till's "Potongan" select —
+ * `InvoicePotonganSelect` — and the best benefit is put on by itself; this
+ * section stays as the overview.) A customer holding four benefits saw one button on
  * one row and no sign the other three existed — a question nobody typing a
  * faktur could answer by looking at it.
  *
