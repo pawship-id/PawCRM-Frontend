@@ -102,6 +102,7 @@ export type MembershipHistoryAction =
   | "quota_adjusted"
   | "transferred"
   | "redemption_moved"
+  | "benefits_synced"
   | "payment_received"
   | "cancelled"
   | "refunded";
@@ -678,7 +679,13 @@ export interface CreateMembershipPlanInput {
   benefits?: BenefitInput[];
 }
 
-export type UpdateMembershipPlanInput = Partial<CreateMembershipPlanInput>;
+export type UpdateMembershipPlanInput = Partial<CreateMembershipPlanInput> & {
+  /**
+   * "Pembeli baru dan kartu yang sudah berjalan" — copy the new benefit list
+   * onto every running card. Only sent with `benefits`.
+   */
+  applyBenefitsToCards?: boolean;
+};
 
 /* ──────────────────────────────────────────────── §3.6 card writes */
 

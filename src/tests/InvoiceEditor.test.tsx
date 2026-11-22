@@ -10,6 +10,8 @@ import { productService } from "@/services/product.service";
 import { serviceService } from "@/services/service.service";
 import { tenantService } from "@/services/tenant.service";
 import { petService } from "@/services/pet.service";
+import { membershipService } from "@/services/membership.service";
+import { promoService } from "@/services/promo.service";
 import { ApiError } from "@/services/api-error";
 import { swalToast } from "@/lib/swal";
 import type { CustomerInvoiceDetail, CustomerInvoiceItem } from "@/types/api";
@@ -782,3 +784,82 @@ describe("InvoiceEditor — the trip goes with its last grooming, and takes a di
   });
 });
 
+
+/*
+  ─── POTONGAN ON A ROW ADDED HERE (20 November 2026) ─────────────────────────
+
+  Faktur baru's treatment, which is the till's: the best benefit goes on by
+  itself and is sent by its ids; a kept row is never quoted (its jatah is
+  already spent by this invoice) and keeps what it was billed with.
+*/
+describe("InvoiceEditor — benefit and promo on a new row, as at the till", () => {
+  const candidate = {
+    membershipId: "mem-1",
+    membershipNumber: "MBR-0007",
+    planName: "Paket VIP",
+    benefitId: "ben-1",
+    benefitLabel: "Diskon member 10%",
+    kind: "percent_off",
+    discount: "2500.0000",
+  };
+
+  beforeEach(() => {
+    jest.spyOn(promoService, "quote").mockResolvedValue({ lines: [] } as never);
+    jest.spyOn(membershipService, "quote").mockImplementation((async (input: {
+      lines: Array<{ ref: string | null; petId: string | null }>;
+    }) => ({
+      cards: [],
+      lines: input.lines.map((one) => ({
+        ref: one.ref,
+        petId: one.petId,
+        candidates: [candidate],
+        recommended: candidate,
+      })),
+    })) as never);
+    asMock(productService.list).mockImplementation(
+      async (query: { search?: string; view?: string } = {}) =>
+        page(
+          query.view === "index" || query.search === "Snack"
+            ? [{ _id: "p77", name: "Snack Kucing", sku: "SNK", sellPrice: "25000" }]
+            : [],
+        ),
+    );
+  });
+
+  it("puts the best benefit on a new row by itself, quotes only that row, and sends its ids", async () => {
+    const user = userEvent.setup();
+    renderEditor();
+
+    await user.click(
+      await screen.findByRole("button", { name: "+ Tambah barang atau jasa" }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    await user.type(await within(dialog).findByLabelText("Cari produk"), "Snack");
+    await user.click(await within(dialog).findByRole("checkbox", { name: /Snack Kucing/ }));
+    await user.click(within(dialog).getByRole("button", { name: /^tambahkan/i }));
+
+    expect(
+      await screen.findByRole("combobox", { name: /Potongan untuk Snack Kucing/ }),
+    ).toBeInTheDocument();
+    /* Only the kept rows have no select. */
+    expect(screen.queryByRole("combobox", { name: /Potongan untuk Kalung/ })).toBeNull();
+
+    const asked = asMock(membershipService.quote).mock.calls.at(-1)?.[0] as {
+      lines: Array<{ refId: string }>;
+    };
+    expect(asked.lines.map((one) => one.refId)).toEqual(["p77"]);
+
+    await user.click(screen.getByRole("button", { name: "Simpan faktur" }));
+    await waitFor(() => expect(customerInvoiceService.update).toHaveBeenCalled());
+    const [, body] = asMock(customerInvoiceService.update).mock.calls[0];
+    expect(body.items[2]).toEqual({
+      kind: "product",
+      refId: "p77",
+      qty: "1",
+      discount: null,
+      benefit: { membershipId: "mem-1", benefitId: "ben-1" },
+    });
+    expect(body.items[0]).not.toHaveProperty("benefit");
+    expect(body.items[0]).not.toHaveProperty("promoIds");
+  });
+});

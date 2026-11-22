@@ -74,6 +74,28 @@ const SALE = {
   transactionNumber: "POS-STR002-K2-261117-0001",
   paidAt: "2026-11-17T02:00:00.000Z",
   customer: { _id: "c1", name: "Salwa", phone: null },
+  items: [
+    {
+      kind: "product",
+      refId: "p1",
+      name: "Royal Canin 2kg",
+      sku: "RC-2",
+      qty: "2",
+      unitPrice: "50000.0000",
+      lineTotal: "100000.0000",
+      discount: { resolvedAmount: "10000.0000" },
+    },
+    {
+      kind: "service",
+      refId: "s1",
+      name: "Grooming Kucing",
+      sku: null,
+      qty: "1",
+      unitPrice: "40000.0000",
+      lineTotal: "40000.0000",
+      discount: null,
+    },
+  ],
   payments: [
     {
       channelId: "cash-1",
@@ -140,7 +162,7 @@ describe("Tutup kasir — the payment report", () => {
     expect(onClosed).not.toHaveBeenCalled();
   });
 
-  it("prints the shift's report: counted against expected, then the sales", async () => {
+  it("prints the X-Report figures, then the items the shift sold", async () => {
     const { user } = await closeTheShift();
 
     await user.click(
@@ -153,17 +175,69 @@ describe("Tutup kasir — the payment report", () => {
     expect(sheet).not.toBeNull();
     const inSheet = within(sheet);
 
-    expect(inSheet.getByText("LAPORAN PEMBAYARAN KASIR")).toBeInTheDocument();
+    expect(inSheet.getByText("LAPORAN SHIFT KASIR")).toBeInTheDocument();
     expect(inSheet.getByText("SHF-2026-11-0011")).toBeInTheDocument();
     expect(inSheet.getAllByText("Buloo 2").length).toBeGreaterThan(0);
-    // Expected, counted and the gap the shift stored when it closed.
-    expect(inSheet.getAllByText("Rp 630.000").length).toBeGreaterThan(0);
-    expect(inSheet.getAllByText("Rp 620.000").length).toBeGreaterThan(0);
-    expect(inSheet.getAllByText("−Rp 10.000").length).toBeGreaterThan(0);
-    expect(inSheet.getByText("Kurang kembalian")).toBeInTheDocument();
-    // And the sale behind the cash figure.
-    expect(inSheet.getByText("POS-STR002-K2-261117-0001")).toBeInTheDocument();
-    expect(document.title).toBe("Laporan Pembayaran SHF-2026-11-0011");
+    // The X-Report lines.
+    expect(inSheet.getByText("Penjualan kotor")).toBeInTheDocument();
+    expect(inSheet.getByText("Kas Barat")).toBeInTheDocument();
+    expect(inSheet.getByText("Kas seharusnya")).toBeInTheDocument();
+    expect(inSheet.getByText("Rp 630.000")).toBeInTheDocument();
+    // The items, net of their own discount, and their total.
+    expect(inSheet.getByText("Royal Canin 2kg")).toBeInTheDocument();
+    expect(inSheet.getByText("Rp 90.000")).toBeInTheDocument();
+    expect(inSheet.getByText("Grooming Kucing")).toBeInTheDocument();
+    expect(inSheet.getByText("Rp 40.000")).toBeInTheDocument();
+    expect(inSheet.getAllByText("Rp 130.000").length).toBeGreaterThan(0);
+    expect(document.title).toBe("Laporan Shift SHF-2026-11-0011");
+  });
+
+  it("lists a corrected sale's original lines, the ones the shift took", async () => {
+    mockedPos.listTransactions.mockResolvedValue(
+      page([
+        {
+          ...SALE,
+          items: [
+            {
+              kind: "product",
+              refId: "p1",
+              name: "Royal Canin 2kg",
+              sku: "RC-2",
+              qty: "5",
+              unitPrice: "50000.0000",
+              lineTotal: "250000.0000",
+              discount: null,
+            },
+          ],
+          correction: {
+            count: 1,
+            originalItems: [
+              {
+                kind: "product",
+                refId: "p1",
+                name: "Royal Canin 2kg",
+                sku: "RC-2",
+                qty: { $numberDecimal: "2.0000" },
+                lineTotal: { $numberDecimal: "100000.0000" },
+                discount: null,
+              },
+            ],
+          },
+        },
+      ]) as never,
+    );
+    const { user } = await closeTheShift();
+
+    await user.click(
+      await screen.findByRole("button", { name: /unduh laporan/i }),
+    );
+
+    await waitFor(() => expect(window.print).toHaveBeenCalled());
+    const inSheet = within(
+      document.querySelector("[data-print-root]") as HTMLElement,
+    );
+    expect(inSheet.getAllByText("Rp 100.000").length).toBeGreaterThan(0);
+    expect(inSheet.queryByText("Rp 250.000")).not.toBeInTheDocument();
   });
 
   it("still prints the summary when the sales list cannot be read", async () => {
@@ -179,7 +253,7 @@ describe("Tutup kasir — the payment report", () => {
     await waitFor(() => expect(window.print).toHaveBeenCalled());
     const sheet = document.querySelector("[data-print-root]") as HTMLElement;
     expect(
-      within(sheet).getByText(/daftar transaksi tidak bisa dimuat/i),
+      within(sheet).getByText(/daftar item tidak bisa dimuat/i),
     ).toBeInTheDocument();
   });
 

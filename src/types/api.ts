@@ -2457,6 +2457,24 @@ export interface PosTransaction {
   deviceId?: string | null;
   /** Who rang it up — on the transaction list only (19 Oct 2026). */
   cashierName?: string | null;
+  /**
+   * Set once the sale was corrected from its faktur (17 November 2026).
+   * `originalItems` are the lines as the till took them — what the shift
+   * report counts, since the shift keeps its original figures. Stored as
+   * Mixed, so its money may arrive as `{ $numberDecimal }` rather than a string.
+   */
+  correction?: {
+    count?: number;
+    originalItems?: Array<{
+      kind: PosItemKind;
+      refId: string;
+      name: string;
+      sku: string | null;
+      qty: unknown;
+      lineTotal: unknown;
+      discount: { resolvedAmount: unknown } | null;
+    }>;
+  } | null;
   bookingIds: string[];
   paidAt: string | null;
   createdAt: string;
@@ -3543,6 +3561,36 @@ export interface Booking {
    * one till basket) that are not in its group (21 September 2026).
    */
   related?: BookingRelated[];
+  /**
+   * ONLY ON `GET /bookings/:id` — what the bill (faktur, or the till's sale)
+   * took off this booking's lines by membership and promo (20 November 2026).
+   * Null until something bills it. See `BookingBilledDiscounts`.
+   */
+  billedDiscounts?: BookingBilledDiscounts | null;
+}
+
+/**
+ * THE BILL'S DISCOUNTS ON ONE BOOKING. A booking stores only what was typed on
+ * it; a card benefit and a promo are priced when it is billed, so they are read
+ * off the document — never stored on the booking.
+ */
+export interface BookingBilledDiscounts {
+  via: "invoice" | "pos";
+  documentNumber: string | null;
+  lines: BookingBilledLine[];
+}
+
+/** One booking line as the bill priced it — matched by `refId` + `parentServiceId`. */
+export interface BookingBilledLine {
+  refId: string | null;
+  /** Null on the main service; the service's id on an add-on. */
+  parentServiceId: string | null;
+  /** Everything the bill took off the line — typed, card and promo together. */
+  discountAmount: string | null;
+  membershipDiscount: string | null;
+  benefitLabel: string | null;
+  promoDiscount: string | null;
+  promos: { name: string | null; label: string | null }[];
 }
 
 /** An antar-jemput booking's direction: the door to the branch, or back. */
@@ -8379,7 +8427,26 @@ export interface CreateInvoiceItemInput {
    * could write a free invoice, so the amount is deliberately absent from this
    * shape; what the form quoted only ever drove its own preview.
    */
-  benefit?: { membershipId: string; benefitId: string; optionId?: string | null } | null;
+  benefit?:
+    | {
+        /** A card the animal holds — or `packageRef`, a package on this same bill. */
+        membershipId?: string;
+        packageRef?: string;
+        benefitId: string;
+        optionId?: string | null;
+      }
+    | null;
+  /**
+   * A PACKAGE LINE (`kind: "membership"`, 19 November 2026). `refId` names the
+   * plan; the card is issued with the bill, awaiting payment.
+   *
+   * `membershipStartDate` — absent = cover from the invoice date.
+   * `packageRef` — the bill's own name for the line, so a benefit on another
+   * line can spend it before the card exists.
+   */
+  membershipStartDate?: string;
+  referralCode?: string;
+  packageRef?: string;
   /**
    * PROMO V1 — WHICH promos, never their value. Absent = automatic (only
    * promos with "Faktur" ticked), `[]` = no promo.

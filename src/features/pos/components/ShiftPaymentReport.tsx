@@ -8,7 +8,6 @@ import {
   isPositive,
   subtractDecimals,
   sumDecimals,
-  toMinor,
 } from "@/utils/decimal";
 
 /**
@@ -33,18 +32,12 @@ export interface ShiftReportData {
   printedAt: string;
 }
 
-/** The drawer is one row whatever cash channels the shift used — as on Tutup Kasir. */
-const CASH = "cash";
-
-interface MethodRow {
+interface ItemRow {
   key: string;
   name: string;
-  count: number;
-  sales: string;
-  refunded: string;
-  expected: string;
-  counted: string | null;
-  difference: string | null;
+  sku: string | null;
+  qty: string;
+  total: string;
 }
 
 const DATE_TIME = new Intl.DateTimeFormat("id-ID", {
@@ -54,141 +47,84 @@ const DATE_TIME = new Intl.DateTimeFormat("id-ID", {
   hour: "2-digit",
   minute: "2-digit",
 });
-const TIME = new Intl.DateTimeFormat("id-ID", {
-  hour: "2-digit",
-  minute: "2-digit",
-});
+const QTY = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 3 });
 
 const at = (iso: string | null) => (iso ? DATE_TIME.format(new Date(iso)) : "—");
-const timeOf = (iso: string | null) => (iso ? TIME.format(new Date(iso)) : "—");
 
-/** "+Rp 5.000" for a surplus, "−Rp 5.000" for a shortfall, "Rp 0" when it matches. */
-function signed(value: string | null): string {
-  if (value === null) return "—";
-  return isPositive(value) ? `+${formatMoney(value)}` : formatMoney(value);
+/**
+ * A decimal as a string, whether it came as one or as Mongo's
+ * `{ $numberDecimal }` (a corrected sale's `originalItems` are stored Mixed).
+ */
+function decimalOf(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  if (value && typeof value === "object" && "$numberDecimal" in value) {
+    return String((value as { $numberDecimal: unknown }).$numberDecimal);
+  }
+  return "0";
 }
 
 /**
- * One row per payment method, the way Tutup Kasir counted them: the drawer as
- * one "Kas" row (its expected figure includes the opening float), every other
- * channel as its own, with what the shift stored as counted and the gap.
+ * Every line the shift sold, added up per item (19 November 2026): what was
+ * bought, how many, and for how much.
+ *
+ * THE TOTAL IS THE LINE AFTER ITS OWN DISCOUNT (manual, promo, membership —
+ * `discount.resolvedAmount` holds them all). A cart-level discount and other
+ * charges belong to the basket, not to any one item, so they are not spread
+ * here; the payment figures above are where the money adds up.
+ *
+ * A SALE CORRECTED FROM ITS FAKTUR COUNTS ITS ORIGINAL LINES. The shift keeps
+ * the figures it took that day (BO, 18 November 2026) — the X-Report above
+ * does — so the items have to be the ones behind those figures, not the
+ * corrected lines whose difference went to the faktur as piutang.
  */
-function methodRows(shift: PosShift, report: PosXReport): MethodRow[] {
-  const cashRows = report.breakdown.filter((row) => row.channelType === CASH);
+function itemsSold(sales: PosTransaction[]): ItemRow[] {
+  const rows = new Map<string, ItemRow>();
 
-  const cash: MethodRow = {
-    key: CASH,
-    name: "Kas",
-    count: cashRows.reduce((sum, row) => sum + row.count, 0),
-    sales: sumDecimals(cashRows.map((row) => row.net)),
-    refunded: report.refunds.cashRefunds,
-    expected: shift.expectedCash ?? report.totals.expectedCash,
-    counted: shift.countedCash,
-    difference: shift.difference,
-  };
+  for (const sale of sales) {
+    const lines = sale.correction?.originalItems ?? sale.items ?? [];
 
-  const others = report.breakdown
-    .filter((row) => row.channelType !== CASH)
-    .map<MethodRow>((row) => {
-      const stored = (shift.channelCounts ?? []).find(
-        (count) => count.channelId === row.channelId,
+    for (const item of lines) {
+      const key = `${item.kind}:${item.refId}`;
+      const qty = decimalOf(item.qty);
+      const net = subtractDecimals(
+        decimalOf(item.lineTotal),
+        decimalOf(item.discount?.resolvedAmount),
       );
+      const row = rows.get(key);
 
-      return {
-        key: row.channelId,
-        name: row.channelName,
-        count: row.count,
-        sales: row.net,
-        refunded: row.refunded ?? "0",
-        expected: stored?.expected ?? row.netAfterRefunds ?? row.net,
-        counted: stored?.counted ?? null,
-        difference: stored?.difference ?? null,
-      };
-    });
+      if (row) {
+        row.qty = sumDecimals([row.qty, qty]);
+        row.total = sumDecimals([row.total, net]);
+      } else {
+        rows.set(key, {
+          key,
+          name: item.name,
+          sku: item.sku,
+          qty,
+          total: net,
+        });
+      }
+    }
+  }
 
-  return [cash, ...others];
-}
-
-interface SaleLine {
-  id: string;
-  number: string | null;
-  paidAt: string | null;
-  customer: string | null;
-  amount: string;
+  return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name, "id"));
 }
 
 /**
- * The shift's sales grouped by the method that took the money — what a cashier
- * ticks off against the EDC batch or the QRIS dashboard. A split payment
- * appears under each method, with only that method's share.
+ * Laporan shift kasir — what Tutup Kasir prints (17 November 2026; isinya
+ * diganti 19 November 2026).
  *
- * Change given is not takings: a cash line is what stayed in the drawer.
- */
-function salesByMethod(
-  sales: PosTransaction[],
-  methods: MethodRow[],
-): Array<{ method: MethodRow; lines: SaleLine[]; total: string }> {
-  return methods
-    .map((method) => {
-      const lines = sales
-        .map<SaleLine | null>((sale) => {
-          const taken = sale.payments
-            .filter((payment) =>
-              method.key === CASH
-                ? payment.channelType === CASH
-                : payment.channelId === method.key,
-            )
-            .map((payment) =>
-              subtractDecimals(payment.amount, payment.change ?? "0"),
-            );
-          const amount = sumDecimals(taken);
-
-          return isPositive(amount)
-            ? {
-                id: sale._id,
-                number: sale.transactionNumber,
-                paidAt: sale.paidAt,
-                customer: sale.customer?.name ?? null,
-                amount,
-              }
-            : null;
-        })
-        .filter((line): line is SaleLine => line !== null)
-        .sort((a, b) => (a.paidAt ?? "").localeCompare(b.paidAt ?? ""));
-
-      return {
-        method,
-        lines,
-        total: sumDecimals(lines.map((line) => line.amount)),
-      };
-    })
-    .filter((group) => group.lines.length > 0);
-}
-
-/**
- * Laporan pembayaran kasir — one closed shift on A4 (17 November 2026).
- *
- * WHAT TUTUP KASIR COUNTED, ON PAPER: per payment method, what the books
- * expected, what the cashier counted and the gap, then the sales behind each
- * method. The counts and gaps are the ones the shift STORED when it closed; the
- * takings are recomputed by the x-report, the same source Tutup Kasir and
- * Laporan › Penjualan POS read, so the three cannot disagree.
+ * THE X-REPORT ON PAPER, then the items: the same figures the X-Report dialog
+ * shows (gross, returns, net; per payment method; the drawer), read from the
+ * same `/x-report`, followed by every item the shift's paid sales bought.
  *
  * Printed through the browser like the struk's Unduh PDF, so it is a "save as
  * PDF" for the owner's archive as much as a printout.
  */
 export function ShiftPaymentReport({ data }: { data: ShiftReportData }) {
   const { shift, report } = data;
-  const methods = methodRows(shift, report);
-
-  const total = (pick: (row: MethodRow) => string | null) => {
-    const values = methods.map(pick);
-    return values.every((value) => value === null)
-      ? null
-      : sumDecimals(values.map((value) => value ?? "0"));
-  };
-
-  const groups = data.sales ? salesByMethod(data.sales, methods) : [];
+  const items = data.sales ? itemsSold(data.sales) : [];
   const offline = (report.offlinePending ?? []).filter((d) => d.count > 0);
 
   return (
@@ -205,7 +141,7 @@ export function ShiftPaymentReport({ data }: { data: ShiftReportData }) {
           {data.branchName && <p className="text-sm">{data.branchName}</p>}
         </div>
         <div className="sm:max-w-[50%] sm:shrink-0 sm:text-right">
-          <p className="text-lg font-bold">LAPORAN PEMBAYARAN KASIR</p>
+          <p className="text-lg font-bold">LAPORAN SHIFT KASIR</p>
           <p className="text-sm font-semibold tabular-nums">
             {shift.shiftNumber}
           </p>
@@ -219,8 +155,6 @@ export function ShiftPaymentReport({ data }: { data: ShiftReportData }) {
         <Info label="Ditutup">
           {shift.status === "closed" ? at(shift.closedAt) : "Masih buka"}
         </Info>
-        <Info label="Kas awal">{formatMoney(shift.openingCash)}</Info>
-        <Info label="Jumlah transaksi">{report.transactionCount}</Info>
       </dl>
 
       {offline.length > 0 && (
@@ -231,147 +165,118 @@ export function ShiftPaymentReport({ data }: { data: ShiftReportData }) {
         </p>
       )}
 
-      <h2 className="mt-6 text-sm font-bold">Rekap per metode pembayaran</h2>
-      <table className="mt-2 w-full border-collapse text-xs">
-        <thead>
-          <tr className="border-y border-black">
-            <Th className="text-left">Metode</Th>
-            <Th>Trx</Th>
-            <Th>Penjualan</Th>
-            <Th>Retur</Th>
-            <Th>Seharusnya</Th>
-            <Th>Dihitung</Th>
-            <Th>Selisih</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {methods.map((row) => (
-            <tr key={row.key} className="border-b border-neutral-300">
-              <td className="py-1.5 pr-2 align-top font-medium">{row.name}</td>
-              <Num>{row.count}</Num>
-              <Num>{formatMoney(row.sales)}</Num>
-              <Num>
-                {isPositive(row.refunded) ? `−${formatMoney(row.refunded)}` : "—"}
-              </Num>
-              <Num>{formatMoney(row.expected)}</Num>
-              <Num>{row.counted === null ? "—" : formatMoney(row.counted)}</Num>
-              <Num bold={row.difference !== null && toMinor(row.difference) !== 0n}>
-                {signed(row.difference)}
-              </Num>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr className="border-y border-black font-bold">
-            <td className="py-1.5 pr-2">Total</td>
-            <Num>{methods.reduce((sum, row) => sum + row.count, 0)}</Num>
-            <Num>{formatMoney(total((row) => row.sales))}</Num>
-            <Num>
-              {isPositive(total((row) => row.refunded) ?? "0")
-                ? `−${formatMoney(total((row) => row.refunded))}`
-                : "—"}
-            </Num>
-            <Num>{formatMoney(total((row) => row.expected))}</Num>
-            <Num>{formatMoney(total((row) => row.counted))}</Num>
-            <Num>{signed(total((row) => row.difference))}</Num>
-          </tr>
-        </tfoot>
-      </table>
-      <p className="mt-1.5 text-xs text-neutral-600">
-        &quot;Seharusnya&quot; untuk Kas sudah termasuk kas awal{" "}
-        {formatMoney(shift.openingCash)}. Selisih plus berarti uang lebih, minus
-        berarti kurang.
-      </p>
+      {/* The X-Report dialog, line for line. */}
+      <section className="mt-6 space-y-4 text-xs">
+        <dl className="space-y-1">
+          <Line label="Transaksi">{report.transactionCount}</Line>
+          <Line label="Penjualan kotor">
+            {formatMoney(report.totals.takings)}
+          </Line>
+          {isPositive(report.refunds.total ?? "0") && (
+            <Line label={`Retur (${report.refunds.returnCount ?? 0})`}>
+              −{formatMoney(report.refunds.total ?? "0")}
+            </Line>
+          )}
+          <Line label="Penjualan bersih" bold>
+            {formatMoney(report.totals.netSales ?? report.totals.takings)}
+          </Line>
+        </dl>
 
-      {report.refunds.count > 0 && (
-        <p className="mt-3 text-xs">
-          <span className="font-semibold">Retur:</span> {report.refunds.count}{" "}
-          transaksi
-          {report.refunds.total ? `, total ${formatMoney(report.refunds.total)}` : ""}
-          .
-        </p>
-      )}
-
-      {shift.closingNotes && (
-        <div className="mt-3 text-xs">
-          <p className="font-semibold">Catatan penutupan:</p>
-          <p className="whitespace-pre-line">{shift.closingNotes}</p>
+        <div>
+          <p className="mb-1 font-bold">Per metode bayar</p>
+          {report.breakdown.length === 0 ? (
+            <p className="text-neutral-600">Belum ada pembayaran.</p>
+          ) : (
+            <dl className="space-y-1">
+              {report.breakdown.map((row) => (
+                <Line key={row.channelId} label={row.channelName}>
+                  {formatMoney(row.netAfterRefunds ?? row.net)}
+                  {isPositive(row.refunded ?? "0") && (
+                    <span className="block text-neutral-600">
+                      {formatMoney(row.net)} − retur{" "}
+                      {formatMoney(row.refunded ?? "0")}
+                    </span>
+                  )}
+                </Line>
+              ))}
+            </dl>
+          )}
         </div>
-      )}
 
-      <h2 className="mt-6 text-sm font-bold">Daftar transaksi per metode</h2>
+        <dl className="space-y-1 border-t border-black pt-2">
+          <Line label="Saldo awal">{formatMoney(shift.openingCash)}</Line>
+          {report.refunds.count > 0 && (
+            <Line label={`Retur tunai (${report.refunds.count})`}>
+              −{formatMoney(report.refunds.cashRefunds)}
+            </Line>
+          )}
+          <Line label="Penjualan tunai bersih">
+            {formatMoney(report.totals.cashTakings)}
+          </Line>
+          <Line label="Kas seharusnya" bold>
+            {formatMoney(report.totals.expectedCash)}
+          </Line>
+        </dl>
+      </section>
+
+      <h2 className="mt-6 text-sm font-bold">Item terjual</h2>
       {data.sales === null ? (
         <p className="mt-2 text-xs text-neutral-600">
-          Daftar transaksi tidak bisa dimuat untuk akun ini. Rekap di atas tetap
+          Daftar item tidak bisa dimuat untuk akun ini. Ringkasan di atas tetap
           lengkap.
         </p>
-      ) : groups.length === 0 ? (
+      ) : items.length === 0 ? (
         <p className="mt-2 text-xs text-neutral-600">
-          Tidak ada transaksi di shift ini.
+          Tidak ada item terjual di shift ini.
         </p>
       ) : (
-        groups.map(({ method, lines, total: groupTotal }) => (
-          <section key={method.key} className="mt-3">
-            {/*
-              FIXED COLUMNS, THE SAME IN EVERY METHOD'S TABLE, so the figures
-              line up down the page instead of each table sizing to its own
-              longest customer name.
-            */}
-            <table className="w-full table-fixed border-collapse text-xs">
-              <colgroup>
-                <col className="w-[6%]" />
-                <col className="w-[36%]" />
-                <col className="w-[9%]" />
-                <col />
-                <col className="w-[17%]" />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th
-                    colSpan={5}
-                    className="pb-1 text-left text-xs font-bold"
-                  >
-                    {method.name} · {lines.length} transaksi
-                  </th>
-                </tr>
-                <tr className="border-y border-black">
-                  <Th className="text-left">No</Th>
-                  <Th className="text-left">No. transaksi</Th>
-                  <Th className="text-left">Jam</Th>
-                  <Th className="text-left">Pelanggan</Th>
-                  <Th>Nominal</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {lines.map((line, index) => (
-                  <tr key={line.id} className="border-b border-neutral-300">
-                    <td className="py-1 pr-2 align-top tabular-nums">
-                      {index + 1}
-                    </td>
-                    <td className="py-1 pr-2 align-top whitespace-nowrap tabular-nums">
-                      {line.number ?? "—"}
-                    </td>
-                    <td className="py-1 pr-2 align-top whitespace-nowrap tabular-nums">
-                      {timeOf(line.paidAt)}
-                    </td>
-                    <td className="py-1 pr-2 align-top">
-                      {line.customer ?? "Pelanggan umum"}
-                    </td>
-                    <Num>{formatMoney(line.amount)}</Num>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="font-bold">
-                  <td colSpan={4} className="py-1 pr-2 text-right">
-                    Subtotal {method.name}
+        <>
+          <table className="mt-2 w-full table-fixed border-collapse text-xs">
+            <colgroup>
+              <col className="w-[6%]" />
+              <col />
+              <col className="w-[12%]" />
+              <col className="w-[20%]" />
+            </colgroup>
+            <thead>
+              <tr className="border-y border-black">
+                <Th className="text-left">No</Th>
+                <Th className="text-left">Item</Th>
+                <Th>Qty</Th>
+                <Th>Total</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item, index) => (
+                <tr key={item.key} className="border-b border-neutral-300">
+                  <td className="py-1 pr-2 align-top tabular-nums">
+                    {index + 1}
                   </td>
-                  <Num>{formatMoney(groupTotal)}</Num>
+                  <td className="py-1 pr-2 align-top">
+                    {item.name}
+                    {item.sku && (
+                      <span className="block text-neutral-600">{item.sku}</span>
+                    )}
+                  </td>
+                  <Num>{QTY.format(Number(item.qty))}</Num>
+                  <Num>{formatMoney(item.total)}</Num>
                 </tr>
-              </tfoot>
-            </table>
-          </section>
-        ))
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-y border-black font-bold">
+                <td colSpan={3} className="py-1.5 pr-2 text-right">
+                  Total item
+                </td>
+                <Num>{formatMoney(sumDecimals(items.map((i) => i.total)))}</Num>
+              </tr>
+            </tfoot>
+          </table>
+          <p className="mt-1.5 text-xs text-neutral-600">
+            Total per item sudah dipotong diskon item. Diskon keranjang dan
+            biaya lain tidak dibagi ke item.
+          </p>
+        </>
       )}
 
       <footer className="mt-10 flex flex-wrap items-end justify-between gap-6 text-xs">
@@ -381,6 +286,23 @@ export function ShiftPaymentReport({ data }: { data: ShiftReportData }) {
           <Signature label="Diperiksa oleh" name={null} />
         </div>
       </footer>
+    </div>
+  );
+}
+
+function Line({
+  label,
+  bold = false,
+  children,
+}: {
+  label: string;
+  bold?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`flex justify-between gap-4 ${bold ? "font-bold" : ""}`}>
+      <dt className={bold ? "" : "text-neutral-700"}>{label}</dt>
+      <dd className="shrink-0 text-right tabular-nums">{children}</dd>
     </div>
   );
 }

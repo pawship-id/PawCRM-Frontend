@@ -323,7 +323,7 @@ describe("BookingDetailScreen — the header", () => {
       screen.queryByRole("link", { name: /^ubah$/i }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /mark arrived →/i }),
+      screen.getByRole("button", { name: /tandai sudah tiba →/i }),
     ).toBeInTheDocument();
   });
 
@@ -481,10 +481,10 @@ describe("BookingDetailScreen — the status track", () => {
     show();
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /mark arrived →/i }),
+      await screen.findByRole("button", { name: /tandai sudah tiba →/i }),
     );
     await userEvent.click(
-      await screen.findByRole("button", { name: /^mark arrived$/i }),
+      await screen.findByRole("button", { name: /^tandai sudah tiba$/i }),
     );
 
     /* ⚠️ THE BADGE MOVED — asserted first, because "no second fetch" is

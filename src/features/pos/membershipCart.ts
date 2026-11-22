@@ -1,5 +1,6 @@
 import type {
   PosBenefitPick,
+  PosDiscount,
   PosItem,
   PosTransaction,
 } from "@/types/api";
@@ -41,7 +42,9 @@ export function isFeeLine(item: Pick<PosItem, "homeTripId" | "visitFee">): boole
  * fields are the fallback for an older response. A visit-fee WAIVER is derived,
  * never picked — it is not a pick and is never sent back.
  */
-export function pickOf(item: PosItem): PosBenefitPick | null {
+export function pickOf(
+  item: Pick<PosItem, "benefit"> & { discount?: Partial<PosDiscount> | null },
+): PosBenefitPick | null {
   if (item.benefit !== undefined) {
     const pick = item.benefit;
     return pick && pick.benefitId && (pick.membershipId || pick.packageRef)
@@ -415,7 +418,7 @@ export function petPlans(
 }
 
 /** A fresh `packageRef` — unique per cart, ≤ 60 chars (contract §6.2). */
-export function newPackageRef(items: PosItem[]): string {
+export function newPackageRef(items: Pick<PosItem, "kind" | "packageRef">[]): string {
   const taken = new Set(items.map((item) => item.packageRef).filter(Boolean));
   let n = items.filter((item) => item.kind === "membership").length + 1;
   while (taken.has(`pkg-${n}`)) n += 1;

@@ -31,11 +31,19 @@ function groupChildren(can: CanFn, label: string): string[] | undefined {
 }
 
 describe("filterNavItems", () => {
-  it("keeps items with no permission requirement (Beranda…)", () => {
+  it("keeps items with no permission requirement (Laporan, Panduan)", () => {
     const labels = itemsOf(denyAll).map((i) => i.label);
     // Every ungated leaf survives; the gated ones are dropped.
-    expect(labels).toContain("Beranda");
+    expect(labels).toEqual(expect.arrayContaining(["Laporan", "Panduan"]));
     expect(labels).not.toContain("Pengaturan");
+  });
+
+  /* BERANDA IS GATED since 15 October 2026 — any one of its tabs opens the row. */
+  it("shows Beranda only to a role that can read one of its tabs", () => {
+    expect(itemsOf(denyAll).map((i) => i.label)).not.toContain("Beranda");
+    const todayOnly: CanFn = (feature, action) =>
+      feature === "berandaToday" && action === "read";
+    expect(itemsOf(todayOnly).map((i) => i.label)).toContain("Beranda");
   });
 
   /*
@@ -453,21 +461,21 @@ describe("filterNavSections", () => {
   });
 
   it("drops a section once every item in it is filtered away", () => {
-    // Deny-all leaves Utama (Beranda is ungated), Keuangan (Laporan is) and
-    // Sistem (Panduan is), and nothing else: the other two sections are groups
-    // whose survival needs a gated child.
+    // Deny-all leaves Keuangan (Laporan is ungated) and Sistem (Panduan is),
+    // and nothing else — Utama goes too, since Beranda is gated on its tabs.
     expect(filterNavSections(NAV_SECTIONS, denyAll).map((s) => s.label)).toEqual([
-      "Utama",
       "Keuangan",
       "Sistem",
     ]);
   });
 
   it("filters the items inside a surviving section", () => {
-    const utama = filterNavSections(NAV_SECTIONS, denyAll).find(
+    const todayOnly: CanFn = (feature, action) =>
+      feature === "berandaToday" && action === "read";
+    const utama = filterNavSections(NAV_SECTIONS, todayOnly).find(
       (s) => s.label === "Utama",
     );
-    // Kasir is gated on posTransactions:read; Beranda is not gated at all.
+    // Kasir is gated on posTransactions:read; Beranda opens on any of its tabs.
     expect(utama?.items.map((i) => i.label)).toEqual(["Beranda"]);
   });
 

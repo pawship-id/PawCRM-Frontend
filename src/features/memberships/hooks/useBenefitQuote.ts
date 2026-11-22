@@ -6,6 +6,7 @@ import { membershipService } from "@/services/membership.service";
 import type {
   BenefitCandidate,
   BenefitQuoteLine,
+  BenefitQuotePackage,
   BenefitQuoteResponse,
 } from "@/types/membership";
 
@@ -38,21 +39,40 @@ import type {
 export function useBenefitQuote({
   customerId,
   lines,
+  packages = [],
+  at = null,
   enabled = true,
 }: {
   customerId: string | null;
   lines: BenefitQuoteLine[];
+  /**
+   * PACKAGES ON THE SAME BILL, not paid yet (19 November 2026) — quoted as
+   * virtual cards, so their benefits can be offered before the card exists.
+   */
+  packages?: BenefitQuotePackage[];
+  /** The instant quotas are judged at — the invoice date; null = now. */
+  at?: string | null;
   enabled?: boolean;
 }) {
   const [quote, setQuote] = useState<BenefitQuoteResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  /** The request the current `quote` answers — see `settled` below. */
+  const [answered, setAnswered] = useState<string | null>(null);
 
   const digest = useMemo(
     () =>
-      JSON.stringify(
-        lines.map((line) => [line.ref, line.refId, line.petId, line.amount]),
-      ),
-    [lines],
+      /*
+        THE WHOLE LINE (20 November 2026). The faktur now sends kind, qty, the
+        row's pick and "Tanpa potongan" like the till — each changes the answer,
+        so each has to re-ask.
+      */
+      JSON.stringify([
+        customerId,
+        lines,
+        packages.map((pkg) => [pkg.ref, pkg.planId, pkg.petId, pkg.startDate]),
+        at,
+      ]),
+    [customerId, lines, packages, at],
   );
 
   const active = enabled && Boolean(customerId) && lines.length > 0;
@@ -71,19 +91,31 @@ export function useBenefitQuote({
 
     if (!active) {
       setQuote(null);
+      setAnswered(digest);
       return () => {
         live = false;
       };
     }
 
     membershipService
-      .quote({ customerId: customerId ?? undefined, lines })
+      .quote({
+        customerId: customerId ?? undefined,
+        lines,
+        ...(packages.length > 0 ? { packages } : {}),
+        ...(at ? { at } : {}),
+      })
       .then((result) => {
-        if (live) setQuote(result);
+        if (live) {
+          setQuote(result);
+          setAnswered(digest);
+        }
       })
       .catch(() => {
         // Silent — see the header.
-        if (live) setQuote(null);
+        if (live) {
+          setQuote(null);
+          setAnswered(digest);
+        }
       })
       .finally(() => {
         if (live) setLoading(false);
@@ -113,5 +145,13 @@ export function useBenefitQuote({
   /** Every card this customer's animals hold — for the banner over the cart. */
   const cards = quote?.cards ?? [];
 
-  return { quote, cards, offerFor, loading };
+  /**
+   * THE ANSWER IS FOR THE LINES ON SCREEN NOW (20 November 2026). `quote`
+   * keeps the last answer while the next is in flight — fine for display,
+   * wrong for anything that WRITES from it (the faktur's auto-apply would put
+   * the old animal's card on a row whose animal just changed).
+   */
+  const settled = !active ? true : answered === digest;
+
+  return { quote, cards, offerFor, loading, settled };
 }

@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
+  ArrowLeft,
   BookOpen,
   EllipsisVertical,
   MessageCircle,
@@ -89,6 +91,7 @@ function customerLabel(invoice: {
 export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
   const { invoice, loading, error, notFound, applyInvoice, refetch } =
     useCustomerInvoice(invoiceId);
+  const router = useRouter();
 
   const [payOpen, setPayOpen] = useState(false);
   const [voidOpen, setVoidOpen] = useState(false);
@@ -186,9 +189,14 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
     A TILL-BORN FAKTUR (BO, 18 November 2026) follows the same rule — nothing
     paid on it — plus whatever else the server says (a return, a package…).
   */
+  /*
+    A FAKTUR THAT SELLS A PACKAGE IS NOT EDITED (19 November 2026) — its cards
+    were issued with it; the server refuses the edit, so the button is not drawn.
+  */
+  const sellsPackage = (invoice.items ?? []).some((item) => item.kind === "membership");
   const editable = tillBorn
     ? !voided && Boolean(till?.canEdit)
-    : !shopeeBorn && invoice.status === "unpaid" && !hasActivePayment;
+    : !shopeeBorn && !sellsPackage && invoice.status === "unpaid" && !hasActivePayment;
   const mayEdit = editable && can("customerInvoices", "update");
 
   const lockNote = voided
@@ -203,6 +211,8 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         : till?.editBlockedReason
           ? `Dari transaksi kasir — tidak bisa diubah: ${till.editBlockedReason}`
           : "Dari transaksi kasir."
+      : sellsPackage
+        ? "Berisi paket membership — tidak bisa diubah. Kartunya sudah dibuat bersama faktur dan aktif setelah faktur lunas; untuk mengganti, batalkan faktur lalu buat faktur baru."
       : editable
         ? "Belum ada pembayaran — faktur masih bisa diubah. Terkunci otomatis begitu pembayaran pertama tercatat."
         : "Terkunci sejak ada pembayaran tercatat — batalkan pembayarannya dulu untuk mengubah.";
@@ -265,6 +275,23 @@ export function InvoiceDetail({ invoiceId }: { invoiceId: string }) {
         </PageHeading>
 
         <div className="flex items-center gap-2">
+          {/*
+            KEMBALI (19 November 2026) — to wherever the faktur was opened from
+            (the list keeps its filters, a customer's page, a payment), and to
+            the list when the page was opened straight from a link.
+          */}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => {
+              if (window.history.length > 1) router.back();
+              else router.push("/dashboard/sales/invoice");
+            }}
+          >
+            <ArrowLeft className="size-4" />
+            Kembali
+          </Button>
+
           {/*
             A LINK, NOT A DIALOG — printing is a task people come back to, and a
             dialog cannot be linked to or opened in a second tab. A cancelled

@@ -454,6 +454,15 @@ export function InventoryHub() {
             }
             empty={`Semua stok${scope} di atas batas minimum.`}
             moreLabel="produk lain juga di bawah batas minimum"
+            /*
+          The full reorder list already exists as the Stok Minim report — same
+          endpoint, every page, sortable and exportable. It carries no gudang
+          filter on purpose (see LowStockScreen), so the link does not pass one.
+        */
+            seeAll={{
+              href: "/dashboard/reports/low-stock",
+              label: "Lihat semua perlu restock",
+            }}
           >
             {lowStock.items.map((product) => (
               <li

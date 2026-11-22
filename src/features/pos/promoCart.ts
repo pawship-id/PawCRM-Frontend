@@ -1,5 +1,5 @@
 import { isPositive, subtractDecimals } from "@/utils/decimal";
-import type { PosBenefitPick, PosItem, PosTransaction } from "@/types/api";
+import type { PosBenefitPick, PosDiscount, PosItem, PosTransaction } from "@/types/api";
 import type {
   BenefitCandidate,
   BenefitQuoteLineResult,
@@ -222,8 +222,17 @@ export function combinedPromoLabel(parts: Array<{ name: string | null; label: st
 const promosValue = (promoIds: string[]) =>
   promoIds.length === 1 ? promoValue(promoIds[0]) : promoValue([...promoIds].sort().join(","));
 
+/**
+ * WHAT THE SELECT READS OFF A LINE — a till line, or a faktur row shaped like
+ * one (20 November 2026: the faktur uses the same select and the same rules).
+ */
+export type PotonganItem = Pick<PosItem, "benefit"> & {
+  discount?: Partial<PosDiscount> | null;
+  promos?: Array<{ promoId: string; name: string | null; label: string | null }>;
+};
+
 /** What the select shows as chosen right now. */
-export function potonganValue(item: PosItem): string {
+export function potonganValue(item: PotonganItem): string {
   const pick = pickOf(item);
   if (pick) return memberValue(pickKey(pick));
   const promos = item.promos ?? [];
@@ -238,7 +247,7 @@ export function potonganValue(item: PosItem): string {
  * over a line something is paying for.
  */
 export function potonganOptions(
-  item: PosItem,
+  item: PotonganItem,
   memberLine: BenefitQuoteLineResult | null,
   promoLine: PromoQuoteLine | null,
   { promosAllowed = true }: { promosAllowed?: boolean } = {},

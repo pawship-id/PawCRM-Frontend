@@ -126,7 +126,7 @@ describe("X-Report — a cashier's sales still on another till", () => {
     renderWithAuth(<PosXReportDialog shiftId="s1" onOpenChange={jest.fn()} />);
 
     expect(await screen.findByText(/Masih ada 3 transaksi offline/)).toBeInTheDocument();
-    expect(screen.getByText(/K2 \(Tablet belakang\): 3 transaksi/)).toBeInTheDocument();
+    expect(screen.getByText(/Tablet belakang: 3 transaksi/)).toBeInTheDocument();
   });
 });
 

@@ -17,7 +17,17 @@ import {
   TextareaField,
 } from "@/components";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { useBranchOptions } from "@/features/inventory/hooks/useBranchOptions";
 import { usePetOptions } from "@/hooks/usePetOptions";
@@ -40,6 +50,7 @@ import {
   planHref,
 } from "../labels";
 import {
+  draftToBenefitInput,
   draftToPayload,
   normalizeMoney,
   planBlockedReason,
@@ -68,6 +79,9 @@ import { VariantPriceTable } from "./VariantPriceTable";
  * The state is a `PlanDraft` (strings, as the inputs hold them) and every rule
  * that turns it into the API payload lives in `planDraft.ts`, tested on its own.
  */
+/** Who an edited benefit list reaches — see the dialog in the form. */
+type BenefitScope = "new" | "running";
+
 export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
   const router = useRouter();
   const editing = Boolean(plan);
@@ -75,6 +89,21 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
   const [draft, setDraft] = useState<PlanDraft>(() => planToDraft(plan));
   const [submitting, setSubmitting] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  /*
+    WHO GETS AN EDITED BENEFIT LIST (20 November 2026). Asked in a dialog when
+    "Simpan paket" is pressed, with NOTHING preselected, so whoever edits the
+    benefits decides on purpose: "new" = only cards sold from now on,
+    "running" = also every card still going.
+  */
+  const [askScope, setAskScope] = useState(false);
+  const [benefitScope, setBenefitScope] = useState<BenefitScope | null>(null);
+  /*
+    COMPARED AS THE API WOULD RECEIVE THEM, not as draft rows: the editor fills
+    in form-only fields as it mounts, and those must not count as an edit.
+  */
+  const [initialBenefits] = useState(() =>
+    JSON.stringify(planToDraft(plan).benefits.map(draftToBenefitInput)),
+  );
 
   const { choices } = usePetOptions();
   const { branches } = useBranchOptions();
@@ -86,23 +115,48 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
 
   const blockedReason = planBlockedReason(draft);
   const variantPlan = draft.attachTo === "pet" && draft.priceMode === "variant";
+  const benefitsChanged =
+    editing && JSON.stringify(draft.benefits.map(draftToBenefitInput)) !== initialBenefits;
 
-  async function onSubmit(event: React.FormEvent) {
+  function onSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (blockedReason) return;
+    if (benefitsChanged) {
+      setBenefitScope(null);
+      setAskScope(true);
+      return;
+    }
+    void save(null);
+  }
+
+  async function save(scope: BenefitScope | null) {
     setSubmitting(true);
     setFieldErrors({});
 
     try {
       const payload = draftToPayload(draft, { editing, tenantRecognition });
+      const applyBenefitsToCards = benefitsChanged && scope === "running";
       const saved = editing
-        ? await membershipService.updatePlan(plan!.id, payload)
+        ? await membershipService.updatePlan(plan!.id, {
+            ...payload,
+            ...(applyBenefitsToCards ? { applyBenefitsToCards: true } : {}),
+          })
         : await membershipService.createPlan(payload);
+      const synced = (saved as { syncedCards?: number }).syncedCards ?? 0;
 
-      swalToast(editing ? "Paket membership tersimpan." : "Paket membership dibuat.", "success");
+      swalToast(
+        !editing
+          ? "Paket membership dibuat."
+          : synced > 0
+            ? `Paket membership tersimpan. Benefit baru sudah masuk ke ${synced} kartu yang berjalan.`
+            : "Paket membership tersimpan.",
+        "success",
+      );
+      setAskScope(false);
       router.push(planHref(saved.id));
       router.refresh();
     } catch (err) {
+      setAskScope(false);
       const failure = membershipFailure(err, "Gagal menyimpan paket membership. Coba lagi.");
       /* Lebih lama dari toast "tersimpan": penolakan harus sempat dibaca. */
       swalToast(failure.toast, "error", 6000);
@@ -478,6 +532,62 @@ export function MembershipPlanForm({ plan }: { plan?: MembershipPlan }) {
           />
         </div>
       </div>
+      <Dialog open={askScope} onOpenChange={(open) => !submitting && setAskScope(open)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Perubahan benefit berlaku untuk siapa?</DialogTitle>
+            <DialogDescription>
+              Benefit paket ini kamu ubah. Pilih dulu siapa yang ikut mendapatkannya.
+            </DialogDescription>
+          </DialogHeader>
+
+          <RadioGroup
+            value={benefitScope ?? ""}
+            onValueChange={(value) => setBenefitScope(value as BenefitScope)}
+            disabled={submitting}
+            aria-label="Perubahan benefit berlaku untuk"
+          >
+            <div className="flex items-start gap-2">
+              <RadioGroupItem value="new" id="benefit-scope-new" className="mt-0.5" />
+              <Label htmlFor="benefit-scope-new" className="flex flex-col items-start gap-0.5">
+                <span>Hanya pembeli baru</span>
+                <span className="text-xs font-normal text-muted">
+                  Kartu yang sudah terjual tetap memakai benefit saat dibeli.
+                </span>
+              </Label>
+            </div>
+            <div className="flex items-start gap-2">
+              <RadioGroupItem value="running" id="benefit-scope-running" className="mt-0.5" />
+              <Label htmlFor="benefit-scope-running" className="flex flex-col items-start gap-0.5">
+                <span>Pembeli baru dan kartu yang sudah berjalan</span>
+                <span className="text-xs font-normal text-muted">
+                  Benefit baru dan benefit yang diubah ikut masuk ke kartu yang masih aktif,
+                  terjadwal, ditunda, atau belum lunas. Jatah yang sudah dipakai tetap dihitung.
+                  Benefit yang kamu hapus tetap ada di kartu lama, karena sudah dibayar pelanggan.
+                </span>
+              </Label>
+            </div>
+          </RadioGroup>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={submitting}
+              onClick={() => setAskScope(false)}
+            >
+              Kembali
+            </Button>
+            <Button
+              type="button"
+              disabled={!benefitScope || submitting}
+              onClick={() => benefitScope && void save(benefitScope)}
+            >
+              {submitting ? "Menyimpan…" : "Simpan paket"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

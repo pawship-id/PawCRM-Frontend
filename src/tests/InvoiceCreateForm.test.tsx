@@ -3372,10 +3372,12 @@ describe("Benefit membership on a faktur", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Pakai" }));
 
-    /* The row gets the mark (the chip); the section gets "Lepas". Both carry
-       the same text — the heading above the list says it too. */
+    /* The section gets "Lepas"; the row shows the till's "Potongan" select
+       (20 November 2026), set to the card's benefit. */
     expect(screen.getByRole("button", { name: "Lepas" })).toBeInTheDocument();
-    expect(await screen.findAllByText("Benefit membership")).toHaveLength(2);
+    expect(
+      await screen.findByRole("combobox", { name: /Potongan untuk Grooming/ }),
+    ).toBeInTheDocument();
   });
 
   it("takes it back off from the section, and the row's mark goes with it", async () => {

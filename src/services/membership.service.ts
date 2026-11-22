@@ -71,7 +71,11 @@ export const membershipService = {
     apiClient.post<MembershipPlan>("/membership-plans", input),
 
   updatePlan: (id: string, input: UpdateMembershipPlanInput) =>
-    apiClient.patch<MembershipPlan>(`/membership-plans/${id}`, input),
+    /* `syncedCards`: how many running cards took the new benefits. */
+    apiClient.patch<MembershipPlan & { syncedCards?: number }>(
+      `/membership-plans/${id}`,
+      input,
+    ),
 
   /**
    * Soft delete. REFUSED (409) while any card still runs on the plan — retiring
