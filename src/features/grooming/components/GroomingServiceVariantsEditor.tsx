@@ -213,7 +213,9 @@ export function GroomingServiceVariantsEditor({
   const dirty =
     draftSignature(draft, axisValues) !==
     draftSignature(seedDraft(service), axisValues);
-  const problem = draftProblem(draft, axisValues);
+  /* A HOTEL service bills by the night and has no length (21 November 2026). */
+  const untimed = (service.serviceKind ?? serviceKind) === "hotel";
+  const problem = draftProblem(draft, axisValues, { untimed });
   const tooMany = combos.length > MAX_VARIANTS;
   const smallestSize = axisValues.sizeCategory?.[0]?.label ?? "ukuran terkecil";
   const activeCount = combos.filter((combo) => rowOf(draft, combo.key).active).length;
@@ -308,7 +310,7 @@ export function GroomingServiceVariantsEditor({
     try {
       const updated = await serviceService.update(
         service._id,
-        draftPatch(draft, axisValues),
+        draftPatch(draft, axisValues, { untimed }),
       );
       swalToast("Varian & harga tersimpan.");
       onSaved(updated);
@@ -466,10 +468,10 @@ export function GroomingServiceVariantsEditor({
       </Card>
 
       {draft.axes.length === 0 ? (
-        <Card title="Harga & durasi">
+        <Card title={untimed ? "Harga per malam" : "Harga & durasi"}>
           <div className="grid max-w-lg gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
-              Harga
+              {untimed ? "Harga per malam" : "Harga"}
               <Input
                 inputMode="numeric"
                 value={draft.flat.price}
@@ -497,6 +499,7 @@ export function GroomingServiceVariantsEditor({
                 className="h-11 tabular-nums"
               />
             </label>
+            {!untimed && (
             <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
               Durasi (menit)
               <Input
@@ -515,6 +518,7 @@ export function GroomingServiceVariantsEditor({
                 className="h-11 tabular-nums"
               />
             </label>
+            )}
           </div>
         </Card>
       ) : (
@@ -549,9 +553,11 @@ export function GroomingServiceVariantsEditor({
                     <Button type="button" size="sm" variant="secondary" onClick={() => setBulkField("price")}>
                       Set harga
                     </Button>
-                    <Button type="button" size="sm" variant="secondary" onClick={() => setBulkField("duration")}>
-                      Set durasi
-                    </Button>
+                    {!untimed && (
+                      <Button type="button" size="sm" variant="secondary" onClick={() => setBulkField("duration")}>
+                        Set durasi
+                      </Button>
+                    )}
                     <Button type="button" size="sm" variant="secondary" onClick={() => setBulkField("percent")}>
                       + %
                     </Button>
@@ -632,8 +638,8 @@ export function GroomingServiceVariantsEditor({
                       />
                     </TableHead>
                     <TableHead>Varian</TableHead>
-                    <TableHead className="w-44">Harga</TableHead>
-                    <TableHead className="w-36">Durasi</TableHead>
+                    <TableHead className="w-44">{untimed ? "Harga per malam" : "Harga"}</TableHead>
+                    {!untimed && <TableHead className="w-36">Durasi</TableHead>}
                     <TableHead className="w-20">Aktif</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -696,6 +702,7 @@ export function GroomingServiceVariantsEditor({
                             className="h-9 font-semibold tabular-nums"
                           />
                         </TableCell>
+                        {!untimed && (
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Input
@@ -719,6 +726,7 @@ export function GroomingServiceVariantsEditor({
                             <span className="text-xs text-muted">mnt</span>
                           </div>
                         </TableCell>
+                        )}
                         <TableCell>
                           <Checkbox
                             aria-label={`${combo.label} aktif`}

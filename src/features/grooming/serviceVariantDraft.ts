@@ -308,12 +308,14 @@ export function fillBySize(
 export function draftProblem(
   draft: VariantDraft,
   table: VariantAxisValues,
+  /* A HOTEL service bills by the night and has no length (21 November 2026). */
+  { untimed: noDuration = false }: { untimed?: boolean } = {},
 ): string | null {
   if (draft.axes.length === 0) {
     if (priceDigits(draft.flat.price) === null) {
       return "harganya belum diisi dengan benar";
     }
-    if (durationValue(draft.flat.duration) === null) {
+    if (!noDuration && durationValue(draft.flat.duration) === null) {
       return `durasinya belum diisi (1–${MAX_DURATION_MIN} menit)`;
     }
     return null;
@@ -331,7 +333,9 @@ export function draftProblem(
   const unpriced = rows.filter((row) => priceDigits(row.price) === null).length;
   if (unpriced > 0) return `${unpriced} varian belum punya harga yang benar`;
 
-  const untimed = rows.filter((row) => durationValue(row.duration) === null).length;
+  const untimed = noDuration
+    ? 0
+    : rows.filter((row) => durationValue(row.duration) === null).length;
   if (untimed > 0) {
     return `${untimed} varian belum punya durasi (1–${MAX_DURATION_MIN} menit)`;
   }
@@ -349,6 +353,7 @@ export function draftProblem(
 export function draftPatch(
   draft: VariantDraft,
   table: VariantAxisValues,
+  { untimed: noDuration = false }: { untimed?: boolean } = {},
 ): UpdateServiceInput {
   const serviceLocations = PLACE_LOCATIONS[draft.place];
 
@@ -357,7 +362,7 @@ export function draftPatch(
       serviceLocations,
       hasVariants: false,
       price: priceDigits(draft.flat.price) as string,
-      durationMin: durationValue(draft.flat.duration) as number,
+      ...(noDuration ? {} : { durationMin: durationValue(draft.flat.duration) as number }),
     };
   }
 
@@ -376,7 +381,7 @@ export function draftPatch(
         ...(combo.zoneId ? { zoneId: combo.zoneId } : {}),
         ...(combo.choices.length > 0 ? { choices: combo.choices } : {}),
         price: priceDigits(row.price) as string,
-        durationMin: durationValue(row.duration) as number,
+        durationMin: noDuration ? null : (durationValue(row.duration) as number),
         isActive: row.active,
       };
     }),

@@ -28,6 +28,7 @@ export type CommissionsQuery = Required<
     | "dateFrom"
     | "dateTo"
     | "status"
+    | "serviceKind"
     | "sort"
     | "dir"
     | "page"
@@ -47,6 +48,7 @@ export const DEFAULT_COMMISSIONS_QUERY: CommissionsQuery = {
   dateFrom: "",
   dateTo: "",
   status: "",
+  serviceKind: "",
   search: "",
   sort: "bookingDate",
   dir: "desc",

@@ -31,6 +31,7 @@ import {
   moveStep,
   removeStep,
   seedSteps,
+  setTime,
   setWeight,
   splitEvenly,
   stepsPatch,
@@ -133,6 +134,8 @@ export function GroomingServiceStepsEditor({
   const addonsDirty = isMain && !sameIds(addonIds, storedAddonIds);
   const dirty = stepsDirty || addonsDirty;
   const problem = stepsProblem(draft);
+  /* A HOTEL tahapan has a default clock time (21 November 2026). */
+  const withTimes = kind === "hotel";
   const total = stepsTotal(draft);
   const single = draft.sessions.length === 1;
 
@@ -176,7 +179,7 @@ export function GroomingServiceStepsEditor({
     if (problem || saving || !dirty) return;
 
     const patch: UpdateServiceInput = {
-      ...(stepsDirty ? stepsPatch(draft) : {}),
+      ...(stepsDirty ? stepsPatch(draft, { withTimes }) : {}),
       ...(addonsDirty ? { addonServiceIds: addonIds } : {}),
     };
 
@@ -318,6 +321,17 @@ export function GroomingServiceStepsEditor({
                   </span>
                   {flag && <ServiceStepFlagBadge flag={flag} />}
                 </span>
+                {withTimes && (
+                  <Input
+                    type="time"
+                    aria-label={`Jam default ${name}`}
+                    title="Jam default — kosongkan kalau tahapan ini tidak perlu jam"
+                    value={draft.times[name] ?? ""}
+                    disabled={disabled}
+                    onChange={(event) => change(setTime(draft, name, event.target.value))}
+                    className="h-9 w-32 tabular-nums"
+                  />
+                )}
                 <Input
                   aria-label={`Bobot ${name} (%)`}
                   inputMode="numeric"

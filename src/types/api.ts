@@ -649,6 +649,12 @@ export interface TenantSettings {
   antarJemput?: AntarJemputSettings;
 
   /**
+   * Layanan › Hotel › Pengaturan — what a night pays staff (21 November 2026).
+   * Absent until saved once; WRITTEN WHOLE like `grooming`.
+   */
+  hotel?: HotelSettings;
+
+  /**
    * What the groomer's phone app may show and do (8 October 2026) — a SIBLING of
    * `grooming`, not a key inside it, so the grooming screen's whole-object save
    * cannot reset these. Absent until saved once, and both OFF until then.
@@ -754,6 +760,39 @@ export interface AntarJemputSettings {
   commission: {
     service: AntarJemputCommissionRule;
     addon: AntarJemputCommissionRule;
+  };
+}
+
+/**
+ * Layanan › Hotel › Pengaturan (21 November 2026) — mirrors
+ * hotelSettings.schema.js. The night's pool is `service`; `split` says whether
+ * the whole night goes to the day's PIC or is shared by tahapan weight.
+ */
+export interface HotelSettings {
+  commission: {
+    service: {
+      mode: "none" | "fixed" | "size_nominal" | "percentage";
+      percent: number;
+      fixed: number;
+      /** Rp per night, keyed by size option `_id`. */
+      sizeNominal: Record<string, number>;
+    };
+    split: "night_pic" | "by_step";
+    addon: {
+      mode: "none" | "percentage" | "fixed";
+      percent: number;
+      fixed: number;
+    };
+  };
+  /**
+   * KEGIATAN HARIAN (BO, 21 November 2026) — the tahapan every NEW hotel
+   * service starts with, in a service's own three arrays (by position). Names
+   * come from the one tahapan list. Each service may change its own after.
+   */
+  defaultSteps: {
+    sessions: string[];
+    sessionWeights: number[];
+    sessionTimes: (string | null)[];
   };
 }
 
@@ -3825,7 +3864,213 @@ export interface BookingAddon {
     distanceKm: number | null;
     unit: VisitFeeUnit;
   } | null;
+  /** Whether staff earn on it — a hotel add-on goes on the checklist when true. */
+  commissionable?: boolean;
+  /** The sale that billed it — set once it has been paid for. */
+  posTransactionId?: string | null;
+  /** A HOTEL add-on's count (21 November 2026). `price` is the whole run. */
+  hotel?: HotelAddonCount | null;
 }
+
+/** How a hotel add-on is counted — per night from a date, or a number of times on a day. */
+export interface HotelAddonCount {
+  unit: "night" | "time";
+  unitPrice: string;
+  qty: number;
+  date: string;
+  time: string | null;
+}
+
+/** One tahapan of a stay, done every night at its clock time. */
+export interface HotelStepTime {
+  stepName: string;
+  time: string | null;
+  weight: number | null;
+}
+
+export interface HotelStayTask {
+  _id: string;
+  key: string;
+  kind: "step" | "medicine" | "addon";
+  doneBy: string;
+  doneAt: string;
+}
+
+export interface HotelStayDay {
+  _id?: string;
+  date: string;
+  picUserId: string | null;
+  tasks: HotelStayTask[];
+}
+
+export interface HotelCare {
+  food: "owner" | "hotel";
+  portion: string | null;
+  medicine: string | null;
+  medicineTime: string | null;
+  behaviour: string | null;
+}
+
+/**
+ * A NIGHT IN THE HOTEL, on its booking (21 November 2026) — mirrors
+ * hotelStay.schema.js. Dates are the shop's calendar, "YYYY-MM-DD".
+ */
+export interface HotelStay {
+  checkInDate: string;
+  checkOutDate: string;
+  leftDate: string | null;
+  arrivalTime: string | null;
+  pickupTime: string | null;
+  checkedInAt: string | null;
+  checkedOutAt: string | null;
+  roomTypeId: string;
+  roomTypeName: string;
+  roomMode: "numbered" | "zone";
+  unitId: string | null;
+  unitCode: string | null;
+  nightPrice: string;
+  nightCatalogPrice: string | null;
+  care: HotelCare;
+  stepTimes: HotelStepTime[];
+  days: HotelStayDay[];
+  conditionIn: string | null;
+  conditionOut: string | null;
+  belongingsNote: string | null;
+  billedAmount: string | null;
+  billedMain?: string | null;
+  /** One row per sale that billed part of the stay. */
+  bills?: HotelStayBill[];
+  /** Goods and charges rung up with the stay — "Barang selama menginap". */
+  purchases?: HotelStayPurchase[];
+}
+
+export interface HotelStayBill {
+  posTransactionId: string;
+  transactionNumber: string | null;
+  amount: string;
+  addonIds: string[];
+  at: string;
+}
+
+/** One commission row of a stay — a night, a tahapan, or an add-on done. */
+export interface HotelStayCommissionRow {
+  _id: string;
+  date: string | null;
+  userId: string;
+  userName: string | null;
+  label: string | null;
+  kind: "night" | "addon";
+  amount: string;
+  status: "pending" | "approved" | "paid" | "accrued";
+}
+
+export interface HotelStayPurchase {
+  posTransactionId: string;
+  name: string;
+  qty: string;
+  amount: string;
+  at: string;
+}
+
+/** Worked out on the server for every screen that shows a stay. */
+export interface HotelStayFacts {
+  nights: number;
+  /** The day the animal goes (or went) home. */
+  end: string;
+  /** Today on the shop's calendar. */
+  today: string;
+  /** What the till would still bill: net − already billed. */
+  unbilledAmount: string;
+  /** Its unbilled part is sitting in a till basket right now. */
+  inCart: boolean;
+  priceEdited: boolean;
+}
+
+/** A booking that is a stay — `stay` is set. */
+export type HotelStayBooking = Booking & { stay: HotelStay; stayFacts: HotelStayFacts };
+
+/** One item of a day's checklist, as /hotel/tasks returns it. */
+export interface HotelDayItem {
+  key: string;
+  kind: "step" | "medicine" | "addon";
+  label: string;
+  detail?: string;
+  time: string | null;
+  weight: number | null;
+  addonId?: string;
+  doneBy: string | null;
+  doneAt: string | null;
+}
+
+export interface HotelTasks {
+  date: string;
+  stays: {
+    _id: string;
+    bookingNumber: string | null;
+    petName: string | null;
+    customerName: string | null;
+    roomTypeName: string;
+    unitCode: string | null;
+    picUserId: string | null;
+    items: HotelDayItem[];
+  }[];
+}
+
+export type HotelAvailability =
+  | { mode: "zone"; capacity: number; used: number; free: number; closed: boolean }
+  | {
+      mode: "numbered";
+      petsPerUnit: number;
+      units: { _id: string; code: string; underRepair: boolean; used: number; free: boolean }[];
+    };
+
+export interface HotelAddonInput {
+  _id?: string;
+  serviceId: string;
+  unitPrice?: string | null;
+  qty?: number;
+  date?: string;
+  time?: string | null;
+  discount?: { mode: "percent" | "amount"; value: string } | null;
+}
+
+export interface HotelStayPetInput {
+  petId: string;
+  serviceId: string;
+  roomTypeId: string;
+  unitId?: string | null;
+  choices?: { optionId: string; code: string }[];
+  nightPrice?: string | null;
+  discount?: { mode: "percent" | "amount"; value: string } | null;
+  bookingDiscount?: { mode: "percent" | "amount"; value: string } | null;
+  addons?: HotelAddonInput[];
+  care?: Partial<HotelCare>;
+  stepTimes?: { stepName: string; time: string | null }[];
+  internalNotes?: string | null;
+}
+
+export interface CreateHotelStaysInput {
+  branchId: string;
+  customerId: string;
+  checkInDate: string;
+  arrivalTime?: string | null;
+  checkOutDate: string;
+  pickupTime?: string | null;
+  notes?: string | null;
+  pets: HotelStayPetInput[];
+}
+
+export type UpdateHotelStayInput = Partial<
+  Omit<HotelStayPetInput, "petId"> & {
+    checkInDate: string;
+    checkOutDate: string;
+    arrivalTime: string | null;
+    pickupTime: string | null;
+    conditionIn: string | null;
+    conditionOut: string | null;
+    belongingsNote: string | null;
+  }
+>;
 
 /**
  * ONE ANIMAL IN THE VAN, named (23 September 2026) — with the size it was when
@@ -4115,6 +4360,8 @@ export interface CommissionRowsQuery {
   dateFrom?: string;
   dateTo?: string;
   status?: CommissionStatus | "";
+  /** Grooming (with antar-jemput) or Hotel (21 November 2026). */
+  serviceKind?: "grooming" | "hotel" | "";
   q?: string;
   sort?: CommissionSort;
   dir?: "asc" | "desc";
@@ -4365,6 +4612,8 @@ export type BookingLocation = "in_store" | "in_home";
 export interface BookingBelonging {
   _id: string;
   name: string;
+  /** How many — "Mangkok × 2" (hotel). */
+  qty?: number;
   checkedInAt: string | null;
   checkedOutAt: string | null;
   checkedInBy: string | null;
@@ -4864,7 +5113,7 @@ export interface ServiceVariant {
  * `per_visit` is stored and shown; billing still charges per animal until the
  * antar-jemput feature that needs it arrives.
  */
-export type ServiceBillingUnit = "per_pet" | "per_visit";
+export type ServiceBillingUnit = "per_pet" | "per_visit" | "per_night";
 
 export interface Service {
   _id: string;
@@ -4919,6 +5168,13 @@ export interface Service {
    * exactly 100 — the server refuses anything else.
    */
   sessionWeights: number[];
+  /**
+   * A HOTEL tahapan's default clock time (21 November 2026), position for
+   * position with `sessions` — "HH:mm" or null for "whenever". `[]` = none.
+   */
+  sessionTimes?: (string | null)[];
+  /** The room types a HOTEL service is sold in — "Berlaku untuk". */
+  roomTypeIds?: string[];
   /** `true` means every branch, now and as new ones open — `branchIds` is []. */
   allBranches: boolean;
   branchIds: string[];
@@ -5014,8 +5270,11 @@ export interface ServiceVariantInput {
   zoneId?: string | null;
   choices?: VariantChoice[];
   price: string;
-  /** Required: a variant service has no service-level duration. */
-  durationMin: number;
+  /**
+   * Required: a variant service has no service-level duration. Null only on a
+   * HOTEL service, which bills by the night (21 November 2026).
+   */
+  durationMin: number | null;
   /** Omitted = on. */
   isActive?: boolean;
 }
@@ -5053,6 +5312,10 @@ export interface CreateServiceInput {
   sessions?: string[];
   /** See `Service.sessionWeights`. `[]` = split evenly. */
   sessionWeights?: number[];
+  /** See `Service.sessionTimes`. */
+  sessionTimes?: (string | null)[];
+  /** See `Service.roomTypeIds`. */
+  roomTypeIds?: string[];
   allBranches?: boolean;
   branchIds?: string[];
   serviceType?: ServiceType;
@@ -5092,6 +5355,10 @@ export interface UpdateServiceInput {
   sessions?: string[];
   /** See `Service.sessionWeights`. `[]` = split evenly. */
   sessionWeights?: number[];
+  /** See `Service.sessionTimes`. */
+  sessionTimes?: (string | null)[];
+  /** See `Service.roomTypeIds`. */
+  roomTypeIds?: string[];
   allBranches?: boolean;
   branchIds?: string[];
   serviceType?: ServiceType;
@@ -5260,6 +5527,60 @@ export interface Zone {
   deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * A hotel room type, as /api/hotel-room-types returns it (21 November 2026).
+ * `numbered` holds units with codes; `zone` holds up to `capacity` animals.
+ */
+export type HotelRoomTypeMode = "numbered" | "zone";
+
+export interface HotelRoomUnit {
+  _id?: string;
+  code: string;
+  underRepair: boolean;
+}
+
+export interface HotelRoomType {
+  _id: string;
+  tenantId: string;
+  branchId: string;
+  name: string;
+  petTypeIds: string[];
+  mode: HotelRoomTypeMode;
+  units: HotelRoomUnit[];
+  petsPerUnit: number;
+  capacity: number;
+  closed: boolean;
+  facilities: string | null;
+  isActive: boolean;
+  /** Animals it can take on one night, with nothing booked. */
+  usableCapacity: number;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HotelRoomTypeListQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  branchId?: string;
+  branchIds?: string[];
+  isActive?: boolean;
+}
+
+export interface HotelRoomTypeInput {
+  branchId: string;
+  name: string;
+  petTypeIds: string[];
+  mode: HotelRoomTypeMode;
+  units?: HotelRoomUnit[];
+  petsPerUnit?: number;
+  capacity?: number;
+  closed?: boolean;
+  facilities?: string | null;
+  isActive?: boolean;
 }
 
 export interface ZoneListQuery {

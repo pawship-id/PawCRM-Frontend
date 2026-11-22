@@ -65,6 +65,21 @@ import { syncNow } from "../offline/sync";
 import { isOfflineSaleId } from "../offline/tillApi";
 import { registerSignOutGuard } from "@/lib/signOutGuards";
 
+/**
+ * "Bayar di kasir" from a hotel stay (21 November 2026, PLAN-Hotel-V1.md §4.3):
+ * `/dashboard/pos?stay=<bookingId>&customer=<customerId>`. Read once and wiped
+ * from the address bar, so a reload does not pull the stay a second time.
+ */
+function readStayLink(): { bookingId: string; customerId: string } | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const bookingId = params.get("stay");
+  const customerId = params.get("customer");
+  if (!bookingId || !customerId) return null;
+  window.history.replaceState(null, "", window.location.pathname);
+  return { bookingId, customerId };
+}
+
 /** "Tanpa member" on nothing — one shared empty set, so it never re-quotes. */
 const NO_KEYS: ReadonlySet<string> = new Set();
 
@@ -304,6 +319,40 @@ export function PosScreen() {
    * replacing it with what the server remembered would be this recovery causing
    * exactly the loss it exists to prevent.
    */
+  /**
+   * Pulls a hotel stay's unbilled part into the basket. A basket the cashier
+   * left with something already in it is THEIR work: it is opened as it was and
+   * the stay waits, rather than being mixed into somebody else's sale.
+   */
+  async function openStayLink(
+    found: PosTransaction | null,
+    link: { bookingId: string; customerId: string },
+  ) {
+    if (found && found.items.length > 0) {
+      cart.openIfEmpty(found);
+      swalToast(
+        "Masih ada keranjang yang belum selesai. Selesaikan atau simpan dulu, lalu tarik booking hotel lewat tombol Booking.",
+        "error",
+        6000,
+      );
+      return;
+    }
+    try {
+      let target = found ?? (await posService.createCart({ customerId: link.customerId }));
+      if (target.customer?._id !== link.customerId) {
+        target = await posService.updateCart(target._id, { customerId: link.customerId });
+      }
+      cart.open(await posService.pullBookings(target._id, [link.bookingId]));
+      swalToast("Tagihan hotel masuk ke keranjang.");
+    } catch (err) {
+      swalToast(
+        err instanceof ApiError ? (err.reason ?? err.fullMessage) : "Tagihan hotel belum bisa ditarik. Coba lagi.",
+        "error",
+        6000,
+      );
+    }
+  }
+
   useEffect(() => {
     if (!shift) return;
 
@@ -326,7 +375,12 @@ export function PosScreen() {
       // banner on a till that is otherwise working — the cashier rings it up
       // again, which is what they would do anyway.
       const found = await posService.activeCart().catch(() => null);
-      if (active && found) cart.openIfEmpty(found);
+      const stayLink = readStayLink();
+      if (!stayLink) {
+        if (active && found) cart.openIfEmpty(found);
+        return;
+      }
+      if (active) await openStayLink(found, stayLink);
     })();
 
     return () => {

@@ -13,6 +13,8 @@ import {
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { bookingDetailPath } from "@/features/antar-jemput/paths";
+import { HotelDayStrip } from "@/features/hotel/components/HotelDayStrip";
+import { usePermissions } from "@/features/permissions";
 import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { bookingService } from "@/services/booking.service";
 import type { BookingCalendar, BookingCalendarEntry, BookingStatus } from "@/types/api";
@@ -190,6 +192,7 @@ export function BookingCalendarScreen() {
     a choice.
   */
   const scope = useBranchScope();
+  const { isModuleOn } = usePermissions();
   const [pickedBranch, setPickedBranch] = useState("");
   const branchId = pickedBranch || scope.soleBranch;
 
@@ -369,6 +372,9 @@ export function BookingCalendarScreen() {
       </ul>
 
       {error && <Alert variant="error">{error}</Alert>}
+
+      {/* The hotel's day (21 November 2026) — a stay is not a slot on the timeline. */}
+      {view === "harian" && isModuleOn("layanan") && <HotelDayStrip date={anchor} branchId={branchId} />}
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted">

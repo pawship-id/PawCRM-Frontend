@@ -25,9 +25,11 @@ import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
 import { branchService } from "@/services/branch.service";
+import { tenantService } from "@/services/tenant.service";
 import { swalToast } from "@/lib/swal";
 import type {
   Branch,
+  HotelSettings,
   Service,
   ServiceBillingUnit,
   ServiceLocation,
@@ -40,6 +42,7 @@ import { SERVICE_KIND_LABELS, SERVICE_KINDS } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
 
 import { invalidateVariantOptions } from "@/hooks/useVariantOptions";
+import { HotelRoomTypesField } from "./HotelRoomTypesField";
 import { useVariantAxisValues } from "../hooks/useVariantAxisValues";
 import {
   axisDefsForKind,
@@ -287,6 +290,10 @@ export function ServiceForm({
   /* An add-on's "Dipakai di layanan" — empty is every kind (22 September 2026). */
   const [addonKinds, setAddonKinds] = useState<ServiceKind[]>([]);
   const [isActive, setIsActive] = useState(true);
+  /* A HOTEL service's room types — "Berlaku untuk" (21 November 2026). */
+  const [roomTypeIds, setRoomTypeIds] = useState<string[]>([]);
+  /* Tahapan name → stored default clock time, so a reorder here keeps each one's. */
+  const [storedTimes, setStoredTimes] = useState<Record<string, string | null>>({});
 
   const [nameError, setNameError] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
@@ -332,7 +339,57 @@ export function ServiceForm({
   */
   const tripAxis = axisDefs.find((def) => def.systemKey === "trip")?.key ?? null;
   const isRide = serviceType === "main" && serviceKind === "pickup-delivery";
+  /* A HOTEL service bills by the night, has no length and no place to go (21 November 2026). */
+  const isHotel = serviceType === "main" && serviceKind === "hotel";
   const ridePriced = isRide && tripAxis !== null;
+  /*
+    A NEW HOTEL SERVICE STARTS WITH THE KEGIATAN HARIAN of Layanan › Hotel ›
+    Pengaturan (BO, 21 November 2026) — names, porsi and jam — and may change
+    them before saving. Once per form, and only while its tahapan are still
+    empty, so nothing somebody already picked is overwritten. Fails softly: a
+    form without them is the form as it always was.
+  */
+  const [hotelDefaults, setHotelDefaults] = useState<HotelSettings["defaultSteps"] | null>(null);
+  const hotelDefaultsAsked = useRef(false);
+  const hotelDefaultsApplied = useRef(false);
+  const [hotelStepsSeededFrom, setHotelStepsSeededFrom] = useState(false);
+  useEffect(() => {
+    if (editing || !isHotel || hotelDefaultsAsked.current) return;
+    hotelDefaultsAsked.current = true;
+    let active = true;
+    tenantService
+      .me()
+      .then((tenant) => {
+        const steps = tenant.settings?.hotel?.defaultSteps;
+        if (active && steps && steps.sessions.length > 0) setHotelDefaults(steps);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [editing, isHotel]);
+  /* eslint-disable react-hooks/set-state-in-effect -- seeded once, when the defaults arrive */
+  useEffect(() => {
+    if (!hotelDefaults || !isHotel || hotelDefaultsApplied.current) return;
+    hotelDefaultsApplied.current = true;
+    if (sessions.length > 0) return;
+    const names = hotelDefaults.sessions;
+    const weights = hotelDefaults.sessionWeights ?? [];
+    const times = hotelDefaults.sessionTimes ?? [];
+    setSessions([...names]);
+    setSessionWeights(
+      weights.length === names.length
+        ? Object.fromEntries(names.map((name, index) => [name, String(weights[index])]))
+        : {},
+    );
+    setStoredTimes(
+      times.length === names.length
+        ? Object.fromEntries(names.map((name, index) => [name, times[index] ?? null]))
+        : {},
+    );
+    setHotelStepsSeededFrom(true);
+  }, [hotelDefaults, isHotel, sessions.length]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const tripDefaulted = useRef(false);
   /* eslint-disable react-hooks/set-state-in-effect -- the trip axis follows the kind and the switch */
   useEffect(() => {
@@ -543,6 +600,14 @@ export function ServiceForm({
         setCommissionable(result.commissionable ?? true);
         setSoldSeparately(result.soldSeparately ?? false);
         setAddonKinds(result.serviceKinds ?? []);
+        setRoomTypeIds(result.roomTypeIds ?? []);
+        setStoredTimes(
+          (result.sessionTimes ?? []).length === storedSessions.length
+            ? Object.fromEntries(
+                storedSessions.map((session, index) => [session, result.sessionTimes?.[index] ?? null]),
+              )
+            : {},
+        );
         setIsActive(result.isActive);
       })
       .catch((error) => {
@@ -673,6 +738,7 @@ export function ServiceForm({
         );
         invalid = true;
       } else if (
+        !isHotel &&
         combos.some(
           (combo) => durationProblem(variantDurations[combo.key] ?? "") === "empty",
         )
@@ -682,6 +748,7 @@ export function ServiceForm({
         );
         invalid = true;
       } else if (
+        !isHotel &&
         combos.some((combo) => durationProblem(variantDurations[combo.key] ?? ""))
       ) {
         setVariantError(
@@ -697,7 +764,7 @@ export function ServiceForm({
           ...(combo.zoneId ? { zoneId: combo.zoneId } : {}),
           ...(combo.choices.length > 0 ? { choices: combo.choices } : {}),
           price: (variantPrices[combo.key] ?? "").trim(),
-          durationMin: Number((variantDurations[combo.key] ?? "").trim()),
+          durationMin: isHotel ? null : Number((variantDurations[combo.key] ?? "").trim()),
           isActive: variantActive[combo.key] !== false,
         }));
       }
@@ -719,7 +786,7 @@ export function ServiceForm({
         calendar is read as fact by everybody downstream. On a variant service
         each row carries its own, checked above.
       */
-      const problem = durationProblem(durationMin);
+      const problem = isHotel ? null : durationProblem(durationMin);
       if (problem === "empty") {
         setDurationError(
           "Wajib diisi — kalender dan pengecekan bentrok membacanya.",
@@ -730,12 +797,12 @@ export function ServiceForm({
           `Isi menit antara 1 dan ${MAX_DURATION_MIN}. Lebih dari sehari itu penitipan, dihitung per malam.`,
         );
         invalid = true;
-      } else {
+      } else if (!isHotel) {
         duration = Number(durationMin.trim());
       }
     }
 
-    if (serviceLocations.length === 0) {
+    if (!isHotel && serviceLocations.length === 0) {
       setLocationError("Pilih minimal satu lokasi layanan.");
       invalid = true;
     }
@@ -795,7 +862,7 @@ export function ServiceForm({
       */
       ...(image || editing ? { image } : {}),
       description: description.trim() || null,
-      billingUnit,
+      billingUnit: isHotel ? "per_night" : billingUnit,
       /* An add-on belongs to no one kind; a main service to exactly one. */
       serviceKind: serviceType === "main" ? serviceKind || null : null,
       hasVariants,
@@ -813,12 +880,25 @@ export function ServiceForm({
       ...(hasVariants
         ? { variantAxes, variants }
         : // Sent exactly as typed. Never Number(price).
-          { price: trimmedPrice, durationMin: duration as number }),
+          { price: trimmedPrice, ...(isHotel ? {} : { durationMin: duration as number }) }),
       sessions,
       // `[]` IS AN ANSWER — "split evenly" — and is sent as one.
       sessionWeights: sessionWeightsPayload(sessions, sessionWeights),
+      /*
+        A HOTEL service's clock times, realigned by NAME to the tahapan as they
+        stand now — they are edited on the service page; this form only keeps
+        each tahapan's own through a reorder.
+      */
+      ...(isHotel
+        ? {
+            sessionTimes: sessions.some((session) => storedTimes[session])
+              ? sessions.map((session) => storedTimes[session] ?? null)
+              : [],
+            roomTypeIds,
+          }
+        : {}),
       included,
-      serviceLocations,
+      serviceLocations: isHotel ? (["in_store"] as ServiceLocation[]) : serviceLocations,
       pickupDeliveryAvailable,
       allBranches,
       branchIds: allBranches ? [] : branchIds,
@@ -1064,8 +1144,12 @@ export function ServiceForm({
       </Card>
 
       <Card
-        title="Harga & durasi"
-        description="Harga dan durasi bisa satu untuk semua, atau beda-beda per varian. Durasi dibaca kalender dan pengecekan bentrok."
+        title={isHotel ? "Harga per malam" : "Harga & durasi"}
+        description={
+          isHotel
+            ? "Satu harga untuk semua, atau beda per varian — ukuran, jenis hewan, atau opsi varian seperti Tipe kamar."
+            : "Harga dan durasi bisa satu untuk semua, atau beda-beda per varian. Durasi dibaca kalender dan pengecekan bentrok."
+        }
       >
         <div className="flex flex-col gap-5">
           {/*
@@ -1075,6 +1159,12 @@ export function ServiceForm({
             however many animals ride), so the hint no longer says it is
             stored-only (27 October 2026).
           */}
+          {isHotel ? (
+            <p className="rounded-lg bg-tint-neutral px-4 py-3 text-sm text-muted">
+              Ditagih <b className="font-semibold text-foreground">per malam</b> — harga di
+              bawah adalah harga satu malam, dan booking menghitungnya kali jumlah malam.
+            </p>
+          ) : (
           <SelectField
             label="Ditagih"
             value={billingUnit}
@@ -1084,6 +1174,7 @@ export function ServiceForm({
             disabled={saving}
             required
           />
+          )}
 
           <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
             <div className="min-w-0">
@@ -1123,6 +1214,7 @@ export function ServiceForm({
                 variantAxes,
               )}
               kindName={serviceKind ? SERVICE_KIND_LABELS[serviceKind] : null}
+              untimed={isHotel}
               onReloadOptions={invalidateVariantOptions}
               prices={variantPrices}
               durations={variantDurations}
@@ -1147,7 +1239,7 @@ export function ServiceForm({
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               <TextField
-                label="Harga"
+                label={isHotel ? "Harga per malam" : "Harga"}
                 name="price"
                 // `inputMode` rather than type=number: a number input in some
                 // browsers silently reformats and loses what was typed, and this
@@ -1164,6 +1256,7 @@ export function ServiceForm({
                 disabled={saving}
                 required
               />
+              {!isHotel && (
               <TextField
                 label="Durasi (menit)"
                 name="durationMin"
@@ -1181,6 +1274,7 @@ export function ServiceForm({
                 disabled={saving}
                 required
               />
+              )}
             </div>
           )}
         </div>
@@ -1192,6 +1286,12 @@ export function ServiceForm({
       >
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
+            {hotelStepsSeededFrom && (
+              <p className="rounded-lg bg-tint-neutral px-4 py-3 text-sm text-muted">
+                Tahapan, porsi, dan jam sudah diisi dari Hotel › Pengaturan › Kegiatan harian. Boleh diubah
+                khusus untuk layanan ini.
+              </p>
+            )}
             <ServiceStepsField
               sessions={sessions}
               // The server keeps what this service stored, retired or not.
@@ -1244,6 +1344,14 @@ export function ServiceForm({
         description="Di mana layanan ini dikerjakan, dan di cabang mana bisa dipesan."
       >
         <div className="flex flex-col gap-5">
+          {isHotel ? (
+            <HotelRoomTypesField
+              value={roomTypeIds}
+              onChange={setRoomTypeIds}
+              branches={branches}
+              disabled={saving}
+            />
+          ) : (
           <div>
             <p className="text-sm font-medium">Lokasi layanan</p>
             <p className="mt-1 text-xs text-muted">
@@ -1268,6 +1376,7 @@ export function ServiceForm({
               </p>
             )}
           </div>
+          )}
 
           <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
             <div className="min-w-0">

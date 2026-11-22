@@ -122,7 +122,10 @@ export function ServiceVariantEditor({
   onActiveChange,
   kindName = null,
   onReloadOptions,
+  untimed = false,
 }: {
+  /** A HOTEL service: no length column — it bills by the night (21 November 2026). */
+  untimed?: boolean;
   /**
    * The kind of service's name — said when it has no options yet (22 September
    * 2026), so the empty list reads as "set this up" rather than as a checklist
@@ -265,11 +268,14 @@ export function ServiceVariantEditor({
 
           <div
             aria-hidden
-            className="hidden gap-3 text-xs font-semibold text-muted sm:grid sm:grid-cols-[1fr_160px_120px_72px]"
+            className={cn(
+              "hidden gap-3 text-xs font-semibold text-muted sm:grid",
+              untimed ? "sm:grid-cols-[1fr_160px_72px]" : "sm:grid-cols-[1fr_160px_120px_72px]",
+            )}
           >
             <span>Varian</span>
-            <span>Harga</span>
-            <span>Durasi (menit)</span>
+            <span>{untimed ? "Harga per malam" : "Harga"}</span>
+            {!untimed && <span>Durasi (menit)</span>}
             <span>Aktif</span>
           </div>
 
@@ -280,7 +286,10 @@ export function ServiceVariantEditor({
               return (
                 <div
                   key={combo.key}
-                  className="grid items-center gap-3 sm:grid-cols-[1fr_160px_120px_72px]"
+                  className={cn(
+                    "grid items-center gap-3",
+                    untimed ? "sm:grid-cols-[1fr_160px_72px]" : "sm:grid-cols-[1fr_160px_120px_72px]",
+                  )}
                 >
                   <span className={cn("text-sm", !on && "text-muted")}>
                     {combo.label}
@@ -302,19 +311,21 @@ export function ServiceVariantEditor({
                     disabled={disabled}
                     className={FIELD_HEIGHT}
                   />
-                  <Input
-                    aria-label={`Durasi ${combo.label} (menit)`}
-                    type="number"
-                    min={1}
-                    max={1440}
-                    value={durations[combo.key] ?? ""}
-                    onChange={(event) =>
-                      onDurationChange(combo.key, event.target.value)
-                    }
-                    placeholder="60"
-                    disabled={disabled}
-                    className={FIELD_HEIGHT}
-                  />
+                  {!untimed && (
+                    <Input
+                      aria-label={`Durasi ${combo.label} (menit)`}
+                      type="number"
+                      min={1}
+                      max={1440}
+                      value={durations[combo.key] ?? ""}
+                      onChange={(event) =>
+                        onDurationChange(combo.key, event.target.value)
+                      }
+                      placeholder="60"
+                      disabled={disabled}
+                      className={FIELD_HEIGHT}
+                    />
+                  )}
                   <label className="flex min-h-11 items-center gap-2 text-sm">
                     <Checkbox
                       aria-label={`${combo.label} aktif`}
