@@ -239,7 +239,14 @@ const INVOICE_COLUMNS: SalesReportColumn<SalesInvoiceReportRow>[] = [
     header: "Nama kasir",
     value: (r) => (r.channel === "marketplace" ? null : r.cashierName),
     width: 18,
-    about: "Nama device kasir; untuk faktur manual, yang membuat faktur",
+    about:
+      "Pengguna yang login di kasir saat transaksi dibayar; untuk faktur manual, yang membuat faktur",
+  },
+  {
+    header: "Device kasir",
+    value: (r) => r.deviceName,
+    width: 16,
+    about: "Device kasir tempat transaksi dibayar (kosong untuk faktur manual)",
   },
   {
     header: "Supplier",
@@ -383,6 +390,36 @@ const ITEM_COLUMNS: SalesReportColumn<SalesItemReportRow>[] = [
     type: "number",
     about: "Porsi dari total penjualan bersih periode ini",
   },
+  {
+    header: "Metode bayar",
+    value: (r) => joined(r.paymentMethods.map((m) => METHOD_LABEL[m] ?? m)),
+    width: 18,
+    about: "Semua metode bayar di faktur yang memuat produk ini",
+  },
+  {
+    header: "Nama kasir",
+    value: (r) => joined(r.cashierNames),
+    width: 22,
+    about: "Semua kasir (atau pembuat faktur manual) yang menjual produk ini",
+  },
+  {
+    header: "Supplier",
+    value: (r) => r.supplierName,
+    width: 20,
+    about:
+      "Supplier dari penerimaan barang terakhir; jika dibeli dari 2 supplier, yang terakhir",
+  },
+  {
+    header: "Konsinyasi",
+    value: (r) =>
+      r.kind !== "product"
+        ? null
+        : r.isConsignment
+          ? "KONSINYASI"
+          : "NON KONSINYASI",
+    width: 16,
+    about: "KONSINYASI jika produk ini barang titipan",
+  },
 ];
 
 /**
@@ -438,6 +475,30 @@ const invoiceColumn = (
     value: (r) => column.value(r.invoice),
   };
 };
+
+/** Where a line's goods came from — rincian barang and rincian pendapatan. */
+const LINE_SOURCE_COLUMNS: SalesReportColumn<{
+  line: SalesInvoiceReportLine | null;
+}>[] = [
+  {
+    header: "Supplier",
+    value: (r) => r.line?.supplierName,
+    width: 20,
+    about:
+      "Penitip untuk barang titipan; selain itu supplier dari penerimaan barang terakhir (jika 2 supplier, yang terakhir)",
+  },
+  {
+    header: "Konsinyasi",
+    value: (r) =>
+      !r.line || r.line.kind !== "product"
+        ? null
+        : r.line.isConsignment
+          ? "KONSINYASI"
+          : "NON KONSINYASI",
+    width: 16,
+    about: "KONSINYASI jika barang yang keluar untuk baris ini titipan",
+  },
+];
 
 /**
  * Who and when, then the lines, then how it was paid and where it stands.
@@ -506,6 +567,8 @@ const INVOICE_LINE_COLUMNS: SalesReportColumn<InvoiceLineRow>[] = [
     about: "Qty × harga − diskon barang (sebelum diskon faktur dan PPN)",
   },
   invoiceColumn("Akun bayar", "Akun pembayaran"),
+  ...["Metode bayar", "Nama kasir"].map((header) => invoiceColumn(header)),
+  ...LINE_SOURCE_COLUMNS,
   ...["Status", "Catatan"].map((header) => invoiceColumn(header)),
 ];
 
@@ -967,6 +1030,13 @@ const REVENUE_COLUMNS: SalesReportColumn<RevenueLineRow>[] = [
     about: "Faktur penjualan (kasir dan manual). Retur belum masuk laporan ini",
   },
   invoiceColumn("Tanggal faktur", "Tanggal"),
+  {
+    header: "Waktu",
+    value: (r) => r.invoice.invoiceTime,
+    width: 10,
+    about:
+      "Jam transaksi: saat dibayar di kasir, atau saat faktur manual dibuat",
+  },
   ...[
     "No. faktur",
     "Ref",
@@ -1074,18 +1144,7 @@ const REVENUE_COLUMNS: SalesReportColumn<RevenueLineRow>[] = [
     about: "Sub akun pendapatan tempat baris ini dibukukan",
   },
   invoiceColumn("Nama kasir"),
-  {
-    header: "Supplier",
-    value: (r) => joined(r.line.consignorNames),
-    width: 20,
-    about: "Penitip barang, jika barang ini titipan",
-  },
-  {
-    header: "Konsinyasi",
-    value: (r) => (r.line.isConsignment ? "KONSINYASI" : "NON KONSINYASI"),
-    width: 16,
-    about: "KONSINYASI jika barang yang keluar untuk baris ini titipan",
-  },
+  ...LINE_SOURCE_COLUMNS,
 ];
 
 /**

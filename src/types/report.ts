@@ -180,8 +180,12 @@ export interface SalesInvoiceReportRow {
   paymentAccountNames: string[];
   /** cash, transfer, qris, edc, giro — one per distinct receipt method. */
   paymentMethods: string[];
-  /** The till's device for a kasir sale; who raised it for a manual faktur. */
+  /** Who rang it up: the user signed in at the till, or who raised the faktur. */
   cashierName: string | null;
+  /** The till's device for a kasir sale; null otherwise. */
+  deviceName: string | null;
+  /** `HH:mm` in the tenant's zone: paid at the till, or created by hand. */
+  invoiceTime: string | null;
   /** Any goods that left were titipan. */
   isConsignment: boolean;
   consignorNames: string[];
@@ -222,6 +226,8 @@ export interface SalesInvoiceReportLine {
   /** The goods that left for it were titipan. */
   isConsignment: boolean;
   consignorNames: string[];
+  /** The penitip of a titipan, else the product's last goods-receipt supplier. */
+  supplierName: string | null;
 }
 
 export interface SalesInvoiceReportQuery {
@@ -255,6 +261,14 @@ export interface SalesItemReportRow {
   categoryName: string | null;
   invoiceCount: number;
   lineCount: number;
+  /** Every distinct receipt method across the faktur that sold it. */
+  paymentMethods: string[];
+  /** Every distinct cashier across the faktur that sold it. */
+  cashierNames: string[];
+  /** A titipan product (catalogue flag, or its last receipt was konsinyasi). */
+  isConsignment: boolean;
+  /** The supplier of its last goods receipt; null for layanan/membership. */
+  supplierName: string | null;
   qty: string;
   gross: string;
   discount: string;
