@@ -67,7 +67,10 @@ export function ServiceStepFormDialog({
   onClose,
   onSaved,
   onCreated,
+  defaultUsedIn,
 }: {
+  /** Dipakai di on a new step — the kinds of service it is being added for. */
+  defaultUsedIn?: ServiceKind[];
   /** Present to rename that step; absent to add one. */
   step?: ServiceStep;
   /** Prefilled name when adding — what was typed in a picker. */
@@ -89,7 +92,11 @@ export function ServiceStepFormDialog({
   );
   const [hotelTime, setHotelTime] = useState(step?.hotelTime ?? "");
   const [note, setNote] = useState(step?.note ?? "");
-  const [usedIn, setUsedIn] = useState<ServiceKind[]>(() => stepUsedIn(step));
+  const [usedIn, setUsedIn] = useState<ServiceKind[]>(() =>
+    !step && defaultUsedIn && defaultUsedIn.length > 0
+      ? defaultUsedIn
+      : stepUsedIn(step),
+  );
   const [usedInError, setUsedInError] = useState<string | null>(null);
   const forHotel = usedIn.includes("hotel");
   const [estimateError, setEstimateError] = useState<string | null>(null);

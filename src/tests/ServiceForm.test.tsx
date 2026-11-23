@@ -1375,7 +1375,7 @@ describe("ServiceForm — tahapan from the list", () => {
     );
 
     await waitFor(() =>
-      expect(serviceStepService.create).toHaveBeenCalledWith({ name: "potong kuku" }),
+      expect(serviceStepService.create).toHaveBeenCalledWith({ name: "potong kuku", usedIn: ["grooming"] }),
     );
     expect(
       await screen.findByRole("button", { name: "Hapus tahapan Potong kuku" }),

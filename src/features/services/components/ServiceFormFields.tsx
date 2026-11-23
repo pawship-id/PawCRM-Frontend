@@ -481,7 +481,10 @@ export function ServiceStepsField({
   error,
   disabled,
   onChange,
+  kinds,
 }: {
+  /** Dipakai di — only tahapan for these kinds of service are offered. */
+  kinds?: ServiceKind[] | null;
   sessions: string[];
   /** Names the server keeps whatever the list says — what the service stored. */
   kept: string[];
@@ -551,6 +554,7 @@ export function ServiceStepsField({
         mayAddToList={mayAddToList}
         disabled={disabled}
         disabledReason={full ? `Maksimal ${maxItems} tahapan.` : null}
+        kinds={kinds}
         onPick={(name) =>
           onChange((current) =>
             current.length >= maxItems ||

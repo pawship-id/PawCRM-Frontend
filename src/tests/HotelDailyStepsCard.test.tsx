@@ -99,10 +99,36 @@ it("creates a step through the full form and adds it with its time", async () =>
       estimateMinutes: 15,
       hotelTime: "17:00",
       note: null,
-      usedIn: ["grooming", "hotel", "pickup-delivery"],
+      usedIn: ["hotel"],
     }),
   );
   expect(await screen.findByLabelText("Jam default Makan malam")).toHaveValue(
     "17:00",
   );
+});
+
+it("offers only tahapan whose Dipakai di has Hotel (23 November 2026)", async () => {
+  primeServiceSteps(serviceStepService.list, [
+    makeServiceStep({ name: "Makan pagi", usedIn: ["hotel"] }),
+    makeServiceStep({ name: "Gunting", usedIn: ["grooming"] }),
+    // Stored before Dipakai di — every kind.
+    makeServiceStep({ name: "Mandi" }),
+  ]);
+  renderWithAuth(
+    <Harness initial={{ sessions: [], weights: {}, times: {} }} />,
+  );
+
+  await userEvent.click(screen.getByRole("button", { name: /Tambah tahapan/ }));
+  expect(
+    await screen.findByRole("button", { name: "Makan pagi" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Mandi" })).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Gunting" }),
+  ).not.toBeInTheDocument();
+
+  await userEvent.type(screen.getByLabelText("Cari tahapan"), "Gunting");
+  expect(
+    await screen.findByText(/tidak dipakai di layanan Hotel/),
+  ).toBeInTheDocument();
 });

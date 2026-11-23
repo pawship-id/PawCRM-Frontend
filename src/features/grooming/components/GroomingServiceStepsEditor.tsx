@@ -169,6 +169,15 @@ export function GroomingServiceStepsEditor({
   const disabled = !mayUpdate || busy;
   const storedAddonIds = service.addonServiceIds ?? [];
   const isMain = service.serviceType === "main";
+  /*
+    Dipakai di (23 November 2026): a main service picks tahapan for its own
+    kind, an add-on for the kinds it is offered with (none = every step).
+  */
+  const stepKinds: ServiceKind[] = isMain
+    ? kind
+      ? [kind]
+      : []
+    : (service.serviceKinds ?? []);
   /* A tahapan whose Jam default (hotel) is words keeps no clock time. */
   const cleanDraft = withTimes
     ? withoutFixedTimes(draft, (name) => stepList.stepFor(name)?.hotelTime)
@@ -495,6 +504,7 @@ export function GroomingServiceStepsEditor({
               mayAddToList={mayUpdate}
               disabled={busy}
               onCreate={withTimes ? setCreating : undefined}
+              kinds={stepKinds}
               disabledReason={
                 draft.sessions.length >= MAX_SESSIONS
                   ? `Maksimal ${MAX_SESSIONS} tahapan.`
@@ -616,6 +626,7 @@ export function GroomingServiceStepsEditor({
       {creating !== null && (
         <ServiceStepFormDialog
           initialName={creating}
+          defaultUsedIn={stepKinds}
           description="Masuk ke daftar tahapan di Pengaturan › Tahapan dan langsung jadi tahapan layanan ini."
           onClose={() => setCreating(null)}
           onSaved={() => invalidateServiceSteps()}

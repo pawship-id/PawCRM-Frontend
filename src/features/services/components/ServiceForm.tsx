@@ -1339,6 +1339,13 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
               sessions={sessions}
               // The server keeps what this service stored, retired or not.
               kept={service?.sessions ?? []}
+              kinds={
+                serviceType === "main"
+                  ? serviceKind
+                    ? [serviceKind]
+                    : []
+                  : addonKinds
+              }
               maxItems={MAX_SESSIONS}
               mayAddToList={mayAddSteps}
               error={sessionsError ?? undefined}

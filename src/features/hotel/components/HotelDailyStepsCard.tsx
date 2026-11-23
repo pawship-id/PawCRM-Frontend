@@ -39,8 +39,12 @@ import {
   useServiceSteps,
 } from "@/hooks/useServiceSteps";
 import { cn } from "@/lib/utils";
+import type { ServiceKind } from "@/types/api";
 
 import type { StepsSaveStatus } from "../hooks/useHotelSettings";
+
+/** Only tahapan whose Dipakai di has Hotel are offered (23 November 2026). */
+const HOTEL_KINDS: ServiceKind[] = ["hotel"];
 
 const ICON_BUTTON =
   "size-9 p-0 text-muted hover:bg-surface-hover hover:text-foreground disabled:opacity-40";
@@ -275,6 +279,7 @@ export function HotelDailyStepsCard({
                   : null
               }
               onCreate={mayAddToList ? setCreating : undefined}
+              kinds={HOTEL_KINDS}
               onPick={(name) =>
                 onChange((current) =>
                   addStep(
@@ -306,6 +311,7 @@ export function HotelDailyStepsCard({
       {creating !== null && (
         <ServiceStepFormDialog
           initialName={creating}
+          defaultUsedIn={HOTEL_KINDS}
           description="Masuk ke daftar tahapan di Pengaturan › Tahapan dan langsung jadi kegiatan harian hotel."
           onClose={() => setCreating(null)}
           onSaved={() => invalidateServiceSteps()}

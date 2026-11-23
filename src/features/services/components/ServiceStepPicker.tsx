@@ -18,7 +18,9 @@ import {
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { serviceStepService } from "@/services/serviceStep.service";
-import type { ServiceStep } from "@/types/api";
+import { stepUsedIn } from "@/features/settings/serviceSteps";
+import { SERVICE_KIND_LABELS } from "@/types/api";
+import type { ServiceKind, ServiceStep } from "@/types/api";
 
 /** `NAME_MAX_LENGTH` in serviceStep.model.js — what a booking turn can hold. */
 export const SERVICE_STEP_NAME_MAX_LENGTH = 60;
@@ -118,6 +120,10 @@ const ROW =
  * hands the typed name to the caller — it opens the same form as Pengaturan ›
  * Tahapan, with Estimasi and Jam default (hotel).
  *
+ * WITH `kinds` (23 November 2026, BO) only steps whose Dipakai di shares one of
+ * those kinds are offered; a step typed by name that is for another kind is
+ * said so. A step added from here is for those kinds.
+ *
  * `onPick` receives the LIST'S SPELLING. It may fire after an await (the quick
  * add), so callers update their draft with a functional update rather than the
  * draft they rendered with.
@@ -129,6 +135,7 @@ export function ServiceStepPicker({
   disabled = false,
   disabledReason = null,
   onCreate,
+  kinds,
   className,
 }: {
   /** What the service already lists; hidden from the options. */
@@ -142,6 +149,8 @@ export function ServiceStepPicker({
   disabledReason?: string | null;
   /** Opens the caller's full tahapan form with what was typed, instead of the quick add. */
   onCreate?: (typedName: string) => void;
+  /** The kinds of service the step goes into — empty or absent offers every step. */
+  kinds?: ServiceKind[] | null;
   className?: string;
 }) {
   const { steps, loading, error, stepFor, reload } = useServiceSteps();
@@ -156,8 +165,14 @@ export function ServiceStepPicker({
 
   const typed = query.trim().replace(/\s+/g, " ");
   const typedKey = keyOf(typed);
+  const scoped = kinds && kinds.length > 0 ? kinds : null;
+  const fits = (step: ServiceStep) =>
+    !scoped || stepUsedIn(step).some((kind) => scoped.includes(kind));
+  const kindNames = scoped
+    ? scoped.map((kind) => SERVICE_KIND_LABELS[kind]).join(" / ")
+    : "";
   const available = steps.filter(
-    (step) => step.isActive && !takenKeys.has(step.nameKey),
+    (step) => step.isActive && fits(step) && !takenKeys.has(step.nameKey),
   );
   const matches = typed
     ? available.filter((step) => step.nameKey.includes(typedKey))
@@ -165,6 +180,8 @@ export function ServiceStepPicker({
   const listed = typed ? stepFor(typed) : undefined;
   const typedTaken = typed !== "" && takenKeys.has(typedKey);
   const typedRetired = !typedTaken && listed !== undefined && !listed.isActive;
+  const typedOtherKind =
+    !typedTaken && listed !== undefined && listed.isActive && !fits(listed);
   const typedMissing =
     typed !== "" && !typedTaken && listed === undefined && !loading && !error;
   const offerAdd =
@@ -204,7 +221,10 @@ export function ServiceStepPicker({
     setAdding(name);
     setAddError(null);
     try {
-      const step = await serviceStepService.create({ name });
+      const step = await serviceStepService.create({
+        name,
+        ...(scoped ? { usedIn: scoped } : {}),
+      });
       invalidateServiceSteps();
       pick(step.name);
     } catch (err) {
@@ -308,6 +328,12 @@ export function ServiceStepPicker({
                     tidak bisa ditambahkan.
                   </p>
                 )}
+                {typedOtherKind && listed && (
+                  <p className="px-2 py-1.5 text-sm text-muted">
+                    “{listed.name}” tidak dipakai di layanan {kindNames}. Ubah
+                    Dipakai di-nya di Pengaturan › Tahapan kalau perlu.
+                  </p>
+                )}
                 {offerAdd && (
                   <button
                     type="button"
@@ -370,9 +396,11 @@ export function ServiceStepPicker({
                   typed === "" && (
                     <p className="px-2 py-1.5 text-sm text-muted">
                       {available.length === 0 &&
-                      steps.some((step) => step.isActive)
+                      steps.some((step) => step.isActive && fits(step))
                         ? "Semua tahapan di daftar sudah dipakai layanan ini."
-                        : "Belum ada tahapan di daftar."}
+                        : scoped
+                          ? `Belum ada tahapan untuk layanan ${kindNames} di daftar.`
+                          : "Belum ada tahapan di daftar."}
                       {mayAddToList &&
                         !onCreate &&
                         " Ketik nama untuk menambahkannya."}

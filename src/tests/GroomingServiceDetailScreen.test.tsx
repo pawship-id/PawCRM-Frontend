@@ -667,7 +667,7 @@ describe("GroomingServiceDetailScreen", () => {
     );
 
     await waitFor(() =>
-      expect(serviceStepService.create).toHaveBeenCalledWith({ name: "potong kuku" }),
+      expect(serviceStepService.create).toHaveBeenCalledWith({ name: "potong kuku", usedIn: ["grooming"] }),
     );
     expect(
       await screen.findByLabelText("Bobot Potong kuku (%)"),
