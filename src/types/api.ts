@@ -5185,6 +5185,8 @@ export interface Service {
   sessionTimes?: (string | null)[];
   /** The room types a HOTEL service is sold in — "Berlaku untuk". */
   roomTypeIds?: string[];
+  /** Jenis hewan (species ids) a hotel service takes; empty = every kind (23 November 2026). */
+  petTypeIds?: string[];
   /** `true` means every branch, now and as new ones open — `branchIds` is []. */
   allBranches: boolean;
   branchIds: string[];
@@ -5326,6 +5328,8 @@ export interface CreateServiceInput {
   sessionTimes?: (string | null)[];
   /** See `Service.roomTypeIds`. */
   roomTypeIds?: string[];
+  /** Jenis hewan (species ids) a hotel service takes; empty = every kind (23 November 2026). */
+  petTypeIds?: string[];
   allBranches?: boolean;
   branchIds?: string[];
   serviceType?: ServiceType;
@@ -5369,6 +5373,8 @@ export interface UpdateServiceInput {
   sessionTimes?: (string | null)[];
   /** See `Service.roomTypeIds`. */
   roomTypeIds?: string[];
+  /** Jenis hewan (species ids) a hotel service takes; empty = every kind (23 November 2026). */
+  petTypeIds?: string[];
   allBranches?: boolean;
   branchIds?: string[];
   serviceType?: ServiceType;

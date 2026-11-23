@@ -110,6 +110,7 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
     sessionWeights: service.sessionWeights ?? [],
     sessionTimes: service.sessionTimes ?? [],
     roomTypeIds: service.roomTypeIds ?? [],
+    petTypeIds: service.petTypeIds ?? [],
     allBranches: service.allBranches,
     branchIds: service.allBranches ? [] : service.branchIds,
     serviceType: service.serviceType,

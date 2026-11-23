@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 
-import { Alert, CheckRow, CheckRowGroup, Spinner } from "@/components";
+import { Alert, Spinner } from "@/components";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { HOTEL_ROOM_TYPES_PATH } from "@/features/hotel/paths";
 import { useHotelRoomTypes } from "@/hooks/useHotelRoomTypes";
+import { usePetOptions } from "@/hooks/usePetOptions";
+import { cn } from "@/lib/utils";
 import type { Branch, HotelRoomType } from "@/types/api";
 
 /** "8 kamar · 1 hewan per kamar" / "Maks 6 hewan" — how a room type holds animals. */
@@ -19,11 +22,21 @@ export function roomTypeHolds(roomType: HotelRoomType): string {
   }`;
 }
 
+/** "kucing", "kucing & anjing", "kucing, anjing & kelinci". */
+function joinKinds(labels: string[]): string {
+  const words = labels.map((label) => label.toLowerCase());
+  if (words.length <= 1) return words[0] ?? "";
+  return `${words.slice(0, -1).join(", ")} & ${words[words.length - 1]}`;
+}
+
 /**
  * A HOTEL service's "Berlaku untuk" — the room types a stay of it may be put
  * in (21 November 2026, PLAN-Hotel-V1.md §4.1). Room types are kept in Layanan
  * › Hotel › Pengaturan; one the service already lists stays shown while it is
  * off, so unticking it is still possible.
+ *
+ * CARDS, three to a row on a wide screen (23 November 2026, BO): name, branch
+ * and how it holds animals, and which jenis hewan it takes.
  */
 export function HotelRoomTypesField({
   value,
@@ -39,13 +52,13 @@ export function HotelRoomTypesField({
   const { items, loading, error, reload } = useHotelRoomTypes();
   const shown = items.filter((roomType) => roomType.isActive || value.includes(roomType._id));
   const branchName = (id: string) => branches.find((branch) => branch._id === id)?.name ?? "Cabang";
+  const petOptions = usePetOptions();
+  const kinds = (ids: string[]) =>
+    joinKinds(ids.map((id) => petOptions.label("species", id) ?? "").filter(Boolean));
 
   return (
     <div>
       <p className="text-sm font-medium">Tipe kamar</p>
-      <p className="mt-1 text-xs text-muted">
-        Saat booking, layanan ini hanya bisa ditempatkan di tipe kamar yang dicentang.
-      </p>
 
       {error ? (
         <Alert variant="error" className="mt-2">
@@ -71,24 +84,47 @@ export function HotelRoomTypesField({
           </Link>
         </p>
       ) : (
-        <CheckRowGroup className="mt-2">
-          {shown.map((roomType) => (
-            <CheckRow
-              key={roomType._id}
-              label={`${roomType.name}${roomType.isActive ? "" : " (nonaktif)"}`}
-              description={`${branchName(roomType.branchId)} · ${roomTypeHolds(roomType)}`}
-              checked={value.includes(roomType._id)}
-              onCheckedChange={(checked) =>
-                onChange(
-                  checked
-                    ? [...value, roomType._id]
-                    : value.filter((id) => id !== roomType._id),
-                )
-              }
-              disabled={disabled}
-            />
-          ))}
-        </CheckRowGroup>
+        <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {shown.map((roomType) => {
+            const checked = value.includes(roomType._id);
+            const takes = kinds(roomType.petTypeIds);
+            return (
+              <label
+                key={roomType._id}
+                className={cn(
+                  "flex items-start gap-3 rounded-xl border p-4 transition",
+                  checked ? "border-primary bg-surface-selected" : "border-border bg-surface",
+                  disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-primary",
+                )}
+              >
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={(next) =>
+                    onChange(
+                      next === true
+                        ? [...value, roomType._id]
+                        : value.filter((id) => id !== roomType._id),
+                    )
+                  }
+                  disabled={disabled}
+                  className="mt-0.5"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-foreground">
+                    {roomType.name}
+                    {roomType.isActive ? "" : " (nonaktif)"}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-muted">
+                    {branchName(roomType.branchId)} · {roomTypeHolds(roomType)}
+                  </span>
+                  {takes && (
+                    <span className="mt-0.5 block text-xs text-muted">Untuk {takes}</span>
+                  )}
+                </span>
+              </label>
+            );
+          })}
+        </div>
       )}
     </div>
   );

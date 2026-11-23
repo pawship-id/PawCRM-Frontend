@@ -46,6 +46,9 @@ export function servicesFor(
     (service) =>
       service.isActive !== false &&
       (service.allBranches !== false || service.branchIds.includes(branchId)) &&
+      // Its own jenis hewan (23 November 2026); none stored = every kind.
+      ((service.petTypeIds ?? []).length === 0 ||
+        (service.petTypeIds ?? []).includes(pet.species)) &&
       roomTypesFor(service, roomTypes, pet, branchId).length > 0,
   );
 }
@@ -192,9 +195,10 @@ export function StayPetFields({
   if (offered.length === 0) {
     return (
       <Alert variant="info">
-        Belum ada layanan hotel aktif yang punya tipe kamar untuk{" "}
-        {pet.speciesLabel?.toLowerCase() ?? "hewan ini"} di cabang ini. Atur di
-        Layanan &amp; Harga dan Pengaturan › Tipe kamar.
+        Belum ada layanan hotel aktif untuk{" "}
+        {pet.speciesLabel?.toLowerCase() ?? "hewan ini"} di cabang ini. Cek
+        jenis hewan dan tipe kamar layanannya di Layanan &amp; Harga, dan
+        Pengaturan › Tipe kamar.
       </Alert>
     );
   }
