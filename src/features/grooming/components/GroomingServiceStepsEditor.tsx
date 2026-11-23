@@ -421,11 +421,20 @@ export function GroomingServiceStepsEditor({
                       <GripVertical className="size-4" />
                     </button>
                   )}
-                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold text-foreground">
-                      {name}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">
+                        {name}
+                      </span>
+                      {flag && <ServiceStepFlagBadge flag={flag} />}
                     </span>
-                    {flag && <ServiceStepFlagBadge flag={flag} />}
+                    {/* Catatan from Pengaturan › Tahapan — hotel only
+                        (23 November 2026). */}
+                    {withTimes && stepList.stepFor(name)?.note && (
+                      <span className="mt-0.5 block text-xs text-muted">
+                        {stepList.stepFor(name)?.note}
+                      </span>
+                    )}
                   </span>
                   {withTimes &&
                   fixedTimeText(stepList.stepFor(name)?.hotelTime) ? (

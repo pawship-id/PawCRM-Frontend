@@ -120,9 +120,8 @@ export function HotelDailyStepsCard({
                   // Jam default (hotel) written as words on the tahapan
                   // ("Ikut jam datang") is shown as is and cannot be changed
                   // here; a clock time stays editable (22 November 2026, BO).
-                  const textTime = fixedTimeText(
-                    stepList.stepFor(name)?.hotelTime,
-                  );
+                  const listed = stepList.stepFor(name);
+                  const textTime = fixedTimeText(listed?.hotelTime);
                   return (
                     <TableRow key={name}>
                       <TableCell>
@@ -132,6 +131,12 @@ export function HotelDailyStepsCard({
                           </span>
                           {flag && <ServiceStepFlagBadge flag={flag} />}
                         </span>
+                        {/* Catatan from Pengaturan › Tahapan (23 November 2026). */}
+                        {listed?.note && (
+                          <span className="mt-0.5 block max-w-md text-xs whitespace-normal text-muted">
+                            {listed.note}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {textTime ? (
