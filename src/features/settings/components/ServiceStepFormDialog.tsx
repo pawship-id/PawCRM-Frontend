@@ -2,8 +2,15 @@
 
 import { useState } from "react";
 
-import { Alert, Spinner, TextField } from "@/components";
+import {
+  Alert,
+  FormField,
+  Spinner,
+  TextareaField,
+  TextField,
+} from "@/components";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +24,13 @@ import { serviceStepService } from "@/services/serviceStep.service";
 import { swalToast } from "@/lib/swal";
 import type { ServiceStep } from "@/types/api";
 
-import { SERVICE_STEP_NAME_MAX_LENGTH, stepNameOf } from "../serviceSteps";
+import {
+  HOTEL_TIME_MAX_LENGTH,
+  MAX_ESTIMATE_MINUTES,
+  SERVICE_STEP_NAME_MAX_LENGTH,
+  STEP_NOTE_MAX_LENGTH,
+  stepNameOf,
+} from "../serviceSteps";
 
 /**
  * Add a tahapan to the list, or rename one.
@@ -26,8 +39,9 @@ import { SERVICE_STEP_NAME_MAX_LENGTH, stepNameOf } from "../serviceSteps";
  * common case is adding three in a row, and the list staying on screen is what
  * answers "is this one already there".
  *
- * THE NAME IS THE ONLY FIELD — one list per tenant (22 September 2026); the
- * order is the end of the list (the server appends) and is
+ * NAME, ESTIMASI AND JAM DEFAULT (HOTEL) — one list per tenant (22 September
+ * 2026); Estimasi and Jam default joined on 22 November 2026 (BO, mockup). Both
+ * are optional. The order is the end of the list (the server appends) and is
  * moved from the table; retiring is a row action. The commission weight is not
  * here at all — it belongs to a step's place IN A SERVICE (`sessionWeights[i]`),
  * so the same "Mandi" can weigh differently in two services.
@@ -41,19 +55,34 @@ import { SERVICE_STEP_NAME_MAX_LENGTH, stepNameOf } from "../serviceSteps";
  */
 export function ServiceStepFormDialog({
   step,
+  initialName = "",
+  description,
   onClose,
   onSaved,
+  onCreated,
 }: {
   /** Present to rename that step; absent to add one. */
   step?: ServiceStep;
+  /** Prefilled name when adding — what was typed in a picker. */
+  initialName?: string;
+  /** Replaces the add dialog's description — the caller says where the step goes. */
+  description?: string;
   onClose: () => void;
+  /** After an add: the step as the server saved it. */
+  onCreated?: (step: ServiceStep) => void;
   /** Re-read the screen's list and the app's shared one. */
   onSaved: () => void;
 }) {
   const editing = step !== undefined;
   const usedBy = step?.serviceCount ?? 0;
 
-  const [name, setName] = useState(step?.name ?? "");
+  const [name, setName] = useState(step?.name ?? initialName);
+  const [estimate, setEstimate] = useState(
+    step?.estimateMinutes ? String(step.estimateMinutes) : "",
+  );
+  const [hotelTime, setHotelTime] = useState(step?.hotelTime ?? "");
+  const [note, setNote] = useState(step?.note ?? "");
+  const [estimateError, setEstimateError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,9 +100,32 @@ export function ServiceStepFormDialog({
       setFieldError(`Maksimal ${SERVICE_STEP_NAME_MAX_LENGTH} karakter.`);
       return;
     }
-    // An untouched rename closes: there is nothing to send, and a PATCH with
-    // the same name would still rewrite every service for nothing.
-    if (editing && cleaned === step.name) {
+    const estimateMinutes = estimate.trim() === "" ? null : Number(estimate);
+    if (
+      estimateMinutes !== null &&
+      (!Number.isInteger(estimateMinutes) ||
+        estimateMinutes < 1 ||
+        estimateMinutes > MAX_ESTIMATE_MINUTES)
+    ) {
+      setEstimateError(`Isi 1–${MAX_ESTIMATE_MINUTES} menit, atau kosongkan.`);
+      return;
+    }
+    const time = hotelTime.trim().replace(/\s+/g, " ") || null;
+    const cleanedNote = note.trim() || null;
+
+    // Only what changed is sent: a PATCH carrying the same name would still
+    // rewrite every service for nothing.
+    const changes = editing
+      ? {
+          ...(cleaned !== step.name ? { name: cleaned } : {}),
+          ...(estimateMinutes !== (step.estimateMinutes ?? null)
+            ? { estimateMinutes }
+            : {}),
+          ...(time !== (step.hotelTime ?? null) ? { hotelTime: time } : {}),
+          ...(cleanedNote !== (step.note ?? null) ? { note: cleanedNote } : {}),
+        }
+      : {};
+    if (editing && Object.keys(changes).length === 0) {
       onClose();
       return;
     }
@@ -84,19 +136,23 @@ export function ServiceStepFormDialog({
 
     try {
       if (editing) {
-        const saved = await serviceStepService.update(step._id, {
-          name: cleaned,
-        });
+        const saved = await serviceStepService.update(step._id, changes);
         const renamed = saved.renamedServiceCount ?? 0;
         onSaved();
         swalToast(
           renamed > 0
-            ? `Nama tahapan disimpan. ${renamed} layanan ikut diperbarui.`
-            : "Nama tahapan disimpan.",
+            ? `Tahapan disimpan. ${renamed} layanan ikut diperbarui.`
+            : "Tahapan disimpan.",
         );
       } else {
-        await serviceStepService.create({ name: cleaned });
+        const created = await serviceStepService.create({
+          name: cleaned,
+          estimateMinutes,
+          hotelTime: time,
+          note: cleanedNote,
+        });
         onSaved();
+        onCreated?.(created);
         swalToast("Tahapan ditambahkan.");
       }
       onClose();
@@ -127,15 +183,20 @@ export function ServiceStepFormDialog({
       }}
     >
       <DialogContent showCloseButton={!busy}>
-        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+        <form
+          onSubmit={handleSubmit}
+          noValidate
+          className="flex flex-col gap-4"
+        >
           <DialogHeader>
             <DialogTitle>
-              {editing ? "Ubah nama tahapan" : "Tambah tahapan"}
+              {editing ? "Ubah tahapan" : "Tambah tahapan"}
             </DialogTitle>
             <DialogDescription>
               {editing
-                ? "Nama baru langsung dipakai di semua layanan yang memakainya."
-                : "Masuk ke daftar tahapan, di urutan paling akhir. Bobot komisinya diisi di tiap layanan."}
+                ? "Nama baru langsung dipakai di semua layanan yang memakainya. Jam default hanya mengisi layanan hotel dan kegiatan harian yang menambahkan tahapan ini sesudahnya."
+                : (description ??
+                  "Masuk ke daftar tahapan, di urutan paling akhir. Bobot komisinya diisi di tiap layanan.")}
             </DialogDescription>
           </DialogHeader>
 
@@ -162,6 +223,65 @@ export function ServiceStepFormDialog({
             autoFocus
             disabled={busy}
             required
+          />
+
+          <div className="flex flex-col gap-4">
+            <FormField
+              label="Estimasi"
+              hint="Opsional. Berapa lama biasanya."
+              error={estimateError ?? undefined}
+            >
+              {(field) => (
+                <div className="relative">
+                  <Input
+                    {...field}
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={MAX_ESTIMATE_MINUTES}
+                    value={estimate}
+                    onChange={(event) => {
+                      setEstimate(event.target.value);
+                      setEstimateError(null);
+                    }}
+                    placeholder="mis. 15"
+                    disabled={busy}
+                    className="h-11 pr-16 tabular-nums"
+                  />
+                  <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted">
+                    menit
+                  </span>
+                </div>
+              )}
+            </FormField>
+            <FormField
+              label="Jam default (hotel)"
+              hint="Opsional. Kalau diisi jam (08:00), jam itu langsung terisi di hotel."
+            >
+              {(field) => (
+                <Input
+                  {...field}
+                  value={hotelTime}
+                  onChange={(event) => setHotelTime(event.target.value)}
+                  placeholder="mis. 08:00 atau Ikut jam datang"
+                  maxLength={HOTEL_TIME_MAX_LENGTH}
+                  disabled={busy}
+                  className="h-11"
+                />
+              )}
+            </FormField>
+          </div>
+
+          <TextareaField
+            label="Catatan"
+            name="note"
+            hint="Opsional."
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="mis. Pakai sampo hipoalergenik untuk kulit sensitif"
+            maxLength={STEP_NOTE_MAX_LENGTH}
+            rows={3}
+            disabled={busy}
           />
 
           <DialogFooter>

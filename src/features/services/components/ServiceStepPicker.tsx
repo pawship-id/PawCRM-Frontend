@@ -11,7 +11,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { invalidateServiceSteps, useServiceSteps } from "@/hooks/useServiceSteps";
+import {
+  invalidateServiceSteps,
+  useServiceSteps,
+} from "@/hooks/useServiceSteps";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { serviceStepService } from "@/services/serviceStep.service";
@@ -57,7 +60,8 @@ export function serviceStepFlag(
  * when the error is about something else. Already in Bahasa, so shown as sent.
  */
 export function sessionsRefusal(error: unknown): string | null {
-  if (!(error instanceof ApiError) || !Array.isArray(error.details)) return null;
+  if (!(error instanceof ApiError) || !Array.isArray(error.details))
+    return null;
 
   const messages = error.details
     .filter(
@@ -109,6 +113,11 @@ const ROW =
  * A RETIRED STEP typed by name is said to be nonaktif and is not addable — the
  * server would refuse it on a service that does not already hold it.
  *
+ * WITH `onCreate` (Hotel › Pengaturan › Kegiatan harian, 22 November 2026) the
+ * quick add gives way to "Buat tahapan baru…", which closes the popover and
+ * hands the typed name to the caller — it opens the same form as Pengaturan ›
+ * Tahapan, with Estimasi and Jam default (hotel).
+ *
  * `onPick` receives the LIST'S SPELLING. It may fire after an await (the quick
  * add), so callers update their draft with a functional update rather than the
  * draft they rendered with.
@@ -119,6 +128,7 @@ export function ServiceStepPicker({
   mayAddToList,
   disabled = false,
   disabledReason = null,
+  onCreate,
   className,
 }: {
   /** What the service already lists; hidden from the options. */
@@ -130,6 +140,8 @@ export function ServiceStepPicker({
   disabled?: boolean;
   /** Off, and this sentence beside the trigger — "Pilih kelompok layanan dulu." */
   disabledReason?: string | null;
+  /** Opens the caller's full tahapan form with what was typed, instead of the quick add. */
+  onCreate?: (typedName: string) => void;
   className?: string;
 }) {
   const { steps, loading, error, stepFor, reload } = useServiceSteps();
@@ -156,7 +168,24 @@ export function ServiceStepPicker({
   const typedMissing =
     typed !== "" && !typedTaken && listed === undefined && !loading && !error;
   const offerAdd =
-    typedMissing && mayAddToList && typed.length <= SERVICE_STEP_NAME_MAX_LENGTH;
+    !onCreate &&
+    typedMissing &&
+    mayAddToList &&
+    typed.length <= SERVICE_STEP_NAME_MAX_LENGTH;
+  /* "Buat tahapan baru…" — always offered, unless what was typed is already on the list. */
+  const offerCreate =
+    Boolean(onCreate) &&
+    mayAddToList &&
+    !loading &&
+    !error &&
+    listed === undefined;
+
+  function create() {
+    const name = typed;
+    reset();
+    setOpen(false);
+    onCreate?.(name);
+  }
 
   function reset() {
     setQuery("");
@@ -239,8 +268,11 @@ export function ServiceStepPicker({
               const exact = available.find((step) => step.nameKey === typedKey);
               if (exact) pick(exact.name);
               else if (offerAdd) void addToList(typed);
+              else if (offerCreate && typed !== "") create();
             }}
-            placeholder={mayAddToList ? "Cari atau ketik tahapan baru" : "Cari tahapan"}
+            placeholder={
+              mayAddToList ? "Cari atau ketik tahapan baru" : "Cari tahapan"
+            }
             className="h-9"
           />
 
@@ -254,7 +286,12 @@ export function ServiceStepPicker({
                 <p className="text-sm font-semibold text-danger">
                   Daftar tahapan tidak bisa dimuat.
                 </p>
-                <Button type="button" variant="ghost" size="sm" onClick={reload}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={reload}
+                >
                   Muat ulang
                 </Button>
               </div>
@@ -278,10 +315,24 @@ export function ServiceStepPicker({
                     onClick={() => void addToList(typed)}
                     className={cn(ROW, "font-semibold text-primary")}
                   >
-                    {adding ? <Spinner size={16} /> : <Plus className="size-4" aria-hidden />}
+                    {adding ? (
+                      <Spinner size={16} />
+                    ) : (
+                      <Plus className="size-4" aria-hidden />
+                    )}
                     {adding
                       ? `Menyimpan “${adding}”…`
                       : `Tambah “${typed}” ke daftar tahapan`}
+                  </button>
+                )}
+                {offerCreate && (
+                  <button
+                    type="button"
+                    onClick={create}
+                    className={cn(ROW, "font-semibold text-primary")}
+                  >
+                    <Plus className="size-4" aria-hidden />
+                    {typed ? `Buat tahapan “${typed}”…` : "Buat tahapan baru…"}
                   </button>
                 )}
                 {typedMissing && !mayAddToList && (
@@ -290,7 +341,10 @@ export function ServiceStepPicker({
                   </p>
                 )}
                 {addError && (
-                  <p role="alert" className="px-2 py-1.5 text-sm font-semibold text-danger">
+                  <p
+                    role="alert"
+                    className="px-2 py-1.5 text-sm font-semibold text-danger"
+                  >
                     {addError}
                   </p>
                 )}
@@ -315,10 +369,13 @@ export function ServiceStepPicker({
                 ) : (
                   typed === "" && (
                     <p className="px-2 py-1.5 text-sm text-muted">
-                      {available.length === 0 && steps.some((step) => step.isActive)
+                      {available.length === 0 &&
+                      steps.some((step) => step.isActive)
                         ? "Semua tahapan di daftar sudah dipakai layanan ini."
                         : "Belum ada tahapan di daftar."}
-                      {mayAddToList && " Ketik nama untuk menambahkannya."}
+                      {mayAddToList &&
+                        !onCreate &&
+                        " Ketik nama untuk menambahkannya."}
                     </p>
                   )
                 )}

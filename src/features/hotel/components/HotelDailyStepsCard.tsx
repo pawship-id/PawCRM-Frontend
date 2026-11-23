@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
+
 import { ArrowDown, ArrowUp, X } from "lucide-react";
 
-import { Card } from "@/components";
+import { AutoSaveStatus, Card } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,6 +17,8 @@ import {
 } from "@/components/ui/table";
 import {
   addStep,
+  clockTimeOf,
+  fixedTimeText,
   MAX_SESSIONS,
   moveStep,
   removeStep,
@@ -29,8 +33,14 @@ import {
   serviceStepFlag,
   ServiceStepPicker,
 } from "@/features/services";
-import { useServiceSteps } from "@/hooks/useServiceSteps";
+import { ServiceStepFormDialog } from "@/features/settings/components/ServiceStepFormDialog";
+import {
+  invalidateServiceSteps,
+  useServiceSteps,
+} from "@/hooks/useServiceSteps";
 import { cn } from "@/lib/utils";
+
+import type { StepsSaveStatus } from "../hooks/useHotelSettings";
 
 const ICON_BUTTON =
   "size-9 p-0 text-muted hover:bg-surface-hover hover:text-foreground disabled:opacity-40";
@@ -53,6 +63,7 @@ export function HotelDailyStepsCard({
   onChange,
   showWeights,
   problem,
+  saveStatus = "idle",
   mayUpdate,
   mayAddToList,
   disabled,
@@ -62,12 +73,16 @@ export function HotelDailyStepsCard({
   /** Porsi komisi — only when the night's commission is split by kegiatan. */
   showWeights: boolean;
   problem?: string;
+  /** Kegiatan harian saves itself — said in the card's corner. */
+  saveStatus?: StepsSaveStatus;
   mayUpdate: boolean;
   /** `services:update` — a new name may be put on the tahapan list from here. */
   mayAddToList: boolean;
   disabled: boolean;
 }) {
   const stepList = useServiceSteps();
+  /** The typed name "Buat tahapan baru…" opened the form with; null = closed. */
+  const [creating, setCreating] = useState<string | null>(null);
   const total = stepsTotal(steps);
   const single = steps.sessions.length === 1;
   const off = disabled || !mayUpdate;
@@ -75,7 +90,8 @@ export function HotelDailyStepsCard({
   return (
     <Card
       title="Kegiatan harian"
-      description="Jadi tahapan bawaan setiap layanan hotel baru dan checklist tiap malam. Tiap layanan masih bisa mengubah kegiatannya sendiri. Jam bisa diubah per hewan saat booking."
+      description="Jadi tahapan bawaan setiap layanan hotel baru dan checklist tiap malam. Perubahan di sini langsung tersimpan. Tiap layanan masih bisa mengubah kegiatannya sendiri. Jam bisa diubah per hewan saat booking."
+      action={<AutoSaveStatus status={saveStatus} />}
     >
       <div className="flex flex-col gap-4">
         {steps.sessions.length === 0 ? (
@@ -101,6 +117,12 @@ export function HotelDailyStepsCard({
               <TableBody>
                 {steps.sessions.map((name, index) => {
                   const flag = serviceStepFlag(name, stepList);
+                  // Jam default (hotel) written as words on the tahapan
+                  // ("Ikut jam datang") is shown as is and cannot be changed
+                  // here; a clock time stays editable (22 November 2026, BO).
+                  const textTime = fixedTimeText(
+                    stepList.stepFor(name)?.hotelTime,
+                  );
                   return (
                     <TableRow key={name}>
                       <TableCell>
@@ -112,19 +134,23 @@ export function HotelDailyStepsCard({
                         </span>
                       </TableCell>
                       <TableCell>
-                        <Input
-                          type="time"
-                          aria-label={`Jam default ${name}`}
-                          value={steps.times[name] ?? ""}
-                          disabled={off}
-                          onChange={(event) => {
-                            const value = event.target.value;
-                            onChange((current) =>
-                              setTime(current, name, value),
-                            );
-                          }}
-                          className="h-9 w-32 tabular-nums"
-                        />
+                        {textTime ? (
+                          <span className="text-sm text-muted">{textTime}</span>
+                        ) : (
+                          <Input
+                            type="time"
+                            aria-label={`Jam default ${name}`}
+                            value={steps.times[name] ?? ""}
+                            disabled={off}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              onChange((current) =>
+                                setTime(current, name, value),
+                              );
+                            }}
+                            className="h-9 w-32 tabular-nums"
+                          />
+                        )}
                       </TableCell>
                       {showWeights && (
                         <TableCell>
@@ -243,7 +269,16 @@ export function HotelDailyStepsCard({
                   ? `Maksimal ${MAX_SESSIONS} kegiatan.`
                   : null
               }
-              onPick={(name) => onChange((current) => addStep(current, name))}
+              onCreate={mayAddToList ? setCreating : undefined}
+              onPick={(name) =>
+                onChange((current) =>
+                  addStep(
+                    current,
+                    name,
+                    clockTimeOf(stepList.stepFor(name)?.hotelTime),
+                  ),
+                )
+              }
             />
             {showWeights && (
               <Button
@@ -259,10 +294,23 @@ export function HotelDailyStepsCard({
           </div>
         )}
         <p className="text-xs text-muted">
-          Pilih dari daftar tahapan, atau ketik nama baru. Yang baru langsung
-          masuk ke daftar tahapan di Pengaturan › Tahapan.
+          Pilih dari daftar tahapan, atau pilih Buat tahapan baru. Yang baru
+          langsung masuk ke daftar tahapan di Pengaturan › Tahapan.
         </p>
       </div>
+      {creating !== null && (
+        <ServiceStepFormDialog
+          initialName={creating}
+          description="Masuk ke daftar tahapan di Pengaturan › Tahapan dan langsung jadi kegiatan harian hotel."
+          onClose={() => setCreating(null)}
+          onSaved={() => invalidateServiceSteps()}
+          onCreated={(step) =>
+            onChange((current) =>
+              addStep(current, step.name, clockTimeOf(step.hotelTime)),
+            )
+          }
+        />
+      )}
     </Card>
   );
 }

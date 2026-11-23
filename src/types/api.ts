@@ -77,7 +77,8 @@ export interface ValidationDetail {
   /** A price refused for a missing "Dipilih staf" choice — which card (17 September 2026). */
   optionId?: string;
   /** A price refused because the customer's zone is unknown — why. */
-  zoneReason?: "customer_location_missing" | "branch_location_missing" | "outside_zones";
+  zoneReason?:
+    "customer_location_missing" | "branch_location_missing" | "outside_zones";
 }
 
 /** Payload of GET /api/health. */
@@ -1766,12 +1767,7 @@ export interface CustomerListQuery {
  * and indexed.
  */
 export type CustomerSort =
-  | "newest"
-  | "oldest"
-  | "codeAsc"
-  | "codeDesc"
-  | "nameAsc"
-  | "nameDesc";
+  "newest" | "oldest" | "codeAsc" | "codeDesc" | "nameAsc" | "nameDesc";
 
 /**
  * What GET /api/customers/stats answers — the numbers on the Pelanggan header's
@@ -1849,11 +1845,7 @@ export interface DormantCustomerList {
  * `service` is a service with no kelompok set.
  */
 export type CustomerHistoryKind =
-  | ServiceKind
-  | "service"
-  | "product"
-  | "membership"
-  | "invoice";
+  ServiceKind | "service" | "product" | "membership" | "invoice";
 
 /** Where a Riwayat row was written: the till, or the invoice book. */
 export type CustomerHistorySource = "pos" | "invoice";
@@ -1888,7 +1880,8 @@ export interface CustomerHistoryRow {
 }
 
 /** Orderings GET /api/customers/history accepts — the server's `HISTORY_SORTS`. */
-export type CustomerHistorySort = "dateDesc" | "dateAsc" | "amountDesc" | "amountAsc";
+export type CustomerHistorySort =
+  "dateDesc" | "dateAsc" | "amountDesc" | "amountAsc";
 
 /** Query for GET /api/customers/history. Dates are `yyyy-mm-dd`. */
 export interface CustomerHistoryQuery {
@@ -2194,7 +2187,11 @@ export interface PosItem {
   /** The line bills a booking. */
   fromBooking?: boolean;
   /** The booking's agreed pick — main line only. "Sesuai booking" when it equals `benefit`. */
-  plannedBenefit?: { membershipId: string; benefitId: string; optionId: string | null } | null;
+  plannedBenefit?: {
+    membershipId: string;
+    benefitId: string;
+    optionId: string | null;
+  } | null;
   /** A booking add-on agreed "Tanpa member" — the till does not auto-apply it. */
   plannedNoBenefit?: boolean;
   /**
@@ -3987,7 +3984,10 @@ export interface HotelStayFacts {
 }
 
 /** A booking that is a stay — `stay` is set. */
-export type HotelStayBooking = Booking & { stay: HotelStay; stayFacts: HotelStayFacts };
+export type HotelStayBooking = Booking & {
+  stay: HotelStay;
+  stayFacts: HotelStayFacts;
+};
 
 /** One item of a day's checklist, as /hotel/tasks returns it. */
 export interface HotelDayItem {
@@ -4017,11 +4017,23 @@ export interface HotelTasks {
 }
 
 export type HotelAvailability =
-  | { mode: "zone"; capacity: number; used: number; free: number; closed: boolean }
+  | {
+      mode: "zone";
+      capacity: number;
+      used: number;
+      free: number;
+      closed: boolean;
+    }
   | {
       mode: "numbered";
       petsPerUnit: number;
-      units: { _id: string; code: string; underRepair: boolean; used: number; free: boolean }[];
+      units: {
+        _id: string;
+        code: string;
+        underRepair: boolean;
+        used: number;
+        free: boolean;
+      }[];
     };
 
 export interface HotelAddonInput {
@@ -4299,11 +4311,7 @@ export interface CommissionRecapQuery {
  *   mixed    — the row's turns disagree; shown as such, never picked for payment
  */
 export type CommissionStatus =
-  | "pending"
-  | "approved"
-  | "paid"
-  | "reversed"
-  | "mixed";
+  "pending" | "approved" | "paid" | "reversed" | "mixed";
 
 /** A row's address — one booking × one groomer. */
 export interface CommissionRowKey {
@@ -4347,7 +4355,8 @@ export interface CommissionRowsResult {
 }
 
 /** Cabang and Status stopped sorting on 20 October 2026 (BO). */
-export type CommissionSort = "bookingDate" | "groomer" | "basisAmount" | "amount";
+export type CommissionSort =
+  "bookingDate" | "groomer" | "basisAmount" | "amount";
 
 export interface CommissionRowsQuery {
   branchId?: string;
@@ -5006,7 +5015,8 @@ export interface ZoneSnapshot {
 }
 
 /** Where a card's values come from — see `VariantOption`. */
-export type VariantOptionSource = "species" | "size" | "furType" | "zone" | "staff";
+export type VariantOptionSource =
+  "species" | "size" | "furType" | "zone" | "staff";
 
 /** A value of a "Dipilih staf" card. */
 export interface VariantOptionValue {
@@ -5494,6 +5504,12 @@ export interface ServiceStep {
   sortOrder: number;
   /** Retired steps cannot be added to a service; a service holding one keeps it. */
   isActive: boolean;
+  /** Estimasi in minutes; null when not filled in (22 November 2026). */
+  estimateMinutes?: number | null;
+  /** Jam default (hotel), "HH:mm" — prefills a hotel step's time; null = none. */
+  hotelTime?: string | null;
+  /** Catatan — optional free text (22 November 2026). */
+  note?: string | null;
   createdBy: string | null;
   deletedAt: string | null;
   createdAt: string;
@@ -5617,6 +5633,9 @@ export interface CreateServiceStepInput {
   name: string;
   sortOrder?: number;
   isActive?: boolean;
+  estimateMinutes?: number | null;
+  hotelTime?: string | null;
+  note?: string | null;
 }
 
 /** Body of PATCH /api/service-steps/:id. No `businessLineId`. */
@@ -5624,6 +5643,9 @@ export interface UpdateServiceStepInput {
   name?: string;
   sortOrder?: number;
   isActive?: boolean;
+  estimateMinutes?: number | null;
+  hotelTime?: string | null;
+  note?: string | null;
 }
 
 /**
@@ -6611,10 +6633,7 @@ export type GoodsReceiptStatus = "pending" | "partial" | "received" | "closed";
 
 /** Where one line of a receipt stands. */
 export type GoodsReceiptLineStatus =
-  | "pending"
-  | "partial"
-  | "received"
-  | "cancelled";
+  "pending" | "partial" | "received" | "cancelled";
 
 /** `invoice`: the lines were copied from a supplier invoice and cannot change. */
 export type GoodsReceiptOrigin = "manual" | "invoice";
@@ -7969,7 +7988,8 @@ export type CustomerPaymentMethod = "cash" | "transfer" | "qris" | "edc";
  * automatically when a cashier settles with the Piutang method, inside the sale's
  * own transaction. `manual` is what PCR-030's create form will write.
  */
-export type CustomerInvoiceSource = "manual" | "pos_bridge" | "shopee_import" | "tiktok_import";
+export type CustomerInvoiceSource =
+  "manual" | "pos_bridge" | "shopee_import" | "tiktok_import";
 
 /** One payment against one receivable, as the detail read returns it. */
 export interface CustomerInvoicePayment {
@@ -8335,14 +8355,22 @@ export interface PublicCustomerInvoice {
   >;
   totals: Pick<
     CustomerInvoiceTotals,
-    "subtotal" | "itemDiscount" | "invoiceDiscount" | "dpp" | "tax" | "grandTotal"
+    | "subtotal"
+    | "itemDiscount"
+    | "invoiceDiscount"
+    | "dpp"
+    | "tax"
+    | "grandTotal"
   > | null;
   otherCharges: Array<{ label: string; amount: string }>;
   total: string;
   paidAmount: string;
   outstandingAmount: string;
   payments: Array<
-    Pick<CustomerInvoicePayment, "paymentNumber" | "at" | "amount" | "channelName">
+    Pick<
+      CustomerInvoicePayment,
+      "paymentNumber" | "at" | "amount" | "channelName"
+    >
   >;
   notes: string | null;
   voidReason: string | null;
@@ -8661,7 +8689,10 @@ export interface UpdateCustomerInvoiceInput {
   /** Home-grooming trips to ADD, priced from each trip (11 October 2026). */
   homeTripIds?: string[];
   /** A discount on a trip ADDED by this edit; a kept trip row takes its row's. */
-  tripDiscounts?: Array<{ homeTripId: string; discount: TypedDiscountInput | null }>;
+  tripDiscounts?: Array<{
+    homeTripId: string;
+    discount: TypedDiscountInput | null;
+  }>;
   /** Absent keeps the typed discount; null removes it. */
   invoiceDiscount?: TypedDiscountInput | null;
   /** Absent keeps the stored charges; an array — even empty — replaces them. */
@@ -8748,15 +8779,13 @@ export interface CreateInvoiceItemInput {
    * could write a free invoice, so the amount is deliberately absent from this
    * shape; what the form quoted only ever drove its own preview.
    */
-  benefit?:
-    | {
-        /** A card the animal holds — or `packageRef`, a package on this same bill. */
-        membershipId?: string;
-        packageRef?: string;
-        benefitId: string;
-        optionId?: string | null;
-      }
-    | null;
+  benefit?: {
+    /** A card the animal holds — or `packageRef`, a package on this same bill. */
+    membershipId?: string;
+    packageRef?: string;
+    benefitId: string;
+    optionId?: string | null;
+  } | null;
   /**
    * A PACKAGE LINE (`kind: "membership"`, 19 November 2026). `refId` names the
    * plan; the card is issued with the bill, awaiting payment.
@@ -8813,7 +8842,10 @@ export interface CreateCustomerInvoiceInput {
    */
   homeTripIds?: string[];
   /** A discount per trip line, as a typed line would carry one (11 October 2026). */
-  tripDiscounts?: Array<{ homeTripId: string; discount: TypedDiscountInput | null }>;
+  tripDiscounts?: Array<{
+    homeTripId: string;
+    discount: TypedDiscountInput | null;
+  }>;
   /**
    * A pulled booking line's OWN discount, when the form changed it (12 October
    * 2026). The server adds the line's share of "Diskon seluruh booking".
@@ -8975,10 +9007,7 @@ export interface CustomerInvoiceListSummary {
  *   customerType — the Kategori pelanggan on the customer the INVOICE was raised
  *                  for (`customers.customerTypeId`).
  */
-export type RevenueBreakdownAxis =
-  | "category"
-  | "businessLine"
-  | "customerType";
+export type RevenueBreakdownAxis = "category" | "businessLine" | "customerType";
 
 /**
  * GET /api/customer-invoices/summary/breakdown/:axis — where the period's omzet
@@ -9185,10 +9214,7 @@ export type CashTransactionSort =
   | "amountLowest";
 
 export type CashTransactionDocumentType =
-  | "customer_invoice"
-  | "purchase_invoice"
-  | "pos_return"
-  | "pet_membership";
+  "customer_invoice" | "purchase_invoice" | "pos_return" | "pet_membership";
 
 /**
  * One account line of an `expense` / `other_income` — what the money became.
@@ -9511,7 +9537,6 @@ export interface CancelCashTransactionInput {
   refundAccountId?: string;
   refundAt?: string;
 }
-
 
 /* ─────────────────────────────────────────────────────────────────────────────
    HOME GROOMING TRIP (10 October 2026)

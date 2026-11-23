@@ -151,6 +151,7 @@ export function HotelSettingsScreen() {
         onChange={state.updateSteps}
         showWeights={draft.serviceMode !== "none" && draft.split === "by_step"}
         problem={state.errors.steps}
+        saveStatus={state.stepsStatus}
         mayUpdate={mayUpdate}
         mayAddToList={can("services", "update")}
         disabled={disabled}

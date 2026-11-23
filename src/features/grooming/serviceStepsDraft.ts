@@ -75,7 +75,43 @@ export function hasStep(draft: StepsDraft, name: string): boolean {
  * `name` is stored as given (trimmed) — pass the LINE LIST'S spelling, which is
  * what the picker hands over (`step.name`), since the server stores that one.
  */
-export function addStep(draft: StepsDraft, name: string): StepsDraft {
+/**
+ * The clock time inside a step's Jam default (hotel), which is free text
+ * (22 November 2026): "08:00" / "8.00" → "08:00"; "Ikut jam datang" → null.
+ */
+export function clockTimeOf(text: string | null | undefined): string | null {
+  const match = /^([01]?\d|2[0-3])[:.]([0-5]\d)$/.exec((text ?? "").trim());
+  return match ? `${match[1].padStart(2, "0")}:${match[2]}` : null;
+}
+
+/**
+ * A Jam default (hotel) that is words, not a clock time — "Ikut jam datang".
+ * Shown as is and not editable where a step's time is set; null otherwise.
+ */
+export function fixedTimeText(text: string | null | undefined): string | null {
+  const trimmed = (text ?? "").trim();
+  return trimmed && !clockTimeOf(trimmed) ? trimmed : null;
+}
+
+/** Times dropped for the steps whose Jam default (hotel) is words. */
+export function withoutFixedTimes(
+  draft: StepsDraft,
+  hotelTimeOf: (name: string) => string | null | undefined,
+): StepsDraft {
+  const times = Object.fromEntries(
+    Object.entries(draft.times).filter(
+      ([name]) => !fixedTimeText(hotelTimeOf(name)),
+    ),
+  );
+  return { ...draft, times };
+}
+
+export function addStep(
+  draft: StepsDraft,
+  name: string,
+  /** The step's Jam default (hotel), filled in when the list has one. */
+  defaultTime?: string | null,
+): StepsDraft {
   const trimmed = name.trim().slice(0, SESSION_MAX_LENGTH);
   if (
     trimmed === "" ||
@@ -85,7 +121,10 @@ export function addStep(draft: StepsDraft, name: string): StepsDraft {
     return draft;
   }
 
-  return { ...draft, sessions: [...draft.sessions, trimmed] };
+  const next = { ...draft, sessions: [...draft.sessions, trimmed] };
+  return defaultTime && !draft.times[trimmed]
+    ? { ...next, times: { ...draft.times, [trimmed]: defaultTime } }
+    : next;
 }
 
 /** A tahapan removed, and its weight with it; the others keep theirs. */

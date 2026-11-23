@@ -21,7 +21,10 @@ import { Switch } from "@/components/ui/switch";
 // accounting index reaches back into settings, which imports this feature.
 import { useSubAccounts } from "@/features/accounting/hooks/useSubAccounts";
 import { usePermissions } from "@/features/permissions";
-import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
+import {
+  invalidateServiceSteps,
+  useServiceSteps,
+} from "@/hooks/useServiceSteps";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
 import { branchService } from "@/services/branch.service";
@@ -71,6 +74,7 @@ import { ServiceSalesAccountField } from "./ServiceSalesAccountField";
 import { sessionsRefusal } from "./ServiceStepPicker";
 // Deep, not the barrel: the grooming index imports this feature back.
 import { GROOMING_CATALOG_PATH } from "@/features/grooming/paths";
+import { clockTimeOf } from "@/features/grooming/serviceStepsDraft";
 import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
 
 /** Backend caps — NAME_MAX_LENGTH and friends in service.model.js. */
@@ -135,7 +139,9 @@ function durationProblem(value: string): string | null {
   if (trimmed === "") return "empty";
 
   const minutes = Number(trimmed);
-  return Number.isInteger(minutes) && minutes >= 1 && minutes <= MAX_DURATION_MIN
+  return Number.isInteger(minutes) &&
+    minutes >= 1 &&
+    minutes <= MAX_DURATION_MIN
     ? null
     : "range";
 }
@@ -182,11 +188,7 @@ function durationProblem(value: string): string | null {
  *    is sixty rows against a MAX_VARIANTS of twenty. Simpan says so and stays
  *    off until an axis is unticked, rather than sending a save to be refused.
  */
-export function ServiceForm({
-  serviceId,
-}: {
-  serviceId?: string;
-}) {
+export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const editing = serviceId !== undefined;
   const router = useRouter();
   // Adding a missing tahapan to the list is `services:update`, which a
@@ -248,7 +250,8 @@ export function ServiceForm({
   const originRef = useRef<ServiceFormOrigin | null | undefined>(undefined);
   const [listPath, setListPath] = useState(LIST_PATH);
   const originOf = () => {
-    if (originRef.current === undefined) originRef.current = readServiceFormOrigin();
+    if (originRef.current === undefined)
+      originRef.current = readServiceFormOrigin();
     return originRef.current;
   };
   const [kindError, setKindError] = useState<string | null>(null);
@@ -293,7 +296,11 @@ export function ServiceForm({
   /* A HOTEL service's room types — "Berlaku untuk" (21 November 2026). */
   const [roomTypeIds, setRoomTypeIds] = useState<string[]>([]);
   /* Tahapan name → stored default clock time, so a reorder here keeps each one's. */
-  const [storedTimes, setStoredTimes] = useState<Record<string, string | null>>({});
+  const [storedTimes, setStoredTimes] = useState<Record<string, string | null>>(
+    {},
+  );
+  /* A hotel step picked here with no time of its own takes the list's Jam default (hotel). */
+  const stepList = useServiceSteps();
 
   const [nameError, setNameError] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
@@ -337,7 +344,8 @@ export function ServiceForm({
     stays — off is one price for every ride — and a NEW ride service opens with
     it on. Leaving the kind takes the trip axis off again.
   */
-  const tripAxis = axisDefs.find((def) => def.systemKey === "trip")?.key ?? null;
+  const tripAxis =
+    axisDefs.find((def) => def.systemKey === "trip")?.key ?? null;
   const isRide = serviceType === "main" && serviceKind === "pickup-delivery";
   /* A HOTEL service bills by the night, has no length and no place to go (21 November 2026). */
   const isHotel = serviceType === "main" && serviceKind === "hotel";
@@ -349,7 +357,9 @@ export function ServiceForm({
     empty, so nothing somebody already picked is overwritten. Fails softly: a
     form without them is the form as it always was.
   */
-  const [hotelDefaults, setHotelDefaults] = useState<HotelSettings["defaultSteps"] | null>(null);
+  const [hotelDefaults, setHotelDefaults] = useState<
+    HotelSettings["defaultSteps"] | null
+  >(null);
   const hotelDefaultsAsked = useRef(false);
   const hotelDefaultsApplied = useRef(false);
   const [hotelStepsSeededFrom, setHotelStepsSeededFrom] = useState(false);
@@ -361,7 +371,8 @@ export function ServiceForm({
       .me()
       .then((tenant) => {
         const steps = tenant.settings?.hotel?.defaultSteps;
-        if (active && steps && steps.sessions.length > 0) setHotelDefaults(steps);
+        if (active && steps && steps.sessions.length > 0)
+          setHotelDefaults(steps);
       })
       .catch(() => undefined);
     return () => {
@@ -379,12 +390,16 @@ export function ServiceForm({
     setSessions([...names]);
     setSessionWeights(
       weights.length === names.length
-        ? Object.fromEntries(names.map((name, index) => [name, String(weights[index])]))
+        ? Object.fromEntries(
+            names.map((name, index) => [name, String(weights[index])]),
+          )
         : {},
     );
     setStoredTimes(
       times.length === names.length
-        ? Object.fromEntries(names.map((name, index) => [name, times[index] ?? null]))
+        ? Object.fromEntries(
+            names.map((name, index) => [name, times[index] ?? null]),
+          )
         : {},
     );
     setHotelStepsSeededFrom(true);
@@ -399,7 +414,8 @@ export function ServiceForm({
       setHasVariants(true);
     }
     if (ridePriced && hasVariants) {
-      if (!variantAxes.includes(tripAxis)) setVariantAxes((prev) => [tripAxis, ...prev]);
+      if (!variantAxes.includes(tripAxis))
+        setVariantAxes((prev) => [tripAxis, ...prev]);
     } else if (variantAxes.includes(tripAxis)) {
       setVariantAxes((prev) => prev.filter((axis) => axis !== tripAxis));
     }
@@ -576,7 +592,8 @@ export function ServiceForm({
           what the server does with such a service anyway.
         */
         setSessionWeights(
-          storedWeights.length > 0 && storedWeights.length === storedSessions.length
+          storedWeights.length > 0 &&
+            storedWeights.length === storedSessions.length
             ? Object.fromEntries(
                 storedSessions.map((session, index) => [
                   session,
@@ -590,7 +607,9 @@ export function ServiceForm({
         // field empty would make Simpan fail on a rule the user never set.
         // "Di toko" is what every service predating the field actually was.
         setServiceLocations(
-          result.serviceLocations?.length ? result.serviceLocations : ["in_store"],
+          result.serviceLocations?.length
+            ? result.serviceLocations
+            : ["in_store"],
         );
         setPickupDeliveryAvailable(result.pickupDeliveryAvailable ?? false);
         setAllBranches(result.allBranches ?? true);
@@ -604,7 +623,10 @@ export function ServiceForm({
         setStoredTimes(
           (result.sessionTimes ?? []).length === storedSessions.length
             ? Object.fromEntries(
-                storedSessions.map((session, index) => [session, result.sessionTimes?.[index] ?? null]),
+                storedSessions.map((session, index) => [
+                  session,
+                  result.sessionTimes?.[index] ?? null,
+                ]),
               )
             : {},
         );
@@ -652,9 +674,7 @@ export function ServiceForm({
   function toggleAxis(axis: VariantAxisKey, checked: boolean) {
     setVariantError(null);
     setVariantAxes((current) =>
-      checked
-        ? [...current, axis]
-        : current.filter((entry) => entry !== axis),
+      checked ? [...current, axis] : current.filter((entry) => entry !== axis),
     );
   }
 
@@ -730,7 +750,8 @@ export function ServiceForm({
         invalid = true;
       } else if (
         combos.some(
-          (combo) => !WHOLE_RUPIAH.test((variantPrices[combo.key] ?? "").trim()),
+          (combo) =>
+            !WHOLE_RUPIAH.test((variantPrices[combo.key] ?? "").trim()),
         )
       ) {
         setVariantError(
@@ -740,7 +761,8 @@ export function ServiceForm({
       } else if (
         !isHotel &&
         combos.some(
-          (combo) => durationProblem(variantDurations[combo.key] ?? "") === "empty",
+          (combo) =>
+            durationProblem(variantDurations[combo.key] ?? "") === "empty",
         )
       ) {
         setVariantError(
@@ -749,7 +771,9 @@ export function ServiceForm({
         invalid = true;
       } else if (
         !isHotel &&
-        combos.some((combo) => durationProblem(variantDurations[combo.key] ?? ""))
+        combos.some((combo) =>
+          durationProblem(variantDurations[combo.key] ?? ""),
+        )
       ) {
         setVariantError(
           `Durasi varian diisi menit antara 1 dan ${MAX_DURATION_MIN}.`,
@@ -764,7 +788,9 @@ export function ServiceForm({
           ...(combo.zoneId ? { zoneId: combo.zoneId } : {}),
           ...(combo.choices.length > 0 ? { choices: combo.choices } : {}),
           price: (variantPrices[combo.key] ?? "").trim(),
-          durationMin: isHotel ? null : Number((variantDurations[combo.key] ?? "").trim()),
+          durationMin: isHotel
+            ? null
+            : Number((variantDurations[combo.key] ?? "").trim()),
           isActive: variantActive[combo.key] !== false,
         }));
       }
@@ -810,9 +836,7 @@ export function ServiceForm({
     // The same call the server makes: a service available at no branch at all
     // vanishes from every till while looking perfectly healthy on its own page.
     if (!allBranches && branchIds.length === 0) {
-      setBranchError(
-        "Pilih minimal satu cabang, atau centang “Semua cabang”.",
-      );
+      setBranchError("Pilih minimal satu cabang, atau centang “Semua cabang”.");
       invalid = true;
     }
 
@@ -826,6 +850,12 @@ export function ServiceForm({
 
     setSaving(true);
     setFormError(null);
+
+    /* A stored time wins (even a cleared one); otherwise the list's Jam default (hotel). */
+    const timeOf = (session: string) =>
+      Object.hasOwn(storedTimes, session)
+        ? (storedTimes[session] ?? null)
+        : clockTimeOf(stepList.stepFor(session)?.hotelTime);
 
     const payload = {
       name: trimmedName,
@@ -880,7 +910,10 @@ export function ServiceForm({
       ...(hasVariants
         ? { variantAxes, variants }
         : // Sent exactly as typed. Never Number(price).
-          { price: trimmedPrice, ...(isHotel ? {} : { durationMin: duration as number }) }),
+          {
+            price: trimmedPrice,
+            ...(isHotel ? {} : { durationMin: duration as number }),
+          }),
       sessions,
       // `[]` IS AN ANSWER — "split evenly" — and is sent as one.
       sessionWeights: sessionWeightsPayload(sessions, sessionWeights),
@@ -891,14 +924,16 @@ export function ServiceForm({
       */
       ...(isHotel
         ? {
-            sessionTimes: sessions.some((session) => storedTimes[session])
-              ? sessions.map((session) => storedTimes[session] ?? null)
+            sessionTimes: sessions.some((session) => timeOf(session))
+              ? sessions.map((session) => timeOf(session))
               : [],
             roomTypeIds,
           }
         : {}),
       included,
-      serviceLocations: isHotel ? (["in_store"] as ServiceLocation[]) : serviceLocations,
+      serviceLocations: isHotel
+        ? (["in_store"] as ServiceLocation[])
+        : serviceLocations,
       pickupDeliveryAvailable,
       allBranches,
       branchIds: allBranches ? [] : branchIds,
@@ -1016,7 +1051,11 @@ export function ServiceForm({
         }
         meta={editing ? (service?.name ?? undefined) : undefined}
         submitLabel={
-          editing ? "Simpan layanan" : serviceType === "addon" ? "Buat add-on" : "Buat layanan"
+          editing
+            ? "Simpan layanan"
+            : serviceType === "addon"
+              ? "Buat add-on"
+              : "Buat layanan"
         }
         submitting={saving}
         disabled={variantBlock !== null}
@@ -1161,19 +1200,20 @@ export function ServiceForm({
           */}
           {isHotel ? (
             <p className="rounded-lg bg-tint-neutral px-4 py-3 text-sm text-muted">
-              Ditagih <b className="font-semibold text-foreground">per malam</b> — harga di
-              bawah adalah harga satu malam, dan booking menghitungnya kali jumlah malam.
+              Ditagih <b className="font-semibold text-foreground">per malam</b>{" "}
+              — harga di bawah adalah harga satu malam, dan booking
+              menghitungnya kali jumlah malam.
             </p>
           ) : (
-          <SelectField
-            label="Ditagih"
-            value={billingUnit}
-            onChange={(next) => setBillingUnit(next as ServiceBillingUnit)}
-            options={BILLING_UNIT_OPTIONS}
-            hint="Per kunjungan: hewan yang datang bareng cuma bayar sekali, mis. antar-jemput. Per hewan: tiap hewan ditagih sendiri."
-            disabled={saving}
-            required
-          />
+            <SelectField
+              label="Ditagih"
+              value={billingUnit}
+              onChange={(next) => setBillingUnit(next as ServiceBillingUnit)}
+              options={BILLING_UNIT_OPTIONS}
+              hint="Per kunjungan: hewan yang datang bareng cuma bayar sekali, mis. antar-jemput. Per hewan: tiap hewan ditagih sendiri."
+              disabled={saving}
+              required
+            />
           )}
 
           <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
@@ -1230,7 +1270,10 @@ export function ServiceForm({
               }}
               onDurationChange={(key, value) => {
                 setVariantError(null);
-                setVariantDurations((current) => ({ ...current, [key]: value }));
+                setVariantDurations((current) => ({
+                  ...current,
+                  [key]: value,
+                }));
               }}
               onActiveChange={(key, next) =>
                 setVariantActive((current) => ({ ...current, [key]: next }))
@@ -1257,23 +1300,23 @@ export function ServiceForm({
                 required
               />
               {!isHotel && (
-              <TextField
-                label="Durasi (menit)"
-                name="durationMin"
-                type="number"
-                min={1}
-                max={MAX_DURATION_MIN}
-                value={durationMin}
-                onChange={(event) => {
-                  setDurationMin(event.target.value);
-                  setDurationError(null);
-                }}
-                error={durationError ?? undefined}
-                placeholder="90"
-                hint="Dipakai kalender dan pengecekan bentrok."
-                disabled={saving}
-                required
-              />
+                <TextField
+                  label="Durasi (menit)"
+                  name="durationMin"
+                  type="number"
+                  min={1}
+                  max={MAX_DURATION_MIN}
+                  value={durationMin}
+                  onChange={(event) => {
+                    setDurationMin(event.target.value);
+                    setDurationError(null);
+                  }}
+                  error={durationError ?? undefined}
+                  placeholder="90"
+                  hint="Dipakai kalender dan pengecekan bentrok."
+                  disabled={saving}
+                  required
+                />
               )}
             </div>
           )}
@@ -1288,8 +1331,8 @@ export function ServiceForm({
           <div className="flex flex-col gap-4">
             {hotelStepsSeededFrom && (
               <p className="rounded-lg bg-tint-neutral px-4 py-3 text-sm text-muted">
-                Tahapan, porsi, dan jam sudah diisi dari Hotel › Pengaturan › Kegiatan harian. Boleh diubah
-                khusus untuk layanan ini.
+                Tahapan, porsi, dan jam sudah diisi dari Hotel › Pengaturan ›
+                Kegiatan harian. Boleh diubah khusus untuk layanan ini.
               </p>
             )}
             <ServiceStepsField
@@ -1352,37 +1395,36 @@ export function ServiceForm({
               disabled={saving}
             />
           ) : (
-          <div>
-            <p className="text-sm font-medium">Lokasi layanan</p>
-            <p className="mt-1 text-xs text-muted">
-              Boleh dua-duanya — grooming panggilan yang juga melayani di toko.
-            </p>
-            <CheckRowGroup className="mt-2">
-              {SERVICE_LOCATION_ORDER.map((location) => (
-                <CheckRow
-                  key={location}
-                  label={LOCATION_LABELS[location]}
-                  checked={serviceLocations.includes(location)}
-                  onCheckedChange={(checked) =>
-                    toggleLocation(location, checked)
-                  }
-                  disabled={saving}
-                />
-              ))}
-            </CheckRowGroup>
-            {locationError && (
-              <p role="alert" className="mt-1 text-xs text-danger">
-                {locationError}
+            <div>
+              <p className="text-sm font-medium">Lokasi layanan</p>
+              <p className="mt-1 text-xs text-muted">
+                Boleh dua-duanya — grooming panggilan yang juga melayani di
+                toko.
               </p>
-            )}
-          </div>
+              <CheckRowGroup className="mt-2">
+                {SERVICE_LOCATION_ORDER.map((location) => (
+                  <CheckRow
+                    key={location}
+                    label={LOCATION_LABELS[location]}
+                    checked={serviceLocations.includes(location)}
+                    onCheckedChange={(checked) =>
+                      toggleLocation(location, checked)
+                    }
+                    disabled={saving}
+                  />
+                ))}
+              </CheckRowGroup>
+              {locationError && (
+                <p role="alert" className="mt-1 text-xs text-danger">
+                  {locationError}
+                </p>
+              )}
+            </div>
           )}
 
           <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
             <div className="min-w-0">
-              <Label htmlFor="service-pickup-delivery">
-                Bisa antar-jemput
-              </Label>
+              <Label htmlFor="service-pickup-delivery">Bisa antar-jemput</Label>
               <p className="mt-1 max-w-prose text-xs text-muted">
                 Nyalakan kalau hewannya boleh dijemput dan diantar pulang.
               </p>
@@ -1408,7 +1450,8 @@ export function ServiceForm({
                 setBranchError(null);
                 if (patch.allBranches !== undefined)
                   setAllBranches(patch.allBranches);
-                if (patch.branchIds !== undefined) setBranchIds(patch.branchIds);
+                if (patch.branchIds !== undefined)
+                  setBranchIds(patch.branchIds);
               }}
             />
           </div>

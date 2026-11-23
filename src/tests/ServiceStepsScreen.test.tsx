@@ -57,8 +57,16 @@ jest.mock("sweetalert2", () => ({
  */
 
 const MANDI = makeServiceStep({ name: "Mandi", sortOrder: 0, serviceCount: 3 });
-const GUNTING = makeServiceStep({ name: "Gunting", sortOrder: 1, serviceCount: 0 });
-const BLOW_DRY = makeServiceStep({ name: "Blow dry", sortOrder: 2, serviceCount: 1 });
+const GUNTING = makeServiceStep({
+  name: "Gunting",
+  sortOrder: 1,
+  serviceCount: 0,
+});
+const BLOW_DRY = makeServiceStep({
+  name: "Blow dry",
+  sortOrder: 2,
+  serviceCount: 1,
+});
 const POTONG_KUKU = makeServiceStep({
   name: "Potong kuku",
   sortOrder: 3,
@@ -88,7 +96,9 @@ function namesInTable() {
 }
 
 async function openRowMenu(name: string) {
-  await userEvent.click(screen.getByRole("button", { name: `Aksi untuk ${name}` }));
+  await userEvent.click(
+    screen.getByRole("button", { name: `Aksi untuk ${name}` }),
+  );
   return screen.getByRole("menu");
 }
 
@@ -106,8 +116,15 @@ describe("ServiceStepsScreen", () => {
     renderWithAuth(<ServiceStepsScreen />);
 
     expect(await screen.findByText("Mandi")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Kelompok layanan" })).not.toBeInTheDocument();
-    expect(namesInTable()).toEqual(["Mandi", "Gunting", "Blow dry", "Cek kesehatan"]);
+    expect(
+      screen.queryByRole("group", { name: "Kelompok layanan" }),
+    ).not.toBeInTheDocument();
+    expect(namesInTable()).toEqual([
+      "Mandi",
+      "Gunting",
+      "Blow dry",
+      "Cek kesehatan",
+    ]);
 
     const mandiRow = screen.getByText("Mandi").closest("tr")!;
     expect(within(mandiRow).getByText("3 layanan")).toBeInTheDocument();
@@ -124,7 +141,8 @@ describe("ServiceStepsScreen", () => {
     ]);
     const deletedRow = screen.getByText("Potong kuku").closest("tr")!;
     expect(within(deletedRow).getByText("Dihapus")).toBeInTheDocument();
-    expect(within(deletedRow).getByText("—")).toBeInTheDocument();
+    // Estimasi, Jam default (hotel) and Dipakai all read "—" on a deleted row.
+    expect(within(deletedRow).getAllByText("—")).toHaveLength(3);
 
     // Toggling asked for nothing.
     expect(serviceStepService.list).toHaveBeenCalledTimes(1);
@@ -141,19 +159,32 @@ describe("ServiceStepsScreen", () => {
     renderWithAuth(<ServiceStepsScreen />);
     await screen.findByText("Mandi");
 
-    await userEvent.click(screen.getByRole("button", { name: "Tambah tahapan" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Tambah tahapan" }),
+    );
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveTextContent(/Masuk ke daftar tahapan, di urutan paling akhir/);
+    expect(dialog).toHaveTextContent(
+      /Masuk ke daftar tahapan, di urutan paling akhir/,
+    );
 
     const field = within(dialog).getByLabelText(/Nama tahapan/);
     expect(field).toHaveAttribute("placeholder", "mis. Mandi");
     await userEvent.type(field, "  Perjalanan  ");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Tambah tahapan" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Tambah tahapan" }),
+    );
 
     await waitFor(() =>
-      expect(serviceStepService.create).toHaveBeenCalledWith({ name: "Perjalanan" }),
+      expect(serviceStepService.create).toHaveBeenCalledWith({
+        name: "Perjalanan",
+        estimateMinutes: null,
+        hotelTime: null,
+        note: null,
+      }),
     );
-    await waitFor(() => expect(serviceStepService.list).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(serviceStepService.list).toHaveBeenCalledTimes(2),
+    );
     expect(invalidateServiceSteps).toHaveBeenCalledWith();
     expect(swalToast).toHaveBeenCalledWith("Tahapan ditambahkan.");
   });
@@ -166,13 +197,22 @@ describe("ServiceStepsScreen", () => {
     renderWithAuth(<ServiceStepsScreen />);
     await screen.findByText("Mandi");
 
-    await userEvent.click(screen.getByRole("button", { name: "Tambah tahapan" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Tambah tahapan" }),
+    );
     const dialog = screen.getByRole("dialog");
-    await userEvent.type(within(dialog).getByLabelText(/Nama tahapan/), "mandi");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Tambah tahapan" }));
+    await userEvent.type(
+      within(dialog).getByLabelText(/Nama tahapan/),
+      "mandi",
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Tambah tahapan" }),
+    );
 
     expect(
-      await within(dialog).findByText('"mandi" sudah ada di daftar tahapan. Pakai nama lain.'),
+      await within(dialog).findByText(
+        '"mandi" sudah ada di daftar tahapan. Pakai nama lain.',
+      ),
     ).toBeInTheDocument();
     expect(invalidateServiceSteps).not.toHaveBeenCalled();
   });
@@ -180,13 +220,19 @@ describe("ServiceStepsScreen", () => {
   it("warns how many services a rename reaches, and toasts how many it rewrote", async () => {
     jest
       .mocked(serviceStepService.update)
-      .mockResolvedValue({ ...MANDI, name: "Mandi kutu", renamedServiceCount: 3 });
+      .mockResolvedValue({
+        ...MANDI,
+        name: "Mandi kutu",
+        renamedServiceCount: 3,
+      });
 
     renderWithAuth(<ServiceStepsScreen />);
     await screen.findByText("Mandi");
 
     const menu = await openRowMenu("Mandi");
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /Ubah nama/ }));
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /^Ubah$/ }),
+    );
 
     const dialog = screen.getByRole("dialog");
     // Said before the click.
@@ -200,7 +246,9 @@ describe("ServiceStepsScreen", () => {
     const name = within(dialog).getByLabelText(/Nama tahapan/);
     await userEvent.clear(name);
     await userEvent.type(name, "Mandi kutu");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Simpan tahapan" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Simpan tahapan" }),
+    );
 
     await waitFor(() =>
       expect(serviceStepService.update).toHaveBeenCalledWith("step-mandi", {
@@ -208,7 +256,7 @@ describe("ServiceStepsScreen", () => {
       }),
     );
     expect(swalToast).toHaveBeenCalledWith(
-      "Nama tahapan disimpan. 3 layanan ikut diperbarui.",
+      "Tahapan disimpan. 3 layanan ikut diperbarui.",
     );
     expect(invalidateServiceSteps).toHaveBeenCalledWith();
   });
@@ -222,7 +270,9 @@ describe("ServiceStepsScreen", () => {
     await screen.findByText("Gunting");
 
     const menu = await openRowMenu("Gunting");
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /Ubah nama/ }));
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /^Ubah$/ }),
+    );
 
     const dialog = screen.getByRole("dialog");
     expect(dialog).not.toHaveTextContent(/ikut berganti nama/);
@@ -230,10 +280,76 @@ describe("ServiceStepsScreen", () => {
     const name = within(dialog).getByLabelText(/Nama tahapan/);
     await userEvent.clear(name);
     await userEvent.type(name, "Cukur");
-    await userEvent.click(within(dialog).getByRole("button", { name: "Simpan tahapan" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Simpan tahapan" }),
+    );
 
     await waitFor(() =>
-      expect(swalToast).toHaveBeenCalledWith("Nama tahapan disimpan."),
+      expect(swalToast).toHaveBeenCalledWith("Tahapan disimpan."),
+    );
+  });
+
+  it("saves Estimasi and Jam default (hotel), sending only what changed (22 November 2026)", async () => {
+    jest.mocked(serviceStepService.update).mockResolvedValue({
+      ...GUNTING,
+      estimateMinutes: 15,
+      hotelTime: "08:00",
+      renamedServiceCount: 0,
+    });
+
+    renderWithAuth(<ServiceStepsScreen />);
+    await screen.findByText("Gunting");
+
+    const menu = await openRowMenu("Gunting");
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /^Ubah$/ }),
+    );
+
+    const dialog = screen.getByRole("dialog");
+    await userEvent.type(within(dialog).getByLabelText("Estimasi"), "15");
+    const time = within(dialog).getByLabelText("Jam default (hotel)");
+    await userEvent.clear(time);
+    await userEvent.type(time, "08:00");
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Simpan tahapan" }),
+    );
+
+    await waitFor(() =>
+      expect(serviceStepService.update).toHaveBeenCalledWith(GUNTING._id, {
+        estimateMinutes: 15,
+        hotelTime: "08:00",
+      }),
+    );
+  });
+
+  it("saves Catatan, and shows it under the name (22 November 2026)", async () => {
+    jest.mocked(serviceStepService.update).mockResolvedValue({
+      ...GUNTING,
+      note: "Rapikan bulu kaki",
+      renamedServiceCount: 0,
+    });
+
+    renderWithAuth(<ServiceStepsScreen />);
+    await screen.findByText("Gunting");
+
+    const menu = await openRowMenu("Gunting");
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /^Ubah$/ }),
+    );
+
+    const dialog = screen.getByRole("dialog");
+    await userEvent.type(
+      within(dialog).getByLabelText("Catatan"),
+      "  Rapikan bulu kaki ",
+    );
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Simpan tahapan" }),
+    );
+
+    await waitFor(() =>
+      expect(serviceStepService.update).toHaveBeenCalledWith(GUNTING._id, {
+        note: "Rapikan bulu kaki",
+      }),
     );
   });
 
@@ -249,15 +365,21 @@ describe("ServiceStepsScreen", () => {
     await screen.findByText("Mandi");
 
     const menu = await openRowMenu("Mandi");
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /Hapus/ }));
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /Hapus/ }),
+    );
 
     const dialog = screen.getByRole("dialog");
     // Said before the click, not only after the refusal.
-    expect(dialog).toHaveTextContent(/ditolak selama masih ada layanan yang memakainya/);
+    expect(dialog).toHaveTextContent(
+      /ditolak selama masih ada layanan yang memakainya/,
+    );
     expect(dialog).toHaveTextContent(/sekarang 3 layanan/);
     expect(dialog).toHaveTextContent(/Nonaktifkan/);
 
-    await userEvent.click(within(dialog).getByRole("button", { name: "Hapus" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Hapus" }),
+    );
 
     expect(
       await within(dialog).findByText(/3 service\(s\) still use 'Mandi'/),
@@ -272,23 +394,28 @@ describe("ServiceStepsScreen", () => {
 
     // Nothing above the first.
     const top = await openRowMenu("Mandi");
-    expect(within(top).getByRole("menuitem", { name: /Naikkan/ })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    expect(
+      within(top).getByRole("menuitem", { name: /Naikkan/ }),
+    ).toHaveAttribute("aria-disabled", "true");
     await userEvent.keyboard("{Escape}");
 
     const menu = await openRowMenu("Gunting");
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /Naikkan/ }));
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /Naikkan/ }),
+    );
 
-    await waitFor(() => expect(serviceStepService.update).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(serviceStepService.update).toHaveBeenCalledTimes(2),
+    );
     expect(serviceStepService.update).toHaveBeenCalledWith("step-gunting", {
       sortOrder: 0,
     });
     expect(serviceStepService.update).toHaveBeenCalledWith("step-mandi", {
       sortOrder: 1,
     });
-    await waitFor(() => expect(serviceStepService.list).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(serviceStepService.list).toHaveBeenCalledTimes(2),
+    );
     expect(invalidateServiceSteps).toHaveBeenCalledWith();
     expect(swalToast).toHaveBeenCalledWith("Urutan tahapan disimpan.");
   });
@@ -302,10 +429,14 @@ describe("ServiceStepsScreen", () => {
 
     const menu = await openRowMenu("Potong kuku");
     expect(within(menu).getAllByRole("menuitem")).toHaveLength(1);
-    await userEvent.click(within(menu).getByRole("menuitem", { name: /Pulihkan/ }));
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /Pulihkan/ }),
+    );
 
     await waitFor(() =>
-      expect(serviceStepService.restore).toHaveBeenCalledWith("step-potong-kuku"),
+      expect(serviceStepService.restore).toHaveBeenCalledWith(
+        "step-potong-kuku",
+      ),
     );
     expect(invalidateServiceSteps).toHaveBeenCalledWith();
   });
@@ -315,41 +446,53 @@ describe("ServiceStepsScreen", () => {
     renderWithAuth(<ServiceStepsScreen />);
 
     expect(await screen.findByText("Belum ada tahapan.")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /Tambah yang pertama/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /Tambah yang pertama/ }),
+    );
     expect(
-      within(screen.getByRole("dialog")).getByRole("heading", { name: "Tambah tahapan" }),
+      within(screen.getByRole("dialog")).getByRole("heading", {
+        name: "Tambah tahapan",
+      }),
     ).toBeInTheDocument();
   });
 
   it("gives a read-only role the lists and nothing to press", async () => {
     renderWithAuth(<ServiceStepsScreen />, {
       isSuperAdmin: false,
-      permissions: [
-        { feature: "services", actions: ["read"] },
-      ],
+      permissions: [{ feature: "services", actions: ["read"] }],
     });
 
     expect(await screen.findByText("Mandi")).toBeInTheDocument();
-    expect(screen.queryByRole("columnheader", { name: "Aksi" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Aksi untuk/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Tambah/ })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("columnheader", { name: "Aksi" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^Aksi untuk/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /^Tambah/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("lets services:update add, rename, move and retire, but not delete", async () => {
     renderWithAuth(<ServiceStepsScreen />, {
       isSuperAdmin: false,
-      permissions: [
-        { feature: "services", actions: ["read", "update"] },
-      ],
+      permissions: [{ feature: "services", actions: ["read", "update"] }],
     });
     await screen.findByText("Mandi");
 
-    expect(screen.getByRole("button", { name: "Tambah tahapan" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Tambah tahapan" }),
+    ).toBeInTheDocument();
 
     const menu = await openRowMenu("Gunting");
-    for (const item of [/Ubah nama/, /Naikkan/, /Turunkan/, /Nonaktifkan/]) {
-      expect(within(menu).getByRole("menuitem", { name: item })).toBeInTheDocument();
+    for (const item of [/^Ubah$/, /Naikkan/, /Turunkan/, /Nonaktifkan/]) {
+      expect(
+        within(menu).getByRole("menuitem", { name: item }),
+      ).toBeInTheDocument();
     }
-    expect(within(menu).queryByRole("menuitem", { name: /Hapus/ })).not.toBeInTheDocument();
+    expect(
+      within(menu).queryByRole("menuitem", { name: /Hapus/ }),
+    ).not.toBeInTheDocument();
   });
 });
