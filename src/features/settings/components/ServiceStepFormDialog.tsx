@@ -10,6 +10,7 @@ import {
   TextField,
 } from "@/components";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -22,14 +23,16 @@ import {
 import { ApiError } from "@/services/api-error";
 import { serviceStepService } from "@/services/serviceStep.service";
 import { swalToast } from "@/lib/swal";
-import type { ServiceStep } from "@/types/api";
+import type { ServiceKind, ServiceStep } from "@/types/api";
 
 import {
   HOTEL_TIME_MAX_LENGTH,
   MAX_ESTIMATE_MINUTES,
   SERVICE_STEP_NAME_MAX_LENGTH,
   STEP_NOTE_MAX_LENGTH,
+  STEP_USED_IN,
   stepNameOf,
+  stepUsedIn,
 } from "../serviceSteps";
 
 /**
@@ -45,6 +48,10 @@ import {
  * moved from the table; retiring is a row action. The commission weight is not
  * here at all — it belongs to a step's place IN A SERVICE (`sessionWeights[i]`),
  * so the same "Mandi" can weigh differently in two services.
+ *
+ * DIPAKAI DI (23 November 2026, BO) — Grooming, Hotel, Antar-Jemput; at least
+ * one, all three on a new step. Jam default (hotel) is asked only while Hotel
+ * is ticked, and is dropped when it is not.
  *
  * A RENAME IS NOT ONLY A LABEL. Services store the NAME, not an id, so the
  * server rewrites every service that lists the old one, and leaves
@@ -82,6 +89,9 @@ export function ServiceStepFormDialog({
   );
   const [hotelTime, setHotelTime] = useState(step?.hotelTime ?? "");
   const [note, setNote] = useState(step?.note ?? "");
+  const [usedIn, setUsedIn] = useState<ServiceKind[]>(() => stepUsedIn(step));
+  const [usedInError, setUsedInError] = useState<string | null>(null);
+  const forHotel = usedIn.includes("hotel");
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -100,6 +110,10 @@ export function ServiceStepFormDialog({
       setFieldError(`Maksimal ${SERVICE_STEP_NAME_MAX_LENGTH} karakter.`);
       return;
     }
+    if (usedIn.length === 0) {
+      setUsedInError("Pilih minimal satu layanan.");
+      return;
+    }
     const estimateMinutes = estimate.trim() === "" ? null : Number(estimate);
     if (
       estimateMinutes !== null &&
@@ -110,7 +124,13 @@ export function ServiceStepFormDialog({
       setEstimateError(`Isi 1–${MAX_ESTIMATE_MINUTES} menit, atau kosongkan.`);
       return;
     }
-    const time = hotelTime.trim().replace(/\s+/g, " ") || null;
+    const time = forHotel
+      ? hotelTime.trim().replace(/\s+/g, " ") || null
+      : null;
+    // In the dialog's order, so an unchanged set compares equal.
+    const kinds = STEP_USED_IN.map((option) => option.value).filter((kind) =>
+      usedIn.includes(kind),
+    );
     const cleanedNote = note.trim() || null;
 
     // Only what changed is sent: a PATCH carrying the same name would still
@@ -123,6 +143,12 @@ export function ServiceStepFormDialog({
             : {}),
           ...(time !== (step.hotelTime ?? null) ? { hotelTime: time } : {}),
           ...(cleanedNote !== (step.note ?? null) ? { note: cleanedNote } : {}),
+          ...(kinds.join() !==
+          STEP_USED_IN.map((option) => option.value)
+            .filter((kind) => stepUsedIn(step).includes(kind))
+            .join()
+            ? { usedIn: kinds }
+            : {}),
         }
       : {};
     if (editing && Object.keys(changes).length === 0) {
@@ -150,6 +176,7 @@ export function ServiceStepFormDialog({
           estimateMinutes,
           hotelTime: time,
           note: cleanedNote,
+          usedIn: kinds,
         });
         onSaved();
         onCreated?.(created);
@@ -225,6 +252,39 @@ export function ServiceStepFormDialog({
             required
           />
 
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-2 text-sm font-medium text-foreground">
+              Dipakai di
+            </legend>
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              {STEP_USED_IN.map((option) => (
+                <label
+                  key={option.value}
+                  className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-foreground"
+                >
+                  <Checkbox
+                    checked={usedIn.includes(option.value)}
+                    disabled={busy}
+                    onCheckedChange={(next) => {
+                      setUsedIn((current) =>
+                        next === true
+                          ? [...current, option.value]
+                          : current.filter((kind) => kind !== option.value),
+                      );
+                      setUsedInError(null);
+                    }}
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+            {usedInError && (
+              <p role="alert" className="text-sm font-semibold text-danger">
+                {usedInError}
+              </p>
+            )}
+          </fieldset>
+
           <div className="flex flex-col gap-4">
             <FormField
               label="Estimasi"
@@ -254,22 +314,24 @@ export function ServiceStepFormDialog({
                 </div>
               )}
             </FormField>
-            <FormField
-              label="Jam default (hotel)"
-              hint="Opsional. Kalau diisi jam (08:00), jam itu langsung terisi di hotel."
-            >
-              {(field) => (
-                <Input
-                  {...field}
-                  value={hotelTime}
-                  onChange={(event) => setHotelTime(event.target.value)}
-                  placeholder="mis. 08:00 atau Ikut jam datang"
-                  maxLength={HOTEL_TIME_MAX_LENGTH}
-                  disabled={busy}
-                  className="h-11"
-                />
-              )}
-            </FormField>
+            {forHotel && (
+              <FormField
+                label="Jam default (hotel)"
+                hint="Opsional. Kalau diisi jam (08:00), jam itu langsung terisi di hotel."
+              >
+                {(field) => (
+                  <Input
+                    {...field}
+                    value={hotelTime}
+                    onChange={(event) => setHotelTime(event.target.value)}
+                    placeholder="mis. 08:00 atau Ikut jam datang"
+                    maxLength={HOTEL_TIME_MAX_LENGTH}
+                    disabled={busy}
+                    className="h-11"
+                  />
+                )}
+              </FormField>
+            )}
           </div>
 
           <TextareaField

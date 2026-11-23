@@ -99,6 +99,7 @@ it("creates a step through the full form and adds it with its time", async () =>
       estimateMinutes: 15,
       hotelTime: "17:00",
       note: null,
+      usedIn: ["grooming", "hotel", "pickup-delivery"],
     }),
   );
   expect(await screen.findByLabelText("Jam default Makan malam")).toHaveValue(

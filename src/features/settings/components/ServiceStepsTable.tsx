@@ -35,7 +35,7 @@ import { serviceStepService } from "@/services/serviceStep.service";
 import { swalToast } from "@/lib/swal";
 import type { ServiceStep } from "@/types/api";
 
-import { formatEstimate } from "../serviceSteps";
+import { formatEstimate, formatUsedIn, stepUsedIn } from "../serviceSteps";
 import { reorderPatches } from "../sortOrder";
 import { ListItemStatus } from "./ListItemStatus";
 
@@ -184,6 +184,7 @@ export function ServiceStepsTable({
           <TableHeader>
             <TableRow>
               <TableHead>Nama</TableHead>
+              <TableHead>Dipakai di</TableHead>
               <TableHead className="text-right">Estimasi</TableHead>
               <TableHead>Jam default (hotel)</TableHead>
               <TableHead className="text-right">Dipakai</TableHead>
@@ -197,6 +198,7 @@ export function ServiceStepsTable({
             {rows.map((step) => {
               const deleted = step.deletedAt !== null;
               const position = live.indexOf(step);
+              const usedIn = stepUsedIn(step);
 
               return (
                 <TableRow key={step._id}>
@@ -212,13 +214,18 @@ export function ServiceStepsTable({
                       </span>
                     )}
                   </TableCell>
+                  <TableCell className="text-sm">
+                    {formatUsedIn(usedIn)}
+                  </TableCell>
                   <TableCell className="text-right text-sm tabular-nums">
                     {formatEstimate(step.estimateMinutes) ?? (
                       <span className="text-muted">—</span>
                     )}
                   </TableCell>
                   <TableCell className="text-sm tabular-nums">
-                    {step.hotelTime ?? <span className="text-muted">—</span>}
+                    {(usedIn.includes("hotel") && step.hotelTime) || (
+                      <span className="text-muted">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right text-sm tabular-nums">
                     <UsedBy step={step} />

@@ -180,6 +180,7 @@ describe("ServiceStepsScreen", () => {
         estimateMinutes: null,
         hotelTime: null,
         note: null,
+        usedIn: ["grooming", "hotel", "pickup-delivery"],
       }),
     );
     await waitFor(() =>
@@ -218,13 +219,11 @@ describe("ServiceStepsScreen", () => {
   });
 
   it("warns how many services a rename reaches, and toasts how many it rewrote", async () => {
-    jest
-      .mocked(serviceStepService.update)
-      .mockResolvedValue({
-        ...MANDI,
-        name: "Mandi kutu",
-        renamedServiceCount: 3,
-      });
+    jest.mocked(serviceStepService.update).mockResolvedValue({
+      ...MANDI,
+      name: "Mandi kutu",
+      renamedServiceCount: 3,
+    });
 
     renderWithAuth(<ServiceStepsScreen />);
     await screen.findByText("Mandi");
@@ -351,6 +350,64 @@ describe("ServiceStepsScreen", () => {
         note: "Rapikan bulu kaki",
       }),
     );
+  });
+
+  it("Dipakai di: unticking Hotel hides Jam default and drops it (23 November 2026)", async () => {
+    jest.mocked(serviceStepService.update).mockResolvedValue({
+      ...GUNTING,
+      usedIn: ["grooming"],
+      renamedServiceCount: 0,
+    });
+
+    renderWithAuth(<ServiceStepsScreen />);
+    await screen.findByText("Gunting");
+    // A step stored before the field is for every kind.
+    expect(screen.getAllByText("Semua layanan").length).toBeGreaterThan(0);
+
+    const menu = await openRowMenu("Gunting");
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /^Ubah$/ }),
+    );
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByLabelText("Jam default (hotel)")).toBeVisible();
+    await userEvent.click(
+      within(dialog).getByRole("checkbox", { name: "Hotel" }),
+    );
+    await userEvent.click(
+      within(dialog).getByRole("checkbox", { name: "Antar-Jemput" }),
+    );
+    expect(within(dialog).queryByLabelText("Jam default (hotel)")).toBeNull();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Simpan tahapan" }),
+    );
+    await waitFor(() =>
+      expect(serviceStepService.update).toHaveBeenCalledWith(GUNTING._id, {
+        usedIn: ["grooming"],
+      }),
+    );
+  });
+
+  it("Dipakai di: refuses none ticked", async () => {
+    renderWithAuth(<ServiceStepsScreen />);
+    await screen.findByText("Gunting");
+
+    const menu = await openRowMenu("Gunting");
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: /^Ubah$/ }),
+    );
+    const dialog = screen.getByRole("dialog");
+    for (const name of ["Grooming", "Hotel", "Antar-Jemput"]) {
+      await userEvent.click(within(dialog).getByRole("checkbox", { name }));
+    }
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Simpan tahapan" }),
+    );
+    expect(
+      await within(dialog).findByText("Pilih minimal satu layanan."),
+    ).toBeInTheDocument();
+    expect(serviceStepService.update).not.toHaveBeenCalled();
   });
 
   it("keeps the delete dialog open on a 409 and shows the server's count", async () => {

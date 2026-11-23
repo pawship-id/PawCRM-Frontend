@@ -5510,6 +5510,11 @@ export interface ServiceStep {
   hotelTime?: string | null;
   /** Catatan — optional free text (22 November 2026). */
   note?: string | null;
+  /**
+   * Dipakai di (23 November 2026). Missing on a step stored before the field —
+   * read it through `stepUsedIn`, which treats that as every kind.
+   */
+  usedIn?: ServiceKind[];
   createdBy: string | null;
   deletedAt: string | null;
   createdAt: string;
@@ -5636,6 +5641,7 @@ export interface CreateServiceStepInput {
   estimateMinutes?: number | null;
   hotelTime?: string | null;
   note?: string | null;
+  usedIn?: ServiceKind[];
 }
 
 /** Body of PATCH /api/service-steps/:id. No `businessLineId`. */
@@ -5646,6 +5652,7 @@ export interface UpdateServiceStepInput {
   estimateMinutes?: number | null;
   hotelTime?: string | null;
   note?: string | null;
+  usedIn?: ServiceKind[];
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { ServiceStep } from "@/types/api";
+import type { ServiceKind, ServiceStep } from "@/types/api";
 
 import { SERVICE_SETTINGS_PATH } from "./petOptions";
 
@@ -24,6 +24,37 @@ export const STEP_NOTE_MAX_LENGTH = 500;
 
 /** Backend cap — MAX_ESTIMATE_MINUTES in serviceStep.model.js (a day). */
 export const MAX_ESTIMATE_MINUTES = 1440;
+
+/**
+ * Dipakai di — the kinds of service a tahapan is for (23 November 2026, BO),
+ * in the order the dialog offers them.
+ */
+export const STEP_USED_IN: { value: ServiceKind; label: string }[] = [
+  { value: "grooming", label: "Grooming" },
+  { value: "hotel", label: "Hotel" },
+  { value: "pickup-delivery", label: "Antar-Jemput" },
+];
+
+const ALL_USED_IN = STEP_USED_IN.map((option) => option.value);
+
+/** A step's Dipakai di — every kind when it was stored before the field. */
+export function stepUsedIn(
+  step: Pick<ServiceStep, "usedIn"> | null | undefined,
+) {
+  return step?.usedIn && step.usedIn.length > 0
+    ? step.usedIn
+    : [...ALL_USED_IN];
+}
+
+/** "Semua layanan", or the names in the dialog's order — "Grooming, Hotel". */
+export function formatUsedIn(usedIn: ServiceKind[]) {
+  if (ALL_USED_IN.every((kind) => usedIn.includes(kind))) {
+    return "Semua layanan";
+  }
+  return STEP_USED_IN.filter((option) => usedIn.includes(option.value))
+    .map((option) => option.label)
+    .join(", ");
+}
 
 /** "15 menit", "1 jam 30 menit" — or null when not filled in. */
 export function formatEstimate(minutes: number | null | undefined) {
