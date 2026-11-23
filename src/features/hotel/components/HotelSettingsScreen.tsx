@@ -25,19 +25,12 @@ import { usePermissions } from "@/features/permissions";
 import { roomTypeHolds } from "@/features/services/components/HotelRoomTypesField";
 import { useHotelRoomTypes } from "@/hooks/useHotelRoomTypes";
 import { cn } from "@/lib/utils";
-import { formatMoney } from "@/utils/decimal";
 
 import { useHotelSettings } from "../hooks/useHotelSettings";
 import { HotelDailyStepsCard } from "./HotelDailyStepsCard";
 import { HOTEL_LINE } from "../line";
 import { HOTEL_CATALOG_PATH, HOTEL_ROOM_TYPES_PATH } from "../paths";
-import { addonCommission, draftToSettings, nightCommission } from "../settings";
 import type { CommissionSize } from "@/features/grooming/settings";
-
-/** The example card: a three-night stay at Rp 120.000 a night, with one extra walk. */
-const EXAMPLE_NIGHTS = 3;
-const EXAMPLE_PRICE = 120_000;
-const EXAMPLE_ADDON = 20_000;
 
 /**
  * Layanan › Hotel › Pengaturan (21 November 2026, PLAN-Hotel-V1.md §4.1).
@@ -123,14 +116,6 @@ export function HotelSettingsScreen() {
   const disabled = !mayUpdate || state.saving;
   const nominal =
     draft.serviceMode === "fixed" || draft.serviceMode === "size_nominal";
-  const preview = draftToSettings(draft, settings).commission;
-  const firstSize = state.sizes.find((size) => !size.retired) ?? null;
-  const perNight = nightCommission(
-    preview.service,
-    EXAMPLE_PRICE,
-    firstSize?.id ?? null,
-  );
-  const addonEarns = addonCommission(preview.addon, EXAMPLE_ADDON);
 
   return (
     <div className="flex flex-col gap-6">
@@ -157,7 +142,7 @@ export function HotelSettingsScreen() {
         disabled={disabled}
       />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start">
+      <div className="flex flex-col gap-6">
         <div className="flex min-w-0 flex-col gap-6">
           <Card
             title="Komisi"
@@ -166,6 +151,7 @@ export function HotelSettingsScreen() {
             <div className="flex flex-col gap-5">
               <ChoiceCards
                 legend="Besar komisi"
+                columns={3}
                 value={
                   draft.serviceMode === "size_nominal"
                     ? "fixed"
@@ -303,6 +289,7 @@ export function HotelSettingsScreen() {
                 </div>
                 <ChoiceCards
                   legend="Cara menghitung"
+                  columns={3}
                   value={draft.addonMode}
                   onChange={(addonMode) => state.update({ addonMode })}
                   options={[
@@ -337,51 +324,6 @@ export function HotelSettingsScreen() {
             </div>
           </Card>
         </div>
-
-        <aside className="lg:sticky lg:top-20">
-          <Card title="Contoh perhitungan">
-            <dl className="flex flex-col gap-2 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">
-                  {EXAMPLE_NIGHTS} malam ·{" "}
-                  <span className="tabular-nums">
-                    {formatMoney(String(EXAMPLE_PRICE))}
-                  </span>
-                  {draft.serviceMode === "size_nominal" && firstSize
-                    ? ` · ${firstSize.label}`
-                    : ""}
-                </dt>
-                <dd className="font-semibold tabular-nums">
-                  {formatMoney(String(perNight * EXAMPLE_NIGHTS))}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted">
-                  + Extra walk ·{" "}
-                  <span className="tabular-nums">
-                    {formatMoney(String(EXAMPLE_ADDON))}
-                  </span>
-                </dt>
-                <dd className="font-semibold tabular-nums">
-                  {formatMoney(String(addonEarns))}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-3 border-t-2 border-foreground pt-2 font-bold">
-                <dt>Total komisi</dt>
-                <dd className="tabular-nums">
-                  {formatMoney(String(perNight * EXAMPLE_NIGHTS + addonEarns))}
-                </dd>
-              </div>
-            </dl>
-            <p className="mt-3 text-xs text-muted">
-              {draft.split === "night_pic"
-                ? `Komisi tiap malam (${formatMoney(String(perNight))}) untuk PIC hari itu. Sari PIC 2 malam dan Budi 1 malam → Sari ${formatMoney(String(perNight * 2))}, Budi ${formatMoney(String(perNight))}.`
-                : "Komisi tiap malam dibagi ke staf yang mencentang tahapannya, sesuai bobot di layanan. Tahapan yang tidak dikerjakan tidak dibayarkan."}{" "}
-              Dibayarkan setelah kegiatannya dicentang dan bookingnya sudah
-              punya faktur.
-            </p>
-          </Card>
-        </aside>
       </div>
     </div>
   );
