@@ -1342,13 +1342,7 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
             however many animals ride), so the hint no longer says it is
             stored-only (27 October 2026).
           */}
-          {isHotel ? (
-            <p className="rounded-lg bg-tint-neutral px-4 py-3 text-sm text-muted">
-              Ditagih <b className="font-semibold text-foreground">per malam</b>{" "}
-              — harga di bawah adalah harga satu malam, dan booking
-              menghitungnya kali jumlah malam.
-            </p>
-          ) : (
+          {isHotel ? null : (
             <SelectField
               label="Ditagih"
               value={billingUnit}
@@ -1439,7 +1433,6 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
                 }}
                 error={priceError ?? undefined}
                 placeholder="150000"
-                hint="Boleh 0 — layanan gratis itu hal yang nyata."
                 disabled={saving}
                 required
               />

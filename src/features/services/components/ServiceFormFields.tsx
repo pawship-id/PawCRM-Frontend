@@ -91,20 +91,6 @@ export const VARIANT_AXIS_FIELDS: Array<{
  * of `MAX_VARIANTS`; the rows stay drawn — what was typed is not thrown away —
  * and the form's Simpan stays off until an axis is unticked.
  */
-/**
- * The hint under an axis checkbox — the pet's three keep their reason; Zona and
- * a staff card say where the answer comes from, then the card's own note.
- */
-function axisHint(def: VariantAxisDef): string {
-  const pet = VARIANT_AXIS_FIELDS.find((entry) => entry.axis === def.key);
-  if (pet) return pet.hint;
-  const where =
-    def.source === "zone"
-      ? "Otomatis dari jarak alamat pelanggan ke cabang."
-      : "Dipilih staf saat booking, kasir, dan faktur.";
-  return def.description ? `${where} ${def.description}` : where;
-}
-
 export function ServiceVariantEditor({
   axes,
   fixedAxes = [],
@@ -216,18 +202,30 @@ export function ServiceVariantEditor({
             dicentang.
           </p>
         )}
-        <CheckRowGroup className="mt-2">
-          {axisDefs.map((def) => (
-            <CheckRow
-              key={def.key}
-              label={def.name}
-              description={axisHint(def)}
-              checked={axes.includes(def.key)}
-              onCheckedChange={(checked) => onToggleAxis(def.key, checked)}
-              disabled={disabled}
-            />
-          ))}
-        </CheckRowGroup>
+        {/* Side by side as chips (24 November 2026, on request). */}
+        <div className="mt-2 flex flex-wrap gap-2">
+          {axisDefs.map((def) => {
+            const checked = axes.includes(def.key);
+            return (
+              <label
+                key={def.key}
+                className={cn(
+                  "flex min-h-9 cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold transition",
+                  "has-[:focus-visible]:border-primary has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50",
+                  checked ? "border-primary bg-tint-info text-foreground" : "border-border bg-surface hover:bg-surface-hover",
+                  disabled && "cursor-not-allowed opacity-60",
+                )}
+              >
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={(next) => onToggleAxis(def.key, next === true)}
+                  disabled={disabled}
+                />
+                {def.name}
+              </label>
+            );
+          })}
+        </div>
       </div>
 
       {loading && axes.length > 0 ? (
