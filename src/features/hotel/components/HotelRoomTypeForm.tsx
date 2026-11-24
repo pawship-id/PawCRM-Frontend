@@ -25,6 +25,7 @@ import { ChoiceCards } from "@/features/grooming/components/GroomingSettingsCont
 import { useBranchOptions } from "@/features/inventory/hooks/useBranchOptions";
 import { usePermissions } from "@/features/permissions";
 import { invalidateHotelRoomTypes } from "@/hooks/useHotelRoomTypes";
+import { invalidateVariantOptions } from "@/hooks/useVariantOptions";
 import { usePetOptions } from "@/hooks/usePetOptions";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
@@ -140,6 +141,7 @@ export function HotelRoomTypeForm({
       if (roomTypeId) await hotelService.updateRoomType(roomTypeId, payload);
       else await hotelService.createRoomType(payload);
       invalidateHotelRoomTypes();
+      invalidateVariantOptions();
       swalToast(`Tipe kamar ${payload.name} tersimpan.`);
       router.push(HOTEL_ROOM_TYPES_PATH);
     } catch (error) {
@@ -162,6 +164,7 @@ export function HotelRoomTypeForm({
     try {
       await hotelService.removeRoomType(roomTypeId);
       invalidateHotelRoomTypes();
+      invalidateVariantOptions();
       swalToast(`Tipe kamar ${draft.name} dihapus.`);
       router.push(HOTEL_ROOM_TYPES_PATH);
     } catch (error) {

@@ -14,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
 import { useServiceSteps } from "@/hooks/useServiceSteps";
@@ -146,7 +147,7 @@ export function ServiceVariantEditor({
 }) {
   /* A system card (the trip card) is never a checkbox — see `fixedAxes`. */
   const axisDefs = offeredDefs.filter(
-    (def) => !def.systemKey && !fixedAxes.includes(def.key),
+    (def) => def.systemKey !== "trip" && !fixedAxes.includes(def.key),
   );
   const hasFixed = fixedAxes.length > 0;
 
@@ -233,28 +234,31 @@ export function ServiceVariantEditor({
           <Spinner size={16} /> Memuat jenis hewan, ukuran, dan bulu…
         </div>
       ) : combos.length > 0 && (
-        <div className="flex flex-col gap-3 border-t border-border pt-4">
+        <div className={cn("flex flex-col gap-3", !untimed && "border-t border-border pt-4")}>
+          {/* Not on a hotel form (24 November 2026, on request). */}
+          {!untimed && (
           <div>
-            <p className="text-sm font-medium">
-              Harga & durasi per varian{" "}
-              <span className="font-normal text-muted">
-                ({combos.length} baris)
-              </span>
-            </p>
-            {/*
-              ─── EACH VARIANT ITS OWN LENGTH AND ITS OWN ON/OFF ──────────────
-
-              Decided 13 September 2026. A large long-haired dog does not take as
-              long as a small short-haired one, so the minutes sit beside the
-              price rather than once above the grid. A variant switched off stays
-              in the grid — it is still a combination the service has — but the
-              booking form and the till will not let anybody choose it.
-            */}
-            <p className="mt-1 text-xs text-muted">
-              Varian yang tidak dicentang Aktif tetap tampil, tapi tidak bisa
-              dipilih di booking maupun kasir.
-            </p>
-          </div>
+              <p className="text-sm font-medium">
+                Harga & durasi per varian{" "}
+                <span className="font-normal text-muted">
+                  ({combos.length} baris)
+                </span>
+              </p>
+              {/*
+                ─── EACH VARIANT ITS OWN LENGTH AND ITS OWN ON/OFF ──────────────
+  
+                Decided 13 September 2026. A large long-haired dog does not take as
+                long as a small short-haired one, so the minutes sit beside the
+                price rather than once above the grid. A variant switched off stays
+                in the grid — it is still a combination the service has — but the
+                booking form and the till will not let anybody choose it.
+              */}
+              <p className="mt-1 text-xs text-muted">
+                Varian yang tidak dicentang Aktif tetap tampil, tapi tidak bisa
+                dipilih di booking maupun kasir.
+              </p>
+            </div>
+          )}
 
           {combos.length > MAX_VARIANTS && (
             <Alert variant="error">
@@ -264,81 +268,17 @@ export function ServiceVariantEditor({
             </Alert>
           )}
 
-          <div
-            aria-hidden
-            className={cn(
-              "hidden gap-3 text-xs font-semibold text-muted sm:grid",
-              untimed ? "sm:grid-cols-[1fr_160px_72px]" : "sm:grid-cols-[1fr_160px_120px_72px]",
-            )}
-          >
-            <span>Varian</span>
-            <span>{untimed ? "Harga per malam" : "Harga"}</span>
-            {!untimed && <span>Durasi (menit)</span>}
-            <span>Aktif</span>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            {combos.map((combo) => {
-              const on = active[combo.key] !== false;
-
-              return (
-                <div
-                  key={combo.key}
-                  className={cn(
-                    "grid items-center gap-3",
-                    untimed ? "sm:grid-cols-[1fr_160px_72px]" : "sm:grid-cols-[1fr_160px_120px_72px]",
-                  )}
-                >
-                  <span className={cn("text-sm", !on && "text-muted")}>
-                    {combo.label}
-                    {!on && <span className="ml-1.5 text-xs">· nonaktif</span>}
-                  </span>
-                  {/*
-                    An `aria-label` rather than a `TextField`: the row's own text
-                    IS the label, and repeating it above every box would make a
-                    twelve-row grid read as twelve stacked fields.
-                  */}
-                  <Input
-                    aria-label={`Harga ${combo.label}`}
-                    inputMode="numeric"
-                    value={prices[combo.key] ?? ""}
-                    onChange={(event) =>
-                      onPriceChange(combo.key, event.target.value)
-                    }
-                    placeholder="150000"
-                    disabled={disabled}
-                    className={FIELD_HEIGHT}
-                  />
-                  {!untimed && (
-                    <Input
-                      aria-label={`Durasi ${combo.label} (menit)`}
-                      type="number"
-                      min={1}
-                      max={1440}
-                      value={durations[combo.key] ?? ""}
-                      onChange={(event) =>
-                        onDurationChange(combo.key, event.target.value)
-                      }
-                      placeholder="60"
-                      disabled={disabled}
-                      className={FIELD_HEIGHT}
-                    />
-                  )}
-                  <label className="flex min-h-11 items-center gap-2 text-sm">
-                    <Checkbox
-                      aria-label={`${combo.label} aktif`}
-                      checked={on}
-                      onCheckedChange={(next) =>
-                        onActiveChange(combo.key, next === true)
-                      }
-                      disabled={disabled}
-                    />
-                    <span className="sm:sr-only">Aktif</span>
-                  </label>
-                </div>
-              );
-            })}
-          </div>
+          <VariantBulkTable
+            combos={combos}
+            prices={prices}
+            durations={durations}
+            active={active}
+            untimed={untimed}
+            disabled={disabled}
+            onPriceChange={onPriceChange}
+            onDurationChange={onDurationChange}
+            onActiveChange={onActiveChange}
+          />
         </div>
       )}
 
@@ -925,5 +865,198 @@ export function ServiceAddonPicker({
         />
       ))}
     </CheckRowGroup>
+  );
+}
+
+/** Digits only — "150.000" and "Rp 150000" both read as 150000. */
+const digitsOf = (value: string | undefined) => (value ?? "").replace(/\D/g, "");
+
+/**
+ * The per-variant grid with BULK EDIT (24 November 2026, on request): tick rows
+ * — or the header box for all — then set one price for all of them ("Samakan
+ * harga", the box then emptied) or flip them on/off together.
+ * A row with no price yet says so on a badge, since an empty box and a 0 look
+ * alike at a glance.
+ */
+function VariantBulkTable({
+  combos,
+  prices,
+  durations,
+  active,
+  untimed,
+  disabled,
+  onPriceChange,
+  onDurationChange,
+  onActiveChange,
+}: {
+  combos: VariantCombo[];
+  prices: Record<string, string>;
+  durations: Record<string, string>;
+  active: Record<string, boolean>;
+  untimed: boolean;
+  disabled: boolean;
+  onPriceChange: (key: string, value: string) => void;
+  onDurationChange: (key: string, value: string) => void;
+  onActiveChange: (key: string, active: boolean) => void;
+}) {
+  const [picked, setPicked] = useState<string[]>([]);
+  const [bulkPrice, setBulkPrice] = useState("");
+  const [bulkDuration, setBulkDuration] = useState("");
+
+  /* A ticked row whose combination went away (an axis unticked) is dropped. */
+  const keys = combos.map((combo) => combo.key);
+  const selected = picked.filter((key) => keys.includes(key));
+  const allPicked = selected.length > 0 && selected.length === keys.length;
+  const somePicked = selected.length > 0 && !allPicked;
+  const none = selected.length === 0;
+  const amount = digitsOf(bulkPrice);
+
+  function toggle(key: string, on: boolean) {
+    setPicked(on ? [...selected, key] : selected.filter((one) => one !== key));
+  }
+
+  function samePrice() {
+    selected.forEach((key) => onPriceChange(key, amount));
+    setBulkPrice("");
+  }
+
+  function sameDuration() {
+    selected.forEach((key) => onDurationChange(key, digitsOf(bulkDuration)));
+  }
+
+  function flipActive() {
+    const allOn = selected.every((key) => active[key] !== false);
+    selected.forEach((key) => onActiveChange(key, !allOn));
+  }
+
+  const columns = untimed
+    ? "grid-cols-[44px_1fr_minmax(120px,200px)_72px]"
+    : "grid-cols-[44px_1fr_minmax(120px,180px)_minmax(90px,120px)_72px]";
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5">
+        <span className="mr-1 text-sm text-muted">
+          {none ? "Centang varian untuk mengubah sekaligus" : `${selected.length} varian dipilih`}
+        </span>
+        <div className="relative w-36">
+          <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-xs text-muted">Rp</span>
+          <Input
+            aria-label="Ubah harga varian yang dicentang"
+            inputMode="numeric"
+            placeholder="Harga"
+            value={bulkPrice}
+            onChange={(event) => setBulkPrice(event.target.value)}
+            disabled={disabled || none}
+            className="h-8 pl-8 text-right text-sm tabular-nums"
+          />
+        </div>
+        <Button type="button" variant="secondary" size="sm" className="h-8 px-3" disabled={disabled || none || amount === ""} onClick={samePrice}>
+          Samakan harga
+        </Button>
+        {!untimed && (
+          <>
+            <Input
+              aria-label="Durasi untuk varian yang dicentang (menit)"
+              type="number"
+              min={1}
+              max={1440}
+              placeholder="Menit"
+              value={bulkDuration}
+              onChange={(event) => setBulkDuration(event.target.value)}
+              disabled={disabled || none}
+              className="h-8 w-20 text-sm tabular-nums"
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-8 px-3"
+              disabled={disabled || none || digitsOf(bulkDuration) === ""}
+              onClick={sameDuration}
+            >
+              Samakan durasi
+            </Button>
+          </>
+        )}
+        <Button type="button" variant="secondary" size="sm" className="h-8 px-3" disabled={disabled || none} onClick={flipActive}>
+          Aktif / nonaktif
+        </Button>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-border">
+        <div className={cn("grid items-center gap-3 border-b border-border bg-background px-4 py-3 text-sm font-semibold text-muted", columns)}>
+          <Checkbox
+            aria-label="Centang semua varian"
+            checked={allPicked ? true : somePicked ? "indeterminate" : false}
+            onCheckedChange={(next) => setPicked(next === true ? keys : [])}
+            disabled={disabled}
+          />
+          <span>Varian</span>
+          <span>{untimed ? "Harga per malam" : "Harga"}</span>
+          {!untimed && <span>Durasi (menit)</span>}
+          <span>Aktif</span>
+        </div>
+        {combos.map((combo) => {
+          const on = active[combo.key] !== false;
+          const priced = Number(digitsOf(prices[combo.key]) || 0) > 0;
+          return (
+            <div
+              key={combo.key}
+              className={cn(
+                "grid items-center gap-3 border-b border-border px-4 py-2.5 last:border-b-0",
+                columns,
+                selected.includes(combo.key) && "bg-navy-100",
+              )}
+            >
+              <Checkbox
+                aria-label={`Pilih ${combo.label}`}
+                checked={selected.includes(combo.key)}
+                onCheckedChange={(next) => toggle(combo.key, next === true)}
+                disabled={disabled}
+              />
+              <span className={cn("flex flex-wrap items-center gap-2 text-sm font-semibold", !on && "text-muted")}>
+                {combo.label}
+                {!priced && (
+                  <span className="rounded-full bg-tint-warning px-2 py-0.5 text-xs font-medium text-warning">Belum ada harga</span>
+                )}
+                {!on && <span className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted">Nonaktif</span>}
+              </span>
+              <div className="relative">
+                <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted">Rp</span>
+                <Input
+                  aria-label={`Harga ${combo.label}`}
+                  inputMode="numeric"
+                  value={prices[combo.key] ?? ""}
+                  onChange={(event) => onPriceChange(combo.key, event.target.value)}
+                  placeholder="0"
+                  disabled={disabled}
+                  className="h-10 pl-9 text-right tabular-nums"
+                />
+              </div>
+              {!untimed && (
+                <Input
+                  aria-label={`Durasi ${combo.label} (menit)`}
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={durations[combo.key] ?? ""}
+                  onChange={(event) => onDurationChange(combo.key, event.target.value)}
+                  placeholder="60"
+                  disabled={disabled}
+                  className="h-10 tabular-nums"
+                />
+              )}
+              <Switch
+                aria-label={`${combo.label} aktif`}
+                checked={on}
+                onCheckedChange={(next) => onActiveChange(combo.key, next)}
+                disabled={disabled}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

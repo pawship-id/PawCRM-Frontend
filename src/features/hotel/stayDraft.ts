@@ -319,3 +319,16 @@ export function petProblem(
   }
   return null;
 }
+
+/**
+ * The choices a stay is priced with: what staff picked plus the room booked on
+ * Opsi Varian's "Tipe kamar" card (24 November 2026) — the server does the same.
+ */
+export function withRoomChoice(
+  choices: VariantChoice[],
+  roomCardId: string | null,
+  roomTypeId: string,
+): VariantChoice[] {
+  if (!roomCardId || !roomTypeId) return choices;
+  return [...choices.filter((choice) => choice.optionId !== roomCardId), { optionId: roomCardId, code: roomTypeId }];
+}

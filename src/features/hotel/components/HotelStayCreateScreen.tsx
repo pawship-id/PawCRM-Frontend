@@ -25,6 +25,7 @@ import { useBranchScope } from "@/features/inventory/hooks/useBranchScope";
 import { usePermissions } from "@/features/permissions";
 import { PageHeading } from "@/features/purchasing";
 import { useHotelRoomTypes } from "@/hooks/useHotelRoomTypes";
+import { useVariantOptions } from "@/hooks/useVariantOptions";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
@@ -44,6 +45,7 @@ import {
   previewBill,
   typesPrice,
   type PetDraft,
+  withRoomChoice,
 } from "../stayDraft";
 import { StayPetFields } from "./StayPetFields";
 
@@ -60,6 +62,7 @@ export function HotelStayCreateScreen() {
   const mayPrice = can("bookings", "setPrice");
   const scope = useBranchScope();
   const roomTypes = useHotelRoomTypes();
+  const variantCards = useVariantOptions();
 
   const preRoom = params.get("roomTypeId");
   const preUnit = params.get("unitId");
@@ -161,11 +164,13 @@ export function HotelStayCreateScreen() {
     setPet(pet._id, draft);
   };
 
+  /* Opsi Varian's "Tipe kamar" card — answered by each animal's room. */
+  const roomCardId = variantCards.items.find((card) => card.systemKey === "roomType" && card.deletedAt === null)?._id ?? null;
   const preview = chosen.map((pet) => {
     const draft = picked[pet._id];
     const service = services.find((one) => one._id === draft.serviceId);
     const catalog = service
-      ? priceForPet(service, pet, { choices: draft.choices }).price
+      ? priceForPet(service, pet, { choices: withRoomChoice(draft.choices, roomCardId, draft.roomTypeId) }).price
       : null;
     return {
       pet,

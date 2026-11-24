@@ -32,6 +32,7 @@ import {
   digits,
   type DiscountDraft,
   type PetDraft,
+  withRoomChoice,
 } from "../stayDraft";
 import { UnitSelect } from "./HotelStayDialogs";
 
@@ -109,9 +110,13 @@ export function StayPetFields({
   const service = services.find((one) => one._id === draft.serviceId);
   const types = roomTypesFor(service, roomTypes, pet, branchId);
   const roomType = types.find((one) => one._id === draft.roomTypeId);
-  const cards = service ? quote.cardsFor([service]) : [];
+  /* The "Tipe kamar" card is answered by the room picked above, never by hand (24 November 2026). */
+  const allCards = service ? quote.cardsFor([service]) : [];
+  const roomCard = allCards.find((card) => card.systemKey === "roomType") ?? null;
+  const cards = allCards.filter((card) => card.systemKey !== "roomType");
+  const choices = withRoomChoice(draft.choices, roomCard?._id ?? null, draft.roomTypeId);
   const catalog = service
-    ? priceForPet(service, pet, { choices: draft.choices }).price
+    ? priceForPet(service, pet, { choices }).price
     : null;
   const change = (patch: Partial<PetDraft>) => onChange({ ...draft, ...patch });
   const dateOk = dates.checkOutDate > dates.checkInDate;

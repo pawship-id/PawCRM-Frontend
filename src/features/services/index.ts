@@ -33,6 +33,7 @@ export {
 // values every one of those functions takes as an argument. See variantAxes.ts.
 export {
   buildVariantCombos,
+  scopeHotelAxisValues,
   comboKey,
   MAX_VARIANT_AXES,
   MAX_VARIANTS,

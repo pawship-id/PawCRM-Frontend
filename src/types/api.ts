@@ -5049,7 +5049,7 @@ export interface VariantOption {
    * `one_way` ("Antar / Jemput") and `round_trip` ("Antar + Jemput"), fixed,
    * answered by the trip somebody picks. Null on every other card.
    */
-  systemKey?: "trip" | null;
+  systemKey?: "trip" | "roomType" | null;
   values: VariantOptionValue[];
   sortOrder: number;
   /** What a service's `variantAxes` uses for this card. */

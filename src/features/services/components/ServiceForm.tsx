@@ -54,6 +54,7 @@ import {
   buildVariantCombos,
   comboKey,
   MAX_VARIANTS,
+  scopeHotelAxisValues,
 } from "../variantAxes";
 import { ServiceKindsField } from "./ServiceKindsField";
 import {
@@ -78,6 +79,7 @@ import { sessionsRefusal } from "./ServiceStepPicker";
 import { GROOMING_CATALOG_PATH } from "@/features/grooming/paths";
 import { clockTimeOf } from "@/features/grooming/serviceStepsDraft";
 import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
+import { cn } from "@/lib/utils";
 
 /** Backend caps — NAME_MAX_LENGTH and friends in service.model.js. */
 const NAME_MAX_LENGTH = 160;
@@ -332,10 +334,14 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
     axes: axisDefs,
     loading: axisValuesLoading,
   } = useVariantAxisValues();
-  const axisValues = useMemo(
-    () => valuesFor(service?.variants),
-    [valuesFor, service],
-  );
+  const roomTypeAxis = axisDefs.find((def) => def.systemKey === "roomType")?.key ?? null;
+  const axisValues = useMemo(() => {
+    const table = valuesFor(service?.variants);
+    /* A hotel service offers rows only for its own animals and room types (24 November 2026). */
+    return serviceType === "main" && serviceKind === "hotel"
+      ? scopeHotelAxisValues(table, { petTypeIds, roomTypeIds, roomTypeAxis })
+      : table;
+  }, [valuesFor, service, serviceType, serviceKind, petTypeIds, roomTypeIds, roomTypeAxis]);
   const combos = useMemo(
     () => buildVariantCombos(variantAxes, axisValues),
     [variantAxes, axisValues],
@@ -1330,7 +1336,7 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
         title={isHotel ? "Harga per malam" : "Harga & durasi"}
         description={
           isHotel
-            ? "Satu harga untuk semua, atau beda per varian — ukuran, jenis hewan, atau opsi varian seperti Tipe kamar."
+            ? undefined
             : "Harga dan durasi bisa satu untuk semua, atau beda-beda per varian. Durasi dibaca kalender dan pengecekan bentrok."
         }
       >
@@ -1354,7 +1360,13 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
             />
           )}
 
-          <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
+          <div
+            className={cn(
+              "flex items-start justify-between gap-4",
+              /* Hotel has nothing above it to divide from (24 November 2026). */
+              !isHotel && "border-t border-border pt-4",
+            )}
+          >
             <div className="min-w-0">
               <Label htmlFor="service-has-variants">
                 Harga beda per varian
@@ -1362,7 +1374,9 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
               <p className="mt-1 max-w-prose text-xs text-muted">
                 {ridePriced
                   ? "Nyalakan untuk harga Antar / Jemput (sekali jalan) dan Antar + Jemput (paket pulang-pergi, dibagi rata ke booking jemput dan antar) — bisa juga dibedakan per zona. Kalau mati, satu harga berlaku untuk tiap perjalanan."
-                  : "Nyalakan kalau harga dan durasinya tergantung hewannya — tipe, ukuran, atau jenis bulu. Kalau mati, satu harga dan satu durasi berlaku untuk semua."}
+                  : isHotel
+                    ? "Nyalakan kalau harganya beda per hewan atau tipe kamar."
+                    : "Nyalakan kalau harga dan durasinya beda per hewan."}
               </p>
             </div>
             <Switch
