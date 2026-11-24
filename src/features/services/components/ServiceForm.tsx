@@ -380,7 +380,6 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
   >(null);
   const hotelDefaultsAsked = useRef(false);
   const hotelDefaultsApplied = useRef(false);
-  const [hotelStepsSeededFrom, setHotelStepsSeededFrom] = useState(false);
   useEffect(() => {
     if (editing || !isHotel || hotelDefaultsAsked.current) return;
     hotelDefaultsAsked.current = true;
@@ -420,7 +419,6 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
           )
         : {},
     );
-    setHotelStepsSeededFrom(true);
   }, [hotelDefaults, isHotel, sessions.length]);
   /* eslint-enable react-hooks/set-state-in-effect */
   const tripDefaulted = useRef(false);
@@ -1267,11 +1265,19 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
           {isHotel && (
             <div>
               <p className="text-sm font-medium">Jenis hewan</p>
-              <div className="mt-1 flex flex-wrap gap-x-6">
+              {/* Chips, like the variant options (24 November 2026, on request). */}
+              <div className="mt-2 flex flex-wrap gap-2">
                 {speciesOptions.map((option) => (
                   <label
                     key={option._id}
-                    className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-foreground"
+                    className={cn(
+                      "flex min-h-9 cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold transition",
+                      "has-[:focus-visible]:border-primary has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50",
+                      petTypeIds.includes(option._id)
+                        ? "border-primary bg-tint-info text-foreground"
+                        : "border-border bg-surface text-foreground hover:bg-surface-hover",
+                      saving && "cursor-not-allowed opacity-60",
+                    )}
                   >
                     <Checkbox
                       checked={petTypeIds.includes(option._id)}
@@ -1528,12 +1534,6 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
       >
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
-            {hotelStepsSeededFrom && (
-              <p className="rounded-lg bg-tint-neutral px-4 py-3 text-sm text-muted">
-                Tahapan, porsi, dan jam sudah diisi dari Hotel › Pengaturan ›
-                Kegiatan harian. Boleh diubah khusus untuk layanan ini.
-              </p>
-            )}
             {isHotel ? (
               /* One table on a hotel service (24 November 2026, on request). */
               <ServiceStepsWeightsTable
@@ -1657,6 +1657,7 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
             loadError={addonsError}
             selected={addonServiceIds}
             disabled={saving}
+            perUnit={isHotel}
             onChange={setAddonServiceIds}
           />
         </Card>

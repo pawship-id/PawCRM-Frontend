@@ -6,8 +6,6 @@ import { GripVertical, Plus, RotateCcw, X } from "lucide-react";
 
 import {
   Alert,
-  CheckRow,
-  CheckRowGroup,
   FIELD_HEIGHT,
   Spinner,
 } from "@/components";
@@ -21,12 +19,14 @@ import { useServiceSteps } from "@/hooks/useServiceSteps";
 import { fixedTimeText } from "@/features/grooming/serviceStepsDraft";
 import { cn } from "@/lib/utils";
 import type {
+  Service,
   ServiceKind,
   ServiceLocation,
   ServiceVariantAxis,
   VariantAxisKey,
 } from "@/types/api";
 
+import { formatServicePrice } from "../format";
 import { MAX_VARIANTS, type VariantAxisDef, type VariantCombo } from "../variantAxes";
 import {
   ServiceStepFlagBadge,
@@ -818,13 +818,16 @@ export function ServiceAddonPicker({
   selected,
   disabled,
   onChange,
+  perUnit = false,
 }: {
-  addons: Array<{ _id: string; name: string; code: string }>;
+  addons: Array<Pick<Service, "_id" | "name" | "code" | "hasVariants" | "price" | "variants" | "billingUnit">>;
   loading: boolean;
   loadError: string | null;
   selected: string[];
   disabled: boolean;
   onChange: (next: string[]) => void;
+  /** Say how a hotel add-on is counted — "/ malam" or "/ kali" (24 November 2026). */
+  perUnit?: boolean;
 }) {
   if (loadError) {
     return <p className="text-xs text-danger">{loadError}</p>;
@@ -847,25 +850,38 @@ export function ServiceAddonPicker({
     );
   }
 
+  /* Chips, each with its price (24 November 2026, on request). */
   return (
-    <CheckRowGroup>
-      {addons.map((addon) => (
-        <CheckRow
-          key={addon._id}
-          label={addon.name}
-          description={addon.code}
-          checked={selected.includes(addon._id)}
-          disabled={disabled}
-          onCheckedChange={(checked) =>
-            onChange(
-              checked
-                ? [...selected, addon._id]
-                : selected.filter((id) => id !== addon._id),
-            )
-          }
-        />
-      ))}
-    </CheckRowGroup>
+    <div className="flex flex-wrap gap-2">
+      {addons.map((addon) => {
+        const checked = selected.includes(addon._id);
+        return (
+          <label
+            key={addon._id}
+            className={cn(
+              "flex min-h-11 cursor-pointer items-center gap-3 rounded-full border px-4 py-2 text-sm transition",
+              "has-[:focus-visible]:border-primary has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50",
+              checked ? "border-primary bg-tint-info" : "border-border bg-surface hover:bg-surface-hover",
+              disabled && "cursor-not-allowed opacity-60",
+            )}
+          >
+            <Checkbox
+              checked={checked}
+              disabled={disabled}
+              onCheckedChange={(next) =>
+                onChange(next === true ? [...selected, addon._id] : selected.filter((id) => id !== addon._id))
+              }
+            />
+            <span className="font-semibold text-foreground">{addon.name}</span>
+            <span className="text-muted tabular-nums">
+              {formatServicePrice(addon)}
+              {/* "/ kali" hidden for now (24 November 2026, on request). */}
+              {perUnit && addon.billingUnit === "per_night" && " / malam"}
+            </span>
+          </label>
+        );
+      })}
+    </div>
   );
 }
 
