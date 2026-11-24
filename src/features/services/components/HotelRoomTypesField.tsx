@@ -23,6 +23,14 @@ export function roomTypeHolds(roomType: HotelRoomType): string {
 }
 
 /** "kucing", "kucing & anjing", "kucing, anjing & kelinci". */
+/**
+ * Whether a room type takes any of the animals the service is for (24 November
+ * 2026). With no Jenis hewan ticked nothing fits — pick the animals first.
+ */
+export function roomTypeFits(roomType: Pick<HotelRoomType, "petTypeIds">, petTypeIds: readonly string[]): boolean {
+  return (roomType.petTypeIds ?? []).some((id) => petTypeIds.includes(id));
+}
+
 function joinKinds(labels: string[]): string {
   const words = labels.map((label) => label.toLowerCase());
   if (words.length <= 1) return words[0] ?? "";
@@ -43,7 +51,10 @@ export function HotelRoomTypesField({
   onChange,
   branches,
   disabled,
+  petTypeIds = [],
 }: {
+  /** The service's Jenis hewan — a room type for none of them is off. */
+  petTypeIds?: string[];
   value: string[];
   onChange: (next: string[]) => void;
   branches: Branch[];
@@ -59,6 +70,9 @@ export function HotelRoomTypesField({
   return (
     <div>
       <p className="text-sm font-medium">Tipe kamar</p>
+      {petTypeIds.length === 0 && (
+        <p className="mt-1 text-xs text-muted">Centang jenis hewan dulu.</p>
+      )}
 
       {error ? (
         <Alert variant="error" className="mt-2">
@@ -88,13 +102,15 @@ export function HotelRoomTypesField({
           {shown.map((roomType) => {
             const checked = value.includes(roomType._id);
             const takes = kinds(roomType.petTypeIds);
+            /* A stored room type that no longer fits can still be unticked — never ticked anew. */
+            const off = disabled || (!checked && !roomTypeFits(roomType, petTypeIds));
             return (
               <label
                 key={roomType._id}
                 className={cn(
                   "flex items-start gap-3 rounded-xl border p-4 transition",
                   checked ? "border-primary bg-surface-selected" : "border-border bg-surface",
-                  disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-primary",
+                  off ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:border-primary",
                 )}
               >
                 <Checkbox
@@ -106,7 +122,7 @@ export function HotelRoomTypesField({
                         : value.filter((id) => id !== roomType._id),
                     )
                   }
-                  disabled={disabled}
+                  disabled={off}
                   className="mt-0.5"
                 />
                 <span className="min-w-0">

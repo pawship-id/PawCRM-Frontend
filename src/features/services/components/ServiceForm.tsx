@@ -47,7 +47,7 @@ import type { MediaAsset } from "@/types/inventory";
 
 import { usePetOptions } from "@/hooks/usePetOptions";
 import { invalidateVariantOptions } from "@/hooks/useVariantOptions";
-import { HotelRoomTypesField } from "./HotelRoomTypesField";
+import { HotelRoomTypesField, roomTypeFits } from "./HotelRoomTypesField";
 import { useVariantAxisValues } from "../hooks/useVariantAxisValues";
 import {
   axisDefsForKind,
@@ -80,6 +80,7 @@ import { GROOMING_CATALOG_PATH } from "@/features/grooming/paths";
 import { clockTimeOf } from "@/features/grooming/serviceStepsDraft";
 import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
 import { cn } from "@/lib/utils";
+import { useHotelRoomTypes } from "@/hooks/useHotelRoomTypes";
 
 /** Backend caps — NAME_MAX_LENGTH and friends in service.model.js. */
 const NAME_MAX_LENGTH = 160;
@@ -334,6 +335,7 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
     axes: axisDefs,
     loading: axisValuesLoading,
   } = useVariantAxisValues();
+  const hotelRoomTypes = useHotelRoomTypes();
   const roomTypeAxis = axisDefs.find((def) => def.systemKey === "roomType")?.key ?? null;
   const axisValues = useMemo(() => {
     const table = valuesFor(service?.variants);
@@ -1237,10 +1239,17 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
                     <Checkbox
                       checked={petTypeIds.includes(option._id)}
                       onCheckedChange={(checked) => {
-                        setPetTypeIds((current) =>
+                        const next =
                           checked === true
-                            ? [...current, option._id]
-                            : current.filter((id) => id !== option._id),
+                            ? [...petTypeIds, option._id]
+                            : petTypeIds.filter((id) => id !== option._id);
+                        setPetTypeIds(next);
+                        /* A room type for none of them is dropped (24 November 2026). */
+                        setRoomTypeIds((current) =>
+                          current.filter((id) => {
+                            const roomType = hotelRoomTypes.items.find((one) => one._id === id);
+                            return !roomType || roomTypeFits(roomType, next);
+                          }),
                         );
                         setPetTypesError(null);
                       }}
@@ -1262,6 +1271,7 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
           )}
           {isHotel ? (
             <HotelRoomTypesField
+              petTypeIds={petTypeIds}
               value={roomTypeIds}
               onChange={setRoomTypeIds}
               branches={branches}

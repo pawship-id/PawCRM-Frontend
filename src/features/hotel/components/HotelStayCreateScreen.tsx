@@ -157,7 +157,9 @@ export function HotelStayCreateScreen() {
   const toggle = (pet: Pet, on: boolean) => {
     if (!on) return setPet(pet._id, null);
     const draft = blankPet();
-    if (preRoom) {
+    /* The room picked on the board — only for an animal that room takes (24 November 2026). */
+    const room = roomTypes.items.find((one) => one._id === preRoom);
+    if (preRoom && room && room.petTypeIds.includes(pet.species)) {
       draft.roomTypeId = preRoom;
       if (preUnit) draft.unitId = preUnit;
     }
