@@ -234,7 +234,11 @@ export function PosPaymentDialog({
   }, [lines, total]);
 
   const missingReference = lines.some(
-    (line) => line.channel.requiresReference && !line.reference?.trim(),
+    // A Rp 0 line is never sent (see `submit`), so it needs no reference.
+    (line) =>
+      line.channel.requiresReference &&
+      typed(line.amount) > 0 &&
+      !line.reference?.trim(),
   );
   const badAmount = lines.some(
     (line) => !TYPED_RUPIAH.test(line.amount.trim()),
@@ -272,7 +276,12 @@ export function PosPaymentDialog({
       !overpaid &&
       !missingReference &&
       !badAmount
-    : lines.length > 0 &&
+    : /*
+        A FREE SALE NEEDS NO PAYMENT LINE (24 Nov 2026): a basket discounted to
+        Rp 0 — an item given away as a bonus — is finished as it is. The server
+        takes `payments: []` and raises a faktur born lunas for Rp 0.
+      */
+      (lines.length > 0 || total === 0) &&
       remaining === 0 &&
       !overpaid &&
       !missingReference &&
@@ -339,16 +348,23 @@ export function PosPaymentDialog({
       // Sent only when the sale is actually going on account — an empty
       // object here would be the server's cue to raise a receivable.
       ...(onCredit ? { credit: { dueDate } } : {}),
-      payments: lines.map((line, index) => ({
-        channelId: line.channelId,
-        amount: line.amount.trim(),
-        ...(changeByIndex.has(index)
-          ? { change: changeByIndex.get(index) }
-          : {}),
-        ...(line.channel.requiresReference
-          ? { reference: line.reference?.trim() }
-          : {}),
-      })),
+      /*
+        A Rp 0 LINE IS DROPPED, not sent: the server refuses a payment of zero,
+        and on a free sale the line the channel picker pre-filled with the whole
+        bill is exactly that ("must be more than zero (payments[0].amount)").
+      */
+      payments: lines
+        .map((line, index) => ({
+          channelId: line.channelId,
+          amount: line.amount.trim(),
+          ...(changeByIndex.has(index)
+            ? { change: changeByIndex.get(index) }
+            : {}),
+          ...(line.channel.requiresReference
+            ? { reference: line.reference?.trim() }
+            : {}),
+        }))
+        .filter((line) => typed(line.amount) > 0),
     };
 
     try {
