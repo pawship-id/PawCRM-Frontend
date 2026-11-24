@@ -71,4 +71,5 @@ export {
   sessionWeightsError,
   sessionWeightsPayload,
   WEIGHTS_MIN_SESSIONS,
+  ServiceStepsWeightsTable,
 } from "./components/ServiceFormFields";

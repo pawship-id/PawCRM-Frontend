@@ -79,7 +79,7 @@ import { ServiceSalesAccountField } from "./ServiceSalesAccountField";
 import { sessionsRefusal } from "./ServiceStepPicker";
 // Deep, not the barrel: the grooming index imports this feature back.
 import { GROOMING_CATALOG_PATH } from "@/features/grooming/paths";
-import { clockTimeOf } from "@/features/grooming/serviceStepsDraft";
+import { clockTimeOf, fixedTimeText } from "@/features/grooming/serviceStepsDraft";
 import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
 import { cn } from "@/lib/utils";
 import { useHotelRoomTypes } from "@/hooks/useHotelRoomTypes";
@@ -908,9 +908,12 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
 
     /* A stored time wins (even a cleared one); otherwise the list's Jam default (hotel). */
     const timeOf = (session: string) =>
-      Object.hasOwn(storedTimes, session)
-        ? (storedTimes[session] ?? null)
-        : clockTimeOf(stepList.stepFor(session)?.hotelTime);
+      /* A Jam default in words is no clock time — never stored (24 November 2026). */
+      fixedTimeText(stepList.stepFor(session)?.hotelTime)
+        ? null
+        : Object.hasOwn(storedTimes, session)
+          ? (storedTimes[session] ?? null)
+          : clockTimeOf(stepList.stepFor(session)?.hotelTime);
 
     const payload = {
       name: trimmedName,

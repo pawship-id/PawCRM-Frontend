@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronUp, Plus, RotateCcw, X } from "lucide-react";
+import { GripVertical, Plus, RotateCcw, X } from "lucide-react";
 
 import {
   Alert,
@@ -18,6 +18,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
 import { useServiceSteps } from "@/hooks/useServiceSteps";
+import { fixedTimeText } from "@/features/grooming/serviceStepsDraft";
 import { cn } from "@/lib/utils";
 import type {
   ServiceKind,
@@ -1082,7 +1083,17 @@ export function ServiceStepsWeightsTable({
   onStepsChange,
   onWeightsChange,
   onTimeChange,
+  onCreate,
+  hideNote = false,
 }: {
+  /**
+   * Opens the caller's own tahapan form for a new name (the detail tab, which
+   * saves itself and so cannot wait for a submit). Absent = the form's deferred
+   * add: a new name is put on the list when the form is saved.
+   */
+  onCreate?: (typedName: string) => void;
+  /** Leave the explanation line out — the caller says it elsewhere. */
+  hideNote?: boolean;
   sessions: string[];
   kept: string[];
   maxItems: number;
@@ -1110,60 +1121,92 @@ export function ServiceStepsWeightsTable({
   const typed = typedWeights(sessions, weights);
   const filled = typed.some((value) => value !== "");
   const total = typed.reduce((sum, value) => sum + (/^\d+$/.test(value) ? Number(value) : 0), 0);
-  const cols = "grid grid-cols-[72px_1fr_120px_130px_44px] items-center gap-3";
+  const cols = "grid grid-cols-[36px_1fr_120px_130px_44px] items-center gap-3";
+  /* Dragged by its handle only, so a drag never starts from an input (the detail tab's pattern). */
+  const [armed, setArmed] = useState<number | null>(null);
+  const [dragging, setDragging] = useState<number | null>(null);
 
-  function move(index: number, by: -1 | 1) {
+  function moveTo(from: number, to: number) {
     onStepsChange((current) => {
+      if (to < 0 || to >= current.length || from === to) return current;
       const next = [...current];
-      const target = index + by;
-      if (target < 0 || target >= next.length) return current;
-      [next[index], next[target]] = [next[target], next[index]];
+      const [row] = next.splice(from, 1);
+      next.splice(to, 0, row);
       return next;
     });
   }
 
   return (
     <div className="flex flex-col gap-3">
+      {!hideNote && (
       <div>
         <p className="text-sm font-medium">Tahapan, jam & bobot komisi</p>
         <p className="mt-1 text-xs text-muted">
-          Urutkan dengan panah. Jam berlaku tiap malam dan bisa diubah per booking. Kosongkan bobot supaya komisinya
+          Jam berlaku tiap malam dan bisa diubah per booking. Kosongkan bobot supaya komisinya
           dibagi rata; kalau diisi, totalnya pas 100%.
         </p>
       </div>
+      )}
 
       {sessions.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-border">
           <div className="min-w-140">
             <div className={cn(cols, "border-b border-border bg-background px-4 py-2.5 text-sm font-semibold text-muted")}>
-              <span>Urutan</span>
+              {/* Empty cells that keep their column — an sr-only span leaves the grid. */}
+              <span>
+                <span className="sr-only">Urutan</span>
+              </span>
               <span>Tahapan</span>
               <span>Jam</span>
               <span>Bobot komisi</span>
-              <span className="sr-only">Hapus</span>
+              <span>
+                <span className="sr-only">Hapus</span>
+              </span>
             </div>
             {sessions.map((name, index) => (
-              <div key={name} className={cn(cols, "border-b border-border px-4 py-2 last:border-b-0")}>
-                <span className="flex items-center gap-0.5">
-                  <button
-                    type="button"
-                    aria-label={`Naikkan ${name}`}
-                    className="flex size-8 items-center justify-center rounded-md text-muted transition hover:bg-surface-hover hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-40"
-                    disabled={disabled || index === 0}
-                    onClick={() => move(index, -1)}
-                  >
-                    <ChevronUp className="size-4" aria-hidden />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Turunkan ${name}`}
-                    className="flex size-8 items-center justify-center rounded-md text-muted transition hover:bg-surface-hover hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-40"
-                    disabled={disabled || index === sessions.length - 1}
-                    onClick={() => move(index, 1)}
-                  >
-                    <ChevronDown className="size-4" aria-hidden />
-                  </button>
-                </span>
+              <div
+                key={name}
+                draggable={!disabled && armed === index}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", name);
+                  setDragging(index);
+                }}
+                onDragOver={(event) => {
+                  if (dragging === null) return;
+                  event.preventDefault();
+                  if (dragging !== index) {
+                    moveTo(dragging, index);
+                    setDragging(index);
+                  }
+                }}
+                onDrop={(event) => event.preventDefault()}
+                onDragEnd={() => {
+                  setDragging(null);
+                  setArmed(null);
+                }}
+                className={cn(
+                  cols,
+                  "border-b border-border bg-surface px-4 py-2 last:border-b-0",
+                  dragging === index && "bg-surface-selected opacity-70",
+                )}
+              >
+                <button
+                  type="button"
+                  aria-label={`Pindahkan ${name} — seret, atau tekan panah atas/bawah`}
+                  disabled={disabled}
+                  onPointerDown={() => setArmed(index)}
+                  onPointerUp={() => setArmed(null)}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                      event.preventDefault();
+                      moveTo(index, index + (event.key === "ArrowUp" ? -1 : 1));
+                    }
+                  }}
+                  className="flex size-9 cursor-grab items-center justify-center rounded-md text-muted transition hover:bg-surface-hover hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
+                >
+                  <GripVertical className="size-4" aria-hidden />
+                </button>
                 <span className="flex flex-wrap items-center gap-2 text-sm font-semibold">
                   <span className="tabular-nums text-muted">{index + 1}.</span>
                   {name}
@@ -1175,14 +1218,19 @@ export function ServiceStepsWeightsTable({
                     flags[index] && <ServiceStepFlagBadge flag={flags[index]} />
                   )}
                 </span>
-                <Input
-                  aria-label={`Jam ${name}`}
-                  type="time"
-                  value={times[name] ?? ""}
-                  onChange={(event) => onTimeChange(name, event.target.value)}
-                  disabled={disabled}
-                  className="h-9 tabular-nums"
-                />
+                {/* A Jam default that is words ("Ikut jam datang") is shown, not edited (24 November 2026). */}
+                {fixedTimeText(list.stepFor(name)?.hotelTime) ? (
+                  <span className="text-sm text-muted">{fixedTimeText(list.stepFor(name)?.hotelTime)}</span>
+                ) : (
+                  <Input
+                    aria-label={`Jam ${name}`}
+                    type="time"
+                    value={times[name] ?? ""}
+                    onChange={(event) => onTimeChange(name, event.target.value)}
+                    disabled={disabled}
+                    className="h-9 tabular-nums"
+                  />
+                )}
                 {split ? (
                   <span className="flex items-center gap-2">
                     <Input
@@ -1255,7 +1303,7 @@ export function ServiceStepsWeightsTable({
         </div>
       )}
 
-      {sessions.some((_, index) => flags[index] === "belum di daftar") && (
+      {!onCreate && sessions.some((_, index) => flags[index] === "belum di daftar") && (
         <p className="text-xs text-muted">
           Tahapan bertanda <b className="font-semibold">Baru</b> ditambahkan ke daftar tahapan saat layanan disimpan.
         </p>
@@ -1271,7 +1319,8 @@ export function ServiceStepsWeightsTable({
       <ServiceStepPicker
         taken={sessions}
         mayAddToList={mayAddToList}
-        deferAdd
+        deferAdd={!onCreate}
+        onCreate={onCreate}
         disabled={disabled}
         disabledReason={full ? `Maksimal ${maxItems} tahapan.` : null}
         kinds={kinds}

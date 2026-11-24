@@ -26,6 +26,7 @@ import {
   ServiceStepFlagBadge,
   serviceStepFlag,
   ServiceStepPicker,
+  ServiceStepsWeightsTable,
   sessionsRefusal,
 } from "@/features/services";
 import { ServiceStepFormDialog } from "@/features/settings/components/ServiceStepFormDialog";
@@ -379,6 +380,34 @@ export function GroomingServiceStepsEditor({
             {problem} Belum disimpan sampai dibetulkan.
           </p>
         )}
+        {withTimes ? (
+          /* The same table as the service form (24 November 2026, on request). */
+          <ServiceStepsWeightsTable
+            sessions={draft.sessions}
+            kept={service.sessions ?? []}
+            maxItems={MAX_SESSIONS}
+            mayAddToList={mayUpdate}
+            kinds={stepKinds}
+            weights={draft.weights}
+            times={draft.times}
+            disabled={disabled}
+            hideNote
+            onCreate={mayUpdate ? setCreating : undefined}
+            onStepsChange={(update) =>
+              change((current) => {
+                const sessions = update(current.sessions);
+                const times = { ...current.times };
+                sessions.forEach((name) => {
+                  if (!(name in times)) times[name] = clockTimeOf(stepList.stepFor(name)?.hotelTime) ?? "";
+                });
+                return { ...current, sessions, times };
+              })
+            }
+            onWeightsChange={(weights) => change((current) => ({ ...current, weights }))}
+            onTimeChange={(name, time) => change((current) => setTime(current, name, time))}
+          />
+        ) : (
+          <>
         {draft.sessions.length === 0 ? (
           <p className="text-sm text-muted">
             Belum ada tahapan.
@@ -532,6 +561,8 @@ export function GroomingServiceStepsEditor({
               Bagi rata
             </Button>
           </div>
+        )}
+          </>
         )}
       </Card>
 
