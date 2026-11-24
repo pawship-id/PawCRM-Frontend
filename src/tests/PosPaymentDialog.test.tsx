@@ -265,6 +265,44 @@ describe("PosPaymentDialog — what it sends", () => {
     );
   });
 
+  /* 24 Nov 2026: an item given away as a bonus — discounted 100% to Rp 0. */
+  const free = {
+    runningTotals: {
+      subtotal: "300000.0000",
+      itemDiscount: "300000.0000",
+      cartDiscount: "0.0000",
+      otherCharges: "0.0000",
+      net: "0.0000",
+    },
+  };
+
+  it("finishes a Rp 0 sale with no payment line", async () => {
+    const user = userEvent.setup();
+    open(free);
+
+    await screen.findByRole("button", { name: "Kas Toko" });
+    await user.click(screen.getByRole("button", { name: /selesaikan/i }));
+
+    await waitFor(() =>
+      expect(mockedPos.pay).toHaveBeenCalledWith(CART_ID, { payments: [] }),
+    );
+  });
+
+  it("drops a Rp 0 QRIS line instead of sending it or asking for a reference", async () => {
+    const user = userEvent.setup();
+    open(free);
+
+    await user.click(await screen.findByRole("button", { name: "QRIS" }));
+    await user.click(
+      await screen.findByRole("button", { name: "QRIS Xendit" }),
+    );
+    await user.click(screen.getByRole("button", { name: /selesaikan/i }));
+
+    await waitFor(() =>
+      expect(mockedPos.pay).toHaveBeenCalledWith(CART_ID, { payments: [] }),
+    );
+  });
+
   it("sends the change it computed, so the drawer matches the receipt", async () => {
     const user = userEvent.setup();
     open();
