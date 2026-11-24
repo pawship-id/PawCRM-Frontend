@@ -137,7 +137,14 @@ export function ServiceStepPicker({
   onCreate,
   kinds,
   className,
+  deferAdd = false,
 }: {
+  /**
+   * A new name goes into the service only — the caller adds it to the list
+   * when its form is saved (24 November 2026), so a name typed and then
+   * removed never litters the list.
+   */
+  deferAdd?: boolean;
   /** What the service already lists; hidden from the options. */
   taken: string[];
   onPick: (name: string) => void;
@@ -217,6 +224,10 @@ export function ServiceStepPicker({
 
   async function addToList(name: string) {
     if (adding) return;
+    if (deferAdd) {
+      pick(name);
+      return;
+    }
 
     setAdding(name);
     setAddError(null);
@@ -348,7 +359,9 @@ export function ServiceStepPicker({
                     )}
                     {adding
                       ? `Menyimpan “${adding}”…`
-                      : `Tambah “${typed}” ke daftar tahapan`}
+                      : deferAdd
+                        ? `Tambah “${typed}” (tahapan baru)`
+                        : `Tambah “${typed}” ke daftar tahapan`}
                   </button>
                 )}
                 {offerCreate && (

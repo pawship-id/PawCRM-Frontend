@@ -27,6 +27,7 @@ import {
   useServiceSteps,
 } from "@/hooks/useServiceSteps";
 import { ApiError } from "@/services/api-error";
+import { serviceStepService } from "@/services/serviceStep.service";
 import { serviceService } from "@/services/service.service";
 import { branchService } from "@/services/branch.service";
 import { tenantService } from "@/services/tenant.service";
@@ -68,6 +69,7 @@ import {
   ServiceBranchScope,
   ServiceVariantEditor,
   SessionWeightsEditor,
+  ServiceStepsWeightsTable,
   sessionWeightsError,
   sessionWeightsPayload,
   ServiceStepsField,
@@ -872,6 +874,38 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
     setSaving(true);
     setFormError(null);
 
+    /*
+      TAHAPAN TYPED HERE ARE ADDED TO THE LIST NOW, on save (24 November 2026) —
+      not when they were typed, so one typed and then removed leaves nothing
+      behind. One already there (somebody added it meanwhile) is fine.
+    */
+    const newSteps = sessions.filter((session) => !stepList.stepFor(session));
+    if (newSteps.length > 0) {
+      try {
+        for (const name of newSteps) {
+          try {
+            await serviceStepService.create({
+              name,
+              ...(serviceType === "main" && serviceKind ? { usedIn: [serviceKind] } : {}),
+            });
+          } catch (err) {
+            if (!(err instanceof ApiError && err.status === 409)) throw err;
+          }
+        }
+        invalidateServiceSteps();
+      } catch (err) {
+        setSaving(false);
+        swalToast(
+          err instanceof ApiError && err.status === 403
+            ? "Peran ini belum boleh menambah tahapan baru ke daftar."
+            : "Tahapan baru belum tersimpan ke daftar. Coba lagi.",
+          "error",
+          6000,
+        );
+        return;
+      }
+    }
+
     /* A stored time wins (even a cleared one); otherwise the list's Jam default (hotel). */
     const timeOf = (session: string) =>
       Object.hasOwn(storedTimes, session)
@@ -1497,43 +1531,80 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
                 Kegiatan harian. Boleh diubah khusus untuk layanan ini.
               </p>
             )}
-            <ServiceStepsField
-              sessions={sessions}
-              // The server keeps what this service stored, retired or not.
-              kept={service?.sessions ?? []}
-              kinds={
-                serviceType === "main"
-                  ? serviceKind
-                    ? [serviceKind]
-                    : []
-                  : addonKinds
-              }
-              maxItems={MAX_SESSIONS}
-              mayAddToList={mayAddSteps}
-              error={sessionsError ?? undefined}
-              disabled={saving}
-              onChange={(update) => {
-                setSessions(update);
-                setWeightError(null);
-                setSessionsError(null);
-              }}
-            />
+            {isHotel ? (
+              /* One table on a hotel service (24 November 2026, on request). */
+              <ServiceStepsWeightsTable
+                sessions={sessions}
+                kept={service?.sessions ?? []}
+                kinds={serviceKind ? [serviceKind] : []}
+                maxItems={MAX_SESSIONS}
+                mayAddToList={mayAddSteps}
+                weights={sessionWeights}
+                times={Object.fromEntries(
+                  sessions.map((session) => [
+                    session,
+                    (Object.hasOwn(storedTimes, session)
+                      ? storedTimes[session]
+                      : clockTimeOf(stepList.stepFor(session)?.hotelTime)) ?? "",
+                  ]),
+                )}
+                onTimeChange={(name, time) =>
+                  setStoredTimes((current) => ({ ...current, [name]: time || null }))
+                }
+                stepsError={sessionsError ?? undefined}
+                weightsError={weightError ?? undefined}
+                disabled={saving}
+                onStepsChange={(update) => {
+                  setSessions(update);
+                  setWeightError(null);
+                  setSessionsError(null);
+                }}
+                onWeightsChange={(next) => {
+                  setSessionWeights(next);
+                  setWeightError(null);
+                }}
+              />
+            ) : (
+              <>
+              <ServiceStepsField
+                sessions={sessions}
+                // The server keeps what this service stored, retired or not.
+                kept={service?.sessions ?? []}
+                kinds={
+                  serviceType === "main"
+                    ? serviceKind
+                      ? [serviceKind]
+                      : []
+                    : addonKinds
+                }
+                maxItems={MAX_SESSIONS}
+                mayAddToList={mayAddSteps}
+                error={sessionsError ?? undefined}
+                disabled={saving}
+                onChange={(update) => {
+                  setSessions(update);
+                  setWeightError(null);
+                  setSessionsError(null);
+                }}
+              />
 
-            {/*
-              UNDER THE LIST IT SPLITS. Commission is one rule for the whole shop
-              (Layanan › Grooming › Pengaturan); how a service's share is divided
-              between its tahapan is this service's business.
-            */}
-            <SessionWeightsEditor
-              sessions={sessions}
-              weights={sessionWeights}
-              error={weightError ?? undefined}
-              disabled={saving}
-              onChange={(next) => {
-                setSessionWeights(next);
-                setWeightError(null);
-              }}
-            />
+              {/*
+                UNDER THE LIST IT SPLITS. Commission is one rule for the whole shop
+                (Layanan › Grooming › Pengaturan); how a service's share is divided
+                between its tahapan is this service's business.
+              */}
+              <SessionWeightsEditor
+                sessions={sessions}
+                weights={sessionWeights}
+                error={weightError ?? undefined}
+                disabled={saving}
+                onChange={(next) => {
+                  setSessionWeights(next);
+                  setWeightError(null);
+                }}
+              />
+              </>
+            )}
           </div>
 
           <div className="border-t border-border pt-6">

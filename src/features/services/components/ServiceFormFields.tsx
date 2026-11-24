@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, RotateCcw, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, RotateCcw, X } from "lucide-react";
 
 import {
   Alert,
@@ -1057,6 +1057,240 @@ function VariantBulkTable({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * TAHAPAN AND THEIR COMMISSION SHARE IN ONE TABLE (24 November 2026, on request
+ * — the hotel form first). The same rules as `ServiceStepsField` +
+ * `SessionWeightsEditor`: tahapan come from the list; weights are all empty
+ * (split evenly) or whole per cents adding up to exactly 100; one tahapan takes
+ * the whole commission, so its box reads 100% and cannot be typed in.
+ */
+export function ServiceStepsWeightsTable({
+  sessions,
+  kept,
+  maxItems,
+  mayAddToList,
+  kinds,
+  weights,
+  times,
+  stepsError,
+  weightsError,
+  disabled,
+  onStepsChange,
+  onWeightsChange,
+  onTimeChange,
+}: {
+  sessions: string[];
+  kept: string[];
+  maxItems: number;
+  mayAddToList: boolean;
+  kinds?: ServiceKind[] | null;
+  weights: Record<string, string>;
+  /** Each tahapan's clock time as shown ("HH:mm" or ""), by name. */
+  times: Record<string, string>;
+  stepsError?: string;
+  weightsError?: string;
+  disabled: boolean;
+  onStepsChange: (update: (current: string[]) => string[]) => void;
+  onWeightsChange: (next: Record<string, string>) => void;
+  onTimeChange: (name: string, time: string) => void;
+}) {
+  const list = useServiceSteps();
+  const keptKeys = new Set(kept.map((name) => name.trim().toLowerCase()));
+  const flags = sessions.map((name) => serviceStepFlag(name, list));
+  /* A name not on the list is NEW — added to it when the form is saved (24 November 2026). */
+  const refused = sessions.filter(
+    (name, index) => flags[index] === "nonaktif" && !keptKeys.has(name.trim().toLowerCase()),
+  );
+  const full = sessions.length >= maxItems;
+  const split = sessions.length >= WEIGHTS_MIN_SESSIONS;
+  const typed = typedWeights(sessions, weights);
+  const filled = typed.some((value) => value !== "");
+  const total = typed.reduce((sum, value) => sum + (/^\d+$/.test(value) ? Number(value) : 0), 0);
+  const cols = "grid grid-cols-[72px_1fr_120px_130px_44px] items-center gap-3";
+
+  function move(index: number, by: -1 | 1) {
+    onStepsChange((current) => {
+      const next = [...current];
+      const target = index + by;
+      if (target < 0 || target >= next.length) return current;
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <p className="text-sm font-medium">Tahapan, jam & bobot komisi</p>
+        <p className="mt-1 text-xs text-muted">
+          Urutkan dengan panah. Jam berlaku tiap malam dan bisa diubah per booking. Kosongkan bobot supaya komisinya
+          dibagi rata; kalau diisi, totalnya pas 100%.
+        </p>
+      </div>
+
+      {sessions.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <div className="min-w-140">
+            <div className={cn(cols, "border-b border-border bg-background px-4 py-2.5 text-sm font-semibold text-muted")}>
+              <span>Urutan</span>
+              <span>Tahapan</span>
+              <span>Jam</span>
+              <span>Bobot komisi</span>
+              <span className="sr-only">Hapus</span>
+            </div>
+            {sessions.map((name, index) => (
+              <div key={name} className={cn(cols, "border-b border-border px-4 py-2 last:border-b-0")}>
+                <span className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    aria-label={`Naikkan ${name}`}
+                    className="flex size-8 items-center justify-center rounded-md text-muted transition hover:bg-surface-hover hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-40"
+                    disabled={disabled || index === 0}
+                    onClick={() => move(index, -1)}
+                  >
+                    <ChevronUp className="size-4" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`Turunkan ${name}`}
+                    className="flex size-8 items-center justify-center rounded-md text-muted transition hover:bg-surface-hover hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-40"
+                    disabled={disabled || index === sessions.length - 1}
+                    onClick={() => move(index, 1)}
+                  >
+                    <ChevronDown className="size-4" aria-hidden />
+                  </button>
+                </span>
+                <span className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                  <span className="tabular-nums text-muted">{index + 1}.</span>
+                  {name}
+                  {flags[index] === "belum di daftar" ? (
+                    <span className="rounded-full bg-tint-info px-2 py-0.5 text-xs font-medium text-primary">
+                      Baru
+                    </span>
+                  ) : (
+                    flags[index] && <ServiceStepFlagBadge flag={flags[index]} />
+                  )}
+                </span>
+                <Input
+                  aria-label={`Jam ${name}`}
+                  type="time"
+                  value={times[name] ?? ""}
+                  onChange={(event) => onTimeChange(name, event.target.value)}
+                  disabled={disabled}
+                  className="h-9 tabular-nums"
+                />
+                {split ? (
+                  <span className="flex items-center gap-2">
+                    <Input
+                      aria-label={`Bobot ${name} (%)`}
+                      inputMode="numeric"
+                      value={weights[name] ?? ""}
+                      onChange={(event) => onWeightsChange({ ...weights, [name]: event.target.value })}
+                      placeholder="rata"
+                      disabled={disabled}
+                      className="h-9 text-right tabular-nums"
+                    />
+                    <span className="text-sm text-muted">%</span>
+                  </span>
+                ) : (
+                  <span className="text-sm text-muted tabular-nums">100%</span>
+                )}
+                <button
+                  type="button"
+                  aria-label={`Hapus tahapan ${name}`}
+                  className="flex size-9 items-center justify-center rounded-full text-muted transition hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                  disabled={disabled}
+                  onClick={() => {
+                    onStepsChange((current) => current.filter((session) => session !== name));
+                    const rest = { ...weights };
+                    delete rest[name];
+                    onWeightsChange(rest);
+                  }}
+                >
+                  <X className="size-4" aria-hidden />
+                </button>
+              </div>
+            ))}
+            {split && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-background px-4 py-2.5">
+                <p className="text-sm">
+                  Total bobot{" "}
+                  <span
+                    className={
+                      !filled || total === 100
+                        ? "font-semibold tabular-nums text-foreground"
+                        : "font-semibold tabular-nums text-danger"
+                    }
+                  >
+                    {filled ? `${total}%` : "dibagi rata"}
+                  </span>
+                </p>
+                <span className="flex gap-2">
+                  {filled && (
+                    <Button type="button" variant="ghost" size="sm" className="h-8" disabled={disabled} onClick={() => onWeightsChange({})}>
+                      Kosongkan
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="h-8"
+                    disabled={disabled}
+                    onClick={() => {
+                      const even = evenSessionWeights(sessions.length);
+                      onWeightsChange(Object.fromEntries(sessions.map((session, i) => [session, String(even[i])])));
+                    }}
+                  >
+                    Bagi rata
+                  </Button>
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {sessions.some((_, index) => flags[index] === "belum di daftar") && (
+        <p className="text-xs text-muted">
+          Tahapan bertanda <b className="font-semibold">Baru</b> ditambahkan ke daftar tahapan saat layanan disimpan.
+        </p>
+      )}
+
+      {refused.length > 0 && (
+        <Alert variant="warning">
+          {refused.map((name) => `“${name}”`).join(", ")} sudah dinonaktifkan di daftar tahapan. Hapus, lalu pilih
+          penggantinya — kalau tidak, layanan ini ditolak saat disimpan.
+        </Alert>
+      )}
+
+      <ServiceStepPicker
+        taken={sessions}
+        mayAddToList={mayAddToList}
+        deferAdd
+        disabled={disabled}
+        disabledReason={full ? `Maksimal ${maxItems} tahapan.` : null}
+        kinds={kinds}
+        onPick={(name) =>
+          onStepsChange((current) =>
+            current.length >= maxItems ||
+            current.some((session) => session.toLowerCase() === name.toLowerCase())
+              ? current
+              : [...current, name],
+          )
+        }
+        className={FIELD_HEIGHT}
+      />
+
+      {(stepsError || weightsError) && (
+        <p role="alert" className="text-xs font-semibold text-danger">
+          {stepsError ?? weightsError}
+        </p>
+      )}
     </div>
   );
 }
